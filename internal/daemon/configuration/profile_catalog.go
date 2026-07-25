@@ -28,8 +28,8 @@ func NewProfileCatalog(profiles []InstitutionProfile) (*ProfileCatalog, error) {
 }
 
 func (catalog *ProfileCatalog) Get(ctx context.Context, id InstitutionProfileID) (InstitutionProfile, error) {
-	if id == "" {
-		return InstitutionProfile{}, profileCatalogInvalidArgument(nil)
+	if err := validateInstitutionProfileID(id); err != nil {
+		return InstitutionProfile{}, err
 	}
 	if err := validateProfileCatalogContext(ctx); err != nil {
 		return InstitutionProfile{}, err
@@ -67,9 +67,10 @@ func (catalog *ProfileCatalog) ListSummaries(ctx context.Context) ([]Institution
 }
 
 func validateProfile(profile InstitutionProfile) error {
+	if err := validateInstitutionProfileID(profile.InstitutionProfileID); err != nil {
+		return err
+	}
 	switch {
-	case profile.InstitutionProfileID == "":
-		return profileCatalogInvalidArgument(nil)
 	case profile.DisplayName == "":
 		return profileCatalogInvalidArgument(nil)
 	case profile.AuthenticationProtocolID == "":
