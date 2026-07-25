@@ -1,0 +1,14 @@
+{
+  "operations": {
+    "login": [
+      {"action": "reject", "code": 2},
+      {"action": "reject", "code": 2},
+      {"action": "normal"}
+    ],
+    "ka1": [
+      {"action": "normal"},
+      {"action": "drop"}
+    ]
+  },
+  "repeat_last": true
+}

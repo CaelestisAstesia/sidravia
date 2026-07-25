@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "fixture_version": "d520_client_vectors_v1",
+  "protocol_id": "drcom-5.2.0-d",
+  "credentials_are_fictional": true,
+  "provenance": {
+    "source_projects": ["Drcom-Core", "Drcom-CLI", "ProjectLAINS", "drcom520d_mock_server"],
+    "source_commits": {
+      "Drcom-Core": "bcc636f",
+      "Drcom-CLI": "1c63497",
+      "ProjectLAINS": "d5419ee"
+    },
+    "licenses": {
+      "Drcom-Core": "AGPL-3.0-only",
+      "Drcom-CLI": "AGPL-3.0-only",
+      "ProjectLAINS": "AGPL-3.0-only",
+      "drcom520d_mock_server": "AGPL-3.0-only"
+    },
+    "extracted_files": [
+      "参考/Drcom-Core/src/drcom_core/config.py",
+      "参考/Drcom-Core/src/drcom_core/core.py",
+      "参考/Drcom-Core/src/drcom_core/protocols/d_series/constants.py",
+      "参考/Drcom-Core/src/drcom_core/protocols/d_series/packets.py",
+      "参考/Drcom-Core/src/drcom_core/protocols/d_series/strategy.py",
+      "参考/Drcom-CLI/src/drcom_cli/common/consts.py",
+      "参考/ProjectLAINS/crates/daemon/src/auth/context.rs",
+      "参考/ProjectLAINS/crates/daemon/src/auth/netrunner.rs",
+      "参考/ProjectLAINS/crates/daemon/src/auth/wire/constant.rs",
+      "参考/ProjectLAINS/crates/daemon/src/auth/wire/crypto.rs",
+      "参考/ProjectLAINS/crates/daemon/src/auth/wire/response.rs",
+      "参考/ProjectLAINS/crates/daemon/src/auth/wire/v520d.rs",
+      "tools/drcom520d_mock_server/src/drcom520d_mock_server/codec.py",
+      "tools/drcom520d_mock_server/tests/packet_factory.py"
+    ],
+    "specification": "docs/protocols/drcom-5.2.0-d.md"
+  },
+  "determinism": {
+    "server_secret_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "salt_sequence_hex": ["01020304", "05060708"],
+    "client_endpoint": {"host": "127.0.0.1", "port": 50000},
+    "clock_start": 1000.0,
+    "scenario": "normal",
+    "server_settings": {
+      "challenge_ttl_seconds": 10,
+      "session_ttl_seconds": 90,
+      "max_sessions_per_account": 1,
+      "auth_version_hex": "2c00",
+      "keep_alive_version_hex": "dc02",
+      "control_check_status_hex": "20",
+      "ipdog_hex": "01",
+      "initial_month_traffic_kib": 14208,
+      "initial_balance_cents": 10000
+    }
+  },
+  "fictional_inputs": {
+    "username": "student-test",
+    "password": "local-test-password",
+    "client_ipv4": "10.0.0.2",
+    "mac_hex": "020000000001",
+    "primary_dns": "10.10.10.10",
+    "secondary_dns": "202.98.18.3",
+    "dhcp_ipv4": "10.0.0.1",
+    "host_name": "local-test-host",
+    "host_os": "Windows 10",
+    "auth_version_hex": "2c00",
+    "keep_alive_version_hex": "dc02",
+    "control_check_status_hex": "20",
+    "ipdog_hex": "01",
+    "adapter_num_hex": "01",
+    "os_info_hex": "940000000600000000000000280a000002000000"
+  },
+  "fictional_account": {
+    "enabled": true,
+    "frozen": false,
+    "require_dhcp": false,
+    "bind_ipv4_and_mac": true,
+    "max_sessions": 1,
+    "balance_cents": 10000
+  },
+  "crypto_intermediates": {
+    "salt_hex": "01020304",
+    "md5_a": {
+      "input_hex": "0301010203046c6f63616c2d746573742d70617373776f7264",
+      "output_hex": "6eb3b06697c10ee0f8865d7681f9ce5a"
+    },
+    "md5_b": {
+      "input_hex": "016c6f63616c2d746573742d70617373776f72640102030400000000",
+      "output_hex": "5fe11b2ea1f94744ab75d982252d0cec"
+    },
+    "md5_c": {
+      "input_hex": "010a0000020000000000000000000000001400070b",
+      "output_hex": "e0c598fd53470375"
+    },
+    "mac_xor": {
+      "input_hex": "0200000000016eb3b06697c1",
+      "output_hex": "6cb3b06697c0"
+    },
+    "crc_1968": {
+      "input_hex": "030100206eb3b06697c10ee0f8865d7681f9ce5a73747564656e742d7465737400000000000000000000000000000000000000000000000020016cb3b06697c05fe11b2ea1f94744ab75d982252d0cec010a000002000000000000000000000000e0c598fd5347037501000000006c6f63616c2d746573742d686f737400000000000000000000000000000000000a0a0a0a0a000001ca6212030000000000000000940000000600000000000000280a00000200000057696e646f7773203130000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c00012607110000020000000001",
+      "output_hex": "602ad628"
+    },
+    "auth_info": {
+      "material_hex": "617574682d696e666f003132372e302e302e3100c35073747564656e742d7465737400010203040000000000000001",
+      "output_hex": "05bbfe85e226f735ad5fc3ab4dcc6e76"
+    },
+    "ka2_tail_type1": {
+      "material_hex": "6b61322d7461696c0005bbfe85e226f735ad5fc3ab4dcc6e76000000000001",
+      "output_hex": "321ed6bb"
+    },
+    "ka2_tail_type3": {
+      "material_hex": "6b61322d7461696c0005bbfe85e226f735ad5fc3ab4dcc6e76321ed6bb0103",
+      "output_hex": "66c0711c"
+    }
+  },
+  "exchanges": [
+    {
+      "name": "challenge_for_login",
+      "operation": "challenge",
+      "request_hex": "0102303009000000000000000000000000000000",
+      "request_length": 20,
+      "declared_response_hex": "02000000010203047f00000100000000",
+      "declared_response_length": 16
+    },
+    {
+      "name": "login_success",
+      "operation": "login",
+      "request_hex": "030100206eb3b06697c10ee0f8865d7681f9ce5a73747564656e742d7465737400000000000000000000000000000000000000000000000020016cb3b06697c05fe11b2ea1f94744ab75d982252d0cec010a000002000000000000000000000000e0c598fd5347037501000000006c6f63616c2d746573742d686f737400000000000000000000000000000000000a0a0a0a0a000001ca6212030000000000000000940000000600000000000000280a00000200000057696e646f7773203130000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c00020c602ad628000002000000000100001234",
+      "request_length": 330,
+      "declared_response_hex": "040000000000000000803700001027000000000000000005bbfe85e226f735ad5fc3ab4dcc6e7600000000000000000000000000000000000000000000000000",
+      "declared_response_length": 64
+    },
+    {
+      "name": "ka1",
+      "operation": "ka1",
+      "request_hex": "ff6eb3b06697c10ee0f8865d7681f9ce5a00000005bbfe85e226f735ad5fc3ab4dcc6e76303000000000",
+      "request_length": 42,
+      "declared_response_hex": "0700000000000000000000000000000000000000",
+      "declared_response_length": 20
+    },
+    {
+      "name": "ka2_type1_first",
+      "operation": "ka2",
+      "request_hex": "070028000b010f272f12000000000000000000000000000000000000000000000000000000000000",
+      "request_length": 40,
+      "declared_response_hex": "070028000b0100000000000000000000321ed6bb000000000000000000000000000000000000000000000000000000008137000040420f0000000000",
+      "declared_response_length": 60
+    },
+    {
+      "name": "ka2_type3",
+      "operation": "ka2",
+      "request_hex": "070128000b03dc022f12000000000000321ed6bb00000000000000000a0000020000000000000000",
+      "request_length": 40,
+      "declared_response_hex": "070128000b030000000000000000000066c0711c000000000000000000000000000000000000000000000000000000008237000040420f0000000000",
+      "declared_response_length": 60
+    },
+    {
+      "name": "challenge_for_logout",
+      "operation": "challenge",
+      "request_hex": "0102313109000000000000000000000000000000",
+      "request_length": 20,
+      "declared_response_hex": "02000000050607087f00000100000000",
+      "declared_response_length": 16
+    },
+    {
+      "name": "logout",
+      "operation": "logout",
+      "request_hex": "06010020754c01cdfee9adb9d9bb1e3843fa35f173747564656e742d746573740000000000000000000000000000000000000000000000002001774c01cdfee805bbfe85e226f735ad5fc3ab4dcc6e76",
+      "request_length": 80,
+      "declared_response_hex": "04000000",
+      "declared_response_length": 4
+    }
+  ],
+  "rejection": {
+    "challenge": {
+      "request_hex": "0102303009000000000000000000000000000000",
+      "request_length": 20,
+      "declared_response_hex": "02000000010203047f00000100000000",
+      "declared_response_length": 16
+    },
+    "login": {
+      "request_hex": "030100201743dbf70c7e6626e75a543345187b4e73747564656e742d7465737400000000000000000000000000000000000000000000000020011543dbf70c7fe00165a18f3c3ed7acd522893f9a4400010a000002000000000000000000000000e0c598fd5347037501000000006c6f63616c2d746573742d686f737400000000000000000000000000000000000a0a0a0a0a000001ca6212030000000000000000940000000600000000000000280a00000200000057696e646f7773203130000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c00020c40706a3f000002000000000100001234",
+      "request_length": 330,
+      "declared_response_hex": "0500000003000000000000000000000000000000000000000000000000000000",
+      "declared_response_length": 32,
+      "wire_error_code": 3
+    }
+  }
+}

@@ -1,0 +1,359 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/netip"
+	"strings"
+	"testing"
+	"time"
+
+	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/daemon/authentication/session"
+	config "sidravia/internal/daemon/configuration"
+	"sidravia/internal/ipc/contract"
+)
+
+type fakeSessionApplication struct {
+	snapshot session.Snapshot
+	err      error
+
+	lastStartInput OneShotAuthenticationInput
+	startCalls     int
+	lastStopID     session.AuthenticationSessionID
+	stopCalls      int
+	lastGetID      session.AuthenticationSessionID
+	getCalls       int
+}
+
+func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error) {
+	fake.startCalls++
+	fake.lastStartInput = input
+	if fake.err != nil {
+		return "", session.Snapshot{}, fake.err
+	}
+	return fake.snapshot.AuthenticationSessionID, fake.snapshot, nil
+}
+
+func (fake *fakeSessionApplication) StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	fake.stopCalls++
+	fake.lastStopID = sessionID
+	if fake.err != nil {
+		return session.Snapshot{}, fake.err
+	}
+	return fake.snapshot, nil
+}
+
+func (fake *fakeSessionApplication) GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	fake.getCalls++
+	fake.lastGetID = sessionID
+	if fake.err != nil {
+		return session.Snapshot{}, fake.err
+	}
+	return fake.snapshot, nil
+}
+
+func fullSnapshot() session.Snapshot {
+	established := time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)
+	retry := time.Date(2026, 7, 24, 10, 5, 0, 0, time.UTC)
+	updated := time.Date(2026, 7, 24, 10, 0, 1, 0, time.UTC)
+	addr := netip.MustParseAddr("10.0.0.2")
+	return session.Snapshot{
+		AuthenticationSessionID:  "sess-1",
+		DisplayName:              "Library WiFi",
+		InstitutionProfileID:     "profile-1",
+		InstitutionDisplayName:   "Library",
+		AuthenticationProtocolID: protocol.AuthenticationProtocolID("drcom"),
+		AccountLabel:             "public-account-label",
+		Intent:                   session.MaintainAuthentication,
+		State:                    session.Authenticated,
+		StateReason:              &session.StateReason{Code: session.StateReasonCodeNetworkUnavailable, Description: "no network"},
+		SelectedNetworkBinding: &session.NetworkBindingSummary{
+			InterfaceID:      "iface-1",
+			DisplayName:      "Eth0",
+			LocalIPv4Address: addr,
+		},
+		AuthenticationEstablishedAt: &established,
+		NextRetryAt:                 &retry,
+		LastAuthenticationFailure: &session.AuthenticationFailure{
+			Code:                   protocol.AuthenticationProtocolFailureCode("credentials_rejected"),
+			Description:            "bad credentials",
+			HandlingRecommendation: protocol.RetryAfterStandardDelay,
+		},
+		Revision:  7,
+		UpdatedAt: updated,
+	}
+}
+
+func validStartPayload() []byte {
+	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"SECRET-USER","password":"SECRET-PASS","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{"marker":"OVERRIDE-MARKER"}}`)
+}
+
+func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	handler := SessionHandler(fake)
+
+	result, cerr := handler(context.Background(), contract.MethodSessionStartOneShot, validStartPayload())
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	if fake.startCalls != 1 {
+		t.Fatalf("expected start called once, got %d", fake.startCalls)
+	}
+	if fake.stopCalls != 0 || fake.getCalls != 0 {
+		t.Fatalf("expected stop/get not called, got stop=%d get=%d", fake.stopCalls, fake.getCalls)
+	}
+
+	input := fake.lastStartInput
+	if input.DisplayName != "Library WiFi" {
+		t.Errorf("displayName: got %q", input.DisplayName)
+	}
+	if input.InstitutionProfileID != config.InstitutionProfileID("profile-1") {
+		t.Errorf("institutionProfileId: got %q", input.InstitutionProfileID)
+	}
+	if input.AuthenticationCredential.Username != "SECRET-USER" {
+		t.Errorf("username: got %q", input.AuthenticationCredential.Username)
+	}
+	if input.AuthenticationCredential.Password != "SECRET-PASS" {
+		t.Errorf("password: got %q", input.AuthenticationCredential.Password)
+	}
+	if input.NetworkBindingPolicy.Mode != session.AutomaticallySelectLatestAvailable {
+		t.Errorf("binding mode: got %q", input.NetworkBindingPolicy.Mode)
+	}
+	if string(input.ProtocolContextOverride) != `{"marker":"OVERRIDE-MARKER"}` {
+		t.Errorf("protocolContextOverride: got %q", string(input.ProtocolContextOverride))
+	}
+
+	var sr contract.SessionResult
+	if err := json.Unmarshal(result, &sr); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if sr.AuthenticationSessionID != "sess-1" {
+		t.Errorf("sessionId: got %q, want sess-1", sr.AuthenticationSessionID)
+	}
+}
+
+func TestSessionHandlerStopCallsFakeOnceWithSessionID(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	handler := SessionHandler(fake)
+
+	result, cerr := handler(context.Background(), contract.MethodSessionStop, []byte(`{"sessionId":"sess-1"}`))
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	if fake.stopCalls != 1 {
+		t.Fatalf("expected stop called once, got %d", fake.stopCalls)
+	}
+	if fake.startCalls != 0 || fake.getCalls != 0 {
+		t.Fatalf("expected start/get not called, got start=%d get=%d", fake.startCalls, fake.getCalls)
+	}
+	if fake.lastStopID != session.AuthenticationSessionID("sess-1") {
+		t.Errorf("stop session id: got %q", fake.lastStopID)
+	}
+	var sr contract.SessionResult
+	if err := json.Unmarshal(result, &sr); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if sr.AuthenticationSessionID != "sess-1" {
+		t.Errorf("sessionId: got %q, want sess-1", sr.AuthenticationSessionID)
+	}
+}
+
+func TestSessionHandlerGetCallsFakeOnceWithSessionID(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	handler := SessionHandler(fake)
+
+	result, cerr := handler(context.Background(), contract.MethodSessionGet, []byte(`{"sessionId":"sess-1"}`))
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	if fake.getCalls != 1 {
+		t.Fatalf("expected get called once, got %d", fake.getCalls)
+	}
+	if fake.startCalls != 0 || fake.stopCalls != 0 {
+		t.Fatalf("expected start/stop not called, got start=%d stop=%d", fake.startCalls, fake.stopCalls)
+	}
+	if fake.lastGetID != session.AuthenticationSessionID("sess-1") {
+		t.Errorf("get session id: got %q", fake.lastGetID)
+	}
+	var sr contract.SessionResult
+	if err := json.Unmarshal(result, &sr); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if sr.AuthenticationSessionID != "sess-1" {
+		t.Errorf("sessionId: got %q, want sess-1", sr.AuthenticationSessionID)
+	}
+}
+
+func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	handler := SessionHandler(fake)
+
+	result, cerr := handler(context.Background(), contract.MethodSessionGet, []byte(`{"sessionId":"sess-1"}`))
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	var sr contract.SessionResult
+	if err := json.Unmarshal(result, &sr); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	snap := fullSnapshot()
+	if sr.AuthenticationSessionID != string(snap.AuthenticationSessionID) {
+		t.Errorf("sessionId: got %q, want %q", sr.AuthenticationSessionID, snap.AuthenticationSessionID)
+	}
+	if sr.DisplayName != snap.DisplayName {
+		t.Errorf("displayName: got %q, want %q", sr.DisplayName, snap.DisplayName)
+	}
+	if sr.InstitutionProfileID != string(snap.InstitutionProfileID) {
+		t.Errorf("institutionProfileId: got %q, want %q", sr.InstitutionProfileID, snap.InstitutionProfileID)
+	}
+	if sr.InstitutionDisplayName != snap.InstitutionDisplayName {
+		t.Errorf("institutionDisplayName: got %q, want %q", sr.InstitutionDisplayName, snap.InstitutionDisplayName)
+	}
+	if sr.AuthenticationProtocolID != string(snap.AuthenticationProtocolID) {
+		t.Errorf("authenticationProtocolId: got %q, want %q", sr.AuthenticationProtocolID, snap.AuthenticationProtocolID)
+	}
+	if sr.AccountLabel != snap.AccountLabel {
+		t.Errorf("accountLabel: got %q, want %q", sr.AccountLabel, snap.AccountLabel)
+	}
+	if sr.Intent != string(snap.Intent) {
+		t.Errorf("intent: got %q, want %q", sr.Intent, snap.Intent)
+	}
+	if sr.State != string(snap.State) {
+		t.Errorf("state: got %q, want %q", sr.State, snap.State)
+	}
+	if sr.Revision != snap.Revision {
+		t.Errorf("revision: got %d, want %d", sr.Revision, snap.Revision)
+	}
+	if sr.UpdatedAt != snap.UpdatedAt.Format(time.RFC3339Nano) {
+		t.Errorf("updatedAt: got %q, want %q", sr.UpdatedAt, snap.UpdatedAt.Format(time.RFC3339Nano))
+	}
+	if sr.StateReason == nil || sr.StateReason.Code != snap.StateReason.Code || sr.StateReason.Description != snap.StateReason.Description {
+		t.Errorf("stateReason: got %+v, want %+v", sr.StateReason, snap.StateReason)
+	}
+	if sr.SelectedNetworkBinding == nil ||
+		sr.SelectedNetworkBinding.InterfaceID != string(snap.SelectedNetworkBinding.InterfaceID) ||
+		sr.SelectedNetworkBinding.DisplayName != snap.SelectedNetworkBinding.DisplayName ||
+		sr.SelectedNetworkBinding.LocalIPv4Address != snap.SelectedNetworkBinding.LocalIPv4Address.String() {
+		t.Errorf("selectedNetworkBinding: got %+v", sr.SelectedNetworkBinding)
+	}
+	if sr.AuthenticationEstablishedAt == nil || *sr.AuthenticationEstablishedAt != snap.AuthenticationEstablishedAt.Format(time.RFC3339Nano) {
+		t.Errorf("authenticationEstablishedAt: got %+v", sr.AuthenticationEstablishedAt)
+	}
+	if sr.NextRetryAt == nil || *sr.NextRetryAt != snap.NextRetryAt.Format(time.RFC3339Nano) {
+		t.Errorf("nextRetryAt: got %+v", sr.NextRetryAt)
+	}
+	if sr.LastAuthenticationFailure == nil ||
+		sr.LastAuthenticationFailure.Code != string(snap.LastAuthenticationFailure.Code) ||
+		sr.LastAuthenticationFailure.Description != snap.LastAuthenticationFailure.Description ||
+		sr.LastAuthenticationFailure.HandlingRecommendation != string(snap.LastAuthenticationFailure.HandlingRecommendation) {
+		t.Errorf("lastAuthenticationFailure: got %+v", sr.LastAuthenticationFailure)
+	}
+}
+
+func TestSessionHandlerMalformedPayloadDoesNotCallFake(t *testing.T) {
+	for _, method := range []string{contract.MethodSessionStartOneShot, contract.MethodSessionStop, contract.MethodSessionGet} {
+		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+		handler := SessionHandler(fake)
+		_, cerr := handler(context.Background(), method, []byte(`{"username":""}`))
+		if cerr == nil {
+			t.Fatalf("%s: expected error", method)
+		}
+		if cerr.Code != contract.ErrorCodeInvalidArgument {
+			t.Errorf("%s: code: got %q, want %q", method, cerr.Code, contract.ErrorCodeInvalidArgument)
+		}
+		if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 {
+			t.Fatalf("%s: fake must not be called, got start=%d stop=%d get=%d", method, fake.startCalls, fake.stopCalls, fake.getCalls)
+		}
+	}
+}
+
+func TestSessionHandlerUnknownMethodDoesNotCallFake(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	handler := SessionHandler(fake)
+	_, cerr := handler(context.Background(), "session.unknown", []byte(`{}`))
+	if cerr == nil {
+		t.Fatal("expected error for unknown method")
+	}
+	if cerr.Code != contract.ErrorCodeUnknownMethod {
+		t.Errorf("code: got %q, want %q", cerr.Code, contract.ErrorCodeUnknownMethod)
+	}
+	if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 {
+		t.Fatalf("fake must not be called for unknown method, got start=%d stop=%d get=%d", fake.startCalls, fake.stopCalls, fake.getCalls)
+	}
+}
+
+func TestSessionHandlerMapsResolutionFailures(t *testing.T) {
+	cases := []struct {
+		name     string
+		code     ResolutionFailureCode
+		wantCode string
+		wantMsg  string
+	}{
+		{"profile not found", ProfileNotFound, contract.ErrorCodeProfileNotFound, "institution profile not found"},
+		{"protocol not found", ProtocolNotFound, contract.ErrorCodeProtocolNotFound, "authentication protocol not found"},
+		{"invalid configuration", InvalidConfiguration, contract.ErrorCodeInvalidArgument, "invalid session request"},
+		{"invalid environment", InvalidEnvironment, contract.ErrorCodeInvalidArgument, "invalid session request"},
+	}
+	// The cause carries every secret category the public message must never echo.
+	cause := errors.New("diagnostic LEAK-MARKER SECRET-USER SECRET-PASS OVERRIDE-MARKER")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeSessionApplication{err: NewResolutionFailure(tc.code, cause)}
+			handler := SessionHandler(fake)
+			_, cerr := handler(context.Background(), contract.MethodSessionStartOneShot, validStartPayload())
+			if cerr == nil {
+				t.Fatal("expected error")
+			}
+			if cerr.Code != tc.wantCode {
+				t.Errorf("code: got %q, want %q", cerr.Code, tc.wantCode)
+			}
+			if cerr.Message != tc.wantMsg {
+				t.Errorf("message: got %q, want %q", cerr.Message, tc.wantMsg)
+			}
+			assertNoSecretsInError(t, cerr.Message)
+		})
+	}
+}
+
+func TestSessionHandlerGenericFailureMapsToSessionOperationFailed(t *testing.T) {
+	cause := errors.New("supervisor failure LEAK-MARKER SECRET-USER SECRET-PASS OVERRIDE-MARKER")
+	fake := &fakeSessionApplication{err: cause}
+	handler := SessionHandler(fake)
+	_, cerr := handler(context.Background(), contract.MethodSessionStop, []byte(`{"sessionId":"sess-1"}`))
+	if cerr == nil {
+		t.Fatal("expected error")
+	}
+	if cerr.Code != contract.ErrorCodeSessionOperationFailed {
+		t.Errorf("code: got %q, want %q", cerr.Code, contract.ErrorCodeSessionOperationFailed)
+	}
+	if cerr.Message != "session operation failed" {
+		t.Errorf("message: got %q, want %q", cerr.Message, "session operation failed")
+	}
+	assertNoSecretsInError(t, cerr.Message)
+}
+
+func assertNoSecretsInError(t *testing.T, message string) {
+	t.Helper()
+	for _, secret := range []string{"LEAK-MARKER", "SECRET-USER", "SECRET-PASS", "OVERRIDE-MARKER"} {
+		if strings.Contains(message, secret) {
+			t.Errorf("error message leaked %q: %q", secret, message)
+		}
+	}
+}
+
+func TestSessionHandlerResultDoesNotLeakSecrets(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	handler := SessionHandler(fake)
+	result, cerr := handler(context.Background(), contract.MethodSessionStartOneShot, validStartPayload())
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	text := string(result)
+	for _, secret := range []string{"SECRET-USER", "SECRET-PASS", "OVERRIDE-MARKER", "credentialId"} {
+		if strings.Contains(text, secret) {
+			t.Errorf("result JSON leaked %q: %s", secret, text)
+		}
+	}
+}

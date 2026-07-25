@@ -1,0 +1,1096 @@
+package session
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"net/netip"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"sidravia/internal/daemon/authentication/protocol"
+	environment "sidravia/internal/daemon/environment"
+)
+
+func TestSessionMaintainingAuthenticationMovesFromWaitingToAuthenticated(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	if got := sessionSnapshot(t, ctx, session); got.State != WaitingForNetwork {
+		t.Fatalf("initial state = %q, want %q", got.State, WaitingForNetwork)
+	}
+	network := usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet")
+	if got, err := session.ApplySystemNetworkSnapshot(ctx, network); err != nil || got.State != Authenticating {
+		t.Fatalf("applySystemNetworkSnapshot() = (%q, %v), want authenticating and nil", got.State, err)
+	}
+	inputs := factory.creationInputs()
+	if len(inputs) != 1 {
+		t.Fatalf("factory creation count = %d, want 1", len(inputs))
+	}
+	assertExactFactoryInputs(t, inputs[0], validRuntimeDefinition(t), network)
+
+	if err := factory.run(0).establish(ctx); err != nil {
+		t.Fatalf("establish() error = %v", err)
+	}
+	got := waitForState(t, ctx, session, Authenticated)
+	if got.LastAuthenticationFailure != nil || got.AuthenticationEstablishedAt == nil {
+		t.Fatalf("authenticated snapshot = %#v, want cleared failure and establishment time", got)
+	}
+}
+
+func TestSessionDoesNotStartProtocolWhileSuspended(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, SuspendAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	got, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err != nil || got.State != Suspended {
+		t.Fatalf("applySystemNetworkSnapshot() = (%q, %v), want suspended and nil", got.State, err)
+	}
+	if got := len(factory.creationInputs()); got != 0 {
+		t.Fatalf("factory creation count = %d, want 0", got)
+	}
+}
+
+func TestSessionIgnoresEstablishedEventFromStaleGeneration(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	first := factory.run(0)
+	if err := first.waitForStart(ctx); err != nil {
+		t.Fatalf("first run did not start: %v", err)
+	}
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "second", "Second"))
+	if cause := first.waitForCancellation(ctx); cause == nil {
+		t.Fatal("first run was not cancelled")
+	}
+	if err := first.establish(ctx); err != nil {
+		t.Fatalf("establish() error = %v", err)
+	}
+	first.unblock(nil)
+	second := waitForFactoryRun(t, ctx, factory, 1)
+	got := sessionSnapshot(t, ctx, session)
+	if got.State != Authenticating || got.SelectedNetworkBinding.InterfaceID != "second" {
+		t.Fatalf("snapshot after stale establishment = %#v", got)
+	}
+	second.unblock(nil)
+}
+
+func TestSessionKeepsRunWhenOnlyNetworkDisplayNameChanges(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err := factory.run(0).establish(ctx); err != nil {
+		t.Fatalf("establish() error = %v", err)
+	}
+	before := waitForState(t, ctx, session, Authenticated)
+	got, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "ethernet", "Campus Ethernet"))
+	if err != nil {
+		t.Fatalf("applySystemNetworkSnapshot() error = %v", err)
+	}
+	if len(factory.creationInputs()) != 1 || got.SelectedNetworkBinding.DisplayName != "Campus Ethernet" {
+		t.Fatalf("display-only update = %#v; factory calls = %d", got, len(factory.creationInputs()))
+	}
+	if got.State != Authenticated || got.AuthenticationEstablishedAt == nil || !got.AuthenticationEstablishedAt.Equal(*before.AuthenticationEstablishedAt) {
+		t.Fatalf("display-only update cleared authentication: before=%#v after=%#v", before, got)
+	}
+}
+
+func TestSessionPublishesReauthenticationBeforeChangedBindingCleanup(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	first := factory.run(0)
+	defer first.unblock(nil)
+	if err := first.establish(ctx); err != nil {
+		t.Fatalf("establish() error = %v", err)
+	}
+	authenticated := waitForState(t, ctx, session, Authenticated)
+	if authenticated.AuthenticationEstablishedAt == nil {
+		t.Fatal("first binding was not authenticated")
+	}
+
+	got, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "second", "Second"))
+	if err != nil {
+		t.Fatalf("applySystemNetworkSnapshot() error = %v", err)
+	}
+	if got.SelectedNetworkBinding == nil || got.SelectedNetworkBinding.InterfaceID != "second" || got.State != Authenticating || got.StateReason != nil || got.AuthenticationEstablishedAt != nil {
+		t.Fatalf("changed binding snapshot before cleanup = %#v", got)
+	}
+	assertNextRevision(t, "atomic authenticated binding reauthentication", got, authenticated)
+	assertCleanupRequirement(t, first.waitForCancellation(ctx), protocol.TerminateWithoutLogout)
+	if calls := len(factory.creationInputs()); calls != 1 {
+		t.Fatalf("changed binding overlapped runs: calls before cleanup = %d", calls)
+	}
+
+	first.unblock(blockingCommandFailure("canceled-old-binding"))
+	second := waitForFactoryRun(t, ctx, factory, 1)
+	if inputs := factory.creationInputs(); inputs[1].SelectedSystemNetworkBinding.NetworkInterface().InterfaceID != "second" {
+		t.Fatalf("replacement run used wrong binding: %#v", inputs[1].SelectedSystemNetworkBinding)
+	}
+	second.unblock(nil)
+}
+
+func TestSessionWaitsForCanceledRunBeforeStartingReplacement(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	first := factory.run(0)
+	if err := first.waitForStart(ctx); err != nil {
+		t.Fatalf("first run did not start: %v", err)
+	}
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "second", "Second"))
+	if cause := first.waitForCancellation(ctx); cause == nil {
+		t.Fatal("first run was not cancelled")
+	}
+	if got := len(factory.creationInputs()); got != 1 {
+		t.Fatalf("factory creation count before first run finishes = %d, want 1", got)
+	}
+	first.unblock(nil)
+	waitForFactoryRun(t, ctx, factory, 1).unblock(nil)
+}
+
+func TestSessionInitialBindingFactoryFailureDoesNotPublishAuthenticating(t *testing.T) {
+	baseFactory := &controlledFactory{}
+	factory := newBlockingCreationFailureFactory(baseFactory, 0)
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+	defer factory.releaseFailure()
+
+	initial := sessionSnapshot(t, ctx, session)
+	drainRevisionEvents(session.RevisionEvents())
+	applyResult := make(chan snapshotReply, 1)
+	go func() {
+		snapshot, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+		applyResult <- snapshotReply{snapshot: snapshot, err: err}
+	}()
+	factory.waitForFailureCreation(t, ctx)
+
+	beforeFailure := session.currentSnapshot.Clone()
+	if beforeFailure.State != WaitingForNetwork || beforeFailure.SelectedNetworkBinding == nil || beforeFailure.SelectedNetworkBinding.InterfaceID != "ethernet" || beforeFailure.AuthenticationEstablishedAt != nil {
+		t.Fatalf("snapshot while Factory has not created a run = %#v", beforeFailure)
+	}
+	assertNextRevision(t, "initial usable binding", beforeFailure, initial)
+	assertRevisionEvent(t, ctx, session.RevisionEvents(), beforeFailure)
+
+	factory.releaseFailure()
+	var blocked Snapshot
+	select {
+	case result := <-applyResult:
+		if result.err != nil {
+			t.Fatalf("applySystemNetworkSnapshot() error = %v", result.err)
+		}
+		blocked = result.snapshot
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if blocked.State != BlockedByError || blocked.StateReason == nil || blocked.StateReason.Code != StateReasonCodeProtocolRunCreationFailed || blocked.AuthenticationEstablishedAt != nil {
+		t.Fatalf("snapshot after Factory failure = %#v", blocked)
+	}
+	assertNextRevision(t, "initial Factory failure", blocked, beforeFailure)
+	assertRevisionEvent(t, ctx, session.RevisionEvents(), blocked)
+}
+
+func TestSessionRetryFactoryFailureDoesNotPublishAuthenticating(t *testing.T) {
+	baseFactory := &controlledFactory{}
+	factory := newBlockingCreationFailureFactory(baseFactory, 1)
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	scheduler := &manualRetryScheduler{}
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+		Now:            func() time.Time { return time.Unix(100, 0) },
+		RetryPolicy:    standardRetryPolicy(),
+		RetryScheduler: scheduler,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+	defer factory.releaseFailure()
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	baseFactory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{Code: "retry-failure", HandlingRecommendation: protocol.RetryAfterStandardDelay})
+	waiting := waitForState(t, ctx, session, WaitingBeforeRetry)
+	if waiting.NextRetryAt == nil {
+		t.Fatal("retry did not publish a deadline")
+	}
+	drainRevisionEvents(session.RevisionEvents())
+
+	scheduler.callback(0)()
+	factory.waitForFailureCreation(t, ctx)
+	beforeFailure := session.currentSnapshot.Clone()
+	if beforeFailure.State != WaitingBeforeRetry || beforeFailure.NextRetryAt != nil || beforeFailure.AuthenticationEstablishedAt != nil {
+		t.Fatalf("snapshot while retry Factory has not created a run = %#v", beforeFailure)
+	}
+	assertNextRevision(t, "retry deadline elapsed", beforeFailure, waiting)
+	assertRevisionEvent(t, ctx, session.RevisionEvents(), beforeFailure)
+
+	factory.releaseFailure()
+	blocked := waitForState(t, ctx, session, BlockedByError)
+	if blocked.StateReason == nil || blocked.StateReason.Code != StateReasonCodeProtocolRunCreationFailed || blocked.NextRetryAt != nil || blocked.AuthenticationEstablishedAt != nil {
+		t.Fatalf("snapshot after retry Factory failure = %#v", blocked)
+	}
+	assertNextRevision(t, "retry Factory failure", blocked, beforeFailure)
+	assertRevisionEvent(t, ctx, session.RevisionEvents(), blocked)
+}
+
+func TestSessionCancellationCauseWinsOverReturnedFailure(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	first := factory.run(0)
+	if err := first.waitForStart(ctx); err != nil {
+		t.Fatalf("first run did not start: %v", err)
+	}
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "second", "Second"))
+	if cause := first.waitForCancellation(ctx); cause == nil {
+		t.Fatal("first run was not cancelled")
+	}
+	first.unblock(&protocol.AuthenticationProtocolRunFailure{Code: "should-not-be-visible", Description: "returned after cancellation"})
+	second := waitForFactoryRun(t, ctx, factory, 1)
+	got := sessionSnapshot(t, ctx, session)
+	if got.LastAuthenticationFailure != nil || got.State != Authenticating {
+		t.Fatalf("cancellation lost precedence: %#v", got)
+	}
+	second.unblock(nil)
+}
+
+func TestSessionCurrentCancellationCauseWinsQueuedFailure(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	run := factory.run(0)
+	defer run.unblock(nil)
+	if err := run.waitForStart(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session.active.cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: protocol.TerminateWithoutLogout})
+	session.post(authenticationProtocolRunFinishedEvent{generation: 1, failure: &protocol.AuthenticationProtocolRunFailure{Code: "queued-failure"}})
+	got := sessionSnapshot(t, ctx, session)
+	if got.LastAuthenticationFailure != nil || got.State == BlockedByError {
+		t.Fatal("queued failure beat current cancellation cause")
+	}
+	defer waitForFactoryRun(t, ctx, factory, 1).unblock(nil)
+}
+
+func TestSessionRejectsCredentialMaterialFromPublicFailure(t *testing.T) {
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	sentinel := definition.AuthenticationCredential.Password
+	username := definition.AuthenticationCredential.Username
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{
+		Code:        protocol.AuthenticationProtocolFailureCode("code-" + username + "-" + sentinel),
+		Description: "description-" + username + "-" + sentinel,
+	})
+	got := waitForState(t, ctx, session, BlockedByError)
+	if got.LastAuthenticationFailure == nil {
+		t.Fatal("public failure was not retained")
+	}
+	if got.LastAuthenticationFailure.Code != "authentication_protocol_failure" || got.LastAuthenticationFailure.Description != "Authentication protocol failure." {
+		t.Fatal("public failure did not use stable generic fallbacks")
+	}
+	if strings.Contains(string(got.LastAuthenticationFailure.Code), sentinel) || strings.Contains(string(got.LastAuthenticationFailure.Code), username) ||
+		strings.Contains(got.LastAuthenticationFailure.Description, sentinel) ||
+		strings.Contains(got.LastAuthenticationFailure.Description, username) ||
+		strings.Contains(fmt.Sprint(got.LastAuthenticationFailure), sentinel) {
+		t.Fatal("public failure contains credential material")
+	}
+}
+
+func TestSessionUsesSafeFallbackForEmptyPublicFailureText(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{})
+	got := waitForState(t, ctx, session, BlockedByError)
+	if got.LastAuthenticationFailure == nil || got.LastAuthenticationFailure.Code != "authentication_protocol_failure" || got.LastAuthenticationFailure.Description != "Authentication protocol failure." {
+		t.Fatal("empty public failure text did not receive safe fallbacks")
+	}
+}
+
+func TestSessionNeverProjectsCredentialMaterialFromAnyFailureField(t *testing.T) {
+	for _, field := range []string{"code", "description", "recommendation"} {
+		t.Run(field, func(t *testing.T) {
+			factory := &controlledFactory{}
+			definition := validRuntimeDefinition(t)
+			definition.AuthenticationProtocolFactory = factory
+			session, _ := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(time.Now))
+			session.Start()
+			ctx := testContext(t)
+			defer shutdownTestSession(t, session)
+			failure := &protocol.AuthenticationProtocolRunFailure{Code: "safe-code", Description: "safe-description", HandlingRecommendation: protocol.RetryAfterStandardDelay}
+			sentinel := definition.AuthenticationCredential.Password
+			switch field {
+			case "code":
+				failure.Code = protocol.AuthenticationProtocolFailureCode(sentinel)
+			case "description":
+				failure.Description = sentinel
+			case "recommendation":
+				failure.HandlingRecommendation = protocol.AuthenticationProtocolFailureHandlingRecommendation(sentinel)
+			}
+			_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+			factory.run(0).unblock(failure)
+			got := waitForState(t, ctx, session, BlockedByError).LastAuthenticationFailure
+			if got == nil || strings.Contains(fmt.Sprint(got), sentinel) {
+				t.Fatal("public failure contains credential material")
+			}
+		})
+	}
+}
+
+func TestSessionDoesNotLeakRedactionOrFallbackCollisions(t *testing.T) {
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AuthenticationCredential.Username = "[redacted]"
+	definition.AuthenticationCredential.Password = "Authentication protocol failure."
+	session, _ := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(time.Now))
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{Code: "[redacted]", Description: "Authentication protocol failure.", HandlingRecommendation: protocol.RetryAfterStandardDelay})
+	got := waitForState(t, ctx, session, BlockedByError).LastAuthenticationFailure
+	if got == nil || strings.Contains(fmt.Sprint(got), definition.AuthenticationCredential.Username) || strings.Contains(fmt.Sprint(got), definition.AuthenticationCredential.Password) {
+		t.Fatal("public projection contains collision secret")
+	}
+}
+
+func TestSessionIgnoresStaleNetworkRevisions(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "current", "Current"))
+	got, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "stale", "Stale"))
+	if err != nil || got.SelectedNetworkBinding.InterfaceID != "current" || len(factory.creationInputs()) != 1 {
+		t.Fatalf("stale network revision changed session: %#v; calls = %d; err = %v", got, len(factory.creationInputs()), err)
+	}
+}
+
+func TestSessionSnapshotsAndRuntimeDefinitionAreCloned(t *testing.T) {
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	session, err := NewAuthenticationSession(definition, SuspendAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	definition.Configuration.ProtocolContextOverride[0] = '!'
+	_, _ = session.Activate(ctx)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if got := string(factory.creationInputs()[0].ProtocolContextOverride); got != `{"network":"campus"}` {
+		t.Fatalf("factory received aliased override %q", got)
+	}
+	first := sessionSnapshot(t, ctx, session)
+	first.SelectedNetworkBinding.DisplayName = "mutated"
+	second := sessionSnapshot(t, ctx, session)
+	if second.SelectedNetworkBinding.DisplayName != "Ethernet" {
+		t.Fatalf("snapshot is aliased: %#v", second)
+	}
+}
+
+func TestSessionClonesRuntimeDefinitionBeforeReplaceIsEnqueued(t *testing.T) {
+	baseFactory := &controlledFactory{holdCancellation: true}
+	factory := newBlockingCreationFactory(baseFactory)
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	applyDone := make(chan error, 1)
+	go func() {
+		_, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+		applyDone <- err
+	}()
+	select {
+	case <-factory.creationEntered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	replacement := validRuntimeDefinition(t)
+	replacement.AuthenticationProtocolFactory = factory
+	replacement.Configuration.ProtocolContextOverride = []byte(`{"network":"queued1"}`)
+	replaceCtx, cancelReplace := context.WithCancel(context.Background())
+	replaceDone := make(chan error, 1)
+	go func() {
+		_, err := session.ReplaceRuntimeDefinition(replaceCtx, replacement)
+		replaceDone <- err
+	}()
+	waitForInboxMessage(t, ctx, session)
+	cancelReplace()
+	select {
+	case err := <-replaceDone:
+		if err == nil {
+			t.Fatal("replaceRuntimeDefinition() returned nil after caller cancellation")
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	copy(replacement.Configuration.ProtocolContextOverride, []byte(`{"network":"mutated"}`))
+	close(factory.releaseCreation)
+	select {
+	case err := <-applyDone:
+		if err != nil {
+			t.Fatalf("applySystemNetworkSnapshot() error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	first := baseFactory.run(0)
+	if cause := first.waitForCancellation(ctx); cause == nil {
+		t.Fatal("first run was not cancelled by replacement")
+	}
+	first.unblock(nil)
+	second := waitForFactoryRun(t, ctx, baseFactory, 1)
+	defer second.unblock(nil)
+	if got := string(baseFactory.creationInputs()[1].ProtocolContextOverride); got != `{"network":"queued1"}` {
+		t.Fatalf("replacement runtime definition was mutated after enqueue: %q", got)
+	}
+	second.unblock(nil)
+}
+
+func TestSessionRevisionEventsCoalesce(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	select {
+	case <-session.RevisionEvents():
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "ethernet", "Campus Ethernet"))
+	final := sessionSnapshot(t, ctx, session)
+	select {
+	case event := <-session.RevisionEvents():
+		if event.Revision != final.Revision || event.AuthenticationSessionID != final.AuthenticationSessionID {
+			t.Fatalf("coalesced revision event = %#v, final snapshot = %#v", event, final)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
+func TestSessionSnapshotRevisionIsMonotonicAndNoOpsDoNotIncrement(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	initial := sessionSnapshot(t, ctx, session)
+	activated, err := session.Activate(ctx)
+	if err != nil {
+		t.Fatalf("activate() error = %v", err)
+	}
+	assertSameRevision(t, "no-op activate without network", activated, initial)
+
+	network := usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet")
+	authenticating, err := session.ApplySystemNetworkSnapshot(ctx, network)
+	if err != nil {
+		t.Fatalf("applySystemNetworkSnapshot() error = %v", err)
+	}
+	run := factory.run(0)
+	defer run.unblock(nil)
+	assertRevisionIncreased(t, "initial binding and successful run", authenticating, initial)
+
+	equivalent, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "ethernet", "Ethernet"))
+	if err != nil {
+		t.Fatalf("equivalent applySystemNetworkSnapshot() error = %v", err)
+	}
+	assertSameRevision(t, "equivalent higher network revision", equivalent, authenticating)
+
+	stale, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "stale", "Stale"))
+	if err != nil {
+		t.Fatalf("stale applySystemNetworkSnapshot() error = %v", err)
+	}
+	assertSameRevision(t, "stale network revision", stale, equivalent)
+
+	if err := run.establish(ctx); err != nil {
+		t.Fatalf("establish() error = %v", err)
+	}
+	authenticated := waitForState(t, ctx, session, Authenticated)
+	assertNextRevision(t, "authentication establishment", authenticated, stale)
+	session.post(authenticationEstablishedEvent{generation: 1})
+	duplicate := sessionSnapshot(t, ctx, session)
+	assertSameRevision(t, "duplicate establishment", duplicate, authenticated)
+
+	displayUpdate, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 3, "ethernet", "Campus Ethernet"))
+	if err != nil {
+		t.Fatalf("display applySystemNetworkSnapshot() error = %v", err)
+	}
+	assertNextRevision(t, "public display-name update", displayUpdate, duplicate)
+	activated, err = session.Activate(ctx)
+	if err != nil {
+		t.Fatalf("healthy activate() error = %v", err)
+	}
+	assertSameRevision(t, "healthy activate", activated, displayUpdate)
+
+	suspended, err := session.Suspend(ctx)
+	if err != nil {
+		t.Fatalf("suspend() error = %v", err)
+	}
+	assertNextRevision(t, "suspend", suspended, activated)
+	repeatedSuspend, err := session.Suspend(ctx)
+	if err != nil {
+		t.Fatalf("repeated suspend() error = %v", err)
+	}
+	assertSameRevision(t, "repeated suspend", repeatedSuspend, suspended)
+}
+
+func assertNextRevision(t *testing.T, operation string, got, previous Snapshot) {
+	t.Helper()
+	if got.Revision != previous.Revision+1 {
+		t.Fatalf("%s revision = %d, want %d after revision %d", operation, got.Revision, previous.Revision+1, previous.Revision)
+	}
+}
+
+func assertSameRevision(t *testing.T, operation string, got, previous Snapshot) {
+	t.Helper()
+	if got.Revision != previous.Revision {
+		t.Fatalf("%s revision = %d, want unchanged %d", operation, got.Revision, previous.Revision)
+	}
+}
+
+func assertRevisionIncreased(t *testing.T, operation string, got, previous Snapshot) {
+	t.Helper()
+	if got.Revision <= previous.Revision {
+		t.Fatalf("%s revision = %d, want greater than %d", operation, got.Revision, previous.Revision)
+	}
+}
+
+func assertRevisionEvent(t *testing.T, ctx context.Context, revisions <-chan RevisionEvent, snapshot Snapshot) {
+	t.Helper()
+	select {
+	case event := <-revisions:
+		if event.AuthenticationSessionID != snapshot.AuthenticationSessionID || event.Revision != snapshot.Revision {
+			t.Fatalf("revision event = %#v, want session %q revision %d", event, snapshot.AuthenticationSessionID, snapshot.Revision)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
+func drainRevisionEvents(revisions <-chan RevisionEvent) {
+	for {
+		select {
+		case <-revisions:
+		default:
+			return
+		}
+	}
+}
+
+func TestSessionBlocksWhenFactoryReturnsNilRun(t *testing.T) {
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = nilRunFactory{}
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	got, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err != nil || got.State != BlockedByError || got.StateReason == nil || got.StateReason.Code != StateReasonCodeProtocolRunCreationFailed {
+		t.Fatalf("nil run snapshot = %#v; err = %v", got, err)
+	}
+	assertSafePublicCreationFailure(t, got)
+}
+
+func TestSessionBlocksSafelyWhenFactoryReturnsError(t *testing.T) {
+	factory := &controlledFactory{creationError: errControlledFactoryCreation}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	got, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err != nil || got.State != BlockedByError || got.StateReason == nil || got.StateReason.Code != StateReasonCodeProtocolRunCreationFailed {
+		t.Fatalf("factory error did not safely block the session: state=%q code=%q err=%v", got.State, stateReasonCode(got.StateReason), err)
+	}
+	assertSafePublicCreationFailure(t, got)
+	if strings.Contains(fmt.Sprint(got.LastAuthenticationFailure), errControlledFactoryCreation.Error()) {
+		t.Fatal("public creation failure leaked the factory diagnostic")
+	}
+}
+
+// assertSafePublicCreationFailure proves a Factory error or nil Run produces a
+// blocking public creation failure with safe static values, no retry and no
+// leaked diagnostic in the public Snapshot.
+func assertSafePublicCreationFailure(t *testing.T, got Snapshot) {
+	t.Helper()
+	if got.LastAuthenticationFailure == nil {
+		t.Fatal("creation failure did not publish a public failure")
+	}
+	if got.LastAuthenticationFailure.Code != protocol.AuthenticationProtocolFailureCode(StateReasonCodeProtocolRunCreationFailed) {
+		t.Fatalf("public failure code = %q, want %q", got.LastAuthenticationFailure.Code, StateReasonCodeProtocolRunCreationFailed)
+	}
+	if got.LastAuthenticationFailure.Description != "Unable to create authentication protocol run." {
+		t.Fatalf("public failure description = %q, want static creation description", got.LastAuthenticationFailure.Description)
+	}
+	if got.LastAuthenticationFailure.HandlingRecommendation != protocol.BlockUntilExplicitRestartOrRelevantInputChange {
+		t.Fatalf("public failure recommendation = %q, want block", got.LastAuthenticationFailure.HandlingRecommendation)
+	}
+	if got.NextRetryAt != nil {
+		t.Fatal("creation failure scheduled a retry")
+	}
+	if got.AuthenticationEstablishedAt != nil {
+		t.Fatal("creation failure retained an establishment time")
+	}
+}
+
+func TestSessionIgnoresDuplicateAuthenticationEstablished(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err := factory.run(0).establish(ctx); err != nil {
+		t.Fatalf("first establish() error = %v", err)
+	}
+	first := waitForState(t, ctx, session, Authenticated)
+	session.post(authenticationEstablishedEvent{generation: 1})
+	second := sessionSnapshot(t, ctx, session)
+	if second.Revision != first.Revision || second.AuthenticationEstablishedAt == nil || !second.AuthenticationEstablishedAt.Equal(*first.AuthenticationEstablishedAt) {
+		t.Fatal("duplicate establishment changed the public snapshot")
+	}
+}
+
+func TestSessionStartIsIdempotent(t *testing.T) {
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	session.Start()
+	session.Start()
+	select {
+	case event := <-session.RevisionEvents():
+		if event.Revision != 1 {
+			t.Fatalf("initial revision = %d, want 1", event.Revision)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case <-session.RevisionEvents():
+		t.Fatal("start() published more than one initial revision")
+	default:
+	}
+}
+
+func TestSessionNetworkLossCancelsWithTerminateWithoutLogout(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	run := factory.run(0)
+	defer run.unblock(nil)
+	if err := run.waitForStart(ctx); err != nil {
+		t.Fatalf("run did not start: %v", err)
+	}
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, environment.NewSnapshot(2, time.Unix(2, 0), nil))
+	cause := run.waitForCancellation(ctx)
+	cancellation, ok := cause.(protocol.AuthenticationProtocolRunCancellationCause)
+	if !ok || cancellation.CleanupRequirement != protocol.TerminateWithoutLogout {
+		t.Fatal("network loss did not request terminate without logout")
+	}
+}
+
+func TestSessionBlocksOnUncancelledNilExecuteResult(t *testing.T) {
+	factory := &controlledFactory{}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(nil)
+	got := waitForState(t, ctx, session, BlockedByError)
+	if got.StateReason == nil || got.StateReason.Code != StateReasonCodeProtocolContractViolated {
+		t.Fatalf("uncancelled nil result state reason = %q", stateReasonCode(got.StateReason))
+	}
+}
+
+func TestSessionRecoversProtocolRunPanic(t *testing.T) {
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = panicRunFactory{}
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	got := waitForState(t, ctx, session, BlockedByError)
+	if got.StateReason == nil || got.StateReason.Code != StateReasonCodeProtocolContractViolated || got.LastAuthenticationFailure == nil || got.LastAuthenticationFailure.Code != StateReasonCodeProtocolContractViolated {
+		t.Fatalf("panic snapshot = %#v", got)
+	}
+}
+
+func newTestSession(t *testing.T, factory *controlledFactory, intent Intent) *AuthenticationSession {
+	t.Helper()
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	session, err := NewAuthenticationSession(definition, intent, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	return session
+}
+
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func shutdownTestSession(t *testing.T, session *AuthenticationSession) {
+	t.Helper()
+	ctx := testContext(t)
+	if err := session.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown() error = %v", err)
+	}
+}
+
+func sessionSnapshot(t *testing.T, ctx context.Context, session *AuthenticationSession) Snapshot {
+	t.Helper()
+	snapshot, err := session.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("snapshot() error = %v", err)
+	}
+	return snapshot
+}
+
+func waitForState(t *testing.T, ctx context.Context, session *AuthenticationSession, want State) Snapshot {
+	t.Helper()
+	for {
+		got := sessionSnapshot(t, ctx, session)
+		if got.State == want {
+			return got
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("state = %q, want %q: %v", got.State, want, ctx.Err())
+		default:
+		}
+	}
+}
+
+func waitForFactoryRun(t *testing.T, ctx context.Context, factory *controlledFactory, index int) *controlledRun {
+	t.Helper()
+	for {
+		inputs := factory.creationInputs()
+		if len(inputs) > index {
+			return factory.run(index)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("factory did not create run %d: %v", index, ctx.Err())
+		default:
+		}
+	}
+}
+
+func waitForInboxMessage(t *testing.T, ctx context.Context, session *AuthenticationSession) {
+	t.Helper()
+	for len(session.inbox) == 0 {
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		default:
+		}
+	}
+}
+
+func usableSystemNetworkSnapshot(t *testing.T, revision uint64, interfaceID, displayName string) environment.Snapshot {
+	t.Helper()
+	networkInterface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
+		InterfaceID:             environment.InterfaceID(interfaceID),
+		DisplayName:             displayName,
+		OperationalState:        environment.OperationalStateUp,
+		PhysicalMedium:          environment.PhysicalMediumWired,
+		AddressAssignmentMethod: environment.AddressAssignmentDHCP,
+		HardwareAddress:         []byte{0, 1, 2, 3, 4, 5},
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewNetworkInterface() error = %v", err)
+	}
+	return environment.NewSnapshot(revision, time.Unix(int64(revision), 0), []environment.NetworkInterface{networkInterface})
+}
+
+func assertExactFactoryInputs(t *testing.T, got protocol.AuthenticationProtocolRunCreationInputs, definition RuntimeDefinition, network environment.Snapshot) {
+	t.Helper()
+	if got.AuthenticationCredential.Username != definition.AuthenticationCredential.Username {
+		t.Error("factory username differs")
+	}
+	if got.AuthenticationCredential.Password != definition.AuthenticationCredential.Password {
+		t.Error("factory password differs")
+	}
+	if !bytes.Equal(got.InstitutionProtocolConfiguration, definition.InstitutionProfile.InstitutionProtocolConfiguration) {
+		t.Error("factory institution configuration differs")
+	}
+	if !bytes.Equal(got.ProtocolContextOverride, definition.Configuration.ProtocolContextOverride) {
+		t.Error("factory protocol context override differs")
+	}
+	if got.SystemHostInformation.HostName != definition.SystemHostInformation.HostName {
+		t.Error("factory host name differs")
+	}
+	if got.SystemHostInformation.OperatingSystemFamily != definition.SystemHostInformation.OperatingSystemFamily {
+		t.Error("factory operating system family differs")
+	}
+	if got.SystemHostInformation.OperatingSystemRelease != definition.SystemHostInformation.OperatingSystemRelease {
+		t.Error("factory operating system release differs")
+	}
+	if got.SystemHostInformation.MachineArchitecture != definition.SystemHostInformation.MachineArchitecture {
+		t.Error("factory machine architecture differs")
+	}
+	interfaces := network.Interfaces()
+	if len(interfaces) != 1 {
+		t.Fatal("test network does not have one interface")
+	}
+	wantInterface := interfaces[0]
+	gotInterface := got.SelectedSystemNetworkBinding.NetworkInterface()
+	if gotInterface.InterfaceID != wantInterface.InterfaceID {
+		t.Error("factory binding interface ID differs")
+	}
+	if gotInterface.DisplayName != wantInterface.DisplayName {
+		t.Error("factory binding display name differs")
+	}
+	if gotInterface.OperationalState != wantInterface.OperationalState {
+		t.Error("factory binding operational state differs")
+	}
+	if gotInterface.PhysicalMedium != wantInterface.PhysicalMedium {
+		t.Error("factory binding physical medium differs")
+	}
+	if gotInterface.AddressAssignmentMethod != wantInterface.AddressAssignmentMethod {
+		t.Error("factory binding address assignment method differs")
+	}
+	if !bytes.Equal(gotInterface.HardwareAddress(), wantInterface.HardwareAddress()) {
+		t.Error("factory binding hardware address differs")
+	}
+	if !equalIPv4Assignments(gotInterface.IPv4AddressAssignments(), wantInterface.IPv4AddressAssignments()) {
+		t.Error("factory binding IPv4 assignments differ")
+	}
+	if !equalAddresses(gotInterface.DefaultIPv4GatewayAddresses(), wantInterface.DefaultIPv4GatewayAddresses()) {
+		t.Error("factory binding default gateways differ")
+	}
+	if !equalAddresses(gotInterface.DNSServerAddresses(), wantInterface.DNSServerAddresses()) {
+		t.Error("factory binding DNS servers differ")
+	}
+	gotDHCP, gotHasDHCP := gotInterface.DHCPServerIPv4Address()
+	wantDHCP, wantHasDHCP := wantInterface.DHCPServerIPv4Address()
+	if gotHasDHCP != wantHasDHCP || (gotHasDHCP && gotDHCP != wantDHCP) {
+		t.Error("factory binding DHCP server differs")
+	}
+	wantAssignment := wantInterface.IPv4AddressAssignments()[0]
+	if got.SelectedSystemNetworkBinding.LocalIPv4AddressAssignment() != wantAssignment {
+		t.Error("factory binding selected IPv4 assignment differs")
+	}
+}
+
+func equalIPv4Assignments(left, right []environment.IPv4AddressAssignment) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalAddresses(left, right []netip.Addr) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func stateReasonCode(reason *StateReason) string {
+	if reason == nil {
+		return ""
+	}
+	return reason.Code
+}
+
+var _ protocol.AuthenticationProtocolRun = (*controlledRun)(nil)
+
+type nilRunFactory struct{}
+
+func (nilRunFactory) ProtocolID() protocol.AuthenticationProtocolID { return "test-protocol" }
+func (nilRunFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+	return nil
+}
+func (nilRunFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+	return nil
+}
+func (nilRunFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	return nil, nil
+}
+
+type panicRunFactory struct{ nilRunFactory }
+
+func (panicRunFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	return panicRun{}, nil
+}
+
+type panicRun struct{}
+
+func (panicRun) Execute(context.Context, protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	panic("test panic")
+}
+
+type blockingCreationFactory struct {
+	*controlledFactory
+	creationEntered chan struct{}
+	releaseCreation chan struct{}
+	firstCreation   chan struct{}
+}
+
+type blockingCreationFailureFactory struct {
+	*controlledFactory
+	mu      sync.Mutex
+	calls   int
+	failAt  int
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newBlockingCreationFailureFactory(factory *controlledFactory, failAt int) *blockingCreationFailureFactory {
+	return &blockingCreationFailureFactory{
+		controlledFactory: factory,
+		failAt:            failAt,
+		entered:           make(chan struct{}, 1),
+		release:           make(chan struct{}, 1),
+	}
+}
+
+func (factory *blockingCreationFailureFactory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	factory.mu.Lock()
+	call := factory.calls
+	factory.calls++
+	factory.mu.Unlock()
+	if call != factory.failAt {
+		return factory.controlledFactory.CreateAuthenticationProtocolRun(inputs)
+	}
+	factory.entered <- struct{}{}
+	<-factory.release
+	return nil, errControlledFactoryCreation
+}
+
+func (factory *blockingCreationFailureFactory) waitForFailureCreation(t *testing.T, ctx context.Context) {
+	t.Helper()
+	select {
+	case <-factory.entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
+func (factory *blockingCreationFailureFactory) releaseFailure() {
+	select {
+	case factory.release <- struct{}{}:
+	default:
+	}
+}
+
+func newBlockingCreationFactory(factory *controlledFactory) *blockingCreationFactory {
+	return &blockingCreationFactory{
+		controlledFactory: factory,
+		creationEntered:   make(chan struct{}, 1),
+		releaseCreation:   make(chan struct{}),
+		firstCreation:     make(chan struct{}, 1),
+	}
+}
+
+func (factory *blockingCreationFactory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	select {
+	case factory.firstCreation <- struct{}{}:
+		factory.creationEntered <- struct{}{}
+		select {
+		case <-factory.releaseCreation:
+		case <-time.After(time.Second):
+			return nil, errControlledFactoryCreation
+		}
+	default:
+	}
+	return factory.controlledFactory.CreateAuthenticationProtocolRun(inputs)
+}

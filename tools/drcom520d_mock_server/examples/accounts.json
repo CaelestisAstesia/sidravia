@@ -1,0 +1,29 @@
+{
+  "server": {
+    "challenge_ttl_seconds": 10,
+    "session_ttl_seconds": 90,
+    "max_sessions_per_account": 1,
+    "auth_version_hex": "2c00",
+    "keep_alive_version_hex": "dc02",
+    "control_check_status_hex": "20",
+    "ipdog_hex": "01",
+    "initial_month_traffic_kib": 14208,
+    "initial_balance_cents": 10000,
+    "server_secret_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "credentials_are_fictional": true
+  },
+  "accounts": [
+    {
+      "username": "student-test",
+      "password": "local-test-password",
+      "enabled": true,
+      "frozen": false,
+      "require_dhcp": false,
+      "expected_ipv4": "10.0.0.2",
+      "expected_mac": "02:00:00:00:00:01",
+      "bind_ipv4_and_mac": true,
+      "max_sessions": 1,
+      "balance_cents": 10000
+    }
+  ]
+}

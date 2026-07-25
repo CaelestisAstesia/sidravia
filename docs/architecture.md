@@ -1,0 +1,274 @@
+# Sidravia 当前架构
+
+本文说明 Sidravia 当前采用的系统设计。已经接受且需要长期解释的取舍记录在
+`docs/decisions/`。
+
+## 产品和进程
+
+Sidravia 首先服务 Windows 用户。产品包含两个进程：
+
+- `sidravia` 是短生命周期 CLI。它接收用户命令，通过 IPC 请求后端，然后显示结果。
+- `sidraviad` 是长期运行的 daemon。它独占配置、凭据、环境检测、Session 和认证协议。
+
+CLI 和 daemon 通过本机回环 WebSocket 通信。未来 GUI 应复用同一 IPC，不应直接导入 daemon 的内部包。
+
+## 目录和依赖
+
+```text
+cmd/
+  sidravia/
+  sidraviad/
+
+internal/
+  cli/
+  ipc/
+    contract/
+    client/
+    server/
+  daemon/
+    app/
+    authentication/
+      protocol/
+        drcom/
+      session/
+      supervisor/
+    configuration/
+    credentials/
+    environment/
+    persistence/
+      jsonfile/
+    host/
+```
+
+各层按以下方向依赖：
+
+1. `cmd/sidravia` 只负责组合和启动 `internal/cli`。
+2. `internal/cli` 只调用 IPC contract 和 client。CLI 不读取 daemon 的配置文件或内部状态。
+3. `cmd/sidraviad` 组合 IPC server、daemon app 和系统 host。
+4. IPC server 通过一个窄 Handler 调用 daemon app。IPC server 不依赖具体 Application 类型。
+5. daemon app 依次调用 Configuration、Credentials、Environment、Supervisor 和协议注册表，以完成跨模块用例。
+6. Supervisor 创建和管理 Session。Session 不读取 Supervisor 的状态。
+7. Session 只依赖协议契约和环境事实。Session 不依赖 JSON、IPC、CLI 或具体持久化实现。
+
+Windows 专用代码应使用 Go 构建约束，并留在它所实现的能力附近。平台无关核心不应为 Windows 单独复制一份。
+
+“配置 IPC”“凭据 IPC”或“Session IPC”只表示通过 IPC 暴露相应的应用用例，不表示 IPC server 直接操作这些模块。调用方向始终是：
+
+```text
+typed IPC request -> IPC Handler -> daemon app -> domain module
+```
+
+IPC 不是 Configuration、Credentials、Environment 或 Session 的共同控制器。
+
+## 状态由谁负责
+
+每项可变状态只能有一个权威所有者。
+
+| 状态 | 权威所有者 | 其他模块如何使用 |
+|---|---|---|
+| 持久连接配置 | Configuration Catalog | 通过 ID 读取不可变快照 |
+| 认证秘密 | Credentials Store | daemon app 按 CredentialID 读取 |
+| 自动连接设置 | daemon app | 保存 ConfigurationID |
+| 当前主机和网络事实 | Environment Detector | daemon app 转交 typed 快照 |
+| 已接受的最新网络快照和 Session 分发顺序 | Supervisor | 新旧 Session 接收同一 revision |
+| 单次认证的运行状态 | Session | 对外发布 Snapshot |
+| Session 集合和单活动准入 | Supervisor | 按 SessionID 操作 |
+| 跨模块用例的执行顺序 | daemon app | 调用各模块的公开边界 |
+| 单个 IPC 连接的发送队列 | 该 IPC 连接 | Application 不等待慢客户端 |
+
+模块之间发送意图并读取快照。两个模块不得同时修改同一份状态。
+
+## 三种标识
+
+- `ConfigurationID` 持久化，它标识一份连接配置。
+- `CredentialID` 持久化，它标识一份秘密记录。
+- `SessionID` 只在当前 daemon 进程中有效，它标识一次正在运行或已经停止的认证。
+
+自动连接设置保存 `ConfigurationID`。daemon 重启后会重新读取配置，并创建新的 `SessionID`。
+
+## daemon app 如何启动认证
+
+daemon app 接受两种长期存在的启动来源：
+
+1. typed 一次性启动请求；
+2. 持久化 `ConfigurationID`。
+
+一次性启动时，daemon app 验证 typed 参数和秘密，不把秘密持久化、记录到日志或放入公开结果。
+
+按 `ConfigurationID` 启动时，daemon app 让 Configuration Catalog 读取并验证配置，再根据其中的 `CredentialID` 读取凭据。
+
+两种来源随后汇入相同流程：
+
+1. daemon app 读取机构 Profile 和协议 Factory；
+2. daemon app 组装不依赖 JSON 的 `RunDefinition`；
+3. daemon app 把 `RunDefinition` 交给 Supervisor；
+4. Supervisor 检查是否已有活动 Session，然后分配 `SessionID` 并创建 Session；
+5. Supervisor 先把已保存的最新环境快照交给 Session；
+6. Session 选择网络绑定并运行协议；
+7. daemon app 返回初始 Snapshot，之后 IPC 发送带 revision 的最新完整 Snapshot。
+
+聚焦测试可以由测试装配提供环境事实，但普通 IPC 请求不接受任意环境参数袋。真实
+Windows 认证仍必须使用 Environment Detector。
+
+如果任一步失败，daemon app 应保留底层原因并增加业务语义。失败不得留下半创建的 Session 或半写入的配置。
+
+## Session 和 Supervisor
+
+每个 Session 从创建开始就拥有稳定的 `SessionID`。Session 管理自己的协议运行、取消、重试、状态和 Snapshot。Session 不知道其他 Session，也不读写配置或凭据。
+
+Session 可以在内部使用私有 epoch 来拒绝过期异步结果。这个值不会持久化，也不会通过 IPC 暴露。Supervisor 不使用它进行调度。
+
+Supervisor 管理 Session 集合。首版 Supervisor 最多允许一个活动 Session。它可以启动、停止、重启、读取、列出和遗忘已经停止的 Session。
+
+Supervisor 还保存 Environment Detector 已经产生、daemon app 已经接受的最新 typed
+网络快照。新 revision 会分发给现有 Session；新 Session 在返回初始 Snapshot 前获得
+最近快照；旧 revision 被忽略；相同 revision 可以重放已保存的权威内容，以恢复部分
+分发失败。Supervisor 不解释网卡事实，也不替 Session 选择绑定。
+
+Supervisor 不读取 JSON、配置、凭据、文件路径或 ACL。未来如果产品需要多个并发 Session，应只扩展 Supervisor 的调度策略，不应重写 Session 模型。
+
+## 配置、凭据和持久化
+
+Configuration 文件只保存非秘密配置。Configuration 通过 `CredentialID` 引用 Credentials Store 中的记录。
+
+Windows 首版允许 Credentials Store 在独立 JSON 文件中保存明文密码。SecureStore 必须把文件权限限制为当前用户和 SYSTEM。如果 SecureStore 无法建立所需 ACL，它不得留下新的明文目标文件。
+
+持久化模块必须先构造完整候选内容，然后原子替换目标文件。如果磁盘写入失败，内存中的权威状态不得提前改变。
+
+密码、随机 token 和内部错误链不得出现在 Configuration、Session Snapshot、IPC 查询结果或普通日志中。
+
+CLI 必须能够用人类可读的形式显示非秘密结构化配置。CLI 不提供读取凭据明文的命令。
+
+## IPC
+
+IPC 使用本机回环 WebSocket。连接建立前，server 必须验证随机 token 和精确 BuildID。
+
+contract 只定义 Request、Response 和 Event：
+
+- 每个 Request 都有非空 ID、明确 Method 和明确 Payload 类型。
+- server 接受一个 Request 后，必须为同一 ID 返回一个 Response。
+- 每个 Event 都包含资源 ID、单调 revision 和最新完整公开 Snapshot。
+
+客户端重连后应主动查询权威 Snapshot。系统不保存事件历史，也不实现事件确认或补发。
+
+如果客户端持续跟不上事件，IPC server 应关闭该连接。慢客户端不得阻塞 daemon app。
+
+当前代码已经实现 `daemon.status` 的 contract、WebSocket client/server 和 Windows
+host 骨架，并通过单元测试、vet 和 Windows 交叉编译。Windows 原生双进程现场尚未
+验证，因此只能报告代码和自动验证完成，不能报告 Windows 现场通过。
+
+首版 IPC 只提供以下产品操作：
+
+- CLI 查询 daemon 状态和版本。
+- CLI 查询当前环境快照。
+- CLI 列出、读取、保存和删除连接配置。
+- CLI 写入、替换和删除凭据。daemon 不提供读取凭据明文的操作。
+- CLI 用 typed 一次性参数启动认证，或者按 `ConfigurationID` 启动认证，并获得 `SessionID`。
+- CLI 按 `SessionID` 停止、重启、读取和列出 Session。
+- CLI 订阅 Session Snapshot 事件。
+
+首版不提供通用 RPC、批处理、远程 IPC 或历史事件重放。
+
+上述配置、凭据、环境和 Session 方法都是 daemon app 应用用例的传输入口。IPC server 不直接依赖对应存储、Detector、Supervisor、Session 或协议包。
+
+## Windows host
+
+Windows host 必须执行以下动作：
+
+1. daemon 使用当前用户 SID 创建命名 mutex，以阻止同一用户启动第二个 daemon。
+2. daemon 只监听 `127.0.0.1`，并让操作系统选择端口。
+3. daemon 生成随机 token，然后用 SecureStore 写入 endpoint、PID、token、ProductVersion 和 BuildID。
+4. daemon 收到退出信号后停止 HTTP server，等待连接退出，然后释放 mutex。
+5. daemon 只有在运行信息仍包含自己的 PID 和 token 时，才删除该文件。
+
+CLI 只启动与自身位于同一目录的 `sidraviad.exe`。如果现有运行信息无效或连接失败，CLI 应把它视为失效信息，并在五秒内尝试连接新 daemon。
+
+Service、管理员权限、登录前认证、系统通知和自动更新不属于当前切片。
+
+## 第一条产品验收链路
+
+产品先用一次性 typed 参数证明高风险核心链路：
+
+1. CLI 通过 IPC 提交一次性启动请求；
+2. daemon app 组装 `RunDefinition` 并交给 Supervisor；
+3. Supervisor 创建 Session；
+4. Session 运行 Go 实现的 Dr.COM；
+5. D520 使用配置的 UDP endpoint 完成登录、保活和停止；
+6. CLI 查询或收到带 revision 的完整 Snapshot。
+
+随后补齐持久化输入链路：
+
+1. CLI 保存 Configuration 和 Credential；
+2. CLI 通过 IPC 请求 daemon app 启动指定 `ConfigurationID`；
+3. daemon app 从 Configuration、Credentials 和 Environment 生成相同的 `RunDefinition`；
+4. 后续 Supervisor、Session 和协议流程不变。
+
+自动测试可以使用最小的本地 UDP test peer 证明 Run 的流程、取消和错误分类，但不建设
+新的完整 mock 链，也不把本地 test peer 或现有 Python mock 当作真实协议正确性证据。
+校园网络现场验证必须单独记录。
+
+## Dr.COM 5.2.0(D) 实现位置
+
+首个真实协议实现位于：
+
+```text
+internal/daemon/authentication/protocol/drcom/d520
+```
+
+运行时协议 ID 固定为 `drcom-5.2.0-d`。当前 `d520` 包含确定性 wire codec、严格机构
+Profile 解码、`AuthenticationProtocolFactory` 实现和阻塞式
+`AuthenticationProtocolRun` 实现。Session 只传入认证数据、网络绑定、主机事实和可取消
+context，并接收认证建立或结构化失败。D520 内部的 Challenge、Login、Keepalive、报文和
+UDP 状态全部私有，不为内部步骤创建没有真实替换点的接口。
+
+CLI 的机构 Profile ID 和用户名可以使用命令行参数。密码不得进入 argv：交互终端使用
+隐藏输入，自动化使用 `--password-stdin`。首版不提供 `--password`。
+
+## Dr.COM 5.2.0(D) Run 内部边界
+
+Session 是产品层认证状态机。它拥有意图、公开状态、网络变化、取消、重连调度和
+Snapshot。D520 的一次 Run 只拥有该次 UDP 执行的私有线级状态，不接收激活、暂停或
+重启等 Session 命令。
+
+Factory 验证并解码机构 Profile、凭据、选定网络绑定和主机事实，生成不可变的私有 Run
+定义。每次 `Execute` 再创建私有 execution，独占：
+
+- UDP socket；
+- login salt 和 Auth Info；
+- KA2 Tail、serial 和已发送 KA 交换的迟到响应识别状态；
+- 本次执行使用的 deadline、timestamp 和随机值。
+
+`Execute` 使用阻塞式确定性流程：
+
+```text
+Challenge
+-> Login
+-> KA1 + KA2 1-1-3
+-> AuthenticationEstablished
+-> 每个 heartbeat 周期执行 KA1 + KA2 1-3
+-> best-effort Logout
+```
+
+Login 只对 server busy 在 Run 内做有界短重试。Run 结束后的重新认证、标准或延长延迟及
+阻塞等待输入变化由 Session 根据结构化失败建议决定。
+
+每个阻塞 request/response exchange 先设置自己的绝对 socket deadline，再注册一个与
+本次 context 绑定的短生命周期取消回调。取消回调只把 socket deadline 推到当前时间以
+唤醒 I/O，不关闭 socket。exchange 结束时停止该回调；如果回调已经开始，则等待它完成，
+之后才能重设下一次 I/O deadline。best-effort Logout 使用独立 context 和有界 deadline。
+实现不使用周期性 deadline 轮询，也不从已经取消的执行 context 派生 Logout timeout。
+
+每次 request/response exchange 使用一个不会因忽略报文而延长的绝对 deadline。完整且
+能证明属于已经发送过的旧 KA1/KA2 交换的响应可以忽略；当前阶段的合法响应才推动流程。
+结构畸形、无法安全识别或不可能由旧交换产生的响应返回协议失败。
+
+D520 wire codec 保留语义明确的请求 builder 和预期响应 parser。它不根据 opcode 对任意
+收到的 UDP 包猜测流程阶段，因为 KA1 与 KA2 的 opcode 会重叠，KA2 还必须结合当前
+serial 和 type 校验。固定 KA2 序列可以用私有步骤表复用，但不得演变为第二套通用状态机。
+
+长 Login 报文按协议布局区域组织。固定长度、偏移和字段语义保持显式；文本编码、固定字段
+验证和密码学使用小型私有 helper。不得使用反射、外部 schema 或 Go 内存布局自动序列化
+线级报文。
+
+详细理由和后续条件见
+`docs/decisions/0009-d520-blocking-run-and-explicit-wire-codec.md`。

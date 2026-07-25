@@ -1,0 +1,45 @@
+# Private local development orchestration
+/AGENTS.md
+/CLAUDE.md
+/.agents/
+/.agent-workflow/
+/.claude/
+/.codex/
+/.superpowers/
+/docs/collaboration.md
+/docs/workflow.md
+/docs/handoff.md
+/docs/plans/
+/docs/archive/
+/tools/agent-workflow/
+
+# Local reference and scratch material
+/参考/
+/outside/
+
+# Go build output
+/bin/
+/build/
+*.exe
+*.test
+
+# Python generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
