@@ -14,5 +14,6 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0008](0008-permanent-one-shot-session-start.md) | 永久保留 typed 一次性 Session 启动 | Accepted |
 | [0009](0009-d520-blocking-run-and-explicit-wire-codec.md) | D520 使用阻塞式 Run 和显式线级 codec | Accepted |
 | [0010](0010-supervisor-distributes-network-snapshots.md) | Supervisor 保存并分发最新系统网络快照 | Accepted |
+| [0011](0011-daemon-composition-owns-runtime-lifecycle.md) | daemon 组合根统一拥有生产运行期 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。

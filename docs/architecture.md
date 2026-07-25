@@ -112,6 +112,44 @@ Windows 认证仍必须使用 Environment Detector。
 
 如果任一步失败，daemon app 应保留底层原因并增加业务语义。失败不得留下半创建的 Session 或半写入的配置。
 
+## 生产 daemon 装配和生命周期
+
+`cmd/sidraviad` 是生产对象图和进程生命周期的组合根。首版启动时依次：
+
+1. 解析当前用户的 Sidravia 配置目录和运行信息路径；
+2. 创建当前用户的 SecureStore；
+3. 注册唯一生产协议 D520；
+4. 一次性加载机构 Profile；
+5. 打开 Configuration Catalog 和 Credentials Store；
+6. 读取真实 Windows host information；
+7. 创建带生产重试策略的 Supervisor、AuthenticationResolver 和 Application；
+8. 用 `app.IPCHandler` 组合 IPC server；
+9. 创建真实 Windows Environment Observer；
+10. 最后进入 host、Observer 和网络快照转交的共同运行期。
+
+配置根目录是 `<os.UserConfigDir()>/Sidravia`。首版在该目录使用
+`configurations.json`、`credentials.json` 和 `institution-profiles/`。Settings Store
+和自动连接尚未接入这条一次性认证链路。
+
+运行期由组合根统一拥有三个并发活动：
+
+- Windows host/HTTP server；
+- 阻塞式 Environment Observer；
+- 把 Observer Snapshot 交给 Application 的转交循环。
+
+任一活动意外失败都会取消共同 context；组合根等待三个活动全部退出，再关闭并等待
+Supervisor。正常系统退出由 host 返回成功触发相同清理顺序。Observer 和转交循环不得
+在各自内部留下无主 goroutine。启动构造失败发生在运行信息发布前，因此客户端不会看到
+一个尚未完成装配的 daemon。
+
+首版 Session 恢复策略是产品级固定策略：普通瞬时网络失败等待 5 秒，协议报告持续 busy
+等待 30 秒，阻塞分类不创建 timer。它不做指数退避。D520 自己的 exchange timeout、
+heartbeat 和单个 Run 内 busy 重试仍来自机构 Profile；如果现场证据证明 Session 恢复
+延迟也因机构不同，再把该策略迁入 Profile，而不是让协议直接控制 Session timer。
+
+详细生命周期所有权见
+`docs/decisions/0011-daemon-composition-owns-runtime-lifecycle.md`。
+
 ## Session 和 Supervisor
 
 每个 Session 从创建开始就拥有稳定的 `SessionID`。Session 管理自己的协议运行、取消、重试、状态和 Snapshot。Session 不知道其他 Session，也不读写配置或凭据。
