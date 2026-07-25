@@ -105,6 +105,9 @@ Stage 3 的纯代码切片。
 阶段 6 将 typed Session handler、D520 Factory/Profile、真实 Environment Detector 和
 CLI 安全密码输入接入生产 daemon，形成 Windows 一次性认证纵向链路，并补齐正常退出等
 必要产品行为。登录后自启动可以随后加入；Service、管理员权限和登录前认证仍然可以推迟。
+机构 Profile 从本地可编辑文件加载，而不是作为机构专用常量编译进程序；普通认证 IPC
+仍只引用 Profile ID。首版每个 `<InstitutionProfileID>.json` 对应一个 Profile，使用
+`jlu` 这类简短 ID；修改后重启 daemon 生效，不做热重载。
 
 阶段 7 会在真实校园网络运行产品。现场结果必须与 mock 结果分开记录。
 

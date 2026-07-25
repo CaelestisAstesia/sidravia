@@ -83,7 +83,7 @@ python3 tools/developer/verify_repository.py --scope all --go /home/astesia/.loc
 ```
 
 `--scope go` 只运行 Go 格式、测试、vet、diff 和 Windows amd64 交叉构建；
-`--scope python` 只运行三套 Python 单元测试；`--scope all` 运行全部检查。
+`--scope python` 只运行两套公开 Python 单元测试；`--scope all` 运行全部检查。
 调用者显式设置的 `GOCACHE` 会原样保留；否则 verifier 使用并清理临时 cache。
 
 验证分为三层，不得为了自动化跨越环境边界而阻塞普通代码开发：

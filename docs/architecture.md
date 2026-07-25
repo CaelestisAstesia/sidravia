@@ -131,6 +131,16 @@ Supervisor 不读取 JSON、配置、凭据、文件路径或 ACL。未来如果
 
 Configuration 文件只保存非秘密配置。Configuration 通过 `CredentialID` 引用 Credentials Store 中的记录。
 
+机构 Profile 从本地可编辑文件加载，并在 daemon 启动时进入 `ProfileCatalog`。D520
+endpoint、超时、重试边界、固定协议字段和其他机构差异必须保留在 Profile 中，不得编译
+成协议包里的机构专用常量。普通一次性认证请求仍只提交 `InstitutionProfileID`，不通过
+IPC 携带任意 Profile JSON 或覆盖系统网络事实。
+
+首版使用 `institution-profiles/` 目录，每个 Profile 对应一个
+`<InstitutionProfileID>.json` 文件。ID 使用简短稳定标识，例如吉林大学使用 `jlu` 和
+`jlu.json`，不追加 `campus` 等冗余后缀。daemon 只在启动时加载目录；本地编辑后重启
+daemon 生效，首版不监听目录也不热替换运行中的 Profile。
+
 Windows 首版允许 Credentials Store 在独立 JSON 文件中保存明文密码。SecureStore 必须把文件权限限制为当前用户和 SYSTEM。如果 SecureStore 无法建立所需 ACL，它不得留下新的明文目标文件。
 
 持久化模块必须先构造完整候选内容，然后原子替换目标文件。如果磁盘写入失败，内存中的权威状态不得提前改变。
