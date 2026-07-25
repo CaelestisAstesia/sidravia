@@ -1,0 +1,411 @@
+//go:build windows
+
+package environment
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net/netip"
+	"runtime"
+	"slices"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+const systemObserverPollInterval = 2 * time.Second
+
+// networkCollector reads the current Windows adapter facts and converts them
+// into a normalized, deterministically ordered interface slice. The production
+// implementation is readWindowsNetworkInterfaces; deterministic package tests
+// inject a replacement through this private seam rather than a fake exported
+// API.
+type networkCollector func() ([]NetworkInterface, error)
+
+// nowClock returns the collection completion time. Tests inject a deterministic
+// clock; production uses time.Now.
+type nowClock func() time.Time
+
+type systemObserver struct {
+	collect  networkCollector
+	now      nowClock
+	interval time.Duration
+}
+
+func newSystemObserver() Observer {
+	return &systemObserver{
+		collect:  readWindowsNetworkInterfaces,
+		now:      time.Now,
+		interval: systemObserverPollInterval,
+	}
+}
+
+// Observe runs a blocking polling loop on the caller's goroutine. It validates
+// its inputs, collects immediately, publishes revision 1, then polls every
+// interval and publishes a new revision only when normalized adapter facts
+// change. Context cancellation unblocks a pending send or timer wait and
+// returns nil. A collection or conversion failure stops the loop and returns an
+// error that preserves the cause. Observe never starts a goroutine.
+func (observer *systemObserver) Observe(ctx context.Context, output chan<- Snapshot) error {
+	if ctx == nil {
+		return errors.New("network observer: nil context")
+	}
+	if output == nil {
+		return errors.New("network observer: nil output channel")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil
+	}
+
+	interfaces, err := observer.collect()
+	if err != nil {
+		return fmt.Errorf("network observer: collect network facts: %w", err)
+	}
+	lastFacts := interfaces
+	revision := uint64(1)
+	if canceled := observer.publish(ctx, output, revision, interfaces); canceled {
+		return nil
+	}
+
+	ticker := time.NewTicker(observer.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+
+		interfaces, err := observer.collect()
+		if err != nil {
+			return fmt.Errorf("network observer: collect network facts: %w", err)
+		}
+		if networkFactsEqual(lastFacts, interfaces) {
+			continue
+		}
+		lastFacts = interfaces
+		revision++
+		if canceled := observer.publish(ctx, output, revision, interfaces); canceled {
+			return nil
+		}
+	}
+}
+
+// publish constructs a Snapshot at the collection completion time and sends it.
+// It returns true when the context was canceled while waiting for a blocked
+// send, so the caller can return nil without inventing a partial result.
+func (observer *systemObserver) publish(
+	ctx context.Context,
+	output chan<- Snapshot,
+	revision uint64,
+	interfaces []NetworkInterface,
+) bool {
+	snapshot := NewSnapshot(revision, observer.now(), interfaces)
+	select {
+	case output <- snapshot:
+		return false
+	case <-ctx.Done():
+		return true
+	}
+}
+
+func networkFactsEqual(a, b []NetworkInterface) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for index := range a {
+		if !interfaceFactsEqual(a[index], b[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+// interfaceFactsEqual compares the normalized network facts of two interfaces
+// without considering Snapshot-level Revision or ObservedAt, so unchanged
+// Windows facts cannot create a new revision merely because linked-list
+// enumeration order changed.
+func interfaceFactsEqual(a, b NetworkInterface) bool {
+	if a.InterfaceID != b.InterfaceID ||
+		a.DisplayName != b.DisplayName ||
+		a.OperationalState != b.OperationalState ||
+		a.PhysicalMedium != b.PhysicalMedium ||
+		a.AddressAssignmentMethod != b.AddressAssignmentMethod {
+		return false
+	}
+	if !bytes.Equal(a.HardwareAddress(), b.HardwareAddress()) {
+		return false
+	}
+	if !slices.Equal(a.IPv4AddressAssignments(), b.IPv4AddressAssignments()) {
+		return false
+	}
+	if !slices.Equal(a.DefaultIPv4GatewayAddresses(), b.DefaultIPv4GatewayAddresses()) {
+		return false
+	}
+	if !slices.Equal(a.DNSServerAddresses(), b.DNSServerAddresses()) {
+		return false
+	}
+	leftDHCP, leftHas := a.DHCPServerIPv4Address()
+	rightDHCP, rightHas := b.DHCPServerIPv4Address()
+	if leftHas != rightHas {
+		return false
+	}
+	return !leftHas || leftDHCP == rightDHCP
+}
+
+// readWindowsNetworkInterfaces collects real Windows adapter facts through
+// GetAdaptersAddresses. It requests unicast, DNS and gateway information for
+// the IPv4 family, copies every retained value out of the temporary Windows
+// buffer, omits loopback and tunnel adapters, and returns a deterministically
+// ordered slice. No shell-out, registry access, watcher, goroutine or retry
+// beyond the bounded buffer resize is used.
+func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
+	const flags = windows.GAA_FLAG_INCLUDE_PREFIX | windows.GAA_FLAG_INCLUDE_GATEWAYS
+	const maxResizeAttempts = 4
+
+	size := uint32(15000)
+	var buffer []byte
+	succeeded := false
+	for attempt := 0; attempt < maxResizeAttempts; attempt++ {
+		buffer = make([]byte, size)
+		err := windows.GetAdaptersAddresses(
+			windows.AF_INET,
+			flags,
+			0,
+			(*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0])),
+			&size,
+		)
+		if err == nil {
+			succeeded = true
+			break
+		}
+		if err != windows.ERROR_BUFFER_OVERFLOW {
+			return nil, fmt.Errorf("read windows network interfaces: %w", err)
+		}
+		if size <= uint32(len(buffer)) {
+			return nil, fmt.Errorf("read windows network interfaces: %w", err)
+		}
+	}
+	if !succeeded {
+		return nil, fmt.Errorf(
+			"read windows network interfaces: buffer overflow persisted after %d attempts",
+			maxResizeAttempts,
+		)
+	}
+
+	adapters := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0]))
+	// buffer is referenced through &buffer[0] above; keep it alive until the
+	// retained values have been copied out, because the adapter linked list and
+	// its strings live inside buffer.
+	defer runtime.KeepAlive(buffer)
+
+	interfaces := make([]NetworkInterface, 0)
+	for aa := adapters; aa != nil; aa = aa.Next {
+		interfaceID := windows.BytePtrToString(aa.AdapterName)
+		if interfaceID == "" {
+			return nil, fmt.Errorf("read windows network interfaces: adapter with empty name")
+		}
+		if aa.IfType == windows.IF_TYPE_SOFTWARE_LOOPBACK || aa.IfType == windows.IF_TYPE_TUNNEL {
+			continue
+		}
+
+		if uint32(len(aa.PhysicalAddress)) < aa.PhysicalAddressLength {
+			return nil, fmt.Errorf(
+				"read windows network interfaces: adapter %q hardware address length %d exceeds fixed array size %d",
+				interfaceID,
+				aa.PhysicalAddressLength,
+				len(aa.PhysicalAddress),
+			)
+		}
+		hardwareAddress := make([]byte, aa.PhysicalAddressLength)
+		copy(hardwareAddress, aa.PhysicalAddress[:aa.PhysicalAddressLength])
+
+		unicasts, hasDHCP, hasNonManual := collectUnicastAddresses(aa.FirstUnicastAddress)
+		gateways := collectGatewayIPv4Addresses(aa.FirstGatewayAddress)
+		dnsServers := collectDNSIPv4Addresses(aa.FirstDnsServerAddress)
+		dhcpServer := collectDhcpv4Server(aa.Dhcpv4Server)
+
+		unicasts = dedupUnicastAssignments(unicasts)
+		gateways = dedupAddrs(gateways)
+		dnsServers = dedupAddrs(dnsServers)
+		sortUnicastAssignments(unicasts)
+		sortAddrs(gateways)
+		// DNS preserves Windows-reported order after dedup, because D520
+		// consumes the first IPv4 entries.
+
+		networkInterface, err := NewNetworkInterface(NetworkInterfaceFacts{
+			InterfaceID:                 InterfaceID(interfaceID),
+			DisplayName:                 windows.UTF16PtrToString(aa.FriendlyName),
+			OperationalState:            mapOperationalState(aa.OperStatus),
+			PhysicalMedium:              mapPhysicalMedium(aa.IfType),
+			HardwareAddress:             hardwareAddress,
+			AddressAssignmentMethod:     classifyAssignmentMethod(unicasts, hasDHCP, hasNonManual),
+			IPv4AddressAssignments:      unicasts,
+			DefaultIPv4GatewayAddresses: gateways,
+			DNSServerAddresses:          dnsServers,
+			DHCPServerIPv4Address:       dhcpServer,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("read windows network interfaces: %w", err)
+		}
+		interfaces = append(interfaces, networkInterface)
+	}
+
+	slices.SortFunc(interfaces, func(a, b NetworkInterface) int {
+		switch {
+		case a.InterfaceID < b.InterfaceID:
+			return -1
+		case a.InterfaceID > b.InterfaceID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return interfaces, nil
+}
+
+func mapOperationalState(operStatus uint32) OperationalState {
+	if operStatus == windows.IfOperStatusUp {
+		return OperationalStateUp
+	}
+	return OperationalStateDown
+}
+
+func mapPhysicalMedium(ifType uint32) PhysicalMedium {
+	switch ifType {
+	case windows.IF_TYPE_ETHERNET_CSMACD:
+		return PhysicalMediumWired
+	case windows.IF_TYPE_IEEE80211:
+		return PhysicalMediumWireless
+	default:
+		return PhysicalMediumUnknown
+	}
+}
+
+// collectUnicastAddresses retains usable IPv4 unicast addresses with their
+// reported OnLinkPrefixLength and tracks whether any retained origin is DHCP or
+// non-manual, so the caller can classify the assignment method.
+func collectUnicastAddresses(first *windows.IpAdapterUnicastAddress) (assignments []IPv4AddressAssignment, hasDHCP bool, hasNonManual bool) {
+	for ua := first; ua != nil; ua = ua.Next {
+		addr, ok := socketAddressToIPv4(ua.Address)
+		if !ok || !isUsableUnicastIPv4(addr) {
+			continue
+		}
+		assignments = append(assignments, IPv4AddressAssignment{
+			Address:      addr,
+			PrefixLength: ua.OnLinkPrefixLength,
+		})
+		switch ua.PrefixOrigin {
+		case windows.IpPrefixOriginDhcp:
+			hasDHCP = true
+		case windows.IpPrefixOriginManual:
+			// static candidate
+		default:
+			hasNonManual = true
+		}
+	}
+	return assignments, hasDHCP, hasNonManual
+}
+
+func collectGatewayIPv4Addresses(first *windows.IpAdapterGatewayAddress) []netip.Addr {
+	var addresses []netip.Addr
+	for ga := first; ga != nil; ga = ga.Next {
+		addr, ok := socketAddressToIPv4(ga.Address)
+		if !ok || !isRetainedServiceIPv4(addr) {
+			continue
+		}
+		addresses = append(addresses, addr)
+	}
+	return addresses
+}
+
+func collectDNSIPv4Addresses(first *windows.IpAdapterDnsServerAdapter) []netip.Addr {
+	var addresses []netip.Addr
+	for da := first; da != nil; da = da.Next {
+		addr, ok := socketAddressToIPv4(da.Address)
+		if !ok || !isRetainedServiceIPv4(addr) {
+			continue
+		}
+		addresses = append(addresses, addr)
+	}
+	return addresses
+}
+
+func collectDhcpv4Server(sa windows.SocketAddress) *netip.Addr {
+	addr, ok := socketAddressToIPv4(sa)
+	if !ok || !isRetainedServiceIPv4(addr) {
+		return nil
+	}
+	return &addr
+}
+
+func socketAddressToIPv4(sa windows.SocketAddress) (netip.Addr, bool) {
+	ip := sa.IP()
+	if ip == nil || len(ip) != 4 {
+		return netip.Addr{}, false
+	}
+	return netip.AddrFrom4([4]byte{ip[0], ip[1], ip[2], ip[3]}), true
+}
+
+func isUsableUnicastIPv4(addr netip.Addr) bool {
+	return !addr.IsUnspecified() && !addr.IsLoopback() && !addr.IsMulticast()
+}
+
+func isRetainedServiceIPv4(addr netip.Addr) bool {
+	return !addr.IsUnspecified()
+}
+
+func classifyAssignmentMethod(assignments []IPv4AddressAssignment, hasDHCP, hasNonManual bool) AddressAssignmentMethod {
+	switch {
+	case hasDHCP:
+		return AddressAssignmentDHCP
+	case len(assignments) > 0 && !hasNonManual:
+		return AddressAssignmentStatic
+	default:
+		return AddressAssignmentUnknown
+	}
+}
+
+func dedupAddrs(addresses []netip.Addr) []netip.Addr {
+	seen := make(map[netip.Addr]struct{}, len(addresses))
+	result := make([]netip.Addr, 0, len(addresses))
+	for _, addr := range addresses {
+		if _, duplicate := seen[addr]; duplicate {
+			continue
+		}
+		seen[addr] = struct{}{}
+		result = append(result, addr)
+	}
+	return result
+}
+
+func dedupUnicastAssignments(assignments []IPv4AddressAssignment) []IPv4AddressAssignment {
+	seen := make(map[IPv4AddressAssignment]struct{}, len(assignments))
+	result := make([]IPv4AddressAssignment, 0, len(assignments))
+	for _, assignment := range assignments {
+		if _, duplicate := seen[assignment]; duplicate {
+			continue
+		}
+		seen[assignment] = struct{}{}
+		result = append(result, assignment)
+	}
+	return result
+}
+
+func sortUnicastAssignments(assignments []IPv4AddressAssignment) {
+	slices.SortFunc(assignments, func(a, b IPv4AddressAssignment) int {
+		if comparison := a.Address.Compare(b.Address); comparison != 0 {
+			return comparison
+		}
+		return int(a.PrefixLength) - int(b.PrefixLength)
+	})
+}
+
+func sortAddrs(addresses []netip.Addr) {
+	slices.SortFunc(addresses, func(a, b netip.Addr) int {
+		return a.Compare(b)
+	})
+}
