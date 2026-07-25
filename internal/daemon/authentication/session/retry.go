@@ -1,6 +1,7 @@
 package session
 
 import (
+	"sync"
 	"time"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -16,4 +17,63 @@ type RetryCancellation interface {
 
 type RetryScheduler interface {
 	Schedule(time.Duration, func()) RetryCancellation
+}
+
+type defaultRetryPolicy struct{}
+
+func NewDefaultRetryPolicy() RetryPolicy {
+	return defaultRetryPolicy{}
+}
+
+func (defaultRetryPolicy) Delay(
+	recommendation protocol.AuthenticationProtocolFailureHandlingRecommendation,
+	_ uint32,
+) (time.Duration, bool) {
+	switch recommendation {
+	case protocol.RetryAfterStandardDelay:
+		return 5 * time.Second, true
+	case protocol.RetryAfterExtendedDelay:
+		return 30 * time.Second, true
+	default:
+		return 0, false
+	}
+}
+
+type timerRetryScheduler struct{}
+
+func NewTimerRetryScheduler() RetryScheduler {
+	return timerRetryScheduler{}
+}
+
+type timerRetryCancellation struct {
+	once   sync.Once
+	cancel func()
+}
+
+func (c *timerRetryCancellation) Cancel() {
+	c.once.Do(c.cancel)
+}
+
+func (timerRetryScheduler) Schedule(delay time.Duration, callback func()) RetryCancellation {
+	timer := time.NewTimer(delay)
+	done := make(chan struct{})
+	cancellation := &timerRetryCancellation{
+		cancel: func() {
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			close(done)
+		},
+	}
+	go func() {
+		select {
+		case <-timer.C:
+			callback()
+		case <-done:
+		}
+	}()
+	return cancellation
 }

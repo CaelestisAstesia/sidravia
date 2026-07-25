@@ -504,3 +504,93 @@ func (cancellation *manualRetryCancellation) cancelCount() uint32 {
 	defer cancellation.mu.Unlock()
 	return cancellation.cancelCount_
 }
+
+func TestDefaultRetryPolicyMapsDelays(t *testing.T) {
+	policy := NewDefaultRetryPolicy()
+
+	tests := []struct {
+		recommendation protocol.AuthenticationProtocolFailureHandlingRecommendation
+		wantDelay      time.Duration
+		wantOK         bool
+	}{
+		{protocol.RetryAfterStandardDelay, 5 * time.Second, true},
+		{protocol.RetryAfterExtendedDelay, 30 * time.Second, true},
+		{protocol.BlockUntilExplicitRestartOrRelevantInputChange, 0, false},
+		{"unknown_recommendation", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.recommendation), func(t *testing.T) {
+			gotDelay, gotOK := policy.Delay(tt.recommendation, 0)
+			if gotDelay != tt.wantDelay || gotOK != tt.wantOK {
+				t.Fatalf("Delay(%q, 0) = (%v, %v), want (%v, %v)",
+					tt.recommendation, gotDelay, gotOK, tt.wantDelay, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestDefaultRetryPolicyIgnoresConsecutiveFailures(t *testing.T) {
+	policy := NewDefaultRetryPolicy()
+
+	for _, failures := range []uint32{0, 1, 5, 100} {
+		delay, ok := policy.Delay(protocol.RetryAfterStandardDelay, failures)
+		if !ok || delay != 5*time.Second {
+			t.Fatalf("Delay(standard, %d) = (%v, %v), want (5s, true)", failures, delay, ok)
+		}
+		delay, ok = policy.Delay(protocol.RetryAfterExtendedDelay, failures)
+		if !ok || delay != 30*time.Second {
+			t.Fatalf("Delay(extended, %d) = (%v, %v), want (30s, true)", failures, delay, ok)
+		}
+	}
+}
+
+func TestTimerRetrySchedulerInvokesCallback(t *testing.T) {
+	scheduler := NewTimerRetryScheduler()
+	called := make(chan struct{}, 1)
+
+	scheduler.Schedule(50*time.Millisecond, func() {
+		called <- struct{}{}
+	})
+
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timer callback was not invoked within timeout")
+	}
+}
+
+func TestTimerRetrySchedulerCancellationPreventsCallback(t *testing.T) {
+	scheduler := NewTimerRetryScheduler()
+	called := make(chan struct{}, 1)
+
+	cancellation := scheduler.Schedule(500*time.Millisecond, func() {
+		called <- struct{}{}
+	})
+	cancellation.Cancel()
+
+	select {
+	case <-called:
+		t.Fatal("cancelled timer still invoked callback")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestTimerRetrySchedulerRepeatedCancellationIsSafe(t *testing.T) {
+	scheduler := NewTimerRetryScheduler()
+	called := make(chan struct{}, 1)
+
+	cancellation := scheduler.Schedule(500*time.Millisecond, func() {
+		called <- struct{}{}
+	})
+
+	for i := 0; i < 10; i++ {
+		cancellation.Cancel()
+	}
+
+	select {
+	case <-called:
+		t.Fatal("repeatedly cancelled timer still invoked callback")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
