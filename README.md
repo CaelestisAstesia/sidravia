@@ -17,8 +17,9 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 - Dr.COM 5.2.0(D) 报文、Factory 和阻塞式认证 Run；
 - Windows JSON 文件 ACL 与原子持久化基础。
 
-真实 Windows Environment Detector、D520/Profile 的生产注册、认证命令行入口和
-`cmd/sidraviad` 完整装配尚未完成。自动测试也不等同于真实校园网络验证。
+真实 Windows Environment Detector 的代码和自动验证已经完成，但尚未接入生产 daemon，
+也未在 Windows 原生环境读取真实网卡。D520/Profile 的生产注册、认证命令行入口和
+`cmd/sidraviad` 完整装配仍未完成。自动测试也不等同于真实校园网络验证。
 
 长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
 [当前架构](docs/architecture.md)。

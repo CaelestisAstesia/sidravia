@@ -12,7 +12,8 @@
 按“代码和自动验证完成、Windows 现场待验证”条件关闭。D520 Factory/Run 的代码与自动
 验证也已完成，真实校园协议正确性仍待现场验证。typed 系统网络快照已经贯通 daemon
 app、Supervisor 和新旧 Session；应用层名称已在生产装配前收敛为 `Application` 和
-`AuthenticationResolver`。
+`AuthenticationResolver`。真实 Windows Environment Detector 已实现 host facts 和
+两秒轮询的网络快照，代码与自动验证完成；生产装配和 Windows 原生网卡事实仍待验证。
 
 | 阶段 | 当前状态 | 进入下一阶段前必须观察到的结果 |
 |---|---|---|
@@ -21,7 +22,7 @@ app、Supervisor 和新旧 Session；应用层名称已在生产装配前收敛�
 | 2. 可运行骨架 | 条件完成：现场待验 | Windows 上的 `sidravia status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，生产装配待后续 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 代码和自动验证完成，校园现场待验 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
-| 5. 持久输入和真实环境 | 未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
+| 5. 持久输入和真实环境 | 部分完成：Detector 代码完成，持久输入与生产装配未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
 | 6. Windows 产品纵向链路 | 未开始 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路 |
 | 7. 校园网络验证 | 未开始 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
@@ -36,7 +37,11 @@ handler 已通过 Review；完整公开 Snapshot 被映射为稳定 DTO，秘密
 第三个切片也已完成：Supervisor 保存最新 typed 网络快照，按 revision 向现有和新建
 Session 分发，并保证新 Session 返回初始 Snapshot 前已得到最新网络状态。daemon
 `Application` 提供窄委托，`app.IPCHandler` 在内存中组合 status 与 Session 方法。
-真实 Windows Detector、D520/Profile 注册和 `cmd/sidraviad` 生产装配仍未实现。
+真实 Windows Detector 随后也已实现：Windows host information 使用真实系统事实，
+网络 Observer 立即发布首个快照并每两秒轮询，只在归一化事实变化时递增 revision；
+非 Windows 明确返回 Unsupported。其生命周期测试、完整 Go verifier 和 Windows
+交叉编译通过，但 Detector 尚未接入生产 daemon，也未在 Windows 原生环境验证真实网卡。
+D520/Profile 注册和 `cmd/sidraviad` 生产装配仍未实现。
 
 人类已选择直接实现真实 Go Dr.COM 5.2.0(D)，不在产品中加入假协议。参考收敛已经完成：
 线级规范、来源冲突和虚构确定性向量已经进入
