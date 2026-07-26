@@ -102,6 +102,49 @@ func TestSystemObserverSuppressesEquivalentAndPublishesRevisionTwo(t *testing.T)
 	}
 }
 
+func TestInterfaceFactsEqualDetectsClassificationChanges(t *testing.T) {
+	base := testInterface("eth0")
+	tests := []struct {
+		name   string
+		mutate func(*NetworkInterface)
+	}{
+		{
+			name: "hardware",
+			mutate: func(networkInterface *NetworkInterface) {
+				networkInterface.HardwareBacked = !networkInterface.HardwareBacked
+			},
+		},
+		{
+			name: "connector",
+			mutate: func(networkInterface *NetworkInterface) {
+				networkInterface.PhysicalConnectorPresent = !networkInterface.PhysicalConnectorPresent
+			},
+		},
+		{
+			name: "filter",
+			mutate: func(networkInterface *NetworkInterface) {
+				networkInterface.FilterInterface = !networkInterface.FilterInterface
+			},
+		},
+		{
+			name: "endpoint",
+			mutate: func(networkInterface *NetworkInterface) {
+				networkInterface.EndpointInterface = !networkInterface.EndpointInterface
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			changed := base.clone()
+			test.mutate(&changed)
+			if interfaceFactsEqual(base, changed) {
+				t.Fatal("interfaces with different classification facts are equal")
+			}
+		})
+	}
+}
+
 func TestSystemObserverSnapshotIsolatedFromCallerMutation(t *testing.T) {
 	source := []NetworkInterface{testInterface("eth0")}
 	observer := &systemObserver{

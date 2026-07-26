@@ -67,6 +67,28 @@ func TestNetworkFactsAreIsolatedFromCallerMutation(t *testing.T) {
 	}
 }
 
+func TestNetworkInterfacePreservesClassificationFacts(t *testing.T) {
+	networkInterface, err := NewNetworkInterface(NetworkInterfaceFacts{
+		InterfaceID:              "ethernet-1",
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		FilterInterface:          true,
+		EndpointInterface:        true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := NewSnapshot(1, time.Unix(1, 0), []NetworkInterface{networkInterface})
+	got := snapshot.Interfaces()[0]
+	if !got.HardwareBacked ||
+		!got.PhysicalConnectorPresent ||
+		!got.FilterInterface ||
+		!got.EndpointInterface {
+		t.Fatalf("classification facts were not preserved: %+v", got)
+	}
+}
+
 func TestSelectedSystemNetworkBindingRequiresAddressFromSelectedInterface(t *testing.T) {
 	selectedAddress := IPv4AddressAssignment{
 		Address:      netip.MustParseAddr("10.0.0.8"),

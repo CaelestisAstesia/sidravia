@@ -127,6 +127,10 @@ func interfaceFactsEqual(a, b NetworkInterface) bool {
 		a.DisplayName != b.DisplayName ||
 		a.OperationalState != b.OperationalState ||
 		a.PhysicalMedium != b.PhysicalMedium ||
+		a.HardwareBacked != b.HardwareBacked ||
+		a.PhysicalConnectorPresent != b.PhysicalConnectorPresent ||
+		a.FilterInterface != b.FilterInterface ||
+		a.EndpointInterface != b.EndpointInterface ||
 		a.AddressAssignmentMethod != b.AddressAssignmentMethod {
 		return false
 	}

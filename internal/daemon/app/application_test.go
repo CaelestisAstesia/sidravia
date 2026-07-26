@@ -685,10 +685,12 @@ func assertSnapshotDoesNotContain(t *testing.T, snapshot session.Snapshot, secre
 func appTestNetworkSnapshot(t *testing.T, revision uint64) environment.Snapshot {
 	t.Helper()
 	iface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
-		InterfaceID:             environment.InterfaceID("iface-1"),
-		OperationalState:        environment.OperationalStateUp,
-		PhysicalMedium:          environment.PhysicalMediumWired,
-		AddressAssignmentMethod: environment.AddressAssignmentDHCP,
+		InterfaceID:              environment.InterfaceID("iface-1"),
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
 		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
 			Address:      netip.MustParseAddr("192.0.2.10"),
 			PrefixLength: 24,

@@ -84,6 +84,19 @@ func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
 			continue
 		}
 
+		row := windows.MibIfRow2{InterfaceLuid: aa.Luid}
+		if err := windows.GetIfEntry2Ex(windows.MibIfEntryNormalWithoutStatistics, &row); err != nil {
+			if err == windows.ERROR_FILE_NOT_FOUND {
+				continue
+			}
+			return nil, fmt.Errorf(
+				"read windows network interfaces: read classification for adapter %q: %w",
+				interfaceID,
+				err,
+			)
+		}
+		classification := decodeWindowsInterfaceClassification(row.InterfaceAndOperStatusFlags)
+
 		if uint32(len(aa.PhysicalAddress)) < aa.PhysicalAddressLength {
 			return nil, fmt.Errorf(
 				"read windows network interfaces: adapter %q hardware address length %d exceeds fixed array size %d",
@@ -113,6 +126,10 @@ func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
 			DisplayName:                 windows.UTF16PtrToString(aa.FriendlyName),
 			OperationalState:            mapOperationalState(aa.OperStatus),
 			PhysicalMedium:              mapPhysicalMedium(aa.IfType),
+			HardwareBacked:              classification.hardwareBacked,
+			PhysicalConnectorPresent:    classification.physicalConnectorPresent,
+			FilterInterface:             classification.filterInterface,
+			EndpointInterface:           classification.endpointInterface,
 			HardwareAddress:             hardwareAddress,
 			AddressAssignmentMethod:     classifyAssignmentMethod(unicasts, hasDHCP, hasNonManual),
 			IPv4AddressAssignments:      unicasts,
@@ -137,6 +154,22 @@ func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
 		}
 	})
 	return interfaces, nil
+}
+
+type windowsInterfaceClassification struct {
+	hardwareBacked           bool
+	physicalConnectorPresent bool
+	filterInterface          bool
+	endpointInterface        bool
+}
+
+func decodeWindowsInterfaceClassification(flags uint8) windowsInterfaceClassification {
+	return windowsInterfaceClassification{
+		hardwareBacked:           flags&(1<<0) != 0,
+		filterInterface:          flags&(1<<1) != 0,
+		physicalConnectorPresent: flags&(1<<2) != 0,
+		endpointInterface:        flags&(1<<7) != 0,
+	}
 }
 
 func mapOperationalState(operStatus uint32) OperationalState {

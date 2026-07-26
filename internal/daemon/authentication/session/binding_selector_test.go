@@ -13,9 +13,11 @@ func TestAutomaticBindingSelectorPrefersWiredAtStartup(t *testing.T) {
 
 	binding, ok := selector.Select(snapshot(t, 1,
 		newNetworkInterface(t, environment.NetworkInterfaceFacts{
-			InterfaceID:      "down-wired",
-			OperationalState: environment.OperationalStateDown,
-			PhysicalMedium:   environment.PhysicalMediumWired,
+			InterfaceID:              "down-wired",
+			OperationalState:         environment.OperationalStateDown,
+			PhysicalMedium:           environment.PhysicalMediumWired,
+			HardwareBacked:           true,
+			PhysicalConnectorPresent: true,
 			IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
 				Address: netip.MustParseAddr("203.0.113.10"), PrefixLength: 24,
 			}},
@@ -34,7 +36,7 @@ func TestAutomaticBindingSelectorPrefersWiredAtStartup(t *testing.T) {
 }
 
 func TestAutomaticBindingSelectorSwitchesToNewestAvailableNetwork(t *testing.T) {
-	t.Run("newer candidate wins regardless of physical medium", func(t *testing.T) {
+	t.Run("newer eligible physical candidate wins regardless of physical medium", func(t *testing.T) {
 		selector := newAutomaticBindingSelector()
 		initial := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 		newer := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 24)
@@ -94,6 +96,129 @@ func TestAutomaticBindingSelectorSwitchesToNewestAvailableNetwork(t *testing.T) 
 	})
 }
 
+func TestAutomaticBindingSelectorIgnoresNewerSoftwareInterface(t *testing.T) {
+	selector := newAutomaticBindingSelector()
+	physical := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "physical",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
+		}},
+	})
+	software := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:      "software",
+		OperationalState: environment.OperationalStateUp,
+		PhysicalMedium:   environment.PhysicalMediumWired,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("198.51.100.10"), PrefixLength: 24,
+		}},
+	})
+
+	binding, ok := selector.Select(snapshot(t, 1, physical))
+	if !ok {
+		t.Fatal("initial Select() reported no binding")
+	}
+	assertBinding(t, binding, "physical", "192.0.2.10", 24)
+
+	binding, ok = selector.Select(snapshot(t, 2, physical, software))
+	if !ok {
+		t.Fatal("newer Select() reported no binding")
+	}
+	assertBinding(t, binding, "physical", "192.0.2.10", 24)
+}
+
+func TestAutomaticBindingSelectorIgnoresHardwareFilterAndEndpointInterfaces(t *testing.T) {
+	selector := newAutomaticBindingSelector()
+	physical := networkInterface(t, "physical", environment.PhysicalMediumWired, "192.0.2.10", 24)
+	filter := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "filter",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		FilterInterface:          true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("198.51.100.10"), PrefixLength: 24,
+		}},
+	})
+	endpoint := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "endpoint",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		EndpointInterface:        true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("203.0.113.10"), PrefixLength: 24,
+		}},
+	})
+
+	selector.Select(snapshot(t, 1, physical))
+	binding, ok := selector.Select(snapshot(t, 2, physical, filter, endpoint))
+	if !ok {
+		t.Fatal("Select() reported no binding")
+	}
+	assertBinding(t, binding, "physical", "192.0.2.10", 24)
+}
+
+func TestAutomaticBindingSelectorReportsNoBindingForIneligibleInterfaces(t *testing.T) {
+	selector := newAutomaticBindingSelector()
+	software := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "software",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		PhysicalConnectorPresent: true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
+		}},
+	})
+	hardwareWithoutConnector := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:      "hardware-without-connector",
+		OperationalState: environment.OperationalStateUp,
+		PhysicalMedium:   environment.PhysicalMediumWired,
+		HardwareBacked:   true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("198.51.100.10"), PrefixLength: 24,
+		}},
+	})
+	filter := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "filter",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		FilterInterface:          true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("203.0.113.10"), PrefixLength: 24,
+		}},
+	})
+	endpoint := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "endpoint",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		EndpointInterface:        true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("203.0.113.20"), PrefixLength: 24,
+		}},
+	})
+
+	if binding, ok := selector.Select(snapshot(
+		t,
+		1,
+		software,
+		hardwareWithoutConnector,
+		filter,
+		endpoint,
+	)); ok {
+		t.Fatalf("Select() returned ineligible binding: %+v", binding)
+	}
+}
+
 func TestAutomaticBindingSelectorFallsBackWhenCurrentBindingDisappears(t *testing.T) {
 	selector := newAutomaticBindingSelector()
 	current := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
@@ -142,6 +267,8 @@ func TestBindingAuthenticationFactsIgnoreDisplayName(t *testing.T) {
 		DisplayName:                 "Ethernet",
 		OperationalState:            environment.OperationalStateUp,
 		PhysicalMedium:              environment.PhysicalMediumWired,
+		HardwareBacked:              true,
+		PhysicalConnectorPresent:    true,
 		HardwareAddress:             []byte{0, 1, 2, 3, 4, 5},
 		AddressAssignmentMethod:     environment.AddressAssignmentDHCP,
 		IPv4AddressAssignments:      []environment.IPv4AddressAssignment{{Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24}},
@@ -153,6 +280,8 @@ func TestBindingAuthenticationFactsIgnoreDisplayName(t *testing.T) {
 		DisplayName:                 "Campus Ethernet",
 		OperationalState:            environment.OperationalStateUp,
 		PhysicalMedium:              environment.PhysicalMediumWired,
+		HardwareBacked:              true,
+		PhysicalConnectorPresent:    true,
 		HardwareAddress:             []byte{0, 1, 2, 3, 4, 5},
 		AddressAssignmentMethod:     environment.AddressAssignmentDHCP,
 		IPv4AddressAssignments:      []environment.IPv4AddressAssignment{{Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24}},
@@ -168,11 +297,13 @@ func TestBindingAuthenticationFactsIgnoreDisplayName(t *testing.T) {
 func TestBindingAuthenticationFactsDetectEveryRelevantChange(t *testing.T) {
 	dhcpServer := netip.MustParseAddr("192.0.2.254")
 	baseFacts := environment.NetworkInterfaceFacts{
-		InterfaceID:             "ethernet",
-		OperationalState:        environment.OperationalStateUp,
-		PhysicalMedium:          environment.PhysicalMediumWired,
-		HardwareAddress:         []byte{0, 1, 2, 3, 4, 5},
-		AddressAssignmentMethod: environment.AddressAssignmentDHCP,
+		InterfaceID:              "ethernet",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		HardwareAddress:          []byte{0, 1, 2, 3, 4, 5},
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
 		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
 			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
 		}},
@@ -208,6 +339,30 @@ func TestBindingAuthenticationFactsDetectEveryRelevantChange(t *testing.T) {
 			name: "physical medium",
 			mutate: func(facts *environment.NetworkInterfaceFacts) {
 				facts.PhysicalMedium = environment.PhysicalMediumWireless
+			},
+		},
+		{
+			name: "hardware classification",
+			mutate: func(facts *environment.NetworkInterfaceFacts) {
+				facts.HardwareBacked = false
+			},
+		},
+		{
+			name: "physical connector",
+			mutate: func(facts *environment.NetworkInterfaceFacts) {
+				facts.PhysicalConnectorPresent = false
+			},
+		},
+		{
+			name: "filter classification",
+			mutate: func(facts *environment.NetworkInterfaceFacts) {
+				facts.FilterInterface = true
+			},
+		},
+		{
+			name: "endpoint classification",
+			mutate: func(facts *environment.NetworkInterfaceFacts) {
+				facts.EndpointInterface = true
 			},
 		},
 		{
@@ -287,10 +442,12 @@ func networkInterface(
 ) environment.NetworkInterface {
 	t.Helper()
 	return newNetworkInterface(t, environment.NetworkInterfaceFacts{
-		InterfaceID:             interfaceID,
-		OperationalState:        environment.OperationalStateUp,
-		PhysicalMedium:          physicalMedium,
-		AddressAssignmentMethod: environment.AddressAssignmentDHCP,
+		InterfaceID:              interfaceID,
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           physicalMedium,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
 		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
 			Address: netip.MustParseAddr(address), PrefixLength: prefixLength,
 		}},

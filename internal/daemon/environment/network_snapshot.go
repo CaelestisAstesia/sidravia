@@ -34,6 +34,10 @@ type NetworkInterfaceFacts struct {
 	DisplayName                 string
 	OperationalState            OperationalState
 	PhysicalMedium              PhysicalMedium
+	HardwareBacked              bool
+	PhysicalConnectorPresent    bool
+	FilterInterface             bool
+	EndpointInterface           bool
 	HardwareAddress             []byte
 	AddressAssignmentMethod     AddressAssignmentMethod
 	IPv4AddressAssignments      []IPv4AddressAssignment
@@ -43,11 +47,15 @@ type NetworkInterfaceFacts struct {
 }
 
 type NetworkInterface struct {
-	InterfaceID             InterfaceID
-	DisplayName             string
-	OperationalState        OperationalState
-	PhysicalMedium          PhysicalMedium
-	AddressAssignmentMethod AddressAssignmentMethod
+	InterfaceID              InterfaceID
+	DisplayName              string
+	OperationalState         OperationalState
+	PhysicalMedium           PhysicalMedium
+	HardwareBacked           bool
+	PhysicalConnectorPresent bool
+	FilterInterface          bool
+	EndpointInterface        bool
+	AddressAssignmentMethod  AddressAssignmentMethod
 
 	hardwareAddress             []byte
 	ipv4AddressAssignments      []IPv4AddressAssignment
@@ -92,6 +100,10 @@ func NewNetworkInterface(facts NetworkInterfaceFacts) (NetworkInterface, error) 
 		DisplayName:                 facts.DisplayName,
 		OperationalState:            facts.OperationalState,
 		PhysicalMedium:              facts.PhysicalMedium,
+		HardwareBacked:              facts.HardwareBacked,
+		PhysicalConnectorPresent:    facts.PhysicalConnectorPresent,
+		FilterInterface:             facts.FilterInterface,
+		EndpointInterface:           facts.EndpointInterface,
 		AddressAssignmentMethod:     facts.AddressAssignmentMethod,
 		hardwareAddress:             cloneSlice(facts.HardwareAddress),
 		ipv4AddressAssignments:      cloneSlice(facts.IPv4AddressAssignments),

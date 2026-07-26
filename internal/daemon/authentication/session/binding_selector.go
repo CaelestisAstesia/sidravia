@@ -80,7 +80,11 @@ type bindingCandidate struct {
 func availableBindingCandidates(snapshot environment.Snapshot) []bindingCandidate {
 	var candidates []bindingCandidate
 	for _, networkInterface := range snapshot.Interfaces() {
-		if networkInterface.OperationalState != environment.OperationalStateUp {
+		if networkInterface.OperationalState != environment.OperationalStateUp ||
+			!networkInterface.HardwareBacked ||
+			!networkInterface.PhysicalConnectorPresent ||
+			networkInterface.FilterInterface ||
+			networkInterface.EndpointInterface {
 			continue
 		}
 		for _, assignment := range networkInterface.IPv4AddressAssignments() {
@@ -153,6 +157,10 @@ func bindingsHaveEquivalentAuthenticationFacts(
 	if leftInterface.InterfaceID != rightInterface.InterfaceID ||
 		leftAddress != rightAddress ||
 		leftInterface.PhysicalMedium != rightInterface.PhysicalMedium ||
+		leftInterface.HardwareBacked != rightInterface.HardwareBacked ||
+		leftInterface.PhysicalConnectorPresent != rightInterface.PhysicalConnectorPresent ||
+		leftInterface.FilterInterface != rightInterface.FilterInterface ||
+		leftInterface.EndpointInterface != rightInterface.EndpointInterface ||
 		leftInterface.AddressAssignmentMethod != rightInterface.AddressAssignmentMethod ||
 		!bytes.Equal(leftInterface.HardwareAddress(), rightInterface.HardwareAddress()) ||
 		!slices.Equal(leftInterface.DefaultIPv4GatewayAddresses(), rightInterface.DefaultIPv4GatewayAddresses()) ||

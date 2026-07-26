@@ -874,12 +874,14 @@ func waitForInboxMessage(t *testing.T, ctx context.Context, session *Authenticat
 func usableSystemNetworkSnapshot(t *testing.T, revision uint64, interfaceID, displayName string) environment.Snapshot {
 	t.Helper()
 	networkInterface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
-		InterfaceID:             environment.InterfaceID(interfaceID),
-		DisplayName:             displayName,
-		OperationalState:        environment.OperationalStateUp,
-		PhysicalMedium:          environment.PhysicalMediumWired,
-		AddressAssignmentMethod: environment.AddressAssignmentDHCP,
-		HardwareAddress:         []byte{0, 1, 2, 3, 4, 5},
+		InterfaceID:              environment.InterfaceID(interfaceID),
+		DisplayName:              displayName,
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
+		HardwareAddress:          []byte{0, 1, 2, 3, 4, 5},
 		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
 			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
 		}},

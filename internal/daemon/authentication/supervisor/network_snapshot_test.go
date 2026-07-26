@@ -20,10 +20,12 @@ func testNetworkSnapshotWithInterface(
 	address string,
 ) environment.Snapshot {
 	iface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
-		InterfaceID:             interfaceID,
-		OperationalState:        environment.OperationalStateUp,
-		PhysicalMedium:          environment.PhysicalMediumWired,
-		AddressAssignmentMethod: environment.AddressAssignmentDHCP,
+		InterfaceID:              interfaceID,
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
 		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
 			Address:      netip.MustParseAddr(address),
 			PrefixLength: 24,
