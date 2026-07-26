@@ -205,7 +205,7 @@
 | `[20,24)` | 零 (4B) | `[Mock]` 校验为零 |
 | `[24,40)` | type 区 (16B) | Type1：全零；Type3：`00*4 + client_ipv4[28,32) + 00*8` |
 
-响应（结构最小 20B；Mock 样本 60B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 Tail：
+普通响应（结构最小 20B；Mock 样本 60B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 Tail：
 
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
@@ -221,6 +221,21 @@
 | `[48,52)` | traffic | `LE u32`；`[Mock]` KiB，`[PL]` `/1024`→MB |
 | `[52,56)` | balance | `LE u32`；`[Mock]` 万分之一元，`[PL]` `/10000`→元 |
 | `[56,60)` | remaining_time | `LE u32`；`[Mock]` 分钟，`[PL]` `/60`→分钟 |
+
+首次 bootstrap Type1 的特殊确认响应（结构最小 20B、最大 4096B；现场样本含有不透明
+扩展）：
+
+| 偏移 | 字段 | 编码 |
+| --- | --- | --- |
+| `0` | `07` | 固定 |
+| `1` | serial | 回显首次 bootstrap Type1 的 serial |
+| `[2,5)` | `10 01 0b` | 特殊响应帧 |
+| `5` | `06` | Type 6 |
+| `[6,20)` | 不透明字段 | 不解释；尤其 `[16,20)` 不是 Tail refill |
+
+特殊帧只允许 Type 6，且只确认首次 bootstrap Type1。普通 `28 00 0b` 帧不允许 Type 6；
+特殊帧也不允许 Type 1/2/3/4。该区别由脱敏的 2026-07-27 校园观察确认，取代此前从参考
+实现推导出的“所有 KA2 响应都无条件从 `[16,20)` 回填 Tail”解释。
 
 ### 3.5 Logout
 
@@ -286,8 +301,10 @@
 
 - **serial**：`u8`，每个 KA2 请求递增 1，到达 255 后回绕到 0 `[DC] [PL] [Mock]`。
   `[Mock]` 校验请求 serial 与会话期望值一致。
-- **Tail**：4B，由 KA2 响应 `[16,20)` 回填，作为下一个 KA2 请求 `[16,20)`。首个 KA2
-  请求 Tail 为 `00 00 00 00` `[DC] [PL] [Mock]`。
+- **Tail**：4B。普通 `28 00 0b` KA2 响应（包括 Type 2/4）从 `[16,20)` 回填，作为
+  下一个 KA2 请求 `[16,20)`。首个 KA2 请求 Tail 为 `00 00 00 00` `[DC] [PL] [Mock]`。
+  首次 bootstrap Type1 的特殊 `10 01 0b` Type 6 只确认该交换，不回填 Tail，因此第二个
+  bootstrap Type1 继续发送原 Tail（初始时仍为全零）。
 - **version**：首个 Type1 KA2 用 `0f 27`（init magic），其后所有 KA2 用
   keep_alive_version (`dc02`) `[DC] [PL] [Mock]`。
 - **bootstrap 序列冲突（兼容）**：
@@ -302,9 +319,10 @@
     因为 Drcom-Core 是既有校园行为的主基准且 mock 明确接受该序列。静态 fixture 仍采用
     最短的 `1-3`，它只证明两种 KA2 报文布局和 Tail 回填，不定义 Run 的调度节奏。
 - **重传幂等**：`[Mock]` 对相同 KA2 请求返回缓存响应，不重复推进 serial/Tail/计费。
-- **响应 type 关系**：首个 bootstrap Type1 请求接受响应 Type `1`、`2` 或 `6`；后续
-  Type1 仅接受 `1` 或 `2`；Type3 仅接受 `3` 或 `4`。serial 与 `28 00 0b` 固定字节始终
-  必须匹配。该关系也用于识别已发送交换的陈旧响应。
+- **响应 type/帧关系**：普通 `28 00 0b` 帧中，Type1 请求仅接受响应 Type `1` 或 `2`，
+  Type3 仅接受 `3` 或 `4`。只有首次 bootstrap Type1 接受特殊 `10 01 0b` 帧的 Type
+  `6`；即使 serial 回绕到零，后续 Type1 也不得接受。serial 必须匹配。该关系也用于
+  识别已发送交换的陈旧响应；结构完整但不兼容的特殊帧不得退化为 KA1 或超时。
 
 ## 6.1 响应扩展边界
 
@@ -410,7 +428,8 @@ Login 失败响应 opcode `0x05`，错误码在 byte 4 `[Mock]`（完整表）�
 | Login 330B 布局/MD5-A/B/C/MAC XOR/CRC | ✓ | — | ✓ | ✓ | Agreed |
 | CRC-1968 算法（1234/LE XOR/×1968/LE） | ✓ | — | ✓ | ✓ | Agreed |
 | KA1 38/42B、MD5-A、auth_info、BE timestamp | ✓ | — | ✓(42) | ✓ | Agreed |
-| KA2 40B 布局、serial 回绕、Tail `[16,20)` | ✓ | — | ✓ | ✓ | Agreed |
+| KA2 普通 `28 00 0b` 帧、serial 回绕、Tail `[16,20)` | ✓ | — | ✓ | ✓ | Agreed |
+| 首次 bootstrap Type1 的 `10 01 0b` Type 6 不回填 Tail | — | — | — | — | **Confirmed：脱敏 2026-07-27 校园观察；取代参考派生的无条件 Tail 解释** |
 | KA2 bootstrap 节奏 | 1-1-3 init + 每轮 1,3 | — | 每轮单 KA2 交替 | 接受两者 | **Conflict（mock 兼容）** |
 | KA2 计费字段解析 | 不解析 | — | 解析(/1024,/10000,/60) | 存原始 | **Unresolved 真实单位** |
 | Logout 80B 布局 | ✓ | — | ✓ | ✓ | Agreed |

@@ -195,6 +195,16 @@ func ka2RequestSerials(requests [][]byte) []byte {
 	return out
 }
 
+func ka2Requests(requests [][]byte) [][]byte {
+	var out [][]byte
+	for _, req := range requests {
+		if isKA2Req(req) {
+			out = append(out, req)
+		}
+	}
+	return out
+}
+
 func equalBytes(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
@@ -685,6 +695,8 @@ func TestTestPeerShutdownClosesSocketAndAwaitsGoroutine(t *testing.T) {
 // against an extended Logout response.
 func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 	authInfo := [16]byte{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
+	type2Tail := [4]byte{0x21, 0x22, 0x23, 0x24}
+	type4Tail := [4]byte{0x41, 0x42, 0x43, 0x44}
 	respond := func(req []byte) [][]byte {
 		switch {
 		case isChallengeReq(req):
@@ -695,17 +707,15 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 			return [][]byte{peerKA1ResponseVariant(72)}
 		case isKA2Req(req):
 			serial, reqType := req[1], req[5]
-			tail := [4]byte{serial, reqType, 0xaa, 0xbb}
 			switch {
 			case serial == 0:
-				// First bootstrap Type1: real server answered type 6 at 272 bytes.
-				return [][]byte{peerKA2ResponseVariant(serial, 6, tail, 272)}
+				// First bootstrap Type1: a fictional extended special-frame
+				// Type 6 acknowledges without refilling Tail.
+				return [][]byte{peerKA2BootstrapType6Response(serial, 272)}
 			case reqType == ka2Type1:
-				// Later Type1: real server answered type 2 at 40 bytes.
-				return [][]byte{peerKA2ResponseVariant(serial, 2, tail, 40)}
+				return [][]byte{peerKA2ResponseVariant(serial, 2, type2Tail, 40)}
 			default:
-				// Type3: real server answered type 4 at 40 bytes.
-				return [][]byte{peerKA2ResponseVariant(serial, 4, tail, 40)}
+				return [][]byte{peerKA2ResponseVariant(serial, 4, type4Tail, 40)}
 			}
 		case isLogoutReq(req):
 			return [][]byte{peerLogoutResponseVariant(25)}
@@ -738,6 +748,25 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 	if serials := ka2RequestSerials(peer.requests()); !equalBytes(serials, []byte{0, 1, 2, 3, 4}) {
 		t.Fatalf("ka2 request serials = %v, want [0 1 2 3 4]", serials)
 	}
+	ka2 := ka2Requests(peer.requests())
+	zeroTail := [4]byte{}
+	var firstTail, secondTail, bootstrapType3Tail, heartbeatType1Tail [4]byte
+	copy(firstTail[:], ka2[0][16:20])
+	copy(secondTail[:], ka2[1][16:20])
+	copy(bootstrapType3Tail[:], ka2[2][16:20])
+	copy(heartbeatType1Tail[:], ka2[3][16:20])
+	if firstTail != zeroTail {
+		t.Fatalf("first bootstrap Type1 Tail = %x, want zero", firstTail)
+	}
+	if secondTail != zeroTail {
+		t.Fatalf("second bootstrap Type1 Tail = %x, want zero after Type 6", secondTail)
+	}
+	if bootstrapType3Tail != type2Tail {
+		t.Fatalf("bootstrap Type3 Tail = %x, want Type 2 refill %x", bootstrapType3Tail, type2Tail)
+	}
+	if heartbeatType1Tail != type4Tail {
+		t.Fatalf("heartbeat Type1 Tail = %x, want Type 4 refill %x", heartbeatType1Tail, type4Tail)
+	}
 
 	cancel(protocol.AuthenticationProtocolRunCancellationCause{
 		CleanupRequirement: protocol.TerminateWithBestEffortLogout,
@@ -757,14 +786,14 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 	}
 }
 
-func TestRunType6CompatibilityUsesBootstrapFlagNotSerialValue(t *testing.T) {
-	response := peerKA2ResponseVariant(0, 6, [4]byte{1, 2, 3, 4}, 20)
+func TestRunExpectedBootstrapType6DoesNotBecomeNetworkTimeout(t *testing.T) {
+	response := peerKA2BootstrapType6Response(0, 20)
 	exec := newExecution(runDefinition{}, nil)
 	if _, err := exec.classifyKA2Response(0, ka2Type1, false)(response); err == nil {
 		t.Fatal("non-bootstrap serial-zero Type1 accepted Type6")
 	}
 	if got, err := exec.classifyKA2Response(0, ka2Type1, true)(response); err != nil || got != responseAccept {
-		t.Fatalf("bootstrap serial-zero Type1 = response %d, err %v; want accept", got, err)
+		t.Fatalf("expected special Type 6 classifier result = %d, err %v; want accept (not stale KA1 timeout)", got, err)
 	}
 }
 

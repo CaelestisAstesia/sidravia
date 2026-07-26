@@ -213,8 +213,9 @@ func (exec *execution) sendKA1(ctx context.Context) *runError {
 
 // sendKA2 builds and sends one KA2 request with the current serial and tail.
 // firstType1 selects the init version for the first Type1 packet. On an
-// accepted response it replaces Tail and increments the serial (wrapping at
-// 255).
+// accepted normal response it replaces Tail; a bootstrap Type 6 response
+// leaves Tail unchanged. Every accepted response increments the serial
+// (wrapping at 255).
 func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *runError {
 	serial := exec.serial
 	req, err := buildKA2Request(serial, typ, firstType1, exec.definition.cfg.keepAliveVersion, exec.tail, exec.definition.login.clientIPv4)
@@ -231,7 +232,9 @@ func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *
 	if err != nil {
 		return responseInvalidError("ka2 response", err)
 	}
-	exec.tail = parsed.tail
+	if parsed.tailRefill != nil {
+		exec.tail = *parsed.tailRefill
+	}
 	exec.serial++
 	return nil
 }
@@ -240,8 +243,8 @@ func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *
 // complete KA2 response provably belonging to an already-sent KA2 exchange.
 func (exec *execution) classifyKA1Response() responseClassifier {
 	return func(datagram []byte) (exchangeResponse, error) {
-		if serial, typ, ok := inspectKA2Response(datagram); ok {
-			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseTypeCompatible(sent.requestType, sent.firstBootstrapType1, typ) {
+		if serial, typ, frame, ok := inspectKA2Response(datagram); ok {
+			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseCompatible(sent.requestType, sent.firstBootstrapType1, typ, frame) {
 				return responseIgnore, nil
 			}
 			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for ka1", serial, typ)
@@ -262,8 +265,8 @@ func (exec *execution) classifyKA2Response(expectedSerial, expectedType byte, fi
 		if _, err := parseKA2Response(datagram, expectedSerial, expectedType, firstBootstrapType1); err == nil {
 			return responseAccept, nil
 		}
-		if serial, typ, ok := inspectKA2Response(datagram); ok {
-			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseTypeCompatible(sent.requestType, sent.firstBootstrapType1, typ) {
+		if serial, typ, frame, ok := inspectKA2Response(datagram); ok {
+			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseCompatible(sent.requestType, sent.firstBootstrapType1, typ, frame) {
 				return responseIgnore, nil
 			}
 			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for serial %d type %d", serial, typ, expectedSerial, expectedType)

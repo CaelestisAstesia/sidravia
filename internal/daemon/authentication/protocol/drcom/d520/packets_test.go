@@ -207,8 +207,8 @@ func TestKA2ResponseParse(t *testing.T) {
 		t.Fatalf("parse ka2 type1 response: %v", err)
 	}
 	want1 := mustHex4(t, doc.CryptoIntermediates.KA2TailType1.OutputHex)
-	if got1.tail != want1 {
-		t.Fatalf("ka2 type1 tail = %x, want %x", got1.tail, want1)
+	if got1.tailRefill == nil || *got1.tailRefill != want1 {
+		t.Fatalf("ka2 type1 tail refill = %v, want %x", got1.tailRefill, want1)
 	}
 
 	type3Resp := mustHex(t, exchange(t, doc, "ka2_type3").DeclaredResponseHex)
@@ -217,8 +217,8 @@ func TestKA2ResponseParse(t *testing.T) {
 		t.Fatalf("parse ka2 type3 response: %v", err)
 	}
 	want3 := mustHex4(t, doc.CryptoIntermediates.KA2TailType3.OutputHex)
-	if got3.tail != want3 {
-		t.Fatalf("ka2 type3 tail = %x, want %x", got3.tail, want3)
+	if got3.tailRefill == nil || *got3.tailRefill != want3 {
+		t.Fatalf("ka2 type3 tail refill = %v, want %x", got3.tailRefill, want3)
 	}
 }
 
@@ -258,6 +258,24 @@ func TestLogoutACKParse(t *testing.T) {
 	resp := mustHex(t, ex.DeclaredResponseHex)
 	if err := parseLogoutACK(resp); err != nil {
 		t.Fatalf("parse logout ack: %v", err)
+	}
+}
+
+func TestParseKA2BootstrapType6UsesSpecialFrameWithoutTailUpdate(t *testing.T) {
+	resp := syntheticResponse(64)
+	resp[0] = 0x07
+	resp[1] = 0x00
+	resp[2] = 0x10
+	resp[3] = 0x01
+	resp[4] = 0x0b
+	resp[5] = 0x06
+
+	got, err := parseKA2Response(resp, 0x00, ka2Type1, true)
+	if err != nil {
+		t.Fatalf("parse bootstrap Type 6 response: %v", err)
+	}
+	if got.tailRefill != nil {
+		t.Fatalf("bootstrap Type 6 exposed Tail refill %x, want none", *got.tailRefill)
 	}
 }
 
@@ -359,22 +377,23 @@ func TestResponseParsersAcceptStructuralVariants(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse 20-byte ka2 response: %v", err)
 		}
-		if got.tail != tail {
-			t.Fatalf("tail = %x, want %x", got.tail, tail)
+		if got.tailRefill == nil || *got.tailRefill != tail {
+			t.Fatalf("tail refill = %v, want %x", got.tailRefill, tail)
 		}
 
-		// Initial bootstrap Type1 request accepts response type 6 (272 bytes).
-		initial := peerKA2ResponseVariant(0x00, 6, tail, 272)
+		// Initial bootstrap Type1 accepts a special-frame Type 6 without a
+		// Tail refill, even when the bounded response has extensions.
+		initial := peerKA2BootstrapType6Response(0x00, 272)
 		parsedInitial, err := parseKA2Response(initial, 0x00, ka2Type1, true)
 		if err != nil {
 			t.Fatalf("parse 272-byte type 6 ka2 response: %v", err)
 		}
-		if parsedInitial.tail != tail {
-			t.Fatalf("tail = %x, want %x", parsedInitial.tail, tail)
+		if parsedInitial.tailRefill != nil {
+			t.Fatalf("bootstrap Type 6 tail refill = %x, want none", *parsedInitial.tailRefill)
 		}
 		initial[100] = 0x00
-		if parsedInitial.tail != tail {
-			t.Fatalf("parsed tail changed after extension mutation")
+		if parsedInitial.tailRefill != nil {
+			t.Fatal("extension mutation fabricated a Tail refill")
 		}
 
 		// Later Type1 request accepts response type 2 (40 bytes).
@@ -383,15 +402,30 @@ func TestResponseParsersAcceptStructuralVariants(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse 40-byte type 2 ka2 response: %v", err)
 		}
-		if parsedLater.tail != tail {
-			t.Fatalf("tail = %x, want %x", parsedLater.tail, tail)
+		if parsedLater.tailRefill == nil || *parsedLater.tailRefill != tail {
+			t.Fatalf("tail refill = %v, want %x", parsedLater.tailRefill, tail)
+		}
+		later[16] ^= 0xff
+		if *parsedLater.tailRefill != tail {
+			t.Fatal("normal response mutation changed parsed Tail refill")
 		}
 
 		// Type3 request accepts response type 4 (40 bytes).
 		type4 := peerKA2ResponseVariant(0x02, 4, tail, 40)
 		parsedType4, err := parseKA2Response(type4, 0x02, ka2Type3, false)
-		if _, err := parseKA2Response(peerKA2ResponseVariant(0x01, 6, tail, 40), 0x01, ka2Type1, false); err == nil {
-			t.Fatal("later Type1 accepted response type 6")
+		if _, err := parseKA2Response(peerKA2ResponseVariant(0x00, 6, tail, 40), 0x00, ka2Type1, true); err == nil {
+			t.Fatal("bootstrap Type1 accepted normal-framed Type 6")
+		}
+		if _, err := parseKA2Response(peerKA2BootstrapType6Response(0x00, 40), 0x00, ka2Type1, false); err == nil {
+			t.Fatal("later serial-zero Type1 accepted special Type 6")
+		}
+		if _, err := parseKA2Response(peerKA2BootstrapType6Response(0x02, 40), 0x02, ka2Type3, false); err == nil {
+			t.Fatal("Type3 accepted special Type 6")
+		}
+		specialType2 := peerKA2BootstrapType6Response(0x00, 40)
+		specialType2[5] = 2
+		if _, err := parseKA2Response(specialType2, 0x00, ka2Type1, true); err == nil {
+			t.Fatal("bootstrap Type1 accepted non-Type-6 special frame")
 		}
 		if _, err := parseKA2Response(peerKA2ResponseVariant(0x02, 1, tail, 40), 0x02, ka2Type3, false); err == nil {
 			t.Fatal("Type3 accepted response type 1")
@@ -399,8 +433,8 @@ func TestResponseParsersAcceptStructuralVariants(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse 40-byte type 4 ka2 response: %v", err)
 		}
-		if parsedType4.tail != tail {
-			t.Fatalf("tail = %x, want %x", parsedType4.tail, tail)
+		if parsedType4.tailRefill == nil || *parsedType4.tailRefill != tail {
+			t.Fatalf("tail refill = %v, want %x", parsedType4.tailRefill, tail)
 		}
 	})
 

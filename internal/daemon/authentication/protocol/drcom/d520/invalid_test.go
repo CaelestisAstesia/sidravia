@@ -386,10 +386,13 @@ func TestAliasSafety(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse ka2: %v", err)
 	}
-	tailBefore := ka2Parsed.tail
+	if ka2Parsed.tailRefill == nil {
+		t.Fatal("parsed normal KA2 response has no Tail refill")
+	}
+	tailBefore := *ka2Parsed.tailRefill
 	ka2Resp[16] = 0xff
-	if ka2Parsed.tail != tailBefore {
-		t.Fatalf("parsed tail changed after response mutation")
+	if *ka2Parsed.tailRefill != tailBefore {
+		t.Fatal("parsed Tail refill changed after response mutation")
 	}
 
 	// Builder: mutating the input after building must not change the packet.

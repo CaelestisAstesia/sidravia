@@ -237,6 +237,19 @@ func peerKA2ResponseVariant(serial, typ byte, tail [4]byte, length int) []byte {
 	return resp
 }
 
+// peerKA2BootstrapType6Response builds the special bootstrap acknowledgment.
+// It deliberately has no Tail argument because [16,20) is not a refill.
+func peerKA2BootstrapType6Response(serial byte, length int) []byte {
+	resp := syntheticResponse(length)
+	resp[0] = 0x07
+	resp[1] = serial
+	resp[2] = 0x10
+	resp[3] = 0x01
+	resp[4] = 0x0b
+	resp[5] = 0x06
+	return resp
+}
+
 // peerLogoutResponseVariant builds a synthetic extended Logout success
 // response: only the leading opcode byte is meaningful.
 func peerLogoutResponseVariant(length int) []byte {

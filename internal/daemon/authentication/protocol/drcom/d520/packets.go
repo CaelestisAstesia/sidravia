@@ -305,19 +305,32 @@ func isCompleteKA1Response(datagram []byte) bool {
 	return len(datagram) >= 1 && len(datagram) <= maxResponseDatagramLength && datagram[0] == 0x07
 }
 
-// inspectKA2Response reports a structurally framed KA2 response and returns
-// its echoed serial and unclassified type for phase-specific compatibility.
-func inspectKA2Response(datagram []byte) (serial, typ byte, ok bool) {
+type ka2ResponseFrame uint8
+
+const (
+	ka2ResponseFrameNormal  ka2ResponseFrame = 1
+	ka2ResponseFrameSpecial ka2ResponseFrame = 2
+)
+
+// inspectKA2Response reports a structurally framed normal or special KA2
+// response and returns its echoed serial and unclassified type for
+// phase-specific compatibility.
+func inspectKA2Response(datagram []byte) (serial, typ byte, frame ka2ResponseFrame, ok bool) {
 	if len(datagram) < 20 || len(datagram) > maxResponseDatagramLength {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	if datagram[0] != 0x07 {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	if datagram[2] != 0x28 || datagram[3] != 0x00 || datagram[4] != 0x0b {
-		return 0, 0, false
+	switch {
+	case datagram[2] == 0x28 && datagram[3] == 0x00 && datagram[4] == 0x0b:
+		frame = ka2ResponseFrameNormal
+	case datagram[2] == 0x10 && datagram[3] == 0x01 && datagram[4] == 0x0b:
+		frame = ka2ResponseFrameSpecial
+	default:
+		return 0, 0, 0, false
 	}
-	return datagram[1], datagram[5], true
+	return datagram[1], datagram[5], frame, true
 }
 
 // buildKA2Request builds the documented 40-byte KA2 request. serial is the
@@ -352,9 +365,10 @@ func buildKA2Request(serial, typ byte, firstType1 bool, keepAliveVersion [2]byte
 	return out, nil
 }
 
-// ka2Response carries the Tail extracted from a structurally complete KA2 response.
+// ka2Response carries an optional Tail refill. A nil refill means the response
+// acknowledges the exchange without changing the Run's current Tail.
 type ka2Response struct {
-	tail [4]byte
+	tailRefill *[4]byte
 }
 
 // parseKA2Response validates a structurally complete response and the
@@ -369,21 +383,31 @@ func parseKA2Response(resp []byte, expectedSerial, requestType byte, firstBootst
 	if resp[1] != expectedSerial {
 		return ka2Response{}, fmt.Errorf("ka2 response serial %d, expected %d", resp[1], expectedSerial)
 	}
-	if resp[2] != 0x28 || resp[3] != 0x00 || resp[4] != 0x0b {
-		return ka2Response{}, fmt.Errorf("ka2 response fixed bytes 0x%02x 0x%02x 0x%02x, expected 28 00 0b", resp[2], resp[3], resp[4])
+	_, responseType, frame, framed := inspectKA2Response(resp)
+	if !framed {
+		return ka2Response{}, fmt.Errorf("ka2 response fixed bytes 0x%02x 0x%02x 0x%02x are not a supported frame", resp[2], resp[3], resp[4])
 	}
-	if !ka2ResponseTypeCompatible(requestType, firstBootstrapType1, resp[5]) {
-		return ka2Response{}, fmt.Errorf("ka2 response type %d is incompatible with request type %d", resp[5], requestType)
+	if !ka2ResponseCompatible(requestType, firstBootstrapType1, responseType, frame) {
+		return ka2Response{}, fmt.Errorf("ka2 response type %d frame %d is incompatible with request type %d", responseType, frame, requestType)
+	}
+	if frame == ka2ResponseFrameSpecial {
+		return ka2Response{}, nil
 	}
 	var tail [4]byte
 	copy(tail[:], resp[16:20])
-	return ka2Response{tail: tail}, nil
+	return ka2Response{tailRefill: &tail}, nil
 }
 
-func ka2ResponseTypeCompatible(requestType byte, firstBootstrapType1 bool, responseType byte) bool {
+func ka2ResponseCompatible(requestType byte, firstBootstrapType1 bool, responseType byte, frame ka2ResponseFrame) bool {
+	if frame == ka2ResponseFrameSpecial {
+		return requestType == ka2Type1 && firstBootstrapType1 && responseType == 6
+	}
+	if frame != ka2ResponseFrameNormal {
+		return false
+	}
 	switch requestType {
 	case ka2Type1:
-		return responseType == 1 || responseType == 2 || (firstBootstrapType1 && responseType == 6)
+		return responseType == 1 || responseType == 2
 	case ka2Type3:
 		return responseType == 3 || responseType == 4
 	default:
