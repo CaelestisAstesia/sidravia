@@ -27,13 +27,35 @@ type defaultPaths struct {
 	runtimeInfo    string
 }
 
+type networkSnapshotSink interface {
+	ApplySystemNetworkSnapshot(context.Context, environment.Snapshot) error
+}
+
+type shutdownBoundary interface {
+	Close() error
+	Wait()
+}
+
 type composedRuntime struct {
-	observer   environment.Observer
-	app        *app.Application
-	sup        *supervisor.Supervisor
-	hostCfg    host.Config
-	hostRunner func(context.Context, host.Config) error
-	handler    server.Handler
+	observer     environment.Observer
+	snapshotSink networkSnapshotSink
+	shutdown     shutdownBoundary
+	hostCfg      host.Config
+	hostRunner   func(context.Context, host.Config) error
+	handler      server.Handler
+}
+
+type runtimeActivity uint8
+
+const (
+	runtimeActivityHost runtimeActivity = iota
+	runtimeActivityObserver
+	runtimeActivityDelivery
+)
+
+type runtimeActivityResult struct {
+	activity runtimeActivity
+	err      error
 }
 
 func deriveDefaultPaths() (defaultPaths, error) {
@@ -108,6 +130,12 @@ func composeObjectGraph(
 	productVersion string,
 	buildID string,
 ) (*composedRuntime, error) {
+	if ctx == nil {
+		return nil, errors.New("sidraviad: context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("sidraviad: context cancelled: %w", err)
+	}
 	if store == nil {
 		return nil, errors.New("sidraviad: store is required")
 	}
@@ -123,51 +151,53 @@ func composeObjectGraph(
 	if productVersion == "" || buildID == "" {
 		return nil, errors.New("sidraviad: product version and build ID are required")
 	}
+	if hostInfo.HostName == "" {
+		return nil, errors.New("sidraviad: host name is required")
+	}
+	for name, path := range map[string]string{
+		"profiles":       paths.profiles,
+		"configurations": paths.configurations,
+		"credentials":    paths.credentials,
+		"runtime info":   paths.runtimeInfo,
+	} {
+		if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return nil, fmt.Errorf("sidraviad: %s path must be absolute and clean", name)
+		}
+	}
 
 	registry, err := protocol.NewAuthenticationProtocolRegistry(d520.NewFactory())
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: create protocol registry: %w", err)
 	}
 
-	var sup *supervisor.Supervisor
-	sup = supervisor.New(supervisor.Dependencies{
-		RetryPolicy:    session.NewDefaultRetryPolicy(),
-		RetryScheduler: session.NewTimerRetryScheduler(),
-	})
-
 	profiles, err := configuration.LoadProfileCatalogFromDirectory(ctx, paths.profiles, registry)
 	if err != nil {
-		sup.Close()
-		sup.Wait()
 		return nil, fmt.Errorf("sidraviad: load profiles: %w", err)
 	}
 
 	catalog, err := configuration.OpenCatalog(ctx, store, paths.configurations)
 	if err != nil {
-		sup.Close()
-		sup.Wait()
 		return nil, fmt.Errorf("sidraviad: open catalog: %w", err)
 	}
 
 	credStore, err := credentials.OpenStore(ctx, store, paths.credentials)
 	if err != nil {
-		sup.Close()
-		sup.Wait()
 		return nil, fmt.Errorf("sidraviad: open credentials: %w", err)
 	}
 
+	sup := supervisor.New(supervisor.Dependencies{
+		RetryPolicy:    session.NewDefaultRetryPolicy(),
+		RetryScheduler: session.NewTimerRetryScheduler(),
+	})
+
 	resolver, err := app.NewAuthenticationResolver(catalog, profiles, credStore, registry, hostInfo)
 	if err != nil {
-		sup.Close()
-		sup.Wait()
-		return nil, fmt.Errorf("sidraviad: create resolver: %w", err)
+		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create resolver: %w", err))
 	}
 
 	application, err := app.NewApplication(catalog, resolver, sup)
 	if err != nil {
-		sup.Close()
-		sup.Wait()
-		return nil, fmt.Errorf("sidraviad: create application: %w", err)
+		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create application: %w", err))
 	}
 
 	handler := app.IPCHandler(application, productVersion, buildID)
@@ -182,83 +212,115 @@ func composeObjectGraph(
 	}
 
 	return &composedRuntime{
-		observer:   observer,
-		app:        application,
-		sup:        sup,
-		hostCfg:    hostCfg,
-		hostRunner: hostRunner,
-		handler:    handler,
+		observer:     observer,
+		snapshotSink: application,
+		shutdown:     sup,
+		hostCfg:      hostCfg,
+		hostRunner:   hostRunner,
+		handler:      handler,
 	}, nil
+}
+
+func closeAfterCompositionFailure(shutdown shutdownBoundary, cause error) error {
+	closeErr := shutdown.Close()
+	shutdown.Wait()
+	if closeErr != nil {
+		return errors.Join(cause, fmt.Errorf("sidraviad: supervisor close after composition failure: %w", closeErr))
+	}
+	return cause
 }
 
 func (rt *composedRuntime) run(ctx context.Context) error {
 	if ctx == nil {
-		rt.sup.Close()
-		rt.sup.Wait()
-		return errors.New("sidraviad: nil context")
+		return rt.closeAndWait(errors.New("sidraviad: nil context"))
 	}
 	if err := ctx.Err(); err != nil {
-		rt.sup.Close()
-		rt.sup.Wait()
-		return nil
+		return rt.closeAndWait(nil)
 	}
 
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	hostDone := make(chan error, 1)
-	observerDone := make(chan error, 1)
-	deliveryDone := make(chan error, 1)
 	snapshotCh := make(chan environment.Snapshot, 1)
+	results := make(chan runtimeActivityResult, 3)
 
 	go func() {
-		hostDone <- rt.hostRunner(childCtx, rt.hostCfg)
+		results <- runtimeActivityResult{
+			activity: runtimeActivityHost,
+			err:      rt.hostRunner(childCtx, rt.hostCfg),
+		}
 	}()
 
 	go func() {
-		observerDone <- rt.observer.Observe(childCtx, snapshotCh)
+		results <- runtimeActivityResult{
+			activity: runtimeActivityObserver,
+			err:      rt.observer.Observe(childCtx, snapshotCh),
+		}
 	}()
 
 	go func() {
-		deliveryDone <- rt.deliverSnapshots(childCtx, snapshotCh)
+		results <- runtimeActivityResult{
+			activity: runtimeActivityDelivery,
+			err:      rt.deliverSnapshots(childCtx, snapshotCh),
+		}
 	}()
 
 	var initiator error
+	received := 0
 	select {
-	case err := <-hostDone:
-		if err != nil {
-			initiator = fmt.Errorf("sidraviad: host: %w", err)
-		}
-	case err := <-observerDone:
-		if err != nil {
-			initiator = fmt.Errorf("sidraviad: observer: %w", err)
-		}
-	case err := <-deliveryDone:
-		if err != nil {
-			initiator = fmt.Errorf("sidraviad: snapshot delivery: %w", err)
-		}
+	case <-ctx.Done():
+	case result := <-results:
+		received = 1
+		initiator = classifyRuntimeResult(ctx, result)
 	}
 
 	cancel()
 
-	for i := 0; i < 2; i++ {
-		select {
-		case <-hostDone:
-		case <-observerDone:
-		case <-deliveryDone:
-		}
+	for received < 3 {
+		<-results
+		received++
 	}
 
-	if closeErr := rt.sup.Close(); closeErr != nil {
-		if initiator != nil {
-			initiator = errors.Join(initiator, fmt.Errorf("sidraviad: supervisor close: %w", closeErr))
-		} else {
-			initiator = fmt.Errorf("sidraviad: supervisor close: %w", closeErr)
-		}
-	}
-	rt.sup.Wait()
+	return rt.closeAndWait(initiator)
+}
 
-	return initiator
+func classifyRuntimeResult(ctx context.Context, result runtimeActivityResult) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+
+	switch result.activity {
+	case runtimeActivityHost:
+		if result.err == nil {
+			return nil
+		}
+		return fmt.Errorf("sidraviad: host: %w", result.err)
+	case runtimeActivityObserver:
+		if result.err == nil {
+			return errors.New("sidraviad: observer stopped unexpectedly")
+		}
+		return fmt.Errorf("sidraviad: observer: %w", result.err)
+	case runtimeActivityDelivery:
+		if result.err == nil {
+			return errors.New("sidraviad: snapshot delivery stopped unexpectedly")
+		}
+		return fmt.Errorf("sidraviad: snapshot delivery: %w", result.err)
+	default:
+		return errors.New("sidraviad: unknown runtime activity stopped")
+	}
+}
+
+func (rt *composedRuntime) closeAndWait(initiator error) error {
+	closeErr := rt.shutdown.Close()
+	rt.shutdown.Wait()
+	if closeErr == nil {
+		return initiator
+	}
+	wrapped := fmt.Errorf("sidraviad: supervisor close: %w", closeErr)
+	if initiator != nil {
+		return errors.Join(initiator, wrapped)
+	}
+	return wrapped
 }
 
 func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-chan environment.Snapshot) error {
@@ -270,7 +332,10 @@ func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-ch
 			if !ok {
 				return nil
 			}
-			if err := rt.app.ApplySystemNetworkSnapshot(ctx, snapshot); err != nil {
+			if err := rt.snapshotSink.ApplySystemNetworkSnapshot(ctx, snapshot); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
 				return fmt.Errorf("deliver snapshot: %w", err)
 			}
 		}

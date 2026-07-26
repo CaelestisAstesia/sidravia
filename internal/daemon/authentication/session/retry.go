@@ -55,25 +55,11 @@ func (c *timerRetryCancellation) Cancel() {
 }
 
 func (timerRetryScheduler) Schedule(delay time.Duration, callback func()) RetryCancellation {
-	timer := time.NewTimer(delay)
-	done := make(chan struct{})
+	timer := time.AfterFunc(delay, callback)
 	cancellation := &timerRetryCancellation{
 		cancel: func() {
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			close(done)
+			timer.Stop()
 		},
 	}
-	go func() {
-		select {
-		case <-timer.C:
-			callback()
-		case <-done:
-		}
-	}()
 	return cancellation
 }

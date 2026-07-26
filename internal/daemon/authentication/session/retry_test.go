@@ -545,11 +545,11 @@ func TestDefaultRetryPolicyIgnoresConsecutiveFailures(t *testing.T) {
 	}
 }
 
-func TestTimerRetrySchedulerInvokesCallback(t *testing.T) {
+func TestTimerRetrySchedulerInvokesCallbackExactlyOnce(t *testing.T) {
 	scheduler := NewTimerRetryScheduler()
-	called := make(chan struct{}, 1)
+	called := make(chan struct{}, 2)
 
-	scheduler.Schedule(50*time.Millisecond, func() {
+	cancellation := scheduler.Schedule(20*time.Millisecond, func() {
 		called <- struct{}{}
 	})
 
@@ -558,13 +558,19 @@ func TestTimerRetrySchedulerInvokesCallback(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timer callback was not invoked within timeout")
 	}
+	cancellation.Cancel()
+	select {
+	case <-called:
+		t.Fatal("timer callback was invoked more than once")
+	case <-time.After(100 * time.Millisecond):
+	}
 }
 
 func TestTimerRetrySchedulerCancellationPreventsCallback(t *testing.T) {
 	scheduler := NewTimerRetryScheduler()
 	called := make(chan struct{}, 1)
 
-	cancellation := scheduler.Schedule(500*time.Millisecond, func() {
+	cancellation := scheduler.Schedule(time.Second, func() {
 		called <- struct{}{}
 	})
 	cancellation.Cancel()
@@ -572,7 +578,7 @@ func TestTimerRetrySchedulerCancellationPreventsCallback(t *testing.T) {
 	select {
 	case <-called:
 		t.Fatal("cancelled timer still invoked callback")
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
@@ -580,17 +586,29 @@ func TestTimerRetrySchedulerRepeatedCancellationIsSafe(t *testing.T) {
 	scheduler := NewTimerRetryScheduler()
 	called := make(chan struct{}, 1)
 
-	cancellation := scheduler.Schedule(500*time.Millisecond, func() {
+	cancellation := scheduler.Schedule(time.Second, func() {
 		called <- struct{}{}
 	})
 
-	for i := 0; i < 10; i++ {
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			cancellation.Cancel()
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for i := 0; i < 8; i++ {
 		cancellation.Cancel()
 	}
 
 	select {
 	case <-called:
 		t.Fatal("repeatedly cancelled timer still invoked callback")
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
 }

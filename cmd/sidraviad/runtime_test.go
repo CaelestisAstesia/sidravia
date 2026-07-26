@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -57,12 +59,14 @@ func (s *inMemoryStore) wasOpened(path string) bool {
 }
 
 type fakeObserver struct {
-	mu        sync.Mutex
-	snapshots []environment.Snapshot
-	done      chan struct{}
-	started   chan struct{}
-	err       error
-	block     bool
+	mu                 sync.Mutex
+	snapshots          []environment.Snapshot
+	done               chan struct{}
+	started            chan struct{}
+	afterPublish       <-chan struct{}
+	err                error
+	block              bool
+	returnContextError bool
 }
 
 func newFakeObserver() *fakeObserver {
@@ -74,11 +78,8 @@ func newFakeObserver() *fakeObserver {
 }
 
 func (o *fakeObserver) Observe(ctx context.Context, output chan<- environment.Snapshot) error {
+	defer close(o.done)
 	close(o.started)
-	if o.err != nil {
-
-		return o.err
-	}
 	o.mu.Lock()
 	snapshots := make([]environment.Snapshot, len(o.snapshots))
 	copy(snapshots, o.snapshots)
@@ -90,10 +91,23 @@ func (o *fakeObserver) Observe(ctx context.Context, output chan<- environment.Sn
 			return nil
 		}
 	}
+	if o.afterPublish != nil {
+		select {
+		case <-o.afterPublish:
+		case <-ctx.Done():
+			if o.returnContextError {
+				return ctx.Err()
+			}
+			return nil
+		}
+	}
 	if o.block {
 		<-ctx.Done()
+		if o.returnContextError {
+			return ctx.Err()
+		}
 	}
-	return nil
+	return o.err
 }
 
 func (o *fakeObserver) addSnapshot(s environment.Snapshot) {
@@ -103,28 +117,31 @@ func (o *fakeObserver) addSnapshot(s environment.Snapshot) {
 }
 
 type fakeHostRunner struct {
-	mu      sync.Mutex
-	called  bool
-	cfg     *host.Config
-	done    chan error
-	started chan struct{}
+	mu       sync.Mutex
+	called   bool
+	cfg      *host.Config
+	release  chan error
+	started  chan struct{}
+	finished chan struct{}
 }
 
 func newFakeHostRunner() *fakeHostRunner {
 	return &fakeHostRunner{
-		done:    make(chan error, 1),
-		started: make(chan struct{}),
+		release:  make(chan error, 1),
+		started:  make(chan struct{}),
+		finished: make(chan struct{}),
 	}
 }
 
 func (r *fakeHostRunner) run(ctx context.Context, cfg host.Config) error {
+	defer close(r.finished)
 	r.mu.Lock()
 	r.called = true
 	r.cfg = &cfg
 	r.mu.Unlock()
 	close(r.started)
 	select {
-	case err := <-r.done:
+	case err := <-r.release:
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
@@ -138,7 +155,7 @@ func (r *fakeHostRunner) wasCalled() bool {
 }
 
 func (r *fakeHostRunner) signalDone(err error) {
-	r.done <- err
+	r.release <- err
 }
 
 func testPaths(t *testing.T) defaultPaths {
@@ -225,8 +242,8 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 		t.Fatalf("composeObjectGraph() error = %v", err)
 	}
 	defer func() {
-		rt.sup.Close()
-		rt.sup.Wait()
+		rt.shutdown.Close()
+		rt.shutdown.Wait()
 	}()
 
 	ctx := context.Background()
@@ -284,15 +301,17 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		t.Fatalf("composeObjectGraph() error = %v", err)
 	}
 	defer func() {
-		rt.sup.Close()
-		rt.sup.Wait()
+		rt.shutdown.Close()
+		rt.shutdown.Wait()
 	}()
 
+	usernameMarker := "fictional-user-7B2F0D91"
+	passwordMarker := "fictional-password-4A8C6E13"
 	startPayload, _ := json.Marshal(contract.SessionStartOneShotPayload{
 		DisplayName:              "Test Session",
 		InstitutionProfileID:     "jlu",
-		Username:                 "testuser",
-		Password:                 "testpass",
+		Username:                 usernameMarker,
+		Password:                 passwordMarker,
 		NetworkBindingPolicyMode: "automatically_select_latest_available",
 		ProtocolContextOverride:  json.RawMessage(`{}`),
 	})
@@ -301,6 +320,12 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	result, rpcErr := rt.handler(ctx, contract.MethodSessionStartOneShot, startPayload)
 	if rpcErr != nil {
 		t.Fatalf("session.startOneShot error: %v", rpcErr)
+	}
+	if bytes.Contains(result, []byte(usernameMarker)) {
+		t.Fatal("raw session.startOneShot response contains full username marker")
+	}
+	if bytes.Contains(result, []byte(passwordMarker)) {
+		t.Fatal("raw session.startOneShot response contains password marker")
 	}
 
 	var sessionResult contract.SessionResult
@@ -319,7 +344,7 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	if sessionResult.AccountLabel == "" {
 		t.Fatal("session.AccountLabel is empty")
 	}
-	if sessionResult.AccountLabel == "testuser" {
+	if sessionResult.AccountLabel == usernameMarker {
 		t.Fatal("session.AccountLabel contains raw username")
 	}
 
@@ -363,244 +388,326 @@ func TestCompositionFailsOnInvalidProfile(t *testing.T) {
 	if hostRunner.wasCalled() {
 		t.Fatal("host runner was called despite invalid profile")
 	}
+	select {
+	case <-observer.started:
+		t.Fatal("observer Observe method started despite invalid profile")
+	default:
+	}
 }
 
-func TestRuntimeLifecycleHostReturnsNilOnNormalShutdown(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+type fakeSnapshotSink struct {
+	mu                  sync.Mutex
+	snapshots           []environment.Snapshot
+	started             chan struct{}
+	done                chan struct{}
+	startOnce           sync.Once
+	doneOnce            sync.Once
+	err                 error
+	waitForCancellation bool
+}
 
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
+func newFakeSnapshotSink() *fakeSnapshotSink {
+	return &fakeSnapshotSink{
+		started: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+}
+
+func (sink *fakeSnapshotSink) ApplySystemNetworkSnapshot(ctx context.Context, snapshot environment.Snapshot) error {
+	sink.mu.Lock()
+	sink.snapshots = append(sink.snapshots, snapshot)
+	sink.mu.Unlock()
+	sink.startOnce.Do(func() { close(sink.started) })
+	defer sink.doneOnce.Do(func() { close(sink.done) })
+	if sink.waitForCancellation {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return sink.err
+}
+
+type fakeShutdown struct {
+	mu                 sync.Mutex
+	closeErr           error
+	closeCount         int
+	waitCount          int
+	order              []string
+	activityDone       []<-chan struct{}
+	allDoneBeforeClose bool
+}
+
+func (shutdown *fakeShutdown) Close() error {
+	shutdown.mu.Lock()
+	defer shutdown.mu.Unlock()
+	shutdown.closeCount++
+	shutdown.order = append(shutdown.order, "close")
+	shutdown.allDoneBeforeClose = true
+	for _, done := range shutdown.activityDone {
+		select {
+		case <-done:
+		default:
+			shutdown.allDoneBeforeClose = false
+		}
+	}
+	return shutdown.closeErr
+}
+
+func (shutdown *fakeShutdown) Wait() {
+	shutdown.mu.Lock()
+	defer shutdown.mu.Unlock()
+	shutdown.waitCount++
+	shutdown.order = append(shutdown.order, "wait")
+}
+
+func newLifecycleRuntime(
+	observer *fakeObserver,
+	hostRunner *fakeHostRunner,
+	sink *fakeSnapshotSink,
+	shutdown *fakeShutdown,
+) *composedRuntime {
+	return &composedRuntime{
+		observer:     observer,
+		snapshotSink: sink,
+		shutdown:     shutdown,
+		hostRunner:   hostRunner.run,
+	}
+}
+
+func runRuntime(rt *composedRuntime, ctx context.Context) <-chan error {
+	result := make(chan error, 1)
+	go func() {
+		result <- rt.run(ctx)
+	}()
+	return result
+}
+
+func waitForSignal(t *testing.T, signal <-chan struct{}, name string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s", name)
+	}
+}
+
+func waitForRuntimeResult(t *testing.T, result <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for runtime")
+		return nil
+	}
+}
+
+func assertSignalOpen(t *testing.T, signal <-chan struct{}, name string) {
+	t.Helper()
+	select {
+	case <-signal:
+		t.Fatalf("%s unexpectedly started", name)
+	default:
+	}
+}
+
+func assertShutdown(t *testing.T, shutdown *fakeShutdown) {
+	t.Helper()
+	shutdown.mu.Lock()
+	defer shutdown.mu.Unlock()
+	if shutdown.closeCount != 1 || shutdown.waitCount != 1 {
+		t.Fatalf("shutdown counts = Close %d, Wait %d; want one each", shutdown.closeCount, shutdown.waitCount)
+	}
+	if len(shutdown.order) != 2 || shutdown.order[0] != "close" || shutdown.order[1] != "wait" {
+		t.Fatalf("shutdown order = %v, want [close wait]", shutdown.order)
+	}
+	if !shutdown.allDoneBeforeClose {
+		t.Fatal("shutdown Close ran before every started activity returned")
+	}
+}
+
+func newCoordinatedLifecycle(t *testing.T) (*composedRuntime, *fakeObserver, *fakeHostRunner, *fakeSnapshotSink, *fakeShutdown) {
+	t.Helper()
 	observer := newFakeObserver()
 	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
+	sink := newFakeSnapshotSink()
+	sink.waitForCancellation = true
+	observer.addSnapshot(environment.NewSnapshot(1, time.Unix(100, 0), nil))
+	shutdown := &fakeShutdown{
+		activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done},
 	}
+	return newLifecycleRuntime(observer, hostRunner, sink, shutdown), observer, hostRunner, sink, shutdown
+}
 
+func TestRuntimeLifecycleHostReturnsNilAfterOrderedSnapshotDelivery(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+	waitForSignal(t, sink.started, "snapshot delivery")
 	hostRunner.signalDone(nil)
 
-	ctx := context.Background()
-	if err := rt.run(ctx); err != nil {
-		t.Fatalf("run() error = %v, want nil on normal shutdown", err)
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("run() error = %v, want nil on normal host shutdown", err)
 	}
+	waitForSignal(t, hostRunner.finished, "host completion")
+	waitForSignal(t, observer.done, "observer completion")
+	waitForSignal(t, sink.done, "delivery completion")
+	assertShutdown(t, shutdown)
 }
 
 func TestRuntimeLifecycleHostFailureCancelsOthers(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
-	}
-
-	hostErr := errors.New("host failure")
+	rt, _, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	hostErr := errors.New("host failure sentinel")
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, sink.started, "snapshot delivery")
 	hostRunner.signalDone(hostErr)
 
-	ctx := context.Background()
-	err = rt.run(ctx)
-	if err == nil {
-		t.Fatal("run() expected error for host failure")
+	err := waitForRuntimeResult(t, result)
+	if !errors.Is(err, hostErr) {
+		t.Fatalf("run() error = %v, want host sentinel in error chain", err)
 	}
+	assertShutdown(t, shutdown)
 }
 
-func TestRuntimeLifecycleObserverFailureCancelsHost(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	observer.err = errors.New("observer failure")
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
-	}
-
-	ctx := context.Background()
-	err = rt.run(ctx)
-	if err == nil {
-		t.Fatal("run() expected error for observer failure")
-	}
-	if !hostRunner.wasCalled() {
-		t.Fatal("host runner was not called")
-	}
-}
-
-func TestRuntimeLifecycleSnapshotDeliveryFailureCancelsOthers(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
-	}
-
+func TestRuntimeLifecycleObserverFailurePreservesCause(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	observerErr := errors.New("observer failure sentinel")
 	observer.block = false
+	observer.err = observerErr
+	observer.afterPublish = sink.started
 
-	ctx := context.Background()
-	err = rt.run(ctx)
-	if err != nil {
-		t.Fatalf("run() unexpected error: %v", err)
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	err := waitForRuntimeResult(t, result)
+	if !errors.Is(err, observerErr) {
+		t.Fatalf("run() error = %v, want observer sentinel in error chain", err)
 	}
+	assertShutdown(t, shutdown)
 }
 
-func TestRuntimeLifecycleAlreadyCanceledContextStartsNothing(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+func TestRuntimeLifecycleObserverNilWhileActiveFails(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	observer.block = false
+	observer.afterPublish = sink.started
 
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	err := waitForRuntimeResult(t, result)
+	if err == nil {
+		t.Fatal("run() expected error when observer stopped while context remained active")
 	}
+	if !strings.Contains(err.Error(), "observer stopped unexpectedly") {
+		t.Fatalf("run() error = %q, want unexpected observer stop", err)
+	}
+	assertShutdown(t, shutdown)
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
+func TestRuntimeLifecycleInvalidCallerContextsStartNothingAndShutDown(t *testing.T) {
+	canceledCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if err := rt.run(ctx); err != nil {
-		t.Fatalf("run() with cancelled context error = %v, want nil", err)
-	}
+	for _, test := range []struct {
+		name      string
+		ctx       context.Context
+		wantError bool
+	}{
+		{name: "nil", ctx: nil, wantError: true},
+		{name: "already canceled", ctx: canceledCtx},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			observer := newFakeObserver()
+			hostRunner := newFakeHostRunner()
+			sink := newFakeSnapshotSink()
+			shutdown := &fakeShutdown{}
+			rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown)
 
-	if hostRunner.wasCalled() {
-		t.Fatal("host runner was called with cancelled context")
-	}
-}
-
-func TestRuntimeLifecycleNilContextStillShutsDown(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
-	}
-
-	err = rt.run(nil)
-	if err == nil {
-		t.Fatal("run(nil) expected error")
-	}
-
-	if hostRunner.wasCalled() {
-		t.Fatal("host runner was called with nil context")
+			err := rt.run(test.ctx)
+			if test.wantError && err == nil {
+				t.Fatal("run() expected a nil-context error")
+			}
+			if !test.wantError && err != nil {
+				t.Fatalf("run() error = %v, want nil", err)
+			}
+			assertSignalOpen(t, hostRunner.started, "host")
+			assertSignalOpen(t, observer.started, "observer")
+			assertSignalOpen(t, sink.started, "snapshot delivery")
+			assertShutdown(t, shutdown)
+		})
 	}
 }
 
-func TestRuntimeLifecycleSnapshotReachesSinkBeforeHostReturn(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+func TestRuntimeLifecycleExternalCancellationIsAlwaysNormal(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	observer.returnContextError = true
+	ctx, cancel := context.WithCancel(context.Background())
 
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
+	result := runRuntime(rt, ctx)
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+	waitForSignal(t, sink.started, "snapshot delivery")
+	cancel()
 
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("run() error = %v, want nil after external cancellation", err)
+	}
+	assertShutdown(t, shutdown)
+}
+
+func TestRuntimeLifecycleSnapshotDeliveryFailurePreservesCause(t *testing.T) {
 	observer := newFakeObserver()
-	observer.block = false
-	observer.addSnapshot(environment.NewSnapshot(1, time.Now(), nil))
-
 	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
+	sink := newFakeSnapshotSink()
+	deliveryErr := errors.New("snapshot delivery failure sentinel")
+	sink.err = deliveryErr
+	observer.addSnapshot(environment.NewSnapshot(1, time.Unix(100, 0), nil))
+	shutdown := &fakeShutdown{
+		activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done},
 	}
+	rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown)
 
-	hostRunner.signalDone(nil)
-
-	ctx := context.Background()
-	if err := rt.run(ctx); err != nil {
-		t.Fatalf("run() error = %v", err)
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	err := waitForRuntimeResult(t, result)
+	if !errors.Is(err, deliveryErr) {
+		t.Fatalf("run() error = %v, want delivery sentinel in error chain", err)
 	}
+	assertShutdown(t, shutdown)
+}
+
+func TestRuntimeLifecycleShutdownCloseErrorIsReturnedAndJoined(t *testing.T) {
+	closeErr := errors.New("shutdown close failure sentinel")
+
+	t.Run("normal trigger", func(t *testing.T) {
+		rt, _, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+		shutdown.closeErr = closeErr
+		result := runRuntime(rt, context.Background())
+		waitForSignal(t, hostRunner.started, "host start")
+		waitForSignal(t, sink.started, "snapshot delivery")
+		hostRunner.signalDone(nil)
+
+		err := waitForRuntimeResult(t, result)
+		if !errors.Is(err, closeErr) {
+			t.Fatalf("run() error = %v, want close sentinel", err)
+		}
+		assertShutdown(t, shutdown)
+	})
+
+	t.Run("fatal trigger", func(t *testing.T) {
+		rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+		observerErr := errors.New("observer failure joined with close")
+		observer.block = false
+		observer.err = observerErr
+		observer.afterPublish = sink.started
+		shutdown.closeErr = closeErr
+		result := runRuntime(rt, context.Background())
+		waitForSignal(t, hostRunner.started, "host start")
+
+		err := waitForRuntimeResult(t, result)
+		if !errors.Is(err, observerErr) || !errors.Is(err, closeErr) {
+			t.Fatalf("run() error = %v, want observer and close sentinels", err)
+		}
+		assertShutdown(t, shutdown)
+	})
 }
