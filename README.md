@@ -12,15 +12,18 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 仓库已经实现并自动验证：
 
 - CLI/daemon 状态通信骨架；
+- `auth start/status/stop` 一次性认证命令、Windows 隐藏密码输入和
+  `--password-stdin`；
 - typed 一次性 Session 启动、停止和查询的应用边界；
 - Session、Supervisor、网络快照分发与单活动 Session 规则；
 - Dr.COM 5.2.0(D) 报文、Factory 和阻塞式认证 Run；
 - 本地可编辑机构 Profile 的严格一次性加载；
+- 生产 daemon 的 D520 注册、Profile 加载、Windows Environment Observer、typed IPC
+  和统一生命周期；
 - Windows JSON 文件 ACL 与原子持久化基础。
 
-真实 Windows Environment Detector 的代码和自动验证已经完成，但尚未接入生产 daemon，
-也未在 Windows 原生环境读取真实网卡。D520 Factory 的生产注册、认证命令行入口和
-`cmd/sidraviad` 完整装配仍未完成。自动测试也不等同于真实校园网络验证。
+Windows 原生双进程、真实网卡观察和校园 D520 认证尚未现场验证；仓库也不包含真实
+`jlu.json`。代码完成、自动测试通过和真实校园网络验证是不同状态。
 
 长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
 [当前架构](docs/architecture.md)。

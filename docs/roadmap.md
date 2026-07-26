@@ -19,7 +19,9 @@ app、Supervisor 和新旧 Session；应用层名称已在生产装配前收敛�
 `<InstitutionProfileID>.json`，并在进入 Catalog 前交给已注册协议 Factory 验证。
 生产 `sidraviad` 现已注册 D520、加载 Profile、打开 Configuration/Credential 存储、
 接入真实 Environment Observer、typed IPC 与统一生命周期；代码、race 检查和完整 Go
-verifier 已通过。
+verifier 已通过。首套 `auth start/status/stop` CLI、Windows 隐藏密码输入、
+`--password-stdin` 和共享 Session Snapshot 输出也已完成并通过聚焦测试、race 与
+Windows amd64 交叉编译。
 
 | 阶段 | 当前状态 | 进入下一阶段前必须观察到的结果 |
 |---|---|---|
@@ -29,7 +31,7 @@ verifier 已通过。
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 代码和自动验证完成，校园现场待验 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
 | 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
-| 6. Windows 产品纵向链路 | 部分完成：daemon 纵向链路完成，CLI 认证入口和现场运行待完成 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路 |
+| 6. Windows 产品纵向链路 | 代码和自动验证完成，Windows 原生现场待验 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路 |
 | 7. 校园网络验证 | 未开始 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
 阶段 3 的第一个切片已经完成：typed 一次性输入可以在 daemon app 中解析为现有
@@ -56,8 +58,9 @@ Session 分发，并保证新 Session 返回初始 Snapshot 前已得到最新�
 Configuration/Credential 存储，构造 Supervisor、Resolver、Application 和 typed IPC，
 并统一拥有 host、Environment Observer、Snapshot 转交和最终 Supervisor 清理。并发
 Review 修正了外部取消、Observer 提前返回、timer goroutine、活动等待和并发故障保留；
-当前代码和自动验证完成，真实 `jlu.json`、CLI authentication 命令和 Windows/校园现场
-仍未完成。
+当前代码和自动验证完成。首套 CLI authentication 命令随后也已完成：用户可以用
+一次性 Profile ID、用户名和安全密码输入启动 Session，并查询或停止它。真实
+`jlu.json` 与 Windows/校园现场仍未完成。
 
 人类已选择直接实现真实 Go Dr.COM 5.2.0(D)，不在产品中加入假协议。参考收敛已经完成：
 线级规范、来源冲突和虚构确定性向量已经进入
@@ -124,9 +127,9 @@ Stage 3 的纯代码切片。
 阶段 5 再补齐 Configuration CRUD、Credential 写入/替换/删除和真实 Windows Environment Detector。按 `ConfigurationID` 启动与一次性启动必须生成同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作这些模块。daemon 仍不提供读取凭据明文的操作。
 
 阶段 6 已将 typed Session handler、D520 Factory/Profile 和真实 Environment Detector
-接入生产 daemon，并补齐统一取消、等待和正常退出。下一步为 CLI 安全密码输入及
-authentication 命令，再进行 Windows 一次性认证纵向运行。登录后自启动可以随后加入；
-Service、管理员权限和登录前认证仍然可以推迟。
+接入生产 daemon，并补齐统一取消、等待和正常退出。CLI 安全密码输入及
+authentication 命令也已完成；下一步是在 Windows 原生环境运行一次性认证纵向链路。
+登录后自启动可以随后加入；Service、管理员权限和登录前认证仍然可以推迟。
 机构 Profile 从本地可编辑文件加载，而不是作为机构专用常量编译进程序；普通认证 IPC
 仍只引用 Profile ID。首版每个 `<InstitutionProfileID>.json` 对应一个 Profile，使用
 `jlu` 这类简短 ID；修改后重启 daemon 生效，不做热重载。
