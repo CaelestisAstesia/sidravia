@@ -286,6 +286,13 @@ Session 的公开 Snapshot，`auth stop` 停止 Session 并按协议要求执行
 `login`/`logout` 兼容别名；面向普通用户的 GUI 可以使用“登录/退出”文案，而不改变
 底层 CLI 和 Session 语义。
 
+`auth start` 在 daemon 成功创建 Session 后立即打印返回的初始公开 Snapshot 和
+SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而停止 daemon 中继续保活或
+重试的 Session。用户使用 `auth status <session-id>` 读取后续权威状态。首版不增加
+`--wait`；以后需要持续观察时，应通过 Session Snapshot 事件提供独立的
+`auth watch <session-id>`，而不是让 `auth start` 隐式变成长时间附着命令或跟随日志
+文件。
+
 ## Dr.COM 5.2.0(D) Run 内部边界
 
 Session 是产品层认证状态机。它拥有意图、公开状态、网络变化、取消、重连调度和
