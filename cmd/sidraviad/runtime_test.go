@@ -655,6 +655,25 @@ func TestRuntimeLifecycleExternalCancellationIsAlwaysNormal(t *testing.T) {
 	assertShutdown(t, shutdown)
 }
 
+func TestRuntimeLifecycleExternalCancellationPreservesNonCancellationFailure(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	observerErr := errors.New("observer failure concurrent with caller cancellation")
+	observer.err = observerErr
+	ctx, cancel := context.WithCancel(context.Background())
+
+	result := runRuntime(rt, ctx)
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+	waitForSignal(t, sink.started, "snapshot delivery")
+	cancel()
+
+	err := waitForRuntimeResult(t, result)
+	if !errors.Is(err, observerErr) {
+		t.Errorf("run() error = %v, want concurrent observer sentinel in error chain", err)
+	}
+	assertShutdown(t, shutdown)
+}
+
 func TestRuntimeLifecycleSnapshotDeliveryFailurePreservesCause(t *testing.T) {
 	observer := newFakeObserver()
 	hostRunner := newFakeHostRunner()

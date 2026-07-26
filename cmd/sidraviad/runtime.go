@@ -267,25 +267,32 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 
 	var initiator error
 	received := 0
+	inspectRemaining := false
 	select {
 	case <-ctx.Done():
+		inspectRemaining = true
 	case result := <-results:
 		received = 1
 		initiator = classifyRuntimeResult(ctx, result)
+		inspectRemaining = ctx.Err() != nil
 	}
 
 	cancel()
 
 	for received < 3 {
-		<-results
+		result := <-results
 		received++
+		if inspectRemaining && initiator == nil {
+			initiator = classifyRuntimeResult(ctx, result)
+		}
 	}
 
 	return rt.closeAndWait(initiator)
 }
 
 func classifyRuntimeResult(ctx context.Context, result runtimeActivityResult) error {
-	if ctx.Err() != nil {
+	if callerErr := ctx.Err(); callerErr != nil &&
+		(result.err == nil || errors.Is(result.err, callerErr)) {
 		return nil
 	}
 
