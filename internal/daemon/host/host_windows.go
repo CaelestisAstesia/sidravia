@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"golang.org/x/sys/windows"
 
@@ -105,10 +104,8 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// Graceful shutdown.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "host: shutdown: %v\n", err)
+	if err := shutdownHTTPServer(server.Shutdown); err != nil {
+		return err
 	}
 
 	return nil

@@ -1,11 +1,14 @@
 package host
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Config holds the parameters needed to start the daemon host.
@@ -33,4 +36,14 @@ func DefaultRuntimeInfoPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "Sidravia", "runtime.json"), nil
+}
+
+func shutdownHTTPServer(shutdown func(context.Context) error) error {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("host: shutdown: %w", err)
+	}
+	return nil
 }
