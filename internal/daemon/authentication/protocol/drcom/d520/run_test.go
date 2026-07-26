@@ -634,11 +634,9 @@ func TestRunPostLoginHeartbeatFailureAttemptsLogout(t *testing.T) {
 			if ka1Count == 1 {
 				return [][]byte{peerKA1Response()}
 			}
-			// Heartbeat KA1: malformed unidentifiable response.
-			malformed := make([]byte, 60)
-			malformed[0] = 0x07
-			malformed[2] = 0x00 // wrong fixed byte (not 0x28)
-			return [][]byte{malformed}
+			// Heartbeat KA1: malformed unidentifiable response (wrong opcode
+			// for every phase).
+			return [][]byte{{0x08, 0x00, 0x00}}
 		case isKA2Req(req):
 			return [][]byte{peerKA2Response(req[1], req[5], [4]byte{req[1], req[5], 0xaa, 0xbb})}
 		case isLogoutReq(req):
@@ -677,6 +675,96 @@ func TestTestPeerShutdownClosesSocketAndAwaitsGoroutine(t *testing.T) {
 	// The listener is closed: a further write fails.
 	if _, err := peer.conn.WriteToUDP([]byte{0x00}, peer.addr); err == nil {
 		t.Fatal("write to closed peer socket unexpectedly succeeded")
+	}
+}
+
+// 11. the complete bootstrap accepts the observed campus response variants
+// (extended Challenge, extended Login success, extended KA1, KA2 response
+// types 6 -> 2 -> 4 with extensions), notifies AuthenticationEstablished
+// exactly once, and retains cancellation with best-effort Logout cleanup
+// against an extended Logout response.
+func TestRunAcceptsCampusResponseVariants(t *testing.T) {
+	authInfo := [16]byte{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
+	respond := func(req []byte) [][]byte {
+		switch {
+		case isChallengeReq(req):
+			return [][]byte{peerChallengeResponseVariant([4]byte{0x01, 0x02, 0x03, 0x04}, 76)}
+		case isLoginReq(req):
+			return [][]byte{peerLoginSuccessVariant(authInfo, 45)}
+		case isKA1Req(req):
+			return [][]byte{peerKA1ResponseVariant(72)}
+		case isKA2Req(req):
+			serial, reqType := req[1], req[5]
+			tail := [4]byte{serial, reqType, 0xaa, 0xbb}
+			switch {
+			case serial == 0:
+				// First bootstrap Type1: real server answered type 6 at 272 bytes.
+				return [][]byte{peerKA2ResponseVariant(serial, 6, tail, 272)}
+			case reqType == ka2Type1:
+				// Later Type1: real server answered type 2 at 40 bytes.
+				return [][]byte{peerKA2ResponseVariant(serial, 2, tail, 40)}
+			default:
+				// Type3: real server answered type 4 at 40 bytes.
+				return [][]byte{peerKA2ResponseVariant(serial, 4, tail, 40)}
+			}
+		case isLogoutReq(req):
+			return [][]byte{peerLogoutResponseVariant(25)}
+		}
+		return nil
+	}
+	peer := newTestPeer(t, respond)
+	observer := newRecordingObserver(peer)
+	run := buildTestRun(t, peer, defaultTestDurations(), testCredential())
+	_, cancel, done := startRun(t, run, observer)
+	defer cancel(context.Canceled)
+
+	// An early return means a variant was rejected; establishment means the
+	// whole KA1 -> type 6 -> type 2 -> type 4 bootstrap was accepted.
+	select {
+	case failure := <-done:
+		if failure == nil {
+			t.Fatal("run returned before cancellation")
+		}
+		t.Fatalf("run returned early failure: code=%q description=%q", failure.Code, failure.Description)
+	case <-observer.established:
+	case <-time.After(2 * time.Second):
+		t.Fatal("authentication was not established with campus response variants")
+	}
+	if observer.establishedCallCount() != 1 {
+		t.Fatalf("established called %d times, want 1", observer.establishedCallCount())
+	}
+	// Bootstrap (6) + one heartbeat (KA1 + KA2 + KA2) with the same variants.
+	waitForRequestCount(t, peer, 9, time.Second)
+	if serials := ka2RequestSerials(peer.requests()); !equalBytes(serials, []byte{0, 1, 2, 3, 4}) {
+		t.Fatalf("ka2 request serials = %v, want [0 1 2 3 4]", serials)
+	}
+
+	cancel(protocol.AuthenticationProtocolRunCancellationCause{
+		CleanupRequirement: protocol.TerminateWithBestEffortLogout,
+		Description:        "test cancellation",
+	})
+	assertRunReturns(t, done, true, 2*time.Second)
+	waitForOp(t, peer, "logout", time.Second)
+	ops := peer.requestOpNames()
+	if countOps(ops, "challenge") != 2 {
+		t.Fatalf("expected login challenge + fresh logout challenge: ops=%v", ops)
+	}
+	if countOps(ops, "logout") != 1 {
+		t.Fatalf("expected one logout after cancellation: ops=%v", ops)
+	}
+	if observer.establishedCallCount() != 1 {
+		t.Fatalf("established called %d times, want 1 after cleanup", observer.establishedCallCount())
+	}
+}
+
+func TestRunType6CompatibilityUsesBootstrapFlagNotSerialValue(t *testing.T) {
+	response := peerKA2ResponseVariant(0, 6, [4]byte{1, 2, 3, 4}, 20)
+	exec := newExecution(runDefinition{}, nil)
+	if _, err := exec.classifyKA2Response(0, ka2Type1, false)(response); err == nil {
+		t.Fatal("non-bootstrap serial-zero Type1 accepted Type6")
+	}
+	if got, err := exec.classifyKA2Response(0, ka2Type1, true)(response); err != nil || got != responseAccept {
+		t.Fatalf("bootstrap serial-zero Type1 = response %d, err %v; want accept", got, err)
 	}
 }
 

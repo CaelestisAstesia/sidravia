@@ -80,13 +80,29 @@ func TestFactoryAcceptsEmptyPassword(t *testing.T) {
 	}
 }
 
+// TestFactoryCreatesRunWithChineseHostName proves a valid GBK-encodable
+// Chinese Windows host name passes the factory boundary and can create a Run.
+// Username and password fixtures remain fictional ASCII.
+func TestFactoryCreatesRunWithChineseHostName(t *testing.T) {
+	factory := NewFactory()
+	inputs := factoryInputs(validConfig(t), testCredential(), testBinding(t))
+	inputs.SystemHostInformation.HostName = "校园终端"
+	run, err := factory.CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatalf("create run with Chinese host name: %v", err)
+	}
+	if run == nil {
+		t.Fatal("run is nil")
+	}
+}
+
 func TestFactoryRejectsInvalidCredentials(t *testing.T) {
 	cases := []struct {
 		name string
 		cred credential.AuthenticationCredential
 	}{
 		{"empty username", credential.AuthenticationCredential{Username: "", Password: "p"}},
-		{"non-ascii username", credential.AuthenticationCredential{Username: "用户", Password: "p"}},
+		{"username GBK cannot represent", credential.AuthenticationCredential{Username: "user😀", Password: "p"}},
 		{"embedded NUL username", credential.AuthenticationCredential{Username: "u\x00ser", Password: "p"}},
 		{"embedded NUL password", credential.AuthenticationCredential{Username: "user", Password: "p\x00ass"}},
 		{"non-ascii host via overlength", credential.AuthenticationCredential{Username: strings.Repeat("a", 37), Password: "p"}},

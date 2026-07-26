@@ -202,7 +202,7 @@ func TestKA2Type3Build(t *testing.T) {
 func TestKA2ResponseParse(t *testing.T) {
 	doc := loadFixture(t)
 	type1Resp := mustHex(t, exchange(t, doc, "ka2_type1_first").DeclaredResponseHex)
-	got1, err := parseKA2Response(type1Resp, 0x00, ka2Type1)
+	got1, err := parseKA2Response(type1Resp, 0x00, ka2Type1, true)
 	if err != nil {
 		t.Fatalf("parse ka2 type1 response: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestKA2ResponseParse(t *testing.T) {
 	}
 
 	type3Resp := mustHex(t, exchange(t, doc, "ka2_type3").DeclaredResponseHex)
-	got3, err := parseKA2Response(type3Resp, 0x01, ka2Type3)
+	got3, err := parseKA2Response(type3Resp, 0x01, ka2Type3, false)
 	if err != nil {
 		t.Fatalf("parse ka2 type3 response: %v", err)
 	}
@@ -259,4 +259,160 @@ func TestLogoutACKParse(t *testing.T) {
 	if err := parseLogoutACK(resp); err != nil {
 		t.Fatalf("parse logout ack: %v", err)
 	}
+}
+
+// TestResponseParsersAcceptStructuralVariants proves every response parser
+// recognizes its phase by structural minimums instead of one historical exact
+// length: the sanitized synthetic variants of the observed campus response
+// shapes parse, extension bytes stay opaque, and mutating or appending an
+// extension never aliases parsed state. Observed lengths (Challenge 76, Login
+// success 45, KA1 72, initial KA2 type 6 at 272, KA2 types 2/4 at 40, Logout
+// 25) are examples, not a whitelist.
+func TestResponseParsersAcceptStructuralVariants(t *testing.T) {
+	salt := [4]byte{0x11, 0x22, 0x33, 0x44}
+	authInfo := [16]byte{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
+	tail := [4]byte{0x51, 0x52, 0x53, 0x54}
+
+	t.Run("challenge minimum structure and 76 byte variant", func(t *testing.T) {
+		minimal := peerChallengeResponseVariant(salt, 8)
+		got, err := parseChallengeResponse(minimal)
+		if err != nil {
+			t.Fatalf("parse 8-byte challenge response: %v", err)
+		}
+		if got.salt != salt {
+			t.Fatalf("salt = %x, want %x", got.salt, salt)
+		}
+
+		variant := peerChallengeResponseVariant(salt, 76)
+		parsed, err := parseChallengeResponse(variant)
+		if err != nil {
+			t.Fatalf("parse 76-byte challenge response: %v", err)
+		}
+		if parsed.salt != salt {
+			t.Fatalf("salt = %x, want %x", parsed.salt, salt)
+		}
+		// Mutating extension bytes after parsing must not change parsed state.
+		variant[40] = 0x00
+		if parsed.salt != salt {
+			t.Fatalf("parsed salt changed after extension mutation")
+		}
+		// Appending a further extension must not alias parsed state either.
+		extended := append(variant, 0x01, 0x02, 0x03)
+		reparsed, err := parseChallengeResponse(extended)
+		if err != nil {
+			t.Fatalf("parse extended challenge response: %v", err)
+		}
+		if reparsed.salt != salt || parsed.salt != salt {
+			t.Fatalf("appending an extension aliased parsed state")
+		}
+	})
+
+	t.Run("login success minimum structure and 45 byte variant", func(t *testing.T) {
+		minimal := peerLoginSuccessVariant(authInfo, 39)
+		got, err := parseLoginResponse(minimal)
+		if err != nil {
+			t.Fatalf("parse 39-byte login success: %v", err)
+		}
+		if got.kind != loginResponseSuccess || got.authInfo != authInfo {
+			t.Fatalf("kind = %d auth info = %x, want success with %x", got.kind, got.authInfo, authInfo)
+		}
+
+		variant := peerLoginSuccessVariant(authInfo, 45)
+		parsed, err := parseLoginResponse(variant)
+		if err != nil {
+			t.Fatalf("parse 45-byte login success: %v", err)
+		}
+		if parsed.kind != loginResponseSuccess || parsed.authInfo != authInfo {
+			t.Fatalf("kind = %d auth info = %x, want success with %x", parsed.kind, parsed.authInfo, authInfo)
+		}
+		variant[44] = 0x00
+		if parsed.authInfo != authInfo {
+			t.Fatalf("parsed auth info changed after extension mutation")
+		}
+	})
+
+	t.Run("login rejection minimum structure", func(t *testing.T) {
+		resp := syntheticResponse(5)
+		resp[0] = 0x05
+		resp[4] = 0x03
+		got, err := parseLoginResponse(resp)
+		if err != nil {
+			t.Fatalf("parse 5-byte login rejection: %v", err)
+		}
+		if got.kind != loginResponseRejection || got.code != 0x03 {
+			t.Fatalf("kind = %d code = %d, want rejection code 3", got.kind, got.code)
+		}
+	})
+
+	t.Run("ka1 minimum structure and 72 byte variant", func(t *testing.T) {
+		if err := parseKA1Response([]byte{0x07}); err != nil {
+			t.Fatalf("parse 1-byte ka1 response: %v", err)
+		}
+		if err := parseKA1Response(peerKA1ResponseVariant(72)); err != nil {
+			t.Fatalf("parse 72-byte ka1 response: %v", err)
+		}
+	})
+
+	t.Run("ka2 minimum structure and observed type variants", func(t *testing.T) {
+		minimal := peerKA2ResponseVariant(0x09, ka2Type1, tail, 20)
+		got, err := parseKA2Response(minimal, 0x09, ka2Type1, false)
+		if err != nil {
+			t.Fatalf("parse 20-byte ka2 response: %v", err)
+		}
+		if got.tail != tail {
+			t.Fatalf("tail = %x, want %x", got.tail, tail)
+		}
+
+		// Initial bootstrap Type1 request accepts response type 6 (272 bytes).
+		initial := peerKA2ResponseVariant(0x00, 6, tail, 272)
+		parsedInitial, err := parseKA2Response(initial, 0x00, ka2Type1, true)
+		if err != nil {
+			t.Fatalf("parse 272-byte type 6 ka2 response: %v", err)
+		}
+		if parsedInitial.tail != tail {
+			t.Fatalf("tail = %x, want %x", parsedInitial.tail, tail)
+		}
+		initial[100] = 0x00
+		if parsedInitial.tail != tail {
+			t.Fatalf("parsed tail changed after extension mutation")
+		}
+
+		// Later Type1 request accepts response type 2 (40 bytes).
+		later := peerKA2ResponseVariant(0x01, 2, tail, 40)
+		parsedLater, err := parseKA2Response(later, 0x01, ka2Type1, false)
+		if err != nil {
+			t.Fatalf("parse 40-byte type 2 ka2 response: %v", err)
+		}
+		if parsedLater.tail != tail {
+			t.Fatalf("tail = %x, want %x", parsedLater.tail, tail)
+		}
+
+		// Type3 request accepts response type 4 (40 bytes).
+		type4 := peerKA2ResponseVariant(0x02, 4, tail, 40)
+		parsedType4, err := parseKA2Response(type4, 0x02, ka2Type3, false)
+		if _, err := parseKA2Response(peerKA2ResponseVariant(0x01, 6, tail, 40), 0x01, ka2Type1, false); err == nil {
+			t.Fatal("later Type1 accepted response type 6")
+		}
+		if _, err := parseKA2Response(peerKA2ResponseVariant(0x02, 1, tail, 40), 0x02, ka2Type3, false); err == nil {
+			t.Fatal("Type3 accepted response type 1")
+		}
+		if err != nil {
+			t.Fatalf("parse 40-byte type 4 ka2 response: %v", err)
+		}
+		if parsedType4.tail != tail {
+			t.Fatalf("tail = %x, want %x", parsedType4.tail, tail)
+		}
+	})
+
+	t.Run("logout minimum structure, mock ack and 25 byte variant", func(t *testing.T) {
+		if err := parseLogoutACK([]byte{0x04}); err != nil {
+			t.Fatalf("parse 1-byte logout response: %v", err)
+		}
+		if err := parseLogoutACK([]byte{0x04, 0x00, 0x00, 0x00}); err != nil {
+			t.Fatalf("parse 4-byte mock logout ack: %v", err)
+		}
+		if err := parseLogoutACK(peerLogoutResponseVariant(25)); err != nil {
+			t.Fatalf("parse 25-byte logout response: %v", err)
+		}
+	})
 }

@@ -2,8 +2,73 @@ package d520
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
+
+// TestProtocolTextEncodesStrictGBK proves the protocol-text encoder is strict
+// GBK: a Chinese string encodes to its documented GBK byte sequence, ASCII
+// stays byte-identical, and invalid UTF-8, embedded NUL and runes the GBK
+// encoder cannot represent are rejected without echoing the input text.
+func TestProtocolTextEncodesStrictGBK(t *testing.T) {
+	t.Run("chinese text encodes to expected gbk bytes", func(t *testing.T) {
+		got, err := encodeProtocolText("校园终端")
+		if err != nil {
+			t.Fatalf("encode strict GBK: %v", err)
+		}
+		want := []byte{0xd0, 0xa3, 0xd4, 0xb0, 0xd6, 0xd5, 0xb6, 0xcb}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("gbk encoding = %x, want %x", got, want)
+		}
+	})
+
+	t.Run("ascii remains byte identical", func(t *testing.T) {
+		got, err := encodeProtocolText("student-test")
+		if err != nil {
+			t.Fatalf("encode ascii: %v", err)
+		}
+		if !bytes.Equal(got, []byte("student-test")) {
+			t.Fatalf("ascii encoding = %x, want byte-identical input", got)
+		}
+	})
+
+	t.Run("unrepresentable rune rejected without echoing input", func(t *testing.T) {
+		_, err := encodeProtocolText("ze😀ro")
+		if err == nil {
+			t.Fatal("expected error for a rune GBK cannot represent, got nil")
+		}
+		if strings.Contains(err.Error(), "😀") || strings.Contains(err.Error(), "ze") {
+			t.Fatalf("error echoes input text: %v", err)
+		}
+	})
+
+	t.Run("invalid utf-8 rejected", func(t *testing.T) {
+		if _, err := encodeProtocolText(string([]byte{0xff, 0xfe, 0xfd})); err == nil {
+			t.Fatal("expected error for invalid UTF-8, got nil")
+		}
+	})
+
+	t.Run("embedded NUL rejected", func(t *testing.T) {
+		if _, err := encodeProtocolText("ab\x00cd"); err == nil {
+			t.Fatal("expected error for embedded NUL, got nil")
+		}
+	})
+
+	t.Run("each call returns a fresh slice", func(t *testing.T) {
+		first, err := encodeProtocolText("校园终端")
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		first[0] ^= 0xff
+		second, err := encodeProtocolText("校园终端")
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		if !bytes.Equal(second, []byte{0xd0, 0xa3, 0xd4, 0xb0, 0xd6, 0xd5, 0xb6, 0xcb}) {
+			t.Fatalf("second encoding = %x, want fictional GBK vector (first result mutation leaked)", second)
+		}
+	})
+}
 
 // TestCryptoMD5A proves MD5-A = MD5(0x03 0x01 || salt || passwordGBK) equals
 // the fixture intermediate, and that the composed input matches the fixture

@@ -18,12 +18,11 @@ type d520Run struct {
 	definition runDefinition
 }
 
-// ka2ID identifies a sent KA2 exchange by its serial and type so the stale
-// receive loop can recognize a late response that provably belongs to an
-// already-sent exchange.
-type ka2ID struct {
-	serial byte
-	typ    byte
+// ka2Exchange identifies a sent KA2 request. The first-bootstrap distinction
+// is retained so response type 6 cannot be accepted for later Type 1 packets.
+type ka2Exchange struct {
+	requestType         byte
+	firstBootstrapType1 bool
 }
 
 // execution holds the per-call transient state owned by one Execute: the login
@@ -43,14 +42,14 @@ type execution struct {
 	serial byte
 
 	ka1Sent bool
-	ka2Sent map[ka2ID]bool
+	ka2Sent map[byte]ka2Exchange
 }
 
 func newExecution(definition runDefinition, observer protocol.AuthenticationProtocolRunObserver) *execution {
 	return &execution{
 		definition: definition,
 		observer:   observer,
-		ka2Sent:    make(map[ka2ID]bool),
+		ka2Sent:    make(map[byte]ka2Exchange),
 	}
 }
 
@@ -194,7 +193,7 @@ func (exec *execution) heartbeatLoop(ctx context.Context) *runError {
 }
 
 // sendKA1 builds and sends one KA1 request using the login salt and current
-// Auth Info, and accepts the 20-byte KA1 response.
+// Auth Info, and accepts a structurally valid KA1 response.
 func (exec *execution) sendKA1(ctx context.Context) *runError {
 	passwordBytes, err := encodeProtocolText(exec.definition.login.password)
 	if err != nil {
@@ -222,13 +221,13 @@ func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *
 	if err != nil {
 		return contractViolationError("ka2 build", err)
 	}
-	exec.ka2Sent[ka2ID{serial: serial, typ: typ}] = true
-	classify := exec.classifyKA2Response(serial, typ)
+	exec.ka2Sent[serial] = ka2Exchange{requestType: typ, firstBootstrapType1: firstType1}
+	classify := exec.classifyKA2Response(serial, typ, firstType1)
 	resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify)
 	if failure != nil {
 		return failure
 	}
-	parsed, err := parseKA2Response(resp, serial, typ)
+	parsed, err := parseKA2Response(resp, serial, typ, firstType1)
 	if err != nil {
 		return responseInvalidError("ka2 response", err)
 	}
@@ -237,18 +236,18 @@ func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *
 	return nil
 }
 
-// classifyKA1Response accepts the expected 20-byte KA1 response and ignores a
+// classifyKA1Response accepts the expected KA1 response and ignores a
 // complete KA2 response provably belonging to an already-sent KA2 exchange.
 func (exec *execution) classifyKA1Response() responseClassifier {
 	return func(datagram []byte) (exchangeResponse, error) {
-		if parseKA1Response(datagram) == nil {
-			return responseAccept, nil
-		}
 		if serial, typ, ok := inspectKA2Response(datagram); ok {
-			if exec.ka2Sent[ka2ID{serial: serial, typ: typ}] {
+			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseTypeCompatible(sent.requestType, sent.firstBootstrapType1, typ) {
 				return responseIgnore, nil
 			}
 			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for ka1", serial, typ)
+		}
+		if parseKA1Response(datagram) == nil {
+			return responseAccept, nil
 		}
 		return 0, fmt.Errorf("unexpected response while waiting for ka1")
 	}
@@ -258,19 +257,19 @@ func (exec *execution) classifyKA1Response() responseClassifier {
 // type) and ignores a complete prior KA1 response or a complete KA2 response
 // for an already-sent serial/type. The expected response is checked before the
 // stale-response rules.
-func (exec *execution) classifyKA2Response(expectedSerial, expectedType byte) responseClassifier {
+func (exec *execution) classifyKA2Response(expectedSerial, expectedType byte, firstBootstrapType1 bool) responseClassifier {
 	return func(datagram []byte) (exchangeResponse, error) {
-		if _, err := parseKA2Response(datagram, expectedSerial, expectedType); err == nil {
+		if _, err := parseKA2Response(datagram, expectedSerial, expectedType, firstBootstrapType1); err == nil {
 			return responseAccept, nil
 		}
-		if isCompleteKA1Response(datagram) && exec.ka1Sent {
-			return responseIgnore, nil
-		}
 		if serial, typ, ok := inspectKA2Response(datagram); ok {
-			if exec.ka2Sent[ka2ID{serial: serial, typ: typ}] {
+			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseTypeCompatible(sent.requestType, sent.firstBootstrapType1, typ) {
 				return responseIgnore, nil
 			}
 			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for serial %d type %d", serial, typ, expectedSerial, expectedType)
+		}
+		if isCompleteKA1Response(datagram) && exec.ka1Sent {
+			return responseIgnore, nil
 		}
 		return 0, fmt.Errorf("unexpected response while waiting for ka2")
 	}

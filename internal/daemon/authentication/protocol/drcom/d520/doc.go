@@ -9,13 +9,9 @@
 // salt/auth_info/tail/serial and supplies them to these helpers; they are not
 // IPC, Profile or context-override fields.
 //
-// The protocol-text encoder covers the single-byte ASCII subset (0x01-0x7F),
-// which is the range the tracked client-vector fixture exercises and the
-// subset every converged source treats as plain bytes. Full GBK multibyte
-// encoding is deliberately deferred until a real non-ASCII credential
-// requires it; any rune outside the ASCII subset, and any embedded NUL, is
-// rejected so the boundary stays observable rather than silently replaced or
-// confused with NUL padding.
+// The protocol-text encoder uses strict GBK. Invalid UTF-8, embedded NUL and
+// unrepresentable runes are rejected so wire text cannot be silently replaced
+// or confused with NUL padding.
 package d520
 
 import (

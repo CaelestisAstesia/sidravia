@@ -9,10 +9,9 @@ import (
 	"time"
 )
 
-// udpReadBufferSize is large enough for any D520 datagram (the largest is the
-// 64-byte Login success response) while staying well under a single UDP
-// datagram limit.
-const udpReadBufferSize = 1500
+// udpReadBufferSize observes one byte beyond the 4096-byte accepted maximum,
+// so oversized datagrams are rejected instead of accepted as truncated data.
+const udpReadBufferSize = maxResponseDatagramLength + 1
 
 // exchangeResponse classifies a received datagram within one exchange.
 type exchangeResponse int

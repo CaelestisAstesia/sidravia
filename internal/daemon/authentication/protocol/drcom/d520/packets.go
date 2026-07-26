@@ -7,17 +7,11 @@ import (
 
 // Fixed packet lengths documented in docs/protocols/drcom-5.2.0-d.md.
 const (
-	challengeRequestLength  = 20
-	challengeResponseLength = 16
-	loginRequestLength      = 330
-	loginSuccessLength      = 64
-	loginRejectionLength    = 32
-	ka1RequestLength        = 42
-	ka1ResponseLength       = 20
-	ka2RequestLength        = 40
-	ka2ResponseLength       = 60
-	logoutRequestLength     = 80
-	logoutACKLength         = 4
+	challengeRequestLength = 20
+	loginRequestLength     = 330
+	ka1RequestLength       = 42
+	ka2RequestLength       = 40
+	logoutRequestLength    = 80
 
 	usernameFieldLength = 36
 	hostNameFieldLength = 32
@@ -25,7 +19,8 @@ const (
 	macLength           = 6
 	authInfoLength      = 16
 
-	challengePaddingLength = 15
+	challengePaddingLength    = 15
+	maxResponseDatagramLength = 4096
 )
 
 // KA2 type values.
@@ -128,11 +123,10 @@ type challengeResponse struct {
 	salt [4]byte
 }
 
-// parseChallengeResponse parses the 16-byte Challenge response and extracts
-// its four-byte salt.
+// parseChallengeResponse validates the 8-byte structural minimum and extracts salt.
 func parseChallengeResponse(resp []byte) (challengeResponse, error) {
-	if len(resp) != challengeResponseLength {
-		return challengeResponse{}, fmt.Errorf("challenge response is %d bytes, expected %d", len(resp), challengeResponseLength)
+	if err := validateResponseLength("challenge response", resp, 8); err != nil {
+		return challengeResponse{}, err
 	}
 	if resp[0] != 0x02 {
 		return challengeResponse{}, fmt.Errorf("challenge response opcode 0x%02x, expected 0x02", resp[0])
@@ -252,24 +246,24 @@ type loginResponse struct {
 	code     byte
 }
 
-// parseLoginResponse parses a Login response, distinguishing the 64-byte
-// success response (opcode 0x04) from the 32-byte rejection response (opcode
-// 0x05) in one pass, and extracts Auth Info or the wire error code.
+// parseLoginResponse parses a structurally bounded Login response: opcode 0x04
+// requires at least 39 bytes and yields Auth Info, while opcode 0x05 requires
+// at least 5 bytes and yields the wire rejection code.
 func parseLoginResponse(resp []byte) (loginResponse, error) {
-	if len(resp) == 0 {
-		return loginResponse{}, fmt.Errorf("login response is empty")
+	if err := validateResponseLength("login response", resp, 1); err != nil {
+		return loginResponse{}, err
 	}
 	switch resp[0] {
 	case 0x04:
-		if len(resp) != loginSuccessLength {
-			return loginResponse{}, fmt.Errorf("login success response is %d bytes, expected %d", len(resp), loginSuccessLength)
+		if err := validateResponseLength("login success response", resp, 39); err != nil {
+			return loginResponse{}, err
 		}
 		var authInfo [16]byte
 		copy(authInfo[:], resp[23:39])
 		return loginResponse{kind: loginResponseSuccess, authInfo: authInfo}, nil
 	case 0x05:
-		if len(resp) != loginRejectionLength {
-			return loginResponse{}, fmt.Errorf("login rejection response is %d bytes, expected %d", len(resp), loginRejectionLength)
+		if err := validateResponseLength("login rejection response", resp, 5); err != nil {
+			return loginResponse{}, err
 		}
 		return loginResponse{kind: loginResponseRejection, code: resp[4]}, nil
 	default:
@@ -293,11 +287,10 @@ func buildKA1Request(digestA []byte, authInfo [16]byte, timestamp uint16) ([]byt
 	return out, nil
 }
 
-// parseKA1Response validates the documented 20-byte KA1 response. It checks
-// length and the leading opcode byte.
+// parseKA1Response validates the one-byte structural minimum and opcode.
 func parseKA1Response(resp []byte) error {
-	if len(resp) != ka1ResponseLength {
-		return fmt.Errorf("ka1 response is %d bytes, expected %d", len(resp), ka1ResponseLength)
+	if err := validateResponseLength("ka1 response", resp, 1); err != nil {
+		return err
 	}
 	if resp[0] != 0x07 {
 		return fmt.Errorf("ka1 response opcode 0x%02x, expected 0x07", resp[0])
@@ -305,30 +298,23 @@ func parseKA1Response(resp []byte) error {
 	return nil
 }
 
-// isCompleteKA1Response reports whether datagram is structurally a complete
-// 20-byte KA1 response (length and opcode only). It is used by the stale
-// receive loop to recognize a late KA1 response without advancing state.
+// isCompleteKA1Response reports whether datagram is a structurally complete,
+// bounded KA1 response by opcode. It is used by the stale receive loop to
+// recognize a late KA1 response without advancing state.
 func isCompleteKA1Response(datagram []byte) bool {
-	return len(datagram) == ka1ResponseLength && datagram[0] == 0x07
+	return len(datagram) >= 1 && len(datagram) <= maxResponseDatagramLength && datagram[0] == 0x07
 }
 
-// inspectKA2Response reports whether datagram is structurally a complete KA2
-// response (length, opcode, fixed bytes and a valid type) and, when it is,
-// returns the echoed serial and type. It does not match the serial or type
-// against an expectation; the caller uses the returned values to decide
-// whether the response is the expected one, an ignorable already-sent one, or
-// an impossible future response.
+// inspectKA2Response reports a structurally framed KA2 response and returns
+// its echoed serial and unclassified type for phase-specific compatibility.
 func inspectKA2Response(datagram []byte) (serial, typ byte, ok bool) {
-	if len(datagram) != ka2ResponseLength {
+	if len(datagram) < 20 || len(datagram) > maxResponseDatagramLength {
 		return 0, 0, false
 	}
 	if datagram[0] != 0x07 {
 		return 0, 0, false
 	}
 	if datagram[2] != 0x28 || datagram[3] != 0x00 || datagram[4] != 0x0b {
-		return 0, 0, false
-	}
-	if datagram[5] != ka2Type1 && datagram[5] != ka2Type3 {
 		return 0, 0, false
 	}
 	return datagram[1], datagram[5], true
@@ -366,17 +352,16 @@ func buildKA2Request(serial, typ byte, firstType1 bool, keepAliveVersion [2]byte
 	return out, nil
 }
 
-// ka2Response carries the Tail extracted from a 60-byte KA2 response.
+// ka2Response carries the Tail extracted from a structurally complete KA2 response.
 type ka2Response struct {
 	tail [4]byte
 }
 
-// parseKA2Response parses the documented 60-byte KA2 response, validating
-// length, opcode and the echoed serial, fixed bytes and type, and extracts
-// the four-byte Tail.
-func parseKA2Response(resp []byte, expectedSerial, expectedType byte) (ka2Response, error) {
-	if len(resp) != ka2ResponseLength {
-		return ka2Response{}, fmt.Errorf("ka2 response is %d bytes, expected %d", len(resp), ka2ResponseLength)
+// parseKA2Response validates a structurally complete response and the
+// phase-specific request/response type relation.
+func parseKA2Response(resp []byte, expectedSerial, requestType byte, firstBootstrapType1 bool) (ka2Response, error) {
+	if err := validateResponseLength("ka2 response", resp, 20); err != nil {
+		return ka2Response{}, err
 	}
 	if resp[0] != 0x07 {
 		return ka2Response{}, fmt.Errorf("ka2 response opcode 0x%02x, expected 0x07", resp[0])
@@ -387,12 +372,23 @@ func parseKA2Response(resp []byte, expectedSerial, expectedType byte) (ka2Respon
 	if resp[2] != 0x28 || resp[3] != 0x00 || resp[4] != 0x0b {
 		return ka2Response{}, fmt.Errorf("ka2 response fixed bytes 0x%02x 0x%02x 0x%02x, expected 28 00 0b", resp[2], resp[3], resp[4])
 	}
-	if resp[5] != expectedType {
-		return ka2Response{}, fmt.Errorf("ka2 response type %d, expected %d", resp[5], expectedType)
+	if !ka2ResponseTypeCompatible(requestType, firstBootstrapType1, resp[5]) {
+		return ka2Response{}, fmt.Errorf("ka2 response type %d is incompatible with request type %d", resp[5], requestType)
 	}
 	var tail [4]byte
 	copy(tail[:], resp[16:20])
 	return ka2Response{tail: tail}, nil
+}
+
+func ka2ResponseTypeCompatible(requestType byte, firstBootstrapType1 bool, responseType byte) bool {
+	switch requestType {
+	case ka2Type1:
+		return responseType == 1 || responseType == 2 || (firstBootstrapType1 && responseType == 6)
+	case ka2Type3:
+		return responseType == 3 || responseType == 4
+	default:
+		return false
+	}
 }
 
 // buildLogoutRequest builds the exact 80-byte Logout request. It validates and
@@ -425,13 +421,23 @@ func buildLogoutRequest(in loginInput, salt [4]byte, authInfo [16]byte) ([]byte,
 	return out, nil
 }
 
-// parseLogoutACK validates the documented four-byte Logout ACK.
+// parseLogoutACK validates the one-byte structural minimum and opcode.
 func parseLogoutACK(resp []byte) error {
-	if len(resp) != logoutACKLength {
-		return fmt.Errorf("logout ack is %d bytes, expected %d", len(resp), logoutACKLength)
+	if err := validateResponseLength("logout response", resp, 1); err != nil {
+		return err
 	}
-	if resp[0] != 0x04 || resp[1] != 0x00 || resp[2] != 0x00 || resp[3] != 0x00 {
-		return fmt.Errorf("logout ack bytes 0x%02x 0x%02x 0x%02x 0x%02x, expected 04 00 00 00", resp[0], resp[1], resp[2], resp[3])
+	if resp[0] != 0x04 {
+		return fmt.Errorf("logout response opcode 0x%02x, expected 0x04", resp[0])
+	}
+	return nil
+}
+
+func validateResponseLength(label string, resp []byte, minimum int) error {
+	if len(resp) < minimum {
+		return fmt.Errorf("%s is %d bytes, need at least %d", label, len(resp), minimum)
+	}
+	if len(resp) > maxResponseDatagramLength {
+		return fmt.Errorf("%s is %d bytes, maximum is %d", label, len(resp), maxResponseDatagramLength)
 	}
 	return nil
 }

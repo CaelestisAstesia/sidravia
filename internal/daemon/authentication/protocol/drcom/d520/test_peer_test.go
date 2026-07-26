@@ -179,6 +179,72 @@ func peerKA2Response(serial, typ byte, tail [4]byte) []byte {
 
 func peerLogoutACK() []byte { return []byte{0x04, 0x00, 0x00, 0x00} }
 
+// fictionalExtensionFill is the deterministic filler for synthetic response
+// extension bytes. Extensions are fictional padding; they contain no captured
+// data and no executable signature. Only the required structural offsets of a
+// synthetic response carry meaningful values.
+const fictionalExtensionFill = 0xe5
+
+// syntheticResponse returns a length-sized datagram filled with the fictional
+// extension pattern; callers then set the required structural offsets.
+func syntheticResponse(length int) []byte {
+	resp := make([]byte, length)
+	for i := range resp {
+		resp[i] = fictionalExtensionFill
+	}
+	return resp
+}
+
+// peerChallengeResponseVariant builds a synthetic extended Challenge response
+// carrying salt at [4,8) with fictional bytes everywhere else.
+func peerChallengeResponseVariant(salt [4]byte, length int) []byte {
+	resp := syntheticResponse(length)
+	resp[0] = 0x02
+	copy(resp[4:8], salt[:])
+	return resp
+}
+
+// peerLoginSuccessVariant builds a synthetic extended Login success response
+// carrying Auth Info at [23,39) with fictional bytes everywhere else.
+func peerLoginSuccessVariant(authInfo [16]byte, length int) []byte {
+	resp := syntheticResponse(length)
+	resp[0] = 0x04
+	copy(resp[23:39], authInfo[:])
+	return resp
+}
+
+// peerKA1ResponseVariant builds a synthetic extended KA1 response: only the
+// leading opcode byte is meaningful. The filler keeps bytes [2,5) away from
+// the KA2 framing so the datagram cannot be mistaken for a KA2 response.
+func peerKA1ResponseVariant(length int) []byte {
+	resp := syntheticResponse(length)
+	resp[0] = 0x07
+	return resp
+}
+
+// peerKA2ResponseVariant builds a synthetic extended KA2 response echoing
+// serial and carrying the given response type and Tail, with fictional bytes
+// everywhere else.
+func peerKA2ResponseVariant(serial, typ byte, tail [4]byte, length int) []byte {
+	resp := syntheticResponse(length)
+	resp[0] = 0x07
+	resp[1] = serial
+	resp[2] = 0x28
+	resp[3] = 0x00
+	resp[4] = 0x0b
+	resp[5] = typ
+	copy(resp[16:20], tail[:])
+	return resp
+}
+
+// peerLogoutResponseVariant builds a synthetic extended Logout success
+// response: only the leading opcode byte is meaningful.
+func peerLogoutResponseVariant(length int) []byte {
+	resp := syntheticResponse(length)
+	resp[0] = 0x04
+	return resp
+}
+
 // defaultPeerResponder answers the normal Challenge/Login/KA/Logout flow with
 // a fixed salt and Auth Info and a tail derived from each KA2's serial/type.
 func defaultPeerResponder() func([]byte) [][]byte {

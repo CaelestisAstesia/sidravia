@@ -103,7 +103,7 @@
 | `4` | `09` | 固定 magic |
 | `[5,20)` | padding (15B) | Profile 提供精确值；首个 Profile 采用 `[DC]` 全零；`[PL]` 携带 `protocol_version`+零；`[Mock]` 不校验 |
 
-响应（16B）`[Mock]`；`[DC] [PL]` 只读 `[4,8)`：
+响应（结构最小 8B；Mock 样本 16B）`[Mock]`；`[DC] [PL]` 只读 `[4,8)`：
 
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
@@ -147,7 +147,7 @@
 | `[326,328)` | 零 | 保留，`[Mock]` 校验为零 |
 | `[328,330)` | auth ext tail (2B) | `[DC]` 随机；`[Mock]` 不校验；fixture 固定 `12 34` |
 
-成功响应（64B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 auth_info：
+成功响应（结构最小 39B；Mock 样本 64B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 auth_info：
 
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
@@ -159,7 +159,7 @@
 | `[23,39)` | Auth Info (16B) | 客户端回填到上下文；`[Mock]` HMAC 派生（§4） |
 | `[39,64)` | 零 | 保留 |
 
-失败响应（32B）`[DC] [PL] [Mock]`：
+失败响应（结构最小 5B；Mock 样本 32B）`[DC] [PL] [Mock]`：
 
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
@@ -181,7 +181,7 @@
 | `[36,38)` | timestamp | `BE u16` = `epoch_seconds % 0xFFFF` |
 | `[38,42)` | 零（可选） | 存在则必须全零；`[DC]` 可选，`[PL]` 总含，`[Mock]` 接受两者 |
 
-响应（20B）`[Mock]`：
+响应（结构最小 1B；Mock 样本 20B）`[Mock]`：
 
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
@@ -205,7 +205,7 @@
 | `[20,24)` | 零 (4B) | `[Mock]` 校验为零 |
 | `[24,40)` | type 区 (16B) | Type1：全零；Type3：`00*4 + client_ipv4[28,32) + 00*8` |
 
-响应（60B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 Tail：
+响应（结构最小 20B；Mock 样本 60B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 Tail：
 
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
@@ -237,7 +237,7 @@
 | `[58,64)` | MAC XOR (6B) | §4 |
 | `[64,80)` | Auth Info (16B) | Login 成功回填值 |
 
-响应（4B）`[Mock]`：`04 00 00 00`。
+响应（结构最小 1B；Mock 样本 `04 00 00 00`）。
 
 ## 4. 密码学与校验
 
@@ -269,16 +269,9 @@
 
 ## 5. username/host 编码、填充、长度限制与拒绝
 
-- **来源冲突**：username、password、host_name、host_os 在 `[DC] [Mock]` 中使用严格
-  GBK（`encode("gbk", "strict")`）；`[PL]` 的 `as_bytes()` 使用 UTF-8。旧 Windows
-  客户端也可能只是使用当时系统 ANSI code page，而非协议明确指定 GBK。现有 fixture
-  全为 ASCII，无法裁决这个冲突。
-- **当前实现边界**：ASCII 是两种候选编码的共同子集，当前 Go codec 只接受 ASCII，
-  足以推进 mock 纵向链路。非 ASCII 字段暂时明确返回 unsupported，不引入 GBK 依赖，
-  也不把 ASCII-only 描述成完整 GBK。
-- **判定方式**：优先比较官方客户端发送含非 ASCII username 或 host_name 时的原始
-  报文字节；其次在校园服务器上分别验证 GBK 与 UTF-8。得到证据后再固定编码，或将其
-  作为机构 Profile 的明确配置。
+- **确认编码**：经脱敏的官方非 ASCII Windows 主机名观察，其既有 hostname 偏移字节为
+  严格 GBK。Sidravia 对 username、password、host_name 和 host_os 使用平台无关的严格
+  GBK；无效 UTF-8、内嵌 NUL 和不可表示 rune 一律拒绝，不替换或回退。
 - **填充**：username 填充到 36B，host_name/host_os 填充到 32B，均右侧 NUL 填充
   `[DC] [PL] [Mock]`。
 - **长度限制**：Login/Logout byte 3 = `20 + len(encoded_username)`；`[Mock]` 按其
@@ -309,6 +302,17 @@
     因为 Drcom-Core 是既有校园行为的主基准且 mock 明确接受该序列。静态 fixture 仍采用
     最短的 `1-3`，它只证明两种 KA2 报文布局和 Tail 回填，不定义 Run 的调度节奏。
 - **重传幂等**：`[Mock]` 对相同 KA2 请求返回缓存响应，不重复推进 serial/Tail/计费。
+- **响应 type 关系**：首个 bootstrap Type1 请求接受响应 Type `1`、`2` 或 `6`；后续
+  Type1 仅接受 `1` 或 `2`；Type3 仅接受 `3` 或 `4`。serial 与 `28 00 0b` 固定字节始终
+  必须匹配。该关系也用于识别已发送交换的陈旧响应。
+
+## 6.1 响应扩展边界
+
+所有响应以上述结构最小长度验证，最大接受 4096B。当前已观测的 76、45、72、272、40
+和 25 字节分别只是样本，不是长度白名单。超过必需字段的服务端字节是不可信的 opaque
+extension：可被有界地忽略，但绝不保留、解码、记录、持久化或向外暴露。当前发出的
+Sidravia Login 仍是 330B；官方客户端观察到的 346B Login 仅保留为未决扩展字段，未复制
+其任何真实内容。
 
 ## 7. retry/timeout 边界（Run 内 vs Session）
 
@@ -402,7 +406,7 @@ Login 失败响应 opcode `0x05`，错误码在 byte 4 `[Mock]`（完整表）�
 | Challenge padding 15B 内容 | 全零 | — | 携带 protocol_version | 不校验 | **Conflict（不影响兼容）** |
 | Challenge 响应 salt `[4,8)` | ✓ | — | ✓ | ✓ | Agreed |
 | Challenge 响应 source IP `[8,12)` | 不读 | — | 不读 | 填源 IP | **Unresolved 真实用途** |
-| 非 ASCII username/host 编码 | GBK | 诊断时 UTF-8 优先/GBK 兜底 | UTF-8 bytes | GBK | **Conflict：真实服务器待抓包；当前只支持 ASCII** |
+| 非 ASCII username/host 编码 | GBK | 诊断时 UTF-8 优先/GBK 兜底 | UTF-8 bytes | GBK | **Confirmed：官方非 ASCII hostname 观察确认 strict GBK** |
 | Login 330B 布局/MD5-A/B/C/MAC XOR/CRC | ✓ | — | ✓ | ✓ | Agreed |
 | CRC-1968 算法（1234/LE XOR/×1968/LE） | ✓ | — | ✓ | ✓ | Agreed |
 | KA1 38/42B、MD5-A、auth_info、BE timestamp | ✓ | — | ✓(42) | ✓ | Agreed |
@@ -431,5 +435,3 @@ Login 失败响应 opcode `0x05`，错误码在 byte 4 `[Mock]`（完整表）�
 5. **真实服务器错误码全集**：需现场触发各类拒绝并观察 byte 4。
 6. **Challenge padding 是否被真实服务器校验**：需真实服务器对零填充与
    protocol_version 填充两种请求的响应对照。
-7. **非 ASCII username/password/host 编码**：需官方客户端抓包或校园服务器分别接受
-   GBK/UTF-8 的对照；在此之前 Go codec 只支持共同的 ASCII 子集。

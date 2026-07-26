@@ -160,6 +160,43 @@ func TestRejectsInvalidInputs(t *testing.T) {
 			},
 		},
 		{
+			"username fits in runes but exceeds 36 encoded bytes",
+			func(t *testing.T) {
+				in := validInput(t)
+				in.username = strings.Repeat("星", 19) // 38 GBK bytes
+				_, err := buildLoginRequest(in, salt)
+				assertRejectedNoSecrets(t, err)
+			},
+		},
+		{
+			"host name fits in runes but exceeds 32 encoded bytes",
+			func(t *testing.T) {
+				in := validInput(t)
+				in.hostName = strings.Repeat("星", 17) // 34 GBK bytes
+				_, err := buildLoginRequest(in, salt)
+				assertRejectedNoSecrets(t, err)
+			},
+		},
+		{
+			"host os fits in runes but exceeds 32 encoded bytes",
+			func(t *testing.T) {
+				in := validInput(t)
+				in.hostOS = strings.Repeat("星", 17) // 34 GBK bytes
+				_, err := buildLoginRequest(in, salt)
+				assertRejectedNoSecrets(t, err)
+			},
+		},
+		{
+			"username in strict GBK accepted",
+			func(t *testing.T) {
+				in := validInput(t)
+				in.username = "用户"
+				if _, err := buildLoginRequest(in, salt); err != nil {
+					t.Fatalf("strict GBK username rejected: %v", err)
+				}
+			},
+		},
+		{
 			"ka2 type 0",
 			func(t *testing.T) {
 				_, err := buildKA2Request(0, 0, true, keepAliveVersion, zeroTail, clientIPv4)
@@ -180,92 +217,134 @@ func TestRejectsInvalidInputs(t *testing.T) {
 }
 
 // TestRejectsMalformedResponses proves malformed responses are rejected by
-// exact length, opcode and echoed fields, without leaking secrets.
+// structural minimums, the private maximum datagram bound, wrong opcode or
+// discriminator and echoed-field mismatches, without leaking secrets.
 func TestRejectsMalformedResponses(t *testing.T) {
 	doc := loadFixture(t)
-	challengeResp := mustHex(t, exchange(t, doc, "challenge_for_login").DeclaredResponseHex)
-	loginSuccessResp := mustHex(t, exchange(t, doc, "login_success").DeclaredResponseHex)
-	loginRejectionResp := mustHex(t, doc.Rejection.Login.DeclaredResponseHex)
-	ka1Resp := mustHex(t, exchange(t, doc, "ka1").DeclaredResponseHex)
 	ka2Type1Resp := mustHex(t, exchange(t, doc, "ka2_type1_first").DeclaredResponseHex)
-	logoutACK := mustHex(t, exchange(t, doc, "logout").DeclaredResponseHex)
+
+	// oversized returns a max-bound-plus-one datagram carrying the given
+	// leading opcode.
+	oversized := func(opcode byte) []byte {
+		b := make([]byte, 4097)
+		b[0] = opcode
+		return b
+	}
 
 	cases := []struct {
 		name string
 		run  func(t *testing.T)
 	}{
-		{"challenge response too short", func(t *testing.T) {
-			_, err := parseChallengeResponse(challengeResp[:15])
+		{"challenge response empty", func(t *testing.T) {
+			_, err := parseChallengeResponse([]byte{})
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"challenge response below minimum structure", func(t *testing.T) {
+			b := make([]byte, 7)
+			b[0] = 0x02
+			_, err := parseChallengeResponse(b)
 			assertRejectedNoSecrets(t, err)
 		}},
 		{"challenge response wrong opcode", func(t *testing.T) {
-			b := append([]byte(nil), challengeResp...)
+			b := make([]byte, 8)
 			b[0] = 0x03
 			_, err := parseChallengeResponse(b)
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"login success response too short", func(t *testing.T) {
-			_, err := parseLoginResponse(loginSuccessResp[:63])
+		{"challenge response oversized", func(t *testing.T) {
+			_, err := parseChallengeResponse(oversized(0x02))
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"login success response wrong opcode", func(t *testing.T) {
-			b := append([]byte(nil), loginSuccessResp...)
-			b[0] = 0x05
-			_, err := parseLoginResponse(b)
+		{"login response empty", func(t *testing.T) {
+			_, err := parseLoginResponse([]byte{})
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"login rejection response too short", func(t *testing.T) {
-			_, err := parseLoginResponse(loginRejectionResp[:31])
-			assertRejectedNoSecrets(t, err)
-		}},
-		{"login rejection response wrong opcode", func(t *testing.T) {
-			b := append([]byte(nil), loginRejectionResp...)
+		{"login success response below minimum structure", func(t *testing.T) {
+			b := make([]byte, 38)
 			b[0] = 0x04
 			_, err := parseLoginResponse(b)
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"ka1 response too short", func(t *testing.T) {
-			err := parseKA1Response(ka1Resp[:19])
+		{"login rejection response below minimum structure", func(t *testing.T) {
+			b := make([]byte, 4)
+			b[0] = 0x05
+			_, err := parseLoginResponse(b)
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"login response wrong opcode", func(t *testing.T) {
+			b := make([]byte, 64)
+			b[0] = 0x06
+			_, err := parseLoginResponse(b)
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"login response oversized", func(t *testing.T) {
+			_, err := parseLoginResponse(oversized(0x04))
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"ka1 response empty", func(t *testing.T) {
+			err := parseKA1Response([]byte{})
 			assertRejectedNoSecrets(t, err)
 		}},
 		{"ka1 response wrong opcode", func(t *testing.T) {
-			b := append([]byte(nil), ka1Resp...)
-			b[0] = 0x06
-			err := parseKA1Response(b)
+			err := parseKA1Response([]byte{0x06})
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"ka2 response too short", func(t *testing.T) {
-			_, err := parseKA2Response(ka2Type1Resp[:59], 0x00, ka2Type1)
+		{"ka1 response oversized", func(t *testing.T) {
+			err := parseKA1Response(oversized(0x07))
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"ka2 response empty", func(t *testing.T) {
+			_, err := parseKA2Response([]byte{}, 0x00, ka2Type1, true)
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"ka2 response below minimum structure", func(t *testing.T) {
+			_, err := parseKA2Response(ka2Type1Resp[:19], 0x00, ka2Type1, true)
 			assertRejectedNoSecrets(t, err)
 		}},
 		{"ka2 response wrong opcode", func(t *testing.T) {
 			b := append([]byte(nil), ka2Type1Resp...)
 			b[0] = 0x06
-			_, err := parseKA2Response(b, 0x00, ka2Type1)
+			_, err := parseKA2Response(b, 0x00, ka2Type1, true)
 			assertRejectedNoSecrets(t, err)
 		}},
 		{"ka2 response serial mismatch", func(t *testing.T) {
-			_, err := parseKA2Response(ka2Type1Resp, 0x01, ka2Type1)
+			_, err := parseKA2Response(ka2Type1Resp, 0x01, ka2Type1, false)
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"ka2 response type mismatch", func(t *testing.T) {
-			_, err := parseKA2Response(ka2Type1Resp, 0x00, ka2Type3)
+		{"ka2 response type incompatible with request", func(t *testing.T) {
+			_, err := parseKA2Response(ka2Type1Resp, 0x00, ka2Type3, false)
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"ka2 response unrecognized type", func(t *testing.T) {
+			b := append([]byte(nil), ka2Type1Resp...)
+			b[5] = 0x05
+			_, err := parseKA2Response(b, 0x00, ka2Type1, true)
 			assertRejectedNoSecrets(t, err)
 		}},
 		{"ka2 response fixed bytes wrong", func(t *testing.T) {
 			b := append([]byte(nil), ka2Type1Resp...)
 			b[2] = 0x00
-			_, err := parseKA2Response(b, 0x00, ka2Type1)
+			_, err := parseKA2Response(b, 0x00, ka2Type1, true)
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"logout ack too short", func(t *testing.T) {
-			err := parseLogoutACK(logoutACK[:3])
+		{"ka2 response oversized", func(t *testing.T) {
+			b := oversized(0x07)
+			b[2] = 0x28
+			b[3] = 0x00
+			b[4] = 0x0b
+			_, err := parseKA2Response(b, 0x00, ka2Type1, true)
 			assertRejectedNoSecrets(t, err)
 		}},
-		{"logout ack wrong bytes", func(t *testing.T) {
-			b := append([]byte(nil), logoutACK...)
-			b[0] = 0x05
-			err := parseLogoutACK(b)
+		{"logout response empty", func(t *testing.T) {
+			err := parseLogoutACK([]byte{})
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"logout response wrong opcode", func(t *testing.T) {
+			err := parseLogoutACK([]byte{0x05, 0x00, 0x00, 0x00})
+			assertRejectedNoSecrets(t, err)
+		}},
+		{"logout response oversized", func(t *testing.T) {
+			err := parseLogoutACK(oversized(0x04))
 			assertRejectedNoSecrets(t, err)
 		}},
 	}
@@ -303,7 +382,7 @@ func TestAliasSafety(t *testing.T) {
 	}
 
 	ka2Resp := mustHex(t, exchange(t, doc, "ka2_type1_first").DeclaredResponseHex)
-	ka2Parsed, err := parseKA2Response(ka2Resp, 0x00, ka2Type1)
+	ka2Parsed, err := parseKA2Response(ka2Resp, 0x00, ka2Type1, true)
 	if err != nil {
 		t.Fatalf("parse ka2: %v", err)
 	}

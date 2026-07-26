@@ -5,14 +5,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 // encodeProtocolText encodes s as the protocol text byte sequence. The current
-// implementation covers only the single-byte ASCII subset (code points
-// 0x01-0x7F) that every converged source treats as plain bytes and that the
-// tracked client-vector fixture exercises. Full GBK multibyte encoding is
-// deferred until a real non-ASCII credential requires it; any rune outside the
-// ASCII subset is rejected so the boundary stays observable. An embedded NUL
+// implementation uses strict GBK. An embedded NUL
 // (0x00) is rejected because these fields are NUL-padded on the wire and an
 // embedded NUL would be indistinguishable from padding. The returned slice is
 // freshly allocated and never aliases s.
@@ -24,11 +23,12 @@ func encodeProtocolText(s string) ([]byte, error) {
 		if r == 0 {
 			return nil, fmt.Errorf("contains an embedded NUL, cannot encode as protocol text")
 		}
-		if r > 0x7f {
-			return nil, fmt.Errorf("contains rune U+%04X outside the encodable ASCII subset", r)
-		}
 	}
-	return []byte(s), nil
+	encoded, _, err := transform.Bytes(simplifiedchinese.GBK.NewEncoder(), []byte(s))
+	if err != nil {
+		return nil, fmt.Errorf("contains a rune that cannot be encoded as strict GBK")
+	}
+	return append([]byte(nil), encoded...), nil
 }
 
 // md5A = MD5(0x03 0x01 || salt || passwordGBK), 16 bytes. Used by Login, KA1
