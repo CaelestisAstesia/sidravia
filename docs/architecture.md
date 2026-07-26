@@ -272,6 +272,20 @@ UDP 状态全部私有，不为内部步骤创建没有真实替换点的接口�
 CLI 的机构 Profile ID 和用户名可以使用命令行参数。密码不得进入 argv：交互终端使用
 隐藏输入，自动化使用 `--password-stdin`。首版不提供 `--password`。
 
+首版认证 CLI 使用一个稳定命令族：
+
+```text
+sidravia auth start --profile <profile-id> --username <username>
+sidravia auth status <session-id>
+sidravia auth stop <session-id>
+```
+
+`auth start` 表示创建并由 daemon 持续维持一个认证 Session，`auth status` 查询该
+Session 的公开 Snapshot，`auth stop` 停止 Session 并按协议要求执行尽力退出。顶层
+`sidravia status` 仍只表示 daemon 进程状态，不与认证状态复用。首版不增加
+`login`/`logout` 兼容别名；面向普通用户的 GUI 可以使用“登录/退出”文案，而不改变
+底层 CLI 和 Session 语义。
+
 ## Dr.COM 5.2.0(D) Run 内部边界
 
 Session 是产品层认证状态机。它拥有意图、公开状态、网络变化、取消、重连调度和
