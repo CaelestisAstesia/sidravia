@@ -307,6 +307,13 @@ Session 的 `auth stop` 都返回零，包括 `waiting_for_network`、
 解码或 Session 操作失败返回非零。以后若脚本需要把“当前是否 authenticated”作为条件，
 应增加显式 `auth check`，不改变 `auth status` 的查询语义。
 
+三个认证命令使用同一个多行人类可读 Snapshot renderer。它始终显示 SessionID、state、
+Profile、协议、脱敏 account label 和更新时间，并只在存在时显示 state reason、所选
+网络绑定、认证建立时间、下次重试时间和最后一次公开失败。输出使用 IPC
+`SessionResult` 中的稳定状态/失败码和安全描述，不显示内部诊断或原始秘密。首版不把
+人类输出伪装成脚本格式；以后需要机器消费时增加显式 `--json`，不要求脚本解析多行
+文本。现有顶层 `sidravia status` 继续使用自己的单行 daemon 摘要。
+
 ## Dr.COM 5.2.0(D) Run 内部边界
 
 Session 是产品层认证状态机。它拥有意图、公开状态、网络变化、取消、重连调度和
