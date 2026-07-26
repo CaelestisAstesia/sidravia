@@ -163,6 +163,14 @@ Supervisor 还保存 Environment Detector 已经产生、daemon app 已经接受
 最近快照；旧 revision 被忽略；相同 revision 可以重放已保存的权威内容，以恢复部分
 分发失败。Supervisor 不解释网卡事实，也不替 Session 选择绑定。
 
+Environment Snapshot 保留操作系统报告的 hardware、connector、filter 和 endpoint
+接口分类。首版 `automatically_select_latest_available` 只把已启动、有 IPv4、由真实
+硬件支持、存在物理适配器并且不是 filter 或 endpoint 的接口作为候选；Windows 虚拟
+Ethernet、Hyper-V/WSL/Docker 内部接口和软件 VPN 不得仅因被报告为 Ethernet 或较晚
+出现而取代校园物理网卡。该规则使用操作系统提供的接口事实，不依赖显示名称黑名单。
+未来若加入显式手动绑定，可以单独决定是否允许选择虚拟接口，不改变自动模式的安全
+默认值。
+
 Supervisor 不读取 JSON、配置、凭据、文件路径或 ACL。未来如果产品需要多个并发 Session，应只扩展 Supervisor 的调度策略，不应重写 Session 模型。
 
 ## 配置、凭据和持久化

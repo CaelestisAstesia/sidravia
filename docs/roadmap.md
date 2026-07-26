@@ -23,6 +23,13 @@ verifier 已通过。首套 `auth start/status/stop` CLI、Windows 隐藏密码�
 `--password-stdin` 和共享 Session Snapshot 输出也已完成并通过聚焦测试、race 与
 Windows amd64 交叉编译。
 
+首轮纵向链路只读 Review 在 `cbfdfa5` 上完成，race 探针和公开 Go verifier 均通过，
+但结论为 **NO-GO**：Windows Observer 会把常见虚拟 Ethernet 当作 wired，自动选择器
+又允许最新候选优先，因此 WSL、Hyper-V、Docker 或软件 VPN 接口可能取代校园物理
+网卡。进入 Windows/校园现场前必须先让 Snapshot 保留系统的接口分类，并让自动模式只
+选择真实硬件、存在物理适配器且非 filter/endpoint 的接口。其他已确认 P2/P3 进入后续
+短切片，不与这项现场阻断修正混做。
+
 | 阶段 | 当前状态 | 进入下一阶段前必须观察到的结果 |
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
@@ -31,7 +38,7 @@ Windows amd64 交叉编译。
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 代码和自动验证完成，校园现场待验 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
 | 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
-| 6. Windows 产品纵向链路 | 代码和自动验证完成，Windows 原生现场待验 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路 |
+| 6. Windows 产品纵向链路 | 只读 Review 为 NO-GO：虚拟接口自动选择待修正 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
 | 7. 校园网络验证 | 未开始 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
 阶段 3 的第一个切片已经完成：typed 一次性输入可以在 daemon app 中解析为现有
