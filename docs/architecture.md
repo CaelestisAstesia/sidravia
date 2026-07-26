@@ -300,6 +300,13 @@ SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而
 `auth watch <session-id>`，而不是让 `auth start` 隐式变成长时间附着命令或跟随日志
 文件。
 
+认证 CLI 的退出码只表示请求和输出操作是否成功，不把 Session 状态当作命令执行失败。
+成功创建 Session 的 `auth start`、成功读取任何公开状态的 `auth status` 和成功停止
+Session 的 `auth stop` 都返回零，包括 `waiting_for_network`、
+`waiting_before_retry` 或 `blocked_by_error`。参数、密码输入、daemon 启动/连接、IPC、
+解码或 Session 操作失败返回非零。以后若脚本需要把“当前是否 authenticated”作为条件，
+应增加显式 `auth check`，不改变 `auth status` 的查询语义。
+
 ## Dr.COM 5.2.0(D) Run 内部边界
 
 Session 是产品层认证状态机。它拥有意图、公开状态、网络变化、取消、重连调度和
