@@ -9,7 +9,7 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 
 ## 当前状态
 
-仓库已经实现并自动验证：
+`v0.1.0-alpha.1` 是面向 Windows amd64 的首个 Alpha。仓库已经实现并自动验证：
 
 - CLI/daemon 状态通信骨架；
 - `auth start/status/stop` 一次性认证命令、Windows 隐藏密码输入和
@@ -22,11 +22,20 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
   和统一生命周期；
 - Windows JSON 文件 ACL 与原子持久化基础。
 
-Windows 原生双进程、真实网卡观察和校园 D520 认证尚未现场验证；仓库也不包含真实
-`jlu.json`。代码完成、自动测试通过和真实校园网络验证是不同状态。
+提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
+选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
+这是单台机器、单个网络环境的 Alpha 证据，不代表已经覆盖所有 Windows 版本、网卡或
+校园网络变体。机构 Profile 仍由用户放入本地配置目录，仓库不包含个人配置或凭据。
 
 长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
 [当前架构](docs/architecture.md)。
+
+## Windows Alpha 使用
+
+安装、创建本地 Profile、启动认证与停止认证见
+[Windows Alpha 快速开始](docs/getting-started-windows.md)。本版本仍有明确限制：
+没有 GUI、安装器、Windows Service、自动更新、持久认证配置管理或多活动 Session；
+它适合愿意使用 PowerShell 并能自行保留原网络客户端作为回退的测试者。
 
 ## 构建
 
@@ -64,6 +73,7 @@ python3 tools/developer/verify_repository.py --scope all
 - [架构决策](docs/decisions/README.md)
 - [Dr.COM 5.2.0(D) 协议规范](docs/protocols/drcom-5.2.0-d.md)
 - [验收证据](docs/evidence/README.md)
+- [Windows Alpha 快速开始](docs/getting-started-windows.md)
 
 ## License
 

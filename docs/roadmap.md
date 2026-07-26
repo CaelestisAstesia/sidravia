@@ -8,13 +8,13 @@
 
 `sidravia status`、host 运行信息清理和验收脚本安全清理已经通过独立 Review。
 完整 Go 测试、vet、格式检查和两个 Windows amd64 交叉编译均已通过。Windows 原生
-双进程现场尚未验证；它被明确保留为人类验收项，不再阻塞纯代码阶段。阶段 2 因此
-按“代码和自动验证完成、Windows 现场待验证”条件关闭。D520 Factory/Run 的代码与自动
-验证也已完成，真实校园协议正确性仍待现场验证。typed 系统网络快照已经贯通 daemon
+双进程与真实校园 D520 已在提交 `508197d` 上完成首次现场验证：CLI/daemon 选择物理
+以太网，完成登录、持续心跳与主动 Logout。阶段 2、阶段 4 和阶段 6 的首个 Windows/JLU
+纵向验收因此通过；它仍是单台机器、单个校园环境的 Alpha 证据。typed 系统网络快照已经贯通 daemon
 app、Supervisor 和新旧 Session；应用层名称已在生产装配前收敛为 `Application` 和
 `AuthenticationResolver`。真实 Windows Environment Detector 已实现 host facts 和
 两秒轮询的网络快照，代码与自动验证完成；它现已接入生产 daemon，Windows 原生网卡
-事实仍待验证。
+事实已在上述现场中验证，Clash TUN 在场但未被自动选中。
 本地机构 Profile 加载器也已完成：它从用户配置目录严格、全有或全无地加载版本化
 `<InstitutionProfileID>.json`，并在进入 Catalog 前交给已注册协议 Factory 验证。
 生产 `sidraviad` 现已注册 D520、加载 Profile、打开 Configuration/Credential 存储、
@@ -34,12 +34,12 @@ Windows amd64 交叉编译。
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
 | 1. 后端重整 | 完成 | Configuration、Credentials、App、Session、Supervisor 和 Persistence 各自拥有明确职责 |
-| 2. 可运行骨架 | 条件完成：现场待验 | Windows 上的 `sidravia status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
+| 2. 可运行骨架 | 完成：Windows 首轮现场通过 | Windows 上的 `sidravia status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
-| 4. D520 协议 Run | 代码和自动验证完成，校园现场待验 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
+| 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
 | 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
-| 6. Windows 产品纵向链路 | 只读 Review 为 NO-GO：虚拟接口自动选择待修正 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
-| 7. 校园网络验证 | 未开始 | 产品在真实校园网络完成认证，并保存可复查的证据 |
+| 6. Windows 产品纵向链路 | 完成：Windows/JLU 首轮现场通过 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
+| 7. 校园网络验证 | 首轮完成：扩大环境覆盖待进行 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
 阶段 3 的第一个切片已经完成：typed 一次性输入可以在 daemon app 中解析为现有
 `RuntimeDefinition`，并通过 Supervisor 启动、读取和停止 Session；该路径不创建
@@ -55,7 +55,7 @@ Session 分发，并保证新 Session 返回初始 Snapshot 前已得到最新�
 真实 Windows Detector 随后也已实现：Windows host information 使用真实系统事实，
 网络 Observer 立即发布首个快照并每两秒轮询，只在归一化事实变化时递增 revision；
 非 Windows 明确返回 Unsupported。其生命周期测试、完整 Go verifier 和 Windows
-交叉编译通过；Detector 已接入生产 daemon，但尚未在 Windows 原生环境验证真实网卡。
+交叉编译通过；Detector 已接入生产 daemon，并已在 Windows 现场正确选择物理以太网。
 本地 Profile 加载器随后也已完成：默认读取用户配置目录下的
 `Sidravia/institution-profiles`，每个规范短 ID 对应一个严格版本化 JSON 文件；缺目录
 表示空 Catalog，任一坏文件使整次启动加载失败，协议配置由 Registry 中对应 Factory
@@ -67,7 +67,7 @@ Configuration/Credential 存储，构造 Supervisor、Resolver、Application 和
 Review 修正了外部取消、Observer 提前返回、timer goroutine、活动等待和并发故障保留；
 当前代码和自动验证完成。首套 CLI authentication 命令随后也已完成：用户可以用
 一次性 Profile ID、用户名和安全密码输入启动 Session，并查询或停止它。真实
-`jlu.json` 与 Windows/校园现场仍未完成。
+`jlu` Profile 已作为本地文件在 Windows/JLU 现场使用；个人 Profile 不进入仓库。
 
 人类已选择直接实现真实 Go Dr.COM 5.2.0(D)，不在产品中加入假协议。参考收敛已经完成：
 线级规范、来源冲突和虚构确定性向量已经进入
@@ -75,7 +75,8 @@ Review 修正了外部取消、Observer 提前返回、timer goroutine、活动�
 与密码学 codec 已按 ASCII fixture 写成并通过聚焦测试；非 ASCII 编码因 GBK/UTF-8
 来源冲突保留为 `Unresolved`。真实 D520 Factory/Run、严格 Profile、阻塞登录与保活、
 取消唤醒、尽力 Logout 和结构化失败已经实现并通过独立 Review。该结果证明代码行为，
-不冒充真实校园服务器兼容性。
+随后提交 `508197d` 的现场证据证明了当前 JLU 环境中的真实服务器兼容性，但不外推到
+其他学校或尚未观察到的协议变体。
 
 现有 Python mock 来源于同一批历史资料，不作为下一切片完成门槛。Factory/Run 的自动
 测试可以使用包内最小 UDP test peer 证明确定性流程、取消和错误分类，但不得把该 peer
@@ -119,9 +120,9 @@ sidravia status
    其他 daemon 的运行信息。
 5. 完整 Go 测试、vet、格式检查和两个 Windows amd64 交叉编译通过。
 
-仍待人类现场执行：Windows 原生冷启动、热连接、单实例和参数拒绝。只有实际执行后
-才能写入原生 Go 版本、源码提交、完整命令和结果；这项缺口不冒充通过，也不阻塞
-Stage 3 的纯代码切片。
+Windows 原生冷启动、热连接、认证状态查询、主动停止和运行信息清理已在提交
+`508197d` 的现场验收中通过。更广泛的 Windows 版本、单实例冲突和故障注入仍属于后续
+兼容性覆盖，不改变首轮 Alpha 纵向链路已经通过的结论。
 
 ## 后续阶段
 
@@ -135,13 +136,14 @@ Stage 3 的纯代码切片。
 
 阶段 6 已将 typed Session handler、D520 Factory/Profile 和真实 Environment Detector
 接入生产 daemon，并补齐统一取消、等待和正常退出。CLI 安全密码输入及
-authentication 命令也已完成；下一步是在 Windows 原生环境运行一次性认证纵向链路。
+authentication 命令也已完成；Windows 原生一次性认证纵向链路已在 JLU 现场通过。
 登录后自启动可以随后加入；Service、管理员权限和登录前认证仍然可以推迟。
 机构 Profile 从本地可编辑文件加载，而不是作为机构专用常量编译进程序；普通认证 IPC
 仍只引用 Profile ID。首版每个 `<InstitutionProfileID>.json` 对应一个 Profile，使用
 `jlu` 这类简短 ID；修改后重启 daemon 生效，不做热重载。
 
-阶段 7 会在真实校园网络运行产品。现场结果必须与 mock 结果分开记录。
+阶段 7 的首次真实校园运行已经完成并与 mock 结果分开记录。后续继续扩大 Windows、
+网卡和校园协议变体覆盖。
 
 ## 当前不做
 

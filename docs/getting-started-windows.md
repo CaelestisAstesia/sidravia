@@ -1,0 +1,159 @@
+# Windows Alpha 使用指南
+
+本文适用于 `v0.1.0-alpha.1` 的 Windows amd64 压缩包。这个版本已经在一台
+Windows 11 机器上完成吉林大学 Dr.COM 5.2.0(D) 的认证、保活和注销现场验证，但仍是
+Alpha：二进制未签名，不提供 GUI、Windows Service、自动更新或通用机构配置。
+
+## 下载与校验
+
+从 GitHub Release 同时下载：
+
+- `sidravia-v0.1.0-alpha.1-windows-amd64.zip`
+- `SHA256SUMS.txt`
+
+在 PowerShell 7 中比较压缩包哈希：
+
+```powershell
+(Get-FileHash .\sidravia-v0.1.0-alpha.1-windows-amd64.zip -Algorithm SHA256).Hash.ToLower()
+Get-Content .\SHA256SUMS.txt
+```
+
+两者必须一致。解压后目录包含：
+
+- `sidravia.exe`：短生命周期命令行客户端；
+- `sidraviad.exe`：本地长期运行 daemon；
+- `SHA256SUMS`：两个 PE 文件的 SHA-256；
+- `README.md`、`GETTING-STARTED.md` 和 `LICENSE`。
+
+Windows SmartScreen 可能提示这是未签名应用。只有从项目 GitHub Release 下载且哈希
+匹配时才继续。
+
+## 安装吉林大学 Profile
+
+Profile 是不含账号和密码的本地机构配置。daemon 只在启动时加载一次。
+
+在 PowerShell 7 中执行：
+
+```powershell
+$ProfileDir = Join-Path $env:APPDATA 'Sidravia\institution-profiles'
+New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
+$ProfilePath = Join-Path $ProfileDir 'jlu.json'
+```
+
+创建 `jlu.json`：
+
+```powershell
+@'
+{
+  "schemaVersion": 1,
+  "institutionProfileId": "jlu",
+  "displayName": "吉林大学",
+  "authenticationProtocolId": "drcom-5.2.0-d",
+  "institutionProtocolConfiguration": {
+    "serverAddress": "10.100.61.3",
+    "serverPort": 61440,
+    "authVersionHex": "2c00",
+    "keepAliveVersionHex": "dc02",
+    "controlCheckStatusHex": "20",
+    "ipdogHex": "01",
+    "adapterNumberHex": "01",
+    "osInfoHex": "940000000600000000000000280a000002000000",
+    "challengePaddingHex": "000000000000000000000000000000",
+    "challengeTimeout": "3s",
+    "loginTimeout": "5s",
+    "keepaliveTimeout": "3s",
+    "logoutTimeout": "1s",
+    "heartbeatInterval": "20s",
+    "busyMaxAttempts": 3,
+    "busyBackoffMin": "1s",
+    "busyBackoffMax": "2s"
+  }
+}
+'@ | Set-Content -LiteralPath $ProfilePath -Encoding utf8NoBOM
+```
+
+不要把用户名或密码写入 Profile。其他学校不能直接复用这些服务器和 wire 参数；它们
+需要独立确认的机构 Profile。
+
+## 启动和认证
+
+先完全退出其他 Dr.COM 客户端，避免同一账号同时维持多个认证会话。
+
+打开两个 PowerShell 7 窗口并进入解压目录。
+
+窗口 A 前台运行 daemon：
+
+```powershell
+.\sidraviad.exe
+```
+
+窗口 B 检查版本：
+
+```powershell
+.\sidravia.exe status
+```
+
+预期包含：
+
+```text
+sidraviad 0.1.0-alpha.1 (v0.1.0-alpha.1) pid=<PID> status=running
+```
+
+启动一次性 Session：
+
+```powershell
+.\sidravia.exe auth start --profile jlu --username '<你的账号>'
+```
+
+密码只在交互式 `Password:` 提示中输入，不会回显。不要把密码放进命令行、脚本、
+Profile、截图或日志。非交互式调用必须显式使用 `--password-stdin`。
+
+`auth start` 会立即返回初始 Snapshot，不会等待认证完成。记下输出中的 Session ID，
+例如：
+
+```powershell
+$SessionID = 'session-1'
+.\sidravia.exe auth status $SessionID
+```
+
+认证成功时状态为：
+
+```text
+State: authenticated
+```
+
+同时核对 `Network:` 是实际校园物理网卡和预期 IPv4，而不是 VPN、TUN、虚拟交换机或
+其他软件接口。
+
+## 停止与退出
+
+停止当前 Session：
+
+```powershell
+.\sidravia.exe auth stop $SessionID
+```
+
+等待至少十秒，让协议 Run 完成有界的尽力 Logout，再查询一次：
+
+```powershell
+Start-Sleep -Seconds 10
+.\sidravia.exe auth status $SessionID
+```
+
+状态应保持 `suspended`。最后回到窗口 A 按一次 `Ctrl+C` 关闭 daemon。
+
+首个 Alpha 同一 daemon 进程只允许一个活动 Session。进程重启后不会恢复旧 Session
+ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他认证客户端代替正常 Stop。
+
+## Alpha 限制
+
+- 只发布 Windows amd64 二进制；其他平台尚不受支持。
+- 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
+- 本地 Profile 需要手动创建，尚无引导式配置界面。
+- 尚无 Session/Profile 列表、持久认证配置、自动登录或 Windows Service。
+- 简体中文产品呈现、结构化日志、route-aware 多 IPv4 选择和自动化仍未完成。
+- 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia
+  继续发送已经被真实服务器接受的 330 字节 Login。
+
+遇到失败时保留 CLI 的非秘密 Snapshot、所选网卡和稳定错误码。不要公开原始抓包、
+完整账号、MAC、IPC 运行信息内容或任何认证派生字段。
