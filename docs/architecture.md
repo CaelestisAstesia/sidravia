@@ -314,6 +314,13 @@ Profile、协议、脱敏 account label 和更新时间，并只在存在时显�
 人类输出伪装成脚本格式；以后需要机器消费时增加显式 `--json`，不要求脚本解析多行
 文本。现有顶层 `sidravia status` 继续使用自己的单行 daemon 摘要。
 
+`auth start`、`auth status` 和 `auth stop` 都复用顶层 status 已有的 daemon 发现语义：
+先尝试运行信息中的现有 daemon，连接失败则至多一次启动与 CLI 同目录的
+`sidraviad.exe`，并在同一个五秒总边界内轮询新的运行信息和连接。认证命令不要求用户
+预先运行 `sidravia status`。如果 `auth status/stop` 因冷启动进入了一个没有目标
+Session 的新 daemon，它返回安全的 Session 操作失败，不猜测、缓存或复用旧进程的
+SessionID。
+
 ## Dr.COM 5.2.0(D) Run 内部边界
 
 Session 是产品层认证状态机。它拥有意图、公开状态、网络变化、取消、重连调度和
