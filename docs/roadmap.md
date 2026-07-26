@@ -13,19 +13,23 @@
 验证也已完成，真实校园协议正确性仍待现场验证。typed 系统网络快照已经贯通 daemon
 app、Supervisor 和新旧 Session；应用层名称已在生产装配前收敛为 `Application` 和
 `AuthenticationResolver`。真实 Windows Environment Detector 已实现 host facts 和
-两秒轮询的网络快照，代码与自动验证完成；生产装配和 Windows 原生网卡事实仍待验证。
+两秒轮询的网络快照，代码与自动验证完成；它现已接入生产 daemon，Windows 原生网卡
+事实仍待验证。
 本地机构 Profile 加载器也已完成：它从用户配置目录严格、全有或全无地加载版本化
 `<InstitutionProfileID>.json`，并在进入 Catalog 前交给已注册协议 Factory 验证。
+生产 `sidraviad` 现已注册 D520、加载 Profile、打开 Configuration/Credential 存储、
+接入真实 Environment Observer、typed IPC 与统一生命周期；代码、race 检查和完整 Go
+verifier 已通过。
 
 | 阶段 | 当前状态 | 进入下一阶段前必须观察到的结果 |
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
 | 1. 后端重整 | 完成 | Configuration、Credentials、App、Session、Supervisor 和 Persistence 各自拥有明确职责 |
 | 2. 可运行骨架 | 条件完成：现场待验 | Windows 上的 `sidravia status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
-| 3. 最小 Session 应用边界 | 代码和自动验证完成，生产装配待后续 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
+| 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 代码和自动验证完成，校园现场待验 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
-| 5. 持久输入和真实环境 | 部分完成：Detector 与本地 Profile 加载完成，持久 Configuration/Credential 入口和生产装配未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
-| 6. Windows 产品纵向链路 | 未开始 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路 |
+| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
+| 6. Windows 产品纵向链路 | 部分完成：daemon 纵向链路完成，CLI 认证入口和现场运行待完成 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路 |
 | 7. 校园网络验证 | 未开始 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
 阶段 3 的第一个切片已经完成：typed 一次性输入可以在 daemon app 中解析为现有
@@ -42,11 +46,18 @@ Session 分发，并保证新 Session 返回初始 Snapshot 前已得到最新�
 真实 Windows Detector 随后也已实现：Windows host information 使用真实系统事实，
 网络 Observer 立即发布首个快照并每两秒轮询，只在归一化事实变化时递增 revision；
 非 Windows 明确返回 Unsupported。其生命周期测试、完整 Go verifier 和 Windows
-交叉编译通过，但 Detector 尚未接入生产 daemon，也未在 Windows 原生环境验证真实网卡。
+交叉编译通过；Detector 已接入生产 daemon，但尚未在 Windows 原生环境验证真实网卡。
 本地 Profile 加载器随后也已完成：默认读取用户配置目录下的
 `Sidravia/institution-profiles`，每个规范短 ID 对应一个严格版本化 JSON 文件；缺目录
 表示空 Catalog，任一坏文件使整次启动加载失败，协议配置由 Registry 中对应 Factory
-验证。D520 Factory 注册和 `cmd/sidraviad` 生产装配仍未实现。
+验证。
+
+生产组合随后完成：`cmd/sidraviad` 注册唯一 D520 Factory，加载 Profile，打开
+Configuration/Credential 存储，构造 Supervisor、Resolver、Application 和 typed IPC，
+并统一拥有 host、Environment Observer、Snapshot 转交和最终 Supervisor 清理。并发
+Review 修正了外部取消、Observer 提前返回、timer goroutine、活动等待和并发故障保留；
+当前代码和自动验证完成，真实 `jlu.json`、CLI authentication 命令和 Windows/校园现场
+仍未完成。
 
 人类已选择直接实现真实 Go Dr.COM 5.2.0(D)，不在产品中加入假协议。参考收敛已经完成：
 线级规范、来源冲突和虚构确定性向量已经进入
@@ -112,9 +123,10 @@ Stage 3 的纯代码切片。
 
 阶段 5 再补齐 Configuration CRUD、Credential 写入/替换/删除和真实 Windows Environment Detector。按 `ConfigurationID` 启动与一次性启动必须生成同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作这些模块。daemon 仍不提供读取凭据明文的操作。
 
-阶段 6 将 typed Session handler、D520 Factory/Profile、真实 Environment Detector 和
-CLI 安全密码输入接入生产 daemon，形成 Windows 一次性认证纵向链路，并补齐正常退出等
-必要产品行为。登录后自启动可以随后加入；Service、管理员权限和登录前认证仍然可以推迟。
+阶段 6 已将 typed Session handler、D520 Factory/Profile 和真实 Environment Detector
+接入生产 daemon，并补齐统一取消、等待和正常退出。下一步为 CLI 安全密码输入及
+authentication 命令，再进行 Windows 一次性认证纵向运行。登录后自启动可以随后加入；
+Service、管理员权限和登录前认证仍然可以推迟。
 机构 Profile 从本地可编辑文件加载，而不是作为机构专用常量编译进程序；普通认证 IPC
 仍只引用 Profile ID。首版每个 `<InstitutionProfileID>.json` 对应一个 Profile，使用
 `jlu` 这类简短 ID；修改后重启 daemon 生效，不做热重载。
