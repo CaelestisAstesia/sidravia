@@ -30,15 +30,150 @@ func TestRunRejectsBadArguments(t *testing.T) {
 		nil,
 		{"bogus"},
 		{"status", "extra"},
+		{"login"},
+		{"logout"},
+		{"auth"},
+		{"auth", "watch", "session-marker"},
+		{"auth", "check", "session-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--password", "value-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--wait"},
+		{"auth", "status", "session-marker", "--json"},
 	}
 	for _, args := range cases {
 		err := Run(args)
 		if err == nil {
-			t.Errorf("Run(%v) = nil, want error", args)
+			t.Error("Run returned nil, want usage error")
 			continue
 		}
-		if got := err.Error(); got != "usage: sidravia status" {
-			t.Errorf("Run(%v) = %q, want %q", args, got, "usage: sidravia status")
+		if got := err.Error(); got != commandUsage {
+			t.Errorf("Run error = %q, want static usage", got)
+		}
+		for _, marker := range []string{"profile-marker", "user-marker", "session-marker", "value-marker"} {
+			if strings.Contains(err.Error(), marker) {
+				t.Errorf("usage error contains supplied marker %q", marker)
+			}
+		}
+	}
+}
+
+func TestRunDispatchesAcceptedCommands(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "daemon status", args: []string{"status"}, want: "status"},
+		{name: "interactive start", args: []string{"auth", "start", "--profile", "profile-a", "--username", "account-a"}, want: "start:profile-a:account-a:false"},
+		{name: "stdin start", args: []string{"auth", "start", "--username", "account-b", "--password-stdin", "--profile", "profile-b"}, want: "start:profile-b:account-b:true"},
+		{name: "session status", args: []string{"auth", "status", "session-a"}, want: "auth-status:session-a"},
+		{name: "session stop", args: []string{"auth", "stop", "session-b"}, want: "auth-stop:session-b"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var got string
+			deps := commandDependencies{
+				status: func() error {
+					got = "status"
+					return nil
+				},
+				authStart: func(options authStartOptions) error {
+					got = fmt.Sprintf("start:%s:%s:%t", options.profileID, options.username, options.passwordStdin)
+					return nil
+				},
+				authStatus: func(sessionID string) error {
+					got = "auth-status:" + sessionID
+					return nil
+				},
+				authStop: func(sessionID string) error {
+					got = "auth-stop:" + sessionID
+					return nil
+				},
+			}
+			if err := runCommand(test.args, deps); err != nil {
+				t.Fatalf("runCommand = %v, want nil", err)
+			}
+			if got != test.want {
+				t.Errorf("dispatch = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestAuthStartRejectsInvalidArgumentsSafely(t *testing.T) {
+	tests := [][]string{
+		{"auth", "start"},
+		{"auth", "start", "--profile", "profile-marker"},
+		{"auth", "start", "--username", "user-marker"},
+		{"auth", "start", "--profile", "", "--username", "user-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username", ""},
+		{"auth", "start", "--profile", "profile-marker", "--profile", "other-marker", "--username", "user-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--username", "other-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--password-stdin", "--password-stdin"},
+		{"auth", "start", "--profile=profile-marker", "--username", "user-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username=user-marker"},
+		{"auth", "start", "-p", "profile-marker", "--username", "user-marker"},
+		{"auth", "start", "--profile", "profile-marker", "-u", "user-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--unknown"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "positional-marker"},
+		{"auth", "start", "--profile", "--username", "user-marker"},
+		{"auth", "start", "--profile", "profile-marker", "--username"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--password"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--wait"},
+		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--json"},
+	}
+
+	deps := commandDependencies{
+		status:     func() error { return nil },
+		authStart:  func(authStartOptions) error { t.Fatal("invalid start dispatched"); return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+	for _, args := range tests {
+		err := runCommand(args, deps)
+		if err == nil {
+			t.Error("invalid auth start returned nil")
+			continue
+		}
+		if err.Error() != commandUsage {
+			t.Errorf("invalid auth start error = %q, want static usage", err)
+		}
+		for _, marker := range []string{"profile-marker", "user-marker", "other-marker", "positional-marker"} {
+			if strings.Contains(err.Error(), marker) {
+				t.Errorf("usage error contains supplied marker %q", marker)
+			}
+		}
+	}
+}
+
+func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
+	tests := [][]string{
+		{"auth", "status"},
+		{"auth", "status", ""},
+		{"auth", "status", "session-marker", "extra-marker"},
+		{"auth", "status", "--session-marker"},
+		{"auth", "stop"},
+		{"auth", "stop", ""},
+		{"auth", "stop", "session-marker", "extra-marker"},
+		{"auth", "stop", "--session-marker"},
+	}
+	deps := commandDependencies{
+		status:     func() error { return nil },
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { t.Fatal("invalid status dispatched"); return nil },
+		authStop:   func(string) error { t.Fatal("invalid stop dispatched"); return nil },
+	}
+	for _, args := range tests {
+		err := runCommand(args, deps)
+		if err == nil {
+			t.Error("invalid session command returned nil")
+			continue
+		}
+		if err.Error() != commandUsage {
+			t.Errorf("invalid session command error = %q, want static usage", err)
+		}
+		if strings.Contains(err.Error(), "marker") {
+			t.Error("usage error contains supplied session marker")
 		}
 	}
 }

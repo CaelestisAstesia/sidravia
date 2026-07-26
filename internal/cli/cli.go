@@ -3,23 +3,123 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
 
+const commandUsage = "usage: sidravia status | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>"
+
 // Run executes the CLI with the given arguments.
 func Run(args []string) error {
-	if len(args) != 1 || args[0] != "status" {
-		return fmt.Errorf("usage: sidravia status")
+	return runCommand(args, defaultCommandDependencies())
+}
+
+type authStartOptions struct {
+	profileID     string
+	username      string
+	passwordStdin bool
+}
+
+type commandDependencies struct {
+	status     func() error
+	authStart  func(authStartOptions) error
+	authStatus func(string) error
+	authStop   func(string) error
+}
+
+func defaultCommandDependencies() commandDependencies {
+	return commandDependencies{
+		status:     status,
+		authStart:  authStart,
+		authStatus: authStatus,
+		authStop:   authStop,
 	}
-	return status()
+}
+
+func runCommand(args []string, deps commandDependencies) error {
+	if len(args) == 1 && args[0] == "status" {
+		return deps.status()
+	}
+	if len(args) < 2 || args[0] != "auth" {
+		return errors.New(commandUsage)
+	}
+
+	switch args[1] {
+	case "start":
+		options, err := parseAuthStart(args[2:])
+		if err != nil {
+			return err
+		}
+		return deps.authStart(options)
+	case "status":
+		sessionID, err := parseSessionID(args[2:])
+		if err != nil {
+			return err
+		}
+		return deps.authStatus(sessionID)
+	case "stop":
+		sessionID, err := parseSessionID(args[2:])
+		if err != nil {
+			return err
+		}
+		return deps.authStop(sessionID)
+	default:
+		return errors.New(commandUsage)
+	}
+}
+
+func parseAuthStart(args []string) (authStartOptions, error) {
+	var options authStartOptions
+	var profileSet, usernameSet, passwordStdinSet bool
+
+	for index := 0; index < len(args); {
+		switch args[index] {
+		case "--profile":
+			if profileSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
+				return authStartOptions{}, errors.New(commandUsage)
+			}
+			options.profileID = args[index+1]
+			profileSet = true
+			index += 2
+		case "--username":
+			if usernameSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
+				return authStartOptions{}, errors.New(commandUsage)
+			}
+			options.username = args[index+1]
+			usernameSet = true
+			index += 2
+		case "--password-stdin":
+			if passwordStdinSet {
+				return authStartOptions{}, errors.New(commandUsage)
+			}
+			options.passwordStdin = true
+			passwordStdinSet = true
+			index++
+		default:
+			return authStartOptions{}, errors.New(commandUsage)
+		}
+	}
+
+	if !profileSet || !usernameSet {
+		return authStartOptions{}, errors.New(commandUsage)
+	}
+	return options, nil
+}
+
+func parseSessionID(args []string) (string, error) {
+	if len(args) != 1 || args[0] == "" || strings.HasPrefix(args[0], "-") {
+		return "", errors.New(commandUsage)
+	}
+	return args[0], nil
 }
 
 func status() error {
@@ -51,11 +151,39 @@ func defaultStatusDependencies() statusDependencies {
 	}
 }
 
+type discoveryDependencies struct {
+	runtimeInfoPath func() (string, error)
+	readRuntimeInfo func(path string) (contract.RuntimeInfo, error)
+	startDaemon     func() error
+	totalWait       time.Duration
+	pollInterval    time.Duration
+}
+
+func defaultDiscoveryDependencies() discoveryDependencies {
+	return discoveryDependencies{
+		runtimeInfoPath: runtimeInfoPath,
+		readRuntimeInfo: readRuntimeInfo,
+		startDaemon:     startDaemon,
+		totalWait:       5 * time.Second,
+		pollInterval:    200 * time.Millisecond,
+	}
+}
+
 // runStatus drives the status command against the supplied dependencies,
 // preserving the production control flow: try a hot connection first, start the
 // daemon at most once, then poll until the daemon is reachable or totalWait
 // elapses.
 func runStatus(deps statusDependencies) error {
+	return discoverDaemon(discoveryDependencies{
+		runtimeInfoPath: deps.runtimeInfoPath,
+		readRuntimeInfo: deps.readRuntimeInfo,
+		startDaemon:     deps.startDaemon,
+		totalWait:       deps.totalWait,
+		pollInterval:    deps.pollInterval,
+	}, deps.connectAndPrint)
+}
+
+func discoverDaemon(deps discoveryDependencies, operation func(contract.RuntimeInfo) error) error {
 	infoPath, err := deps.runtimeInfoPath()
 	if err != nil {
 		return fmt.Errorf("runtime info path: %w", err)
@@ -64,7 +192,7 @@ func runStatus(deps statusDependencies) error {
 	// Try to connect to an already-running daemon.
 	info, err := deps.readRuntimeInfo(infoPath)
 	if err == nil {
-		if err := deps.connectAndPrint(info); err == nil {
+		if err := operation(info); err == nil {
 			return nil
 		}
 	}
@@ -90,7 +218,7 @@ func runStatus(deps statusDependencies) error {
 			if err != nil {
 				continue
 			}
-			if err := deps.connectAndPrint(info); err != nil {
+			if err := operation(info); err != nil {
 				continue
 			}
 			return nil
