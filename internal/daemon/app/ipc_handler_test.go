@@ -125,8 +125,8 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 	if stopped.AuthenticationSessionID != started.AuthenticationSessionID {
 		t.Errorf("stop session ID: got %q, want %q", stopped.AuthenticationSessionID, started.AuthenticationSessionID)
 	}
-	if stopped.State != string(session.Suspended) {
-		t.Errorf("stop State: got %q, want %q", stopped.State, session.Suspended)
+	if stopped.State != string(session.Stopping) {
+		t.Errorf("stop State: got %q, want %q", stopped.State, session.Stopping)
 	}
 }
 

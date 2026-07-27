@@ -135,7 +135,7 @@ func TestAuthDiscoveryStartsOnceAfterStaleClientWithoutCallingSession(t *testing
 			if decoded.SessionID != "session-1" {
 				t.Error("fresh client received different SessionID")
 			}
-			return successSessionResponse(t, minimalSessionResult("suspended")), nil
+			return successSessionResponse(t, minimalSessionResult("stopping")), nil
 		},
 	}
 
@@ -341,7 +341,7 @@ func TestAuthStatusAndStopTypedRequestsWithoutPasswordRead(t *testing.T) {
 				decoded, err := contract.DecodeSessionStopPayload(payload)
 				return decoded.SessionID, err
 			},
-			resultState: "suspended",
+			resultState: "stopping",
 		},
 	}
 
@@ -540,6 +540,7 @@ func TestAllPublicSessionStatesAreSuccessfulCommandData(t *testing.T) {
 		"authenticated",
 		"waiting_before_retry",
 		"blocked_by_error",
+		"stopping",
 		"suspended",
 	}
 	for _, state := range states {

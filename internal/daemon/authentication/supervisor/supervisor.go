@@ -134,7 +134,7 @@ func (s *Supervisor) StartResolved(
 	s.wg.Add(1)
 	go func() {
 		defer close(ms.forwardDone)
-		s.forwardRevisions(id, actor, ms.stopFwd)
+		s.forwardRevisions(id, ms)
 	}()
 
 	// Copy the current latest network snapshot under the lock so the new
@@ -189,7 +189,17 @@ func (s *Supervisor) Stop(ctx context.Context, id ID) (Snapshot, error) {
 		s.mu.Unlock()
 		return Snapshot{}, fmt.Errorf("session %q not found", id)
 	}
-	if ms.state != stateActive {
+	switch ms.state {
+	case stateStopping, stateStopped:
+		s.mu.Unlock()
+		snapshot, err := ms.actor.Snapshot(ctx)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("snapshot session %q during repeated stop: %w", id, err)
+		}
+		s.observeStoppedRevision(id, ms, snapshot)
+		return snapshot, nil
+	case stateActive:
+	default:
 		s.mu.Unlock()
 		return Snapshot{}, fmt.Errorf("session %q is not active", id)
 	}
@@ -199,14 +209,15 @@ func (s *Supervisor) Stop(ctx context.Context, id ID) (Snapshot, error) {
 	snapshot, err := ms.actor.Suspend(ctx)
 	if err != nil {
 		s.mu.Lock()
-		ms.state = stateActive
+		if ms.state == stateStopping {
+			ms.state = stateActive
+		}
 		s.mu.Unlock()
 		return Snapshot{}, fmt.Errorf("suspend session %q: %w", id, err)
 	}
-
-	s.mu.Lock()
-	ms.state = stateStopped
-	s.mu.Unlock()
+	// An already-suspended Session treats Stop as a no-op and emits no new
+	// revision, so align the private marker from the authoritative reply.
+	s.observeStoppedRevision(id, ms, snapshot)
 
 	return snapshot, nil
 }
@@ -282,7 +293,12 @@ func (s *Supervisor) Get(ctx context.Context, id ID) (Snapshot, error) {
 	if !ok {
 		return Snapshot{}, fmt.Errorf("session %q not found", id)
 	}
-	return ms.actor.Snapshot(ctx)
+	snapshot, err := ms.actor.Snapshot(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	s.observeStoppedRevision(id, ms, snapshot)
+	return snapshot, nil
 }
 
 // List returns snapshots for all known sessions.
@@ -354,27 +370,40 @@ func (s *Supervisor) Wait() {
 	s.wg.Wait()
 }
 
-func (s *Supervisor) forwardRevisions(id ID, actor *session.AuthenticationSession, stop <-chan struct{}) {
+func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
 	defer s.wg.Done()
-	revisions := actor.RevisionEvents()
+	revisions := managed.actor.RevisionEvents()
 	for {
 		select {
 		case event, ok := <-revisions:
 			if !ok {
 				return
 			}
-			snapshot, err := actor.Snapshot(context.Background())
+			snapshot, err := managed.actor.Snapshot(context.Background())
 			if err != nil {
 				continue
 			}
+			s.observeStoppedRevision(id, managed, snapshot)
 			s.publishRevision(RevisionEvent{
 				SessionID: id,
 				Revision:  event.Revision,
 				Snapshot:  snapshot,
 			})
-		case <-stop:
+		case <-managed.stopFwd:
 			return
 		}
+	}
+}
+
+func (s *Supervisor) observeStoppedRevision(id ID, managed *managedSession, snapshot Snapshot) {
+	if snapshot.State != session.Suspended {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, exists := s.sessions[id]
+	if exists && current == managed && managed.state == stateStopping {
+		managed.state = stateStopped
 	}
 }
 

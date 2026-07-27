@@ -279,17 +279,22 @@ func (exec *execution) classifyKA2Response(expectedSerial, expectedType byte, fi
 }
 
 // finalize maps the outcome to a public failure. On cancellation it performs
-// the requested cleanup and returns nil. On a protocol failure after Auth Info
-// was supplied it first attempts bounded best-effort Logout, retaining any
-// cleanup failure only in the diagnostic cause without changing the original
-// code, description or handling recommendation.
+// the requested cleanup. Successful cleanup returns nil; failed cleanup
+// returns a stable internal failure for Session diagnostics, while Session
+// still treats the authoritative cancellation as a successful stop. On a
+// protocol failure after Auth Info was supplied it first attempts bounded
+// best-effort Logout, retaining any cleanup failure only in the diagnostic
+// cause without changing the original code, description or handling
+// recommendation.
 func (exec *execution) finalize(ctx context.Context, failure *runError) *protocol.AuthenticationProtocolRunFailure {
 	if cause := context.Cause(ctx); cause != nil {
 		var cancellation protocol.AuthenticationProtocolRunCancellationCause
 		if errors.As(cause, &cancellation) &&
 			cancellation.CleanupRequirement == protocol.TerminateWithBestEffortLogout &&
 			exec.hasAuthInfo {
-			_ = exec.bestEffortLogout()
+			if cleanupFailure := exec.bestEffortLogout(); cleanupFailure != nil {
+				return cleanupError("logout", cleanupFailure).toFailure()
+			}
 		}
 		return nil
 	}

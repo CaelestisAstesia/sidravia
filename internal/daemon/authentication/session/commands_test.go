@@ -157,14 +157,82 @@ func TestSuspendCancelsRunWithBestEffortLogout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("suspend() error = %v", err)
 	}
-	if got.Intent != SuspendAuthentication || got.State != Suspended || got.StateReason != nil || got.AuthenticationEstablishedAt != nil || got.NextRetryAt != nil {
+	if got.Intent != SuspendAuthentication || got.State != Stopping || got.StateReason != nil || got.AuthenticationEstablishedAt != nil || got.NextRetryAt != nil {
 		t.Fatalf("suspend() snapshot = %#v", got)
 	}
 	assertCleanupRequirement(t, run.waitForCancellation(ctx), protocol.TerminateWithBestEffortLogout)
+	repeated, err := session.Suspend(ctx)
+	if err != nil {
+		t.Fatalf("repeated suspend() error = %v", err)
+	}
+	if repeated.State != Stopping || repeated.Revision != got.Revision {
+		t.Fatalf("repeated suspend() snapshot = %#v, want unchanged stopping revision %d", repeated, got.Revision)
+	}
+	select {
+	case cause := <-run.canceled:
+		t.Fatalf("repeated suspend requested a second cleanup: %v", cause)
+	default:
+	}
 	if calls := len(factory.creationInputs()); calls != 1 {
 		t.Fatalf("suspend() created %d protocol runs, want 1", calls)
 	}
-	run.unblock(nil)
+	cleanupFailure := &protocol.AuthenticationProtocolRunFailure{
+		Code:        "logout_cleanup_failed",
+		Description: "Best-effort logout cleanup failed.",
+	}
+	run.unblock(cleanupFailure)
+	suspended := waitForState(t, ctx, session, Suspended)
+	if suspended.Revision != got.Revision+1 || suspended.LastAuthenticationFailure != nil {
+		t.Fatalf("completed suspension snapshot = %#v", suspended)
+	}
+	if session.lastStopCleanupFailure != cleanupFailure {
+		t.Fatalf("private cleanup failure = %#v, want original internal failure", session.lastStopCleanupFailure)
+	}
+}
+
+func TestSuspendWithoutActiveRunStillPublishesStoppingBeforeSuspended(t *testing.T) {
+	session := newTestSession(t, &controlledFactory{}, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	initial := sessionSnapshot(t, ctx, session)
+	if initial.State != WaitingForNetwork {
+		t.Fatalf("initial state = %q, want %q", initial.State, WaitingForNetwork)
+	}
+	stopping, err := session.Suspend(ctx)
+	if err != nil {
+		t.Fatalf("suspend() error = %v", err)
+	}
+	if stopping.State != Stopping || stopping.Intent != SuspendAuthentication {
+		t.Fatalf("suspend() snapshot = %#v, want stopping", stopping)
+	}
+	suspended := waitForState(t, ctx, session, Suspended)
+	if suspended.Revision != stopping.Revision+1 {
+		t.Fatalf("suspended revision = %d, want %d", suspended.Revision, stopping.Revision+1)
+	}
+}
+
+func TestSuspendBlockedSessionCompletesWithoutCreatingRun(t *testing.T) {
+	factory := &controlledFactory{creationError: errControlledFactoryCreation}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	blocked, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err != nil || blocked.State != BlockedByError {
+		t.Fatalf("blocked snapshot = %#v; error = %v", blocked, err)
+	}
+	stopping, err := session.Suspend(ctx)
+	if err != nil {
+		t.Fatalf("suspend() error = %v", err)
+	}
+	if stopping.State != Stopping {
+		t.Fatalf("suspend() state = %q, want %q", stopping.State, Stopping)
+	}
+	_ = waitForState(t, ctx, session, Suspended)
+	if calls := len(factory.creationInputs()); calls != 1 {
+		t.Fatalf("stop created another protocol run: calls = %d", calls)
+	}
 }
 
 func TestRestartClearsBlockAndStartsNewGeneration(t *testing.T) {
@@ -569,12 +637,12 @@ func TestCanceledRunDoesNotOverwriteLastAuthenticationFailure(t *testing.T) {
 	}
 	assertCleanupRequirement(t, second.waitForCancellation(ctx), protocol.TerminateWithBestEffortLogout)
 	second.unblock(blockingCommandFailure("must-not-overwrite"))
+	got := waitForState(t, ctx, session, Suspended)
+	if got.LastAuthenticationFailure == nil || *got.LastAuthenticationFailure != want {
+		t.Fatalf("canceled run changed retained failure: %#v", got)
+	}
 	if err := session.Shutdown(ctx); err != nil {
 		t.Fatalf("shutdown() error = %v", err)
-	}
-	got := session.currentSnapshot.Clone()
-	if got.State != Suspended || got.LastAuthenticationFailure == nil || *got.LastAuthenticationFailure != want {
-		t.Fatalf("canceled run changed retained failure: %#v", got)
 	}
 }
 

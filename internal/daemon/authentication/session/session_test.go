@@ -582,16 +582,69 @@ func TestSessionSnapshotRevisionIsMonotonicAndNoOpsDoNotIncrement(t *testing.T) 
 	}
 	assertSameRevision(t, "healthy activate", activated, displayUpdate)
 
-	suspended, err := session.Suspend(ctx)
+	stopping, err := session.Suspend(ctx)
 	if err != nil {
 		t.Fatalf("suspend() error = %v", err)
 	}
-	assertNextRevision(t, "suspend", suspended, activated)
+	if stopping.State != Stopping {
+		t.Fatalf("suspend state = %q, want %q", stopping.State, Stopping)
+	}
+	assertNextRevision(t, "begin suspend", stopping, activated)
 	repeatedSuspend, err := session.Suspend(ctx)
 	if err != nil {
 		t.Fatalf("repeated suspend() error = %v", err)
 	}
-	assertSameRevision(t, "repeated suspend", repeatedSuspend, suspended)
+	assertSameRevision(t, "repeated suspend", repeatedSuspend, stopping)
+	run.unblock(nil)
+	suspended := waitForState(t, ctx, session, Suspended)
+	assertNextRevision(t, "complete suspend", suspended, stopping)
+}
+
+func TestStoppingCannotBeOverwrittenByInputsOrCallbacks(t *testing.T) {
+	factory := &controlledFactory{holdCancellation: true}
+	session := newTestSession(t, factory, MaintainAuthentication)
+	ctx := testContext(t)
+	defer shutdownTestSession(t, session)
+
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	run := factory.run(0)
+	defer run.unblock(nil)
+	if err := run.waitForStart(ctx); err != nil {
+		t.Fatalf("run did not start: %v", err)
+	}
+	stopping, err := session.Suspend(ctx)
+	if err != nil {
+		t.Fatalf("suspend() error = %v", err)
+	}
+	assertCleanupRequirement(t, run.waitForCancellation(ctx), protocol.TerminateWithBestEffortLogout)
+
+	if got, err := session.Activate(ctx); err != nil || got.State != Stopping || got.Intent != SuspendAuthentication {
+		t.Fatalf("activate while stopping = (%#v, %v)", got, err)
+	}
+	if got, err := session.Restart(ctx); err != nil || got.State != Stopping || got.Intent != SuspendAuthentication {
+		t.Fatalf("restart while stopping = (%#v, %v)", got, err)
+	}
+	if got, err := session.ApplySystemNetworkSnapshot(ctx, environment.NewSnapshot(2, time.Unix(2, 0), nil)); err != nil || got.State != Stopping {
+		t.Fatalf("network loss while stopping = (%#v, %v)", got, err)
+	}
+	session.post(authenticationEstablishedEvent{generation: 1})
+	if got := sessionSnapshot(t, ctx, session); got.State != Stopping || got.Revision < stopping.Revision {
+		t.Fatalf("callback overwrote stopping: %#v", got)
+	}
+
+	replacement := validRuntimeDefinition(t)
+	replacement.AuthenticationProtocolFactory = factory
+	replacement.Configuration.AuthenticationSessionID = stopping.AuthenticationSessionID
+	got, err := session.replaceRuntimeDefinitionForSupervisor(ctx, replacement)
+	if err != nil || got.State != Stopping || got.Intent != SuspendAuthentication {
+		t.Fatalf("replacement while stopping = (%#v, %v)", got, err)
+	}
+	if calls := len(factory.creationInputs()); calls != 1 {
+		t.Fatalf("stopping inputs created %d runs, want 1", calls)
+	}
+
+	run.unblock(nil)
+	_ = waitForState(t, ctx, session, Suspended)
 }
 
 func assertNextRevision(t *testing.T, operation string, got, previous Snapshot) {

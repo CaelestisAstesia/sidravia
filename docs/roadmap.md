@@ -23,6 +23,12 @@ verifier 已通过。首套 `auth start/status/stop` CLI、Windows 隐藏密码�
 `--password-stdin` 和共享 Session Snapshot 输出也已完成并通过聚焦测试、race 与
 Windows amd64 交叉编译。
 
+Session 主动停止语义随后收敛为两阶段：Stop 立即返回公开 `stopping`，当前协议 Run
+完成有界清理并退出后才发布 `suspended`，Supervisor 到此时才释放单活动准入。重复
+Stop 幂等，清理失败只保留为 Session 私有诊断，不把本地 Session 卡在过渡态。该切片
+只改变生命周期代码、相邻契约测试和人类文档；Windows 原生与校园现场状态尚未重新
+验证。
+
 首轮纵向链路只读 Review 在 `cbfdfa5` 上完成，race 探针和公开 Go verifier 均通过，
 但结论为 **NO-GO**：Windows Observer 会把常见虚拟 Ethernet 当作 wired，自动选择器
 又允许最新候选优先，因此 WSL、Hyper-V、Docker 或软件 VPN 接口可能取代校园物理
@@ -52,6 +58,8 @@ handler 已通过 Review；完整公开 Snapshot 被映射为稳定 DTO，秘密
 第三个切片也已完成：Supervisor 保存最新 typed 网络快照，按 revision 向现有和新建
 Session 分发，并保证新 Session 返回初始 Snapshot 前已得到最新网络状态。daemon
 `Application` 提供窄委托，`app.IPCHandler` 在内存中组合 status 与 Session 方法。
+Session 停止边界也已明确为 `stopping -> suspended` 两个 revision；Supervisor 在
+第二个 revision 前不释放单活动准入。
 真实 Windows Detector 随后也已实现：Windows host information 使用真实系统事实，
 网络 Observer 立即发布首个快照并每两秒轮询，只在归一化事实变化时递增 revision；
 非 Windows 明确返回 Unsupported。其生命周期测试、完整 Go verifier 和 Windows

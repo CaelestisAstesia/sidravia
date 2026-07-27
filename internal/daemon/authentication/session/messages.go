@@ -124,6 +124,7 @@ type authenticationProtocolRunFinishedEvent struct {
 }
 
 type authenticationRetryDelayElapsedEvent struct{ scheduleID uint64 }
+type suspensionCompletedEvent struct{}
 
 func (systemNetworkSnapshotCommand) isSessionMessage()           {}
 func (activateCommand) isSessionMessage()                        {}
@@ -135,6 +136,7 @@ func (snapshotQuery) isSessionMessage()                          {}
 func (authenticationEstablishedEvent) isSessionMessage()         {}
 func (authenticationProtocolRunFinishedEvent) isSessionMessage() {}
 func (authenticationRetryDelayElapsedEvent) isSessionMessage()   {}
+func (suspensionCompletedEvent) isSessionMessage()               {}
 
 func (session *AuthenticationSession) send(ctx context.Context, message sessionMessage) error {
 	if err := session.acquireAdmission(ctx); err != nil {

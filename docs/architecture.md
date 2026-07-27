@@ -158,6 +158,13 @@ Session 可以在内部使用私有 epoch 来拒绝过期异步结果。这个�
 
 Supervisor 管理 Session 集合。首版 Supervisor 最多允许一个活动 Session。它可以启动、停止、重启、读取、列出和遗忘已经停止的 Session。
 
+停止采用两阶段状态。Session 接受 Stop 后立即发布 `stopping` 并请求活动协议 Run
+执行有界的尽力 Logout；只有 Run 已退出时才发布 `suspended`。没有活动 Run 时也通过
+私有队列事件依次发布这两个 revision。`stopping` 期间重复 Stop 幂等，其他输入和异步
+回调不能恢复认证或启动新 Run。Supervisor 在观察到权威 `suspended` Snapshot 前持续
+保留单活动准入槽，因此旧 Run 清理与新 Run 不会因过早释放准入而重叠。详细理由见
+`docs/decisions/0012-two-phase-session-stop.md`。
+
 Supervisor 还保存 Environment Detector 已经产生、daemon app 已经接受的最新 typed
 网络快照。新 revision 会分发给现有 Session；新 Session 在返回初始 Snapshot 前获得
 最近快照；旧 revision 被忽略；相同 revision 可以重放已保存的权威内容，以恢复部分
@@ -309,11 +316,13 @@ SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而
 文件。
 
 认证 CLI 的退出码只表示请求和输出操作是否成功，不把 Session 状态当作命令执行失败。
-成功创建 Session 的 `auth start`、成功读取任何公开状态的 `auth status` 和成功停止
-Session 的 `auth stop` 都返回零，包括 `waiting_for_network`、
-`waiting_before_retry` 或 `blocked_by_error`。参数、密码输入、daemon 启动/连接、IPC、
-解码或 Session 操作失败返回非零。以后若脚本需要把“当前是否 authenticated”作为条件，
-应增加显式 `auth check`，不改变 `auth status` 的查询语义。
+成功创建 Session 的 `auth start`、成功读取任何公开状态的 `auth status` 和成功接受
+停止请求的 `auth stop` 都返回零，包括 `waiting_for_network`、
+`waiting_before_retry`、`blocked_by_error`、`stopping` 或 `suspended`。Stop 返回
+`stopping` 只表示退出请求已被接受；需要确认资源已经退出的调用方继续查询，直到看到
+`suspended`。参数、密码输入、daemon 启动/连接、IPC、解码或 Session 操作失败返回
+非零。以后若脚本需要把“当前是否 authenticated”作为条件，应增加显式
+`auth check`，不改变 `auth status` 的查询语义。
 
 三个认证命令使用同一个多行人类可读 Snapshot renderer。它始终显示 SessionID、state、
 Profile、协议、脱敏 account label 和更新时间，并只在存在时显示 state reason、所选
@@ -362,6 +371,9 @@ Login 只对 server busy 在 Run 内做有界短重试。Run 结束后的重新�
 唤醒 I/O，不关闭 socket。exchange 结束时停止该回调；如果回调已经开始，则等待它完成，
 之后才能重设下一次 I/O deadline。best-effort Logout 使用独立 context 和有界 deadline。
 实现不使用周期性 deadline 轮询，也不从已经取消的执行 context 派生 Logout timeout。
+取消要求 Logout 而清理失败时，Run 返回稳定的内部清理 failure；Session 仍以取消为
+权威并进入 `suspended`，且只把该 failure 保存在私有诊断中。它不进入当前 Snapshot、
+IPC 或 CLI。
 
 每次 request/response exchange 使用一个不会因忽略报文而延长的绝对 deadline。完整且
 能证明属于已经发送过的旧 KA1/KA2 交换的响应可以忽略；当前阶段的合法响应才推动流程。

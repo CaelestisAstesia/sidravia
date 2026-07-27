@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +31,48 @@ type blockingRun struct{}
 
 func (blockingRun) Execute(ctx context.Context, _ protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
 	<-ctx.Done()
+	return nil
+}
+
+type heldCancellationFactory struct {
+	run *heldCancellationRun
+}
+
+func (heldCancellationFactory) ProtocolID() protocol.AuthenticationProtocolID {
+	return "test-protocol"
+}
+
+func (heldCancellationFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+	return nil
+}
+
+func (heldCancellationFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+	return nil
+}
+
+func (factory heldCancellationFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	return factory.run, nil
+}
+
+type heldCancellationRun struct {
+	started  chan struct{}
+	canceled chan struct{}
+	release  chan struct{}
+}
+
+func newHeldCancellationRun() *heldCancellationRun {
+	return &heldCancellationRun{
+		started:  make(chan struct{}),
+		canceled: make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+}
+
+func (run *heldCancellationRun) Execute(ctx context.Context, _ protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	close(run.started)
+	<-ctx.Done()
+	close(run.canceled)
+	<-run.release
 	return nil
 }
 
@@ -143,8 +186,20 @@ func TestSupervisorAllowsNewSessionAfterStop(t *testing.T) {
 		t.Fatalf("StartResolved (1) error: %v", err)
 	}
 
-	if _, err := supervisor.Stop(ctx, id); err != nil {
+	snapshot, err := supervisor.Stop(ctx, id)
+	if err != nil {
 		t.Fatalf("Stop error: %v", err)
+	}
+	if snapshot.State != session.Stopping {
+		t.Fatalf("Stop state = %q, want %q", snapshot.State, session.Stopping)
+	}
+	suspended := waitForSupervisorState(t, supervisor, id, session.Suspended)
+	repeated, err := supervisor.Stop(ctx, id)
+	if err != nil {
+		t.Fatalf("repeated Stop after suspended error: %v", err)
+	}
+	if repeated.State != session.Suspended || repeated.Revision != suspended.Revision {
+		t.Fatalf("repeated Stop after suspended = %#v, want unchanged revision %d", repeated, suspended.Revision)
 	}
 
 	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err != nil {
@@ -168,6 +223,7 @@ func TestSupervisorRestartAdmitsStoppedSession(t *testing.T) {
 	if _, err := supervisor.Stop(ctx, id); err != nil {
 		t.Fatalf("Stop error: %v", err)
 	}
+	waitForSupervisorState(t, supervisor, id, session.Suspended)
 
 	snapshot, err := supervisor.Restart(ctx, id)
 	if err != nil {
@@ -212,6 +268,7 @@ func TestSupervisorForgetStoppedRemovesSession(t *testing.T) {
 	if _, err := supervisor.Stop(ctx, id); err != nil {
 		t.Fatalf("Stop error: %v", err)
 	}
+	waitForSupervisorState(t, supervisor, id, session.Suspended)
 
 	if err := supervisor.ForgetStopped(id); err != nil {
 		t.Fatalf("ForgetStopped error: %v", err)
@@ -278,6 +335,7 @@ func TestSupervisorListReturnsAllSessions(t *testing.T) {
 	if _, err := supervisor.Stop(ctx, id1); err != nil {
 		t.Fatalf("Stop error: %v", err)
 	}
+	waitForSupervisorState(t, supervisor, id1, session.Suspended)
 
 	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err != nil {
 		t.Fatalf("StartResolved (2) error: %v", err)
@@ -341,6 +399,7 @@ func TestSupervisorSlowSubscriberDoesNotBlock(t *testing.T) {
 			t.Fatalf("Stop iteration %d error: %v", i, err)
 		}
 		stopCancel()
+		waitForSupervisorState(t, supervisor, id, session.Suspended)
 
 		restartCtx, restartCancel := context.WithTimeout(ctx, time.Second)
 		if _, err := supervisor.Restart(restartCtx, id); err != nil {
@@ -487,6 +546,7 @@ func TestSupervisorForwardExitsOnClosedRevisionChannel(t *testing.T) {
 	if _, err := supervisor.Stop(ctx, id); err != nil {
 		t.Fatalf("Stop error: %v", err)
 	}
+	waitForSupervisorState(t, supervisor, id, session.Suspended)
 
 	// ForgetStopped shuts down the session and closes stopFwd, which should
 	// cause the forward goroutine to exit.
@@ -541,4 +601,104 @@ func TestSupervisorPreCancelledContextReturnsErrorAndCleansUp(t *testing.T) {
 	if id == "" {
 		t.Fatal("expected non-empty session id")
 	}
+}
+
+func TestSupervisorKeepsAdmissionClosedUntilProtocolRunExits(t *testing.T) {
+	supervisor := New(testSupervisorDeps())
+	defer func() {
+		_ = supervisor.Close()
+		supervisor.Wait()
+	}()
+
+	ctx := context.Background()
+	if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+		t.Fatalf("ApplySystemNetworkSnapshot error: %v", err)
+	}
+
+	run := newHeldCancellationRun()
+	definition := testRuntimeDefinition()
+	definition.AuthenticationProtocolFactory = heldCancellationFactory{run: run}
+	id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
+	if err != nil {
+		t.Fatalf("StartResolved error: %v", err)
+	}
+	waitForSignal(t, run.started, "protocol run start")
+
+	first, err := supervisor.Stop(ctx, id)
+	if err != nil {
+		t.Fatalf("Stop error: %v", err)
+	}
+	if first.State != session.Stopping {
+		t.Fatalf("first Stop state = %q, want %q", first.State, session.Stopping)
+	}
+	waitForSignal(t, run.canceled, "protocol run cancellation")
+
+	repeated, err := supervisor.Stop(ctx, id)
+	if err != nil {
+		t.Fatalf("repeated Stop error: %v", err)
+	}
+	if repeated.Revision != first.Revision || repeated.State != session.Stopping {
+		t.Fatalf("repeated Stop = revision %d state %q, want revision %d state %q", repeated.Revision, repeated.State, first.Revision, session.Stopping)
+	}
+	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err == nil {
+		t.Fatal("StartResolved during stopping succeeded, want admission error")
+	}
+
+	close(run.release)
+	waitForSupervisorState(t, supervisor, id, session.Suspended)
+
+	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err != nil {
+		t.Fatalf("StartResolved after suspended error: %v", err)
+	}
+}
+
+func waitForSupervisorState(t *testing.T, supervisor *Supervisor, id ID, want session.State) Snapshot {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		snapshot, err := supervisor.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get error while waiting for state %q: %v", want, err)
+		}
+		if snapshot.State == want {
+			return snapshot
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for state %q; latest state %q", want, snapshot.State)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+func waitForSignal(t *testing.T, signal <-chan struct{}, description string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func supervisorUsableNetworkSnapshot(t *testing.T, revision uint64) environment.Snapshot {
+	t.Helper()
+	networkInterface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
+		InterfaceID:              "ethernet-1",
+		DisplayName:              "Ethernet",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
+		HardwareAddress:          []byte{0, 1, 2, 3, 4, 5},
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewNetworkInterface error: %v", err)
+	}
+	return environment.NewSnapshot(revision, time.Unix(int64(revision), 0), []environment.NetworkInterface{networkInterface})
 }

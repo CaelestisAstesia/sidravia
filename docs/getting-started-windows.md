@@ -133,14 +133,25 @@ State: authenticated
 .\sidravia.exe auth stop $SessionID
 ```
 
-等待至少十秒，让协议 Run 完成有界的尽力 Logout，再查询一次：
+Stop 请求被接受后会立即返回：
 
-```powershell
-Start-Sleep -Seconds 10
-.\sidravia.exe auth status $SessionID
+```text
+State: stopping
 ```
 
-状态应保持 `suspended`。最后回到窗口 A 按一次 `Ctrl+C` 关闭 daemon。
+这表示 daemon 正在执行有界的尽力 Logout，并且单活动 Session 槽仍被占用。继续查询，
+直到状态变为 `suspended`：
+
+```powershell
+do {
+  Start-Sleep -Milliseconds 250
+  $Status = .\sidravia.exe auth status $SessionID
+  $Status
+} until ($Status -match '(?m)^State: suspended$')
+```
+
+此时协议 Run 已经退出，随后再次查询应保持 `suspended`。最后回到窗口 A 按一次
+`Ctrl+C` 关闭 daemon。
 
 首个 Alpha 同一 daemon 进程只允许一个活动 Session。进程重启后不会恢复旧 Session
 ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他认证客户端代替正常 Stop。

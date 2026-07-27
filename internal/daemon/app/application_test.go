@@ -224,6 +224,7 @@ func TestBackendDeletesConfigurationWithStoppedSession(t *testing.T) {
 	if _, err := setup.application.StopSession(ctx, sessionID); err != nil {
 		t.Fatalf("StopSession() error = %v", err)
 	}
+	waitForApplicationSessionState(t, setup.application, sessionID, session.Suspended)
 	if err := setup.application.DeleteConfiguration(ctx, "configuration-1"); err != nil {
 		t.Fatalf("DeleteConfiguration(stopped) error = %v", err)
 	}
@@ -311,6 +312,7 @@ func TestBackendCatalogDeleteFailureIsRetryable(t *testing.T) {
 	if _, err := application.StopSession(ctx, sessionID); err != nil {
 		t.Fatalf("StopSession() error = %v", err)
 	}
+	waitForApplicationSessionState(t, application, sessionID, session.Suspended)
 
 	// Now set the store to failing mode for the catalog delete.
 	store.failing.Store(true)
@@ -402,6 +404,7 @@ func TestBackendStartDeleteConcurrency(t *testing.T) {
 			sup.Wait()
 			t.Fatalf("round %d: StopSession error: %v", round, err)
 		}
+		waitForApplicationSessionState(t, application, sessionID, session.Suspended)
 
 		// Concurrently start a new session and delete the config.
 		done := make(chan struct{}, 2)
@@ -479,17 +482,11 @@ func TestBackendVerticalStartStopReadSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StopSession() error = %v", err)
 	}
-	if snapshot.State != session.Suspended {
-		t.Fatalf("StopSession snapshot State = %q, want %q", snapshot.State, session.Suspended)
+	if snapshot.State != session.Stopping {
+		t.Fatalf("StopSession snapshot State = %q, want %q", snapshot.State, session.Stopping)
 	}
 
-	snapshot, err = setup.application.GetSession(ctx, sessionID)
-	if err != nil {
-		t.Fatalf("GetSession(after stop) error = %v", err)
-	}
-	if snapshot.State != session.Suspended {
-		t.Fatalf("GetSession(after stop) State = %q, want %q", snapshot.State, session.Suspended)
-	}
+	waitForApplicationSessionState(t, setup.application, sessionID, session.Suspended)
 }
 
 func deletionFailureCode(t *testing.T, err error) DeletionFailureCode {
@@ -535,9 +532,10 @@ func TestBackendStartOneShotAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StopSession() error = %v", err)
 	}
-	if stopped.State != session.Suspended {
-		t.Fatalf("StopSession snapshot State = %q, want %q", stopped.State, session.Suspended)
+	if stopped.State != session.Stopping {
+		t.Fatalf("StopSession snapshot State = %q, want %q", stopped.State, session.Stopping)
 	}
+	waitForApplicationSessionState(t, setup.application, sessionID, session.Suspended)
 }
 
 func TestBackendOneShotDoesNotPopulateConfigurationOwnership(t *testing.T) {
@@ -591,6 +589,7 @@ func TestBackendOneShotSingleActiveAdmission(t *testing.T) {
 	if _, err := setup.application.StopSession(ctx, first); err != nil {
 		t.Fatalf("StopSession() error = %v", err)
 	}
+	waitForApplicationSessionState(t, setup.application, first, session.Suspended)
 	persisted, _, err := setup.application.StartAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatalf("persisted start after one-shot stop error = %v", err)
@@ -729,6 +728,7 @@ func TestApplicationApplySystemNetworkSnapshotDelegatesToSupervisor(t *testing.T
 	if _, err := setup.application.StopSession(ctx, firstID); err != nil {
 		t.Fatalf("first StopSession() error = %v", err)
 	}
+	waitForApplicationSessionState(t, setup.application, firstID, session.Suspended)
 
 	// Apply a usable snapshot through Application. It delegates into the same
 	// Supervisor used by one-shot start, so the next start selects the binding
@@ -754,5 +754,26 @@ func TestApplicationApplySystemNetworkSnapshotDelegatesToSupervisor(t *testing.T
 	}
 	if _, err := setup.application.StopSession(ctx, secondID); err != nil {
 		t.Fatalf("second StopSession() error = %v", err)
+	}
+}
+
+func waitForApplicationSessionState(t *testing.T, application *Application, id session.AuthenticationSessionID, want session.State) session.Snapshot {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		snapshot, err := application.GetSession(ctx, id)
+		if err != nil {
+			t.Fatalf("GetSession() error while waiting for state %q: %v", want, err)
+		}
+		if snapshot.State == want {
+			return snapshot
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for state %q; latest state %q", want, snapshot.State)
+		default:
+			time.Sleep(time.Millisecond)
+		}
 	}
 }

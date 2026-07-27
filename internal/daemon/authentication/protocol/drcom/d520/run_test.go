@@ -603,6 +603,59 @@ func TestRunFallbackLogoutUsesLoginSalt(t *testing.T) {
 	}
 }
 
+func TestRunCancellationReportsBestEffortLogoutFailure(t *testing.T) {
+	d := defaultTestDurations()
+	d.challenge = 20 * time.Millisecond
+	d.logout = 20 * time.Millisecond
+	var challengeCount int
+	respond := func(req []byte) [][]byte {
+		switch {
+		case isChallengeReq(req):
+			challengeCount++
+			if challengeCount == 1 {
+				return [][]byte{peerChallengeResponse([4]byte{0x01, 0x02, 0x03, 0x04})}
+			}
+			return nil
+		case isLoginReq(req):
+			return [][]byte{peerLoginSuccess([16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10})}
+		case isKA1Req(req):
+			return [][]byte{peerKA1Response()}
+		case isKA2Req(req):
+			return [][]byte{peerKA2Response(req[1], req[5], [4]byte{req[1], req[5], 0xaa, 0xbb})}
+		case isLogoutReq(req):
+			return nil
+		}
+		return nil
+	}
+	peer := newTestPeer(t, respond)
+	observer := newRecordingObserver(peer)
+	run := buildTestRun(t, peer, d, testCredential())
+	_, cancel, done := startRun(t, run, observer)
+	defer cancel(context.Canceled)
+
+	observer.waitForEstablished(t, time.Second)
+	cancel(protocol.AuthenticationProtocolRunCancellationCause{
+		CleanupRequirement: protocol.TerminateWithBestEffortLogout,
+		Description:        "test cancellation",
+	})
+	failure := assertRunReturns(t, done, false, time.Second)
+	if failure.Code != "logout_cleanup_failed" {
+		t.Fatalf("cleanup failure Code = %q, want %q", failure.Code, "logout_cleanup_failed")
+	}
+	if failure.Description != "Best-effort logout cleanup failed." {
+		t.Fatalf("cleanup failure Description = %q", failure.Description)
+	}
+	if failure.HandlingRecommendation != protocol.BlockUntilExplicitRestartOrRelevantInputChange {
+		t.Fatalf("cleanup failure recommendation = %q, want block", failure.HandlingRecommendation)
+	}
+	if failure.DiagnosticCause == nil {
+		t.Fatal("cleanup failure DiagnosticCause = nil")
+	}
+	if countOps(peer.requestOpNames(), "logout") != 1 {
+		t.Fatalf("best-effort cleanup logout count = %d, want 1: ops=%v", countOps(peer.requestOpNames(), "logout"), peer.requestOpNames())
+	}
+}
+
 // 8. TerminateWithoutLogout sends no Logout.
 func TestRunTerminateWithoutLogoutSendsNoLogout(t *testing.T) {
 	peer := newTestPeer(t, defaultPeerResponder())

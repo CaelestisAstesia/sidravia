@@ -36,27 +36,29 @@ type AuthenticationSession struct {
 	retryPolicy                RetryPolicy
 	retryScheduler             RetryScheduler
 
-	inbox     chan sessionMessage
-	done      chan struct{}
-	revisions chan RevisionEvent
-	admission chan struct{}
-	startOnce sync.Once
-	closed    atomic.Bool
+	inbox        chan sessionMessage
+	privateInbox chan sessionMessage
+	done         chan struct{}
+	revisions    chan RevisionEvent
+	admission    chan struct{}
+	startOnce    sync.Once
+	closed       atomic.Bool
 
 	// The fields below are owned exclusively by run.
-	currentSnapshot     Snapshot
-	selector            *automaticBindingSelector
-	lastNetworkRevision uint64
-	hasNetworkRevision  bool
-	desiredBinding      environment.SelectedSystemNetworkBinding
-	hasDesiredBinding   bool
-	active              *activeProtocolRun
-	nextGeneration      uint64
-	consecutiveFailures uint32
-	retryScheduleID     uint64
-	retryCancellation   RetryCancellation
-	shuttingDown        bool
-	shutdownReplies     []chan error
+	currentSnapshot        Snapshot
+	selector               *automaticBindingSelector
+	lastNetworkRevision    uint64
+	hasNetworkRevision     bool
+	desiredBinding         environment.SelectedSystemNetworkBinding
+	hasDesiredBinding      bool
+	active                 *activeProtocolRun
+	nextGeneration         uint64
+	consecutiveFailures    uint32
+	retryScheduleID        uint64
+	retryCancellation      RetryCancellation
+	lastStopCleanupFailure *protocol.AuthenticationProtocolRunFailure
+	shuttingDown           bool
+	shutdownReplies        []chan error
 }
 
 type activeProtocolRun struct {
@@ -182,6 +184,7 @@ func initializeAuthenticationSession(
 		retryPolicy:                dependencies.RetryPolicy,
 		retryScheduler:             dependencies.RetryScheduler,
 		inbox:                      make(chan sessionMessage, 32),
+		privateInbox:               make(chan sessionMessage, 1),
 		done:                       make(chan struct{}),
 		revisions:                  make(chan RevisionEvent, 1),
 		admission:                  admission,
@@ -368,7 +371,12 @@ func receiveSnapshotReply(ctx context.Context, done <-chan struct{}, reply <-cha
 
 func (session *AuthenticationSession) run() {
 	session.publishInitialRevision()
-	for message := range session.inbox {
+	for {
+		var message sessionMessage
+		select {
+		case message = <-session.privateInbox:
+		case message = <-session.inbox:
+		}
 		switch message := message.(type) {
 		case snapshotQuery:
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
@@ -428,6 +436,8 @@ func (session *AuthenticationSession) run() {
 			}
 		case authenticationRetryDelayElapsedEvent:
 			session.handleRetryDelayElapsed(message)
+		case suspensionCompletedEvent:
+			session.completeSuspensionIfReady()
 		}
 	}
 }
@@ -446,6 +456,9 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 		session.hasDesiredBinding = false
 		session.updateSnapshot(func(snapshot *Snapshot) {
 			snapshot.SelectedNetworkBinding = nil
+			if snapshot.State == Stopping {
+				return
+			}
 			if !session.runtimeDefinitionAvailable {
 				forceRuntimeDefinitionUnavailable(snapshot)
 				return
@@ -468,6 +481,9 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 	session.hasDesiredBinding = true
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.SelectedNetworkBinding = bindingSummary(binding)
+		if snapshot.State == Stopping {
+			return
+		}
 		if !session.runtimeDefinitionAvailable {
 			forceRuntimeDefinitionUnavailable(snapshot)
 			return
@@ -500,6 +516,9 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 }
 
 func (session *AuthenticationSession) handleActivate() {
+	if session.currentSnapshot.State == Stopping {
+		return
+	}
 	session.updateSnapshot(func(snapshot *Snapshot) { snapshot.Intent = MaintainAuthentication })
 	if !session.runtimeDefinitionAvailable {
 		session.updateSnapshot(forceRuntimeDefinitionUnavailable)
@@ -519,24 +538,29 @@ func (session *AuthenticationSession) handleActivate() {
 }
 
 func (session *AuthenticationSession) handleSuspend() {
-	session.invalidateRetrySchedule()
-	if !session.runtimeDefinitionAvailable {
-		session.updateSnapshot(func(snapshot *Snapshot) {
-			snapshot.Intent = SuspendAuthentication
-			forceRuntimeDefinitionUnavailable(snapshot)
-		})
+	if session.currentSnapshot.State == Stopping || session.currentSnapshot.State == Suspended {
 		return
 	}
+	session.invalidateRetryScheduleState()
+	session.lastStopCleanupFailure = nil
+	hadActiveRun := session.active != nil
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.Intent = SuspendAuthentication
-		snapshot.State = Suspended
+		snapshot.State = Stopping
 		snapshot.StateReason = nil
 		snapshot.AuthenticationEstablishedAt = nil
+		snapshot.NextRetryAt = nil
 	})
 	session.cancelActive(protocol.TerminateWithBestEffortLogout)
+	if !hadActiveRun {
+		session.privateInbox <- suspensionCompletedEvent{}
+	}
 }
 
 func (session *AuthenticationSession) handleRestart() {
+	if session.currentSnapshot.State == Stopping {
+		return
+	}
 	session.resetRetryState()
 	if !session.runtimeDefinitionAvailable {
 		session.updateSnapshot(func(snapshot *Snapshot) {
@@ -567,6 +591,7 @@ func (session *AuthenticationSession) handleRestart() {
 func (session *AuthenticationSession) handleReplaceRuntimeDefinition(definition RuntimeDefinition) {
 	session.resetRetryState()
 	hadActiveRun := session.active != nil
+	wasStopping := session.currentSnapshot.State == Stopping
 	session.definition = definition.Clone()
 	session.runtimeDefinitionAvailable = true
 	session.updateSnapshot(func(snapshot *Snapshot) {
@@ -579,6 +604,9 @@ func (session *AuthenticationSession) handleReplaceRuntimeDefinition(definition 
 		snapshot.AuthenticationEstablishedAt = nil
 		snapshot.NextRetryAt = nil
 		switch {
+		case wasStopping:
+			snapshot.State = Stopping
+			snapshot.StateReason = nil
 		case snapshot.Intent == SuspendAuthentication:
 			snapshot.State = Suspended
 			snapshot.StateReason = nil
@@ -599,6 +627,7 @@ func (session *AuthenticationSession) handleReplaceRuntimeDefinition(definition 
 
 func (session *AuthenticationSession) handleReplaceUnresolvedRuntimeDefinition(definition unresolvedRuntimeDefinition) {
 	session.resetRetryState()
+	wasStopping := session.currentSnapshot.State == Stopping
 	session.runtimeDefinitionAvailable = false
 	session.definition = RuntimeDefinition{}
 	definition = definition.Clone()
@@ -609,6 +638,13 @@ func (session *AuthenticationSession) handleReplaceUnresolvedRuntimeDefinition(d
 		snapshot.AuthenticationProtocolID = definition.AuthenticationProtocolID
 		snapshot.AccountLabel = definition.AccountLabel
 		snapshot.LastAuthenticationFailure = nil
+		if wasStopping {
+			snapshot.State = Stopping
+			snapshot.StateReason = nil
+			snapshot.AuthenticationEstablishedAt = nil
+			snapshot.NextRetryAt = nil
+			return
+		}
 		forceRuntimeDefinitionUnavailable(snapshot)
 	})
 	session.cancelActive(protocol.TerminateWithBestEffortLogout)
@@ -672,6 +708,15 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 	}
 	session.active = nil
 	if event.cancellationCause != nil {
+		var cancellation protocol.AuthenticationProtocolRunCancellationCause
+		if errors.As(event.cancellationCause, &cancellation) &&
+			cancellation.CleanupRequirement == protocol.TerminateWithBestEffortLogout {
+			session.lastStopCleanupFailure = event.failure
+		}
+		if session.currentSnapshot.Intent == SuspendAuthentication {
+			session.completeSuspensionIfReady()
+			return
+		}
 		if !session.shuttingDown && session.currentSnapshot.Intent == MaintainAuthentication && session.hasDesiredBinding {
 			session.startRunIfNeeded()
 		}
@@ -691,6 +736,21 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 		reasonCode = StateReasonCodeProtocolContractViolated
 	}
 	session.handleRunFailure(reasonCode, event.failure)
+}
+
+func (session *AuthenticationSession) completeSuspensionIfReady() {
+	if session.shuttingDown ||
+		session.active != nil ||
+		session.currentSnapshot.Intent != SuspendAuthentication ||
+		session.currentSnapshot.State != Stopping {
+		return
+	}
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.State = Suspended
+		snapshot.StateReason = nil
+		snapshot.AuthenticationEstablishedAt = nil
+		snapshot.NextRetryAt = nil
+	})
 }
 
 func (session *AuthenticationSession) handleRunFailure(code string, failure *protocol.AuthenticationProtocolRunFailure) {
@@ -883,14 +943,18 @@ func (session *AuthenticationSession) resetRetryState() {
 }
 
 func (session *AuthenticationSession) invalidateRetrySchedule() {
+	session.invalidateRetryScheduleState()
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.NextRetryAt = nil
+	})
+}
+
+func (session *AuthenticationSession) invalidateRetryScheduleState() {
 	if session.retryCancellation != nil {
 		session.retryCancellation.Cancel()
 		session.retryCancellation = nil
 	}
 	session.retryScheduleID++
-	session.updateSnapshot(func(snapshot *Snapshot) {
-		snapshot.NextRetryAt = nil
-	})
 }
 
 func (session *AuthenticationSession) startRunIfNeeded() {

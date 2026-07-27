@@ -45,6 +45,7 @@ const (
 	Authenticated      State = "authenticated"
 	WaitingBeforeRetry State = "waiting_before_retry"
 	BlockedByError     State = "blocked_by_error"
+	Stopping           State = "stopping"
 )
 
 const (

@@ -18,6 +18,7 @@ const (
 	kindUnknownRejection
 	kindResponseInvalid
 	kindContractViolated
+	kindCleanupFailed
 )
 
 // runError is the private typed execution failure carried inside d520. It
@@ -88,6 +89,8 @@ func (e *runError) toFailure() *protocol.AuthenticationProtocolRunFailure {
 		code, description, recommendation = "protocol_response_invalid", "The server response was malformed or incompatible.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
 	case kindContractViolated:
 		code, description, recommendation = "protocol_contract_violated", "An impossible local or contract failure occurred.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
+	case kindCleanupFailed:
+		code, description, recommendation = "logout_cleanup_failed", "Best-effort logout cleanup failed.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
 	}
 	return &protocol.AuthenticationProtocolRunFailure{
 		Code:                   protocol.AuthenticationProtocolFailureCode(code),
@@ -122,4 +125,8 @@ func responseInvalidError(operation string, cause error) *runError {
 
 func contractViolationError(operation string, cause error) *runError {
 	return &runError{operation: operation, kind: kindContractViolated, cause: cause}
+}
+
+func cleanupError(operation string, cause error) *runError {
+	return &runError{operation: operation, kind: kindCleanupFailed, cause: cause}
 }
