@@ -93,6 +93,16 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 .\sidravia.exe status
 ```
 
+上面是已发布 `v0.1.0-alpha.1` 二进制的命令。当前源码构建已经迁移到资源命令树，应改用：
+
+```powershell
+.\sidravia.exe daemon status
+```
+
+当前开发构建执行旧的顶层 `status` 不会连接或启动 daemon，而会返回
+`命令已迁移，请使用 sidravia daemon status`。不要把新命令用于旧 Alpha 二进制，也
+不要把旧命令当作当前构建的兼容别名。
+
 预期包含：
 
 ```text

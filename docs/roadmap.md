@@ -6,7 +6,8 @@
 
 后端模块已经完成职责重整，并通过独立 Review。
 
-`sidravia status`、host 运行信息清理和验收脚本安全清理已经通过独立 Review。
+早期顶层 `sidravia status`、host 运行信息清理和验收脚本安全清理已经通过独立 Review；
+当前命令树已迁移到规范入口 `sidravia daemon status`，旧入口只返回迁移提示。
 完整 Go 测试、vet、格式检查和两个 Windows amd64 交叉编译均已通过。Windows 原生
 双进程与真实校园 D520 已在提交 `508197d` 上完成首次现场验证：CLI/daemon 选择物理
 以太网，完成登录、持续心跳与主动 Logout。阶段 2、阶段 4 和阶段 6 的首个 Windows/JLU
@@ -22,6 +23,12 @@ app、Supervisor 和新旧 Session；应用层名称已在生产装配前收敛�
 verifier 已通过。首套 `auth start/status/stop` CLI、Windows 隐藏密码输入、
 `--password-stdin` 和共享 Session Snapshot 输出也已完成并通过聚焦测试、race 与
 Windows amd64 交叉编译。
+
+CLI 顶层分发随后迁移到 Cobra 资源命令树。daemon 查询只由
+`sidravia daemon status` 执行，并完全复用既有热连接、单次冷启动、失效信息恢复和
+五秒等待链；当前没有独立 `daemon start` 或缺少 typed IPC 所需的 `daemon stop`。
+这项迁移的代码和自动验证完成，但 Windows 原生尚未重新验证。提交 `508197d` 的首轮
+现场证据仍来自当时有效的顶层 `sidravia status`，不得倒推成新命令已经现场通过。
 
 Session 主动停止语义随后收敛为两阶段：Stop 立即返回公开 `stopping`，当前协议 Run
 完成有界清理并退出后才发布 `suspended`，Supervisor 到此时才释放单活动准入。重复
@@ -40,7 +47,7 @@ Stop 幂等，清理失败只保留为 Session 私有诊断，不把本地 Sessi
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
 | 1. 后端重整 | 完成 | Configuration、Credentials、App、Session、Supervisor 和 Persistence 各自拥有明确职责 |
-| 2. 可运行骨架 | 完成：Windows 首轮现场通过 | Windows 上的 `sidravia status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
+| 2. 可运行骨架 | 完成：Windows 首轮现场通过；新命令待原生复核 | Windows 上的 `sidravia daemon status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
 | 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
@@ -111,7 +118,7 @@ Windows ACL 的现场证据位于
 这一阶段只证明 CLI 和 daemon 能作为两个真实 Windows 进程通信：
 
 ```text
-sidravia status
+sidravia daemon status
   -> CLI 读取或等待运行信息
   -> CLI 必要时启动同目录 sidraviad
   -> client 使用 token 和 BuildID 建立回环 WebSocket

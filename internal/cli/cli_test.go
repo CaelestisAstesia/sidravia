@@ -30,6 +30,10 @@ func TestRunRejectsBadArguments(t *testing.T) {
 		nil,
 		{"bogus"},
 		{"status", "extra"},
+		{"daemon"},
+		{"daemon", "status", "extra"},
+		{"daemon", "start"},
+		{"daemon", "stop"},
 		{"login"},
 		{"logout"},
 		{"auth"},
@@ -62,7 +66,7 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "daemon status", args: []string{"status"}, want: "status"},
+		{name: "daemon status", args: []string{"daemon", "status"}, want: "status"},
 		{name: "interactive start", args: []string{"auth", "start", "--profile", "profile-a", "--username", "account-a"}, want: "start:profile-a:account-a:false"},
 		{name: "stdin start", args: []string{"auth", "start", "--username", "account-b", "--password-stdin", "--profile", "profile-b"}, want: "start:profile-b:account-b:true"},
 		{name: "session status", args: []string{"auth", "status", "session-a"}, want: "auth-status:session-a"},
@@ -97,6 +101,76 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 				t.Errorf("dispatch = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestRetiredStatusReturnsMigrationWithoutDispatch(t *testing.T) {
+	dispatched := false
+	deps := commandDependencies{
+		status: func() error {
+			dispatched = true
+			return nil
+		},
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+
+	err := runCommand([]string{"status"}, deps)
+	if err == nil {
+		t.Fatal("retired status returned nil")
+	}
+	if err.Error() != "命令已迁移，请使用 sidravia daemon status" {
+		t.Errorf("retired status error = %q", err)
+	}
+	if dispatched {
+		t.Error("retired status dispatched daemon operation")
+	}
+}
+
+func TestCommandOperationErrorPreservesCause(t *testing.T) {
+	cause := errors.New("injected status failure")
+	deps := commandDependencies{
+		status:     func() error { return cause },
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+
+	err := runCommand([]string{"daemon", "status"}, deps)
+	if !errors.Is(err, cause) {
+		t.Errorf("daemon status error = %v, want injected cause", err)
+	}
+}
+
+func TestCommandHelpShowsCanonicalTree(t *testing.T) {
+	deps := commandDependencies{
+		status:     func() error { return nil },
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+
+	var rootHelp bytes.Buffer
+	deps.output = &rootHelp
+	if err := runCommand([]string{"--help"}, deps); err != nil {
+		t.Fatalf("root help = %v, want nil", err)
+	}
+	if got := rootHelp.String(); !strings.Contains(got, "\n  auth ") ||
+		!strings.Contains(got, "\n  daemon ") {
+		t.Errorf("root help omitted resource commands:\n%s", got)
+	}
+	if strings.Contains(rootHelp.String(), "\n  status ") {
+		t.Errorf("root help advertised retired status:\n%s", rootHelp.String())
+	}
+
+	var daemonHelp bytes.Buffer
+	deps.output = &daemonHelp
+	if err := runCommand([]string{"daemon", "--help"}, deps); err != nil {
+		t.Fatalf("daemon help = %v, want nil", err)
+	}
+	if got := daemonHelp.String(); !strings.Contains(got, "\n  status ") {
+		t.Errorf("daemon help omitted canonical status:\n%s", got)
 	}
 }
 

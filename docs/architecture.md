@@ -304,7 +304,8 @@ sidravia auth stop <session-id>
 
 `auth start` 表示创建并由 daemon 持续维持一个认证 Session，`auth status` 查询该
 Session 的公开 Snapshot，`auth stop` 停止 Session 并按协议要求执行尽力退出。顶层
-`sidravia status` 仍只表示 daemon 进程状态，不与认证状态复用。首版不增加
+`sidravia daemon status` 只表示 daemon 进程状态，不与认证状态复用。迁移期内旧的
+`sidravia status` 不作为兼容别名执行，而是返回固定迁移提示。首版不增加
 `login`/`logout` 兼容别名；面向普通用户的 GUI 可以使用“登录/退出”文案，而不改变
 底层 CLI 和 Session 语义。
 
@@ -329,12 +330,12 @@ Profile、协议、脱敏 account label 和更新时间，并只在存在时显�
 网络绑定、认证建立时间、下次重试时间和最后一次公开失败。输出使用 IPC
 `SessionResult` 中的稳定状态/失败码和安全描述，不显示内部诊断或原始秘密。首版不把
 人类输出伪装成脚本格式；以后需要机器消费时增加显式 `--json`，不要求脚本解析多行
-文本。现有顶层 `sidravia status` 继续使用自己的单行 daemon 摘要。
+文本。`sidravia daemon status` 继续使用自己的单行 daemon 摘要。
 
-`auth start`、`auth status` 和 `auth stop` 都复用顶层 status 已有的 daemon 发现语义：
+`auth start`、`auth status` 和 `auth stop` 都复用 daemon status 已有的 daemon 发现语义：
 先尝试运行信息中的现有 daemon，连接失败则至多一次启动与 CLI 同目录的
 `sidraviad.exe`，并在同一个五秒总边界内轮询新的运行信息和连接。认证命令不要求用户
-预先运行 `sidravia status`。如果 `auth status/stop` 因冷启动进入了一个没有目标
+预先运行 `sidravia daemon status`。如果 `auth status/stop` 因冷启动进入了一个没有目标
 Session 的新 daemon，它返回安全的 Session 操作失败，不猜测、缓存或复用旧进程的
 SessionID。
 

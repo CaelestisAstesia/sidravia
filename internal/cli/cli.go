@@ -12,11 +12,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
 
-const commandUsage = "usage: sidravia status | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>"
+const commandUsage = "usage: sidravia daemon status | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>"
+
+var (
+	errCommandUsage = errors.New(commandUsage)
+	errStatusMoved  = errors.New("命令已迁移，请使用 sidravia daemon status")
+)
 
 // Run executes the CLI with the given arguments.
 func Run(args []string) error {
@@ -34,6 +41,7 @@ type commandDependencies struct {
 	authStart  func(authStartOptions) error
 	authStatus func(string) error
 	authStop   func(string) error
+	output     io.Writer
 }
 
 func defaultCommandDependencies() commandDependencies {
@@ -42,38 +50,144 @@ func defaultCommandDependencies() commandDependencies {
 		authStart:  authStart,
 		authStatus: authStatus,
 		authStop:   authStop,
+		output:     os.Stdout,
 	}
 }
 
 func runCommand(args []string, deps commandDependencies) error {
-	if len(args) == 1 && args[0] == "status" {
-		return deps.status()
-	}
-	if len(args) < 2 || args[0] != "auth" {
-		return errors.New(commandUsage)
+	output := deps.output
+	if output == nil {
+		output = io.Discard
 	}
 
-	switch args[1] {
-	case "start":
-		options, err := parseAuthStart(args[2:])
-		if err != nil {
-			return err
-		}
-		return deps.authStart(options)
-	case "status":
-		sessionID, err := parseSessionID(args[2:])
-		if err != nil {
-			return err
-		}
-		return deps.authStatus(sessionID)
-	case "stop":
-		sessionID, err := parseSessionID(args[2:])
-		if err != nil {
-			return err
-		}
-		return deps.authStop(sessionID)
-	default:
-		return errors.New(commandUsage)
+	root := newRootCommand(deps, output)
+	root.SetArgs(args)
+	err := root.Execute()
+	if err == nil {
+		return nil
+	}
+
+	var operationErr *commandOperationError
+	if errors.As(err, &operationErr) {
+		return operationErr.Unwrap()
+	}
+	if errors.Is(err, errStatusMoved) {
+		return errStatusMoved
+	}
+	return errCommandUsage
+}
+
+type commandOperationError struct {
+	err error
+}
+
+func (err *commandOperationError) Error() string {
+	return err.err.Error()
+}
+
+func (err *commandOperationError) Unwrap() error {
+	return err.err
+}
+
+func wrapCommandOperation(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &commandOperationError{err: err}
+}
+
+func newRootCommand(deps commandDependencies, output io.Writer) *cobra.Command {
+	root := &cobra.Command{
+		Use:           "sidravia",
+		Short:         "Sidravia 命令行客户端",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		Args:          cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return errCommandUsage
+		},
+	}
+	root.SetOut(output)
+	root.SetErr(io.Discard)
+	root.DisableSuggestions = true
+	root.CompletionOptions.DisableDefaultCmd = true
+
+	daemon := &cobra.Command{
+		Use:   "daemon",
+		Short: "管理本地 daemon 进程",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return errCommandUsage
+		},
+	}
+	daemon.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "显示 daemon 状态",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return wrapCommandOperation(deps.status())
+		},
+	})
+
+	retiredStatus := &cobra.Command{
+		Use:    "status",
+		Hidden: true,
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 0 {
+				return errCommandUsage
+			}
+			return nil
+		},
+		RunE: func(*cobra.Command, []string) error {
+			return errStatusMoved
+		},
+	}
+
+	auth := &cobra.Command{
+		Use:   "auth",
+		Short: "管理认证 Session",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return errCommandUsage
+		},
+	}
+	auth.AddCommand(
+		newAuthStartCommand(deps),
+		newSessionCommand("status", "显示 Session 状态", deps.authStatus),
+		newSessionCommand("stop", "停止 Session", deps.authStop),
+	)
+
+	root.AddCommand(daemon, auth, retiredStatus)
+	return root
+}
+
+func newAuthStartCommand(deps commandDependencies) *cobra.Command {
+	return &cobra.Command{
+		Use:                "start",
+		Short:              "启动一次性认证 Session",
+		DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			options, err := parseAuthStart(args)
+			if err != nil {
+				return errCommandUsage
+			}
+			return wrapCommandOperation(deps.authStart(options))
+		},
+	}
+}
+
+func newSessionCommand(name string, description string, operation func(string) error) *cobra.Command {
+	return &cobra.Command{
+		Use:                name,
+		Short:              description,
+		DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			sessionID, err := parseSessionID(args)
+			if err != nil {
+				return errCommandUsage
+			}
+			return wrapCommandOperation(operation(sessionID))
+		},
 	}
 }
 
@@ -85,39 +199,39 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 		switch args[index] {
 		case "--profile":
 			if profileSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
-				return authStartOptions{}, errors.New(commandUsage)
+				return authStartOptions{}, errCommandUsage
 			}
 			options.profileID = args[index+1]
 			profileSet = true
 			index += 2
 		case "--username":
 			if usernameSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
-				return authStartOptions{}, errors.New(commandUsage)
+				return authStartOptions{}, errCommandUsage
 			}
 			options.username = args[index+1]
 			usernameSet = true
 			index += 2
 		case "--password-stdin":
 			if passwordStdinSet {
-				return authStartOptions{}, errors.New(commandUsage)
+				return authStartOptions{}, errCommandUsage
 			}
 			options.passwordStdin = true
 			passwordStdinSet = true
 			index++
 		default:
-			return authStartOptions{}, errors.New(commandUsage)
+			return authStartOptions{}, errCommandUsage
 		}
 	}
 
 	if !profileSet || !usernameSet {
-		return authStartOptions{}, errors.New(commandUsage)
+		return authStartOptions{}, errCommandUsage
 	}
 	return options, nil
 }
 
 func parseSessionID(args []string) (string, error) {
 	if len(args) != 1 || args[0] == "" || strings.HasPrefix(args[0], "-") {
-		return "", errors.New(commandUsage)
+		return "", errCommandUsage
 	}
 	return args[0], nil
 }
