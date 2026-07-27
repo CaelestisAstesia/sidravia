@@ -57,22 +57,24 @@ func successSessionResponse(t *testing.T, result contract.SessionResult) contrac
 func hotAuthDependencies(t *testing.T, connection daemonClient) authDependencies {
 	t.Helper()
 	return authDependencies{
-		discovery: discoveryDependencies{
-			runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
-			readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
-				return testRuntimeInfo(901), nil
+		connection: daemonConnectionDependencies{
+			discovery: discoveryDependencies{
+				runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
+				readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
+					return testRuntimeInfo(901), nil
+				},
+				startDaemon:  func() error { t.Fatal("hot discovery started daemon"); return nil },
+				totalWait:    time.Second,
+				pollInterval: time.Millisecond,
 			},
-			startDaemon:  func() error { t.Fatal("hot discovery started daemon"); return nil },
-			totalWait:    time.Second,
-			pollInterval: time.Millisecond,
+			connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+				return connection, nil
+			},
+			callTimeout: time.Second,
 		},
-		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
-			return connection, nil
-		},
-		callTimeout: time.Second,
-		stdin:       strings.NewReader(""),
-		stdout:      io.Discard,
-		stderr:      io.Discard,
+		stdin:  strings.NewReader(""),
+		stdout: io.Discard,
+		stderr: io.Discard,
 		readStdinPassword: func(io.Reader) (string, error) {
 			t.Fatal("unexpected stdin password read")
 			return "", nil
@@ -95,7 +97,7 @@ func TestAuthDiscoveryReturnsHotClientAndClosesIt(t *testing.T) {
 	}
 	deps := hotAuthDependencies(t, connection)
 	connects := 0
-	deps.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+	deps.connection.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
 		connects++
 		return connection, nil
 	}
@@ -141,7 +143,7 @@ func TestAuthDiscoveryStartsOnceAfterStaleClientWithoutCallingSession(t *testing
 
 	reads, connects, starts := 0, 0, 0
 	deps := hotAuthDependencies(t, freshClient)
-	deps.discovery = discoveryDependencies{
+	deps.connection.discovery = discoveryDependencies{
 		runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
 		readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
 			reads++
@@ -157,7 +159,7 @@ func TestAuthDiscoveryStartsOnceAfterStaleClientWithoutCallingSession(t *testing
 		totalWait:    time.Second,
 		pollInterval: time.Millisecond,
 	}
-	deps.connect = func(_ context.Context, info contract.RuntimeInfo) (daemonClient, error) {
+	deps.connection.connect = func(_ context.Context, info contract.RuntimeInfo) (daemonClient, error) {
 		connects++
 		if info.PID == staleInfo.PID {
 			return staleClient, errors.New("injected stale connection")

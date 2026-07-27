@@ -34,6 +34,7 @@ const (
 	ErrorCodeInvalidArgument        = "invalid_argument"
 	ErrorCodeProfileNotFound        = "profile_not_found"
 	ErrorCodeProtocolNotFound       = "protocol_not_found"
+	ErrorCodeProfileOperationFailed = "profile_operation_failed"
 	ErrorCodeSessionOperationFailed = "session_operation_failed"
 )
 
@@ -42,7 +43,18 @@ const (
 	MethodSessionStartOneShot = "session.startOneShot"
 	MethodSessionStop         = "session.stop"
 	MethodSessionGet          = "session.get"
+	MethodSessionList         = "session.list"
+	MethodProfileList         = "profile.list"
 )
+
+// DecodeEmptyPayload accepts exactly one empty JSON object.
+func DecodeEmptyPayload(data []byte) error {
+	var payload struct{}
+	if err := decodeStrict(data, &payload); err != nil {
+		return err
+	}
+	return nil
+}
 
 // SessionStartOneShotPayload is the typed payload for a session.startOneShot
 // request. The protocolContextOverride is an opaque JSON document that the
@@ -186,6 +198,42 @@ type SessionResult struct {
 
 // MarshalSessionResult encodes a SessionResult as JSON.
 func MarshalSessionResult(result SessionResult) (json.RawMessage, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+type SessionListResult struct {
+	Sessions []SessionResult `json:"sessions"`
+}
+
+func MarshalSessionListResult(result SessionListResult) (json.RawMessage, error) {
+	if result.Sessions == nil {
+		result.Sessions = []SessionResult{}
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+type ProfileSummaryResult struct {
+	InstitutionProfileID     string `json:"institutionProfileId"`
+	DisplayName              string `json:"displayName"`
+	AuthenticationProtocolID string `json:"authenticationProtocolId"`
+}
+
+type ProfileListResult struct {
+	Profiles []ProfileSummaryResult `json:"profiles"`
+}
+
+func MarshalProfileListResult(result ProfileListResult) (json.RawMessage, error) {
+	if result.Profiles == nil {
+		result.Profiles = []ProfileSummaryResult{}
+	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		return nil, err

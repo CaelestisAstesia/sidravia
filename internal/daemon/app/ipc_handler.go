@@ -8,11 +8,12 @@ import (
 )
 
 // IPCHandler returns a transport-neutral handler that routes a fixed set of IPC
-// methods to the existing status and Session handlers. It performs no prefix
+// methods to the existing status, Session and Profile handlers. It performs no prefix
 // matching, reflection, arbitrary handler registration or generic RPC dispatch.
 //
-// daemon.status is routed to StatusHandler; session.startOneShot, session.stop
-// and session.get are routed to SessionHandler. Every other method returns
+// daemon.status is routed to StatusHandler; session.startOneShot, session.stop,
+// session.get and session.list are routed to SessionHandler; profile.list is
+// routed to ProfileHandler. Every other method returns
 // unknown_method with one static generic message. The handler never logs,
 // persists or reproduces a request payload or password.
 //
@@ -24,6 +25,7 @@ func IPCHandler(
 ) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 	status := StatusHandler(productVersion, buildID)
 	sessions := SessionHandler(application)
+	profiles := ProfileHandler(application)
 
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		switch method {
@@ -31,8 +33,11 @@ func IPCHandler(
 			return status(ctx, method, payload)
 		case contract.MethodSessionStartOneShot,
 			contract.MethodSessionStop,
-			contract.MethodSessionGet:
+			contract.MethodSessionGet,
+			contract.MethodSessionList:
 			return sessions(ctx, method, payload)
+		case contract.MethodProfileList:
+			return profiles(ctx, method, payload)
 		default:
 			return nil, &contract.Error{
 				Code:    contract.ErrorCodeUnknownMethod,

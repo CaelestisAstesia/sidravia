@@ -265,6 +265,23 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 		t.Fatalf("status.Status = %q, want running", status.Status)
 	}
 
+	profileResult, rpcErr := rt.handler(ctx, contract.MethodProfileList, []byte(`{}`))
+	if rpcErr != nil {
+		t.Fatalf("profile.list error: %v", rpcErr)
+	}
+	var profiles contract.ProfileListResult
+	if err := json.Unmarshal(profileResult, &profiles); err != nil {
+		t.Fatalf("unmarshal profile.list: %v", err)
+	}
+	if len(profiles.Profiles) != 1 {
+		t.Fatalf("profile.list count = %d, want 1", len(profiles.Profiles))
+	}
+	if profiles.Profiles[0].InstitutionProfileID != "jlu" ||
+		profiles.Profiles[0].DisplayName != "Jilin University" ||
+		profiles.Profiles[0].AuthenticationProtocolID != "drcom-5.2.0-d" {
+		t.Fatalf("profile.list result = %#v", profiles.Profiles[0])
+	}
+
 	if !store.wasOpened(paths.configurations) {
 		t.Fatal("store was not opened at configurations path")
 	}
@@ -346,6 +363,19 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	}
 	if sessionResult.AccountLabel == usernameMarker {
 		t.Fatal("session.AccountLabel contains raw username")
+	}
+
+	listedData, listErr := rt.handler(ctx, contract.MethodSessionList, []byte(`{}`))
+	if listErr != nil {
+		t.Fatalf("session.list error: %v", listErr)
+	}
+	var listed contract.SessionListResult
+	if err := json.Unmarshal(listedData, &listed); err != nil {
+		t.Fatalf("unmarshal session.list: %v", err)
+	}
+	if len(listed.Sessions) != 1 ||
+		listed.Sessions[0].AuthenticationSessionID != sessionResult.AuthenticationSessionID {
+		t.Fatalf("session.list result = %#v", listed.Sessions)
 	}
 
 	stopPayload, _ := json.Marshal(contract.SessionStopPayload{

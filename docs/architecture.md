@@ -216,9 +216,10 @@ contract 只定义 Request、Response 和 Event：
 
 如果客户端持续跟不上事件，IPC server 应关闭该连接。慢客户端不得阻塞 daemon app。
 
-当前代码已经实现 `daemon.status` 的 contract、WebSocket client/server 和 Windows
-host 骨架，并通过单元测试、vet 和 Windows 交叉编译。Windows 原生双进程现场尚未
-验证，因此只能报告代码和自动验证完成，不能报告 Windows 现场通过。
+当前代码已经实现 `daemon.status`、`session.list` 和 `profile.list` 的 typed
+contract，以及 WebSocket client/server 和 Windows host 骨架。列表请求只接受严格
+空对象 `{}`；响应始终返回非 null 数组，并且 Profile 摘要只包含 ID、显示名和协议
+ID。列表切片完成代码与自动验证后仍需 Windows 原生复核。
 
 首版 IPC 只提供以下产品操作：
 
@@ -298,8 +299,10 @@ stderr，关闭输入回显，读取一行，并在成功、失败或取消路�
 
 ```text
 sidravia auth start --profile <profile-id> --username <username>
+sidravia auth list
 sidravia auth status <session-id>
 sidravia auth stop <session-id>
+sidravia profile list
 ```
 
 `auth start` 表示创建并由 daemon 持续维持一个认证 Session，`auth status` 查询该
@@ -308,6 +311,11 @@ Session 的公开 Snapshot，`auth stop` 停止 Session 并按协议要求执行
 `sidravia status` 不作为兼容别名执行，而是返回固定迁移提示。首版不增加
 `login`/`logout` 兼容别名；面向普通用户的 GUI 可以使用“登录/退出”文案，而不改变
 底层 CLI 和 Session 语义。
+
+`auth list` 按 `SessionID` 稳定顺序列出当前 daemon 进程保留的全部 Session Snapshot；
+daemon 重启后不会恢复旧列表。`profile list` 按 Profile Catalog 的稳定顺序列出安全
+摘要，不读取或输出机构协议配置、用户名或密码。两个列表命令都复用相同的 daemon
+发现链，验证完整响应后一次写出纯文本，不使用颜色、宽度探测或对齐填充。
 
 `auth start` 在 daemon 成功创建 Session 后立即打印返回的初始公开 Snapshot 和
 SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而停止 daemon 中继续保活或
@@ -332,7 +340,7 @@ Profile、协议、脱敏 account label 和更新时间，并只在存在时显�
 人类输出伪装成脚本格式；以后需要机器消费时增加显式 `--json`，不要求脚本解析多行
 文本。`sidravia daemon status` 继续使用自己的单行 daemon 摘要。
 
-`auth start`、`auth status` 和 `auth stop` 都复用 daemon status 已有的 daemon 发现语义：
+`auth start`、`auth status`、`auth stop`、`auth list` 和 `profile list` 都复用 daemon status 已有的 daemon 发现语义：
 先尝试运行信息中的现有 daemon，连接失败则至多一次启动与 CLI 同目录的
 `sidraviad.exe`，并在同一个五秒总边界内轮询新的运行信息和连接。认证命令不要求用户
 预先运行 `sidravia daemon status`。如果 `auth status/stop` 因冷启动进入了一个没有目标

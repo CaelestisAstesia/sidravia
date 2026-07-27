@@ -37,6 +37,12 @@ func TestRunRejectsBadArguments(t *testing.T) {
 		{"login"},
 		{"logout"},
 		{"auth"},
+		{"list"},
+		{"profile"},
+		{"profile", "list", "extra"},
+		{"profile", "list", "--json"},
+		{"account", "list"},
+		{"auth", "config", "list"},
 		{"auth", "watch", "session-marker"},
 		{"auth", "check", "session-marker"},
 		{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--password", "value-marker"},
@@ -71,6 +77,8 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 		{name: "stdin start", args: []string{"auth", "start", "--username", "account-b", "--password-stdin", "--profile", "profile-b"}, want: "start:profile-b:account-b:true"},
 		{name: "session status", args: []string{"auth", "status", "session-a"}, want: "auth-status:session-a"},
 		{name: "session stop", args: []string{"auth", "stop", "session-b"}, want: "auth-stop:session-b"},
+		{name: "session list", args: []string{"auth", "list"}, want: "auth-list"},
+		{name: "profile list", args: []string{"profile", "list"}, want: "profile-list"},
 	}
 
 	for _, test := range tests {
@@ -91,6 +99,14 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 				},
 				authStop: func(sessionID string) error {
 					got = "auth-stop:" + sessionID
+					return nil
+				},
+				authList: func() error {
+					got = "auth-list"
+					return nil
+				},
+				profileList: func() error {
+					got = "profile-list"
 					return nil
 				},
 			}
@@ -157,7 +173,8 @@ func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 		t.Fatalf("root help = %v, want nil", err)
 	}
 	if got := rootHelp.String(); !strings.Contains(got, "\n  auth ") ||
-		!strings.Contains(got, "\n  daemon ") {
+		!strings.Contains(got, "\n  daemon ") ||
+		!strings.Contains(got, "\n  profile ") {
 		t.Errorf("root help omitted resource commands:\n%s", got)
 	}
 	if strings.Contains(rootHelp.String(), "\n  status ") {
@@ -171,6 +188,24 @@ func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 	}
 	if got := daemonHelp.String(); !strings.Contains(got, "\n  status ") {
 		t.Errorf("daemon help omitted canonical status:\n%s", got)
+	}
+
+	var authHelp bytes.Buffer
+	deps.output = &authHelp
+	if err := runCommand([]string{"auth", "--help"}, deps); err != nil {
+		t.Fatalf("auth help = %v, want nil", err)
+	}
+	if got := authHelp.String(); !strings.Contains(got, "\n  list ") {
+		t.Errorf("auth help omitted list:\n%s", got)
+	}
+
+	var profileHelp bytes.Buffer
+	deps.output = &profileHelp
+	if err := runCommand([]string{"profile", "--help"}, deps); err != nil {
+		t.Fatalf("profile help = %v, want nil", err)
+	}
+	if got := profileHelp.String(); !strings.Contains(got, "\n  list ") {
+		t.Errorf("profile help omitted list:\n%s", got)
 	}
 }
 

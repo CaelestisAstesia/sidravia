@@ -275,3 +275,68 @@ func TestMarshalSessionResultHasNoSecretFields(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeEmptyPayloadStrict(t *testing.T) {
+	if err := DecodeEmptyPayload([]byte(`{}`)); err != nil {
+		t.Fatalf("DecodeEmptyPayload({}) = %v", err)
+	}
+	for _, data := range []string{
+		"",
+		"null",
+		"[]",
+		`{"extra":true}`,
+		`{} {}`,
+		`{} trailing`,
+	} {
+		if err := DecodeEmptyPayload([]byte(data)); err == nil {
+			t.Errorf("DecodeEmptyPayload(%q) = nil, want error", data)
+		}
+	}
+}
+
+func TestMarshalListResultsUseNonNullArrays(t *testing.T) {
+	sessionData, err := MarshalSessionListResult(SessionListResult{})
+	if err != nil {
+		t.Fatalf("MarshalSessionListResult() error = %v", err)
+	}
+	if string(sessionData) != `{"sessions":[]}` {
+		t.Errorf("empty Session list = %s", sessionData)
+	}
+
+	profileData, err := MarshalProfileListResult(ProfileListResult{})
+	if err != nil {
+		t.Fatalf("MarshalProfileListResult() error = %v", err)
+	}
+	if string(profileData) != `{"profiles":[]}` {
+		t.Errorf("empty Profile list = %s", profileData)
+	}
+}
+
+func TestMarshalProfileListResultContainsOnlySafeSummaryFields(t *testing.T) {
+	data, err := MarshalProfileListResult(ProfileListResult{
+		Profiles: []ProfileSummaryResult{{
+			InstitutionProfileID:     "jlu",
+			DisplayName:              "吉林大学",
+			AuthenticationProtocolID: "drcom-5.2.0-d",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("MarshalProfileListResult() error = %v", err)
+	}
+	var decoded map[string][]map[string]string
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal Profile list: %v", err)
+	}
+	profile := decoded["profiles"][0]
+	if len(profile) != 3 ||
+		profile["institutionProfileId"] != "jlu" ||
+		profile["displayName"] != "吉林大学" ||
+		profile["authenticationProtocolId"] != "drcom-5.2.0-d" {
+		t.Errorf("Profile summary = %#v", profile)
+	}
+	for _, secret := range []string{"password", "credentialId", "institutionProtocolConfiguration"} {
+		if bytes.Contains(data, []byte(secret)) {
+			t.Errorf("Profile list contains %q: %s", secret, data)
+		}
+	}
+}

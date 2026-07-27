@@ -16,8 +16,9 @@ import (
 )
 
 type fakeSessionApplication struct {
-	snapshot session.Snapshot
-	err      error
+	snapshot  session.Snapshot
+	snapshots []session.Snapshot
+	err       error
 
 	lastStartInput OneShotAuthenticationInput
 	startCalls     int
@@ -25,6 +26,15 @@ type fakeSessionApplication struct {
 	stopCalls      int
 	lastGetID      session.AuthenticationSessionID
 	getCalls       int
+	listCalls      int
+}
+
+func (fake *fakeSessionApplication) ListSessions(context.Context) ([]session.Snapshot, error) {
+	fake.listCalls++
+	if fake.err != nil {
+		return nil, fake.err
+	}
+	return append([]session.Snapshot(nil), fake.snapshots...), nil
 }
 
 func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error) {
@@ -186,6 +196,45 @@ func TestSessionHandlerGetCallsFakeOnceWithSessionID(t *testing.T) {
 	}
 }
 
+func TestSessionHandlerListCallsFakeOnceAndMapsAllEntries(t *testing.T) {
+	second := fullSnapshot()
+	second.AuthenticationSessionID = "sess-2"
+	second.State = session.Suspended
+	fake := &fakeSessionApplication{snapshots: []session.Snapshot{fullSnapshot(), second}}
+	handler := SessionHandler(fake)
+
+	result, cerr := handler(context.Background(), contract.MethodSessionList, []byte(`{}`))
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	if fake.listCalls != 1 {
+		t.Fatalf("ListSessions calls = %d, want 1", fake.listCalls)
+	}
+	if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 {
+		t.Fatal("Session list invoked another operation")
+	}
+	var decoded contract.SessionListResult
+	if err := json.Unmarshal(result, &decoded); err != nil {
+		t.Fatalf("unmarshal Session list: %v", err)
+	}
+	if len(decoded.Sessions) != 2 ||
+		decoded.Sessions[0].AuthenticationSessionID != "sess-1" ||
+		decoded.Sessions[1].AuthenticationSessionID != "sess-2" {
+		t.Fatalf("Session list = %#v", decoded.Sessions)
+	}
+}
+
+func TestSessionHandlerListPreservesEmptyArray(t *testing.T) {
+	fake := &fakeSessionApplication{}
+	result, cerr := SessionHandler(fake)(context.Background(), contract.MethodSessionList, []byte(`{}`))
+	if cerr != nil {
+		t.Fatalf("unexpected error: %+v", cerr)
+	}
+	if string(result) != `{"sessions":[]}` {
+		t.Errorf("empty Session list = %s", result)
+	}
+}
+
 func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
 	handler := SessionHandler(fake)
@@ -253,7 +302,7 @@ func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 }
 
 func TestSessionHandlerMalformedPayloadDoesNotCallFake(t *testing.T) {
-	for _, method := range []string{contract.MethodSessionStartOneShot, contract.MethodSessionStop, contract.MethodSessionGet} {
+	for _, method := range []string{contract.MethodSessionStartOneShot, contract.MethodSessionStop, contract.MethodSessionGet, contract.MethodSessionList} {
 		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
 		handler := SessionHandler(fake)
 		_, cerr := handler(context.Background(), method, []byte(`{"username":""}`))
@@ -263,8 +312,8 @@ func TestSessionHandlerMalformedPayloadDoesNotCallFake(t *testing.T) {
 		if cerr.Code != contract.ErrorCodeInvalidArgument {
 			t.Errorf("%s: code: got %q, want %q", method, cerr.Code, contract.ErrorCodeInvalidArgument)
 		}
-		if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 {
-			t.Fatalf("%s: fake must not be called, got start=%d stop=%d get=%d", method, fake.startCalls, fake.stopCalls, fake.getCalls)
+		if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 || fake.listCalls != 0 {
+			t.Fatalf("%s: fake must not be called, got start=%d stop=%d get=%d list=%d", method, fake.startCalls, fake.stopCalls, fake.getCalls, fake.listCalls)
 		}
 	}
 }
@@ -279,8 +328,8 @@ func TestSessionHandlerUnknownMethodDoesNotCallFake(t *testing.T) {
 	if cerr.Code != contract.ErrorCodeUnknownMethod {
 		t.Errorf("code: got %q, want %q", cerr.Code, contract.ErrorCodeUnknownMethod)
 	}
-	if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 {
-		t.Fatalf("fake must not be called for unknown method, got start=%d stop=%d get=%d", fake.startCalls, fake.stopCalls, fake.getCalls)
+	if fake.startCalls != 0 || fake.stopCalls != 0 || fake.getCalls != 0 || fake.listCalls != 0 {
+		t.Fatalf("fake must not be called for unknown method, got start=%d stop=%d get=%d list=%d", fake.startCalls, fake.stopCalls, fake.getCalls, fake.listCalls)
 	}
 }
 

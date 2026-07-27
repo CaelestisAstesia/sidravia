@@ -24,6 +24,11 @@ verifier 已通过。首套 `auth start/status/stop` CLI、Windows 隐藏密码�
 `--password-stdin` 和共享 Session Snapshot 输出也已完成并通过聚焦测试、race 与
 Windows amd64 交叉编译。
 
+资源命令树的下一切片补齐 `sidravia auth list` 与 `sidravia profile list`。daemon
+应用层、typed IPC 和 CLI 分别列出当前进程保留的 Session Snapshot 与安全 Profile
+摘要；空列表保持非 null 数组，CLI 在完整验证响应后一次写出。该切片完成代码和自动
+验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
+
 CLI 顶层分发随后迁移到 Cobra 资源命令树。daemon 查询只由
 `sidravia daemon status` 执行，并完全复用既有热连接、单次冷启动、失效信息恢复和
 五秒等待链；当前没有独立 `daemon start` 或缺少 typed IPC 所需的 `daemon stop`。
@@ -48,7 +53,7 @@ Stop 幂等，清理失败只保留为 Session 私有诊断，不把本地 Sessi
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
 | 1. 后端重整 | 完成 | Configuration、Credentials、App、Session、Supervisor 和 Persistence 各自拥有明确职责 |
 | 2. 可运行骨架 | 完成：Windows 首轮现场通过；新命令待原生复核 | Windows 上的 `sidravia daemon status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
-| 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止和查询 Session，且不泄漏秘密 |
+| 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
 | 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
 | 6. Windows 产品纵向链路 | 完成：Windows/JLU 首轮现场通过 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |

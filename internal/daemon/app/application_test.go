@@ -103,7 +103,7 @@ func newApplicationTestSetup(t *testing.T) *applicationTestSetup {
 		t.Fatal(err)
 	}
 	supervisorInstance := supervisor.New(appSupervisorDeps())
-	application, err := NewApplication(catalog, authenticationResolver, supervisorInstance)
+	application, err := NewApplication(catalog, profileCat, authenticationResolver, supervisorInstance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,14 +180,54 @@ func TestNewBackendRejectsNilDeps(t *testing.T) {
 	_ = supervisorInstance.Close()
 	supervisorInstance.Wait()
 
-	if _, err := NewApplication(nil, authenticationResolver, supervisorInstance); err == nil {
+	if _, err := NewApplication(nil, profileCat, authenticationResolver, supervisorInstance); err == nil {
 		t.Fatal("NewApplication(nil catalog) error = nil, want error")
 	}
-	if _, err := NewApplication(catalog, nil, supervisorInstance); err == nil {
+	if _, err := NewApplication(catalog, nil, authenticationResolver, supervisorInstance); err == nil {
+		t.Fatal("NewApplication(nil profile catalog) error = nil, want error")
+	}
+	if _, err := NewApplication(catalog, profileCat, nil, supervisorInstance); err == nil {
 		t.Fatal("NewApplication(nil authenticationResolver) error = nil, want error")
 	}
-	if _, err := NewApplication(catalog, authenticationResolver, nil); err == nil {
+	if _, err := NewApplication(catalog, profileCat, authenticationResolver, nil); err == nil {
 		t.Fatal("NewApplication(nil supervisor) error = nil, want error")
+	}
+}
+
+func TestApplicationListsRetainedSessionsAndProfiles(t *testing.T) {
+	ctx := context.Background()
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+
+	sessionID, _, err := setup.application.StartAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatalf("StartAuthentication() error = %v", err)
+	}
+	if _, err := setup.application.StopSession(ctx, sessionID); err != nil {
+		t.Fatalf("StopSession() error = %v", err)
+	}
+	waitForApplicationSessionState(t, setup.application, sessionID, session.Suspended)
+
+	sessions, err := setup.application.ListSessions(ctx)
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].AuthenticationSessionID != sessionID {
+		t.Fatalf("ListSessions() = %#v, want retained %q", sessions, sessionID)
+	}
+	if sessions[0].State != session.Suspended {
+		t.Errorf("retained Session state = %q, want suspended", sessions[0].State)
+	}
+
+	profiles, err := setup.application.ListInstitutionProfiles(ctx)
+	if err != nil {
+		t.Fatalf("ListInstitutionProfiles() error = %v", err)
+	}
+	if len(profiles) != 1 ||
+		profiles[0].InstitutionProfileID != "profile-1" ||
+		profiles[0].DisplayName != "profile-1 display" ||
+		profiles[0].AuthenticationProtocolID != "drcom" {
+		t.Fatalf("ListInstitutionProfiles() = %#v", profiles)
 	}
 }
 
@@ -300,7 +340,7 @@ func TestBackendCatalogDeleteFailureIsRetryable(t *testing.T) {
 		_ = sup.Close()
 		sup.Wait()
 	}()
-	application, err := NewApplication(catalog, authenticationResolver, sup)
+	application, err := NewApplication(catalog, profileCat, authenticationResolver, sup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +426,7 @@ func TestBackendStartDeleteConcurrency(t *testing.T) {
 			t.Fatal(err)
 		}
 		sup := supervisor.New(appSupervisorDeps())
-		application, err := NewApplication(catalog, authenticationResolver, sup)
+		application, err := NewApplication(catalog, profileCat, authenticationResolver, sup)
 		if err != nil {
 			t.Fatal(err)
 		}

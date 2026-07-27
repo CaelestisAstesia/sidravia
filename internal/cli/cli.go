@@ -18,7 +18,7 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-const commandUsage = "usage: sidravia daemon status | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>"
+const commandUsage = "usage: sidravia daemon status | sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia profile list"
 
 var (
 	errCommandUsage = errors.New(commandUsage)
@@ -37,20 +37,24 @@ type authStartOptions struct {
 }
 
 type commandDependencies struct {
-	status     func() error
-	authStart  func(authStartOptions) error
-	authStatus func(string) error
-	authStop   func(string) error
-	output     io.Writer
+	status      func() error
+	authStart   func(authStartOptions) error
+	authStatus  func(string) error
+	authStop    func(string) error
+	authList    func() error
+	profileList func() error
+	output      io.Writer
 }
 
 func defaultCommandDependencies() commandDependencies {
 	return commandDependencies{
-		status:     status,
-		authStart:  authStart,
-		authStatus: authStatus,
-		authStop:   authStop,
-		output:     os.Stdout,
+		status:      status,
+		authStart:   authStart,
+		authStatus:  authStatus,
+		authStop:    authStop,
+		authList:    authList,
+		profileList: profileList,
+		output:      os.Stdout,
 	}
 }
 
@@ -152,13 +156,35 @@ func newRootCommand(deps commandDependencies, output io.Writer) *cobra.Command {
 		},
 	}
 	auth.AddCommand(
+		newListCommand("list", "列出 Session", deps.authList),
 		newAuthStartCommand(deps),
 		newSessionCommand("status", "显示 Session 状态", deps.authStatus),
 		newSessionCommand("stop", "停止 Session", deps.authStop),
 	)
 
-	root.AddCommand(daemon, auth, retiredStatus)
+	profile := &cobra.Command{
+		Use:   "profile",
+		Short: "查看机构 Profile",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return errCommandUsage
+		},
+	}
+	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
+
+	root.AddCommand(daemon, auth, profile, retiredStatus)
 	return root
+}
+
+func newListCommand(name string, description string, operation func() error) *cobra.Command {
+	return &cobra.Command{
+		Use:   name,
+		Short: description,
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return wrapCommandOperation(operation())
+		},
+	}
 }
 
 func newAuthStartCommand(deps commandDependencies) *cobra.Command {

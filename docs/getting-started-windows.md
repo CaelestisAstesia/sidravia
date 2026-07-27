@@ -103,6 +103,14 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 `命令已迁移，请使用 sidravia daemon status`。不要把新命令用于旧 Alpha 二进制，也
 不要把旧命令当作当前构建的兼容别名。
 
+当前源码构建还可以确认 daemon 实际加载的机构 Profile：
+
+```powershell
+.\sidravia.exe profile list
+```
+
+该命令只显示 Profile ID、名称和协议，不显示协议配置或凭据。
+
 预期包含：
 
 ```text
@@ -125,6 +133,14 @@ Profile、截图或日志。非交互式调用必须显式使用 `--password-std
 $SessionID = 'session-1'
 .\sidravia.exe auth status $SessionID
 ```
+
+当前源码构建也可以列出当前 daemon 进程仍保留的全部 Session：
+
+```powershell
+.\sidravia.exe auth list
+```
+
+列表包含脱敏账号标签；daemon 重启后不会恢复旧 Session。
 
 认证成功时状态为：
 
@@ -173,7 +189,7 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 - 只发布 Windows amd64 二进制；其他平台尚不受支持。
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 本地 Profile 需要手动创建，尚无引导式配置界面。
-- 尚无 Session/Profile 列表、持久认证配置、自动登录或 Windows Service。
+- 尚无持久认证配置、自动登录或 Windows Service。
 - 简体中文产品呈现、结构化日志、route-aware 多 IPv4 选择和自动化仍未完成。
 - 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia
   继续发送已经被真实服务器接受的 330 字节 Login。

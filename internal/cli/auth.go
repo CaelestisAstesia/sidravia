@@ -20,10 +20,14 @@ type daemonClient interface {
 	Close() error
 }
 
+type daemonConnectionDependencies struct {
+	discovery   discoveryDependencies
+	connect     func(context.Context, contract.RuntimeInfo) (daemonClient, error)
+	callTimeout time.Duration
+}
+
 type authDependencies struct {
-	discovery               discoveryDependencies
-	connect                 func(context.Context, contract.RuntimeInfo) (daemonClient, error)
-	callTimeout             time.Duration
+	connection              daemonConnectionDependencies
 	stdin                   io.Reader
 	stdout                  io.Writer
 	stderr                  io.Writer
@@ -31,13 +35,19 @@ type authDependencies struct {
 	readInteractivePassword func(io.Reader, io.Writer) (string, error)
 }
 
-func defaultAuthDependencies() authDependencies {
-	return authDependencies{
+func defaultDaemonConnectionDependencies() daemonConnectionDependencies {
+	return daemonConnectionDependencies{
 		discovery: defaultDiscoveryDependencies(),
 		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonClient, error) {
 			return client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
 		},
-		callTimeout:             2 * time.Second,
+		callTimeout: 2 * time.Second,
+	}
+}
+
+func defaultAuthDependencies() authDependencies {
+	return authDependencies{
+		connection:              defaultDaemonConnectionDependencies(),
 		stdin:                   os.Stdin,
 		stdout:                  os.Stdout,
 		stderr:                  os.Stderr,
@@ -119,7 +129,11 @@ func runAuthStop(sessionID string, deps authDependencies) error {
 }
 
 func withAuthClient(deps authDependencies, operation func(daemonClient) error) error {
-	connection, err := acquireAuthClient(deps)
+	return withDaemonClient(deps.connection, operation)
+}
+
+func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonClient) error) error {
+	connection, err := acquireDaemonClient(deps)
 	if err != nil {
 		return wrapSafeOperation("connect to sidraviad", err)
 	}
@@ -138,7 +152,7 @@ func withAuthClient(deps authDependencies, operation func(daemonClient) error) e
 	return nil
 }
 
-func acquireAuthClient(deps authDependencies) (daemonClient, error) {
+func acquireDaemonClient(deps daemonConnectionDependencies) (daemonClient, error) {
 	var acquired daemonClient
 	err := discoverDaemon(deps.discovery, func(info contract.RuntimeInfo) error {
 		ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
@@ -174,7 +188,7 @@ func callSession(
 		return contract.SessionResult{}, wrapSafeOperation("encode Session request", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), deps.connection.callTimeout)
 	defer cancel()
 	response, err := connection.Call(ctx, method, rawPayload)
 	if err != nil {

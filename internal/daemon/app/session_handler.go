@@ -21,6 +21,7 @@ type sessionApplication interface {
 	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
+	ListSessions(ctx context.Context) ([]session.Snapshot, error)
 }
 
 var _ sessionApplication = (*Application)(nil)
@@ -40,6 +41,8 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 			return handleSessionStop(ctx, application, payload)
 		case contract.MethodSessionGet:
 			return handleSessionGet(ctx, application, payload)
+		case contract.MethodSessionList:
+			return handleSessionList(ctx, application, payload)
 		default:
 			return nil, &contract.Error{
 				Code:    contract.ErrorCodeUnknownMethod,
@@ -47,6 +50,28 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 			}
 		}
 	}
+}
+
+func handleSessionList(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	if err := contract.DecodeEmptyPayload(payload); err != nil {
+		return nil, invalidArgumentError()
+	}
+	snapshots, err := application.ListSessions(ctx)
+	if err != nil {
+		return nil, sessionError(err)
+	}
+	results := make([]contract.SessionResult, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		results = append(results, toSessionResult(snapshot))
+	}
+	result, err := contract.MarshalSessionListResult(contract.SessionListResult{Sessions: results})
+	if err != nil {
+		return nil, &contract.Error{
+			Code:    contract.ErrorCodeSessionOperationFailed,
+			Message: "failed to encode session list",
+		}
+	}
+	return result, nil
 }
 
 func handleSessionStartOneShot(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {

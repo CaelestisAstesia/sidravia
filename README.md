@@ -12,9 +12,9 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 `v0.1.0-alpha.1` 是面向 Windows amd64 的首个 Alpha。仓库已经实现并自动验证：
 
 - CLI/daemon 状态通信骨架；
-- `auth start/status/stop` 一次性认证命令、Windows 隐藏密码输入和
+- `auth start/status/stop/list` 一次性认证命令、`profile list`、Windows 隐藏密码输入和
   `--password-stdin`；
-- typed 一次性 Session 启动、停止和查询的应用边界；
+- typed 一次性 Session 启动、停止、查询和安全列表，以及机构 Profile 安全摘要列表；
 - Session、Supervisor、网络快照分发与单活动 Session 规则；
 - Dr.COM 5.2.0(D) 报文、Factory 和阻塞式认证 Run；
 - 本地可编辑机构 Profile 的严格一次性加载；

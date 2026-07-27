@@ -195,7 +195,7 @@ func composeObjectGraph(
 		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create resolver: %w", err))
 	}
 
-	application, err := app.NewApplication(catalog, resolver, sup)
+	application, err := app.NewApplication(catalog, profiles, resolver, sup)
 	if err != nil {
 		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create application: %w", err))
 	}

@@ -372,7 +372,8 @@ func TestSupervisorListReturnsAllSessions(t *testing.T) {
 	}
 	waitForSupervisorState(t, supervisor, id1, session.Suspended)
 
-	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err != nil {
+	id2, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
+	if err != nil {
 		t.Fatalf("StartResolved (2) error: %v", err)
 	}
 
@@ -381,7 +382,19 @@ func TestSupervisorListReturnsAllSessions(t *testing.T) {
 		t.Fatalf("List error: %v", err)
 	}
 	if len(snapshots) != 2 {
-		t.Errorf("len(snapshots) = %d, want 2", len(snapshots))
+		t.Fatalf("len(snapshots) = %d, want 2", len(snapshots))
+	}
+	if snapshots[0].AuthenticationSessionID != id1 ||
+		snapshots[1].AuthenticationSessionID != id2 {
+		t.Errorf("List order = [%q, %q], want [%q, %q]",
+			snapshots[0].AuthenticationSessionID,
+			snapshots[1].AuthenticationSessionID,
+			id1,
+			id2,
+		)
+	}
+	if snapshots[0].State != session.Suspended {
+		t.Errorf("first retained Session state = %q, want suspended", snapshots[0].State)
 	}
 }
 

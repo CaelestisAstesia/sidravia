@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -334,6 +335,9 @@ func (s *Supervisor) List(ctx context.Context) ([]Snapshot, error) {
 		}
 		snapshots = append(snapshots, snapshot)
 	}
+	sort.Slice(snapshots, func(left, right int) bool {
+		return snapshots[left].AuthenticationSessionID < snapshots[right].AuthenticationSessionID
+	})
 	return snapshots, nil
 }
 

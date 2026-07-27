@@ -44,6 +44,7 @@ func (failure *DeletionFailure) Code() DeletionFailureCode { return failure.code
 
 type Application struct {
 	catalog                *config.Catalog
+	profiles               *config.ProfileCatalog
 	authenticationResolver *AuthenticationResolver
 	sup                    *supervisor.Supervisor
 	mu                     sync.Mutex
@@ -53,11 +54,15 @@ type Application struct {
 
 func NewApplication(
 	catalog *config.Catalog,
+	profiles *config.ProfileCatalog,
 	authenticationResolver *AuthenticationResolver,
 	sup *supervisor.Supervisor,
 ) (*Application, error) {
 	if catalog == nil {
 		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("configuration catalog is required"))
+	}
+	if profiles == nil {
+		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("profile catalog is required"))
 	}
 	if authenticationResolver == nil {
 		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("authenticationResolver is required"))
@@ -67,6 +72,7 @@ func NewApplication(
 	}
 	return &Application{
 		catalog:                catalog,
+		profiles:               profiles,
 		authenticationResolver: authenticationResolver,
 		sup:                    sup,
 		sessionsByConfig:       make(map[config.ConfigurationID][]session.AuthenticationSessionID),
@@ -129,6 +135,14 @@ func (application *Application) StopSession(ctx context.Context, sessionID sessi
 
 func (application *Application) GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
 	return application.sup.Get(ctx, sessionID)
+}
+
+func (application *Application) ListSessions(ctx context.Context) ([]session.Snapshot, error) {
+	return application.sup.List(ctx)
+}
+
+func (application *Application) ListInstitutionProfiles(ctx context.Context) ([]config.InstitutionProfileSummary, error) {
+	return application.profiles.ListSummaries(ctx)
 }
 
 // ApplySystemNetworkSnapshot delegates a typed system network snapshot to the

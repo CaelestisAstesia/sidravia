@@ -113,6 +113,19 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 		t.Errorf("get session ID: got %q, want %q", got.AuthenticationSessionID, started.AuthenticationSessionID)
 	}
 
+	listResult, cerr := handler(ctx, contract.MethodSessionList, []byte(`{}`))
+	if cerr != nil {
+		t.Fatalf("session.list error: %+v", cerr)
+	}
+	var listed contract.SessionListResult
+	if err := json.Unmarshal(listResult, &listed); err != nil {
+		t.Fatalf("unmarshal list result: %v", err)
+	}
+	if len(listed.Sessions) != 1 ||
+		listed.Sessions[0].AuthenticationSessionID != started.AuthenticationSessionID {
+		t.Fatalf("session.list result = %#v, want started Session", listed.Sessions)
+	}
+
 	// Stop the session through the composed IPC handler.
 	stopResult, cerr := handler(ctx, contract.MethodSessionStop, []byte(`{"sessionId":"`+started.AuthenticationSessionID+`"}`))
 	if cerr != nil {
@@ -127,6 +140,30 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 	}
 	if stopped.State != string(session.Stopping) {
 		t.Errorf("stop State: got %q, want %q", stopped.State, session.Stopping)
+	}
+}
+
+func TestIPCHandlerListsProfiles(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
+
+	result, cerr := handler(context.Background(), contract.MethodProfileList, []byte(`{}`))
+	if cerr != nil {
+		t.Fatalf("profile.list error: %+v", cerr)
+	}
+	var listed contract.ProfileListResult
+	if err := json.Unmarshal(result, &listed); err != nil {
+		t.Fatalf("unmarshal profile list: %v", err)
+	}
+	if len(listed.Profiles) != 1 {
+		t.Fatalf("profile count = %d, want 1", len(listed.Profiles))
+	}
+	profile := listed.Profiles[0]
+	if profile.InstitutionProfileID != "profile-1" ||
+		profile.DisplayName != "profile-1 display" ||
+		profile.AuthenticationProtocolID != "drcom" {
+		t.Fatalf("profile.list result = %#v", profile)
 	}
 }
 
