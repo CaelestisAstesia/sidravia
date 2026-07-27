@@ -150,6 +150,29 @@ heartbeat 和单个 Run 内 busy 重试仍来自机构 Profile；如果现场证
 详细生命周期所有权见
 `docs/decisions/0011-daemon-composition-owns-runtime-lifecycle.md`。
 
+## 运行日志边界
+
+`cmd/sidraviad` 构造唯一生产 `*slog.Logger`，使用 `TextHandler`、stderr、Info
+级别，并显式传入生产装配、`composedRuntime` 和 IPC Server。它不修改
+package-global default logger。核心 Session、Supervisor、D520、持久化和配置包
+不导入 `log/slog`。
+
+每条运行日志都带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性。
+事件、等级与安全属性以 ADR 0013 为准。`method` 只接受当前 IPC 契约方法，其他
+值归一化为 `unknown`；`error_code` 只接受当前契约错误码，其他值归一化为
+`internal_error`；`stage` 只接受 `encode` 和 `write`。固定消息绝不由 error、
+请求或响应构造。
+
+普通日志永不包含原始 error 或包装的诊断原因、请求/响应字节、request ID、token、
+endpoint、用户名、账号标签、密码、凭据 ID、Profile JSON、协议上下文或网卡
+ID/名称/MAC/IP/网关/DNS/主机名。进程边界把 fatal reporting 与 `os.Exit` 分离：
+构造失败只发一条 `daemon_start_failed`，运行失败只发一条 `daemon_runtime_failed`，
+两者都不含返回的 error，但原始 error 仍由错误传播保留。日志是观察层，不改变 IPC
+响应、错误码、生命周期取消、goroutine 所有权或退出结果。
+
+本切片只产出 stderr Text 日志，不写日志文件、不做轮转、不暴露日志 IPC/CLI 命令、
+不加终端样式。简体中文 CLI 呈现和 terminal/`NO_COLOR` 行为属于后续独立切片。
+
 ## Session 和 Supervisor
 
 每个 Session 从创建开始就拥有稳定的 `SessionID`。Session 管理自己的协议运行、取消、重试、状态和 Snapshot。Session 不知道其他 Session，也不读写配置或凭据。

@@ -87,6 +87,16 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 .\sidraviad.exe
 ```
 
+`sidraviad` 把结构化运行日志写到 stderr。如果需要保存日志，可以重定向 stderr：
+
+```powershell
+.\sidraviad.exe 2> sidraviad.log
+```
+
+日志只包含稳定事件码、固定简体中文消息和安全属性，不含密码、token、用户名、
+账号标签、凭据、Profile JSON、网卡事实或原始 error。Sidravia 首版不做日志轮转，
+也不提供日志 IPC/CLI 命令。
+
 窗口 B 检查版本：
 
 ```powershell
@@ -190,7 +200,8 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 本地 Profile 需要手动创建，尚无引导式配置界面。
 - 尚无持久认证配置、自动登录或 Windows Service。
-- 简体中文产品呈现、结构化日志、route-aware 多 IPv4 选择和自动化仍未完成。
+- 简体中文产品呈现、route-aware 多 IPv4 选择和自动化仍未完成；结构化 daemon 日志
+  已加入，但 Windows 原生尚未重新验证。
 - 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia
   继续发送已经被真实服务器接受的 330 字节 Login。
 

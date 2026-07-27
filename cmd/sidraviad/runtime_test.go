@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,14 @@ import (
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/ipc/contract"
 )
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func bufferLogger(buf *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+}
 
 type inMemoryStore struct {
 	mu     sync.Mutex
@@ -237,6 +247,7 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 		"test-token",
 		"1.0.0-test",
 		"abc1234",
+		discardLogger(),
 	)
 	if err != nil {
 		t.Fatalf("composeObjectGraph() error = %v", err)
@@ -313,6 +324,7 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		"test-token",
 		"1.0.0-test",
 		"abc1234",
+		discardLogger(),
 	)
 	if err != nil {
 		t.Fatalf("composeObjectGraph() error = %v", err)
@@ -410,6 +422,7 @@ func TestCompositionFailsOnInvalidProfile(t *testing.T) {
 		"test-token",
 		"1.0.0-test",
 		"abc1234",
+		discardLogger(),
 	)
 	if err == nil {
 		t.Fatal("composeObjectGraph() expected error for invalid profile")
@@ -494,12 +507,16 @@ func newLifecycleRuntime(
 	hostRunner *fakeHostRunner,
 	sink *fakeSnapshotSink,
 	shutdown *fakeShutdown,
+	logger *slog.Logger,
 ) *composedRuntime {
 	return &composedRuntime{
-		observer:     observer,
-		snapshotSink: sink,
-		shutdown:     shutdown,
-		hostRunner:   hostRunner.run,
+		observer:       observer,
+		snapshotSink:   sink,
+		shutdown:       shutdown,
+		hostRunner:     hostRunner.run,
+		logger:         logger,
+		productVersion: "test-version",
+		buildID:        "test-build",
 	}
 }
 
@@ -555,7 +572,7 @@ func assertShutdown(t *testing.T, shutdown *fakeShutdown) {
 	}
 }
 
-func newCoordinatedLifecycle(t *testing.T) (*composedRuntime, *fakeObserver, *fakeHostRunner, *fakeSnapshotSink, *fakeShutdown) {
+func newCoordinatedLifecycle(t *testing.T, logger *slog.Logger) (*composedRuntime, *fakeObserver, *fakeHostRunner, *fakeSnapshotSink, *fakeShutdown) {
 	t.Helper()
 	observer := newFakeObserver()
 	hostRunner := newFakeHostRunner()
@@ -565,11 +582,11 @@ func newCoordinatedLifecycle(t *testing.T) (*composedRuntime, *fakeObserver, *fa
 	shutdown := &fakeShutdown{
 		activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done},
 	}
-	return newLifecycleRuntime(observer, hostRunner, sink, shutdown), observer, hostRunner, sink, shutdown
+	return newLifecycleRuntime(observer, hostRunner, sink, shutdown, logger), observer, hostRunner, sink, shutdown
 }
 
 func TestRuntimeLifecycleHostReturnsNilAfterOrderedSnapshotDelivery(t *testing.T) {
-	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 
 	result := runRuntime(rt, context.Background())
 	waitForSignal(t, hostRunner.started, "host start")
@@ -587,10 +604,11 @@ func TestRuntimeLifecycleHostReturnsNilAfterOrderedSnapshotDelivery(t *testing.T
 }
 
 func TestRuntimeLifecycleHostFailureCancelsOthers(t *testing.T) {
-	rt, _, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 	hostErr := errors.New("host failure sentinel")
 	result := runRuntime(rt, context.Background())
 	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
 	waitForSignal(t, sink.started, "snapshot delivery")
 	hostRunner.signalDone(hostErr)
 
@@ -602,7 +620,7 @@ func TestRuntimeLifecycleHostFailureCancelsOthers(t *testing.T) {
 }
 
 func TestRuntimeLifecycleObserverFailurePreservesCause(t *testing.T) {
-	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 	observerErr := errors.New("observer failure sentinel")
 	observer.block = false
 	observer.err = observerErr
@@ -618,7 +636,7 @@ func TestRuntimeLifecycleObserverFailurePreservesCause(t *testing.T) {
 }
 
 func TestRuntimeLifecycleObserverNilWhileActiveFails(t *testing.T) {
-	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 	observer.block = false
 	observer.afterPublish = sink.started
 
@@ -651,7 +669,7 @@ func TestRuntimeLifecycleInvalidCallerContextsStartNothingAndShutDown(t *testing
 			hostRunner := newFakeHostRunner()
 			sink := newFakeSnapshotSink()
 			shutdown := &fakeShutdown{}
-			rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown)
+			rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown, discardLogger())
 
 			err := rt.run(test.ctx)
 			if test.wantError && err == nil {
@@ -669,7 +687,7 @@ func TestRuntimeLifecycleInvalidCallerContextsStartNothingAndShutDown(t *testing
 }
 
 func TestRuntimeLifecycleExternalCancellationIsAlwaysNormal(t *testing.T) {
-	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 	observer.returnContextError = true
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -686,7 +704,7 @@ func TestRuntimeLifecycleExternalCancellationIsAlwaysNormal(t *testing.T) {
 }
 
 func TestRuntimeLifecycleExternalCancellationPreservesNonCancellationFailure(t *testing.T) {
-	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 	observerErr := errors.New("observer failure concurrent with caller cancellation")
 	observer.err = observerErr
 	ctx, cancel := context.WithCancel(context.Background())
@@ -714,7 +732,7 @@ func TestRuntimeLifecycleSnapshotDeliveryFailurePreservesCause(t *testing.T) {
 	shutdown := &fakeShutdown{
 		activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done},
 	}
-	rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown)
+	rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown, discardLogger())
 
 	result := runRuntime(rt, context.Background())
 	waitForSignal(t, hostRunner.started, "host start")
@@ -729,7 +747,7 @@ func TestRuntimeLifecycleShutdownCloseErrorIsReturnedAndJoined(t *testing.T) {
 	closeErr := errors.New("shutdown close failure sentinel")
 
 	t.Run("normal trigger", func(t *testing.T) {
-		rt, _, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+		rt, _, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 		shutdown.closeErr = closeErr
 		result := runRuntime(rt, context.Background())
 		waitForSignal(t, hostRunner.started, "host start")
@@ -744,7 +762,7 @@ func TestRuntimeLifecycleShutdownCloseErrorIsReturnedAndJoined(t *testing.T) {
 	})
 
 	t.Run("fatal trigger", func(t *testing.T) {
-		rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t)
+		rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
 		observerErr := errors.New("observer failure joined with close")
 		observer.block = false
 		observer.err = observerErr
@@ -759,4 +777,96 @@ func TestRuntimeLifecycleShutdownCloseErrorIsReturnedAndJoined(t *testing.T) {
 		}
 		assertShutdown(t, shutdown)
 	})
+}
+
+// TestRuntimeLogsStartSnapshotStop proves the runtime emits daemon_runtime_started
+// with product_version/build_id/pid, network_snapshot_applied with revision and
+// interface_count, and daemon_runtime_stopped on normal completion.
+func TestRuntimeLogsStartSnapshotStop(t *testing.T) {
+	var buf bytes.Buffer
+	logger := bufferLogger(&buf)
+
+	observer := newFakeObserver()
+	observer.block = true
+	observer.addSnapshot(environment.NewSnapshot(7, time.Unix(100, 0), nil))
+	hostRunner := newFakeHostRunner()
+	sink := newFakeSnapshotSink()
+	shutdown := &fakeShutdown{
+		activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done},
+	}
+	rt := newLifecycleRuntime(observer, hostRunner, sink, shutdown, logger)
+
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, sink.started, "snapshot delivery")
+	hostRunner.signalDone(nil)
+
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("run() error = %v, want nil on normal completion", err)
+	}
+
+	output := buf.String()
+	if strings.Count(output, "event=daemon_runtime_started") != 1 {
+		t.Fatalf("expected one daemon_runtime_started, got:\n%s", output)
+	}
+	if !strings.Contains(output, "product_version=test-version") {
+		t.Fatalf("expected product_version=test-version, got:\n%s", output)
+	}
+	if !strings.Contains(output, "build_id=test-build") {
+		t.Fatalf("expected build_id=test-build, got:\n%s", output)
+	}
+	if !strings.Contains(output, "pid=") {
+		t.Fatalf("expected pid attribute, got:\n%s", output)
+	}
+	if strings.Count(output, "event=network_snapshot_applied") != 1 {
+		t.Fatalf("expected one network_snapshot_applied, got:\n%s", output)
+	}
+	if !strings.Contains(output, "revision=7") {
+		t.Fatalf("expected revision=7, got:\n%s", output)
+	}
+	if !strings.Contains(output, "interface_count=0") {
+		t.Fatalf("expected interface_count=0, got:\n%s", output)
+	}
+	if strings.Count(output, "event=daemon_runtime_stopped") != 1 {
+		t.Fatalf("expected one daemon_runtime_stopped, got:\n%s", output)
+	}
+	if strings.Contains(output, "event=daemon_runtime_failed") {
+		t.Fatalf("normal runtime must not log daemon_runtime_failed, got:\n%s", output)
+	}
+}
+
+// TestRuntimeFailureLogsStartedWithoutStopOrCause proves a failed runtime logs
+// daemon_runtime_started, never logs daemon_runtime_stopped, and never leaks the
+// original cause. The single daemon_runtime_failed record is owned by the process
+// boundary, not by run.
+func TestRuntimeFailureLogsStartedWithoutStopOrCause(t *testing.T) {
+	var buf bytes.Buffer
+	logger := bufferLogger(&buf)
+
+	rt, observer, hostRunner, sink, _ := newCoordinatedLifecycle(t, logger)
+	observerErr := errors.New("observer failure sentinel-secret-9Z4E1B")
+	observer.block = false
+	observer.err = observerErr
+	observer.afterPublish = sink.started
+
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	err := waitForRuntimeResult(t, result)
+	if !errors.Is(err, observerErr) {
+		t.Fatalf("run() error = %v, want observer sentinel in error chain", err)
+	}
+
+	output := buf.String()
+	if strings.Count(output, "event=daemon_runtime_started") != 1 {
+		t.Fatalf("expected one daemon_runtime_started, got:\n%s", output)
+	}
+	if strings.Contains(output, "event=daemon_runtime_stopped") {
+		t.Fatalf("failed runtime must not log daemon_runtime_stopped, got:\n%s", output)
+	}
+	if strings.Contains(output, "event=daemon_runtime_failed") {
+		t.Fatalf("run must not own the daemon_runtime_failed record, got:\n%s", output)
+	}
+	if strings.Contains(output, "sentinel-secret-9Z4E1B") {
+		t.Fatalf("original cause leaked into runtime log, got:\n%s", output)
+	}
 }

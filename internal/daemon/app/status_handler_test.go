@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,15 +17,27 @@ import (
 	"sidravia/internal/ipc/server"
 )
 
+const statusTestToken = "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab"
+
+func newStatusTestServer(t *testing.T, token string, handler server.Handler) *server.Server {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv, err := server.NewServer(token, "dev", handler, logger)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	return srv
+}
+
 func TestStatusHandlerSuccess(t *testing.T) {
 	handler := StatusHandler("0.1.0-dev", "dev")
-	srv := server.NewServer("test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev", handler)
+	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
 	defer httpServer.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
-	c, err := client.Connect(context.Background(), wsURL, "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev")
+	c, err := client.Connect(context.Background(), wsURL, statusTestToken, "dev")
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -57,13 +71,13 @@ func TestStatusHandlerSuccess(t *testing.T) {
 
 func TestStatusHandlerUnknownMethod(t *testing.T) {
 	handler := StatusHandler("0.1.0-dev", "dev")
-	srv := server.NewServer("test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev", handler)
+	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
 	defer httpServer.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
-	c, err := client.Connect(context.Background(), wsURL, "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev")
+	c, err := client.Connect(context.Background(), wsURL, statusTestToken, "dev")
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -86,14 +100,14 @@ func TestStatusHandlerUnknownMethod(t *testing.T) {
 
 func TestStatusHandlerMalformedRequest(t *testing.T) {
 	handler := StatusHandler("0.1.0-dev", "dev")
-	srv := server.NewServer("test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev", handler)
+	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
 	defer httpServer.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
 	header := http.Header{}
-	header.Set("Authorization", "Bearer test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab")
+	header.Set("Authorization", "Bearer "+statusTestToken)
 	header.Set("Sidravia-Build-ID", "dev")
 	conn, _, err := websocket.Dial(context.Background(), wsURL, &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
@@ -126,7 +140,7 @@ func TestStatusHandlerMalformedRequest(t *testing.T) {
 
 func TestStatusHandlerAuthTokenRejected(t *testing.T) {
 	handler := StatusHandler("0.1.0-dev", "dev")
-	srv := server.NewServer("correct-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev", handler)
+	srv := newStatusTestServer(t, "correct-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
 	defer httpServer.Close()
@@ -143,13 +157,13 @@ func TestStatusHandlerAuthTokenRejected(t *testing.T) {
 
 func TestStatusHandlerBuildIDRejected(t *testing.T) {
 	handler := StatusHandler("0.1.0-dev", "dev")
-	srv := server.NewServer("test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev", handler)
+	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
 	defer httpServer.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
-	_, err := client.Connect(context.Background(), wsURL, "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "wrong-build")
+	_, err := client.Connect(context.Background(), wsURL, statusTestToken, "wrong-build")
 	if err == nil {
 		t.Fatal("expected connect error for wrong build ID")
 	}
@@ -160,13 +174,13 @@ func TestStatusHandlerBuildIDRejected(t *testing.T) {
 
 func TestStatusHandlerSequentialRequests(t *testing.T) {
 	handler := StatusHandler("0.1.0-dev", "dev")
-	srv := server.NewServer("test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev", handler)
+	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
 	defer httpServer.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
-	c, err := client.Connect(context.Background(), wsURL, "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", "dev")
+	c, err := client.Connect(context.Background(), wsURL, statusTestToken, "dev")
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}

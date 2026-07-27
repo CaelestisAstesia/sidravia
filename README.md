@@ -20,7 +20,9 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 - 本地可编辑机构 Profile 的严格一次性加载；
 - 生产 daemon 的 D520 注册、Profile 加载、Windows Environment Observer、typed IPC
   和统一生命周期；
-- Windows JSON 文件 ACL 与原子持久化基础。
+- Windows JSON 文件 ACL 与原子持久化基础；
+- 安全结构化 daemon 运行日志（stderr TextHandler、稳定事件码、固定简体中文消息
+  和安全属性白名单）。
 
 提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
 选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
@@ -29,6 +31,22 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 
 长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
 [当前架构](docs/architecture.md)。
+
+## 运行日志
+
+`sidraviad` 把结构化运行日志写到 stderr，使用标准库 `log/slog` 的 TextHandler、
+Info 级别。每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性，
+例如：
+
+```text
+time=2026-07-27T... level=INFO msg=守护进程运行已启动 event=daemon_runtime_started product_version=... build_id=... pid=...
+time=2026-07-27T... level=INFO msg=IPC 请求已完成 event=ipc_request_completed method=daemon.status
+```
+
+日志永不包含密码、token、用户名、账号标签、凭据、Profile JSON、网卡事实、
+请求/响应字节或原始 error。如果需要保存日志，用户可以重定向 stderr，例如
+`.\sidraviad.exe 2> sidraviad.log`；Sidravia 首版不拥有日志文件、轮转或日志
+IPC/CLI 命令。简体中文终端呈现和 `NO_COLOR` 着色属于后续独立切片。
 
 ## Windows Alpha 使用
 

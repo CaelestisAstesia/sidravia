@@ -41,6 +41,14 @@ Stop 幂等，清理失败只保留为 Session 私有诊断，不把本地 Sessi
 只改变生命周期代码、相邻契约测试和人类文档；Windows 原生与校园现场状态尚未重新
 验证。
 
+安全结构化 daemon 日志随后完成：`cmd/sidraviad` 使用标准库 `log/slog` 在 stderr
+输出 TextHandler/Info 日志，带稳定 `event` 码、固定简体中文 `msg` 和安全属性
+白名单；进程边界 fatal reporting 与 `os.Exit` 分离，构造和运行失败各只记一条事件
+且不含原始 error，原始 error 仍由错误传播保留；IPC server 删除 package-global
+`log.Printf`，按归一化事件记录连接、请求和响应失败，peer 提供的 method/error
+归一化为契约白名单值。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变
+`508197d` 的校园现场证据范围。
+
 首轮纵向链路只读 Review 在 `cbfdfa5` 上完成，race 探针和公开 Go verifier 均通过，
 但结论为 **NO-GO**：Windows Observer 会把常见虚拟 Ethernet 当作 wired，自动选择器
 又允许最新候选优先，因此 WSL、Hyper-V、Docker 或软件 VPN 接口可能取代校园物理

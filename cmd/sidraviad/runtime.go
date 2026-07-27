@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 
 	"sidravia/internal/daemon/app"
@@ -18,6 +20,24 @@ import (
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/server"
+)
+
+// Operational event codes and fixed Simplified Chinese messages for the daemon
+// process boundary. Messages are constant summaries; they are never constructed
+// from an error, snapshot, request or response. Only the attributes listed in
+// the stable schema ever appear on a record.
+const (
+	eventDaemonStartFailed      = "daemon_start_failed"
+	eventDaemonRuntimeStarted   = "daemon_runtime_started"
+	eventDaemonRuntimeFailed    = "daemon_runtime_failed"
+	eventDaemonRuntimeStopped   = "daemon_runtime_stopped"
+	eventNetworkSnapshotApplied = "network_snapshot_applied"
+
+	msgDaemonStartFailed      = "守护进程启动失败"
+	msgDaemonRuntimeStarted   = "守护进程运行已启动"
+	msgDaemonRuntimeFailed    = "守护进程运行失败"
+	msgDaemonRuntimeStopped   = "守护进程运行已停止"
+	msgNetworkSnapshotApplied = "网络快照已应用"
 )
 
 type defaultPaths struct {
@@ -37,12 +57,15 @@ type shutdownBoundary interface {
 }
 
 type composedRuntime struct {
-	observer     environment.Observer
-	snapshotSink networkSnapshotSink
-	shutdown     shutdownBoundary
-	hostCfg      host.Config
-	hostRunner   func(context.Context, host.Config) error
-	handler      server.Handler
+	observer       environment.Observer
+	snapshotSink   networkSnapshotSink
+	shutdown       shutdownBoundary
+	hostCfg        host.Config
+	hostRunner     func(context.Context, host.Config) error
+	handler        server.Handler
+	logger         *slog.Logger
+	productVersion string
+	buildID        string
 }
 
 type runtimeActivity uint8
@@ -78,7 +101,10 @@ func deriveDefaultPaths() (defaultPaths, error) {
 	}, nil
 }
 
-func constructProductionSystem(ctx context.Context) (*composedRuntime, error) {
+func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*composedRuntime, error) {
+	if logger == nil {
+		return nil, errors.New("sidraviad: logger is required")
+	}
 	if ctx == nil {
 		return nil, errors.New("sidraviad: context is required")
 	}
@@ -116,7 +142,7 @@ func constructProductionSystem(ctx context.Context) (*composedRuntime, error) {
 		return nil, fmt.Errorf("sidraviad: generate token: %w", err)
 	}
 
-	return composeObjectGraph(ctx, store, paths, hostInfo, observer, host.Run, token, ProductVersion, BuildID)
+	return composeObjectGraph(ctx, store, paths, hostInfo, observer, host.Run, token, ProductVersion, BuildID, logger)
 }
 
 func composeObjectGraph(
@@ -129,6 +155,7 @@ func composeObjectGraph(
 	token string,
 	productVersion string,
 	buildID string,
+	logger *slog.Logger,
 ) (*composedRuntime, error) {
 	if ctx == nil {
 		return nil, errors.New("sidraviad: context is required")
@@ -150,6 +177,9 @@ func composeObjectGraph(
 	}
 	if productVersion == "" || buildID == "" {
 		return nil, errors.New("sidraviad: product version and build ID are required")
+	}
+	if logger == nil {
+		return nil, errors.New("sidraviad: logger is required")
 	}
 	if hostInfo.HostName == "" {
 		return nil, errors.New("sidraviad: host name is required")
@@ -201,7 +231,10 @@ func composeObjectGraph(
 	}
 
 	handler := app.IPCHandler(application, productVersion, buildID)
-	srv := server.NewServer(token, buildID, handler)
+	srv, err := server.NewServer(token, buildID, handler, logger)
+	if err != nil {
+		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create ipc server: %w", err))
+	}
 
 	hostCfg := host.Config{
 		ProductVersion:  productVersion,
@@ -212,12 +245,15 @@ func composeObjectGraph(
 	}
 
 	return &composedRuntime{
-		observer:     observer,
-		snapshotSink: application,
-		shutdown:     sup,
-		hostCfg:      hostCfg,
-		hostRunner:   hostRunner,
-		handler:      handler,
+		observer:       observer,
+		snapshotSink:   application,
+		shutdown:       sup,
+		hostCfg:        hostCfg,
+		hostRunner:     hostRunner,
+		handler:        handler,
+		logger:         logger,
+		productVersion: productVersion,
+		buildID:        buildID,
 	}, nil
 }
 
@@ -232,11 +268,21 @@ func closeAfterCompositionFailure(shutdown shutdownBoundary, cause error) error 
 
 func (rt *composedRuntime) run(ctx context.Context) error {
 	if ctx == nil {
+		// A nil context is a programming error before runtime start. The runtime
+		// never started, so it emits neither a started nor a stopped event; the
+		// caller owns the single daemon_runtime_failed record.
 		return rt.closeAndWait(errors.New("sidraviad: nil context"))
 	}
 	if err := ctx.Err(); err != nil {
 		return rt.closeAndWait(nil)
 	}
+
+	rt.logger.Info(msgDaemonRuntimeStarted,
+		slog.String("event", eventDaemonRuntimeStarted),
+		slog.String("product_version", rt.productVersion),
+		slog.String("build_id", rt.buildID),
+		slog.Int("pid", os.Getpid()),
+	)
 
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -287,7 +333,14 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 		}
 	}
 
-	return rt.closeAndWait(initiator)
+	finalErr := rt.closeAndWait(initiator)
+	if finalErr == nil {
+		rt.logger.Info(msgDaemonRuntimeStopped, slog.String("event", eventDaemonRuntimeStopped))
+	}
+	// A failed runtime does not also log the normal stopped event. The single
+	// daemon_runtime_failed record is owned by the process boundary (runMain) so
+	// the original cause stays out of the log while error propagation is kept.
+	return finalErr
 }
 
 func classifyRuntimeResult(ctx context.Context, result runtimeActivityResult) error {
@@ -345,6 +398,11 @@ func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-ch
 				}
 				return fmt.Errorf("deliver snapshot: %w", err)
 			}
+			rt.logger.Info(msgNetworkSnapshotApplied,
+				slog.String("event", eventNetworkSnapshotApplied),
+				slog.Uint64("revision", snapshot.Revision),
+				slog.Int("interface_count", len(snapshot.Interfaces())),
+			)
 		}
 	}
 }

@@ -3,7 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -14,18 +15,105 @@ import (
 
 type Handler func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error)
 
+// Operational event codes and fixed Simplified Chinese messages for the IPC
+// server. Messages are constant summaries; they are never constructed from an
+// error, request, response or peer-supplied string. Only the attributes listed
+// in the stable schema ever appear on a record.
+const (
+	eventIPCUpgradeFailed    = "ipc_upgrade_failed"
+	eventIPCConnectionOpened = "ipc_connection_opened"
+	eventIPCRequestCompleted = "ipc_request_completed"
+	eventIPCRequestRejected  = "ipc_request_rejected"
+	eventIPCResponseFailed   = "ipc_response_failed"
+
+	msgIPCUpgradeFailed    = "IPC 连接升级失败"
+	msgIPCConnectionOpened = "IPC 连接已建立"
+	msgIPCRequestCompleted = "IPC 请求已完成"
+	msgIPCRequestRejected  = "IPC 请求被拒绝"
+	msgIPCResponseFailed   = "IPC 响应失败"
+
+	// methodUnknown is the normalized method for malformed requests and for any
+	// method value that is not part of the current IPC contract.
+	methodUnknown = "unknown"
+	// errorCodeInternal is the normalized error code for any value that is not
+	// part of the current IPC contract.
+	errorCodeInternal = "internal_error"
+	// stageEncode and stageWrite are the only response-failure stages.
+	stageEncode = "encode"
+	stageWrite  = "write"
+)
+
+// allowedMethods are the only method values that may appear in logs. Every
+// other method supplied by a peer is normalized to methodUnknown so an
+// arbitrary peer string can never reach the log.
+var allowedMethods = map[string]struct{}{
+	contract.MethodDaemonStatus:        {},
+	contract.MethodSessionStartOneShot: {},
+	contract.MethodSessionStop:         {},
+	contract.MethodSessionGet:          {},
+	contract.MethodSessionList:         {},
+	contract.MethodProfileList:         {},
+}
+
+// allowedErrorCodes are the only error_code values that may appear in logs.
+// Every other code supplied by a handler is normalized to errorCodeInternal so
+// an arbitrary diagnostic string can never reach the log.
+var allowedErrorCodes = map[string]struct{}{
+	contract.ErrorCodeUnknownMethod:          {},
+	contract.ErrorCodeMalformed:              {},
+	contract.ErrorCodeInvalidArgument:        {},
+	contract.ErrorCodeProfileNotFound:        {},
+	contract.ErrorCodeProtocolNotFound:       {},
+	contract.ErrorCodeProfileOperationFailed: {},
+	contract.ErrorCodeSessionOperationFailed: {},
+}
+
 type Server struct {
 	token   string
 	buildID string
 	handler Handler
+	logger  *slog.Logger
 }
 
-func NewServer(token string, buildID string, handler Handler) *Server {
+// NewServer constructs an IPC server. It validates every required dependency
+// and returns an error instead of accepting nil or panicking.
+func NewServer(token string, buildID string, handler Handler, logger *slog.Logger) (*Server, error) {
+	if token == "" {
+		return nil, errors.New("ipc server: token is required")
+	}
+	if buildID == "" {
+		return nil, errors.New("ipc server: build ID is required")
+	}
+	if handler == nil {
+		return nil, errors.New("ipc server: handler is required")
+	}
+	if logger == nil {
+		return nil, errors.New("ipc server: logger is required")
+	}
 	return &Server{
 		token:   token,
 		buildID: buildID,
 		handler: handler,
+		logger:  logger,
+	}, nil
+}
+
+// normalizeMethod returns the method if it is part of the current IPC contract,
+// otherwise methodUnknown. It is the only path a method value reaches a log.
+func normalizeMethod(method string) string {
+	if _, ok := allowedMethods[method]; ok {
+		return method
 	}
+	return methodUnknown
+}
+
+// normalizeErrorCode returns the code if it is part of the current IPC contract,
+// otherwise errorCodeInternal. It is the only path an error code reaches a log.
+func normalizeErrorCode(code string) string {
+	if _, ok := allowedErrorCodes[code]; ok {
+		return code
+	}
+	return errorCodeInternal
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -50,9 +138,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
-		log.Printf("ipc: websocket accept: %v", err)
+		s.logger.Warn(msgIPCUpgradeFailed, slog.String("event", eventIPCUpgradeFailed))
 		return
 	}
+
+	s.logger.Info(msgIPCConnectionOpened, slog.String("event", eventIPCConnectionOpened))
 
 	s.serveConn(r.Context(), conn)
 }
@@ -66,29 +156,60 @@ func (s *Server) serveConn(ctx context.Context, conn *websocket.Conn) {
 			return
 		}
 
-		req, err := contract.DecodeRequest(data)
-		if err != nil {
-			resp := contract.NewErrorResponse("", contract.ErrorCodeMalformed, err.Error())
-			respData, _ := contract.EncodeResponse(resp)
-			conn.Write(ctx, websocket.MessageText, respData)
-			continue
-		}
+		req, decodeErr := contract.DecodeRequest(data)
 
-		result, rpcErr := s.handler(ctx, req.Method, req.Payload)
-
+		// A decode failure is a malformed request: it logs ipc_request_rejected
+		// with method unknown and error code malformed_request, then retains the
+		// existing response behavior. The decode error itself never reaches the
+		// log; it only travels in the IPC response message.
 		var resp contract.Response
-		if rpcErr != nil {
-			resp = contract.NewErrorResponse(req.ID, rpcErr.Code, rpcErr.Message)
+		method := methodUnknown
+		rejected := false
+		var rawErrorCode string
+
+		if decodeErr != nil {
+			resp = contract.NewErrorResponse("", contract.ErrorCodeMalformed, decodeErr.Error())
+			rejected = true
+			rawErrorCode = contract.ErrorCodeMalformed
 		} else {
-			resp = contract.NewSuccessResponse(req.ID, result)
+			method = req.Method
+			result, rpcErr := s.handler(ctx, req.Method, req.Payload)
+			if rpcErr != nil {
+				resp = contract.NewErrorResponse(req.ID, rpcErr.Code, rpcErr.Message)
+				rejected = true
+				rawErrorCode = rpcErr.Code
+			} else {
+				resp = contract.NewSuccessResponse(req.ID, result)
+			}
 		}
 
-		respData, err := contract.EncodeResponse(resp)
-		if err != nil {
+		respData, encodeErr := contract.EncodeResponse(resp)
+		if encodeErr != nil {
+			s.logger.Warn(msgIPCResponseFailed,
+				slog.String("event", eventIPCResponseFailed),
+				slog.String("stage", stageEncode),
+			)
 			return
 		}
 		if err := conn.Write(ctx, websocket.MessageText, respData); err != nil {
+			s.logger.Warn(msgIPCResponseFailed,
+				slog.String("event", eventIPCResponseFailed),
+				slog.String("stage", stageWrite),
+			)
 			return
+		}
+
+		if rejected {
+			s.logger.Warn(msgIPCRequestRejected,
+				slog.String("event", eventIPCRequestRejected),
+				slog.String("method", normalizeMethod(method)),
+				slog.String("error_code", normalizeErrorCode(rawErrorCode)),
+			)
+		} else {
+			s.logger.Info(msgIPCRequestCompleted,
+				slog.String("event", eventIPCRequestCompleted),
+				slog.String("method", normalizeMethod(method)),
+			)
 		}
 	}
 }
