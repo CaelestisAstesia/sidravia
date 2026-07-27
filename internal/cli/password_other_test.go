@@ -21,8 +21,8 @@ func TestNonWindowsInteractivePasswordIsUnsupportedWithoutReading(t *testing.T) 
 	if err == nil {
 		t.Fatal("readInteractivePassword = nil, want Unsupported-style error")
 	}
-	if got := err.Error(); got != "interactive password input is unsupported on this platform; use --password-stdin" {
-		t.Errorf("readInteractivePassword error = %q, want static Unsupported-style error", got)
+	if got := err.Error(); got != "当前平台不支持交互式密码输入；请使用 --password-stdin" {
+		t.Errorf("readInteractivePassword error = %q, want static Chinese Unsupported-style error", got)
 	}
 	if reads != 0 {
 		t.Errorf("input reads = %d, want 0", reads)

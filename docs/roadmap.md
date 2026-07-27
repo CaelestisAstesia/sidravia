@@ -49,6 +49,14 @@ Stop 幂等，清理失败只保留为 Session 私有诊断，不把本地 Sessi
 归一化为契约白名单值。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变
 `508197d` 的校园现场证据范围。
 
+简体中文 CLI 呈现边界随后完成：`internal/cli/presentation.go` 作为唯一导入
+`termenv v0.16.0` 的生产文件，统一拥有帮助、状态、Session 详情/列表、Profile 列表、
+密码提示和错误消息的简体中文呈现、终端能力选择、Windows 虚拟终端启用/恢复、动态值
+控制字符清理和稳定机器码映射。着色只在真实交互终端出现，重定向/管道和 `NO_COLOR`
+始终纯文本，`CLICOLOR_FORCE` 无法在重定向时重新启用颜色，动态值无法注入 ANSI 序列或
+新输出行。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的
+校园现场证据范围；持久认证配置、引导式设置和交互式表单库仍在本 Campaign 之外。
+
 首轮纵向链路只读 Review 在 `cbfdfa5` 上完成，race 探针和公开 Go verifier 均通过，
 但结论为 **NO-GO**：Windows Observer 会把常见虚拟 Ethernet 当作 wired，自动选择器
 又允许最新候选优先，因此 WSL、Hyper-V、Docker 或软件 VPN 接口可能取代校园物理

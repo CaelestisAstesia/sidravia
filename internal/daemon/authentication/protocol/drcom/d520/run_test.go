@@ -750,6 +750,7 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 	authInfo := [16]byte{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
 	type2Tail := [4]byte{0x21, 0x22, 0x23, 0x24}
 	type4Tail := [4]byte{0x41, 0x42, 0x43, 0x44}
+	var ka1Count int
 	respond := func(req []byte) [][]byte {
 		switch {
 		case isChallengeReq(req):
@@ -757,6 +758,13 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 		case isLoginReq(req):
 			return [][]byte{peerLoginSuccessVariant(authInfo, 45)}
 		case isKA1Req(req):
+			ka1Count++
+			if ka1Count == 3 {
+				// The third KA1 begins the second heartbeat. Leave its read
+				// unanswered so cancellation starts from a deterministic
+				// point with no late heartbeat response in the socket.
+				return nil
+			}
 			return [][]byte{peerKA1ResponseVariant(72)}
 		case isKA2Req(req):
 			serial, reqType := req[1], req[5]
@@ -820,6 +828,10 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 	if heartbeatType1Tail != type4Tail {
 		t.Fatalf("heartbeat Type1 Tail = %x, want Type 4 refill %x", heartbeatType1Tail, type4Tail)
 	}
+
+	// Receiving the third KA1 proves the Run consumed the complete first
+	// heartbeat response. Its deliberately unanswered read is then cancelled.
+	waitForRequestCount(t, peer, 10, time.Second)
 
 	cancel(protocol.AuthenticationProtocolRunCancellationCause{
 		CleanupRequirement: protocol.TerminateWithBestEffortLogout,

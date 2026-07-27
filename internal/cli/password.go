@@ -33,12 +33,12 @@ func readPasswordStdin(input io.Reader) (string, error) {
 		if errors.Is(err, errPasswordTooLong) {
 			return "", err
 		}
-		return "", wrapSafeOperation("read password from stdin", err)
+		return "", wrapSafeOperation("从 stdin 读取密码", err)
 	}
 	return password, nil
 }
 
-var errPasswordTooLong = errors.New("password input exceeds 4096 bytes")
+var errPasswordTooLong = errors.New("密码输入超过 4096 字节")
 
 func readPasswordLine(input io.Reader) (string, error) {
 	line := make([]byte, 0, maxPasswordBytes+2)
@@ -85,16 +85,16 @@ func readHiddenPassword(
 	getMode func() (uint32, error),
 	setMode func(uint32) error,
 ) (string, error) {
-	if err := writeAll(errorOutput, "Password: "); err != nil {
-		return "", wrapSafeOperation("write password prompt", err)
+	if err := writeAll(errorOutput, "密码： "); err != nil {
+		return "", wrapSafeOperation("写入密码提示", err)
 	}
 
 	originalMode, err := getMode()
 	if err != nil {
-		return "", wrapSafeOperation("get console mode", err)
+		return "", wrapSafeOperation("获取控制台模式", err)
 	}
 	if err := setMode(originalMode &^ echoInputFlag); err != nil {
-		return "", wrapSafeOperation("disable console echo", err)
+		return "", wrapSafeOperation("关闭控制台回显", err)
 	}
 
 	password, readErr := readPasswordLine(input)
@@ -103,13 +103,13 @@ func readHiddenPassword(
 
 	var resultErrors []error
 	if readErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("read interactive password", readErr))
+		resultErrors = append(resultErrors, wrapSafeOperation("读取交互式密码", readErr))
 	}
 	if lineBreakErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("write password line break", lineBreakErr))
+		resultErrors = append(resultErrors, wrapSafeOperation("写入密码换行", lineBreakErr))
 	}
 	if restoreErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("restore console mode", restoreErr))
+		resultErrors = append(resultErrors, wrapSafeOperation("恢复控制台模式", restoreErr))
 	}
 	if len(resultErrors) != 0 {
 		return "", errors.Join(resultErrors...)

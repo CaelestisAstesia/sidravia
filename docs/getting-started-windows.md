@@ -124,7 +124,7 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 预期包含：
 
 ```text
-sidraviad 0.1.0-alpha.1 (v0.1.0-alpha.1) pid=<PID> status=running
+守护进程：运行中（running） | 版本：0.1.0-alpha.1 | 构建：<build-id> | PID：<PID>
 ```
 
 启动一次性 Session：
@@ -133,7 +133,7 @@ sidraviad 0.1.0-alpha.1 (v0.1.0-alpha.1) pid=<PID> status=running
 .\sidravia.exe auth start --profile jlu --username '<你的账号>'
 ```
 
-密码只在交互式 `Password:` 提示中输入，不会回显。不要把密码放进命令行、脚本、
+密码只在交互式 `密码：` 提示中输入，不会回显。不要把密码放进命令行、脚本、
 Profile、截图或日志。非交互式调用必须显式使用 `--password-stdin`。
 
 `auth start` 会立即返回初始 Snapshot，不会等待认证完成。记下输出中的 Session ID，
@@ -155,10 +155,10 @@ $SessionID = 'session-1'
 认证成功时状态为：
 
 ```text
-State: authenticated
+状态：已认证（authenticated）
 ```
 
-同时核对 `Network:` 是实际校园物理网卡和预期 IPv4，而不是 VPN、TUN、虚拟交换机或
+同时核对 `网络：` 是实际校园物理网卡和预期 IPv4，而不是 VPN、TUN、虚拟交换机或
 其他软件接口。
 
 ## 停止与退出
@@ -173,7 +173,7 @@ State: authenticated
 会先立即返回：
 
 ```text
-State: stopping
+状态：正在停止（stopping）
 ```
 
 `stopping` 表示 daemon 正在执行有界的尽力 Logout，并且单活动 Session 槽仍被占用。
@@ -185,7 +185,7 @@ do {
   Start-Sleep -Milliseconds 250
   $Status = .\sidravia.exe auth status $SessionID
   $Status
-} until ($Status -match '(?m)^State: suspended$')
+} until ($Status -match '(?m)^状态：已暂停（suspended）$')
 ```
 
 此时协议 Run 已经退出，随后再次查询应保持 `suspended`。最后回到窗口 A 按一次
@@ -200,8 +200,8 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 本地 Profile 需要手动创建，尚无引导式配置界面。
 - 尚无持久认证配置、自动登录或 Windows Service。
-- 简体中文产品呈现、route-aware 多 IPv4 选择和自动化仍未完成；结构化 daemon 日志
-  已加入，但 Windows 原生尚未重新验证。
+- 简体中文 CLI 呈现、`NO_COLOR` 和重定向安全着色已加入；route-aware 多 IPv4 选择和
+  自动化仍未完成。结构化 daemon 日志与 CLI 呈现的 Windows 原生尚未重新验证。
 - 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia
   继续发送已经被真实服务器接受的 330 字节 Login。
 

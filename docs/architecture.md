@@ -171,7 +171,32 @@ ID/名称/MAC/IP/网关/DNS/主机名。进程边界把 fatal reporting 与 `os.
 响应、错误码、生命周期取消、goroutine 所有权或退出结果。
 
 本切片只产出 stderr Text 日志，不写日志文件、不做轮转、不暴露日志 IPC/CLI 命令、
-不加终端样式。简体中文 CLI 呈现和 terminal/`NO_COLOR` 行为属于后续独立切片。
+不加终端样式。简体中文 CLI 呈现和 terminal/`NO_COLOR` 行为已由独立的 CLI 呈现切片
+实现（见 ADR 0014），与本日志边界分离。
+
+## CLI 呈现边界
+
+`internal/cli/presentation.go` 是唯一的 CLI 呈现边界，也是唯一可以导入
+`github.com/muesli/termenv`（固定 `v0.16.0`）的生产文件。它拥有终端能力选择、Windows
+虚拟终端启用/恢复、可信静态标签与映射状态文本的样式、动态值控制字符清理、稳定机器
+码的简体中文映射，以及在写入前完成整块渲染。业务操作仍只返回错误和 DTO；呈现边界不
+拥有 daemon 发现、IPC 调用、密码内容、Session 状态、重试决策、持久化或协议行为，且
+任何 termenv 类型都不跨出 `internal/cli`。
+
+终端能力以 termenv 对 writer 的实际 `ColorProfile()` 作为第一道门：当它是 `Ascii`
+（重定向或非交互 writer）时，无论 `CLICOLOR_FORCE` 如何都强制纯文本；只有彩色真实
+终端才由 `EnvColorProfile()` 精炼，此时 `NO_COLOR` 禁用 ANSI。因此重定向或管道输出
+始终纯文本，生产代码绝不强制 ANSI。呈现边界不查询前景/背景色、终端宽度、光标位置或
+明暗主题，也不修改 termenv 的 package-global default output。Windows 虚拟终端启用是
+可选能力：失败时继续以纯文本输出，恢复函数在命令输出后执行，且任何 VT 错误都不替代
+业务错误。
+
+每个动态字符串在写入前都把 C0/C1 控制字符和 DEL 替换为替换符 `�`，保留普通
+Unicode、空格、标点、ID、时间戳和中文。动态值绝不进入颜色解析器，CLI 也永不打印
+daemon `Error.Message`、Session `Description`、失败 `Description`、包装原因、请求
+payload、凭据或原始终端环境值。命令令牌和 flag 不变；顶层、分组和叶子命令使用确定性
+中文 help 渲染器，只含 `用法` 和 `可用命令` 标题。`cmd/sidravia/main.go` 通过呈现
+边界打印静态中文错误前缀，不打印底层原因。
 
 ## Session 和 Supervisor
 
@@ -311,7 +336,7 @@ UDP 状态全部私有，不为内部步骤创建没有真实替换点的接口�
 CLI 的机构 Profile ID 和用户名可以使用命令行参数。密码不得进入 argv：交互终端使用
 隐藏输入，自动化使用 `--password-stdin`。首版不提供 `--password`。
 
-`auth start` 默认只在 stdin 是真实交互终端时读取密码。CLI 把 `Password: ` 提示写到
+`auth start` 默认只在 stdin 是真实交互终端时读取密码。CLI 把 `密码： ` 提示写到
 stderr，关闭输入回显，读取一行，并在成功、失败或取消路径恢复原控制台模式；它不要求
 二次确认。stdin 不是终端而调用者又没有明确提供 `--password-stdin` 时，CLI 返回安全
 用法错误，不静默读取管道。`--password-stdin` 读取一行，只移除该行结尾的 CR/LF；
@@ -338,7 +363,7 @@ Session 的公开 Snapshot，`auth stop` 停止 Session 并按协议要求执行
 `auth list` 按 `SessionID` 稳定顺序列出当前 daemon 进程保留的全部 Session Snapshot；
 daemon 重启后不会恢复旧列表。`profile list` 按 Profile Catalog 的稳定顺序列出安全
 摘要，不读取或输出机构协议配置、用户名或密码。两个列表命令都复用相同的 daemon
-发现链，验证完整响应后一次写出纯文本，不使用颜色、宽度探测或对齐填充。
+发现链和呈现边界，验证完整响应后一次写出；重定向或管道输出始终为纯文本，且不使用宽度探测或对齐填充。
 
 `auth start` 在 daemon 成功创建 Session 后立即打印返回的初始公开 Snapshot 和
 SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而停止 daemon 中继续保活或
@@ -356,12 +381,13 @@ SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而
 非零。以后若脚本需要把“当前是否 authenticated”作为条件，应增加显式
 `auth check`，不改变 `auth status` 的查询语义。
 
-三个认证命令使用同一个多行人类可读 Snapshot renderer。它始终显示 SessionID、state、
-Profile、协议、脱敏 account label 和更新时间，并只在存在时显示 state reason、所选
-网络绑定、认证建立时间、下次重试时间和最后一次公开失败。输出使用 IPC
-`SessionResult` 中的稳定状态/失败码和安全描述，不显示内部诊断或原始秘密。首版不把
-人类输出伪装成脚本格式；以后需要机器消费时增加显式 `--json`，不要求脚本解析多行
-文本。`sidravia daemon status` 继续使用自己的单行 daemon 摘要。
+三个认证命令使用同一个多行人类可读 Snapshot renderer，由 `internal/cli` 的呈现边界
+拥有。它始终显示 SessionID、state、Profile、协议、脱敏 account label 和更新时间，并
+只在存在时显示 state reason、所选网络绑定、认证建立时间、下次重试时间和最后一次
+公开失败。输出把 IPC `SessionResult` 中的稳定状态/失败/建议码映射为简体中文，并在
+括号内保留稳定机器码；它不显示描述、内部诊断或原始秘密，且每个动态值在写入前清理
+控制字符。首版不把人类输出伪装成脚本格式；以后需要机器消费时增加显式 `--json`，不
+要求脚本解析多行文本。`sidravia daemon status` 继续使用自己的单行 daemon 摘要。
 
 `auth start`、`auth status`、`auth stop`、`auth list` 和 `profile list` 都复用 daemon status 已有的 daemon 发现语义：
 先尝试运行信息中的现有 daemon，连接失败则至多一次启动与 CLI 同目录的

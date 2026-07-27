@@ -16,5 +16,7 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0010](0010-supervisor-distributes-network-snapshots.md) | Supervisor 保存并分发最新系统网络快照 | Accepted |
 | [0011](0011-daemon-composition-owns-runtime-lifecycle.md) | daemon 组合根统一拥有生产运行期 | Accepted |
 | [0012](0012-two-phase-session-stop.md) | Session 停止分为 stopping 和 suspended 两阶段 | Accepted |
+| [0013](0013-safe-operational-logging.md) | 安全的 daemon 运行日志 | Accepted |
+| [0014](0014-cli-presentation.md) | CLI 呈现边界 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。

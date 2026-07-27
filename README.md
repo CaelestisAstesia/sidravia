@@ -46,7 +46,32 @@ time=2026-07-27T... level=INFO msg=IPC 请求已完成 event=ipc_request_complet
 日志永不包含密码、token、用户名、账号标签、凭据、Profile JSON、网卡事实、
 请求/响应字节或原始 error。如果需要保存日志，用户可以重定向 stderr，例如
 `.\sidraviad.exe 2> sidraviad.log`；Sidravia 首版不拥有日志文件、轮转或日志
-IPC/CLI 命令。简体中文终端呈现和 `NO_COLOR` 着色属于后续独立切片。
+IPC/CLI 命令。
+
+## CLI 呈现
+
+`sidravia` CLI 的帮助、daemon 状态、Session 详情/列表、Profile 列表、密码提示和错误
+消息统一使用简体中文，并在括号内保留稳定英文机器码以便识别状态或失败。终端着色由
+`internal/cli` 的呈现边界拥有（见 [ADR 0014](docs/decisions/0014-cli-presentation.md)）：
+只在真实交互终端启用，重定向或管道输出始终是纯文本，`NO_COLOR` 始终禁用着色，
+`CLICOLOR_FORCE` 无法在重定向时重新启用颜色。每个来自 daemon 的动态值在写入前都清理
+控制字符，因此无法注入 ANSI 序列或新输出行。
+
+```text
+守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42
+```
+
+```text
+会话：session-1
+状态：已认证（authenticated）
+机构：吉林大学（jlu）
+协议：drcom-5.2.0-d
+账号：w*******4
+更新时间：2026-07-27T02:25:38+08:00
+```
+
+交互式 `auth start` 在 stderr 显示 `密码： ` 提示并关闭回显；非交互式调用必须显式
+使用 `--password-stdin`。密码永不进入命令行、错误、普通输出或日志。
 
 ## Windows Alpha 使用
 

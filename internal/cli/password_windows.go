@@ -13,7 +13,7 @@ import (
 func readInteractivePassword(input io.Reader, errorOutput io.Writer) (string, error) {
 	file, ok := input.(*os.File)
 	if !ok || file != os.Stdin {
-		return "", errors.New("interactive password input requires the Windows console; use --password-stdin")
+		return "", errors.New("交互式密码输入需要 Windows 控制台；请使用 --password-stdin")
 	}
 
 	handle := windows.Handle(file.Fd())

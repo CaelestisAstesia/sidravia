@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -135,19 +136,19 @@ func withAuthClient(deps authDependencies, operation func(daemonClient) error) e
 func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonClient) error) error {
 	connection, err := acquireDaemonClient(deps)
 	if err != nil {
-		return wrapSafeOperation("connect to sidraviad", err)
+		return wrapSafeOperation("连接 sidraviad", err)
 	}
 
 	operationErr := operation(connection)
 	closeErr := connection.Close()
 	if operationErr != nil {
 		if closeErr != nil {
-			return fmt.Errorf("%w; %w", operationErr, wrapSafeOperation("close sidraviad connection", closeErr))
+			return fmt.Errorf("%w; %w", operationErr, wrapSafeOperation("关闭 sidraviad 连接", closeErr))
 		}
 		return operationErr
 	}
 	if closeErr != nil {
-		return wrapSafeOperation("close sidraviad connection", closeErr)
+		return wrapSafeOperation("关闭 sidraviad 连接", closeErr)
 	}
 	return nil
 }
@@ -172,7 +173,7 @@ func acquireDaemonClient(deps daemonConnectionDependencies) (daemonClient, error
 		return nil, err
 	}
 	if acquired == nil {
-		return nil, fmt.Errorf("daemon connection unavailable")
+		return nil, fmt.Errorf("daemon 连接不可用")
 	}
 	return acquired, nil
 }
@@ -185,29 +186,26 @@ func callSession(
 ) (contract.SessionResult, error) {
 	rawPayload, err := json.Marshal(payload)
 	if err != nil {
-		return contract.SessionResult{}, wrapSafeOperation("encode Session request", err)
+		return contract.SessionResult{}, wrapSafeOperation("编码 Session 请求", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), deps.connection.callTimeout)
 	defer cancel()
 	response, err := connection.Call(ctx, method, rawPayload)
 	if err != nil {
-		return contract.SessionResult{}, wrapSafeOperation("call Session operation", err)
+		return contract.SessionResult{}, wrapSafeOperation("调用 Session 操作", err)
 	}
 	if !response.OK {
-		if response.Error == nil {
-			return contract.SessionResult{}, fmt.Errorf("daemon returned malformed Session error")
+		code := ""
+		if response.Error != nil {
+			code = response.Error.Code
 		}
-		return contract.SessionResult{}, fmt.Errorf(
-			"daemon Session error %s: %s",
-			response.Error.Code,
-			response.Error.Message,
-		)
+		return contract.SessionResult{}, errors.New(ipcErrorText(code))
 	}
 
 	result, err := decodeSessionResult(response.Result)
 	if err != nil {
-		return contract.SessionResult{}, wrapSafeOperation("decode Session response", err)
+		return contract.SessionResult{}, wrapSafeOperation("解码 Session 响应", err)
 	}
 	return result, nil
 }
@@ -223,9 +221,9 @@ func decodeSessionResult(data []byte) (contract.SessionResult, error) {
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
-			return contract.SessionResult{}, fmt.Errorf("trailing Session result")
+			return contract.SessionResult{}, fmt.Errorf("Session 结果之后存在多余数据")
 		}
-		return contract.SessionResult{}, fmt.Errorf("trailing Session result data")
+		return contract.SessionResult{}, fmt.Errorf("Session 结果之后存在多余数据")
 	}
 	if err := validateSessionResult(result); err != nil {
 		return contract.SessionResult{}, err
@@ -236,17 +234,17 @@ func decodeSessionResult(data []byte) (contract.SessionResult, error) {
 func validateSessionResult(result contract.SessionResult) error {
 	switch {
 	case result.AuthenticationSessionID == "":
-		return fmt.Errorf("Session result is missing SessionID")
+		return fmt.Errorf("Session 结果缺少 SessionID")
 	case result.State == "":
-		return fmt.Errorf("Session result is missing state")
+		return fmt.Errorf("Session 结果缺少状态")
 	case result.InstitutionProfileID == "":
-		return fmt.Errorf("Session result is missing Profile ID")
+		return fmt.Errorf("Session 结果缺少 Profile ID")
 	case result.AuthenticationProtocolID == "":
-		return fmt.Errorf("Session result is missing protocol ID")
+		return fmt.Errorf("Session 结果缺少协议 ID")
 	case result.AccountLabel == "":
-		return fmt.Errorf("Session result is missing account label")
+		return fmt.Errorf("Session 结果缺少账号标签")
 	case result.UpdatedAt == "":
-		return fmt.Errorf("Session result is missing updated timestamp")
+		return fmt.Errorf("Session 结果缺少更新时间")
 	default:
 		return nil
 	}
@@ -254,60 +252,8 @@ func validateSessionResult(result contract.SessionResult) error {
 
 func writeSessionResult(output io.Writer, result contract.SessionResult) error {
 	if err := validateSessionResult(result); err != nil {
-		return wrapSafeOperation("render Session response", err)
+		return wrapSafeOperation("渲染 Session 响应", err)
 	}
-
-	var block bytes.Buffer
-	fmt.Fprintf(&block, "Session: %s\n", result.AuthenticationSessionID)
-	fmt.Fprintf(&block, "State: %s\n", result.State)
-	if result.InstitutionDisplayName == "" {
-		fmt.Fprintf(&block, "Profile: %s\n", result.InstitutionProfileID)
-	} else {
-		fmt.Fprintf(
-			&block,
-			"Profile: %s (%s)\n",
-			result.InstitutionDisplayName,
-			result.InstitutionProfileID,
-		)
-	}
-	fmt.Fprintf(&block, "Protocol: %s\n", result.AuthenticationProtocolID)
-	fmt.Fprintf(&block, "Account: %s\n", result.AccountLabel)
-	if result.StateReason != nil {
-		fmt.Fprintf(
-			&block,
-			"Reason: %s — %s\n",
-			result.StateReason.Code,
-			result.StateReason.Description,
-		)
-	}
-	if result.SelectedNetworkBinding != nil {
-		fmt.Fprintf(
-			&block,
-			"Network: %s [%s] — %s\n",
-			result.SelectedNetworkBinding.DisplayName,
-			result.SelectedNetworkBinding.InterfaceID,
-			result.SelectedNetworkBinding.LocalIPv4Address,
-		)
-	}
-	if result.AuthenticationEstablishedAt != nil {
-		fmt.Fprintf(&block, "Authenticated: %s\n", *result.AuthenticationEstablishedAt)
-	}
-	if result.NextRetryAt != nil {
-		fmt.Fprintf(&block, "Retry: %s\n", *result.NextRetryAt)
-	}
-	if result.LastAuthenticationFailure != nil {
-		fmt.Fprintf(
-			&block,
-			"Failure: %s — %s (%s)\n",
-			result.LastAuthenticationFailure.Code,
-			result.LastAuthenticationFailure.Description,
-			result.LastAuthenticationFailure.HandlingRecommendation,
-		)
-	}
-	fmt.Fprintf(&block, "Updated: %s\n", result.UpdatedAt)
-
-	if err := writeAll(output, block.String()); err != nil {
-		return wrapSafeOperation("write Session response", err)
-	}
-	return nil
+	p := newPresentation(output)
+	return wrapSafeOperation("写入 Session 响应", p.complete(renderSessionDetail(p, &result)))
 }

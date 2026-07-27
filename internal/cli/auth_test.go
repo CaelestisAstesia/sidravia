@@ -399,8 +399,8 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 	result := minimalSessionResult("waiting_before_retry")
 	result.InstitutionDisplayName = "Example University"
 	result.StateReason = &contract.SessionStateReason{
-		Code:        "network_changed",
-		Description: "network selection changed",
+		Code:        "network_unavailable",
+		Description: "network unavailable",
 	}
 	result.SelectedNetworkBinding = &contract.SessionNetworkBinding{
 		DisplayName:      "Campus Ethernet",
@@ -410,8 +410,8 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 	result.AuthenticationEstablishedAt = &authenticatedAt
 	result.NextRetryAt = &retryAt
 	result.LastAuthenticationFailure = &contract.SessionAuthenticationFailure{
-		Code:                   "temporary_network_failure",
-		Description:            "authentication transport failed",
+		Code:                   "network_timeout",
+		Description:            "network operation timed out",
 		HandlingRecommendation: "retry_after_standard_delay",
 	}
 
@@ -420,17 +420,18 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 		t.Fatalf("writeSessionResult = %v, want nil", err)
 	}
 	want := "" +
-		"Session: session-1\n" +
-		"State: waiting_before_retry\n" +
-		"Profile: Example University (profile-1)\n" +
-		"Protocol: protocol-1\n" +
-		"Account: account-label\n" +
-		"Reason: network_changed — network selection changed\n" +
-		"Network: Campus Ethernet [if-7] — 192.0.2.25\n" +
-		"Authenticated: 2026-07-26T10:11:12.123456789+08:00\n" +
-		"Retry: 2026-07-26T10:11:17.123456789+08:00\n" +
-		"Failure: temporary_network_failure — authentication transport failed (retry_after_standard_delay)\n" +
-		"Updated: 2026-07-26T10:11:12.123456789+08:00\n"
+		"会话：session-1\n" +
+		"状态：等待重试（waiting_before_retry）\n" +
+		"机构：Example University（profile-1）\n" +
+		"协议：protocol-1\n" +
+		"账号：account-label\n" +
+		"原因：没有可用网络（network_unavailable）\n" +
+		"网络：Campus Ethernet [if-7] — 192.0.2.25\n" +
+		"认证时间：2026-07-26T10:11:12.123456789+08:00\n" +
+		"下次重试：2026-07-26T10:11:17.123456789+08:00\n" +
+		"最近失败：网络操作超时（network_timeout）\n" +
+		"处理建议：将自动稍后重试（retry_after_standard_delay）\n" +
+		"更新时间：2026-07-26T10:11:12.123456789+08:00\n"
 	if output.String() != want {
 		t.Errorf("complete output = %q, want %q", output.String(), want)
 	}
@@ -442,12 +443,12 @@ func TestWriteSessionResultMinimalOutput(t *testing.T) {
 		t.Fatalf("writeSessionResult = %v, want nil", err)
 	}
 	want := "" +
-		"Session: session-1\n" +
-		"State: authenticated\n" +
-		"Profile: profile-1\n" +
-		"Protocol: protocol-1\n" +
-		"Account: account-label\n" +
-		"Updated: 2026-07-26T10:11:12.123456789+08:00\n"
+		"会话：session-1\n" +
+		"状态：已认证（authenticated）\n" +
+		"机构：profile-1\n" +
+		"协议：protocol-1\n" +
+		"账号：account-label\n" +
+		"更新时间：2026-07-26T10:11:12.123456789+08:00\n"
 	if output.String() != want {
 		t.Errorf("minimal output = %q, want %q", output.String(), want)
 	}
@@ -558,7 +559,7 @@ func TestAllPublicSessionStatesAreSuccessfulCommandData(t *testing.T) {
 			if err := runAuthStatus("session-1", deps); err != nil {
 				t.Fatalf("runAuthStatus = %v, want nil for Session state", err)
 			}
-			if !strings.Contains(output.String(), "State: "+state+"\n") {
+			if !strings.Contains(output.String(), "（"+state+"）") {
 				t.Error("rendered output omitted exact Session state")
 			}
 		})
@@ -580,7 +581,7 @@ func TestTransportFailureClosesClientAndPreservesCauseSafely(t *testing.T) {
 	if !errors.Is(err, cause) {
 		t.Error("runAuthStatus did not preserve transport cause")
 	}
-	if err.Error() != "call Session operation" {
+	if err.Error() != "调用 Session 操作" {
 		t.Errorf("transport error = %q, want static operation label", err)
 	}
 	if connection.closeCount != 1 {

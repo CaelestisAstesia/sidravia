@@ -63,6 +63,9 @@ func TestReadPasswordStdinBound(t *testing.T) {
 		if !errors.Is(err, errPasswordTooLong) {
 			t.Errorf("oversize input error = %v, want password bound error", err)
 		}
+		if err.Error() != "密码输入超过 4096 字节" {
+			t.Errorf("oversize input error = %q, want Chinese overlength message", err.Error())
+		}
 	}
 }
 
@@ -75,7 +78,7 @@ func TestReadPasswordStdinPreservesSafeReadCause(t *testing.T) {
 	if !errors.Is(err, cause) {
 		t.Error("readPasswordStdin did not preserve read cause")
 	}
-	if err.Error() != "read password from stdin" {
+	if err.Error() != "从 stdin 读取密码" {
 		t.Errorf("readPasswordStdin error = %q, want static operation label", err)
 	}
 }
@@ -123,11 +126,11 @@ func TestReadHiddenPasswordSuccessOrderAndRestore(t *testing.T) {
 	if password != "secret-marker" {
 		t.Error("readHiddenPassword returned different bytes")
 	}
-	wantActions := []string{"write:Password: ", "get", "disable", "read", "write:\n", "restore"}
+	wantActions := []string{"write:密码： ", "get", "disable", "read", "write:\n", "restore"}
 	if strings.Join(actions, "|") != strings.Join(wantActions, "|") {
 		t.Errorf("actions = %v, want %v", actions, wantActions)
 	}
-	if output.String() != "Password: \n" {
+	if output.String() != "密码： \n" {
 		t.Errorf("prompt output = %q, want exact prompt and line break", output.String())
 	}
 }

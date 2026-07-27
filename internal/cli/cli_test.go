@@ -458,8 +458,8 @@ func TestStatusTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("runStatus = nil, want timeout error")
 	}
-	if got := err.Error(); got != "timed out waiting for sidraviad" {
-		t.Errorf("runStatus = %q, want %q", got, "timed out waiting for sidraviad")
+	if got := err.Error(); got != "等待 sidraviad 超时" {
+		t.Errorf("runStatus = %q, want %q", got, "等待 sidraviad 超时")
 	}
 	if starts != 1 {
 		t.Errorf("startDaemon calls = %d, want 1", starts)
@@ -489,8 +489,8 @@ func TestWriteStatusSuccessAuthoritative(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &authoritative); err != nil {
 		t.Fatalf("unmarshal response result: %v", err)
 	}
-	expected := fmt.Sprintf("sidraviad %s (%s) pid=%d status=%s\n",
-		authoritative.ProductVersion, authoritative.BuildID, authoritative.PID, authoritative.Status)
+	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d\n",
+		authoritative.Status, authoritative.ProductVersion, authoritative.BuildID, authoritative.PID)
 
 	if got := buf.String(); got != expected {
 		t.Errorf("writeStatus output = %q, want %q", got, expected)
@@ -518,5 +518,106 @@ func TestWriteStatusMalformedResult(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("writer = %q, want empty", buf.String())
+	}
+}
+
+func TestLeafHelpDoesNotDispatch(t *testing.T) {
+	leaves := []struct {
+		name string
+		args []string
+	}{
+		{"daemon status --help", []string{"daemon", "status", "--help"}},
+		{"daemon status -h", []string{"daemon", "status", "-h"}},
+		{"auth list --help", []string{"auth", "list", "--help"}},
+		{"auth list -h", []string{"auth", "list", "-h"}},
+		{"auth start --help", []string{"auth", "start", "--help"}},
+		{"auth start -h", []string{"auth", "start", "-h"}},
+		{"auth status --help", []string{"auth", "status", "--help"}},
+		{"auth status -h", []string{"auth", "status", "-h"}},
+		{"auth stop --help", []string{"auth", "stop", "--help"}},
+		{"auth stop -h", []string{"auth", "stop", "-h"}},
+		{"profile list --help", []string{"profile", "list", "--help"}},
+		{"profile list -h", []string{"profile", "list", "-h"}},
+	}
+	for _, leaf := range leaves {
+		t.Run(leaf.name, func(t *testing.T) {
+			dispatched := false
+			deps := commandDependencies{
+				status:      func() error { dispatched = true; return nil },
+				authStart:   func(authStartOptions) error { dispatched = true; return nil },
+				authStatus:  func(string) error { dispatched = true; return nil },
+				authStop:    func(string) error { dispatched = true; return nil },
+				authList:    func() error { dispatched = true; return nil },
+				profileList: func() error { dispatched = true; return nil },
+			}
+			var buf bytes.Buffer
+			deps.output = &buf
+			if err := runCommand(leaf.args, deps); err != nil {
+				t.Fatalf("leaf help = %v, want nil", err)
+			}
+			if dispatched {
+				t.Error("leaf help dispatched an operation")
+			}
+			help := buf.String()
+			if !strings.Contains(help, "用法：") {
+				t.Errorf("leaf help missing Chinese 用法 heading:\n%s", help)
+			}
+			for _, english := range []string{"Usage", "Available Commands", "Flags"} {
+				if strings.Contains(help, english) {
+					t.Errorf("leaf help contains Cobra English heading %q:\n%s", english, help)
+				}
+			}
+		})
+	}
+}
+
+func TestHelpDoesNotAdvertiseCobraHelpCommand(t *testing.T) {
+	deps := commandDependencies{
+		status:     func() error { return nil },
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+	var buf bytes.Buffer
+	deps.output = &buf
+	if err := runCommand([]string{"--help"}, deps); err != nil {
+		t.Fatalf("root help = %v", err)
+	}
+	help := buf.String()
+	if strings.Contains(help, "\n  help ") {
+		t.Errorf("root help advertised Cobra help command:\n%s", help)
+	}
+	if strings.Contains(help, "Help about any command") {
+		t.Errorf("root help advertised Cobra help description:\n%s", help)
+	}
+}
+
+func TestHelpWriterFailureIsObservable(t *testing.T) {
+	deps := commandDependencies{
+		status:     func() error { return nil },
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+	cause := errors.New("injected help writer failure")
+	deps.output = zeroWriter{err: cause}
+	err := runCommand([]string{"--help"}, deps)
+	if !errors.Is(err, cause) {
+		t.Errorf("root help writer failure = %v, want cause", err)
+	}
+}
+
+func TestLeafHelpWriterFailureIsObservable(t *testing.T) {
+	deps := commandDependencies{
+		status:     func() error { return nil },
+		authStart:  func(authStartOptions) error { return nil },
+		authStatus: func(string) error { return nil },
+		authStop:   func(string) error { return nil },
+	}
+	cause := errors.New("injected leaf help writer failure")
+	deps.output = zeroWriter{err: cause}
+	err := runCommand([]string{"auth", "start", "--help"}, deps)
+	if !errors.Is(err, cause) {
+		t.Errorf("leaf help writer failure = %v, want cause", err)
 	}
 }
