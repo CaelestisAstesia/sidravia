@@ -207,6 +207,41 @@ func TestSupervisorAllowsNewSessionAfterStop(t *testing.T) {
 	}
 }
 
+func TestSupervisorPreCanceledStopRollsAdmissionBackToActive(t *testing.T) {
+	supervisor := New(testSupervisorDeps())
+	defer func() {
+		_ = supervisor.Close()
+		supervisor.Wait()
+	}()
+
+	id, _, err := supervisor.StartResolved(context.Background(), testRuntimeDefinition(), session.MaintainAuthentication)
+	if err != nil {
+		t.Fatalf("StartResolved error: %v", err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := supervisor.Stop(canceled, id); err == nil {
+		t.Fatal("pre-canceled Stop error = nil, want error")
+	}
+
+	supervisor.mu.Lock()
+	state := supervisor.sessions[id].state
+	supervisor.mu.Unlock()
+	if state != stateActive {
+		t.Fatalf("state after rejected Stop = %v, want stateActive", state)
+	}
+
+	stopping, err := supervisor.Stop(context.Background(), id)
+	if err != nil {
+		t.Fatalf("subsequent Stop error: %v", err)
+	}
+	if stopping.State != session.Stopping {
+		t.Fatalf("subsequent Stop state = %q, want %q", stopping.State, session.Stopping)
+	}
+	waitForSupervisorState(t, supervisor, id, session.Suspended)
+}
+
 func TestSupervisorRestartAdmitsStoppedSession(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
 	defer func() {
@@ -632,6 +667,17 @@ func TestSupervisorKeepsAdmissionClosedUntilProtocolRunExits(t *testing.T) {
 		t.Fatalf("first Stop state = %q, want %q", first.State, session.Stopping)
 	}
 	waitForSignal(t, run.canceled, "protocol run cancellation")
+
+	supervisor.mu.Lock()
+	managed := supervisor.sessions[id]
+	supervisor.mu.Unlock()
+	supervisor.reconcileStopError(id, managed)
+	supervisor.mu.Lock()
+	state := managed.state
+	supervisor.mu.Unlock()
+	if state != stateStopping {
+		t.Fatalf("state after reconciling accepted Stop = %v, want stateStopping", state)
+	}
 
 	repeated, err := supervisor.Stop(ctx, id)
 	if err != nil {

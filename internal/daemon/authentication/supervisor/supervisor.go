@@ -208,11 +208,7 @@ func (s *Supervisor) Stop(ctx context.Context, id ID) (Snapshot, error) {
 
 	snapshot, err := ms.actor.Suspend(ctx)
 	if err != nil {
-		s.mu.Lock()
-		if ms.state == stateStopping {
-			ms.state = stateActive
-		}
-		s.mu.Unlock()
+		s.reconcileStopError(id, ms)
 		return Snapshot{}, fmt.Errorf("suspend session %q: %w", id, err)
 	}
 	// An already-suspended Session treats Stop as a no-op and emits no new
@@ -220,6 +216,26 @@ func (s *Supervisor) Stop(ctx context.Context, id ID) (Snapshot, error) {
 	s.observeStoppedRevision(id, ms, snapshot)
 
 	return snapshot, nil
+}
+
+func (s *Supervisor) reconcileStopError(id ID, managed *managedSession) {
+	snapshot, err := managed.actor.Snapshot(context.Background())
+	if err == nil {
+		switch snapshot.State {
+		case session.Stopping:
+			return
+		case session.Suspended:
+			s.observeStoppedRevision(id, managed, snapshot)
+			return
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, exists := s.sessions[id]
+	if exists && current == managed && managed.state == stateStopping {
+		managed.state = stateActive
+	}
 }
 
 // Restart resumes a suspended session if single-active admission allows.

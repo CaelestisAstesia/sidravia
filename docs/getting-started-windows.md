@@ -133,14 +133,16 @@ State: authenticated
 .\sidravia.exe auth stop $SessionID
 ```
 
-Stop 请求被接受后会立即返回：
+已发布的 `v0.1.0-alpha.1` 会直接返回 `suspended`。包含两阶段停止语义的后续开发构建
+会先立即返回：
 
 ```text
 State: stopping
 ```
 
-这表示 daemon 正在执行有界的尽力 Logout，并且单活动 Session 槽仍被占用。继续查询，
-直到状态变为 `suspended`：
+`stopping` 表示 daemon 正在执行有界的尽力 Logout，并且单活动 Session 槽仍被占用。
+无论 Stop 命令直接返回 `suspended` 还是先返回 `stopping`，都继续查询，直到状态为
+`suspended`：
 
 ```powershell
 do {
