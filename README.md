@@ -43,7 +43,7 @@ time=2026-07-27T... level=INFO msg=守护进程运行已启动 event=daemon_runt
 time=2026-07-27T... level=INFO msg=IPC 请求已完成 event=ipc_request_completed method=daemon.status
 ```
 
-日志永不包含密码、token、用户名、账号标签、凭据、Profile JSON、网卡事实、
+日志永不包含密码、token、用户名、账号名称、凭据、Profile JSON、网卡事实、
 请求/响应字节或原始 error。如果需要保存日志，用户可以重定向 stderr，例如
 `.\sidraviad.exe 2> sidraviad.log`；Sidravia 首版不拥有日志文件、轮转或日志
 IPC/CLI 命令。
@@ -64,9 +64,9 @@ IPC/CLI 命令。
 ```text
 会话：session-1
 状态：已认证（authenticated）
-机构：吉林大学（jlu）
+机构：吉林大学（JLU）
 协议：drcom-5.2.0-d
-账号：w*******4
+账号：2024012345
 更新时间：2026-07-27T02:25:38+08:00
 ```
 

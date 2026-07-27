@@ -39,7 +39,7 @@ func minimalSessionResult(state string) contract.SessionResult {
 		AuthenticationSessionID:  "session-1",
 		InstitutionProfileID:     "profile-1",
 		AuthenticationProtocolID: "protocol-1",
-		AccountLabel:             "account-label",
+		AccountName:              "account-name",
 		State:                    state,
 		UpdatedAt:                "2026-07-26T10:11:12.123456789+08:00",
 	}
@@ -424,9 +424,9 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 		"状态：等待重试（waiting_before_retry）\n" +
 		"机构：Example University（profile-1）\n" +
 		"协议：protocol-1\n" +
-		"账号：account-label\n" +
+		"账号：account-name\n" +
 		"原因：没有可用网络（network_unavailable）\n" +
-		"网络：Campus Ethernet [if-7] — 192.0.2.25\n" +
+		"网络：Campus Ethernet - 192.0.2.25\n" +
 		"认证时间：2026-07-26T10:11:12.123456789+08:00\n" +
 		"下次重试：2026-07-26T10:11:17.123456789+08:00\n" +
 		"最近失败：网络操作超时（network_timeout）\n" +
@@ -447,7 +447,7 @@ func TestWriteSessionResultMinimalOutput(t *testing.T) {
 		"状态：已认证（authenticated）\n" +
 		"机构：profile-1\n" +
 		"协议：protocol-1\n" +
-		"账号：account-label\n" +
+		"账号：account-name\n" +
 		"更新时间：2026-07-26T10:11:12.123456789+08:00\n"
 	if output.String() != want {
 		t.Errorf("minimal output = %q, want %q", output.String(), want)
@@ -507,7 +507,7 @@ func TestMalformedRequiredSessionFieldsProduceNoOutput(t *testing.T) {
 		{name: "state", mutate: func(result *contract.SessionResult) { result.State = "" }},
 		{name: "Profile ID", mutate: func(result *contract.SessionResult) { result.InstitutionProfileID = "" }},
 		{name: "protocol ID", mutate: func(result *contract.SessionResult) { result.AuthenticationProtocolID = "" }},
-		{name: "account label", mutate: func(result *contract.SessionResult) { result.AccountLabel = "" }},
+		{name: "account label", mutate: func(result *contract.SessionResult) { result.AccountName = "" }},
 		{name: "updated timestamp", mutate: func(result *contract.SessionResult) { result.UpdatedAt = "" }},
 	}
 	for _, test := range tests {

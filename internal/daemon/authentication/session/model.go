@@ -79,7 +79,7 @@ type Snapshot struct {
 	InstitutionProfileID        profile.InstitutionProfileID
 	InstitutionDisplayName      string
 	AuthenticationProtocolID    protocol.AuthenticationProtocolID
-	AccountLabel                string
+	AccountName                 string
 	Intent                      Intent
 	State                       State
 	StateReason                 *StateReason

@@ -94,7 +94,7 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 ```
 
 日志只包含稳定事件码、固定简体中文消息和安全属性，不含密码、token、用户名、
-账号标签、凭据、Profile JSON、网卡事实或原始 error。Sidravia 首版不做日志轮转，
+账号名称、凭据、Profile JSON、网卡事实或原始 error。Sidravia 首版不做日志轮转，
 也不提供日志 IPC/CLI 命令。
 
 窗口 B 检查版本：
@@ -150,7 +150,7 @@ $SessionID = 'session-1'
 .\sidravia.exe auth list
 ```
 
-列表包含脱敏账号标签；daemon 重启后不会恢复旧 Session。
+列表包含完整账号名；daemon 重启后不会恢复旧 Session。
 
 认证成功时状态为：
 

@@ -241,8 +241,8 @@ func validateSessionResult(result contract.SessionResult) error {
 		return fmt.Errorf("Session 结果缺少 Profile ID")
 	case result.AuthenticationProtocolID == "":
 		return fmt.Errorf("Session 结果缺少协议 ID")
-	case result.AccountLabel == "":
-		return fmt.Errorf("Session 结果缺少账号标签")
+	case result.AccountName == "":
+		return fmt.Errorf("Session 结果缺少账号名称")
 	case result.UpdatedAt == "":
 		return fmt.Errorf("Session 结果缺少更新时间")
 	default:

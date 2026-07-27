@@ -288,7 +288,7 @@ func TestRenderSessionDetailSanitizesDynamicValues(t *testing.T) {
 		AuthenticationSessionID:  "evil\x1b[2J\nsession",
 		InstitutionProfileID:     "p",
 		AuthenticationProtocolID: "proto",
-		AccountLabel:             "acc",
+		AccountName:              "acc",
 		State:                    "authenticated",
 		UpdatedAt:                "2026-07-26T10:11:12.123456789+08:00",
 	}
@@ -550,7 +550,7 @@ func TestUnknownCodesRenderedOnce(t *testing.T) {
 		AuthenticationSessionID:   "s",
 		InstitutionProfileID:      "p",
 		AuthenticationProtocolID:  "proto",
-		AccountLabel:              "acc",
+		AccountName:               "acc",
 		State:                     "bogus-state",
 		UpdatedAt:                 "2026-07-26T10:11:12.123456789+08:00",
 		StateReason:               &contract.SessionStateReason{Code: "bogus-reason"},
@@ -587,7 +587,7 @@ func TestSessionDetailNetworkLineSeparator(t *testing.T) {
 		AuthenticationSessionID:  "s",
 		InstitutionProfileID:     "p",
 		AuthenticationProtocolID: "proto",
-		AccountLabel:             "acc",
+		AccountName:              "acc",
 		State:                    "authenticated",
 		UpdatedAt:                "2026-07-26T10:11:12.123456789+08:00",
 		SelectedNetworkBinding: &contract.SessionNetworkBinding{
@@ -599,7 +599,7 @@ func TestSessionDetailNetworkLineSeparator(t *testing.T) {
 	if err := p.write(renderSessionDetail(p, result)); err != nil {
 		t.Fatalf("write = %v", err)
 	}
-	want := "网络：Campus Ethernet [if-7] — 192.0.2.25\n"
+	want := "网络：Campus Ethernet - 192.0.2.25\n"
 	if !strings.Contains(buf.String(), want) {
 		t.Errorf("network line = %q, want %q", buf.String(), want)
 	}

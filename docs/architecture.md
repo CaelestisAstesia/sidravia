@@ -164,7 +164,7 @@ package-global default logger。核心 Session、Supervisor、D520、持久化�
 请求或响应构造。
 
 普通日志永不包含原始 error 或包装的诊断原因、请求/响应字节、request ID、token、
-endpoint、用户名、账号标签、密码、凭据 ID、Profile JSON、协议上下文或网卡
+endpoint、用户名、账号名称、密码、凭据 ID、Profile JSON、协议上下文或网卡
 ID/名称/MAC/IP/网关/DNS/主机名。进程边界把 fatal reporting 与 `os.Exit` 分离：
 构造失败只发一条 `daemon_start_failed`，运行失败只发一条 `daemon_runtime_failed`，
 两者都不含返回的 error，但原始 error 仍由错误传播保留。日志是观察层，不改变 IPC
@@ -195,7 +195,7 @@ ID/名称/MAC/IP/网关/DNS/主机名。进程边界把 fatal reporting 与 `os.
 Unicode、空格、标点、ID、时间戳和中文。动态值绝不进入颜色解析器，CLI 也永不打印
 daemon `Error.Message`、Session `Description`、失败 `Description`、包装原因、请求
 payload、凭据或原始终端环境值。命令令牌和 flag 不变；顶层、分组和叶子命令使用确定性
-中文 help 渲染器，只含 `用法` 和 `可用命令` 标题。`cmd/sidravia/main.go` 通过呈现
+中文 help 渲染器，按固定顺序含描述、`用法`、`可用命令`、`参数`、`选项`、`示例` 六段（适用时），段间留一空行。`cmd/sidravia/main.go` 通过呈现
 边界打印静态中文错误前缀，不打印底层原因。
 
 ## Session 和 Supervisor
@@ -382,7 +382,7 @@ SessionID，然后退出。它不轮询到认证成功，也不因 CLI 退出而
 `auth check`，不改变 `auth status` 的查询语义。
 
 三个认证命令使用同一个多行人类可读 Snapshot renderer，由 `internal/cli` 的呈现边界
-拥有。它始终显示 SessionID、state、Profile、协议、脱敏 account label 和更新时间，并
+拥有。它始终显示 SessionID、state、Profile、协议、完整账号名 和更新时间，并
 只在存在时显示 state reason、所选网络绑定、认证建立时间、下次重试时间和最后一次
 公开失败。输出把 IPC `SessionResult` 中的稳定状态/失败/建议码映射为简体中文，并在
 括号内保留稳定机器码；它不显示描述、内部诊断或原始秘密，且每个动态值在写入前清理

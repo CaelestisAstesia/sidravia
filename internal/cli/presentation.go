@@ -323,15 +323,52 @@ func renderDaemonStatus(p *presentation, result *contract.StatusResult) string {
 	return b.String()
 }
 
-// sessionInstitutionText renders the institution line for a Session: the
+// jluProfileID is the stable machine Profile ID and JSON value for the built-in
+// Jilin University profile. It stays lowercase in every machine contract.
+const jluProfileID = "jlu"
+
+// jluHumanLabel is the fixed human identifier for the built-in JLU profile. The
+// machine ID remains the lowercase jluProfileID; only ordinary human output
+// uses the capitalized institution abbreviation. It is static trusted text, so
+// it never passes through sanitization.
+const jluHumanLabel = "吉林大学（JLU）"
+
+// sessionInstitutionText renders the institution line for a Session: the built-in
+// JLU profile renders as its fixed human identifier; other profiles render the
 // display name followed by the profile id in full-width parentheses when a
-// display name is present, otherwise just the profile id. All values are
-// sanitized. The detail and list renderers share it.
+// display name is present, otherwise just the profile id. All non-JLU dynamic
+// values are sanitized. The detail and list renderers share it.
 func sessionInstitutionText(session contract.SessionResult) string {
+	if session.InstitutionProfileID == jluProfileID {
+		return jluHumanLabel
+	}
 	if session.InstitutionDisplayName == "" {
 		return sanitizeDynamicText(session.InstitutionProfileID)
 	}
 	return sanitizeDynamicText(session.InstitutionDisplayName) + "（" + sanitizeDynamicText(session.InstitutionProfileID) + "）"
+}
+
+// institutionDisplayName returns the human display name for an institution
+// profile summary. The built-in JLU profile renders as its fixed human
+// identifier; other profiles use their safe display name unchanged.
+func institutionDisplayName(profileID, displayName string) string {
+	if profileID == jluProfileID {
+		return jluHumanLabel
+	}
+	return sanitizeDynamicText(displayName)
+}
+
+// networkBindingText renders the selected network binding for humans: when a
+// friendly display name is present it shows "<friendly name> - <IPv4>",
+// otherwise only "<IPv4>". The machine InterfaceID stays in the DTO for machine
+// consumers but never appears in ordinary output.
+func networkBindingText(binding *contract.SessionNetworkBinding) string {
+	ipv4 := sanitizeDynamicText(binding.LocalIPv4Address)
+	name := sanitizeDynamicText(binding.DisplayName)
+	if name == "" {
+		return ipv4
+	}
+	return name + " - " + ipv4
 }
 
 // renderSessionDetail renders a complete Session detail block. Optional lines
@@ -359,7 +396,7 @@ func renderSessionDetail(p *presentation, result *contract.SessionResult) string
 	b.WriteString("\n")
 
 	b.WriteString(p.label("账号："))
-	b.WriteString(sanitizeDynamicText(result.AccountLabel))
+	b.WriteString(sanitizeDynamicText(result.AccountName))
 	b.WriteString("\n")
 
 	if result.StateReason != nil {
@@ -372,11 +409,7 @@ func renderSessionDetail(p *presentation, result *contract.SessionResult) string
 
 	if result.SelectedNetworkBinding != nil {
 		b.WriteString(p.label("网络："))
-		b.WriteString(sanitizeDynamicText(result.SelectedNetworkBinding.DisplayName))
-		b.WriteString(" [")
-		b.WriteString(sanitizeDynamicText(result.SelectedNetworkBinding.InterfaceID))
-		b.WriteString("] — ")
-		b.WriteString(sanitizeDynamicText(result.SelectedNetworkBinding.LocalIPv4Address))
+		b.WriteString(networkBindingText(result.SelectedNetworkBinding))
 		b.WriteString("\n")
 	}
 
@@ -439,7 +472,7 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 		b.WriteString(sessionInstitutionText(session))
 		b.WriteString(" | ")
 		b.WriteString(p.label("账号："))
-		b.WriteString(sanitizeDynamicText(session.AccountLabel))
+		b.WriteString(sanitizeDynamicText(session.AccountName))
 		b.WriteString(" | ")
 		b.WriteString(p.label("更新时间："))
 		b.WriteString(sanitizeDynamicText(session.UpdatedAt))
@@ -464,7 +497,7 @@ func renderProfileList(p *presentation, result *contract.ProfileListResult) stri
 		b.WriteString(sanitizeDynamicText(profile.InstitutionProfileID))
 		b.WriteString(" | ")
 		b.WriteString(p.label("名称："))
-		b.WriteString(sanitizeDynamicText(profile.DisplayName))
+		b.WriteString(institutionDisplayName(profile.InstitutionProfileID, profile.DisplayName))
 		b.WriteString(" | ")
 		b.WriteString(p.label("协议："))
 		b.WriteString(sanitizeDynamicText(profile.AuthenticationProtocolID))

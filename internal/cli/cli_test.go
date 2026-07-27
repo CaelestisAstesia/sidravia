@@ -621,3 +621,82 @@ func TestLeafHelpWriterFailureIsObservable(t *testing.T) {
 		t.Errorf("leaf help writer failure = %v, want cause", err)
 	}
 }
+
+// TestHelpRendersCompleteSpacedSections proves the deterministic Chinese help
+// specification renders the fixed six sections (when applicable) separated by
+// blank lines, without Cobra English headings.
+func TestHelpRendersCompleteSpacedSections(t *testing.T) {
+	deps := commandDependencies{
+		status:      func() error { return nil },
+		authStart:   func(authStartOptions) error { return nil },
+		authStatus:  func(string) error { return nil },
+		authStop:    func(string) error { return nil },
+		authList:    func() error { return nil },
+		profileList: func() error { return nil },
+	}
+
+	t.Run("root has description usage commands examples", func(t *testing.T) {
+		var buf bytes.Buffer
+		deps.output = &buf
+		if err := runCommand([]string{"--help"}, deps); err != nil {
+			t.Fatalf("root help = %v", err)
+		}
+		help := buf.String()
+		if !strings.Contains(help, "Sidravia 命令行客户端。\n\n用法：") {
+			t.Errorf("root help missing description-usage blank separator:\n%s", help)
+		}
+		if !strings.Contains(help, "\n\n可用命令：") {
+			t.Errorf("root help missing usage-commands blank separator:\n%s", help)
+		}
+		if !strings.Contains(help, "\n\n示例：") {
+			t.Errorf("root help missing commands-examples blank separator:\n%s", help)
+		}
+		if strings.Contains(help, "参数：") || strings.Contains(help, "选项：") {
+			t.Errorf("root help must not contain 参数 or 选项:\n%s", help)
+		}
+		for _, english := range []string{"Usage", "Available Commands", "Flags", "Examples"} {
+			if strings.Contains(help, english) {
+				t.Errorf("root help contains Cobra English heading %q:\n%s", english, help)
+			}
+		}
+	})
+
+	t.Run("auth start has options and examples", func(t *testing.T) {
+		var buf bytes.Buffer
+		deps.output = &buf
+		if err := runCommand([]string{"auth", "start", "--help"}, deps); err != nil {
+			t.Fatalf("auth start help = %v", err)
+		}
+		help := buf.String()
+		if !strings.Contains(help, "选项：") {
+			t.Errorf("auth start help missing 选项 section:\n%s", help)
+		}
+		if !strings.Contains(help, "--profile <profile-id>") {
+			t.Errorf("auth start help missing --profile option:\n%s", help)
+		}
+		if !strings.Contains(help, "示例：") {
+			t.Errorf("auth start help missing 示例 section:\n%s", help)
+		}
+		if strings.Contains(help, "参数：") {
+			t.Errorf("auth start help must not contain 参数:\n%s", help)
+		}
+	})
+
+	t.Run("auth status has args section", func(t *testing.T) {
+		var buf bytes.Buffer
+		deps.output = &buf
+		if err := runCommand([]string{"auth", "status", "--help"}, deps); err != nil {
+			t.Fatalf("auth status help = %v", err)
+		}
+		help := buf.String()
+		if !strings.Contains(help, "参数：") {
+			t.Errorf("auth status help missing 参数 section:\n%s", help)
+		}
+		if !strings.Contains(help, "<session-id>") {
+			t.Errorf("auth status help missing <session-id> arg:\n%s", help)
+		}
+		if strings.Contains(help, "选项：") {
+			t.Errorf("auth status help must not contain 选项:\n%s", help)
+		}
+	})
+}

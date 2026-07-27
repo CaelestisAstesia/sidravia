@@ -104,7 +104,7 @@ type unresolvedRuntimeDefinition struct {
 	Configuration            Configuration
 	ProfileDisplayName       string
 	AuthenticationProtocolID protocol.AuthenticationProtocolID
-	AccountLabel             string
+	AccountName              string
 }
 
 func (definition unresolvedRuntimeDefinition) Clone() unresolvedRuntimeDefinition {
@@ -163,7 +163,7 @@ func initializeAuthenticationSession(
 	profileID := definition.InstitutionProfile.InstitutionProfileID
 	profileDisplayName := definition.InstitutionProfile.DisplayName
 	protocolID := definition.InstitutionProfile.AuthenticationProtocolID
-	accountLabel := definition.AccountLabel()
+	accountName := definition.AccountName()
 	state := initialState(initialIntent)
 	stateReason := initialStateReason(initialIntent)
 	if !runtimeDefinitionAvailable {
@@ -171,7 +171,7 @@ func initializeAuthenticationSession(
 		profileID = unresolved.Configuration.InstitutionProfileID
 		profileDisplayName = unresolved.ProfileDisplayName
 		protocolID = unresolved.AuthenticationProtocolID
-		accountLabel = unresolved.AccountLabel
+		accountName = unresolved.AccountName
 		state = BlockedByError
 		stateReason = runtimeDefinitionUnavailableReason()
 	}
@@ -195,7 +195,7 @@ func initializeAuthenticationSession(
 			InstitutionProfileID:     profileID,
 			InstitutionDisplayName:   profileDisplayName,
 			AuthenticationProtocolID: protocolID,
-			AccountLabel:             accountLabel,
+			AccountName:              accountName,
 			Intent:                   initialIntent,
 			State:                    state,
 			StateReason:              stateReason,
@@ -600,7 +600,7 @@ func (session *AuthenticationSession) handleReplaceRuntimeDefinition(definition 
 		snapshot.InstitutionProfileID = definition.InstitutionProfile.InstitutionProfileID
 		snapshot.InstitutionDisplayName = definition.InstitutionProfile.DisplayName
 		snapshot.AuthenticationProtocolID = definition.InstitutionProfile.AuthenticationProtocolID
-		snapshot.AccountLabel = definition.AccountLabel()
+		snapshot.AccountName = definition.AccountName()
 		snapshot.AuthenticationEstablishedAt = nil
 		snapshot.NextRetryAt = nil
 		switch {
@@ -636,7 +636,7 @@ func (session *AuthenticationSession) handleReplaceUnresolvedRuntimeDefinition(d
 		snapshot.InstitutionProfileID = definition.Configuration.InstitutionProfileID
 		snapshot.InstitutionDisplayName = definition.ProfileDisplayName
 		snapshot.AuthenticationProtocolID = definition.AuthenticationProtocolID
-		snapshot.AccountLabel = definition.AccountLabel
+		snapshot.AccountName = definition.AccountName
 		snapshot.LastAuthenticationFailure = nil
 		if wasStopping {
 			snapshot.State = Stopping

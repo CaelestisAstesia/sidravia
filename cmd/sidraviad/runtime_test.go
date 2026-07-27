@@ -350,8 +350,8 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	if rpcErr != nil {
 		t.Fatalf("session.startOneShot error: %v", rpcErr)
 	}
-	if bytes.Contains(result, []byte(usernameMarker)) {
-		t.Fatal("raw session.startOneShot response contains full username marker")
+	if !bytes.Contains(result, []byte(usernameMarker)) {
+		t.Fatal("session.startOneShot response omitted the full account name")
 	}
 	if bytes.Contains(result, []byte(passwordMarker)) {
 		t.Fatal("raw session.startOneShot response contains password marker")
@@ -370,11 +370,8 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		t.Fatalf("session.AuthenticationProtocolID = %q, want drcom-5.2.0-d", sessionResult.AuthenticationProtocolID)
 	}
 
-	if sessionResult.AccountLabel == "" {
-		t.Fatal("session.AccountLabel is empty")
-	}
-	if sessionResult.AccountLabel == usernameMarker {
-		t.Fatal("session.AccountLabel contains raw username")
+	if sessionResult.AccountName != usernameMarker {
+		t.Fatalf("session.AccountName = %q, want complete username %q", sessionResult.AccountName, usernameMarker)
 	}
 
 	listedData, listErr := rt.handler(ctx, contract.MethodSessionList, []byte(`{}`))

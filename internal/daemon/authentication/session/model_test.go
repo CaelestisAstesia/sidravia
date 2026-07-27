@@ -160,16 +160,16 @@ func TestRuntimeDefinitionValidate(t *testing.T) {
 	}
 }
 
-func TestRuntimeDefinitionAccountLabelMasksUnicodeRunes(t *testing.T) {
+func TestRuntimeDefinitionAccountNameReturnsCompleteUsername(t *testing.T) {
 	tests := []struct {
 		username string
 		want     string
 	}{
 		{username: "", want: ""},
-		{username: "a", want: "*"},
-		{username: "ab", want: "a*"},
-		{username: "alice", want: "a***e"},
-		{username: "你好世界", want: "你**界"},
+		{username: "a", want: "a"},
+		{username: "ab", want: "ab"},
+		{username: "alice", want: "alice"},
+		{username: "你好世界", want: "你好世界"},
 	}
 
 	for _, test := range tests {
@@ -177,8 +177,8 @@ func TestRuntimeDefinitionAccountLabelMasksUnicodeRunes(t *testing.T) {
 			definition := validRuntimeDefinition(t)
 			definition.AuthenticationCredential.Username = test.username
 
-			if got := definition.AccountLabel(); got != test.want {
-				t.Errorf("AccountLabel() = %q, want %q", got, test.want)
+			if got := definition.AccountName(); got != test.want {
+				t.Errorf("AccountName() = %q, want %q", got, test.want)
 			}
 		})
 	}
@@ -252,7 +252,7 @@ func TestSnapshotDoesNotContainCredentialOrDiagnosticCause(t *testing.T) {
 	}
 }
 
-func TestSnapshotDoesNotExposeOneShotCredential(t *testing.T) {
+func TestSnapshotExposesAccountNameButNotPassword(t *testing.T) {
 	definition := validRuntimeDefinition(t)
 	definition.Configuration.CredentialID = ""
 	definition.AuthenticationCredential = credential.AuthenticationCredential{
@@ -276,18 +276,20 @@ func TestSnapshotDoesNotExposeOneShotCredential(t *testing.T) {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
 
+	if snapshot.AccountName != definition.AuthenticationCredential.Username {
+		t.Errorf("AccountName = %q, want complete username %q", snapshot.AccountName, definition.AuthenticationCredential.Username)
+	}
+
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {
 		t.Fatalf("json.Marshal(snapshot) error = %v", err)
 	}
 	public := string(encoded)
-	for _, secret := range []string{
-		definition.AuthenticationCredential.Username,
-		definition.AuthenticationCredential.Password,
-	} {
-		if strings.Contains(public, secret) {
-			t.Fatalf("public Snapshot exposes credential value %q: %s", secret, public)
-		}
+	if !strings.Contains(public, definition.AuthenticationCredential.Username) {
+		t.Fatalf("public Snapshot omitted the full account name: %s", public)
+	}
+	if strings.Contains(public, definition.AuthenticationCredential.Password) {
+		t.Fatalf("public Snapshot exposes password: %s", public)
 	}
 }
 

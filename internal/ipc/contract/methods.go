@@ -184,7 +184,7 @@ type SessionResult struct {
 	InstitutionProfileID        string                        `json:"institutionProfileId"`
 	InstitutionDisplayName      string                        `json:"institutionDisplayName"`
 	AuthenticationProtocolID    string                        `json:"authenticationProtocolId"`
-	AccountLabel                string                        `json:"accountLabel"`
+	AccountName                 string                        `json:"accountName"`
 	Intent                      string                        `json:"intent"`
 	State                       string                        `json:"state"`
 	StateReason                 *SessionStateReason           `json:"stateReason,omitempty"`

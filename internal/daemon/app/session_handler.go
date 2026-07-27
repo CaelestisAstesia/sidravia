@@ -172,7 +172,7 @@ func toSessionResult(snapshot session.Snapshot) contract.SessionResult {
 		InstitutionProfileID:     string(snapshot.InstitutionProfileID),
 		InstitutionDisplayName:   snapshot.InstitutionDisplayName,
 		AuthenticationProtocolID: string(snapshot.AuthenticationProtocolID),
-		AccountLabel:             snapshot.AccountLabel,
+		AccountName:              snapshot.AccountName,
 		Intent:                   string(snapshot.Intent),
 		State:                    string(snapshot.State),
 		Revision:                 snapshot.Revision,

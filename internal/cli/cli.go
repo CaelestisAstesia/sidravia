@@ -207,70 +207,175 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	return root
 }
 
-// renderHelp renders a deterministic Chinese help block for c. It uses only the
-// canonical command tree, the Chinese headings 用法 and 可用命令, and lists
-// non-hidden canonical commands. It never contains Cobra's default English
-// headings and never dispatches an operation.
+// helpChild is one entry in a help node’s 可用命令 section.
+type helpChild struct {
+	name  string
+	short string
+}
+
+// helpNode is the deterministic Chinese help specification for one command.
+// The CLI presentation boundary owns it; later packages extend the same
+// specification for new daemon and Session leaves instead of regenerating
+// Cobra defaults.
+type helpNode struct {
+	description string
+	usage       string
+	children    []helpChild
+	args        []string
+	options     []string
+	examples    []string
+}
+
+// helpSpecs is the static, deterministic help specification keyed by command
+// path. It is the sole source of CLI help text; Cobra’s generated defaults
+// are never shown.
+var helpSpecs = map[string]helpNode{
+	"sidravia": {
+		description: "Sidravia 命令行客户端。",
+		usage:       rootUsageLine,
+		children: []helpChild{
+			{"daemon", "管理本地 daemon 进程"},
+			{"auth", "管理认证 Session"},
+			{"profile", "查看机构 Profile"},
+		},
+		examples: []string{
+			"sidravia daemon status",
+			"sidravia auth start --profile jlu --username <username>",
+			"sidravia auth list",
+			"sidravia profile list",
+		},
+	},
+	"sidravia daemon": {
+		description: "管理本地 daemon 进程。",
+		usage:       "sidravia daemon status",
+		children: []helpChild{
+			{"status", "显示 daemon 状态"},
+		},
+	},
+	"sidravia daemon status": {
+		description: "显示本地 daemon 进程状态。",
+		usage:       "sidravia daemon status",
+		examples: []string{
+			"sidravia daemon status",
+		},
+	},
+	"sidravia auth": {
+		description: "管理认证 Session。",
+		usage:       "sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>",
+		children: []helpChild{
+			{"list", "列出 Session"},
+			{"start", "启动一次性认证 Session"},
+			{"status", "显示 Session 状态"},
+			{"stop", "停止 Session"},
+		},
+	},
+	"sidravia auth list": {
+		description: "列出当前 daemon 进程保留的全部 Session。",
+		usage:       "sidravia auth list",
+		examples: []string{
+			"sidravia auth list",
+		},
+	},
+	"sidravia auth start": {
+		description: "启动一次性认证 Session。",
+		usage:       "sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
+		options: []string{
+			"--profile <profile-id>：机构 Profile ID",
+			"--username <username>：认证账号",
+			"--password-stdin：从 stdin 读取密码",
+		},
+		examples: []string{
+			"sidravia auth start --profile jlu --username <username>",
+			"sidravia auth start --profile jlu --username <username> --password-stdin",
+		},
+	},
+	"sidravia auth status": {
+		description: "显示指定 Session 的公开状态。",
+		usage:       "sidravia auth status <session-id>",
+		args: []string{
+			"<session-id>：Session ID",
+		},
+		examples: []string{
+			"sidravia auth status session-1",
+		},
+	},
+	"sidravia auth stop": {
+		description: "停止指定 Session。",
+		usage:       "sidravia auth stop <session-id>",
+		args: []string{
+			"<session-id>：Session ID",
+		},
+		examples: []string{
+			"sidravia auth stop session-1",
+		},
+	},
+	"sidravia profile": {
+		description: "查看机构 Profile。",
+		usage:       "sidravia profile list",
+		children: []helpChild{
+			{"list", "列出机构 Profile"},
+		},
+	},
+	"sidravia profile list": {
+		description: "列出已加载的机构 Profile 摘要。",
+		usage:       "sidravia profile list",
+		examples: []string{
+			"sidravia profile list",
+		},
+	},
+}
+
+// renderHelp renders a deterministic Chinese help block for c from the static
+// help specification. It uses only the canonical command tree and the Chinese
+// headings 用法 / 可用命令 / 参数 / 选项 / 示例. It never contains Cobra’s
+// default English headings and never dispatches an operation.
 func renderHelp(p *presentation, c *cobra.Command) string {
+	node, ok := helpSpecs[c.CommandPath()]
+	if !ok {
+		node = helpNode{usage: c.CommandPath()}
+	}
+	return renderHelpNode(p, node)
+}
+
+// renderHelpNode renders a help node as sections separated by one blank line.
+// Only applicable sections appear, in the fixed order description, 用法,
+// 可用命令, 参数, 选项, 示例. Each heading is styled; child commands and
+// examples use one line per entry.
+func renderHelpNode(p *presentation, node helpNode) string {
+	var sections [][]string
+	if node.description != "" {
+		sections = append(sections, []string{node.description})
+	}
+	if node.usage != "" {
+		sections = append(sections, []string{p.label("用法：") + node.usage})
+	}
+	if len(node.children) > 0 {
+		lines := []string{p.label("可用命令：")}
+		for _, child := range node.children {
+			lines = append(lines, "  "+child.name+"  "+child.short)
+		}
+		sections = append(sections, lines)
+	}
+	if len(node.args) > 0 {
+		sections = append(sections, append([]string{p.label("参数：")}, node.args...))
+	}
+	if len(node.options) > 0 {
+		sections = append(sections, append([]string{p.label("选项：")}, node.options...))
+	}
+	if len(node.examples) > 0 {
+		sections = append(sections, append([]string{p.label("示例：")}, node.examples...))
+	}
 	var b strings.Builder
-	b.WriteString(p.label("用法："))
-	b.WriteString(helpSyntax(c.CommandPath()))
-	b.WriteString("\n")
-	children := visibleChildCommands(c)
-	if len(children) > 0 {
-		b.WriteString(p.label("可用命令："))
-		b.WriteString("\n")
-		for _, child := range children {
-			b.WriteString("  ")
-			b.WriteString(child.Name())
-			b.WriteString("  ")
-			b.WriteString(child.Short)
+	for index, section := range sections {
+		if index > 0 {
+			b.WriteString("\n")
+		}
+		for _, line := range section {
+			b.WriteString(line)
 			b.WriteString("\n")
 		}
 	}
 	return b.String()
-}
-
-// helpSyntax returns the exact syntax line for a command path. Root and group
-// commands show their full syntax; leaf commands show their own syntax.
-func helpSyntax(commandPath string) string {
-	switch commandPath {
-	case "sidravia":
-		return rootUsageLine
-	case "sidravia daemon":
-		return "sidravia daemon status"
-	case "sidravia daemon status":
-		return "sidravia daemon status"
-	case "sidravia auth":
-		return "sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>"
-	case "sidravia auth list":
-		return "sidravia auth list"
-	case "sidravia auth start":
-		return "sidravia auth start --profile <profile-id> --username <username> [--password-stdin]"
-	case "sidravia auth status":
-		return "sidravia auth status <session-id>"
-	case "sidravia auth stop":
-		return "sidravia auth stop <session-id>"
-	case "sidravia profile":
-		return "sidravia profile list"
-	case "sidravia profile list":
-		return "sidravia profile list"
-	default:
-		return commandPath
-	}
-}
-
-// visibleChildCommands returns c's non-hidden direct children in Cobra's stable
-// order.
-func visibleChildCommands(c *cobra.Command) []*cobra.Command {
-	var visible []*cobra.Command
-	for _, child := range c.Commands() {
-		if child.Hidden {
-			continue
-		}
-		visible = append(visible, child)
-	}
-	return visible
 }
 
 func newListCommand(name string, description string, operation func() error) *cobra.Command {

@@ -321,7 +321,7 @@ func TestReplaceRuntimeDefinitionIsAtomicAndUsesBestEffortLogout(t *testing.T) {
 		got.DisplayName != replacement.Configuration.DisplayName ||
 		got.InstitutionProfileID != replacement.InstitutionProfile.InstitutionProfileID ||
 		got.InstitutionDisplayName != replacement.InstitutionProfile.DisplayName ||
-		got.AccountLabel != replacement.AccountLabel() {
+		got.AccountName != replacement.AccountName() {
 		t.Fatalf("replacement snapshot mixed runtime definitions: %#v", got)
 	}
 	if got.State != Authenticating || got.StateReason != nil || got.AuthenticationEstablishedAt != nil || got.NextRetryAt != nil {

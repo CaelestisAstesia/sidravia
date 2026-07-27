@@ -75,7 +75,7 @@ func fullSnapshot() session.Snapshot {
 		InstitutionProfileID:     "profile-1",
 		InstitutionDisplayName:   "Library",
 		AuthenticationProtocolID: protocol.AuthenticationProtocolID("drcom"),
-		AccountLabel:             "public-account-label",
+		AccountName:              "public-account-label",
 		Intent:                   session.MaintainAuthentication,
 		State:                    session.Authenticated,
 		StateReason:              &session.StateReason{Code: session.StateReasonCodeNetworkUnavailable, Description: "no network"},
@@ -263,8 +263,8 @@ func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 	if sr.AuthenticationProtocolID != string(snap.AuthenticationProtocolID) {
 		t.Errorf("authenticationProtocolId: got %q, want %q", sr.AuthenticationProtocolID, snap.AuthenticationProtocolID)
 	}
-	if sr.AccountLabel != snap.AccountLabel {
-		t.Errorf("accountLabel: got %q, want %q", sr.AccountLabel, snap.AccountLabel)
+	if sr.AccountName != snap.AccountName {
+		t.Errorf("accountName: got %q, want %q", sr.AccountName, snap.AccountName)
 	}
 	if sr.Intent != string(snap.Intent) {
 		t.Errorf("intent: got %q, want %q", sr.Intent, snap.Intent)

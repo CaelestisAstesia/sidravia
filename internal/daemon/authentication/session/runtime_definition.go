@@ -3,7 +3,6 @@ package session
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"sidravia/internal/daemon/authentication/protocol"
 	profile "sidravia/internal/daemon/configuration"
@@ -64,18 +63,12 @@ func (definition RuntimeDefinition) Validate() error {
 	return nil
 }
 
-func (definition RuntimeDefinition) AccountLabel() string {
-	runes := []rune(definition.AuthenticationCredential.Username)
-	switch len(runes) {
-	case 0:
-		return ""
-	case 1:
-		return "*"
-	case 2:
-		return string(runes[0]) + "*"
-	default:
-		return string(runes[0]) + strings.Repeat("*", len(runes)-2) + string(runes[len(runes)-1])
-	}
+// AccountName returns the complete authentication username. CLI and daemon
+// share one build/version, so the public Snapshot carries the full account
+// name instead of a masked label; Password and CredentialID remain absent.
+// Control-character sanitization happens at the CLI presentation boundary.
+func (definition RuntimeDefinition) AccountName() string {
+	return definition.AuthenticationCredential.Username
 }
 
 func (definition RuntimeDefinition) Clone() RuntimeDefinition {

@@ -41,7 +41,7 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 			InstitutionProfileID:     "jlu",
 			InstitutionDisplayName:   "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
-			AccountLabel:             "w*******4",
+			AccountName:              "alice2024",
 			State:                    "authenticated",
 			UpdatedAt:                "2026-07-27T02:25:38+08:00",
 		},
@@ -49,7 +49,7 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 			AuthenticationSessionID:  "session-2",
 			InstitutionProfileID:     "other",
 			AuthenticationProtocolID: "test-protocol",
-			AccountLabel:             "a***b",
+			AccountName:              "bob",
 			State:                    "suspended",
 			UpdatedAt:                "2026-07-27T02:27:50+08:00",
 		},
@@ -72,8 +72,8 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 		t.Fatalf("runAuthList = %v", err)
 	}
 	want := "会话（2）：\n" +
-		"- session-1 | 状态：已认证（authenticated） | 机构：吉林大学（jlu） | 账号：w*******4 | 更新时间：2026-07-27T02:25:38+08:00\n" +
-		"- session-2 | 状态：已暂停（suspended） | 机构：other | 账号：a***b | 更新时间：2026-07-27T02:27:50+08:00\n"
+		"- session-1 | 状态：已认证（authenticated） | 机构：吉林大学（JLU） | 账号：alice2024 | 更新时间：2026-07-27T02:25:38+08:00\n" +
+		"- session-2 | 状态：已暂停（suspended） | 机构：other | 账号：bob | 更新时间：2026-07-27T02:27:50+08:00\n"
 	if output.String() != want {
 		t.Errorf("output = %q, want %q", output.String(), want)
 	}
@@ -99,7 +99,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 		if err := runProfileList(hotListDependencies(t, connection, &output)); err != nil {
 			t.Fatalf("runProfileList = %v", err)
 		}
-		want := "机构 Profile（1）：\n- jlu | 名称：吉林大学 | 协议：drcom-5.2.0-d\n"
+		want := "机构 Profile（1）：\n- jlu | 名称：吉林大学（JLU） | 协议：drcom-5.2.0-d\n"
 		if output.String() != want {
 			t.Errorf("output = %q, want %q", output.String(), want)
 		}
