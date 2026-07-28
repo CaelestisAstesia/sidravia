@@ -128,6 +128,23 @@ func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 	if err := runAuthRemove("session-1", deps); !errors.Is(err, writeCause) {
 		t.Fatalf("write cause not preserved: %v", err)
 	}
+
+	const publicMarker = "daemon-public-marker"
+	const wrappedMarker = "daemon-wrapped-marker"
+	connection = &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		return contract.NewErrorResponse("1", contract.ErrorCodeSessionOperationFailed, publicMarker), errors.New(wrappedMarker)
+	}}
+	var output bytes.Buffer
+	deps = hotAuthDependencies(t, connection)
+	deps.stdout = &output
+	err := runAuthRemove("session-1", deps)
+	if err == nil {
+		t.Fatal("daemon error returned nil")
+	}
+	if strings.Contains(err.Error(), publicMarker) || strings.Contains(err.Error(), wrappedMarker) ||
+		strings.Contains(output.String(), publicMarker) || strings.Contains(output.String(), wrappedMarker) {
+		t.Fatalf("daemon failure leaked markers: err=%q output=%q", err, output.String())
+	}
 }
 
 func (client *fakeDaemonClient) Close() error {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -83,17 +84,17 @@ func TestSessionHandlerRoutesRetainedLifecycleMethods(t *testing.T) {
 	for _, test := range []struct {
 		method string
 		check  func(*fakeSessionApplication) (int, session.AuthenticationSessionID)
-		want   string
+		remove bool
 	}{
 		{contract.MethodSessionEnsureRunning, func(f *fakeSessionApplication) (int, session.AuthenticationSessionID) {
 			return f.ensureCalls, f.lastEnsureID
-		}, ""},
+		}, false},
 		{contract.MethodSessionRestart, func(f *fakeSessionApplication) (int, session.AuthenticationSessionID) {
 			return f.restartCalls, f.lastRestartID
-		}, ""},
+		}, false},
 		{contract.MethodSessionRemove, func(f *fakeSessionApplication) (int, session.AuthenticationSessionID) {
 			return f.removeCalls, f.lastRemoveID
-		}, `{"sessionId":"session-1","status":"removed"}`},
+		}, true},
 	} {
 		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
 		result, publicErr := SessionHandler(fake)(context.Background(), test.method, []byte(`{"sessionId":"session-1"}`))
@@ -104,9 +105,34 @@ func TestSessionHandlerRoutesRetainedLifecycleMethods(t *testing.T) {
 		if calls != 1 || id != "session-1" {
 			t.Fatalf("%s routed calls=%d id=%q", test.method, calls, id)
 		}
-		if test.want != "" && string(result) != test.want {
-			t.Fatalf("%s result=%s", test.method, result)
+		if test.remove {
+			if string(result) != `{"sessionId":"session-1","status":"removed"}` {
+				t.Fatalf("%s result=%s", test.method, result)
+			}
+			continue
 		}
+		var got contract.SessionResult
+		if err := json.Unmarshal(result, &got); err != nil {
+			t.Fatalf("%s decode result: %v", test.method, err)
+		}
+		assertSessionResultMatchesSnapshot(t, got, fullSnapshot())
+	}
+}
+
+func assertSessionResultMatchesSnapshot(t *testing.T, got contract.SessionResult, snap session.Snapshot) {
+	t.Helper()
+	expectedResult, publicErr := SessionHandler(&fakeSessionApplication{snapshot: snap})(
+		context.Background(), contract.MethodSessionGet, []byte(`{"sessionId":"session-1"}`),
+	)
+	if publicErr != nil {
+		t.Fatalf("build expected SessionResult: %v", publicErr)
+	}
+	var want contract.SessionResult
+	if err := json.Unmarshal(expectedResult, &want); err != nil {
+		t.Fatalf("decode expected SessionResult: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("SessionResult mismatch:\n got: %#v\nwant: %#v", got, want)
 	}
 }
 

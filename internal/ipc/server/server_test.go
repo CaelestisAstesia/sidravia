@@ -31,21 +31,24 @@ func TestRetainedSessionMethodsLogOnlyStableMethod(t *testing.T) {
 	const idMarker = "request-secret-marker"
 	const payloadMarker = "payload-secret-marker"
 	const causeMarker = "handler-cause-marker"
+	const bearerMarker = testToken
 	handler := func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
-		return json.RawMessage(`{"ok":true}`), nil
+		return nil, &contract.Error{Code: contract.ErrorCodeSessionOperationFailed, Message: "operation failed: " + causeMarker}
 	}
 	_, wsURL := newTestServer(t, handler, &buf)
 	conn := dial(t, wsURL)
 	defer conn.Close(websocket.StatusNormalClosure, "")
 	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
 		writeRequest(t, conn, idMarker, method, json.RawMessage(`{"sessionId":"`+payloadMarker+`"}`))
-		if response := readResponse(t, conn); !response.OK {
+		if response := readResponse(t, conn); response.OK || response.Error == nil ||
+			response.Error.Code != contract.ErrorCodeSessionOperationFailed {
 			t.Fatalf("%s response=%#v", method, response)
 		}
 		waitForLogEvent(t, &buf, "method="+method)
+		waitForLogEvent(t, &buf, "code="+string(contract.ErrorCodeSessionOperationFailed))
 	}
 	output := buf.String()
-	for _, marker := range []string{idMarker, payloadMarker, causeMarker} {
+	for _, marker := range []string{idMarker, payloadMarker, causeMarker, bearerMarker} {
 		if strings.Contains(output, marker) {
 			t.Fatalf("log leaked %q: %s", marker, output)
 		}

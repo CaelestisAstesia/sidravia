@@ -40,8 +40,9 @@ type heldCancellationFactory struct {
 }
 
 type sequentialHeldFactory struct {
-	mu   sync.Mutex
-	runs []*heldCancellationRun
+	mu      sync.Mutex
+	runs    []*heldCancellationRun
+	created chan *heldCancellationRun
 }
 
 func (factory *sequentialHeldFactory) ProtocolID() protocol.AuthenticationProtocolID {
@@ -58,6 +59,10 @@ func (factory *sequentialHeldFactory) CreateAuthenticationProtocolRun(protocol.A
 	defer factory.mu.Unlock()
 	run := newHeldCancellationRun()
 	factory.runs = append(factory.runs, run)
+	if factory.created == nil {
+		factory.created = make(chan *heldCancellationRun, 8)
+	}
+	factory.created <- run
 	return run, nil
 }
 func (factory *sequentialHeldFactory) run(index int) *heldCancellationRun {
@@ -67,6 +72,32 @@ func (factory *sequentialHeldFactory) run(index int) *heldCancellationRun {
 		return nil
 	}
 	return factory.runs[index]
+}
+
+func (factory *sequentialHeldFactory) waitForRun(t *testing.T) *heldCancellationRun {
+	t.Helper()
+	factory.mu.Lock()
+	if factory.created == nil {
+		factory.created = make(chan *heldCancellationRun, 8)
+	}
+	created := factory.created
+	factory.mu.Unlock()
+	select {
+	case run := <-created:
+		return run
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for protocol Run creation")
+		return nil
+	}
+}
+
+func (factory *sequentialHeldFactory) releaseAll() {
+	factory.mu.Lock()
+	runs := append([]*heldCancellationRun(nil), factory.runs...)
+	factory.mu.Unlock()
+	for _, run := range runs {
+		releaseHeldCancellationRun(run)
+	}
 }
 
 func (heldCancellationFactory) ProtocolID() protocol.AuthenticationProtocolID {
@@ -91,11 +122,108 @@ type heldCancellationRun struct {
 	release  chan struct{}
 }
 
+type stateRun struct {
+	observer chan protocol.AuthenticationProtocolRunObserver
+	finish   chan *protocol.AuthenticationProtocolRunFailure
+	canceled chan struct{}
+}
+
+func newStateRun() *stateRun {
+	return &stateRun{
+		observer: make(chan protocol.AuthenticationProtocolRunObserver, 1),
+		finish:   make(chan *protocol.AuthenticationProtocolRunFailure, 1),
+		canceled: make(chan struct{}),
+	}
+}
+
+func (run *stateRun) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	run.observer <- observer
+	select {
+	case failure := <-run.finish:
+		return failure
+	case <-ctx.Done():
+		close(run.canceled)
+		return nil
+	}
+}
+
+type stateFactory struct {
+	mu      sync.Mutex
+	runs    []*stateRun
+	created chan *stateRun
+}
+
+func newStateFactory() *stateFactory                                { return &stateFactory{created: make(chan *stateRun, 4)} }
+func (*stateFactory) ProtocolID() protocol.AuthenticationProtocolID { return "test-protocol" }
+func (*stateFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+	return nil
+}
+func (*stateFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+	return nil
+}
+func (factory *stateFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	run := newStateRun()
+	factory.mu.Lock()
+	factory.runs = append(factory.runs, run)
+	factory.mu.Unlock()
+	factory.created <- run
+	return run, nil
+}
+func (factory *stateFactory) count() int {
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	return len(factory.runs)
+}
+func (factory *stateFactory) wait(t *testing.T) *stateRun {
+	t.Helper()
+	select {
+	case run := <-factory.created:
+		return run
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for state Run")
+		return nil
+	}
+}
+
+type supervisorRetryPolicy struct {
+	delay time.Duration
+	ok    bool
+}
+
+func (policy supervisorRetryPolicy) Delay(protocol.AuthenticationProtocolFailureHandlingRecommendation, uint32) (time.Duration, bool) {
+	return policy.delay, policy.ok
+}
+
+type supervisorRetryScheduler struct {
+	mu        sync.Mutex
+	callbacks []func()
+}
+
+func (scheduler *supervisorRetryScheduler) Schedule(_ time.Duration, callback func()) session.RetryCancellation {
+	scheduler.mu.Lock()
+	defer scheduler.mu.Unlock()
+	scheduler.callbacks = append(scheduler.callbacks, callback)
+	return noOpRetryCancellation{}
+}
+func (scheduler *supervisorRetryScheduler) count() int {
+	scheduler.mu.Lock()
+	defer scheduler.mu.Unlock()
+	return len(scheduler.callbacks)
+}
+
 func newHeldCancellationRun() *heldCancellationRun {
 	return &heldCancellationRun{
 		started:  make(chan struct{}),
 		canceled: make(chan struct{}),
 		release:  make(chan struct{}),
+	}
+}
+
+func releaseHeldCancellationRun(run *heldCancellationRun) {
+	select {
+	case <-run.release:
+	default:
+		close(run.release)
 	}
 }
 
@@ -384,24 +512,25 @@ func TestSupervisorRemoveStoppedWhileAnotherSessionActive(t *testing.T) {
 }
 
 func TestSupervisorStoppingEnsureWaitsAndHoldsAdmission(t *testing.T) {
+	factory := &sequentialHeldFactory{created: make(chan *heldCancellationRun, 8)}
 	supervisor := New(testSupervisorDeps())
-	defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+	defer func() {
+		factory.releaseAll()
+		_ = supervisor.Close()
+		supervisor.Wait()
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
 		t.Fatal(err)
 	}
-	factory := &sequentialHeldFactory{}
 	definition := testRuntimeDefinition()
 	definition.AuthenticationProtocolFactory = factory
 	id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var oldRun *heldCancellationRun
-	for oldRun == nil {
-		oldRun = factory.run(0)
-	}
+	oldRun := factory.waitForRun(t)
 	<-oldRun.started
 	if _, err := supervisor.Stop(ctx, id); err != nil {
 		t.Fatal(err)
@@ -409,21 +538,286 @@ func TestSupervisorStoppingEnsureWaitsAndHoldsAdmission(t *testing.T) {
 	<-oldRun.canceled
 	result := make(chan error, 1)
 	go func() { _, err := supervisor.EnsureRunning(ctx, id); result <- err }()
+	waitForSupervisorReservation(t, supervisor, id, true)
+	select {
+	case err := <-result:
+		t.Fatalf("ensure returned before cleanup release: %v", err)
+	default:
+	}
 	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err == nil {
 		t.Fatal("competing start stole admission during stopping ensure")
 	}
 	if factory.run(1) != nil {
 		t.Fatal("ensure started replacement before old cleanup exited")
 	}
-	close(oldRun.release)
+	releaseHeldCancellationRun(oldRun)
 	if err := <-result; err != nil {
 		t.Fatal(err)
 	}
-	var replacement *heldCancellationRun
-	for replacement == nil {
-		replacement = factory.run(1)
+	replacement := factory.waitForRun(t)
+	waitForSignal(t, replacement.started, "replacement Run start")
+	if factory.run(2) != nil {
+		t.Fatal("ensure created more than one replacement Run")
 	}
-	close(replacement.release)
+	releaseHeldCancellationRun(replacement)
+}
+
+func TestSupervisorStoppingRestartWaitsAndDoesNotOverlap(t *testing.T) {
+	factory := &sequentialHeldFactory{created: make(chan *heldCancellationRun, 8)}
+	supervisor := New(testSupervisorDeps())
+	defer func() {
+		factory.releaseAll()
+		_ = supervisor.Close()
+		supervisor.Wait()
+	}()
+	ctx := context.Background()
+	if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	definition := testRuntimeDefinition()
+	definition.AuthenticationProtocolFactory = factory
+	id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldRun := factory.waitForRun(t)
+	waitForSignal(t, oldRun.started, "old Run start")
+	if _, err := supervisor.Stop(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	waitForSignal(t, oldRun.canceled, "old Run cancellation")
+	result := make(chan error, 1)
+	go func() { _, err := supervisor.Restart(ctx, id); result <- err }()
+	waitForSupervisorReservation(t, supervisor, id, true)
+	if factory.run(1) != nil {
+		t.Fatal("restart overlapped replacement with old cleanup")
+	}
+	select {
+	case err := <-result:
+		t.Fatalf("restart returned before old cleanup: %v", err)
+	default:
+	}
+	releaseHeldCancellationRun(oldRun)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	replacement := factory.waitForRun(t)
+	waitForSignal(t, replacement.started, "replacement Run start")
+	if factory.run(2) != nil {
+		t.Fatal("restart created more than one replacement")
+	}
+	releaseHeldCancellationRun(replacement)
+}
+
+func TestSupervisorRemoveOrderingAndReadmission(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		stopFirst        bool
+		suspendInitially bool
+	}{
+		{name: "online"},
+		{name: "already-stopping", stopFirst: true},
+		{name: "suspended", suspendInitially: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			factory := &sequentialHeldFactory{created: make(chan *heldCancellationRun, 8)}
+			supervisor := New(testSupervisorDeps())
+			defer func() {
+				factory.releaseAll()
+				_ = supervisor.Close()
+				supervisor.Wait()
+			}()
+			ctx := context.Background()
+			definition := testRuntimeDefinition()
+			definition.AuthenticationProtocolFactory = factory
+			intent := session.MaintainAuthentication
+			if test.suspendInitially {
+				intent = session.SuspendAuthentication
+			} else if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+				t.Fatal(err)
+			}
+			id, _, err := supervisor.StartResolved(ctx, definition, intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.suspendInitially {
+				if factory.run(0) != nil {
+					t.Fatal("suspended remove created a protocol Run")
+				}
+				if err := supervisor.Remove(ctx, id); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				run := factory.waitForRun(t)
+				waitForSignal(t, run.started, "Run start")
+				if test.stopFirst {
+					if _, err := supervisor.Stop(ctx, id); err != nil {
+						t.Fatal(err)
+					}
+					waitForSignal(t, run.canceled, "accepted Stop cancellation")
+				}
+				done := make(chan error, 1)
+				go func() { done <- supervisor.Remove(ctx, id) }()
+				waitForSupervisorReservation(t, supervisor, id, true)
+				select {
+				case err := <-done:
+					t.Fatalf("remove completed before cleanup release: %v", err)
+				default:
+				}
+				if factory.run(1) != nil {
+					t.Fatal("remove created a second Run")
+				}
+				if !test.stopFirst {
+					waitForSignal(t, run.canceled, "remove cancellation")
+				}
+				releaseHeldCancellationRun(run)
+				if err := <-done; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := supervisor.Get(ctx, id); err == nil {
+				t.Fatal("removed Session remained in Get")
+			}
+			listed, err := supervisor.List(ctx)
+			if err != nil || len(listed) != 0 {
+				t.Fatalf("List after remove=%#v err=%v", listed, err)
+			}
+			nextID, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
+			if err != nil || nextID == "" {
+				t.Fatalf("later admission failed: id=%q err=%v", nextID, err)
+			}
+		})
+	}
+}
+
+func TestSupervisorEnsureRunningPreservesEveryActivePublicState(t *testing.T) {
+	tests := []struct {
+		name  string
+		state session.State
+		setup func(*testing.T, *Supervisor, *stateFactory, *supervisorRetryScheduler, ID)
+	}{
+		{"waiting_for_network", session.WaitingForNetwork, func(*testing.T, *Supervisor, *stateFactory, *supervisorRetryScheduler, ID) {}},
+		{"authenticating", session.Authenticating, func(t *testing.T, _ *Supervisor, factory *stateFactory, _ *supervisorRetryScheduler, _ ID) {
+			_ = factory.wait(t)
+		}},
+		{"authenticated", session.Authenticated, func(t *testing.T, _ *Supervisor, factory *stateFactory, _ *supervisorRetryScheduler, _ ID) {
+			run := factory.wait(t)
+			select {
+			case observer := <-run.observer:
+				observer.AuthenticationEstablished()
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for Run observer")
+			}
+		}},
+		{"waiting_before_retry", session.WaitingBeforeRetry, func(t *testing.T, _ *Supervisor, factory *stateFactory, _ *supervisorRetryScheduler, _ ID) {
+			run := factory.wait(t)
+			run.finish <- &protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay}
+		}},
+		{"blocked_by_error", session.BlockedByError, func(t *testing.T, _ *Supervisor, factory *stateFactory, _ *supervisorRetryScheduler, _ ID) {
+			run := factory.wait(t)
+			run.finish <- &protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			scheduler := &supervisorRetryScheduler{}
+			deps := testSupervisorDeps()
+			deps.RetryScheduler = scheduler
+			if test.state == session.WaitingBeforeRetry {
+				deps.RetryPolicy = supervisorRetryPolicy{delay: time.Minute, ok: true}
+			}
+			supervisor := New(deps)
+			defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+			factory := newStateFactory()
+			definition := testRuntimeDefinition()
+			definition.AuthenticationProtocolFactory = factory
+			if test.state != session.WaitingForNetwork {
+				if err := supervisor.ApplySystemNetworkSnapshot(context.Background(), supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id, _, err := supervisor.StartResolved(context.Background(), definition, session.MaintainAuthentication)
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.setup(t, supervisor, factory, scheduler, id)
+			before := waitForSupervisorState(t, supervisor, id, test.state)
+			runCount := factory.count()
+			retryCount := scheduler.count()
+			got, err := supervisor.EnsureRunning(context.Background(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.State != before.State || got.Revision != before.Revision {
+				t.Fatalf("EnsureRunning changed active snapshot: before=%#v after=%#v", before, got)
+			}
+			if factory.count() != runCount {
+				t.Fatalf("EnsureRunning created another Run: before=%d after=%d", runCount, factory.count())
+			}
+			if scheduler.count() != retryCount {
+				t.Fatalf("EnsureRunning consumed retry callback: before=%d after=%d", retryCount, scheduler.count())
+			}
+			if runCount > 0 {
+				factory.mu.Lock()
+				current := factory.runs[runCount-1]
+				factory.mu.Unlock()
+				select {
+				case <-current.canceled:
+					t.Fatal("EnsureRunning canceled current Run")
+				default:
+				}
+			}
+		})
+	}
+}
+
+func TestSupervisorSerializesStopQueuedRestartAndRemoveForSameID(t *testing.T) {
+	factory := &sequentialHeldFactory{created: make(chan *heldCancellationRun, 8)}
+	supervisor := New(testSupervisorDeps())
+	defer func() {
+		factory.releaseAll()
+		_ = supervisor.Close()
+		supervisor.Wait()
+	}()
+	ctx := context.Background()
+	if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	definition := testRuntimeDefinition()
+	definition.AuthenticationProtocolFactory = factory
+	id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldRun := factory.waitForRun(t)
+	waitForSignal(t, oldRun.started, "old Run start")
+	if _, err := supervisor.Stop(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	waitForSignal(t, oldRun.canceled, "old Run cancellation")
+
+	restartDone := make(chan error, 1)
+	go func() { _, err := supervisor.Restart(ctx, id); restartDone <- err }()
+	waitForSupervisorReservation(t, supervisor, id, true)
+	removeDone := make(chan error, 1)
+	go func() { removeDone <- supervisor.Remove(ctx, id) }()
+	releaseHeldCancellationRun(oldRun)
+	if err := <-restartDone; err != nil {
+		t.Fatalf("queued restart: %v", err)
+	}
+	replacement := factory.waitForRun(t)
+	waitForSignal(t, replacement.started, "replacement Run start")
+	waitForSignal(t, replacement.canceled, "replacement cancellation by queued remove")
+	releaseHeldCancellationRun(replacement)
+	if err := <-removeDone; err != nil {
+		t.Fatalf("queued remove: %v", err)
+	}
+	if factory.run(2) != nil {
+		t.Fatal("serialized commands created more than one replacement Run")
+	}
+	if _, err := supervisor.Get(ctx, id); err == nil {
+		t.Fatal("successful remove left Session or forwarder observable")
+	}
 }
 
 func TestSupervisorCanceledWaitingOperationsDoNotRunLater(t *testing.T) {
@@ -442,13 +836,17 @@ func TestSupervisorCanceledWaitingOperationsDoNotRunLater(t *testing.T) {
 		{"remove", func(ctx context.Context, supervisor *Supervisor, id ID) error { return supervisor.Remove(ctx, id) }},
 	} {
 		t.Run(operation.name, func(t *testing.T) {
+			run := newHeldCancellationRun()
 			supervisor := New(testSupervisorDeps())
-			defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+			defer func() {
+				releaseHeldCancellationRun(run)
+				_ = supervisor.Close()
+				supervisor.Wait()
+			}()
 			ctx := context.Background()
 			if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
 				t.Fatal(err)
 			}
-			run := newHeldCancellationRun()
 			definition := testRuntimeDefinition()
 			definition.AuthenticationProtocolFactory = heldCancellationFactory{run: run}
 			id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
@@ -463,11 +861,16 @@ func TestSupervisorCanceledWaitingOperationsDoNotRunLater(t *testing.T) {
 			waitCtx, cancel := context.WithCancel(ctx)
 			result := make(chan error, 1)
 			go func() { result <- operation.call(waitCtx, supervisor, id) }()
+			waitForSupervisorReservation(t, supervisor, id, true)
 			cancel()
 			if err := <-result; !errors.Is(err, context.Canceled) {
 				t.Fatalf("waiting operation error=%v", err)
 			}
-			close(run.release)
+			waitForSupervisorReservation(t, supervisor, id, false)
+			if factory, ok := definition.AuthenticationProtocolFactory.(heldCancellationFactory); !ok || factory.run != run {
+				t.Fatal("test factory changed unexpectedly")
+			}
+			releaseHeldCancellationRun(run)
 			suspended := waitForSupervisorState(t, supervisor, id, session.Suspended)
 			if suspended.State != session.Suspended {
 				t.Fatal("Session did not remain suspended")
@@ -477,6 +880,22 @@ func TestSupervisorCanceledWaitingOperationsDoNotRunLater(t *testing.T) {
 			}
 		})
 	}
+}
+
+func waitForSupervisorReservation(t *testing.T, supervisor *Supervisor, id ID, want bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		supervisor.mu.Lock()
+		managed := supervisor.sessions[id]
+		got := managed != nil && managed.reserved
+		supervisor.mu.Unlock()
+		if got == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for reserved=%v", want)
 }
 
 func TestSupervisorForgetStoppedRemovesSession(t *testing.T) {
@@ -844,8 +1263,10 @@ func TestSupervisorPreCancelledContextReturnsErrorAndCleansUp(t *testing.T) {
 }
 
 func TestSupervisorKeepsAdmissionClosedUntilProtocolRunExits(t *testing.T) {
+	run := newHeldCancellationRun()
 	supervisor := New(testSupervisorDeps())
 	defer func() {
+		releaseHeldCancellationRun(run)
 		_ = supervisor.Close()
 		supervisor.Wait()
 	}()
@@ -855,7 +1276,6 @@ func TestSupervisorKeepsAdmissionClosedUntilProtocolRunExits(t *testing.T) {
 		t.Fatalf("ApplySystemNetworkSnapshot error: %v", err)
 	}
 
-	run := newHeldCancellationRun()
 	definition := testRuntimeDefinition()
 	definition.AuthenticationProtocolFactory = heldCancellationFactory{run: run}
 	id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
@@ -895,7 +1315,7 @@ func TestSupervisorKeepsAdmissionClosedUntilProtocolRunExits(t *testing.T) {
 		t.Fatal("StartResolved during stopping succeeded, want admission error")
 	}
 
-	close(run.release)
+	releaseHeldCancellationRun(run)
 	waitForSupervisorState(t, supervisor, id, session.Suspended)
 
 	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err != nil {

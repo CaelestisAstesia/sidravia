@@ -33,6 +33,18 @@ func TestParseAuthStartRetainedRejectsMissingMixedAndDuplicateForms(t *testing.T
 		{"--session", "session-1", "--password-stdin"},
 		{"--profile", "profile"},
 		{"--username", "user"},
+		{"--profile", "profile", "--profile", "other", "--username", "user"},
+		{"--profile", "profile", "--username", "user", "--username", "other"},
+		{"--profile", "profile", "--username", "user", "--password-stdin", "--password-stdin"},
+		{"--session", "session-1", "--profile", "profile", "--username", "user"},
+		{"--session", "session-1", "--profile", "profile", "--username", "user", "--password-stdin"},
+		{"--session", "session-1", "--unknown"},
+		{"--profile", "profile", "--username", "user", "--session", "session-1"},
+		{"--profile", "", "--username", "user"},
+		{"--profile", "profile", "--username", ""},
+		{"--profile"},
+		{"--username"},
+		{"--unknown"},
 	} {
 		if _, err := parseAuthStart(args); err == nil {
 			t.Fatalf("accepted invalid retained start args: %q", args)
@@ -61,14 +73,28 @@ func TestRetainedCommandsDispatchAndHelpDoesNotDispatch(t *testing.T) {
 	if len(starts) != 1 || starts[0].sessionID != "session-1" || len(restarts) != 1 || restarts[0] != "session-1" || len(removes) != 1 || removes[0] != "session-1" {
 		t.Fatalf("dispatch starts=%#v restarts=%v removes=%v", starts, restarts, removes)
 	}
-	for _, args := range [][]string{
-		{"auth", "--help"},
-		{"auth", "start", "--help"},
-		{"auth", "restart", "--help"},
-		{"auth", "remove", "--help"},
+	for _, help := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"--help"}, []string{"auth"}},
+		{[]string{"auth", "--help"}, []string{"start", "restart", "remove"}},
+		{[]string{"auth", "start", "--help"}, []string{
+			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
+			"sidravia auth start --session <session-id>",
+		}},
+		{[]string{"auth", "restart", "--help"}, []string{"sidravia auth restart <session-id>"}},
+		{[]string{"auth", "remove", "--help"}, []string{"sidravia auth remove <session-id>"}},
 	} {
-		if err := runCommand(args, deps); err != nil {
-			t.Fatalf("help %q: %v", args, err)
+		var output bytes.Buffer
+		deps.output = &output
+		if err := runCommand(help.args, deps); err != nil {
+			t.Fatalf("help %q: %v", help.args, err)
+		}
+		for _, want := range help.want {
+			if !strings.Contains(output.String(), want) {
+				t.Fatalf("help %q omitted %q:\n%s", help.args, want, output.String())
+			}
 		}
 	}
 	if len(starts) != 1 || len(restarts) != 1 || len(removes) != 1 {

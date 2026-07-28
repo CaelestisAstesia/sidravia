@@ -95,6 +95,9 @@ func appSupervisorDeps() supervisor.Dependencies {
 type toggleableStore struct {
 	data    map[string][]byte
 	failing atomic.Bool
+	block   atomic.Bool
+	entered chan struct{}
+	release chan struct{}
 }
 
 func (store *toggleableStore) Read(_ context.Context, path string, _ int64) ([]byte, bool, error) {
@@ -103,11 +106,87 @@ func (store *toggleableStore) Read(_ context.Context, path string, _ int64) ([]b
 }
 
 func (store *toggleableStore) Replace(_ context.Context, path string, data []byte) error {
+	if store.block.CompareAndSwap(true, false) {
+		close(store.entered)
+		<-store.release
+	}
 	if store.failing.Load() {
 		return errors.New("replace fails")
 	}
 	store.data[path] = append([]byte(nil), data...)
 	return nil
+}
+
+func TestApplicationRemoveSessionWaitsForConfigurationOperationBoundary(t *testing.T) {
+	ctx := context.Background()
+	store := &toggleableStore{data: make(map[string][]byte)}
+	catalog, err := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	credStore, err := credential.OpenStore(ctx, store, filepath.Join(t.TempDir(), "credentials.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileCat, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := NewAuthenticationResolver(catalog, profileCat, credStore, registry, appTestHostInfo())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := supervisor.New(appSupervisorDeps())
+	defer func() { _ = sup.Close(); sup.Wait() }()
+	application, err := NewApplication(catalog, profileCat, resolver, sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Save(ctx, appTestConfiguration("configuration-1")); err != nil {
+		t.Fatal(err)
+	}
+
+	id, _, err := application.StartOneShotAuthentication(ctx, validOneShotInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.entered = make(chan struct{})
+	store.release = make(chan struct{})
+	store.block.Store(true)
+	deleteDone := make(chan error, 1)
+	go func() { deleteDone <- application.DeleteConfiguration(ctx, "configuration-1") }()
+	select {
+	case <-store.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("configuration delete did not reach controlled persistence boundary")
+	}
+	removeDone := make(chan error, 1)
+	go func() { removeDone <- application.RemoveSession(ctx, id) }()
+	select {
+	case err := <-removeDone:
+		t.Fatalf("RemoveSession passed opMu while delete owned it: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(store.release)
+	if err := <-deleteDone; err != nil {
+		t.Fatalf("DeleteConfiguration: %v", err)
+	}
+	if err := <-removeDone; err != nil {
+		t.Fatalf("RemoveSession after release: %v", err)
+	}
+	if _, err := application.GetSession(ctx, id); err == nil {
+		t.Fatal("removed Session remained observable")
+	}
+	application.mu.Lock()
+	tracked := len(application.sessionsByConfig)
+	application.mu.Unlock()
+	if tracked != 0 {
+		t.Fatalf("one-shot remove changed Configuration tracking: %d entries", tracked)
+	}
 }
 
 // --- Test setup ---
