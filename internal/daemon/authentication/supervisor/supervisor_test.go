@@ -269,7 +269,7 @@ func TestSupervisorRestartAdmitsStoppedSession(t *testing.T) {
 	}
 }
 
-func TestSupervisorRestartRejectsActiveSession(t *testing.T) {
+func TestSupervisorRestartAcceptsActiveSession(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
 	defer func() {
 		_ = supervisor.Close()
@@ -282,8 +282,30 @@ func TestSupervisorRestartRejectsActiveSession(t *testing.T) {
 		t.Fatalf("StartResolved error: %v", err)
 	}
 
-	if _, err := supervisor.Restart(ctx, id); err == nil {
-		t.Fatal("expected error for Restart on active session, got nil")
+	if _, err := supervisor.Restart(ctx, id); err != nil {
+		t.Fatalf("Restart active session error: %v", err)
+	}
+}
+
+func TestSupervisorEnsureRunningSuspendedAndRemove(t *testing.T) {
+	supervisor := New(testSupervisorDeps())
+	defer supervisor.Close()
+	id, _, err := supervisor.StartResolved(context.Background(), testRuntimeDefinition(), session.SuspendAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.EnsureRunning(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Stop(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	waitForSupervisorState(t, supervisor, id, session.Suspended)
+	if err := supervisor.Remove(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Get(context.Background(), id); err == nil {
+		t.Fatal("removed session remained observable")
 	}
 }
 

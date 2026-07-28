@@ -35,6 +35,9 @@ func IPCHandler(
 			return daemon(ctx, method, payload)
 		case contract.MethodSessionStartOneShot,
 			contract.MethodSessionStop,
+			contract.MethodSessionEnsureRunning,
+			contract.MethodSessionRestart,
+			contract.MethodSessionRemove,
 			contract.MethodSessionGet,
 			contract.MethodSessionList:
 			return sessions(ctx, method, payload)

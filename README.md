@@ -12,7 +12,7 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 `v0.1.0-alpha.1` 是面向 Windows amd64 的首个 Alpha。仓库已经实现并自动验证：
 
 - CLI/daemon 状态通信骨架；
-- `auth start/status/stop/list` 一次性认证命令、`profile list`、Windows 隐藏密码输入和
+- `auth start/status/stop/list/restart/remove` 认证命令、retained Session ensure-running、`profile list`、Windows 隐藏密码输入和
   `--password-stdin`；
 - typed 一次性 Session 启动、停止、查询和安全列表，以及机构 Profile 安全摘要列表；
 - Session、Supervisor、网络快照分发与单活动 Session 规则；
@@ -85,8 +85,8 @@ IPC/CLI 命令。
 
 daemon 生命周期代码与自动验证已经完成，但这组新命令尚未重新进行 Windows 原生验证。
 停止与重启锁定最初探测到的精确 daemon generation；Linux 和 macOS 的进程控制仍明确
-不受支持。Work Package 4 的 Session ensure/restart/remove、WSS 和持久
-Configuration/Credentials 仍待后续完成。
+不受支持。Session ensure/restart/remove 已进入当前源码；WSS 和持久
+Configuration/Credentials 仍待后续完成，且该切片尚未完成 Windows 原生复核。
 
 ## 构建
 

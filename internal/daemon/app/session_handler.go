@@ -20,6 +20,9 @@ import (
 type sessionApplication interface {
 	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
+	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
+	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
+	RemoveSession(ctx context.Context, sessionID session.AuthenticationSessionID) error
 	GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	ListSessions(ctx context.Context) ([]session.Snapshot, error)
 }
@@ -39,6 +42,12 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 			return handleSessionStartOneShot(ctx, application, payload)
 		case contract.MethodSessionStop:
 			return handleSessionStop(ctx, application, payload)
+		case contract.MethodSessionEnsureRunning:
+			return handleSessionEnsureRunning(ctx, application, payload)
+		case contract.MethodSessionRestart:
+			return handleSessionRestart(ctx, application, payload)
+		case contract.MethodSessionRemove:
+			return handleSessionRemove(ctx, application, payload)
 		case contract.MethodSessionGet:
 			return handleSessionGet(ctx, application, payload)
 		case contract.MethodSessionList:
@@ -50,6 +59,45 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 			}
 		}
 	}
+}
+
+func handleSessionEnsureRunning(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	request, err := contract.DecodeSessionEnsureRunningPayload(payload)
+	if err != nil {
+		return nil, invalidArgumentError()
+	}
+	snapshot, err := application.EnsureSessionRunning(ctx, session.AuthenticationSessionID(request.SessionID))
+	if err != nil {
+		return nil, sessionError(err)
+	}
+	return encodeSessionResult(snapshot)
+}
+
+func handleSessionRestart(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	request, err := contract.DecodeSessionRestartPayload(payload)
+	if err != nil {
+		return nil, invalidArgumentError()
+	}
+	snapshot, err := application.RestartSession(ctx, session.AuthenticationSessionID(request.SessionID))
+	if err != nil {
+		return nil, sessionError(err)
+	}
+	return encodeSessionResult(snapshot)
+}
+
+func handleSessionRemove(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	request, err := contract.DecodeSessionRemovePayload(payload)
+	if err != nil {
+		return nil, invalidArgumentError()
+	}
+	if err := application.RemoveSession(ctx, session.AuthenticationSessionID(request.SessionID)); err != nil {
+		return nil, sessionError(err)
+	}
+	result, err := contract.MarshalSessionRemoveResult(contract.SessionRemoveResult{SessionID: request.SessionID, Status: "removed"})
+	if err != nil {
+		return nil, sessionError(err)
+	}
+	return result, nil
 }
 
 func handleSessionList(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {

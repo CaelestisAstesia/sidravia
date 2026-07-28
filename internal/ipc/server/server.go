@@ -47,13 +47,16 @@ const (
 // other method supplied by a peer is normalized to methodUnknown so an
 // arbitrary peer string can never reach the log.
 var allowedMethods = map[string]struct{}{
-	contract.MethodDaemonStatus:        {},
-	contract.MethodDaemonStop:          {},
-	contract.MethodSessionStartOneShot: {},
-	contract.MethodSessionStop:         {},
-	contract.MethodSessionGet:          {},
-	contract.MethodSessionList:         {},
-	contract.MethodProfileList:         {},
+	contract.MethodDaemonStatus:         {},
+	contract.MethodDaemonStop:           {},
+	contract.MethodSessionStartOneShot:  {},
+	contract.MethodSessionStop:          {},
+	contract.MethodSessionEnsureRunning: {},
+	contract.MethodSessionRestart:       {},
+	contract.MethodSessionRemove:        {},
+	contract.MethodSessionGet:           {},
+	contract.MethodSessionList:          {},
+	contract.MethodProfileList:          {},
 }
 
 // allowedErrorCodes are the only error_code values that may appear in logs.

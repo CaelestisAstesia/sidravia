@@ -18,6 +18,14 @@ import (
 	"github.com/coder/websocket"
 )
 
+func TestNormalizeRetainedSessionMethods(t *testing.T) {
+	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
+		if got := normalizeMethod(method); got != method {
+			t.Fatalf("normalizeMethod(%q) = %q", method, got)
+		}
+	}
+}
+
 const (
 	testToken = "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab"
 	testBuild = "dev"

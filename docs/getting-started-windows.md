@@ -168,6 +168,18 @@ $SessionID = 'session-1'
 
 列表包含完整账号名；daemon 重启后不会恢复旧 Session。
 
+当前源码还支持在不重新读取密码的情况下管理 retained Session：
+
+```powershell
+.\sidravia.exe auth start --session $SessionID
+.\sidravia.exe auth restart $SessionID
+.\sidravia.exe auth remove $SessionID
+```
+
+ensure 只保证同一 Session 正在运行；restart 是明确重启；remove 会等待在线 Session
+完成停止与清理后再删除。这些行为已有代码与自动验证设计，但尚未完成 Windows 原生或
+新增校园现场验证。
+
 认证成功时状态为：
 
 ```text
@@ -216,8 +228,8 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 本地 Profile 需要手动创建，尚无引导式配置界面。
 - 尚无持久认证配置、自动登录或 Windows Service。
-- 尚无 Session ensure/restart/remove、WSS、持久 Configuration/Credentials 或
-  Linux/macOS daemon 进程控制。
+- 尚无 WSS、持久 Configuration/Credentials 或 Linux/macOS daemon 进程控制；
+  Session ensure/restart/remove 已进入当前源码，但仍待 Windows 原生复核。
 - 简体中文 CLI 呈现、`NO_COLOR` 和重定向安全着色已加入；route-aware 多 IPv4 选择和
   自动化仍未完成。结构化 daemon 日志与 CLI 呈现的 Windows 原生尚未重新验证。
 - 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia

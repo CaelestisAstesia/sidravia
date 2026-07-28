@@ -527,3 +527,7 @@ func renderDaemonStopped() string {
 func renderDaemonRestarted() string {
 	return "守护进程：已重启（restarted）\n"
 }
+
+func renderSessionRemoved(result *contract.SessionRemoveResult) string {
+	return "Session 已删除：" + sanitizeDynamicText(result.SessionID) + "\n"
+}

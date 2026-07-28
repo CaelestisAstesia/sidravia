@@ -12,6 +12,16 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
+func TestParseAuthStartRetainedMode(t *testing.T) {
+	got, err := parseAuthStart([]string{"--session", "session-1"})
+	if err != nil || got.sessionID != "session-1" {
+		t.Fatalf("parse retained = %#v, %v", got, err)
+	}
+	if _, err := parseAuthStart([]string{"--session", "session-1", "--profile", "jlu"}); err == nil {
+		t.Fatal("mixed retained and one-shot mode accepted")
+	}
+}
+
 // testRuntimeInfo returns a RuntimeInfo that would pass contract.DecodeRuntimeInfo,
 // so behavior tests can treat it as a legitimate daemon bootstrap.
 func testRuntimeInfo(pid int) contract.RuntimeInfo {

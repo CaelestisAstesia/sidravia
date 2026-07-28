@@ -20,6 +20,21 @@ type fakeDaemonClient struct {
 	closeErr   error
 }
 
+func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		if method != contract.MethodSessionEnsureRunning || string(payload) != `{"sessionId":"session-1"}` {
+			t.Fatalf("call = %s %s", method, payload)
+		}
+		return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.readStdinPassword = func(io.Reader) (string, error) { t.Fatal("stdin password read"); return "", nil }
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { t.Fatal("interactive password read"); return "", nil }
+	if err := runAuthStart(authStartOptions{sessionID: "session-1"}, deps); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (client *fakeDaemonClient) Call(
 	_ context.Context,
 	method string,

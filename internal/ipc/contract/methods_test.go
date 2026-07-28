@@ -350,3 +350,19 @@ func TestMarshalDaemonStopResultIsStopping(t *testing.T) {
 		t.Errorf("daemon stop result = %s, want stopping status", data)
 	}
 }
+
+func TestRetainedSessionPayloadsAreStrict(t *testing.T) {
+	if got, err := DecodeSessionEnsureRunningPayload([]byte(`{"sessionId":"session-1"}`)); err != nil || got.SessionID != "session-1" {
+		t.Fatalf("ensure payload = %#v, %v", got, err)
+	}
+	if _, err := DecodeSessionRestartPayload([]byte(`{"sessionId":"session-1","extra":true}`)); err == nil {
+		t.Fatal("restart accepted unknown field")
+	}
+	if _, err := DecodeSessionRemovePayload([]byte(`null`)); err == nil {
+		t.Fatal("remove accepted null")
+	}
+	data, err := MarshalSessionRemoveResult(SessionRemoveResult{SessionID: "session-1", Status: "removed"})
+	if err != nil || string(data) != `{"sessionId":"session-1","status":"removed"}` {
+		t.Fatalf("remove result = %s, %v", data, err)
+	}
+}

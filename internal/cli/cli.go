@@ -16,7 +16,7 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-const rootUsageLine = "sidravia daemon status | sidravia daemon start [--log-level info|debug|trace] | sidravia daemon stop | sidravia daemon restart [--log-level info|debug|trace] | sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia profile list"
+const rootUsageLine = "sidravia daemon status | sidravia daemon start [--log-level info|debug|trace] | sidravia daemon stop | sidravia daemon restart [--log-level info|debug|trace] | sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth start --session <session-id> | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia auth restart <session-id> | sidravia auth remove <session-id> | sidravia profile list"
 
 const commandUsage = "用法：" + rootUsageLine
 
@@ -47,6 +47,7 @@ func WriteError(w io.Writer, err error) error {
 type authStartOptions struct {
 	profileID     string
 	username      string
+	sessionID     string
 	passwordStdin bool
 }
 
@@ -58,6 +59,8 @@ type commandDependencies struct {
 	authStart     func(authStartOptions) error
 	authStatus    func(string) error
 	authStop      func(string) error
+	authRestart   func(string) error
+	authRemove    func(string) error
 	authList      func() error
 	profileList   func() error
 	output        io.Writer
@@ -72,6 +75,8 @@ func defaultCommandDependencies() commandDependencies {
 		authStart:     authStart,
 		authStatus:    authStatus,
 		authStop:      authStop,
+		authRestart:   authRestart,
+		authRemove:    authRemove,
 		authList:      authList,
 		profileList:   profileList,
 		output:        os.Stdout,
@@ -189,6 +194,8 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		newAuthStartCommand(deps),
 		newSessionCommand("status", "显示 Session 状态", deps.authStatus),
 		newSessionCommand("stop", "停止 Session", deps.authStop),
+		newSessionCommand("restart", "重启 Session", deps.authRestart),
+		newSessionCommand("remove", "删除 Session", deps.authRemove),
 	)
 
 	profile := &cobra.Command{
@@ -303,12 +310,14 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia auth": {
 		description: "管理认证 Session。",
-		usage:       "sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id>",
+		usage:       "sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth start --session <session-id> | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia auth restart <session-id> | sidravia auth remove <session-id>",
 		children: []helpChild{
 			{"list", "列出 Session"},
 			{"start", "启动一次性认证 Session"},
 			{"status", "显示 Session 状态"},
 			{"stop", "停止 Session"},
+			{"restart", "重启 Session"},
+			{"remove", "删除 Session"},
 		},
 	},
 	"sidravia auth list": {
@@ -319,16 +328,18 @@ var helpSpecs = map[string]helpNode{
 		},
 	},
 	"sidravia auth start": {
-		description: "启动一次性认证 Session。",
-		usage:       "sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
+		description: "启动一次性认证 Session，或确保 retained Session 正在运行。",
+		usage:       "sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth start --session <session-id>",
 		options: []string{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
 			"--password-stdin：从 stdin 读取密码",
+			"--session <session-id>：确保 retained Session 正在运行",
 		},
 		examples: []string{
 			"sidravia auth start --profile jlu --username <username>",
 			"sidravia auth start --profile jlu --username <username> --password-stdin",
+			"sidravia auth start --session session-1",
 		},
 	},
 	"sidravia auth status": {
@@ -350,6 +361,18 @@ var helpSpecs = map[string]helpNode{
 		examples: []string{
 			"sidravia auth stop session-1",
 		},
+	},
+	"sidravia auth restart": {
+		description: "重启指定 retained Session。",
+		usage:       "sidravia auth restart <session-id>",
+		args:        []string{"<session-id>：Session ID"},
+		examples:    []string{"sidravia auth restart session-1"},
+	},
+	"sidravia auth remove": {
+		description: "停止并删除指定 retained Session。",
+		usage:       "sidravia auth remove <session-id>",
+		args:        []string{"<session-id>：Session ID"},
+		examples:    []string{"sidravia auth remove session-1"},
 	},
 	"sidravia profile": {
 		description: "查看机构 Profile。",
@@ -469,7 +492,7 @@ func newSessionCommand(name string, description string, operation func(string) e
 
 func parseAuthStart(args []string) (authStartOptions, error) {
 	var options authStartOptions
-	var profileSet, usernameSet, passwordStdinSet bool
+	var profileSet, usernameSet, sessionSet, passwordStdinSet bool
 
 	for index := 0; index < len(args); {
 		switch args[index] {
@@ -494,11 +517,24 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 			options.passwordStdin = true
 			passwordStdinSet = true
 			index++
+		case "--session":
+			if sessionSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
+				return authStartOptions{}, errCommandUsage
+			}
+			options.sessionID = args[index+1]
+			sessionSet = true
+			index += 2
 		default:
 			return authStartOptions{}, errCommandUsage
 		}
 	}
 
+	if sessionSet {
+		if profileSet || usernameSet || passwordStdinSet {
+			return authStartOptions{}, errCommandUsage
+		}
+		return options, nil
+	}
 	if !profileSet || !usernameSet {
 		return authStartOptions{}, errCommandUsage
 	}

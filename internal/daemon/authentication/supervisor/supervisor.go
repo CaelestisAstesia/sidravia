@@ -65,6 +65,9 @@ type managedSession struct {
 	actor       *session.AuthenticationSession
 	intent      session.Intent
 	state       sessionState
+	operationMu sync.Mutex
+	reserved    bool
+	stateChange chan struct{}
 	stopFwd     chan struct{}
 	stopFwdOnce sync.Once
 	forwardDone chan struct{} // closed when forward goroutine exits
@@ -104,7 +107,7 @@ func (s *Supervisor) StartResolved(
 
 	if intent == session.MaintainAuthentication {
 		for _, ms := range s.sessions {
-			if ms.state != stateStopped && ms.intent == session.MaintainAuthentication {
+			if (ms.state != stateStopped || ms.reserved) && ms.intent == session.MaintainAuthentication {
 				s.mu.Unlock()
 				return "", Snapshot{}, fmt.Errorf("another maintain_authentication session is active")
 			}
@@ -131,6 +134,7 @@ func (s *Supervisor) StartResolved(
 		actor:       actor,
 		intent:      intent,
 		state:       stateActive,
+		stateChange: make(chan struct{}),
 		stopFwd:     make(chan struct{}),
 		forwardDone: make(chan struct{}),
 	}
@@ -164,6 +168,13 @@ func (s *Supervisor) StartResolved(
 	if err != nil {
 		return "", Snapshot{}, s.rollbackNewSession(id, ms, fmt.Errorf("initial snapshot: %w", err))
 	}
+	if snapshot.State == session.Suspended {
+		s.mu.Lock()
+		if current, ok := s.sessions[id]; ok && current == ms {
+			ms.state = stateStopped
+		}
+		s.mu.Unlock()
+	}
 
 	return id, snapshot, nil
 }
@@ -188,9 +199,19 @@ func (s *Supervisor) rollbackNewSession(id ID, ms *managedSession, cause error) 
 
 // Stop suspends a session, keeping its SessionID and Snapshot.
 func (s *Supervisor) Stop(ctx context.Context, id ID) (Snapshot, error) {
+	ms, err := s.managed(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	ms.operationMu.Lock()
+	defer ms.operationMu.Unlock()
+	return s.stopManaged(ctx, id, ms)
+}
+
+func (s *Supervisor) stopManaged(ctx context.Context, id ID, ms *managedSession) (Snapshot, error) {
 	s.mu.Lock()
-	ms, ok := s.sessions[id]
-	if !ok {
+	current, ok := s.sessions[id]
+	if !ok || current != ms {
 		s.mu.Unlock()
 		return Snapshot{}, fmt.Errorf("session %q not found", id)
 	}
@@ -223,6 +244,16 @@ func (s *Supervisor) Stop(ctx context.Context, id ID) (Snapshot, error) {
 	return snapshot, nil
 }
 
+func (s *Supervisor) managed(id ID) (*managedSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ms, ok := s.sessions[id]
+	if !ok {
+		return nil, fmt.Errorf("session %q not found", id)
+	}
+	return ms, nil
+}
+
 func (s *Supervisor) reconcileStopError(id ID, managed *managedSession) {
 	snapshot, err := managed.actor.Snapshot(context.Background())
 	if err == nil {
@@ -243,55 +274,183 @@ func (s *Supervisor) reconcileStopError(id ID, managed *managedSession) {
 	}
 }
 
-// Restart resumes a suspended session if single-active admission allows.
+// EnsureRunning non-disruptively ensures that a retained session is active.
+func (s *Supervisor) EnsureRunning(ctx context.Context, id ID) (Snapshot, error) {
+	ms, err := s.managed(id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	ms.operationMu.Lock()
+	defer ms.operationMu.Unlock()
+
+	snapshot, err := ms.actor.Snapshot(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("snapshot session %q: %w", id, err)
+	}
+	if snapshot.State != session.Suspended && snapshot.State != session.Stopping {
+		return snapshot, nil
+	}
+	if err := s.reserveAdmission(id, ms); err != nil {
+		return Snapshot{}, err
+	}
+	defer s.releaseReservation(id, ms)
+	if snapshot.State == session.Stopping {
+		if err := s.waitStopped(ctx, id, ms); err != nil {
+			return Snapshot{}, err
+		}
+	}
+	snapshot, err = ms.actor.Activate(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("activate session %q: %w", id, err)
+	}
+	s.markActive(id, ms)
+	return snapshot, nil
+}
+
+// Restart deliberately restarts a retained session from every public state.
 func (s *Supervisor) Restart(ctx context.Context, id ID) (Snapshot, error) {
-	s.mu.Lock()
-	ms, ok := s.sessions[id]
-	if !ok {
-		s.mu.Unlock()
-		return Snapshot{}, fmt.Errorf("session %q not found", id)
+	ms, err := s.managed(id)
+	if err != nil {
+		return Snapshot{}, err
 	}
+	ms.operationMu.Lock()
+	defer ms.operationMu.Unlock()
 
-	if ms.state != stateStopped {
-		s.mu.Unlock()
-		return Snapshot{}, fmt.Errorf("session %q is not stopped", id)
+	snapshot, err := ms.actor.Snapshot(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("snapshot session %q: %w", id, err)
 	}
-
-	if ms.intent == session.MaintainAuthentication {
-		for otherID, other := range s.sessions {
-			if otherID == id {
-				continue
-			}
-			if other.state != stateStopped && other.intent == session.MaintainAuthentication {
-				s.mu.Unlock()
-				return Snapshot{}, fmt.Errorf("another maintain_authentication session is active")
+	if snapshot.State == session.Stopping || snapshot.State == session.Suspended {
+		if err := s.reserveAdmission(id, ms); err != nil {
+			return Snapshot{}, err
+		}
+		defer s.releaseReservation(id, ms)
+		if snapshot.State == session.Stopping {
+			if err := s.waitStopped(ctx, id, ms); err != nil {
+				return Snapshot{}, err
 			}
 		}
 	}
-	ms.state = stateStarting
-	s.mu.Unlock()
-
-	snapshot, err := ms.actor.Restart(ctx)
+	snapshot, err = ms.actor.Restart(ctx)
 	if err != nil {
-		s.mu.Lock()
-		ms.state = stateStopped
-		s.mu.Unlock()
 		return Snapshot{}, fmt.Errorf("restart session %q: %w", id, err)
 	}
-
-	s.mu.Lock()
-	ms.state = stateActive
-	s.mu.Unlock()
-
+	s.markActive(id, ms)
 	return snapshot, nil
+}
+
+// Remove stops, shuts down and forgets a retained session atomically.
+func (s *Supervisor) Remove(ctx context.Context, id ID) error {
+	ms, err := s.managed(id)
+	if err != nil {
+		return err
+	}
+	ms.operationMu.Lock()
+	defer ms.operationMu.Unlock()
+	if err := s.reserveAdmission(id, ms); err != nil {
+		return err
+	}
+	defer s.releaseReservation(id, ms)
+
+	snapshot, err := ms.actor.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("snapshot session %q: %w", id, err)
+	}
+	if snapshot.State != session.Suspended {
+		if snapshot.State != session.Stopping {
+			if _, err := s.stopManaged(ctx, id, ms); err != nil {
+				return err
+			}
+		}
+		if err := s.waitStopped(ctx, id, ms); err != nil {
+			return err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := ms.actor.Shutdown(context.Background()); err != nil {
+		return fmt.Errorf("shutdown session %q: %w", id, err)
+	}
+	ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
+	<-ms.forwardDone
+	s.mu.Lock()
+	if current, ok := s.sessions[id]; ok && current == ms {
+		delete(s.sessions, id)
+	}
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Supervisor) reserveAdmission(id ID, ms *managedSession) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.sessions[id]
+	if !ok || current != ms {
+		return fmt.Errorf("session %q not found", id)
+	}
+	if ms.intent == session.MaintainAuthentication {
+		for otherID, other := range s.sessions {
+			if otherID != id && other.intent == session.MaintainAuthentication &&
+				(other.state != stateStopped || other.reserved) {
+				return fmt.Errorf("another maintain_authentication session is active")
+			}
+		}
+	}
+	ms.reserved = true
+	return nil
+}
+
+func (s *Supervisor) releaseReservation(id ID, ms *managedSession) {
+	s.mu.Lock()
+	if current, ok := s.sessions[id]; ok && current == ms {
+		ms.reserved = false
+	}
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) markActive(id ID, ms *managedSession) {
+	s.mu.Lock()
+	if current, ok := s.sessions[id]; ok && current == ms {
+		ms.state = stateActive
+	}
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) waitStopped(ctx context.Context, id ID, ms *managedSession) error {
+	for {
+		s.mu.Lock()
+		current, ok := s.sessions[id]
+		if !ok || current != ms {
+			s.mu.Unlock()
+			return fmt.Errorf("session %q not found", id)
+		}
+		if ms.state == stateStopped {
+			s.mu.Unlock()
+			return nil
+		}
+		changed := ms.stateChange
+		s.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // ForgetStopped removes a stopped session from memory and shuts it down.
 // Returns an error if the session is still active.
 func (s *Supervisor) ForgetStopped(id ID) error {
+	ms, err := s.managed(id)
+	if err != nil {
+		return err
+	}
+	ms.operationMu.Lock()
+	defer ms.operationMu.Unlock()
 	s.mu.Lock()
-	ms, ok := s.sessions[id]
-	if !ok {
+	current, ok := s.sessions[id]
+	if !ok || current != ms {
 		s.mu.Unlock()
 		return fmt.Errorf("session %q not found", id)
 	}
@@ -428,6 +587,8 @@ func (s *Supervisor) observeStoppedRevision(id ID, managed *managedSession, snap
 	current, exists := s.sessions[id]
 	if exists && current == managed && managed.state == stateStopping {
 		managed.state = stateStopped
+		close(managed.stateChange)
+		managed.stateChange = make(chan struct{})
 	}
 }
 

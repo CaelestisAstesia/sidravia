@@ -12,6 +12,13 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
+func TestRenderSessionRemovedSanitizesID(t *testing.T) {
+	got := renderSessionRemoved(&contract.SessionRemoveResult{SessionID: "session-1\nescape"})
+	if got != "Session 已删除：session-1�escape\n" {
+		t.Fatalf("removed output = %q", got)
+	}
+}
+
 // staticEnviron is a deterministic termenv.Environ for capability tests. It
 // never touches the developer's real terminal environment.
 type staticEnviron struct {

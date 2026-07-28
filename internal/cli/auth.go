@@ -74,8 +74,23 @@ func authStop(sessionID string) error {
 	return runAuthStop(sessionID, defaultAuthDependencies())
 }
 
+func authRestart(sessionID string) error {
+	return runAuthRestart(sessionID, defaultAuthDependencies())
+}
+
+func authRemove(sessionID string) error {
+	return runAuthRemove(sessionID, defaultAuthDependencies())
+}
+
 func runAuthStart(options authStartOptions, deps authDependencies) error {
 	return withAuthClient(deps, func(connection daemonClient) error {
+		if options.sessionID != "" {
+			result, err := callSession(deps, connection, contract.MethodSessionEnsureRunning, contract.SessionEnsureRunningPayload{SessionID: options.sessionID})
+			if err != nil {
+				return err
+			}
+			return writeSessionResult(deps.stdout, result)
+		}
 		var password string
 		var err error
 		if options.passwordStdin {
@@ -101,6 +116,43 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			return err
 		}
 		return writeSessionResult(deps.stdout, result)
+	})
+}
+
+func runAuthRestart(sessionID string, deps authDependencies) error {
+	return withAuthClient(deps, func(connection daemonClient) error {
+		result, err := callSession(deps, connection, contract.MethodSessionRestart, contract.SessionRestartPayload{SessionID: sessionID})
+		if err != nil {
+			return err
+		}
+		return writeSessionResult(deps.stdout, result)
+	})
+}
+
+func runAuthRemove(sessionID string, deps authDependencies) error {
+	return withAuthClient(deps, func(connection daemonClient) error {
+		rawPayload, err := json.Marshal(contract.SessionRemovePayload{SessionID: sessionID})
+		if err != nil {
+			return wrapSafeOperation("编码 Session 请求", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		response, err := connection.Call(ctx, contract.MethodSessionRemove, rawPayload)
+		if err != nil {
+			return wrapSafeOperation("调用 Session 操作", err)
+		}
+		if !response.OK {
+			code := ""
+			if response.Error != nil {
+				code = response.Error.Code
+			}
+			return errors.New(ipcErrorText(code))
+		}
+		result, err := decodeSessionRemoveResult(response.Result)
+		if err != nil {
+			return wrapSafeOperation("解码 Session 响应", err)
+		}
+		return writeSessionRemoveResult(deps.stdout, result)
 	})
 }
 
@@ -194,7 +246,11 @@ func callSession(
 		return contract.SessionResult{}, wrapSafeOperation("编码 Session 请求", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), deps.connection.callTimeout)
+	timeout := deps.connection.callTimeout
+	if method == contract.MethodSessionEnsureRunning || method == contract.MethodSessionRestart {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	response, err := connection.Call(ctx, method, rawPayload)
 	if err != nil {
@@ -213,6 +269,28 @@ func callSession(
 		return contract.SessionResult{}, wrapSafeOperation("解码 Session 响应", err)
 	}
 	return result, nil
+}
+
+func decodeSessionRemoveResult(data []byte) (contract.SessionRemoveResult, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var result contract.SessionRemoveResult
+	if err := decoder.Decode(&result); err != nil {
+		return contract.SessionRemoveResult{}, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return contract.SessionRemoveResult{}, fmt.Errorf("Session 删除结果之后存在多余数据")
+	}
+	if result.SessionID == "" || result.Status != "removed" {
+		return contract.SessionRemoveResult{}, fmt.Errorf("Session 删除结果无效")
+	}
+	return result, nil
+}
+
+func writeSessionRemoveResult(output io.Writer, result contract.SessionRemoveResult) error {
+	p := newPresentation(output)
+	return wrapSafeOperation("写入 Session 删除响应", p.complete(renderSessionRemoved(&result)))
 }
 
 func decodeSessionResult(data []byte) (contract.SessionResult, error) {

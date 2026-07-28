@@ -59,11 +59,14 @@ const (
 
 // Method names for one-shot Session operations.
 const (
-	MethodSessionStartOneShot = "session.startOneShot"
-	MethodSessionStop         = "session.stop"
-	MethodSessionGet          = "session.get"
-	MethodSessionList         = "session.list"
-	MethodProfileList         = "profile.list"
+	MethodSessionStartOneShot  = "session.startOneShot"
+	MethodSessionStop          = "session.stop"
+	MethodSessionEnsureRunning = "session.ensureRunning"
+	MethodSessionRestart       = "session.restart"
+	MethodSessionRemove        = "session.remove"
+	MethodSessionGet           = "session.get"
+	MethodSessionList          = "session.list"
+	MethodProfileList          = "profile.list"
 )
 
 // DecodeEmptyPayload accepts exactly one empty JSON object.
@@ -97,6 +100,23 @@ type SessionStopPayload struct {
 // SessionGetPayload is the typed payload for a session.get request.
 type SessionGetPayload struct {
 	SessionID string `json:"sessionId"`
+}
+
+type SessionEnsureRunningPayload struct {
+	SessionID string `json:"sessionId"`
+}
+
+type SessionRestartPayload struct {
+	SessionID string `json:"sessionId"`
+}
+
+type SessionRemovePayload struct {
+	SessionID string `json:"sessionId"`
+}
+
+type SessionRemoveResult struct {
+	SessionID string `json:"sessionId"`
+	Status    string `json:"status"`
 }
 
 // DecodeSessionStartOneShotPayload strictly decodes a session.startOneShot
@@ -147,6 +167,40 @@ func DecodeSessionGetPayload(data []byte) (SessionGetPayload, error) {
 		return SessionGetPayload{}, fmt.Errorf("decode get payload: missing sessionId")
 	}
 	return payload, nil
+}
+
+func DecodeSessionEnsureRunningPayload(data []byte) (SessionEnsureRunningPayload, error) {
+	var payload SessionEnsureRunningPayload
+	if err := decodeSessionIDPayload(data, &payload, &payload.SessionID); err != nil {
+		return SessionEnsureRunningPayload{}, err
+	}
+	return payload, nil
+}
+
+func DecodeSessionRestartPayload(data []byte) (SessionRestartPayload, error) {
+	var payload SessionRestartPayload
+	if err := decodeSessionIDPayload(data, &payload, &payload.SessionID); err != nil {
+		return SessionRestartPayload{}, err
+	}
+	return payload, nil
+}
+
+func DecodeSessionRemovePayload(data []byte) (SessionRemovePayload, error) {
+	var payload SessionRemovePayload
+	if err := decodeSessionIDPayload(data, &payload, &payload.SessionID); err != nil {
+		return SessionRemovePayload{}, err
+	}
+	return payload, nil
+}
+
+func decodeSessionIDPayload(data []byte, payload any, sessionID *string) error {
+	if err := decodeStrict(data, payload); err != nil {
+		return err
+	}
+	if *sessionID == "" {
+		return fmt.Errorf("decode session payload: missing sessionId")
+	}
+	return nil
 }
 
 // decodeStrict decodes exactly one JSON value into target while rejecting
@@ -217,6 +271,14 @@ type SessionResult struct {
 
 // MarshalSessionResult encodes a SessionResult as JSON.
 func MarshalSessionResult(result SessionResult) (json.RawMessage, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+func MarshalSessionRemoveResult(result SessionRemoveResult) (json.RawMessage, error) {
 	data, err := json.Marshal(result)
 	if err != nil {
 		return nil, err

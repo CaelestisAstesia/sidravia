@@ -247,6 +247,11 @@ Ethernet、Hyper-V/WSL/Docker 内部接口和软件 VPN 不得仅因被报告为
 
 Supervisor 不读取 JSON、配置、凭据、文件路径或 ACL。未来如果产品需要多个并发 Session，应只扩展 Supervisor 的调度策略，不应重写 Session 模型。
 
+retained Session 的 ensure-running、restart 和 remove 也由 Supervisor 原子拥有。
+同一 ID 的 Stop/ensure/restart/remove/ForgetStopped 串行；`stopping` 期间的继续运行
+意图预留单活动准入并等待 `suspended`。remove 只在 actor、协议清理和 revision
+forwarder 全部退出且 ID 从集合删除后成功。
+
 ## 配置、凭据和持久化
 
 Configuration 文件只保存非秘密配置。Configuration 通过 `CredentialID` 引用 Credentials Store 中的记录。
@@ -374,6 +379,9 @@ stderr，关闭输入回显，读取一行，并在成功、失败或取消路�
 
 ```text
 sidravia auth start --profile <profile-id> --username <username>
+sidravia auth start --session <session-id>
+sidravia auth restart <session-id>
+sidravia auth remove <session-id>
 sidravia auth list
 sidravia auth status <session-id>
 sidravia auth stop <session-id>

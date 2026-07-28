@@ -55,6 +55,18 @@ func (fake *fakeSessionApplication) StopSession(ctx context.Context, sessionID s
 	return fake.snapshot, nil
 }
 
+func (fake *fakeSessionApplication) EnsureSessionRunning(context.Context, session.AuthenticationSessionID) (session.Snapshot, error) {
+	return fake.snapshot, fake.err
+}
+
+func (fake *fakeSessionApplication) RestartSession(context.Context, session.AuthenticationSessionID) (session.Snapshot, error) {
+	return fake.snapshot, fake.err
+}
+
+func (fake *fakeSessionApplication) RemoveSession(context.Context, session.AuthenticationSessionID) error {
+	return fake.err
+}
+
 func (fake *fakeSessionApplication) GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
 	fake.getCalls++
 	fake.lastGetID = sessionID

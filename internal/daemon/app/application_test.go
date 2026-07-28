@@ -19,6 +19,15 @@ import (
 	"sidravia/internal/daemon/environment"
 )
 
+func TestApplicationExposesRetainedLifecycleUseCases(t *testing.T) {
+	var ensure func(*Application, context.Context, session.AuthenticationSessionID) (session.Snapshot, error) = (*Application).EnsureSessionRunning
+	var restart func(*Application, context.Context, session.AuthenticationSessionID) (session.Snapshot, error) = (*Application).RestartSession
+	var remove func(*Application, context.Context, session.AuthenticationSessionID) error = (*Application).RemoveSession
+	if ensure == nil || restart == nil || remove == nil {
+		t.Fatal("retained lifecycle methods missing")
+	}
+}
+
 // --- Supervisor test deps ---
 
 type appUnavailableRetryPolicy struct{}

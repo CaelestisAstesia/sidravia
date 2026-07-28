@@ -133,6 +133,28 @@ func (application *Application) StopSession(ctx context.Context, sessionID sessi
 	return application.sup.Stop(ctx, sessionID)
 }
 
+func (application *Application) EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	return application.sup.EnsureRunning(ctx, sessionID)
+}
+
+func (application *Application) RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	return application.sup.Restart(ctx, sessionID)
+}
+
+func (application *Application) RemoveSession(ctx context.Context, sessionID session.AuthenticationSessionID) error {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	if err := application.sup.Remove(ctx, sessionID); err != nil {
+		return err
+	}
+	application.mu.Lock()
+	for configurationID := range application.sessionsByConfig {
+		application.removeSessionFromConfigLocked(configurationID, sessionID)
+	}
+	application.mu.Unlock()
+	return nil
+}
+
 func (application *Application) GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
 	return application.sup.Get(ctx, sessionID)
 }

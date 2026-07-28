@@ -48,6 +48,9 @@ ID、token、密码、凭据 ID、Profile JSON、协议上下文、MAC、DNS/DHC
 
 每个模块可以使用私有同步细节保护自己的状态。它不得把锁、channel 或可变指针暴露给其他模块共同管理。
 
+retained Session 生命周期操作必须由 Supervisor 按 ID 串行。等待 actor revision 或
+协议清理时不得持有 Supervisor map mutex；取消等待必须释放私有准入预留。
+
 ## 如何设计持久化
 
 持久化代码应先构造并验证完整候选内容，然后原子替换目标。如果写入失败，内存中的权威状态不得提前改变。

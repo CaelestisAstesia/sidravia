@@ -10,6 +10,14 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
+func TestIPCHandlerRetainedMethodNamesAreStable(t *testing.T) {
+	if contract.MethodSessionEnsureRunning != "session.ensureRunning" ||
+		contract.MethodSessionRestart != "session.restart" ||
+		contract.MethodSessionRemove != "session.remove" {
+		t.Fatal("retained method names changed")
+	}
+}
+
 func TestIPCHandlerRoutesStatusToStatusHandler(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
