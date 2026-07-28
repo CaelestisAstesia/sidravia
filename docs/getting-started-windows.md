@@ -28,6 +28,12 @@ Get-Content .\SHA256SUMS.txt
 Windows SmartScreen 可能提示这是未签名应用。只有从项目 GitHub Release 下载且哈希
 匹配时才继续。
 
+当前 `v0.1.0-alpha.1` 和提交 `81dfbdf` 的源码构建仍只使用 Windows 用户目录：
+Profile 位于 `%APPDATA%\Sidravia`，运行信息和后台日志位于
+`%LOCALAPPDATA%\Sidravia`。项目已经接受通过同目录 `sidravia.portable` 标记启用的
+便携版布局，但该能力尚未实现；现在手工创建标记不会改变路径。便携模式必须等对应代码
+和构建包发布后再使用。
+
 ## 安装吉林大学 Profile
 
 Profile 是不含账号和密码的本地机构配置。daemon 只在启动时加载一次。

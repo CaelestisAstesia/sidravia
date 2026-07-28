@@ -62,8 +62,7 @@ Operator Control 与完整诊断 Campaign 随后启动，首个工作包完成 C
 Work Package 3 完成 daemon 只读 status、Windows start、已提交响应驱动的 graceful stop
 和精确 generation restart，并提供确定的子进程日志环境。代码与自动验证和 Windows
 原生验证是分离状态；本切片尚未新增 Windows 原生或校园证据。Work Package 4 已实现
-retained Session ensure/restart/remove；自动验证与 Windows 原生验证分别报告。WSS、
-持久 Configuration/Credentials 和 Linux daemon 进程控制继续留待后续。
+retained Session ensure/restart/remove；自动验证与 Windows 原生验证分别报告。
 
 2026-07-28 的首次 Windows operator 检查确认进程 start/shutdown 与其余检查正常，同时
 发现生产 `daemon status` 仍误接冷启动链、根 help 拥挤且缺少普通 `help <path>`、CLI
@@ -71,6 +70,36 @@ retained Session ensure/restart/remove；自动验证与 Windows 原生验证分
 bare/help/`-h`/`--help` 的分层中文规格，并让 Windows 后台日志写入 LocalAppData、按
 10 MiB 保留唯一 `.1` 备份。修正代码与自动验证完成后仍需最小 Windows-native
 correction verification；这不扩大提交 `508197d` 的校园认证证据。
+
+## 已确认的后续顺序
+
+提交 `81dfbdf` 之后，当前大版本按以下顺序推进，每一步保持独立计划、独立提交和分开的
+验证声明：
+
+1. **运行目录与构建工作流。** 先实现 ADR 0020 的显式安装版/便携版解析，使 CLI 与
+   daemon 在同一模式下得到相同的 Profile、Configuration、Credential、运行信息和日志
+   路径；随后再补可复现的 Windows/Linux 构建与便携包脚本。便携模式不依赖 AppData，
+   安装模式继续使用操作系统用户目录。
+2. **持久 Configuration/Credentials 与 CLI 体验。** 完成配置的列出、创建、查看、
+   修改、删除以及按 ConfigurationID 启动；凭据每份只保存一个密码，允许创建、替换和
+   删除，但不提供明文读取。Windows 当前版本接受 ACL 保护的独立明文 JSON。交互使用
+   Cobra + termenv 上的轻量逐行向导，同时保留完整非交互参数，不引入全屏 TUI。
+3. **Linux/WSL 平台基线。** 在不分叉 domain core 的前提下实现 Linux 的运行目录、
+   daemon host/控制、终端密码输入、文件权限和基本 Environment Observer；WSL 作为
+   Linux 构建、IPC、配置、日志和 mock 运行的首个验证环境。WSL 中真实校园 D520 是否
+   可用由后续路由证据决定，不能由“能够启动”倒推。
+4. **网络诊断与选择修正。** 增加面向认证服务器目标地址的 route/source-IP 事实和
+   可解释诊断，再调查 Windows 热点/ICS、多 IPv4、WSL 与物理网卡的相互影响。不得仅凭
+   网卡显示名称黑名单解决选择问题。
+5. **文本与文档收敛。** 功能边界稳定后进行一次不改变功能代码的全局注释、用户文本、
+   README、快速开始和架构文档复核。
+
+WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大版本统一演进。持久凭据明确
+先于 WSS；当前回环 `ws://` 继续由随机 token 与精确 BuildID 鉴权，不增加自制应用层
+加密。GUI 与 CLI/daemon 共享产品版本，不建立独立升级节奏。
+
+第一个待实施的能力是“显式安装版/便携版运行目录”。它只统一路径解析和现有调用点，
+不同时实现持久凭据、构建脚本、Linux host 或网络选择，以保持单一可验证边界。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 
@@ -88,7 +117,7 @@ Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精
 | 2. 可运行骨架 | 完成：Windows 首轮现场通过；operator correction 待原生复核 | Windows 上 CLI 能显式启动 daemon，严格只读 status 能报告 stopped/running |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
-| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
+| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成；运行目录模式与持久 Configuration/Credential IPC 入口未实现 | 两种运行目录解析一致，Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
 | 6. Windows 产品纵向链路 | 完成：Windows/JLU 首轮现场通过 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
 | 7. 校园网络验证 | 首轮完成：扩大环境覆盖待进行 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
@@ -186,7 +215,11 @@ Windows 原生冷启动、热连接、认证状态查询、主动停止和运行
 尽力 Logout 的代码行为。一次性连接是永久产品能力，不是之后删除的临时接口。秘密不得
 出现在命令行参数、日志、Snapshot 或 Response。现有 Python mock 不作为完成门槛。
 
-阶段 5 再补齐 Configuration CRUD、Credential 写入/替换/删除和真实 Windows Environment Detector。按 `ConfigurationID` 启动与一次性启动必须生成同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作这些模块。daemon 仍不提供读取凭据明文的操作。
+阶段 5 先统一安装版/便携版运行目录，再补齐 Configuration CRUD、Credential
+写入/替换/删除。真实 Windows Environment Detector 已实现，但 destination-aware
+route/source-IP 事实仍待网络修正切片。按 `ConfigurationID` 启动与一次性启动必须生成
+同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作这些模块。daemon
+仍不提供读取凭据明文的操作。
 
 阶段 6 已将 typed Session handler、D520 Factory/Profile 和真实 Environment Detector
 接入生产 daemon，并补齐统一取消、等待和正常退出。CLI 安全密码输入及
@@ -201,4 +234,5 @@ authentication 命令也已完成；Windows 原生一次性认证纵向链路已
 
 ## 当前不做
 
-当前阶段不实现 GUI、多会话优先级、抢占、远程 IPC、事件历史、Windows Service、自动更新或没有现实故障证据的并发排列。
+当前阶段不实现全屏 TUI、WSS、GUI、多会话优先级、抢占、远程 IPC、事件历史、
+Windows Service、自动更新、更多协议包或没有现实故障证据的并发排列。

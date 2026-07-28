@@ -1,7 +1,8 @@
 # Sidravia
 
-Sidravia 是一个面向 Windows 的 Dr.COM 网络认证客户端。产品由短生命周期 CLI
-`sidravia` 和长期运行的本地 daemon `sidraviad` 组成：
+Sidravia 是一个目前首先在 Windows 上交付、并为 Linux/macOS 保留平台边界的
+Dr.COM 网络认证客户端。产品由短生命周期 CLI `sidravia` 和长期运行的本地 daemon
+`sidraviad` 组成：
 
 ```text
 sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
@@ -25,6 +26,8 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
   和安全属性白名单）。
 - `daemon status/start/stop/restart` 生命周期命令；生产 status 接入严格只读探测，
   Windows 后台子进程可用 `--log-level info|debug|trace` 指定确定的日志级别。
+- retained Session 的继续运行、重启和停止后删除；CLI 后台日志落盘、统一分层中文
+  Help，以及不泄漏控制字符的轻量终端呈现。
 
 提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
 选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
@@ -33,6 +36,11 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 
 长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
 [当前架构](docs/architecture.md)。
+
+当前代码仍使用操作系统用户目录：配置位于 `os.UserConfigDir()/Sidravia`，运行信息与
+后台日志位于 `os.UserCacheDir()/Sidravia`。下一实施切片将加入由
+`sidravia.portable` 显式启用的便携版目录；在该切片提交前，不应把便携模式描述成已经
+可用。
 
 ## 运行日志
 
@@ -92,6 +100,10 @@ daemon 命令为 `status/start/stop/restart`；Session 命令为
 交互式 `auth start` 在 stderr 显示 `密码： ` 提示并关闭回显；非交互式调用必须显式
 使用 `--password-stdin`。密码永不进入命令行、错误、普通输出或日志。
 
+当前大版本保持 Cobra + termenv 的轻量逐行交互，不引入全屏 TUI。持久配置入口需要的
+标题、字段、选择和确认会复用现有呈现与密码输入边界，同时为脚本保留完整的非交互参数
+形式；详见 [ADR 0021](docs/decisions/0021-lightweight-line-oriented-cli.md)。
+
 ## Windows Alpha 使用
 
 安装、创建本地 Profile、启动认证与停止认证见
@@ -102,8 +114,11 @@ daemon 命令为 `status/start/stop/restart`；Session 命令为
 本轮 operator correction 的代码与自动验证已经完成，但修正后的 status/help/后台日志
 尚未进行最小 Windows 原生复核。
 停止与重启锁定最初探测到的精确 daemon generation；Linux 和 macOS 的进程控制仍明确
-不受支持。Session ensure/restart/remove 已进入当前源码；WSS 和持久
-Configuration/Credentials 仍待后续完成，且该切片尚未完成 Windows 原生复核。
+不受支持。Session ensure/restart/remove 已进入当前源码。接下来的当前大版本顺序是：
+显式安装版/便携版目录、持久 Configuration/Credentials、Linux/WSL 基线、网络诊断与
+选择修正，最后统一修订文本和文档。WSS、IPC 长连接强化和 GUI 放在下一大版本；见
+[ADR 0020](docs/decisions/0020-explicit-installed-and-portable-layouts.md) 与
+[ADR 0022](docs/decisions/0022-credentials-before-ipc-transport-hardening.md)。
 
 ## 构建
 

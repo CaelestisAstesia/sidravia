@@ -60,6 +60,37 @@ typed IPC request -> IPC Handler -> daemon app -> domain module
 
 IPC 不是 Configuration、Credentials、Environment 或 Session 的共同控制器。
 
+## 运行目录模式
+
+产品接受两种显式运行目录模式。默认的安装版模式把配置、机构 Profile 与凭据放在
+`os.UserConfigDir()/Sidravia`，把运行信息和后台日志放在
+`os.UserCacheDir()/Sidravia`。便携版模式由可执行文件同目录的普通标记文件
+`sidravia.portable` 启用，并使用以下布局：
+
+```text
+<exe-dir>/
+  sidravia
+  sidraviad
+  sidravia.portable
+  config/
+    configurations.json
+    credentials.json
+    institution-profiles/
+  runtime/
+    runtime.json
+  logs/
+    sidraviad.log
+    sidraviad.log.1
+```
+
+CLI 与 daemon 必须经同一个平台边界独立解析出相同的绝对路径。解析不使用当前工作
+目录，不根据可写性猜测，不扫描另一种模式，也不自动迁移或回退。`daemon status`
+保持严格只读：它可以检查标记和读取运行信息，但不能因为路径解析创建目录或文件。具体
+决策见 ADR 0020。
+
+截至提交 `81dfbdf`，生产代码仍只实现安装版的操作系统用户目录；上述便携版布局是已经
+接受、等待下一实施切片落地的契约，不是当前可用能力。
+
 ## 状态由谁负责
 
 每项可变状态只能有一个权威所有者。
@@ -127,9 +158,11 @@ Windows 认证仍必须使用 Environment Detector。
 9. 创建真实 Windows Environment Observer；
 10. 最后进入 host、Observer 和网络快照转交的共同运行期。
 
-配置根目录是 `<os.UserConfigDir()>/Sidravia`。首版在该目录使用
-`configurations.json`、`credentials.json` 和 `institution-profiles/`。Settings Store
-和自动连接尚未接入这条一次性认证链路。
+组合根通过统一运行目录解析边界获得 Profile、Configuration、Credential 和运行信息的
+绝对路径，再把路径交给各模块。模块不自行判断安装版或便携版。截至提交 `81dfbdf`，
+实现仍直接使用 `<os.UserConfigDir()>/Sidravia` 与
+`<os.UserCacheDir()>/Sidravia`；下一切片负责迁移到该边界。Settings Store 和自动连接
+尚未接入这条一次性认证链路。
 
 运行期由组合根统一拥有三个并发活动：
 
@@ -191,9 +224,12 @@ Trace 数据报记录含 `session_id` 而协议运行本身不知道它。诊断
 
 logger 的 sink 仍是 stderr TextHandler。用户直接运行 `sidraviad.exe` 时 stderr
 保持前台可见；Windows CLI launcher 真正创建后台子进程时拥有输出文件句柄，把 child
-stdout/stderr 都重定向到 `<UserCacheDir>/Sidravia/logs/sidraviad.log`，并在启动前按
-10 MiB 阈值轮转为唯一 `.1` 备份。launcher 的文件所有权不改变 logger、事件、等级或
-隐私契约，也不增加日志 IPC/CLI 命令。详见 ADR 0019。
+stdout/stderr 都重定向到运行目录解析结果中的 `logs/sidraviad.log`，并在启动前按
+10 MiB 阈值轮转为唯一 `.1` 备份。在当前已实现的安装版模式中，它等于
+`<UserCacheDir>/Sidravia/logs/sidraviad.log`；便携版实现后改为
+`<exe-dir>/logs/sidraviad.log`。launcher 的文件所有权不改变 logger、事件、等级或
+隐私契约，也不增加日志 IPC/CLI 命令。日志行为见 ADR 0019，目录选择由 ADR 0020
+补充。
 
 ## CLI 呈现边界
 
@@ -220,6 +256,11 @@ payload、凭据或原始终端环境值。命令令牌和 flag 不变；顶层�
 canonical help 规格，按固定顺序含描述、`用法`、`可用命令`、`参数`、`选项`、`示例`
 六段（适用时），每条用法独占缩进行且段间留一空行。`cmd/sidravia/main.go` 通过呈现
 边界打印静态中文错误前缀，不打印底层原因。
+
+持久 Configuration/Credentials 的引导交互仍留在这个呈现边界中，但采用短生命周期、
+逐行的私有构件，而不是全屏 TUI。当前大版本继续使用 Cobra 与 termenv；普通文本输入、
+枚举选择和确认必须把结果交给与非交互命令相同的 typed 用例，重定向时不得隐式进入
+向导。具体决策见 ADR 0021。
 
 ## Session 和 Supervisor
 
@@ -249,6 +290,14 @@ Ethernet、Hyper-V/WSL/Docker 内部接口和软件 VPN 不得仅因被报告为
 未来若加入显式手动绑定，可以单独决定是否允许选择虚拟接口，不改变自动模式的安全
 默认值。
 
+当前 Windows Environment Observer 已提供主机信息、接口名称与稳定 ID、Up 状态、
+wired/wireless、hardware/connector/filter/endpoint 分类、MAC、IPv4/前缀、网关、
+DNS、DHCP 以及单调 snapshot revision。这些事实足以保护当前物理接口自动候选规则，
+但还不是完整的跨平台和路由模型：它不包含面向认证服务器目标地址的路由、接口 metric、
+操作系统最终选择的源 IPv4，也没有 Linux/WSL observer 与 host 实现。Linux/WSL 基线
+应先复用平台无关模型并明确 Unsupported/可观察范围；热点、ICS、多 IPv4 和目标路由
+修正随后以新证据扩展 typed facts，不用网卡显示名称黑名单掩盖系统差异。
+
 Supervisor 不读取 JSON、配置、凭据、文件路径或 ACL。未来如果产品需要多个并发 Session，应只扩展 Supervisor 的调度策略，不应重写 Session 模型。
 
 retained Session 的 ensure-running、restart 和 remove 也由 Supervisor 原子拥有。
@@ -270,7 +319,10 @@ IPC 携带任意 Profile JSON 或覆盖系统网络事实。
 `jlu.json`，不追加 `campus` 等冗余后缀。daemon 只在启动时加载目录；本地编辑后重启
 daemon 生效，首版不监听目录也不热替换运行中的 Profile。
 
-Windows 首版允许 Credentials Store 在独立 JSON 文件中保存明文密码。SecureStore 必须把文件权限限制为当前用户和 SYSTEM。如果 SecureStore 无法建立所需 ACL，它不得留下新的明文目标文件。
+Windows 首版允许 Credentials Store 在独立 JSON 文件中保存明文密码。SecureStore
+必须把文件权限限制为当前用户和 SYSTEM。如果 SecureStore 无法建立所需 ACL，它不得
+留下新的明文目标文件。当前产品威胁边界不包含已获得同一操作系统用户权限的恶意代码；
+这不放宽密码不得进入命令行、日志、Snapshot、查询响应或错误文本的规则。
 
 持久化模块必须先构造完整候选内容，然后原子替换目标文件。如果磁盘写入失败，内存中的权威状态不得提前改变。
 
@@ -310,6 +362,11 @@ ID。列表切片完成代码与自动验证后仍需 Windows 原生复核。
 首版不提供通用 RPC、批处理、远程 IPC 或历史事件重放。
 
 上述配置、凭据、环境和 Session 方法都是 daemon app 应用用例的传输入口。IPC server 不直接依赖对应存储、Detector、Supervisor、Session 或协议包。
+
+当前大版本允许持久 Credential create/replace/delete 继续使用回环 `ws://`、随机 token
+和精确 BuildID，不增加自制应用层加密。WSS、并发请求、事件重连/重同步与 GUI 放在下一
+大版本的同一 IPC 演进阶段；GUI 与 CLI/daemon 共享产品版本和 BuildID，并继续只调用
+typed IPC。威胁边界和实施顺序见 ADR 0022。
 
 ## Windows host
 
