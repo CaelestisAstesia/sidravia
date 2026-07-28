@@ -599,7 +599,7 @@ func TestSessionDetailNetworkLineSeparator(t *testing.T) {
 	if err := p.write(renderSessionDetail(p, result)); err != nil {
 		t.Fatalf("write = %v", err)
 	}
-	want := "网络：Campus Ethernet - 192.0.2.25\n"
+	want := "网络：Campus Ethernet — 192.0.2.25\n"
 	if !strings.Contains(buf.String(), want) {
 		t.Errorf("network line = %q, want %q", buf.String(), want)
 	}
@@ -655,5 +655,17 @@ func TestWriteErrorCompletionPreservesRestoreFailure(t *testing.T) {
 	}
 	if err := p.complete(writeErrorLine(errors.New("boom"))); !errors.Is(err, restoreErr) {
 		t.Errorf("WriteError completion did not preserve restore failure: %v", err)
+	}
+}
+
+func TestDaemonLifecycleRenderers(t *testing.T) {
+	if got := renderDaemonStarted(); got != "守护进程：已启动（started）\n" {
+		t.Errorf("started = %q", got)
+	}
+	if got := renderDaemonStopped(); got != "守护进程：已停止（stopped）\n" {
+		t.Errorf("stopped = %q", got)
+	}
+	if got := renderDaemonRestarted(); got != "守护进程：已重启（restarted）\n" {
+		t.Errorf("restarted = %q", got)
 	}
 }

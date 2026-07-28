@@ -22,7 +22,7 @@ const statusTestToken = "test-token-0123456789abcdef0123456789abcdef0123456789ab
 func newStatusTestServer(t *testing.T, token string, handler server.Handler) *server.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv, err := server.NewServer(token, "dev", handler, logger)
+	srv, err := server.NewServer(token, "dev", handler, logger, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -196,6 +196,22 @@ func TestStatusHandlerSequentialRequests(t *testing.T) {
 		}
 		if resp.ID != "1" {
 			t.Errorf("call %d: response id mismatch", i)
+		}
+	}
+}
+
+// TestStatusHandlerRejectsNonEmptyPayload proves daemon.status is strictly
+// read-only and accepts only the canonical empty JSON object.
+func TestStatusHandlerRejectsNonEmptyPayload(t *testing.T) {
+	handler := StatusHandler("0.1.0-dev", "dev")
+	for _, payload := range []string{`null`, ``, `{"extra":"x"}`, `{} {}`, `[]`} {
+		_, cerr := handler(context.Background(), contract.MethodDaemonStatus, []byte(payload))
+		if cerr == nil {
+			t.Errorf("payload %q expected error", payload)
+			continue
+		}
+		if cerr.Code != contract.ErrorCodeInvalidArgument {
+			t.Errorf("payload %q code = %q, want invalid_argument", payload, cerr.Code)
 		}
 	}
 }

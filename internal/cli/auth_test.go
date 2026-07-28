@@ -426,7 +426,7 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 		"协议：protocol-1\n" +
 		"账号：account-name\n" +
 		"原因：没有可用网络（network_unavailable）\n" +
-		"网络：Campus Ethernet - 192.0.2.25\n" +
+		"网络：Campus Ethernet — 192.0.2.25\n" +
 		"认证时间：2026-07-26T10:11:12.123456789+08:00\n" +
 		"下次重试：2026-07-26T10:11:17.123456789+08:00\n" +
 		"最近失败：网络操作超时（network_timeout）\n" +
@@ -602,4 +602,20 @@ type zeroWriter struct {
 
 func (writer zeroWriter) Write([]byte) (int, error) {
 	return 0, writer.err
+}
+
+// TestAuthCommandsDoNotCallDaemonStop proves auth commands never invoke the
+// daemon.stop lifecycle method, which would stop the daemon out from under an
+// active Session.
+func TestAuthCommandsDoNotCallDaemonStop(t *testing.T) {
+	connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+		if method == contract.MethodDaemonStop {
+			t.Errorf("auth command must not call daemon.stop")
+		}
+		return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	if err := runAuthStatus("session-1", deps); err != nil {
+		t.Fatalf("runAuthStatus: %v", err)
+	}
 }

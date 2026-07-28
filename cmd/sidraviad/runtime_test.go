@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
+	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -258,7 +260,7 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	result, rpcErr := rt.handler(ctx, contract.MethodDaemonStatus, nil)
+	result, rpcErr := rt.handler(ctx, contract.MethodDaemonStatus, []byte(`{}`))
 	if rpcErr != nil {
 		t.Fatalf("daemon.status error: %v", rpcErr)
 	}
@@ -918,5 +920,69 @@ func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "fictional-password-9Z2") {
 		t.Fatalf("password leaked into diagnostics log:\n%s", buf.String())
+	}
+}
+
+// TestCompositionDaemonStopTriggersRuntimeShutdown proves a committed
+// daemon.stop response (written via the IPC server) signals the runtime-owned
+// stop channel, which cancels the child context and runs the existing graceful
+// shutdown path. The response reaches the client before shutdown begins.
+func TestCompositionDaemonStopTriggersRuntimeShutdown(t *testing.T) {
+	paths := testPaths(t)
+	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+	store := newInMemoryStore()
+	hostInfo := testHostInfo()
+	observer := newFakeObserver()
+	hostRunner := newFakeHostRunner()
+
+	rt, err := composeObjectGraph(
+		context.Background(), store, paths, hostInfo, observer, hostRunner.run,
+		"test-token", "1.0.0-test", "abc1234", discardLogger(),
+	)
+	if err != nil {
+		t.Fatalf("composeObjectGraph: %v", err)
+	}
+
+	httpServer := httptest.NewServer(rt.hostCfg.Handler)
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close()
+
+	for i := 0; i < 2; i++ {
+		resp, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage(`{}`))
+		if err != nil {
+			t.Fatalf("daemon.stop call %d: %v", i+1, err)
+		}
+		if !resp.OK {
+			t.Fatalf("daemon.stop error: %+v", resp.Error)
+		}
+		var stopResult contract.DaemonStopResult
+		if err := json.Unmarshal(resp.Result, &stopResult); err != nil {
+			t.Fatalf("unmarshal stop result: %v", err)
+		}
+		if stopResult.Status != "stopping" {
+			t.Errorf("status = %q, want stopping", stopResult.Status)
+		}
+	}
+	deadline := time.Now().Add(time.Second)
+	for len(rt.stopCh) == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := len(rt.stopCh); got != 1 {
+		t.Fatalf("pending stop signals = %d, want exactly 1", got)
+	}
+
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("runtime did not shut down cleanly after daemon.stop: %v", err)
 	}
 }

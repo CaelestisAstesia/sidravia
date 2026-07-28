@@ -10,12 +10,31 @@ import (
 // MethodDaemonStatus is the method name for daemon status queries.
 const MethodDaemonStatus = "daemon.status"
 
+// MethodDaemonStop is the method name for a committed daemon stop request.
+const MethodDaemonStop = "daemon.stop"
+
 // StatusResult is the result of a daemon.status request.
 type StatusResult struct {
 	ProductVersion string `json:"productVersion"`
 	BuildID        string `json:"buildId"`
 	PID            int    `json:"pid"`
 	Status         string `json:"status"`
+}
+
+// DaemonStopResult is the typed result of a daemon.stop request. The daemon
+// only acknowledges that stopping has begun; the client polls until the old
+// runtime generation is unreachable.
+type DaemonStopResult struct {
+	Status string `json:"status"`
+}
+
+// MarshalDaemonStopResult encodes a DaemonStopResult as JSON.
+func MarshalDaemonStopResult(result DaemonStopResult) (json.RawMessage, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
 }
 
 // MarshalStatusResult encodes a StatusResult as JSON.

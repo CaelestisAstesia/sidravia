@@ -316,6 +316,14 @@ CLI 只启动与自身位于同一目录的 `sidraviad.exe`。如果现有运行
 
 Service、管理员权限、登录前认证、系统通知和自动更新不属于当前切片。
 
+CLI 的 `daemon status` 只读取运行信息并探测其中描述的 generation，不启动、停止、
+删除或改写任何状态。`daemon stop` 与 `daemon restart` 把首次成功探测得到的 endpoint、
+token、BuildID 和 PID 作为不可变 generation，停止请求及后续不可达等待始终针对它。
+IPC server 只在成功响应完成编码并写入后调用构造时注入的 commit callback；组合根用
+容量为一的 channel 和 `sync.Once` 接收首个已提交的 `daemon.stop`，再拥有取消、等待
+和 Supervisor 清理。Windows CLI 启动同目录子进程，并为子进程设置唯一确定的
+`SIDRAVIA_LOG_LEVEL`；平台无关 CLI/domain 边界不复制 Windows 生命周期实现。
+
 ## 第一条产品验收链路
 
 产品先用一次性 typed 参数证明高风险核心链路：

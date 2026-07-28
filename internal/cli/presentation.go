@@ -359,7 +359,7 @@ func institutionDisplayName(profileID, displayName string) string {
 }
 
 // networkBindingText renders the selected network binding for humans: when a
-// friendly display name is present it shows "<friendly name> - <IPv4>",
+// friendly display name is present it shows "<friendly name> — <IPv4>",
 // otherwise only "<IPv4>". The machine InterfaceID stays in the DTO for machine
 // consumers but never appears in ordinary output.
 func networkBindingText(binding *contract.SessionNetworkBinding) string {
@@ -368,7 +368,7 @@ func networkBindingText(binding *contract.SessionNetworkBinding) string {
 	if name == "" {
 		return ipv4
 	}
-	return name + " - " + ipv4
+	return name + " — " + ipv4
 }
 
 // renderSessionDetail renders a complete Session detail block. Optional lines
@@ -511,4 +511,19 @@ func renderProfileList(p *presentation, result *contract.ProfileListResult) stri
 // wrapped cause is never printed; only the error's own message text is used.
 func writeErrorLine(err error) string {
 	return "sidravia：错误：" + sanitizeDynamicText(err.Error()) + "\n"
+}
+
+// renderDaemonStarted renders the fixed daemon started confirmation line.
+func renderDaemonStarted() string {
+	return "守护进程：已启动（started）\n"
+}
+
+// renderDaemonStopped renders the fixed daemon stopped confirmation line.
+func renderDaemonStopped() string {
+	return "守护进程：已停止（stopped）\n"
+}
+
+// renderDaemonRestarted renders the fixed daemon restarted confirmation line.
+func renderDaemonRestarted() string {
+	return "守护进程：已重启（restarted）\n"
 }

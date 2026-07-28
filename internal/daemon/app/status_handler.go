@@ -18,6 +18,14 @@ func StatusHandler(productVersion string, buildID string) func(ctx context.Conte
 				Message: "unsupported method",
 			}
 		}
+		// daemon.status is strictly read-only and accepts only the canonical
+		// empty JSON object. null, unknown fields and trailing data are rejected.
+		if err := contract.DecodeEmptyPayload(payload); err != nil {
+			return nil, &contract.Error{
+				Code:    contract.ErrorCodeInvalidArgument,
+				Message: "malformed daemon payload",
+			}
+		}
 
 		result, err := contract.MarshalStatusResult(contract.StatusResult{
 			ProductVersion: productVersion,

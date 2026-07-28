@@ -19,5 +19,6 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0013](0013-safe-operational-logging.md) | 安全的 daemon 运行日志 | Accepted |
 | [0014](0014-cli-presentation.md) | CLI 呈现边界 | Accepted |
 | [0015](0015-tiered-daemon-diagnostics.md) | 分层 daemon 诊断 | Accepted |
+| [0016](0016-daemon-lifecycle.md) | daemon 生命周期与精确 generation 控制 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。

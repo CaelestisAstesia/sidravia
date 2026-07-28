@@ -36,6 +36,11 @@ type authDependencies struct {
 	readInteractivePassword func(io.Reader, io.Writer) (string, error)
 }
 
+// defaultDaemonConnectionDependencies wires auth commands to the shared daemon
+// discovery chain. It reuses the same hot-connect, single cold-start, stale
+// recovery and fixed wait semantics as `daemon start`'s ensureDaemonRunning,
+// so auth commands never require a separate daemon launch and never call
+// daemon lifecycle methods such as daemon.stop.
 func defaultDaemonConnectionDependencies() daemonConnectionDependencies {
 	return daemonConnectionDependencies{
 		discovery: defaultDiscoveryDependencies(),

@@ -15,7 +15,7 @@ func TestIPCHandlerRoutesStatusToStatusHandler(t *testing.T) {
 	defer setup.cleanup()
 	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
 
-	result, cerr := handler(context.Background(), contract.MethodDaemonStatus, nil)
+	result, cerr := handler(context.Background(), contract.MethodDaemonStatus, []byte(`{}`))
 	if cerr != nil {
 		t.Fatalf("daemon.status error: %+v", cerr)
 	}

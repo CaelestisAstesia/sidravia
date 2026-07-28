@@ -115,6 +115,20 @@ Sidravia 首版不做日志轮转，也不提供日志 IPC/CLI 命令。
 `命令已迁移，请使用 sidravia daemon status`。不要把新命令用于旧 Alpha 二进制，也
 不要把旧命令当作当前构建的兼容别名。
 
+当前源码构建还提供：
+
+```powershell
+.\sidravia.exe daemon start --log-level info
+.\sidravia.exe daemon stop
+.\sidravia.exe daemon restart --log-level debug
+```
+
+`daemon status` 严格只读。`start` 和 `restart` 的 `--log-level` 接受 `info`、
+`debug`、`trace`，省略时确定使用 `info`；CLI 会移除继承环境中大小写不同的重复
+`SIDRAVIA_LOG_LEVEL`，再为 Windows 子进程设置唯一值。stop/restart 始终针对命令首次
+探测到的精确 daemon generation，不会因运行信息被替换而停止新的 generation。
+这组命令已有代码与自动验证，但尚未重新完成 Windows 原生验证。
+
 当前源码构建还可以确认 daemon 实际加载的机构 Profile：
 
 ```powershell
@@ -202,6 +216,8 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 本地 Profile 需要手动创建，尚无引导式配置界面。
 - 尚无持久认证配置、自动登录或 Windows Service。
+- 尚无 Session ensure/restart/remove、WSS、持久 Configuration/Credentials 或
+  Linux/macOS daemon 进程控制。
 - 简体中文 CLI 呈现、`NO_COLOR` 和重定向安全着色已加入；route-aware 多 IPv4 选择和
   自动化仍未完成。结构化 daemon 日志与 CLI 呈现的 Windows 原生尚未重新验证。
 - 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia

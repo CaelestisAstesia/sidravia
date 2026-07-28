@@ -57,7 +57,13 @@ Stop 幂等，清理失败只保留为 Session 私有诊断，不把本地 Sessi
 新输出行。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的
 校园现场证据范围；持久认证配置、引导式设置和交互式表单库仍在本 Campaign 之外。
 
-Operator Control 与完整诊断 Campaign 随后启动，首个工作包完成 CLI 信息契约：帮助规范扩展为固定的描述/用法/可用命令/参数/选项/示例六段（适用时段间空一行）；普通 Session 与 Profile 输出把内置 JLU 渲染为 `吉林大学（JLU）`；普通 Session 详情/列表不再显示 InterfaceID，网络行只显示 `<友好名称> - <IPv4>` 或仅 `<IPv4>`；公开 Snapshot 到 IPC 到 CLI 的 `AccountLabel`/`accountLabel` 全链路替换为 `AccountName`/`accountName`，`RuntimeDefinition.AccountName()` 返回完整用户名，不再脱敏。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
+Operator Control 与完整诊断 Campaign 随后启动，首个工作包完成 CLI 信息契约：帮助规范扩展为固定的描述/用法/可用命令/参数/选项/示例六段（适用时段间空一行）；普通 Session 与 Profile 输出把内置 JLU 渲染为 `吉林大学（JLU）`；普通 Session 详情/列表不再显示 InterfaceID，网络行只显示 `<友好名称> — <IPv4>` 或仅 `<IPv4>`；公开 Snapshot 到 IPC 到 CLI 的 `AccountLabel`/`accountLabel` 全链路替换为 `AccountName`/`accountName`，`RuntimeDefinition.AccountName()` 返回完整用户名，不再脱敏。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
+
+Work Package 3 完成 daemon 只读 status、Windows start、已提交响应驱动的 graceful stop
+和精确 generation restart，并提供确定的子进程日志环境。代码与自动验证和 Windows
+原生验证是分离状态；本切片尚未新增 Windows 原生或校园证据。Work Package 4 的
+Session ensure/restart/remove 仍冻结，WSS、持久 Configuration/Credentials 和 Linux
+daemon 进程控制继续留待后续。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 

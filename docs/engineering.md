@@ -1,5 +1,10 @@
 # Sidravia 工程实践
 
+daemon 生命周期测试必须分别证明只读探测、成功响应写入后的 commit 顺序、首个 stop
+信号不丢失且重复提交不阻塞，以及 stop/restart 始终使用首次探测的精确 generation。
+子进程环境测试使用显式 parent slice，大小写不敏感地移除重复日志变量，并证明不修改
+调用者输入。
+
 本文规定代码层面的设计、错误处理、并发和测试实践。具体系统结构由
 `docs/architecture.md` 负责。
 

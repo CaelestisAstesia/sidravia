@@ -23,6 +23,8 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 - Windows JSON 文件 ACL 与原子持久化基础；
 - 安全结构化 daemon 运行日志（stderr TextHandler、稳定事件码、固定简体中文消息
   和安全属性白名单）。
+- `daemon status/start/stop/restart` 生命周期命令；状态探测严格只读，Windows 启动
+  子进程可用 `--log-level info|debug|trace` 指定确定的日志级别。
 
 提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
 选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
@@ -80,6 +82,11 @@ IPC/CLI 命令。
 [Windows Alpha 快速开始](docs/getting-started-windows.md)。本版本仍有明确限制：
 没有 GUI、安装器、Windows Service、自动更新、持久认证配置管理或多活动 Session；
 它适合愿意使用 PowerShell 并能自行保留原网络客户端作为回退的测试者。
+
+daemon 生命周期代码与自动验证已经完成，但这组新命令尚未重新进行 Windows 原生验证。
+停止与重启锁定最初探测到的精确 daemon generation；Linux 和 macOS 的进程控制仍明确
+不受支持。Work Package 4 的 Session ensure/restart/remove、WSS 和持久
+Configuration/Credentials 仍待后续完成。
 
 ## 构建
 

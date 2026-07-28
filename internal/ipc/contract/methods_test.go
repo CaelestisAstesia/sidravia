@@ -340,3 +340,13 @@ func TestMarshalProfileListResultContainsOnlySafeSummaryFields(t *testing.T) {
 		}
 	}
 }
+
+func TestMarshalDaemonStopResultIsStopping(t *testing.T) {
+	data, err := MarshalDaemonStopResult(DaemonStopResult{Status: "stopping"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(data) != `{"status":"stopping"}` {
+		t.Errorf("daemon stop result = %s, want stopping status", data)
+	}
+}

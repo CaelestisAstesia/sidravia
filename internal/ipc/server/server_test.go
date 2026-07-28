@@ -87,12 +87,16 @@ func waitForChannel(t *testing.T, ch <-chan struct{}, name string) {
 }
 
 func newTestServer(t *testing.T, handler Handler, buf *safeBuffer) (*Server, string) {
-	return newTestServerWithLevel(t, handler, buf, slog.LevelDebug)
+	return newTestServerWithCallback(t, handler, buf, slog.LevelDebug, nil)
 }
 
 func newTestServerWithLevel(t *testing.T, handler Handler, buf *safeBuffer, level slog.Level) (*Server, string) {
+	return newTestServerWithCallback(t, handler, buf, level, nil)
+}
+
+func newTestServerWithCallback(t *testing.T, handler Handler, buf *safeBuffer, level slog.Level, callback func(string)) (*Server, string) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLoggerWithLevel(buf, level))
+	srv, err := NewServer(testToken, testBuild, handler, newTestLoggerWithLevel(buf, level), callback)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -161,7 +165,7 @@ func TestNewServerRejectsNilDependencies(t *testing.T) {
 		{"nil logger", testToken, testBuild, handler, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := NewServer(tc.token, tc.buildID, tc.handler, tc.logger); err == nil {
+			if _, err := NewServer(tc.token, tc.buildID, tc.handler, tc.logger, nil); err == nil {
 				t.Fatal("NewServer expected error for nil/empty dependency")
 			}
 		})
@@ -474,7 +478,7 @@ func TestExistingIPCResponsesUnchanged(t *testing.T) {
 
 func newTrackedTestServer(t *testing.T, handler Handler, buf *safeBuffer) (string, <-chan net.Conn) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf))
+	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf), nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -491,7 +495,7 @@ func newTrackedTestServer(t *testing.T, handler Handler, buf *safeBuffer) (strin
 // to the websocket URL, for tests that drive the HTTP layer directly.
 func newTestServerWithHTTP(t *testing.T, handler Handler, buf *safeBuffer) (*Server, *httptest.Server, string) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf))
+	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf), nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -499,4 +503,75 @@ func newTestServerWithHTTP(t *testing.T, handler Handler, buf *safeBuffer) (*Ser
 	t.Cleanup(httpServer.Close)
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
 	return srv, httpServer, wsURL
+}
+
+// TestResponseCommittedFiresAfterSuccessWrite proves the committed callback
+// fires only after a success response is written, with the raw request method.
+func TestResponseCommittedFiresAfterSuccessWrite(t *testing.T) {
+	var buf safeBuffer
+	handler := func(_ context.Context, method string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
+		return json.RawMessage(`{}`), nil
+	}
+	var mu sync.Mutex
+	committed := []string{}
+	_, wsURL := newTestServerWithCallback(t, handler, &buf, slog.LevelDebug, func(method string) {
+		mu.Lock()
+		defer mu.Unlock()
+		committed = append(committed, method)
+	})
+	conn := dial(t, wsURL)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	writeRequest(t, conn, "1", contract.MethodDaemonStatus, json.RawMessage(`{}`))
+	readResponse(t, conn)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(committed)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(committed) != 1 || committed[0] != contract.MethodDaemonStatus {
+		t.Errorf("committed = %v, want [daemon.status]", committed)
+	}
+}
+
+// TestResponseCommittedNotFiredOnRejectedRequest proves a rejected request
+// (handler error) never fires the committed callback, since the response is
+// not a success.
+func TestResponseCommittedNotFiredOnRejectedRequest(t *testing.T) {
+	var buf safeBuffer
+	handler := func(_ context.Context, _ string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
+		return nil, &contract.Error{Code: contract.ErrorCodeSessionOperationFailed, Message: "fail"}
+	}
+	var mu sync.Mutex
+	fired := false
+	_, wsURL := newTestServerWithCallback(t, handler, &buf, slog.LevelDebug, func(string) {
+		mu.Lock()
+		defer mu.Unlock()
+		fired = true
+	})
+	conn := dial(t, wsURL)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	writeRequest(t, conn, "1", contract.MethodSessionGet, json.RawMessage(`{"sessionId":"s1"}`))
+	readResponse(t, conn)
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := fired
+		mu.Unlock()
+		if got {
+			t.Fatal("responseCommitted fired for rejected request")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if fired {
+		t.Fatal("responseCommitted must not fire for rejected request")
+	}
 }

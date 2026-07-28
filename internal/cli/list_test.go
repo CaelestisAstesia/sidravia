@@ -201,3 +201,19 @@ type listErrorWriter struct {
 func (writer listErrorWriter) Write([]byte) (int, error) {
 	return 0, writer.err
 }
+
+// TestListCommandsDoNotCallDaemonStop proves list commands never invoke the
+// daemon.stop lifecycle method.
+func TestListCommandsDoNotCallDaemonStop(t *testing.T) {
+	connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+		if method == contract.MethodDaemonStop {
+			t.Errorf("list command must not call daemon.stop")
+		}
+		data, _ := contract.MarshalSessionListResult(contract.SessionListResult{})
+		return contract.NewSuccessResponse("1", data), nil
+	}}
+	var output bytes.Buffer
+	if err := runAuthList(hotListDependencies(t, connection, &output)); err != nil {
+		t.Fatalf("runAuthList: %v", err)
+	}
+}

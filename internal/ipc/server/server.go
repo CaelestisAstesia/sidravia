@@ -48,6 +48,7 @@ const (
 // arbitrary peer string can never reach the log.
 var allowedMethods = map[string]struct{}{
 	contract.MethodDaemonStatus:        {},
+	contract.MethodDaemonStop:          {},
 	contract.MethodSessionStartOneShot: {},
 	contract.MethodSessionStop:         {},
 	contract.MethodSessionGet:          {},
@@ -73,11 +74,17 @@ type Server struct {
 	buildID string
 	handler Handler
 	logger  *slog.Logger
+	// responseCommitted is invoked after a success response has been written
+	// successfully. It is the only hook by which a daemon.stop success reaches
+	// runtime lifecycle: a failed encode/write never invokes it. The callback
+	// receives the raw request method, which the composition maps to lifecycle
+	// semantics; the server itself knows nothing about daemon lifecycle.
+	responseCommitted func(method string)
 }
 
 // NewServer constructs an IPC server. It validates every required dependency
 // and returns an error instead of accepting nil or panicking.
-func NewServer(token string, buildID string, handler Handler, logger *slog.Logger) (*Server, error) {
+func NewServer(token string, buildID string, handler Handler, logger *slog.Logger, responseCommitted func(string)) (*Server, error) {
 	if token == "" {
 		return nil, errors.New("ipc server: token is required")
 	}
@@ -91,10 +98,11 @@ func NewServer(token string, buildID string, handler Handler, logger *slog.Logge
 		return nil, errors.New("ipc server: logger is required")
 	}
 	return &Server{
-		token:   token,
-		buildID: buildID,
-		handler: handler,
-		logger:  logger,
+		token:             token,
+		buildID:           buildID,
+		handler:           handler,
+		logger:            logger,
+		responseCommitted: responseCommitted,
 	}, nil
 }
 
@@ -210,6 +218,12 @@ func (s *Server) serveConn(ctx context.Context, conn *websocket.Conn) {
 				slog.String("event", eventIPCRequestCompleted),
 				slog.String("method", normalizeMethod(method)),
 			)
+			// The success response has been written successfully; notify the
+			// committed hook only now, so a daemon.stop client receives its
+			// response before the daemon begins shutting down.
+			if s.responseCommitted != nil {
+				s.responseCommitted(method)
+			}
 		}
 	}
 }

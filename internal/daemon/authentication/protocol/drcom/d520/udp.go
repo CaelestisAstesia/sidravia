@@ -93,6 +93,7 @@ func (ex *udpExchange) roundTrip(
 	}()
 
 	diagnostics.PhaseEvent(phase, phaseBoundaryBegin)
+	defer diagnostics.PhaseEvent(phase, phaseBoundaryEnd)
 	diagnostics.DatagramEvent(phase, protocol.DatagramDirectionTx, request)
 	if _, err := ex.conn.Write(request); err != nil {
 		return nil, udpReadFailure(ctx, "udp exchange write", err)
@@ -111,7 +112,6 @@ func (ex *udpExchange) roundTrip(
 			return nil, responseInvalidError("udp exchange response", classifyErr)
 		}
 		if class == responseAccept {
-			diagnostics.PhaseEvent(phase, phaseBoundaryEnd)
 			return datagram, nil
 		}
 		// responseIgnore: discard the stale datagram and keep reading against

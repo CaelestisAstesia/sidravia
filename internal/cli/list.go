@@ -61,6 +61,8 @@ func runProfileList(deps listDependencies) error {
 	})
 }
 
+// callList sends the canonical empty JSON object for a list method. List
+// commands are read-only queries and never call daemon lifecycle methods.
 func callList(connection daemonClient, timeout time.Duration, method string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

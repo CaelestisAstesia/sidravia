@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"sidravia/internal/daemon/app"
 	"sidravia/internal/daemon/authentication/protocol"
@@ -19,6 +20,7 @@ import (
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
 )
 
@@ -32,12 +34,14 @@ const (
 	eventDaemonRuntimeFailed    = "daemon_runtime_failed"
 	eventDaemonRuntimeStopped   = "daemon_runtime_stopped"
 	eventNetworkSnapshotApplied = "network_snapshot_applied"
+	eventDaemonStopRequested    = "daemon_stop_requested"
 
 	msgDaemonStartFailed      = "守护进程启动失败"
 	msgDaemonRuntimeStarted   = "守护进程运行已启动"
 	msgDaemonRuntimeFailed    = "守护进程运行失败"
 	msgDaemonRuntimeStopped   = "守护进程运行已停止"
 	msgNetworkSnapshotApplied = "网络快照已应用"
+	msgDaemonStopRequested    = "守护进程停止请求已提交"
 )
 
 type defaultPaths struct {
@@ -66,6 +70,7 @@ type composedRuntime struct {
 	logger         *slog.Logger
 	productVersion string
 	buildID        string
+	stopCh         chan struct{}
 }
 
 type runtimeActivity uint8
@@ -233,7 +238,18 @@ func composeObjectGraph(
 	}
 
 	handler := app.IPCHandler(application, productVersion, buildID)
-	srv, err := server.NewServer(token, buildID, handler, logger)
+	stopCh := make(chan struct{}, 1)
+	var stopOnce sync.Once
+	srv, err := server.NewServer(token, buildID, handler, logger, func(method string) {
+		// A committed daemon.stop success response has been written to the
+		// client. Signal the runtime-owned stop channel once and
+		// non-blockingly; the runtime then cancels its child context and runs
+		// the existing graceful shutdown path. The server knows nothing about
+		// daemon lifecycle semantics.
+		if method == contract.MethodDaemonStop {
+			stopOnce.Do(func() { stopCh <- struct{}{} })
+		}
+	})
 	if err != nil {
 		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create ipc server: %w", err))
 	}
@@ -256,6 +272,7 @@ func composeObjectGraph(
 		logger:         logger,
 		productVersion: productVersion,
 		buildID:        buildID,
+		stopCh:         stopCh,
 	}, nil
 }
 
@@ -319,6 +336,12 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		inspectRemaining = true
+	case <-rt.stopCh:
+		// A committed daemon.stop response has been written to the client. Begin
+		// graceful shutdown: cancel the child context so host/observer/delivery
+		// exit, then close and wait for Supervisor through the existing path.
+		rt.logger.Info(msgDaemonStopRequested, slog.String("event", eventDaemonStopRequested))
+		inspectRemaining = false
 	case result := <-results:
 		received = 1
 		initiator = classifyRuntimeResult(ctx, result)

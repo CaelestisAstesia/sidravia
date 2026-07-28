@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,7 +16,7 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-const rootUsageLine = "sidravia daemon status | sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia profile list"
+const rootUsageLine = "sidravia daemon status | sidravia daemon start [--log-level info|debug|trace] | sidravia daemon stop | sidravia daemon restart [--log-level info|debug|trace] | sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia profile list"
 
 const commandUsage = "用法：" + rootUsageLine
 
@@ -52,24 +51,30 @@ type authStartOptions struct {
 }
 
 type commandDependencies struct {
-	status      func() error
-	authStart   func(authStartOptions) error
-	authStatus  func(string) error
-	authStop    func(string) error
-	authList    func() error
-	profileList func() error
-	output      io.Writer
+	status        func() error
+	daemonStart   func(logLevel string) error
+	daemonStop    func() error
+	daemonRestart func(logLevel string) error
+	authStart     func(authStartOptions) error
+	authStatus    func(string) error
+	authStop      func(string) error
+	authList      func() error
+	profileList   func() error
+	output        io.Writer
 }
 
 func defaultCommandDependencies() commandDependencies {
 	return commandDependencies{
-		status:      status,
-		authStart:   authStart,
-		authStatus:  authStatus,
-		authStop:    authStop,
-		authList:    authList,
-		profileList: profileList,
-		output:      os.Stdout,
+		status:        status,
+		daemonStart:   daemonStart,
+		daemonStop:    daemonStop,
+		daemonRestart: daemonRestart,
+		authStart:     authStart,
+		authStatus:    authStatus,
+		authStop:      authStop,
+		authList:      authList,
+		profileList:   profileList,
+		output:        os.Stdout,
 	}
 }
 
@@ -143,14 +148,19 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 			return errCommandUsage
 		},
 	}
-	daemon.AddCommand(&cobra.Command{
-		Use:   "status",
-		Short: "显示 daemon 状态",
-		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return wrapCommandOperation(deps.status())
+	daemon.AddCommand(
+		&cobra.Command{
+			Use:   "status",
+			Short: "显示 daemon 状态",
+			Args:  cobra.NoArgs,
+			RunE: func(*cobra.Command, []string) error {
+				return wrapCommandOperation(deps.status())
+			},
 		},
-	})
+		newDaemonLogLevelCommand("start", "启动本地 daemon", deps.daemonStart),
+		newListCommand("stop", "停止本地 daemon", deps.daemonStop),
+		newDaemonLogLevelCommand("restart", "重启本地 daemon", deps.daemonRestart),
+	)
 
 	retiredStatus := &cobra.Command{
 		Use:    "status",
@@ -247,9 +257,12 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia daemon": {
 		description: "管理本地 daemon 进程。",
-		usage:       "sidravia daemon status",
+		usage:       "sidravia daemon status | sidravia daemon start [--log-level info|debug|trace] | sidravia daemon stop | sidravia daemon restart [--log-level info|debug|trace]",
 		children: []helpChild{
 			{"status", "显示 daemon 状态"},
+			{"start", "启动本地 daemon"},
+			{"stop", "停止本地 daemon"},
+			{"restart", "重启本地 daemon"},
 		},
 	},
 	"sidravia daemon status": {
@@ -257,6 +270,35 @@ var helpSpecs = map[string]helpNode{
 		usage:       "sidravia daemon status",
 		examples: []string{
 			"sidravia daemon status",
+		},
+	},
+	"sidravia daemon start": {
+		description: "启动本地 daemon 进程。",
+		usage:       "sidravia daemon start [--log-level info|debug|trace]",
+		options: []string{
+			"--log-level info|debug|trace：子进程日志级别，默认 info",
+		},
+		examples: []string{
+			"sidravia daemon start",
+			"sidravia daemon start --log-level debug",
+		},
+	},
+	"sidravia daemon stop": {
+		description: "停止本地 daemon 进程。",
+		usage:       "sidravia daemon stop",
+		examples: []string{
+			"sidravia daemon stop",
+		},
+	},
+	"sidravia daemon restart": {
+		description: "重启本地 daemon 进程。",
+		usage:       "sidravia daemon restart [--log-level info|debug|trace]",
+		options: []string{
+			"--log-level info|debug|trace：子进程日志级别，默认 info",
+		},
+		examples: []string{
+			"sidravia daemon restart",
+			"sidravia daemon restart --log-level trace",
 		},
 	},
 	"sidravia auth": {
@@ -463,6 +505,48 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 	return options, nil
 }
 
+func newDaemonLogLevelCommand(name string, description string, operation func(logLevel string) error) *cobra.Command {
+	return &cobra.Command{
+		Use:                name,
+		Short:              description,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if isHelpRequest(args) {
+				return wrapCommandOperation(renderHelpCompletion(cmd))
+			}
+			logLevel, err := parseDaemonLogLevel(args)
+			if err != nil {
+				return errCommandUsage
+			}
+			return wrapCommandOperation(operation(logLevel))
+		},
+	}
+}
+
+func parseDaemonLogLevel(args []string) (string, error) {
+	logLevel := ""
+	logLevelSet := false
+	for index := 0; index < len(args); {
+		switch args[index] {
+		case "--log-level":
+			if logLevelSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
+				return "", errCommandUsage
+			}
+			logLevel = args[index+1]
+			logLevelSet = true
+			index += 2
+		default:
+			return "", errCommandUsage
+		}
+	}
+	switch logLevel {
+	case "", "info", "debug", "trace":
+		return logLevel, nil
+	default:
+		return "", errCommandUsage
+	}
+}
+
 func parseSessionID(args []string) (string, error) {
 	if len(args) != 1 || args[0] == "" || strings.HasPrefix(args[0], "-") {
 		return "", errCommandUsage
@@ -616,7 +700,7 @@ func connectAndPrint(info contract.RuntimeInfo) error {
 	}
 	defer c.Close()
 
-	resp, err := c.Call(ctx, contract.MethodDaemonStatus, nil)
+	resp, err := c.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
 	if err != nil {
 		return err
 	}
@@ -646,15 +730,5 @@ func writeStatus(w io.Writer, resp contract.Response) error {
 }
 
 func startDaemon() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	dir := filepath.Dir(exe)
-	daemonPath := filepath.Join(dir, "sidraviad.exe")
-
-	cmd := exec.Command(daemonPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Start()
+	return launchDaemonProcess("")
 }

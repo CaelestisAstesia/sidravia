@@ -8,22 +8,22 @@ import (
 )
 
 // IPCHandler returns a transport-neutral handler that routes a fixed set of IPC
-// methods to the existing status, Session and Profile handlers. It performs no prefix
-// matching, reflection, arbitrary handler registration or generic RPC dispatch.
+// methods to the existing status, daemon, Session and Profile handlers. It
+// performs no prefix matching, reflection, arbitrary handler registration or
+// generic RPC dispatch.
 //
-// daemon.status is routed to StatusHandler; session.startOneShot, session.stop,
-// session.get and session.list are routed to SessionHandler; profile.list is
-// routed to ProfileHandler. Every other method returns
-// unknown_method with one static generic message. The handler never logs,
-// persists or reproduces a request payload or password.
-//
-// This composes handlers in memory only. It adds no WebSocket dependency and
-// does not modify internal/ipc/server or cmd/sidraviad.
+// daemon.status is routed to StatusHandler; daemon.stop is routed to
+// DaemonHandler; session.startOneShot, session.stop, session.get and
+// session.list are routed to SessionHandler; profile.list is routed to
+// ProfileHandler. Every other method returns unknown_method with one static
+// generic message. The handler never logs, persists or reproduces a request
+// payload or password.
 func IPCHandler(
 	application *Application,
 	productVersion, buildID string,
 ) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 	status := StatusHandler(productVersion, buildID)
+	daemon := DaemonHandler()
 	sessions := SessionHandler(application)
 	profiles := ProfileHandler(application)
 
@@ -31,6 +31,8 @@ func IPCHandler(
 		switch method {
 		case contract.MethodDaemonStatus:
 			return status(ctx, method, payload)
+		case contract.MethodDaemonStop:
+			return daemon(ctx, method, payload)
 		case contract.MethodSessionStartOneShot,
 			contract.MethodSessionStop,
 			contract.MethodSessionGet,

@@ -136,3 +136,38 @@ func TestRoundTripRecordsTxRxAndPhaseBoundaries(t *testing.T) {
 		t.Errorf("phase boundaries = %v, want begin..end", sink.phases)
 	}
 }
+
+func TestRoundTripEndsPhaseOnReadTimeout(t *testing.T) {
+	serverConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	if err != nil {
+		t.Fatalf("listen udp: %v", err)
+	}
+	defer serverConn.Close()
+	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
+	serverIP, ok := netip.AddrFromSlice(serverAddr.IP.To4())
+	if !ok {
+		t.Fatalf("cannot parse server IP %v", serverAddr.IP)
+	}
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, serverIP, uint16(serverAddr.Port))
+	if err != nil {
+		t.Fatalf("openUDPExchange: %v", err)
+	}
+	defer ex.close()
+
+	sink := &captureDiagnostics{}
+	_, failure := ex.roundTrip(
+		context.Background(),
+		10*time.Millisecond,
+		[]byte{0x01},
+		func([]byte) (exchangeResponse, error) { return responseAccept, nil },
+		phaseChallenge,
+		sink,
+	)
+	if failure == nil {
+		t.Fatal("roundTrip expected timeout failure")
+	}
+	want := []string{"challenge:begin", "challenge:end"}
+	if len(sink.phases) != len(want) || sink.phases[0] != want[0] || sink.phases[1] != want[1] {
+		t.Errorf("phase boundaries = %v, want %v", sink.phases, want)
+	}
+}
