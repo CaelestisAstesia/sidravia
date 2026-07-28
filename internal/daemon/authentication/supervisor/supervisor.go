@@ -347,7 +347,7 @@ func (s *Supervisor) Remove(ctx context.Context, id ID) error {
 	}
 	ms.operationMu.Lock()
 	defer ms.operationMu.Unlock()
-	if err := s.reserveAdmission(id, ms); err != nil {
+	if err := s.reserveDeletion(id, ms); err != nil {
 		return err
 	}
 	defer s.releaseReservation(id, ms)
@@ -379,6 +379,17 @@ func (s *Supervisor) Remove(ctx context.Context, id ID) error {
 		delete(s.sessions, id)
 	}
 	s.mu.Unlock()
+	return nil
+}
+
+func (s *Supervisor) reserveDeletion(id ID, ms *managedSession) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.sessions[id]
+	if !ok || current != ms {
+		return fmt.Errorf("session %q not found", id)
+	}
+	ms.reserved = true
 	return nil
 }
 

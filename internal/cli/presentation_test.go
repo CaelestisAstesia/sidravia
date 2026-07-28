@@ -19,6 +19,25 @@ func TestRenderSessionRemovedSanitizesID(t *testing.T) {
 	}
 }
 
+func TestSessionRemovedPlainAndForcedColorContracts(t *testing.T) {
+	result := &contract.SessionRemoveResult{SessionID: "session-1\x1b[2J\ninjected"}
+	block := renderSessionRemoved(result)
+	if block != "Session 已删除：session-1�[2J�injected\n" {
+		t.Fatalf("plain remove output=%q", block)
+	}
+	if strings.Count(block, "\n") != 1 || strings.ContainsRune(block, '\x1b') {
+		t.Fatalf("remove output allowed injection: %q", block)
+	}
+	var output bytes.Buffer
+	p := newTestPresentation(&output, termenv.ANSI)
+	if err := p.complete(block); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != block {
+		t.Fatalf("forced-color remove changed unstyled contract: %q", output.String())
+	}
+}
+
 // staticEnviron is a deterministic termenv.Environ for capability tests. It
 // never touches the developer's real terminal environment.
 type staticEnviron struct {

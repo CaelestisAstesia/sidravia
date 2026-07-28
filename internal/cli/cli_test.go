@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,59 @@ func TestParseAuthStartRetainedMode(t *testing.T) {
 	}
 	if _, err := parseAuthStart([]string{"--session", "session-1", "--profile", "jlu"}); err == nil {
 		t.Fatal("mixed retained and one-shot mode accepted")
+	}
+}
+
+func TestParseAuthStartRetainedRejectsMissingMixedAndDuplicateForms(t *testing.T) {
+	for _, args := range [][]string{
+		{"--session"},
+		{"--session", ""},
+		{"--session", "session-1", "--session", "session-2"},
+		{"--session", "session-1", "--username", "user"},
+		{"--session", "session-1", "--profile", "profile"},
+		{"--session", "session-1", "--password-stdin"},
+		{"--profile", "profile"},
+		{"--username", "user"},
+	} {
+		if _, err := parseAuthStart(args); err == nil {
+			t.Fatalf("accepted invalid retained start args: %q", args)
+		}
+	}
+}
+
+func TestRetainedCommandsDispatchAndHelpDoesNotDispatch(t *testing.T) {
+	var starts []authStartOptions
+	var restarts, removes []string
+	deps := commandDependencies{
+		authStart:   func(options authStartOptions) error { starts = append(starts, options); return nil },
+		authRestart: func(id string) error { restarts = append(restarts, id); return nil },
+		authRemove:  func(id string) error { removes = append(removes, id); return nil },
+		output:      io.Discard,
+	}
+	for _, args := range [][]string{
+		{"auth", "start", "--session", "session-1"},
+		{"auth", "restart", "session-1"},
+		{"auth", "remove", "session-1"},
+	} {
+		if err := runCommand(args, deps); err != nil {
+			t.Fatalf("%q: %v", args, err)
+		}
+	}
+	if len(starts) != 1 || starts[0].sessionID != "session-1" || len(restarts) != 1 || restarts[0] != "session-1" || len(removes) != 1 || removes[0] != "session-1" {
+		t.Fatalf("dispatch starts=%#v restarts=%v removes=%v", starts, restarts, removes)
+	}
+	for _, args := range [][]string{
+		{"auth", "--help"},
+		{"auth", "start", "--help"},
+		{"auth", "restart", "--help"},
+		{"auth", "remove", "--help"},
+	} {
+		if err := runCommand(args, deps); err != nil {
+			t.Fatalf("help %q: %v", args, err)
+		}
+	}
+	if len(starts) != 1 || len(restarts) != 1 || len(removes) != 1 {
+		t.Fatal("help dispatched an operation")
 	}
 }
 

@@ -19,12 +19,48 @@ import (
 	"sidravia/internal/daemon/environment"
 )
 
-func TestApplicationExposesRetainedLifecycleUseCases(t *testing.T) {
-	var ensure func(*Application, context.Context, session.AuthenticationSessionID) (session.Snapshot, error) = (*Application).EnsureSessionRunning
-	var restart func(*Application, context.Context, session.AuthenticationSessionID) (session.Snapshot, error) = (*Application).RestartSession
-	var remove func(*Application, context.Context, session.AuthenticationSessionID) error = (*Application).RemoveSession
-	if ensure == nil || restart == nil || remove == nil {
-		t.Fatal("retained lifecycle methods missing")
+func TestApplicationRemovePersistedSessionClearsTrackingButKeepsConfiguration(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	id, _, err := setup.application.StartAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.StopSession(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, id, session.Suspended)
+	if err := setup.application.RemoveSession(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	setup.application.mu.Lock()
+	tracked := append([]session.AuthenticationSessionID(nil), setup.application.sessionsByConfig["configuration-1"]...)
+	setup.application.mu.Unlock()
+	if len(tracked) != 0 {
+		t.Fatalf("persisted Session remained tracked: %v", tracked)
+	}
+	if _, err := setup.catalog.Get(ctx, "configuration-1"); err != nil {
+		t.Fatalf("Configuration removed with Session: %v", err)
+	}
+}
+
+func TestApplicationRemoveOneShotDoesNotCreateConfigurationTracking(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	id, _, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.application.RemoveSession(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	setup.application.mu.Lock()
+	tracked := len(setup.application.sessionsByConfig)
+	setup.application.mu.Unlock()
+	if tracked != 0 {
+		t.Fatalf("one-shot removal changed Configuration tracking: %d entries", tracked)
 	}
 }
 

@@ -27,6 +27,12 @@ type fakeSessionApplication struct {
 	lastGetID      session.AuthenticationSessionID
 	getCalls       int
 	listCalls      int
+	lastEnsureID   session.AuthenticationSessionID
+	ensureCalls    int
+	lastRestartID  session.AuthenticationSessionID
+	restartCalls   int
+	lastRemoveID   session.AuthenticationSessionID
+	removeCalls    int
 }
 
 func (fake *fakeSessionApplication) ListSessions(context.Context) ([]session.Snapshot, error) {
@@ -55,16 +61,68 @@ func (fake *fakeSessionApplication) StopSession(ctx context.Context, sessionID s
 	return fake.snapshot, nil
 }
 
-func (fake *fakeSessionApplication) EnsureSessionRunning(context.Context, session.AuthenticationSessionID) (session.Snapshot, error) {
+func (fake *fakeSessionApplication) EnsureSessionRunning(_ context.Context, id session.AuthenticationSessionID) (session.Snapshot, error) {
+	fake.ensureCalls++
+	fake.lastEnsureID = id
 	return fake.snapshot, fake.err
 }
 
-func (fake *fakeSessionApplication) RestartSession(context.Context, session.AuthenticationSessionID) (session.Snapshot, error) {
+func (fake *fakeSessionApplication) RestartSession(_ context.Context, id session.AuthenticationSessionID) (session.Snapshot, error) {
+	fake.restartCalls++
+	fake.lastRestartID = id
 	return fake.snapshot, fake.err
 }
 
-func (fake *fakeSessionApplication) RemoveSession(context.Context, session.AuthenticationSessionID) error {
+func (fake *fakeSessionApplication) RemoveSession(_ context.Context, id session.AuthenticationSessionID) error {
+	fake.removeCalls++
+	fake.lastRemoveID = id
 	return fake.err
+}
+
+func TestSessionHandlerRoutesRetainedLifecycleMethods(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		check  func(*fakeSessionApplication) (int, session.AuthenticationSessionID)
+		want   string
+	}{
+		{contract.MethodSessionEnsureRunning, func(f *fakeSessionApplication) (int, session.AuthenticationSessionID) {
+			return f.ensureCalls, f.lastEnsureID
+		}, ""},
+		{contract.MethodSessionRestart, func(f *fakeSessionApplication) (int, session.AuthenticationSessionID) {
+			return f.restartCalls, f.lastRestartID
+		}, ""},
+		{contract.MethodSessionRemove, func(f *fakeSessionApplication) (int, session.AuthenticationSessionID) {
+			return f.removeCalls, f.lastRemoveID
+		}, `{"sessionId":"session-1","status":"removed"}`},
+	} {
+		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+		result, publicErr := SessionHandler(fake)(context.Background(), test.method, []byte(`{"sessionId":"session-1"}`))
+		if publicErr != nil {
+			t.Fatalf("%s: %v", test.method, publicErr)
+		}
+		calls, id := test.check(fake)
+		if calls != 1 || id != "session-1" {
+			t.Fatalf("%s routed calls=%d id=%q", test.method, calls, id)
+		}
+		if test.want != "" && string(result) != test.want {
+			t.Fatalf("%s result=%s", test.method, result)
+		}
+	}
+}
+
+func TestSessionHandlerRetainedFailureIsStatic(t *testing.T) {
+	const suppliedID = "secret-session-id"
+	const cause = "injected-cause-marker"
+	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
+		fake := &fakeSessionApplication{err: errors.New(cause)}
+		_, publicErr := SessionHandler(fake)(context.Background(), method, []byte(`{"sessionId":"`+suppliedID+`"}`))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeSessionOperationFailed || publicErr.Message != "session operation failed" {
+			t.Fatalf("%s error=%#v", method, publicErr)
+		}
+		if strings.Contains(publicErr.Message, suppliedID) || strings.Contains(publicErr.Message, cause) {
+			t.Fatalf("%s leaked failure material: %q", method, publicErr.Message)
+		}
+	}
 }
 
 func (fake *fakeSessionApplication) GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {

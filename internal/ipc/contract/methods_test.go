@@ -352,14 +352,35 @@ func TestMarshalDaemonStopResultIsStopping(t *testing.T) {
 }
 
 func TestRetainedSessionPayloadsAreStrict(t *testing.T) {
-	if got, err := DecodeSessionEnsureRunningPayload([]byte(`{"sessionId":"session-1"}`)); err != nil || got.SessionID != "session-1" {
-		t.Fatalf("ensure payload = %#v, %v", got, err)
+	decoders := []struct {
+		name   string
+		decode func([]byte) (string, error)
+	}{
+		{"ensure", func(data []byte) (string, error) {
+			got, err := DecodeSessionEnsureRunningPayload(data)
+			return got.SessionID, err
+		}},
+		{"restart", func(data []byte) (string, error) {
+			got, err := DecodeSessionRestartPayload(data)
+			return got.SessionID, err
+		}},
+		{"remove", func(data []byte) (string, error) {
+			got, err := DecodeSessionRemovePayload(data)
+			return got.SessionID, err
+		}},
 	}
-	if _, err := DecodeSessionRestartPayload([]byte(`{"sessionId":"session-1","extra":true}`)); err == nil {
-		t.Fatal("restart accepted unknown field")
-	}
-	if _, err := DecodeSessionRemovePayload([]byte(`null`)); err == nil {
-		t.Fatal("remove accepted null")
+	invalid := []string{"", "null", `{}`, `{"sessionId":""}`, `{"sessionId":"session-1","extra":true}`, `{"sessionId":"session-1"}{}`, `{"sessionId":"session-1"}!`}
+	for _, decoder := range decoders {
+		t.Run(decoder.name, func(t *testing.T) {
+			if id, err := decoder.decode([]byte(`{"sessionId":"session-1"}`)); err != nil || id != "session-1" {
+				t.Fatalf("valid payload id=%q err=%v", id, err)
+			}
+			for _, data := range invalid {
+				if _, err := decoder.decode([]byte(data)); err == nil {
+					t.Fatalf("accepted invalid payload %q", data)
+				}
+			}
+		})
 	}
 	data, err := MarshalSessionRemoveResult(SessionRemoveResult{SessionID: "session-1", Status: "removed"})
 	if err != nil || string(data) != `{"sessionId":"session-1","status":"removed"}` {

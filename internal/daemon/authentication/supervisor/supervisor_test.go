@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"sync"
 	"testing"
@@ -36,6 +37,36 @@ func (blockingRun) Execute(ctx context.Context, _ protocol.AuthenticationProtoco
 
 type heldCancellationFactory struct {
 	run *heldCancellationRun
+}
+
+type sequentialHeldFactory struct {
+	mu   sync.Mutex
+	runs []*heldCancellationRun
+}
+
+func (factory *sequentialHeldFactory) ProtocolID() protocol.AuthenticationProtocolID {
+	return "test-protocol"
+}
+func (factory *sequentialHeldFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+	return nil
+}
+func (factory *sequentialHeldFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+	return nil
+}
+func (factory *sequentialHeldFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	run := newHeldCancellationRun()
+	factory.runs = append(factory.runs, run)
+	return run, nil
+}
+func (factory *sequentialHeldFactory) run(index int) *heldCancellationRun {
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	if len(factory.runs) <= index {
+		return nil
+	}
+	return factory.runs[index]
 }
 
 func (heldCancellationFactory) ProtocolID() protocol.AuthenticationProtocolID {
@@ -306,6 +337,145 @@ func TestSupervisorEnsureRunningSuspendedAndRemove(t *testing.T) {
 	}
 	if _, err := supervisor.Get(context.Background(), id); err == nil {
 		t.Fatal("removed session remained observable")
+	}
+}
+
+func TestSupervisorRemoveStoppedWhileAnotherSessionActive(t *testing.T) {
+	supervisor := New(testSupervisorDeps())
+	defer func() {
+		_ = supervisor.Close()
+		supervisor.Wait()
+	}()
+	ctx := context.Background()
+
+	sessionA, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
+	if err != nil {
+		t.Fatalf("start Session A: %v", err)
+	}
+	if _, err := supervisor.Stop(ctx, sessionA); err != nil {
+		t.Fatalf("stop Session A: %v", err)
+	}
+	waitForSupervisorState(t, supervisor, sessionA, session.Suspended)
+
+	sessionB, before, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
+	if err != nil {
+		t.Fatalf("start Session B: %v", err)
+	}
+	if err := supervisor.Remove(ctx, sessionA); err != nil {
+		t.Fatalf("remove stopped Session A while Session B is active: %v", err)
+	}
+	if _, err := supervisor.Get(ctx, sessionA); err == nil {
+		t.Fatal("Get(Session A) succeeded after removal")
+	}
+	listed, err := supervisor.List(ctx)
+	if err != nil {
+		t.Fatalf("List after removal: %v", err)
+	}
+	if len(listed) != 1 || listed[0].AuthenticationSessionID != sessionB {
+		t.Fatalf("List after removal = %#v, want only Session B", listed)
+	}
+	after, err := supervisor.Get(ctx, sessionB)
+	if err != nil {
+		t.Fatalf("Get(Session B): %v", err)
+	}
+	if after.Revision != before.Revision || after.State != before.State {
+		t.Fatalf("Session B changed during removal: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestSupervisorStoppingEnsureWaitsAndHoldsAdmission(t *testing.T) {
+	supervisor := New(testSupervisorDeps())
+	defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	factory := &sequentialHeldFactory{}
+	definition := testRuntimeDefinition()
+	definition.AuthenticationProtocolFactory = factory
+	id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldRun *heldCancellationRun
+	for oldRun == nil {
+		oldRun = factory.run(0)
+	}
+	<-oldRun.started
+	if _, err := supervisor.Stop(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	<-oldRun.canceled
+	result := make(chan error, 1)
+	go func() { _, err := supervisor.EnsureRunning(ctx, id); result <- err }()
+	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err == nil {
+		t.Fatal("competing start stole admission during stopping ensure")
+	}
+	if factory.run(1) != nil {
+		t.Fatal("ensure started replacement before old cleanup exited")
+	}
+	close(oldRun.release)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	var replacement *heldCancellationRun
+	for replacement == nil {
+		replacement = factory.run(1)
+	}
+	close(replacement.release)
+}
+
+func TestSupervisorCanceledWaitingOperationsDoNotRunLater(t *testing.T) {
+	for _, operation := range []struct {
+		name string
+		call func(context.Context, *Supervisor, ID) error
+	}{
+		{"ensure", func(ctx context.Context, supervisor *Supervisor, id ID) error {
+			_, err := supervisor.EnsureRunning(ctx, id)
+			return err
+		}},
+		{"restart", func(ctx context.Context, supervisor *Supervisor, id ID) error {
+			_, err := supervisor.Restart(ctx, id)
+			return err
+		}},
+		{"remove", func(ctx context.Context, supervisor *Supervisor, id ID) error { return supervisor.Remove(ctx, id) }},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			supervisor := New(testSupervisorDeps())
+			defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+			ctx := context.Background()
+			if err := supervisor.ApplySystemNetworkSnapshot(ctx, supervisorUsableNetworkSnapshot(t, 1)); err != nil {
+				t.Fatal(err)
+			}
+			run := newHeldCancellationRun()
+			definition := testRuntimeDefinition()
+			definition.AuthenticationProtocolFactory = heldCancellationFactory{run: run}
+			id, _, err := supervisor.StartResolved(ctx, definition, session.MaintainAuthentication)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-run.started
+			if _, err := supervisor.Stop(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+			<-run.canceled
+			waitCtx, cancel := context.WithCancel(ctx)
+			result := make(chan error, 1)
+			go func() { result <- operation.call(waitCtx, supervisor, id) }()
+			cancel()
+			if err := <-result; !errors.Is(err, context.Canceled) {
+				t.Fatalf("waiting operation error=%v", err)
+			}
+			close(run.release)
+			suspended := waitForSupervisorState(t, supervisor, id, session.Suspended)
+			if suspended.State != session.Suspended {
+				t.Fatal("Session did not remain suspended")
+			}
+			if _, err := supervisor.Get(ctx, id); err != nil {
+				t.Fatalf("canceled operation deleted Session later: %v", err)
+			}
+		})
 	}
 }
 

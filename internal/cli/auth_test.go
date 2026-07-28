@@ -14,10 +14,11 @@ import (
 )
 
 type fakeDaemonClient struct {
-	callCount  int
-	closeCount int
-	call       func(string, json.RawMessage) (contract.Response, error)
-	closeErr   error
+	callCount   int
+	closeCount  int
+	call        func(string, json.RawMessage) (contract.Response, error)
+	callContext func(context.Context)
+	closeErr    error
 }
 
 func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
@@ -36,12 +37,97 @@ func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 }
 
 func (client *fakeDaemonClient) Call(
-	_ context.Context,
+	ctx context.Context,
 	method string,
 	payload json.RawMessage,
 ) (contract.Response, error) {
 	client.callCount++
+	if client.callContext != nil {
+		client.callContext(ctx)
+	}
 	return client.call(method, payload)
+}
+
+func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		run    func(string, authDependencies) error
+		result func(t *testing.T) contract.Response
+	}{
+		{"ensure", contract.MethodSessionEnsureRunning, func(id string, deps authDependencies) error {
+			return runAuthStart(authStartOptions{sessionID: id}, deps)
+		}, func(t *testing.T) contract.Response {
+			return successSessionResponse(t, minimalSessionResult("authenticated"))
+		}},
+		{"restart", contract.MethodSessionRestart, runAuthRestart, func(t *testing.T) contract.Response {
+			return successSessionResponse(t, minimalSessionResult("authenticating"))
+		}},
+		{"remove", contract.MethodSessionRemove, runAuthRemove, func(t *testing.T) contract.Response {
+			return contract.NewSuccessResponse("1", json.RawMessage(`{"sessionId":"session-1","status":"removed"}`))
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+				if method != test.method || string(payload) != `{"sessionId":"session-1"}` {
+					t.Fatalf("call=%s %s", method, payload)
+				}
+				return test.result(t), nil
+			}}
+			connection.callContext = func(ctx context.Context) {
+				deadline, ok := ctx.Deadline()
+				if !ok {
+					t.Fatal("operation context has no deadline")
+				}
+				remaining := time.Until(deadline)
+				if remaining < 29*time.Second || remaining > 31*time.Second {
+					t.Fatalf("operation deadline remaining=%v", remaining)
+				}
+			}
+			deps := hotAuthDependencies(t, connection)
+			if err := test.run("session-1", deps); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestDecodeSessionRemoveResultStrict(t *testing.T) {
+	valid, err := decodeSessionRemoveResult([]byte(`{"sessionId":"session-1","status":"removed"}`))
+	if err != nil || valid.SessionID != "session-1" {
+		t.Fatalf("valid remove result=%#v err=%v", valid, err)
+	}
+	for _, data := range []string{
+		`{"sessionId":"","status":"removed"}`,
+		`{"sessionId":"session-1","status":"wrong"}`,
+		`{"sessionId":"session-1","status":"removed","extra":true}`,
+		`{"sessionId":"session-1","status":"removed"}{}`,
+	} {
+		if _, err := decodeSessionRemoveResult([]byte(data)); err == nil {
+			t.Fatalf("accepted invalid remove result %s", data)
+		}
+	}
+}
+
+func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
+	transportCause := errors.New("transport-cause")
+	connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		return contract.Response{}, transportCause
+	}}
+	if err := runAuthRemove("session-1", hotAuthDependencies(t, connection)); !errors.Is(err, transportCause) {
+		t.Fatalf("transport cause not preserved: %v", err)
+	}
+
+	writeCause := errors.New("write-cause")
+	connection = &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		return contract.NewSuccessResponse("1", json.RawMessage(`{"sessionId":"session-1","status":"removed"}`)), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.stdout = zeroWriter{err: writeCause}
+	if err := runAuthRemove("session-1", deps); !errors.Is(err, writeCause) {
+		t.Fatalf("write cause not preserved: %v", err)
+	}
 }
 
 func (client *fakeDaemonClient) Close() error {

@@ -26,6 +26,32 @@ func TestNormalizeRetainedSessionMethods(t *testing.T) {
 	}
 }
 
+func TestRetainedSessionMethodsLogOnlyStableMethod(t *testing.T) {
+	var buf safeBuffer
+	const idMarker = "request-secret-marker"
+	const payloadMarker = "payload-secret-marker"
+	const causeMarker = "handler-cause-marker"
+	handler := func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
+		return json.RawMessage(`{"ok":true}`), nil
+	}
+	_, wsURL := newTestServer(t, handler, &buf)
+	conn := dial(t, wsURL)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
+		writeRequest(t, conn, idMarker, method, json.RawMessage(`{"sessionId":"`+payloadMarker+`"}`))
+		if response := readResponse(t, conn); !response.OK {
+			t.Fatalf("%s response=%#v", method, response)
+		}
+		waitForLogEvent(t, &buf, "method="+method)
+	}
+	output := buf.String()
+	for _, marker := range []string{idMarker, payloadMarker, causeMarker} {
+		if strings.Contains(output, marker) {
+			t.Fatalf("log leaked %q: %s", marker, output)
+		}
+	}
+}
+
 const (
 	testToken = "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab"
 	testBuild = "dev"

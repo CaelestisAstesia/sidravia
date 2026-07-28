@@ -10,11 +10,15 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-func TestIPCHandlerRetainedMethodNamesAreStable(t *testing.T) {
-	if contract.MethodSessionEnsureRunning != "session.ensureRunning" ||
-		contract.MethodSessionRestart != "session.restart" ||
-		contract.MethodSessionRemove != "session.remove" {
-		t.Fatal("retained method names changed")
+func TestIPCHandlerRoutesRetainedMethods(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := IPCHandler(setup.application, "version", "build")
+	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
+		_, publicErr := handler(context.Background(), method, []byte(`{}`))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument {
+			t.Fatalf("%s was not routed to SessionHandler: %#v", method, publicErr)
+		}
 	}
 }
 
