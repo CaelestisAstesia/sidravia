@@ -375,10 +375,10 @@ func TestPasswordPromptIsChinese(t *testing.T) {
 
 func TestHelpUsesChineseHeadingsAndCanonicalTree(t *testing.T) {
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 	var buf bytes.Buffer
 	deps.output = &buf
@@ -399,13 +399,22 @@ func TestHelpUsesChineseHeadingsAndCanonicalTree(t *testing.T) {
 	}
 }
 
+func TestHelpUsageLinesAreIndentedAndStyledOnlyByProfile(t *testing.T) {
+	var plain bytes.Buffer
+	p := newTestPresentation(&plain, termenv.Ascii)
+	lines := p.helpUsageLines([]string{"sidravia auth start one", "sidravia auth start two"})
+	if strings.Join(lines, "\n") != "用法：\n  sidravia auth start one\n  sidravia auth start two" {
+		t.Fatalf("usage lines = %#v", lines)
+	}
+}
+
 func TestStaticUsageDoesNotEchoInvalidMarkers(t *testing.T) {
 	err := Run([]string{"auth", "start", "--profile", "profile-marker", "--username", "user-marker", "--bogus"})
 	if err == nil {
 		t.Fatal("Run returned nil, want usage error")
 	}
-	if !strings.HasPrefix(err.Error(), "用法：") {
-		t.Errorf("usage error = %q, want Chinese usage prefix", err.Error())
+	if err.Error() != commandUsage {
+		t.Errorf("usage error = %q, want %q", err.Error(), commandUsage)
 	}
 	for _, marker := range []string{"profile-marker", "user-marker"} {
 		if strings.Contains(err.Error(), marker) {

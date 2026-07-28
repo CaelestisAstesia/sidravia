@@ -79,27 +79,30 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 
 先完全退出其他 Dr.COM 客户端，避免同一账号同时维持多个认证会话。
 
-打开两个 PowerShell 7 窗口并进入解压目录。
+打开 PowerShell 7 并进入解压目录。当前源码构建默认由 CLI 后台启动 daemon：
 
-窗口 A 前台运行 daemon：
+```powershell
+.\sidravia.exe daemon start
+```
+
+PowerShell 会立即恢复提示符，daemon 不再持续向前端终端刷日志。后台 stdout/stderr
+写入 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；启动前达到 10 MiB 时，当前文件
+轮转为唯一 `sidraviad.log.1` 备份。
+
+需要前台诊断时，可以直接运行 daemon；此模式继续把日志写到 stderr：
 
 ```powershell
 .\sidraviad.exe
 ```
 
-`sidraviad` 把结构化运行日志写到 stderr。如果需要保存日志，可以重定向 stderr：
-
-```powershell
-.\sidraviad.exe 2> sidraviad.log
-```
-
 `SIDRAVIA_LOG_LEVEL` 可设置为 `info`（默认）、`debug` 或 `trace`；`trace` 启用
 完整 D520 数据报日志，可能含账号与认证材料，显式敏感。Info/Debug 日志包含完整
 账号名、友好接口名与所选 IPv4，但不含密码、token、凭据、Profile JSON、MAC、
-DNS/DHCP、网卡 ID 或原始 error；Trace 数据报是唯一含完整报文字节的位置。
-Sidravia 首版不做日志轮转，也不提供日志 IPC/CLI 命令。
+DNS/DHCP、网卡 ID 或原始 error；Trace 数据报是唯一含完整报文字节的位置。后台启用
+Trace 后，这些敏感字节可能保留在当前日志或 `.1` 备份中。Sidravia 不提供日志 IPC、
+`daemon logs` 或实时 tail。
 
-窗口 B 检查版本：
+检查已发布版本：
 
 ```powershell
 .\sidravia.exe status
@@ -127,7 +130,17 @@ Sidravia 首版不做日志轮转，也不提供日志 IPC/CLI 命令。
 `debug`、`trace`，省略时确定使用 `info`；CLI 会移除继承环境中大小写不同的重复
 `SIDRAVIA_LOG_LEVEL`，再为 Windows 子进程设置唯一值。stop/restart 始终针对命令首次
 探测到的精确 daemon generation，不会因运行信息被替换而停止新的 generation。
-这组命令已有代码与自动验证，但尚未重新完成 Windows 原生验证。
+生产 `daemon status` 已接入严格只读 probe；缺少运行信息时只显示 stopped，不启动进程
+也不创建或轮转日志。这组修正已有代码与自动验证，但尚未重新完成 Windows 原生验证。
+
+可以用 bare command、`help <path>`、`-h` 或 `--help` 查看同一份分层中文帮助：
+
+```powershell
+.\sidravia.exe
+.\sidravia.exe help daemon
+.\sidravia.exe help auth start
+.\sidravia.exe auth start --help
+```
 
 当前源码构建还可以确认 daemon 实际加载的机构 Profile：
 
@@ -216,8 +229,9 @@ do {
 } until ($Status -match '(?m)^状态：已暂停（suspended）$')
 ```
 
-此时协议 Run 已经退出，随后再次查询应保持 `suspended`。最后回到窗口 A 按一次
-`Ctrl+C` 关闭 daemon。
+此时协议 Run 已经退出，随后再次查询应保持 `suspended`。最后执行
+`.\sidravia.exe daemon stop` 关闭后台 daemon。只有直接前台诊断时才在该窗口按一次
+`Ctrl+C`。
 
 首个 Alpha 同一 daemon 进程只允许一个活动 Session。进程重启后不会恢复旧 Session
 ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他认证客户端代替正常 Stop。

@@ -16,9 +16,7 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-const rootUsageLine = "sidravia daemon status | sidravia daemon start [--log-level info|debug|trace] | sidravia daemon stop | sidravia daemon restart [--log-level info|debug|trace] | sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth start --session <session-id> | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia auth restart <session-id> | sidravia auth remove <session-id> | sidravia profile list"
-
-const commandUsage = "用法：" + rootUsageLine
+const commandUsage = "用法错误，请运行 sidravia help 查看帮助"
 
 var (
 	errCommandUsage = errors.New(commandUsage)
@@ -52,7 +50,7 @@ type authStartOptions struct {
 }
 
 type commandDependencies struct {
-	status        func() error
+	daemonStatus  func() error
 	daemonStart   func(logLevel string) error
 	daemonStop    func() error
 	daemonRestart func(logLevel string) error
@@ -68,7 +66,7 @@ type commandDependencies struct {
 
 func defaultCommandDependencies() commandDependencies {
 	return commandDependencies{
-		status:        status,
+		daemonStatus:  daemonStatus,
 		daemonStart:   daemonStart,
 		daemonStop:    daemonStop,
 		daemonRestart: daemonRestart,
@@ -136,8 +134,8 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return errCommandUsage
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return wrapCommandOperation(renderHelpCompletion(cmd))
 		},
 	}
 	root.SetOut(output)
@@ -149,8 +147,8 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		Use:   "daemon",
 		Short: "管理本地 daemon 进程",
 		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return errCommandUsage
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return wrapCommandOperation(renderHelpCompletion(cmd))
 		},
 	}
 	daemon.AddCommand(
@@ -159,7 +157,7 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 			Short: "显示 daemon 状态",
 			Args:  cobra.NoArgs,
 			RunE: func(*cobra.Command, []string) error {
-				return wrapCommandOperation(deps.status())
+				return wrapCommandOperation(deps.daemonStatus())
 			},
 		},
 		newDaemonLogLevelCommand("start", "启动本地 daemon", deps.daemonStart),
@@ -185,8 +183,8 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		Use:   "auth",
 		Short: "管理认证 Session",
 		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return errCommandUsage
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return wrapCommandOperation(renderHelpCompletion(cmd))
 		},
 	}
 	auth.AddCommand(
@@ -202,26 +200,43 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		Use:   "profile",
 		Short: "查看机构 Profile",
 		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return errCommandUsage
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return wrapCommandOperation(renderHelpCompletion(cmd))
 		},
 	}
 	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
 
 	root.AddCommand(daemon, auth, profile, retiredStatus)
-	// Cobra lazily injects an English "help" command. Replace it with a hidden
-	// one so it never appears in the canonical 可用命令 listing, while keeping
-	// help requests routed through the deterministic Chinese renderer below.
-	root.SetHelpCommand(&cobra.Command{
-		Use:    "help",
-		Short:  "关于命令的帮助",
-		Hidden: true,
-	})
+	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := newPresentation(c.OutOrStdout())
 		*helpErr = p.complete(renderHelp(p, c))
 	})
 	return root
+}
+
+func newHelpCommand(root *cobra.Command) *cobra.Command {
+	return &cobra.Command{
+		Use:                "help",
+		Short:              "显示命令帮助",
+		DisableFlagParsing: true,
+		Args:               cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := root
+			for _, name := range args {
+				next, _, err := target.Find([]string{name})
+				if err != nil || next == target || next.Hidden || next.Name() != name {
+					return errCommandUsage
+				}
+				target = next
+			}
+			if _, ok := helpSpecs[target.CommandPath()]; !ok {
+				return errCommandUsage
+			}
+			target.SetOut(cmd.OutOrStdout())
+			return wrapCommandOperation(renderHelpCompletion(target))
+		},
+	}
 }
 
 // helpChild is one entry in a help node’s 可用命令 section.
@@ -236,7 +251,7 @@ type helpChild struct {
 // Cobra defaults.
 type helpNode struct {
 	description string
-	usage       string
+	usage       []string
 	children    []helpChild
 	args        []string
 	options     []string
@@ -249,7 +264,7 @@ type helpNode struct {
 var helpSpecs = map[string]helpNode{
 	"sidravia": {
 		description: "Sidravia 命令行客户端。",
-		usage:       rootUsageLine,
+		usage:       []string{"sidravia <command>"},
 		children: []helpChild{
 			{"daemon", "管理本地 daemon 进程"},
 			{"auth", "管理认证 Session"},
@@ -264,7 +279,7 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia daemon": {
 		description: "管理本地 daemon 进程。",
-		usage:       "sidravia daemon status | sidravia daemon start [--log-level info|debug|trace] | sidravia daemon stop | sidravia daemon restart [--log-level info|debug|trace]",
+		usage:       []string{"sidravia daemon <command>"},
 		children: []helpChild{
 			{"status", "显示 daemon 状态"},
 			{"start", "启动本地 daemon"},
@@ -274,14 +289,14 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia daemon status": {
 		description: "显示本地 daemon 进程状态。",
-		usage:       "sidravia daemon status",
+		usage:       []string{"sidravia daemon status"},
 		examples: []string{
 			"sidravia daemon status",
 		},
 	},
 	"sidravia daemon start": {
 		description: "启动本地 daemon 进程。",
-		usage:       "sidravia daemon start [--log-level info|debug|trace]",
+		usage:       []string{"sidravia daemon start [--log-level info|debug|trace]"},
 		options: []string{
 			"--log-level info|debug|trace：子进程日志级别，默认 info",
 		},
@@ -292,14 +307,14 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia daemon stop": {
 		description: "停止本地 daemon 进程。",
-		usage:       "sidravia daemon stop",
+		usage:       []string{"sidravia daemon stop"},
 		examples: []string{
 			"sidravia daemon stop",
 		},
 	},
 	"sidravia daemon restart": {
 		description: "重启本地 daemon 进程。",
-		usage:       "sidravia daemon restart [--log-level info|debug|trace]",
+		usage:       []string{"sidravia daemon restart [--log-level info|debug|trace]"},
 		options: []string{
 			"--log-level info|debug|trace：子进程日志级别，默认 info",
 		},
@@ -310,7 +325,7 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia auth": {
 		description: "管理认证 Session。",
-		usage:       "sidravia auth list | sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth start --session <session-id> | sidravia auth status <session-id> | sidravia auth stop <session-id> | sidravia auth restart <session-id> | sidravia auth remove <session-id>",
+		usage:       []string{"sidravia auth <command>"},
 		children: []helpChild{
 			{"list", "列出 Session"},
 			{"start", "启动一次性认证 Session"},
@@ -322,14 +337,17 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia auth list": {
 		description: "列出当前 daemon 进程保留的全部 Session。",
-		usage:       "sidravia auth list",
+		usage:       []string{"sidravia auth list"},
 		examples: []string{
 			"sidravia auth list",
 		},
 	},
 	"sidravia auth start": {
 		description: "启动一次性认证 Session，或确保 retained Session 正在运行。",
-		usage:       "sidravia auth start --profile <profile-id> --username <username> [--password-stdin] | sidravia auth start --session <session-id>",
+		usage: []string{
+			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
+			"sidravia auth start --session <session-id>",
+		},
 		options: []string{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
@@ -344,7 +362,7 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia auth status": {
 		description: "显示指定 Session 的公开状态。",
-		usage:       "sidravia auth status <session-id>",
+		usage:       []string{"sidravia auth status <session-id>"},
 		args: []string{
 			"<session-id>：Session ID",
 		},
@@ -354,7 +372,7 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia auth stop": {
 		description: "停止指定 Session。",
-		usage:       "sidravia auth stop <session-id>",
+		usage:       []string{"sidravia auth stop <session-id>"},
 		args: []string{
 			"<session-id>：Session ID",
 		},
@@ -364,26 +382,26 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidravia auth restart": {
 		description: "重启指定 retained Session。",
-		usage:       "sidravia auth restart <session-id>",
+		usage:       []string{"sidravia auth restart <session-id>"},
 		args:        []string{"<session-id>：Session ID"},
 		examples:    []string{"sidravia auth restart session-1"},
 	},
 	"sidravia auth remove": {
 		description: "停止并删除指定 retained Session。",
-		usage:       "sidravia auth remove <session-id>",
+		usage:       []string{"sidravia auth remove <session-id>"},
 		args:        []string{"<session-id>：Session ID"},
 		examples:    []string{"sidravia auth remove session-1"},
 	},
 	"sidravia profile": {
 		description: "查看机构 Profile。",
-		usage:       "sidravia profile list",
+		usage:       []string{"sidravia profile <command>"},
 		children: []helpChild{
 			{"list", "列出机构 Profile"},
 		},
 	},
 	"sidravia profile list": {
 		description: "列出已加载的机构 Profile 摘要。",
-		usage:       "sidravia profile list",
+		usage:       []string{"sidravia profile list"},
 		examples: []string{
 			"sidravia profile list",
 		},
@@ -397,7 +415,7 @@ var helpSpecs = map[string]helpNode{
 func renderHelp(p *presentation, c *cobra.Command) string {
 	node, ok := helpSpecs[c.CommandPath()]
 	if !ok {
-		node = helpNode{usage: c.CommandPath()}
+		node = helpNode{usage: []string{c.CommandPath()}}
 	}
 	return renderHelpNode(p, node)
 }
@@ -411,8 +429,8 @@ func renderHelpNode(p *presentation, node helpNode) string {
 	if node.description != "" {
 		sections = append(sections, []string{node.description})
 	}
-	if node.usage != "" {
-		sections = append(sections, []string{p.label("用法：") + node.usage})
+	if len(node.usage) > 0 {
+		sections = append(sections, p.helpUsageLines(node.usage))
 	}
 	if len(node.children) > 0 {
 		lines := []string{p.label("可用命令：")}
@@ -606,35 +624,6 @@ func renderHelpCompletion(cmd *cobra.Command) error {
 	return wrapSafeOperation("显示帮助", p.complete(renderHelp(p, cmd)))
 }
 
-func status() error {
-	return runStatus(defaultStatusDependencies())
-}
-
-// statusDependencies bundles the private seams that the status command relies
-// on. Behavior tests substitute individual fields without touching any
-// package-global state.
-type statusDependencies struct {
-	runtimeInfoPath func() (string, error)
-	readRuntimeInfo func(path string) (contract.RuntimeInfo, error)
-	connectAndPrint func(info contract.RuntimeInfo) error
-	startDaemon     func() error
-	totalWait       time.Duration
-	pollInterval    time.Duration
-}
-
-// defaultStatusDependencies wires the status command to its real production
-// collaborators.
-func defaultStatusDependencies() statusDependencies {
-	return statusDependencies{
-		runtimeInfoPath: runtimeInfoPath,
-		readRuntimeInfo: readRuntimeInfo,
-		connectAndPrint: connectAndPrint,
-		startDaemon:     startDaemon,
-		totalWait:       5 * time.Second,
-		pollInterval:    200 * time.Millisecond,
-	}
-}
-
 type discoveryDependencies struct {
 	runtimeInfoPath func() (string, error)
 	readRuntimeInfo func(path string) (contract.RuntimeInfo, error)
@@ -651,20 +640,6 @@ func defaultDiscoveryDependencies() discoveryDependencies {
 		totalWait:       5 * time.Second,
 		pollInterval:    200 * time.Millisecond,
 	}
-}
-
-// runStatus drives the status command against the supplied dependencies,
-// preserving the production control flow: try a hot connection first, start the
-// daemon at most once, then poll until the daemon is reachable or totalWait
-// elapses.
-func runStatus(deps statusDependencies) error {
-	return discoverDaemon(discoveryDependencies{
-		runtimeInfoPath: deps.runtimeInfoPath,
-		readRuntimeInfo: deps.readRuntimeInfo,
-		startDaemon:     deps.startDaemon,
-		totalWait:       deps.totalWait,
-		pollInterval:    deps.pollInterval,
-	}, deps.connectAndPrint)
 }
 
 func discoverDaemon(deps discoveryDependencies, operation func(contract.RuntimeInfo) error) error {
@@ -743,6 +718,10 @@ func connectAndPrint(info contract.RuntimeInfo) error {
 	return writeStatus(os.Stdout, resp)
 }
 
+func startDaemon() error {
+	return launchDaemonProcess("")
+}
+
 // writeStatus renders a daemon.status response to w through the presentation
 // boundary. A non-OK response is mapped to fixed Chinese guidance without the
 // daemon message; otherwise the StatusResult is decoded and rendered as the
@@ -763,8 +742,4 @@ func writeStatus(w io.Writer, resp contract.Response) error {
 
 	p := newPresentation(w)
 	return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStatus(p, &result)))
-}
-
-func startDaemon() error {
-	return launchDaemonProcess("")
 }

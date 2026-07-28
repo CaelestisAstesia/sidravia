@@ -151,6 +151,17 @@ func (p *presentation) label(text string) string {
 	return p.profile.String(text).Foreground(p.profile.Color(cyanColor)).Bold().String()
 }
 
+// helpUsageLines renders the shared multi-line usage section. Every syntax is
+// trusted static specification text and occupies its own two-space-indented
+// line beneath the styled heading.
+func (p *presentation) helpUsageLines(usages []string) []string {
+	lines := []string{p.label("用法：")}
+	for _, usage := range usages {
+		lines = append(lines, "  "+usage)
+	}
+	return lines
+}
+
 // state styles mapped Session-state text according to the stable state code.
 // The code only selects the style; only the trusted mapped text is styled.
 // suspended and unknown states render plain.

@@ -65,6 +65,13 @@ Work Package 3 完成 daemon 只读 status、Windows start、已提交响应驱�
 retained Session ensure/restart/remove；自动验证与 Windows 原生验证分别报告。WSS、
 持久 Configuration/Credentials 和 Linux daemon 进程控制继续留待后续。
 
+2026-07-28 的首次 Windows operator 检查确认进程 start/shutdown 与其余检查正常，同时
+发现生产 `daemon status` 仍误接冷启动链、根 help 拥挤且缺少普通 `help <path>`、CLI
+后台 daemon 日志仍附着前端。当前 correction 已把 status 接到严格只读 probe，统一
+bare/help/`-h`/`--help` 的分层中文规格，并让 Windows 后台日志写入 LocalAppData、按
+10 MiB 保留唯一 `.1` 备份。修正代码与自动验证完成后仍需最小 Windows-native
+correction verification；这不扩大提交 `508197d` 的校园认证证据。
+
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 
 首轮纵向链路只读 Review 在 `cbfdfa5` 上完成，race 探针和公开 Go verifier 均通过，
@@ -78,7 +85,7 @@ Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
 | 1. 后端重整 | 完成 | Configuration、Credentials、App、Session、Supervisor 和 Persistence 各自拥有明确职责 |
-| 2. 可运行骨架 | 完成：Windows 首轮现场通过；新命令待原生复核 | Windows 上的 `sidravia daemon status` 能冷启动或连接 daemon，并通过 WebSocket 返回状态 |
+| 2. 可运行骨架 | 完成：Windows 首轮现场通过；operator correction 待原生复核 | Windows 上 CLI 能显式启动 daemon，严格只读 status 能报告 stopped/running |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
 | 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成，持久 Configuration/Credential IPC 入口未开始 | Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
@@ -149,9 +156,10 @@ Windows ACL 的现场证据位于
 这一阶段只证明 CLI 和 daemon 能作为两个真实 Windows 进程通信：
 
 ```text
+sidravia daemon start
+  -> CLI 启动同目录 sidraviad
 sidravia daemon status
-  -> CLI 读取或等待运行信息
-  -> CLI 必要时启动同目录 sidraviad
+  -> CLI 严格只读探测运行信息描述的 generation
   -> client 使用 token 和 BuildID 建立回环 WebSocket
   -> server 调用 daemon.status
   -> CLI 显示 daemon 返回的版本、BuildID、PID 和状态

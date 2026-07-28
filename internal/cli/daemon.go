@@ -348,6 +348,10 @@ func daemonStart(logLevel string) error {
 	return writeDaemonStarted(os.Stdout)
 }
 
+func daemonStatus() error {
+	return runDaemonStatus(defaultProbeDependencies(), os.Stdout)
+}
+
 func daemonStop() error {
 	if err := runDaemonStop(defaultStopDependencies()); err != nil {
 		return err

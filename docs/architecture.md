@@ -189,9 +189,11 @@ Trace 数据报记录含 `session_id` 而协议运行本身不知道它。诊断
 永不改变协议、重试、Session 状态、IPC 响应、关闭顺序或返回值。完整等级与隐私
 契约见 ADR 0015。
 
-本切片只产出 stderr Text 日志，不写日志文件、不做轮转、不暴露日志 IPC/CLI 命令、
-不加终端样式。简体中文 CLI 呈现和 terminal/`NO_COLOR` 行为已由独立的 CLI 呈现切片
-实现（见 ADR 0014），与本日志边界分离。
+logger 的 sink 仍是 stderr TextHandler。用户直接运行 `sidraviad.exe` 时 stderr
+保持前台可见；Windows CLI launcher 真正创建后台子进程时拥有输出文件句柄，把 child
+stdout/stderr 都重定向到 `<UserCacheDir>/Sidravia/logs/sidraviad.log`，并在启动前按
+10 MiB 阈值轮转为唯一 `.1` 备份。launcher 的文件所有权不改变 logger、事件、等级或
+隐私契约，也不增加日志 IPC/CLI 命令。详见 ADR 0019。
 
 ## CLI 呈现边界
 
@@ -214,7 +216,9 @@ Trace 数据报记录含 `session_id` 而协议运行本身不知道它。诊断
 Unicode、空格、标点、ID、时间戳和中文。动态值绝不进入颜色解析器，CLI 也永不打印
 daemon `Error.Message`、Session `Description`、失败 `Description`、包装原因、请求
 payload、凭据或原始终端环境值。命令令牌和 flag 不变；顶层、分组和叶子命令使用确定性
-中文 help 渲染器，按固定顺序含描述、`用法`、`可用命令`、`参数`、`选项`、`示例` 六段（适用时），段间留一空行。`cmd/sidravia/main.go` 通过呈现
+中文 help 渲染器；bare root/group、`help <path>`、`-h` 和 `--help` 解析到同一
+canonical help 规格，按固定顺序含描述、`用法`、`可用命令`、`参数`、`选项`、`示例`
+六段（适用时），每条用法独占缩进行且段间留一空行。`cmd/sidravia/main.go` 通过呈现
 边界打印静态中文错误前缀，不打印底层原因。
 
 ## Session 和 Supervisor
@@ -326,8 +330,9 @@ CLI 的 `daemon status` 只读取运行信息并探测其中描述的 generation
 token、BuildID 和 PID 作为不可变 generation，停止请求及后续不可达等待始终针对它。
 IPC server 只在成功响应完成编码并写入后调用构造时注入的 commit callback；组合根用
 容量为一的 channel 和 `sync.Once` 接收首个已提交的 `daemon.stop`，再拥有取消、等待
-和 Supervisor 清理。Windows CLI 启动同目录子进程，并为子进程设置唯一确定的
-`SIDRAVIA_LOG_LEVEL`；平台无关 CLI/domain 边界不复制 Windows 生命周期实现。
+和 Supervisor 清理。Windows CLI 启动同目录、无新控制台窗口的子进程，为子进程设置
+唯一确定的 `SIDRAVIA_LOG_LEVEL`，不继承 stdin，并把 stdout/stderr 交给上述后台日志
+文件；平台无关 CLI/domain 边界不复制 Windows 生命周期实现。
 
 ## 第一条产品验收链路
 

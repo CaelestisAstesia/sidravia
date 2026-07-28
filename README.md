@@ -23,8 +23,8 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 - Windows JSON 文件 ACL 与原子持久化基础；
 - 安全结构化 daemon 运行日志（stderr TextHandler、稳定事件码、固定简体中文消息
   和安全属性白名单）。
-- `daemon status/start/stop/restart` 生命周期命令；状态探测严格只读，Windows 启动
-  子进程可用 `--log-level info|debug|trace` 指定确定的日志级别。
+- `daemon status/start/stop/restart` 生命周期命令；生产 status 接入严格只读探测，
+  Windows 后台子进程可用 `--log-level info|debug|trace` 指定确定的日志级别。
 
 提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
 选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
@@ -36,8 +36,12 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 
 ## 运行日志
 
-`sidraviad` 把结构化运行日志写到 stderr，使用标准库 `log/slog` 的 TextHandler、
-默认 Info 级别。`SIDRAVIA_LOG_LEVEL` 可设置为 `info`、`debug` 或 `trace`；`trace` 启用完整 D520 数据报日志（含账号与认证材料，显式敏感）。每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性，
+直接运行 `sidraviad.exe` 时，结构化运行日志写到 stderr，使用标准库 `log/slog` 的
+TextHandler、默认 Info 级别。由 Windows CLI 后台启动时，stdout 和 stderr 都写入
+`%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；启动前达到 10 MiB 会轮转为唯一备份
+`sidraviad.log.1`，之后创建新的当前文件。`SIDRAVIA_LOG_LEVEL` 可设置为 `info`、
+`debug` 或 `trace`；`trace` 启用完整 D520 数据报日志（含账号与认证材料，显式敏感）。
+每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性，
 例如：
 
 ```text
@@ -47,9 +51,9 @@ time=2026-07-27T... level=INFO msg=IPC 请求已完成 event=ipc_request_complet
 
 Info/Debug 永不包含密码、token、凭据、Profile JSON、MAC、DNS/DHCP、网卡 ID、
 请求/响应字节或原始 error；它们包含完整账号名、友好接口名和所选 IPv4。Trace
-数据报记录是唯一含完整报文字节的位置，且仅在显式启用 Trace 时出现。如果需要保存日志，用户可以重定向 stderr，例如
-`.\sidraviad.exe 2> sidraviad.log`；Sidravia 首版不拥有日志文件、轮转或日志
-IPC/CLI 命令。
+数据报记录是唯一含完整报文字节的位置，且仅在显式启用 Trace 时出现。后台 Trace
+字节会持久化到上述当前文件或单备份，分享前必须按敏感材料处理。直接前台运行时仍可
+自行重定向 stderr。当前不提供日志 IPC、`daemon logs` 或实时 tail。
 
 ## CLI 呈现
 
@@ -59,6 +63,18 @@ IPC/CLI 命令。
 只在真实交互终端启用，重定向或管道输出始终是纯文本，`NO_COLOR` 始终禁用着色，
 `CLICOLOR_FORCE` 无法在重定向时重新启用颜色。每个来自 daemon 的动态值在写入前都清理
 控制字符，因此无法注入 ANSI 序列或新输出行。
+
+根命令、资源组、普通 `help <path>`、`-h` 和 `--help` 共享同一份分层中文规格。当前
+daemon 命令为 `status/start/stop/restart`；Session 命令为
+`auth list/start/status/stop/restart/remove`；Profile 摘要使用 `profile list`。
+`daemon status` 严格只读，不会为了查询而启动 daemon。
+
+```powershell
+.\sidravia.exe
+.\sidravia.exe help daemon
+.\sidravia.exe auth --help
+.\sidravia.exe help auth start
+```
 
 ```text
 守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42
@@ -83,7 +99,8 @@ IPC/CLI 命令。
 没有 GUI、安装器、Windows Service、自动更新、持久认证配置管理或多活动 Session；
 它适合愿意使用 PowerShell 并能自行保留原网络客户端作为回退的测试者。
 
-daemon 生命周期代码与自动验证已经完成，但这组新命令尚未重新进行 Windows 原生验证。
+本轮 operator correction 的代码与自动验证已经完成，但修正后的 status/help/后台日志
+尚未进行最小 Windows 原生复核。
 停止与重启锁定最初探测到的精确 daemon generation；Linux 和 macOS 的进程控制仍明确
 不受支持。Session ensure/restart/remove 已进入当前源码；WSS 和持久
 Configuration/Credentials 仍待后续完成，且该切片尚未完成 Windows 原生复核。

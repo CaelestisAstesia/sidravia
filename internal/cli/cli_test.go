@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"sidravia/internal/ipc/contract"
 )
@@ -117,19 +116,15 @@ func testRuntimeInfo(pid int) contract.RuntimeInfo {
 
 func TestRunRejectsBadArguments(t *testing.T) {
 	cases := [][]string{
-		nil,
 		{"bogus"},
 		{"status", "extra"},
-		{"daemon"},
 		{"daemon", "status", "extra"},
 		{"daemon", "start", "--log-level", "verbose"},
 		{"daemon", "start", "extra"},
 		{"daemon", "stop", "extra"},
 		{"login"},
 		{"logout"},
-		{"auth"},
 		{"list"},
-		{"profile"},
 		{"profile", "list", "extra"},
 		{"profile", "list", "--json"},
 		{"account", "list"},
@@ -176,7 +171,7 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var got string
 			deps := commandDependencies{
-				status: func() error {
+				daemonStatus: func() error {
 					got = "status"
 					return nil
 				},
@@ -214,7 +209,7 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 func TestRetiredStatusReturnsMigrationWithoutDispatch(t *testing.T) {
 	dispatched := false
 	deps := commandDependencies{
-		status: func() error {
+		daemonStatus: func() error {
 			dispatched = true
 			return nil
 		},
@@ -238,10 +233,10 @@ func TestRetiredStatusReturnsMigrationWithoutDispatch(t *testing.T) {
 func TestCommandOperationErrorPreservesCause(t *testing.T) {
 	cause := errors.New("injected status failure")
 	deps := commandDependencies{
-		status:     func() error { return cause },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return cause },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 
 	err := runCommand([]string{"daemon", "status"}, deps)
@@ -252,10 +247,10 @@ func TestCommandOperationErrorPreservesCause(t *testing.T) {
 
 func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 
 	var rootHelp bytes.Buffer
@@ -300,6 +295,59 @@ func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 	}
 }
 
+func TestUnifiedHelpEntrypointsAreIdenticalAndNeverDispatch(t *testing.T) {
+	dispatched := 0
+	deps := commandDependencies{
+		daemonStatus: func() error { dispatched++; return nil },
+		daemonStart:  func(string) error { dispatched++; return nil },
+		daemonStop:   func() error { dispatched++; return nil },
+		authStart:    func(authStartOptions) error { dispatched++; return nil },
+		authList:     func() error { dispatched++; return nil },
+		profileList:  func() error { dispatched++; return nil },
+	}
+	assertSame := func(entries ...[]string) {
+		t.Helper()
+		var want string
+		for index, args := range entries {
+			var output bytes.Buffer
+			deps.output = &output
+			if err := runCommand(args, deps); err != nil {
+				t.Fatalf("%q: %v", args, err)
+			}
+			if index == 0 {
+				want = output.String()
+			} else if output.String() != want {
+				t.Fatalf("%q output differs:\n%s\nwant:\n%s", args, output.String(), want)
+			}
+		}
+	}
+	assertSame(nil, []string{"--help"}, []string{"-h"}, []string{"help"})
+	assertSame([]string{"daemon"}, []string{"daemon", "--help"}, []string{"help", "daemon"})
+	assertSame([]string{"auth"}, []string{"auth", "--help"}, []string{"help", "auth"})
+	assertSame([]string{"auth", "start", "--help"}, []string{"auth", "start", "-h"}, []string{"help", "auth", "start"})
+	if dispatched != 0 {
+		t.Fatalf("help dispatched %d operations", dispatched)
+	}
+}
+
+func TestHelpPathRejectsUnknownHiddenAndExtraTokensSafely(t *testing.T) {
+	for _, args := range [][]string{
+		{"help", "missing-marker"},
+		{"help", "status"},
+		{"help", "auth", "start", "extra-marker"},
+	} {
+		err := runCommand(args, commandDependencies{output: io.Discard})
+		if err != errCommandUsage {
+			t.Fatalf("%q error = %v", args, err)
+		}
+		for _, marker := range []string{"missing-marker", "extra-marker"} {
+			if strings.Contains(err.Error(), marker) {
+				t.Fatalf("%q echoed marker in %q", args, err)
+			}
+		}
+	}
+}
+
 func TestAuthStartRejectsInvalidArgumentsSafely(t *testing.T) {
 	tests := [][]string{
 		{"auth", "start"},
@@ -324,10 +372,10 @@ func TestAuthStartRejectsInvalidArgumentsSafely(t *testing.T) {
 	}
 
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { t.Fatal("invalid start dispatched"); return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { t.Fatal("invalid start dispatched"); return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 	for _, args := range tests {
 		err := runCommand(args, deps)
@@ -358,10 +406,10 @@ func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
 		{"auth", "stop", "--session-marker"},
 	}
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { t.Fatal("invalid status dispatched"); return nil },
-		authStop:   func(string) error { t.Fatal("invalid stop dispatched"); return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { t.Fatal("invalid status dispatched"); return nil },
+		authStop:     func(string) error { t.Fatal("invalid stop dispatched"); return nil },
 	}
 	for _, args := range tests {
 		err := runCommand(args, deps)
@@ -375,185 +423,6 @@ func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
 		if strings.Contains(err.Error(), "marker") {
 			t.Error("usage error contains supplied session marker")
 		}
-	}
-}
-
-func TestStatusHotConnect(t *testing.T) {
-	info := testRuntimeInfo(100)
-	reads, connects, starts := 0, 0, 0
-	var connected contract.RuntimeInfo
-
-	deps := statusDependencies{
-		runtimeInfoPath: func() (string, error) { return "hot-path", nil },
-		readRuntimeInfo: func(path string) (contract.RuntimeInfo, error) {
-			reads++
-			if path != "hot-path" {
-				t.Errorf("readRuntimeInfo path = %q, want %q", path, "hot-path")
-			}
-			return info, nil
-		},
-		connectAndPrint: func(got contract.RuntimeInfo) error {
-			connects++
-			connected = got
-			return nil
-		},
-		startDaemon: func() error {
-			starts++
-			return nil
-		},
-		totalWait:    5 * time.Second,
-		pollInterval: 10 * time.Millisecond,
-	}
-
-	if err := runStatus(deps); err != nil {
-		t.Fatalf("runStatus = %v, want nil", err)
-	}
-	if reads != 1 {
-		t.Errorf("readRuntimeInfo calls = %d, want 1", reads)
-	}
-	if connects != 1 {
-		t.Errorf("connectAndPrint calls = %d, want 1", connects)
-	}
-	if starts != 0 {
-		t.Errorf("startDaemon calls = %d, want 0", starts)
-	}
-	if connected != info {
-		t.Errorf("connectAndPrint received %+v, want %+v", connected, info)
-	}
-}
-
-func TestStatusColdStart(t *testing.T) {
-	info := testRuntimeInfo(200)
-	reads, connects, starts := 0, 0, 0
-	var connected contract.RuntimeInfo
-
-	deps := statusDependencies{
-		runtimeInfoPath: func() (string, error) { return "cold-path", nil },
-		readRuntimeInfo: func(path string) (contract.RuntimeInfo, error) {
-			reads++
-			if reads == 1 {
-				return contract.RuntimeInfo{}, errors.New("runtime info not found")
-			}
-			return info, nil
-		},
-		connectAndPrint: func(got contract.RuntimeInfo) error {
-			connects++
-			connected = got
-			return nil
-		},
-		startDaemon: func() error {
-			starts++
-			return nil
-		},
-		totalWait:    5 * time.Second,
-		pollInterval: 5 * time.Millisecond,
-	}
-
-	if err := runStatus(deps); err != nil {
-		t.Fatalf("runStatus = %v, want nil", err)
-	}
-	if starts != 1 {
-		t.Errorf("startDaemon calls = %d, want 1", starts)
-	}
-	if reads != 2 {
-		t.Errorf("readRuntimeInfo calls = %d, want 2", reads)
-	}
-	if connects != 1 {
-		t.Errorf("connectAndPrint calls = %d, want 1", connects)
-	}
-	if connected != info {
-		t.Errorf("connectAndPrint received %+v, want %+v", connected, info)
-	}
-}
-
-func TestStatusStaleInfoRecovery(t *testing.T) {
-	oldInfo := testRuntimeInfo(300)
-	newInfo := testRuntimeInfo(301)
-	reads, starts := 0, 0
-	var connectInfos []contract.RuntimeInfo
-
-	deps := statusDependencies{
-		runtimeInfoPath: func() (string, error) { return "stale-path", nil },
-		readRuntimeInfo: func(path string) (contract.RuntimeInfo, error) {
-			reads++
-			if reads == 1 {
-				return oldInfo, nil
-			}
-			return newInfo, nil
-		},
-		connectAndPrint: func(got contract.RuntimeInfo) error {
-			connectInfos = append(connectInfos, got)
-			if got.PID == oldInfo.PID {
-				return errors.New("connect failed: stale runtime info")
-			}
-			return nil
-		},
-		startDaemon: func() error {
-			starts++
-			return nil
-		},
-		totalWait:    5 * time.Second,
-		pollInterval: 5 * time.Millisecond,
-	}
-
-	if err := runStatus(deps); err != nil {
-		t.Fatalf("runStatus = %v, want nil", err)
-	}
-	if starts != 1 {
-		t.Errorf("startDaemon calls = %d, want 1", starts)
-	}
-	if len(connectInfos) != 2 {
-		t.Fatalf("connectAndPrint calls = %d, want 2", len(connectInfos))
-	}
-	if connectInfos[0] != oldInfo {
-		t.Errorf("first connect received %+v, want old %+v", connectInfos[0], oldInfo)
-	}
-	if connectInfos[1] != newInfo {
-		t.Errorf("second connect received %+v, want new %+v", connectInfos[1], newInfo)
-	}
-}
-
-func TestProductionStatusDependencies(t *testing.T) {
-	deps := defaultStatusDependencies()
-	if deps.totalWait != 5*time.Second {
-		t.Errorf("production totalWait = %v, want 5s", deps.totalWait)
-	}
-	if deps.pollInterval != 200*time.Millisecond {
-		t.Errorf("production pollInterval = %v, want 200ms", deps.pollInterval)
-	}
-	if deps.runtimeInfoPath == nil || deps.readRuntimeInfo == nil ||
-		deps.connectAndPrint == nil || deps.startDaemon == nil {
-		t.Error("production statusDependencies has a nil collaborator")
-	}
-}
-
-func TestStatusTimeout(t *testing.T) {
-	starts := 0
-	deps := statusDependencies{
-		runtimeInfoPath: func() (string, error) { return "timeout-path", nil },
-		readRuntimeInfo: func(path string) (contract.RuntimeInfo, error) {
-			return contract.RuntimeInfo{}, errors.New("runtime info not found")
-		},
-		connectAndPrint: func(got contract.RuntimeInfo) error {
-			return errors.New("connect failed")
-		},
-		startDaemon: func() error {
-			starts++
-			return nil
-		},
-		totalWait:    50 * time.Millisecond,
-		pollInterval: 10 * time.Millisecond,
-	}
-
-	err := runStatus(deps)
-	if err == nil {
-		t.Fatal("runStatus = nil, want timeout error")
-	}
-	if got := err.Error(); got != "等待 sidraviad 超时" {
-		t.Errorf("runStatus = %q, want %q", got, "等待 sidraviad 超时")
-	}
-	if starts != 1 {
-		t.Errorf("startDaemon calls = %d, want 1", starts)
 	}
 }
 
@@ -634,12 +503,12 @@ func TestLeafHelpDoesNotDispatch(t *testing.T) {
 		t.Run(leaf.name, func(t *testing.T) {
 			dispatched := false
 			deps := commandDependencies{
-				status:      func() error { dispatched = true; return nil },
-				authStart:   func(authStartOptions) error { dispatched = true; return nil },
-				authStatus:  func(string) error { dispatched = true; return nil },
-				authStop:    func(string) error { dispatched = true; return nil },
-				authList:    func() error { dispatched = true; return nil },
-				profileList: func() error { dispatched = true; return nil },
+				daemonStatus: func() error { dispatched = true; return nil },
+				authStart:    func(authStartOptions) error { dispatched = true; return nil },
+				authStatus:   func(string) error { dispatched = true; return nil },
+				authStop:     func(string) error { dispatched = true; return nil },
+				authList:     func() error { dispatched = true; return nil },
+				profileList:  func() error { dispatched = true; return nil },
 			}
 			var buf bytes.Buffer
 			deps.output = &buf
@@ -664,10 +533,10 @@ func TestLeafHelpDoesNotDispatch(t *testing.T) {
 
 func TestHelpDoesNotAdvertiseCobraHelpCommand(t *testing.T) {
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 	var buf bytes.Buffer
 	deps.output = &buf
@@ -685,10 +554,10 @@ func TestHelpDoesNotAdvertiseCobraHelpCommand(t *testing.T) {
 
 func TestHelpWriterFailureIsObservable(t *testing.T) {
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 	cause := errors.New("injected help writer failure")
 	deps.output = zeroWriter{err: cause}
@@ -700,10 +569,10 @@ func TestHelpWriterFailureIsObservable(t *testing.T) {
 
 func TestLeafHelpWriterFailureIsObservable(t *testing.T) {
 	deps := commandDependencies{
-		status:     func() error { return nil },
-		authStart:  func(authStartOptions) error { return nil },
-		authStatus: func(string) error { return nil },
-		authStop:   func(string) error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
 	}
 	cause := errors.New("injected leaf help writer failure")
 	deps.output = zeroWriter{err: cause}
@@ -718,12 +587,12 @@ func TestLeafHelpWriterFailureIsObservable(t *testing.T) {
 // blank lines, without Cobra English headings.
 func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 	deps := commandDependencies{
-		status:      func() error { return nil },
-		authStart:   func(authStartOptions) error { return nil },
-		authStatus:  func(string) error { return nil },
-		authStop:    func(string) error { return nil },
-		authList:    func() error { return nil },
-		profileList: func() error { return nil },
+		daemonStatus: func() error { return nil },
+		authStart:    func(authStartOptions) error { return nil },
+		authStatus:   func(string) error { return nil },
+		authStop:     func(string) error { return nil },
+		authList:     func() error { return nil },
+		profileList:  func() error { return nil },
 	}
 
 	t.Run("root has description usage commands examples", func(t *testing.T) {
@@ -733,7 +602,7 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 			t.Fatalf("root help = %v", err)
 		}
 		help := buf.String()
-		if !strings.Contains(help, "Sidravia 命令行客户端。\n\n用法：") {
+		if !strings.Contains(help, "Sidravia 命令行客户端。\n\n用法：\n  sidravia <command>") {
 			t.Errorf("root help missing description-usage blank separator:\n%s", help)
 		}
 		if !strings.Contains(help, "\n\n可用命令：") {
@@ -752,6 +621,18 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 		}
 	})
 
+	t.Run("group usage is layered", func(t *testing.T) {
+		var buf bytes.Buffer
+		deps.output = &buf
+		if err := runCommand([]string{"daemon"}, deps); err != nil {
+			t.Fatal(err)
+		}
+		help := buf.String()
+		if !strings.Contains(help, "用法：\n  sidravia daemon <command>") || strings.Contains(help, " | ") {
+			t.Fatalf("daemon help is not layered:\n%s", help)
+		}
+	})
+
 	t.Run("auth start has options and examples", func(t *testing.T) {
 		var buf bytes.Buffer
 		deps.output = &buf
@@ -761,6 +642,9 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 		help := buf.String()
 		if !strings.Contains(help, "选项：") {
 			t.Errorf("auth start help missing 选项 section:\n%s", help)
+		}
+		if !strings.Contains(help, "用法：\n  sidravia auth start --profile <profile-id> --username <username> [--password-stdin]\n  sidravia auth start --session <session-id>") {
+			t.Errorf("auth start usages are not separate lines:\n%s", help)
 		}
 		if !strings.Contains(help, "--profile <profile-id>") {
 			t.Errorf("auth start help missing --profile option:\n%s", help)

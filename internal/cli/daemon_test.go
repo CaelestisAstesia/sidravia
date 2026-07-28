@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -102,6 +103,16 @@ func TestDaemonStatusMalformedReturnsError(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("malformed produced output %q", buf.String())
+	}
+}
+
+func TestProbeDependenciesCannotLaunchDaemon(t *testing.T) {
+	typ := reflect.TypeOf(probeDependencies{})
+	if _, ok := typ.FieldByName("launch"); ok {
+		t.Fatal("read-only probe dependencies expose launch callback")
+	}
+	if _, ok := typ.FieldByName("startDaemon"); ok {
+		t.Fatal("read-only probe dependencies expose start callback")
 	}
 }
 

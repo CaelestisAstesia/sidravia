@@ -40,6 +40,12 @@ ID、token、密码、凭据 ID、Profile JSON、协议上下文、MAC、DNS/DHC
 和测试。IPC 层把 peer 提供的 method/error 归一化为契约白名单值，使任意字符串不能
 进入日志。详细边界见 ADR 0013 与 ADR 0015。
 
+Windows CLI launcher 只在确实创建后台 daemon 时准备日志：使用显式 cache root，
+请求 `0700` 目录和 `0600` 文件权限，以 append 打开当前文件，并在启动前达到 10 MiB
+时替换唯一 `.1` 备份。stat、mkdir、remove、rename、open 或 child start 失败必须保留
+cause 并返回安全操作语义；日志准备失败不得退回继承前端输出。logger sink 与 launcher
+文件句柄重定向是两个不同职责，见 ADR 0019。
+
 尚未支持的平台或功能必须返回明确的 Unsupported 或 NotImplemented 错误。代码不得返回空结果来假装成功。
 
 ## 如何管理并发
@@ -70,6 +76,8 @@ JSON 只用于 IPC 和持久化边界。领域模型不应携带 JSON 编解码�
 CLI 呈现测试不得修改 termenv 的 package-global 状态，也不得依赖开发者的终端、颜色
 环境、宽度、主题或 locale；测试通过私有构造函数强制 profile，并证明重定向、
 `NO_COLOR`、`CLICOLOR_FORCE` 和动态控制字符清理行为。
+帮助测试还必须证明 bare root/group、`help <path>`、`-h`、`--help` 共享同一节点输出，
+且所有帮助入口都不派发业务操作。
 
 mock 验收证明代码可以重复运行，但不能代替校园网络现场验证。报告必须把两种证据分开。
 

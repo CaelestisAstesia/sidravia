@@ -21,5 +21,7 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0015](0015-tiered-daemon-diagnostics.md) | 分层 daemon 诊断 | Accepted |
 | [0016](0016-daemon-lifecycle.md) | daemon 生命周期与精确 generation 控制 | Accepted |
 | [0017](0017-retained-session-lifecycle.md) | retained Session 生命周期控制 | Accepted |
+| [0018](0018-unified-cli-help.md) | 统一、分层且可导航的 CLI 帮助 | Accepted |
+| [0019](0019-background-daemon-log-files.md) | Windows 后台 daemon 日志文件 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。
