@@ -27,12 +27,13 @@ IPC 不得返回内部错误链。
 系统通常只在进程边界记录一次错误。中间层应返回带上下文的错误，不应逐层重复写日志。
 
 结构化运行日志使用标准库 `log/slog`，由 `cmd/sidraviad` 拥有唯一生产 logger，使用
-TextHandler、stderr、Info 级别。日志只记录稳定 `event` 码、固定简体中文 `msg` 和
-显式允许的安全属性；普通日志永不包含原始 error、诊断原因、请求/响应字节、request
-ID、token、用户名、账号名称、密码、凭据 ID、Profile JSON、协议上下文或网卡事实。
+TextHandler、stderr，默认 Info 级别（`SIDRAVIA_LOG_LEVEL` 可选 `info`/`debug`/`trace`）。日志只记录稳定 `event` 码、固定简体中文 `msg` 和
+显式允许的安全属性；Info/Debug 永不包含原始 error、诊断原因、请求/响应字节、request
+ID、token、密码、凭据 ID、Profile JSON、协议上下文、MAC、DNS/DHCP、网关或网卡 ID，
+但包含完整账号名、友好接口名与所选 IPv4；Trace 数据报是唯一含完整报文字节的位置。
 进程边界只记录一次失败事件，且不替代错误传播；原始 error 仍由调用方保留用于所有权
 和测试。IPC 层把 peer 提供的 method/error 归一化为契约白名单值，使任意字符串不能
-进入日志。详细边界见 ADR 0013。
+进入日志。详细边界见 ADR 0013 与 ADR 0015。
 
 尚未支持的平台或功能必须返回明确的 Unsupported 或 NotImplemented 错误。代码不得返回空结果来假装成功。
 

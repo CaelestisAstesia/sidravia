@@ -29,9 +29,11 @@ type RevisionEvent struct {
 // Dependencies provides session-level dependencies that the Supervisor
 // passes to each created session.
 type Dependencies struct {
-	Now            func() time.Time
-	RetryPolicy    session.RetryPolicy
-	RetryScheduler session.RetryScheduler
+	Now                        func() time.Time
+	RetryPolicy                session.RetryPolicy
+	RetryScheduler             session.RetryScheduler
+	Diagnostics                session.Diagnostics
+	ProtocolDiagnosticsFactory session.ProtocolDiagnosticsFactory
 }
 
 // sessionState tracks the lifecycle state of a managed session.
@@ -73,9 +75,11 @@ func New(deps Dependencies) *Supervisor {
 	return &Supervisor{
 		sessions: make(map[ID]*managedSession),
 		deps: session.Dependencies{
-			Now:            deps.Now,
-			RetryPolicy:    deps.RetryPolicy,
-			RetryScheduler: deps.RetryScheduler,
+			Now:                        deps.Now,
+			RetryPolicy:                deps.RetryPolicy,
+			RetryScheduler:             deps.RetryScheduler,
+			Diagnostics:                deps.Diagnostics,
+			ProtocolDiagnosticsFactory: deps.ProtocolDiagnosticsFactory,
 		},
 	}
 }

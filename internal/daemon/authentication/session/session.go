@@ -23,10 +23,47 @@ type RevisionEvent struct {
 	Revision                uint64
 }
 
+// Diagnostics observes Session lifecycle events without altering Session
+// behavior. The production adapter selects allowed fields and writes fixed
+// Simplified Chinese messages; the sink has no return value and cannot change
+// Session decisions, retry, state, IPC responses or return values. Diagnostic
+// errors never propagate.
+type Diagnostics interface {
+	// SessionSnapshot records every committed public Snapshot revision at Info
+	// level. It is invoked once per committed revision without coalescing, so
+	// it is a more complete audit source than the coalescing RevisionEvents
+	// stream.
+	SessionSnapshot(snapshot Snapshot)
+	// SessionCommand records a Session command at Debug level.
+	SessionCommand(command string)
+	// ProtocolRunGeneration records a new protocol-run generation at Debug
+	// level.
+	ProtocolRunGeneration(generation uint64)
+	// RetryScheduled records a scheduled retry at Debug level.
+	RetryScheduled(nextRetryAt time.Time)
+}
+
+// NoopDiagnostics is the explicit no-op implementation used when diagnostics
+// are disabled, instead of scattered nil checks.
+type NoopDiagnostics struct{}
+
+func (NoopDiagnostics) SessionSnapshot(Snapshot)     {}
+func (NoopDiagnostics) SessionCommand(string)        {}
+func (NoopDiagnostics) ProtocolRunGeneration(uint64) {}
+func (NoopDiagnostics) RetryScheduled(time.Time)     {}
+
+// ProtocolDiagnosticsFactory builds a transport-neutral protocol diagnostics
+// sink bound to one Session. The production adapter carries the SessionID so
+// Trace datagram records can include it without the protocol run ever knowing
+// the SessionID. A nil factory yields a no-op sink.
+type ProtocolDiagnosticsFactory func(AuthenticationSessionID) protocol.AuthenticationProtocolDiagnostics
+
 type Dependencies struct {
-	Now            func() time.Time
-	RetryPolicy    RetryPolicy
-	RetryScheduler RetryScheduler
+	Now                        func() time.Time
+	RetryPolicy                RetryPolicy
+	RetryScheduler             RetryScheduler
+	Diagnostics                Diagnostics
+	ProtocolDiagnosticsFactory ProtocolDiagnosticsFactory
 }
 
 type AuthenticationSession struct {
@@ -35,6 +72,8 @@ type AuthenticationSession struct {
 	now                        func() time.Time
 	retryPolicy                RetryPolicy
 	retryScheduler             RetryScheduler
+	diagnostics                Diagnostics
+	protocolDiagnostics        protocol.AuthenticationProtocolDiagnostics
 
 	inbox        chan sessionMessage
 	privateInbox chan sessionMessage
@@ -175,6 +214,14 @@ func initializeAuthenticationSession(
 		state = BlockedByError
 		stateReason = runtimeDefinitionUnavailableReason()
 	}
+	diagnostics := dependencies.Diagnostics
+	if diagnostics == nil {
+		diagnostics = NoopDiagnostics{}
+	}
+	var protocolDiagnostics protocol.AuthenticationProtocolDiagnostics = protocol.NoopAuthenticationProtocolDiagnostics{}
+	if dependencies.ProtocolDiagnosticsFactory != nil {
+		protocolDiagnostics = dependencies.ProtocolDiagnosticsFactory(configuration.AuthenticationSessionID)
+	}
 	admission := make(chan struct{}, 1)
 	admission <- struct{}{}
 	session := &AuthenticationSession{
@@ -183,6 +230,8 @@ func initializeAuthenticationSession(
 		now:                        now,
 		retryPolicy:                dependencies.RetryPolicy,
 		retryScheduler:             dependencies.RetryScheduler,
+		diagnostics:                diagnostics,
+		protocolDiagnostics:        protocolDiagnostics,
 		inbox:                      make(chan sessionMessage, 32),
 		privateInbox:               make(chan sessionMessage, 1),
 		done:                       make(chan struct{}),
@@ -381,18 +430,23 @@ func (session *AuthenticationSession) run() {
 		case snapshotQuery:
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case systemNetworkSnapshotCommand:
+			session.diagnostics.SessionCommand("apply_network_snapshot")
 			session.handleNetworkSnapshot(message.network)
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case activateCommand:
+			session.diagnostics.SessionCommand("activate")
 			session.handleActivate()
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case suspendCommand:
+			session.diagnostics.SessionCommand("suspend")
 			session.handleSuspend()
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case restartCommand:
+			session.diagnostics.SessionCommand("restart")
 			session.handleRestart()
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case replaceRuntimeDefinitionCommand:
+			session.diagnostics.SessionCommand("replace_runtime_definition")
 			if !message.replacement.valid() {
 				message.reply <- snapshotReply{err: errors.New("runtime definition replacement is invalid")}
 				continue
@@ -414,6 +468,7 @@ func (session *AuthenticationSession) run() {
 			}
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case shutdownCommand:
+			session.diagnostics.SessionCommand("shutdown")
 			if message.preparation != nil {
 				decision := session.handleShutdownPreparation(message.preparation)
 				if decision == shutdownPreparationAbort {
@@ -783,6 +838,7 @@ func (session *AuthenticationSession) scheduleRetry(delay time.Duration, code st
 		snapshot.NextRetryAt = &nextRetryAt
 		snapshot.LastAuthenticationFailure = session.publicFailure(failure)
 	})
+	session.diagnostics.RetryScheduled(nextRetryAt)
 	session.retryCancellation = session.retryScheduler.Schedule(delay, func() {
 		session.post(authenticationRetryDelayElapsedEvent{scheduleID: scheduleID})
 	})
@@ -984,6 +1040,7 @@ func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
 		SelectedSystemNetworkBinding:     session.desiredBinding,
 		SystemHostInformation:            session.definition.SystemHostInformation,
 		ProtocolContextOverride:          append(protocol.AuthenticationProtocolContextOverride(nil), session.definition.Configuration.ProtocolContextOverride...),
+		Diagnostics:                      session.protocolDiagnostics,
 	}
 	run, err := session.definition.AuthenticationProtocolFactory.CreateAuthenticationProtocolRun(inputs)
 	if err != nil || run == nil {
@@ -1006,6 +1063,7 @@ func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel}
 	session.active = active
+	session.diagnostics.ProtocolRunGeneration(generation)
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.State = Authenticating
 		snapshot.StateReason = nil
@@ -1054,6 +1112,10 @@ func (session *AuthenticationSession) publishRevision() {
 		default:
 		}
 	}
+	// The diagnostic sink observes every committed revision directly, without
+	// going through the coalescing RevisionEvents stream, so no intermediate
+	// public revision is lost. It has no return value and cannot change state.
+	session.diagnostics.SessionSnapshot(session.currentSnapshot.Clone())
 }
 
 func (session *AuthenticationSession) completeShutdown() {

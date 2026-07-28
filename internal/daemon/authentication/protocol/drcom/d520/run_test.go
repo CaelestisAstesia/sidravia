@@ -853,7 +853,7 @@ func TestRunAcceptsCampusResponseVariants(t *testing.T) {
 
 func TestRunExpectedBootstrapType6DoesNotBecomeNetworkTimeout(t *testing.T) {
 	response := peerKA2BootstrapType6Response(0, 20)
-	exec := newExecution(runDefinition{}, nil)
+	exec := newExecution(runDefinition{}, nil, protocol.NoopAuthenticationProtocolDiagnostics{})
 	if _, err := exec.classifyKA2Response(0, ka2Type1, false)(response); err == nil {
 		t.Fatal("non-bootstrap serial-zero Type1 accepted Type6")
 	}

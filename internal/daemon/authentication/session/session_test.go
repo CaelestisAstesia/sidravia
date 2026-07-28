@@ -1149,3 +1149,118 @@ func (factory *blockingCreationFactory) CreateAuthenticationProtocolRun(inputs p
 	}
 	return factory.controlledFactory.CreateAuthenticationProtocolRun(inputs)
 }
+
+// captureDiagnostics records session diagnostic events for assertion. It never
+// alters Session behavior.
+type captureDiagnostics struct {
+	mu             sync.Mutex
+	snapshots      []Snapshot
+	commands       []string
+	generations    []uint64
+	retryScheduled []time.Time
+}
+
+func (d *captureDiagnostics) SessionSnapshot(snapshot Snapshot) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.snapshots = append(d.snapshots, snapshot)
+}
+
+func (d *captureDiagnostics) SessionCommand(command string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.commands = append(d.commands, command)
+}
+
+func (d *captureDiagnostics) ProtocolRunGeneration(generation uint64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.generations = append(d.generations, generation)
+}
+
+func (d *captureDiagnostics) RetryScheduled(nextRetryAt time.Time) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.retryScheduled = append(d.retryScheduled, nextRetryAt)
+}
+
+func (d *captureDiagnostics) snapshotCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.snapshots)
+}
+
+func newDiagnosticsSession(t *testing.T, factory *controlledFactory, capture Diagnostics) *AuthenticationSession {
+	t.Helper()
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	deps := Dependencies{
+		Now:            func() time.Time { return time.Unix(100, 0) },
+		RetryPolicy:    unavailableRetryPolicy{},
+		RetryScheduler: noOpRetryScheduler{},
+		Diagnostics:    capture,
+	}
+	authSession, err := NewAuthenticationSession(definition, MaintainAuthentication, deps)
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession: %v", err)
+	}
+	authSession.Start()
+	return authSession
+}
+
+// TestSessionDiagnosticsObservesEveryCommittedRevision proves SessionSnapshot is
+// invoked once per committed revision without coalescing, so no intermediate
+// public revision is lost.
+func TestSessionDiagnosticsObservesEveryCommittedRevision(t *testing.T) {
+	factory := &controlledFactory{}
+	capture := &captureDiagnostics{}
+	authSession := newDiagnosticsSession(t, factory, capture)
+	defer func() { _ = authSession.Shutdown(context.Background()) }()
+
+	ctx := testContext(t)
+	// Wait for the run goroutine to start and publish the initial revision.
+	if _, err := authSession.Snapshot(ctx); err != nil {
+		t.Fatalf("initial Snapshot: %v", err)
+	}
+	initialCount := capture.snapshotCount()
+	if initialCount < 1 {
+		t.Fatalf("expected initial revision observed, got %d", initialCount)
+	}
+	_, _ = authSession.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	_ = waitForState(t, ctx, authSession, Authenticating)
+
+	if capture.snapshotCount() < 2 {
+		t.Fatalf("expected at least 2 observed snapshots (initial + network), got %d", capture.snapshotCount())
+	}
+}
+
+// TestSessionDiagnosticsRecordsCommandAndGeneration proves SessionCommand and
+// ProtocolRunGeneration are recorded without changing Session behavior.
+func TestSessionDiagnosticsRecordsCommandAndGeneration(t *testing.T) {
+	factory := &controlledFactory{}
+	capture := &captureDiagnostics{}
+	authSession := newDiagnosticsSession(t, factory, capture)
+	defer func() { _ = authSession.Shutdown(context.Background()) }()
+
+	ctx := testContext(t)
+	_, _ = authSession.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	_ = waitForFactoryRun(t, ctx, factory, 0)
+
+	capture.mu.Lock()
+	commands := append([]string(nil), capture.commands...)
+	generations := append([]uint64(nil), capture.generations...)
+	capture.mu.Unlock()
+
+	if len(generations) == 0 {
+		t.Fatal("expected ProtocolRunGeneration to be called after run creation")
+	}
+	found := false
+	for _, c := range commands {
+		if c == "apply_network_snapshot" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("apply_network_snapshot command not recorded; commands=%v", commands)
+	}
+}

@@ -58,7 +58,11 @@ func (b *safeBuffer) String() string {
 }
 
 func newTestLogger(buf *safeBuffer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	return newTestLoggerWithLevel(buf, slog.LevelDebug)
+}
+
+func newTestLoggerWithLevel(buf *safeBuffer, level slog.Level) *slog.Logger {
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: level}))
 }
 
 func waitForLogEvent(t *testing.T, buf *safeBuffer, needle string) {
@@ -83,8 +87,12 @@ func waitForChannel(t *testing.T, ch <-chan struct{}, name string) {
 }
 
 func newTestServer(t *testing.T, handler Handler, buf *safeBuffer) (*Server, string) {
+	return newTestServerWithLevel(t, handler, buf, slog.LevelDebug)
+}
+
+func newTestServerWithLevel(t *testing.T, handler Handler, buf *safeBuffer, level slog.Level) (*Server, string) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf))
+	srv, err := NewServer(testToken, testBuild, handler, newTestLoggerWithLevel(buf, level))
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -192,6 +200,43 @@ func TestIPCRequestCompletedOnSuccess(t *testing.T) {
 	}
 	if strings.Contains(output, "event=ipc_request_rejected") {
 		t.Fatalf("success must not log ipc_request_rejected, got:\n%s", output)
+	}
+}
+
+// TestIPCRequestCompletedDroppedAtInfoLevel proves successful IPC request
+// completion and connection-opened events are Debug records: they appear at
+// Debug level but are dropped at Info level, while Warn records still appear.
+func TestIPCRequestCompletedDroppedAtInfoLevel(t *testing.T) {
+	var buf safeBuffer
+	handler := func(_ context.Context, method string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
+		if method != contract.MethodDaemonStatus {
+			return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported"}
+		}
+		return json.RawMessage(`{"productVersion":"1.0.0","buildId":"b","pid":1,"status":"running"}`), nil
+	}
+	_, wsURL := newTestServerWithLevel(t, handler, &buf, slog.LevelInfo)
+
+	conn := dial(t, wsURL)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	// Successful request: its Debug events must be dropped at Info level.
+	writeRequest(t, conn, "1", contract.MethodDaemonStatus, json.RawMessage(`{}`))
+	readResponse(t, conn)
+
+	// Malformed request: its Warn event appears at Info level, proving the log
+	// stream is active and giving a stable synchronization point.
+	if err := conn.Write(context.Background(), websocket.MessageText, []byte(`{"kind":"bad","id":"2"}`)); err != nil {
+		t.Fatalf("write malformed request: %v", err)
+	}
+	readResponse(t, conn)
+
+	waitForLogEvent(t, &buf, "event=ipc_request_rejected")
+	output := buf.String()
+	if strings.Contains(output, "event=ipc_request_completed") {
+		t.Fatalf("Info level must drop Debug ipc_request_completed, got:\n%s", output)
+	}
+	if strings.Contains(output, "event=ipc_connection_opened") {
+		t.Fatalf("Info level must drop Debug ipc_connection_opened, got:\n%s", output)
 	}
 }
 

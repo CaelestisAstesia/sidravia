@@ -35,7 +35,7 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 ## 运行日志
 
 `sidraviad` 把结构化运行日志写到 stderr，使用标准库 `log/slog` 的 TextHandler、
-Info 级别。每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性，
+默认 Info 级别。`SIDRAVIA_LOG_LEVEL` 可设置为 `info`、`debug` 或 `trace`；`trace` 启用完整 D520 数据报日志（含账号与认证材料，显式敏感）。每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性，
 例如：
 
 ```text
@@ -43,8 +43,9 @@ time=2026-07-27T... level=INFO msg=守护进程运行已启动 event=daemon_runt
 time=2026-07-27T... level=INFO msg=IPC 请求已完成 event=ipc_request_completed method=daemon.status
 ```
 
-日志永不包含密码、token、用户名、账号名称、凭据、Profile JSON、网卡事实、
-请求/响应字节或原始 error。如果需要保存日志，用户可以重定向 stderr，例如
+Info/Debug 永不包含密码、token、凭据、Profile JSON、MAC、DNS/DHCP、网卡 ID、
+请求/响应字节或原始 error；它们包含完整账号名、友好接口名和所选 IPv4。Trace
+数据报记录是唯一含完整报文字节的位置，且仅在显式启用 Trace 时出现。如果需要保存日志，用户可以重定向 stderr，例如
 `.\sidraviad.exe 2> sidraviad.log`；Sidravia 首版不拥有日志文件、轮转或日志
 IPC/CLI 命令。
 

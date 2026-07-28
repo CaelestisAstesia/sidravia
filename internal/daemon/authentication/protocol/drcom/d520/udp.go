@@ -7,6 +7,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"sidravia/internal/daemon/authentication/protocol"
 )
 
 // udpReadBufferSize observes one byte beyond the 4096-byte accepted maximum,
@@ -70,6 +72,8 @@ func (ex *udpExchange) roundTrip(
 	timeout time.Duration,
 	request []byte,
 	classify responseClassifier,
+	phase string,
+	diagnostics protocol.AuthenticationProtocolDiagnostics,
 ) ([]byte, *runError) {
 	deadline := time.Now().Add(timeout)
 	if err := ex.conn.SetDeadline(deadline); err != nil {
@@ -88,6 +92,8 @@ func (ex *udpExchange) roundTrip(
 		}
 	}()
 
+	diagnostics.PhaseEvent(phase, phaseBoundaryBegin)
+	diagnostics.DatagramEvent(phase, protocol.DatagramDirectionTx, request)
 	if _, err := ex.conn.Write(request); err != nil {
 		return nil, udpReadFailure(ctx, "udp exchange write", err)
 	}
@@ -99,11 +105,13 @@ func (ex *udpExchange) roundTrip(
 		}
 		datagram := make([]byte, n)
 		copy(datagram, ex.buf[:n])
+		diagnostics.DatagramEvent(phase, protocol.DatagramDirectionRx, datagram)
 		class, classifyErr := classify(datagram)
 		if classifyErr != nil {
 			return nil, responseInvalidError("udp exchange response", classifyErr)
 		}
 		if class == responseAccept {
+			diagnostics.PhaseEvent(phase, phaseBoundaryEnd)
 			return datagram, nil
 		}
 		// responseIgnore: discard the stale datagram and keep reading against

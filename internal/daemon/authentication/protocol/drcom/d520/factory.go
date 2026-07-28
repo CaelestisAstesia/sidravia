@@ -77,11 +77,16 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 		return nil, err
 	}
 
+	diagnostics := inputs.Diagnostics
+	if diagnostics == nil {
+		diagnostics = protocol.NoopAuthenticationProtocolDiagnostics{}
+	}
 	return &d520Run{
 		definition: runDefinition{
 			login: login,
 			cfg:   cfg,
 		},
+		diagnostics: diagnostics,
 	}, nil
 }
 

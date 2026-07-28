@@ -152,23 +152,42 @@ heartbeat 和单个 Run 内 busy 重试仍来自机构 Profile；如果现场证
 
 ## 运行日志边界
 
-`cmd/sidraviad` 构造唯一生产 `*slog.Logger`，使用 `TextHandler`、stderr、Info
-级别，并显式传入生产装配、`composedRuntime` 和 IPC Server。它不修改
-package-global default logger。核心 Session、Supervisor、D520、持久化和配置包
-不导入 `log/slog`。
+`cmd/sidraviad` 构造唯一生产 `*slog.Logger`，使用 `TextHandler`、stderr，默认
+Info 级别。`SIDRAVIA_LOG_LEVEL` 精确接受小写 `info`、`debug` 和 `trace`；未设置
+表示 `info`；`trace` 是低于 `debug` 的自定义级别，启用完整 D520 数据报日志；非法
+值导致构造失败且不回显该值。logger 显式传入生产装配、`composedRuntime` 和 IPC
+Server，不修改 package-global default logger。核心 Session、Supervisor、D520、
+持久化和配置包不导入 `log/slog`。
 
 每条运行日志都带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性。
-事件、等级与安全属性以 ADR 0013 为准。`method` 只接受当前 IPC 契约方法，其他
-值归一化为 `unknown`；`error_code` 只接受当前契约错误码，其他值归一化为
-`internal_error`；`stage` 只接受 `encode` 和 `write`。固定消息绝不由 error、
-请求或响应构造。
+事件、等级与安全属性以 ADR 0013 与 ADR 0015 为准。`method` 只接受当前 IPC 契约
+方法，其他值归一化为 `unknown`；`error_code` 只接受当前契约错误码，其他值归一化
+为 `internal_error`；`stage` 只接受 `encode` 和 `write`。固定消息绝不由 error、
+请求或响应构造。成功 IPC 请求完成与连接建立在 Debug 记录；拒绝与响应失败保留
+Warn。
 
-普通日志永不包含原始 error 或包装的诊断原因、请求/响应字节、request ID、token、
-endpoint、用户名、账号名称、密码、凭据 ID、Profile JSON、协议上下文或网卡
-ID/名称/MAC/IP/网关/DNS/主机名。进程边界把 fatal reporting 与 `os.Exit` 分离：
-构造失败只发一条 `daemon_start_failed`，运行失败只发一条 `daemon_runtime_failed`，
-两者都不含返回的 error，但原始 error 仍由错误传播保留。日志是观察层，不改变 IPC
-响应、错误码、生命周期取消、goroutine 所有权或退出结果。
+Info/Debug 记录 operator-significant 的公开标识：完整账号名、机构显示名、友好
+接口名与所选 IPv4。日志永不包含原始 error 或包装的诊断原因、请求/响应字节、
+request ID、token、endpoint、密码、凭据 ID、Profile JSON、协议上下文或网卡
+ID/MAC/网关/DNS/DHCP/主机名。Trace 数据报记录是唯一含完整报文字节的位置，且
+仅在显式启用 Trace 时出现；启用时先发一条 Warn `trace_logging_sensitive`。进程
+边界把 fatal reporting 与 `os.Exit` 分离：构造失败只发一条 `daemon_start_failed`，
+运行失败只发一条 `daemon_runtime_failed`，两者都不含返回的 error，但原始 error
+仍由错误传播保留。日志是观察层，不改变 IPC 响应、错误码、生命周期取消、
+goroutine 所有权或退出结果。
+
+## 分层诊断边界
+
+Session 与协议诊断由窄的、传输中立的接口承载：`session.Diagnostics` 观察
+Session 生命周期（每次已提交 revision、命令、协议运行代际、重试调度），
+`protocol.AuthenticationProtocolDiagnostics` 观察协议阶段边界与 UDP 数据报。
+组合根注入生产 adapter；Nil/禁用诊断使用显式 no-op 实现。Session 的
+`SessionSnapshot` 在每次已提交 revision 时直接调用，不经过 coalescing 的
+`RevisionEvents` 流。D520 的 UDP exchange 接收稳定 phase 与诊断 sink，不从报文
+内容派生字段；`ProtocolDiagnosticsFactory` 把每个协议 sink 绑定到 Session，使
+Trace 数据报记录含 `session_id` 而协议运行本身不知道它。诊断 sink 无返回值，
+永不改变协议、重试、Session 状态、IPC 响应、关闭顺序或返回值。完整等级与隐私
+契约见 ADR 0015。
 
 本切片只产出 stderr Text 日志，不写日志文件、不做轮转、不暴露日志 IPC/CLI 命令、
 不加终端样式。简体中文 CLI 呈现和 terminal/`NO_COLOR` 行为已由独立的 CLI 呈现切片

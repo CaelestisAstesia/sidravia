@@ -23,7 +23,7 @@ func (f *fakeRuntime) run(_ context.Context) error { return f.runErr }
 // event code and only the permitted attributes.
 func TestNewDaemonLoggerIsTextInfo(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newDaemonLogger(&buf)
+	logger := newDaemonLogger(&buf, slog.LevelInfo)
 
 	logger.Debug("debug must be dropped", slog.String("event", "debug_event"))
 	logger.Info(msgDaemonRuntimeStarted,

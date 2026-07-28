@@ -142,7 +142,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Info(msgIPCConnectionOpened, slog.String("event", eventIPCConnectionOpened))
+	s.logger.Debug(msgIPCConnectionOpened, slog.String("event", eventIPCConnectionOpened))
 
 	s.serveConn(r.Context(), conn)
 }
@@ -206,7 +206,7 @@ func (s *Server) serveConn(ctx context.Context, conn *websocket.Conn) {
 				slog.String("error_code", normalizeErrorCode(rawErrorCode)),
 			)
 		} else {
-			s.logger.Info(msgIPCRequestCompleted,
+			s.logger.Debug(msgIPCRequestCompleted,
 				slog.String("event", eventIPCRequestCompleted),
 				slog.String("method", normalizeMethod(method)),
 			)

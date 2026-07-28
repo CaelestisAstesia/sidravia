@@ -216,8 +216,10 @@ func composeObjectGraph(
 	}
 
 	sup := supervisor.New(supervisor.Dependencies{
-		RetryPolicy:    session.NewDefaultRetryPolicy(),
-		RetryScheduler: session.NewTimerRetryScheduler(),
+		RetryPolicy:                session.NewDefaultRetryPolicy(),
+		RetryScheduler:             session.NewTimerRetryScheduler(),
+		Diagnostics:                newSessionDiagnostics(logger),
+		ProtocolDiagnosticsFactory: newProtocolDiagnosticsFactory(logger),
 	})
 
 	resolver, err := app.NewAuthenticationResolver(catalog, profiles, credStore, registry, hostInfo)

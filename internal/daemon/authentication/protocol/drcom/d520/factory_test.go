@@ -244,3 +244,40 @@ func TestFactoryValidateDelegates(t *testing.T) {
 		t.Fatal("validate non-empty override expected error")
 	}
 }
+
+// TestFactoryInjectsDiagnosticsIntoRun proves the factory carries the supplied
+// diagnostics sink into the created run.
+func TestFactoryInjectsDiagnosticsIntoRun(t *testing.T) {
+	sink := &captureDiagnostics{}
+	inputs := factoryInputs(validConfig(t), testCredential(), testBinding(t))
+	inputs.Diagnostics = sink
+	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	d520, ok := run.(*d520Run)
+	if !ok {
+		t.Fatalf("run type = %T, want *d520Run", run)
+	}
+	if d520.diagnostics != sink {
+		t.Error("diagnostics not injected into run")
+	}
+}
+
+// TestFactoryUsesNoopWhenDiagnosticsNil proves a nil sink is replaced by the
+// explicit no-op implementation rather than a scattered nil check.
+func TestFactoryUsesNoopWhenDiagnosticsNil(t *testing.T) {
+	inputs := factoryInputs(validConfig(t), testCredential(), testBinding(t))
+	inputs.Diagnostics = nil
+	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	d520, ok := run.(*d520Run)
+	if !ok {
+		t.Fatalf("run type = %T, want *d520Run", run)
+	}
+	if d520.diagnostics == nil {
+		t.Error("diagnostics is nil, want Noop implementation")
+	}
+}

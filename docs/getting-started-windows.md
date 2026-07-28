@@ -93,9 +93,11 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 .\sidraviad.exe 2> sidraviad.log
 ```
 
-日志只包含稳定事件码、固定简体中文消息和安全属性，不含密码、token、用户名、
-账号名称、凭据、Profile JSON、网卡事实或原始 error。Sidravia 首版不做日志轮转，
-也不提供日志 IPC/CLI 命令。
+`SIDRAVIA_LOG_LEVEL` 可设置为 `info`（默认）、`debug` 或 `trace`；`trace` 启用
+完整 D520 数据报日志，可能含账号与认证材料，显式敏感。Info/Debug 日志包含完整
+账号名、友好接口名与所选 IPv4，但不含密码、token、凭据、Profile JSON、MAC、
+DNS/DHCP、网卡 ID 或原始 error；Trace 数据报是唯一含完整报文字节的位置。
+Sidravia 首版不做日志轮转，也不提供日志 IPC/CLI 命令。
 
 窗口 B 检查版本：
 

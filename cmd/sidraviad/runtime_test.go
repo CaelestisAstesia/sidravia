@@ -867,3 +867,56 @@ func TestRuntimeFailureLogsStartedWithoutStopOrCause(t *testing.T) {
 		t.Fatalf("original cause leaked into runtime log, got:\n%s", output)
 	}
 }
+
+// TestCompositionInjectsSessionDiagnostics proves the composition root wires the
+// production session diagnostics adapter into created Sessions, so the Info
+// session_snapshot event appears and the password never does.
+func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
+	paths := testPaths(t)
+	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+	store := newInMemoryStore()
+	hostInfo := testHostInfo()
+	observer := newFakeObserver()
+	hostRunner := newFakeHostRunner()
+
+	var buf bytes.Buffer
+	logger := bufferLogger(&buf)
+
+	rt, err := composeObjectGraph(
+		context.Background(), store, paths, hostInfo, observer, hostRunner.run,
+		"test-token", "1.0.0-test", "abc1234", logger,
+	)
+	if err != nil {
+		t.Fatalf("composeObjectGraph: %v", err)
+	}
+	defer func() {
+		rt.shutdown.Close()
+		rt.shutdown.Wait()
+	}()
+
+	startPayload, _ := json.Marshal(contract.SessionStartOneShotPayload{
+		DisplayName:              "Test Session",
+		InstitutionProfileID:     "jlu",
+		Username:                 "fictional-user-9Z1",
+		Password:                 "fictional-password-9Z2",
+		NetworkBindingPolicyMode: "automatically_select_latest_available",
+		ProtocolContextOverride:  json.RawMessage(`{}`),
+	})
+	if _, rpcErr := rt.handler(context.Background(), contract.MethodSessionStartOneShot, startPayload); rpcErr != nil {
+		t.Fatalf("session.startOneShot: %v", rpcErr)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), "event=session_snapshot") {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !strings.Contains(buf.String(), "event=session_snapshot") {
+		t.Fatalf("expected session_snapshot event in log, got:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "fictional-password-9Z2") {
+		t.Fatalf("password leaked into diagnostics log:\n%s", buf.String())
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -14,7 +15,17 @@ var (
 )
 
 func main() {
-	os.Exit(runMain(newProductionLogger()))
+	logger, level, err := newProductionLogger()
+	if err != nil {
+		// Cannot log via slog yet; write the fixed safe line to stderr without
+		// echoing the invalid value.
+		fmt.Fprintln(os.Stderr, msgDaemonStartFailed)
+		os.Exit(1)
+	}
+	if traceLoggingEnabled(level) {
+		logger.Warn(msgTraceLoggingSensitive, slog.String("event", eventTraceLoggingSensitive))
+	}
+	os.Exit(runMain(logger))
 }
 
 // runtimeLike is the subset of *composedRuntime that the process boundary
@@ -56,19 +67,24 @@ func runMainWith(logger *slog.Logger, construct systemConstructor) int {
 	return 0
 }
 
-// newProductionLogger constructs the single daemon-wide structured logger. It
-// writes TextHandler records to stderr at Info level. It must not mutate the
-// package-global default logger.
-func newProductionLogger() *slog.Logger {
-	return newDaemonLogger(os.Stderr)
+// newProductionLogger constructs the single daemon-wide structured logger from
+// SIDRAVIA_LOG_LEVEL. It returns the resolved level so callers can emit the
+// Trace-sensitive startup warning. It must not mutate the package-global
+// default logger.
+func newProductionLogger() (*slog.Logger, slog.Level, error) {
+	level, err := resolveLogLevel(os.Getenv("SIDRAVIA_LOG_LEVEL"))
+	if err != nil {
+		return nil, 0, err
+	}
+	return newDaemonLogger(os.Stderr, level), level, nil
 }
 
-// newDaemonLogger builds a TextHandler logger at Info level over w. It is
+// newDaemonLogger builds a TextHandler logger at the given level over w. It is
 // separated from newProductionLogger so tests can assert the handler shape and
 // level without capturing process stderr.
-func newDaemonLogger(w io.Writer) *slog.Logger {
+func newDaemonLogger(w io.Writer, level slog.Level) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: level,
 	}))
 }
 

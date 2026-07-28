@@ -15,7 +15,8 @@ import (
 // creates fresh per-call execution state and owns one UDP socket for the
 // duration of that call.
 type d520Run struct {
-	definition runDefinition
+	definition  runDefinition
+	diagnostics protocol.AuthenticationProtocolDiagnostics
 }
 
 // ka2Exchange identifies a sent KA2 request. The first-bootstrap distinction
@@ -30,9 +31,10 @@ type ka2Exchange struct {
 // and the current socket. Nothing here is shared across calls or stored on the
 // immutable run definition.
 type execution struct {
-	definition runDefinition
-	observer   protocol.AuthenticationProtocolRunObserver
-	exchange   *udpExchange
+	definition  runDefinition
+	observer    protocol.AuthenticationProtocolRunObserver
+	exchange    *udpExchange
+	diagnostics protocol.AuthenticationProtocolDiagnostics
 
 	salt        [4]byte
 	authInfo    [16]byte
@@ -45,11 +47,12 @@ type execution struct {
 	ka2Sent map[byte]ka2Exchange
 }
 
-func newExecution(definition runDefinition, observer protocol.AuthenticationProtocolRunObserver) *execution {
+func newExecution(definition runDefinition, observer protocol.AuthenticationProtocolRunObserver, diagnostics protocol.AuthenticationProtocolDiagnostics) *execution {
 	return &execution{
-		definition: definition,
-		observer:   observer,
-		ka2Sent:    make(map[byte]ka2Exchange),
+		definition:  definition,
+		observer:    observer,
+		diagnostics: diagnostics,
+		ka2Sent:     make(map[byte]ka2Exchange),
 	}
 }
 
@@ -59,7 +62,7 @@ func newExecution(definition runDefinition, observer protocol.AuthenticationProt
 // heartbeats. It returns nil on cancellation after the requested cleanup, or a
 // stable public failure on any protocol failure.
 func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
-	exec := newExecution(r.definition, observer)
+	exec := newExecution(r.definition, observer, r.diagnostics)
 	ex, err := openUDPExchange(r.definition.login.clientIPv4, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
 	if err != nil {
 		return networkIOError("open socket", err).toFailure()
@@ -100,7 +103,7 @@ func (exec *execution) requestChallenge(ctx context.Context, timeout time.Durati
 		}
 		return responseAccept, nil
 	}
-	resp, failure := exec.exchange.roundTrip(ctx, timeout, req, classify)
+	resp, failure := exec.exchange.roundTrip(ctx, timeout, req, classify, phaseChallenge, exec.diagnostics)
 	if failure != nil {
 		return [4]byte{}, failure
 	}
@@ -128,7 +131,7 @@ func (exec *execution) login(ctx context.Context) *runError {
 
 	maxAttempts := exec.definition.cfg.busyMaxAttempts
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.loginTimeout, loginReq, classify)
+		resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.loginTimeout, loginReq, classify, phaseLogin, exec.diagnostics)
 		if failure != nil {
 			return failure
 		}
@@ -157,16 +160,16 @@ func (exec *execution) login(ctx context.Context) *runError {
 // bootstrap runs the initial KA1 + KA2 1-1-3 sequence and notifies the
 // observer exactly once that authentication is established.
 func (exec *execution) bootstrap(ctx context.Context) *runError {
-	if failure := exec.sendKA1(ctx); failure != nil {
+	if failure := exec.sendKA1(ctx, phaseBootstrapKA1); failure != nil {
 		return failure
 	}
-	if failure := exec.sendKA2(ctx, ka2Type1, true); failure != nil {
+	if failure := exec.sendKA2(ctx, ka2Type1, true, phaseBootstrapKA2); failure != nil {
 		return failure
 	}
-	if failure := exec.sendKA2(ctx, ka2Type1, false); failure != nil {
+	if failure := exec.sendKA2(ctx, ka2Type1, false, phaseBootstrapKA2); failure != nil {
 		return failure
 	}
-	if failure := exec.sendKA2(ctx, ka2Type3, false); failure != nil {
+	if failure := exec.sendKA2(ctx, ka2Type3, false, phaseBootstrapKA2); failure != nil {
 		return failure
 	}
 	exec.observer.AuthenticationEstablished()
@@ -180,13 +183,13 @@ func (exec *execution) heartbeatLoop(ctx context.Context) *runError {
 		if !sleepCancellable(ctx, exec.definition.cfg.heartbeatInterval) {
 			return networkTimeoutError("heartbeat wait", ctx.Err())
 		}
-		if failure := exec.sendKA1(ctx); failure != nil {
+		if failure := exec.sendKA1(ctx, phaseKeepaliveKA1); failure != nil {
 			return failure
 		}
-		if failure := exec.sendKA2(ctx, ka2Type1, false); failure != nil {
+		if failure := exec.sendKA2(ctx, ka2Type1, false, phaseKeepaliveKA2); failure != nil {
 			return failure
 		}
-		if failure := exec.sendKA2(ctx, ka2Type3, false); failure != nil {
+		if failure := exec.sendKA2(ctx, ka2Type3, false, phaseKeepaliveKA2); failure != nil {
 			return failure
 		}
 	}
@@ -194,7 +197,7 @@ func (exec *execution) heartbeatLoop(ctx context.Context) *runError {
 
 // sendKA1 builds and sends one KA1 request using the login salt and current
 // Auth Info, and accepts a structurally valid KA1 response.
-func (exec *execution) sendKA1(ctx context.Context) *runError {
+func (exec *execution) sendKA1(ctx context.Context, phase string) *runError {
 	passwordBytes, err := encodeProtocolText(exec.definition.login.password)
 	if err != nil {
 		return contractViolationError("ka1 build", err)
@@ -207,7 +210,7 @@ func (exec *execution) sendKA1(ctx context.Context) *runError {
 	}
 	classify := exec.classifyKA1Response()
 	exec.ka1Sent = true
-	_, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify)
+	_, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify, phase, exec.diagnostics)
 	return failure
 }
 
@@ -216,7 +219,7 @@ func (exec *execution) sendKA1(ctx context.Context) *runError {
 // accepted normal response it replaces Tail; a bootstrap Type 6 response
 // leaves Tail unchanged. Every accepted response increments the serial
 // (wrapping at 255).
-func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *runError {
+func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool, phase string) *runError {
 	serial := exec.serial
 	req, err := buildKA2Request(serial, typ, firstType1, exec.definition.cfg.keepAliveVersion, exec.tail, exec.definition.login.clientIPv4)
 	if err != nil {
@@ -224,7 +227,7 @@ func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool) *
 	}
 	exec.ka2Sent[serial] = ka2Exchange{requestType: typ, firstBootstrapType1: firstType1}
 	classify := exec.classifyKA2Response(serial, typ, firstType1)
-	resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify)
+	resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify, phase, exec.diagnostics)
 	if failure != nil {
 		return failure
 	}
@@ -334,7 +337,7 @@ func (exec *execution) bestEffortLogout() *runError {
 		}
 		return responseAccept, nil
 	}
-	_, failure := exec.exchange.roundTrip(logoutCtx, exec.definition.cfg.logoutTimeout, logoutReq, classify)
+	_, failure := exec.exchange.roundTrip(logoutCtx, exec.definition.cfg.logoutTimeout, logoutReq, classify, phaseLogout, exec.diagnostics)
 	return failure
 }
 
