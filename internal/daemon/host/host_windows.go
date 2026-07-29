@@ -46,7 +46,9 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// Write runtime info.
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{
-		IntendedOwnerSID: sid,
+		IntendedOwnerSID:                   sid,
+		AllowUnsupportedProtectionFallback: cfg.AllowUnsupportedProtectionFallback,
+		OnUnprotected:                      cfg.OnUnprotected,
 	})
 	if err != nil {
 		return fmt.Errorf("host: secure store: %w", err)

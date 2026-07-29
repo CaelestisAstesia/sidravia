@@ -36,6 +36,50 @@ func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 	}
 }
 
+func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordRead(t *testing.T) {
+	var output bytes.Buffer
+	connection := &fakeDaemonClient{
+		callContext: func(ctx context.Context) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("configuration start has no deadline")
+			}
+			remaining := time.Until(deadline)
+			if remaining < 29*time.Second || remaining > 31*time.Second {
+				t.Fatalf("configuration start deadline = %v", remaining)
+			}
+		},
+		call: func(method string, payload json.RawMessage) (contract.Response, error) {
+			if method != contract.MethodSessionStartConfiguration ||
+				string(payload) != `{"configurationId":"campus"}` {
+				t.Fatalf("call = %s %s", method, payload)
+			}
+			result := minimalSessionResult("authenticated")
+			result.AuthenticationSessionID = "configuration-session"
+			result.InstitutionDisplayName = "Campus"
+			return successSessionResponse(t, result), nil
+		},
+	}
+	deps := hotAuthDependencies(t, connection)
+	deps.stdout = &output
+	deps.readStdinPassword = func(io.Reader) (string, error) {
+		t.Fatal("config start read stdin password")
+		return "", nil
+	}
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) {
+		t.Fatal("config start read interactive password")
+		return "", nil
+	}
+	if err := runAuthStart(authStartOptions{configurationID: "campus"}, deps); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"会话：configuration-session", "状态：已认证", "机构：Campus"} {
+		if !strings.Contains(output.String(), text) {
+			t.Fatalf("presentation %q missing %q", output.String(), text)
+		}
+	}
+}
+
 func (client *fakeDaemonClient) Call(
 	ctx context.Context,
 	method string,

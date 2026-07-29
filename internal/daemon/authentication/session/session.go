@@ -878,7 +878,7 @@ func (session *AuthenticationSession) publicFailureForbiddenMaterial(failure *pr
 	values := []string{
 		session.definition.AuthenticationCredential.Username,
 		session.definition.AuthenticationCredential.Password,
-		string(session.definition.Configuration.CredentialID),
+		"",
 		string(session.definition.Configuration.ProtocolContextOverride),
 		string(session.definition.InstitutionProfile.InstitutionProtocolConfiguration),
 	}

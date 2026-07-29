@@ -73,6 +73,29 @@ func TestWindowsExplicitOwnerSIDSeamAcceptsCanonicalUserSID(t *testing.T) {
 	}
 }
 
+func TestWindowsProtectionClassificationExcludesOrdinaryFailures(t *testing.T) {
+	for _, unsupported := range []error{
+		errorNotSupported,
+		errorInvalidFunction,
+		errorCallNotImplemented,
+	} {
+		if !errors.Is(classifyWindowsProtection(unsupported), ProtectionUnsupported) {
+			t.Fatalf("%v was not classified unsupported", unsupported)
+		}
+	}
+	for _, ordinary := range []error{
+		syscall.ERROR_ACCESS_DENIED,
+		errorInvalidParameter,
+		errorInvalidName,
+		syscall.ERROR_PATH_NOT_FOUND,
+		syscall.Errno(0x7fff),
+	} {
+		if errors.Is(classifyWindowsProtection(ordinary), ProtectionUnsupported) {
+			t.Fatalf("%v was classified unsupported", ordinary)
+		}
+	}
+}
+
 func TestWindowsDirectoryAndFileDACLIsProtectedOwnerAndSystemOnly(t *testing.T) {
 	owner := windowsTestOwner(t)
 	path := filepath.Join(t.TempDir(), "secure", "state.json")

@@ -28,7 +28,6 @@ func assertAbsoluteClean(t *testing.T, layout Layout) {
 	}{
 		{"executable directory", layout.ExecutableDirectory},
 		{"configurations path", layout.ConfigurationsPath},
-		{"credentials path", layout.CredentialsPath},
 		{"institution profiles directory", layout.InstitutionProfilesDirectory},
 		{"runtime info path", layout.RuntimeInfoPath},
 		{"daemon log path", layout.DaemonLogPath},
@@ -64,9 +63,6 @@ func TestResolveInstalledModeWithoutMarker(t *testing.T) {
 	cacheRoot := filepath.Join(cacheDir, "Sidravia")
 	if layout.ConfigurationsPath != filepath.Join(configRoot, "configurations.json") {
 		t.Fatalf("ConfigurationsPath = %q", layout.ConfigurationsPath)
-	}
-	if layout.CredentialsPath != filepath.Join(configRoot, "credentials.json") {
-		t.Fatalf("CredentialsPath = %q", layout.CredentialsPath)
 	}
 	if layout.InstitutionProfilesDirectory != filepath.Join(configRoot, "institution-profiles") {
 		t.Fatalf("InstitutionProfilesDirectory = %q", layout.InstitutionProfilesDirectory)
@@ -109,9 +105,6 @@ func TestResolvePortableModeWithRegularMarker(t *testing.T) {
 	}
 	if layout.ConfigurationsPath != filepath.Join(exeDir, "config", "configurations.json") {
 		t.Fatalf("ConfigurationsPath = %q", layout.ConfigurationsPath)
-	}
-	if layout.CredentialsPath != filepath.Join(exeDir, "config", "credentials.json") {
-		t.Fatalf("CredentialsPath = %q", layout.CredentialsPath)
 	}
 	if layout.InstitutionProfilesDirectory != filepath.Join(exeDir, "config", "institution-profiles") {
 		t.Fatalf("InstitutionProfilesDirectory = %q", layout.InstitutionProfilesDirectory)

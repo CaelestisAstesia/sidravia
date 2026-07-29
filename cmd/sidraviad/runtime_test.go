@@ -17,6 +17,7 @@ import (
 
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
+	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
@@ -62,6 +63,14 @@ func (s *inMemoryStore) Replace(_ context.Context, path string, data []byte) err
 	copy(cp, data)
 	s.data[path] = cp
 	return nil
+}
+
+func (s *inMemoryStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ bool) error {
+	return s.Replace(ctx, path, data)
+}
+
+func (s *inMemoryStore) ProtectionStatus() jsonfile.ProtectionStatus {
+	return jsonfile.ProtectionProtected
 }
 
 func (s *inMemoryStore) wasOpened(path string) bool {
@@ -176,7 +185,6 @@ func testPaths(t *testing.T) defaultPaths {
 	return defaultPaths{
 		profiles:       filepath.Join(dir, "institution-profiles"),
 		configurations: filepath.Join(dir, "configurations.json"),
-		credentials:    filepath.Join(dir, "credentials.json"),
 		runtimeInfo:    filepath.Join(dir, "runtime.json"),
 	}
 }
@@ -297,9 +305,6 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 
 	if !store.wasOpened(paths.configurations) {
 		t.Fatal("store was not opened at configurations path")
-	}
-	if !store.wasOpened(paths.credentials) {
-		t.Fatal("store was not opened at credentials path")
 	}
 
 	if hostRunner.wasCalled() {

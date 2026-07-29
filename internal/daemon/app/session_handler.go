@@ -19,6 +19,7 @@ import (
 // Configuration, Credentials, Supervisor or Session internals.
 type sessionApplication interface {
 	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error)
+	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
@@ -40,6 +41,8 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 		switch method {
 		case contract.MethodSessionStartOneShot:
 			return handleSessionStartOneShot(ctx, application, payload)
+		case contract.MethodSessionStartConfiguration:
+			return handleSessionStartConfiguration(ctx, application, payload)
 		case contract.MethodSessionStop:
 			return handleSessionStop(ctx, application, payload)
 		case contract.MethodSessionEnsureRunning:
@@ -59,6 +62,18 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 			}
 		}
 	}
+}
+
+func handleSessionStartConfiguration(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	request, err := contract.DecodeConfigurationIDPayload(payload)
+	if err != nil {
+		return nil, invalidArgumentError()
+	}
+	_, snapshot, err := application.StartConfigurationAuthentication(ctx, config.ConfigurationID(request.ConfigurationID))
+	if err != nil {
+		return nil, sessionError(err)
+	}
+	return encodeSessionResult(snapshot)
 }
 
 func handleSessionEnsureRunning(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
@@ -202,7 +217,7 @@ func sessionError(err error) *contract.Error {
 			return &contract.Error{Code: contract.ErrorCodeProfileNotFound, Message: "institution profile not found"}
 		case ProtocolNotFound:
 			return &contract.Error{Code: contract.ErrorCodeProtocolNotFound, Message: "authentication protocol not found"}
-		case ConfigurationNotFound, CredentialNotFound, InvalidConfiguration, InvalidEnvironment:
+		case ConfigurationNotFound, InvalidConfiguration, InvalidEnvironment:
 			return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid session request"}
 		}
 	}
@@ -210,7 +225,7 @@ func sessionError(err error) *contract.Error {
 }
 
 // toSessionResult maps every public session.Snapshot field into the contract
-// result. It drops CredentialID, username, password, raw protocol
+// result. It drops username, password, raw protocol
 // configuration, the raw protocol context override and diagnostic causes, which
 // never appear in a public Snapshot.
 func toSessionResult(snapshot session.Snapshot) contract.SessionResult {

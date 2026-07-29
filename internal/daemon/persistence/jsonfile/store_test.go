@@ -51,6 +51,7 @@ type fakeSecureFileOperations struct {
 	owner                resolvedOwner
 	resolveErr           error
 	ensureErr            error
+	unprotectedEnsureErr error
 	inspectExists        bool
 	inspectErr           error
 	hardenErr            error
@@ -110,6 +111,14 @@ func (operations *fakeSecureFileOperations) createTemp(directory string, _ resol
 	operations.temp = &fakeWritableTemp{operations: operations, name: name, writeLimit: -1}
 	operations.liveTemp = true
 	return operations.temp, nil
+}
+func (operations *fakeSecureFileOperations) ensureUnprotectedDirectory(string) error {
+	operations.calls = append(operations.calls, "ensure-unprotected-directory")
+	return operations.unprotectedEnsureErr
+}
+func (operations *fakeSecureFileOperations) createUnprotectedTemp(directory string) (writableTemp, error) {
+	operations.calls = append(operations.calls, "create-unprotected-temp")
+	return operations.createTemp(directory, resolvedOwner{})
 }
 func (operations *fakeSecureFileOperations) commit(_, _ string, _ bool) (bool, error) {
 	operations.calls = append(operations.calls, "commit")

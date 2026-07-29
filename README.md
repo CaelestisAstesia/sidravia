@@ -13,7 +13,7 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 `v0.1.0-alpha.1` 是面向 Windows amd64 的首个 Alpha。仓库已经实现并自动验证：
 
 - CLI/daemon 状态通信骨架；
-- `auth start/status/stop/list/restart/remove` 认证命令、retained Session ensure-running、`profile list`、Windows 隐藏密码输入和
+- `config list/show/create/update/set-password/remove` 持久认证配置、`auth start/status/stop/list/restart/remove`、retained Session ensure-running、`profile list`、Windows 隐藏密码输入和
   `--password-stdin`；
 - typed 一次性 Session 启动、停止、查询和安全列表，以及机构 Profile 安全摘要列表；
 - Session、Supervisor、网络快照分发与单活动 Session 规则；
@@ -111,14 +111,14 @@ daemon 命令为 `status/start/stop/restart`；Session 命令为
 
 安装、创建本地 Profile、启动认证与停止认证见
 [Windows Alpha 快速开始](docs/getting-started-windows.md)。本版本仍有明确限制：
-没有 GUI、安装器、Windows Service、自动更新、持久认证配置管理或多活动 Session；
+没有 GUI、安装器、Windows Service、自动更新、自动连接或多活动 Session；
 它适合愿意使用 PowerShell 并能自行保留原网络客户端作为回退的测试者。
 
 本轮 operator correction 的代码与自动验证已经完成，但修正后的 status/help/后台日志
 尚未进行最小 Windows 原生复核。
 停止与重启锁定最初探测到的精确 daemon generation；Linux 和 macOS 的进程控制仍明确
 不受支持。Session ensure/restart/remove 已进入当前源码。接下来的当前大版本顺序是：
-显式安装版/便携版目录、持久 Configuration/Credentials、Linux/WSL 基线、网络诊断与
+Linux/WSL 基线、网络诊断与
 选择修正，最后统一修订文本和文档。WSS、IPC 长连接强化和 GUI 放在下一大版本；见
 [ADR 0020](docs/decisions/0020-explicit-installed-and-portable-layouts.md) 与
 [ADR 0022](docs/decisions/0022-credentials-before-ipc-transport-hardening.md)。

@@ -76,7 +76,8 @@ Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `S
 逐字节复现；`Verify` 与 `Package` 两个 GitHub Actions 工作流已提交。代码与本地自动验证
 完成；GitHub-hosted workflow 实跑、Windows-native 包复核、签名与 Release 仍为 pending，
 不改变提交 `508197d` 的校园认证证据范围。ADR 0024 已把下一功能切片收敛为单一
-Authentication Configuration 聚合与顶层 `config` CLI；设计已接受，代码尚未实施。
+Authentication Configuration 聚合与顶层 `config` CLI；代码与自动验证已完成，
+Windows 原生便携降级验证仍待执行。
 
 ## 已确认的后续顺序
 
@@ -135,7 +136,7 @@ Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精
 | 2. 可运行骨架 | 完成：Windows 首轮现场通过；operator correction 待原生复核 | Windows 上 CLI 能显式启动 daemon，严格只读 status 能报告 stopped/running |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
-| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成；运行目录模式已实现，ADR 0024 的聚合和 `config` IPC/CLI 未实现 | 两种运行目录解析一致，Authentication Configuration 和 Environment 能生成与一次性启动相同的运行定义 |
+| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载、运行目录和 ADR 0024 聚合及 `config` IPC/CLI 已实现；Windows 原生复核待完成 | 两种运行目录解析一致，Authentication Configuration 和 Environment 能生成与一次性启动相同的运行定义 |
 | 6. Windows 产品纵向链路 | 完成：Windows/JLU 首轮现场通过 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
 | 7. 校园网络验证 | 首轮完成：扩大环境覆盖待进行 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 

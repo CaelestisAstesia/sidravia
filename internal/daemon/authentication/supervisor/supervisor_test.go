@@ -264,7 +264,6 @@ func testRuntimeDefinition() session.RuntimeDefinition {
 		Configuration: session.Configuration{
 			DisplayName:          "Campus network",
 			InstitutionProfileID: "profile-1",
-			CredentialID:         "credential-1",
 			NetworkBindingPolicy: session.NetworkBindingPolicy{
 				Mode: session.AutomaticallySelectLatestAvailable,
 			},

@@ -6,7 +6,6 @@ import (
 
 	"sidravia/internal/daemon/authentication/protocol"
 	profile "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
 )
 
@@ -24,7 +23,6 @@ type Configuration struct {
 	AuthenticationSessionID AuthenticationSessionID
 	DisplayName             string
 	InstitutionProfileID    profile.InstitutionProfileID
-	CredentialID            credential.CredentialID
 	NetworkBindingPolicy    NetworkBindingPolicy
 	ProtocolContextOverride protocol.AuthenticationProtocolContextOverride
 }

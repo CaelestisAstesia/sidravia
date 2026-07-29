@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"sync"
 
 	"sidravia/internal/daemon/persistence"
 )
@@ -16,7 +17,9 @@ type Store interface {
 }
 
 type SecureStoreOptions struct {
-	IntendedOwnerSID string
+	IntendedOwnerSID                   string
+	AllowUnsupportedProtectionFallback bool
+	OnUnprotected                      func()
 }
 
 type writableTemp interface {
@@ -37,13 +40,19 @@ type secureFileOperations interface {
 	hardenDestination(path string, owner resolvedOwner) error
 	openForRead(path string) (io.ReadCloser, error)
 	createTemp(directory string, owner resolvedOwner) (writableTemp, error)
+	ensureUnprotectedDirectory(path string) error
+	createUnprotectedTemp(directory string) (writableTemp, error)
 	commit(tempPath string, destinationPath string, destinationExists bool) (committed bool, err error)
 	removeTemp(path string) error
 }
 
 type SecureStore struct {
-	operations secureFileOperations
-	owner      resolvedOwner
+	operations    secureFileOperations
+	owner         resolvedOwner
+	mu            sync.Mutex
+	protection    ProtectionStatus
+	allowFallback bool
+	onUnprotected func()
 }
 
 func NewSecureStore(options SecureStoreOptions) (*SecureStore, error) {
@@ -60,7 +69,23 @@ func newSecureStoreWithOperations(options SecureStoreOptions, operations secureF
 	if err != nil {
 		return nil, persistence.NewFailure(persistence.FailurePermissionDenied, diagnosticCause(err))
 	}
-	return &SecureStore{operations: operations, owner: owner}, nil
+	return &SecureStore{
+		operations:    operations,
+		owner:         owner,
+		protection:    ProtectionProtected,
+		allowFallback: options.AllowUnsupportedProtectionFallback,
+		onUnprotected: options.OnUnprotected,
+	}, nil
+}
+
+func (store *SecureStore) ProtectionStatus() ProtectionStatus {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return store.protection
+}
+
+func (store *SecureStore) ReplaceSensitive(ctx context.Context, destination string, data []byte, allowUnprotected bool) error {
+	return store.replace(ctx, destination, data, true, allowUnprotected)
 }
 
 func (store *SecureStore) Read(ctx context.Context, destination string, maximum int64) ([]byte, bool, error) {
@@ -70,7 +95,7 @@ func (store *SecureStore) Read(ctx context.Context, destination string, maximum 
 	if err := ctx.Err(); err != nil {
 		return nil, false, persistence.NewFailure(persistence.FailureInvalidArgument, err)
 	}
-	if err := store.operations.ensureDirectory(filepath.Dir(destination), store.owner); err != nil {
+	if err := store.prepareDirectory(filepath.Dir(destination), true); err != nil {
 		return nil, false, operationFailure(persistence.FailurePermissionDenied, err)
 	}
 	exists, err := store.operations.inspectDestination(destination)
@@ -80,7 +105,14 @@ func (store *SecureStore) Read(ctx context.Context, destination string, maximum 
 	if !exists {
 		return nil, false, nil
 	}
-	if err := store.operations.hardenDestination(destination, store.owner); err != nil {
+	if store.ProtectionStatus() == ProtectionProtected {
+		if err := store.operations.hardenDestination(destination, store.owner); err != nil {
+			if !store.enterUnprotected(err, true) {
+				return nil, true, operationFailure(persistence.FailurePermissionDenied, err)
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, true, operationFailure(persistence.FailurePermissionDenied, err)
 	}
 	reader, err := store.operations.openForRead(destination)
@@ -102,6 +134,10 @@ func (store *SecureStore) Read(ctx context.Context, destination string, maximum 
 }
 
 func (store *SecureStore) Replace(ctx context.Context, destination string, data []byte) error {
+	return store.replace(ctx, destination, data, false, true)
+}
+
+func (store *SecureStore) replace(ctx context.Context, destination string, data []byte, sensitive, allowUnprotected bool) error {
 	if !validDestination(destination) {
 		return persistence.NewFailure(persistence.FailureInvalidArgument, nil)
 	}
@@ -116,20 +152,47 @@ func (store *SecureStore) Replace(ctx context.Context, destination string, data 
 	}
 
 	directory := filepath.Dir(destination)
-	if err := store.operations.ensureDirectory(directory, store.owner); err != nil {
+	if sensitive && store.ProtectionStatus() == ProtectionUnprotected && !allowUnprotected {
+		return insecureStorageFailure()
+	}
+	if err := store.prepareDirectory(directory, !sensitive || allowUnprotected); err != nil {
+		if sensitive && !allowUnprotected && store.allowFallback && errors.Is(err, ProtectionUnsupported) {
+			return insecureStorageFailure()
+		}
 		return operationFailure(persistence.FailurePermissionDenied, err)
 	}
 	destinationExists, err := store.operations.inspectDestination(destination)
 	if err != nil {
 		return operationFailure(persistence.FailurePermissionDenied, err)
 	}
-	if destinationExists {
+	if destinationExists && store.ProtectionStatus() == ProtectionProtected {
 		if err := store.operations.hardenDestination(destination, store.owner); err != nil {
-			return operationFailure(persistence.FailurePermissionDenied, err)
+			if !store.enterUnprotected(err, !sensitive || allowUnprotected) {
+				if errors.Is(err, ProtectionUnsupported) && sensitive && !allowUnprotected && store.allowFallback {
+					return insecureStorageFailure()
+				}
+				return operationFailure(persistence.FailurePermissionDenied, err)
+			}
 		}
 	}
 
-	temp, err := store.operations.createTemp(directory, store.owner)
+	var temp writableTemp
+	if store.ProtectionStatus() == ProtectionUnprotected {
+		if sensitive && !allowUnprotected {
+			return insecureStorageFailure()
+		}
+		temp, err = store.operations.createUnprotectedTemp(directory)
+	} else {
+		temp, err = store.operations.createTemp(directory, store.owner)
+		if err != nil && errors.Is(err, ProtectionUnsupported) {
+			if sensitive && !allowUnprotected && store.allowFallback {
+				return insecureStorageFailure()
+			}
+			if store.enterUnprotected(err, !sensitive || allowUnprotected) {
+				temp, err = store.operations.createUnprotectedTemp(directory)
+			}
+		}
+	}
 	if err != nil {
 		return operationFailure(persistence.FailureAtomicWrite, err)
 	}
@@ -184,6 +247,42 @@ func (store *SecureStore) Replace(ctx context.Context, destination string, data 
 	}
 	cleanup = false
 	return nil
+}
+
+func (store *SecureStore) prepareDirectory(directory string, allowTransition bool) error {
+	if store.ProtectionStatus() == ProtectionUnprotected {
+		return store.operations.ensureUnprotectedDirectory(directory)
+	}
+	err := store.operations.ensureDirectory(directory, store.owner)
+	if err == nil {
+		return nil
+	}
+	if !store.enterUnprotected(err, allowTransition) {
+		return err
+	}
+	return store.operations.ensureUnprotectedDirectory(directory)
+}
+
+func (store *SecureStore) enterUnprotected(err error, allowTransition bool) bool {
+	if !allowTransition || !store.allowFallback || !errors.Is(err, ProtectionUnsupported) {
+		return false
+	}
+	store.mu.Lock()
+	if store.protection == ProtectionUnprotected {
+		store.mu.Unlock()
+		return true
+	}
+	store.protection = ProtectionUnprotected
+	callback := store.onUnprotected
+	store.mu.Unlock()
+	if callback != nil {
+		callback()
+	}
+	return true
+}
+
+func insecureStorageFailure() error {
+	return persistence.NewFailure(persistence.FailurePermissionDenied, ErrInsecureStorageConfirmationRequired)
 }
 
 func validDestination(path string) bool {

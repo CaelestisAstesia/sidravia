@@ -166,78 +166,131 @@ class TestRunGoChecks(unittest.TestCase):
 
     @mock.patch.object(verifier, "run_and_print")
     def test_gofmt_with_files(self, mock_run_and_print: mock.Mock) -> None:
-        repo_root = Path("/repo")
         go_exec = "go"
         gofmt = "/custom/gofmt"
         build_dir = Path("/build")
         base_env = {"PYTHONDONTWRITEBYTECODE": "1"}
 
-        # First result: git ls-files succeeds with files
-        git_ls_result = verifier.CheckResult(
-            argv=["git", "ls-files", "*.go"], exit_code=0, stdout="file1.go\nfile2.go", stderr=""
-        )
-        # Rest results: pass
-        mock_results = [git_ls_result]
-        for i in range(6):
-            mock_results.append(verifier.CheckResult(
-                argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
-            ))
-        mock_run_and_print.side_effect = mock_results
+        with tempfile.TemporaryDirectory() as repo_dir:
+            repo_root = Path(repo_dir)
+            # Real tracked Go files so the existing-file filter retains them
+            (repo_root / "file1.go").write_text("package file1\n", encoding="utf-8")
+            (repo_root / "file2.go").write_text("package file2\n", encoding="utf-8")
 
-        results = verifier.run_go_checks(
-            repo_root=repo_root,
-            go_executable=go_exec,
-            gofmt_path=gofmt,
-            build_dir=build_dir,
-            base_env=base_env
-        )
+            # First result: git ls-files succeeds with files
+            git_ls_result = verifier.CheckResult(
+                argv=["git", "ls-files", "*.go"], exit_code=0, stdout="file1.go\nfile2.go", stderr=""
+            )
+            # Rest results: pass
+            mock_results = [git_ls_result]
+            for i in range(6):
+                mock_results.append(verifier.CheckResult(
+                    argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
+                ))
+            mock_run_and_print.side_effect = mock_results
 
-        # Check gofmt args
-        gofmt_call = mock_run_and_print.call_args_list[1]
-        self.assertEqual(gofmt_call[0][0].argv[0], "/custom/gofmt")
-        self.assertEqual(gofmt_call[0][0].argv[1], "-l")
-        self.assertIn("file1.go", gofmt_call[0][0].argv)
-        self.assertIn("file2.go", gofmt_call[0][0].argv)
+            results = verifier.run_go_checks(
+                repo_root=repo_root,
+                go_executable=go_exec,
+                gofmt_path=gofmt,
+                build_dir=build_dir,
+                base_env=base_env
+            )
+
+            # Check gofmt args
+            gofmt_call = mock_run_and_print.call_args_list[1]
+            self.assertEqual(gofmt_call[0][0].argv[0], "/custom/gofmt")
+            self.assertEqual(gofmt_call[0][0].argv[1], "-l")
+            self.assertIn("file1.go", gofmt_call[0][0].argv)
+            self.assertIn("file2.go", gofmt_call[0][0].argv)
 
     @mock.patch.object(verifier, "run_and_print")
     def test_gofmt_nonempty_stdout_becomes_failure(self, mock_run_and_print: mock.Mock) -> None:
-        repo_root = Path("/repo")
         go_exec = "go"
         gofmt = "gofmt"
         build_dir = Path("/build")
         base_env = {"PYTHONDONTWRITEBYTECODE": "1"}
 
-        # First result: git ls-files succeeds with files
-        git_ls_result = verifier.CheckResult(
-            argv=["git", "ls-files", "*.go"], exit_code=0, stdout="file1.go", stderr=""
-        )
-        # Second result: gofmt exits 0 but has stdout
-        gofmt_result = verifier.CheckResult(
-            argv=["gofmt", "-l", "file1.go"], exit_code=0, stdout="file1.go", stderr=""
-        )
-        # Rest results: pass
-        mock_results = [git_ls_result, gofmt_result]
-        for i in range(5):
-            mock_results.append(verifier.CheckResult(
-                argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
-            ))
-        mock_run_and_print.side_effect = mock_results
+        with tempfile.TemporaryDirectory() as repo_dir:
+            repo_root = Path(repo_dir)
+            # Real tracked Go file so the existing-file filter retains it
+            (repo_root / "file1.go").write_text("package file1\n", encoding="utf-8")
 
-        stdout_buf = io.StringIO()
-        stderr_buf = io.StringIO()
-        with mock.patch("sys.stdout", new=stdout_buf):
-            with mock.patch("sys.stderr", new=stderr_buf):
-                results = verifier.run_go_checks(
-                    repo_root=repo_root,
-                    go_executable=go_exec,
-                    gofmt_path=gofmt,
-                    build_dir=build_dir,
-                    base_env=base_env
-                )
+            # First result: git ls-files succeeds with files
+            git_ls_result = verifier.CheckResult(
+                argv=["git", "ls-files", "*.go"], exit_code=0, stdout="file1.go", stderr=""
+            )
+            # Second result: gofmt exits 0 but has stdout
+            gofmt_result = verifier.CheckResult(
+                argv=["gofmt", "-l", "file1.go"], exit_code=0, stdout="file1.go", stderr=""
+            )
+            # Rest results: pass
+            mock_results = [git_ls_result, gofmt_result]
+            for i in range(5):
+                mock_results.append(verifier.CheckResult(
+                    argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
+                ))
+            mock_run_and_print.side_effect = mock_results
 
-        # Check that gofmt result was corrected
-        self.assertEqual(results[1].exit_code, 1)
-        self.assertIn("Formatting issues found", results[1].stderr)
+            stdout_buf = io.StringIO()
+            stderr_buf = io.StringIO()
+            with mock.patch("sys.stdout", new=stdout_buf):
+                with mock.patch("sys.stderr", new=stderr_buf):
+                    results = verifier.run_go_checks(
+                        repo_root=repo_root,
+                        go_executable=go_exec,
+                        gofmt_path=gofmt,
+                        build_dir=build_dir,
+                        base_env=base_env
+                    )
+
+            # Check that gofmt result was corrected
+            self.assertEqual(results[1].exit_code, 1)
+            self.assertIn("Formatting issues found", results[1].stderr)
+
+    @mock.patch.object(verifier, "run_and_print")
+    def test_gofmt_omits_absent_tracked_files(self, mock_run_and_print: mock.Mock) -> None:
+        # A present tracked Go file reaches gofmt; a tracked-but-deleted file
+        # (absent from the working tree) is omitted so gofmt never lstat's it.
+        go_exec = "go"
+        gofmt = "gofmt"
+        build_dir = Path("/build")
+        base_env = {"PYTHONDONTWRITEBYTECODE": "1"}
+
+        with tempfile.TemporaryDirectory() as repo_dir:
+            repo_root = Path(repo_dir)
+            present_rel = "present.go"
+            absent_rel = "absent.go"
+            (repo_root / present_rel).write_text("package present\n", encoding="utf-8")
+            # absent_rel is intentionally not created on disk
+
+            git_ls_result = verifier.CheckResult(
+                argv=["git", "ls-files", "*.go"],
+                exit_code=0,
+                stdout=f"{present_rel}\n{absent_rel}",
+                stderr="",
+            )
+            mock_results = [git_ls_result]
+            for i in range(6):
+                mock_results.append(verifier.CheckResult(
+                    argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
+                ))
+            mock_run_and_print.side_effect = mock_results
+
+            verifier.run_go_checks(
+                repo_root=repo_root,
+                go_executable=go_exec,
+                gofmt_path=gofmt,
+                build_dir=build_dir,
+                base_env=base_env,
+            )
+
+            # gofmt is the second run_and_print call
+            gofmt_argv = mock_run_and_print.call_args_list[1][0][0].argv
+            self.assertEqual(gofmt_argv[0], "gofmt")
+            self.assertEqual(gofmt_argv[1], "-l")
+            self.assertIn(present_rel, gofmt_argv)
+            self.assertNotIn(absent_rel, gofmt_argv)
 
     @mock.patch.object(verifier, "run_and_print")
     def test_git_ls_failed_skips_real_gofmt(self, mock_run_and_print: mock.Mock) -> None:

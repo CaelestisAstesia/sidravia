@@ -43,41 +43,54 @@ func WriteError(w io.Writer, err error) error {
 }
 
 type authStartOptions struct {
-	profileID     string
-	username      string
-	sessionID     string
-	passwordStdin bool
+	profileID       string
+	username        string
+	sessionID       string
+	configurationID string
+	passwordStdin   bool
 }
 
 type commandDependencies struct {
-	daemonStatus  func() error
-	daemonStart   func(logLevel string) error
-	daemonStop    func() error
-	daemonRestart func(logLevel string) error
-	authStart     func(authStartOptions) error
-	authStatus    func(string) error
-	authStop      func(string) error
-	authRestart   func(string) error
-	authRemove    func(string) error
-	authList      func() error
-	profileList   func() error
-	output        io.Writer
+	daemonStatus      func() error
+	daemonStart       func(logLevel string) error
+	daemonStop        func() error
+	daemonRestart     func(logLevel string) error
+	authStart         func(authStartOptions) error
+	authStatus        func(string) error
+	authStop          func(string) error
+	authRestart       func(string) error
+	authRemove        func(string) error
+	authList          func() error
+	profileList       func() error
+	configList        func() error
+	configShow        func(string) error
+	configCreate      func(configCreateOptions) error
+	configUpdate      func(configUpdateOptions) error
+	configSetPassword func(configPasswordOptions) error
+	configRemove      func(string, bool) error
+	output            io.Writer
 }
 
 func defaultCommandDependencies() commandDependencies {
 	return commandDependencies{
-		daemonStatus:  daemonStatus,
-		daemonStart:   daemonStart,
-		daemonStop:    daemonStop,
-		daemonRestart: daemonRestart,
-		authStart:     authStart,
-		authStatus:    authStatus,
-		authStop:      authStop,
-		authRestart:   authRestart,
-		authRemove:    authRemove,
-		authList:      authList,
-		profileList:   profileList,
-		output:        os.Stdout,
+		daemonStatus:      daemonStatus,
+		daemonStart:       daemonStart,
+		daemonStop:        daemonStop,
+		daemonRestart:     daemonRestart,
+		authStart:         authStart,
+		authStatus:        authStatus,
+		authStop:          authStop,
+		authRestart:       authRestart,
+		authRemove:        authRemove,
+		authList:          authList,
+		profileList:       profileList,
+		configList:        configList,
+		configShow:        configShow,
+		configCreate:      configCreate,
+		configUpdate:      configUpdate,
+		configSetPassword: configSetPassword,
+		configRemove:      configRemove,
+		output:            os.Stdout,
 	}
 }
 
@@ -205,8 +218,9 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		},
 	}
 	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
+	configCommand := newConfigCommand(deps)
 
-	root.AddCommand(daemon, auth, profile, retiredStatus)
+	root.AddCommand(daemon, auth, profile, configCommand, retiredStatus)
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := newPresentation(c.OutOrStdout())
@@ -269,12 +283,14 @@ var helpSpecs = map[string]helpNode{
 			{"daemon", "管理本地 daemon 进程"},
 			{"auth", "管理认证 Session"},
 			{"profile", "查看机构 Profile"},
+			{"config", "管理认证配置"},
 		},
 		examples: []string{
 			"sidravia daemon status",
 			"sidravia auth start --profile jlu --username <username>",
 			"sidravia auth list",
 			"sidravia profile list",
+			"sidravia config list",
 		},
 	},
 	"sidravia daemon": {
@@ -347,17 +363,20 @@ var helpSpecs = map[string]helpNode{
 		usage: []string{
 			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
 			"sidravia auth start --session <session-id>",
+			"sidravia auth start --config <configuration-id>",
 		},
 		options: []string{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
 			"--password-stdin：从 stdin 读取密码",
 			"--session <session-id>：确保 retained Session 正在运行",
+			"--config <configuration-id>：从持久配置启动或确保 Session 正在运行",
 		},
 		examples: []string{
 			"sidravia auth start --profile jlu --username <username>",
 			"sidravia auth start --profile jlu --username <username> --password-stdin",
 			"sidravia auth start --session session-1",
+			"sidravia auth start --config campus",
 		},
 	},
 	"sidravia auth status": {
@@ -405,6 +424,29 @@ var helpSpecs = map[string]helpNode{
 		examples: []string{
 			"sidravia profile list",
 		},
+	},
+	"sidravia config": {
+		description: "管理持久认证配置。",
+		usage:       []string{"sidravia config <command>"},
+		children:    []helpChild{{"list", "列出认证配置"}, {"show", "显示认证配置"}, {"create", "创建认证配置"}, {"update", "更新认证配置"}, {"set-password", "更新认证密码"}, {"remove", "删除认证配置"}},
+	},
+	"sidravia config list": {description: "列出认证配置。", usage: []string{"sidravia config list"}},
+	"sidravia config show": {description: "显示认证配置。", usage: []string{"sidravia config show <configuration-id>"}},
+	"sidravia config create": {
+		description: "创建认证配置。",
+		usage:       []string{"sidravia config create --id <id> --profile <profile-id> --username <username> [--name <display-name>] [--password-stdin] [--allow-insecure-storage]"},
+	},
+	"sidravia config update": {
+		description: "更新认证配置。",
+		usage:       []string{"sidravia config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>]"},
+	},
+	"sidravia config set-password": {
+		description: "更新认证密码。",
+		usage:       []string{"sidravia config set-password <configuration-id> [--password-stdin] [--allow-insecure-storage]"},
+	},
+	"sidravia config remove": {
+		description: "停止关联 Session 并删除认证配置。",
+		usage:       []string{"sidravia config remove <configuration-id> [--yes]"},
 	},
 }
 
@@ -510,7 +552,7 @@ func newSessionCommand(name string, description string, operation func(string) e
 
 func parseAuthStart(args []string) (authStartOptions, error) {
 	var options authStartOptions
-	var profileSet, usernameSet, sessionSet, passwordStdinSet bool
+	var profileSet, usernameSet, sessionSet, configSet, passwordStdinSet bool
 
 	for index := 0; index < len(args); {
 		switch args[index] {
@@ -542,13 +584,20 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 			options.sessionID = args[index+1]
 			sessionSet = true
 			index += 2
+		case "--config":
+			if configSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
+				return authStartOptions{}, errCommandUsage
+			}
+			options.configurationID = args[index+1]
+			configSet = true
+			index += 2
 		default:
 			return authStartOptions{}, errCommandUsage
 		}
 	}
 
-	if sessionSet {
-		if profileSet || usernameSet || passwordStdinSet {
+	if sessionSet || configSet {
+		if sessionSet && configSet || profileSet || usernameSet || passwordStdinSet {
 			return authStartOptions{}, errCommandUsage
 		}
 		return options, nil

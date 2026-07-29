@@ -22,6 +22,67 @@ func TestIPCHandlerRoutesRetainedMethods(t *testing.T) {
 	}
 }
 
+func TestIPCHandlerRoutesAllConfigurationMethods(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := IPCHandler(setup.application, "version", "build")
+	for _, method := range []string{
+		contract.MethodConfigurationGet,
+		contract.MethodConfigurationCreate,
+		contract.MethodConfigurationUpdate,
+		contract.MethodConfigurationSetPassword,
+		contract.MethodConfigurationRemove,
+		contract.MethodSessionStartConfiguration,
+	} {
+		_, publicErr := handler(context.Background(), method, []byte(`{}`))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument {
+			t.Fatalf("%s was not routed to its typed handler: %#v", method, publicErr)
+		}
+	}
+	result, publicErr := handler(context.Background(), contract.MethodConfigurationList, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	var list contract.ConfigurationListResult
+	if err := json.Unmarshal(result, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Configurations) != 1 || list.Configurations[0].ConfigurationID != "configuration-1" {
+		t.Fatalf("configuration.list = %#v", list)
+	}
+}
+
+func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := IPCHandler(setup.application, "version", "build")
+	const passwordMarker = "private-password-marker"
+	create, publicErr := handler(context.Background(), contract.MethodConfigurationCreate, []byte(
+		`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"`+
+			passwordMarker+`","allowInsecureStorage":false}`,
+	))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	if strings.Contains(string(create), passwordMarker) || strings.Contains(string(create), `"password"`) {
+		t.Fatalf("create result exposed password: %s", create)
+	}
+	started, publicErr := handler(context.Background(), contract.MethodSessionStartConfiguration, []byte(`{"configurationId":"campus"}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	var sessionResult contract.SessionResult
+	if err := json.Unmarshal(started, &sessionResult); err != nil {
+		t.Fatal(err)
+	}
+	if sessionResult.AuthenticationSessionID == "" || sessionResult.AccountName != "user" {
+		t.Fatalf("startConfiguration result incomplete: %#v", sessionResult)
+	}
+	if strings.Contains(string(started), passwordMarker) {
+		t.Fatalf("startConfiguration result exposed password: %s", started)
+	}
+}
+
 func TestIPCHandlerRoutesStatusToStatusHandler(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()

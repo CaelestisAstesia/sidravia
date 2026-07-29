@@ -11,11 +11,13 @@ import (
 
 // Config holds the parameters needed to start the daemon host.
 type Config struct {
-	ProductVersion  string
-	BuildID         string
-	Token           string
-	RuntimeInfoPath string
-	Handler         http.Handler
+	ProductVersion                     string
+	BuildID                            string
+	Token                              string
+	RuntimeInfoPath                    string
+	Handler                            http.Handler
+	AllowUnsupportedProtectionFallback bool
+	OnUnprotected                      func()
 }
 
 // GenerateToken creates a random 64-character lowercase hex token.

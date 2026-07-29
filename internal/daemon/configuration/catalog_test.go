@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
 type catalogMemoryStore struct {
@@ -26,6 +26,10 @@ func (store *catalogMemoryStore) Read(_ context.Context, _ string, maximum int64
 }
 
 func (store *catalogMemoryStore) Replace(_ context.Context, _ string, data []byte) error {
+	return store.ReplaceSensitive(context.Background(), "", data, true)
+}
+
+func (store *catalogMemoryStore) ReplaceSensitive(_ context.Context, _ string, data []byte, _ bool) error {
 	store.replaceCalls++
 	if store.replaceErr != nil {
 		return store.replaceErr
@@ -33,6 +37,10 @@ func (store *catalogMemoryStore) Replace(_ context.Context, _ string, data []byt
 	store.data = append([]byte(nil), data...)
 	store.exists = true
 	return nil
+}
+
+func (store *catalogMemoryStore) ProtectionStatus() jsonfile.ProtectionStatus {
+	return jsonfile.ProtectionProtected
 }
 
 func TestCatalogLifecycleAndRestart(t *testing.T) {
@@ -50,11 +58,11 @@ func TestCatalogLifecycleAndRestart(t *testing.T) {
 	second := catalogTestConfiguration("configuration-b", "Second")
 	second.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"server":"b"}`)
 	first := catalogTestConfiguration("configuration-a", "First")
-	if err := catalog.Save(ctx, second); err != nil {
-		t.Fatalf("Save(second) error = %v", err)
+	if err := catalog.Create(ctx, second, "second-password", false); err != nil {
+		t.Fatalf("Create(second) error = %v", err)
 	}
-	if err := catalog.Save(ctx, first); err != nil {
-		t.Fatalf("Save(first) error = %v", err)
+	if err := catalog.Create(ctx, first, "", false); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
 	}
 
 	listed, err := catalog.List(ctx)
@@ -68,8 +76,8 @@ func TestCatalogLifecycleAndRestart(t *testing.T) {
 	}
 
 	second.DisplayName = "Updated"
-	if err := catalog.Save(ctx, second); err != nil {
-		t.Fatalf("Save(updated) error = %v", err)
+	if _, err := catalog.Update(ctx, second.ConfigurationID, Update{DisplayName: &second.DisplayName}); err != nil {
+		t.Fatalf("Update() error = %v", err)
 	}
 	if err := catalog.Delete(ctx, "configuration-a"); err != nil {
 		t.Fatalf("Delete(configuration-a) error = %v", err)
@@ -106,8 +114,8 @@ func TestCatalogRejectsInvalidCallsAndReportsMissingIDs(t *testing.T) {
 	if err := catalog.Delete(ctx, "missing"); configurationPersistenceFailureCode(t, err) != persistence.FailureNotFound {
 		t.Fatalf("Delete(missing) error = %v", err)
 	}
-	if err := catalog.Save(ctx, Configuration{}); configurationPersistenceFailureCode(t, err) != persistence.FailureInvalidArgument {
-		t.Fatalf("Save(invalid) error = %v", err)
+	if err := catalog.Create(ctx, Configuration{}, "", false); configurationPersistenceFailureCode(t, err) != persistence.FailureInvalidArgument {
+		t.Fatalf("Create(invalid) error = %v", err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
@@ -124,14 +132,13 @@ func TestCatalogFailedReplacePreservesMemoryState(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := catalogTestConfiguration("configuration-1", "Original")
-	if err := catalog.Save(ctx, original); err != nil {
+	if err := catalog.Create(ctx, original, "password", false); err != nil {
 		t.Fatal(err)
 	}
 	store.replaceErr = persistence.NewFailure(persistence.FailureAtomicWrite, errors.New("write failed"))
-	replacement := original
-	replacement.DisplayName = "Replacement"
-	if err := catalog.Save(ctx, replacement); configurationPersistenceFailureCode(t, err) != persistence.FailureAtomicWrite {
-		t.Fatalf("Save replacement error = %v", err)
+	replacement := "Replacement"
+	if _, err := catalog.Update(ctx, original.ConfigurationID, Update{DisplayName: &replacement}); configurationPersistenceFailureCode(t, err) != persistence.FailureAtomicWrite {
+		t.Fatalf("Update replacement error = %v", err)
 	}
 	got, err := catalog.Get(ctx, original.ConfigurationID)
 	if err != nil || got.DisplayName != "Original" {
@@ -158,7 +165,7 @@ func catalogTestConfiguration(id ConfigurationID, displayName string) Configurat
 		ConfigurationID:      id,
 		DisplayName:          displayName,
 		InstitutionProfileID: InstitutionProfileID("profile-" + id),
-		CredentialID:         credentials.CredentialID("credential-" + string(id)),
+		Username:             "user-" + string(id),
 		NetworkBindingPolicy: NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
 	}
 }

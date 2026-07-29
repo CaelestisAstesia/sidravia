@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -10,37 +9,16 @@ import (
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
-type DeletionFailureCode string
-
-const (
-	DeletionConfigurationInUse    DeletionFailureCode = "configuration_in_use"
-	DeletionConfigurationNotFound DeletionFailureCode = "configuration_not_found"
-	DeletionCatalogUnavailable    DeletionFailureCode = "catalog_unavailable"
-	DeletionControllerUnavailable DeletionFailureCode = "controller_unavailable"
-	DeletionInvalidArgument       DeletionFailureCode = "invalid_argument"
-)
-
-type DeletionFailure struct {
-	code  DeletionFailureCode
-	cause error
+type ConfigurationResult struct {
+	Configuration            config.Configuration
+	InstitutionDisplayName   string
+	AuthenticationProtocolID string
+	CredentialStored         bool
+	StorageProtection        jsonfile.ProtectionStatus
 }
-
-func NewDeletionFailure(code DeletionFailureCode, cause error) *DeletionFailure {
-	return &DeletionFailure{code: code, cause: cause}
-}
-
-func (failure *DeletionFailure) Error() string {
-	if failure.cause != nil {
-		return fmt.Sprintf("%s: %v", failure.code, failure.cause)
-	}
-	return string(failure.code)
-}
-
-func (failure *DeletionFailure) Unwrap() error             { return failure.cause }
-func (failure *DeletionFailure) Code() DeletionFailureCode { return failure.code }
 
 type Application struct {
 	catalog                *config.Catalog
@@ -48,8 +26,8 @@ type Application struct {
 	authenticationResolver *AuthenticationResolver
 	sup                    *supervisor.Supervisor
 	mu                     sync.Mutex
-	opMu                   sync.Mutex // serializes StartAuthentication and DeleteConfiguration
-	sessionsByConfig       map[config.ConfigurationID][]session.AuthenticationSessionID
+	opMu                   sync.Mutex // serializes configuration and Session operations
+	sessionsByConfig       map[config.ConfigurationID]session.AuthenticationSessionID
 }
 
 func NewApplication(
@@ -59,30 +37,37 @@ func NewApplication(
 	sup *supervisor.Supervisor,
 ) (*Application, error) {
 	if catalog == nil {
-		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("configuration catalog is required"))
+		return nil, fmt.Errorf("configuration catalog is required")
 	}
 	if profiles == nil {
-		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("profile catalog is required"))
+		return nil, fmt.Errorf("profile catalog is required")
 	}
 	if authenticationResolver == nil {
-		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("authenticationResolver is required"))
+		return nil, fmt.Errorf("authenticationResolver is required")
 	}
 	if sup == nil {
-		return nil, NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("supervisor is required"))
+		return nil, fmt.Errorf("supervisor is required")
 	}
 	return &Application{
 		catalog:                catalog,
 		profiles:               profiles,
 		authenticationResolver: authenticationResolver,
 		sup:                    sup,
-		sessionsByConfig:       make(map[config.ConfigurationID][]session.AuthenticationSessionID),
+		sessionsByConfig:       make(map[config.ConfigurationID]session.AuthenticationSessionID),
 	}, nil
 }
 
-func (application *Application) StartAuthentication(ctx context.Context, configurationID config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error) {
+func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error) {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
 
+	application.mu.Lock()
+	existing := application.sessionsByConfig[configurationID]
+	application.mu.Unlock()
+	if existing != "" {
+		snapshot, err := application.sup.EnsureRunning(ctx, existing)
+		return existing, snapshot, err
+	}
 	definition, err := application.authenticationResolver.Resolve(ctx, configurationID, "pending")
 	if err != nil {
 		return "", session.Snapshot{}, err
@@ -94,7 +79,7 @@ func (application *Application) StartAuthentication(ctx context.Context, configu
 	}
 
 	application.mu.Lock()
-	application.sessionsByConfig[configurationID] = append(application.sessionsByConfig[configurationID], sessionID)
+	application.sessionsByConfig[configurationID] = sessionID
 	application.mu.Unlock()
 
 	return sessionID, snapshot, nil
@@ -148,8 +133,10 @@ func (application *Application) RemoveSession(ctx context.Context, sessionID ses
 		return err
 	}
 	application.mu.Lock()
-	for configurationID := range application.sessionsByConfig {
-		application.removeSessionFromConfigLocked(configurationID, sessionID)
+	for configurationID, associated := range application.sessionsByConfig {
+		if associated == sessionID {
+			delete(application.sessionsByConfig, configurationID)
+		}
 	}
 	application.mu.Unlock()
 	return nil
@@ -179,76 +166,110 @@ func (application *Application) ApplySystemNetworkSnapshot(
 	return application.sup.ApplySystemNetworkSnapshot(ctx, snapshot)
 }
 
-func (application *Application) DeleteConfiguration(ctx context.Context, id config.ConfigurationID) error {
-	if ctx == nil {
-		return NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("context is required"))
+func (application *Application) ListConfigurations(ctx context.Context) ([]ConfigurationResult, jsonfile.ProtectionStatus, error) {
+	values, err := application.catalog.List(ctx)
+	if err != nil {
+		return nil, "", err
 	}
-	if err := ctx.Err(); err != nil {
-		return NewDeletionFailure(DeletionInvalidArgument, err)
-	}
-	if id == "" {
-		return NewDeletionFailure(DeletionInvalidArgument, fmt.Errorf("configuration id is required"))
-	}
-
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
-
-	application.mu.Lock()
-	sessionIDs := append([]session.AuthenticationSessionID(nil), application.sessionsByConfig[id]...)
-	application.mu.Unlock()
-
-	// 1. Verify all sessions are stopped via Supervisor (single authority).
-	for _, sessionID := range sessionIDs {
-		snapshot, err := application.sup.Get(ctx, sessionID)
+	results := make([]ConfigurationResult, 0, len(values))
+	for _, value := range values {
+		result, err := application.enrich(ctx, value)
 		if err != nil {
-			return NewDeletionFailure(DeletionControllerUnavailable, err)
+			return nil, "", err
 		}
-		if snapshot.State != session.Suspended {
-			return NewDeletionFailure(DeletionConfigurationInUse, nil)
-		}
+		results = append(results, result)
 	}
-
-	// 2. Forget each stopped session; on success, immediately remove from tracking.
-	for _, sessionID := range sessionIDs {
-		if err := application.sup.ForgetStopped(sessionID); err != nil {
-			return NewDeletionFailure(DeletionControllerUnavailable, err)
-		}
-		application.mu.Lock()
-		application.removeSessionFromConfigLocked(id, sessionID)
-		application.mu.Unlock()
-	}
-
-	// 3. Delete from catalog. If this fails, the forgotten sessions stay
-	//    forgotten. A retry on the same Application will see an empty
-	//    sessionsByConfig slice and proceed to catalog.Delete.
-	if err := application.catalog.Delete(ctx, id); err != nil {
-		var failure *persistence.Failure
-		if errors.As(err, &failure) {
-			switch failure.Code() {
-			case persistence.FailureNotFound:
-				return NewDeletionFailure(DeletionConfigurationNotFound, err)
-			default:
-				return NewDeletionFailure(DeletionCatalogUnavailable, err)
-			}
-		}
-		return NewDeletionFailure(DeletionCatalogUnavailable, err)
-	}
-
-	return nil
+	return results, application.catalog.StorageProtection(), nil
 }
 
-func (application *Application) removeSessionFromConfigLocked(
-	configID config.ConfigurationID,
-	sessionID session.AuthenticationSessionID,
-) {
-	ids := application.sessionsByConfig[configID]
-	for i, id := range ids {
-		if id == sessionID {
-			application.sessionsByConfig[configID] = append(ids[:i], ids[i+1:]...)
-			if len(application.sessionsByConfig[configID]) == 0 {
-				delete(application.sessionsByConfig, configID)
-			}
-			return
-		}
+func (application *Application) GetConfiguration(ctx context.Context, id config.ConfigurationID) (ConfigurationResult, error) {
+	value, err := application.catalog.Get(ctx, id)
+	if err != nil {
+		return ConfigurationResult{}, err
 	}
+	return application.enrich(ctx, value)
+}
+
+func (application *Application) CreateConfiguration(ctx context.Context, value config.Configuration, password string, allow bool) (ConfigurationResult, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	if _, err := application.enrich(ctx, value); err != nil {
+		return ConfigurationResult{}, err
+	}
+	if err := application.catalog.Create(ctx, value, password, allow); err != nil {
+		return ConfigurationResult{}, err
+	}
+	return application.enrich(ctx, value)
+}
+
+func (application *Application) UpdateConfiguration(ctx context.Context, id config.ConfigurationID, update config.Update) (ConfigurationResult, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	current, err := application.catalog.Get(ctx, id)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	candidate := current
+	if update.DisplayName != nil {
+		candidate.DisplayName = *update.DisplayName
+	}
+	if update.InstitutionProfileID != nil {
+		candidate.InstitutionProfileID = *update.InstitutionProfileID
+	}
+	if update.Username != nil {
+		candidate.Username = *update.Username
+	}
+	if _, err := application.enrich(ctx, candidate); err != nil {
+		return ConfigurationResult{}, err
+	}
+	value, err := application.catalog.Update(ctx, id, update)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	return application.enrich(ctx, value)
+}
+
+func (application *Application) SetConfigurationPassword(ctx context.Context, id config.ConfigurationID, password string, allow bool) (ConfigurationResult, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	value, err := application.catalog.SetPassword(ctx, id, password, allow)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	return application.enrich(ctx, value)
+}
+
+func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID) error {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	if _, err := application.catalog.Get(ctx, id); err != nil {
+		return err
+	}
+	application.mu.Lock()
+	sessionID := application.sessionsByConfig[id]
+	application.mu.Unlock()
+	if sessionID != "" {
+		if err := application.sup.Remove(ctx, sessionID); err != nil {
+			return err
+		}
+		application.mu.Lock()
+		delete(application.sessionsByConfig, id)
+		application.mu.Unlock()
+	}
+	return application.catalog.Delete(ctx, id)
+}
+
+func (application *Application) enrich(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {
+	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	if _, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID); err != nil {
+		return ConfigurationResult{}, err
+	}
+	return ConfigurationResult{
+		Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
+		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
+		CredentialStored:         true, StorageProtection: application.catalog.StorageProtection(),
+	}, nil
 }

@@ -542,3 +542,39 @@ func renderDaemonRestarted() string {
 func renderSessionRemoved(result *contract.SessionRemoveResult) string {
 	return "Session 已删除：" + sanitizeDynamicText(result.SessionID) + "\n"
 }
+
+func renderConfiguration(result contract.ConfigurationResult) string {
+	institution := strings.ToUpper(result.InstitutionProfileID)
+	if result.InstitutionDisplayName != "" {
+		institution = result.InstitutionDisplayName + "（" + institution + "）"
+	}
+	protection := "已保护（protected）"
+	if result.StorageProtection == "unprotected" {
+		protection = "未保护（unprotected）"
+	}
+	return "配置：" + sanitizeDynamicText(result.ConfigurationID) + "\n名称：" +
+		sanitizeDynamicText(result.DisplayName) + "\n机构：" + sanitizeDynamicText(institution) +
+		"\n协议：" + sanitizeDynamicText(result.AuthenticationProtocolID) + "\n账号：" +
+		sanitizeDynamicText(result.Username) + "\n凭据：已保存\n存储保护：" + protection + "\n"
+}
+
+func writeConfiguration(output io.Writer, result contract.ConfigurationResult) error {
+	p := newPresentation(output)
+	return wrapSafeOperation("写入配置响应", p.complete(renderConfiguration(result)))
+}
+
+func writeConfigurationList(output io.Writer, result contract.ConfigurationListResult) error {
+	if len(result.Configurations) == 0 {
+		p := newPresentation(output)
+		return wrapSafeOperation("写入配置列表", p.complete("尚未保存认证配置。\n"))
+	}
+	var block strings.Builder
+	for index, value := range result.Configurations {
+		if index > 0 {
+			block.WriteString("\n")
+		}
+		block.WriteString(renderConfiguration(value))
+	}
+	p := newPresentation(output)
+	return wrapSafeOperation("写入配置列表", p.complete(block.String()))
+}

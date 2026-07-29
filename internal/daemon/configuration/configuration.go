@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/credentials"
 )
 
 type ConfigurationID string
@@ -21,7 +20,7 @@ type Configuration struct {
 	ConfigurationID         ConfigurationID
 	DisplayName             string
 	InstitutionProfileID    InstitutionProfileID
-	CredentialID            credentials.CredentialID
+	Username                string
 	NetworkBindingPolicy    NetworkBindingPolicy
 	ProtocolContextOverride protocol.AuthenticationProtocolContextOverride
 }
@@ -36,15 +35,27 @@ func (configuration Configuration) Clone() Configuration {
 
 func (configuration Configuration) Validate() error {
 	switch {
-	case configuration.ConfigurationID == "":
+	case !validConfigurationID(string(configuration.ConfigurationID)):
 		return errors.New("configuration id is required")
 	case configuration.InstitutionProfileID == "":
 		return errors.New("institution profile id is required")
-	case configuration.CredentialID == "":
-		return errors.New("credential id is required")
+	case configuration.Username == "":
+		return errors.New("username is required")
 	case configuration.NetworkBindingPolicy.Mode != AutomaticallySelectLatestAvailable:
 		return errors.New("unsupported network binding policy")
 	default:
 		return nil
 	}
+}
+
+func validConfigurationID(value string) bool {
+	if len(value) < 1 || len(value) > 64 {
+		return false
+	}
+	for index, character := range []byte(value) {
+		if !((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || (character == '-' && index > 0 && index < len(value)-1)) {
+			return false
+		}
+	}
+	return true
 }

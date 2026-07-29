@@ -4,14 +4,13 @@ import (
 	"testing"
 
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/credentials"
 )
 
 func TestConfigurationValidate(t *testing.T) {
 	valid := Configuration{
 		ConfigurationID:      "configuration-1",
 		InstitutionProfileID: "profile-1",
-		CredentialID:         "credential-1",
+		Username:             "user-1",
 		NetworkBindingPolicy: NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
 	}
 
@@ -21,10 +20,10 @@ func TestConfigurationValidate(t *testing.T) {
 		wantError     bool
 	}{
 		{name: "valid", configuration: valid},
-		{name: "missing configuration id", configuration: Configuration{InstitutionProfileID: valid.InstitutionProfileID, CredentialID: valid.CredentialID, NetworkBindingPolicy: valid.NetworkBindingPolicy}, wantError: true},
-		{name: "missing profile id", configuration: Configuration{ConfigurationID: valid.ConfigurationID, CredentialID: valid.CredentialID, NetworkBindingPolicy: valid.NetworkBindingPolicy}, wantError: true},
-		{name: "missing credential id", configuration: Configuration{ConfigurationID: valid.ConfigurationID, InstitutionProfileID: valid.InstitutionProfileID, NetworkBindingPolicy: valid.NetworkBindingPolicy}, wantError: true},
-		{name: "unsupported network binding policy", configuration: Configuration{ConfigurationID: valid.ConfigurationID, InstitutionProfileID: valid.InstitutionProfileID, CredentialID: valid.CredentialID, NetworkBindingPolicy: NetworkBindingPolicy{Mode: "unsupported"}}, wantError: true},
+		{name: "missing configuration id", configuration: Configuration{InstitutionProfileID: valid.InstitutionProfileID, Username: valid.Username, NetworkBindingPolicy: valid.NetworkBindingPolicy}, wantError: true},
+		{name: "missing profile id", configuration: Configuration{ConfigurationID: valid.ConfigurationID, Username: valid.Username, NetworkBindingPolicy: valid.NetworkBindingPolicy}, wantError: true},
+		{name: "missing username", configuration: Configuration{ConfigurationID: valid.ConfigurationID, InstitutionProfileID: valid.InstitutionProfileID, NetworkBindingPolicy: valid.NetworkBindingPolicy}, wantError: true},
+		{name: "unsupported network binding policy", configuration: Configuration{ConfigurationID: valid.ConfigurationID, InstitutionProfileID: valid.InstitutionProfileID, Username: valid.Username, NetworkBindingPolicy: NetworkBindingPolicy{Mode: "unsupported"}}, wantError: true},
 	}
 
 	for _, test := range tests {
@@ -41,7 +40,7 @@ func TestConfigurationCloneOwnsProtocolContextOverride(t *testing.T) {
 	original := Configuration{
 		ConfigurationID:         "configuration-1",
 		InstitutionProfileID:    "profile-1",
-		CredentialID:            credentials.CredentialID("credential-1"),
+		Username:                "user-1",
 		NetworkBindingPolicy:    NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
 		ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{"network":"campus"}`),
 	}

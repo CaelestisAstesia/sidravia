@@ -1,6 +1,6 @@
 // Package productlayout resolves the explicit installed or portable runtime
 // layout shared by the Sidravia CLI and daemon. Both processes call Resolve to
-// obtain the same absolute paths for configurations, credentials, institution
+// obtain the same absolute paths for configurations, institution
 // profiles, runtime info and the daemon log. Resolution only stat-checks the
 // portable marker; it never creates, deletes, opens or migrates any file or
 // directory.
@@ -17,7 +17,7 @@ import (
 type Mode string
 
 const (
-	// ModeInstalled is the default layout. Configuration, credentials and
+	// ModeInstalled is the default layout. Authentication configurations and
 	// institution profiles live under the OS user config directory, while
 	// runtime info and the daemon log live under the OS user cache directory.
 	ModeInstalled Mode = "installed"
@@ -33,7 +33,6 @@ type Layout struct {
 	Mode                         Mode
 	ExecutableDirectory          string
 	ConfigurationsPath           string
-	CredentialsPath              string
 	InstitutionProfilesDirectory string
 	RuntimeInfoPath              string
 	DaemonLogPath                string
@@ -100,13 +99,11 @@ func resolve(r osResolver) (Layout, error) {
 			return Layout{}, err
 		}
 		layout.ConfigurationsPath = filepath.Join(configRoot, "configurations.json")
-		layout.CredentialsPath = filepath.Join(configRoot, "credentials.json")
 		layout.InstitutionProfilesDirectory = filepath.Join(configRoot, "institution-profiles")
 		layout.RuntimeInfoPath = filepath.Join(cacheRoot, "runtime.json")
 		layout.DaemonLogPath = filepath.Join(cacheRoot, "logs", "sidraviad.log")
 	case ModePortable:
 		layout.ConfigurationsPath = filepath.Join(exeDir, "config", "configurations.json")
-		layout.CredentialsPath = filepath.Join(exeDir, "config", "credentials.json")
 		layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "config", "institution-profiles")
 		layout.RuntimeInfoPath = filepath.Join(exeDir, "runtime", "runtime.json")
 		layout.DaemonLogPath = filepath.Join(exeDir, "logs", "sidraviad.log")

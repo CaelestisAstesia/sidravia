@@ -16,7 +16,6 @@ import (
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	"sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/daemon/persistence/jsonfile"
@@ -48,8 +47,8 @@ const (
 type defaultPaths struct {
 	profiles       string
 	configurations string
-	credentials    string
 	runtimeInfo    string
+	portable       bool
 }
 
 type networkSnapshotSink interface {
@@ -95,8 +94,8 @@ func deriveDefaultPaths() (defaultPaths, error) {
 	return defaultPaths{
 		profiles:       layout.InstitutionProfilesDirectory,
 		configurations: layout.ConfigurationsPath,
-		credentials:    layout.CredentialsPath,
 		runtimeInfo:    layout.RuntimeInfoPath,
+		portable:       layout.Mode == productlayout.ModePortable,
 	}, nil
 }
 
@@ -122,8 +121,11 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		return nil, err
 	}
 
+	onUnprotected := newStorageProtectionWarning(logger)
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{
-		IntendedOwnerSID: "",
+		IntendedOwnerSID:                   "",
+		AllowUnsupportedProtectionFallback: paths.portable,
+		OnUnprotected:                      onUnprotected,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: create secure store: %w", err)
@@ -141,12 +143,12 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		return nil, fmt.Errorf("sidraviad: generate token: %w", err)
 	}
 
-	return composeObjectGraph(ctx, store, paths, hostInfo, observer, host.Run, token, ProductVersion, BuildID, logger)
+	return composeObjectGraph(ctx, store, paths, hostInfo, observer, host.Run, token, ProductVersion, BuildID, logger, onUnprotected)
 }
 
 func composeObjectGraph(
 	ctx context.Context,
-	store jsonfile.Store,
+	store configuration.SensitiveStore,
 	paths defaultPaths,
 	hostInfo environment.SystemHostInformation,
 	observer environment.Observer,
@@ -155,6 +157,7 @@ func composeObjectGraph(
 	productVersion string,
 	buildID string,
 	logger *slog.Logger,
+	unprotectedCallbacks ...func(),
 ) (*composedRuntime, error) {
 	if ctx == nil {
 		return nil, errors.New("sidraviad: context is required")
@@ -183,10 +186,13 @@ func composeObjectGraph(
 	if hostInfo.HostName == "" {
 		return nil, errors.New("sidraviad: host name is required")
 	}
+	var onUnprotected func()
+	if len(unprotectedCallbacks) > 0 {
+		onUnprotected = unprotectedCallbacks[0]
+	}
 	for name, path := range map[string]string{
 		"profiles":       paths.profiles,
 		"configurations": paths.configurations,
-		"credentials":    paths.credentials,
 		"runtime info":   paths.runtimeInfo,
 	} {
 		if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
@@ -209,11 +215,6 @@ func composeObjectGraph(
 		return nil, fmt.Errorf("sidraviad: open catalog: %w", err)
 	}
 
-	credStore, err := credentials.OpenStore(ctx, store, paths.credentials)
-	if err != nil {
-		return nil, fmt.Errorf("sidraviad: open credentials: %w", err)
-	}
-
 	sup := supervisor.New(supervisor.Dependencies{
 		RetryPolicy:                session.NewDefaultRetryPolicy(),
 		RetryScheduler:             session.NewTimerRetryScheduler(),
@@ -221,7 +222,7 @@ func composeObjectGraph(
 		ProtocolDiagnosticsFactory: newProtocolDiagnosticsFactory(logger),
 	})
 
-	resolver, err := app.NewAuthenticationResolver(catalog, profiles, credStore, registry, hostInfo)
+	resolver, err := app.NewAuthenticationResolver(catalog, profiles, registry, hostInfo)
 	if err != nil {
 		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create resolver: %w", err))
 	}
@@ -249,11 +250,13 @@ func composeObjectGraph(
 	}
 
 	hostCfg := host.Config{
-		ProductVersion:  productVersion,
-		BuildID:         buildID,
-		Token:           token,
-		RuntimeInfoPath: paths.runtimeInfo,
-		Handler:         http.HandlerFunc(srv.ServeHTTP),
+		ProductVersion:                     productVersion,
+		BuildID:                            buildID,
+		Token:                              token,
+		RuntimeInfoPath:                    paths.runtimeInfo,
+		Handler:                            http.HandlerFunc(srv.ServeHTTP),
+		AllowUnsupportedProtectionFallback: paths.portable,
+		OnUnprotected:                      onUnprotected,
 	}
 
 	return &composedRuntime{

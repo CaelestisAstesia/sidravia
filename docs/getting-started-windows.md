@@ -182,6 +182,20 @@ Trace 后，这些敏感字节可能保留在当前日志或 `.1` 备份中。Si
 .\sidravia.exe auth start --profile jlu --username '<你的账号>'
 ```
 
+当前源码也可持久保存认证配置（密码从 stdin 读取，不进入 argv）：
+
+```powershell
+'<你的密码>' | .\sidravia.exe config create --id campus --profile jlu --username '<你的账号>' --name '校园网' --password-stdin
+.\sidravia.exe config list
+.\sidravia.exe config show campus
+.\sidravia.exe auth start --config campus
+```
+
+安装版要求当前用户权限保护。便携版仅在文件系统明确不支持所需保护模型时进入
+`unprotected`，并发出固定警告；此时 create/set-password 还需显式
+`--allow-insecure-storage`。同目录访问者可能读取或修改配置和密码、daemon runtime
+token 与敏感 Trace 日志。当前使用明文 JSON，不提供 DPAPI、Keyring 或旧双文件迁移。
+
 密码只在交互式 `密码：` 提示中输入，不会回显。不要把密码放进命令行、脚本、
 Profile、截图或日志。非交互式调用必须显式使用 `--password-stdin`。
 
@@ -261,8 +275,8 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 - 只发布 Windows amd64 二进制；其他平台尚不受支持。
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 本地 Profile 需要手动创建，尚无引导式配置界面。
-- 尚无持久认证配置、自动登录或 Windows Service。
-- 尚无 WSS、持久 Configuration/Credentials 或 Linux/macOS daemon 进程控制；
+- 尚无自动登录或 Windows Service。
+- 尚无 WSS、Linux/macOS daemon 进程控制；
   Session ensure/restart/remove 已进入当前源码，但仍待 Windows 原生复核。
 - 简体中文 CLI 呈现、`NO_COLOR` 和重定向安全着色已加入；route-aware 多 IPv4 选择和
   自动化仍未完成。结构化 daemon 日志与 CLI 呈现的 Windows 原生尚未重新验证。

@@ -387,3 +387,119 @@ func TestRetainedSessionPayloadsAreStrict(t *testing.T) {
 		t.Fatalf("remove result = %s, %v", data, err)
 	}
 }
+
+func TestConfigurationPayloadDecodersAreStrict(t *testing.T) {
+	type decoderCase struct {
+		name    string
+		valid   string
+		decode  func([]byte) error
+		invalid []string
+	}
+	cases := []decoderCase{
+		{
+			name:  "id",
+			valid: `{"configurationId":"campus"}`,
+			decode: func(data []byte) error {
+				_, err := DecodeConfigurationIDPayload(data)
+				return err
+			},
+			invalid: []string{"", "null", `{}`, `{"configurationId":""}`, `{"configurationId":"campus","extra":true}`},
+		},
+		{
+			name:  "create",
+			valid: `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false}`,
+			decode: func(data []byte) error {
+				_, err := DecodeConfigurationCreatePayload(data)
+				return err
+			},
+			invalid: []string{
+				"", "null", `{}`,
+				`{"configurationId":"campus","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","allowInsecureStorage":false}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":""}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"","password":"","allowInsecureStorage":false}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"extra":true}`,
+			},
+		},
+		{
+			name:  "update",
+			valid: `{"configurationId":"campus","displayName":""}`,
+			decode: func(data []byte) error {
+				_, err := DecodeConfigurationUpdatePayload(data)
+				return err
+			},
+			invalid: []string{"", "null", `{}`, `{"configurationId":"campus"}`, `{"configurationId":"campus","institutionProfileId":""}`, `{"configurationId":"campus","username":""}`, `{"configurationId":"campus","displayName":"","extra":true}`},
+		},
+		{
+			name:  "set-password",
+			valid: `{"configurationId":"campus","password":"","allowInsecureStorage":false}`,
+			decode: func(data []byte) error {
+				_, err := DecodeConfigurationSetPasswordPayload(data)
+				return err
+			},
+			invalid: []string{"", "null", `{}`, `{"configurationId":"campus","allowInsecureStorage":false}`, `{"configurationId":"campus","password":""}`, `{"configurationId":"campus","password":"","allowInsecureStorage":false,"extra":true}`},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.decode([]byte(tc.valid)); err != nil {
+				t.Fatalf("valid payload rejected: %v", err)
+			}
+			for _, invalid := range tc.invalid {
+				for _, data := range []string{invalid, invalid + `{}`, invalid + `!`} {
+					if err := tc.decode([]byte(data)); err == nil {
+						t.Fatalf("accepted invalid payload %q", data)
+					} else if strings.Contains(err.Error(), "private-password-marker") {
+						t.Fatalf("decoder leaked payload: %v", err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestConfigurationUpdateDistinguishesAbsentAndExplicitEmpty(t *testing.T) {
+	display, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","displayName":""}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if display.DisplayName == nil || *display.DisplayName != "" || display.Username != nil || display.InstitutionProfileID != nil {
+		t.Fatalf("display update = %#v", display)
+	}
+	username, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","username":"user"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username.Username == nil || *username.Username != "user" || username.DisplayName != nil {
+		t.Fatalf("username update = %#v", username)
+	}
+}
+
+func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
+	value := ConfigurationResult{
+		ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
+		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
+		Username: "user", CredentialStored: true, StorageProtection: "protected",
+	}
+	data, err := MarshalConfigurationResult(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expected = `{"configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected"}`
+	if string(data) != expected {
+		t.Fatalf("configuration result = %s", data)
+	}
+	list, err := MarshalConfigurationListResult(ConfigurationListResult{StorageProtection: "protected"})
+	if err != nil || string(list) != `{"storageProtection":"protected","configurations":[]}` {
+		t.Fatalf("empty list = %s, %v", list, err)
+	}
+	removed, err := MarshalConfigurationRemoveResult(ConfigurationRemoveResult{ConfigurationID: "campus", Status: "removed"})
+	if err != nil || string(removed) != `{"configurationId":"campus","status":"removed"}` {
+		t.Fatalf("remove = %s, %v", removed, err)
+	}
+	for _, marker := range []string{"password", "private-password-marker", "diagnosticCause"} {
+		if bytes.Contains(data, []byte(marker)) || bytes.Contains(list, []byte(marker)) || bytes.Contains(removed, []byte(marker)) {
+			t.Fatalf("encoded result contains %q", marker)
+		}
+	}
+}

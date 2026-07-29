@@ -22,6 +22,71 @@ func TestParseAuthStartRetainedMode(t *testing.T) {
 	}
 }
 
+func TestParseAuthStartConfigurationModeIsExclusive(t *testing.T) {
+	got, err := parseAuthStart([]string{"--config", "campus"})
+	if err != nil || got.configurationID != "campus" {
+		t.Fatalf("parse configuration = %#v, %v", got, err)
+	}
+	for _, args := range [][]string{
+		{"--config"}, {"--config", ""}, {"--config", "campus", "--config", "other"},
+		{"--config", "campus", "--session", "session-1"},
+		{"--config", "campus", "--profile", "jlu", "--username", "user"},
+		{"--config", "campus", "--password-stdin"},
+	} {
+		if _, err := parseAuthStart(args); err == nil {
+			t.Fatalf("accepted mixed configuration start: %q", args)
+		}
+	}
+}
+
+func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
+	var calls []string
+	deps := commandDependencies{
+		configList:        func() error { calls = append(calls, "list"); return nil },
+		configShow:        func(id string) error { calls = append(calls, "show:"+id); return nil },
+		configCreate:      func(options configCreateOptions) error { calls = append(calls, "create:"+options.id); return nil },
+		configUpdate:      func(options configUpdateOptions) error { calls = append(calls, "update:"+options.id); return nil },
+		configSetPassword: func(options configPasswordOptions) error { calls = append(calls, "password:"+options.id); return nil },
+		configRemove: func(id string, yes bool) error {
+			calls = append(calls, fmt.Sprintf("remove:%s:%t", id, yes))
+			return nil
+		},
+		output: io.Discard,
+	}
+	for _, args := range [][]string{
+		{"config", "list"},
+		{"config", "show", "campus"},
+		{"config", "create", "--id", "campus", "--profile", "jlu", "--username", "user", "--password-stdin"},
+		{"config", "update", "campus", "--name", "Campus"},
+		{"config", "set-password", "campus", "--password-stdin"},
+		{"config", "remove", "campus", "--yes"},
+	} {
+		if err := runCommand(args, deps); err != nil {
+			t.Fatalf("%q: %v", args, err)
+		}
+	}
+	if got := strings.Join(calls, "|"); got != "list|show:campus|create:campus|update:campus|password:campus|remove:campus:true" {
+		t.Fatalf("dispatch = %q", got)
+	}
+	before := len(calls)
+	for _, args := range [][]string{
+		{"config", "--help"}, {"config", "create", "--help"}, {"config", "update", "--help"},
+		{"config", "set-password", "--help"}, {"config", "remove", "--help"},
+	} {
+		var output bytes.Buffer
+		deps.output = &output
+		if err := runCommand(args, deps); err != nil {
+			t.Fatalf("help %q: %v", args, err)
+		}
+		if !strings.Contains(output.String(), "用法：") {
+			t.Fatalf("help %q missing usage:\n%s", args, output.String())
+		}
+	}
+	if len(calls) != before {
+		t.Fatal("configuration help dispatched an operation")
+	}
+}
+
 func TestParseAuthStartRetainedRejectsMissingMixedAndDuplicateForms(t *testing.T) {
 	for _, args := range [][]string{
 		{"--session"},

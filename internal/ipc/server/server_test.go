@@ -26,6 +26,84 @@ func TestNormalizeRetainedSessionMethods(t *testing.T) {
 	}
 }
 
+func TestNormalizeConfigurationMethodsAndErrors(t *testing.T) {
+	for _, method := range []string{
+		contract.MethodConfigurationList,
+		contract.MethodConfigurationGet,
+		contract.MethodConfigurationCreate,
+		contract.MethodConfigurationUpdate,
+		contract.MethodConfigurationSetPassword,
+		contract.MethodConfigurationRemove,
+		contract.MethodSessionStartConfiguration,
+	} {
+		if got := normalizeMethod(method); got != method {
+			t.Fatalf("normalizeMethod(%q) = %q", method, got)
+		}
+	}
+	for _, code := range []string{
+		contract.ErrorCodeConfigurationNotFound,
+		contract.ErrorCodeConfigurationOperationFailed,
+		contract.ErrorCodeInsecureStorageConfirmationRequired,
+	} {
+		if got := normalizeErrorCode(code); got != code {
+			t.Fatalf("normalizeErrorCode(%q) = %q", code, got)
+		}
+	}
+	if normalizeMethod("configuration.private-marker") != methodUnknown ||
+		normalizeErrorCode("private-error-marker") != errorCodeInternal {
+		t.Fatal("unallowlisted peer strings were not normalized")
+	}
+}
+
+func TestConfigurationRequestsLogOnlyAllowlistedMethodAndCode(t *testing.T) {
+	for _, tc := range []struct {
+		method string
+		code   string
+	}{
+		{contract.MethodConfigurationList, contract.ErrorCodeConfigurationOperationFailed},
+		{contract.MethodConfigurationGet, contract.ErrorCodeConfigurationNotFound},
+		{contract.MethodConfigurationCreate, contract.ErrorCodeInsecureStorageConfirmationRequired},
+		{contract.MethodConfigurationUpdate, contract.ErrorCodeConfigurationOperationFailed},
+		{contract.MethodConfigurationSetPassword, contract.ErrorCodeInsecureStorageConfirmationRequired},
+		{contract.MethodConfigurationRemove, contract.ErrorCodeConfigurationNotFound},
+		{contract.MethodSessionStartConfiguration, contract.ErrorCodeSessionOperationFailed},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			var buf safeBuffer
+			const (
+				requestIDMarker = "private-request-id-marker"
+				configIDMarker  = "private-configuration-id-marker"
+				usernameMarker  = "private-username-marker"
+				passwordMarker  = "private-password-marker"
+				payloadMarker   = "private-payload-marker"
+				causeMarker     = "private-wrapped-cause-marker"
+			)
+			handler := func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
+				return nil, &contract.Error{Code: tc.code, Message: "failed: " + causeMarker}
+			}
+			_, wsURL := newTestServer(t, handler, &buf)
+			conn := dial(t, wsURL)
+			defer conn.Close(websocket.StatusNormalClosure, "")
+			writeRequest(t, conn, requestIDMarker, tc.method, json.RawMessage(
+				`{"configurationId":"`+configIDMarker+`","username":"`+usernameMarker+
+					`","password":"`+passwordMarker+`","marker":"`+payloadMarker+`"}`,
+			))
+			response := readResponse(t, conn)
+			if response.OK || response.Error == nil || response.Error.Code != tc.code {
+				t.Fatalf("response = %#v", response)
+			}
+			waitForLogEvent(t, &buf, "method="+tc.method)
+			waitForLogEvent(t, &buf, "error_code="+tc.code)
+			output := buf.String()
+			for _, marker := range []string{requestIDMarker, configIDMarker, usernameMarker, passwordMarker, payloadMarker, causeMarker, testToken} {
+				if strings.Contains(output, marker) {
+					t.Fatalf("log leaked %q: %s", marker, output)
+				}
+			}
+		})
+	}
+}
+
 func TestRetainedSessionMethodsLogOnlyStableMethod(t *testing.T) {
 	var buf safeBuffer
 	const idMarker = "request-secret-marker"

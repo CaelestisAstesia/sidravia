@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -30,21 +31,23 @@ const (
 // from an error, snapshot, request or response. Only the attributes listed in
 // the stable schema ever appear on a record.
 const (
-	eventSessionSnapshot       = "session_snapshot"
-	eventSessionCommand        = "session_command"
-	eventProtocolRunGeneration = "protocol_run_generation"
-	eventRetryScheduled        = "retry_scheduled"
-	eventProtocolPhase         = "protocol_phase"
-	eventProtocolDatagram      = "protocol_datagram"
-	eventTraceLoggingSensitive = "trace_logging_sensitive"
+	eventSessionSnapshot              = "session_snapshot"
+	eventSessionCommand               = "session_command"
+	eventProtocolRunGeneration        = "protocol_run_generation"
+	eventRetryScheduled               = "retry_scheduled"
+	eventProtocolPhase                = "protocol_phase"
+	eventProtocolDatagram             = "protocol_datagram"
+	eventTraceLoggingSensitive        = "trace_logging_sensitive"
+	eventStorageProtectionUnavailable = "storage_protection_unavailable"
 
-	msgSessionSnapshot       = "Session 状态已更新"
-	msgSessionCommand        = "Session 命令已接收"
-	msgProtocolRunGeneration = "认证协议运行已创建"
-	msgRetryScheduled        = "认证重试已调度"
-	msgProtocolPhase         = "协议阶段边界"
-	msgProtocolDatagram      = "协议数据报"
-	msgTraceLoggingSensitive = "Trace 日志含敏感信息"
+	msgSessionSnapshot              = "Session 状态已更新"
+	msgSessionCommand               = "Session 命令已接收"
+	msgProtocolRunGeneration        = "认证协议运行已创建"
+	msgRetryScheduled               = "认证重试已调度"
+	msgProtocolPhase                = "协议阶段边界"
+	msgProtocolDatagram             = "协议数据报"
+	msgTraceLoggingSensitive        = "Trace 日志含敏感信息"
+	msgStorageProtectionUnavailable = "便携存储无法使用当前用户权限保护"
 )
 
 // resolveLogLevel maps SIDRAVIA_LOG_LEVEL to a slog level. The empty value
@@ -177,5 +180,14 @@ func newSessionDiagnostics(logger *slog.Logger) session.Diagnostics {
 func newProtocolDiagnosticsFactory(logger *slog.Logger) session.ProtocolDiagnosticsFactory {
 	return func(sessionID session.AuthenticationSessionID) protocol.AuthenticationProtocolDiagnostics {
 		return &protocolDiagnosticsAdapter{logger: logger, sessionID: string(sessionID)}
+	}
+}
+
+func newStorageProtectionWarning(logger *slog.Logger) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			logger.Warn(msgStorageProtectionUnavailable, slog.String("event", eventStorageProtectionUnavailable))
+		})
 	}
 }

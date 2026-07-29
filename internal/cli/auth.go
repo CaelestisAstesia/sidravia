@@ -34,6 +34,7 @@ type authDependencies struct {
 	stderr                  io.Writer
 	readStdinPassword       func(io.Reader) (string, error)
 	readInteractivePassword func(io.Reader, io.Writer) (string, error)
+	inputIsConsole          func(io.Reader) bool
 }
 
 // defaultDaemonConnectionDependencies wires auth commands to the shared daemon
@@ -59,6 +60,14 @@ func defaultAuthDependencies() authDependencies {
 		stderr:                  os.Stderr,
 		readStdinPassword:       readPasswordStdin,
 		readInteractivePassword: readInteractivePassword,
+		inputIsConsole: func(input io.Reader) bool {
+			file, ok := input.(*os.File)
+			if !ok {
+				return false
+			}
+			info, err := file.Stat()
+			return err == nil && info.Mode()&os.ModeCharDevice != 0
+		},
 	}
 }
 
@@ -84,6 +93,13 @@ func authRemove(sessionID string) error {
 
 func runAuthStart(options authStartOptions, deps authDependencies) error {
 	return withAuthClient(deps, func(connection daemonClient) error {
+		if options.configurationID != "" {
+			result, err := callSession(deps, connection, contract.MethodSessionStartConfiguration, contract.ConfigurationIDPayload{ConfigurationID: options.configurationID})
+			if err != nil {
+				return err
+			}
+			return writeSessionResult(deps.stdout, result)
+		}
 		if options.sessionID != "" {
 			result, err := callSession(deps, connection, contract.MethodSessionEnsureRunning, contract.SessionEnsureRunningPayload{SessionID: options.sessionID})
 			if err != nil {
@@ -247,7 +263,7 @@ func callSession(
 	}
 
 	timeout := deps.connection.callTimeout
-	if method == contract.MethodSessionEnsureRunning || method == contract.MethodSessionRestart {
+	if method == contract.MethodSessionEnsureRunning || method == contract.MethodSessionRestart || method == contract.MethodSessionStartConfiguration {
 		timeout = 30 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

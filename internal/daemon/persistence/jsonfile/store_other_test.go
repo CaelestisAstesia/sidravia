@@ -4,8 +4,10 @@ package jsonfile
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"sidravia/internal/daemon/persistence"
@@ -18,6 +20,19 @@ func newOtherTestStore(t *testing.T) *SecureStore {
 		t.Fatal(err)
 	}
 	return store
+}
+
+func TestOtherProtectionClassificationIsExact(t *testing.T) {
+	for _, supported := range []error{syscall.ENOTSUP, syscall.EOPNOTSUPP} {
+		if !errors.Is(classifyOtherProtection(supported), ProtectionUnsupported) {
+			t.Fatalf("%v was not classified unsupported", supported)
+		}
+	}
+	for _, ordinary := range []error{syscall.EACCES, syscall.EPERM, syscall.EIO, os.ErrInvalid} {
+		if errors.Is(classifyOtherProtection(ordinary), ProtectionUnsupported) {
+			t.Fatalf("%v was classified unsupported", ordinary)
+		}
+	}
 }
 
 func requireMode(t *testing.T, path string, wanted os.FileMode) {

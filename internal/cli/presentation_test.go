@@ -704,3 +704,46 @@ func TestDaemonLifecycleRenderers(t *testing.T) {
 		t.Errorf("restarted = %q", got)
 	}
 }
+
+func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testing.T) {
+	base := contract.ConfigurationResult{
+		ConfigurationID: "campus\x1b[2J\ninjected", DisplayName: "校园网",
+		InstitutionProfileID: "jlu", InstitutionDisplayName: "吉林大学",
+		AuthenticationProtocolID: "drcom", Username: "user\nmarker",
+		CredentialStored: true, StorageProtection: "protected",
+	}
+	protected := renderConfiguration(base)
+	if !strings.Contains(protected, "已保护（protected）") || strings.ContainsAny(protected, "\x1b") ||
+		strings.Contains(protected, "\ninjected") || strings.Contains(protected, "\nmarker") ||
+		strings.Contains(strings.ToLower(protected), "password") {
+		t.Fatalf("protected configuration output unsafe: %q", protected)
+	}
+	base.StorageProtection = "unprotected"
+	if got := renderConfiguration(base); !strings.Contains(got, "未保护（unprotected）") {
+		t.Fatalf("unprotected output = %q", got)
+	}
+	var empty bytes.Buffer
+	if err := writeConfigurationList(&empty, contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}}); err != nil {
+		t.Fatal(err)
+	}
+	if empty.String() != "尚未保存认证配置。\n" {
+		t.Fatalf("empty list = %q", empty.String())
+	}
+}
+
+func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
+	result := contract.ConfigurationResult{
+		ConfigurationID: "campus", InstitutionProfileID: "jlu",
+		AuthenticationProtocolID: "drcom", Username: "user",
+		CredentialStored: true, StorageProtection: "protected",
+	}
+	block := renderConfiguration(result)
+	var output bytes.Buffer
+	p := newTestPresentation(&output, termenv.ANSI)
+	if err := p.complete(block); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != block || strings.ContainsRune(output.String(), '\x1b') {
+		t.Fatalf("configuration block unexpectedly styled: %q", output.String())
+	}
+}

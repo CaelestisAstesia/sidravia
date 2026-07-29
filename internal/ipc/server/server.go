@@ -47,29 +47,39 @@ const (
 // other method supplied by a peer is normalized to methodUnknown so an
 // arbitrary peer string can never reach the log.
 var allowedMethods = map[string]struct{}{
-	contract.MethodDaemonStatus:         {},
-	contract.MethodDaemonStop:           {},
-	contract.MethodSessionStartOneShot:  {},
-	contract.MethodSessionStop:          {},
-	contract.MethodSessionEnsureRunning: {},
-	contract.MethodSessionRestart:       {},
-	contract.MethodSessionRemove:        {},
-	contract.MethodSessionGet:           {},
-	contract.MethodSessionList:          {},
-	contract.MethodProfileList:          {},
+	contract.MethodDaemonStatus:              {},
+	contract.MethodDaemonStop:                {},
+	contract.MethodSessionStartOneShot:       {},
+	contract.MethodSessionStop:               {},
+	contract.MethodSessionEnsureRunning:      {},
+	contract.MethodSessionRestart:            {},
+	contract.MethodSessionRemove:             {},
+	contract.MethodSessionGet:                {},
+	contract.MethodSessionList:               {},
+	contract.MethodProfileList:               {},
+	contract.MethodConfigurationList:         {},
+	contract.MethodConfigurationGet:          {},
+	contract.MethodConfigurationCreate:       {},
+	contract.MethodConfigurationUpdate:       {},
+	contract.MethodConfigurationSetPassword:  {},
+	contract.MethodConfigurationRemove:       {},
+	contract.MethodSessionStartConfiguration: {},
 }
 
 // allowedErrorCodes are the only error_code values that may appear in logs.
 // Every other code supplied by a handler is normalized to errorCodeInternal so
 // an arbitrary diagnostic string can never reach the log.
 var allowedErrorCodes = map[string]struct{}{
-	contract.ErrorCodeUnknownMethod:          {},
-	contract.ErrorCodeMalformed:              {},
-	contract.ErrorCodeInvalidArgument:        {},
-	contract.ErrorCodeProfileNotFound:        {},
-	contract.ErrorCodeProtocolNotFound:       {},
-	contract.ErrorCodeProfileOperationFailed: {},
-	contract.ErrorCodeSessionOperationFailed: {},
+	contract.ErrorCodeUnknownMethod:                       {},
+	contract.ErrorCodeMalformed:                           {},
+	contract.ErrorCodeInvalidArgument:                     {},
+	contract.ErrorCodeProfileNotFound:                     {},
+	contract.ErrorCodeProtocolNotFound:                    {},
+	contract.ErrorCodeProfileOperationFailed:              {},
+	contract.ErrorCodeSessionOperationFailed:              {},
+	contract.ErrorCodeConfigurationNotFound:               {},
+	contract.ErrorCodeConfigurationOperationFailed:        {},
+	contract.ErrorCodeInsecureStorageConfirmationRequired: {},
 }
 
 type Server struct {

@@ -15,7 +15,6 @@ type ResolutionFailureCode string
 
 const (
 	ConfigurationNotFound ResolutionFailureCode = "configuration_not_found"
-	CredentialNotFound    ResolutionFailureCode = "credential_not_found"
 	ProfileNotFound       ResolutionFailureCode = "profile_not_found"
 	ProtocolNotFound      ResolutionFailureCode = "protocol_not_found"
 	InvalidConfiguration  ResolutionFailureCode = "invalid_configuration"
@@ -44,7 +43,6 @@ func (failure *ResolutionFailure) Code() ResolutionFailureCode { return failure.
 type AuthenticationResolver struct {
 	configurations *config.Catalog
 	profiles       *config.ProfileCatalog
-	credentials    *credential.Store
 	protocols      *protocol.AuthenticationProtocolRegistry
 	hostInfo       environment.SystemHostInformation
 }
@@ -52,7 +50,6 @@ type AuthenticationResolver struct {
 func NewAuthenticationResolver(
 	configurations *config.Catalog,
 	profiles *config.ProfileCatalog,
-	credentials *credential.Store,
 	protocols *protocol.AuthenticationProtocolRegistry,
 	hostInfo environment.SystemHostInformation,
 ) (*AuthenticationResolver, error) {
@@ -61,8 +58,6 @@ func NewAuthenticationResolver(
 		return nil, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("configuration catalog is required"))
 	case profiles == nil:
 		return nil, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("profile catalog is required"))
-	case credentials == nil:
-		return nil, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("credential store is required"))
 	case protocols == nil:
 		return nil, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("protocol registry is required"))
 	case hostInfo.HostName == "":
@@ -71,7 +66,6 @@ func NewAuthenticationResolver(
 		return &AuthenticationResolver{
 			configurations: configurations,
 			profiles:       profiles,
-			credentials:    credentials,
 			protocols:      protocols,
 			hostInfo:       hostInfo,
 		}, nil
@@ -96,14 +90,9 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("authentication session ID is required"))
 	}
 
-	configuration, err := authenticationResolver.configurations.Get(ctx, configurationID)
+	configuration, credentialValue, err := authenticationResolver.configurations.Resolve(ctx, configurationID)
 	if err != nil {
 		return session.RuntimeDefinition{}, NewResolutionFailure(ConfigurationNotFound, err)
-	}
-
-	credentialValue, err := authenticationResolver.credentials.Get(ctx, configuration.CredentialID)
-	if err != nil {
-		return session.RuntimeDefinition{}, NewResolutionFailure(CredentialNotFound, err)
 	}
 
 	institutionProfile, err := authenticationResolver.profiles.Get(ctx, configuration.InstitutionProfileID)
@@ -121,7 +110,6 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 			AuthenticationSessionID: sessionID,
 			DisplayName:             configuration.DisplayName,
 			InstitutionProfileID:    configuration.InstitutionProfileID,
-			CredentialID:            configuration.CredentialID,
 			NetworkBindingPolicy: session.NetworkBindingPolicy{
 				Mode: session.NetworkBindingPolicyMode(configuration.NetworkBindingPolicy.Mode),
 			},
@@ -142,7 +130,7 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 
 // OneShotAuthenticationInput is a typed one-shot authentication request. It
 // carries a credential that the daemon never persists, logs, or exposes in a
-// public Snapshot. It deliberately omits ConfigurationID, CredentialID,
+// public Snapshot. It deliberately omits ConfigurationID,
 // SessionID, arbitrary JSON maps, a protocol factory, and host or network
 // facts: those are resolved from the existing catalogs and host information.
 type OneShotAuthenticationInput struct {
@@ -155,9 +143,8 @@ type OneShotAuthenticationInput struct {
 
 // ResolveOneShot resolves a typed one-shot request into the existing
 // RuntimeDefinition without reading or writing the Configuration Catalog or
-// Credential Store. The supplied credential is copied directly into the
-// definition and CredentialID is left empty because no persistent credential
-// exists. The raw protocol override is cloned so the definition does not alias
+// Catalog. The supplied credential is copied directly into the definition.
+// The raw protocol override is cloned so the definition does not alias
 // the caller's input.
 func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 	ctx context.Context,
@@ -173,8 +160,6 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 	if sessionID == "" {
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("authentication session ID is required"))
 	}
-	// The Credential Store rejects an empty username on Put, but a one-shot
-	// credential bypasses the store, so the username must be checked here.
 	if input.AuthenticationCredential.Username == "" {
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("username is required"))
 	}
@@ -194,7 +179,6 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 			AuthenticationSessionID: sessionID,
 			DisplayName:             input.DisplayName,
 			InstitutionProfileID:    institutionProfile.InstitutionProfileID,
-			CredentialID:            "",
 			NetworkBindingPolicy:    input.NetworkBindingPolicy,
 			ProtocolContextOverride: append(protocol.AuthenticationProtocolContextOverride(nil), input.ProtocolContextOverride...),
 		},

@@ -5,9 +5,11 @@ package jsonfile
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 const (
@@ -33,7 +35,7 @@ func (*otherSecureFileOperations) ensureDirectory(path string, _ resolvedOwner) 
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return err
 	}
-	return os.Chmod(path, 0700)
+	return classifyOtherProtection(os.Chmod(path, 0700))
 }
 
 func (*otherSecureFileOperations) inspectDestination(path string) (bool, error) {
@@ -51,7 +53,7 @@ func (*otherSecureFileOperations) inspectDestination(path string) (bool, error) 
 }
 
 func (*otherSecureFileOperations) hardenDestination(path string, _ resolvedOwner) error {
-	return os.Chmod(path, 0600)
+	return classifyOtherProtection(os.Chmod(path, 0600))
 }
 
 func (*otherSecureFileOperations) openForRead(path string) (io.ReadCloser, error) {
@@ -59,6 +61,18 @@ func (*otherSecureFileOperations) openForRead(path string) (io.ReadCloser, error
 }
 
 func (*otherSecureFileOperations) createTemp(directory string, _ resolvedOwner) (writableTemp, error) {
+	return createOtherTemp(directory, 0600)
+}
+
+func (*otherSecureFileOperations) ensureUnprotectedDirectory(path string) error {
+	return os.MkdirAll(path, 0700)
+}
+
+func (*otherSecureFileOperations) createUnprotectedTemp(directory string) (writableTemp, error) {
+	return createOtherTemp(directory, 0600)
+}
+
+func createOtherTemp(directory string, mode os.FileMode) (writableTemp, error) {
 	for attempt := 0; attempt < secureTempAttempts; attempt++ {
 		random := make([]byte, secureTempRandomBytes)
 		if _, err := io.ReadFull(rand.Reader, random); err != nil {
@@ -68,7 +82,7 @@ func (*otherSecureFileOperations) createTemp(directory string, _ resolvedOwner) 
 		if !validDirectChild(directory, path) {
 			return nil, os.ErrInvalid
 		}
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 		if os.IsExist(err) {
 			continue
 		}
@@ -78,6 +92,13 @@ func (*otherSecureFileOperations) createTemp(directory string, _ resolvedOwner) 
 		return file, nil
 	}
 	return nil, os.ErrExist
+}
+
+func classifyOtherProtection(err error) error {
+	if errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP) {
+		return errors.Join(ProtectionUnsupported, err)
+	}
+	return err
 }
 
 func secureTempBasename(random []byte) string {

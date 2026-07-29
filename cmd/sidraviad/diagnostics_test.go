@@ -253,3 +253,24 @@ func TestProtocolDiagnosticsFactoryBindsSessionID(t *testing.T) {
 		t.Fatalf("session id not bound by factory:\n%s", buf.String())
 	}
 }
+
+func TestStorageProtectionWarningIsFixedOnceAndSafe(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	warn := newStorageProtectionWarning(logger)
+	warn()
+	warn()
+	output := buf.String()
+	if strings.Count(output, "event="+eventStorageProtectionUnavailable) != 1 ||
+		strings.Count(output, "msg="+msgStorageProtectionUnavailable) != 1 {
+		t.Fatalf("warning count/content = %q", output)
+	}
+	for _, forbidden := range []string{
+		"path=", "username=", "password=", "token=", "payload=", "error=",
+		"unsupported-marker", "configuration-marker",
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("warning contains unsafe material %q: %q", forbidden, output)
+		}
+	}
+}

@@ -25,10 +25,6 @@ func (definition RuntimeDefinition) Validate() error {
 	if definition.Configuration.InstitutionProfileID == "" {
 		return fmt.Errorf("institution profile ID is required")
 	}
-	// CredentialID is intentionally not required here. A resolved one-shot
-	// definition supplies its credential directly and has no persistent
-	// CredentialID; persistent definitions always carry one because the
-	// configuration catalog rejects an empty CredentialID on save.
 	if definition.Configuration.NetworkBindingPolicy.Mode != AutomaticallySelectLatestAvailable {
 		return fmt.Errorf("unsupported network binding policy mode %q", definition.Configuration.NetworkBindingPolicy.Mode)
 	}
@@ -65,7 +61,7 @@ func (definition RuntimeDefinition) Validate() error {
 
 // AccountName returns the complete authentication username. CLI and daemon
 // share one build/version, so the public Snapshot carries the full account
-// name instead of a masked label; Password and CredentialID remain absent.
+// name instead of a masked label; Password remains absent.
 // Control-character sanitization happens at the CLI presentation boundary.
 func (definition RuntimeDefinition) AccountName() string {
 	return definition.AuthenticationCredential.Username

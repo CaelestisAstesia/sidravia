@@ -355,8 +355,9 @@ daemon 生效，首版不监听目录也不热替换运行中的 Profile。
 CLI 必须能够用人类可读的形式显示公开结构化配置和 `protected|unprotected`，但不提供
 读取、显示、复制或导出密码明文的命令。完整决定见 ADR 0024。
 
-截至提交 `52b900b`，ADR 0024 已接受但尚未实施：当前代码仍保留旧 Configuration
-Catalog、Credentials Store、CredentialID 和双文件路径，且没有 `config` CLI/IPC。
+ADR 0024 已实现：schema-2 `configurations.json` 是包含唯一私有密码的聚合，
+独立 Credentials Store、CredentialID 和双文件路径已删除，并提供 typed `config`
+CLI/IPC。
 下一纵向实施切片必须一次替换这些旧边界并通过完整验证，不能把本节倒推成现有能力。
 
 ## IPC

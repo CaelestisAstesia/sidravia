@@ -48,26 +48,157 @@ func MarshalStatusResult(result StatusResult) (json.RawMessage, error) {
 
 // Error codes returned by the daemon.
 const (
-	ErrorCodeUnknownMethod          = "unknown_method"
-	ErrorCodeMalformed              = "malformed_request"
-	ErrorCodeInvalidArgument        = "invalid_argument"
-	ErrorCodeProfileNotFound        = "profile_not_found"
-	ErrorCodeProtocolNotFound       = "protocol_not_found"
-	ErrorCodeProfileOperationFailed = "profile_operation_failed"
-	ErrorCodeSessionOperationFailed = "session_operation_failed"
+	ErrorCodeUnknownMethod                       = "unknown_method"
+	ErrorCodeMalformed                           = "malformed_request"
+	ErrorCodeInvalidArgument                     = "invalid_argument"
+	ErrorCodeProfileNotFound                     = "profile_not_found"
+	ErrorCodeProtocolNotFound                    = "protocol_not_found"
+	ErrorCodeProfileOperationFailed              = "profile_operation_failed"
+	ErrorCodeSessionOperationFailed              = "session_operation_failed"
+	ErrorCodeConfigurationNotFound               = "configuration_not_found"
+	ErrorCodeConfigurationOperationFailed        = "configuration_operation_failed"
+	ErrorCodeInsecureStorageConfirmationRequired = "insecure_storage_confirmation_required"
 )
 
 // Method names for one-shot Session operations.
 const (
-	MethodSessionStartOneShot  = "session.startOneShot"
-	MethodSessionStop          = "session.stop"
-	MethodSessionEnsureRunning = "session.ensureRunning"
-	MethodSessionRestart       = "session.restart"
-	MethodSessionRemove        = "session.remove"
-	MethodSessionGet           = "session.get"
-	MethodSessionList          = "session.list"
-	MethodProfileList          = "profile.list"
+	MethodSessionStartOneShot       = "session.startOneShot"
+	MethodSessionStop               = "session.stop"
+	MethodSessionEnsureRunning      = "session.ensureRunning"
+	MethodSessionRestart            = "session.restart"
+	MethodSessionRemove             = "session.remove"
+	MethodSessionGet                = "session.get"
+	MethodSessionList               = "session.list"
+	MethodProfileList               = "profile.list"
+	MethodConfigurationList         = "configuration.list"
+	MethodConfigurationGet          = "configuration.get"
+	MethodConfigurationCreate       = "configuration.create"
+	MethodConfigurationUpdate       = "configuration.update"
+	MethodConfigurationSetPassword  = "configuration.setPassword"
+	MethodConfigurationRemove       = "configuration.remove"
+	MethodSessionStartConfiguration = "session.startConfiguration"
 )
+
+type ConfigurationIDPayload struct {
+	ConfigurationID string `json:"configurationId"`
+}
+type ConfigurationCreatePayload struct {
+	ConfigurationID      string `json:"configurationId"`
+	DisplayName          string `json:"displayName"`
+	InstitutionProfileID string `json:"institutionProfileId"`
+	Username             string `json:"username"`
+	Password             string `json:"password"`
+	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
+}
+type ConfigurationUpdatePayload struct {
+	ConfigurationID      string  `json:"configurationId"`
+	DisplayName          *string `json:"displayName,omitempty"`
+	InstitutionProfileID *string `json:"institutionProfileId,omitempty"`
+	Username             *string `json:"username,omitempty"`
+}
+type ConfigurationSetPasswordPayload struct {
+	ConfigurationID      string `json:"configurationId"`
+	Password             string `json:"password"`
+	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
+}
+type ConfigurationResult struct {
+	ConfigurationID          string `json:"configurationId"`
+	DisplayName              string `json:"displayName"`
+	InstitutionProfileID     string `json:"institutionProfileId"`
+	InstitutionDisplayName   string `json:"institutionDisplayName"`
+	AuthenticationProtocolID string `json:"authenticationProtocolId"`
+	Username                 string `json:"username"`
+	CredentialStored         bool   `json:"credentialStored"`
+	StorageProtection        string `json:"storageProtection"`
+}
+type ConfigurationListResult struct {
+	StorageProtection string                `json:"storageProtection"`
+	Configurations    []ConfigurationResult `json:"configurations"`
+}
+type ConfigurationRemoveResult struct {
+	ConfigurationID string `json:"configurationId"`
+	Status          string `json:"status"`
+}
+
+func DecodeConfigurationIDPayload(data []byte) (ConfigurationIDPayload, error) {
+	var value ConfigurationIDPayload
+	if err := decodeStrict(data, &value); err != nil {
+		return ConfigurationIDPayload{}, err
+	}
+	if value.ConfigurationID == "" {
+		return ConfigurationIDPayload{}, fmt.Errorf("missing configurationId")
+	}
+	return value, nil
+}
+func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, error) {
+	var wire struct {
+		ConfigurationID      *string `json:"configurationId"`
+		DisplayName          *string `json:"displayName"`
+		InstitutionProfileID *string `json:"institutionProfileId"`
+		Username             *string `json:"username"`
+		Password             *string `json:"password"`
+		AllowInsecureStorage *bool   `json:"allowInsecureStorage"`
+	}
+	if err := decodeStrict(data, &wire); err != nil {
+		return ConfigurationCreatePayload{}, err
+	}
+	if wire.ConfigurationID == nil || wire.DisplayName == nil || wire.InstitutionProfileID == nil ||
+		wire.Username == nil || wire.Password == nil || wire.AllowInsecureStorage == nil ||
+		*wire.ConfigurationID == "" || *wire.InstitutionProfileID == "" || *wire.Username == "" {
+		return ConfigurationCreatePayload{}, fmt.Errorf("missing required configuration field")
+	}
+	return ConfigurationCreatePayload{
+		ConfigurationID: *wire.ConfigurationID, DisplayName: *wire.DisplayName,
+		InstitutionProfileID: *wire.InstitutionProfileID, Username: *wire.Username,
+		Password: *wire.Password, AllowInsecureStorage: *wire.AllowInsecureStorage,
+	}, nil
+}
+func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, error) {
+	var value ConfigurationUpdatePayload
+	if err := decodeStrict(data, &value); err != nil {
+		return ConfigurationUpdatePayload{}, err
+	}
+	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil {
+		return ConfigurationUpdatePayload{}, fmt.Errorf("missing configuration update")
+	}
+	if value.InstitutionProfileID != nil && *value.InstitutionProfileID == "" || value.Username != nil && *value.Username == "" {
+		return ConfigurationUpdatePayload{}, fmt.Errorf("empty required configuration field")
+	}
+	return value, nil
+}
+func DecodeConfigurationSetPasswordPayload(data []byte) (ConfigurationSetPasswordPayload, error) {
+	var wire struct {
+		ConfigurationID      *string `json:"configurationId"`
+		Password             *string `json:"password"`
+		AllowInsecureStorage *bool   `json:"allowInsecureStorage"`
+	}
+	if err := decodeStrict(data, &wire); err != nil {
+		return ConfigurationSetPasswordPayload{}, err
+	}
+	if wire.ConfigurationID == nil || wire.Password == nil || wire.AllowInsecureStorage == nil ||
+		*wire.ConfigurationID == "" {
+		return ConfigurationSetPasswordPayload{}, fmt.Errorf("missing configurationId")
+	}
+	return ConfigurationSetPasswordPayload{
+		ConfigurationID: *wire.ConfigurationID, Password: *wire.Password,
+		AllowInsecureStorage: *wire.AllowInsecureStorage,
+	}, nil
+}
+func MarshalConfigurationResult(value ConfigurationResult) (json.RawMessage, error) {
+	data, err := json.Marshal(value)
+	return json.RawMessage(data), err
+}
+func MarshalConfigurationListResult(value ConfigurationListResult) (json.RawMessage, error) {
+	if value.Configurations == nil {
+		value.Configurations = []ConfigurationResult{}
+	}
+	data, err := json.Marshal(value)
+	return json.RawMessage(data), err
+}
+func MarshalConfigurationRemoveResult(value ConfigurationRemoveResult) (json.RawMessage, error) {
+	data, err := json.Marshal(value)
+	return json.RawMessage(data), err
+}
 
 // DecodeEmptyPayload accepts exactly one empty JSON object.
 func DecodeEmptyPayload(data []byte) error {
@@ -81,7 +212,7 @@ func DecodeEmptyPayload(data []byte) error {
 // SessionStartOneShotPayload is the typed payload for a session.startOneShot
 // request. The protocolContextOverride is an opaque JSON document that the
 // daemon forwards to the selected authentication protocol factory; the IPC layer
-// never interprets it. It deliberately omits ConfigurationID, CredentialID,
+// never interprets it. It deliberately omits ConfigurationID,
 // arbitrary environment facts, factory selection and a generic parameter map.
 type SessionStartOneShotPayload struct {
 	DisplayName              string          `json:"displayName"`
@@ -248,7 +379,7 @@ type SessionAuthenticationFailure struct {
 }
 
 // SessionResult is the complete public result of a Session operation. It covers
-// every public session.Snapshot field without exposing CredentialID, username,
+// every public session.Snapshot field without exposing username,
 // password, raw protocol configuration, the raw protocol context override or
 // diagnostic causes.
 type SessionResult struct {

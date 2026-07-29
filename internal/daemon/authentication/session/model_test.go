@@ -102,7 +102,6 @@ func TestRuntimeDefinitionValidate(t *testing.T) {
 			name:      "accepts an empty credential ID for one-shot",
 			wantValid: true,
 			mutate: func(definition *RuntimeDefinition) {
-				definition.Configuration.CredentialID = ""
 			},
 		},
 		{
@@ -254,7 +253,6 @@ func TestSnapshotDoesNotContainCredentialOrDiagnosticCause(t *testing.T) {
 
 func TestSnapshotExposesAccountNameButNotPassword(t *testing.T) {
 	definition := validRuntimeDefinition(t)
-	definition.Configuration.CredentialID = ""
 	definition.AuthenticationCredential = credential.AuthenticationCredential{
 		Username: "oneshot-account",
 		Password: "oneshot-password-secret",
@@ -321,7 +319,6 @@ func validRuntimeDefinition(t *testing.T) RuntimeDefinition {
 			AuthenticationSessionID: "session-1",
 			DisplayName:             "Campus network",
 			InstitutionProfileID:    "profile-1",
-			CredentialID:            "credential-1",
 			NetworkBindingPolicy: NetworkBindingPolicy{
 				Mode: AutomaticallySelectLatestAvailable,
 			},

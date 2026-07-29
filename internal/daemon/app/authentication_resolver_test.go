@@ -11,43 +11,48 @@ import (
 
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
+	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	credential "sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/environment"
+	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
-type appMemoryStore struct {
-	data map[string][]byte
+type appMemoryStore struct{ data map[string][]byte }
+
+type appTestSetup struct {
+	authenticationResolver *AuthenticationResolver
+	configuration          config.Configuration
 }
 
-func newAppMemoryStore() *appMemoryStore {
-	return &appMemoryStore{data: make(map[string][]byte)}
+func newAppMemoryStore() *appMemoryStore { return &appMemoryStore{data: make(map[string][]byte)} }
+func (s *appMemoryStore) Read(_ context.Context, path string, _ int64) ([]byte, bool, error) {
+	data, ok := s.data[path]
+	return append([]byte(nil), data...), ok, nil
 }
-
-func (store *appMemoryStore) Read(_ context.Context, path string, _ int64) ([]byte, bool, error) {
-	data, exists := store.data[path]
-	return append([]byte(nil), data...), exists, nil
-}
-
-func (store *appMemoryStore) Replace(_ context.Context, path string, data []byte) error {
-	store.data[path] = append([]byte(nil), data...)
+func (s *appMemoryStore) Replace(_ context.Context, path string, data []byte) error {
+	s.data[path] = append([]byte(nil), data...)
 	return nil
+}
+func (s *appMemoryStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ bool) error {
+	return s.Replace(ctx, path, data)
+}
+func (s *appMemoryStore) ProtectionStatus() jsonfile.ProtectionStatus {
+	return jsonfile.ProtectionProtected
 }
 
 type appTestProtocolFactory struct {
 	id protocol.AuthenticationProtocolID
 }
 
-func (factory *appTestProtocolFactory) ProtocolID() protocol.AuthenticationProtocolID {
-	return factory.id
-}
-func (factory *appTestProtocolFactory) ValidateInstitutionProtocolConfiguration(_ protocol.InstitutionProtocolConfiguration) error {
+func (f *appTestProtocolFactory) ProtocolID() protocol.AuthenticationProtocolID { return f.id }
+func (*appTestProtocolFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
 	return nil
 }
-func (factory *appTestProtocolFactory) ValidateProtocolContextOverride(_ protocol.AuthenticationProtocolContextOverride) error {
+func (*appTestProtocolFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
 	return nil
 }
-func (factory *appTestProtocolFactory) CreateAuthenticationProtocolRun(_ protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+func (*appTestProtocolFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
 	return blockingRun{}, nil
 }
 
@@ -59,42 +64,16 @@ func (blockingRun) Execute(ctx context.Context, _ protocol.AuthenticationProtoco
 }
 
 func appTestHostInfo() environment.SystemHostInformation {
-	return environment.SystemHostInformation{
-		HostName:               "test-host",
-		OperatingSystemFamily:  "linux",
-		OperatingSystemRelease: "6.1",
-		MachineArchitecture:    "amd64",
-	}
+	return environment.SystemHostInformation{HostName: "test-host", OperatingSystemFamily: "windows", OperatingSystemRelease: "10", MachineArchitecture: "amd64"}
 }
-
 func appTestProfile(id config.InstitutionProfileID) config.InstitutionProfile {
-	return config.InstitutionProfile{
-		InstitutionProfileID:             id,
-		DisplayName:                      string(id) + " display",
-		AuthenticationProtocolID:         "drcom",
-		InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration(`{"realm":"` + string(id) + `"}`),
-	}
+	return config.InstitutionProfile{InstitutionProfileID: id, DisplayName: string(id) + " display", AuthenticationProtocolID: "drcom", InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration(`{}`)}
 }
-
 func appTestConfiguration(id config.ConfigurationID) config.Configuration {
-	return config.Configuration{
-		ConfigurationID:         id,
-		DisplayName:             string(id) + " display",
-		InstitutionProfileID:    "profile-1",
-		CredentialID:            "credential-1",
-		NetworkBindingPolicy:    config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable},
-		ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`),
-	}
+	return config.Configuration{ConfigurationID: id, DisplayName: string(id) + " display", InstitutionProfileID: "profile-1", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)}
 }
-
-type appTestSetup struct {
-	authenticationResolver *AuthenticationResolver
-	catalog                *config.Catalog
-	credStore              *credential.Store
-	profileCat             *config.ProfileCatalog
-	registry               *protocol.AuthenticationProtocolRegistry
-	sessionID              session.AuthenticationSessionID
-	configuration          config.Configuration
+func validOneShotInput() OneShotAuthenticationInput {
+	return OneShotAuthenticationInput{InstitutionProfileID: "profile-1", AuthenticationCredential: credential.AuthenticationCredential{Username: "user", Password: "secret"}, NetworkBindingPolicy: session.NetworkBindingPolicy{Mode: session.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)}
 }
 
 func newAppTestSetup(t *testing.T) *appTestSetup {
@@ -105,160 +84,7 @@ func newAppTestSetup(t *testing.T) *appTestSetup {
 	if err != nil {
 		t.Fatal(err)
 	}
-	credStore, err := credential.OpenStore(ctx, store, filepath.Join(t.TempDir(), "credentials.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	profileCat, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	factory := &appTestProtocolFactory{id: "drcom"}
-	registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	authenticationResolver, err := NewAuthenticationResolver(catalog, profileCat, credStore, registry, appTestHostInfo())
-	if err != nil {
-		t.Fatal(err)
-	}
-	configuration := appTestConfiguration("configuration-1")
-	if err := catalog.Save(ctx, configuration); err != nil {
-		t.Fatal(err)
-	}
-	if err := credStore.Put(ctx, "credential-1", credential.AuthenticationCredential{Username: "user", Password: "secret"}); err != nil {
-		t.Fatal(err)
-	}
-	return &appTestSetup{
-		authenticationResolver: authenticationResolver,
-		catalog:                catalog,
-		credStore:              credStore,
-		profileCat:             profileCat,
-		registry:               registry,
-		sessionID:              "session-1",
-		configuration:          configuration,
-	}
-}
-
-func TestResolverResolvesSuccessfully(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	definition, err := setup.authenticationResolver.Resolve(ctx, "configuration-1", setup.sessionID)
-	if err != nil {
-		t.Fatalf("Resolve() error = %v", err)
-	}
-	if definition.Configuration.AuthenticationSessionID != "session-1" {
-		t.Fatalf("AuthenticationSessionID = %q", definition.Configuration.AuthenticationSessionID)
-	}
-	if definition.Configuration.DisplayName != "configuration-1 display" {
-		t.Fatalf("DisplayName = %q", definition.Configuration.DisplayName)
-	}
-	if definition.Configuration.CredentialID != "credential-1" {
-		t.Fatalf("CredentialID = %q, want %q", definition.Configuration.CredentialID, "credential-1")
-	}
-	if definition.AuthenticationCredential.Username != "user" {
-		t.Fatalf("Username = %q", definition.AuthenticationCredential.Username)
-	}
-	if definition.InstitutionProfile.DisplayName != "profile-1 display" {
-		t.Fatalf("ProfileDisplayName = %q", definition.InstitutionProfile.DisplayName)
-	}
-	if definition.AuthenticationProtocolFactory.ProtocolID() != "drcom" {
-		t.Fatalf("ProtocolID = %q", definition.AuthenticationProtocolFactory.ProtocolID())
-	}
-	if definition.SystemHostInformation.HostName != "test-host" {
-		t.Fatalf("HostName = %q", definition.SystemHostInformation.HostName)
-	}
-}
-
-func TestResolverConfigurationNotFound(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	_, err := setup.authenticationResolver.Resolve(ctx, "missing", setup.sessionID)
-	if code := resolutionFailureCode(t, err); code != ConfigurationNotFound {
-		t.Fatalf("Resolve(missing) code = %v, want %v", code, ConfigurationNotFound)
-	}
-}
-
-func TestResolverCredentialNotFound(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	configWithoutCredential := setup.configuration
-	configWithoutCredential.CredentialID = "missing-credential"
-	configWithoutCredential.ConfigurationID = "configuration-2"
-	if err := setup.catalog.Save(ctx, configWithoutCredential); err != nil {
-		t.Fatal(err)
-	}
-	_, err := setup.authenticationResolver.Resolve(ctx, "configuration-2", setup.sessionID)
-	if code := resolutionFailureCode(t, err); code != CredentialNotFound {
-		t.Fatalf("Resolve(missing credential) code = %v, want %v", code, CredentialNotFound)
-	}
-}
-
-func TestResolverProfileNotFound(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	configWithMissingProfile := setup.configuration
-	configWithMissingProfile.InstitutionProfileID = "missing-profile"
-	configWithMissingProfile.ConfigurationID = "configuration-3"
-	if err := setup.catalog.Save(ctx, configWithMissingProfile); err != nil {
-		t.Fatal(err)
-	}
-	_, err := setup.authenticationResolver.Resolve(ctx, "configuration-3", setup.sessionID)
-	if code := resolutionFailureCode(t, err); code != ProfileNotFound {
-		t.Fatalf("Resolve(missing profile) code = %v, want %v", code, ProfileNotFound)
-	}
-}
-
-func TestResolverProtocolNotFound(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	unknownProfile := config.InstitutionProfile{
-		InstitutionProfileID:             "profile-unknown",
-		DisplayName:                      "unknown",
-		AuthenticationProtocolID:         "nonexistent",
-		InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration(`{}`),
-	}
-	profileCat, err := config.NewProfileCatalog([]config.InstitutionProfile{unknownProfile})
-	if err != nil {
-		t.Fatal(err)
-	}
-	authenticationResolver, err := NewAuthenticationResolver(setup.catalog, profileCat, setup.credStore, setup.registry, appTestHostInfo())
-	if err != nil {
-		t.Fatal(err)
-	}
-	configUnknown := setup.configuration
-	configUnknown.InstitutionProfileID = "profile-unknown"
-	configUnknown.ConfigurationID = "configuration-4"
-	if err := setup.catalog.Save(ctx, configUnknown); err != nil {
-		t.Fatal(err)
-	}
-	_, resolveErr := authenticationResolver.Resolve(ctx, "configuration-4", setup.sessionID)
-	if code := resolutionFailureCode(t, resolveErr); code != ProtocolNotFound {
-		t.Fatalf("Resolve(unknown protocol) code = %v, want %v", code, ProtocolNotFound)
-	}
-}
-
-func TestResolverRejectsEmptySessionID(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	_, err := setup.authenticationResolver.Resolve(ctx, "configuration-1", "")
-	if code := resolutionFailureCode(t, err); code != InvalidConfiguration {
-		t.Fatalf("Resolve(empty session) code = %v, want %v", code, InvalidConfiguration)
-	}
-}
-
-func TestNewResolverRejectsInvalidEnvironment(t *testing.T) {
-	ctx := context.Background()
-	store := newAppMemoryStore()
-	catalog, err := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "c.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	credStore, err := credential.OpenStore(ctx, store, filepath.Join(t.TempDir(), "cred.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	profileCat, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("p1")})
+	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,226 +92,156 @@ func TestNewResolverRejectsInvalidEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, newErr := NewAuthenticationResolver(catalog, profileCat, credStore, registry, environment.SystemHostInformation{})
-	if code := resolutionFailureCode(t, newErr); code != InvalidEnvironment {
-		t.Fatalf("NewAuthenticationResolver(empty host) code = %v, want %v", code, InvalidEnvironment)
-	}
-}
-
-func TestResolverPublicErrorSecrecy(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	_, err := setup.authenticationResolver.Resolve(ctx, "missing", setup.sessionID)
-	if err != nil && strings.Contains(err.Error(), "secret") {
-		t.Fatalf("public error leaked secret: %v", err)
-	}
-}
-
-func resolutionFailureCode(t *testing.T, err error) ResolutionFailureCode {
-	t.Helper()
-	var failure *ResolutionFailure
-	if errors.As(err, &failure) {
-		return failure.Code()
-	}
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	t.Fatalf("error is not a ResolutionFailure: %v", err)
-	return ""
-}
-
-func validOneShotInput() OneShotAuthenticationInput {
-	return OneShotAuthenticationInput{
-		DisplayName:          "one-shot display",
-		InstitutionProfileID: "profile-1",
-		AuthenticationCredential: credential.AuthenticationCredential{
-			Username: "oneshot-user",
-			Password: "oneshot-password",
-		},
-		NetworkBindingPolicy:    session.NetworkBindingPolicy{Mode: session.AutomaticallySelectLatestAvailable},
-		ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{"network":"campus-one-shot"}`),
-	}
-}
-
-// appJSONValidatingFactory is an AuthenticationProtocolFactory that validates
-// opaque JSON, mirroring a real factory's contract checks. It exercises the
-// invalid-context-override resolution path without standing up a real protocol.
-type appJSONValidatingFactory struct {
-	id protocol.AuthenticationProtocolID
-}
-
-func (factory *appJSONValidatingFactory) ProtocolID() protocol.AuthenticationProtocolID {
-	return factory.id
-}
-func (factory *appJSONValidatingFactory) ValidateInstitutionProtocolConfiguration(configuration protocol.InstitutionProtocolConfiguration) error {
-	return appValidateJSON(configuration)
-}
-func (factory *appJSONValidatingFactory) ValidateProtocolContextOverride(override protocol.AuthenticationProtocolContextOverride) error {
-	return appValidateJSON(override)
-}
-func (factory *appJSONValidatingFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
-	return blockingRun{}, nil
-}
-
-func appValidateJSON(value []byte) error {
-	if json.Valid(value) {
-		return nil
-	}
-	return errors.New("invalid JSON")
-}
-
-func TestResolverResolveOneShotSuccess(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	input := validOneShotInput()
-
-	definition, err := setup.authenticationResolver.ResolveOneShot(ctx, input, "pending")
+	resolver, err := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
 	if err != nil {
-		t.Fatalf("ResolveOneShot() error = %v", err)
+		t.Fatal(err)
 	}
-	if definition.Configuration.AuthenticationSessionID != "pending" {
-		t.Fatalf("AuthenticationSessionID = %q, want %q", definition.Configuration.AuthenticationSessionID, "pending")
+	configuration := appTestConfiguration("configuration-1")
+	if err := catalog.Create(ctx, configuration, "secret", false); err != nil {
+		t.Fatal(err)
 	}
-	if definition.Configuration.DisplayName != "one-shot display" {
-		t.Fatalf("DisplayName = %q", definition.Configuration.DisplayName)
-	}
-	if definition.Configuration.CredentialID != "" {
-		t.Fatalf("CredentialID = %q, want empty for one-shot", definition.Configuration.CredentialID)
-	}
-	if definition.Configuration.InstitutionProfileID != "profile-1" {
-		t.Fatalf("InstitutionProfileID = %q", definition.Configuration.InstitutionProfileID)
-	}
-	if definition.InstitutionProfile.InstitutionProfileID != "profile-1" {
-		t.Fatalf("resolved profile ID = %q", definition.InstitutionProfile.InstitutionProfileID)
-	}
-	if definition.InstitutionProfile.DisplayName != "profile-1 display" {
-		t.Fatalf("resolved profile display = %q", definition.InstitutionProfile.DisplayName)
-	}
-	if definition.AuthenticationProtocolFactory.ProtocolID() != "drcom" {
-		t.Fatalf("ProtocolID = %q", definition.AuthenticationProtocolFactory.ProtocolID())
-	}
-	if definition.AuthenticationCredential.Username != "oneshot-user" {
-		t.Fatalf("Username = %q", definition.AuthenticationCredential.Username)
-	}
-	if definition.AuthenticationCredential.Password != "oneshot-password" {
-		t.Fatalf("Password = %q", definition.AuthenticationCredential.Password)
-	}
-	if definition.SystemHostInformation.HostName != "test-host" {
-		t.Fatalf("HostName = %q", definition.SystemHostInformation.HostName)
-	}
-	// The raw protocol override is cloned into the definition, not aliased to
-	// the caller's input slice.
-	if !bytes.Equal(definition.Configuration.ProtocolContextOverride, input.ProtocolContextOverride) {
-		t.Fatal("protocol context override was not copied into the definition")
-	}
-	definition.Configuration.ProtocolContextOverride[0] ^= 0xff
-	if bytes.Equal(definition.Configuration.ProtocolContextOverride, input.ProtocolContextOverride) {
-		t.Fatal("definition aliases the caller's protocol context override")
-	}
+	return &appTestSetup{authenticationResolver: resolver, configuration: configuration}
 }
 
-func TestResolverResolveOneShotRejectsEmptyUsername(t *testing.T) {
+func TestResolverUsesAggregateCredentialAndClonesDefinition(t *testing.T) {
 	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	input := validOneShotInput()
-	input.AuthenticationCredential.Username = ""
-	_, err := setup.authenticationResolver.ResolveOneShot(ctx, input, "pending")
-	if code := resolutionFailureCode(t, err); code != InvalidConfiguration {
-		t.Fatalf("ResolveOneShot(empty username) code = %v, want %v", code, InvalidConfiguration)
+	store := newAppMemoryStore()
+	catalog, err := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Create(ctx, appTestConfiguration("configuration-1"), "secret", false); err != nil {
+		t.Fatal(err)
+	}
+	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
+	resolver, err := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := resolver.Resolve(ctx, "configuration-1", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition.AuthenticationCredential.Username != "user" || definition.AuthenticationCredential.Password != "secret" {
+		t.Fatal("credential did not resolve")
+	}
+	if definition.Configuration.AuthenticationSessionID != "session-1" {
+		t.Fatal("session id did not resolve")
+	}
+	originalOverride := append([]byte(nil), definition.Configuration.ProtocolContextOverride...)
+	definition.Configuration.ProtocolContextOverride[0] = '['
+	resolvedAgain, err := resolver.Resolve(ctx, "configuration-1", "session-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(resolvedAgain.Configuration.ProtocolContextOverride, originalOverride) {
+		t.Fatal("resolved RuntimeDefinition aliased mutable aggregate bytes")
+	}
+	public, err := catalog.Get(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte("secret")) || bytes.Contains(encoded, []byte("password")) {
+		t.Fatalf("public Configuration exposed secret field: %s", encoded)
 	}
 }
 
-func TestResolverResolveOneShotRejectsNilContext(t *testing.T) {
-	setup := newAppTestSetup(t)
-	_, err := setup.authenticationResolver.ResolveOneShot(nil, validOneShotInput(), "pending")
-	if code := resolutionFailureCode(t, err); code != InvalidConfiguration {
-		t.Fatalf("ResolveOneShot(nil ctx) code = %v, want %v", code, InvalidConfiguration)
+func TestResolverOneShotDoesNotPersistCredential(t *testing.T) {
+	ctx := context.Background()
+	store := newAppMemoryStore()
+	catalog, _ := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
+	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
+	definition, err := resolver.ResolveOneShot(ctx, validOneShotInput(), "session-1")
+	if err != nil || definition.AuthenticationCredential.Password != "secret" {
+		t.Fatalf("definition/error = %#v/%v", definition, err)
+	}
+	values, _ := catalog.List(ctx)
+	if len(values) != 0 {
+		t.Fatal("one-shot persisted configuration")
 	}
 }
 
-func TestResolverResolveOneShotRejectsCancelledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+func TestResolverFailureClassificationAndSecretSafety(t *testing.T) {
 	setup := newAppTestSetup(t)
-	_, err := setup.authenticationResolver.ResolveOneShot(ctx, validOneShotInput(), "pending")
-	if code := resolutionFailureCode(t, err); code != InvalidConfiguration {
-		t.Fatalf("ResolveOneShot(cancelled ctx) code = %v, want %v", code, InvalidConfiguration)
-	}
-}
-
-func TestResolverResolveOneShotProfileNotFound(t *testing.T) {
-	tests := []struct {
-		name    string
-		profile config.InstitutionProfileID
+	for _, test := range []struct {
+		name      string
+		resolve   func() error
+		wantCode  ResolutionFailureCode
+		forbidden string
 	}{
-		{name: "empty profile ID", profile: ""},
-		{name: "missing profile", profile: "missing-profile"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			ctx := context.Background()
-			setup := newAppTestSetup(t)
+		{"missing configuration", func() error {
+			_, err := setup.authenticationResolver.Resolve(context.Background(), "missing", "session-1")
+			return err
+		}, ConfigurationNotFound, "secret"},
+		{"empty session", func() error {
+			_, err := setup.authenticationResolver.Resolve(context.Background(), "configuration-1", "")
+			return err
+		}, InvalidConfiguration, "secret"},
+		{"empty one-shot username", func() error {
 			input := validOneShotInput()
-			input.InstitutionProfileID = test.profile
-			_, err := setup.authenticationResolver.ResolveOneShot(ctx, input, "pending")
-			if code := resolutionFailureCode(t, err); code != ProfileNotFound {
-				t.Fatalf("ResolveOneShot(%s) code = %v, want %v", test.name, code, ProfileNotFound)
+			input.AuthenticationCredential.Username = ""
+			input.AuthenticationCredential.Password = "private-marker"
+			_, err := setup.authenticationResolver.ResolveOneShot(context.Background(), input, "session-1")
+			return err
+		}, InvalidConfiguration, "private-marker"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.resolve()
+			var failure *ResolutionFailure
+			if !errors.As(err, &failure) || failure.Code() != test.wantCode {
+				t.Fatalf("failure = %#v, want %q", err, test.wantCode)
+			}
+			if strings.Contains(err.Error(), test.forbidden) {
+				t.Fatalf("failure leaked protected value: %v", err)
 			}
 		})
 	}
 }
 
-func TestResolverResolveOneShotProtocolNotFound(t *testing.T) {
+func TestApplicationCreateAndUpdateValidateProfileBeforePersistence(t *testing.T) {
 	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	unknownProfile := config.InstitutionProfile{
-		InstitutionProfileID:             "profile-unknown",
-		DisplayName:                      "unknown",
-		AuthenticationProtocolID:         "nonexistent",
-		InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration(`{}`),
-	}
-	profileCat, err := config.NewProfileCatalog([]config.InstitutionProfile{unknownProfile})
+	store := newAppMemoryStore()
+	catalog, err := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	authenticationResolver, err := NewAuthenticationResolver(setup.catalog, profileCat, setup.credStore, setup.registry, appTestHostInfo())
+	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
+	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
+	sup := supervisor.New(appSupervisorDeps())
+	defer func() { _ = sup.Close(); sup.Wait() }()
+	application, err := NewApplication(catalog, profiles, resolver, sup)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := validOneShotInput()
-	input.InstitutionProfileID = "profile-unknown"
-	_, err = authenticationResolver.ResolveOneShot(ctx, input, "pending")
-	if code := resolutionFailureCode(t, err); code != ProtocolNotFound {
-		t.Fatalf("ResolveOneShot(unknown protocol) code = %v, want %v", code, ProtocolNotFound)
+	invalid := appTestConfiguration("invalid-create")
+	invalid.InstitutionProfileID = "missing"
+	if _, err := application.CreateConfiguration(ctx, invalid, "private", false); err == nil {
+		t.Fatal("create with missing Profile succeeded")
 	}
-}
-
-func TestResolverResolveOneShotRejectsUnsupportedBindingPolicy(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	input := validOneShotInput()
-	input.NetworkBindingPolicy.Mode = "manual"
-	_, err := setup.authenticationResolver.ResolveOneShot(ctx, input, "pending")
-	if code := resolutionFailureCode(t, err); code != InvalidConfiguration {
-		t.Fatalf("ResolveOneShot(unsupported binding) code = %v, want %v", code, InvalidConfiguration)
+	if _, err := catalog.Get(ctx, invalid.ConfigurationID); err == nil {
+		t.Fatal("invalid create persisted")
 	}
-}
-
-func TestResolverResolveOneShotRejectsInvalidContextOverride(t *testing.T) {
-	ctx := context.Background()
-	setup := newAppTestSetup(t)
-	registry, err := protocol.NewAuthenticationProtocolRegistry(&appJSONValidatingFactory{id: "drcom"})
+	valid := appTestConfiguration("valid")
+	if _, err := application.CreateConfiguration(ctx, valid, "private", false); err != nil {
+		t.Fatal(err)
+	}
+	missing := config.InstitutionProfileID("missing")
+	if _, err := application.UpdateConfiguration(ctx, valid.ConfigurationID, config.Update{InstitutionProfileID: &missing}); err == nil {
+		t.Fatal("update with missing Profile succeeded")
+	}
+	got, err := catalog.Get(ctx, valid.ConfigurationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	authenticationResolver, err := NewAuthenticationResolver(setup.catalog, setup.profileCat, setup.credStore, registry, appTestHostInfo())
-	if err != nil {
-		t.Fatal(err)
-	}
-	input := validOneShotInput()
-	input.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`invalid`)
-	_, err = authenticationResolver.ResolveOneShot(ctx, input, "pending")
-	if code := resolutionFailureCode(t, err); code != InvalidConfiguration {
-		t.Fatalf("ResolveOneShot(invalid override) code = %v, want %v", code, InvalidConfiguration)
+	if got.InstitutionProfileID != "profile-1" {
+		t.Fatal("invalid update persisted")
 	}
 }

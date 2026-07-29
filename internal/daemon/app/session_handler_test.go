@@ -23,6 +23,8 @@ type fakeSessionApplication struct {
 
 	lastStartInput OneShotAuthenticationInput
 	startCalls     int
+	lastConfigID   config.ConfigurationID
+	configCalls    int
 	lastStopID     session.AuthenticationSessionID
 	stopCalls      int
 	lastGetID      session.AuthenticationSessionID
@@ -51,6 +53,49 @@ func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Conte
 		return "", session.Snapshot{}, fake.err
 	}
 	return fake.snapshot.AuthenticationSessionID, fake.snapshot, nil
+}
+func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error) {
+	fake.configCalls++
+	fake.lastConfigID = id
+	return fake.snapshot.AuthenticationSessionID, fake.snapshot, fake.err
+}
+
+func TestSessionHandlerStartConfigurationReturnsCompleteSessionResult(t *testing.T) {
+	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+	result, publicErr := SessionHandler(fake)(
+		context.Background(),
+		contract.MethodSessionStartConfiguration,
+		[]byte(`{"configurationId":"campus"}`),
+	)
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	if fake.configCalls != 1 || fake.lastConfigID != "campus" || fake.startCalls != 0 {
+		t.Fatalf("route calls config=%d id=%q one-shot=%d", fake.configCalls, fake.lastConfigID, fake.startCalls)
+	}
+	var got contract.SessionResult
+	if err := json.Unmarshal(result, &got); err != nil {
+		t.Fatal(err)
+	}
+	assertSessionResultMatchesSnapshot(t, got, fullSnapshot())
+}
+
+func TestSessionHandlerStartConfigurationRejectsMalformedAndHidesFailure(t *testing.T) {
+	for _, payload := range []string{"", "null", `{}`, `{"configurationId":""}`, `{"configurationId":"campus","extra":true}`, `{"configurationId":"campus"}{}`, `{"configurationId":"campus"}!`} {
+		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
+		_, publicErr := SessionHandler(fake)(context.Background(), contract.MethodSessionStartConfiguration, []byte(payload))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || fake.configCalls != 0 {
+			t.Fatalf("payload %q: error=%#v calls=%d", payload, publicErr, fake.configCalls)
+		}
+	}
+	fake := &fakeSessionApplication{err: errors.New("wrapped-cause-marker")}
+	_, publicErr := SessionHandler(fake)(context.Background(), contract.MethodSessionStartConfiguration, []byte(`{"configurationId":"private-id"}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeSessionOperationFailed ||
+		publicErr.Message != "session operation failed" ||
+		strings.Contains(publicErr.Message, "private-id") ||
+		strings.Contains(publicErr.Message, "wrapped-cause-marker") {
+		t.Fatalf("unsafe startConfiguration error: %#v", publicErr)
+	}
 }
 
 func (fake *fakeSessionApplication) StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {

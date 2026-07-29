@@ -692,7 +692,6 @@ func replacementRuntimeDefinition(t *testing.T, factory *controlledFactory) Runt
 	replacement.Configuration.AuthenticationSessionID = "session-2"
 	replacement.Configuration.DisplayName = "Replacement network"
 	replacement.Configuration.InstitutionProfileID = "profile-2"
-	replacement.Configuration.CredentialID = "credential-2"
 	replacement.Configuration.ProtocolContextOverride = []byte(`{"network":"replacement"}`)
 	replacement.AuthenticationCredential.Username = "replacement-account"
 	replacement.AuthenticationCredential.Password = "replacement-secret"

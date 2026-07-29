@@ -198,6 +198,12 @@ def run_go_checks(
     else:
         tracked_go_files = git_ls_result.stdout.strip().split("\n")
         tracked_go_files = [f for f in tracked_go_files if f]
+        # Retain only tracked Go paths that currently exist as regular files
+        # below repo_root. Tracked-but-deleted files (unstaged deletions) are
+        # omitted so gofmt never lstat's a path absent from the working tree.
+        tracked_go_files = [
+            f for f in tracked_go_files if (repo_root / f).is_file()
+        ]
         if tracked_go_files:
             gofmt_argv.extend(tracked_go_files)
         gofmt_check = Check(argv=gofmt_argv)

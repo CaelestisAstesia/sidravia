@@ -5,6 +5,7 @@ package jsonfile
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -37,7 +38,7 @@ func (*windowsSecureFileOperations) ensureDirectory(path string, owner resolvedO
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return err
 	}
-	return hardenWindowsPath(path, owner)
+	return classifyWindowsProtection(hardenWindowsPath(path, owner))
 }
 
 func (*windowsSecureFileOperations) inspectDestination(path string) (bool, error) {
@@ -59,7 +60,7 @@ func (*windowsSecureFileOperations) inspectDestination(path string) (bool, error
 }
 
 func (*windowsSecureFileOperations) hardenDestination(path string, owner resolvedOwner) error {
-	return hardenWindowsPath(path, owner)
+	return classifyWindowsProtection(hardenWindowsPath(path, owner))
 }
 
 func (*windowsSecureFileOperations) openForRead(path string) (io.ReadCloser, error) {
@@ -69,7 +70,7 @@ func (*windowsSecureFileOperations) openForRead(path string) (io.ReadCloser, err
 func (*windowsSecureFileOperations) createTemp(directory string, owner resolvedOwner) (writableTemp, error) {
 	descriptor, err := ownerSecurityDescriptor(owner)
 	if err != nil {
-		return nil, err
+		return nil, classifyWindowsProtection(err)
 	}
 	defer win32LocalFree(descriptor)
 	attributes := securityAttributes{
@@ -102,6 +103,39 @@ func (*windowsSecureFileOperations) createTemp(directory string, owner resolvedO
 		return &windowsWritableTemp{handle: syscall.Handle(handle), path: path}, nil
 	}
 	return nil, syscall.ERROR_FILE_EXISTS
+}
+
+func (*windowsSecureFileOperations) ensureUnprotectedDirectory(path string) error {
+	return os.MkdirAll(path, 0700)
+}
+
+func (*windowsSecureFileOperations) createUnprotectedTemp(directory string) (writableTemp, error) {
+	for attempt := 0; attempt < secureTempAttempts; attempt++ {
+		random := make([]byte, secureTempRandomBytes)
+		if _, err := io.ReadFull(secureTempRandom, random); err != nil {
+			return nil, err
+		}
+		path := filepath.Join(directory, secureTempBasename(random))
+		if !validDirectChild(directory, path) {
+			return nil, errorInvalidName
+		}
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return file, nil
+	}
+	return nil, syscall.ERROR_FILE_EXISTS
+}
+
+func classifyWindowsProtection(err error) error {
+	if err == errorNotSupported || err == errorInvalidFunction || err == errorCallNotImplemented {
+		return errors.Join(ProtectionUnsupported, err)
+	}
+	return err
 }
 
 func secureTempBasename(random []byte) string {
