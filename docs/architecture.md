@@ -101,8 +101,9 @@ Windows amd64 一次构建同一对二进制，再生成默认用户目录包和
 
 push/pull request 工作流只运行公共 verifier；手动打包工作流以显式版本和当前 commit
 作为输入，上传构建工具已经生成的文件作为临时 workflow artifact。Windows amd64 是
-当前唯一产品包；Linux/WSL 尚未实现 daemon host 和现场验证，因此本阶段不发布 Linux
-包。具体决策见 ADR 0023。
+当前唯一产品包；Linux/WSL 已实现 daemon host、基本 Environment Observer、CLI 进程控制
+和交互式密码输入作为运行时基线（见 ADR 0025），但本阶段仍不发布 Linux 产品包。具体
+打包决策见 ADR 0023。
 
 `tools/build` 构建工具与 `Verify`/`Package` 两个 GitHub Actions 工作流已经实现，并完成
 代码与本地自动验证（聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
@@ -309,9 +310,10 @@ Ethernet、Hyper-V/WSL/Docker 内部接口和软件 VPN 不得仅因被报告为
 wired/wireless、hardware/connector/filter/endpoint 分类、MAC、IPv4/前缀、网关、
 DNS、DHCP 以及单调 snapshot revision。这些事实足以保护当前物理接口自动候选规则，
 但还不是完整的跨平台和路由模型：它不包含面向认证服务器目标地址的路由、接口 metric、
-操作系统最终选择的源 IPv4，也没有 Linux/WSL observer 与 host 实现。Linux/WSL 基线
-应先复用平台无关模型并明确 Unsupported/可观察范围；热点、ICS、多 IPv4 和目标路由
-修正随后以新证据扩展 typed facts，不用网卡显示名称黑名单掩盖系统差异。
+操作系统最终选择的源 IPv4。Linux/WSL 已实现基本 Environment Observer 与 daemon host
+（见 ADR 0025）：用 sysfs 保守分类硬件/无线/虚拟接口，WSL 等虚拟接口可见但
+`EndpointInterface=true` 且不能通过自动物理绑定谓词。route-aware 的事实（热点、ICS、
+多 IPv4 和目标路由）随后以新证据扩展 typed facts，不用网卡显示名称黑名单掩盖系统差异。
 
 Supervisor 不读取 JSON、配置、凭据、文件路径或 ACL。未来如果产品需要多个并发 Session，应只扩展 Supervisor 的调度策略，不应重写 Session 模型。
 

@@ -48,6 +48,12 @@ cause 并返回安全操作语义；日志准备失败不得退回继承前端�
 
 尚未支持的平台或功能必须返回明确的 Unsupported 或 NotImplemented 错误。代码不得返回空结果来假装成功。
 
+Linux（包括 WSL）作为真实运行时基线与 Windows 共享 domain core、IPC、Configuration、
+运行目录和日志契约，只新增平台边界实现：daemon host 用 `flock` 单实例、CLI 用 `setsid`
+分离子进程、密码用 termios 隐藏输入、Observer 用 sysfs 保守分类硬件/无线/虚拟接口。
+这些实现都在模块内部管理并发、保留原因，且不扩大公开接口；macOS 仍返回 Unsupported。
+详见 ADR 0025。
+
 ## 如何管理并发
 
 创建 goroutine 的模块必须拥有它的取消和等待方法。模块关闭后不得留下后台 goroutine。

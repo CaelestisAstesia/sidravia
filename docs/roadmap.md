@@ -92,18 +92,20 @@ Windows 原生便携降级验证仍待执行。
    本地自动验证：聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
    完整公开 verifier 均通过。`Verify`（push/PR）与 `Package`（手动 `workflow_dispatch`）
    两个 GitHub Actions 工作流已提交但尚未在 GitHub 上实跑；Windows-native 包复核、
-   代码签名与 Release 仍为 pending。Linux 当前只保留可编译的平台边界，不发布不可运行
-   的产品包。
+   代码签名与 Release 仍为 pending。Linux/WSL 已实现 daemon host、基本 Environment
+   Observer、CLI 进程控制与 termios 密码输入作为运行时基线（ADR 0025），可在 WSL 中
+   完成真实生命周期 smoke，但仍不发布 Linux 产品包。
 2. **持久 Authentication Configuration 与 CLI 体验。** ADR 0024 替代独立
    Credentials Store：一份 Configuration 聚合一个 username 和唯一私有 password，
    原子保存在 schema v2 `configurations.json`；完成顶层 `config` 的列出、创建、查看、
    修改、替换密码、删除以及 `auth start --config`。安装版严格要求当前用户保护；便携
    文件系统明确不支持权限模型时可以显示完整风险并经本次显式授权写入新秘密。交互使用
    Cobra + termenv 的轻量逐行向导，同时保留完整非交互参数，不引入全屏 TUI。该设计
-   当前为 Accepted，代码与自动验证尚未开始。
-3. **Linux/WSL 平台基线。** 在不分叉 domain core 的前提下实现 Linux 的运行目录、
-   daemon host/控制、终端密码输入、文件权限和基本 Environment Observer；WSL 作为
-   Linux 构建、IPC、配置、日志和 mock 运行的首个验证环境。WSL 中真实校园 D520 是否
+   聚合代码与自动验证已经完成；Windows-native 安装版/便携版权限降级验证仍待执行。
+3. **Linux/WSL 平台基线（已实现）。** 在不分叉 domain core 的前提下实现了 Linux 的
+   运行目录、daemon host/控制、termios 密码输入、文件权限和基本 Environment Observer
+   （ADR 0025）；WSL 作为 Linux 构建、IPC、配置、日志和生命周期 smoke 的首个验证环境，
+   代码与自动验证完成，Windows-native 与校园验证仍分开报告。WSL 中真实校园 D520 是否
    可用由后续路由证据决定，不能由“能够启动”倒推。
 4. **网络诊断与选择修正。** 增加面向认证服务器目标地址的 route/source-IP 事实和
    可解释诊断，再调查 Windows 热点/ICS、多 IPv4、WSL 与物理网卡的相互影响。不得仅凭
@@ -117,8 +119,8 @@ WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大�
 
 “显式安装版/便携版运行目录”以及 ADR 0023 的可复现构建与打包工具都已经实现并完成代码
 与本地自动验证。构建工具只生成 Windows amd64 普通包、便携包与 SHA-256 产物，不自动
-发布 Release。下一功能切片是实现持久 Authentication Configuration 与良好的 CLI 管理；
-Linux/WSL 基线、网络诊断与选择修正、WSS 和 GUI 均未开始。
+发布 Release。持久 Authentication Configuration 与 Linux/WSL 基线均已实现；
+下一功能切片是基于现场证据完成网络诊断与选择修正，WSS 和 GUI 均未开始。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 

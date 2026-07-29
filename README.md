@@ -116,10 +116,12 @@ daemon 命令为 `status/start/stop/restart`；Session 命令为
 
 本轮 operator correction 的代码与自动验证已经完成，但修正后的 status/help/后台日志
 尚未进行最小 Windows 原生复核。
-停止与重启锁定最初探测到的精确 daemon generation；Linux 和 macOS 的进程控制仍明确
-不受支持。Session ensure/restart/remove 已进入当前源码。接下来的当前大版本顺序是：
-Linux/WSL 基线、网络诊断与
-选择修正，最后统一修订文本和文档。WSS、IPC 长连接强化和 GUI 放在下一大版本；见
+停止与重启锁定最初探测到的精确 daemon generation；Linux（包括 WSL）已实现 daemon
+host、基本 Environment Observer、CLI 进程控制与 termios 密码输入作为运行时基线
+（[ADR 0025](docs/decisions/0025-linux-wsl-platform-baseline.md)），可在 WSL 中完成
+真实生命周期 smoke；macOS 仍不受支持。Session ensure/restart/remove 已进入当前源码。
+接下来的当前大版本顺序是：网络诊断与选择修正，最后统一修订文本和文档。WSS、IPC 长连接
+强化和 GUI 放在下一大版本；见
 [ADR 0020](docs/decisions/0020-explicit-installed-and-portable-layouts.md) 与
 [ADR 0022](docs/decisions/0022-credentials-before-ipc-transport-hardening.md)。
 
@@ -199,6 +201,7 @@ python3 tools/developer/verify_repository.py --scope all
 - [Dr.COM 5.2.0(D) 协议规范](docs/protocols/drcom-5.2.0-d.md)
 - [验收证据](docs/evidence/README.md)
 - [Windows Alpha 快速开始](docs/getting-started-windows.md)
+- [Linux/WSL 快速开始](docs/getting-started-linux.md)
 
 ## License
 

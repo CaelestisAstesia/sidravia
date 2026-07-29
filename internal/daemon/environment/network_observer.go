@@ -15,8 +15,9 @@ type Observer interface {
 }
 
 // NewSystemObserver returns the production network Observer for the current
-// platform. On Windows it polls real adapter facts at a fixed interval. On
-// other platforms Observe returns ErrUnsupported and publishes no Snapshot.
+// platform. On Windows and Linux it polls real adapter facts at a fixed
+// interval. On other platforms Observe returns ErrUnsupported and publishes no
+// Snapshot.
 func NewSystemObserver() Observer {
 	return newSystemObserver()
 }
