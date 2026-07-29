@@ -37,6 +37,13 @@ Windows SmartScreen 可能提示这是未签名应用。只有从项目 GitHub R
 AppData。CLI 与 daemon 每次启动各自解析同一标记，增删标记前必须先停止 daemon。
 该能力已进入当前源码，但尚未包含在已发布的 `v0.1.0-alpha.1` Release 中。
 
+从当前源码用 `tools/build` 构建工具生成的包与已发布的 `v0.1.0-alpha.1` Release 是不同
+产物，二者状态分开。工具为指定版本生成两个 zip 和一个外部校验文件：
+`sidravia-v<version>-windows-amd64.zip`（安装版，不含 marker）、
+`sidravia-v<version>-windows-amd64-portable.zip`（便携版，含空 `sidravia.portable`
+marker）与 `SHA256SUMS.txt`（两个 zip 的 SHA-256）。两个 zip 共享同一对二进制，仅运行
+模式元数据与 marker 不同。
+
 ## 安装吉林大学 Profile
 
 Profile 是不含账号和密码的本地机构配置。daemon 只在启动时加载一次。
@@ -44,7 +51,10 @@ Profile 是不含账号和密码的本地机构配置。daemon 只在启动时�
 在 PowerShell 7 中执行：
 
 ```powershell
+# 安装版（默认，无 sidravia.portable marker）：Profile 位于 %APPDATA%\Sidravia
 $ProfileDir = Join-Path $env:APPDATA 'Sidravia\institution-profiles'
+# 便携版（解压目录含 sidravia.portable marker）：Profile 位于 <解压目录>\config
+# $ProfileDir = Join-Path '<解压目录>' 'config\institution-profiles'
 New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
 $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 ```
@@ -94,9 +104,10 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 .\sidravia.exe daemon start
 ```
 
-PowerShell 会立即恢复提示符，daemon 不再持续向前端终端刷日志。后台 stdout/stderr
-写入 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；启动前达到 10 MiB 时，当前文件
-轮转为唯一 `sidraviad.log.1` 备份。
+PowerShell 会立即恢复提示符，daemon 不再持续向前端终端刷日志。安装版的后台
+stdout/stderr 写入 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；便携版写入
+`<解压目录>\logs\sidraviad.log`。两种模式都在启动前达到 10 MiB 时把当前文件轮转为
+唯一 `sidraviad.log.1` 备份。
 
 需要前台诊断时，可以直接运行 daemon；此模式继续把日志写到 stderr：
 

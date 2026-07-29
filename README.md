@@ -139,9 +139,44 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/sidravia.exe ./cmd/sid
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/sidraviad.exe ./cmd/sidraviad
 ```
 
-这些仍是开发构建命令，不负责版本注入、可复现 zip、便携 marker 或校验清单。ADR 0023
-已经接受单一标准库 Go 构建工具和最小 GitHub Actions 作为下一实施切片；在该切片提交
-前，不应把手工 `build/` 输出描述成规范发布包。
+这些手工命令只用于本地开发，不负责版本注入、可复现 zip、便携 marker 或校验清单；不应把
+手工 `build/` 输出描述成规范发布包。
+
+### 可复现打包
+
+Sidravia 使用唯一的标准库 Go 构建工具生成可复现的 Windows amd64 包。从仓库根目录调用
+（需要 Go 1.26.4）：
+
+```bash
+go run ./tools/build \
+  --version <MAJOR.MINOR.PATCH[-prerelease]> \
+  --build-id <stable-build-id> \
+  --output <new-output-directory> \
+  [--go <go-executable>]
+```
+
+`--version` 不带前导 `v`，`--build-id` 由调用方提供（例如 commit hash），`--output` 必须
+原先不存在且其父目录已存在。工具固定使用 `GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+GOAMD64=v1`、`-trimpath`、`-buildvcs=false`、只读 module 模式和空 Go linker build ID；
+daemon 的 `main.ProductVersion` 与 `main.BuildID` 通过 linker flags 注入。一次调用只编译
+`sidravia.exe` 与 `sidraviad.exe` 各一次，普通包与便携包复用同一对二进制。
+
+输出目录精确只有三个文件：
+
+- `sidravia-v<version>-windows-amd64.zip`：默认安装版，不含 `sidravia.portable`，运行时
+  使用 `%APPDATA%\Sidravia` 与 `%LOCALAPPDATA%\Sidravia`；
+- `sidravia-v<version>-windows-amd64-portable.zip`：便携版，额外含空 marker
+  `sidravia.portable`，运行时使用解压目录下的 `config`、`runtime` 和 `logs`；
+- `SHA256SUMS.txt`：两个 zip 的 SHA-256，小写 hex、两个空格、按文件名字典序。
+
+两个 zip 内都包含 `BUILD-INFO.txt`、`GETTING-STARTED.md`、`LICENSE`、`README.md`、内部
+`SHA256SUMS` 和两个 PE 文件；便携 zip 额外含 `sidravia.portable`。相同源码、Go 1.26.4、
+版本与 BuildID 的重复构建得到逐字节相同的二进制、zip 和校验文件。工具不运行 Git、不
+签名、不上传、不创建 tag 或 GitHub Release。详见 ADR 0023。
+
+GitHub Actions 中已提交 `Verify`（push/pull request 运行公共 verifier）与 `Package`
+（手动 `workflow_dispatch` 调用同一构建工具并上传三个文件作为临时 artifact）两个工作流；
+它们的具体运行与签名/Release 状态见[产品路线图](docs/roadmap.md)。
 
 ## 验证
 

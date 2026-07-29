@@ -59,4 +59,7 @@ Release。官方 Action 的普通 major-version 更新是维护事项，不改�
   本决定不生成会被误认为可用产品的 Linux 包。
 - 代码签名、自动 Release、SBOM、安装器、多架构矩阵和包管理器继续留待有实际发布需求
   的独立切片。
-- 本决定接受后才进入代码实施；文档接受不等于构建工具或 GitHub Actions 已经完成。
+- `tools/build` 构建工具与 `Verify`/`Package` 两个 GitHub Actions 工作流已经实现，并完成
+  代码与本地自动验证（聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
+  完整公开 verifier）。GitHub-hosted workflow 的实际运行、Windows-native 包复核、代码
+  签名与 Release 仍为 pending；本决定不生成 Linux 产品包。

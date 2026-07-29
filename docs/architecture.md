@@ -90,7 +90,7 @@ CLI 与 daemon 经同一个平台边界 `internal/productlayout` 独立解析出
 
 ## 构建和分发边界
 
-产品构建只有一个权威入口：计划中的 `tools/build` 标准库 Go 工具。它负责固定 Go
+产品构建只有一个权威入口：已实现的 `tools/build` 标准库 Go 工具。它负责固定 Go
 版本、target、编译参数、ProductVersion/BuildID 注入、zip manifest、时间戳、权限和
 SHA-256；本地开发者与 GitHub Actions 都调用这个入口，不分别维护 shell、PowerShell
 或 CI 专用打包实现。
@@ -105,8 +105,10 @@ push/pull request 工作流只运行公共 verifier；手动打包工作流以�
 当前唯一产品包；Linux/WSL 尚未实现 daemon host 和现场验证，因此本阶段不发布 Linux
 包。具体决策见 ADR 0023。
 
-截至提交 `7d1421a`，上述构建工具与 GitHub Actions 尚未实现；当前仍只有 README 的
-手工开发构建命令和公共 verifier。
+`tools/build` 构建工具与 `Verify`/`Package` 两个 GitHub Actions 工作流已经实现，并完成
+代码与本地自动验证（聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
+完整公开 verifier）。GitHub-hosted workflow 的实际运行、Windows-native 包复核、代码签名
+与 Release 仍为 pending。
 
 ## 状态由谁负责
 

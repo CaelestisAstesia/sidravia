@@ -1,0 +1,40 @@
+name: Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Canonical product version (e.g. 0.1.0-alpha.2), no leading v'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache-dependency-path: go.sum
+      - name: Build packages
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+          BUILD_ID: ${{ github.sha }}
+        run: |
+          go run -mod=readonly ./tools/build \
+            --version "$BUILD_VERSION" \
+            --build-id "$BUILD_ID" \
+            --output dist \
+            --go go
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sidravia-v${{ inputs.version }}-windows-amd64
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

@@ -71,6 +71,12 @@ bare/help/`-h`/`--help` 的分层中文规格，并让 Windows 后台日志写�
 10 MiB 保留唯一 `.1` 备份。修正代码与自动验证完成后仍需最小 Windows-native
 correction verification；这不扩大提交 `508197d` 的校园认证证据。
 
+ADR 0023 的可复现构建与打包切片随后完成：`tools/build` 标准库 Go 工具一次编译同一对
+Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `SHA256SUMS.txt`，相同输入
+逐字节复现；`Verify` 与 `Package` 两个 GitHub Actions 工作流已提交。代码与本地自动验证
+完成；GitHub-hosted workflow 实跑、Windows-native 包复核、签名与 Release 仍为 pending，
+不改变提交 `508197d` 的校园认证证据范围。下一功能切片为持久 Configuration/Credentials。
+
 ## 已确认的后续顺序
 
 提交 `81dfbdf` 之后，当前大版本按以下顺序推进，每一步保持独立计划、独立提交和分开的
@@ -80,9 +86,12 @@ correction verification；这不扩大提交 `508197d` 的校园认证证据。
    自动验证：CLI 与 daemon 经共享 `internal/productlayout` 在同一模式下得到相同的
    Profile、Configuration、Credential、运行信息和日志路径；便携模式不依赖 AppData，
    安装模式继续使用操作系统用户目录。Windows-native 运行目录复核仍为 pending。
-   可复现的 Windows 构建与普通/便携包工具、push/PR verifier 工作流和手动 artifact
-   工作流保留为下一独立切片。Linux 当前只保留可编译的平台边界，不发布不可运行的
-   产品包。
+   ADR 0023 的可复现 Windows 构建与普通/便携包工具（`tools/build`）也已实现并完成
+   本地自动验证：聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
+   完整公开 verifier 均通过。`Verify`（push/PR）与 `Package`（手动 `workflow_dispatch`）
+   两个 GitHub Actions 工作流已提交但尚未在 GitHub 上实跑；Windows-native 包复核、
+   代码签名与 Release 仍为 pending。Linux 当前只保留可编译的平台边界，不发布不可运行
+   的产品包。
 2. **持久 Configuration/Credentials 与 CLI 体验。** 完成配置的列出、创建、查看、
    修改、删除以及按 ConfigurationID 启动；凭据每份只保存一个密码，允许创建、替换和
    删除，但不提供明文读取。Windows 当前版本接受 ACL 保护的独立明文 JSON。交互使用
@@ -101,10 +110,10 @@ WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大�
 先于 WSS；当前回环 `ws://` 继续由随机 token 与精确 BuildID 鉴权，不增加自制应用层
 加密。GUI 与 CLI/daemon 共享产品版本，不建立独立升级节奏。
 
-“显式安装版/便携版运行目录”已经实现并完成代码与自动验证。它只统一路径解析和现有
-调用点，不同时实现持久凭据、构建脚本、Linux host 或网络选择，以保持单一可验证
-边界。下一独立切片按 ADR 0023 建立唯一标准库 Go 构建工具、普通/便携 Windows 包、
-SHA-256 产物和两个最小 GitHub Actions；它不自动发布 Release。
+“显式安装版/便携版运行目录”以及 ADR 0023 的可复现构建与打包工具都已经实现并完成代码
+与本地自动验证。构建工具只生成 Windows amd64 普通包、便携包与 SHA-256 产物，不自动
+发布 Release。下一功能切片是实现持久 Configuration/Credentials 与良好的 CLI 管理；
+Linux/WSL 基线、网络诊断与选择修正、WSS 和 GUI 均未开始。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 
