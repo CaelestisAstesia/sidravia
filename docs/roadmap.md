@@ -75,7 +75,8 @@ ADR 0023 的可复现构建与打包切片随后完成：`tools/build` 标准库
 Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `SHA256SUMS.txt`，相同输入
 逐字节复现；`Verify` 与 `Package` 两个 GitHub Actions 工作流已提交。代码与本地自动验证
 完成；GitHub-hosted workflow 实跑、Windows-native 包复核、签名与 Release 仍为 pending，
-不改变提交 `508197d` 的校园认证证据范围。下一功能切片为持久 Configuration/Credentials。
+不改变提交 `508197d` 的校园认证证据范围。ADR 0024 已把下一功能切片收敛为单一
+Authentication Configuration 聚合与顶层 `config` CLI；设计已接受，代码尚未实施。
 
 ## 已确认的后续顺序
 
@@ -84,7 +85,7 @@ Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `S
 
 1. **运行目录与构建工作流。** ADR 0020 的显式安装版/便携版解析已经实现并通过代码与
    自动验证：CLI 与 daemon 经共享 `internal/productlayout` 在同一模式下得到相同的
-   Profile、Configuration、Credential、运行信息和日志路径；便携模式不依赖 AppData，
+   Profile、旧 Configuration/Credential、运行信息和日志路径；便携模式不依赖 AppData，
    安装模式继续使用操作系统用户目录。Windows-native 运行目录复核仍为 pending。
    ADR 0023 的可复现 Windows 构建与普通/便携包工具（`tools/build`）也已实现并完成
    本地自动验证：聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
@@ -92,10 +93,13 @@ Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `S
    两个 GitHub Actions 工作流已提交但尚未在 GitHub 上实跑；Windows-native 包复核、
    代码签名与 Release 仍为 pending。Linux 当前只保留可编译的平台边界，不发布不可运行
    的产品包。
-2. **持久 Configuration/Credentials 与 CLI 体验。** 完成配置的列出、创建、查看、
-   修改、删除以及按 ConfigurationID 启动；凭据每份只保存一个密码，允许创建、替换和
-   删除，但不提供明文读取。Windows 当前版本接受 ACL 保护的独立明文 JSON。交互使用
-   Cobra + termenv 上的轻量逐行向导，同时保留完整非交互参数，不引入全屏 TUI。
+2. **持久 Authentication Configuration 与 CLI 体验。** ADR 0024 替代独立
+   Credentials Store：一份 Configuration 聚合一个 username 和唯一私有 password，
+   原子保存在 schema v2 `configurations.json`；完成顶层 `config` 的列出、创建、查看、
+   修改、替换密码、删除以及 `auth start --config`。安装版严格要求当前用户保护；便携
+   文件系统明确不支持权限模型时可以显示完整风险并经本次显式授权写入新秘密。交互使用
+   Cobra + termenv 的轻量逐行向导，同时保留完整非交互参数，不引入全屏 TUI。该设计
+   当前为 Accepted，代码与自动验证尚未开始。
 3. **Linux/WSL 平台基线。** 在不分叉 domain core 的前提下实现 Linux 的运行目录、
    daemon host/控制、终端密码输入、文件权限和基本 Environment Observer；WSL 作为
    Linux 构建、IPC、配置、日志和 mock 运行的首个验证环境。WSL 中真实校园 D520 是否
@@ -112,7 +116,7 @@ WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大�
 
 “显式安装版/便携版运行目录”以及 ADR 0023 的可复现构建与打包工具都已经实现并完成代码
 与本地自动验证。构建工具只生成 Windows amd64 普通包、便携包与 SHA-256 产物，不自动
-发布 Release。下一功能切片是实现持久 Configuration/Credentials 与良好的 CLI 管理；
+发布 Release。下一功能切片是实现持久 Authentication Configuration 与良好的 CLI 管理；
 Linux/WSL 基线、网络诊断与选择修正、WSS 和 GUI 均未开始。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
@@ -127,17 +131,17 @@ Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精
 | 阶段 | 当前状态 | 进入下一阶段前必须观察到的结果 |
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
-| 1. 后端重整 | 完成 | Configuration、Credentials、App、Session、Supervisor 和 Persistence 各自拥有明确职责 |
+| 1. 后端重整 | 完成；旧双 Store 将由 ADR 0024 的单聚合替代 | Authentication Configuration、App、Session、Supervisor 和 Persistence 各自只有一个权威所有者 |
 | 2. 可运行骨架 | 完成：Windows 首轮现场通过；operator correction 待原生复核 | Windows 上 CLI 能显式启动 daemon，严格只读 status 能报告 stopped/running |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
-| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成；运行目录模式已实现，持久 Configuration/Credential IPC 入口未实现 | 两种运行目录解析一致，Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
+| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成；运行目录模式已实现，ADR 0024 的聚合和 `config` IPC/CLI 未实现 | 两种运行目录解析一致，Authentication Configuration 和 Environment 能生成与一次性启动相同的运行定义 |
 | 6. Windows 产品纵向链路 | 完成：Windows/JLU 首轮现场通过 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
 | 7. 校园网络验证 | 首轮完成：扩大环境覆盖待进行 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
 阶段 3 的第一个切片已经完成：typed 一次性输入可以在 daemon app 中解析为现有
 `RuntimeDefinition`，并通过 Supervisor 启动、读取和停止 Session；该路径不创建
-Configuration 或 Credential 所有权，公开 Snapshot 不包含凭据。
+Authentication Configuration 所有权，公开 Snapshot 不包含密码。
 
 第二个切片也已完成：严格 typed 的一次性 start、stop、get IPC payload 和 app
 handler 已通过 Review；完整公开 Snapshot 被映射为稳定 DTO，秘密和底层诊断不会
@@ -158,7 +162,7 @@ Session 停止边界也已明确为 `stopping -> suspended` 两个 revision；Su
 验证。
 
 生产组合随后完成：`cmd/sidraviad` 注册唯一 D520 Factory，加载 Profile，打开
-Configuration/Credential 存储，构造 Supervisor、Resolver、Application 和 typed IPC，
+旧 Configuration/Credential 存储，构造 Supervisor、Resolver、Application 和 typed IPC，
 并统一拥有 host、Environment Observer、Snapshot 转交和最终 Supervisor 清理。并发
 Review 修正了外部取消、Observer 提前返回、timer goroutine、活动等待和并发故障保留；
 当前代码和自动验证完成。首套 CLI authentication 命令随后也已完成：用户可以用
@@ -180,7 +184,8 @@ Review 修正了外部取消、Observer 提前返回、timer goroutine、活动�
 
 ## 阶段 1：后端重整
 
-这一阶段已经完成。当前代码满足以下条件：
+这一阶段已经完成。提交 `52b900b` 的当前代码仍满足以下旧边界；ADR 0024 已接受在下一
+纵向切片中用单聚合替代前两项，本文不把设计接受写成代码完成：
 
 - Configuration Catalog 保存非秘密配置。
 - Credentials Store 单独保存秘密。
@@ -229,11 +234,12 @@ Windows 原生冷启动、热连接、认证状态查询、主动停止和运行
 尽力 Logout 的代码行为。一次性连接是永久产品能力，不是之后删除的临时接口。秘密不得
 出现在命令行参数、日志、Snapshot 或 Response。现有 Python mock 不作为完成门槛。
 
-阶段 5 已统一安装版/便携版运行目录，下一步补齐 Configuration CRUD、Credential
-写入/替换/删除。真实 Windows Environment Detector 已实现，但 destination-aware
+阶段 5 已统一安装版/便携版运行目录，下一步按 ADR 0024 一次补齐 Authentication
+Configuration 聚合、CRUD、set-password 和 `auth start --config`。真实 Windows
+Environment Detector 已实现，但 destination-aware
 route/source-IP 事实仍待网络修正切片。按 `ConfigurationID` 启动与一次性启动必须生成
-同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作这些模块。daemon
-仍不提供读取凭据明文的操作。
+同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作存储。daemon
+仍不提供读取密码明文的操作。
 
 阶段 6 已将 typed Session handler、D520 Factory/Profile 和真实 Environment Detector
 接入生产 daemon，并补齐统一取消、等待和正常退出。CLI 安全密码输入及

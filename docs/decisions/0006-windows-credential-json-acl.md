@@ -1,6 +1,6 @@
 # ADR 0006：Windows 首版用 ACL 保护凭据 JSON
 
-状态：Accepted
+状态：Superseded by ADR 0024
 
 ## 决定
 

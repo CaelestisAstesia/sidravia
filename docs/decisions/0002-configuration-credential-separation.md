@@ -1,6 +1,6 @@
 # ADR 0002：配置与凭据分开保存
 
-状态：Accepted
+状态：Superseded by ADR 0024
 
 ## 决定
 

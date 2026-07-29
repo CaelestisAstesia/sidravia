@@ -46,23 +46,23 @@ internal/
 2. `internal/cli` 只调用 IPC contract 和 client。CLI 不读取 daemon 的配置文件或内部状态。
 3. `cmd/sidraviad` 组合 IPC server、daemon app 和系统 host。
 4. IPC server 通过一个窄 Handler 调用 daemon app。IPC server 不依赖具体 Application 类型。
-5. daemon app 依次调用 Configuration、Credentials、Environment、Supervisor 和协议注册表，以完成跨模块用例。
+5. daemon app 依次调用 Authentication Configuration、Environment、Supervisor 和协议注册表，以完成跨模块用例。
 6. Supervisor 创建和管理 Session。Session 不读取 Supervisor 的状态。
 7. Session 只依赖协议契约和环境事实。Session 不依赖 JSON、IPC、CLI 或具体持久化实现。
 
 Windows 专用代码应使用 Go 构建约束，并留在它所实现的能力附近。平台无关核心不应为 Windows 单独复制一份。
 
-“配置 IPC”“凭据 IPC”或“Session IPC”只表示通过 IPC 暴露相应的应用用例，不表示 IPC server 直接操作这些模块。调用方向始终是：
+“配置 IPC”或“Session IPC”只表示通过 IPC 暴露相应的应用用例，不表示 IPC server 直接操作这些模块。调用方向始终是：
 
 ```text
 typed IPC request -> IPC Handler -> daemon app -> domain module
 ```
 
-IPC 不是 Configuration、Credentials、Environment 或 Session 的共同控制器。
+IPC 不是 Authentication Configuration、Environment 或 Session 的共同控制器。
 
 ## 运行目录模式
 
-产品接受两种显式运行目录模式。默认的安装版模式把配置、机构 Profile 与凭据放在
+产品接受两种显式运行目录模式。默认的安装版模式把认证配置（含私有密码）与机构 Profile 放在
 `os.UserConfigDir()/Sidravia`，把运行信息和后台日志放在
 `os.UserCacheDir()/Sidravia`。便携版模式由可执行文件同目录的普通标记文件
 `sidravia.portable` 启用，并使用以下布局：
@@ -74,7 +74,6 @@ IPC 不是 Configuration、Credentials、Environment 或 Session 的共同控制
   sidravia.portable
   config/
     configurations.json
-    credentials.json
     institution-profiles/
   runtime/
     runtime.json
@@ -116,8 +115,7 @@ push/pull request 工作流只运行公共 verifier；手动打包工作流以�
 
 | 状态 | 权威所有者 | 其他模块如何使用 |
 |---|---|---|
-| 持久连接配置 | Configuration Catalog | 通过 ID 读取不可变快照 |
-| 认证秘密 | Credentials Store | daemon app 按 CredentialID 读取 |
+| 持久认证配置及其唯一私有密码 | Authentication Configuration Store | 公开投影不含密码；解析认证时读取完整聚合 |
 | 自动连接设置 | daemon app | 保存 ConfigurationID |
 | 当前主机和网络事实 | Environment Detector | daemon app 转交 typed 快照 |
 | 已接受的最新网络快照和 Session 分发顺序 | Supervisor | 新旧 Session 接收同一 revision |
@@ -128,10 +126,9 @@ push/pull request 工作流只运行公共 verifier；手动打包工作流以�
 
 模块之间发送意图并读取快照。两个模块不得同时修改同一份状态。
 
-## 三种标识
+## 两种标识
 
 - `ConfigurationID` 持久化，它标识一份连接配置。
-- `CredentialID` 持久化，它标识一份秘密记录。
 - `SessionID` 只在当前 daemon 进程中有效，它标识一次正在运行或已经停止的认证。
 
 自动连接设置保存 `ConfigurationID`。daemon 重启后会重新读取配置，并创建新的 `SessionID`。
@@ -145,7 +142,8 @@ daemon app 接受两种长期存在的启动来源：
 
 一次性启动时，daemon app 验证 typed 参数和秘密，不把秘密持久化、记录到日志或放入公开结果。
 
-按 `ConfigurationID` 启动时，daemon app 让 Configuration Catalog 读取并验证配置，再根据其中的 `CredentialID` 读取凭据。
+按 `ConfigurationID` 启动时，daemon app 从 Authentication Configuration Store 读取并
+验证包含 username 与私有 password 的完整聚合，但只把显式公开投影交给 IPC/CLI。
 
 两种来源随后汇入相同流程：
 
@@ -170,7 +168,7 @@ Windows 认证仍必须使用 Environment Detector。
 2. 创建当前用户的 SecureStore；
 3. 注册唯一生产协议 D520；
 4. 一次性加载机构 Profile；
-5. 打开 Configuration Catalog 和 Credentials Store；
+5. 打开 Authentication Configuration Store；
 6. 读取真实 Windows host information；
 7. 创建带生产重试策略的 Supervisor、AuthenticationResolver 和 Application；
 8. 用 `app.IPCHandler` 组合 IPC server；
@@ -178,7 +176,7 @@ Windows 认证仍必须使用 Environment Detector。
 10. 最后进入 host、Observer 和网络快照转交的共同运行期。
 
 组合根通过统一运行目录解析边界 `internal/productlayout` 获得 Profile、
-Configuration、Credential 和运行信息的绝对路径，再把路径交给各模块。模块不自行
+Authentication Configuration 和运行信息的绝对路径，再把路径交给各模块。模块不自行
 判断安装版或便携版。Settings Store 和自动连接尚未接入这条一次性认证链路。
 
 运行期由组合根统一拥有三个并发活动：
@@ -274,7 +272,7 @@ canonical help 规格，按固定顺序含描述、`用法`、`可用命令`、`
 六段（适用时），每条用法独占缩进行且段间留一空行。`cmd/sidravia/main.go` 通过呈现
 边界打印静态中文错误前缀，不打印底层原因。
 
-持久 Configuration/Credentials 的引导交互仍留在这个呈现边界中，但采用短生命周期、
+持久 Authentication Configuration 的引导交互仍留在这个呈现边界中，但采用短生命周期、
 逐行的私有构件，而不是全屏 TUI。当前大版本继续使用 Cobra 与 termenv；普通文本输入、
 枚举选择和确认必须把结果交给与非交互命令相同的 typed 用例，重定向时不得隐式进入
 向导。具体决策见 ADR 0021。
@@ -322,9 +320,13 @@ retained Session 的 ensure-running、restart 和 remove 也由 Supervisor 原�
 意图预留单活动准入并等待 `suspended`。remove 只在 actor、协议清理和 revision
 forwarder 全部退出且 ID 从集合删除后成功。
 
-## 配置、凭据和持久化
+## Authentication Configuration 聚合和持久化
 
-Configuration 文件只保存非秘密配置。Configuration 通过 `CredentialID` 引用 Credentials Store 中的记录。
+一份持久 Authentication Configuration 恰好拥有一个 username 和一份私有 password，
+不存在可共享或独立管理的 CredentialID。ConfigurationID、显示名、Profile 引用、账号、
+密码、固定自动网络策略和不透明协议覆盖作为一个聚合保存在唯一
+`configurations.json`。磁盘 record 整体属于秘密；IPC/CLI 只接收不含 password 的公开
+投影。
 
 机构 Profile 从本地可编辑文件加载，并在 daemon 启动时进入 `ProfileCatalog`。D520
 endpoint、超时、重试边界、固定协议字段和其他机构差异必须保留在 Profile 中，不得编译
@@ -336,16 +338,26 @@ IPC 携带任意 Profile JSON 或覆盖系统网络事实。
 `jlu.json`，不追加 `campus` 等冗余后缀。daemon 只在启动时加载目录；本地编辑后重启
 daemon 生效，首版不监听目录也不热替换运行中的 Profile。
 
-Windows 首版允许 Credentials Store 在独立 JSON 文件中保存明文密码。SecureStore
-必须把文件权限限制为当前用户和 SYSTEM。如果 SecureStore 无法建立所需 ACL，它不得
-留下新的明文目标文件。当前产品威胁边界不包含已获得同一操作系统用户权限的恶意代码；
-这不放宽密码不得进入命令行、日志、Snapshot、查询响应或错误文本的规则。
+安装版必须把 `configurations.json` 权限限制为当前用户和 SYSTEM，无法建立所需保护就
+失败。便携版也先严格保护；只有平台明确报告文件系统不支持所需权限模型时才进入
+`unprotected`，普通 IO 或拒绝访问错误不得降级。unprotected 便携版可以启动并读取既有
+文件，但 create/set-password 写入新秘密需要交互确认或非交互
+`--allow-insecure-storage`。警告同时覆盖密码、runtime token 和敏感 Trace 日志风险。
+当前威胁边界不包含已取得同一操作系统用户权限的恶意代码；这不放宽密码不得进入
+命令行、日志、Snapshot、查询响应或错误文本的规则。
 
-持久化模块必须先构造完整候选内容，然后原子替换目标文件。如果磁盘写入失败，内存中的权威状态不得提前改变。
+聚合 Store 必须先构造完整候选内容，然后原子替换目标文件。如果磁盘写入失败，内存中的
+权威状态不得提前改变。schema version 2 严格拒绝旧双 Store record、未知字段和尾随数据。
 
-密码、随机 token 和内部错误链不得出现在 Configuration、Session Snapshot、IPC 查询结果或普通日志中。
+密码、随机 token 和内部错误链不得出现在公开 Configuration、Session Snapshot、IPC
+查询结果或普通日志中。
 
-CLI 必须能够用人类可读的形式显示非秘密结构化配置。CLI 不提供读取凭据明文的命令。
+CLI 必须能够用人类可读的形式显示公开结构化配置和 `protected|unprotected`，但不提供
+读取、显示、复制或导出密码明文的命令。完整决定见 ADR 0024。
+
+截至提交 `52b900b`，ADR 0024 已接受但尚未实施：当前代码仍保留旧 Configuration
+Catalog、Credentials Store、CredentialID 和双文件路径，且没有 `config` CLI/IPC。
+下一纵向实施切片必须一次替换这些旧边界并通过完整验证，不能把本节倒推成现有能力。
 
 ## IPC
 
@@ -370,17 +382,17 @@ ID。列表切片完成代码与自动验证后仍需 Windows 原生复核。
 
 - CLI 查询 daemon 状态和版本。
 - CLI 查询当前环境快照。
-- CLI 列出、读取、保存和删除连接配置。
-- CLI 写入、替换和删除凭据。daemon 不提供读取凭据明文的操作。
+- CLI 列出、读取、创建、修改和删除 Authentication Configuration 聚合。
+- CLI 可以在 create/set-password 请求中提交密码；daemon 不提供读取密码明文的操作。
 - CLI 用 typed 一次性参数启动认证，或者按 `ConfigurationID` 启动认证，并获得 `SessionID`。
 - CLI 按 `SessionID` 停止、重启、读取和列出 Session。
 - CLI 订阅 Session Snapshot 事件。
 
 首版不提供通用 RPC、批处理、远程 IPC 或历史事件重放。
 
-上述配置、凭据、环境和 Session 方法都是 daemon app 应用用例的传输入口。IPC server 不直接依赖对应存储、Detector、Supervisor、Session 或协议包。
+上述配置、环境和 Session 方法都是 daemon app 应用用例的传输入口。IPC server 不直接依赖对应存储、Detector、Supervisor、Session 或协议包。
 
-当前大版本允许持久 Credential create/replace/delete 继续使用回环 `ws://`、随机 token
+当前大版本允许持久 Configuration create/set-password/remove 继续使用回环 `ws://`、随机 token
 和精确 BuildID，不增加自制应用层加密。WSS、并发请求、事件重连/重同步与 GUI 放在下一
 大版本的同一 IPC 演进阶段；GUI 与 CLI/daemon 共享产品版本和 BuildID，并继续只调用
 typed IPC。威胁边界和实施顺序见 ADR 0022。
@@ -421,9 +433,9 @@ IPC server 只在成功响应完成编码并写入后调用构造时注入的 co
 
 随后补齐持久化输入链路：
 
-1. CLI 保存 Configuration 和 Credential；
+1. CLI 原子保存包含唯一私有密码的 Authentication Configuration；
 2. CLI 通过 IPC 请求 daemon app 启动指定 `ConfigurationID`；
-3. daemon app 从 Configuration、Credentials 和 Environment 生成相同的 `RunDefinition`；
+3. daemon app 从 Authentication Configuration 和 Environment 生成相同的 `RunDefinition`；
 4. 后续 Supervisor、Session 和协议流程不变。
 
 自动测试可以使用最小的本地 UDP test peer 证明 Run 的流程、取消和错误分类，但不建设
@@ -466,6 +478,28 @@ sidravia auth status <session-id>
 sidravia auth stop <session-id>
 sidravia profile list
 ```
+
+持久认证配置使用独立顶层资源，不把 Session 操作继续塞入 `auth`：
+
+```text
+sidravia config list
+sidravia config show <configuration-id>
+sidravia config create
+sidravia config update <configuration-id>
+sidravia config set-password <configuration-id>
+sidravia config remove <configuration-id>
+sidravia auth start --config <configuration-id>
+```
+
+`config list/show` 只显示公开投影和存储保护状态。create/update/set-password 同时提供真实
+终端逐行交互和确定的非交互参数；密码仍只通过隐藏输入或 `--password-stdin`。remove
+在线时先通过 Supervisor 完成 Session stop/remove，再原子删除聚合，非交互形式要求
+`--yes`。每个 Configuration 在一个 daemon 进程中最多关联一个 retained Session；
+`auth start --config` 对它执行 ensure-running。更新普通字段或密码不暗中改变既有
+Session 的不可变 RuntimeDefinition。
+
+未来软件全局设置使用顶层 `settings`。当前持久配置切片不接入 AutoConnect
+SettingsStore，不实现自动连接。完整聚合和便携降级语义见 ADR 0024。
 
 `auth start` 表示创建并由 daemon 持续维持一个认证 Session，`auth status` 查询该
 Session 的公开 Snapshot，`auth stop` 停止 Session 并按协议要求执行尽力退出。顶层

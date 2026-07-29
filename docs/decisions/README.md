@@ -5,11 +5,11 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | ADR | 决定 | 状态 |
 |---|---|---|
 | [0001](0001-loopback-websocket-ipc.md) | 本机回环 WebSocket IPC | Accepted |
-| [0002](0002-configuration-credential-separation.md) | 配置与凭据分离 | Accepted |
+| [0002](0002-configuration-credential-separation.md) | 配置与凭据分离 | Superseded by ADR 0024 |
 | [0003](0003-session-identity-lifetime.md) | SessionID 仅属于 daemon 运行期 | Accepted |
 | [0004](0004-single-active-session.md) | 首版最多一个活动 Session | Accepted |
 | [0005](0005-snapshot-event-model.md) | revision + 最新完整 Snapshot | Accepted |
-| [0006](0006-windows-credential-json-acl.md) | 首版使用当前用户 ACL 保护凭据 JSON | Accepted |
+| [0006](0006-windows-credential-json-acl.md) | 首版使用当前用户 ACL 保护凭据 JSON | Superseded by ADR 0024 |
 | [0007](0007-websocket-and-windows-system-dependencies.md) | WebSocket 与 Windows 系统依赖 | Accepted |
 | [0008](0008-permanent-one-shot-session-start.md) | 永久保留 typed 一次性 Session 启动 | Accepted |
 | [0009](0009-d520-blocking-run-and-explicit-wire-codec.md) | D520 使用阻塞式 Run 和显式线级 codec | Accepted |
@@ -27,5 +27,6 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0021](0021-lightweight-line-oriented-cli.md) | 轻量的逐行 CLI 交互 | Accepted |
 | [0022](0022-credentials-before-ipc-transport-hardening.md) | 持久凭据先于 IPC 传输强化 | Accepted |
 | [0023](0023-reproducible-build-and-package-workflows.md) | 单一可复现构建与打包入口 | Accepted |
+| [0024](0024-authentication-configuration-aggregate.md) | 持久认证配置聚合、单文件秘密与便携权限降级 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。
