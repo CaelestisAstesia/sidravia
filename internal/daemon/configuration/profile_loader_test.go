@@ -105,30 +105,7 @@ func profileLoaderDiagnosticCause(t *testing.T, err error) error {
 	return failure.DiagnosticCause()
 }
 
-// 1. the default path is absolute, clean and ends in Sidravia/institution-profiles.
-func TestDefaultInstitutionProfilesDirectory(t *testing.T) {
-	dir, err := DefaultInstitutionProfilesDirectory()
-	if err != nil {
-		t.Fatalf("DefaultInstitutionProfilesDirectory() error = %v", err)
-	}
-	if !filepath.IsAbs(dir) {
-		t.Fatalf("default directory is not absolute: %q", dir)
-	}
-	if filepath.Clean(dir) != dir {
-		t.Fatalf("default directory is not clean: %q", dir)
-	}
-	if !strings.HasSuffix(dir, filepath.Join("Sidravia", "institution-profiles")) {
-		t.Fatalf("default directory does not end in Sidravia/institution-profiles: %q", dir)
-	}
-	if strings.ContainsRune(dir, '\\') {
-		// On Windows the separator is a backslash; on POSIX it must not appear.
-		if filepath.Separator != '\\' {
-			t.Fatalf("default directory contains a backslash on POSIX: %q", dir)
-		}
-	}
-}
-
-// 2. a missing directory returns an empty usable catalog.
+// 1. a missing directory returns an empty usable catalog.
 func TestLoadProfileCatalogFromDirectoryMissingDirectory(t *testing.T) {
 	ctx := context.Background()
 	registry, _ := newProfileLoaderAcceptingRegistry(t)

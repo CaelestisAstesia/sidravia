@@ -37,10 +37,13 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
 [当前架构](docs/architecture.md)。
 
-当前代码仍使用操作系统用户目录：配置位于 `os.UserConfigDir()/Sidravia`，运行信息与
-后台日志位于 `os.UserCacheDir()/Sidravia`。下一实施切片将加入由
-`sidravia.portable` 显式启用的便携版目录；在该切片提交前，不应把便携模式描述成已经
-可用。
+当前代码通过共享的 `internal/productlayout` 解析两种显式运行目录模式。默认安装版
+仍使用操作系统用户目录：配置位于 `os.UserConfigDir()/Sidravia`，运行信息与后台日志
+位于 `os.UserCacheDir()/Sidravia`。在可执行文件同目录放置空标记文件
+`sidravia.portable` 即启用便携版，此时配置、凭据与机构 Profile 位于
+`<exe-dir>/config`，运行信息位于 `<exe-dir>/runtime`，后台日志位于
+`<exe-dir>/logs`；便携版不依赖 AppData。CLI 与 daemon 每次启动各自解析同一标记，
+用户增删标记前必须先停止 daemon。
 
 ## 运行日志
 

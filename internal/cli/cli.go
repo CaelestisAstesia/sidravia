@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/productlayout"
 )
 
 const commandUsage = "用法错误，请运行 sidravia help 查看帮助"
@@ -686,11 +686,11 @@ func discoverDaemon(deps discoveryDependencies, operation func(contract.RuntimeI
 }
 
 func runtimeInfoPath() (string, error) {
-	dir, err := os.UserCacheDir()
+	layout, err := productlayout.Resolve()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "Sidravia", "runtime.json"), nil
+	return layout.RuntimeInfoPath, nil
 }
 
 func readRuntimeInfo(path string) (contract.RuntimeInfo, error) {

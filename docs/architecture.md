@@ -83,13 +83,10 @@ IPC 不是 Configuration、Credentials、Environment 或 Session 的共同控制
     sidraviad.log.1
 ```
 
-CLI 与 daemon 必须经同一个平台边界独立解析出相同的绝对路径。解析不使用当前工作
-目录，不根据可写性猜测，不扫描另一种模式，也不自动迁移或回退。`daemon status`
-保持严格只读：它可以检查标记和读取运行信息，但不能因为路径解析创建目录或文件。具体
-决策见 ADR 0020。
-
-截至提交 `81dfbdf`，生产代码仍只实现安装版的操作系统用户目录；上述便携版布局是已经
-接受、等待下一实施切片落地的契约，不是当前可用能力。
+CLI 与 daemon 经同一个平台边界 `internal/productlayout` 独立解析出相同的绝对路径，
+它是唯一的运行目录 resolver。解析不使用当前工作目录，不根据可写性猜测，不扫描另一种
+模式，也不自动迁移或回退。`daemon status` 保持严格只读：它可以检查标记和读取运行
+信息，但不能因为路径解析创建目录或文件。具体决策见 ADR 0020。
 
 ## 状态由谁负责
 
@@ -158,11 +155,9 @@ Windows 认证仍必须使用 Environment Detector。
 9. 创建真实 Windows Environment Observer；
 10. 最后进入 host、Observer 和网络快照转交的共同运行期。
 
-组合根通过统一运行目录解析边界获得 Profile、Configuration、Credential 和运行信息的
-绝对路径，再把路径交给各模块。模块不自行判断安装版或便携版。截至提交 `81dfbdf`，
-实现仍直接使用 `<os.UserConfigDir()>/Sidravia` 与
-`<os.UserCacheDir()>/Sidravia`；下一切片负责迁移到该边界。Settings Store 和自动连接
-尚未接入这条一次性认证链路。
+组合根通过统一运行目录解析边界 `internal/productlayout` 获得 Profile、
+Configuration、Credential 和运行信息的绝对路径，再把路径交给各模块。模块不自行
+判断安装版或便携版。Settings Store 和自动连接尚未接入这条一次性认证链路。
 
 运行期由组合根统一拥有三个并发活动：
 
@@ -225,8 +220,8 @@ Trace 数据报记录含 `session_id` 而协议运行本身不知道它。诊断
 logger 的 sink 仍是 stderr TextHandler。用户直接运行 `sidraviad.exe` 时 stderr
 保持前台可见；Windows CLI launcher 真正创建后台子进程时拥有输出文件句柄，把 child
 stdout/stderr 都重定向到运行目录解析结果中的 `logs/sidraviad.log`，并在启动前按
-10 MiB 阈值轮转为唯一 `.1` 备份。在当前已实现的安装版模式中，它等于
-`<UserCacheDir>/Sidravia/logs/sidraviad.log`；便携版实现后改为
+10 MiB 阈值轮转为唯一 `.1` 备份。安装版解析为
+`<UserCacheDir>/Sidravia/logs/sidraviad.log`，便携版解析为
 `<exe-dir>/logs/sidraviad.log`。launcher 的文件所有权不改变 logger、事件、等级或
 隐私契约，也不增加日志 IPC/CLI 命令。日志行为见 ADR 0019，目录选择由 ADR 0020
 补充。

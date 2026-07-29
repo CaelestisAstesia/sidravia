@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/windows"
+
+	"sidravia/internal/productlayout"
 )
 
 // launchDaemonProcess starts the sibling sidraviad.exe on Windows with both
@@ -17,16 +19,12 @@ import (
 // must be "", "info", "debug" or "trace"; an empty value leaves the child at
 // the daemon default. It never changes the parent environment.
 func launchDaemonProcess(logLevel string) error {
-	exe, err := os.Executable()
+	layout, err := productlayout.Resolve()
 	if err != nil {
-		return err
+		return fmt.Errorf("解析 sidravia 运行目录: %w", err)
 	}
-	daemonPath := filepath.Join(filepath.Dir(exe), "sidraviad.exe")
-	cacheRoot, err := os.UserCacheDir()
-	if err != nil {
-		return fmt.Errorf("解析 sidraviad 日志目录: %w", err)
-	}
-	logFile, err := prepareDaemonLog(cacheRoot)
+	daemonPath := filepath.Join(layout.ExecutableDirectory, "sidraviad.exe")
+	logFile, err := prepareDaemonLog(layout.DaemonLogPath)
 	if err != nil {
 		return err
 	}

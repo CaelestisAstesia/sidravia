@@ -9,9 +9,8 @@ import (
 
 const daemonLogRotateThreshold int64 = 10 * 1024 * 1024
 
-func prepareDaemonLog(cacheRoot string) (*os.File, error) {
-	logDir := filepath.Join(cacheRoot, "Sidravia", "logs")
-	logPath := filepath.Join(logDir, "sidraviad.log")
+func prepareDaemonLog(logPath string) (*os.File, error) {
+	logDir := filepath.Dir(logPath)
 	backupPath := logPath + ".1"
 
 	if err := os.MkdirAll(logDir, 0o700); err != nil {

@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -27,15 +25,6 @@ func GenerateToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
-}
-
-// DefaultRuntimeInfoPath returns the default path for the runtime info file.
-func DefaultRuntimeInfoPath() (string, error) {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "Sidravia", "runtime.json"), nil
 }
 
 func shutdownHTTPServer(shutdown func(context.Context) error) error {

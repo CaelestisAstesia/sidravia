@@ -32,22 +32,6 @@ type profileDocument struct {
 	InstitutionProtocolConfiguration json.RawMessage `json:"institutionProtocolConfiguration"`
 }
 
-// DefaultInstitutionProfilesDirectory derives the local institution Profile
-// directory:
-//
-//	<os.UserConfigDir()>/Sidravia/institution-profiles
-//
-// It returns an absolute cleaned path or a wrapped error that preserves the
-// os.UserConfigDir cause. It does not create, inspect, harden or modify the
-// directory.
-func DefaultInstitutionProfilesDirectory() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", persistence.NewFailure(persistence.FailureInvalidArgument, err)
-	}
-	return filepath.Clean(filepath.Join(base, "Sidravia", "institution-profiles")), nil
-}
-
 // LoadProfileCatalogFromDirectory performs a one-shot startup load of the
 // institution Profile directory. It reads every <id>.json file, strictly
 // decodes and validates each document, resolves its protocol through the

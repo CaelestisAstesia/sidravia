@@ -22,6 +22,7 @@ import (
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
+	"sidravia/internal/productlayout"
 )
 
 // Operational event codes and fixed Simplified Chinese messages for the daemon
@@ -87,22 +88,15 @@ type runtimeActivityResult struct {
 }
 
 func deriveDefaultPaths() (defaultPaths, error) {
-	profilesDir, err := configuration.DefaultInstitutionProfilesDirectory()
+	layout, err := productlayout.Resolve()
 	if err != nil {
-		return defaultPaths{}, fmt.Errorf("derive profiles directory: %w", err)
-	}
-	parent := filepath.Dir(profilesDir)
-	configurationsPath := filepath.Join(parent, "configurations.json")
-	credentialsPath := filepath.Join(parent, "credentials.json")
-	runtimeInfoPath, err := host.DefaultRuntimeInfoPath()
-	if err != nil {
-		return defaultPaths{}, fmt.Errorf("derive runtime info path: %w", err)
+		return defaultPaths{}, fmt.Errorf("sidraviad: derive default paths: %w", err)
 	}
 	return defaultPaths{
-		profiles:       profilesDir,
-		configurations: configurationsPath,
-		credentials:    credentialsPath,
-		runtimeInfo:    runtimeInfoPath,
+		profiles:       layout.InstitutionProfilesDirectory,
+		configurations: layout.ConfigurationsPath,
+		credentials:    layout.CredentialsPath,
+		runtimeInfo:    layout.RuntimeInfoPath,
 	}, nil
 }
 

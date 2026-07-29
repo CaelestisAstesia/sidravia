@@ -9,7 +9,8 @@ import (
 
 func TestPrepareDaemonLogCreatesAndAppends(t *testing.T) {
 	root := t.TempDir()
-	file, err := prepareDaemonLog(root)
+	logPath := filepath.Join(root, "logs", "sidraviad.log")
+	file, err := prepareDaemonLog(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +21,7 @@ func TestPrepareDaemonLogCreatesAndAppends(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file, err = prepareDaemonLog(root)
+	file, err = prepareDaemonLog(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +32,6 @@ func TestPrepareDaemonLogCreatesAndAppends(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logPath := filepath.Join(root, "Sidravia", "logs", "sidraviad.log")
 	got, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestPrepareDaemonLogCreatesAndAppends(t *testing.T) {
 
 func TestPrepareDaemonLogRotatesAtThresholdAndReplacesBackup(t *testing.T) {
 	root := t.TempDir()
-	logPath := filepath.Join(root, "Sidravia", "logs", "sidraviad.log")
+	logPath := filepath.Join(root, "logs", "sidraviad.log")
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestPrepareDaemonLogRotatesAtThresholdAndReplacesBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file, err := prepareDaemonLog(root)
+	file, err := prepareDaemonLog(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestPrepareDaemonLogRotatesAtThresholdAndReplacesBackup(t *testing.T) {
 	if err := os.Truncate(logPath, daemonLogRotateThreshold); err != nil {
 		t.Fatal(err)
 	}
-	file, err = prepareDaemonLog(root)
+	file, err = prepareDaemonLog(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestPrepareDaemonLogPreservesFilesystemCause(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := prepareDaemonLog(blocker)
+	_, err := prepareDaemonLog(filepath.Join(blocker, "sidraviad.log"))
 	if err == nil {
 		t.Fatal("expected filesystem error")
 	}

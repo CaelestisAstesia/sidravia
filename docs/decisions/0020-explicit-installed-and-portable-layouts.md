@@ -55,5 +55,9 @@ CLI 与 daemon 使用同一个平台边界解析这些路径。解析只依据�
 - 安装版保持当前操作系统目录行为；便携版不依赖 AppData。
 - 路径解析先于持久 Configuration/Credentials 的用户入口实施，后续构建流程只需决定
   是否把空标记放入便携包。
+- CLI 与 daemon 每次启动各自解析同一标记，不做跨模式发现；用户增删标记前必须先
+  停止 daemon，避免两个进程在同一时刻使用不同模式。
 - 本决定不实现安装器、数据迁移、自动探测、同步、多用户共享或跨模式合并。
-- 本决定接受后才进入代码实施；文档接受不等于相应代码已经完成。
+- 共享 resolver `internal/productlayout` 已经实现并通过聚焦测试、race、Windows amd64
+  交叉编译和完整公开 verifier；Windows-native 运行目录复核仍为 pending，校园认证
+  证据范围不变。

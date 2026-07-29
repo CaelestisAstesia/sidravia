@@ -76,10 +76,11 @@ correction verification；这不扩大提交 `508197d` 的校园认证证据。
 提交 `81dfbdf` 之后，当前大版本按以下顺序推进，每一步保持独立计划、独立提交和分开的
 验证声明：
 
-1. **运行目录与构建工作流。** 先实现 ADR 0020 的显式安装版/便携版解析，使 CLI 与
-   daemon 在同一模式下得到相同的 Profile、Configuration、Credential、运行信息和日志
-   路径；随后再补可复现的 Windows/Linux 构建与便携包脚本。便携模式不依赖 AppData，
-   安装模式继续使用操作系统用户目录。
+1. **运行目录与构建工作流。** ADR 0020 的显式安装版/便携版解析已经实现并通过代码与
+   自动验证：CLI 与 daemon 经共享 `internal/productlayout` 在同一模式下得到相同的
+   Profile、Configuration、Credential、运行信息和日志路径；便携模式不依赖 AppData，
+   安装模式继续使用操作系统用户目录。Windows-native 运行目录复核仍为 pending。
+   可复现的 Windows/Linux 构建与便携包脚本保留为下一独立切片。
 2. **持久 Configuration/Credentials 与 CLI 体验。** 完成配置的列出、创建、查看、
    修改、删除以及按 ConfigurationID 启动；凭据每份只保存一个密码，允许创建、替换和
    删除，但不提供明文读取。Windows 当前版本接受 ACL 保护的独立明文 JSON。交互使用
@@ -98,8 +99,9 @@ WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大�
 先于 WSS；当前回环 `ws://` 继续由随机 token 与精确 BuildID 鉴权，不增加自制应用层
 加密。GUI 与 CLI/daemon 共享产品版本，不建立独立升级节奏。
 
-第一个待实施的能力是“显式安装版/便携版运行目录”。它只统一路径解析和现有调用点，
-不同时实现持久凭据、构建脚本、Linux host 或网络选择，以保持单一可验证边界。
+“显式安装版/便携版运行目录”已经实现并完成代码与自动验证。它只统一路径解析和现有
+调用点，不同时实现持久凭据、构建脚本、Linux host 或网络选择，以保持单一可验证
+边界。下一独立切片是可复现的构建与便携包脚本。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 
@@ -117,7 +119,7 @@ Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精
 | 2. 可运行骨架 | 完成：Windows 首轮现场通过；operator correction 待原生复核 | Windows 上 CLI 能显式启动 daemon，严格只读 status 能报告 stopped/running |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
-| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成；运行目录模式与持久 Configuration/Credential IPC 入口未实现 | 两种运行目录解析一致，Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
+| 5. 持久输入和真实环境 | 部分完成：Detector、Profile 加载和生产装配完成；运行目录模式已实现，持久 Configuration/Credential IPC 入口未实现 | 两种运行目录解析一致，Configuration、Credentials 和 Environment 能生成与一次性启动相同的运行定义 |
 | 6. Windows 产品纵向链路 | 完成：Windows/JLU 首轮现场通过 | CLI、IPC、daemon、真实环境和 D520 组成可运行的一次性认证产品链路，并且自动模式不会选择 Windows 软件/虚拟接口 |
 | 7. 校园网络验证 | 首轮完成：扩大环境覆盖待进行 | 产品在真实校园网络完成认证，并保存可复查的证据 |
 
@@ -215,7 +217,7 @@ Windows 原生冷启动、热连接、认证状态查询、主动停止和运行
 尽力 Logout 的代码行为。一次性连接是永久产品能力，不是之后删除的临时接口。秘密不得
 出现在命令行参数、日志、Snapshot 或 Response。现有 Python mock 不作为完成门槛。
 
-阶段 5 先统一安装版/便携版运行目录，再补齐 Configuration CRUD、Credential
+阶段 5 已统一安装版/便携版运行目录，下一步补齐 Configuration CRUD、Credential
 写入/替换/删除。真实 Windows Environment Detector 已实现，但 destination-aware
 route/source-IP 事实仍待网络修正切片。按 `ConfigurationID` 启动与一次性启动必须生成
 同一种 `RunDefinition`；IPC server 只调用 daemon app，不直接操作这些模块。daemon
