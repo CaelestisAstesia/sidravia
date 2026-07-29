@@ -123,6 +123,20 @@ func TestParseFlags(t *testing.T) {
 			}
 		}
 	})
+	t.Run("help must be sole argument", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"--help", "unexpected"},
+			{"unexpected", "--help"},
+			{"--version", "1.0.0", "--help"},
+			{"--help", "--version", "1.0.0"},
+			{"-h", "--output", "out"},
+			{"--help", "--help"},
+		} {
+			if _, err := parseFlags(args); err == nil {
+				t.Fatalf("args=%v: expected error, got nil", args)
+			}
+		}
+	})
 	for name, args := range map[string][]string{
 		"missing version":  {"--build-id", "x", "--output", "o"},
 		"missing build-id": {"--version", "1.0.0", "--output", "o"},
@@ -724,5 +738,16 @@ func TestRunRejectsBadFlags(t *testing.T) {
 	code := run([]string{"--version", "v0.1.0", "--build-id", "x", "--output", "o"}, io.Discard, io.Discard)
 	if code == 0 {
 		t.Fatal("expected non-zero exit for invalid version")
+	}
+}
+
+func TestRunRejectsMixedHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	code := run([]string{"--help", "unexpected"}, &stdout, io.Discard)
+	if code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
 	}
 }

@@ -81,12 +81,17 @@ var knownValueFlags = map[string]bool{
 func parseFlags(args []string) (config, error) {
 	var c config
 	c.goBin = "go"
+	// --help and -h are accepted only as the sole argument; any other token
+	// alongside them is a usage error.
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		c.help = true
+		return c, nil
+	}
 	seen := map[string]bool{}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--help" || a == "-h" {
-			c.help = true
-			return c, nil
+			return c, errors.New("--help must be used alone")
 		}
 		if !strings.HasPrefix(a, "--") {
 			return c, fmt.Errorf("unexpected argument: %q", a)
