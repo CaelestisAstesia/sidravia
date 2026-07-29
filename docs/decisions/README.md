@@ -26,5 +26,6 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0020](0020-explicit-installed-and-portable-layouts.md) | 显式区分安装版与便携版运行目录 | Accepted |
 | [0021](0021-lightweight-line-oriented-cli.md) | 轻量的逐行 CLI 交互 | Accepted |
 | [0022](0022-credentials-before-ipc-transport-hardening.md) | 持久凭据先于 IPC 传输强化 | Accepted |
+| [0023](0023-reproducible-build-and-package-workflows.md) | 单一可复现构建与打包入口 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。

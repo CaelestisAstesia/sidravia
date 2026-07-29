@@ -80,7 +80,9 @@ correction verification；这不扩大提交 `508197d` 的校园认证证据。
    自动验证：CLI 与 daemon 经共享 `internal/productlayout` 在同一模式下得到相同的
    Profile、Configuration、Credential、运行信息和日志路径；便携模式不依赖 AppData，
    安装模式继续使用操作系统用户目录。Windows-native 运行目录复核仍为 pending。
-   可复现的 Windows/Linux 构建与便携包脚本保留为下一独立切片。
+   可复现的 Windows 构建与普通/便携包工具、push/PR verifier 工作流和手动 artifact
+   工作流保留为下一独立切片。Linux 当前只保留可编译的平台边界，不发布不可运行的
+   产品包。
 2. **持久 Configuration/Credentials 与 CLI 体验。** 完成配置的列出、创建、查看、
    修改、删除以及按 ConfigurationID 启动；凭据每份只保存一个密码，允许创建、替换和
    删除，但不提供明文读取。Windows 当前版本接受 ACL 保护的独立明文 JSON。交互使用
@@ -101,7 +103,8 @@ WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大�
 
 “显式安装版/便携版运行目录”已经实现并完成代码与自动验证。它只统一路径解析和现有
 调用点，不同时实现持久凭据、构建脚本、Linux host 或网络选择，以保持单一可验证
-边界。下一独立切片是可复现的构建与便携包脚本。
+边界。下一独立切片按 ADR 0023 建立唯一标准库 Go 构建工具、普通/便携 Windows 包、
+SHA-256 产物和两个最小 GitHub Actions；它不自动发布 Release。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 

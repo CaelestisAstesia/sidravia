@@ -88,6 +88,26 @@ CLI 与 daemon 经同一个平台边界 `internal/productlayout` 独立解析出
 模式，也不自动迁移或回退。`daemon status` 保持严格只读：它可以检查标记和读取运行
 信息，但不能因为路径解析创建目录或文件。具体决策见 ADR 0020。
 
+## 构建和分发边界
+
+产品构建只有一个权威入口：计划中的 `tools/build` 标准库 Go 工具。它负责固定 Go
+版本、target、编译参数、ProductVersion/BuildID 注入、zip manifest、时间戳、权限和
+SHA-256；本地开发者与 GitHub Actions 都调用这个入口，不分别维护 shell、PowerShell
+或 CI 专用打包实现。
+
+Windows amd64 一次构建同一对二进制，再生成默认用户目录包和带
+`sidravia.portable` 空 marker 的便携包。两个包不得通过不同编译产生。输出目录原先必须
+不存在，只有完整成功后才发布，失败不覆盖旧产物。构建工具不读取 Git 猜版本，也不拥有
+代码签名、tag、GitHub Release、安装器或上传权限。
+
+push/pull request 工作流只运行公共 verifier；手动打包工作流以显式版本和当前 commit
+作为输入，上传构建工具已经生成的文件作为临时 workflow artifact。Windows amd64 是
+当前唯一产品包；Linux/WSL 尚未实现 daemon host 和现场验证，因此本阶段不发布 Linux
+包。具体决策见 ADR 0023。
+
+截至提交 `7d1421a`，上述构建工具与 GitHub Actions 尚未实现；当前仍只有 README 的
+手工开发构建命令和公共 verifier。
+
 ## 状态由谁负责
 
 每项可变状态只能有一个权威所有者。

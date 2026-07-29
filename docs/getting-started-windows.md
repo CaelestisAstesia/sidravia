@@ -31,7 +31,8 @@ Windows SmartScreen 可能提示这是未签名应用。只有从项目 GitHub R
 当前源码构建通过同目录的 `sidravia.portable` 标记选择运行目录模式。标记不存在时为
 安装版：Profile 位于 `%APPDATA%\Sidravia`，运行信息和后台日志位于
 `%LOCALAPPDATA%\Sidravia`。在 `sidravia.exe` 同目录放置空 `sidravia.portable` 文件
-即启用便携版：Profile、凭据和机构 Profile 位于 `<解压目录>\config`，运行信息位于
+即启用便携版：Configuration、Credential 和机构 Profile 位于
+`<解压目录>\config`，运行信息位于
 `<解压目录>\runtime`，后台日志位于 `<解压目录>\logs`，全部随目录移动且不依赖
 AppData。CLI 与 daemon 每次启动各自解析同一标记，增删标记前必须先停止 daemon。
 该能力已进入当前源码，但尚未包含在已发布的 `v0.1.0-alpha.1` Release 中。

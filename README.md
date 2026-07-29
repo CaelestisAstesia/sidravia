@@ -139,6 +139,10 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/sidravia.exe ./cmd/sid
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/sidraviad.exe ./cmd/sidraviad
 ```
 
+这些仍是开发构建命令，不负责版本注入、可复现 zip、便携 marker 或校验清单。ADR 0023
+已经接受单一标准库 Go 构建工具和最小 GitHub Actions 作为下一实施切片；在该切片提交
+前，不应把手工 `build/` 输出描述成规范发布包。
+
 ## 验证
 
 运行完整的公开仓库检查：
