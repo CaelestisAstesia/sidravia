@@ -92,7 +92,7 @@ func TestRoundTripRecordsTxRxAndPhaseBoundaries(t *testing.T) {
 	if !ok {
 		t.Fatalf("cannot parse server IP %v", serverAddr.IP)
 	}
-	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, serverIP, uint16(serverAddr.Port))
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, serverIP, uint16(serverAddr.Port))
 	if err != nil {
 		t.Fatalf("openUDPExchange: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestRoundTripEndsPhaseOnReadTimeout(t *testing.T) {
 	if !ok {
 		t.Fatalf("cannot parse server IP %v", serverAddr.IP)
 	}
-	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, serverIP, uint16(serverAddr.Port))
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, serverIP, uint16(serverAddr.Port))
 	if err != nil {
 		t.Fatalf("openUDPExchange: %v", err)
 	}

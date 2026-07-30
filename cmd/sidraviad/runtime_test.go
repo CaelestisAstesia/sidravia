@@ -210,6 +210,7 @@ func validJLUProfile(t *testing.T) []byte {
   "institutionProtocolConfiguration": {
     "serverAddress": "127.0.0.1",
     "serverPort": 61440,
+    "localPort": {"mode": "fixed", "value": 61440},
     "authVersionHex": "0a00",
     "keepAliveVersionHex": "0b00",
     "controlCheckStatusHex": "00",
@@ -217,6 +218,9 @@ func validJLUProfile(t *testing.T) []byte {
     "adapterNumberHex": "00",
     "osInfoHex": "0000000000000000000000000000000000000000",
     "challengePaddingHex": "000000000000000000000000000000",
+    "loginIPDogPaddingHex": "00000000",
+    "loginDHCPPaddingHex": "0000000000000000",
+    "loginAuthExtensionPaddingHex": "0000",
     "challengeTimeout": "5s",
     "loginTimeout": "5s",
     "keepaliveTimeout": "5s",

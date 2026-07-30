@@ -58,20 +58,23 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 
 	host := inputs.SystemHostInformation
 	login := loginInput{
-		username:           credentialValue.Username,
-		password:           credentialValue.Password,
-		mac:                mac,
-		clientIPv4:         clientIPv4,
-		hostName:           host.HostName,
-		hostOS:             deriveHostOS(host),
-		primaryDNS:         primaryDNS,
-		secondaryDNS:       secondaryDNS,
-		dhcpIPv4:           dhcpIPv4,
-		osInfo:             cfg.osInfo,
-		controlCheckStatus: cfg.controlCheckStatus,
-		adapterNum:         cfg.adapterNumber,
-		ipdog:              cfg.ipdog,
-		authVersion:        cfg.authVersion,
+		username:                  credentialValue.Username,
+		password:                  credentialValue.Password,
+		mac:                       mac,
+		clientIPv4:                clientIPv4,
+		hostName:                  host.HostName,
+		hostOS:                    deriveHostOS(host),
+		primaryDNS:                primaryDNS,
+		secondaryDNS:              secondaryDNS,
+		dhcpIPv4:                  dhcpIPv4,
+		osInfo:                    cfg.osInfo,
+		controlCheckStatus:        cfg.controlCheckStatus,
+		adapterNum:                cfg.adapterNumber,
+		ipdog:                     cfg.ipdog,
+		authVersion:               cfg.authVersion,
+		loginIPDogPadding:         cfg.loginIPDogPadding,
+		loginDHCPPadding:          cfg.loginDHCPPadding,
+		loginAuthExtensionPadding: cfg.loginAuthExtensionPadding,
 	}
 	if _, _, _, _, err := encodeCredentialFields(login); err != nil {
 		return nil, err

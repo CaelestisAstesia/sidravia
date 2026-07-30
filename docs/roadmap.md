@@ -91,6 +91,17 @@ Windows 安全存储拆分为目录与文件两类描述符：受保护目录的
 launcher、IPC、Session、Supervisor、依赖或 Linux 行为；Windows 原生与校园现场复核仍是
 独立证据，不改变提交 `508197d` 的校园认证证据范围。
 
+D520 本地端点与线级 Profile 对齐切片随后完成（ADR 0027）：机构 Profile 新增独立于
+`serverPort` 的 tagged `localPort`（`fixed`/`system_assigned`），单个连接式 UDP socket 绑定
+所选绑定 IPv4 与配置的 fixed 端口或系统分配端口，fixed 绑定失败不回退；Challenge 种子随机
+偏移对齐经审计的 Drcom-CLI 闭区间 `0x0f..0xff`，并经私有纯投影 helper 确定性可测；三段固定
+宽度 Login padding（`[106,110)`、`[154,162)`、`[326,328)`）恢复为严格校验的 Profile 字段。
+2026-07-30 的热点/ICS Challenge 超时证据促成本次变更，但在 Windows 现场 rerun 之前不证明
+因果性。该切片完成代码与自动验证（聚焦测试、race、Windows/Darwin 测试编译与完整公开
+verifier），不改变已接受的 330 字节 Login、Type 6 引导、响应过滤、重试、Run 状态、注销、
+Environment 选择、launcher、依赖或 Linux 行为；Windows 原生与校园现场复核仍是独立证据，
+不改变提交 `508197d` 的校园认证证据范围。route-aware 选择与全局接口变化反应仍为后续工作。
+
 ## 已确认的后续顺序
 
 提交 `81dfbdf` 之后，当前大版本按以下顺序推进，每一步保持独立计划、独立提交和分开的

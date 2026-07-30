@@ -63,7 +63,7 @@ func newExecution(definition runDefinition, observer protocol.AuthenticationProt
 // stable public failure on any protocol failure.
 func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
 	exec := newExecution(r.definition, observer, r.diagnostics)
-	ex, err := openUDPExchange(r.definition.login.clientIPv4, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
+	ex, err := openUDPExchange(r.definition.login.clientIPv4, r.definition.cfg.localPort, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
 	if err != nil {
 		return networkIOError("open socket", err).toFailure()
 	}
@@ -354,16 +354,41 @@ func sleepCancellable(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// randomChallengeSeed returns the LE u16 Challenge seed
-// (timestamp_seconds + random) % 0xFFFF.
-func randomChallengeSeed() uint16 {
-	var buf [2]byte
+// challengeSeedOffsetMin and challengeSeedOffsetMax are the inclusive bounds of
+// the random offset added to the timestamp seconds when forming the Challenge
+// seed, matching the audited Drcom-CLI behavior. The offset is sampled from
+// [challengeSeedOffsetMin, challengeSeedOffsetMax].
+const (
+	challengeSeedOffsetMin = 0x0f
+	challengeSeedOffsetMax = 0xff
+)
+
+// projectChallengeSeed returns the little-endian Challenge seed
+// (timestamp_seconds + randomOffset) % 0xFFFF. It is a private pure projection
+// with no randomness source of its own; randomChallengeSeed supplies the offset
+// sampled from [challengeSeedOffsetMin, challengeSeedOffsetMax]. Tests exercise
+// both inclusive endpoints and timestamp wraparound directly.
+func projectChallengeSeed(timestamp int64, randomOffset int) uint16 {
+	return uint16((timestamp + int64(randomOffset)) % 0xFFFF)
+}
+
+// randomChallengeSeedOffset samples an offset from the inclusive range
+// [challengeSeedOffsetMin, challengeSeedOffsetMax] using standard-library
+// randomness. The entropy fallback stays inside the same range.
+func randomChallengeSeedOffset() int {
+	var buf [1]byte
 	if _, err := rand.Read(buf[:]); err != nil {
-		return uint16(time.Now().Unix() % 0xFFFF)
+		return challengeSeedOffsetMin
 	}
-	random := int64(binary.BigEndian.Uint16(buf[:]))
-	timestamp := time.Now().Unix()
-	return uint16((timestamp + random) % 0xFFFF)
+	span := challengeSeedOffsetMax - challengeSeedOffsetMin + 1
+	return challengeSeedOffsetMin + int(buf[0])%span
+}
+
+// randomChallengeSeed returns the LE u16 Challenge seed
+// (timestamp_seconds + random_offset) % 0xFFFF, with random_offset sampled
+// from [challengeSeedOffsetMin, challengeSeedOffsetMax].
+func randomChallengeSeed() uint16 {
+	return projectChallengeSeed(time.Now().Unix(), randomChallengeSeedOffset())
 }
 
 // randomAuthExtTail returns the two-byte Login auth-extension tail.

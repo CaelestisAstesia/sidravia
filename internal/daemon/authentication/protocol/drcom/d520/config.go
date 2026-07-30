@@ -18,6 +18,7 @@ import (
 type institutionConfig struct {
 	serverAddress      netip.Addr
 	serverPort         uint16
+	localPort          localPort
 	authVersion        [2]byte
 	keepAliveVersion   [2]byte
 	controlCheckStatus byte
@@ -25,6 +26,14 @@ type institutionConfig struct {
 	adapterNumber      byte
 	osInfo             [20]byte
 	challengePadding   [15]byte
+
+	// loginIPDogPadding, loginDHCPPadding and loginAuthExtensionPadding are the
+	// three fixed-width Login padding regions restored as explicit Profile
+	// fields. They are carried by value into loginInput and written only at
+	// their documented offsets.
+	loginIPDogPadding         [4]byte
+	loginDHCPPadding          [8]byte
+	loginAuthExtensionPadding [2]byte
 
 	challengeTimeout  time.Duration
 	loginTimeout      time.Duration
@@ -35,6 +44,27 @@ type institutionConfig struct {
 	busyMaxAttempts int
 	busyBackoffMin  time.Duration
 	busyBackoffMax  time.Duration
+}
+
+// localPortMode is the private tagged mode of the D520 local UDP port.
+type localPortMode int
+
+const (
+	// localPortFixed binds the socket to the configured fixed port value.
+	localPortFixed localPortMode = iota + 1
+	// localPortSystemAssigned lets the operating system choose a free port.
+	localPortSystemAssigned
+)
+
+// localPort is the private immutable decoding of the tagged localPort Profile
+// field. It is independent from serverPort: serverPort is the remote endpoint
+// port, while localPort is the source port the single connected UDP socket
+// binds. It is carried by value in institutionConfig and read by the Run when
+// binding its socket; it is never exposed on a public protocol interface or in
+// ProtocolContextOverride.
+type localPort struct {
+	mode  localPortMode
+	value uint16 // valid only when mode == localPortFixed
 }
 
 // decodeInstitutionProtocolConfiguration decodes one strict JSON object into a
@@ -77,6 +107,10 @@ func decodeInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConf
 	}
 	cfg.serverPort = uint16(port)
 
+	if cfg.localPort, err = decodeLocalPort(obj); err != nil {
+		return institutionConfig{}, err
+	}
+
 	if cfg.authVersion, err = requiredFixedHex2(obj, "authVersionHex"); err != nil {
 		return institutionConfig{}, err
 	}
@@ -96,6 +130,15 @@ func decodeInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConf
 		return institutionConfig{}, err
 	}
 	if cfg.challengePadding, err = requiredFixedHex15(obj, "challengePaddingHex"); err != nil {
+		return institutionConfig{}, err
+	}
+	if cfg.loginIPDogPadding, err = requiredFixedHex4(obj, "loginIPDogPaddingHex"); err != nil {
+		return institutionConfig{}, err
+	}
+	if cfg.loginDHCPPadding, err = requiredFixedHex8(obj, "loginDHCPPaddingHex"); err != nil {
+		return institutionConfig{}, err
+	}
+	if cfg.loginAuthExtensionPadding, err = requiredFixedHex2(obj, "loginAuthExtensionPaddingHex"); err != nil {
 		return institutionConfig{}, err
 	}
 
@@ -174,6 +217,7 @@ func isAllowedProfileField(name string) bool {
 	switch name {
 	case "serverAddress",
 		"serverPort",
+		"localPort",
 		"authVersionHex",
 		"keepAliveVersionHex",
 		"controlCheckStatusHex",
@@ -181,6 +225,9 @@ func isAllowedProfileField(name string) bool {
 		"adapterNumberHex",
 		"osInfoHex",
 		"challengePaddingHex",
+		"loginIPDogPaddingHex",
+		"loginDHCPPaddingHex",
+		"loginAuthExtensionPaddingHex",
 		"challengeTimeout",
 		"loginTimeout",
 		"keepaliveTimeout",
@@ -270,6 +317,26 @@ func requiredFixedHex2(obj map[string]json.RawMessage, name string) ([2]byte, er
 	return out, nil
 }
 
+func requiredFixedHex4(obj map[string]json.RawMessage, name string) ([4]byte, error) {
+	b, err := requiredFixedHex(obj, name, 4)
+	if err != nil {
+		return [4]byte{}, err
+	}
+	var out [4]byte
+	copy(out[:], b)
+	return out, nil
+}
+
+func requiredFixedHex8(obj map[string]json.RawMessage, name string) ([8]byte, error) {
+	b, err := requiredFixedHex(obj, name, 8)
+	if err != nil {
+		return [8]byte{}, err
+	}
+	var out [8]byte
+	copy(out[:], b)
+	return out, nil
+}
+
 func requiredFixedHex20(obj map[string]json.RawMessage, name string) ([20]byte, error) {
 	b, err := requiredFixedHex(obj, name, 20)
 	if err != nil {
@@ -309,6 +376,64 @@ func decodeServerAddress(s string) (netip.Addr, error) {
 
 func missingField(name string) error {
 	return fmt.Errorf("field %q is required", name)
+}
+
+// decodeLocalPort decodes the required tagged localPort Profile field. It is a
+// strict JSON object in exactly one of the forms {"mode":"fixed","value":N} or
+// {"mode":"system_assigned"}. mode is required and accepts only fixed or
+// system_assigned; fixed requires an integer value in 1..65535;
+// system_assigned forbids value. A missing, null, non-object, malformed, or
+// trailing value, an unknown nested field, a missing or unknown mode, or an
+// invalid value is rejected. Errors name the field and the violated rule but
+// never reproduce the raw JSON.
+func decodeLocalPort(obj map[string]json.RawMessage) (localPort, error) {
+	raw, ok := obj["localPort"]
+	if !ok {
+		return localPort{}, missingField("localPort")
+	}
+	nested, err := decodeStrictObject(raw)
+	if err != nil {
+		return localPort{}, fmt.Errorf("field %q is invalid: %w", "localPort", err)
+	}
+	for name := range nested {
+		if name != "mode" && name != "value" {
+			return localPort{}, fmt.Errorf("field %q has an unknown nested field %q", "localPort", name)
+		}
+	}
+	modeRaw, ok := nested["mode"]
+	if !ok {
+		return localPort{}, fmt.Errorf("field %q is missing nested field %q", "localPort", "mode")
+	}
+	var mode string
+	if err := json.Unmarshal(modeRaw, &mode); err != nil {
+		return localPort{}, fmt.Errorf("field %q nested field %q must be a JSON string", "localPort", "mode")
+	}
+	switch mode {
+	case "fixed":
+		valueRaw, ok := nested["value"]
+		if !ok {
+			return localPort{}, fmt.Errorf("field %q mode %q requires nested field %q", "localPort", "fixed", "value")
+		}
+		var number json.Number
+		if err := json.Unmarshal(valueRaw, &number); err != nil {
+			return localPort{}, fmt.Errorf("field %q nested field %q must be a JSON number", "localPort", "value")
+		}
+		n, err := number.Int64()
+		if err != nil {
+			return localPort{}, fmt.Errorf("field %q nested field %q must be an integer", "localPort", "value")
+		}
+		if n < 1 || n > 65535 {
+			return localPort{}, fmt.Errorf("field %q nested field %q must be in range 1-65535", "localPort", "value")
+		}
+		return localPort{mode: localPortFixed, value: uint16(n)}, nil
+	case "system_assigned":
+		if _, ok := nested["value"]; ok {
+			return localPort{}, fmt.Errorf("field %q mode %q forbids nested field %q", "localPort", "system_assigned", "value")
+		}
+		return localPort{mode: localPortSystemAssigned}, nil
+	default:
+		return localPort{}, fmt.Errorf("field %q nested field %q has an unknown mode", "localPort", "mode")
+	}
 }
 
 // validateProtocolContextOverride accepts only an absent value or a JSON

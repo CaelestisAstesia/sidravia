@@ -59,6 +59,13 @@ type loginInput struct {
 	ipdog              byte
 	authVersion        [2]byte
 	authExtTail        [2]byte
+
+	// loginIPDogPadding, loginDHCPPadding and loginAuthExtensionPadding are the
+	// three fixed-width Login padding regions carried from the institution
+	// Profile. They are written only at [106,110), [154,162) and [326,328).
+	loginIPDogPadding         [4]byte
+	loginDHCPPadding          [8]byte
+	loginAuthExtensionPadding [2]byte
 }
 
 // encodeCredentialFields encodes the username, password, host name and host OS
@@ -157,9 +164,9 @@ func buildLoginRequest(in loginInput, salt [4]byte) ([]byte, error) {
 	out := make([]byte, loginRequestLength)
 	writeLoginHeader(out, len(username))
 	writeLoginCredentialRegion(out, digestA, username, in.controlCheckStatus, in.adapterNum, macXORed, digestB)
-	writeLoginIPRegion(out, in.clientIPv4, digestC, in.ipdog)
-	writeLoginHostRegion(out, hostName, in.primaryDNS, in.dhcpIPv4, in.secondaryDNS, in.osInfo, hostOS)
-	writeLoginAuthExtension(out, in.authVersion, in.mac, in.authExtTail)
+	writeLoginIPRegion(out, in.clientIPv4, digestC, in.ipdog, in.loginIPDogPadding)
+	writeLoginHostRegion(out, hostName, in.primaryDNS, in.dhcpIPv4, in.secondaryDNS, in.osInfo, hostOS, in.loginDHCPPadding)
+	writeLoginAuthExtension(out, in.authVersion, in.mac, in.authExtTail, in.loginAuthExtensionPadding)
 	return out, nil
 }
 
@@ -185,36 +192,43 @@ func writeLoginCredentialRegion(out, digestA, username []byte, controlCheckStatu
 }
 
 // writeLoginIPRegion writes the IP section marker and reported IPv4 at
-// [80,85), MD5-C at [97,105) and IPDog at 105. [106,110) stays zero.
-func writeLoginIPRegion(out []byte, clientIPv4 [4]byte, digestC []byte, ipdog byte) {
+// [80,85), MD5-C at [97,105), IPDog at 105 and the 4-byte IPDog padding at
+// [106,110).
+func writeLoginIPRegion(out []byte, clientIPv4 [4]byte, digestC []byte, ipdog byte, ipDogPadding [4]byte) {
 	out[80] = 0x01
 	copy(out[81:85], clientIPv4[:])
 	copy(out[97:105], digestC)
 	out[105] = ipdog
+	copy(out[106:110], ipDogPadding[:])
 }
 
 // writeLoginHostRegion writes host_name at [110,110+len), the primary DNS at
-// [142,146), DHCP IPv4 at [146,150), secondary DNS at [150,154), os_info at
-// [162,182) and host_os at [182,182+len).
-func writeLoginHostRegion(out, hostName []byte, primaryDNS, dhcpIPv4, secondaryDNS [4]byte, osInfo [20]byte, hostOS []byte) {
+// [142,146), DHCP IPv4 at [146,150), secondary DNS at [150,154), the 8-byte
+// DHCP padding at [154,162), os_info at [162,182) and host_os at
+// [182,182+len).
+func writeLoginHostRegion(out, hostName []byte, primaryDNS, dhcpIPv4, secondaryDNS [4]byte, osInfo [20]byte, hostOS []byte, dhcpPadding [8]byte) {
 	copy(out[110:110+len(hostName)], hostName)
 	copy(out[142:146], primaryDNS[:])
 	copy(out[146:150], dhcpIPv4[:])
 	copy(out[150:154], secondaryDNS[:])
+	copy(out[154:162], dhcpPadding[:])
 	copy(out[162:182], osInfo[:])
 	copy(out[182:182+len(hostOS)], hostOS)
 }
 
 // writeLoginAuthExtension writes auth_version at [310,312), the auth ext
 // marker 02 0c at [312,314), the raw MAC at [320,326), the CRC-1968 at
-// [314,318) and the auth ext tail at [328,330). The raw MAC must be written
-// before the CRC, whose input spans [0,312) and [320,326).
-func writeLoginAuthExtension(out []byte, authVersion [2]byte, mac [6]byte, authExtTail [2]byte) {
+// [314,318), the auth ext tail at [328,330) and the 2-byte auth-extension
+// padding at [326,328). The raw MAC must be written before the CRC, whose
+// input spans [0,312) and [320,326); the auth-extension padding at [326,328)
+// is outside the CRC input and is written after the CRC.
+func writeLoginAuthExtension(out []byte, authVersion [2]byte, mac [6]byte, authExtTail [2]byte, authExtPadding [2]byte) {
 	copy(out[310:312], authVersion[:])
 	out[312] = 0x02
 	out[313] = 0x0c
 	copy(out[320:326], mac[:])
 	copy(out[314:318], crc1968(loginCRCTailInput(out)))
+	copy(out[326:328], authExtPadding[:])
 	copy(out[328:330], authExtTail[:])
 }
 

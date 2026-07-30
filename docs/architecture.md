@@ -339,8 +339,11 @@ forwarder 全部退出且 ID 从集合删除后成功。
 投影。
 
 机构 Profile 从本地可编辑文件加载，并在 daemon 启动时进入 `ProfileCatalog`。D520
-endpoint、超时、重试边界、固定协议字段和其他机构差异必须保留在 Profile 中，不得编译
-成协议包里的机构专用常量。普通一次性认证请求仍只提交 `InstitutionProfileID`，不通过
+endpoint（`serverAddress`、`serverPort` 与独立的 `localPort`）、超时、重试边界、固定协议字段
+（含三段固定宽度 Login padding）和其他机构差异必须保留在 Profile 中，不得编译
+成协议包里的机构专用常量。`localPort` 是严格 tagged 字段，`fixed` 模式绑定配置端口且失败不
+回退，`system_assigned` 让操作系统选择端口；JLU 选择 fixed `61440` 两端（见 ADR 0027）。
+普通一次性认证请求仍只提交 `InstitutionProfileID`，不通过
 IPC 携带任意 Profile JSON 或覆盖系统网络事实。
 
 首版使用 `institution-profiles/` 目录，每个 Profile 对应一个

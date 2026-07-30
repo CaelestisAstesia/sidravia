@@ -34,6 +34,7 @@ func testConfigJSON(port int, d testDurations) protocol.InstitutionProtocolConfi
 	jsonStr := fmt.Sprintf(`{
         "serverAddress": "127.0.0.1",
         "serverPort": %d,
+        "localPort": {"mode": "system_assigned"},
         "authVersionHex": "2c00",
         "keepAliveVersionHex": "dc02",
         "controlCheckStatusHex": "20",
@@ -41,6 +42,9 @@ func testConfigJSON(port int, d testDurations) protocol.InstitutionProtocolConfi
         "adapterNumberHex": "01",
         "osInfoHex": "940000000600000000000000280a000002000000",
         "challengePaddingHex": "000000000000000000000000000000",
+        "loginIPDogPaddingHex": "00000000",
+        "loginDHCPPaddingHex": "0000000000000000",
+        "loginAuthExtensionPaddingHex": "0000",
         "challengeTimeout": "%s",
         "loginTimeout": "%s",
         "keepaliveTimeout": "%s",
@@ -882,5 +886,76 @@ func TestBackoffProjectionIncludesClosedIntervalEndpoints(t *testing.T) {
 				t.Fatalf("projectBackoff(sample=%d, min=%s, max=%s) = %s, want %s", tc.sample, tc.min, tc.max, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestChallengeSeedProjection proves the pure Challenge seed projection returns
+// the documented (timestamp_seconds + random_offset) % 0xFFFF value at both
+// inclusive offset endpoints (0x0f and 0xff), wraps around 0xFFFF, and is
+// encoded little-endian in the built request. The sampled offset always stays
+// inside [0x0f, 0xff].
+func TestChallengeSeedProjection(t *testing.T) {
+	cases := []struct {
+		name      string
+		timestamp int64
+		offset    int
+		want      uint16
+	}{
+		{"min offset 0x0f at zero timestamp", 0, 0x0f, 0x000f},
+		{"max offset 0xff at zero timestamp", 0, 0xff, 0x00ff},
+		{"timestamp 0xFFFF wraps to zero mod 0xFFFF", 0xFFFF, 0, 0x0000},
+		{"offset 0xff crosses 0xFFFF boundary", 0xFFFA, 0xff, 0x00fa},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := projectChallengeSeed(tc.timestamp, tc.offset); got != tc.want {
+				t.Fatalf("projectChallengeSeed(%d, 0x%x) = 0x%04x, want 0x%04x", tc.timestamp, tc.offset, got, tc.want)
+			}
+		})
+	}
+
+	for i := 0; i < 256; i++ {
+		offset := randomChallengeSeedOffset()
+		if offset < challengeSeedOffsetMin || offset > challengeSeedOffsetMax {
+			t.Fatalf("randomChallengeSeedOffset = 0x%x, want in [0x%x, 0x%x]", offset, challengeSeedOffsetMin, challengeSeedOffsetMax)
+		}
+	}
+
+	seed := projectChallengeSeed(0, 0x0f) // 0x000f
+	req := buildChallengeRequest(seed, [15]byte{})
+	if req[2] != 0x0f || req[3] != 0x00 {
+		t.Fatalf("challenge request seed bytes = %x %x, want 0f 00 (little-endian)", req[2], req[3])
+	}
+}
+
+// TestFactoryPropagatesLocalPortAndPaddingIntoRun proves the decoded localPort
+// and the three Login padding fields propagate from the Profile through the
+// factory into the private run definition, without a public production seam.
+func TestFactoryPropagatesLocalPortAndPaddingIntoRun(t *testing.T) {
+	cfg := configWithOverride(t, map[string]any{
+		"localPort":                    map[string]any{"mode": "fixed", "value": 61440},
+		"loginIPDogPaddingHex":         "11223344",
+		"loginDHCPPaddingHex":          "1122334455667788",
+		"loginAuthExtensionPaddingHex": "aabb",
+	})
+	run, err := NewFactory().CreateAuthenticationProtocolRun(factoryInputs(cfg, testCredential(), testBinding(t)))
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	d520, ok := run.(*d520Run)
+	if !ok {
+		t.Fatalf("run type = %T, want *d520Run", run)
+	}
+	if d520.definition.cfg.localPort.mode != localPortFixed || d520.definition.cfg.localPort.value != 61440 {
+		t.Fatalf("localPort = mode %d value %d, want fixed/61440", d520.definition.cfg.localPort.mode, d520.definition.cfg.localPort.value)
+	}
+	if d520.definition.login.loginIPDogPadding != [4]byte{0x11, 0x22, 0x33, 0x44} {
+		t.Fatalf("loginIPDogPadding = %x, want 11223344", d520.definition.login.loginIPDogPadding)
+	}
+	if d520.definition.login.loginDHCPPadding != [8]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88} {
+		t.Fatalf("loginDHCPPadding = %x, want 1122334455667788", d520.definition.login.loginDHCPPadding)
+	}
+	if d520.definition.login.loginAuthExtensionPadding != [2]byte{0xaa, 0xbb} {
+		t.Fatalf("loginAuthExtensionPadding = %x, want aabb", d520.definition.login.loginAuthExtensionPadding)
 	}
 }

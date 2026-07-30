@@ -114,6 +114,12 @@ parser 由当前请求阶段选择，并严格验证该阶段的长度、opcode�
 builder。测试向量必须把这些值显式传入，确保 codec 确定且不依赖 socket、clock、日志
 或 goroutine。
 
+固定宽度 Profile 字段（含 Challenge padding 与三段 Login padding
+`loginIPDogPaddingHex`/`loginDHCPPaddingHex`/`loginAuthExtensionPaddingHex`）是严格十六进制
+字符串，输入大小写不敏感，缺失、宽度错误或非十六进制值使配置校验失败。本地端口是独立于
+`serverPort` 的严格 tagged 字段 `localPort`：`fixed` 绑定配置端口，绑定冲突或权限失败经既有
+网络失败路径返回，绝不回退到系统分配端口；`system_assigned` 让操作系统选择端口。详见 ADR 0027。
+
 ## 如何迁移和删除
 
 目录迁移应先保持行为不变。已有有效测试应随包移动。

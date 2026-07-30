@@ -79,6 +79,91 @@ func TestLoginRequestBuild(t *testing.T) {
 	}
 }
 
+// TestLoginRequestNonZeroPaddingAppearsOnlyAtThreeRanges proves nonzero Login
+// padding values are written only at [106,110), [154,162) and [326,328). The
+// only other bytes that differ from the all-zero-padding request are the
+// recomputed CRC-1968 at [314,318): its input spans [0,312) and therefore
+// includes the IPDog and DHCP padding, so it must change and must be correct.
+// Login length, header, username, hashes, MAC XOR/raw MAC, DNS/DHCP/IP/host/OS
+// fields, the auth-extension tail and the random tail are unchanged.
+func TestLoginRequestNonZeroPaddingAppearsOnlyAtThreeRanges(t *testing.T) {
+	doc := loadFixture(t)
+	challengeEx := exchange(t, doc, "challenge_for_login")
+	salt, err := parseChallengeResponse(mustHex(t, challengeEx.DeclaredResponseHex))
+	if err != nil {
+		t.Fatalf("parse login challenge: %v", err)
+	}
+	tail := mustHex2(t, "1234")
+
+	zeroIn := buildLoginInput(t, doc, tail)
+	zeroReq, err := buildLoginRequest(zeroIn, salt.salt)
+	if err != nil {
+		t.Fatalf("build zero-padding login: %v", err)
+	}
+	if len(zeroReq) != loginRequestLength {
+		t.Fatalf("zero-padding login length = %d, want %d", len(zeroReq), loginRequestLength)
+	}
+
+	nonzeroIn := zeroIn
+	nonzeroIn.loginIPDogPadding = [4]byte{0xde, 0xad, 0xbe, 0xef}
+	nonzeroIn.loginDHCPPadding = [8]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef}
+	nonzeroIn.loginAuthExtensionPadding = [2]byte{0xfe, 0xed}
+	nonzeroReq, err := buildLoginRequest(nonzeroIn, salt.salt)
+	if err != nil {
+		t.Fatalf("build nonzero-padding login: %v", err)
+	}
+	if len(nonzeroReq) != loginRequestLength {
+		t.Fatalf("nonzero-padding login length = %d, want %d", len(nonzeroReq), loginRequestLength)
+	}
+
+	// The three padding ranges carry the nonzero values exactly.
+	if !bytes.Equal(nonzeroReq[106:110], nonzeroIn.loginIPDogPadding[:]) {
+		t.Fatalf("loginIPDogPadding range = %x, want %x", nonzeroReq[106:110], nonzeroIn.loginIPDogPadding)
+	}
+	if !bytes.Equal(nonzeroReq[154:162], nonzeroIn.loginDHCPPadding[:]) {
+		t.Fatalf("loginDHCPPadding range = %x, want %x", nonzeroReq[154:162], nonzeroIn.loginDHCPPadding)
+	}
+	if !bytes.Equal(nonzeroReq[326:328], nonzeroIn.loginAuthExtensionPadding[:]) {
+		t.Fatalf("loginAuthExtensionPadding range = %x, want %x", nonzeroReq[326:328], nonzeroIn.loginAuthExtensionPadding)
+	}
+
+	// Every differing position must lie within the three padding ranges or the
+	// recomputed CRC range [314,318); padding must not leak anywhere else.
+	allowed := make(map[int]bool)
+	for _, r := range [][2]int{{106, 110}, {154, 162}, {314, 318}, {326, 328}} {
+		for i := r[0]; i < r[1]; i++ {
+			allowed[i] = true
+		}
+	}
+	var leaked []int
+	for i := 0; i < loginRequestLength; i++ {
+		if zeroReq[i] != nonzeroReq[i] && !allowed[i] {
+			leaked = append(leaked, i)
+		}
+	}
+	if len(leaked) > 0 {
+		t.Fatalf("padding leaked outside the three ranges and CRC: positions %v", leaked)
+	}
+
+	// The three padding ranges all differ from the zero-padding request.
+	for _, r := range [][2]int{{106, 110}, {154, 162}, {326, 328}} {
+		if bytes.Equal(zeroReq[r[0]:r[1]], nonzeroReq[r[0]:r[1]]) {
+			t.Fatalf("padding range [%d,%d) did not differ from zero-padding", r[0], r[1])
+		}
+	}
+
+	// The CRC at [314,318) is the correct CRC-1968 for the nonzero request and
+	// differs from the zero-padding CRC, proving it was recomputed from input
+	// that includes the IPDog and DHCP padding.
+	wantCRC := crc1968(loginCRCTailInput(nonzeroReq))
+	if !bytes.Equal(nonzeroReq[314:318], wantCRC) {
+		t.Fatalf("nonzero login CRC = %x, want recomputed %x", nonzeroReq[314:318], wantCRC)
+	}
+	if bytes.Equal(nonzeroReq[314:318], zeroReq[314:318]) {
+		t.Fatal("CRC did not change despite nonzero CRC-input padding")
+	}
+}
+
 // TestLoginResponseParseSuccess proves the 16-byte Auth Info is extracted from
 // the 64-byte success response and matches the fixture-derived value.
 func TestLoginResponseParseSuccess(t *testing.T) {

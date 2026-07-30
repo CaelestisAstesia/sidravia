@@ -54,7 +54,7 @@
 | 凭据 | `username`, `password` | Login/Logout username 与所有 MD5 | `[DC] [PL]` |
 | 选定绑定 | `mac` (6B), `client_ipv4` (=host_ip/bind_ip), 前两个 IPv4 DNS, DHCP server IPv4 | MAC XOR、Login IP/DNS/DHCP section、KA2 Type3 IP | `[DC] [PL]` |
 | 主机事实 | `host_name`, OS family, OS release | Login host_name/host_os 区 | `[DC] [PL]` |
-| 机构配置 | server address/port、`os_info` (20B)、认证与保活版本、固定字段、Challenge padding、各阶段 timeout、heartbeat interval、busy retry policy | Challenge/Login/KA/Logout 固定区和 Run 调度 | `[DC] [PL]` |
+| 机构配置 | server address/port、`localPort`（fixed/system_assigned）、`os_info` (20B)、认证与保活版本、固定字段、Challenge padding、三段 Login padding、各阶段 timeout、heartbeat interval、busy retry policy | Challenge/Login/KA/Logout 固定区和 Run 调度 | `[DC] [PL]` |
 | D520 Run 私有状态 | `salt` (4B), `auth_info` (16B), `keep_alive_tail` (4B), `keep_alive_serial_num` (u8) | 只能由 Challenge/Login/KA2 响应回填并由当前 Run 持有；不得由 Profile、IPC 或 context override 注入 | `[DC] [PL]` |
 
 说明与冲突：
@@ -75,11 +75,16 @@
 - `control_check_status`/`ipdog`/`auth_version`/`keep_alive_version`：`[Mock]` 把它们
   作为服务器期望值校验；`[DC] [PL]` 作为客户端注入值。本规范以 mock 期望值为兼容基准
   （`20`/`01`/`2c00`/`dc02`）。
-- 每个机构 Profile 必须明确提供 `serverAddress`、`serverPort`、`authVersionHex`、
+- 每个机构 Profile 必须明确提供 `serverAddress`、`serverPort`、`localPort`、`authVersionHex`、
   `keepAliveVersionHex`、`controlCheckStatusHex`、`ipdogHex`、`adapterNumberHex`、
-  `osInfoHex`、`challengePaddingHex`、Challenge/Login/Keepalive/Logout timeout、
+  `osInfoHex`、`challengePaddingHex`、`loginIPDogPaddingHex`、`loginDHCPPaddingHex`、
+  `loginAuthExtensionPaddingHex`、Challenge/Login/Keepalive/Logout timeout、
   heartbeat interval，以及 busy 最大尝试次数和退避上下限。首版不在 Run 内为机构差异
   隐藏默认值；wire grammar 的 opcode、长度、偏移和 checksum 常量仍是代码常量。
+- `serverPort` 与 `localPort` 是两个独立的端点维度：`serverPort` 是远端 Profile 端点端口，
+  `localPort` 是单个连接式 UDP socket 绑定的源端口。`localPort` 是严格 tagged 对象，恰为
+  `{"mode":"fixed","value":N}`（`N` 在 `1..65535`）或 `{"mode":"system_assigned"}` 之一；fixed
+  绑定失败不回退到系统分配端口。JLU 选择 fixed `61440` 两端（见 ADR 0027）。
 - **Challenge padding 来源冲突**（不影响兼容，见 §3、§10）：`[DC]` 填 15B 零；
   `[PL]` 填 `protocol_version` 字符串再补零；`[Mock]` 不校验该字段。Sidravia 从
   Profile 读取精确 15B；首个 Profile 采用 `[DC]` 的全零值，后续由真实抓包校准。
@@ -99,7 +104,7 @@
 | 偏移 | 字段 | 编码 |
 | --- | --- | --- |
 | `[0,2)` | `01 02` | 固定 |
-| `[2,4)` | seed | `LE u16` = `(timestamp_seconds + random) % 0xFFFF` |
+| `[2,4)` | seed | `LE u16` = `(timestamp_seconds + random_offset) % 0xFFFF`，`random_offset` 取自闭区间 `[0x0f,0xff]`（匹配经审计的 Drcom-CLI 行为） |
 | `4` | `09` | 固定 magic |
 | `[5,20)` | padding (15B) | Profile 提供精确值；首个 Profile 采用 `[DC]` 全零；`[PL]` 携带 `protocol_version`+零；`[Mock]` 不校验 |
 
@@ -130,12 +135,12 @@
 | `[80,97)` | IP section (17B) | `01 + client_ipv4 + 00*12`；reported IPv4 在 `[81,85)` |
 | `[97,105)` | MD5-C 前 8B | §4 |
 | `105` | IPDog | `[Mock]` 校验 |
-| `[106,110)` | padding_after_ipdog (4B) | 零 |
+| `[106,110)` | padding_after_ipdog (4B) | Profile `loginIPDogPaddingHex`；JLU 全零 |
 | `[110,142)` | host_name (32B) | 协议文本字节，NUL 填充；非 ASCII 编码仍为 `Unresolved`（§5） |
 | `[142,146)` | primary_dns (4B) | 网络序 IPv4 |
 | `[146,150)` | dhcp_ipv4 (4B) | 网络序 IPv4；`require_dhcp` 时不得为 `0.0.0.0` |
 | `[150,154)` | secondary_dns (4B) | 网络序 IPv4 |
-| `[154,162)` | padding_after_dhcp (8B) | 零 |
+| `[154,162)` | padding_after_dhcp (8B) | Profile `loginDHCPPaddingHex`；JLU 全零 |
 | `[162,182)` | os_info (20B) | 指纹 |
 | `[182,214)` | host_os (32B) | 协议文本字节，NUL 填充；非 ASCII 编码仍为 `Unresolved`（§5） |
 | `[214,310)` | 零 (96B) | HOST_OS_SUFFIX |
@@ -144,7 +149,7 @@
 | `[314,318)` | CRC-1968 (4B) | §4 |
 | `[318,320)` | 零 | 保留，`[Mock]` 校验为零 |
 | `[320,326)` | 原始 MAC (6B) | 必须与 MAC XOR 恢复值一致，`[Mock]` 校验 |
-| `[326,328)` | 零 | 保留，`[Mock]` 校验为零 |
+| `[326,328)` | padding (2B) | Profile `loginAuthExtensionPaddingHex`；JLU 全零；`[Mock]` 校验为零 |
 | `[328,330)` | auth ext tail (2B) | `[DC]` 随机；`[Mock]` 不校验；fixture 固定 `12 34` |
 
 成功响应（结构最小 39B；Mock 样本 64B）`[Mock]`；`[PL]` 解析计费，`[DC]` 只取 auth_info：

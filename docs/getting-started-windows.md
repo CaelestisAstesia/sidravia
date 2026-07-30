@@ -71,6 +71,7 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
   "institutionProtocolConfiguration": {
     "serverAddress": "10.100.61.3",
     "serverPort": 61440,
+    "localPort": {"mode": "fixed", "value": 61440},
     "authVersionHex": "2c00",
     "keepAliveVersionHex": "dc02",
     "controlCheckStatusHex": "20",
@@ -78,6 +79,9 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
     "adapterNumberHex": "01",
     "osInfoHex": "940000000600000000000000280a000002000000",
     "challengePaddingHex": "000000000000000000000000000000",
+    "loginIPDogPaddingHex": "00000000",
+    "loginDHCPPaddingHex": "0000000000000000",
+    "loginAuthExtensionPaddingHex": "0000",
     "challengeTimeout": "3s",
     "loginTimeout": "5s",
     "keepaliveTimeout": "3s",

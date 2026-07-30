@@ -43,10 +43,18 @@ type udpExchange struct {
 }
 
 // openUDPExchange dials one connected udp4 socket bound to the selected client
-// IPv4 (with an OS-chosen port) and connected to the Profile endpoint. The
-// returned exchange owns the socket and must be closed by the Run.
-func openUDPExchange(clientIPv4 [4]byte, serverAddr netip.Addr, serverPort uint16) (*udpExchange, error) {
-	localAddr := &net.UDPAddr{IP: append(net.IP(nil), clientIPv4[:]...), Port: 0}
+// IPv4 and the configured local port, and connected to the Profile endpoint.
+// For localPortFixed the socket binds the configured fixed port; a bind conflict
+// or permission failure is returned as an error and never falls back to a
+// system-assigned port. For localPortSystemAssigned the local port is 0 and the
+// operating system chooses a free port. The returned exchange owns the socket
+// and must be closed by the Run.
+func openUDPExchange(clientIPv4 [4]byte, port localPort, serverAddr netip.Addr, serverPort uint16) (*udpExchange, error) {
+	localPortNum := 0
+	if port.mode == localPortFixed {
+		localPortNum = int(port.value)
+	}
+	localAddr := &net.UDPAddr{IP: append(net.IP(nil), clientIPv4[:]...), Port: localPortNum}
 	remoteAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(serverAddr, serverPort))
 	conn, err := net.DialUDP("udp4", localAddr, remoteAddr)
 	if err != nil {
