@@ -71,6 +71,12 @@ Authentication Configuration 使用 schema 2 单文件聚合。安装版权限�
 便携版只在平台明确返回权限模型不支持时进入可观察的 unprotected 状态，新增或替换密码
 必须获得逐次显式授权。
 
+Windows 安全存储按对象类别区分 DACL：受保护目录的 owner/LocalSystem Full Control ACE
+带对象/容器继承标志，经 `SetNamedSecurityInfoW` 传播到既有和未来子对象；秘密文件 ACE
+保持不可继承，安全临时文件在写入前获得最终文件描述符。安全 catalog 准备在 Profile 加载
+之前完成，使 daemon 重启能修复既有 `institution-profiles` 子树的继承 DACL。不使用
+`TreeSetNamedSecurityInfo`、`icacls`、递归遍历或宽松临时 ACL。详见 ADR 0026。
+
 结构化配置必须使用稳定字段，并且 CLI 必须能够用人类可读的形式显示它。秘密字段不受此规则影响，因为 CLI 不得读取秘密明文。
 
 JSON 只用于 IPC 和持久化边界。领域模型不应携带 JSON 编解码职责。

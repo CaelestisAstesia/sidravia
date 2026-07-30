@@ -442,6 +442,65 @@ func TestCompositionFailsOnInvalidProfile(t *testing.T) {
 	}
 }
 
+// orderTrackingStore wraps an in-memory store and lets a test observe or fail
+// the secure store Read used by OpenCatalog. It implements the same
+// configuration.SensitiveStore contract without widening any production seam.
+type orderTrackingStore struct {
+	*inMemoryStore
+	readErr    error
+	readCalled bool
+}
+
+func (s *orderTrackingStore) Read(ctx context.Context, path string, max int64) ([]byte, bool, error) {
+	s.readCalled = true
+	if s.readErr != nil {
+		return nil, false, s.readErr
+	}
+	return s.inMemoryStore.Read(ctx, path, max)
+}
+
+// TestCompositionOpensCatalogBeforeProfileTraversal proves composeObjectGraph
+// opens the Authentication Configuration catalog (secure store Read, which
+// prepares and repairs the shared configuration root) before the Profile loader
+// traverses <config-root>/institution-profiles. It uses only test-owned
+// filesystem and store behavior: an invalid Profile on disk plus a store whose
+// Read fails with a sentinel. Because the Profile is invalid, Profile traversal
+// would surface a "load profiles" error if it ran first; observing the catalog
+// sentinel instead proves the catalog Read runs and stops composition before
+// Profile traversal.
+func TestCompositionOpensCatalogBeforeProfileTraversal(t *testing.T) {
+	paths := testPaths(t)
+	writeTestProfile(t, paths.profiles, "bad.json", []byte(`{"schemaVersion":1}`))
+
+	catalogReadErr := errors.New("catalog-read-order-sentinel")
+	store := &orderTrackingStore{
+		inMemoryStore: newInMemoryStore(),
+		readErr:       catalogReadErr,
+	}
+
+	_, err := composeObjectGraph(
+		context.Background(),
+		store,
+		paths,
+		testHostInfo(),
+		newFakeObserver(),
+		newFakeHostRunner().run,
+		"test-token",
+		"1.0.0-test",
+		"abc1234",
+		discardLogger(),
+	)
+	if !errors.Is(err, catalogReadErr) {
+		t.Fatalf("composeObjectGraph() error = %v, want catalog read sentinel", err)
+	}
+	if !store.readCalled {
+		t.Fatal("catalog Read was not invoked before Profile traversal")
+	}
+	if strings.Contains(err.Error(), "load profiles") {
+		t.Fatalf("Profile traversal ran before catalog Read: %v", err)
+	}
+}
+
 type fakeSnapshotSink struct {
 	mu                  sync.Mutex
 	snapshots           []environment.Snapshot

@@ -168,8 +168,10 @@ Windows 认证仍必须使用 Environment Detector。
 1. 解析当前用户的 Sidravia 配置目录和运行信息路径；
 2. 创建当前用户的 SecureStore；
 3. 注册唯一生产协议 D520；
-4. 一次性加载机构 Profile；
-5. 打开 Authentication Configuration Store；
+4. 打开 Authentication Configuration Store，其安全存储 `Read` 先通过
+   `prepareDirectory` 准备并修复共享配置根目录（含把既有 `institution-profiles`
+   子树纳入可继承 owner/LocalSystem DACL）；
+5. 一次性加载机构 Profile；
 6. 读取真实 Windows host information；
 7. 创建带生产重试策略的 Supervisor、AuthenticationResolver 和 Application；
 8. 用 `app.IPCHandler` 组合 IPC server；
@@ -179,6 +181,12 @@ Windows 认证仍必须使用 Environment Detector。
 组合根通过统一运行目录解析边界 `internal/productlayout` 获得 Profile、
 Authentication Configuration 和运行信息的绝对路径，再把路径交给各模块。模块不自行
 判断安装版或便携版。Settings Store 和自动连接尚未接入这条一次性认证链路。
+
+catalog 必须在 Profile 加载之前打开：`OpenCatalog` 的安全存储 `Read` 先把配置根目录
+加固成受保护且可继承的 owner/LocalSystem DACL，使重启能修复旧版本留下的“子目录空继承
+DACL”状态。目录 ACE 带对象/容器继承标志并向既有和未来子对象传播；秘密文件 ACE 保持不
+可继承。详见 ADR 0026。catalog 失败在 Profile 加载之前停止组合，Profile 失败仍在
+Supervisor/runtime 之前停止；两种失败都不启动 host、observer、IPC 或 Session。
 
 运行期由组合根统一拥有三个并发活动：
 

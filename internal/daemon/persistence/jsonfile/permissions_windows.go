@@ -87,7 +87,25 @@ func resolveWindowsOwner(explicitSID string) (resolvedOwner, error) {
 	return resolvedOwner{sid: value}, nil
 }
 
-func ownerSecurityDescriptor(owner resolvedOwner) (unsafe.Pointer, error) {
+// directorySecurityDescriptor builds a protected DACL for a secured directory.
+// The DACL is protected so the directory does not inherit permissive ACEs from
+// its parent, and carries exactly two explicit allow ACEs (intended owner and
+// LocalSystem, both Full Control). Both ACEs carry object-inherit and
+// container-inherit flags so Windows applies them to existing and future child
+// files and directories when SetNamedSecurityInfoW installs the descriptor.
+func directorySecurityDescriptor(owner resolvedOwner) (unsafe.Pointer, error) {
+	if owner.sid == "" {
+		return nil, errorInvalidSID
+	}
+	sddl := fmt.Sprintf("O:%sG:%sD:P(A;OICI;FA;;;%s)(A;OICI;FA;;;SY)", owner.sid, owner.sid, owner.sid)
+	return win32SecurityDescriptor(sddl)
+}
+
+// fileSecurityDescriptor builds a protected DACL for a secured file. The DACL
+// is protected and carries exactly two non-inheritable allow ACEs (intended
+// owner and LocalSystem, both Full Control). A file must not propagate ACEs to
+// children, so its ACEs carry no object/container inheritance flags.
+func fileSecurityDescriptor(owner resolvedOwner) (unsafe.Pointer, error) {
 	if owner.sid == "" {
 		return nil, errorInvalidSID
 	}
@@ -95,18 +113,16 @@ func ownerSecurityDescriptor(owner resolvedOwner) (unsafe.Pointer, error) {
 	return win32SecurityDescriptor(sddl)
 }
 
-func hardenWindowsPath(path string, owner resolvedOwner) error {
-	descriptor, err := ownerSecurityDescriptor(owner)
-	if err != nil {
-		return err
-	}
+// applyProtectedSecurityDescriptor installs a protected owner/group/DACL on the
+// named object. An object's owner implicitly has WRITE_DAC, but not WRITE_OWNER,
+// so the protected owner-only DACL is installed first to authorize the checked
+// owner/group update that follows.
+func applyProtectedSecurityDescriptor(path string, descriptor unsafe.Pointer) error {
 	defer win32LocalFree(descriptor)
 	ownerSID, groupSID, dacl, err := win32DescriptorParts(descriptor)
 	if err != nil {
 		return err
 	}
-	// An object's owner implicitly has WRITE_DAC, but not WRITE_OWNER. Install the
-	// protected owner-only DACL first so the checked owner/group update is authorized.
 	if err := setNamedSecurityInfoWCall(
 		path, seFileObject, daclSecurityInfo|protectedDaclInfo, nil, nil, dacl,
 	); err != nil {
@@ -119,12 +135,36 @@ func hardenWindowsPath(path string, owner resolvedOwner) error {
 	)
 }
 
+func hardenWindowsDirectory(path string, owner resolvedOwner) error {
+	descriptor, err := directorySecurityDescriptor(owner)
+	if err != nil {
+		return err
+	}
+	return applyProtectedSecurityDescriptor(path, descriptor)
+}
+
+func hardenWindowsFile(path string, owner resolvedOwner) error {
+	descriptor, err := fileSecurityDescriptor(owner)
+	if err != nil {
+		return err
+	}
+	return applyProtectedSecurityDescriptor(path, descriptor)
+}
+
+type windowsACE struct {
+	sid   string
+	mask  uint32
+	flags uint8
+}
+
 type windowsSecuritySnapshot struct {
 	ownerSID      string
 	groupSID      string
 	daclProtected bool
 	allowACECount int
 	allowACEs     map[string]uint32
+	allowACEFlags map[string]uint8
+	allowACEList  []windowsACE
 }
 
 func inspectWindowsSecurity(path string) (windowsSecuritySnapshot, error) {
@@ -155,6 +195,8 @@ func inspectWindowsSecurity(path string) (windowsSecuritySnapshot, error) {
 		return windowsSecuritySnapshot{}, callErr
 	}
 	allow := make(map[string]uint32)
+	allowFlags := make(map[string]uint8)
+	allowList := make([]windowsACE, 0, int(information.aceCount))
 	allowCount := 0
 	for index := uint32(0); index < information.aceCount; index++ {
 		var ace unsafe.Pointer
@@ -166,17 +208,22 @@ func inspectWindowsSecurity(path string) (windowsSecuritySnapshot, error) {
 			continue
 		}
 		allowCount++
+		flags := *(*uint8)(unsafe.Add(ace, 1))
 		mask := *(*uint32)(unsafe.Add(ace, 4))
 		sidText, sidErr := win32SIDString(unsafe.Add(ace, 8))
 		if sidErr != nil {
 			return windowsSecuritySnapshot{}, sidErr
 		}
 		allow[sidText] = mask
+		allowFlags[sidText] = flags
+		allowList = append(allowList, windowsACE{sid: sidText, mask: mask, flags: flags})
 	}
 	return windowsSecuritySnapshot{
 		ownerSID: ownerText, groupSID: groupText,
 		daclProtected: control&seDaclProtected != 0,
 		allowACECount: allowCount,
 		allowACEs:     allow,
+		allowACEFlags: allowFlags,
+		allowACEList:  allowList,
 	}, nil
 }

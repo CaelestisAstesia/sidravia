@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -282,6 +283,161 @@ func TestWindowsMoveFileExWriteThroughCommitsInitialDestination(t *testing.T) {
 	if !committed || flags != moveFileWriteThrough {
 		t.Fatalf("commit = %v, %v; flags = %#x", committed, err, flags)
 	}
+}
+
+func TestWindowsDirectoryACEsInheritWhileFileACEsDoNot(t *testing.T) {
+	owner := windowsTestOwner(t)
+	directory := filepath.Join(t.TempDir(), "secure")
+	path := filepath.Join(directory, "state.json")
+	if err := newWindowsTestStore(t, owner).Replace(context.Background(), path, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	dirSnapshot, err := inspectWindowsSecurity(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDirFlags := uint8(objectInheritAce | containerInheritAce)
+	if got := dirSnapshot.allowACEFlags[owner.sid]; got != wantDirFlags {
+		t.Fatalf("directory owner ACE flags = %#x, want OI|CI %#x", got, wantDirFlags)
+	}
+	if got := dirSnapshot.allowACEFlags[localSystemSID]; got != wantDirFlags {
+		t.Fatalf("directory SYSTEM ACE flags = %#x, want OI|CI %#x", got, wantDirFlags)
+	}
+
+	fileSnapshot, err := inspectWindowsSecurity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileSnapshot.allowACEFlags[owner.sid]; got != 0 {
+		t.Fatalf("file owner ACE flags = %#x, want no inheritance flags", got)
+	}
+	if got := fileSnapshot.allowACEFlags[localSystemSID]; got != 0 {
+		t.Fatalf("file SYSTEM ACE flags = %#x, want no inheritance flags", got)
+	}
+}
+
+// applyWindowsNonInheritedOwnerReadDACL installs a non-protected DACL with a
+// single non-inheritable owner read ACE and no LocalSystem ACE. It is test-only
+// machinery for placing a child directory in a known initial state (lacking
+// inheritable owner/LocalSystem ACEs) so a nested file does not inherit them.
+func applyWindowsNonInheritedOwnerReadDACL(t *testing.T, path string, owner resolvedOwner) {
+	t.Helper()
+	sddl := fmt.Sprintf("O:%sG:%sD:(A;;FR;;;%s)", owner.sid, owner.sid, owner.sid)
+	descriptor, err := win32SecurityDescriptor(sddl)
+	if err != nil {
+		t.Fatalf("build non-inherited DACL: %v", err)
+	}
+	defer win32LocalFree(descriptor)
+	ownerSID, groupSID, dacl, err := win32DescriptorParts(descriptor)
+	if err != nil {
+		t.Fatalf("descriptor parts: %v", err)
+	}
+	if err := setNamedSecurityInfoWCall(
+		path, seFileObject, ownerSecurityInfo|groupSecurityInfo|daclSecurityInfo, ownerSID, groupSID, dacl,
+	); err != nil {
+		t.Fatalf("apply non-inherited DACL: %v", err)
+	}
+}
+
+func inheritedAllowACE(snapshot windowsSecuritySnapshot, sid string) (uint32, bool) {
+	for _, ace := range snapshot.allowACEList {
+		if ace.sid == sid && ace.flags&inheritedAce != 0 {
+			return ace.mask, true
+		}
+	}
+	return 0, false
+}
+
+func assertWindowsInheritedOwnerSystemFullControl(t *testing.T, path, intendedOwner string) {
+	t.Helper()
+	snapshot, err := inspectWindowsSecurity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mask, ok := inheritedAllowACE(snapshot, intendedOwner); !ok || mask != fileAllAccess {
+		t.Fatalf("inherited owner Full Control missing on %s: ACEs = %#v", path, snapshot.allowACEList)
+	}
+	if mask, ok := inheritedAllowACE(snapshot, localSystemSID); !ok || mask != fileAllAccess {
+		t.Fatalf("inherited LocalSystem Full Control missing on %s: ACEs = %#v", path, snapshot.allowACEList)
+	}
+}
+
+func assertWindowsNoInheritedOwnerSystem(t *testing.T, path, intendedOwner string) {
+	t.Helper()
+	snapshot, err := inspectWindowsSecurity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mask, ok := inheritedAllowACE(snapshot, intendedOwner); ok {
+		t.Fatalf("unexpected inherited owner ACE on %s: mask = %#x, ACEs = %#v", path, mask, snapshot.allowACEList)
+	}
+	if mask, ok := inheritedAllowACE(snapshot, localSystemSID); ok {
+		t.Fatalf("unexpected inherited LocalSystem ACE on %s: mask = %#x, ACEs = %#v", path, mask, snapshot.allowACEList)
+	}
+}
+
+// TestWindowsPreExistingNestedChildrenReceiveInheritedAccess proves that
+// securing a parent directory with the new inheritable descriptor propagates
+// usable intended-owner/LocalSystem Full Control to pre-existing nested
+// Profile-like children (an institution-profiles directory and a jlu.json file
+// inside it). The parent is first isolated with the old non-inheritable model so
+// the children start without inherited intended-owner/LocalSystem access.
+func TestWindowsPreExistingNestedChildrenReceiveInheritedAccess(t *testing.T) {
+	owner := windowsTestOwner(t)
+	operations := newWindowsSecureFileOperations()
+	parent := filepath.Join(t.TempDir(), "config")
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := hardenWindowsFile(parent, owner); err != nil {
+		t.Fatalf("isolate parent with old model: %v", err)
+	}
+	profileDir := filepath.Join(parent, "institution-profiles")
+	if err := os.Mkdir(profileDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	applyWindowsNonInheritedOwnerReadDACL(t, profileDir, owner)
+	profileFile := filepath.Join(profileDir, "jlu.json")
+	if err := os.WriteFile(profileFile, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	assertWindowsNoInheritedOwnerSystem(t, profileDir, owner.sid)
+	assertWindowsNoInheritedOwnerSystem(t, profileFile, owner.sid)
+
+	if err := operations.ensureDirectory(parent, owner); err != nil {
+		t.Fatalf("secure parent directory: %v", err)
+	}
+	assertWindowsInheritedOwnerSystemFullControl(t, profileDir, owner.sid)
+	assertWindowsInheritedOwnerSystemFullControl(t, profileFile, owner.sid)
+}
+
+// TestWindowsDirectoryPreparationRepairsEmptyInheritedChild reproduces the old
+// protected, non-inheritable parent model and proves the new directory
+// preparation repairs an existing child that otherwise has an empty inherited
+// DACL: the child starts with no inherited intended-owner/LocalSystem access,
+// and after the new inheritable directory preparation it gains both.
+func TestWindowsDirectoryPreparationRepairsEmptyInheritedChild(t *testing.T) {
+	owner := windowsTestOwner(t)
+	operations := newWindowsSecureFileOperations()
+	parent := filepath.Join(t.TempDir(), "config")
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := hardenWindowsFile(parent, owner); err != nil {
+		t.Fatalf("reproduce old non-inheritable parent model: %v", err)
+	}
+	child := filepath.Join(parent, "institution-profiles")
+	if err := os.Mkdir(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	assertWindowsNoInheritedOwnerSystem(t, child, owner.sid)
+
+	if err := operations.ensureDirectory(parent, owner); err != nil {
+		t.Fatalf("repair directory: %v", err)
+	}
+	assertWindowsInheritedOwnerSystemFullControl(t, child, owner.sid)
 }
 
 type sequenceReader struct {

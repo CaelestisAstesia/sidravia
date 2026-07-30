@@ -196,6 +196,12 @@ Trace 后，这些敏感字节可能保留在当前日志或 `.1` 备份中。Si
 `--allow-insecure-storage`。同目录访问者可能读取或修改配置和密码、daemon runtime
 token 与敏感 Trace 日志。当前使用明文 JSON，不提供 DPAPI、Keyring 或旧双文件迁移。
 
+当前源码已修复 Windows 安全配置目录的继承 DACL：配置根目录的 owner/LocalSystem ACE 带
+对象/容器继承标志，传播到既有和未来 `institution-profiles` 子树；秘密文件 ACE 保持不可
+继承。catalog 在 Profile 加载之前打开，使 daemon 重启能修复旧版本留下的“子目录空继承
+DACL”状态。该修复已完成代码与自动验证，Windows 原生与校园现场复核仍为独立证据；详见
+ADR 0026。
+
 密码只在交互式 `密码：` 提示中输入，不会回显。不要把密码放进命令行、脚本、
 Profile、截图或日志。非交互式调用必须显式使用 `--password-stdin`。
 

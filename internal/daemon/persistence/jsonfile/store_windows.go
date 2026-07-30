@@ -38,7 +38,7 @@ func (*windowsSecureFileOperations) ensureDirectory(path string, owner resolvedO
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return err
 	}
-	return classifyWindowsProtection(hardenWindowsPath(path, owner))
+	return classifyWindowsProtection(hardenWindowsDirectory(path, owner))
 }
 
 func (*windowsSecureFileOperations) inspectDestination(path string) (bool, error) {
@@ -60,7 +60,7 @@ func (*windowsSecureFileOperations) inspectDestination(path string) (bool, error
 }
 
 func (*windowsSecureFileOperations) hardenDestination(path string, owner resolvedOwner) error {
-	return classifyWindowsProtection(hardenWindowsPath(path, owner))
+	return classifyWindowsProtection(hardenWindowsFile(path, owner))
 }
 
 func (*windowsSecureFileOperations) openForRead(path string) (io.ReadCloser, error) {
@@ -68,7 +68,7 @@ func (*windowsSecureFileOperations) openForRead(path string) (io.ReadCloser, err
 }
 
 func (*windowsSecureFileOperations) createTemp(directory string, owner resolvedOwner) (writableTemp, error) {
-	descriptor, err := ownerSecurityDescriptor(owner)
+	descriptor, err := fileSecurityDescriptor(owner)
 	if err != nil {
 		return nil, classifyWindowsProtection(err)
 	}

@@ -47,6 +47,9 @@ const (
 	seDaclProtected         = 0x1000
 	aclSizeInformation      = 2
 	accessAllowedAceType    = 0
+	objectInheritAce        = 0x1
+	containerInheritAce     = 0x2
+	inheritedAce            = 0x10
 	fileAllAccess           = 0x001F01FF
 	genericWrite            = 0x40000000
 	fileShareRead           = 0x00000001

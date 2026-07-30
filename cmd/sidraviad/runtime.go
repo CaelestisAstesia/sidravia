@@ -205,14 +205,19 @@ func composeObjectGraph(
 		return nil, fmt.Errorf("sidraviad: create protocol registry: %w", err)
 	}
 
-	profiles, err := configuration.LoadProfileCatalogFromDirectory(ctx, paths.profiles, registry)
-	if err != nil {
-		return nil, fmt.Errorf("sidraviad: load profiles: %w", err)
-	}
-
+	// Open the Authentication Configuration catalog before loading institution
+	// Profiles. OpenCatalog performs the secure store Read, which prepares and
+	// repairs the shared configuration root (including inheritance repair of any
+	// pre-existing institution-profiles subtree). Only after that succeeds may
+	// the Profile loader traverse <config-root>/institution-profiles.
 	catalog, err := configuration.OpenCatalog(ctx, store, paths.configurations)
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: open catalog: %w", err)
+	}
+
+	profiles, err := configuration.LoadProfileCatalogFromDirectory(ctx, paths.profiles, registry)
+	if err != nil {
+		return nil, fmt.Errorf("sidraviad: load profiles: %w", err)
 	}
 
 	sup := supervisor.New(supervisor.Dependencies{

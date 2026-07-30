@@ -79,6 +79,18 @@ Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `S
 Authentication Configuration 聚合与顶层 `config` CLI；代码与自动验证已完成，
 Windows 原生便携降级验证仍待执行。
 
+2026-07-30 的 Windows 便携版现场运行发现一个独立重启回归：daemon 打开便携 Configuration
+catalog 后停止，随后的启动在组合阶段失败，因为安全 catalog 根目录持有受保护但不可继承的
+owner/SYSTEM DACL，使既有 `institution-profiles` 子树不可访问。修复切片（ADR 0026）把
+Windows 安全存储拆分为目录与文件两类描述符：受保护目录的 owner/LocalSystem ACE 带对象/
+容器继承标志并经 `SetNamedSecurityInfoW` 传播到既有和未来子对象，秘密文件 ACE 保持不可
+继承，安全临时文件在写入前获得最终文件描述符；生产组合顺序改为先打开 catalog（其安全存储
+`Read` 准备并修复配置根目录）再加载 Profile，使重启修复既有 Profile 子树。该切片完成代码
+与自动验证（聚焦测试、race、Windows amd64 测试编译与完整公开 verifier），不使用
+`TreeSetNamedSecurityInfo`、`icacls` 或递归遍历，不扩大 Unsupported 集合，不改变 D520、
+launcher、IPC、Session、Supervisor、依赖或 Linux 行为；Windows 原生与校园现场复核仍是
+独立证据，不改变提交 `508197d` 的校园认证证据范围。
+
 ## 已确认的后续顺序
 
 提交 `81dfbdf` 之后，当前大版本按以下顺序推进，每一步保持独立计划、独立提交和分开的
