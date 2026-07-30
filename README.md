@@ -1,8 +1,8 @@
 # Sidravia
 
-Sidravia 是一个目前首先在 Windows 上交付、并为 Linux/macOS 保留平台边界的
-Dr.COM 网络认证客户端。产品由短生命周期 CLI `sidravia` 和长期运行的本地 daemon
-`sidraviad` 组成：
+Sidravia 是一个以 Windows 为首要现场支持平台、并已具备 Linux/WSL 运行时基线的
+Dr.COM 网络认证客户端；macOS 当前明确返回 Unsupported。产品由短生命周期 CLI
+`sidravia` 和长期运行的本地 daemon `sidraviad` 组成：
 
 ```text
 sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
@@ -28,6 +28,10 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
   Windows 后台子进程可用 `--log-level info|debug|trace` 指定确定的日志级别。
 - retained Session 的继续运行、重启和停止后删除；CLI 后台日志落盘、统一分层中文
   Help，以及不泄漏控制字符的轻量终端呈现。
+- schema-v2 `configurations.json` 聚合中的持久认证配置（每份配置包含一个账号和一个
+  私有密码）、安装版/便携版运行目录，以及 Linux/WSL daemon 生命周期基线；
+- D520 独立 `localPort`（JLU 使用 fixed `61440`）、Windows 配置目录继承修复，以及
+  Windows launcher 的精确子进程退出观察和最终就绪探测。
 
 提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
 选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
@@ -40,7 +44,7 @@ sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 当前代码通过共享的 `internal/productlayout` 解析两种显式运行目录模式。默认安装版
 仍使用操作系统用户目录：配置位于 `os.UserConfigDir()/Sidravia`，运行信息与后台日志
 位于 `os.UserCacheDir()/Sidravia`。在可执行文件同目录放置空标记文件
-`sidravia.portable` 即启用便携版，此时配置、凭据与机构 Profile 位于
+`sidravia.portable` 即启用便携版，此时认证配置（含其唯一私有密码）与机构 Profile 位于
 `<exe-dir>/config`，运行信息位于 `<exe-dir>/runtime`，后台日志位于
 `<exe-dir>/logs`；便携版不依赖 AppData。CLI 与 daemon 每次启动各自解析同一标记，
 用户增删标记前必须先停止 daemon。
@@ -52,19 +56,21 @@ TextHandler、默认 Info 级别。由 Windows CLI 后台启动时，stdout 和 
 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；启动前达到 10 MiB 会轮转为唯一备份
 `sidraviad.log.1`，之后创建新的当前文件。`SIDRAVIA_LOG_LEVEL` 可设置为 `info`、
 `debug` 或 `trace`；`trace` 启用完整 D520 数据报日志（含账号与认证材料，显式敏感）。
-每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性，
-例如：
+每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性。例如默认
+Info 可见 daemon 生命周期记录；启用 Debug 后还可见 IPC 完成记录：
 
 ```text
 time=2026-07-27T... level=INFO msg=守护进程运行已启动 event=daemon_runtime_started product_version=... build_id=... pid=...
-time=2026-07-27T... level=INFO msg=IPC 请求已完成 event=ipc_request_completed method=daemon.status
+time=2026-07-27T... level=DEBUG msg=IPC 请求已完成 event=ipc_request_completed method=daemon.status
 ```
 
-Info/Debug 永不包含密码、token、凭据、Profile JSON、MAC、DNS/DHCP、网卡 ID、
-请求/响应字节或原始 error；它们包含完整账号名、友好接口名和所选 IPv4。Trace
-数据报记录是唯一含完整报文字节的位置，且仅在显式启用 Trace 时出现。后台 Trace
-字节会持久化到上述当前文件或单备份，分享前必须按敏感材料处理。直接前台运行时仍可
-自行重定向 stderr。当前不提供日志 IPC、`daemon logs` 或实时 tail。
+Info 包含 daemon 生命周期、已应用网络快照和已提交 Session Snapshot；Debug 增加 IPC
+连接/完成、Session 命令、协议运行代际、重试调度和阶段边界。Info/Debug 永不包含密码、
+token、Profile JSON、MAC、DNS/DHCP、网关、InterfaceID、请求/响应字节或原始 error；
+它们允许完整账号名、机构显示名、友好接口名和所选 IPv4。Trace 增加完整 D520 数据报
+hex，启用时先记录 `trace_logging_sensitive`，并会随后台日志持久化到当前文件或唯一
+`.1` 备份；分享前必须按敏感材料处理。直接前台运行时仍可自行重定向 stderr。当前不
+提供日志 IPC、`daemon logs` 或实时 tail。
 
 ## CLI 呈现
 
@@ -77,7 +83,8 @@ Info/Debug 永不包含密码、token、凭据、Profile JSON、MAC、DNS/DHCP�
 
 根命令、资源组、普通 `help <path>`、`-h` 和 `--help` 共享同一份分层中文规格。当前
 daemon 命令为 `status/start/stop/restart`；Session 命令为
-`auth list/start/status/stop/restart/remove`；Profile 摘要使用 `profile list`。
+`auth list/start/status/stop/restart/remove`；Profile 摘要使用 `profile list`；
+持久认证配置使用 `config list/show/create/update/set-password/remove`。
 `daemon status` 严格只读，不会为了查询而启动 daemon。
 
 ```powershell
@@ -103,9 +110,9 @@ daemon 命令为 `status/start/stop/restart`；Session 命令为
 交互式 `auth start` 在 stderr 显示 `密码： ` 提示并关闭回显；非交互式调用必须显式
 使用 `--password-stdin`。密码永不进入命令行、错误、普通输出或日志。
 
-当前大版本保持 Cobra + termenv 的轻量逐行交互，不引入全屏 TUI。持久配置入口需要的
-标题、字段、选择和确认会复用现有呈现与密码输入边界，同时为脚本保留完整的非交互参数
-形式；详见 [ADR 0021](docs/decisions/0021-lightweight-line-oriented-cli.md)。
+当前大版本保持 Cobra + termenv 的轻量逐行交互，不引入全屏 TUI。持久配置入口已经
+复用现有呈现与密码输入边界，同时为脚本保留完整的非交互参数形式；详见
+[ADR 0021](docs/decisions/0021-lightweight-line-oriented-cli.md)。
 
 ## Windows Alpha 使用
 
@@ -114,14 +121,16 @@ daemon 命令为 `status/start/stop/restart`；Session 命令为
 没有 GUI、安装器、Windows Service、自动更新、自动连接或多活动 Session；
 它适合愿意使用 PowerShell 并能自行保留原网络客户端作为回退的测试者。
 
-本轮 operator correction 的代码与自动验证已经完成，但修正后的 status/help/后台日志
-尚未进行最小 Windows 原生复核。
-停止与重启锁定最初探测到的精确 daemon generation；Linux（包括 WSL）已实现 daemon
-host、基本 Environment Observer、CLI 进程控制与 termios 密码输入作为运行时基线
-（[ADR 0025](docs/decisions/0025-linux-wsl-platform-baseline.md)），可在 WSL 中完成
-真实生命周期 smoke；macOS 仍不受支持。Session ensure/restart/remove 已进入当前源码。
-接下来的当前大版本顺序是：网络诊断与选择修正，最后统一修订文本和文档。WSS、IPC 长连接
-强化和 GUI 放在下一大版本；见
+当前源码已经完成持久 Authentication Configuration、Linux/WSL 基线、Windows 安全目录
+继承修复、D520 fixed `localPort=61440` 对齐和 Windows launcher 早退报告的代码与自动
+验证。停止与重启锁定最初探测到的精确 daemon generation；Windows launcher 观察自己
+创建的精确子进程，子进程在 typed readiness 前退出时执行最后一次探测，再返回固定安全
+提示；Linux 继续使用 setsid + Process.Release，不持有 Wait 观察。
+
+上述当前源码的组合 Windows-native 与校园热点复核仍未进行。下一步是生成新的 Windows
+现场包并验证 daemon 重启、早退提示以及热点关闭/开启时 fixed `61440` 的认证；只有现场
+仍证明存在 route/source-address 问题时，才进入网络选择修正。WSS、IPC 长连接强化和 GUI
+放在下一大版本；见
 [ADR 0020](docs/decisions/0020-explicit-installed-and-portable-layouts.md) 与
 [ADR 0022](docs/decisions/0022-credentials-before-ipc-transport-hardening.md)。
 

@@ -370,8 +370,7 @@ CLI 必须能够用人类可读的形式显示公开结构化配置和 `protecte
 
 ADR 0024 已实现：schema-2 `configurations.json` 是包含唯一私有密码的聚合，
 独立 Credentials Store、CredentialID 和双文件路径已删除，并提供 typed `config`
-CLI/IPC。
-下一纵向实施切片必须一次替换这些旧边界并通过完整验证，不能把本节倒推成现有能力。
+CLI/IPC。早期双 Store 仅作为被 ADR 0024 替代的历史设计保留在对应 ADR 中。
 
 ## IPC
 
@@ -387,10 +386,12 @@ contract 只定义 Request、Response 和 Event：
 
 如果客户端持续跟不上事件，IPC server 应关闭该连接。慢客户端不得阻塞 daemon app。
 
-当前代码已经实现 `daemon.status`、`session.list` 和 `profile.list` 的 typed
-contract，以及 WebSocket client/server 和 Windows host 骨架。列表请求只接受严格
-空对象 `{}`；响应始终返回非 null 数组，并且 Profile 摘要只包含 ID、显示名和协议
-ID。列表切片完成代码与自动验证后仍需 Windows 原生复核。
+当前代码已经实现 typed 的 daemon status/stop、Session
+start/ensure/restart/stop/get/list/remove、Profile list，以及 Authentication
+Configuration list/get/create/update/set-password/remove 和按配置启动 Session。
+列表请求只接受严格空对象 `{}`；响应始终返回非 null 数组，并且 Profile 摘要只包含
+ID、显示名和协议 ID。IPC contract、client/server 和 Windows/Linux host 共享相同的
+平台无关方法语义；当前组合 Windows-native 复核仍独立待完成。
 
 首版 IPC 只提供以下产品操作：
 
@@ -413,7 +414,9 @@ typed IPC。威胁边界和实施顺序见 ADR 0022。
 
 ## Windows host
 
-Windows launcher process creation is not readiness: it observes the exact child until typed readiness. An early exit gets one final probe; failure reports fixed safe guidance while Linux retains detached release.
+Windows launcher 的进程创建成功不等于 typed readiness。CLI 观察自己创建的精确子进程；
+子进程提前退出时先做一次最终就绪探测，仍未就绪才返回固定安全提示。Linux launcher
+继续使用 setsid + Process.Release，不持有 Wait 或子进程退出观察。
 
 Windows host 必须执行以下动作：
 
@@ -434,7 +437,9 @@ IPC server 只在成功响应完成编码并写入后调用构造时注入的 co
 容量为一的 channel 和 `sync.Once` 接收首个已提交的 `daemon.stop`，再拥有取消、等待
 和 Supervisor 清理。Windows CLI 启动同目录、无新控制台窗口的子进程，为子进程设置
 唯一确定的 `SIDRAVIA_LOG_LEVEL`，不继承 stdin，并把 stdout/stderr 交给上述后台日志
-文件；平台无关 CLI/domain 边界不复制 Windows 生命周期实现。
+文件。Windows launcher 把容量为一的精确子进程 Wait 结果交给共享就绪循环；私有 Wait
+cause 保留给调用者和测试，但不会进入用户文本，子进程自己的诊断仍由后台日志拥有。
+平台无关 CLI/domain 边界不复制 Windows 生命周期实现。
 
 ## 第一条产品验收链路
 

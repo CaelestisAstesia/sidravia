@@ -14,10 +14,11 @@ import (
 )
 
 // launchDaemonProcess starts the sibling sidraviad.exe on Windows with both
-// output streams attached to the bounded background log. It returns
-// once the process has started; the caller polls for reachability. logLevel
-// must be "", "info", "debug" or "trace"; an empty value leaves the child at
-// the daemon default. It never changes the parent environment.
+// output streams attached to the bounded background log. Process creation is
+// not typed readiness: after Start it returns a buffered observation of that
+// exact child's Wait result while the caller continues readiness probing.
+// logLevel must be "", "info", "debug" or "trace"; an empty value leaves the
+// child at the daemon default. It never changes the parent environment.
 func launchDaemonProcess(logLevel string) (daemonLaunch, error) {
 	return launchDaemonProcessWith(logLevel, defaultWindowsDaemonLauncherDeps())
 }

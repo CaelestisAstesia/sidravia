@@ -31,7 +31,7 @@ Windows SmartScreen 可能提示这是未签名应用。只有从项目 GitHub R
 当前源码构建通过同目录的 `sidravia.portable` 标记选择运行目录模式。标记不存在时为
 安装版：Profile 位于 `%APPDATA%\Sidravia`，运行信息和后台日志位于
 `%LOCALAPPDATA%\Sidravia`。在 `sidravia.exe` 同目录放置空 `sidravia.portable` 文件
-即启用便携版：Configuration、Credential 和机构 Profile 位于
+即启用便携版：Authentication Configuration（含其唯一私有密码）和机构 Profile 位于
 `<解压目录>\config`，运行信息位于
 `<解压目录>\runtime`，后台日志位于 `<解压目录>\logs`，全部随目录移动且不依赖
 AppData。CLI 与 daemon 每次启动各自解析同一标记，增删标记前必须先停止 daemon。
@@ -100,7 +100,11 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 
 ## 启动和认证
 
-若提示 daemon 在就绪前退出，请检查 daemon 日志；CLI 不显示子进程诊断。
+当前源码若显示
+`sidraviad 在就绪前退出；请检查 daemon 日志`，表示 Windows CLI 观察到自己创建的精确
+子进程已经退出，并在最后一次 typed readiness 探测后仍未就绪。CLI 不显示私有 Wait
+cause；安装版检查 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`，便携版检查
+`<解压目录>\logs\sidraviad.log` 中由子进程写入的诊断。
 
 先完全退出其他 Dr.COM 客户端，避免同一账号同时维持多个认证会话。
 
@@ -121,12 +125,13 @@ stdout/stderr 写入 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；便携版写
 .\sidraviad.exe
 ```
 
-`SIDRAVIA_LOG_LEVEL` 可设置为 `info`（默认）、`debug` 或 `trace`；`trace` 启用
-完整 D520 数据报日志，可能含账号与认证材料，显式敏感。Info/Debug 日志包含完整
-账号名、友好接口名与所选 IPv4，但不含密码、token、凭据、Profile JSON、MAC、
-DNS/DHCP、网卡 ID 或原始 error；Trace 数据报是唯一含完整报文字节的位置。后台启用
-Trace 后，这些敏感字节可能保留在当前日志或 `.1` 备份中。Sidravia 不提供日志 IPC、
-`daemon logs` 或实时 tail。
+`SIDRAVIA_LOG_LEVEL` 可设置为 `info`（默认）、`debug` 或 `trace`。Info 包含 daemon
+生命周期、网络快照应用和 Session Snapshot；Debug 增加 IPC 连接/完成、Session 命令、
+协议运行代际、重试调度和阶段边界；Trace 增加完整 D520 数据报 hex，可能含账号与认证
+材料，启用时先写 `trace_logging_sensitive`。Info/Debug 允许完整账号名、机构显示名、
+友好接口名与所选 IPv4，但不含密码、token、Profile JSON、MAC、DNS/DHCP、网关、
+InterfaceID、请求/响应字节或原始 error。后台启用 Trace 后，这些敏感字节会保留在当前
+日志或唯一 `.1` 备份中。Sidravia 不提供日志 IPC、`daemon logs` 或实时 tail。
 
 检查已发布版本：
 
@@ -207,6 +212,10 @@ token 与敏感 Trace 日志。当前使用明文 JSON，不提供 DPAPI、Keyri
 继承。catalog 在 Profile 加载之前打开，使 daemon 重启能修复旧版本留下的“子目录空继承
 DACL”状态。该修复已完成代码与自动验证，Windows 原生与校园现场复核仍为独立证据；详见
 ADR 0026。
+
+当前源码还把 D520 `localPort` 与 `serverPort` 分开建模；上述 JLU Profile 对两者都选择
+fixed `61440`，固定端口绑定失败不会降级为系统分配端口。该改动与 Windows launcher
+早退报告均已完成代码和自动验证，但尚未完成组合 Windows-native 与校园热点复核。
 
 密码只在交互式 `密码：` 提示中输入，不会回显。不要把密码放进命令行、脚本、
 Profile、截图或日志。非交互式调用必须显式使用 `--password-stdin`。

@@ -4,7 +4,12 @@
 
 ## 当前结论
 
-Windows launcher early-exit reporting has code and automatic validation; Windows-native rerun remains pending.
+当前源码已经完成持久 Authentication Configuration、Linux/WSL 运行时基线、Windows
+安全配置目录继承修复、D520 独立 `localPort`（JLU fixed `61440`）以及 Windows
+launcher 精确子进程早退报告；这些切片的代码和自动验证均已完成。组合
+Windows-native 与校园热点复核仍待进行，提交 `508197d` 仍是唯一完成的校园验收证据。
+当前立即顺序是：语义收尾、生成 Windows 现场包、执行 daemon/热点复核；只有 fixed
+`61440` 现场仍失败时才进入 route/source-aware 网络修正。
 
 后端模块已经完成职责重整，并通过独立 Review。
 
@@ -26,7 +31,7 @@ verifier 已通过。首套 `auth start/status/stop` CLI、Windows 隐藏密码�
 `--password-stdin` 和共享 Session Snapshot 输出也已完成并通过聚焦测试、race 与
 Windows amd64 交叉编译。
 
-资源命令树的下一切片补齐 `sidravia auth list` 与 `sidravia profile list`。daemon
+资源命令树随后补齐了 `sidravia auth list` 与 `sidravia profile list`。daemon
 应用层、typed IPC 和 CLI 分别列出当前进程保留的 Session Snapshot 与安全 Profile
 摘要；空列表保持非 null 数组，CLI 在完整验证响应后一次写出。该切片完成代码和自动
 验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
@@ -77,7 +82,7 @@ ADR 0023 的可复现构建与打包切片随后完成：`tools/build` 标准库
 Windows amd64 二进制，生成默认安装版 zip、便携版 zip 和外部 `SHA256SUMS.txt`，相同输入
 逐字节复现；`Verify` 与 `Package` 两个 GitHub Actions 工作流已提交。代码与本地自动验证
 完成；GitHub-hosted workflow 实跑、Windows-native 包复核、签名与 Release 仍为 pending，
-不改变提交 `508197d` 的校园认证证据范围。ADR 0024 已把下一功能切片收敛为单一
+不改变提交 `508197d` 的校园认证证据范围。ADR 0024 当时把后续功能切片收敛为单一
 Authentication Configuration 聚合与顶层 `config` CLI；代码与自动验证已完成，
 Windows 原生便携降级验证仍待执行。
 
@@ -111,7 +116,7 @@ Environment 选择、launcher、依赖或 Linux 行为；Windows 原生与校园
 
 1. **运行目录与构建工作流。** ADR 0020 的显式安装版/便携版解析已经实现并通过代码与
    自动验证：CLI 与 daemon 经共享 `internal/productlayout` 在同一模式下得到相同的
-   Profile、旧 Configuration/Credential、运行信息和日志路径；便携模式不依赖 AppData，
+  Profile、Authentication Configuration 聚合、运行信息和日志路径；便携模式不依赖 AppData，
    安装模式继续使用操作系统用户目录。Windows-native 运行目录复核仍为 pending。
    ADR 0023 的可复现 Windows 构建与普通/便携包工具（`tools/build`）也已实现并完成
    本地自动验证：聚焦测试、race、Windows amd64 工具编译、两次真实构建逐字节复现和
@@ -132,11 +137,10 @@ Environment 选择、launcher、依赖或 Linux 行为；Windows 原生与校园
    （ADR 0025）；WSL 作为 Linux 构建、IPC、配置、日志和生命周期 smoke 的首个验证环境，
    代码与自动验证完成，Windows-native 与校园验证仍分开报告。WSL 中真实校园 D520 是否
    可用由后续路由证据决定，不能由“能够启动”倒推。
-4. **网络诊断与选择修正。** 增加面向认证服务器目标地址的 route/source-IP 事实和
-   可解释诊断，再调查 Windows 热点/ICS、多 IPv4、WSL 与物理网卡的相互影响。不得仅凭
-   网卡显示名称黑名单解决选择问题。
-5. **文本与文档收敛。** 功能边界稳定后进行一次不改变功能代码的全局注释、用户文本、
-   README、快速开始和架构文档复核。
+4. **Windows/campus 组合复核。** 使用包含目录继承、D520 fixed `61440` 和 launcher
+   早退修正的新包验证 daemon restart、热点关闭/开启、恢复与 Logout。该现场尚未完成。
+5. **按证据决定网络修正。** 只有 fixed-port 现场仍复现问题，才增加面向认证服务器的
+   route/source-IP 事实和可解释诊断；不得仅凭网卡显示名称黑名单解决选择问题。
 
 WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大版本统一演进。持久凭据明确
 先于 WSS；当前回环 `ws://` 继续由随机 token 与精确 BuildID 鉴权，不增加自制应用层
@@ -144,8 +148,8 @@ WSS、IPC 并发请求与事件重同步、GUI、更多协议包放在下一大�
 
 “显式安装版/便携版运行目录”以及 ADR 0023 的可复现构建与打包工具都已经实现并完成代码
 与本地自动验证。构建工具只生成 Windows amd64 普通包、便携包与 SHA-256 产物，不自动
-发布 Release。持久 Authentication Configuration 与 Linux/WSL 基线均已实现；
-下一功能切片是基于现场证据完成网络诊断与选择修正，WSS 和 GUI 均未开始。
+发布 Release。持久 Authentication Configuration 与 Linux/WSL 基线均已实现；当前先完成
+Windows/campus 组合复核，再按结果决定是否需要网络选择修正。WSS 和 GUI 均未开始。
 
 Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精确接受 `info`/`debug`/`trace`，`trace` 为低于 `debug` 的自定义级别；Info 记录每次已提交 Session revision、所选机构与完整账号名、友好接口名与所选 IPv4、认证状态与重试；Debug 增加 Session 命令、协议运行代际、D520 阶段边界、重试调度与 IPC 连接/完成；Trace 记录每个 D520 UDP 数据报的完整小写 hex，启用前先发 `trace_logging_sensitive` Warn。窄诊断接口（`session.Diagnostics`、`protocol.AuthenticationProtocolDiagnostics`）与显式 no-op 实现保持领域核心不导入 `log/slog`；诊断 sink 无返回值，永不改变行为。该切片完成代码和自动验证后仍未进行 Windows 原生复核，不改变 `508197d` 的校园现场证据范围。
 
@@ -159,7 +163,7 @@ Campaign 第二个工作包完成分层 daemon 诊断：`SIDRAVIA_LOG_LEVEL` 精
 | 阶段 | 当前状态 | 进入下一阶段前必须观察到的结果 |
 |---|---|---|
 | 0. 原则和架构 | 完成 | 当前架构和 ADR 对关键边界给出一致答案 |
-| 1. 后端重整 | 完成；旧双 Store 将由 ADR 0024 的单聚合替代 | Authentication Configuration、App、Session、Supervisor 和 Persistence 各自只有一个权威所有者 |
+| 1. 后端重整 | 完成；ADR 0024 的 schema-v2 单聚合已替代旧双 Store | Authentication Configuration、App、Session、Supervisor 和 Persistence 各自只有一个权威所有者 |
 | 2. 可运行骨架 | 完成：Windows 首轮现场通过；operator correction 待原生复核 | Windows 上 CLI 能显式启动 daemon，严格只读 status 能报告 stopped/running |
 | 3. 最小 Session 应用边界 | 代码和自动验证完成，已进入生产装配 | daemon app 和 typed IPC handler 能一次性启动、停止、查询和列出 Session，且不泄漏秘密 |
 | 4. D520 协议 Run | 完成：JLU 首轮现场通过 | Factory/Run 能用真实 D520 线级协议执行登录、保活、取消和尽力 Logout |
@@ -190,7 +194,7 @@ Session 停止边界也已明确为 `stopping -> suspended` 两个 revision；Su
 验证。
 
 生产组合随后完成：`cmd/sidraviad` 注册唯一 D520 Factory，加载 Profile，打开
-旧 Configuration/Credential 存储，构造 Supervisor、Resolver、Application 和 typed IPC，
+Authentication Configuration Catalog，构造 Supervisor、Resolver、Application 和 typed IPC，
 并统一拥有 host、Environment Observer、Snapshot 转交和最终 Supervisor 清理。并发
 Review 修正了外部取消、Observer 提前返回、timer goroutine、活动等待和并发故障保留；
 当前代码和自动验证完成。首套 CLI authentication 命令随后也已完成：用户可以用
@@ -212,12 +216,12 @@ Review 修正了外部取消、Observer 提前返回、timer goroutine、活动�
 
 ## 阶段 1：后端重整
 
-这一阶段已经完成。提交 `52b900b` 的当前代码仍满足以下旧边界；ADR 0024 已接受在下一
-纵向切片中用单聚合替代前两项，本文不把设计接受写成代码完成：
+这一阶段已经完成。ADR 0024 的实现已用一份 schema-v2 Authentication Configuration
+聚合替代早期 Configuration/Credentials 双 Store；每份聚合包含一个 username 和唯一
+私有 password，公开投影不含密码。当前边界为：
 
-- Configuration Catalog 保存非秘密配置。
-- Credentials Store 单独保存秘密。
-- daemon app 解析配置、凭据、Profile、协议和环境，然后组装运行定义。
+- Authentication Configuration Catalog 保存完整私有聚合并只公开安全投影。
+- daemon app 解析配置聚合、Profile、协议和环境，然后组装运行定义。
 - Supervisor 管理 Session 集合，并且首版只允许一个活动 Session。
 - Session 管理自己的认证运行和 Snapshot。
 - jsonfile 提供严格解码、原子替换和 Windows ACL。
@@ -254,7 +258,7 @@ Windows 原生冷启动、热连接、认证状态查询、主动停止和运行
 `508197d` 的现场验收中通过。更广泛的 Windows 版本、单实例冲突和故障注入仍属于后续
 兼容性覆盖，不改变首轮 Alpha 纵向链路已经通过的结论。
 
-## 后续阶段
+## 已完成阶段的历史进入条件
 
 阶段 3 先实现最小 Session 运行链和协议契约。CLI 通过 IPC 提交 typed 一次性启动请求；daemon app 把请求转换为 `RunDefinition`，再交给 Supervisor 和 Session。首个切片只要求 start、stop、get 和可复查 Snapshot，不提前完成配置管理。
 
@@ -262,7 +266,7 @@ Windows 原生冷启动、热连接、认证状态查询、主动停止和运行
 尽力 Logout 的代码行为。一次性连接是永久产品能力，不是之后删除的临时接口。秘密不得
 出现在命令行参数、日志、Snapshot 或 Response。现有 Python mock 不作为完成门槛。
 
-阶段 5 已统一安装版/便携版运行目录，下一步按 ADR 0024 一次补齐 Authentication
+阶段 5 已统一安装版/便携版运行目录，并已按 ADR 0024 补齐 Authentication
 Configuration 聚合、CRUD、set-password 和 `auth start --config`。真实 Windows
 Environment Detector 已实现，但 destination-aware
 route/source-IP 事实仍待网络修正切片。按 `ConfigurationID` 启动与一次性启动必须生成

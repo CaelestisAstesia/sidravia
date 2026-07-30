@@ -20,7 +20,10 @@ daemon 生命周期测试必须分别证明只读探测、成功响应写入后�
 
 ## 如何处理错误
 
-Launcher Wait causes remain private and retain error identity; user output is fixed safe text and daemon logs own diagnostics.
+Windows launcher 的 Wait cause 是私有诊断：错误链保留其 identity，用户只看到固定安全
+文本，子进程自己的诊断由 daemon 日志拥有。不得把 Wait cause 拼进用户消息，也不得声称
+CLI 会把该 cause 另写一条日志。Linux launcher 使用 setsid + Process.Release，不持有
+Wait 或退出观察。
 
 底层函数应保留原始错误。领域层或应用层应在包装错误时增加当前业务动作，例如“读取配置”或“启动 Session”。
 
@@ -34,7 +37,11 @@ IPC 不得返回内部错误链。
 系统通常只在进程边界记录一次错误。中间层应返回带上下文的错误，不应逐层重复写日志。
 
 结构化运行日志使用标准库 `log/slog`，由 `cmd/sidraviad` 拥有唯一生产 logger，使用
-TextHandler、stderr，默认 Info 级别（`SIDRAVIA_LOG_LEVEL` 可选 `info`/`debug`/`trace`）。日志只记录稳定 `event` 码、固定简体中文 `msg` 和
+TextHandler、stderr，默认 Info 级别（`SIDRAVIA_LOG_LEVEL` 可选
+`info`/`debug`/`trace`）。Info 记录 daemon 生命周期、已应用网络快照和已提交 Session
+Snapshot；Debug 增加 IPC 连接/完成、Session 命令、协议运行代际、重试调度和阶段边界；
+Trace 增加完整 D520 数据报 hex，并在首条数据报前发
+`trace_logging_sensitive`。日志只记录稳定 `event` 码、固定简体中文 `msg` 和
 显式允许的安全属性；Info/Debug 永不包含原始 error、诊断原因、请求/响应字节、request
 ID、token、密码、凭据 ID、Profile JSON、协议上下文、MAC、DNS/DHCP、网关或网卡 ID，
 但包含完整账号名、友好接口名与所选 IPv4；Trace 数据报是唯一含完整报文字节的位置。

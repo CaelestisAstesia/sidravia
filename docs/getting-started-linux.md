@@ -76,7 +76,9 @@ Profile 或凭据。
 CLI 用 `setsid` 启动兄弟 `sidraviad`，子进程不共享 CLI 终端会话；stdin 为 nil，
 stdout/stderr 都写入运行目录中的 `sidraviad.log`。daemon 用 `flock` 在
 `runtime.json.lock` 上持有非阻塞排他锁保证同用户单实例；已持有锁返回固定“already
-running”错误。退出后锁文件保留为零长度 owner-only 协调 inode。
+running”错误。退出后锁文件保留为零长度 owner-only 协调 inode。Linux launcher 在
+Start 后调用 Process.Release，不持有 Wait 或退出观察；Windows 的精确子进程 Wait
+与最终 typed readiness 探测是独立的平台实现。
 
 ## 配置与认证命令
 
@@ -98,9 +100,13 @@ running”错误。退出后锁文件保留为零长度 owner-only 协调 inode�
 
 直接运行 `sidraviad` 时结构化运行日志写到 stderr（`log/slog` TextHandler，默认 Info）。
 由 CLI 后台启动时 stdout/stderr 都写入 `sidraviad.log`，启动前达到 10 MiB 轮转为唯一
-`.1` 备份。`SIDRAVIA_LOG_LEVEL` 可设为 `info`、`debug` 或 `trace`；`trace` 启用完整 D520
-数据报日志（含账号与认证材料，显式敏感）。Info/Debug 永不包含密码、token、凭据、MAC、
-DNS/DHCP、网关、网卡 ID、请求/响应字节或原始 error。
+`sidraviad.log.1` 备份。`SIDRAVIA_LOG_LEVEL` 可设为 `info`、`debug` 或 `trace`：
+Info 包含 daemon 生命周期、网络快照应用和 Session Snapshot；Debug 增加 IPC
+连接/完成、Session 命令、协议运行代际、重试调度和阶段边界；Trace 增加完整 D520
+数据报 hex（含账号与认证材料，显式敏感），并在首条数据报前记录
+`trace_logging_sensitive`。Info/Debug 允许完整账号名、机构显示名、友好接口名和所选
+IPv4，但不含密码、token、MAC、DNS/DHCP、网关、InterfaceID、请求/响应字节或原始
+error。CLI 后台启动时，所选级别的记录会持久化到当前日志或唯一 `.1` 备份。
 
 ## 权限与文件模式
 
