@@ -11,6 +11,9 @@ credential-free D520 Challenge socket modes.
 
 .EXAMPLE
 .\tools\windows_hotspot_udp_diagnostic.ps1 -Mode Probe -Label hotspot-on -LocalAddress 59.72.39.104 -ServerAddress 10.100.61.3 -InterfaceIndex 8 -AllowCredentialFreeChallenge
+
+.EXAMPLE
+.\tools\windows_hotspot_udp_diagnostic.ps1 -Mode Probe -Label hotspot-on -LocalAddress 59.72.39.104 -ServerAddress 10.100.61.3 -InterfaceIndex 8 -UsePacketInfo -AllowCredentialFreeChallenge
 #>
 [CmdletBinding()]
 param(
@@ -25,13 +28,315 @@ param(
     [int]$ServerPort = 61440,
     [int]$TimeoutMilliseconds = 3000,
     [int]$InterfaceIndex,
+    [switch]$UsePacketInfo,
     [switch]$AllowCredentialFreeChallenge
 )
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $script:InterfaceIndexRequested = $PSBoundParameters.ContainsKey('InterfaceIndex')
+$script:PacketInfoRequested = [bool]$UsePacketInfo
 $script:IpUnicastIfOptionName = 31
+
+$script:PacketInfoHelperSource = @'
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+
+public static class SidraviaPacketInfoSender
+{
+    private const int SocketError = -1;
+    private const int SioGetExtensionFunctionPointer = unchecked((int)0xC8000006);
+    private const int IpProtoIp = 0;
+    private const int IpPacketInfo = 19;
+    private static readonly Guid WsaIdWsaSendMsg =
+        new Guid("a441e712-754f-43ca-84a7-0dee44cf606d");
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WsaBuffer
+    {
+        public UIntPtr Length;
+        public IntPtr Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WsaMessage
+    {
+        public IntPtr Name;
+        public int NameLength;
+        public IntPtr Buffers;
+        public uint BufferCount;
+        public WsaBuffer Control;
+        public uint Flags;
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int WsaSendMsgDelegate(
+        IntPtr socket,
+        ref WsaMessage message,
+        uint flags,
+        out uint bytesSent,
+        IntPtr overlapped,
+        IntPtr completionRoutine);
+
+    [DllImport("Ws2_32.dll", SetLastError = true)]
+    private static extern int WSAIoctl(
+        IntPtr socket,
+        int controlCode,
+        ref Guid inputBuffer,
+        int inputBufferLength,
+        out IntPtr outputBuffer,
+        int outputBufferLength,
+        out int bytesReturned,
+        IntPtr overlapped,
+        IntPtr completionRoutine);
+
+    [DllImport("Ws2_32.dll")]
+    private static extern int WSAGetLastError();
+
+    public sealed class SendResult
+    {
+        public bool Success;
+        public int ErrorCode;
+    }
+
+    public sealed class LayoutInspection
+    {
+        public int PointerSize;
+        public int HeaderLength;
+        public int DataOffset;
+        public int ControlLength;
+        public int Level;
+        public int Type;
+        public byte[] SourceAddressBytes;
+        public int InterfaceIndex;
+    }
+
+    private static int Align(int length)
+    {
+        int alignment = IntPtr.Size;
+        return (length + alignment - 1) & ~(alignment - 1);
+    }
+
+    private static IntPtr BuildControl(
+        IPAddress sourceAddress,
+        int interfaceIndex,
+        out int headerLength,
+        out int dataOffset,
+        out int controlLength)
+    {
+        byte[] addressBytes = sourceAddress.GetAddressBytes();
+        if (addressBytes.Length != 4)
+        {
+            throw new ArgumentException("IPv4 source required", "sourceAddress");
+        }
+
+        headerLength = IntPtr.Size + 8;
+        dataOffset = Align(headerLength);
+        int packetInfoLength = 8;
+        controlLength = dataOffset + Align(packetInfoLength);
+        int messageLength = dataOffset + packetInfoLength;
+        IntPtr control = Marshal.AllocHGlobal(controlLength);
+        for (int i = 0; i < controlLength; i++)
+        {
+            Marshal.WriteByte(control, i, 0);
+        }
+
+        Marshal.WriteIntPtr(control, 0, new IntPtr(messageLength));
+        Marshal.WriteInt32(control, IntPtr.Size, IpProtoIp);
+        Marshal.WriteInt32(control, IntPtr.Size + 4, IpPacketInfo);
+        for (int i = 0; i < addressBytes.Length; i++)
+        {
+            Marshal.WriteByte(control, dataOffset + i, addressBytes[i]);
+        }
+        Marshal.WriteInt32(control, dataOffset + 4, interfaceIndex);
+        return control;
+    }
+
+    private static IntPtr BuildSockaddr(IPEndPoint destination)
+    {
+        byte[] addressBytes = destination.Address.GetAddressBytes();
+        if (addressBytes.Length != 4)
+        {
+            throw new ArgumentException("IPv4 destination required", "destination");
+        }
+        IntPtr address = Marshal.AllocHGlobal(16);
+        for (int i = 0; i < 16; i++)
+        {
+            Marshal.WriteByte(address, i, 0);
+        }
+        Marshal.WriteInt16(address, 0, 2);
+        Marshal.WriteByte(address, 2, (byte)((destination.Port >> 8) & 0xff));
+        Marshal.WriteByte(address, 3, (byte)(destination.Port & 0xff));
+        for (int i = 0; i < addressBytes.Length; i++)
+        {
+            Marshal.WriteByte(address, 4 + i, addressBytes[i]);
+        }
+        return address;
+    }
+
+    public static LayoutInspection Inspect(IPAddress sourceAddress, int interfaceIndex)
+    {
+        IntPtr control = IntPtr.Zero;
+        try
+        {
+            int headerLength;
+            int dataOffset;
+            int controlLength;
+            control = BuildControl(
+                sourceAddress,
+                interfaceIndex,
+                out headerLength,
+                out dataOffset,
+                out controlLength);
+            byte[] sourceBytes = new byte[4];
+            for (int i = 0; i < sourceBytes.Length; i++)
+            {
+                sourceBytes[i] = Marshal.ReadByte(control, dataOffset + i);
+            }
+            return new LayoutInspection
+            {
+                PointerSize = IntPtr.Size,
+                HeaderLength = headerLength,
+                DataOffset = dataOffset,
+                ControlLength = controlLength,
+                Level = Marshal.ReadInt32(control, IntPtr.Size),
+                Type = Marshal.ReadInt32(control, IntPtr.Size + 4),
+                SourceAddressBytes = sourceBytes,
+                InterfaceIndex = Marshal.ReadInt32(control, dataOffset + 4)
+            };
+        }
+        finally
+        {
+            if (control != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(control);
+            }
+        }
+    }
+
+    public static SendResult Send(
+        Socket socket,
+        byte[] payload,
+        IPAddress sourceAddress,
+        int interfaceIndex,
+        IPEndPoint destination)
+    {
+        IntPtr control = IntPtr.Zero;
+        IntPtr payloadBuffer = IntPtr.Zero;
+        IntPtr wsaBufferPointer = IntPtr.Zero;
+        IntPtr name = IntPtr.Zero;
+        try
+        {
+            int headerLength;
+            int dataOffset;
+            int controlLength;
+            control = BuildControl(
+                sourceAddress,
+                interfaceIndex,
+                out headerLength,
+                out dataOffset,
+                out controlLength);
+
+            payloadBuffer = Marshal.AllocHGlobal(payload.Length);
+            Marshal.Copy(payload, 0, payloadBuffer, payload.Length);
+            WsaBuffer payloadWsaBuffer = new WsaBuffer
+            {
+                Length = new UIntPtr((uint)payload.Length),
+                Buffer = payloadBuffer
+            };
+            wsaBufferPointer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(WsaBuffer)));
+            Marshal.StructureToPtr(payloadWsaBuffer, wsaBufferPointer, false);
+
+            int nameLength = 0;
+            if (destination != null)
+            {
+                name = BuildSockaddr(destination);
+                nameLength = 16;
+            }
+
+            IntPtr functionPointer;
+            int bytesReturned;
+            Guid functionId = WsaIdWsaSendMsg;
+            int ioctlResult = WSAIoctl(
+                socket.Handle,
+                SioGetExtensionFunctionPointer,
+                ref functionId,
+                Marshal.SizeOf(typeof(Guid)),
+                out functionPointer,
+                IntPtr.Size,
+                out bytesReturned,
+                IntPtr.Zero,
+                IntPtr.Zero);
+            if (ioctlResult == SocketError)
+            {
+                return new SendResult { Success = false, ErrorCode = WSAGetLastError() };
+            }
+
+            WsaSendMsgDelegate sendMessage =
+                (WsaSendMsgDelegate)Marshal.GetDelegateForFunctionPointer(
+                    functionPointer,
+                    typeof(WsaSendMsgDelegate));
+            WsaMessage message = new WsaMessage
+            {
+                Name = name,
+                NameLength = nameLength,
+                Buffers = wsaBufferPointer,
+                BufferCount = 1,
+                Control = new WsaBuffer
+                {
+                    Length = new UIntPtr((uint)controlLength),
+                    Buffer = control
+                },
+                Flags = 0
+            };
+            uint bytesSent;
+            int sendResult = sendMessage(
+                socket.Handle,
+                ref message,
+                0,
+                out bytesSent,
+                IntPtr.Zero,
+                IntPtr.Zero);
+            if (sendResult == SocketError)
+            {
+                return new SendResult { Success = false, ErrorCode = WSAGetLastError() };
+            }
+            if (bytesSent != payload.Length)
+            {
+                return new SendResult { Success = false, ErrorCode = 10040 };
+            }
+            return new SendResult { Success = true, ErrorCode = 0 };
+        }
+        finally
+        {
+            if (name != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(name);
+            }
+            if (wsaBufferPointer != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(wsaBufferPointer);
+            }
+            if (payloadBuffer != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(payloadBuffer);
+            }
+            if (control != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(control);
+            }
+        }
+    }
+}
+'@
+
+function Initialize-PacketInfoHelper {
+    if ($null -eq ('SidraviaPacketInfoSender' -as [type])) {
+        $null = Add-Type -TypeDefinition $script:PacketInfoHelperSource -Language CSharp -ErrorAction Stop
+    }
+}
 
 $script:SchemaFieldNames = @(
     'schemaVersion',
@@ -102,6 +407,29 @@ function Test-InterfaceIndexModeCompatibility {
     return -not $WasRequested -or $RequestedMode -eq 'Probe'
 }
 
+function Get-PacketInfoArgumentStatus {
+    param(
+        [string]$RequestedMode,
+        [bool]$PacketInfoWasRequested,
+        [bool]$InterfaceWasRequested,
+        [string]$RequestedLocalAddress
+    )
+
+    if (-not $PacketInfoWasRequested) {
+        return 'valid'
+    }
+    if ($RequestedMode -ne 'Probe') {
+        return 'packet_info_only_for_probe'
+    }
+    if (-not $InterfaceWasRequested) {
+        return 'packet_info_requires_interface_index'
+    }
+    if ($RequestedLocalAddress -eq '0.0.0.0') {
+        return 'packet_info_requires_concrete_local_address'
+    }
+    return 'valid'
+}
+
 function ConvertTo-UnicastInterfaceOptionBytes {
     param([int]$Value)
 
@@ -124,7 +452,8 @@ function New-InputProjection {
         [int]$ProjectedServerPort,
         [int]$ProjectedTimeoutMilliseconds,
         [bool]$InterfaceWasRequested,
-        [int]$ProjectedInterfaceIndex
+        [int]$ProjectedInterfaceIndex,
+        [bool]$PacketInfoWasRequested
     )
 
     return [pscustomobject][ordered]@{
@@ -134,6 +463,7 @@ function New-InputProjection {
         serverPort = $ProjectedServerPort
         timeoutMilliseconds = $ProjectedTimeoutMilliseconds
         interfaceIndex = if ($InterfaceWasRequested) { $ProjectedInterfaceIndex } else { $null }
+        usePacketInfo = $PacketInfoWasRequested
     }
 }
 
@@ -184,6 +514,8 @@ function Assert-SelfTest {
 }
 
 function Invoke-SelfTest {
+    Initialize-PacketInfoHelper
+
     $low = New-ChallengeRequest -UnixSeconds 0x1234 -Offset 0x0f
     Assert-SelfTest ($low.Length -eq 20) 'challenge_length'
     Assert-SelfTest ($low[0] -eq 0x01 -and $low[1] -eq 0x02 -and
@@ -261,10 +593,35 @@ function Invoke-SelfTest {
     Assert-SelfTest (-not (Test-InterfaceIndexModeCompatibility 'Snapshot' $true)) 'snapshot_rejects_interface_index'
     Assert-SelfTest (Test-InterfaceIndexModeCompatibility 'Probe' $true) 'probe_accepts_interface_index'
 
-    $inputsWithoutInterface = New-InputProjection '59.72.39.104' 61440 '10.100.61.3' 61440 3000 $false 0
+    $inputsWithoutInterface = New-InputProjection '59.72.39.104' 61440 '10.100.61.3' 61440 3000 $false 0 $false
     Assert-SelfTest ($null -eq $inputsWithoutInterface.interfaceIndex) 'input_interface_index_null'
-    $inputsWithInterface = New-InputProjection '59.72.39.104' 61440 '10.100.61.3' 61440 3000 $true 8
+    Assert-SelfTest ($inputsWithoutInterface.usePacketInfo -eq $false) 'input_packet_info_false'
+    $inputsWithInterface = New-InputProjection '59.72.39.104' 61440 '10.100.61.3' 61440 3000 $true 8 $true
     Assert-SelfTest ($inputsWithInterface.interfaceIndex -eq 8) 'input_interface_index_value'
+    Assert-SelfTest ($inputsWithInterface.usePacketInfo -eq $true) 'input_packet_info_true'
+
+    Assert-SelfTest ((Get-PacketInfoArgumentStatus 'SelfTest' $true $true '59.72.39.104') -eq
+        'packet_info_only_for_probe') 'self_test_rejects_packet_info'
+    Assert-SelfTest ((Get-PacketInfoArgumentStatus 'Snapshot' $true $true '59.72.39.104') -eq
+        'packet_info_only_for_probe') 'snapshot_rejects_packet_info'
+    Assert-SelfTest ((Get-PacketInfoArgumentStatus 'Probe' $true $false '59.72.39.104') -eq
+        'packet_info_requires_interface_index') 'packet_info_requires_interface'
+    Assert-SelfTest ((Get-PacketInfoArgumentStatus 'Probe' $true $true '0.0.0.0') -eq
+        'packet_info_requires_concrete_local_address') 'packet_info_rejects_wildcard'
+    Assert-SelfTest ((Get-PacketInfoArgumentStatus 'Probe' $true $true '59.72.39.104') -eq
+        'valid') 'packet_info_valid_arguments'
+
+    $layout = [SidraviaPacketInfoSender]::Inspect(
+        [System.Net.IPAddress]::Parse('59.72.39.104'),
+        8
+    )
+    Assert-SelfTest ($layout.DataOffset -ge $layout.HeaderLength -and
+        ($layout.DataOffset % $layout.PointerSize) -eq 0 -and
+        ($layout.ControlLength % $layout.PointerSize) -eq 0) 'packet_info_native_alignment'
+    Assert-SelfTest ($layout.Level -eq 0) 'packet_info_level'
+    Assert-SelfTest ($layout.Type -eq 19) 'packet_info_type'
+    Assert-SelfTest (($layout.SourceAddressBytes -join ',') -eq '59,72,39,104') 'packet_info_source_bytes'
+    Assert-SelfTest ($layout.InterfaceIndex -eq 8) 'packet_info_interface_index'
 }
 
 function Get-ObjectPropertyValue {
@@ -558,7 +915,8 @@ function Invoke-ProbeAttempt {
         [System.Net.IPAddress]$ServerIPAddress,
         [int]$RequestedServerPort,
         [int]$RequestedTimeoutMilliseconds,
-        [object]$RequestedInterfaceIndex
+        [object]$RequestedInterfaceIndex,
+        [bool]$UsePacketInfoForAttempt
     )
 
     $started = [DateTimeOffset]::UtcNow
@@ -575,6 +933,22 @@ function Invoke-ProbeAttempt {
         status = 'not_requested'
         requestedInterfaceIndex = $null
         socketErrorCode = $null
+    }
+    $packetInfo = if ($UsePacketInfoForAttempt) {
+        [pscustomobject][ordered]@{
+            status = 'failed'
+            requestedSourceAddress = $LocalIPAddress.ToString()
+            requestedInterfaceIndex = [int]$RequestedInterfaceIndex
+            winsockErrorCode = 'unknown'
+        }
+    }
+    else {
+        [pscustomobject][ordered]@{
+            status = 'not_requested'
+            requestedSourceAddress = $null
+            requestedInterfaceIndex = $null
+            winsockErrorCode = $null
+        }
     }
     $target = New-Object System.Net.IPEndPoint($ServerIPAddress, $RequestedServerPort)
 
@@ -604,7 +978,9 @@ function Invoke-ProbeAttempt {
             $socketErrorCategory = 'reset_control'
         }
         else {
-            $unicastInterface = Set-UnicastInterfaceOption $socket $RequestedInterfaceIndex
+            if (-not $UsePacketInfoForAttempt) {
+                $unicastInterface = Set-UnicastInterfaceOption $socket $RequestedInterfaceIndex
+            }
             if ($unicastInterface.status -eq 'failed') {
                 $socketErrorCode = $unicastInterface.socketErrorCode
                 $socketErrorCategory = 'unicast_interface'
@@ -615,9 +991,64 @@ function Invoke-ProbeAttempt {
                 $boundEndpoint = New-EndpointFact $socket.LocalEndPoint
                 $request = New-RandomChallengeRequest
                 $buffer = New-Object byte[] 65535
+                $sendSucceeded = $false
 
-                if ($SocketMode -eq 'unconnected') {
+                if ($SocketMode -eq 'connected') {
+                    $socket.Connect($target)
+                    $connectedEndpoint = New-EndpointFact $socket.RemoteEndPoint
+                }
+
+                if ($UsePacketInfoForAttempt) {
+                    try {
+                        $packetDestination = if ($SocketMode -eq 'unconnected') { $target } else { $null }
+                        $sendResult = [SidraviaPacketInfoSender]::Send(
+                            $socket,
+                            [byte[]]$request,
+                            $LocalIPAddress,
+                            [int]$RequestedInterfaceIndex,
+                            $packetDestination
+                        )
+                        if ($sendResult.Success) {
+                            $packetInfo = [pscustomobject][ordered]@{
+                                status = 'applied'
+                                requestedSourceAddress = $LocalIPAddress.ToString()
+                                requestedInterfaceIndex = [int]$RequestedInterfaceIndex
+                                winsockErrorCode = $null
+                            }
+                            $sendSucceeded = $true
+                        }
+                        else {
+                            $packetInfo = [pscustomobject][ordered]@{
+                                status = 'failed'
+                                requestedSourceAddress = $LocalIPAddress.ToString()
+                                requestedInterfaceIndex = [int]$RequestedInterfaceIndex
+                                winsockErrorCode = [int]$sendResult.ErrorCode
+                            }
+                            $socketErrorCode = [int]$sendResult.ErrorCode
+                            $socketErrorCategory = 'packet_info'
+                        }
+                    }
+                    catch {
+                        $packetInfo = [pscustomobject][ordered]@{
+                            status = 'failed'
+                            requestedSourceAddress = $LocalIPAddress.ToString()
+                            requestedInterfaceIndex = [int]$RequestedInterfaceIndex
+                            winsockErrorCode = 'unknown'
+                        }
+                        $socketErrorCode = 'unknown'
+                        $socketErrorCategory = 'packet_info'
+                    }
+                }
+                elseif ($SocketMode -eq 'unconnected') {
                     $null = $socket.SendTo($request, $target)
+                    $sendSucceeded = $true
+                }
+                else {
+                    $null = $socket.Send($request)
+                    $sendSucceeded = $true
+                }
+
+                if ($sendSucceeded -and $SocketMode -eq 'unconnected') {
                     [System.Net.EndPoint]$sender = New-Object System.Net.IPEndPoint(
                         [System.Net.IPAddress]::Any,
                         0
@@ -625,18 +1056,17 @@ function Invoke-ProbeAttempt {
                     $length = $socket.ReceiveFrom($buffer, [ref]$sender)
                     $received = New-ReceivedDatagramFact $buffer $length $sender
                 }
-                else {
-                    $socket.Connect($target)
-                    $connectedEndpoint = New-EndpointFact $socket.RemoteEndPoint
-                    $null = $socket.Send($request)
+                elseif ($sendSucceeded) {
                     $length = $socket.Receive($buffer)
                     $received = New-ReceivedDatagramFact $buffer $length $null
                 }
-                $outcome = if ($received.meetsChallengeMinimum) {
-                    'challenge_response'
-                }
-                else {
-                    'non_challenge_datagram'
+                if ($sendSucceeded) {
+                    $outcome = if ($received.meetsChallengeMinimum) {
+                        'challenge_response'
+                    }
+                    else {
+                        'non_challenge_datagram'
+                    }
                 }
             }
         }
@@ -678,6 +1108,7 @@ function Invoke-ProbeAttempt {
         connectedEndpoint = $connectedEndpoint
         resetControls = $resetControls
         unicastInterface = $unicastInterface
+        packetInfo = $packetInfo
         outcome = $outcome
         socketErrorCode = $socketErrorCode
         socketErrorCategory = $socketErrorCategory
@@ -697,7 +1128,7 @@ function New-NormalDocument {
         schemaVersion = 1
         capturedAtUtc = [DateTimeOffset]::UtcNow.UtcDateTime.ToString('o')
         label = $Label
-        inputs = New-InputProjection $LocalAddress $LocalPort $ServerAddress $ServerPort $TimeoutMilliseconds $script:InterfaceIndexRequested $InterfaceIndex
+        inputs = New-InputProjection $LocalAddress $LocalPort $ServerAddress $ServerPort $TimeoutMilliseconds $script:InterfaceIndexRequested $InterfaceIndex $script:PacketInfoRequested
         route = $Facts.route
         interface = $Facts.interface
         localAddressMappings = $Facts.localAddressMappings
@@ -735,6 +1166,7 @@ try {
             'ServerPort',
             'TimeoutMilliseconds',
             'InterfaceIndex',
+            'UsePacketInfo',
             'AllowCredentialFreeChallenge'
         )
         foreach ($name in $extraNames) {
@@ -773,6 +1205,10 @@ try {
     }
     if ($script:InterfaceIndexRequested -and -not (Test-InterfaceIndexValue $InterfaceIndex)) {
         throw 'interface_index_must_be_1_to_16777215'
+    }
+    $packetInfoArgumentStatus = Get-PacketInfoArgumentStatus $Mode $script:PacketInfoRequested $script:InterfaceIndexRequested $LocalAddress
+    if ($packetInfoArgumentStatus -ne 'valid') {
+        throw $packetInfoArgumentStatus
     }
     if ($Mode -eq 'Snapshot' -and $AllowCredentialFreeChallenge) {
         throw 'snapshot_rejects_probe_confirmation'
@@ -843,13 +1279,16 @@ try {
             exit 6
         }
     }
+    if ($script:PacketInfoRequested) {
+        Initialize-PacketInfoHelper
+    }
     $localIPAddress = ConvertTo-IPv4Address $LocalAddress
     $serverIPAddress = ConvertTo-IPv4Address $ServerAddress
     $probeOrder = @('unconnected', 'connected')
     $probeResults = @()
     $requestedInterfaceIndex = if ($script:InterfaceIndexRequested) { $InterfaceIndex } else { $null }
-    $probeResults += Invoke-ProbeAttempt 'unconnected' $localIPAddress $LocalPort $serverIPAddress $ServerPort $TimeoutMilliseconds $requestedInterfaceIndex
-    $probeResults += Invoke-ProbeAttempt 'connected' $localIPAddress $LocalPort $serverIPAddress $ServerPort $TimeoutMilliseconds $requestedInterfaceIndex
+    $probeResults += Invoke-ProbeAttempt 'unconnected' $localIPAddress $LocalPort $serverIPAddress $ServerPort $TimeoutMilliseconds $requestedInterfaceIndex $script:PacketInfoRequested
+    $probeResults += Invoke-ProbeAttempt 'connected' $localIPAddress $LocalPort $serverIPAddress $ServerPort $TimeoutMilliseconds $requestedInterfaceIndex $script:PacketInfoRequested
     Write-NormalDocument (New-NormalDocument $facts $preflight $probeOrder $probeResults)
     exit 0
 }
