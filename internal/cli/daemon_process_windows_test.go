@@ -3,13 +3,88 @@
 package cli
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
+
+	"sidravia/internal/productlayout"
 )
+
+func TestWindowsLaunchObservesOneWait(t *testing.T) {
+	log, err := os.CreateTemp(t.TempDir(), "log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("wait")
+	starts, waits := 0, 0
+	got, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+		resolveLayout: func() (productlayout.Layout, error) {
+			return productlayout.Layout{ExecutableDirectory: `C:\\Sidravia`, DaemonLogPath: log.Name()}, nil
+		},
+		prepareLog: func(string) (*os.File, error) { return log, nil }, parentEnv: func() []string { return nil },
+		start: func(*exec.Cmd) error { starts++; return nil }, wait: func(*exec.Cmd) error { waits++; return cause },
+	})
+	if err != nil || got.exited == nil {
+		t.Fatalf("launch = %#v, %v", got, err)
+	}
+	if cap(got.exited) != 1 {
+		t.Fatalf("exit observation capacity = %d, want 1", cap(got.exited))
+	}
+	if gotErr := <-got.exited; !errors.Is(gotErr, cause) || starts != 1 || waits != 1 {
+		t.Fatalf("start=%d wait=%d err=%v", starts, waits, gotErr)
+	}
+	if _, err := log.Write([]byte("closed")); err == nil {
+		t.Fatal("parent log remains open after successful start")
+	}
+}
+
+func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
+	t.Run("layout", func(t *testing.T) {
+		cause := errors.New("layout")
+		_, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, cause },
+		})
+		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "解析 sidravia 运行目录") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("log", func(t *testing.T) {
+		cause := errors.New("log")
+		_, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, nil },
+			prepareLog:    func(string) (*os.File, error) { return nil, cause },
+		})
+		if !errors.Is(err, cause) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("start", func(t *testing.T) {
+		log, err := os.CreateTemp(t.TempDir(), "log")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cause := errors.New("start")
+		waits := 0
+		launch, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{DaemonLogPath: log.Name()}, nil },
+			prepareLog:    func(string) (*os.File, error) { return log, nil },
+			parentEnv:     func() []string { return nil },
+			start:         func(*exec.Cmd) error { return cause },
+			wait:          func(*exec.Cmd) error { waits++; return nil },
+		})
+		if launch.exited != nil || !errors.Is(err, cause) || waits != 0 {
+			t.Fatalf("launch=%#v error=%v waits=%d", launch, err, waits)
+		}
+		if _, err := log.Write([]byte("closed")); err == nil {
+			t.Fatal("parent log remains open after failed start")
+		}
+	})
+}
 
 // TestDaemonEnvForLevelSetsChildLogLevel proves a non-empty log level appends
 // exactly one SIDRAVIA_LOG_LEVEL entry to the child environment without

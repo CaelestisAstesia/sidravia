@@ -4,6 +4,8 @@
 
 ## 当前结论
 
+Windows launcher early-exit reporting has code and automatic validation; Windows-native rerun remains pending.
+
 后端模块已经完成职责重整，并通过独立 Review。
 
 早期顶层 `sidravia status`、host 运行信息清理和验收脚本安全清理已经通过独立 Review；

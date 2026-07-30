@@ -21,7 +21,7 @@ func hotListDependencies(t *testing.T, connection daemonClient, output *bytes.Bu
 				readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
 					return testRuntimeInfo(904), nil
 				},
-				startDaemon:  func() error { t.Fatal("hot discovery started daemon"); return nil },
+				startDaemon:  func() (daemonLaunch, error) { t.Fatal("hot discovery started daemon"); return daemonLaunch{}, nil },
 				totalWait:    time.Second,
 				pollInterval: time.Millisecond,
 			},

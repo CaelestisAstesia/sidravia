@@ -31,5 +31,6 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0025](0025-linux-wsl-platform-baseline.md) | Linux/WSL 平台基线 | Accepted |
 | [0026](0026-windows-secure-directory-inheritance.md) | Windows 安全配置目录的可继承 DACL | Accepted |
 | [0027](0027-d520-local-endpoint-and-wire-profile.md) | D520 本地端点与线级 Profile 对齐 | Accepted |
+| [0028](0028-windows-daemon-child-exit-readiness.md) | Windows daemon child-exit readiness | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。

@@ -123,7 +123,7 @@ func TestDaemonStartIdempotentWhenReachable(t *testing.T) {
 		probe: fakeProbeDeps(probeReachable, info, func(string, json.RawMessage) (contract.Response, error) {
 			return daemonStatusResponse(t), nil
 		}),
-		launch:       func(string) error { launches++; return nil },
+		launch:       func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil },
 		logLevel:     "",
 		totalWait:    time.Second,
 		pollInterval: time.Millisecond,
@@ -156,10 +156,10 @@ func TestDaemonStartLaunchesWhenStopped(t *testing.T) {
 			},
 			callTimeout: time.Second,
 		},
-		launch: func(string) error {
+		launch: func(string) (daemonLaunch, error) {
 			launches++
 			reachable = true
-			return nil
+			return daemonLaunch{}, nil
 		},
 		logLevel:     "debug",
 		totalWait:    time.Second,
@@ -269,10 +269,10 @@ func TestDaemonRestartStoppedIsStart(t *testing.T) {
 		},
 		ensure: ensureDependencies{
 			probe: probe,
-			launch: func(string) error {
+			launch: func(string) (daemonLaunch, error) {
 				launches++
 				reachable = true
-				return nil
+				return daemonLaunch{}, nil
 			},
 			totalWait:    time.Second,
 			pollInterval: time.Millisecond,
@@ -324,7 +324,7 @@ func TestDaemonRestartStopsOriginalGeneration(t *testing.T) {
 		},
 		ensure: ensureDependencies{
 			probe:        probe,
-			launch:       func(string) error { return errors.New("must not launch") },
+			launch:       func(string) (daemonLaunch, error) { return daemonLaunch{}, errors.New("must not launch") },
 			totalWait:    time.Second,
 			pollInterval: time.Millisecond,
 		},
@@ -343,7 +343,7 @@ func TestEnsureDaemonRunningPropagatesProbePathError(t *testing.T) {
 		probe: probeDependencies{
 			runtimeInfoPath: func() (string, error) { return "", errors.New("path failure") },
 		},
-		launch: func(string) error { launches++; return nil },
+		launch: func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil },
 	}
 	if err := ensureDaemonRunning(deps); err == nil {
 		t.Fatal("expected probe path error")
@@ -367,6 +367,72 @@ func TestDaemonEnvForLevelReplacesCaseInsensitiveDuplicates(t *testing.T) {
 	if strings.Join(parent, "\x00") != strings.Join(original, "\x00") {
 		t.Errorf("parent environment mutated: got %v want %v", parent, original)
 	}
+}
+
+func TestWaitForDaemonReadinessEarlyExitIsSafe(t *testing.T) {
+	cause := errors.New("wait cause")
+	exited := make(chan error, 1)
+	exited <- cause
+	done := make(chan error, 1)
+	go func() {
+		done <- waitForDaemonReadiness(time.Hour, time.Millisecond, exited, func() (bool, error) { return false, nil })
+	}()
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "sidraviad 在就绪前退出；请检查 daemon 日志" || !errors.Is(err, cause) {
+			t.Fatalf("err = %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("early exit waited for readiness timeout")
+	}
+}
+
+func TestWaitForDaemonReadinessFinalAttempts(t *testing.T) {
+	t.Run("closed exit uses sentinel", func(t *testing.T) {
+		exited := make(chan error)
+		close(exited)
+		err := waitForDaemonReadiness(time.Hour, time.Millisecond, exited, func() (bool, error) { return false, nil })
+		if !errors.Is(err, errDaemonExitedBeforeReadiness) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("exit final attempt preserves cause", func(t *testing.T) {
+		cause := errors.New("attempt")
+		exited := make(chan error, 1)
+		exited <- errors.New("wait")
+		err := waitForDaemonReadiness(time.Hour, time.Millisecond, exited, func() (bool, error) { return false, cause })
+		if !errors.Is(err, cause) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("timeout final readiness wins", func(t *testing.T) {
+		if err := waitForDaemonReadiness(0, time.Millisecond, nil, func() (bool, error) { return true, nil }); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("timeout final attempt preserves cause", func(t *testing.T) {
+		cause := errors.New("attempt")
+		err := waitForDaemonReadiness(0, time.Millisecond, nil, func() (bool, error) { return false, cause })
+		if !errors.Is(err, cause) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("nil observation times out", func(t *testing.T) {
+		err := waitForDaemonReadiness(0, time.Millisecond, nil, func() (bool, error) { return false, nil })
+		if err == nil || err.Error() != "等待 sidraviad 超时" {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("polling reaches readiness", func(t *testing.T) {
+		attempts := 0
+		err := waitForDaemonReadiness(time.Second, time.Millisecond, nil, func() (bool, error) {
+			attempts++
+			return attempts == 2, nil
+		})
+		if err != nil || attempts != 2 {
+			t.Fatalf("err = %v attempts = %d", err, attempts)
+		}
+	})
 }
 
 func TestParseDaemonLogLevel(t *testing.T) {

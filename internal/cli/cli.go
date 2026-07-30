@@ -676,7 +676,7 @@ func renderHelpCompletion(cmd *cobra.Command) error {
 type discoveryDependencies struct {
 	runtimeInfoPath func() (string, error)
 	readRuntimeInfo func(path string) (contract.RuntimeInfo, error)
-	startDaemon     func() error
+	startDaemon     func() (daemonLaunch, error)
 	totalWait       time.Duration
 	pollInterval    time.Duration
 }
@@ -706,32 +706,17 @@ func discoverDaemon(deps discoveryDependencies, operation func(contract.RuntimeI
 	}
 
 	// Daemon not reachable - start it.
-	if err := deps.startDaemon(); err != nil {
+	launch, err := deps.startDaemon()
+	if err != nil {
 		return wrapSafeOperation("启动 sidraviad", err)
 	}
-
-	// Wait up to totalWait for the daemon to write runtime info and accept connections.
-	ctx, cancel := context.WithTimeout(context.Background(), deps.totalWait)
-	defer cancel()
-
-	ticker := time.NewTicker(deps.pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.New("等待 sidraviad 超时")
-		case <-ticker.C:
-			info, err := deps.readRuntimeInfo(infoPath)
-			if err != nil {
-				continue
-			}
-			if err := operation(info); err != nil {
-				continue
-			}
-			return nil
+	return waitForDaemonReadiness(deps.totalWait, deps.pollInterval, launch.exited, func() (bool, error) {
+		info, err := deps.readRuntimeInfo(infoPath)
+		if err != nil {
+			return false, nil
 		}
-	}
+		return operation(info) == nil, nil
+	})
 }
 
 func runtimeInfoPath() (string, error) {
@@ -767,7 +752,7 @@ func connectAndPrint(info contract.RuntimeInfo) error {
 	return writeStatus(os.Stdout, resp)
 }
 
-func startDaemon() error {
+func startDaemon() (daemonLaunch, error) {
 	return launchDaemonProcess("")
 }
 

@@ -18,22 +18,40 @@ import (
 // once the process has started; the caller polls for reachability. logLevel
 // must be "", "info", "debug" or "trace"; an empty value leaves the child at
 // the daemon default. It never changes the parent environment.
-func launchDaemonProcess(logLevel string) error {
-	layout, err := productlayout.Resolve()
+func launchDaemonProcess(logLevel string) (daemonLaunch, error) {
+	return launchDaemonProcessWith(logLevel, defaultWindowsDaemonLauncherDeps())
+}
+
+type windowsDaemonLauncherDeps struct {
+	resolveLayout func() (productlayout.Layout, error)
+	prepareLog    func(string) (*os.File, error)
+	parentEnv     func() []string
+	start         func(*exec.Cmd) error
+	wait          func(*exec.Cmd) error
+}
+
+func defaultWindowsDaemonLauncherDeps() windowsDaemonLauncherDeps {
+	return windowsDaemonLauncherDeps{productlayout.Resolve, prepareDaemonLog, os.Environ, func(c *exec.Cmd) error { return c.Start() }, func(c *exec.Cmd) error { return c.Wait() }}
+}
+
+func launchDaemonProcessWith(logLevel string, deps windowsDaemonLauncherDeps) (daemonLaunch, error) {
+	layout, err := deps.resolveLayout()
 	if err != nil {
-		return fmt.Errorf("解析 sidravia 运行目录: %w", err)
+		return daemonLaunch{}, fmt.Errorf("解析 sidravia 运行目录: %w", err)
 	}
 	daemonPath := filepath.Join(layout.ExecutableDirectory, "sidraviad.exe")
-	logFile, err := prepareDaemonLog(layout.DaemonLogPath)
+	logFile, err := deps.prepareLog(layout.DaemonLogPath)
 	if err != nil {
-		return err
+		return daemonLaunch{}, err
 	}
 	defer logFile.Close()
-	cmd := daemonProcessCommand(daemonPath, logFile, os.Environ(), logLevel)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("启动 sidraviad 子进程: %w", err)
+	cmd := daemonProcessCommand(daemonPath, logFile, deps.parentEnv(), logLevel)
+	if err := deps.start(cmd); err != nil {
+		return daemonLaunch{}, fmt.Errorf("启动 sidraviad 子进程: %w", err)
 	}
-	return nil
+	exited := make(chan error, 1)
+	go func() { exited <- deps.wait(cmd) }()
+	return daemonLaunch{exited: exited}, nil
 }
 
 func daemonProcessCommand(daemonPath string, logFile *os.File, parentEnv []string, logLevel string) *exec.Cmd {

@@ -56,8 +56,12 @@ func TestLaunchDaemonProcessLinuxBuildsCommand(t *testing.T) {
 		return f, nil
 	}
 
-	if err := launchDaemonProcessWith("debug", deps); err != nil {
+	launch, err := launchDaemonProcessWith("debug", deps)
+	if err != nil {
 		t.Fatalf("launchDaemonProcessWith = %v, want nil", err)
+	}
+	if launch.exited != nil {
+		t.Fatalf("exit observation = %v, want nil", launch.exited)
 	}
 
 	if capturedCmd.Path != "/opt/sidravia/sidraviad" {
@@ -90,7 +94,10 @@ func TestLaunchDaemonProcessLinuxResolveErrorOwnership(t *testing.T) {
 		start:         func(*exec.Cmd) error { return nil },
 		release:       func(*exec.Cmd) error { return nil },
 	}
-	err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith("info", deps)
+	if launch.exited != nil {
+		t.Errorf("exit observation = %v, want nil", launch.exited)
+	}
 	if !errors.Is(err, cause) {
 		t.Errorf("error = %v, want resolve cause", err)
 	}
@@ -110,7 +117,10 @@ func TestLaunchDaemonProcessLinuxLogErrorOwnership(t *testing.T) {
 		start:      func(*exec.Cmd) error { return nil },
 		release:    func(*exec.Cmd) error { return nil },
 	}
-	err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith("info", deps)
+	if launch.exited != nil {
+		t.Errorf("exit observation = %v, want nil", launch.exited)
+	}
 	if !errors.Is(err, cause) {
 		t.Errorf("error = %v, want log cause", err)
 	}
@@ -125,7 +135,10 @@ func TestLaunchDaemonProcessLinuxStartErrorOwnership(t *testing.T) {
 		func(*exec.Cmd) error { return cause },
 		func(*exec.Cmd) error { return nil },
 	)
-	err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith("info", deps)
+	if launch.exited != nil {
+		t.Errorf("exit observation = %v, want nil", launch.exited)
+	}
 	if !errors.Is(err, cause) {
 		t.Errorf("error = %v, want start cause", err)
 	}
@@ -140,7 +153,10 @@ func TestLaunchDaemonProcessLinuxReleaseErrorOwnership(t *testing.T) {
 		func(*exec.Cmd) error { return nil },
 		func(*exec.Cmd) error { return cause },
 	)
-	err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith("info", deps)
+	if launch.exited != nil {
+		t.Errorf("exit observation = %v, want nil", launch.exited)
+	}
 	if !errors.Is(err, cause) {
 		t.Errorf("error = %v, want release cause", err)
 	}

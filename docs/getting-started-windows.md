@@ -100,6 +100,8 @@ $ProfilePath = Join-Path $ProfileDir 'jlu.json'
 
 ## 启动和认证
 
+若提示 daemon 在就绪前退出，请检查 daemon 日志；CLI 不显示子进程诊断。
+
 先完全退出其他 Dr.COM 客户端，避免同一账号同时维持多个认证会话。
 
 打开 PowerShell 7 并进入解压目录。当前源码构建默认由 CLI 后台启动 daemon：

@@ -172,10 +172,63 @@ func writeDaemonRestarted(w io.Writer) error {
 // ensureDependencies wires ensureDaemonRunning to its collaborators.
 type ensureDependencies struct {
 	probe        probeDependencies
-	launch       func(logLevel string) error
+	launch       func(logLevel string) (daemonLaunch, error)
 	logLevel     string
 	totalWait    time.Duration
 	pollInterval time.Duration
+}
+
+// daemonLaunch is private platform launcher state.  Only Windows returns an
+// exit observation; it deliberately exposes no process-control capability.
+type daemonLaunch struct{ exited <-chan error }
+
+var errDaemonExitedBeforeReadiness = errors.New("sidraviad exited before readiness")
+
+type daemonEarlyExitError struct{ cause error }
+
+func (e *daemonEarlyExitError) Error() string {
+	return "sidraviad 在就绪前退出；请检查 daemon 日志"
+}
+func (e *daemonEarlyExitError) Unwrap() error { return e.cause }
+
+func waitForDaemonReadiness(totalWait, pollInterval time.Duration, exited <-chan error, attempt func() (bool, error)) error {
+	ctx, cancel := context.WithTimeout(context.Background(), totalWait)
+	defer cancel()
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case waitErr := <-exited:
+			ready, err := attempt()
+			if err != nil {
+				return err
+			}
+			if ready {
+				return nil
+			}
+			if waitErr == nil {
+				waitErr = errDaemonExitedBeforeReadiness
+			}
+			return &daemonEarlyExitError{cause: waitErr}
+		case <-ctx.Done():
+			ready, err := attempt()
+			if err != nil {
+				return err
+			}
+			if ready {
+				return nil
+			}
+			return errors.New("等待 sidraviad 超时")
+		case <-ticker.C:
+			ready, err := attempt()
+			if err != nil {
+				return err
+			}
+			if ready {
+				return nil
+			}
+		}
+	}
 }
 
 func defaultEnsureDependencies(logLevel string) ensureDependencies {
@@ -199,27 +252,14 @@ func ensureDaemonRunning(deps ensureDependencies) error {
 	if result.state == probeReachable {
 		return nil
 	}
-	if err := deps.launch(deps.logLevel); err != nil {
+	launch, err := deps.launch(deps.logLevel)
+	if err != nil {
 		return wrapSafeOperation("启动 sidraviad", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), deps.totalWait)
-	defer cancel()
-	ticker := time.NewTicker(deps.pollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.New("等待 sidraviad 超时")
-		case <-ticker.C:
-			result, err := probeDaemon(deps.probe)
-			if err != nil {
-				return err
-			}
-			if result.state == probeReachable {
-				return nil
-			}
-		}
-	}
+	return waitForDaemonReadiness(deps.totalWait, deps.pollInterval, launch.exited, func() (bool, error) {
+		result, err := probeDaemon(deps.probe)
+		return result.state == probeReachable, err
+	})
 }
 
 // stopDependencies wires runDaemonStop to its collaborators.

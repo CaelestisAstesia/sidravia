@@ -14,7 +14,7 @@ import (
 // daemonSiblingName is the exact sibling executable name the CLI launches.
 const daemonSiblingName = "sidraviad"
 
-func launchDaemonProcess(logLevel string) error {
+func launchDaemonProcess(logLevel string) (daemonLaunch, error) {
 	return launchDaemonProcessWith(logLevel, defaultDaemonLauncherDeps())
 }
 
@@ -50,16 +50,16 @@ func defaultDaemonLauncherDeps() daemonLauncherDeps {
 // session, releases the process because the CLI does not own a later Wait, and
 // closes only the parent's log handle. Resolve, log, start and release failures
 // are wrapped with fixed safe Chinese operation labels while preserving causes.
-func launchDaemonProcessWith(logLevel string, deps daemonLauncherDeps) error {
+func launchDaemonProcessWith(logLevel string, deps daemonLauncherDeps) (daemonLaunch, error) {
 	layout, err := deps.resolveLayout()
 	if err != nil {
-		return wrapSafeOperation("解析 sidraviad 运行目录", err)
+		return daemonLaunch{}, wrapSafeOperation("解析 sidraviad 运行目录", err)
 	}
 	daemonPath := filepath.Join(layout.ExecutableDirectory, daemonSiblingName)
 
 	logFile, err := deps.prepareLog(layout.DaemonLogPath)
 	if err != nil {
-		return wrapSafeOperation("准备 sidraviad 日志", err)
+		return daemonLaunch{}, wrapSafeOperation("准备 sidraviad 日志", err)
 	}
 
 	cmd := exec.Command(daemonPath)
@@ -71,13 +71,16 @@ func launchDaemonProcessWith(logLevel string, deps daemonLauncherDeps) error {
 
 	if err := deps.start(cmd); err != nil {
 		_ = logFile.Close()
-		return wrapSafeOperation("启动 sidraviad", err)
+		return daemonLaunch{}, wrapSafeOperation("启动 sidraviad", err)
 	}
 
 	if err := deps.release(cmd); err != nil {
 		_ = logFile.Close()
-		return wrapSafeOperation("释放 sidraviad 进程", err)
+		return daemonLaunch{}, wrapSafeOperation("释放 sidraviad 进程", err)
 	}
 
-	return logFile.Close()
+	if err := logFile.Close(); err != nil {
+		return daemonLaunch{}, err
+	}
+	return daemonLaunch{}, nil
 }

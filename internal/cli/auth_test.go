@@ -225,7 +225,7 @@ func hotAuthDependencies(t *testing.T, connection daemonClient) authDependencies
 				readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
 					return testRuntimeInfo(901), nil
 				},
-				startDaemon:  func() error { t.Fatal("hot discovery started daemon"); return nil },
+				startDaemon:  func() (daemonLaunch, error) { t.Fatal("hot discovery started daemon"); return daemonLaunch{}, nil },
 				totalWait:    time.Second,
 				pollInterval: time.Millisecond,
 			},
@@ -314,9 +314,9 @@ func TestAuthDiscoveryStartsOnceAfterStaleClientWithoutCallingSession(t *testing
 			}
 			return freshInfo, nil
 		},
-		startDaemon: func() error {
+		startDaemon: func() (daemonLaunch, error) {
 			starts++
-			return nil
+			return daemonLaunch{}, nil
 		},
 		totalWait:    time.Second,
 		pollInterval: time.Millisecond,
@@ -349,6 +349,59 @@ func TestAuthDiscoveryStartsOnceAfterStaleClientWithoutCallingSession(t *testing
 	}
 	if freshClient.closeCount != 1 {
 		t.Errorf("fresh Close calls = %d, want 1", freshClient.closeCount)
+	}
+}
+
+func TestAuthDiscoveryEarlyChildExitDoesNotDispatchSession(t *testing.T) {
+	staleInfo := testRuntimeInfo(904)
+	replacementInfo := testRuntimeInfo(905)
+	staleClient := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		t.Fatal("Session operation ran on stale generation")
+		return contract.Response{}, nil
+	}}
+	replacementClient := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		t.Fatal("Session operation ran before replacement readiness")
+		return contract.Response{}, nil
+	}}
+	cause := errors.New("injected child wait failure")
+	exited := make(chan error, 1)
+	exited <- cause
+	reads, starts := 0, 0
+	deps := daemonConnectionDependencies{discovery: discoveryDependencies{
+		runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
+		readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
+			reads++
+			if reads == 1 {
+				return staleInfo, nil
+			}
+			return replacementInfo, nil
+		},
+		startDaemon: func() (daemonLaunch, error) {
+			starts++
+			return daemonLaunch{exited: exited}, nil
+		},
+		totalWait: time.Hour, pollInterval: time.Millisecond,
+	}, callTimeout: time.Second}
+	connects := 0
+	deps.connect = func(_ context.Context, info contract.RuntimeInfo) (daemonClient, error) {
+		connects++
+		if connects == 1 {
+			return staleClient, errors.New("stale connection")
+		}
+		return replacementClient, errors.New("replacement not ready")
+	}
+	done := make(chan error, 1)
+	go func() { _, err := acquireDaemonClient(deps); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "sidraviad 在就绪前退出；请检查 daemon 日志" || !errors.Is(err, cause) {
+			t.Fatalf("error = %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("discovery waited for readiness timeout")
+	}
+	if starts != 1 || staleClient.callCount != 0 || replacementClient.callCount != 0 {
+		t.Fatalf("starts=%d stale calls=%d replacement calls=%d", starts, staleClient.callCount, replacementClient.callCount)
 	}
 }
 

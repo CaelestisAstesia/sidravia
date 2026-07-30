@@ -413,6 +413,8 @@ typed IPC。威胁边界和实施顺序见 ADR 0022。
 
 ## Windows host
 
+Windows launcher process creation is not readiness: it observes the exact child until typed readiness. An early exit gets one final probe; failure reports fixed safe guidance while Linux retains detached release.
+
 Windows host 必须执行以下动作：
 
 1. daemon 使用当前用户 SID 创建命名 mutex，以阻止同一用户启动第二个 daemon。

@@ -20,6 +20,8 @@ daemon 生命周期测试必须分别证明只读探测、成功响应写入后�
 
 ## 如何处理错误
 
+Launcher Wait causes remain private and retain error identity; user output is fixed safe text and daemon logs own diagnostics.
+
 底层函数应保留原始错误。领域层或应用层应在包装错误时增加当前业务动作，例如“读取配置”或“启动 Session”。
 
 IPC server 应把内部错误转换为稳定机器错误码。CLI 应根据错误码生成人类消息。CLI 的
