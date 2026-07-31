@@ -55,7 +55,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			value, err := application.CreateConfiguration(ctx, config.Configuration{
 				ConfigurationID: config.ConfigurationID(request.ConfigurationID),
 				DisplayName:     request.DisplayName, InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
-				Username: request.Username, NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable},
+				Username: request.Username, NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
 			}, request.Password, request.AllowInsecureStorage)
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationUpdate:
@@ -68,7 +68,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 				converted := config.InstitutionProfileID(*request.InstitutionProfileID)
 				profile = &converted
 			}
-			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username})
+			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect})
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationSetPassword:
 			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
@@ -102,6 +102,7 @@ func toConfigurationResult(value ConfigurationResult) contract.ConfigurationResu
 		InstitutionProfileID: string(value.Configuration.InstitutionProfileID), InstitutionDisplayName: value.InstitutionDisplayName,
 		AuthenticationProtocolID: value.AuthenticationProtocolID, Username: value.Configuration.Username,
 		CredentialStored: value.CredentialStored, StorageProtection: string(value.StorageProtection),
+		AutoLogin: value.Configuration.AutoLogin, AutoReconnect: value.Configuration.AutoReconnect,
 	}
 }
 func encodeConfiguration(value ConfigurationResult, err error) (json.RawMessage, *contract.Error) {
@@ -118,6 +119,10 @@ func configurationInvalid() *contract.Error {
 	return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed configuration payload"}
 }
 func configurationError(err error) *contract.Error {
+	var autoLoginConflict config.AutoLoginConflict
+	if errors.As(err, &autoLoginConflict) {
+		return &contract.Error{Code: contract.ErrorCodeConfigurationAutoLoginConflict, Message: "another configuration already enables automatic login"}
+	}
 	var failure *persistence.Failure
 	if errors.As(err, &failure) {
 		if failure.Code() == persistence.FailureNotFound {

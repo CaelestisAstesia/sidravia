@@ -39,6 +39,26 @@ func readPromptLine(input io.Reader, output io.Writer, prompt string) (string, e
 	return strings.TrimSpace(value), nil
 }
 
+func readBooleanPrompt(input io.Reader, output io.Writer, prompt string, defaultValue bool) (bool, error) {
+	if err := writeAll(output, prompt); err != nil {
+		return false, wrapSafeOperation("写入布尔提示", err)
+	}
+	value, err := readPasswordLine(input)
+	if err != nil {
+		return false, wrapSafeOperation("读取布尔输入", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "y", "yes":
+		return true, nil
+	case "n", "no":
+		return false, nil
+	case "":
+		return defaultValue, nil
+	default:
+		return false, errors.New("布尔输入无效")
+	}
+}
+
 func selectProfile(deps authDependencies, connection daemonClient) (string, error) {
 	raw, err := callConfiguration(deps, connection, contract.MethodProfileList, struct{}{})
 	if err != nil {

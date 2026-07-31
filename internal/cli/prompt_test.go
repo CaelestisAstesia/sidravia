@@ -66,3 +66,37 @@ func TestSelectProfileUsesOneBasedValidatedSelection(t *testing.T) {
 		t.Fatal("out-of-range profile accepted")
 	}
 }
+
+func TestReadBooleanPromptDefaultsAndExplicit(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		input   string
+		def     bool
+		want    bool
+		wantErr bool
+	}{
+		{"default true empty", "\n", true, true, false},
+		{"default false empty", "\n", false, false, false},
+		{"explicit yes", "y\n", false, true, false},
+		{"explicit no", "n\n", true, false, false},
+		{"uppercase yes", "YES\n", false, true, false},
+		{"uppercase no", "NO\n", true, false, false},
+		{"invalid", "maybe\n", true, false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := readBooleanPrompt(strings.NewReader(test.input), io.Discard, "提示", test.def)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("got = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

@@ -169,3 +169,79 @@ func catalogTestConfiguration(id ConfigurationID, displayName string) Configurat
 		NetworkBindingPolicy: NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
 	}
 }
+
+func TestCatalogCreateRejectsSecondAutoLogin(t *testing.T) {
+	ctx := context.Background()
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("configuration-a", "First")
+	first.AutoLogin = true
+	if err := catalog.Create(ctx, first, "password", false); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+	second := catalogTestConfiguration("configuration-b", "Second")
+	second.AutoLogin = true
+	err = catalog.Create(ctx, second, "password", false)
+	if _, ok := err.(AutoLoginConflict); !ok {
+		t.Fatalf("Create(second) error = %v, want AutoLoginConflict", err)
+	}
+}
+
+func TestCatalogUpdateRejectsSecondAutoLogin(t *testing.T) {
+	ctx := context.Background()
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("configuration-a", "First")
+	first.AutoLogin = true
+	if err := catalog.Create(ctx, first, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	second := catalogTestConfiguration("configuration-b", "Second")
+	if err := catalog.Create(ctx, second, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	enable := true
+	_, err = catalog.Update(ctx, second.ConfigurationID, Update{AutoLogin: &enable})
+	if _, ok := err.(AutoLoginConflict); !ok {
+		t.Fatalf("Update() error = %v, want AutoLoginConflict", err)
+	}
+	got, err := catalog.Get(ctx, second.ConfigurationID)
+	if err != nil || got.AutoLogin {
+		t.Fatalf("Get() after failed update = %#v, %v", got, err)
+	}
+}
+
+func TestCatalogUpdateAutoLoginAtomicCommit(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("configuration-a", "First")
+	first.AutoLogin = true
+	if err := catalog.Create(ctx, first, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	second := catalogTestConfiguration("configuration-b", "Second")
+	if err := catalog.Create(ctx, second, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	store.replaceErr = persistence.NewFailure(persistence.FailureAtomicWrite, errors.New("write failed"))
+	enable := true
+	if _, err := catalog.Update(ctx, second.ConfigurationID, Update{AutoLogin: &enable}); err == nil {
+		t.Fatal("Update() unexpectedly succeeded")
+	}
+	got, err := catalog.Get(ctx, first.ConfigurationID)
+	if err != nil || !got.AutoLogin {
+		t.Fatalf("first configuration after failed update = %#v, %v", got, err)
+	}
+	gotSecond, err := catalog.Get(ctx, second.ConfigurationID)
+	if err != nil || gotSecond.AutoLogin {
+		t.Fatalf("second configuration after failed update = %#v, %v", gotSecond, err)
+	}
+}

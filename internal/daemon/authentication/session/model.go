@@ -52,6 +52,7 @@ const (
 	StateReasonCodeProtocolRunCreationFailed    = "protocol_run_creation_failed"
 	StateReasonCodeProtocolRunFailed            = "protocol_run_failed"
 	StateReasonCodeProtocolContractViolated     = "protocol_contract_violated"
+	StateReasonCodeAutomaticReconnectDisabled   = "automatic_reconnect_disabled"
 )
 
 type StateReason struct {

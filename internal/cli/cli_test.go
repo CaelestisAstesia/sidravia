@@ -740,3 +740,32 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 		}
 	})
 }
+
+func TestNoSettingsCommandExists(t *testing.T) {
+	deps := commandDependencies{
+		daemonStatus:      func() error { return nil },
+		daemonStart:       func(string) error { return nil },
+		daemonStop:        func() error { return nil },
+		daemonRestart:     func(string) error { return nil },
+		authStart:         func(authStartOptions) error { return nil },
+		authStatus:        func(string) error { return nil },
+		authStop:          func(string) error { return nil },
+		authRestart:       func(string) error { return nil },
+		authRemove:        func(string) error { return nil },
+		authList:          func() error { return nil },
+		profileList:       func() error { return nil },
+		configList:        func() error { return nil },
+		configShow:        func(string) error { return nil },
+		configCreate:      func(configCreateOptions) error { return nil },
+		configUpdate:      func(configUpdateOptions) error { return nil },
+		configSetPassword: func(configPasswordOptions) error { return nil },
+		configRemove:      func(string, bool) error { return nil },
+		output:            io.Discard,
+	}
+	if err := runCommand([]string{"settings"}, deps); err == nil {
+		t.Fatal("settings command unexpectedly accepted")
+	}
+	if err := runCommand([]string{"config", "settings"}, deps); err == nil {
+		t.Fatal("config settings subcommand unexpectedly accepted")
+	}
+}

@@ -114,6 +114,34 @@ func (application *Application) StartOneShotAuthentication(ctx context.Context, 
 	return sessionID, snapshot, nil
 }
 
+// PerformAutomaticLogin finds the sole AutoLogin=true Configuration, if any,
+// and starts authentication through the existing StartConfigurationAuthentication
+// path. It is evaluated once per daemon generation after the first accepted
+// Environment Snapshot. A failure returns a fixed safe error that carries no
+// configuration ID, username, error text or diagnostic cause; the caller is
+// responsible for emitting the fixed Warn event. The daemon, IPC and snapshot
+// delivery remain running regardless.
+func (application *Application) PerformAutomaticLogin(ctx context.Context) error {
+	configurations, err := application.catalog.List(ctx)
+	if err != nil {
+		return fmt.Errorf("automatic_login_failed")
+	}
+	var autoLoginID config.ConfigurationID
+	for _, configuration := range configurations {
+		if configuration.AutoLogin {
+			autoLoginID = configuration.ConfigurationID
+			break
+		}
+	}
+	if autoLoginID == "" {
+		return nil
+	}
+	if _, _, err := application.StartConfigurationAuthentication(ctx, autoLoginID); err != nil {
+		return fmt.Errorf("automatic_login_failed")
+	}
+	return nil
+}
+
 func (application *Application) StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
 	return application.sup.Stop(ctx, sessionID)
 }

@@ -84,20 +84,21 @@ type AuthenticationSession struct {
 	closed       atomic.Bool
 
 	// The fields below are owned exclusively by run.
-	currentSnapshot        Snapshot
-	selector               *automaticBindingSelector
-	lastNetworkRevision    uint64
-	hasNetworkRevision     bool
-	desiredBinding         environment.SelectedSystemNetworkBinding
-	hasDesiredBinding      bool
-	active                 *activeProtocolRun
-	nextGeneration         uint64
-	consecutiveFailures    uint32
-	retryScheduleID        uint64
-	retryCancellation      RetryCancellation
-	lastStopCleanupFailure *protocol.AuthenticationProtocolRunFailure
-	shuttingDown           bool
-	shutdownReplies        []chan error
+	currentSnapshot           Snapshot
+	selector                  *automaticBindingSelector
+	lastNetworkRevision       uint64
+	hasNetworkRevision        bool
+	desiredBinding            environment.SelectedSystemNetworkBinding
+	hasDesiredBinding         bool
+	active                    *activeProtocolRun
+	nextGeneration            uint64
+	consecutiveFailures       uint32
+	retryScheduleID           uint64
+	retryCancellation         RetryCancellation
+	lastStopCleanupFailure    *protocol.AuthenticationProtocolRunFailure
+	shuttingDown              bool
+	automaticReconnectBlocked bool
+	shutdownReplies           []chan error
 }
 
 type activeProtocolRun struct {
@@ -617,6 +618,7 @@ func (session *AuthenticationSession) handleRestart() {
 		return
 	}
 	session.resetRetryState()
+	session.automaticReconnectBlocked = false
 	if !session.runtimeDefinitionAvailable {
 		session.updateSnapshot(func(snapshot *Snapshot) {
 			snapshot.Intent = MaintainAuthentication
@@ -773,6 +775,10 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 			return
 		}
 		if !session.shuttingDown && session.currentSnapshot.Intent == MaintainAuthentication && session.hasDesiredBinding {
+			if !session.definition.AutoReconnect && cancellation.CleanupRequirement == protocol.TerminateWithoutLogout {
+				session.blockForAutomaticReconnectDisabled(event.failure)
+				return
+			}
 			session.startRunIfNeeded()
 		}
 		return
@@ -811,6 +817,10 @@ func (session *AuthenticationSession) completeSuspensionIfReady() {
 func (session *AuthenticationSession) handleRunFailure(code string, failure *protocol.AuthenticationProtocolRunFailure) {
 	if session.consecutiveFailures < ^uint32(0) {
 		session.consecutiveFailures++
+	}
+	if !session.definition.AutoReconnect {
+		session.blockForAutomaticReconnectDisabled(failure)
+		return
 	}
 	switch failure.HandlingRecommendation {
 	case protocol.RetryAfterStandardDelay, protocol.RetryAfterExtendedDelay:
@@ -862,6 +872,19 @@ func (session *AuthenticationSession) blockForFailure(code string, failure *prot
 		snapshot.AuthenticationEstablishedAt = nil
 		snapshot.NextRetryAt = nil
 		snapshot.LastAuthenticationFailure = session.publicFailure(failure)
+	})
+}
+
+func (session *AuthenticationSession) blockForAutomaticReconnectDisabled(failure *protocol.AuthenticationProtocolRunFailure) {
+	session.automaticReconnectBlocked = true
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.State = BlockedByError
+		snapshot.StateReason = &StateReason{Code: StateReasonCodeAutomaticReconnectDisabled, Description: "Automatic reconnect is disabled."}
+		snapshot.AuthenticationEstablishedAt = nil
+		snapshot.NextRetryAt = nil
+		if failure != nil {
+			snapshot.LastAuthenticationFailure = session.publicFailure(failure)
+		}
 	})
 }
 
@@ -1026,7 +1049,7 @@ func (session *AuthenticationSession) startRunAfterRetryDelayIfNeeded() {
 }
 
 func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
-	if !session.runtimeDefinitionAvailable || session.shuttingDown || session.active != nil || session.currentSnapshot.Intent != MaintainAuthentication || !session.hasDesiredBinding {
+	if !session.runtimeDefinitionAvailable || session.shuttingDown || session.active != nil || session.currentSnapshot.Intent != MaintainAuthentication || !session.hasDesiredBinding || session.automaticReconnectBlocked {
 		return
 	}
 	if !allowRecoveryState && (session.currentSnapshot.State == BlockedByError || session.currentSnapshot.State == WaitingBeforeRetry) {

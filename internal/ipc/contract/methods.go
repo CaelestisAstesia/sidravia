@@ -58,6 +58,7 @@ const (
 	ErrorCodeConfigurationNotFound               = "configuration_not_found"
 	ErrorCodeConfigurationOperationFailed        = "configuration_operation_failed"
 	ErrorCodeInsecureStorageConfirmationRequired = "insecure_storage_confirmation_required"
+	ErrorCodeConfigurationAutoLoginConflict      = "configuration_auto_login_conflict"
 )
 
 // Method names for one-shot Session operations.
@@ -89,12 +90,16 @@ type ConfigurationCreatePayload struct {
 	Username             string `json:"username"`
 	Password             string `json:"password"`
 	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
+	AutoLogin            bool   `json:"autoLogin"`
+	AutoReconnect        bool   `json:"autoReconnect"`
 }
 type ConfigurationUpdatePayload struct {
 	ConfigurationID      string  `json:"configurationId"`
 	DisplayName          *string `json:"displayName,omitempty"`
 	InstitutionProfileID *string `json:"institutionProfileId,omitempty"`
 	Username             *string `json:"username,omitempty"`
+	AutoLogin            *bool   `json:"autoLogin,omitempty"`
+	AutoReconnect        *bool   `json:"autoReconnect,omitempty"`
 }
 type ConfigurationSetPasswordPayload struct {
 	ConfigurationID      string `json:"configurationId"`
@@ -110,6 +115,8 @@ type ConfigurationResult struct {
 	Username                 string `json:"username"`
 	CredentialStored         bool   `json:"credentialStored"`
 	StorageProtection        string `json:"storageProtection"`
+	AutoLogin                bool   `json:"autoLogin"`
+	AutoReconnect            bool   `json:"autoReconnect"`
 }
 type ConfigurationListResult struct {
 	StorageProtection string                `json:"storageProtection"`
@@ -138,12 +145,14 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 		Username             *string `json:"username"`
 		Password             *string `json:"password"`
 		AllowInsecureStorage *bool   `json:"allowInsecureStorage"`
+		AutoLogin            *bool   `json:"autoLogin"`
+		AutoReconnect        *bool   `json:"autoReconnect"`
 	}
 	if err := decodeStrict(data, &wire); err != nil {
 		return ConfigurationCreatePayload{}, err
 	}
 	if wire.ConfigurationID == nil || wire.DisplayName == nil || wire.InstitutionProfileID == nil ||
-		wire.Username == nil || wire.Password == nil || wire.AllowInsecureStorage == nil ||
+		wire.Username == nil || wire.Password == nil || wire.AllowInsecureStorage == nil || wire.AutoLogin == nil || wire.AutoReconnect == nil ||
 		*wire.ConfigurationID == "" || *wire.InstitutionProfileID == "" || *wire.Username == "" {
 		return ConfigurationCreatePayload{}, fmt.Errorf("missing required configuration field")
 	}
@@ -151,6 +160,7 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 		ConfigurationID: *wire.ConfigurationID, DisplayName: *wire.DisplayName,
 		InstitutionProfileID: *wire.InstitutionProfileID, Username: *wire.Username,
 		Password: *wire.Password, AllowInsecureStorage: *wire.AllowInsecureStorage,
+		AutoLogin: *wire.AutoLogin, AutoReconnect: *wire.AutoReconnect,
 	}, nil
 }
 func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, error) {
@@ -158,7 +168,7 @@ func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, 
 	if err := decodeStrict(data, &value); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
-	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil {
+	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil {
 		return ConfigurationUpdatePayload{}, fmt.Errorf("missing configuration update")
 	}
 	if value.InstitutionProfileID != nil && *value.InstitutionProfileID == "" || value.Username != nil && *value.Username == "" {

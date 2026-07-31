@@ -399,3 +399,51 @@ func waitForApplicationSessionState(t *testing.T, application *Application, id s
 		}
 	}
 }
+
+func TestPerformAutomaticLoginNoConfigurationReturnsNil(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	if err := setup.application.PerformAutomaticLogin(ctx); err != nil {
+		t.Fatalf("PerformAutomaticLogin() error = %v", err)
+	}
+}
+
+func TestPerformAutomaticLoginStartsAutoLoginConfiguration(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	enable := true
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &enable}); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.application.PerformAutomaticLogin(ctx); err != nil {
+		t.Fatalf("PerformAutomaticLogin() error = %v", err)
+	}
+	setup.application.mu.Lock()
+	sessionID := setup.application.sessionsByConfig["configuration-1"]
+	setup.application.mu.Unlock()
+	if sessionID == "" {
+		t.Fatal("auto-login did not start a Session")
+	}
+}
+
+func TestPerformAutomaticLoginFailureReturnsSafeError(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	ctx := context.Background()
+	enable := true
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &enable}); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.supervisor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	setup.supervisor.Wait()
+	err := setup.application.PerformAutomaticLogin(ctx)
+	if err == nil {
+		t.Fatal("PerformAutomaticLogin() unexpectedly succeeded")
+	}
+	if err.Error() != "automatic_login_failed" {
+		t.Fatalf("error = %q, want %q", err.Error(), "automatic_login_failed")
+	}
+}

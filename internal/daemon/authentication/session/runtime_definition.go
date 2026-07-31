@@ -16,6 +16,7 @@ type RuntimeDefinition struct {
 	InstitutionProfile            profile.InstitutionProfile
 	AuthenticationProtocolFactory protocol.AuthenticationProtocolFactory
 	SystemHostInformation         environment.SystemHostInformation
+	AutoReconnect                 bool
 }
 
 func (definition RuntimeDefinition) Validate() error {

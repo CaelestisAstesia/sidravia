@@ -98,7 +98,7 @@ func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
 	}{
 		{contract.MethodConfigurationList, `{}`, `{"storageProtection":"protected","configurations":[]}`},
 		{contract.MethodConfigurationGet, `{"configurationId":"campus"}`, ""},
-		{contract.MethodConfigurationCreate, `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false}`, ""},
+		{contract.MethodConfigurationCreate, `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`, ""},
 		{contract.MethodConfigurationUpdate, `{"configurationId":"campus","displayName":""}`, ""},
 		{contract.MethodConfigurationSetPassword, `{"configurationId":"campus","password":"","allowInsecureStorage":false}`, ""},
 		{contract.MethodConfigurationRemove, `{"configurationId":"campus"}`, `{"configurationId":"campus","status":"removed"}`},

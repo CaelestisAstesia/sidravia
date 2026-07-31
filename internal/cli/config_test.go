@@ -93,3 +93,187 @@ func TestConfigCreateRejectsPasswordOnArgvShape(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
+	var capturedMethod string
+	var capturedPayload json.RawMessage
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		capturedMethod = method
+		capturedPayload = payload
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			Username: "user", CredentialStored: true, StorageProtection: "protected",
+			AutoLogin: false, AutoReconnect: true,
+		})
+		return contract.NewSuccessResponse("1", result), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.stdin = strings.NewReader("password\n")
+	deps.readStdinPassword = readPasswordStdin
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
+	deps.inputIsConsole = func(io.Reader) bool { return false }
+
+	options := configCreateOptions{id: "campus", profile: "jlu", username: "user", passwordStdin: true, autoReconnect: true}
+	if err := runConfigCreate(options, deps); err != nil {
+		t.Fatal(err)
+	}
+	if capturedMethod != contract.MethodConfigurationCreate {
+		t.Fatalf("method = %q, want %q", capturedMethod, contract.MethodConfigurationCreate)
+	}
+	var request contract.ConfigurationCreatePayload
+	if err := json.Unmarshal(capturedPayload, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.AutoLogin || !request.AutoReconnect {
+		t.Fatalf("defaults: autoLogin=%v, autoReconnect=%v", request.AutoLogin, request.AutoReconnect)
+	}
+}
+
+func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
+	var capturedPayload json.RawMessage
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		capturedPayload = payload
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			Username: "user", CredentialStored: true, StorageProtection: "protected",
+			AutoLogin: true, AutoReconnect: false,
+		})
+		return contract.NewSuccessResponse("1", result), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.stdin = strings.NewReader("password\n")
+	deps.readStdinPassword = readPasswordStdin
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
+	deps.inputIsConsole = func(io.Reader) bool { return false }
+
+	options := configCreateOptions{id: "campus", profile: "jlu", username: "user", passwordStdin: true,
+		autoLogin: true, autoReconnect: false, autoLoginExplicit: true, autoReconnectExplicit: true}
+	if err := runConfigCreate(options, deps); err != nil {
+		t.Fatal(err)
+	}
+	var request contract.ConfigurationCreatePayload
+	if err := json.Unmarshal(capturedPayload, &request); err != nil {
+		t.Fatal(err)
+	}
+	if !request.AutoLogin || request.AutoReconnect {
+		t.Fatalf("explicit: autoLogin=%v, autoReconnect=%v", request.AutoLogin, request.AutoReconnect)
+	}
+}
+
+func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
+	var capturedPayload json.RawMessage
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		capturedPayload = payload
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			Username: "user", CredentialStored: true, StorageProtection: "protected",
+			AutoLogin: true, AutoReconnect: false,
+		})
+		return contract.NewSuccessResponse("1", result), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	// Input: id, profile selection (1), username, auto-login (y), auto-reconnect (n), password
+	deps.stdin = strings.NewReader("campus\n1\nuser\ny\nn\n")
+	var stderr bytes.Buffer
+	deps.stderr = &stderr
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
+	deps.inputIsConsole = func(io.Reader) bool { return true }
+	// Profile list response for selectProfile
+	profileRaw, _ := contract.MarshalProfileListResult(contract.ProfileListResult{Profiles: []contract.ProfileSummaryResult{
+		{InstitutionProfileID: "jlu", DisplayName: "吉林大学", AuthenticationProtocolID: "drcom"},
+	}})
+
+	var callCount int
+	connection.call = func(method string, payload json.RawMessage) (contract.Response, error) {
+		callCount++
+		if method == contract.MethodProfileList {
+			return contract.NewSuccessResponse("1", profileRaw), nil
+		}
+		if method == contract.MethodConfigurationList {
+			listRaw, _ := contract.MarshalConfigurationListResult(contract.ConfigurationListResult{StorageProtection: "protected", Configurations: nil})
+			return contract.NewSuccessResponse("1", listRaw), nil
+		}
+		capturedPayload = payload
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			Username: "user", CredentialStored: true, StorageProtection: "protected",
+			AutoLogin: true, AutoReconnect: false,
+		})
+		return contract.NewSuccessResponse("1", result), nil
+	}
+
+	options := configCreateOptions{passwordStdin: false}
+	if err := runConfigCreate(options, deps); err != nil {
+		t.Fatalf("runConfigCreate error = %v", err)
+	}
+	var request contract.ConfigurationCreatePayload
+	if err := json.Unmarshal(capturedPayload, &request); err != nil {
+		t.Fatal(err)
+	}
+	if !request.AutoLogin || request.AutoReconnect {
+		t.Fatalf("interactive: autoLogin=%v, autoReconnect=%v", request.AutoLogin, request.AutoReconnect)
+	}
+	if !strings.Contains(stderr.String(), "自动登录") || !strings.Contains(stderr.String(), "自动重连") {
+		t.Fatalf("stderr missing prompts: %q", stderr.String())
+	}
+}
+
+func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
+	var capturedPayload json.RawMessage
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		capturedPayload = payload
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			Username: "user", CredentialStored: true, StorageProtection: "protected",
+			AutoLogin: false, AutoReconnect: true,
+		})
+		return contract.NewSuccessResponse("1", result), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.stdin = strings.NewReader("")
+	var stderr bytes.Buffer
+	deps.stderr = &stderr
+	deps.readStdinPassword = readPasswordStdin
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
+	deps.inputIsConsole = func(io.Reader) bool { return false }
+
+	options := configCreateOptions{id: "campus", profile: "jlu", username: "user", passwordStdin: true}
+	if err := runConfigCreate(options, deps); err != nil {
+		t.Fatal(err)
+	}
+	if len(capturedPayload) == 0 {
+		t.Fatal("create payload was not captured")
+	}
+	if strings.Contains(stderr.String(), "自动登录") || strings.Contains(stderr.String(), "自动重连") {
+		t.Fatalf("non-interactive prompted: %q", stderr.String())
+	}
+}
+
+func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
+	var capturedPayload json.RawMessage
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		capturedPayload = payload
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			Username: "user", CredentialStored: true, StorageProtection: "protected",
+			AutoLogin: true, AutoReconnect: false,
+		})
+		return contract.NewSuccessResponse("1", result), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.inputIsConsole = func(io.Reader) bool { return false }
+
+	autoLogin := true
+	autoReconnect := false
+	options := configUpdateOptions{id: "campus", autoLogin: &autoLogin, autoReconnect: &autoReconnect}
+	if err := runConfigUpdate(options, deps); err != nil {
+		t.Fatal(err)
+	}
+	var request contract.ConfigurationUpdatePayload
+	if err := json.Unmarshal(capturedPayload, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.AutoLogin == nil || !*request.AutoLogin || request.AutoReconnect == nil || *request.AutoReconnect {
+		t.Fatalf("update: autoLogin=%v, autoReconnect=%v", request.AutoLogin, request.AutoReconnect)
+	}
+}

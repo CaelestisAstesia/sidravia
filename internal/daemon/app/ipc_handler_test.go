@@ -59,7 +59,7 @@ func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) 
 	const passwordMarker = "private-password-marker"
 	create, publicErr := handler(context.Background(), contract.MethodConfigurationCreate, []byte(
 		`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"`+
-			passwordMarker+`","allowInsecureStorage":false}`,
+			passwordMarker+`","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
 	))
 	if publicErr != nil {
 		t.Fatal(publicErr)

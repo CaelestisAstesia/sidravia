@@ -407,7 +407,7 @@ func TestConfigurationPayloadDecodersAreStrict(t *testing.T) {
 		},
 		{
 			name:  "create",
-			valid: `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false}`,
+			valid: `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
 			decode: func(data []byte) error {
 				_, err := DecodeConfigurationCreatePayload(data)
 				return err
@@ -419,6 +419,8 @@ func TestConfigurationPayloadDecodersAreStrict(t *testing.T) {
 				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":""}`,
 				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"","password":"","allowInsecureStorage":false}`,
 				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"extra":true}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoReconnect":false}`,
 			},
 		},
 		{
@@ -485,7 +487,7 @@ func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = `{"configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected"}`
+	const expected = `{"configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false}`
 	if string(data) != expected {
 		t.Fatalf("configuration result = %s", data)
 	}
@@ -501,5 +503,28 @@ func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
 		if bytes.Contains(data, []byte(marker)) || bytes.Contains(list, []byte(marker)) || bytes.Contains(removed, []byte(marker)) {
 			t.Fatalf("encoded result contains %q", marker)
 		}
+	}
+}
+
+func TestConfigurationAutoLoginConflictErrorCodeIsStable(t *testing.T) {
+	if ErrorCodeConfigurationAutoLoginConflict != "configuration_auto_login_conflict" {
+		t.Fatalf("ErrorCodeConfigurationAutoLoginConflict = %q", ErrorCodeConfigurationAutoLoginConflict)
+	}
+}
+
+func TestConfigurationUpdatePayloadAcceptsAutoLoginAutoReconnect(t *testing.T) {
+	autoLogin, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","autoLogin":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if autoLogin.AutoLogin == nil || !*autoLogin.AutoLogin || autoLogin.AutoReconnect != nil {
+		t.Fatalf("autoLogin update = %#v", autoLogin)
+	}
+	autoReconnect, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","autoReconnect":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if autoReconnect.AutoReconnect == nil || *autoReconnect.AutoReconnect || autoReconnect.AutoLogin != nil {
+		t.Fatalf("autoReconnect update = %#v", autoReconnect)
 	}
 }

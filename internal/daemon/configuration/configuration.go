@@ -23,6 +23,8 @@ type Configuration struct {
 	Username                string
 	NetworkBindingPolicy    NetworkBindingPolicy
 	ProtocolContextOverride protocol.AuthenticationProtocolContextOverride
+	AutoLogin               bool
+	AutoReconnect           bool
 }
 
 func (configuration Configuration) Clone() Configuration {

@@ -335,6 +335,7 @@ func validRuntimeDefinition(t *testing.T) RuntimeDefinition {
 			InstitutionProtocolConfiguration: []byte(`{"realm":"campus"}`),
 		},
 		AuthenticationProtocolFactory: stubFactory{protocolID: "test-protocol"},
+		AutoReconnect:                 true,
 		SystemHostInformation: environment.SystemHostInformation{
 			HostName:              "test-host",
 			OperatingSystemFamily: "test-os",
@@ -392,3 +393,9 @@ func (stubRun) Execute(context.Context, protocol.AuthenticationProtocolRunObserv
 
 var _ protocol.AuthenticationProtocolFactory = stubFactory{}
 var _ protocol.AuthenticationProtocolRun = stubRun{}
+
+func TestStateReasonCodeAutomaticReconnectDisabledIsStable(t *testing.T) {
+	if StateReasonCodeAutomaticReconnectDisabled != "automatic_reconnect_disabled" {
+		t.Fatalf("StateReasonCodeAutomaticReconnectDisabled = %q", StateReasonCodeAutomaticReconnectDisabled)
+	}
+}

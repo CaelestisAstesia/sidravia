@@ -569,6 +569,12 @@ func (shutdown *fakeShutdown) Wait() {
 	shutdown.order = append(shutdown.order, "wait")
 }
 
+// fakeAutomaticLoginPerformer is a no-op automaticLoginPerformer for tests
+// that do not exercise automatic login behavior.
+type fakeAutomaticLoginPerformer struct{}
+
+func (*fakeAutomaticLoginPerformer) PerformAutomaticLogin(context.Context) error { return nil }
+
 func newLifecycleRuntime(
 	observer *fakeObserver,
 	hostRunner *fakeHostRunner,
@@ -579,6 +585,7 @@ func newLifecycleRuntime(
 	return &composedRuntime{
 		observer:       observer,
 		snapshotSink:   sink,
+		automaticLogin: &fakeAutomaticLoginPerformer{},
 		shutdown:       shutdown,
 		hostRunner:     hostRunner.run,
 		logger:         logger,
@@ -1052,5 +1059,121 @@ func TestCompositionDaemonStopTriggersRuntimeShutdown(t *testing.T) {
 	waitForSignal(t, observer.started, "observer start")
 	if err := waitForRuntimeResult(t, result); err != nil {
 		t.Fatalf("runtime did not shut down cleanly after daemon.stop: %v", err)
+	}
+}
+
+type countingAutomaticLoginPerformer struct {
+	mu    sync.Mutex
+	count int
+	err   error
+}
+
+func (p *countingAutomaticLoginPerformer) PerformAutomaticLogin(context.Context) error {
+	p.mu.Lock()
+	p.count++
+	err := p.err
+	p.mu.Unlock()
+	return err
+}
+
+func (p *countingAutomaticLoginPerformer) Count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.count
+}
+
+func newLifecycleRuntimeWithAutomaticLogin(
+	observer *fakeObserver,
+	hostRunner *fakeHostRunner,
+	sink *fakeSnapshotSink,
+	shutdown *fakeShutdown,
+	logger *slog.Logger,
+	performer automaticLoginPerformer,
+) *composedRuntime {
+	return &composedRuntime{
+		observer:       observer,
+		snapshotSink:   sink,
+		automaticLogin: performer,
+		shutdown:       shutdown,
+		hostRunner:     hostRunner.run,
+		logger:         logger,
+		productVersion: "test-version",
+		buildID:        "test-build",
+	}
+}
+
+func waitForSinkSnapshots(t *testing.T, sink *fakeSnapshotSink, want int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		sink.mu.Lock()
+		got := len(sink.snapshots)
+		sink.mu.Unlock()
+		if got >= want {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for %d snapshots, got %d", want, want)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+func TestDeliverSnapshotsInvokesAutomaticLoginOnceAfterFirstSnapshot(t *testing.T) {
+	observer := newFakeObserver()
+	hostRunner := newFakeHostRunner()
+	sink := newFakeSnapshotSink()
+	performer := &countingAutomaticLoginPerformer{}
+	shutdown := &fakeShutdown{activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done}}
+	rt := newLifecycleRuntimeWithAutomaticLogin(observer, hostRunner, sink, shutdown, discardLogger(), performer)
+
+	observer.addSnapshot(environment.NewSnapshot(1, time.Unix(100, 0), nil))
+	observer.addSnapshot(environment.NewSnapshot(2, time.Unix(101, 0), nil))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := runRuntime(rt, ctx)
+
+	waitForSinkSnapshots(t, sink, 2)
+	if got := performer.Count(); got != 1 {
+		t.Fatalf("automatic login count = %d, want 1", got)
+	}
+	cancel()
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("runtime error = %v", err)
+	}
+}
+
+func TestDeliverSnapshotsAutomaticLoginFailureDoesNotTerminateDaemon(t *testing.T) {
+	observer := newFakeObserver()
+	hostRunner := newFakeHostRunner()
+	sink := newFakeSnapshotSink()
+	performer := &countingAutomaticLoginPerformer{err: errors.New("simulated failure")}
+	shutdown := &fakeShutdown{activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done}}
+	rt := newLifecycleRuntimeWithAutomaticLogin(observer, hostRunner, sink, shutdown, discardLogger(), performer)
+
+	observer.addSnapshot(environment.NewSnapshot(1, time.Unix(100, 0), nil))
+	observer.addSnapshot(environment.NewSnapshot(2, time.Unix(101, 0), nil))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := runRuntime(rt, ctx)
+
+	waitForSinkSnapshots(t, sink, 2)
+
+	// Verify the runtime is still running (not terminated by the failure).
+	select {
+	case err := <-result:
+		t.Fatalf("runtime terminated after automatic login failure: %v", err)
+	default:
+	}
+
+	if got := performer.Count(); got != 1 {
+		t.Fatalf("automatic login count = %d, want 1", got)
+	}
+	cancel()
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("runtime error = %v", err)
 	}
 }

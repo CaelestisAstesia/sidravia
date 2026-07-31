@@ -280,6 +280,7 @@ func testRuntimeDefinition() session.RuntimeDefinition {
 			InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration([]byte(`{"realm":"campus"}`)),
 		},
 		AuthenticationProtocolFactory: stubFactory{},
+		AutoReconnect:                 true,
 		SystemHostInformation: environment.SystemHostInformation{
 			HostName:              "test-host",
 			OperatingSystemFamily: "test-os",

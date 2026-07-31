@@ -11,7 +11,8 @@ import (
 	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
-const catalogSchemaVersion uint64 = 2
+const catalogSchemaVersion uint64 = 3
+const catalogSchemaVersion2 uint64 = 2
 
 type catalogDocumentEnvelope struct {
 	SchemaVersion  *uint64            `json:"schemaVersion"`
@@ -31,6 +32,8 @@ type persistentConfiguration struct {
 	Password                *string               `json:"password"`
 	NetworkBindingPolicy    json.RawMessage       `json:"networkBindingPolicy"`
 	ProtocolContextOverride json.RawMessage       `json:"protocolContextOverride"`
+	AutoLogin               *bool                 `json:"autoLogin"`
+	AutoReconnect           *bool                 `json:"autoReconnect"`
 }
 type persistentConfigurationOutput struct {
 	ConfigurationID         ConfigurationID                      `json:"configurationId"`
@@ -40,6 +43,8 @@ type persistentConfigurationOutput struct {
 	Password                string                               `json:"password"`
 	NetworkBindingPolicy    persistentNetworkBindingPolicyOutput `json:"networkBindingPolicy"`
 	ProtocolContextOverride json.RawMessage                      `json:"protocolContextOverride"`
+	AutoLogin               bool                                 `json:"autoLogin"`
+	AutoReconnect           bool                                 `json:"autoReconnect"`
 }
 type catalogDocumentOutput struct {
 	SchemaVersion  uint64                          `json:"schemaVersion"`
@@ -64,9 +69,12 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 	if document.SchemaVersion == nil || document.Configurations == nil {
 		return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
 	}
-	if *document.SchemaVersion != catalogSchemaVersion {
+	switch *document.SchemaVersion {
+	case catalogSchemaVersion2, catalogSchemaVersion:
+	default:
 		return nil, persistence.NewFailure(persistence.FailureUnsupportedSchemaVersion, nil)
 	}
+	schemaIsV2 := *document.SchemaVersion == catalogSchemaVersion2
 	result := make(map[ConfigurationID]catalogRecord, len(*document.Configurations))
 	for _, raw := range *document.Configurations {
 		var in persistentConfiguration
@@ -75,6 +83,17 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 		}
 		if in.ConfigurationID == nil || in.DisplayName == nil || in.InstitutionProfileID == nil || in.Username == nil || in.Password == nil || len(in.NetworkBindingPolicy) == 0 || len(in.ProtocolContextOverride) == 0 {
 			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+		}
+		var autoLogin, autoReconnect bool
+		if schemaIsV2 {
+			autoLogin = false
+			autoReconnect = true
+		} else {
+			if in.AutoLogin == nil || in.AutoReconnect == nil {
+				return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+			}
+			autoLogin = *in.AutoLogin
+			autoReconnect = *in.AutoReconnect
 		}
 		var binding persistentNetworkBindingPolicy
 		if err := jsonfile.DecodeStrict(in.NetworkBindingPolicy, &binding); err != nil || binding.Mode == nil {
@@ -87,12 +106,19 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 		if !bytes.Equal(bytes.TrimSpace(in.ProtocolContextOverride), []byte("null")) {
 			override = append(override, in.ProtocolContextOverride...)
 		}
-		value := Configuration{ConfigurationID: *in.ConfigurationID, DisplayName: *in.DisplayName, InstitutionProfileID: *in.InstitutionProfileID, Username: *in.Username, NetworkBindingPolicy: NetworkBindingPolicy{Mode: *binding.Mode}, ProtocolContextOverride: override}
+		value := Configuration{ConfigurationID: *in.ConfigurationID, DisplayName: *in.DisplayName, InstitutionProfileID: *in.InstitutionProfileID, Username: *in.Username, NetworkBindingPolicy: NetworkBindingPolicy{Mode: *binding.Mode}, ProtocolContextOverride: override, AutoLogin: autoLogin, AutoReconnect: autoReconnect}
 		if err := value.Validate(); err != nil {
 			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 		}
 		if _, exists := result[value.ConfigurationID]; exists {
 			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+		}
+		if autoLogin {
+			for _, existing := range result {
+				if existing.configuration.AutoLogin {
+					return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+				}
+			}
 		}
 		result[value.ConfigurationID] = catalogRecord{configuration: value, password: *in.Password}
 	}
@@ -115,7 +141,7 @@ func encodeCatalogDocument(records map[ConfigurationID]catalogRecord) ([]byte, e
 		if len(record.configuration.ProtocolContextOverride) > 0 {
 			override = append(json.RawMessage(nil), record.configuration.ProtocolContextOverride...)
 		}
-		out = append(out, persistentConfigurationOutput{ConfigurationID: id, DisplayName: record.configuration.DisplayName, InstitutionProfileID: record.configuration.InstitutionProfileID, Username: record.configuration.Username, Password: record.password, NetworkBindingPolicy: persistentNetworkBindingPolicyOutput{Mode: record.configuration.NetworkBindingPolicy.Mode}, ProtocolContextOverride: override})
+		out = append(out, persistentConfigurationOutput{ConfigurationID: id, DisplayName: record.configuration.DisplayName, InstitutionProfileID: record.configuration.InstitutionProfileID, Username: record.configuration.Username, Password: record.password, NetworkBindingPolicy: persistentNetworkBindingPolicyOutput{Mode: record.configuration.NetworkBindingPolicy.Mode}, ProtocolContextOverride: override, AutoLogin: record.configuration.AutoLogin, AutoReconnect: record.configuration.AutoReconnect})
 	}
 	return jsonfile.MarshalDeterministic(catalogDocumentOutput{SchemaVersion: catalogSchemaVersion, Configurations: out})
 }

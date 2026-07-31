@@ -35,6 +35,7 @@ const (
 	eventDaemonRuntimeStopped   = "daemon_runtime_stopped"
 	eventNetworkSnapshotApplied = "network_snapshot_applied"
 	eventDaemonStopRequested    = "daemon_stop_requested"
+	eventAutomaticLoginFailed   = "automatic_login_failed"
 
 	msgDaemonStartFailed      = "守护进程启动失败"
 	msgDaemonRuntimeStarted   = "守护进程运行已启动"
@@ -42,6 +43,7 @@ const (
 	msgDaemonRuntimeStopped   = "守护进程运行已停止"
 	msgNetworkSnapshotApplied = "网络快照已应用"
 	msgDaemonStopRequested    = "守护进程停止请求已提交"
+	msgAutomaticLoginFailed   = "自动登录失败"
 )
 
 type defaultPaths struct {
@@ -55,6 +57,10 @@ type networkSnapshotSink interface {
 	ApplySystemNetworkSnapshot(context.Context, environment.Snapshot) error
 }
 
+type automaticLoginPerformer interface {
+	PerformAutomaticLogin(context.Context) error
+}
+
 type shutdownBoundary interface {
 	Close() error
 	Wait()
@@ -63,6 +69,7 @@ type shutdownBoundary interface {
 type composedRuntime struct {
 	observer       environment.Observer
 	snapshotSink   networkSnapshotSink
+	automaticLogin automaticLoginPerformer
 	shutdown       shutdownBoundary
 	hostCfg        host.Config
 	hostRunner     func(context.Context, host.Config) error
@@ -267,6 +274,7 @@ func composeObjectGraph(
 	return &composedRuntime{
 		observer:       observer,
 		snapshotSink:   application,
+		automaticLogin: application,
 		shutdown:       sup,
 		hostCfg:        hostCfg,
 		hostRunner:     hostRunner,
@@ -411,6 +419,7 @@ func (rt *composedRuntime) closeAndWait(initiator error) error {
 }
 
 func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-chan environment.Snapshot) error {
+	automaticLoginPerformed := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -430,6 +439,14 @@ func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-ch
 				slog.Uint64("revision", snapshot.Revision),
 				slog.Int("interface_count", len(snapshot.Interfaces())),
 			)
+			if !automaticLoginPerformed {
+				automaticLoginPerformed = true
+				if err := rt.automaticLogin.PerformAutomaticLogin(ctx); err != nil {
+					rt.logger.Warn(msgAutomaticLoginFailed,
+						slog.String("event", eventAutomaticLoginFailed),
+					)
+				}
+			}
 		}
 	}
 }

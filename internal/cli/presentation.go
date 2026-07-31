@@ -552,10 +552,19 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 	if result.StorageProtection == "unprotected" {
 		protection = "未保护（unprotected）"
 	}
+	autoLogin := "未启用"
+	if result.AutoLogin {
+		autoLogin = "已启用"
+	}
+	autoReconnect := "未启用"
+	if result.AutoReconnect {
+		autoReconnect = "已启用"
+	}
 	return "配置：" + sanitizeDynamicText(result.ConfigurationID) + "\n名称：" +
 		sanitizeDynamicText(result.DisplayName) + "\n机构：" + sanitizeDynamicText(institution) +
 		"\n协议：" + sanitizeDynamicText(result.AuthenticationProtocolID) + "\n账号：" +
-		sanitizeDynamicText(result.Username) + "\n凭据：已保存\n存储保护：" + protection + "\n"
+		sanitizeDynamicText(result.Username) + "\n凭据：已保存\n存储保护：" + protection +
+		"\n自动登录：" + autoLogin + "\n自动重连：" + autoReconnect + "\n"
 }
 
 func writeConfiguration(output io.Writer, result contract.ConfigurationResult) error {

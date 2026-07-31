@@ -1264,3 +1264,141 @@ func TestSessionDiagnosticsRecordsCommandAndGeneration(t *testing.T) {
 		t.Errorf("apply_network_snapshot command not recorded; commands=%v", commands)
 	}
 }
+
+func TestSessionAutoReconnectFalseBlocksOnRetryableFailure(t *testing.T) {
+	now := time.Unix(100, 0)
+	policy := standardRetryPolicy()
+	scheduler := &manualRetryScheduler{}
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AutoReconnect = false
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+		Now:            func() time.Time { return now },
+		RetryPolicy:    policy,
+		RetryScheduler: scheduler,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	defer shutdownTestSession(t, session)
+
+	ctx := testContext(t)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay})
+
+	snapshot := waitForState(t, ctx, session, BlockedByError)
+	if snapshot.StateReason == nil || snapshot.StateReason.Code != StateReasonCodeAutomaticReconnectDisabled {
+		t.Fatalf("state reason = %#v, want %s", snapshot.StateReason, StateReasonCodeAutomaticReconnectDisabled)
+	}
+	if snapshot.NextRetryAt != nil {
+		t.Fatalf("NextRetryAt = %v, want nil", snapshot.NextRetryAt)
+	}
+	if scheduler.count() != 0 {
+		t.Fatalf("scheduler count = %d, want 0", scheduler.count())
+	}
+}
+
+func TestSessionAutoReconnectFalseDoesNotRestartOnLaterSnapshot(t *testing.T) {
+	now := time.Unix(100, 0)
+	policy := standardRetryPolicy()
+	scheduler := &manualRetryScheduler{}
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AutoReconnect = false
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+		Now:            func() time.Time { return now },
+		RetryPolicy:    policy,
+		RetryScheduler: scheduler,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	defer shutdownTestSession(t, session)
+
+	ctx := testContext(t)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay})
+	_ = waitForState(t, ctx, session, BlockedByError)
+
+	// A later network snapshot must not start a new run while blocked.
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "ethernet", "Ethernet Updated"))
+	if got := len(factory.creationInputs()); got != 1 {
+		t.Fatalf("factory creation count after later snapshot = %d, want 1", got)
+	}
+	snapshot := sessionSnapshot(t, ctx, session)
+	if snapshot.State != BlockedByError {
+		t.Fatalf("state = %v, want %v", snapshot.State, BlockedByError)
+	}
+}
+
+func TestSessionAutoReconnectFalseRestartClearsBlock(t *testing.T) {
+	now := time.Unix(100, 0)
+	policy := standardRetryPolicy()
+	scheduler := &manualRetryScheduler{}
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AutoReconnect = false
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+		Now:            func() time.Time { return now },
+		RetryPolicy:    policy,
+		RetryScheduler: scheduler,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	defer shutdownTestSession(t, session)
+
+	ctx := testContext(t)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay})
+	_ = waitForState(t, ctx, session, BlockedByError)
+
+	if _, err := session.Restart(ctx); err != nil {
+		t.Fatalf("Restart() error = %v", err)
+	}
+	// After restart, a new run should be created.
+	run := waitForFactoryRun(t, ctx, factory, 1)
+	run.establish(ctx)
+	if got := waitForState(t, ctx, session, Authenticated); got.State != Authenticated {
+		t.Fatalf("state after restart = %v, want %v", got.State, Authenticated)
+	}
+}
+
+func TestSessionAutoReconnectFalseSuspendReachesSuspended(t *testing.T) {
+	now := time.Unix(100, 0)
+	policy := standardRetryPolicy()
+	scheduler := &manualRetryScheduler{}
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AutoReconnect = false
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+		Now:            func() time.Time { return now },
+		RetryPolicy:    policy,
+		RetryScheduler: scheduler,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	defer shutdownTestSession(t, session)
+
+	ctx := testContext(t)
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay})
+	_ = waitForState(t, ctx, session, BlockedByError)
+
+	if _, err := session.Suspend(ctx); err != nil {
+		t.Fatalf("Suspend() error = %v", err)
+	}
+	suspended := waitForState(t, ctx, session, Suspended)
+	if suspended.State != Suspended {
+		t.Fatalf("state = %v, want %v", suspended.State, Suspended)
+	}
+}

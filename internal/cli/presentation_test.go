@@ -747,3 +747,25 @@ func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
 		t.Fatalf("configuration block unexpectedly styled: %q", output.String())
 	}
 }
+
+func TestRenderConfigurationShowsAutoLoginAutoReconnect(t *testing.T) {
+	enabled := contract.ConfigurationResult{
+		ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		Username: "user", CredentialStored: true, StorageProtection: "protected",
+		AutoLogin: true, AutoReconnect: true,
+	}
+	got := renderConfiguration(enabled)
+	if !strings.Contains(got, "自动登录：已启用") || !strings.Contains(got, "自动重连：已启用") {
+		t.Fatalf("enabled output missing lines: %q", got)
+	}
+
+	disabled := contract.ConfigurationResult{
+		ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		Username: "user", CredentialStored: true, StorageProtection: "protected",
+		AutoLogin: false, AutoReconnect: false,
+	}
+	got = renderConfiguration(disabled)
+	if !strings.Contains(got, "自动登录：未启用") || !strings.Contains(got, "自动重连：未启用") {
+		t.Fatalf("disabled output missing lines: %q", got)
+	}
+}

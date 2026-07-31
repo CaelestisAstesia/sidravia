@@ -245,3 +245,40 @@ func TestApplicationCreateAndUpdateValidateProfileBeforePersistence(t *testing.T
 		t.Fatal("invalid update persisted")
 	}
 }
+
+func TestResolverPassesAutoReconnectFromConfiguration(t *testing.T) {
+	ctx := context.Background()
+	store := newAppMemoryStore()
+	catalog, _ := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	configuration := appTestConfiguration("configuration-1")
+	configuration.AutoReconnect = false
+	if err := catalog.Create(ctx, configuration, "secret", false); err != nil {
+		t.Fatal(err)
+	}
+	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
+	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
+	definition, err := resolver.Resolve(ctx, "configuration-1", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition.AutoReconnect {
+		t.Fatal("AutoReconnect = true, want false")
+	}
+}
+
+func TestResolverOneShotSetsAutoReconnectTrue(t *testing.T) {
+	ctx := context.Background()
+	store := newAppMemoryStore()
+	catalog, _ := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
+	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
+	definition, err := resolver.ResolveOneShot(ctx, validOneShotInput(), "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !definition.AutoReconnect {
+		t.Fatal("one-shot AutoReconnect = false, want true")
+	}
+}

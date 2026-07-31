@@ -119,6 +119,7 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 		InstitutionProfile:            institutionProfile,
 		AuthenticationProtocolFactory: factory,
 		SystemHostInformation:         authenticationResolver.hostInfo,
+		AutoReconnect:                 configuration.AutoReconnect,
 	}
 
 	if err := definition.Validate(); err != nil {
@@ -186,6 +187,7 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 		InstitutionProfile:            institutionProfile,
 		AuthenticationProtocolFactory: factory,
 		SystemHostInformation:         authenticationResolver.hostInfo,
+		AutoReconnect:                 true,
 	}
 
 	if err := definition.Validate(); err != nil {

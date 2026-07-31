@@ -24,6 +24,15 @@ type catalogRecord struct {
 	password      string
 }
 
+// AutoLoginConflict is returned when enabling AutoLogin would result in more
+// than one automatic-login Configuration. The stable IPC code is
+// configuration_auto_login_conflict.
+type AutoLoginConflict struct{}
+
+func (AutoLoginConflict) Error() string {
+	return "another configuration already enables automatic login"
+}
+
 type Catalog struct {
 	mu      sync.Mutex
 	store   SensitiveStore
@@ -107,6 +116,13 @@ func (catalog *Catalog) Create(ctx context.Context, value Configuration, passwor
 	if _, exists := catalog.records[value.ConfigurationID]; exists {
 		return persistence.NewFailure(persistence.FailureConflict, nil)
 	}
+	if value.AutoLogin {
+		for _, existing := range catalog.records {
+			if existing.configuration.AutoLogin {
+				return AutoLoginConflict{}
+			}
+		}
+	}
 	candidate := cloneRecords(catalog.records)
 	candidate[value.ConfigurationID] = catalogRecord{configuration: value.Clone(), password: password}
 	return catalog.commit(ctx, candidate, allowUnprotected)
@@ -116,13 +132,15 @@ type Update struct {
 	DisplayName          *string
 	InstitutionProfileID *InstitutionProfileID
 	Username             *string
+	AutoLogin            *bool
+	AutoReconnect        *bool
 }
 
 func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update Update) (Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
 		return Configuration{}, err
 	}
-	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil {
+	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil {
 		return Configuration{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
@@ -143,8 +161,21 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	if update.Username != nil {
 		record.configuration.Username = *update.Username
 	}
+	if update.AutoLogin != nil {
+		record.configuration.AutoLogin = *update.AutoLogin
+	}
+	if update.AutoReconnect != nil {
+		record.configuration.AutoReconnect = *update.AutoReconnect
+	}
 	if err := record.configuration.Validate(); err != nil {
 		return Configuration{}, catalogInvalidArgument(err)
+	}
+	if record.configuration.AutoLogin {
+		for existingID, existing := range catalog.records {
+			if existingID != id && existing.configuration.AutoLogin {
+				return Configuration{}, AutoLoginConflict{}
+			}
+		}
 	}
 	candidate := cloneRecords(catalog.records)
 	candidate[id] = record
