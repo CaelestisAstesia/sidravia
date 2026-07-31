@@ -481,11 +481,9 @@ func TestZipManifest(t *testing.T) {
 		zr.Close()
 
 		expected := append([]string{}, baseExpected...)
+		expected = append(expected, "institution-profiles/jlu.json")
 		if tc.mode == "portable" {
 			expected = append(expected, "sidravia.portable")
-			expected = append(expected, "config/institution-profiles/jlu.json")
-		} else {
-			expected = append(expected, "institution-profiles/jlu.json")
 		}
 		if !sortedEqual(names, expected) {
 			t.Errorf("%s: names = %v, want sorted %v", tc.name, names, expected)
@@ -503,14 +501,8 @@ func TestZipManifest(t *testing.T) {
 		if string(contents["GETTING-STARTED.md"]) != "# Getting started\n" {
 			t.Errorf("%s: GETTING-STARTED.md wrong", tc.name)
 		}
-		if tc.mode == "portable" {
-			if string(contents["config/institution-profiles/jlu.json"]) != testProfileJSON {
-				t.Errorf("%s: portable profile wrong", tc.name)
-			}
-		} else {
-			if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
-				t.Errorf("%s: installed profile wrong", tc.name)
-			}
+		if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
+			t.Errorf("%s: profile wrong", tc.name)
 		}
 		wantInternal := sha256Hex(cliBytes) + "  sidravia.exe\n" + sha256Hex(daemonBytes) + "  sidraviad.exe\n"
 		if string(contents["SHA256SUMS"]) != wantInternal {

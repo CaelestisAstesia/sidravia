@@ -64,7 +64,7 @@ func TestResolveInstalledModeWithoutMarker(t *testing.T) {
 	if layout.ConfigurationsPath != filepath.Join(configRoot, "configurations.json") {
 		t.Fatalf("ConfigurationsPath = %q", layout.ConfigurationsPath)
 	}
-	if layout.InstitutionProfilesDirectory != filepath.Join(configRoot, "institution-profiles") {
+	if layout.InstitutionProfilesDirectory != filepath.Join(exeDir, "institution-profiles") {
 		t.Fatalf("InstitutionProfilesDirectory = %q", layout.InstitutionProfilesDirectory)
 	}
 	if layout.RuntimeInfoPath != filepath.Join(cacheRoot, "runtime.json") {
@@ -106,7 +106,7 @@ func TestResolvePortableModeWithRegularMarker(t *testing.T) {
 	if layout.ConfigurationsPath != filepath.Join(exeDir, "config", "configurations.json") {
 		t.Fatalf("ConfigurationsPath = %q", layout.ConfigurationsPath)
 	}
-	if layout.InstitutionProfilesDirectory != filepath.Join(exeDir, "config", "institution-profiles") {
+	if layout.InstitutionProfilesDirectory != filepath.Join(exeDir, "institution-profiles") {
 		t.Fatalf("InstitutionProfilesDirectory = %q", layout.InstitutionProfilesDirectory)
 	}
 	if layout.RuntimeInfoPath != filepath.Join(exeDir, "runtime", "runtime.json") {

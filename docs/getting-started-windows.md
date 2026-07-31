@@ -22,8 +22,8 @@ Get-Content .\SHA256SUMS.txt
 
 - `sidravia.exe`：短生命周期命令行客户端；
 - `sidraviad.exe`：本地长期运行 daemon；
-- `institution-profiles\jlu.json`：官方吉林大学 Profile（非秘密；便携包位于
-  `config\institution-profiles\jlu.json`）；
+- `institution-profiles\jlu.json`：官方吉林大学 Profile（非秘密；安装版与便携版均在
+  解压目录根）；
 - `SHA256SUMS`：两个 PE 文件的 SHA-256；
 - `README.md`、`GETTING-STARTED.md` 和 `LICENSE`。
 
@@ -46,35 +46,19 @@ AppData。CLI 与 daemon 每次启动各自解析同一标记，增删标记前�
 marker）与 `SHA256SUMS.txt`（两个 zip 的 SHA-256）。两个 zip 共享同一对二进制，仅运行
 模式元数据与 marker 不同。
 
-## 安装吉林大学 Profile
+## 机构 Profile
 
-Profile 是不含账号和密码的本地机构配置，daemon 只在启动时加载一次。当前源码构建
-的包已随附官方吉林大学 Profile：安装版 zip 根目录含 `institution-profiles\jlu.json`；
-便携版 zip 已在 `config\institution-profiles\jlu.json` 预置，解压即用。
+Profile 是不含账号和密码的机构配置，由项目随版本发布，daemon 只在启动时加载一次。
+当前源码构建的包在解压目录根携带 `institution-profiles\jlu.json`，安装版与便携版
+相同；daemon 直接从该目录读取，**无需任何复制或安装步骤**。
 
-安装版（默认，无 `sidravia.portable` marker）需要把随包附带的 Profile 复制到
-`%APPDATA%\Sidravia\institution-profiles`。在 PowerShell 7 中、从解压目录执行：
+机构 Profile 模型：
 
-```powershell
-$ProfileDir = Join-Path $env:APPDATA 'Sidravia\institution-profiles'
-$ProfilePath = Join-Path $ProfileDir 'jlu.json'
-New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
-if (Test-Path -LiteralPath $ProfilePath) {
-    throw "已存在 $ProfilePath；请先人工核对再决定是否覆盖。"
-}
-Copy-Item -LiteralPath '.\institution-profiles\jlu.json' -Destination $ProfilePath
-```
-
-便携版（解压目录含 `sidravia.portable` marker）无需复制：
-`<解压目录>\config\institution-profiles\jlu.json` 已在包内就位，daemon 直接读取。
-
-本地编辑与自定义 Profile：
-
+- 官方 Profile 由项目随每个版本提供并发布；如需其他机构，请向项目提交，进入未来版本；
+- `institution-profiles\` 目录同时是调试入口：可以临时放入一个测试 Profile 验证，但它
+  不保证跨版本或重新解压保留；
 - daemon 只在启动时加载一次 Profile，从不写入或覆盖它们；
-- 修改 Profile 文件后重启 daemon 才生效；
-- 重新复制或重新解压不得覆盖已存在的 Profile（上面的 `Test-Path` 守卫会阻止）；
-- 不要把用户名或密码写入 Profile。其他学校不能直接复用吉林大学的服务器和 wire
-  参数；它们需要独立确认的机构 Profile，可放入同一目录。
+- 不要把用户名或密码写入 Profile。
 
 ## 启动和认证
 

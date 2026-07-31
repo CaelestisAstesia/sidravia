@@ -99,12 +99,12 @@ func resolve(r osResolver) (Layout, error) {
 			return Layout{}, err
 		}
 		layout.ConfigurationsPath = filepath.Join(configRoot, "configurations.json")
-		layout.InstitutionProfilesDirectory = filepath.Join(configRoot, "institution-profiles")
+		layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "institution-profiles")
 		layout.RuntimeInfoPath = filepath.Join(cacheRoot, "runtime.json")
 		layout.DaemonLogPath = filepath.Join(cacheRoot, "logs", "sidraviad.log")
 	case ModePortable:
 		layout.ConfigurationsPath = filepath.Join(exeDir, "config", "configurations.json")
-		layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "config", "institution-profiles")
+		layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "institution-profiles")
 		layout.RuntimeInfoPath = filepath.Join(exeDir, "runtime", "runtime.json")
 		layout.DaemonLogPath = filepath.Join(exeDir, "logs", "sidraviad.log")
 	}

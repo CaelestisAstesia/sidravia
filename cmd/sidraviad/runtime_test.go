@@ -465,9 +465,9 @@ func (s *orderTrackingStore) Read(ctx context.Context, path string, max int64) (
 
 // TestCompositionOpensCatalogBeforeProfileTraversal proves composeObjectGraph
 // opens the Authentication Configuration catalog (secure store Read, which
-// prepares and repairs the shared configuration root) before the Profile loader
-// traverses <config-root>/institution-profiles. It uses only test-owned
-// filesystem and store behavior: an invalid Profile on disk plus a store whose
+// prepares and protects the shared configuration root) before the Profile loader
+// traverses the program-root institution-profiles directory. It uses only
+// test-owned filesystem and store behavior: an invalid Profile on disk plus a store whose
 // Read fails with a sentinel. Because the Profile is invalid, Profile traversal
 // would surface a "load profiles" error if it ran first; observing the catalog
 // sentinel instead proves the catalog Read runs and stops composition before

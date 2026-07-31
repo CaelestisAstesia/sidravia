@@ -214,9 +214,9 @@ func composeObjectGraph(
 
 	// Open the Authentication Configuration catalog before loading institution
 	// Profiles. OpenCatalog performs the secure store Read, which prepares and
-	// repairs the shared configuration root (including inheritance repair of any
-	// pre-existing institution-profiles subtree). Only after that succeeds may
-	// the Profile loader traverse <config-root>/institution-profiles.
+	// protects the shared configuration root that holds configurations.json.
+	// Only after that succeeds may the Profile loader traverse the program-root
+	// institution-profiles directory.
 	catalog, err := configuration.OpenCatalog(ctx, store, paths.configurations)
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: open catalog: %w", err)

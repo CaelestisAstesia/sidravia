@@ -639,10 +639,8 @@ func assembleEntries(mode string, readme, license, gettingStarted, profile, inte
 	}
 	if mode == "portable" {
 		entries = append(entries, zipEntry{"sidravia.portable", nil, 0o644})
-		entries = append(entries, zipEntry{"config/institution-profiles/jlu.json", profile, 0o644})
-	} else {
-		entries = append(entries, zipEntry{"institution-profiles/jlu.json", profile, 0o644})
 	}
+	entries = append(entries, zipEntry{"institution-profiles/jlu.json", profile, 0o644})
 	return entries
 }
 
