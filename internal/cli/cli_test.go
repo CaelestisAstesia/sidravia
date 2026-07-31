@@ -741,60 +741,6 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 	})
 }
 
-func TestInstallAndUninstallCommandsDispatchAndHelp(t *testing.T) {
-	var installCalls, uninstallCalls []string
-	deps := commandDependencies{
-		install:   func(logLevel string) error { installCalls = append(installCalls, logLevel); return nil },
-		uninstall: func() error { uninstallCalls = append(uninstallCalls, "run"); return nil },
-		output:    io.Discard,
-	}
-	if err := runCommand([]string{"install"}, deps); err != nil {
-		t.Fatalf("install: %v", err)
-	}
-	if err := runCommand([]string{"install", "--log-level", "debug"}, deps); err != nil {
-		t.Fatalf("install --log-level: %v", err)
-	}
-	if err := runCommand([]string{"uninstall"}, deps); err != nil {
-		t.Fatalf("uninstall: %v", err)
-	}
-	if got := strings.Join(installCalls, "|"); got != "|debug" {
-		t.Fatalf("install calls = %q, want |debug", got)
-	}
-	if len(uninstallCalls) != 1 {
-		t.Fatalf("uninstall calls = %v, want 1", uninstallCalls)
-	}
-
-	if err := runCommand([]string{"install", "--log-level", "verbose"}, deps); err != errCommandUsage {
-		t.Fatalf("install invalid level = %v, want usage", err)
-	}
-
-	var rootHelp bytes.Buffer
-	deps.output = &rootHelp
-	if err := runCommand([]string{"--help"}, deps); err != nil {
-		t.Fatalf("root help: %v", err)
-	}
-	if !strings.Contains(rootHelp.String(), "\n  install ") || !strings.Contains(rootHelp.String(), "\n  uninstall ") {
-		t.Fatalf("root help omitted install/uninstall:\n%s", rootHelp.String())
-	}
-
-	before := len(installCalls)
-	for _, args := range [][]string{
-		{"install", "--help"}, {"install", "-h"}, {"uninstall", "--help"}, {"uninstall", "-h"},
-	} {
-		var output bytes.Buffer
-		deps.output = &output
-		if err := runCommand(args, deps); err != nil {
-			t.Fatalf("help %q: %v", args, err)
-		}
-		if !strings.Contains(output.String(), "用法：") {
-			t.Fatalf("help %q missing usage:\n%s", args, output.String())
-		}
-	}
-	if len(installCalls) != before || len(uninstallCalls) != 1 {
-		t.Fatal("help dispatched install/uninstall operation")
-	}
-}
-
 func TestNoSettingsCommandExists(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus:      func() error { return nil },

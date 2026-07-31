@@ -32,6 +32,13 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// testInstallScript and testUninstallScript are representative integration
+// scripts the fake repo ships; the build tool embeds them byte-for-byte.
+const (
+	testInstallScript   = "# install.ps1\n"
+	testUninstallScript = "# uninstall.ps1\n"
+)
+
 // testProfileJSON is a representative non-secret institution Profile the fake
 // repo ships. The build tool embeds it byte-for-byte; TestZipManifest asserts
 // both zips carry it at their documented paths.
@@ -74,6 +81,8 @@ func setupRepoRoot(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
 	writeTestFile(t, filepath.Join(root, "docs", "getting-started-windows.md"), "# Getting started\n")
 	writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json"), testProfileJSON)
+	writeTestFile(t, filepath.Join(root, "scripts", "install.ps1"), testInstallScript)
+	writeTestFile(t, filepath.Join(root, "scripts", "uninstall.ps1"), testUninstallScript)
 	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidravia"), 0o755); err != nil {
 		t.Fatalf("mkdir cmd/sidravia: %v", err)
 	}
@@ -482,6 +491,8 @@ func TestZipManifest(t *testing.T) {
 
 		expected := append([]string{}, baseExpected...)
 		expected = append(expected, "institution-profiles/jlu.json")
+		expected = append(expected, "scripts/install.ps1")
+		expected = append(expected, "scripts/uninstall.ps1")
 		if tc.mode == "portable" {
 			expected = append(expected, "sidravia.portable")
 		}
@@ -503,6 +514,12 @@ func TestZipManifest(t *testing.T) {
 		}
 		if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
 			t.Errorf("%s: profile wrong", tc.name)
+		}
+		if string(contents["scripts/install.ps1"]) != testInstallScript {
+			t.Errorf("%s: install script wrong", tc.name)
+		}
+		if string(contents["scripts/uninstall.ps1"]) != testUninstallScript {
+			t.Errorf("%s: uninstall script wrong", tc.name)
 		}
 		wantInternal := sha256Hex(cliBytes) + "  sidravia.exe\n" + sha256Hex(daemonBytes) + "  sidraviad.exe\n"
 		if string(contents["SHA256SUMS"]) != wantInternal {

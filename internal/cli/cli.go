@@ -68,8 +68,6 @@ type commandDependencies struct {
 	configUpdate      func(configUpdateOptions) error
 	configSetPassword func(configPasswordOptions) error
 	configRemove      func(string, bool) error
-	install           func(logLevel string) error
-	uninstall         func() error
 	output            io.Writer
 }
 
@@ -92,8 +90,6 @@ func defaultCommandDependencies() commandDependencies {
 		configUpdate:      configUpdate,
 		configSetPassword: configSetPassword,
 		configRemove:      configRemove,
-		install:           runInstallCommand,
-		uninstall:         runUninstallCommand,
 		output:            os.Stdout,
 	}
 }
@@ -224,9 +220,7 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
 	configCommand := newConfigCommand(deps)
 
-	installCmd := newDaemonLogLevelCommand("install", "安装并集成本地 daemon", deps.install)
-	uninstallCmd := newListCommand("uninstall", "卸载本地 daemon 集成", deps.uninstall)
-	root.AddCommand(daemon, auth, profile, configCommand, installCmd, uninstallCmd, retiredStatus)
+	root.AddCommand(daemon, auth, profile, configCommand, retiredStatus)
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := newPresentation(c.OutOrStdout())
@@ -290,8 +284,6 @@ var helpSpecs = map[string]helpNode{
 			{"auth", "管理认证 Session"},
 			{"profile", "查看机构 Profile"},
 			{"config", "管理认证配置"},
-			{"install", "安装并集成本地 daemon"},
-			{"uninstall", "卸载本地 daemon 集成"},
 		},
 		examples: []string{
 			"sidravia daemon status",
@@ -455,24 +447,6 @@ var helpSpecs = map[string]helpNode{
 	"sidravia config remove": {
 		description: "停止关联 Session 并删除认证配置。",
 		usage:       []string{"sidravia config remove <configuration-id> [--yes]"},
-	},
-	"sidravia install": {
-		description: "把当前安装目录加入用户 PATH，并创建登录任务以在用户登录时启动 daemon（仅 Windows）。",
-		usage:       []string{"sidravia install [--log-level info|debug|trace]"},
-		options: []string{
-			"--log-level info|debug|trace：登录任务启动 daemon 使用的日志级别，默认 info",
-		},
-		examples: []string{
-			"sidravia install",
-			"sidravia install --log-level debug",
-		},
-	},
-	"sidravia uninstall": {
-		description: "撤销安装集成：移除用户 PATH 条目并删除登录任务，不删除任何配置、凭据、Profile 或日志（仅 Windows）。",
-		usage:       []string{"sidravia uninstall"},
-		examples: []string{
-			"sidravia uninstall",
-		},
 	},
 }
 
