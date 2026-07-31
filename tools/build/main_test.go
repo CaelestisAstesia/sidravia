@@ -32,6 +32,40 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// testProfileJSON is a representative non-secret institution Profile the fake
+// repo ships. The build tool embeds it byte-for-byte; TestZipManifest asserts
+// both zips carry it at their documented paths.
+const testProfileJSON = `{
+  "schemaVersion": 1,
+  "institutionProfileId": "jlu",
+  "displayName": "吉林大学",
+  "authenticationProtocolId": "drcom-5.2.0-d",
+  "institutionProtocolConfiguration": {
+    "serverAddress": "10.100.61.3",
+    "serverPort": 61440,
+    "localPort": {"mode": "fixed", "value": 61440},
+    "authVersionHex": "2c00",
+    "keepAliveVersionHex": "dc02",
+    "controlCheckStatusHex": "20",
+    "ipdogHex": "01",
+    "adapterNumberHex": "01",
+    "osInfoHex": "940000000600000000000000280a000002000000",
+    "challengePaddingHex": "000000000000000000000000000000",
+    "loginIPDogPaddingHex": "00000000",
+    "loginDHCPPaddingHex": "0000000000000000",
+    "loginAuthExtensionPaddingHex": "0000",
+    "challengeTimeout": "3s",
+    "loginTimeout": "5s",
+    "keepaliveTimeout": "3s",
+    "logoutTimeout": "1s",
+    "heartbeatInterval": "20s",
+    "busyMaxAttempts": 3,
+    "busyBackoffMin": "1s",
+    "busyBackoffMax": "2s"
+  }
+}
+`
+
 func setupRepoRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -39,6 +73,7 @@ func setupRepoRoot(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
 	writeTestFile(t, filepath.Join(root, "docs", "getting-started-windows.md"), "# Getting started\n")
+	writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json"), testProfileJSON)
 	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidravia"), 0o755); err != nil {
 		t.Fatalf("mkdir cmd/sidravia: %v", err)
 	}
@@ -409,7 +444,7 @@ func TestZipManifest(t *testing.T) {
 					t.Errorf("%s: unexpected marker", tc.name)
 				}
 			}
-			if strings.Contains(f.Name, "/") || strings.Contains(f.Name, "\\") || strings.Contains(f.Name, "..") {
+			if strings.Contains(f.Name, "\\") || strings.Contains(f.Name, "..") {
 				t.Errorf("%s: bad entry name %q", tc.name, f.Name)
 			}
 			rc, err := f.Open()
@@ -448,6 +483,9 @@ func TestZipManifest(t *testing.T) {
 		expected := append([]string{}, baseExpected...)
 		if tc.mode == "portable" {
 			expected = append(expected, "sidravia.portable")
+			expected = append(expected, "config/institution-profiles/jlu.json")
+		} else {
+			expected = append(expected, "institution-profiles/jlu.json")
 		}
 		if !sortedEqual(names, expected) {
 			t.Errorf("%s: names = %v, want sorted %v", tc.name, names, expected)
@@ -464,6 +502,15 @@ func TestZipManifest(t *testing.T) {
 		}
 		if string(contents["GETTING-STARTED.md"]) != "# Getting started\n" {
 			t.Errorf("%s: GETTING-STARTED.md wrong", tc.name)
+		}
+		if tc.mode == "portable" {
+			if string(contents["config/institution-profiles/jlu.json"]) != testProfileJSON {
+				t.Errorf("%s: portable profile wrong", tc.name)
+			}
+		} else {
+			if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
+				t.Errorf("%s: installed profile wrong", tc.name)
+			}
 		}
 		wantInternal := sha256Hex(cliBytes) + "  sidravia.exe\n" + sha256Hex(daemonBytes) + "  sidraviad.exe\n"
 		if string(contents["SHA256SUMS"]) != wantInternal {
@@ -590,6 +637,27 @@ func TestNonDirParentFails(t *testing.T) {
 	}
 	if len(fb.calls) != 0 {
 		t.Errorf("build called")
+	}
+}
+
+func TestMissingOfficialProfileFailsInputs(t *testing.T) {
+	root := setupRepoRoot(t)
+	profilePath := filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json")
+	if err := os.Remove(profilePath); err != nil {
+		t.Fatalf("remove profile: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "dist")
+	fb := &fakeBuilder{}
+	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
+	err := tt.execute(io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "jlu.json") {
+		t.Fatalf("expected missing-profile input error, got %v", err)
+	}
+	if len(fb.calls) != 0 {
+		t.Errorf("build called %d times", len(fb.calls))
+	}
+	if _, e := os.Lstat(out); !os.IsNotExist(e) {
+		t.Errorf("output created")
 	}
 }
 

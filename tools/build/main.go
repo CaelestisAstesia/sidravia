@@ -346,6 +346,7 @@ func verifyRepoInputs(root string) error {
 		{"README.md", false},
 		{"LICENSE", false},
 		{"docs/getting-started-windows.md", false},
+		{"internal/daemon/configuration/profiles/jlu.json", false},
 		{"cmd/sidravia", true},
 		{"cmd/sidraviad", true},
 	}
@@ -592,15 +593,19 @@ func writeArtifacts(repoRoot, staging, version, buildID string, cliBytes, daemon
 	if err != nil {
 		return fmt.Errorf("read docs/getting-started-windows.md: %w", err)
 	}
+	profile, err := os.ReadFile(filepath.Join(repoRoot, "internal", "daemon", "configuration", "profiles", "jlu.json"))
+	if err != nil {
+		return fmt.Errorf("read internal/daemon/configuration/profiles/jlu.json: %w", err)
+	}
 
 	internalSums := []byte(sha256Hex(cliBytes) + "  sidravia.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
-	normalEntries := assembleEntries("installed", readme, license, gettingStarted, internalSums, cliBytes, daemonBytes, version, buildID)
+	normalEntries := assembleEntries("installed", readme, license, gettingStarted, profile, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, normalName), normalEntries); err != nil {
 		return fmt.Errorf("write %s: %w", normalName, err)
 	}
-	portableEntries := assembleEntries("portable", readme, license, gettingStarted, internalSums, cliBytes, daemonBytes, version, buildID)
+	portableEntries := assembleEntries("portable", readme, license, gettingStarted, profile, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, portableName), portableEntries); err != nil {
 		return fmt.Errorf("write %s: %w", portableName, err)
 	}
@@ -622,7 +627,7 @@ func writeArtifacts(repoRoot, staging, version, buildID string, cliBytes, daemon
 	return nil
 }
 
-func assembleEntries(mode string, readme, license, gettingStarted, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
+func assembleEntries(mode string, readme, license, gettingStarted, profile, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
 	entries := []zipEntry{
 		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, mode), 0o644},
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
@@ -634,6 +639,9 @@ func assembleEntries(mode string, readme, license, gettingStarted, internalSums,
 	}
 	if mode == "portable" {
 		entries = append(entries, zipEntry{"sidravia.portable", nil, 0o644})
+		entries = append(entries, zipEntry{"config/institution-profiles/jlu.json", profile, 0o644})
+	} else {
+		entries = append(entries, zipEntry{"institution-profiles/jlu.json", profile, 0o644})
 	}
 	return entries
 }

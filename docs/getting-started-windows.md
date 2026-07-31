@@ -22,6 +22,8 @@ Get-Content .\SHA256SUMS.txt
 
 - `sidravia.exe`：短生命周期命令行客户端；
 - `sidraviad.exe`：本地长期运行 daemon；
+- `institution-profiles\jlu.json`：官方吉林大学 Profile（非秘密；便携包位于
+  `config\institution-profiles\jlu.json`）；
 - `SHA256SUMS`：两个 PE 文件的 SHA-256；
 - `README.md`、`GETTING-STARTED.md` 和 `LICENSE`。
 
@@ -46,57 +48,33 @@ marker）与 `SHA256SUMS.txt`（两个 zip 的 SHA-256）。两个 zip 共享同
 
 ## 安装吉林大学 Profile
 
-Profile 是不含账号和密码的本地机构配置。daemon 只在启动时加载一次。
+Profile 是不含账号和密码的本地机构配置，daemon 只在启动时加载一次。当前源码构建
+的包已随附官方吉林大学 Profile：安装版 zip 根目录含 `institution-profiles\jlu.json`；
+便携版 zip 已在 `config\institution-profiles\jlu.json` 预置，解压即用。
 
-在 PowerShell 7 中执行：
+安装版（默认，无 `sidravia.portable` marker）需要把随包附带的 Profile 复制到
+`%APPDATA%\Sidravia\institution-profiles`。在 PowerShell 7 中、从解压目录执行：
 
 ```powershell
-# 安装版（默认，无 sidravia.portable marker）：Profile 位于 %APPDATA%\Sidravia
 $ProfileDir = Join-Path $env:APPDATA 'Sidravia\institution-profiles'
-# 便携版（解压目录含 sidravia.portable marker）：Profile 位于 <解压目录>\config
-# $ProfileDir = Join-Path '<解压目录>' 'config\institution-profiles'
-New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
 $ProfilePath = Join-Path $ProfileDir 'jlu.json'
-```
-
-创建 `jlu.json`：
-
-```powershell
-@'
-{
-  "schemaVersion": 1,
-  "institutionProfileId": "jlu",
-  "displayName": "吉林大学",
-  "authenticationProtocolId": "drcom-5.2.0-d",
-  "institutionProtocolConfiguration": {
-    "serverAddress": "10.100.61.3",
-    "serverPort": 61440,
-    "localPort": {"mode": "fixed", "value": 61440},
-    "authVersionHex": "2c00",
-    "keepAliveVersionHex": "dc02",
-    "controlCheckStatusHex": "20",
-    "ipdogHex": "01",
-    "adapterNumberHex": "01",
-    "osInfoHex": "940000000600000000000000280a000002000000",
-    "challengePaddingHex": "000000000000000000000000000000",
-    "loginIPDogPaddingHex": "00000000",
-    "loginDHCPPaddingHex": "0000000000000000",
-    "loginAuthExtensionPaddingHex": "0000",
-    "challengeTimeout": "3s",
-    "loginTimeout": "5s",
-    "keepaliveTimeout": "3s",
-    "logoutTimeout": "1s",
-    "heartbeatInterval": "20s",
-    "busyMaxAttempts": 3,
-    "busyBackoffMin": "1s",
-    "busyBackoffMax": "2s"
-  }
+New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
+if (Test-Path -LiteralPath $ProfilePath) {
+    throw "已存在 $ProfilePath；请先人工核对再决定是否覆盖。"
 }
-'@ | Set-Content -LiteralPath $ProfilePath -Encoding utf8NoBOM
+Copy-Item -LiteralPath '.\institution-profiles\jlu.json' -Destination $ProfilePath
 ```
 
-不要把用户名或密码写入 Profile。其他学校不能直接复用这些服务器和 wire 参数；它们
-需要独立确认的机构 Profile。
+便携版（解压目录含 `sidravia.portable` marker）无需复制：
+`<解压目录>\config\institution-profiles\jlu.json` 已在包内就位，daemon 直接读取。
+
+本地编辑与自定义 Profile：
+
+- daemon 只在启动时加载一次 Profile，从不写入或覆盖它们；
+- 修改 Profile 文件后重启 daemon 才生效；
+- 重新复制或重新解压不得覆盖已存在的 Profile（上面的 `Test-Path` 守卫会阻止）；
+- 不要把用户名或密码写入 Profile。其他学校不能直接复用吉林大学的服务器和 wire
+  参数；它们需要独立确认的机构 Profile，可放入同一目录。
 
 ## 启动和认证
 
@@ -295,7 +273,7 @@ ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他
 
 - 只发布 Windows amd64 二进制；其他平台尚不受支持。
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
-- 本地 Profile 需要手动创建，尚无引导式配置界面。
+- 官方吉林大学 Profile 随包附带；本地自定义 Profile 仍需手动创建，尚无引导式配置界面。
 - 尚无自动登录或 Windows Service。
 - 尚无 WSS、Linux/macOS daemon 进程控制；
   Session ensure/restart/remove 已进入当前源码，但仍待 Windows 原生复核。
