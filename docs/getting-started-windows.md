@@ -269,12 +269,35 @@ do {
 首个 Alpha 同一 daemon 进程只允许一个活动 Session。进程重启后不会恢复旧 Session
 ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他认证客户端代替正常 Stop。
 
+## 安装与集成（可选）
+
+`install` 与 `uninstall` 只支持 Windows；Linux/macOS 返回明确的 Unsupported。
+
+推荐把安装版压缩包解压到 `%LOCALAPPDATA%\Programs\Sidravia`，再从该目录执行：
+
+```powershell
+.\sidravia install [--log-level info|debug|trace]
+```
+
+`install` 把当前可执行文件目录加入用户 PATH（`HKCU\Environment\PATH`），并创建登录
+计划任务 `SidraviaDaemon`：每次用户登录时自动运行 `sidravia daemon start
+--log-level <级别>` 启动 daemon（默认 `info`）。重复执行是幂等的：不重复加入 PATH
+条目，登录任务以同一精确定义覆盖。便携版（含 `sidravia.portable` marker）拒绝
+安装集成；请使用安装版。
+
+```powershell
+.\sidravia uninstall
+```
+
+`uninstall` 撤销集成：移除精确的 PATH 条目并删除登录任务；它不会删除任何认证配置、
+凭据、机构 Profile 或日志。重复执行是幂等的。
+
 ## Alpha 限制
 
 - 只发布 Windows amd64 二进制；其他平台尚不受支持。
 - 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
 - 官方吉林大学 Profile 随包附带；本地自定义 Profile 仍需手动创建，尚无引导式配置界面。
-- 尚无自动登录或 Windows Service。
+- 无 Windows Service；daemon 登录自启动由用户显式执行 `sidravia install` 创建的登录任务提供。
 - 尚无 WSS、Linux/macOS daemon 进程控制；
   Session ensure/restart/remove 已进入当前源码，但仍待 Windows 原生复核。
 - 简体中文 CLI 呈现、`NO_COLOR` 和重定向安全着色已加入；route-aware 多 IPv4 选择和
