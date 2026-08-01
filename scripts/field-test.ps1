@@ -35,9 +35,45 @@ $script:PackageHashes = [ordered]@{}
 $MarkerName = '.sidravia-field-validation'
 $MarkerPrefix = 'sidravia-field-validation-v1:'
 $TaskName = 'SidraviaDaemon'
-$PowerShellExe = Join-Path $PSHOME 'powershell.exe'
+$script:PowerShellExe = $null
 $PackageRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $TempParent = Join-Path ([IO.Path]::GetTempPath()) 'SidraviaFieldValidation'
+
+function Resolve-ChildPowerShell {
+    $executableName = 'powershell.exe'
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $executableName = 'pwsh.exe'
+    }
+    $candidate = Join-Path $PSHOME $executableName
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw 'powershell_host_not_found'
+    }
+    return [IO.Path]::GetFullPath($candidate)
+}
+
+function Get-SanitizedHarnessError {
+    param([System.Management.Automation.ErrorRecord]$ErrorRecord)
+    $allowedReasonCodes = @(
+        'report_directory_outside_package',
+        'unsupported_windows_or_powershell',
+        'powershell_host_not_found',
+        'package_input_missing',
+        'package_checksum_missing',
+        'package_checksum_mismatch',
+        'temporary_parent_is_reparse_point',
+        'sandbox_path_escape',
+        'stale_cleanup_required',
+        'preexisting_daemon'
+    )
+    $reasonCode = 'sanitized_internal_error'
+    if ($allowedReasonCodes -contains $ErrorRecord.Exception.Message) {
+        $reasonCode = $ErrorRecord.Exception.Message
+    }
+    return [pscustomobject]@{
+        ReasonCode = $reasonCode
+        ExceptionType = $ErrorRecord.Exception.GetType().Name
+    }
+}
 
 function Test-PathUnderRoot {
     param([string]$Path, [string]$Root)
@@ -281,6 +317,7 @@ function Test-PackagePreflight {
     if ($env:OS -ne 'Windows_NT' -or $PSVersionTable.PSVersion.Major -lt 5) {
         throw 'unsupported_windows_or_powershell'
     }
+    $script:PowerShellExe = Resolve-ChildPowerShell
     $required = @(
         'sidravia.exe',
         'sidraviad.exe',
@@ -344,7 +381,7 @@ function New-Sandbox {
 
 function Invoke-LocalSuite {
     $timed = Invoke-Timed {
-        Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @(
+        Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @(
             '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
             '-File', (Join-Path $script:Sandbox (Join-Path 'scripts' 'cli-smoke.ps1')),
             '-Sidravia', $script:Cli, '-SkipAuthStart'
@@ -387,8 +424,8 @@ function Invoke-IntegrationSuite {
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $install = Join-Path $script:Sandbox (Join-Path 'scripts' 'install.ps1')
     $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
-    $first = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
-    $second = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
+    $first = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
+    $second = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
 
     $task = Get-SandboxTask
     $pathPresent = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
@@ -399,8 +436,8 @@ function Invoke-IntegrationSuite {
         $null = Invoke-Sidravia -Arguments @('daemon', 'stop')
     }
 
-    $removeFirst = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
-    $removeSecond = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+    $removeFirst = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+    $removeSecond = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
     $finalTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     $finalPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
     if ($null -eq $finalTask -and -not $finalPath) { $script:IntegrationOwned = $false }
@@ -712,7 +749,7 @@ function Invoke-OwnedCleanup {
                 $sandboxRemovalSafe = $false
             } elseif ($null -ne $ownedTask -or $ownedPath) {
                 $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
-                $result = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+                $result = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
                 if ($result.ExitCode -ne 0) {
                     $ok = $false
                     $sandboxRemovalSafe = $false
@@ -832,7 +869,9 @@ try {
     }
 } catch {
     if (-not $script:PreconditionBlocked -and -not $script:RequestedFailure) {
-        Add-Check -ID 'harness.execution' -Status FAIL -ReasonCode 'sanitized_internal_error' -Category automatic
+        $errorDetails = Get-SanitizedHarnessError -ErrorRecord $_
+        Add-Check -ID 'harness.execution' -Status FAIL -ReasonCode $errorDetails.ReasonCode -Category automatic
+        Write-Host ('Harness execution failed [' + $errorDetails.ReasonCode + ':' + $errorDetails.ExceptionType + ']')
     }
 } finally {
     $cleanup = $false
