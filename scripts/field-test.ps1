@@ -463,7 +463,7 @@ function Invoke-NetworkTransition {
         Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
         return $true
     }
-    Write-Output 'Observing Session state; perform the transition now.'
+    Write-Host 'Observing Session state; perform the transition now.'
     $deadline = [DateTime]::UtcNow.AddSeconds(120)
     $observedLoss = $false
     $recovered = $false
