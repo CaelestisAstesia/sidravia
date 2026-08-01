@@ -32,8 +32,7 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-// These representative validation and integration scripts are embedded
-// byte-for-byte in both package types.
+// These representative scripts prove Release/validation content separation.
 const (
 	testFieldTestScript = "# field-test.ps1\n"
 	testCLISmokeScript  = "# cli-smoke.ps1\n"
@@ -111,6 +110,9 @@ func (f *fakeBuilder) build(env []string, argv []string) ([]byte, error) {
 }
 
 func newFakeTool(cfg config, repoRoot string, fb *fakeBuilder) *tool {
+	if cfg.artifact == "" {
+		cfg.artifact = "release"
+	}
 	return &tool{
 		cfg:              cfg,
 		repoRoot:         repoRoot,
@@ -123,23 +125,27 @@ func newFakeTool(cfg config, repoRoot string, fb *fakeBuilder) *tool {
 }
 
 func buildOutput(t *testing.T, version, buildID string) (string, *fakeBuilder) {
+	return buildArtifactOutput(t, version, buildID, "release")
+}
+
+func buildArtifactOutput(t *testing.T, version, buildID, artifact string) (string, *fakeBuilder) {
 	t.Helper()
 	root := setupRepoRoot(t)
 	fb := &fakeBuilder{}
 	out := filepath.Join(t.TempDir(), "dist")
-	cfg := config{version: version, buildID: buildID, output: out, goBin: "go"}
+	cfg := config{version: version, buildID: buildID, output: out, goBin: "go", artifact: artifact}
 	if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	return out, fb
 }
 
-func normalName(version string) string {
-	return "sidravia-v" + version + "-windows-amd64.zip"
+func portableName(version string) string {
+	return artifactFileName(version, "release")
 }
 
-func portableName(version string) string {
-	return "sidravia-v" + version + "-windows-amd64-portable.zip"
+func fieldValidationName(version string) string {
+	return artifactFileName(version, "field-validation")
 }
 
 // 1. flag, ProductVersion and BuildID accept/reject matrix.
@@ -150,8 +156,14 @@ func TestParseFlags(t *testing.T) {
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
-		if c.version != "1.2.3" || c.buildID != "abc" || c.output != "out" || c.goBin != "go" || c.help {
+		if c.version != "1.2.3" || c.buildID != "abc" || c.output != "out" || c.goBin != "go" || c.artifact != "release" || c.help {
 			t.Fatalf("bad config: %+v", c)
+		}
+	})
+	t.Run("field validation artifact", func(t *testing.T) {
+		c, err := parseFlags([]string{"--version=1.0.0", "--build-id=x", "--output=o", "--artifact=field-validation"})
+		if err != nil || c.artifact != "field-validation" {
+			t.Fatalf("artifact=%q err=%v", c.artifact, err)
 		}
 	})
 	t.Run("equal form and custom go", func(t *testing.T) {
@@ -194,6 +206,8 @@ func TestParseFlags(t *testing.T) {
 		"unknown flag":     {"--foo", "1"},
 		"positional":       {"--version", "1.0.0", "--build-id", "x", "--output", "o", "extra"},
 		"missing value":    {"--version"},
+		"invalid artifact": {"--version", "1.0.0", "--build-id", "x", "--output", "o", "--artifact", "installed"},
+		"empty artifact":   {"--version", "1.0.0", "--build-id", "x", "--output", "o", "--artifact="},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := parseFlags(args); err == nil {
@@ -394,90 +408,85 @@ func sliceEqual(a, b []string) bool {
 	return true
 }
 
-// 5. fake builder receives exactly two build calls; both packages reuse same bytes.
+// 5. each artifact builds exactly one shared pair of product binaries.
 
 func TestFakeBuilderTwoCallsReuse(t *testing.T) {
-	out, fb := buildOutput(t, "0.1.0-alpha.2", "buildid123")
-	if len(fb.calls) != 2 {
-		t.Fatalf("build calls = %d, want 2", len(fb.calls))
-	}
-	if fb.calls[0][len(fb.calls[0])-1] != "./cmd/sidravia" {
-		t.Errorf("call 0 target = %q", fb.calls[0][len(fb.calls[0])-1])
-	}
-	if fb.calls[1][len(fb.calls[1])-1] != "./cmd/sidraviad" {
-		t.Errorf("call 1 target = %q", fb.calls[1][len(fb.calls[1])-1])
-	}
-	cliBytes := []byte("FAKE-BINARY-./cmd/sidravia")
-	daemonBytes := []byte("FAKE-BINARY-./cmd/sidraviad")
-	normal := readZipContents(t, filepath.Join(out, normalName("0.1.0-alpha.2")))
-	portable := readZipContents(t, filepath.Join(out, portableName("0.1.0-alpha.2")))
-	if !bytes.Equal(normal["sidravia.exe"], cliBytes) || !bytes.Equal(portable["sidravia.exe"], cliBytes) {
-		t.Errorf("sidravia.exe bytes differ or do not match fake output")
-	}
-	if !bytes.Equal(normal["sidraviad.exe"], daemonBytes) || !bytes.Equal(portable["sidraviad.exe"], daemonBytes) {
-		t.Errorf("sidraviad.exe bytes differ or do not match fake output")
-	}
-	if !bytes.Equal(normal["sidravia.exe"], portable["sidravia.exe"]) {
-		t.Errorf("sidravia.exe differs between packages")
+	for _, artifact := range []string{"release", "field-validation"} {
+		out, fb := buildArtifactOutput(t, "0.1.0-alpha.2", "buildid123", artifact)
+		if len(fb.calls) != 2 {
+			t.Fatalf("%s: build calls = %d, want 2", artifact, len(fb.calls))
+		}
+		if fb.calls[0][len(fb.calls[0])-1] != "./cmd/sidravia" {
+			t.Errorf("%s: call 0 target = %q", artifact, fb.calls[0][len(fb.calls[0])-1])
+		}
+		if fb.calls[1][len(fb.calls[1])-1] != "./cmd/sidraviad" {
+			t.Errorf("%s: call 1 target = %q", artifact, fb.calls[1][len(fb.calls[1])-1])
+		}
+		contents := readZipContents(t, filepath.Join(out, artifactFileName("0.1.0-alpha.2", artifact)))
+		if !bytes.Equal(contents["sidravia.exe"], []byte("FAKE-BINARY-./cmd/sidravia")) {
+			t.Errorf("%s: sidravia.exe does not match fake output", artifact)
+		}
+		if !bytes.Equal(contents["sidraviad.exe"], []byte("FAKE-BINARY-./cmd/sidraviad")) {
+			t.Errorf("%s: sidraviad.exe does not match fake output", artifact)
+		}
 	}
 }
 
-// 6. zip manifest, sort, timestamp, mode, BUILD-INFO, internal sums and marker diff.
+// 6. exact Release/validation manifests, metadata and content separation.
 
 func TestZipManifest(t *testing.T) {
 	version := "0.1.0-alpha.2"
 	buildID := "buildid123"
-	out, _ := buildOutput(t, version, buildID)
 	cliBytes := []byte("FAKE-BINARY-./cmd/sidravia")
 	daemonBytes := []byte("FAKE-BINARY-./cmd/sidraviad")
 	baseExpected := []string{
 		"BUILD-INFO.txt", "GETTING-STARTED.md", "LICENSE", "README.md",
-		"SHA256SUMS", "sidravia.exe", "sidraviad.exe",
+		"SHA256SUMS", "institution-profiles/jlu.json", "scripts/install.ps1",
+		"scripts/uninstall.ps1", "sidravia.exe", "sidravia.portable", "sidraviad.exe",
 	}
 
 	for _, tc := range []struct {
-		name string
-		mode string
-		file string
+		artifact string
+		file     string
+		field    bool
 	}{
-		{"normal", "installed", normalName(version)},
-		{"portable", "portable", portableName(version)},
+		{"release", portableName(version), false},
+		{"field-validation", fieldValidationName(version), true},
 	} {
+		out, _ := buildArtifactOutput(t, version, buildID, tc.artifact)
 		path := filepath.Join(out, tc.file)
 		zr, err := zip.OpenReader(path)
 		if err != nil {
-			t.Fatalf("%s: open zip: %v", tc.name, err)
+			t.Fatalf("%s: open zip: %v", tc.artifact, err)
 		}
 		var names []string
 		contents := map[string][]byte{}
 		for _, f := range zr.File {
 			names = append(names, f.Name)
 			if f.Name == "sidravia.portable" {
-				if tc.mode != "portable" {
-					t.Errorf("%s: unexpected marker", tc.name)
-				}
+				// Every currently emitted artifact is explicitly portable.
 			}
 			if strings.Contains(f.Name, "\\") || strings.Contains(f.Name, "..") {
-				t.Errorf("%s: bad entry name %q", tc.name, f.Name)
+				t.Errorf("%s: bad entry name %q", tc.artifact, f.Name)
 			}
 			rc, err := f.Open()
 			if err != nil {
-				t.Fatalf("%s: open entry %q: %v", tc.name, f.Name, err)
+				t.Fatalf("%s: open entry %q: %v", tc.artifact, f.Name, err)
 			}
 			b, err := io.ReadAll(rc)
 			rc.Close()
 			if err != nil {
-				t.Fatalf("%s: read entry %q: %v", tc.name, f.Name, err)
+				t.Fatalf("%s: read entry %q: %v", tc.artifact, f.Name, err)
 			}
 			contents[f.Name] = b
 			if !f.Modified.Equal(epoch) {
-				t.Errorf("%s: entry %q time = %v, want %v", tc.name, f.Name, f.Modified, epoch)
+				t.Errorf("%s: entry %q time = %v, want %v", tc.artifact, f.Name, f.Modified, epoch)
 			}
 			if f.Comment != "" {
-				t.Errorf("%s: entry %q has comment", tc.name, f.Name)
+				t.Errorf("%s: entry %q has comment", tc.artifact, f.Name)
 			}
 			if f.Method != zip.Deflate {
-				t.Errorf("%s: entry %q method = %d, want Deflate", tc.name, f.Name, f.Method)
+				t.Errorf("%s: entry %q method = %d, want Deflate", tc.artifact, f.Name, f.Method)
 			}
 			mode := (f.ExternalAttrs >> 16) & 0o777
 			wantMode := uint32(0o644)
@@ -485,66 +494,61 @@ func TestZipManifest(t *testing.T) {
 				wantMode = 0o755
 			}
 			if mode != wantMode {
-				t.Errorf("%s: entry %q mode = %o, want %o", tc.name, f.Name, mode, wantMode)
+				t.Errorf("%s: entry %q mode = %o, want %o", tc.artifact, f.Name, mode, wantMode)
 			}
 		}
 		if zr.Comment != "" {
-			t.Errorf("%s: archive has comment", tc.name)
+			t.Errorf("%s: archive has comment", tc.artifact)
 		}
 		zr.Close()
 
 		expected := append([]string{}, baseExpected...)
-		expected = append(expected, "institution-profiles/jlu.json")
-		expected = append(expected, "scripts/cli-smoke.ps1")
-		expected = append(expected, "scripts/field-test.ps1")
-		expected = append(expected, "scripts/install.ps1")
-		expected = append(expected, "scripts/uninstall.ps1")
-		if tc.mode == "portable" {
-			expected = append(expected, "sidravia.portable")
+		if tc.field {
+			expected = append(expected, "scripts/cli-smoke.ps1", "scripts/field-test.ps1")
 		}
 		if !sortedEqual(names, expected) {
-			t.Errorf("%s: names = %v, want sorted %v", tc.name, names, expected)
+			t.Errorf("%s: names = %v, want sorted %v", tc.artifact, names, expected)
 		}
-		wantInfo := fmt.Sprintf("ProductVersion: %s\nBuildID: %s\nTarget: windows/amd64\nLayoutMode: %s\n", version, buildID, tc.mode)
+		wantInfo := fmt.Sprintf("ProductVersion: %s\nBuildID: %s\nTarget: windows/amd64\nLayoutMode: portable\nArtifactKind: %s\n", version, buildID, tc.artifact)
 		if string(contents["BUILD-INFO.txt"]) != wantInfo {
-			t.Errorf("%s: BUILD-INFO = %q, want %q", tc.name, contents["BUILD-INFO.txt"], wantInfo)
+			t.Errorf("%s: BUILD-INFO = %q, want %q", tc.artifact, contents["BUILD-INFO.txt"], wantInfo)
 		}
 		if string(contents["README.md"]) != "# Sidravia readme\n" {
-			t.Errorf("%s: README.md wrong", tc.name)
+			t.Errorf("%s: README.md wrong", tc.artifact)
 		}
 		if string(contents["LICENSE"]) != "LICENSE TEXT\n" {
-			t.Errorf("%s: LICENSE wrong", tc.name)
+			t.Errorf("%s: LICENSE wrong", tc.artifact)
 		}
 		if string(contents["GETTING-STARTED.md"]) != "# Getting started\n" {
-			t.Errorf("%s: GETTING-STARTED.md wrong", tc.name)
+			t.Errorf("%s: GETTING-STARTED.md wrong", tc.artifact)
 		}
 		if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
-			t.Errorf("%s: profile wrong", tc.name)
+			t.Errorf("%s: profile wrong", tc.artifact)
 		}
-		if string(contents["scripts/field-test.ps1"]) != testFieldTestScript {
-			t.Errorf("%s: field test script wrong", tc.name)
-		}
-		if string(contents["scripts/cli-smoke.ps1"]) != testCLISmokeScript {
-			t.Errorf("%s: CLI smoke script wrong", tc.name)
+		if tc.field {
+			if string(contents["scripts/field-test.ps1"]) != testFieldTestScript {
+				t.Errorf("%s: field test script wrong", tc.artifact)
+			}
+			if string(contents["scripts/cli-smoke.ps1"]) != testCLISmokeScript {
+				t.Errorf("%s: CLI smoke script wrong", tc.artifact)
+			}
+		} else if _, ok := contents["scripts/field-test.ps1"]; ok {
+			t.Errorf("release contains field-test.ps1")
+		} else if _, ok := contents["scripts/cli-smoke.ps1"]; ok {
+			t.Errorf("release contains cli-smoke.ps1")
 		}
 		if string(contents["scripts/install.ps1"]) != testInstallScript {
-			t.Errorf("%s: install script wrong", tc.name)
+			t.Errorf("%s: install script wrong", tc.artifact)
 		}
 		if string(contents["scripts/uninstall.ps1"]) != testUninstallScript {
-			t.Errorf("%s: uninstall script wrong", tc.name)
+			t.Errorf("%s: uninstall script wrong", tc.artifact)
 		}
 		wantInternal := sha256Hex(cliBytes) + "  sidravia.exe\n" + sha256Hex(daemonBytes) + "  sidraviad.exe\n"
 		if string(contents["SHA256SUMS"]) != wantInternal {
-			t.Errorf("%s: internal sums = %q, want %q", tc.name, contents["SHA256SUMS"], wantInternal)
+			t.Errorf("%s: internal sums = %q, want %q", tc.artifact, contents["SHA256SUMS"], wantInternal)
 		}
-		if tc.mode == "portable" {
-			if len(contents["sidravia.portable"]) != 0 {
-				t.Errorf("%s: marker not empty", tc.name)
-			}
-		} else {
-			if _, ok := contents["sidravia.portable"]; ok {
-				t.Errorf("%s: marker present in normal package", tc.name)
-			}
+		if len(contents["sidravia.portable"]) != 0 {
+			t.Errorf("%s: marker not empty", tc.artifact)
 		}
 	}
 }
@@ -601,19 +605,21 @@ func sortStrings(s []string) {
 func TestReproduciblePackaging(t *testing.T) {
 	version := "0.1.0-alpha.2"
 	buildID := "buildid123"
-	out1, _ := buildOutput(t, version, buildID)
-	out2, _ := buildOutput(t, version, buildID)
-	for _, name := range []string{normalName(version), portableName(version), "SHA256SUMS.txt"} {
-		b1, err := os.ReadFile(filepath.Join(out1, name))
-		if err != nil {
-			t.Fatalf("read out1/%s: %v", name, err)
-		}
-		b2, err := os.ReadFile(filepath.Join(out2, name))
-		if err != nil {
-			t.Fatalf("read out2/%s: %v", name, err)
-		}
-		if !bytes.Equal(b1, b2) {
-			t.Errorf("%s differs between repeated builds", name)
+	for _, artifact := range []string{"release", "field-validation"} {
+		out1, _ := buildArtifactOutput(t, version, buildID, artifact)
+		out2, _ := buildArtifactOutput(t, version, buildID, artifact)
+		for _, name := range []string{artifactFileName(version, artifact), "SHA256SUMS.txt"} {
+			b1, err := os.ReadFile(filepath.Join(out1, name))
+			if err != nil {
+				t.Fatalf("%s: read out1/%s: %v", artifact, name, err)
+			}
+			b2, err := os.ReadFile(filepath.Join(out2, name))
+			if err != nil {
+				t.Fatalf("%s: read out2/%s: %v", artifact, name, err)
+			}
+			if !bytes.Equal(b1, b2) {
+				t.Errorf("%s: %s differs between repeated builds", artifact, name)
+			}
 		}
 	}
 }
@@ -682,6 +688,38 @@ func TestMissingOfficialProfileFailsInputs(t *testing.T) {
 	}
 }
 
+func TestFieldToolsAreOnlyValidationInputs(t *testing.T) {
+	for _, missing := range []string{"scripts/field-test.ps1", "tools/cli_smoke.ps1"} {
+		t.Run(missing, func(t *testing.T) {
+			root := setupRepoRoot(t)
+			if err := os.Remove(filepath.Join(root, filepath.FromSlash(missing))); err != nil {
+				t.Fatalf("remove: %v", err)
+			}
+
+			releaseOut := filepath.Join(t.TempDir(), "release")
+			releaseBuilder := &fakeBuilder{}
+			release := newFakeTool(config{version: "0.1.0", buildID: "abc", output: releaseOut, goBin: "go", artifact: "release"}, root, releaseBuilder)
+			if err := release.execute(io.Discard, io.Discard); err != nil {
+				t.Fatalf("release unexpectedly depends on %s: %v", missing, err)
+			}
+
+			validationOut := filepath.Join(t.TempDir(), "validation")
+			validationBuilder := &fakeBuilder{}
+			validation := newFakeTool(config{version: "0.1.0", buildID: "abc", output: validationOut, goBin: "go", artifact: "field-validation"}, root, validationBuilder)
+			err := validation.execute(io.Discard, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), filepath.Base(missing)) {
+				t.Fatalf("validation missing-input error = %v", err)
+			}
+			if len(validationBuilder.calls) != 0 {
+				t.Errorf("validation built before input failure")
+			}
+			if _, statErr := os.Lstat(validationOut); !os.IsNotExist(statErr) {
+				t.Errorf("validation output created")
+			}
+		})
+	}
+}
+
 func TestBuildFailureCleans(t *testing.T) {
 	root := setupRepoRoot(t)
 	outParent := t.TempDir()
@@ -708,7 +746,7 @@ func TestZipFailureCleans(t *testing.T) {
 	out := filepath.Join(outParent, "dist")
 	fb := &fakeBuilder{}
 	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
-	tt.packageArtifacts = func(string, string, string, string, []byte, []byte) error { return errZip }
+	tt.packageArtifacts = func(string, string, string, string, string, []byte, []byte) error { return errZip }
 	err := tt.execute(io.Discard, io.Discard)
 	if !errors.Is(err, errZip) {
 		t.Fatalf("expected errZip, got %v", err)
@@ -745,7 +783,7 @@ func TestPublishFailureCleans(t *testing.T) {
 	}
 }
 
-// 9. external sums contain exactly the two zips, correct content, stable order.
+// 9. external sums contain exactly the selected zip and output has two files.
 
 func TestExternalSums(t *testing.T) {
 	version := "0.1.0-alpha.2"
@@ -755,25 +793,22 @@ func TestExternalSums(t *testing.T) {
 		t.Fatalf("read sums: %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(string(sumsBytes), "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("sums lines = %d, want 2", len(lines))
+	if len(lines) != 1 {
+		t.Fatalf("sums lines = %d, want 1", len(lines))
 	}
-	// Lexicographic order: portable name before normal name.
 	portableBytes, _ := os.ReadFile(filepath.Join(out, portableName(version)))
-	normalBytes, _ := os.ReadFile(filepath.Join(out, normalName(version)))
 	wantLines := []string{
 		sha256Hex(portableBytes) + "  " + portableName(version),
-		sha256Hex(normalBytes) + "  " + normalName(version),
 	}
 	for i, want := range wantLines {
 		if lines[i] != want {
 			t.Errorf("sums line %d = %q, want %q", i, lines[i], want)
 		}
 	}
-	// Output directory has exactly the three files.
+	// Output directory has exactly the selected zip and sums file.
 	listing, _ := os.ReadDir(out)
-	if len(listing) != 3 {
-		t.Errorf("output entries = %d, want 3", len(listing))
+	if len(listing) != 2 {
+		t.Errorf("output entries = %d, want 2", len(listing))
 	}
 }
 

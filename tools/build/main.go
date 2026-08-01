@@ -1,9 +1,9 @@
 // Command build is the single reproducible Sidravia package builder.
 //
 // It uses only the Go standard library, requires Go 1.26.4, builds one pair of
-// Windows amd64 binaries once, and produces a default user-directory zip, a
-// portable-marker zip and an external SHA256SUMS.txt. It does not run Git, does
-// not derive versions, and does not sign, tag, upload or publish anything.
+// Windows amd64 binaries once, and produces one portable Release or field-
+// validation zip plus an external SHA256SUMS.txt. It does not run Git, derive
+// versions, sign, tag, upload or publish anything.
 package main
 
 import (
@@ -62,11 +62,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // config holds parsed command-line flags.
 type config struct {
-	version string
-	buildID string
-	output  string
-	goBin   string
-	help    bool
+	version  string
+	buildID  string
+	output   string
+	goBin    string
+	artifact string
+	help     bool
 }
 
 var knownValueFlags = map[string]bool{
@@ -74,6 +75,7 @@ var knownValueFlags = map[string]bool{
 	"--build-id": true,
 	"--output":   true,
 	"--go":       true,
+	"--artifact": true,
 }
 
 // parseFlags parses the strict flag grammar. It rejects positional arguments,
@@ -81,6 +83,7 @@ var knownValueFlags = map[string]bool{
 func parseFlags(args []string) (config, error) {
 	var c config
 	c.goBin = "go"
+	c.artifact = "release"
 	// --help and -h are accepted only as the sole argument; any other token
 	// alongside them is a usage error.
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
@@ -130,6 +133,11 @@ func parseFlags(args []string) (config, error) {
 			c.output = val
 		case "--go":
 			c.goBin = val
+		case "--artifact":
+			if val != "release" && val != "field-validation" {
+				return c, fmt.Errorf("flag %q must be release or field-validation", name)
+			}
+			c.artifact = val
 		}
 	}
 	if c.help {
@@ -148,7 +156,7 @@ func parseFlags(args []string) (config, error) {
 }
 
 func printHelp(w io.Writer) {
-	fmt.Fprint(w, `Usage: go run ./tools/build --version <version> --build-id <build-id> --output <dir> [--go <go>]
+	fmt.Fprint(w, `Usage: go run ./tools/build --version <version> --build-id <build-id> --output <dir> [--go <go>] [--artifact <kind>]
 
 Builds reproducible Windows amd64 packages for Sidravia using only the Go
 standard library. The tool runs only from the Sidravia repository root.
@@ -160,10 +168,12 @@ Required flags:
 
 Optional flags:
   --go         go executable to use (default: go); must report go1.26.4
+  --artifact   release (default) or field-validation
   --help       show this help and exit without building
 
-The tool requires Go 1.26.4, builds one pair of binaries once, and produces
-exactly two zip packages and a SHA256SUMS.txt in the output directory.
+The tool requires Go 1.26.4, builds one pair of binaries once, and produces one
+portable zip plus SHA256SUMS.txt. Release contains only install/uninstall under
+scripts/. Field-validation additionally contains the guided validation tools.
 `)
 }
 
@@ -331,7 +341,7 @@ func outputFromArgv(argv []string) (string, error) {
 
 // verifyRepoInputs verifies the tool is running from the Sidravia repository
 // root by checking go.mod and the expected local inputs.
-func verifyRepoInputs(root string) error {
+func verifyRepoInputs(root, artifact string) error {
 	modBytes, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		return fmt.Errorf("read go.mod: %w", err)
@@ -339,20 +349,25 @@ func verifyRepoInputs(root string) error {
 	if !moduleIsSidravia(modBytes) {
 		return errors.New("go.mod does not declare module sidravia")
 	}
-	checks := []struct {
+	type inputCheck struct {
 		path string
 		dir  bool
-	}{
+	}
+	checks := []inputCheck{
 		{"README.md", false},
 		{"LICENSE", false},
 		{"docs/getting-started-windows.md", false},
 		{"internal/daemon/configuration/profiles/jlu.json", false},
-		{"scripts/field-test.ps1", false},
 		{"scripts/install.ps1", false},
 		{"scripts/uninstall.ps1", false},
-		{"tools/cli_smoke.ps1", false},
 		{"cmd/sidravia", true},
 		{"cmd/sidraviad", true},
+	}
+	if artifact == "field-validation" {
+		checks = append(checks,
+			inputCheck{"scripts/field-test.ps1", false},
+			inputCheck{"tools/cli_smoke.ps1", false},
+		)
 	}
 	for _, c := range checks {
 		info, err := os.Stat(filepath.Join(root, c.path))
@@ -388,7 +403,7 @@ type tool struct {
 	cfg              config
 	repoRoot         string
 	build            buildFunc
-	packageArtifacts func(repoRoot, staging, version, buildID string, cliBytes, daemonBytes []byte) error
+	packageArtifacts func(repoRoot, staging, version, buildID, artifact string, cliBytes, daemonBytes []byte) error
 	publish          func(staging, out string) error
 	runtimeVersion   func() string
 	probeGoVersion   func(goBin string) (string, error)
@@ -419,7 +434,7 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	if reported != requiredGoVersion {
 		return fmt.Errorf("go toolchain reported %q, need %q", reported, requiredGoVersion)
 	}
-	if err := verifyRepoInputs(t.repoRoot); err != nil {
+	if err := verifyRepoInputs(t.repoRoot, t.cfg.artifact); err != nil {
 		return err
 	}
 
@@ -474,7 +489,7 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	}
 
 	fmt.Fprintln(stderr, "packaging archives")
-	if err := t.packageArtifacts(t.repoRoot, staging, t.cfg.version, t.cfg.buildID, cliBytes, daemonBytes); err != nil {
+	if err := t.packageArtifacts(t.repoRoot, staging, t.cfg.version, t.cfg.buildID, t.cfg.artifact, cliBytes, daemonBytes); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(binDir); err != nil {
@@ -484,8 +499,8 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("read staging: %w", err)
 	}
-	if len(listing) != 3 {
-		return fmt.Errorf("internal error: staging has %d entries, want 3", len(listing))
+	if len(listing) != 2 {
+		return fmt.Errorf("internal error: staging has %d entries, want 2", len(listing))
 	}
 
 	fmt.Fprintln(stderr, "publishing output")
@@ -493,7 +508,7 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 		return fmt.Errorf("publish output: %w", err)
 	}
 	published = true
-	if err := printManifest(stdout, out, t.cfg.version); err != nil {
+	if err := printManifest(stdout, out, t.cfg.version, t.cfg.artifact); err != nil {
 		return fmt.Errorf("print manifest: %w", err)
 	}
 	return nil
@@ -567,11 +582,12 @@ func writeZip(path string, entries []zipEntry) error {
 	return zw.Close()
 }
 
-func buildInfoBytes(version, buildID, mode string) []byte {
+func buildInfoBytes(version, buildID, artifact string) []byte {
 	return []byte("ProductVersion: " + version + "\n" +
 		"BuildID: " + buildID + "\n" +
 		"Target: windows/amd64\n" +
-		"LayoutMode: " + mode + "\n")
+		"LayoutMode: portable\n" +
+		"ArtifactKind: " + artifact + "\n")
 }
 
 func sha256Hex(b []byte) string {
@@ -579,10 +595,17 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// writeArtifacts builds the two zips and the external SHA256SUMS.txt in staging.
-func writeArtifacts(repoRoot, staging, version, buildID string, cliBytes, daemonBytes []byte) error {
-	normalName := "sidravia-v" + version + "-windows-amd64.zip"
-	portableName := "sidravia-v" + version + "-windows-amd64-portable.zip"
+func artifactFileName(version, artifact string) string {
+	name := "sidravia-v" + version + "-windows-amd64-portable"
+	if artifact == "field-validation" {
+		name += "-field-validation"
+	}
+	return name + ".zip"
+}
+
+// writeArtifacts builds one selected portable zip and SHA256SUMS.txt in staging.
+func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliBytes, daemonBytes []byte) error {
+	zipName := artifactFileName(version, artifact)
 	sumsName := "SHA256SUMS.txt"
 
 	readme, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
@@ -609,71 +632,62 @@ func writeArtifacts(repoRoot, staging, version, buildID string, cliBytes, daemon
 	if err != nil {
 		return fmt.Errorf("read scripts/uninstall.ps1: %w", err)
 	}
-	fieldTestScript, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "field-test.ps1"))
-	if err != nil {
-		return fmt.Errorf("read scripts/field-test.ps1: %w", err)
-	}
-	cliSmokeScript, err := os.ReadFile(filepath.Join(repoRoot, "tools", "cli_smoke.ps1"))
-	if err != nil {
-		return fmt.Errorf("read tools/cli_smoke.ps1: %w", err)
+	var fieldTestScript, cliSmokeScript []byte
+	if artifact == "field-validation" {
+		fieldTestScript, err = os.ReadFile(filepath.Join(repoRoot, "scripts", "field-test.ps1"))
+		if err != nil {
+			return fmt.Errorf("read scripts/field-test.ps1: %w", err)
+		}
+		cliSmokeScript, err = os.ReadFile(filepath.Join(repoRoot, "tools", "cli_smoke.ps1"))
+		if err != nil {
+			return fmt.Errorf("read tools/cli_smoke.ps1: %w", err)
+		}
 	}
 
 	internalSums := []byte(sha256Hex(cliBytes) + "  sidravia.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
-	normalEntries := assembleEntries("installed", readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
-	if err := writeZip(filepath.Join(staging, normalName), normalEntries); err != nil {
-		return fmt.Errorf("write %s: %w", normalName, err)
-	}
-	portableEntries := assembleEntries("portable", readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
-	if err := writeZip(filepath.Join(staging, portableName), portableEntries); err != nil {
-		return fmt.Errorf("write %s: %w", portableName, err)
+	entries := assembleEntries(artifact, readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
+	if err := writeZip(filepath.Join(staging, zipName), entries); err != nil {
+		return fmt.Errorf("write %s: %w", zipName, err)
 	}
 
-	normalZipBytes, err := os.ReadFile(filepath.Join(staging, normalName))
+	zipBytes, err := os.ReadFile(filepath.Join(staging, zipName))
 	if err != nil {
-		return fmt.Errorf("read %s: %w", normalName, err)
+		return fmt.Errorf("read %s: %w", zipName, err)
 	}
-	portableZipBytes, err := os.ReadFile(filepath.Join(staging, portableName))
-	if err != nil {
-		return fmt.Errorf("read %s: %w", portableName, err)
-	}
-	// Lexicographic filename order: portable name sorts before normal name.
-	externalSums := []byte(sha256Hex(portableZipBytes) + "  " + portableName + "\n" +
-		sha256Hex(normalZipBytes) + "  " + normalName + "\n")
+	externalSums := []byte(sha256Hex(zipBytes) + "  " + zipName + "\n")
 	if err := os.WriteFile(filepath.Join(staging, sumsName), externalSums, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", sumsName, err)
 	}
 	return nil
 }
 
-func assembleEntries(mode string, readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
+func assembleEntries(artifact string, readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
 	entries := []zipEntry{
-		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, mode), 0o644},
+		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, artifact), 0o644},
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
 		{"LICENSE", license, 0o644},
 		{"README.md", readme, 0o644},
 		{"SHA256SUMS", internalSums, 0o644},
 		{"sidravia.exe", cliBytes, 0o755},
+		{"sidravia.portable", nil, 0o644},
 		{"sidraviad.exe", daemonBytes, 0o755},
 	}
-	if mode == "portable" {
-		entries = append(entries, zipEntry{"sidravia.portable", nil, 0o644})
-	}
 	entries = append(entries, zipEntry{"institution-profiles/jlu.json", profile, 0o644})
-	entries = append(entries, zipEntry{"scripts/field-test.ps1", fieldTestScript, 0o644})
-	entries = append(entries, zipEntry{"scripts/cli-smoke.ps1", cliSmokeScript, 0o644})
 	entries = append(entries, zipEntry{"scripts/install.ps1", installScript, 0o644})
 	entries = append(entries, zipEntry{"scripts/uninstall.ps1", uninstallScript, 0o644})
+	if artifact == "field-validation" {
+		entries = append(entries, zipEntry{"scripts/field-test.ps1", fieldTestScript, 0o644})
+		entries = append(entries, zipEntry{"scripts/cli-smoke.ps1", cliSmokeScript, 0o644})
+	}
 	return entries
 }
 
-// printManifest prints the three final artifacts and their SHA-256 in stable
-// (lexicographic) order to stdout.
-func printManifest(stdout io.Writer, out, version string) error {
+// printManifest prints the selected zip and sums file in lexicographic order.
+func printManifest(stdout io.Writer, out, version, artifact string) error {
 	names := []string{
-		"sidravia-v" + version + "-windows-amd64.zip",
-		"sidravia-v" + version + "-windows-amd64-portable.zip",
+		artifactFileName(version, artifact),
 		"SHA256SUMS.txt",
 	}
 	sort.Strings(names)

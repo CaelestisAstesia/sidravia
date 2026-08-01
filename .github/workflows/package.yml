@@ -33,7 +33,7 @@ jobs:
             --go go
       - uses: actions/upload-artifact@v7
         with:
-          name: sidravia-v${{ inputs.version }}-windows-amd64
+          name: sidravia-v${{ inputs.version }}-windows-amd64-portable
           path: |
             dist/*.zip
             dist/SHA256SUMS.txt
