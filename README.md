@@ -1,162 +1,155 @@
 # Sidravia
 
-Sidravia 是一个以 Windows 为首要现场支持平台、并已具备 Linux/WSL 运行时基线的
-Dr.COM 网络认证客户端；macOS 当前明确返回 Unsupported。产品由短生命周期 CLI
-`sidravia` 和长期运行的本地 daemon `sidraviad` 组成：
+Sidravia 是一个以 Windows 为首要现场支持平台的 Dr.COM 网络认证客户端。产品由短生命周期
+CLI `sidravia` 和长期运行的本地 daemon `sidraviad` 组成：
 
 ```text
 sidravia CLI -> loopback WebSocket IPC -> sidraviad -> Dr.COM -> network
 ```
 
-## 当前状态
+Linux/WSL 已具备共享核心的原生运行时基线，但不是首版产品包；macOS 当前明确返回
+Unsupported。
 
-`v0.1.0-alpha.1` 是面向 Windows amd64 的首个 Alpha。仓库已经实现并自动验证：
+## 发布状态
 
-- CLI/daemon 状态通信骨架；
-- `config list/show/create/update/set-password/remove` 持久认证配置、`auth start/status/stop/list/restart/remove`、retained Session ensure-running、`profile list`、Windows 隐藏密码输入和
-  `--password-stdin`；
-- typed 一次性 Session 启动、停止、查询和安全列表，以及机构 Profile 安全摘要列表；
-- Session、Supervisor、网络快照分发与单活动 Session 规则；
-- Dr.COM 5.2.0(D) 报文、Factory 和阻塞式认证 Run；
-- 本地可编辑机构 Profile 的严格一次性加载；
-- 生产 daemon 的 D520 注册、Profile 加载、Windows Environment Observer、typed IPC
-  和统一生命周期；
-- Windows JSON 文件 ACL 与原子持久化基础；
-- 安全结构化 daemon 运行日志（stderr TextHandler、稳定事件码、固定简体中文消息
-  和安全属性白名单）。
-- `daemon status/start/stop/restart` 生命周期命令；生产 status 接入严格只读探测，
-  Windows 后台子进程可用 `--log-level info|debug|trace` 指定确定的日志级别。
-- retained Session 的继续运行、重启和停止后删除；CLI 后台日志落盘、统一分层中文
-  Help，以及不泄漏控制字符的轻量终端呈现。
-- schema-v2 `configurations.json` 聚合中的持久认证配置（每份配置包含一个账号和一个
-  私有密码）、安装版/便携版运行目录，以及 Linux/WSL daemon 生命周期基线；
-- D520 独立 `localPort`（JLU 使用 fixed `61440`）、Windows 配置目录继承修复，以及
-  Windows launcher 的精确子进程退出观察和最终就绪探测。
+已发布的 `v0.1.0-alpha.1` 是历史 Alpha 基线：它曾在一台 Windows 11 机器和吉林大学
+校园网完成认证、持续心跳与主动 Logout。当前 `main` 是下一未发布源码，包含 Alpha 之后
+的配置自动化、retained Session 生命周期、官方 Profile、运行目录、打包和安装集成等改动。
+不要把下文的当前源码能力倒推为已发布 Alpha 的能力，也不要据此猜测下一个版本号、签名或
+Release 日期。
 
-提交 `508197d` 已在 Windows 11 与吉林大学校园网完成首次现场验证：原生 CLI/daemon
-选择物理以太网，完成 D520 登录、持续心跳和主动 Logout。Clash TUN 在场但未被选中。
-这是单台机器、单个网络环境的 Alpha 证据，不代表已经覆盖所有 Windows 版本、网卡或
-校园网络变体。机构 Profile 仍由用户放入本地配置目录，仓库不包含个人配置或凭据。
+当前源码的首版代码面已经完成，剩余发布门是：
 
-长期进度见 [产品路线图](docs/roadmap.md)，模块关系见
-[当前架构](docs/architecture.md)。
+1. 使用当前 HEAD 的包完成 Windows 原生回归；
+2. 复核真实校园登录、心跳、热点恢复和 Logout；
+3. 决定版本与签名，运行托管打包并审核产物；
+4. 只有获得明确人类授权后才发布。
 
-当前代码通过共享的 `internal/productlayout` 解析两种显式运行目录模式。默认安装版
-仍使用操作系统用户目录：配置位于 `os.UserConfigDir()/Sidravia`，运行信息与后台日志
-位于 `os.UserCacheDir()/Sidravia`。在可执行文件同目录放置空标记文件
-`sidravia.portable` 即启用便携版，此时认证配置（含其唯一私有密码）与机构 Profile 位于
-`<exe-dir>/config`，运行信息位于 `<exe-dir>/runtime`，后台日志位于
-`<exe-dir>/logs`；便携版不依赖 AppData。CLI 与 daemon 每次启动各自解析同一标记，
-用户增删标记前必须先停止 daemon。
+详细状态见[产品路线图](docs/roadmap.md)。
 
-## 运行日志
+## 当前源码能力
 
-直接运行 `sidraviad.exe` 时，结构化运行日志写到 stderr，使用标准库 `log/slog` 的
-TextHandler、默认 Info 级别。由 Windows CLI 后台启动时，stdout 和 stderr 都写入
-`%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；启动前达到 10 MiB 会轮转为唯一备份
-`sidraviad.log.1`，之后创建新的当前文件。`SIDRAVIA_LOG_LEVEL` 可设置为 `info`、
-`debug` 或 `trace`；`trace` 启用完整 D520 数据报日志（含账号与认证材料，显式敏感）。
-每条日志带稳定 `event` 码、固定简体中文 `msg` 和该事件允许的安全属性。例如默认
-Info 可见 daemon 生命周期记录；启用 Debug 后还可见 IPC 完成记录：
+- `daemon status/start/stop/restart`，其中 status 严格只读；
+- `config list/show/create/update/set-password/remove`；
+- `auth list/start/status/stop/restart/remove` 和 retained Session ensure-running；
+- `profile list` 安全摘要；
+- Configuration schema 3、`AutoLogin` 和 `AutoReconnect`；
+- 单活动 Session、两阶段 `stopping -> suspended`、可取消可等待的运行生命周期；
+- Dr.COM 5.2.0(D) Challenge、Login、保活和尽力 Logout；
+- Windows 与 Linux/WSL 的共享 domain core、IPC 和运行目录契约；
+- 安全结构化日志、稳定机器码和简体中文 CLI 呈现；
+- 可复现的普通/便携 Windows amd64 zip；
+- 随包官方 `jlu` Profile；
+- Windows 用户 PATH 与登录任务集成脚本。
+
+CLI 不读取 daemon 配置或内部状态。IPC server 只经窄 Handler 调用 daemon app；daemon
+app 负责跨模块用例顺序，Supervisor 拥有 Session 集合与准入，Session 拥有单次认证意图、
+重试和协议 Run。详见[当前架构](docs/architecture.md)。
+
+## 运行目录
+
+`internal/productlayout` 是 CLI 与 daemon 唯一的运行目录 resolver。两种模式都从
+`<exe-dir>/institution-profiles/` 直接读取随版本发布的官方 Profile。
+
+安装版：
+
+- `configurations.json`：操作系统用户配置目录下的 `Sidravia`；
+- `runtime.json` 与后台日志：操作系统用户缓存目录下的 `Sidravia`；
+- 官方 Profile：`<exe-dir>/institution-profiles/`。
+
+便携版由可执行文件同目录的普通 `sidravia.portable` 标记启用：
 
 ```text
-time=2026-07-27T... level=INFO msg=守护进程运行已启动 event=daemon_runtime_started product_version=... build_id=... pid=...
-time=2026-07-27T... level=DEBUG msg=IPC 请求已完成 event=ipc_request_completed method=daemon.status
+<exe-dir>/
+  sidravia
+  sidraviad
+  sidravia.portable
+  institution-profiles/
+    jlu.json
+  config/
+    configurations.json
+  runtime/
+    runtime.json
+  logs/
+    sidraviad.log
+    sidraviad.log.1
 ```
 
-Info 包含 daemon 生命周期、已应用网络快照和已提交 Session Snapshot；Debug 增加 IPC
-连接/完成、Session 命令、协议运行代际、重试调度和阶段边界。Info/Debug 永不包含密码、
-token、Profile JSON、MAC、DNS/DHCP、网关、InterfaceID、请求/响应字节或原始 error；
-它们允许完整账号名、机构显示名、友好接口名和所选 IPv4。Trace 增加完整 D520 数据报
-hex，启用时先记录 `trace_logging_sensitive`，并会随后台日志持久化到当前文件或唯一
-`.1` 备份；分享前必须按敏感材料处理。直接前台运行时仍可自行重定向 stderr。当前不
-提供日志 IPC、`daemon logs` 或实时 tail。
+resolver 不读取当前工作目录，不猜模式、不扫描另一模式，也不自动复制或迁移文件。增删
+marker 前必须先停止 daemon。
 
-## CLI 呈现
+## Configuration 自动化
 
-`sidravia` CLI 的帮助、daemon 状态、Session 详情/列表、Profile 列表、密码提示和错误
-消息统一使用简体中文，并在括号内保留稳定英文机器码以便识别状态或失败。终端着色由
-`internal/cli` 的呈现边界拥有（见 [ADR 0014](docs/decisions/0014-cli-presentation.md)）：
-只在真实交互终端启用，重定向或管道输出始终是纯文本，`NO_COLOR` 始终禁用着色，
-`CLICOLOR_FORCE` 无法在重定向时重新启用颜色。每个来自 daemon 的动态值在写入前都清理
-控制字符，因此无法注入 ANSI 序列或新输出行。
+每份持久 Authentication Configuration 拥有自己的 `AutoLogin` 与 `AutoReconnect`：
 
-根命令、资源组、普通 `help <path>`、`-h` 和 `--help` 共享同一份分层中文规格。当前
-daemon 命令为 `status/start/stop/restart`；Session 命令为
-`auth list/start/status/stop/restart/remove`；Profile 摘要使用 `profile list`；
-持久认证配置使用 `config list/show/create/update/set-password/remove`。
-`daemon status` 严格只读，不会为了查询而启动 daemon。
+- 最多一份 Configuration 可以启用 `AutoLogin`；
+- daemon 每个 generation 在首个已接受 Environment Snapshot 后只评估一次自动登录；
+- `AutoReconnect` 冻结进 retained Session 的不可变运行定义；
+- 一次性认证始终保持自动重连；
+- 显式 stop/remove/restart 始终优先；
+- 不存在全局 Settings 所有者或持续 desired-state controller。
+
+schema 3 是唯一写出格式。严格 schema 2 文档仍可读取，默认
+`AutoLogin=false`、`AutoReconnect=true`；仅打开旧文档不会重写它。
+
+## Windows 包和用户态集成
+
+当前 `tools/build` 一次编译同一对 Windows amd64 二进制，生成普通包、便携包和外部
+`SHA256SUMS.txt`。两个 zip 都包含：
+
+- `sidravia.exe` 与 `sidraviad.exe`；
+- `institution-profiles/jlu.json`；
+- `scripts/install.ps1` 与 `scripts/uninstall.ps1`；
+- `BUILD-INFO.txt`、`GETTING-STARTED.md`、`README.md`、`LICENSE` 和内部校验文件。
+
+只有便携包包含 `sidravia.portable`。构建工具不运行 Git，不签名、不上传、不创建 tag 或
+Release。
+
+Windows 用户可从解压目录运行：
 
 ```powershell
-.\sidravia.exe
-.\sidravia.exe help daemon
-.\sidravia.exe auth --help
-.\sidravia.exe help auth start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
-```text
-守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42
-```
+安装脚本把脚本所在目录加入用户 PATH，并创建登录任务 `SidraviaDaemon`，执行
+`sidravia daemon start --log-level <level>`。两个脚本模式无关、幂等并进行前后自校验。
+卸载只撤销 PATH 条目和登录任务，绝不删除 Configuration、凭据、Profile 或日志。产品中
+不存在 `sidravia install` / `sidravia uninstall` 命令。
 
-```text
-会话：session-1
-状态：已认证（authenticated）
-机构：吉林大学（JLU）
-协议：drcom-5.2.0-d
-账号：2024012345
-更新时间：2026-07-27T02:25:38+08:00
-```
+## Profile 与 TUN 代理
 
-交互式 `auth start` 在 stderr 显示 `密码： ` 提示并关闭回显；非交互式调用必须显式
-使用 `--password-stdin`。密码永不进入命令行、错误、普通输出或日志。
+机构 Profile 是随版本发布的非秘密程序内容。`jlu.json` 由 daemon 在程序根目录原地读取，
+没有 AppData/config 复制或 seed 步骤。`institution-profiles/` 也可用于临时调试，但本地
+文件不保证跨升级保留；正式新增机构应提交上游并经过独立现场验证。不得把账号或密码写进
+Profile。
 
-当前大版本保持 Cobra + termenv 的轻量逐行交互，不引入全屏 TUI。持久配置入口已经
-复用现有呈现与密码输入边界，同时为脚本保留完整的非交互参数形式；详见
-[ADR 0021](docs/decisions/0021-lightweight-line-oriented-cli.md)。
+一条 Windows 现场证据确认：Mihomo/Clash-family TUN 捕获私有校园认证目的地址时，需要
+停止该 TUN，或用 `tun.route-exclude-address` 排除 RFC 1918 私网范围。普通代理规则
+`prepend-rules` 不能替代 Windows TUN 路由排除。这是特定现场链得出的环境指导，不是
+Sidravia 修改系统路由，也不代表所有代理都存在同样问题。详见
+[Windows 指南](docs/getting-started-windows.md)。
 
-## Windows Alpha 使用
+## 日志与秘密
 
-安装、创建本地 Profile、启动认证与停止认证见
-[Windows Alpha 快速开始](docs/getting-started-windows.md)。本版本仍有明确限制：
-没有 GUI、安装器、Windows Service、自动更新、自动连接或多活动 Session；
-它适合愿意使用 PowerShell 并能自行保留原网络客户端作为回退的测试者。
+直接运行 daemon 时日志写到 stderr；由 CLI 后台启动时写入运行目录的
+`logs/sidraviad.log`，达到 10 MiB 后轮转为唯一 `.1` 备份。
+`SIDRAVIA_LOG_LEVEL` 接受 `info`、`debug`、`trace`。Trace 包含完整 D520 数据报，
+可能含认证材料，启用时先记录 `trace_logging_sensitive`。
 
-当前源码已经完成持久 Authentication Configuration、Linux/WSL 基线、Windows 安全目录
-继承修复、D520 fixed `localPort=61440` 对齐和 Windows launcher 早退报告的代码与自动
-验证。停止与重启锁定最初探测到的精确 daemon generation；Windows launcher 观察自己
-创建的精确子进程，子进程在 typed readiness 前退出时执行最后一次探测，再返回固定安全
-提示；Linux 继续使用 setsid + Process.Release，不持有 Wait 观察。
+密码不得进入 argv、Profile、公开 Snapshot、普通日志或错误文本。交互输入关闭回显；
+自动化必须显式使用 `--password-stdin`。Info/Debug 不记录 token、密码、Profile JSON、
+MAC、DNS/DHCP、网关、接口 ID、请求/响应字节或原始 error。
 
-上述当前源码的组合 Windows-native 与校园热点复核仍未进行。下一步是生成新的 Windows
-现场包并验证 daemon 重启、早退提示以及热点关闭/开启时 fixed `61440` 的认证；只有现场
-仍证明存在 route/source-address 问题时，才进入网络选择修正。WSS、IPC 长连接强化和 GUI
-放在下一大版本；见
-[ADR 0020](docs/decisions/0020-explicit-installed-and-portable-layouts.md) 与
-[ADR 0022](docs/decisions/0022-credentials-before-ipc-transport-hardening.md)。
-
-## 构建
+## 构建与验证
 
 需要 Go 1.26.4：
 
 ```bash
-go build -o build/sidravia ./cmd/sidravia
-go build -o build/sidraviad ./cmd/sidraviad
+python3 tools/developer/verify_repository.py --scope all --go /path/to/go1.26.4
 ```
 
-Windows amd64 交叉构建：
-
-```bash
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/sidravia.exe ./cmd/sidravia
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o build/sidraviad.exe ./cmd/sidraviad
-```
-
-这些手工命令只用于本地开发，不负责版本注入、可复现 zip、便携 marker 或校验清单；不应把
-手工 `build/` 输出描述成规范发布包。
-
-### 可复现打包
-
-Sidravia 使用唯一的标准库 Go 构建工具生成可复现的 Windows amd64 包。从仓库根目录调用
-（需要 Go 1.26.4）：
+规范可复现打包入口：
 
 ```bash
 go run ./tools/build \
@@ -166,39 +159,8 @@ go run ./tools/build \
   [--go <go-executable>]
 ```
 
-`--version` 不带前导 `v`，`--build-id` 由调用方提供（例如 commit hash），`--output` 必须
-原先不存在且其父目录已存在。工具固定使用 `GOOS=windows GOARCH=amd64 CGO_ENABLED=0
-GOAMD64=v1`、`-trimpath`、`-buildvcs=false`、只读 module 模式和空 Go linker build ID；
-daemon 的 `main.ProductVersion` 与 `main.BuildID` 通过 linker flags 注入。一次调用只编译
-`sidravia.exe` 与 `sidraviad.exe` 各一次，普通包与便携包复用同一对二进制。
-
-输出目录精确只有三个文件：
-
-- `sidravia-v<version>-windows-amd64.zip`：默认安装版，不含 `sidravia.portable`，运行时
-  使用 `%APPDATA%\Sidravia` 与 `%LOCALAPPDATA%\Sidravia`；
-- `sidravia-v<version>-windows-amd64-portable.zip`：便携版，额外含空 marker
-  `sidravia.portable`，运行时使用解压目录下的 `config`、`runtime` 和 `logs`；
-- `SHA256SUMS.txt`：两个 zip 的 SHA-256，小写 hex、两个空格、按文件名字典序。
-
-两个 zip 内都包含 `BUILD-INFO.txt`、`GETTING-STARTED.md`、`LICENSE`、`README.md`、内部
-`SHA256SUMS` 和两个 PE 文件；便携 zip 额外含 `sidravia.portable`。相同源码、Go 1.26.4、
-版本与 BuildID 的重复构建得到逐字节相同的二进制、zip 和校验文件。工具不运行 Git、不
-签名、不上传、不创建 tag 或 GitHub Release。详见 ADR 0023。
-
-GitHub Actions 中已提交 `Verify`（push/pull request 运行公共 verifier）与 `Package`
-（手动 `workflow_dispatch` 调用同一构建工具并上传三个文件作为临时 artifact）两个工作流；
-它们的具体运行与签名/Release 状态见[产品路线图](docs/roadmap.md)。
-
-## 验证
-
-运行完整的公开仓库检查：
-
-```bash
-python3 tools/developer/verify_repository.py --scope all
-```
-
-它检查 Go 格式、测试、vet、Windows 交叉构建，以及 Python mock/验收工具测试。
-涉及本地 UDP 或 HTTP 测试时，运行环境必须允许回环监听。
+自动验证、Windows 原生、WSL/Linux 原生、校园网络和 Release readiness 是不同证据状态，
+不得合并成笼统的“完成”。
 
 ## 文档
 
@@ -209,7 +171,7 @@ python3 tools/developer/verify_repository.py --scope all
 - [架构决策](docs/decisions/README.md)
 - [Dr.COM 5.2.0(D) 协议规范](docs/protocols/drcom-5.2.0-d.md)
 - [验收证据](docs/evidence/README.md)
-- [Windows Alpha 快速开始](docs/getting-started-windows.md)
+- [Windows 快速开始](docs/getting-started-windows.md)
 - [Linux/WSL 快速开始](docs/getting-started-linux.md)
 
 ## License

@@ -1,161 +1,106 @@
 # Sidravia 工程实践
 
-daemon 生命周期测试必须分别证明只读探测、成功响应写入后的 commit 顺序、首个 stop
-信号不丢失且重复提交不阻塞，以及 stop/restart 始终使用首次探测的精确 generation。
-子进程环境测试使用显式 parent slice，大小写不敏感地移除重复日志变量，并证明不修改
-调用者输入。
+本文规定代码设计、错误处理、并发、持久化、测试和验证实践。系统结构由
+[当前架构](architecture.md)负责。
 
-本文规定代码层面的设计、错误处理、并发和测试实践。具体系统结构由
-`docs/architecture.md` 负责。
+## 领域和依赖
 
-## 如何使用领域设计
+核心认证代码使用清楚的领域语言。外围 JSON、文件与系统调用保持直接，不机械套用
+Aggregate、Repository、Factory 或“一类型一接口”。只有真实替换点、平台边界和跨模块
+契约需要接口。领域核心不得导入 CLI、WebSocket、JSON、Windows API 或具体持久化。
 
-核心认证代码应使用清楚的领域语言和边界。外围的 JSON、文件和系统调用代码应保持直接，不需要模仿领域模型。
+少量局部重复优先于错误抽象。平台无关核心不得为 Windows/Linux 复制；平台差异留在能力
+附近的构建约束实现。
 
-开发者不得机械套用 Aggregate、Repository、Factory 或“一类型一接口”。只有真实替换点、平台边界和跨模块契约才需要接口。
+## 错误与日志
 
-开发者应优先复用稳定的领域含义。如果两个位置只是暂时长得相似，少量局部重复比错误抽象更安全。
+底层保留原始原因，上层包装当前业务动作。IPC server 把内部错误转换为稳定机器码，CLI
+根据机器码生成固定人类消息；内部错误链不得进入 IPC、普通日志或用户文本。预期失败返回
+错误，不用 panic，也不返回空值伪装成功。
 
-领域核心不得导入 CLI、WebSocket、JSON、Windows API 或具体持久化实现。
+拥有完整流程的模块决定是否重试；底层文件、网络或协议实现不得无限重试。系统通常只在
+进程边界记录一次失败。
 
-## 如何处理错误
+生产日志由 `cmd/sidraviad` 的唯一 `log/slog` logger 拥有。Info/Debug 只使用稳定事件码、
+固定消息和显式字段白名单；不得记录原始 error、token、密码、Profile JSON、MAC、网关、
+DNS/DHCP、接口 ID 或报文字节。Trace 是唯一允许完整 D520 数据报的位置，启用前必须标记
+敏感。Windows launcher 的子进程 Wait cause 保留在错误链中，但不进入用户消息。
 
-Windows launcher 的 Wait cause 是私有诊断：错误链保留其 identity，用户只看到固定安全
-文本，子进程自己的诊断由 daemon 日志拥有。不得把 Wait cause 拼进用户消息，也不得声称
-CLI 会把该 cause 另写一条日志。Linux launcher 使用 setsid + Process.Release，不持有
-Wait 或退出观察。
+未支持平台或功能必须返回明确 Unsupported/NotImplemented。
 
-底层函数应保留原始错误。领域层或应用层应在包装错误时增加当前业务动作，例如“读取配置”或“启动 Session”。
+## 并发和生命周期
 
-IPC server 应把内部错误转换为稳定机器错误码。CLI 应根据错误码生成人类消息。CLI 的
-人类消息由 `internal/cli` 的呈现边界统一拥有（见 ADR 0014）：它把稳定机器码映射为
-简体中文，清理动态控制字符，只在真实交互终端着色，且 `Error()` 不暴露包装原因。
-IPC 不得返回内部错误链。
+创建 goroutine 的模块必须拥有其取消与等待。模块关闭后不得留下后台 goroutine，也不得
+把锁、channel 或可变指针暴露给其他模块共同管理。
 
-拥有完整业务流程的模块决定是否重试。文件、网络或协议底层不得自行无限重试。
+retained Session 生命周期操作由 Supervisor 按 ID 串行。等待 actor revision 或协议清理
+时不得持有 Supervisor map mutex；取消等待必须释放私有准入。daemon 生命周期测试分别证明：
 
-系统通常只在进程边界记录一次错误。中间层应返回带上下文的错误，不应逐层重复写日志。
+- status 严格只读；
+- stop 只在成功响应写入后提交；
+- 首个 stop 信号不丢失，重复提交不阻塞；
+- stop/restart 始终使用首次探测的精确 generation；
+- 子进程环境去除大小写不同的重复变量且不修改调用者输入。
 
-结构化运行日志使用标准库 `log/slog`，由 `cmd/sidraviad` 拥有唯一生产 logger，使用
-TextHandler、stderr，默认 Info 级别（`SIDRAVIA_LOG_LEVEL` 可选
-`info`/`debug`/`trace`）。Info 记录 daemon 生命周期、已应用网络快照和已提交 Session
-Snapshot；Debug 增加 IPC 连接/完成、Session 命令、协议运行代际、重试调度和阶段边界；
-Trace 增加完整 D520 数据报 hex，并在首条数据报前发
-`trace_logging_sensitive`。日志只记录稳定 `event` 码、固定简体中文 `msg` 和
-显式允许的安全属性；Info/Debug 永不包含原始 error、诊断原因、请求/响应字节、request
-ID、token、密码、凭据 ID、Profile JSON、协议上下文、MAC、DNS/DHCP、网关或网卡 ID，
-但包含完整账号名、友好接口名与所选 IPv4；Trace 数据报是唯一含完整报文字节的位置。
-进程边界只记录一次失败事件，且不替代错误传播；原始 error 仍由调用方保留用于所有权
-和测试。IPC 层把 peer 提供的 method/error 归一化为契约白名单值，使任意字符串不能
-进入日志。详细边界见 ADR 0013 与 ADR 0015。
+## 持久化与安全
 
-Windows CLI launcher 只在确实创建后台 daemon 时准备日志：使用显式 cache root，
-请求 `0700` 目录和 `0600` 文件权限，以 append 打开当前文件，并在启动前达到 10 MiB
-时替换唯一 `.1` 备份。stat、mkdir、remove、rename、open 或 child start 失败必须保留
-cause 并返回安全操作语义；日志准备失败不得退回继承前端输出。logger sink 与 launcher
-文件句柄重定向是两个不同职责，见 ADR 0019。
+持久化先构造并验证完整候选，再原子替换目标；写入失败时不得提前改变内存权威状态。
 
-尚未支持的平台或功能必须返回明确的 Unsupported 或 NotImplemented 错误。代码不得返回空结果来假装成功。
+Configuration schema 3 是唯一编码格式。严格 schema 2 文档仍可读取，默认
+`AutoLogin=false`、`AutoReconnect=true`，且仅打开不会重写。schema 3 要求两个布尔字段。
+最多一份 Configuration 启用 AutoLogin。
 
-Linux（包括 WSL）作为真实运行时基线与 Windows 共享 domain core、IPC、Configuration、
-运行目录和日志契约，只新增平台边界实现：daemon host 用 `flock` 单实例、CLI 用 `setsid`
-分离子进程、密码用 termios 隐藏输入、Observer 用 sysfs 保守分类硬件/无线/虚拟接口。
-这些实现都在模块内部管理并发、保留原因，且不扩大公开接口；macOS 仍返回 Unsupported。
-详见 ADR 0025。
+安装版秘密配置必须受当前用户与 SYSTEM 保护，失败即失败。便携版只有文件系统明确不支持
+权限模型时才能报告 `unprotected`；新增或替换秘密需要当次显式授权。官方 Profile 位于
+程序根 `institution-profiles/`，不属于秘密配置树。
 
-## 如何管理并发
+Windows 受保护目录的 owner/LocalSystem ACE 带对象/容器继承，秘密文件 ACE 保持不可继承；
+安全临时文件在写入前获得最终描述符。不使用 `TreeSetNamedSecurityInfo`、`icacls`、递归
+遍历或宽松临时 ACL。
 
-创建 goroutine 的模块必须拥有它的取消和等待方法。模块关闭后不得留下后台 goroutine。
+JSON 只用于 IPC 与持久化边界；领域模型不承担 JSON 编解码。
 
-每个模块可以使用私有同步细节保护自己的状态。它不得把锁、channel 或可变指针暴露给其他模块共同管理。
+## 测试
 
-retained Session 生命周期操作必须由 Supervisor 按 ID 串行。等待 actor revision 或
-协议清理时不得持有 Supervisor map mutex；取消等待必须释放私有准入预留。
+测试证明公开行为、领域规则、错误分类和真实风险，不为私有实现建立脆弱 mock，也不为了
+测试扩大生产接口。
 
-## 如何设计持久化
+- Go 单元与包级契约测试放在相邻 `*_test.go`；
+- 测试数据放 `testdata/`；
+- 跨模块纵向测试和现场验收通过公开入口；
+- 并发测试覆盖已有风险，不穷举无证据排列；
+- CLI 呈现测试不修改 termenv package-global 状态；
+- mock 与本地 test peer 不能替代 Windows 或校园证据。
 
-持久化代码应先构造并验证完整候选内容，然后原子替换目标。如果写入失败，内存中的权威状态不得提前改变。
+删除生产代码、测试或文档前必须说明其保护的行为或知识，并指出替代保护。机械批量编辑应
+使用格式无关命令和确定性范围检查。
 
-Authentication Configuration 使用 schema 2 单文件聚合。安装版权限保护失败即失败；
-便携版只在平台明确返回权限模型不支持时进入可观察的 unprotected 状态，新增或替换密码
-必须获得逐次显式授权。
+## 二进制协议
 
-Windows 安全存储按对象类别区分 DACL：受保护目录的 owner/LocalSystem Full Control ACE
-带对象/容器继承标志，经 `SetNamedSecurityInfoW` 传播到既有和未来子对象；秘密文件 ACE
-保持不可继承，安全临时文件在写入前获得最终文件描述符。安全 catalog 准备在 Profile 加载
-之前完成，使 daemon 重启能修复既有 `institution-profiles` 子树的继承 DACL。不使用
-`TreeSetNamedSecurityInfo`、`icacls`、递归遍历或宽松临时 ACL。详见 ADR 0026。
+线协议代码优先便于逐字节对照。不同语义的请求和响应保留命名 builder/parser，只共享真正
+相同的长度、opcode、固定字段、编码和密码学逻辑。不得反射或序列化 Go struct 内存布局。
 
-结构化配置必须使用稳定字段，并且 CLI 必须能够用人类可读的形式显示它。秘密字段不受此规则影响，因为 CLI 不得读取秘密明文。
+parser 由当前请求阶段选择，并严格验证长度、opcode、固定字段和回显值。随机数、时间、
+序号与服务端回填值属于一次执行状态，不属于 packet builder。
 
-JSON 只用于 IPC 和持久化边界。领域模型不应携带 JSON 编解码职责。
+固定宽度 Profile 字段是严格十六进制；`localPort` 是独立 tagged 字段，fixed 失败不回退，
+system-assigned 才允许 OS 分配端口。
 
-## 如何编写测试
+## 仓库验证
 
-测试应证明公开行为、领域规则和错误分类。测试不得依赖私有函数的具体调用顺序，除非该顺序本身就是需要保护的行为。
-
-跨模块纵向测试和现场验收应通过公开入口运行。测试不得为了方便而扩大生产接口。
-
-并发测试应覆盖已经识别的生命周期风险。没有现实故障证据时，不应穷举所有竞态排列。
-
-CLI 呈现测试不得修改 termenv 的 package-global 状态，也不得依赖开发者的终端、颜色
-环境、宽度、主题或 locale；测试通过私有构造函数强制 profile，并证明重定向、
-`NO_COLOR`、`CLICOLOR_FORCE` 和动态控制字符清理行为。
-帮助测试还必须证明 bare root/group、`help <path>`、`-h`、`--help` 共享同一节点输出，
-且所有帮助入口都不派发业务操作。
-
-mock 验收证明代码可以重复运行，但不能代替校园网络现场验证。报告必须把两种证据分开。
-
-## 如何实现二进制线协议
-
-线协议代码必须优先便于与规范和抓包逐字节对照。不同语义的请求和响应应保留命名
-builder/parser；只共享长度、opcode、固定字段、编码和密码学等确实相同的局部规则。
-
-固定长度报文优先使用固定长度值或由构造器保证精确长度。长报文可以按协议布局区域拆成
-私有写入函数，但偏移和字段语义不得被反射、通用字段袋或外部 schema 隐藏。不得直接
-序列化 Go struct 的内存布局。
-
-parser 由当前请求阶段选择，并严格验证该阶段的长度、opcode、固定字段和回显值。代码
-不得只根据收到的 opcode 猜测当前协议状态。属于同一次交换的成功和拒绝响应可以返回
-私有 tagged result。
-
-随机数、时间、序号、服务端回填值和取消属于一次协议执行的运行状态，不属于 packet
-builder。测试向量必须把这些值显式传入，确保 codec 确定且不依赖 socket、clock、日志
-或 goroutine。
-
-固定宽度 Profile 字段（含 Challenge padding 与三段 Login padding
-`loginIPDogPaddingHex`/`loginDHCPPaddingHex`/`loginAuthExtensionPaddingHex`）是严格十六进制
-字符串，输入大小写不敏感，缺失、宽度错误或非十六进制值使配置校验失败。本地端口是独立于
-`serverPort` 的严格 tagged 字段 `localPort`：`fixed` 绑定配置端口，绑定冲突或权限失败经既有
-网络失败路径返回，绝不回退到系统分配端口；`system_assigned` 让操作系统选择端口。详见 ADR 0027。
-
-## 如何迁移和删除
-
-目录迁移应先保持行为不变。已有有效测试应随包移动。
-
-开发者删除生产代码、测试或文档前，必须先说明它保护的行为或知识。删除说明还必须指出替代位置，或者解释为什么该内容不再需要。
-
-机械批量编辑必须使用不依赖空白排版的命令，并用确定性范围检查证明只改动预期文件。
-
-## 如何验证仓库
-
-从仓库根目录运行标准库 verifier。完整验证使用固定 WSL Go：
+完整公开验证使用固定 Go 1.26.4：
 
 ```bash
-python3 tools/developer/verify_repository.py --scope all --go /home/astesia/.local/opt/go1.26.4/bin/go
+python3 tools/developer/verify_repository.py --scope all --go /path/to/go1.26.4
 ```
 
-`--scope go` 只运行 Go 格式、测试、vet、diff 和 Windows amd64 交叉构建；
-`--scope python` 只运行两套公开 Python 单元测试；`--scope all` 运行全部检查。
-调用者显式设置的 `GOCACHE` 会原样保留；否则 verifier 使用并清理临时 cache。
+验证状态必须分开报告：
 
-验证分为三层，不得为了自动化跨越环境边界而阻塞普通代码开发：
+1. 代码写入；
+2. 自动验证；
+3. Windows 原生；
+4. WSL/Linux 原生；
+5. 校园网络；
+6. Release readiness。
 
-1. 日常开发使用单元测试、包级契约测试、静态检查和 Windows 交叉编译；
-2. 阶段集成只运行已有且简单可重复的进程级 smoke test；沙箱或 WSL/Windows
-   互操作限制必须如实记录，但不要求执行者开发绕行基础设施；
-3. 真实 Windows 进程、权限、网络和校园认证由人类在形成有价值的纵向链路后现场
-   验收，并在需要时保存到 `docs/evidence/`。
-
-“代码完成”“自动验证通过”和“Windows 现场通过”仍是三个独立结论。计划必须明确
-本轮需要哪一层，未要求现场验收时不得把它追加为执行者的完成门槛。
+交叉编译、mock 或 WSL 不能替代 Windows-native 或校园现场证据。

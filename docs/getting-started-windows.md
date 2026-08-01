@@ -1,132 +1,91 @@
-# Windows Alpha 使用指南
+# Sidravia Windows 使用指南
 
-本文适用于 `v0.1.0-alpha.1` 的 Windows amd64 压缩包。这个版本已经在一台
-Windows 11 机器上完成吉林大学 Dr.COM 5.2.0(D) 的认证、保活和注销现场验证，但仍是
-Alpha：二进制未签名，不提供 GUI、Windows Service、自动更新或通用机构配置。
+## 先确认你使用的版本
 
-## 下载与校验
+已发布的 `v0.1.0-alpha.1` 是历史 Alpha，只应使用该 Release 随附的说明。本文其余部分
+描述当前 `main` 的下一未发布源码和由 `tools/build` 生成的候选包；这些能力尚未成为新的
+公开 Release，也不承诺候选版本号、签名或发布日期。
 
-从 GitHub Release 同时下载：
+Alpha.1 曾在一台 Windows 11 机器和吉林大学校园网完成认证、保活与 Logout。当前 HEAD
+仍需整包 Windows 回归。
 
-- `sidravia-v0.1.0-alpha.1-windows-amd64.zip`
-- `SHA256SUMS.txt`
+## 当前候选包
 
-在 PowerShell 7 中比较压缩包哈希：
+`tools/build` 生成：
 
-```powershell
-(Get-FileHash .\sidravia-v0.1.0-alpha.1-windows-amd64.zip -Algorithm SHA256).Hash.ToLower()
-Get-Content .\SHA256SUMS.txt
+- `sidravia-v<version>-windows-amd64.zip`；
+- `sidravia-v<version>-windows-amd64-portable.zip`；
+- `SHA256SUMS.txt`。
+
+两个 zip 复用同一对二进制并包含：
+
+- `sidravia.exe`、`sidraviad.exe`；
+- `institution-profiles\jlu.json`；
+- `scripts\install.ps1`、`scripts\uninstall.ps1`；
+- `BUILD-INFO.txt`、`GETTING-STARTED.md`、`README.md`、`LICENSE`；
+- 内部 `SHA256SUMS`。
+
+只有便携包包含 `sidravia.portable`。候选包可能未签名；必须从可信来源取得并核对外部
+SHA-256。
+
+## 运行目录
+
+官方机构 Profile 是随版本发布的程序内容，两种模式都位于：
+
+```text
+<exe-dir>\institution-profiles\jlu.json
 ```
 
-两者必须一致。解压后目录包含：
+daemon 直接读取，不复制到 AppData 或 `config\`，也没有 seed/migration 步骤。
 
-- `sidravia.exe`：短生命周期命令行客户端；
-- `sidraviad.exe`：本地长期运行 daemon；
-- `institution-profiles\jlu.json`：官方吉林大学 Profile（非秘密；安装版与便携版均在
-  解压目录根）；
-- `SHA256SUMS`：两个 PE 文件的 SHA-256；
-- `README.md`、`GETTING-STARTED.md` 和 `LICENSE`。
+安装版：
 
-Windows SmartScreen 可能提示这是未签名应用。只有从项目 GitHub Release 下载且哈希
-匹配时才继续。
+- `configurations.json`：`%APPDATA%\Sidravia`；
+- runtime 与日志：`%LOCALAPPDATA%\Sidravia`；
+- 官方 Profile：程序根 `institution-profiles\`。
 
-当前源码构建通过同目录的 `sidravia.portable` 标记选择运行目录模式。标记不存在时为
-安装版：Profile 位于 `%APPDATA%\Sidravia`，运行信息和后台日志位于
-`%LOCALAPPDATA%\Sidravia`。在 `sidravia.exe` 同目录放置空 `sidravia.portable` 文件
-即启用便携版：Authentication Configuration（含其唯一私有密码）和机构 Profile 位于
-`<解压目录>\config`，运行信息位于
-`<解压目录>\runtime`，后台日志位于 `<解压目录>\logs`，全部随目录移动且不依赖
-AppData。CLI 与 daemon 每次启动各自解析同一标记，增删标记前必须先停止 daemon。
-该能力已进入当前源码，但尚未包含在已发布的 `v0.1.0-alpha.1` Release 中。
+便携版：
 
-从当前源码用 `tools/build` 构建工具生成的包与已发布的 `v0.1.0-alpha.1` Release 是不同
-产物，二者状态分开。工具为指定版本生成两个 zip 和一个外部校验文件：
-`sidravia-v<version>-windows-amd64.zip`（安装版，不含 marker）、
-`sidravia-v<version>-windows-amd64-portable.zip`（便携版，含空 `sidravia.portable`
-marker）与 `SHA256SUMS.txt`（两个 zip 的 SHA-256）。两个 zip 共享同一对二进制，仅运行
-模式元数据与 marker 不同。
-
-## 机构 Profile
-
-Profile 是不含账号和密码的机构配置，由项目随版本发布，daemon 只在启动时加载一次。
-当前源码构建的包在解压目录根携带 `institution-profiles\jlu.json`，安装版与便携版
-相同；daemon 直接从该目录读取，**无需任何复制或安装步骤**。
-
-机构 Profile 模型：
-
-- 官方 Profile 由项目随每个版本提供并发布；如需其他机构，请向项目提交，进入未来版本；
-- `institution-profiles\` 目录同时是调试入口：可以临时放入一个测试 Profile 验证，但它
-  不保证跨版本或重新解压保留；
-- daemon 只在启动时加载一次 Profile，从不写入或覆盖它们；
-- 不要把用户名或密码写入 Profile。
-
-## 启动和认证
-
-当前源码若显示
-`sidraviad 在就绪前退出；请检查 daemon 日志`，表示 Windows CLI 观察到自己创建的精确
-子进程已经退出，并在最后一次 typed readiness 探测后仍未就绪。CLI 不显示私有 Wait
-cause；安装版检查 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`，便携版检查
-`<解压目录>\logs\sidraviad.log` 中由子进程写入的诊断。
-
-先完全退出其他 Dr.COM 客户端，避免同一账号同时维持多个认证会话。
-
-打开 PowerShell 7 并进入解压目录。当前源码构建默认由 CLI 后台启动 daemon：
-
-```powershell
-.\sidravia.exe daemon start
+```text
+<exe-dir>\
+  sidravia.exe
+  sidraviad.exe
+  sidravia.portable
+  institution-profiles\
+    jlu.json
+  config\
+    configurations.json
+  runtime\
+    runtime.json
+  logs\
+    sidraviad.log
+    sidraviad.log.1
 ```
 
-PowerShell 会立即恢复提示符，daemon 不再持续向前端终端刷日志。安装版的后台
-stdout/stderr 写入 `%LOCALAPPDATA%\Sidravia\logs\sidraviad.log`；便携版写入
-`<解压目录>\logs\sidraviad.log`。两种模式都在启动前达到 10 MiB 时把当前文件轮转为
-唯一 `sidraviad.log.1` 备份。
+CLI 与 daemon 各自解析同一 marker。增删 marker 前必须先停止 daemon。
 
-需要前台诊断时，可以直接运行 daemon；此模式继续把日志写到 stderr：
+`institution-profiles\` 同时是调试入口，可以临时放入测试 Profile；本地文件不保证跨更新
+或重新解压保留。正式增加机构应提交上游并经过独立现场验证。Profile 不得包含账号或密码。
 
-```powershell
-.\sidraviad.exe
-```
+## daemon 与帮助
 
-`SIDRAVIA_LOG_LEVEL` 可设置为 `info`（默认）、`debug` 或 `trace`。Info 包含 daemon
-生命周期、网络快照应用和 Session Snapshot；Debug 增加 IPC 连接/完成、Session 命令、
-协议运行代际、重试调度和阶段边界；Trace 增加完整 D520 数据报 hex，可能含账号与认证
-材料，启用时先写 `trace_logging_sensitive`。Info/Debug 允许完整账号名、机构显示名、
-友好接口名与所选 IPv4，但不含密码、token、Profile JSON、MAC、DNS/DHCP、网关、
-InterfaceID、请求/响应字节或原始 error。后台启用 Trace 后，这些敏感字节会保留在当前
-日志或唯一 `.1` 备份中。Sidravia 不提供日志 IPC、`daemon logs` 或实时 tail。
-
-检查已发布版本：
-
-```powershell
-.\sidravia.exe status
-```
-
-上面是已发布 `v0.1.0-alpha.1` 二进制的命令。当前源码构建已经迁移到资源命令树，应改用：
+在解压目录运行：
 
 ```powershell
 .\sidravia.exe daemon status
-```
-
-当前开发构建执行旧的顶层 `status` 不会连接或启动 daemon，而会返回
-`命令已迁移，请使用 sidravia daemon status`。不要把新命令用于旧 Alpha 二进制，也
-不要把旧命令当作当前构建的兼容别名。
-
-当前源码构建还提供：
-
-```powershell
-.\sidravia.exe daemon start --log-level info
-.\sidravia.exe daemon stop
+.\sidravia.exe daemon start
 .\sidravia.exe daemon restart --log-level debug
+.\sidravia.exe daemon stop
 ```
 
-`daemon status` 严格只读。`start` 和 `restart` 的 `--log-level` 接受 `info`、
-`debug`、`trace`，省略时确定使用 `info`；CLI 会移除继承环境中大小写不同的重复
-`SIDRAVIA_LOG_LEVEL`，再为 Windows 子进程设置唯一值。stop/restart 始终针对命令首次
-探测到的精确 daemon generation，不会因运行信息被替换而停止新的 generation。
-生产 `daemon status` 已接入严格只读 probe；缺少运行信息时只显示 stopped，不启动进程
-也不创建或轮转日志。这组修正已有代码与自动验证，但尚未重新完成 Windows 原生验证。
+`daemon status` 严格只读，不启动 daemon、不创建目录、不轮转日志。stop/restart 始终针对
+命令首次探测的精确 daemon generation。
 
-可以用 bare command、`help <path>`、`-h` 或 `--help` 查看同一份分层中文帮助：
+如果 Windows launcher 报告“sidraviad 在就绪前退出”，表示它观察到自己创建的精确子进程
+已退出，并在最后一次 typed readiness 探测后仍未就绪。检查当前模式的
+`logs\sidraviad.log`；CLI 不显示私有 Wait cause。
+
+所有帮助入口共享同一份分层中文规格：
 
 ```powershell
 .\sidravia.exe
@@ -135,157 +94,131 @@ InterfaceID、请求/响应字节或原始 error。后台启用 Trace 后，这�
 .\sidravia.exe auth start --help
 ```
 
-当前源码构建还可以确认 daemon 实际加载的机构 Profile：
+旧顶层 `status` 以及已删除的 `install` / `uninstall` 命令不是兼容别名。
+
+## Configuration
+
+当前源码提供：
+
+```powershell
+.\sidravia.exe config list
+.\sidravia.exe config show <configuration-id>
+.\sidravia.exe config create
+.\sidravia.exe config update <configuration-id>
+.\sidravia.exe config set-password <configuration-id>
+.\sidravia.exe config remove <configuration-id>
+```
+
+非交互密码输入必须显式使用 `--password-stdin`；密码不得进入 argv、Profile、截图或
+日志。安装版要求当前用户与 SYSTEM 保护；便携版只有文件系统明确不支持权限模型时才进入
+`unprotected`，新增或替换秘密还需要当次明确授权。
+
+Configuration schema 3 拥有两个自动化开关：
+
+- `AutoLogin`：最多一份 Configuration 启用；每个 daemon generation 在首个网络 Snapshot
+  后只评估一次；
+- `AutoReconnect`：创建 retained Session 时冻结进不可变运行定义，决定失败或网络中断后
+  是否自动重连。
+
+一次性认证始终自动重连。显式 stop/remove/restart 始终优先。不存在全局 Settings
+自动连接控制器。严格 schema 2 文件仍可读取，默认
+`AutoLogin=false`、`AutoReconnect=true`，仅打开不会重写。
+
+## Session 与认证
+
+先退出其他 Dr.COM 客户端。确认官方 Profile：
 
 ```powershell
 .\sidravia.exe profile list
 ```
 
-该命令只显示 Profile ID、名称和协议，不显示协议配置或凭据。
-
-预期包含：
-
-```text
-守护进程：运行中（running） | 版本：0.1.0-alpha.1 | 构建：<build-id> | PID：<PID>
-```
-
-启动一次性 Session：
+一次性认证：
 
 ```powershell
-.\sidravia.exe auth start --profile jlu --username '<你的账号>'
+.\sidravia.exe auth start --profile jlu --username '<账号>'
 ```
 
-当前源码也可持久保存认证配置（密码从 stdin 读取，不进入 argv）：
+按持久 Configuration 启动：
 
 ```powershell
-'<你的密码>' | .\sidravia.exe config create --id campus --profile jlu --username '<你的账号>' --name '校园网' --password-stdin
-.\sidravia.exe config list
-.\sidravia.exe config show campus
-.\sidravia.exe auth start --config campus
+.\sidravia.exe auth start --config <configuration-id>
 ```
 
-安装版要求当前用户权限保护。便携版仅在文件系统明确不支持所需保护模型时进入
-`unprotected`，并发出固定警告；此时 create/set-password 还需显式
-`--allow-insecure-storage`。同目录访问者可能读取或修改配置和密码、daemon runtime
-token 与敏感 Trace 日志。当前使用明文 JSON，不提供 DPAPI、Keyring 或旧双文件迁移。
-
-当前源码已修复 Windows 安全配置目录的继承 DACL：配置根目录的 owner/LocalSystem ACE 带
-对象/容器继承标志，传播到既有和未来 `institution-profiles` 子树；秘密文件 ACE 保持不可
-继承。catalog 在 Profile 加载之前打开，使 daemon 重启能修复旧版本留下的“子目录空继承
-DACL”状态。该修复已完成代码与自动验证，Windows 原生与校园现场复核仍为独立证据；详见
-ADR 0026。
-
-当前源码还把 D520 `localPort` 与 `serverPort` 分开建模；上述 JLU Profile 对两者都选择
-fixed `61440`，固定端口绑定失败不会降级为系统分配端口。该改动与 Windows launcher
-早退报告均已完成代码和自动验证，但尚未完成组合 Windows-native 与校园热点复核。
-
-密码只在交互式 `密码：` 提示中输入，不会回显。不要把密码放进命令行、脚本、
-Profile、截图或日志。非交互式调用必须显式使用 `--password-stdin`。
-
-`auth start` 会立即返回初始 Snapshot，不会等待认证完成。记下输出中的 Session ID，
-例如：
-
-```powershell
-$SessionID = 'session-1'
-.\sidravia.exe auth status $SessionID
-```
-
-当前源码构建也可以列出当前 daemon 进程仍保留的全部 Session：
+`auth start` 返回初始 Snapshot 后立即退出，不等待认证完成。记下 Session ID：
 
 ```powershell
 .\sidravia.exe auth list
+.\sidravia.exe auth status <session-id>
+.\sidravia.exe auth start --session <session-id>
+.\sidravia.exe auth restart <session-id>
+.\sidravia.exe auth stop <session-id>
+.\sidravia.exe auth remove <session-id>
 ```
 
-列表包含完整账号名；daemon 重启后不会恢复旧 Session。
+stop 先发布 `stopping`，协议 Run 完成有界清理后才发布 `suspended`。Supervisor 在此之前
+不释放单活动准入。remove 成功意味着 Session actor、协议、revision forwarder 和集合成员
+均已退出。daemon 重启后不恢复旧 SessionID。
 
-当前源码还支持在不重新读取密码的情况下管理 retained Session：
+D520 JLU Profile 使用独立 fixed `localPort=61440`；绑定失败不回退到系统分配端口。
+认证成功后应核对网络字段是实际校园物理接口和预期 IPv4。
+
+## Windows 用户态集成
+
+建议把安装版解压到 `%LOCALAPPDATA%\Programs\Sidravia`，然后从解压目录运行：
 
 ```powershell
-.\sidravia.exe auth start --session $SessionID
-.\sidravia.exe auth restart $SessionID
-.\sidravia.exe auth remove $SessionID
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -LogLevel debug
 ```
 
-ensure 只保证同一 Session 正在运行；restart 是明确重启；remove 会等待在线 Session
-完成停止与清理后再删除。这些行为已有代码与自动验证设计，但尚未完成 Windows 原生或
-新增校园现场验证。
+脚本注册它所在的目录，因此安装版和便携版都可使用。它：
 
-认证成功时状态为：
+- 把目录加入用户 PATH；
+- 创建登录计划任务 `SidraviaDaemon`；
+- 任务执行 `sidravia daemon start --log-level <level>`；
+- 执行前后验证 PATH 和任务动作；
+- 重复执行安全。
 
-```text
-状态：已认证（authenticated）
-```
-
-同时核对 `网络：` 是实际校园物理网卡和预期 IPv4，而不是 VPN、TUN、虚拟交换机或
-其他软件接口。
-
-## 停止与退出
-
-停止当前 Session：
-
-```powershell
-.\sidravia.exe auth stop $SessionID
-```
-
-已发布的 `v0.1.0-alpha.1` 会直接返回 `suspended`。包含两阶段停止语义的后续开发构建
-会先立即返回：
-
-```text
-状态：正在停止（stopping）
-```
-
-`stopping` 表示 daemon 正在执行有界的尽力 Logout，并且单活动 Session 槽仍被占用。
-无论 Stop 命令直接返回 `suspended` 还是先返回 `stopping`，都继续查询，直到状态为
-`suspended`：
-
-```powershell
-do {
-  Start-Sleep -Milliseconds 250
-  $Status = .\sidravia.exe auth status $SessionID
-  $Status
-} until ($Status -match '(?m)^状态：已暂停（suspended）$')
-```
-
-此时协议 Run 已经退出，随后再次查询应保持 `suspended`。最后执行
-`.\sidravia.exe daemon stop` 关闭后台 daemon。只有直接前台诊断时才在该窗口按一次
-`Ctrl+C`。
-
-首个 Alpha 同一 daemon 进程只允许一个活动 Session。进程重启后不会恢复旧 Session
-ID。不要用强杀进程、反复启动第二个 Session 或同时运行其他认证客户端代替正常 Stop。
-
-## 安装与集成（可选）
-
-推荐把安装版压缩包解压到 `%LOCALAPPDATA%\Programs\Sidravia`，再从该目录执行集成脚本
-（安装版与便携版均可；脚本注册的是它所在目录）：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 [-LogLevel info|debug|trace]
-```
-
-`install.ps1` 把当前目录加入用户 PATH（`HKCU\Environment\PATH`），并创建登录计划任务
-`SidraviaDaemon`：每次用户登录时自动运行 `sidravia daemon start --log-level <级别>`
-启动 daemon（默认 `info`）。脚本幂等，并在执行前后自校验（PATH 条目与任务动作是否
-就位）。重复执行安全。
+撤销集成：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
-`uninstall.ps1` 撤销集成：移除精确的 PATH 条目并删除登录任务，前后自校验；它不会
-删除任何认证配置、凭据、机构 Profile 或日志。重复执行安全。
+uninstall 只移除精确 PATH 条目和登录任务，前后自校验；它绝不删除 Configuration、凭据、
+官方/调试 Profile 或日志。当前没有 Windows Service。
 
-## Alpha 限制
+## Mihomo/Clash-family TUN 排障
 
-- 只发布 Windows amd64 二进制；其他平台尚不受支持。
-- 只对吉林大学的一台真实 Windows 11 机器完成过校园现场验证。
-- 官方吉林大学 Profile 随包附带；本地自定义 Profile 仍需手动创建，尚无引导式配置界面。
-- 无 Windows Service；daemon 登录自启动由用户显式执行 `scripts\install.ps1` 创建的登录任务提供。
-- 尚无 WSS、Linux/macOS daemon 进程控制；
-  Session ensure/restart/remove 已进入当前源码，但仍待 Windows 原生复核。
-- 简体中文 CLI 呈现、`NO_COLOR` 和重定向安全着色已加入；route-aware 多 IPv4 选择和
-  自动化仍未完成。结构化 daemon 日志与 CLI 呈现的 Windows 原生尚未重新验证。
-- 官方客户端曾出现 346 字节 Login 样本，但其扩展和长度是否可变仍未解决；Sidravia
-  继续发送已经被真实服务器接受的 330 字节 Login。
+一条 Windows 现场链发现：Mihomo TUN 捕获私有校园认证目的地址时，系统 route 会先把目的
+地址交给 TUN。此时在代理内部添加 `prepend-rules` 并不等于从 Windows TUN route 排除该
+目的地址。
 
-遇到失败时保留 CLI 的非秘密 Snapshot、所选网卡和稳定错误码。不要公开原始抓包、
-完整账号、MAC、IPC 运行信息内容或任何认证派生字段。
+认证前应选择以下一种方式：
+
+1. 停止该 TUN 代理；或
+2. 在 Mihomo/Clash-family 配置中用 `tun.route-exclude-address` 排除 RFC 1918 范围：
+   `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`。
+
+正确排除后，现场 route 回到物理以太网，Challenge 与 Sidravia 认证恢复。不要把临时
+`/32` 系统路由当作产品方案；Sidravia 不负责修改系统 route。这是一个机器和一条现场链的
+环境指导，不证明所有代理都有相同行为，也不产生新的产品修复。
+
+## 日志和证据
+
+CLI 后台启动时，stdout/stderr 都写入当前模式的 `sidraviad.log`；达到 10 MiB 后轮转为
+唯一 `.1`。`SIDRAVIA_LOG_LEVEL` 接受 `info`、`debug`、`trace`。Trace 含完整 D520
+数据报和潜在认证材料，分享前必须按秘密处理。
+
+Info/Debug 不包含密码、token、Profile JSON、MAC、DNS/DHCP、网关、接口 ID、请求/响应
+字节或原始 error。遇到失败时保存非秘密 Snapshot、稳定错误码、包校验和与明确的平台/
+网络条件，不公开原始抓包或认证派生字段。
+
+## 当前限制
+
+- 只计划发布 Windows amd64；
+- 当前 HEAD 的完整 Windows/campus 回归尚未完成；
+- 没有 GUI、Windows Service、自动更新或 WSS；
+- Linux/WSL 只是共享核心运行时基线；
+- 官方 Profile 当前只有经过现场验证的 `jlu`；
+- 官方客户端其他 Login 变体仍不在本次发布范围。

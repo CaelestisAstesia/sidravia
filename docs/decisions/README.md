@@ -32,5 +32,10 @@ ADR 只解释会长期影响产品边界、且未来可能被重新质疑的决�
 | [0026](0026-windows-secure-directory-inheritance.md) | Windows 安全配置目录的可继承 DACL | Accepted |
 | [0027](0027-d520-local-endpoint-and-wire-profile.md) | D520 本地端点与线级 Profile 对齐 | Accepted |
 | [0028](0028-windows-daemon-child-exit-readiness.md) | Windows daemon child-exit readiness | Accepted |
+| [0029](0029-configuration-authentication-automation.md) | Configuration 拥有自动登录与重连 | Accepted |
+| [0030](0030-official-profile-packaging.md) | 官方非秘密机构 Profile 打包 | Accepted; location details narrowed by ADR 0032 |
+| [0031](0031-windows-install-path-logon-integration.md) | Windows install/PATH/登录集成 | Superseded by ADR 0033 |
+| [0032](0032-official-profile-versioned-program-content.md) | 官方 Profile 作为程序内容统一位于程序根 | Accepted |
+| [0033](0033-windows-user-mode-integration-scripts.md) | Windows 用户态集成脚本 | Accepted |
 
 修改 Accepted ADR 时，新建替代 ADR，不静默重写历史理由。
