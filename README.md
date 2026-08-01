@@ -99,6 +99,7 @@ schema 3 是唯一写出格式。严格 schema 2 文档仍可读取，默认
 
 - `sidravia.exe` 与 `sidraviad.exe`；
 - `institution-profiles/jlu.json`；
+- `scripts/field-test.ps1` 与 `scripts/cli-smoke.ps1`；
 - `scripts/install.ps1` 与 `scripts/uninstall.ps1`；
 - `BUILD-INFO.txt`、`GETTING-STARTED.md`、`README.md`、`LICENSE` 和内部校验文件。
 
@@ -116,6 +117,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 `sidravia daemon start --log-level <level>`。两个脚本模式无关、幂等并进行前后自校验。
 卸载只撤销 PATH 条目和登录任务，绝不删除 Configuration、凭据、Profile 或日志。产品中
 不存在 `sidravia install` / `sidravia uninstall` 命令。
+
+## Windows 引导式实地验收
+
+两个 Windows 包都带有一次性实地验收入口。它在当前用户临时目录创建带随机标记的便携
+沙箱，复用完整 CLI smoke，并可在明确确认后测试校园认证、Session 生命周期、固定端口、
+心跳、Logout、自动登录/重连及 PATH/登录任务脚本：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\field-test.ps1
+```
+
+真实账号和隐藏密码每次运行时输入；密码只经 `--password-stdin` 交给 CLI，不进入 argv、
+环境变量或保留报告。完整自动登录检查会先征得同意，再把凭据临时写入受保护的测试沙箱；
+拒绝或无法建立保护时该项跳过/阻塞，不会使用不安全存储。脚本最终只保留字段白名单报告，
+并在 `finally` 中清理测试 Session、Configuration、daemon、PATH/任务和沙箱。
+
+这不是法证级安全擦除承诺：PowerShell/.NET 可能产生瞬时内存副本，异常断电也可能留下带
+明确标记的临时沙箱；下次运行会尝试清理，仅在无法清理时要求人工处理。物理网络/热点
+切换、实际注销登录、Hosted Workflow、签名和发布仍是独立人工或外部证据。
 
 ## Profile 与 TUN 代理
 

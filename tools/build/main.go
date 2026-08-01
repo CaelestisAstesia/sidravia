@@ -347,8 +347,10 @@ func verifyRepoInputs(root string) error {
 		{"LICENSE", false},
 		{"docs/getting-started-windows.md", false},
 		{"internal/daemon/configuration/profiles/jlu.json", false},
+		{"scripts/field-test.ps1", false},
 		{"scripts/install.ps1", false},
 		{"scripts/uninstall.ps1", false},
+		{"tools/cli_smoke.ps1", false},
 		{"cmd/sidravia", true},
 		{"cmd/sidraviad", true},
 	}
@@ -607,15 +609,23 @@ func writeArtifacts(repoRoot, staging, version, buildID string, cliBytes, daemon
 	if err != nil {
 		return fmt.Errorf("read scripts/uninstall.ps1: %w", err)
 	}
+	fieldTestScript, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "field-test.ps1"))
+	if err != nil {
+		return fmt.Errorf("read scripts/field-test.ps1: %w", err)
+	}
+	cliSmokeScript, err := os.ReadFile(filepath.Join(repoRoot, "tools", "cli_smoke.ps1"))
+	if err != nil {
+		return fmt.Errorf("read tools/cli_smoke.ps1: %w", err)
+	}
 
 	internalSums := []byte(sha256Hex(cliBytes) + "  sidravia.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
-	normalEntries := assembleEntries("installed", readme, license, gettingStarted, profile, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
+	normalEntries := assembleEntries("installed", readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, normalName), normalEntries); err != nil {
 		return fmt.Errorf("write %s: %w", normalName, err)
 	}
-	portableEntries := assembleEntries("portable", readme, license, gettingStarted, profile, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
+	portableEntries := assembleEntries("portable", readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, portableName), portableEntries); err != nil {
 		return fmt.Errorf("write %s: %w", portableName, err)
 	}
@@ -637,7 +647,7 @@ func writeArtifacts(repoRoot, staging, version, buildID string, cliBytes, daemon
 	return nil
 }
 
-func assembleEntries(mode string, readme, license, gettingStarted, profile, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
+func assembleEntries(mode string, readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
 	entries := []zipEntry{
 		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, mode), 0o644},
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
@@ -651,6 +661,8 @@ func assembleEntries(mode string, readme, license, gettingStarted, profile, inst
 		entries = append(entries, zipEntry{"sidravia.portable", nil, 0o644})
 	}
 	entries = append(entries, zipEntry{"institution-profiles/jlu.json", profile, 0o644})
+	entries = append(entries, zipEntry{"scripts/field-test.ps1", fieldTestScript, 0o644})
+	entries = append(entries, zipEntry{"scripts/cli-smoke.ps1", cliSmokeScript, 0o644})
 	entries = append(entries, zipEntry{"scripts/install.ps1", installScript, 0o644})
 	entries = append(entries, zipEntry{"scripts/uninstall.ps1", uninstallScript, 0o644})
 	return entries

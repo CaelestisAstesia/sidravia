@@ -162,6 +162,43 @@ stop 先发布 `stopping`，协议 Run 完成有界清理后才发布 `suspended
 D520 JLU Profile 使用独立 fixed `localPort=61440`；绑定失败不回退到系统分配端口。
 认证成功后应核对网络字段是实际校园物理接口和预期 IPv4。
 
+## 引导式实地验收
+
+解压当前候选包后，可以从包根运行随包脚本：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\field-test.ps1
+```
+
+默认流程先校验包内二进制哈希，再在当前用户临时目录创建带随机标记的便携沙箱，运行完整
+CLI smoke。随后按提示选择是否临时验证当前用户 PATH/`SidraviaDaemon` 任务、校园认证、
+热点/网络转换，以及受保护的临时 Configuration 自动登录。可用参数：
+
+```powershell
+.\scripts\field-test.ps1 -SkipCampus
+.\scripts\field-test.ps1 -SkipIntegration
+.\scripts\field-test.ps1 -SkipNetworkTransition
+.\scripts\field-test.ps1 -Profile jlu -ReportDirectory field-results
+```
+
+账号没有命令行参数；每次运行由 `Read-Host` 输入。密码用隐藏的 `SecureString` 提示，仅在
+固定 stdin 调用边界转换并交给 `--password-stdin`，不进入子进程 argv、环境变量、保留
+报告或原始证据。若同意测试 AutoLogin，账号和密码会暂时存在于带 ACL 保护的便携沙箱
+Configuration 中；脚本绝不传 `--allow-insecure-storage`，无法建立保护时该阶段 BLOCKED。
+拒绝临时存储则仍可运行一次性认证，该阶段记为 SKIPPED。
+
+脚本使用一个外层 `finally` 依次删除测试 Session、Configuration，停止 daemon，撤销仅由
+本次运行创建的 PATH/任务，并删除沙箱。保留的 JSON 报告只有包哈希、平台版本、检查 ID、
+耗时和 `PASS`/`FAIL`/`BLOCKED`/`SKIPPED` 稳定结果，不含账号、密码、MAC、token、原始日志、
+Profile JSON、抓包或路由表。退出码：`0` 为所有已请求阶段通过，`1` 为行为失败但清理
+完成，`2` 为安全前提阻塞，`3` 为清理不完整。
+
+PowerShell/.NET 不能保证每个瞬时托管内存副本都被法证级擦除；异常断电也可能留下带标记
+的临时目录。下次运行会限定清理自身标记的旧沙箱，失败时以 `CLEANUP_REQUIRED` 要求人工
+删除。脚本不会停止其他 Dr.COM 客户端、修改 VPN/TUN、路由、网卡或热点；这些物理/环境
+动作只由测试者按提示完成。任务动作启动证明不等于真实注销/登录触发，发布、签名与 Hosted
+Workflow 也不在该报告的证明范围。
+
 ## Windows 用户态集成
 
 建议把安装版解压到 `%LOCALAPPDATA%\Programs\Sidravia`，然后从解压目录运行：
