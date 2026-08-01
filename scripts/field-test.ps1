@@ -215,9 +215,66 @@ function Get-SessionID {
 
 function Get-SessionState {
     param([string]$Output)
-    $match = [regex]::Match($Output, '\((suspended|waiting_for_network|authenticating|authenticated|waiting_before_retry|blocked_by_error|stopping)\)')
+    $match = [regex]::Match($Output, '(?:\(|\uFF08)(suspended|waiting_for_network|authenticating|authenticated|waiting_before_retry|blocked_by_error|stopping)(?:\)|\uFF09)')
     if ($match.Success) { return $match.Groups[1].Value }
     return $null
+}
+
+function Get-AllowlistedSessionDiagnostics {
+    param([string]$Output)
+    $stateReason = $null
+    foreach ($code in @(
+        'network_unavailable',
+        'runtime_definition_unavailable',
+        'protocol_run_creation_failed',
+        'protocol_run_failed',
+        'protocol_contract_violated',
+        'automatic_reconnect_disabled'
+    )) {
+        $pattern = '(?m)^\u539F\u56E0\uFF1A[^\r\n]*\uFF08' + [regex]::Escape($code) + '\uFF09\s*$'
+        if ([regex]::IsMatch($Output, $pattern)) { $stateReason = $code; break }
+    }
+
+    $failure = $null
+    foreach ($code in @(
+        'network_timeout',
+        'network_io_failed',
+        'server_busy',
+        'session_in_use',
+        'credential_invalid',
+        'insufficient_funds',
+        'account_frozen',
+        'binding_ip_mismatch',
+        'binding_mac_mismatch',
+        'too_many_sessions',
+        'incompatible_version',
+        'binding_pair_mismatch',
+        'dhcp_required',
+        'authentication_rejected',
+        'protocol_response_invalid',
+        'protocol_contract_violated',
+        'logout_cleanup_failed'
+    )) {
+        $pattern = '(?m)^\u6700\u8FD1\u5931\u8D25\uFF1A[^\r\n]*\uFF08' + [regex]::Escape($code) + '\uFF09\s*$'
+        if ([regex]::IsMatch($Output, $pattern)) { $failure = $code; break }
+    }
+
+    $recommendation = $null
+    foreach ($code in @(
+        'retry_after_standard_delay',
+        'retry_after_extended_delay',
+        'block_until_explicit_restart_or_relevant_input_change'
+    )) {
+        $pattern = '(?m)^\u5904\u7406\u5EFA\u8BAE\uFF1A[^\r\n]*\uFF08' + [regex]::Escape($code) + '\uFF09\s*$'
+        if ([regex]::IsMatch($Output, $pattern)) { $recommendation = $code; break }
+    }
+
+    return [pscustomobject]@{
+        State = Get-SessionState -Output $Output
+        StateReason = $stateReason
+        Failure = $failure
+        Recommendation = $recommendation
+    }
 }
 
 function Wait-SessionState {
@@ -457,6 +514,23 @@ function Invoke-LocalSuite {
     return $false
 }
 
+function Add-IntegrationProcessCheck {
+    param(
+        [string]$ID,
+        [object]$Result
+    )
+    if ($Result.ExitCode -eq 0) {
+        Add-Check -ID $ID -Status PASS -ReasonCode 'command_succeeded' -Category integration
+        return $true
+    }
+    Write-Host ''
+    Write-Host ('== Integration diagnostics: ' + $ID + ' (no field credentials) ==')
+    if ($Result.Output) { Write-Host $Result.Output.TrimEnd() }
+    else { Write-Host '[no output]' }
+    Add-Check -ID $ID -Status FAIL -ReasonCode 'command_failed' -Category integration
+    return $false
+}
+
 function Invoke-IntegrationSuite {
     if ($SkipIntegration) {
         Add-Check -ID 'integration.user_mode' -Status SKIPPED -ReasonCode 'requested_skip' -Category integration
@@ -481,25 +555,60 @@ function Invoke-IntegrationSuite {
     $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
     $first = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
     $second = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
+    $firstOK = Add-IntegrationProcessCheck -ID 'integration.install_first' -Result $first
+    $secondOK = Add-IntegrationProcessCheck -ID 'integration.install_second' -Result $second
 
     $task = Get-SandboxTask
     $pathPresent = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
+    if ($pathPresent) {
+        Add-Check -ID 'integration.path_registered' -Status PASS -ReasonCode 'path_present' -Category integration
+    } else {
+        Add-Check -ID 'integration.path_registered' -Status FAIL -ReasonCode 'path_missing' -Category integration
+    }
+    if ($null -ne $task) {
+        Add-Check -ID 'integration.task_registered' -Status PASS -ReasonCode 'owned_task_present' -Category integration
+    } else {
+        Add-Check -ID 'integration.task_registered' -Status FAIL -ReasonCode 'owned_task_missing_or_mismatched' -Category integration
+    }
     $taskStarted = $false
     if ($null -ne $task -and $pathPresent) {
-        Start-ScheduledTask -TaskName $TaskName
-        $taskStarted = Wait-DaemonRunning -TimeoutSeconds 15
+        try {
+            Start-ScheduledTask -TaskName $TaskName
+            $taskStarted = Wait-DaemonRunning -TimeoutSeconds 15
+        } catch {
+            $taskStarted = $false
+        }
+        if ($taskStarted) {
+            Add-Check -ID 'integration.task_start' -Status PASS -ReasonCode 'daemon_running' -Category integration
+        } else {
+            Add-Check -ID 'integration.task_start' -Status FAIL -ReasonCode 'daemon_not_running' -Category integration
+        }
         $null = Invoke-Sidravia -Arguments @('daemon', 'stop')
+    } else {
+        Add-Check -ID 'integration.task_start' -Status SKIPPED -ReasonCode 'registration_failed' -Category integration
     }
 
     $removeFirst = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
     $removeSecond = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+    $removeFirstOK = Add-IntegrationProcessCheck -ID 'integration.uninstall_first' -Result $removeFirst
+    $removeSecondOK = Add-IntegrationProcessCheck -ID 'integration.uninstall_second' -Result $removeSecond
     $finalTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     $finalPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
+    if (-not $finalPath) {
+        Add-Check -ID 'integration.path_revoked' -Status PASS -ReasonCode 'path_absent' -Category integration
+    } else {
+        Add-Check -ID 'integration.path_revoked' -Status FAIL -ReasonCode 'path_still_present' -Category integration
+    }
+    if ($null -eq $finalTask) {
+        Add-Check -ID 'integration.task_revoked' -Status PASS -ReasonCode 'task_absent' -Category integration
+    } else {
+        Add-Check -ID 'integration.task_revoked' -Status FAIL -ReasonCode 'task_still_present' -Category integration
+    }
     if ($null -eq $finalTask -and -not $finalPath) { $script:IntegrationOwned = $false }
     $watch.Stop()
 
-    $ok = $first.ExitCode -eq 0 -and $second.ExitCode -eq 0 -and $taskStarted -and
-        $removeFirst.ExitCode -eq 0 -and $removeSecond.ExitCode -eq 0 -and
+    $ok = $firstOK -and $secondOK -and $pathPresent -and $null -ne $task -and $taskStarted -and
+        $removeFirstOK -and $removeSecondOK -and
         $null -eq $finalTask -and -not $finalPath
     if ($ok) {
         Add-Check -ID 'integration.user_mode' -Status PASS -ReasonCode 'idempotent_install_action_uninstall' -Category integration -DurationMs $watch.ElapsedMilliseconds
@@ -608,7 +717,23 @@ function Invoke-OneShotCampusSuite {
 
     $authenticated = Wait-SessionState -SessionID $sessionID -States @('authenticated') -TimeoutSeconds 60
     if ($null -eq $authenticated) {
-        Add-Check -ID 'campus.authentication' -Status FAIL -ReasonCode 'not_authenticated' -Category campus
+        $status = Invoke-Sidravia -Arguments @('auth', 'status', $sessionID)
+        $diagnostics = Get-AllowlistedSessionDiagnostics -Output $(if ($status.ExitCode -eq 0) { $status.Output } else { '' })
+        $safeParts = New-Object System.Collections.Generic.List[string]
+        if ($diagnostics.State) { $safeParts.Add('state=' + $diagnostics.State) }
+        if ($diagnostics.StateReason) { $safeParts.Add('state_reason=' + $diagnostics.StateReason) }
+        if ($diagnostics.Failure) { $safeParts.Add('failure=' + $diagnostics.Failure) }
+        if ($diagnostics.Recommendation) { $safeParts.Add('recommendation=' + $diagnostics.Recommendation) }
+        if ($safeParts.Count -gt 0) {
+            Write-Host ('Authentication diagnostics (safe codes only): ' + ($safeParts.ToArray() -join ', '))
+        } else {
+            Write-Host 'Authentication diagnostics (safe codes only): unavailable'
+        }
+        $reason = 'not_authenticated'
+        if ($diagnostics.State) { $reason = $diagnostics.State }
+        if ($diagnostics.StateReason) { $reason = $diagnostics.StateReason }
+        if ($diagnostics.Failure) { $reason = $diagnostics.Failure }
+        Add-Check -ID 'campus.authentication' -Status FAIL -ReasonCode $reason -Category campus
         return $false
     }
     $bindingPresent = $authenticated.Output -match '(?m)^\u7f51\u7edc\uff1a[^\r\n]*(?:\d{1,3}\.){3}\d{1,3}[^\r\n]*$'
