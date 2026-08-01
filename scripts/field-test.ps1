@@ -202,10 +202,44 @@ function Remove-OwnedSandbox {
     if (-not (Test-OwnedSandbox -Path $Path)) { return $false }
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            if (-not (Test-OwnedSandbox -Path $Path)) { return $false }
+            $directories = New-Object System.Collections.Generic.List[string]
+            $files = New-Object System.Collections.Generic.List[string]
+            $pending = New-Object System.Collections.Generic.Stack[string]
+            $pending.Push($Path)
+            while ($pending.Count -gt 0) {
+                $directory = $pending.Pop()
+                foreach ($child in (Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+                    if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        return $false
+                    }
+                    if ($child.PSIsContainer) {
+                        $directories.Add($child.FullName)
+                        $pending.Push($child.FullName)
+                    } else {
+                        $files.Add($child.FullName)
+                    }
+                }
+            }
+
+            $marker = Join-Path $Path $MarkerName
+            foreach ($file in $files) {
+                if ($file -ieq $marker) { continue }
+                $item = Get-Item -LiteralPath $file -Force -ErrorAction Stop
+                if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+                Remove-Item -LiteralPath $file -Force -ErrorAction Stop
+            }
+            foreach ($directory in ($directories | Sort-Object { $_.Length } -Descending)) {
+                $item = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+                if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+                Remove-Item -LiteralPath $directory -Force -ErrorAction Stop
+            }
+            Remove-Item -LiteralPath $marker -Force -ErrorAction Stop
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
         } catch {
         }
         if (-not (Test-Path -LiteralPath $Path)) { return $true }
+        if (-not (Test-OwnedSandbox -Path $Path)) { return $false }
         Start-Sleep -Milliseconds 500
     }
     return $false
@@ -218,7 +252,13 @@ function Remove-StaleSandboxes {
         if (-not (Test-OwnedSandbox -Path $directory.FullName)) { continue }
         $staleCli = Join-Path $directory.FullName 'sidravia.exe'
         if (Test-Path -LiteralPath $staleCli -PathType Leaf) {
-            $null = Invoke-CapturedProcess -FilePath $staleCli -Arguments @('daemon', 'stop') -StdinValue $null
+            try {
+                $stop = Invoke-CapturedProcess -FilePath $staleCli -Arguments @('daemon', 'stop') -StdinValue $null
+                if ($stop.ExitCode -ne 0) { $ok = $false; continue }
+            } catch {
+                $ok = $false
+                continue
+            }
         }
         if (-not (Remove-OwnedSandbox -Path $directory.FullName)) { $ok = $false }
     }
@@ -335,14 +375,12 @@ function Invoke-IntegrationSuite {
         Add-Check -ID 'integration.user_mode' -Status BLOCKED -ReasonCode 'preexisting_integration_state' -Category integration
         return
     }
+    $script:IntegrationOwned = $true
 
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $install = Join-Path $script:Sandbox (Join-Path 'scripts' 'install.ps1')
     $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
     $first = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
-    $ownedTask = Get-SandboxTask
-    $ownedPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
-    if ($null -ne $ownedTask -or $ownedPath) { $script:IntegrationOwned = $true }
     $second = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
 
     $task = Get-SandboxTask
@@ -356,9 +394,9 @@ function Invoke-IntegrationSuite {
 
     $removeFirst = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
     $removeSecond = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
-    $script:IntegrationOwned = $false
     $finalTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     $finalPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
+    if ($null -eq $finalTask -and -not $finalPath) { $script:IntegrationOwned = $false }
     $watch.Stop()
 
     $ok = $first.ExitCode -eq 0 -and $second.ExitCode -eq 0 -and $taskStarted -and
@@ -418,12 +456,12 @@ function Invoke-NetworkTransition {
     param([string]$SessionID)
     if ($SkipNetworkTransition) {
         Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
-        return
+        return $true
     }
     $ready = Read-Host 'Type READY, then perform the declared hotspot/network transition within 10 seconds'
     if ($ready -cne 'READY') {
         Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
-        return
+        return $true
     }
     Write-Output 'Observing Session state; perform the transition now.'
     $deadline = [DateTime]::UtcNow.AddSeconds(120)
@@ -440,8 +478,10 @@ function Invoke-NetworkTransition {
     } while ([DateTime]::UtcNow -lt $deadline)
     if ($recovered) {
         Add-Check -ID 'campus.network_transition' -Status PASS -ReasonCode 'loss_and_recovery_observed' -Category campus
+        return $true
     } else {
         Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'loss_or_recovery_not_observed' -Category campus
+        return $false
     }
 }
 
@@ -449,7 +489,7 @@ function Remove-TestSession {
     param([string]$SessionID)
     if (-not $SessionID) { return $true }
     $result = Invoke-Sidravia -Arguments @('auth', 'remove', $SessionID)
-    if ($result.ExitCode -eq 0 -or $result.Output -match 'configuration_not_found|session_operation_failed') {
+    if ($result.ExitCode -eq 0) {
         $null = $script:SessionIDs.Remove($SessionID)
         return $true
     }
@@ -465,23 +505,26 @@ function Invoke-OneShotCampusSuite {
     }
     $script:SessionIDs.Add($sessionID)
     Add-Check -ID 'campus.oneshot_start' -Status PASS -ReasonCode 'session_created' -Category campus
+    $ok = $true
 
     $authenticated = Wait-SessionState -SessionID $sessionID -States @('authenticated') -TimeoutSeconds 60
     if ($null -eq $authenticated) {
         Add-Check -ID 'campus.authentication' -Status FAIL -ReasonCode 'not_authenticated' -Category campus
         return $false
     }
-    $bindingPresent = $authenticated.Output -match '\d{1,3}(?:\.\d{1,3}){3}'
+    $bindingPresent = $authenticated.Output -match '(?m)^\u7f51\u7edc\uff1a[^\r\n]*(?:\d{1,3}\.){3}\d{1,3}[^\r\n]*$'
     if ($bindingPresent) {
         Add-Check -ID 'campus.selected_binding' -Status PASS -ReasonCode 'binding_present' -Category campus
     } else {
         Add-Check -ID 'campus.selected_binding' -Status FAIL -ReasonCode 'binding_missing' -Category campus
+        $ok = $false
     }
 
     if (Test-FixedPortOwnership) {
         Add-Check -ID 'campus.fixed_port' -Status PASS -ReasonCode 'owned_61440' -Category campus
     } else {
         Add-Check -ID 'campus.fixed_port' -Status FAIL -ReasonCode 'fixed_port_owner_mismatch' -Category campus
+        $ok = $false
     }
 
     $heartbeatSeconds = Get-HeartbeatWaitSeconds
@@ -491,6 +534,7 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.heartbeat' -Status PASS -ReasonCode 'keepalive_phases_completed' -Category campus
     } else {
         Add-Check -ID 'campus.heartbeat' -Status FAIL -ReasonCode 'keepalive_phase_missing' -Category campus
+        $ok = $false
     }
 
     $list = Invoke-Sidravia -Arguments @('auth', 'list')
@@ -502,9 +546,10 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.retained_lifecycle' -Status PASS -ReasonCode 'list_status_restart' -Category campus
     } else {
         Add-Check -ID 'campus.retained_lifecycle' -Status FAIL -ReasonCode 'retained_operation_failed' -Category campus
+        $ok = $false
     }
 
-    Invoke-NetworkTransition -SessionID $sessionID
+    if (-not (Invoke-NetworkTransition -SessionID $sessionID)) { $ok = $false }
 
     $stop = Invoke-Sidravia -Arguments @('auth', 'stop', $sessionID)
     $suspended = Wait-SessionState -SessionID $sessionID -States @('suspended') -TimeoutSeconds 30
@@ -513,13 +558,15 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.logout_stop' -Status PASS -ReasonCode 'logout_and_suspended' -Category campus
     } else {
         Add-Check -ID 'campus.logout_stop' -Status FAIL -ReasonCode 'logout_or_suspend_missing' -Category campus
+        $ok = $false
     }
     if (Remove-TestSession -SessionID $sessionID) {
         Add-Check -ID 'campus.session_remove' -Status PASS -ReasonCode 'session_absent' -Category campus
     } else {
         Add-Check -ID 'campus.session_remove' -Status FAIL -ReasonCode 'session_remove_failed' -Category campus
+        $ok = $false
     }
-    return $true
+    return $ok
 }
 
 function Invoke-TemporaryConfigurationSuite {
@@ -599,42 +646,107 @@ function Invoke-CampusSuite {
         return
     }
     Add-Check -ID 'campus.daemon' -Status PASS -ReasonCode 'debug_daemon_running' -Category windows_native
-    $null = Invoke-OneShotCampusSuite
-    Invoke-TemporaryConfigurationSuite
+    $oneShotOK = Invoke-OneShotCampusSuite
+    if ($oneShotOK) {
+        Invoke-TemporaryConfigurationSuite
+    } else {
+        Add-Check -ID 'campus.configuration_autologin' -Status SKIPPED -ReasonCode 'one_shot_failed' -Category campus
+    }
 }
 
 function Invoke-OwnedCleanup {
     $ok = $true
+    $sandboxRemovalSafe = $true
     if ($script:Cli -and (Test-Path -LiteralPath $script:Cli -PathType Leaf)) {
         foreach ($sessionID in @($script:SessionIDs)) {
-            if (-not (Remove-TestSession -SessionID $sessionID)) { $ok = $false }
+            try {
+                if (-not (Remove-TestSession -SessionID $sessionID)) {
+                    $ok = $false
+                    $sandboxRemovalSafe = $false
+                }
+            } catch {
+                $ok = $false
+                $sandboxRemovalSafe = $false
+            }
         }
         if ($script:ConfigurationID) {
-            $remove = Invoke-Sidravia -Arguments @('config', 'remove', $script:ConfigurationID, '--yes')
-            if ($remove.ExitCode -eq 0) { $script:ConfigurationID = $null } else { $ok = $false }
+            try {
+                $remove = Invoke-Sidravia -Arguments @('config', 'remove', $script:ConfigurationID, '--yes')
+                if ($remove.ExitCode -eq 0) {
+                    $script:ConfigurationID = $null
+                } else {
+                    $ok = $false
+                    $sandboxRemovalSafe = $false
+                }
+            } catch {
+                $ok = $false
+                $sandboxRemovalSafe = $false
+            }
         }
-        $null = Invoke-Sidravia -Arguments @('daemon', 'stop')
+        try {
+            $stop = Invoke-Sidravia -Arguments @('daemon', 'stop')
+            if ($stop.ExitCode -ne 0) {
+                $ok = $false
+                $sandboxRemovalSafe = $false
+            }
+        } catch {
+            $ok = $false
+            $sandboxRemovalSafe = $false
+        }
     }
 
     if ($script:IntegrationOwned -and $script:Sandbox) {
-        $ownedTask = Get-SandboxTask
-        $ownedPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
-        if ($null -ne $ownedTask -or $ownedPath) {
-            $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
-            $result = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
-            if ($result.ExitCode -ne 0) { $ok = $false }
+        try {
+            $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            $ownedTask = Get-SandboxTask
+            $ownedPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
+            if ($null -ne $task -and $null -eq $ownedTask) {
+                $ok = $false
+                $sandboxRemovalSafe = $false
+            } elseif ($null -ne $ownedTask -or $ownedPath) {
+                $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
+                $result = Invoke-CapturedProcess -FilePath $PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+                if ($result.ExitCode -ne 0) {
+                    $ok = $false
+                    $sandboxRemovalSafe = $false
+                }
+            }
+
+            $remainingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            $remainingPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
+            if ($null -eq $remainingTask -and -not $remainingPath) {
+                $script:IntegrationOwned = $false
+            } else {
+                $ok = $false
+                $sandboxRemovalSafe = $false
+            }
+        } catch {
+            $ok = $false
+            $sandboxRemovalSafe = $false
         }
-        $script:IntegrationOwned = $false
     }
 
     if ($script:SecurePassword) {
-        $script:SecurePassword.Dispose()
-        $script:SecurePassword = $null
+        try {
+            $script:SecurePassword.Dispose()
+        } catch {
+            $ok = $false
+        } finally {
+            $script:SecurePassword = $null
+        }
     }
     $script:Username = $null
 
     if ($script:Sandbox -and (Test-Path -LiteralPath $script:Sandbox)) {
-        if (-not (Remove-OwnedSandbox -Path $script:Sandbox)) { $ok = $false }
+        if ($sandboxRemovalSafe -and -not $script:IntegrationOwned) {
+            try {
+                if (-not (Remove-OwnedSandbox -Path $script:Sandbox)) { $ok = $false }
+            } catch {
+                $ok = $false
+            }
+        } else {
+            $ok = $false
+        }
     }
     return $ok
 }
@@ -709,7 +821,12 @@ try {
         Add-Check -ID 'harness.execution' -Status FAIL -ReasonCode 'sanitized_internal_error' -Category automatic
     }
 } finally {
-    $cleanup = Invoke-OwnedCleanup
+    $cleanup = $false
+    try {
+        $cleanup = Invoke-OwnedCleanup
+    } catch {
+        $cleanup = $false
+    }
     if ($cleanup) {
         Add-Check -ID 'cleanup.owned_state' -Status PASS -ReasonCode 'all_owned_state_removed' -Category cleanup
     } else {
