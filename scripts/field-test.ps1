@@ -354,6 +354,13 @@ function Invoke-LocalSuite {
         Add-Check -ID 'local.cli_surface' -Status PASS -ReasonCode 'all_checks_passed' -Category automatic -DurationMs $timed.DurationMs
         return $true
     }
+    Write-Host ''
+    Write-Host '== Local CLI smoke diagnostics (no field credentials) =='
+    if ($timed.Value.Output) {
+        Write-Host $timed.Value.Output.TrimEnd()
+    } else {
+        Write-Host '[no output]'
+    }
     Add-Check -ID 'local.cli_surface' -Status FAIL -ReasonCode 'cli_smoke_failed' -Category automatic -DurationMs $timed.DurationMs
     return $false
 }
@@ -658,7 +665,7 @@ function Invoke-OwnedCleanup {
     $ok = $true
     $sandboxRemovalSafe = $true
     if ($script:Cli -and (Test-Path -LiteralPath $script:Cli -PathType Leaf)) {
-        foreach ($sessionID in @($script:SessionIDs)) {
+        foreach ($sessionID in $script:SessionIDs.ToArray()) {
             try {
                 if (-not (Remove-TestSession -SessionID $sessionID)) {
                     $ok = $false
@@ -780,11 +787,18 @@ function Write-AllowlistReport {
             integration = 'reported_per_check'
             releaseReadiness = 'not_tested'
         }
-        checks = @($script:Checks)
+        checks = $script:Checks.ToArray()
         cleanup = $(if ($script:CleanupFailed) { 'incomplete' } else { 'complete' })
     }
-    [IO.File]::WriteAllText($temporary, ($report | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $temporary -Destination $final
+    try {
+        [IO.File]::WriteAllText($temporary, ($report | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
+        Move-Item -LiteralPath $temporary -Destination $final
+    } catch {
+        if (Test-Path -LiteralPath $temporary -PathType Leaf) {
+            Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        }
+        throw
+    }
     $script:ReportPath = $final
 }
 
@@ -839,7 +853,10 @@ try {
     try {
         Write-AllowlistReport -Directory $reportRoot
     } catch {
+        $reportErrorType = $_.Exception.GetType().Name
         $script:CleanupFailed = $true
+        Add-Check -ID 'report.sanitized' -Status FAIL -ReasonCode 'report_write_failed' -Category cleanup
+        Write-Host ('Sanitized report write failed [report_write_failed:' + $reportErrorType + ']')
     }
 }
 
