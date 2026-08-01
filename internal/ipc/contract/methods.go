@@ -56,6 +56,7 @@ const (
 	ErrorCodeProfileOperationFailed              = "profile_operation_failed"
 	ErrorCodeSessionOperationFailed              = "session_operation_failed"
 	ErrorCodeConfigurationNotFound               = "configuration_not_found"
+	ErrorCodeConfigurationConflict               = "configuration_conflict"
 	ErrorCodeConfigurationOperationFailed        = "configuration_operation_failed"
 	ErrorCodeInsecureStorageConfirmationRequired = "insecure_storage_confirmation_required"
 	ErrorCodeConfigurationAutoLoginConflict      = "configuration_auto_login_conflict"

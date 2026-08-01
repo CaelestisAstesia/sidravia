@@ -307,6 +307,16 @@ func ipcErrorText(code string) string {
 		return "机构 Profile 操作失败"
 	case "session_operation_failed":
 		return "认证 Session 操作失败"
+	case "configuration_not_found":
+		return "找不到指定的认证配置"
+	case "configuration_conflict":
+		return "认证配置已存在"
+	case "configuration_operation_failed":
+		return "认证配置操作失败"
+	case "configuration_auto_login_conflict":
+		return "已有其他配置启用了自动登录"
+	case "insecure_storage_confirmation_required":
+		return "需要确认不安全存储"
 	default:
 		return "daemon 返回了无法识别的错误"
 	}

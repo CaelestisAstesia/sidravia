@@ -138,6 +138,7 @@ func TestConfigurationHandlerMapsStableErrorsWithoutIdentifiersOrCauses(t *testi
 		msg  string
 	}{
 		{"not found", persistence.NewFailure(persistence.FailureNotFound, errors.New(causeMarker)), contract.ErrorCodeConfigurationNotFound, "configuration not found"},
+		{"conflict", persistence.NewFailure(persistence.FailureConflict, errors.New(causeMarker)), contract.ErrorCodeConfigurationConflict, "configuration already exists"},
 		{"confirmation", persistence.NewFailure(persistence.FailurePermissionDenied, jsonfile.ErrInsecureStorageConfirmationRequired), contract.ErrorCodeInsecureStorageConfirmationRequired, "insecure storage confirmation required"},
 		{"generic", errors.New(causeMarker), contract.ErrorCodeConfigurationOperationFailed, "configuration operation failed"},
 	}

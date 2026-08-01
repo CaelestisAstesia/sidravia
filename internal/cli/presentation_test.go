@@ -183,13 +183,18 @@ func TestDaemonStatusMappings(t *testing.T) {
 
 func TestIPCErrorMappings(t *testing.T) {
 	cases := map[string]string{
-		"unknown_method":           "daemon 不支持该操作",
-		"malformed_request":        "daemon 拒绝了格式错误的请求",
-		"invalid_argument":         "请求参数无效",
-		"profile_not_found":        "找不到指定的机构 Profile",
-		"protocol_not_found":       "找不到指定的认证协议",
-		"profile_operation_failed": "机构 Profile 操作失败",
-		"session_operation_failed": "认证 Session 操作失败",
+		"unknown_method":                         "daemon 不支持该操作",
+		"malformed_request":                      "daemon 拒绝了格式错误的请求",
+		"invalid_argument":                       "请求参数无效",
+		"profile_not_found":                      "找不到指定的机构 Profile",
+		"protocol_not_found":                     "找不到指定的认证协议",
+		"profile_operation_failed":               "机构 Profile 操作失败",
+		"session_operation_failed":               "认证 Session 操作失败",
+		"configuration_not_found":                "找不到指定的认证配置",
+		"configuration_conflict":                 "认证配置已存在",
+		"configuration_operation_failed":         "认证配置操作失败",
+		"configuration_auto_login_conflict":      "已有其他配置启用了自动登录",
+		"insecure_storage_confirmation_required": "需要确认不安全存储",
 	}
 	for code, want := range cases {
 		if got := ipcErrorText(code); got != want {

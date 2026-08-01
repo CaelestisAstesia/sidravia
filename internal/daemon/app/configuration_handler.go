@@ -128,6 +128,9 @@ func configurationError(err error) *contract.Error {
 		if failure.Code() == persistence.FailureNotFound {
 			return &contract.Error{Code: contract.ErrorCodeConfigurationNotFound, Message: "configuration not found"}
 		}
+		if failure.Code() == persistence.FailureConflict {
+			return &contract.Error{Code: contract.ErrorCodeConfigurationConflict, Message: "configuration already exists"}
+		}
 		if errors.Is(failure.DiagnosticCause(), jsonfile.ErrInsecureStorageConfirmationRequired) {
 			return &contract.Error{Code: contract.ErrorCodeInsecureStorageConfirmationRequired, Message: "insecure storage confirmation required"}
 		}

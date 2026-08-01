@@ -512,6 +512,12 @@ func TestConfigurationAutoLoginConflictErrorCodeIsStable(t *testing.T) {
 	}
 }
 
+func TestConfigurationConflictErrorCodeIsStable(t *testing.T) {
+	if ErrorCodeConfigurationConflict != "configuration_conflict" {
+		t.Fatalf("ErrorCodeConfigurationConflict = %q", ErrorCodeConfigurationConflict)
+	}
+}
+
 func TestConfigurationUpdatePayloadAcceptsAutoLoginAutoReconnect(t *testing.T) {
 	autoLogin, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","autoLogin":true}`))
 	if err != nil {
