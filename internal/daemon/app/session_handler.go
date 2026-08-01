@@ -217,7 +217,9 @@ func sessionError(err error) *contract.Error {
 			return &contract.Error{Code: contract.ErrorCodeProfileNotFound, Message: "institution profile not found"}
 		case ProtocolNotFound:
 			return &contract.Error{Code: contract.ErrorCodeProtocolNotFound, Message: "authentication protocol not found"}
-		case ConfigurationNotFound, InvalidConfiguration, InvalidEnvironment:
+		case ConfigurationNotFound:
+			return &contract.Error{Code: contract.ErrorCodeConfigurationNotFound, Message: "configuration not found"}
+		case InvalidConfiguration, InvalidEnvironment:
 			return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid session request"}
 		}
 	}

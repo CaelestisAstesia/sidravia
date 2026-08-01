@@ -483,6 +483,7 @@ func TestSessionHandlerMapsResolutionFailures(t *testing.T) {
 	}{
 		{"profile not found", ProfileNotFound, contract.ErrorCodeProfileNotFound, "institution profile not found"},
 		{"protocol not found", ProtocolNotFound, contract.ErrorCodeProtocolNotFound, "authentication protocol not found"},
+		{"configuration not found", ConfigurationNotFound, contract.ErrorCodeConfigurationNotFound, "configuration not found"},
 		{"invalid configuration", InvalidConfiguration, contract.ErrorCodeInvalidArgument, "invalid session request"},
 		{"invalid environment", InvalidEnvironment, contract.ErrorCodeInvalidArgument, "invalid session request"},
 	}
