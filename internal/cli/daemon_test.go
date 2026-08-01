@@ -83,7 +83,7 @@ func TestDaemonStatusUnreachableReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unreachable error")
 	}
-	if err.Error() != "守护进程：状态未知（unreachable）" {
+	if err.Error() != "守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）" {
 		t.Errorf("err = %q", err.Error())
 	}
 	if buf.Len() != 0 {
@@ -98,7 +98,7 @@ func TestDaemonStatusMalformedReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected malformed error")
 	}
-	if err.Error() != "守护进程：状态未知（unreachable）" {
+	if err.Error() != "守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）" {
 		t.Errorf("err = %q", err.Error())
 	}
 	if buf.Len() != 0 {
@@ -191,7 +191,7 @@ func TestDaemonStopRejectsMalformedAndUnreachableRuntimeInfo(t *testing.T) {
 			totalWait:    time.Second,
 			pollInterval: time.Millisecond,
 		}
-		if err := runDaemonStop(deps); err == nil || err.Error() != "守护进程：状态未知（unreachable）" {
+		if err := runDaemonStop(deps); err == nil || err.Error() != "守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）" {
 			t.Errorf("state %d error = %v, want fixed unreachable error", state, err)
 		}
 	}
@@ -419,7 +419,7 @@ func TestWaitForDaemonReadinessFinalAttempts(t *testing.T) {
 	})
 	t.Run("nil observation times out", func(t *testing.T) {
 		err := waitForDaemonReadiness(0, time.Millisecond, nil, func() (bool, error) { return false, nil })
-		if err == nil || err.Error() != "等待 sidraviad 超时" {
+		if err == nil || err.Error() != "等待 sidraviad 就绪超时；请检查 daemon 日志后重试" {
 			t.Fatalf("err = %v", err)
 		}
 	})

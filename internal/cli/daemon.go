@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -150,7 +151,7 @@ func runDaemonStatus(deps probeDependencies, output io.Writer) error {
 		p := newPresentation(output)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStatus(p, result.status)))
 	default:
-		return errors.New("守护进程：状态未知（unreachable）")
+		return errors.New("守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）")
 	}
 }
 
@@ -218,7 +219,7 @@ func waitForDaemonReadiness(totalWait, pollInterval time.Duration, exited <-chan
 			if ready {
 				return nil
 			}
-			return errors.New("等待 sidraviad 超时")
+			return errors.New("等待 sidraviad 就绪超时；请检查 daemon 日志后重试")
 		case <-ticker.C:
 			ready, err := attempt()
 			if err != nil {
@@ -289,11 +290,11 @@ func runDaemonStop(deps stopDependencies) error {
 	case probeStopped:
 		return nil
 	case probeMalformed, probeUnreachable:
-		return errors.New("守护进程：状态未知（unreachable）")
+		return errors.New("守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）")
 	case probeReachable:
 		return stopGeneration(deps, result.info)
 	default:
-		return errors.New("守护进程：状态未知（unreachable）")
+		return errors.New("守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）")
 	}
 }
 
@@ -307,11 +308,14 @@ func stopGeneration(deps stopDependencies, info contract.RuntimeInfo) error {
 	resp, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage("{}"))
 	closeErr := conn.Close()
 	if err != nil {
+		if closeErr != nil {
+			return fmt.Errorf("%w; %w", wrapSafeOperation("调用 daemon 停止", err), wrapSafeOperation("清理 sidraviad 连接", closeErr))
+		}
 		return wrapSafeOperation("调用 daemon 停止", err)
 	}
-	if closeErr != nil {
-		return wrapSafeOperation("关闭 sidraviad 连接", closeErr)
-	}
+	// A close failure after a committed stop call is cleanup-only and must not
+	// turn the successful stop into a user-visible error.
+	_ = closeErr
 	if !resp.OK {
 		code := ""
 		if resp.Error != nil {
@@ -330,7 +334,7 @@ func waitForGenerationUnreachable(deps probeDependencies, info contract.RuntimeI
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.New("等待 sidraviad 停止超时")
+			return errors.New("等待 sidraviad 停止超时；请稍后重试")
 		case <-ticker.C:
 			if !generationReachable(deps, info) {
 				return nil

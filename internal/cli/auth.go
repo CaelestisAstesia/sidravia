@@ -209,20 +209,20 @@ func withAuthClient(deps authDependencies, operation func(daemonClient) error) e
 func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonClient) error) error {
 	connection, err := acquireDaemonClient(deps)
 	if err != nil {
-		return wrapSafeOperation("连接 sidraviad", err)
+		return wrapSafeOperation("无法连接 sidraviad（请确认 daemon 已启动；若刚增删过 sidravia.portable 标记，请先停止并重启 daemon）", err)
 	}
 
 	operationErr := operation(connection)
 	closeErr := connection.Close()
 	if operationErr != nil {
 		if closeErr != nil {
-			return fmt.Errorf("%w; %w", operationErr, wrapSafeOperation("关闭 sidraviad 连接", closeErr))
+			return fmt.Errorf("%w; %w", operationErr, wrapSafeOperation("清理 sidraviad 连接", closeErr))
 		}
 		return operationErr
 	}
-	if closeErr != nil {
-		return wrapSafeOperation("关闭 sidraviad 连接", closeErr)
-	}
+	// The operation succeeded; a connection cleanup failure must not turn a
+	// successful result into a user-visible error.
+	_ = closeErr
 	return nil
 }
 
@@ -246,7 +246,7 @@ func acquireDaemonClient(deps daemonConnectionDependencies) (daemonClient, error
 		return nil, err
 	}
 	if acquired == nil {
-		return nil, fmt.Errorf("daemon 连接不可用")
+		return nil, fmt.Errorf("无法连接 daemon（未找到运行中的 daemon）")
 	}
 	return acquired, nil
 }
