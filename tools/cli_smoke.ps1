@@ -3,8 +3,7 @@
 # Runs every sidravia command against a real daemon and reports PASS/FAIL.
 # Commands that need real campus credentials/network (auth start) are run with
 # a placeholder account; if they cannot complete they are recorded as an
-# expected outcome, not a failure. ASCII-only so Windows PowerShell 5.1 reads
-# it without encoding issues.
+# expected outcome, not a failure. PowerShell 7 and ASCII-only.
 #
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1
@@ -15,6 +14,13 @@ param(
     [switch]$SkipAuthStart
 )
 $ErrorActionPreference = 'Stop'
+$script:NativeUTF8Encoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = $script:NativeUTF8Encoding
+[Console]::OutputEncoding = $script:NativeUTF8Encoding
+
+if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
+    throw 'PowerShell 7 or later is required.'
+}
 
 if (-not (Test-Path -LiteralPath $Sidravia)) {
     throw "sidravia.exe not found: $Sidravia"
@@ -30,20 +36,76 @@ function Add-Check {
     if (-not $OK) { $script:failed.Add("$Name : $Note") }
 }
 
+function Invoke-NativeWithInput {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$InputValue
+    )
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $FilePath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = $script:NativeUTF8Encoding
+    $startInfo.StandardErrorEncoding = $script:NativeUTF8Encoding
+    foreach ($argument in $Arguments) {
+        $null = $startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = $null
+    $inputStream = $null
+    $inputBytes = $null
+    try {
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) { throw 'native_process_start_failed' }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        $inputBytes = $script:NativeUTF8Encoding.GetBytes($InputValue + "`n")
+        $inputStream = $process.StandardInput.BaseStream
+        $inputStream.Write($inputBytes, 0, $inputBytes.Length)
+        $inputStream.Flush()
+        $inputStream.Close()
+        $inputStream = $null
+
+        $process.WaitForExit()
+        $stdout = $stdoutTask.Result
+        $stderr = $stderrTask.Result
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Output = $stdout + $stderr
+        }
+    } finally {
+        if ($null -ne $inputStream) {
+            try { $inputStream.Close() } catch {}
+        }
+        if ($null -ne $inputBytes) {
+            [Array]::Clear($inputBytes, 0, $inputBytes.Length)
+        }
+        if ($null -ne $process) { $process.Dispose() }
+    }
+}
+
 function Invoke-Sidravia {
     param(
-        [string[]]$Args,
+        [string[]]$CommandArguments,
         [string]$Stdin,
         [string]$Expect,
         [string]$Match,
         [string]$Name
     )
     if ($null -ne $Stdin) {
-        $out = ($Stdin | & $Exe @Args 2>&1 | Out-String)
+        $result = Invoke-NativeWithInput -FilePath $Exe -Arguments $CommandArguments -InputValue $Stdin
+        $out = $result.Output
+        $code = $result.ExitCode
     } else {
-        $out = (& $Exe @Args 2>&1 | Out-String)
+        $out = (& $Exe @CommandArguments 2>&1 | Out-String)
+        $code = $LASTEXITCODE
     }
-    $code = $LASTEXITCODE
     $ok = $true
     $note = "exit=$code"
     switch ($Expect) {
@@ -67,60 +129,60 @@ function Invoke-Sidravia {
 Write-Output "== Sidravia CLI smoke: $Exe =="
 
 # Make the run idempotent: stop any daemon first.
-Invoke-Sidravia -Args @('daemon', 'stop') -Expect any -Name 'daemon stop (initial cleanup)'
+Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect any -Name 'daemon stop (initial cleanup)'
 
 # 1. Help surface (identical entrypoints, never dispatch).
-Invoke-Sidravia -Args @('--help') -Expect success -Name 'help --help'
-Invoke-Sidravia -Args @('help', 'daemon') -Expect success -Name 'help daemon'
-Invoke-Sidravia -Args @('help', 'auth', 'start') -Expect success -Name 'help auth start'
-Invoke-Sidravia -Args @('auth', 'start', '--help') -Expect success -Name 'auth start --help'
-Invoke-Sidravia -Args @('profile', 'list', '--help') -Expect success -Name 'profile list --help'
+Invoke-Sidravia -CommandArguments @('--help') -Expect success -Name 'help --help'
+Invoke-Sidravia -CommandArguments @('help', 'daemon') -Expect success -Name 'help daemon'
+Invoke-Sidravia -CommandArguments @('help', 'auth', 'start') -Expect success -Name 'help auth start'
+Invoke-Sidravia -CommandArguments @('auth', 'start', '--help') -Expect success -Name 'auth start --help'
+Invoke-Sidravia -CommandArguments @('profile', 'list', '--help') -Expect success -Name 'profile list --help'
 
 # 2. Command absence (retired/moved commands must fail).
-Invoke-Sidravia -Args @('status') -Expect failure -Name 'retired status rejected'
-Invoke-Sidravia -Args @('install') -Expect failure -Name 'install command absent'
-Invoke-Sidravia -Args @('uninstall') -Expect failure -Name 'uninstall command absent'
+Invoke-Sidravia -CommandArguments @('status') -Expect failure -Name 'retired status rejected'
+Invoke-Sidravia -CommandArguments @('install') -Expect failure -Name 'install command absent'
+Invoke-Sidravia -CommandArguments @('uninstall') -Expect failure -Name 'uninstall command absent'
 
 # 3. Daemon lifecycle.
-Invoke-Sidravia -Args @('daemon', 'status') -Expect stopped -Name 'daemon status initial'
-Invoke-Sidravia -Args @('daemon', 'start', '--log-level', 'info') -Expect success -Name 'daemon start'
-Invoke-Sidravia -Args @('daemon', 'status') -Expect running -Name 'daemon status running'
-Invoke-Sidravia -Args @('daemon', 'restart') -Expect success -Name 'daemon restart'
+Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect stopped -Name 'daemon status initial'
+Invoke-Sidravia -CommandArguments @('daemon', 'start', '--log-level', 'info') -Expect success -Name 'daemon start'
+Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect running -Name 'daemon status running'
+Invoke-Sidravia -CommandArguments @('daemon', 'restart') -Expect success -Name 'daemon restart'
 
 # 4. Profile discovery at the program root.
-Invoke-Sidravia -Args @('profile', 'list') -Expect success -Match 'jlu' -Name 'profile list shows jlu'
+Invoke-Sidravia -CommandArguments @('profile', 'list') -Expect success -Match 'jlu' -Name 'profile list shows jlu'
 
 # 5. Configuration CRUD with a disposable id (always removed).
 $id = 'smoke-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
-Invoke-Sidravia -Args @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect success -Match $id -Name 'config create'
-Invoke-Sidravia -Args @('config', 'list') -Expect success -Match $id -Name 'config list contains id'
-Invoke-Sidravia -Args @('config', 'show', $id) -Expect success -Match $id -Name 'config show'
-Invoke-Sidravia -Args @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect failure -Name 'config create duplicate fails'
-Invoke-Sidravia -Args @('config', 'show', 'smoke-missing') -Expect failure -Name 'config show missing fails'
-Invoke-Sidravia -Args @('config', 'update', $id, '--name', 'SmokeUpdated') -Expect success -Name 'config update'
-Invoke-Sidravia -Args @('config', 'set-password', $id, '--password-stdin') -Stdin 'smoke-pass-2' -Expect success -Name 'config set-password'
-Invoke-Sidravia -Args @('config', 'remove', $id, '--yes') -Expect success -Name 'config remove'
+Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect success -Match $id -Name 'config create'
+Invoke-Sidravia -CommandArguments @('config', 'list') -Expect success -Match $id -Name 'config list contains id'
+Invoke-Sidravia -CommandArguments @('config', 'show', $id) -Expect success -Match $id -Name 'config show'
+Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect failure -Name 'config create duplicate fails'
+Invoke-Sidravia -CommandArguments @('config', 'show', 'smoke-missing') -Expect failure -Name 'config show missing fails'
+Invoke-Sidravia -CommandArguments @('config', 'update', $id, '--name', 'SmokeUpdated') -Expect success -Name 'config update'
+Invoke-Sidravia -CommandArguments @('config', 'set-password', $id, '--password-stdin') -Stdin 'smoke-pass-2' -Expect success -Name 'config set-password'
+Invoke-Sidravia -CommandArguments @('config', 'remove', $id, '--yes') -Expect success -Name 'config remove'
 
 # 6. Session surface.
-Invoke-Sidravia -Args @('auth', 'list') -Expect success -Name 'auth list'
+Invoke-Sidravia -CommandArguments @('auth', 'list') -Expect success -Name 'auth list'
 if ($SkipAuthStart) {
     Add-Check -Name 'auth start' -OK $true -Note 'skipped (-SkipAuthStart)'
 } else {
-    $startOut = Invoke-Sidravia -Args @('auth', 'start', '--profile', 'jlu', '--username', 'smoke-account', '--password-stdin') -Stdin 'smoke-pass' -Expect any -Name 'auth start'
+    $startOut = Invoke-Sidravia -CommandArguments @('auth', 'start', '--profile', 'jlu', '--username', 'smoke-account', '--password-stdin') -Stdin 'smoke-pass' -Expect any -Name 'auth start'
     $m = [regex]::Match($startOut, 'session-\d+')
     if ($m.Success) {
         $sid = $m.Value
-        Invoke-Sidravia -Args @('auth', 'status', $sid) -Expect success -Name 'auth status'
-        Invoke-Sidravia -Args @('auth', 'restart', $sid) -Expect success -Name 'auth restart'
-        Invoke-Sidravia -Args @('auth', 'stop', $sid) -Expect success -Name 'auth stop'
-        Invoke-Sidravia -Args @('auth', 'remove', $sid) -Expect success -Name 'auth remove'
+        Invoke-Sidravia -CommandArguments @('auth', 'status', $sid) -Expect success -Name 'auth status'
+        Invoke-Sidravia -CommandArguments @('auth', 'restart', $sid) -Expect success -Name 'auth restart'
+        Invoke-Sidravia -CommandArguments @('auth', 'stop', $sid) -Expect success -Name 'auth stop'
+        Invoke-Sidravia -CommandArguments @('auth', 'remove', $sid) -Expect success -Name 'auth remove'
     } else {
         Add-Check -Name 'auth session-id parse' -OK $true -Note 'expected (needs real campus credentials/network)'
     }
 }
 
 # 7. Cleanup.
-Invoke-Sidravia -Args @('daemon', 'stop') -Expect stopped -Name 'daemon stop (cleanup)'
+Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect stopped -Name 'daemon stop (cleanup)'
 
 # Summary.
 Write-Output ''

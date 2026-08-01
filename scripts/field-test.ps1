@@ -2,7 +2,7 @@
 #
 # Runs the public CLI and shipped integration scripts from a nonce-marked
 # portable sandbox. Raw command output and credentials are never written to
-# the retained report. Windows PowerShell 5.1 compatible and ASCII-only.
+# the retained report. PowerShell 7 and ASCII-only.
 [CmdletBinding()]
 param(
     [ValidatePattern('^[a-z0-9][a-z0-9-]{0,63}$')]
@@ -15,6 +15,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$script:NativeUTF8Encoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = $script:NativeUTF8Encoding
+[Console]::OutputEncoding = $script:NativeUTF8Encoding
 
 $script:Checks = New-Object System.Collections.Generic.List[object]
 $script:RequestedFailure = $false
@@ -40,10 +43,7 @@ $PackageRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $TempParent = Join-Path ([IO.Path]::GetTempPath()) 'SidraviaFieldValidation'
 
 function Resolve-ChildPowerShell {
-    $executableName = 'powershell.exe'
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $executableName = 'pwsh.exe'
-    }
+    $executableName = 'pwsh.exe'
     $candidate = Join-Path $PSHOME $executableName
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
         throw 'powershell_host_not_found'
@@ -115,6 +115,60 @@ function Invoke-Timed {
     }
 }
 
+function Invoke-NativeWithInput {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$InputValue
+    )
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $FilePath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = $script:NativeUTF8Encoding
+    $startInfo.StandardErrorEncoding = $script:NativeUTF8Encoding
+    foreach ($argument in $Arguments) {
+        $null = $startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = $null
+    $inputStream = $null
+    $inputBytes = $null
+    try {
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) { throw 'native_process_start_failed' }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        $inputBytes = $script:NativeUTF8Encoding.GetBytes($InputValue + "`n")
+        $inputStream = $process.StandardInput.BaseStream
+        $inputStream.Write($inputBytes, 0, $inputBytes.Length)
+        $inputStream.Flush()
+        $inputStream.Close()
+        $inputStream = $null
+
+        $process.WaitForExit()
+        $stdout = $stdoutTask.Result
+        $stderr = $stderrTask.Result
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Output = $stdout + $stderr
+        }
+    } finally {
+        if ($null -ne $inputStream) {
+            try { $inputStream.Close() } catch {}
+        }
+        if ($null -ne $inputBytes) {
+            [Array]::Clear($inputBytes, 0, $inputBytes.Length)
+        }
+        if ($null -ne $process) { $process.Dispose() }
+    }
+}
+
 function Invoke-CapturedProcess {
     param(
         [string]$FilePath,
@@ -122,10 +176,9 @@ function Invoke-CapturedProcess {
         [AllowNull()][string]$StdinValue
     )
     if ($null -ne $StdinValue) {
-        $output = ($StdinValue | & $FilePath @Arguments 2>&1 | Out-String)
-    } else {
-        $output = (& $FilePath @Arguments 2>&1 | Out-String)
+        return Invoke-NativeWithInput -FilePath $FilePath -Arguments $Arguments -InputValue $StdinValue
     }
+    $output = (& $FilePath @Arguments 2>&1 | Out-String)
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
 }
 
@@ -314,7 +367,9 @@ function Resolve-ReportDirectory {
 }
 
 function Test-PackagePreflight {
-    if ($env:OS -ne 'Windows_NT' -or $PSVersionTable.PSVersion.Major -lt 5) {
+    if ($env:OS -ne 'Windows_NT' -or
+        $PSVersionTable.PSEdition -ne 'Core' -or
+        $PSVersionTable.PSVersion.Major -lt 7) {
         throw 'unsupported_windows_or_powershell'
     }
     $script:PowerShellExe = Resolve-ChildPowerShell
