@@ -318,10 +318,40 @@ function Test-PathEntry {
     return $false
 }
 
+function ConvertTo-SIDValue {
+    param([string]$Identity)
+    if ([string]::IsNullOrWhiteSpace($Identity)) { return $null }
+    try {
+        return ([Security.Principal.SecurityIdentifier]::new($Identity)).Value
+    } catch {
+    }
+    try {
+        $account = [Security.Principal.NTAccount]::new($Identity)
+        return ($account.Translate([Security.Principal.SecurityIdentifier])).Value
+    } catch {
+        return $null
+    }
+}
+
 function Get-SandboxTask {
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($null -eq $task) { return $null }
     if ($task.Actions.Count -ne 1) { return $null }
+    if ($task.Triggers.Count -ne 1) { return $null }
+    $currentUserSID = $null
+    try {
+        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        if ($null -ne $currentIdentity.User) {
+            $currentUserSID = $currentIdentity.User.Value
+        }
+    } catch {
+    }
+    if (-not $currentUserSID) { return $null }
+    $principalSID = ConvertTo-SIDValue -Identity ([string]$task.Principal.UserId)
+    $triggerSID = ConvertTo-SIDValue -Identity ([string]$task.Triggers[0].UserId)
+    if ($principalSID -ne $currentUserSID -or $triggerSID -ne $currentUserSID) { return $null }
+    if ([string]$task.Principal.LogonType -ne 'Interactive' -or
+        [string]$task.Principal.RunLevel -ne 'Limited') { return $null }
     $expected = Join-Path $script:Sandbox 'sidravia.exe'
     $actual = [IO.Path]::GetFullPath($task.Actions[0].Execute)
     if (-not $actual.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) { return $null }
@@ -527,7 +557,11 @@ function Add-IntegrationProcessCheck {
     Write-Host ('== Integration diagnostics: ' + $ID + ' (no field credentials) ==')
     if ($Result.Output) { Write-Host $Result.Output.TrimEnd() }
     else { Write-Host '[no output]' }
-    Add-Check -ID $ID -Status FAIL -ReasonCode 'command_failed' -Category integration
+    $reason = 'command_failed'
+    if ($Result.Output -match 'scheduled_task_registration_failed') {
+        $reason = 'scheduled_task_registration_failed'
+    }
+    Add-Check -ID $ID -Status FAIL -ReasonCode $reason -Category integration
     return $false
 }
 
@@ -571,17 +605,20 @@ function Invoke-IntegrationSuite {
         Add-Check -ID 'integration.task_registered' -Status FAIL -ReasonCode 'owned_task_missing_or_mismatched' -Category integration
     }
     $taskStarted = $false
+    $taskStartCommandFailed = $false
     if ($null -ne $task -and $pathPresent) {
         try {
             Start-ScheduledTask -TaskName $TaskName
             $taskStarted = Wait-DaemonRunning -TimeoutSeconds 15
         } catch {
-            $taskStarted = $false
+            $taskStartCommandFailed = $true
         }
-        if ($taskStarted) {
+        if ($taskStartCommandFailed) {
+            Add-Check -ID 'integration.task_start' -Status FAIL -ReasonCode 'task_start_command_failed' -Category integration
+        } elseif ($taskStarted) {
             Add-Check -ID 'integration.task_start' -Status PASS -ReasonCode 'daemon_running' -Category integration
         } else {
-            Add-Check -ID 'integration.task_start' -Status FAIL -ReasonCode 'daemon_not_running' -Category integration
+            Add-Check -ID 'integration.task_start' -Status FAIL -ReasonCode 'daemon_readiness_timeout' -Category integration
         }
         $null = Invoke-Sidravia -Arguments @('daemon', 'stop')
     } else {
@@ -687,8 +724,11 @@ function Invoke-NetworkTransition {
     if ($recovered) {
         Add-Check -ID 'campus.network_transition' -Status PASS -ReasonCode 'loss_and_recovery_observed' -Category campus
         return $true
+    } elseif (-not $observedLoss) {
+        Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'network_loss_not_observed' -Category campus
+        return $false
     } else {
-        Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'loss_or_recovery_not_observed' -Category campus
+        Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'authentication_recovery_not_observed' -Category campus
         return $false
     }
 }
@@ -713,7 +753,7 @@ function Invoke-OneShotCampusSuite {
     }
     $script:SessionIDs.Add($sessionID)
     Add-Check -ID 'campus.oneshot_start' -Status PASS -ReasonCode 'session_created' -Category campus
-    $ok = $true
+    $autoLoginReady = $false
 
     $authenticated = Wait-SessionState -SessionID $sessionID -States @('authenticated') -TimeoutSeconds 60
     if ($null -eq $authenticated) {
@@ -736,19 +776,19 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.authentication' -Status FAIL -ReasonCode $reason -Category campus
         return $false
     }
+    Add-Check -ID 'campus.authentication' -Status PASS -ReasonCode 'authenticated' -Category campus
+    $autoLoginReady = $true
     $bindingPresent = $authenticated.Output -match '(?m)^\u7f51\u7edc\uff1a[^\r\n]*(?:\d{1,3}\.){3}\d{1,3}[^\r\n]*$'
     if ($bindingPresent) {
         Add-Check -ID 'campus.selected_binding' -Status PASS -ReasonCode 'binding_present' -Category campus
     } else {
         Add-Check -ID 'campus.selected_binding' -Status FAIL -ReasonCode 'binding_missing' -Category campus
-        $ok = $false
     }
 
     if (Test-FixedPortOwnership) {
         Add-Check -ID 'campus.fixed_port' -Status PASS -ReasonCode 'owned_61440' -Category campus
     } else {
         Add-Check -ID 'campus.fixed_port' -Status FAIL -ReasonCode 'fixed_port_owner_mismatch' -Category campus
-        $ok = $false
     }
 
     $heartbeatSeconds = Get-HeartbeatWaitSeconds
@@ -758,7 +798,6 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.heartbeat' -Status PASS -ReasonCode 'keepalive_phases_completed' -Category campus
     } else {
         Add-Check -ID 'campus.heartbeat' -Status FAIL -ReasonCode 'keepalive_phase_missing' -Category campus
-        $ok = $false
     }
 
     $list = Invoke-Sidravia -Arguments @('auth', 'list')
@@ -770,10 +809,9 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.retained_lifecycle' -Status PASS -ReasonCode 'list_status_restart' -Category campus
     } else {
         Add-Check -ID 'campus.retained_lifecycle' -Status FAIL -ReasonCode 'retained_operation_failed' -Category campus
-        $ok = $false
     }
 
-    if (-not (Invoke-NetworkTransition -SessionID $sessionID)) { $ok = $false }
+    $null = Invoke-NetworkTransition -SessionID $sessionID
 
     $stop = Invoke-Sidravia -Arguments @('auth', 'stop', $sessionID)
     $suspended = Wait-SessionState -SessionID $sessionID -States @('suspended') -TimeoutSeconds 30
@@ -782,15 +820,15 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.logout_stop' -Status PASS -ReasonCode 'logout_and_suspended' -Category campus
     } else {
         Add-Check -ID 'campus.logout_stop' -Status FAIL -ReasonCode 'logout_or_suspend_missing' -Category campus
-        $ok = $false
+        $autoLoginReady = $false
     }
     if (Remove-TestSession -SessionID $sessionID) {
         Add-Check -ID 'campus.session_remove' -Status PASS -ReasonCode 'session_absent' -Category campus
     } else {
         Add-Check -ID 'campus.session_remove' -Status FAIL -ReasonCode 'session_remove_failed' -Category campus
-        $ok = $false
+        $autoLoginReady = $false
     }
-    return $ok
+    return $autoLoginReady
 }
 
 function Invoke-TemporaryConfigurationSuite {
@@ -870,11 +908,11 @@ function Invoke-CampusSuite {
         return
     }
     Add-Check -ID 'campus.daemon' -Status PASS -ReasonCode 'debug_daemon_running' -Category windows_native
-    $oneShotOK = Invoke-OneShotCampusSuite
-    if ($oneShotOK) {
+    $autoLoginReady = Invoke-OneShotCampusSuite
+    if ($autoLoginReady) {
         Invoke-TemporaryConfigurationSuite
     } else {
-        Add-Check -ID 'campus.configuration_autologin' -Status SKIPPED -ReasonCode 'one_shot_failed' -Category campus
+        Add-Check -ID 'campus.configuration_autologin' -Status SKIPPED -ReasonCode 'one_shot_prerequisite_failed' -Category campus
     }
 }
 

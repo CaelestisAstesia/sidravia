@@ -38,12 +38,50 @@ function Add-PathEntry {
     return $PathValue + ';' + $norm
 }
 
+function ConvertTo-SIDValue {
+    param([string]$Identity)
+    if ([string]::IsNullOrWhiteSpace($Identity)) { return $null }
+    try {
+        return ([Security.Principal.SecurityIdentifier]::new($Identity)).Value
+    } catch {
+    }
+    try {
+        $account = [Security.Principal.NTAccount]::new($Identity)
+        return ($account.Translate([Security.Principal.SecurityIdentifier])).Value
+    } catch {
+        return $null
+    }
+}
+
+function New-SidraviaLogonTaskDefinition {
+    param(
+        [string]$InstallDirectory,
+        [string]$LogLevel,
+        [string]$UserSID
+    )
+    $action = New-ScheduledTaskAction -Execute (Join-Path $InstallDirectory 'sidravia.exe') -Argument "daemon start --log-level $LogLevel"
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserSID
+    $principal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive -RunLevel Limited
+    return New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Description 'Sidravia daemon'
+}
+
 # Precondition: the product binaries must sit next to this script's parent.
 if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidravia.exe'))) {
     throw "missing $InstallDir\sidravia.exe"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidraviad.exe'))) {
     throw "missing $InstallDir\sidraviad.exe"
+}
+$CurrentUserSID = $null
+try {
+    $CurrentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    if ($null -ne $CurrentIdentity.User) {
+        $CurrentUserSID = $CurrentIdentity.User.Value
+    }
+} catch {
+}
+if (-not $CurrentUserSID) {
+    throw 'current_user_sid_unavailable'
 }
 
 # BEFORE: record the current state.
@@ -59,9 +97,12 @@ if (-not $PathPresent) {
 }
 
 # 2) User-logon task: idempotent replace.
-$Action = New-ScheduledTaskAction -Execute (Join-Path $InstallDir 'sidravia.exe') -Argument "daemon start --log-level $LogLevel"
-$Trigger = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Description 'Sidravia daemon' -Force | Out-Null
+$Definition = New-SidraviaLogonTaskDefinition -InstallDirectory $InstallDir -LogLevel $LogLevel -UserSID $CurrentUserSID
+try {
+    Register-ScheduledTask -TaskName $TaskName -InputObject $Definition -Force | Out-Null
+} catch {
+    throw [InvalidOperationException]::new('scheduled_task_registration_failed', $_.Exception)
+}
 
 # AFTER: verify the registered state.
 $AfterPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -72,10 +113,23 @@ $AfterTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -eq $AfterTask) {
     throw "verify failed: task $TaskName does not exist"
 }
+if ($AfterTask.Actions.Count -ne 1) {
+    throw 'verify failed: task action does not match'
+}
 $AfterLeaf = Split-Path -Leaf $AfterTask.Actions[0].Execute
 $AfterArgs = $AfterTask.Actions[0].Arguments
 if ($AfterLeaf -ne 'sidravia.exe' -or $AfterArgs -ne "daemon start --log-level $LogLevel") {
     throw 'verify failed: task action does not match'
+}
+$AfterPrincipalSID = ConvertTo-SIDValue -Identity ([string]$AfterTask.Principal.UserId)
+$AfterTriggerSID = $null
+if ($AfterTask.Triggers.Count -eq 1) {
+    $AfterTriggerSID = ConvertTo-SIDValue -Identity ([string]$AfterTask.Triggers[0].UserId)
+}
+if ($AfterPrincipalSID -ne $CurrentUserSID -or $AfterTriggerSID -ne $CurrentUserSID -or
+    [string]$AfterTask.Principal.LogonType -ne 'Interactive' -or
+    [string]$AfterTask.Principal.RunLevel -ne 'Limited') {
+    throw 'verify failed: task identity does not match'
 }
 
 # Summary (before -> after).
