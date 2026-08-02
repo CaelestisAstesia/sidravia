@@ -705,15 +705,59 @@ function Get-HeartbeatWaitSeconds {
     return 45
 }
 
-function Invoke-NetworkTransition {
+function Invoke-HotspotContinuity {
     param([string]$SessionID)
     if ($SkipNetworkTransition) {
-        Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
+        Add-Check -ID 'campus.hotspot_continuity' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
+        return $true
+    }
+    $approval = Read-Host 'Test authentication continuity while toggling Windows Mobile Hotspot? Type YES'
+    if ($approval -cne 'YES') {
+        Add-Check -ID 'campus.hotspot_continuity' -Status SKIPPED -ReasonCode 'consent_declined' -Category campus
+        return $true
+    }
+    $ready = Read-Host 'Type READY to begin the hotspot continuity observation'
+    if ($ready -cne 'READY') {
+        Add-Check -ID 'campus.hotspot_continuity' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
+        return $true
+    }
+    Write-Host 'Toggle Windows Mobile Hotspot once within 10 seconds. Keep the campus-facing link connected and keep the existing TUN campus-route exclusion unchanged.'
+    $deadline = [DateTime]::UtcNow.AddSeconds((Get-HeartbeatWaitSeconds))
+    do {
+        $status = Invoke-Sidravia -Arguments @('auth', 'status', $SessionID)
+        if ($status.ExitCode -ne 0) {
+            Add-Check -ID 'campus.hotspot_continuity' -Status FAIL -ReasonCode 'continuity_status_unavailable' -Category campus
+            return $false
+        }
+        $state = Get-SessionState -Output $status.Output
+        if (-not $state) {
+            Add-Check -ID 'campus.hotspot_continuity' -Status FAIL -ReasonCode 'continuity_status_unavailable' -Category campus
+            return $false
+        }
+        if ($state -ne 'authenticated') {
+            Add-Check -ID 'campus.hotspot_continuity' -Status FAIL -ReasonCode 'unexpected_authentication_loss' -Category campus
+            return $false
+        }
+        Start-Sleep -Seconds 2
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Add-Check -ID 'campus.hotspot_continuity' -Status PASS -ReasonCode 'authentication_continuity_observed' -Category campus
+    return $true
+}
+
+function Invoke-NetworkRecovery {
+    param([string]$SessionID)
+    if ($SkipNetworkTransition) {
+        Add-Check -ID 'campus.network_recovery' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
+        return $true
+    }
+    $approval = Read-Host 'Test authentication recovery after disconnecting the campus-facing link? Type YES'
+    if ($approval -cne 'YES') {
+        Add-Check -ID 'campus.network_recovery' -Status SKIPPED -ReasonCode 'consent_declined' -Category campus
         return $true
     }
     $ready = Read-Host 'Type READY, then disconnect the campus-facing link within 10 seconds. Keep it disconnected until loss is observed'
     if ($ready -cne 'READY') {
-        Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
+        Add-Check -ID 'campus.network_recovery' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
         return $true
     }
     Write-Host 'Observing Session state. Disconnect the campus-facing link now.'
@@ -728,7 +772,7 @@ function Invoke-NetworkTransition {
         Start-Sleep -Seconds 2
     } while ([DateTime]::UtcNow -lt $lossDeadline)
     if (-not $observedLoss) {
-        Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'network_loss_not_observed' -Category campus
+        Add-Check -ID 'campus.network_recovery' -Status FAIL -ReasonCode 'network_loss_not_observed' -Category campus
         return $false
     }
 
@@ -737,12 +781,12 @@ function Invoke-NetworkTransition {
     do {
         $status = Invoke-Sidravia -Arguments @('auth', 'status', $SessionID)
         if ($status.ExitCode -eq 0 -and (Get-SessionState -Output $status.Output) -eq 'authenticated') {
-            Add-Check -ID 'campus.network_transition' -Status PASS -ReasonCode 'loss_and_recovery_observed' -Category campus
+            Add-Check -ID 'campus.network_recovery' -Status PASS -ReasonCode 'loss_and_recovery_observed' -Category campus
             return $true
         }
         Start-Sleep -Seconds 2
     } while ([DateTime]::UtcNow -lt $recoveryDeadline)
-    Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'authentication_recovery_not_observed' -Category campus
+    Add-Check -ID 'campus.network_recovery' -Status FAIL -ReasonCode 'authentication_recovery_not_observed' -Category campus
     return $false
 }
 
@@ -824,7 +868,8 @@ function Invoke-OneShotCampusSuite {
         Add-Check -ID 'campus.retained_lifecycle' -Status FAIL -ReasonCode 'retained_operation_failed' -Category campus
     }
 
-    $null = Invoke-NetworkTransition -SessionID $sessionID
+    $null = Invoke-HotspotContinuity -SessionID $sessionID
+    $null = Invoke-NetworkRecovery -SessionID $sessionID
 
     $stop = Invoke-Sidravia -Arguments @('auth', 'stop', $sessionID)
     $suspended = Wait-SessionState -SessionID $sessionID -States @('suspended') -TimeoutSeconds 30
