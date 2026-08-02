@@ -1,13 +1,12 @@
-# Sidravia user-mode integration installer (Windows).
+# Sidravia Windows 用户态集成安装脚本。
 #
-# Idempotent: safe to re-run. Mode-agnostic: works for both installed and
-# portable directories; it registers the directory this script lives in.
-# It adds that directory to the per-user PATH and creates the exact user-logon
-# task "SidraviaDaemon" that runs "sidravia daemon start --log-level <level>".
-# It verifies the registered state before and after, and never deletes any
-# Configuration, credential, Profile or log.
+# 本脚本具备幂等性，可以安全地重复运行。它不区分安装模式，既适用于正式安装目录，
+# 也适用于便携目录；注册目标始终是本脚本所在目录的上级目录。
+# 脚本会把该目录加入当前用户 PATH，并创建名为 "SidraviaDaemon" 的用户登录计划任务，
+# 该任务运行 "sidravia daemon start --log-level <level>"。
+# 脚本会在操作前后验证注册状态，且绝不删除任何配置、凭据、Profile 或日志。
 #
-# Usage:
+# 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -LogLevel debug
 [CmdletBinding()]
@@ -62,15 +61,15 @@ function New-SidraviaLogonTaskDefinition {
     $action = New-ScheduledTaskAction -Execute (Join-Path $InstallDirectory 'sidravia.exe') -Argument "daemon start --log-level $LogLevel"
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserSID
     $principal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive -RunLevel Limited
-    return New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Description 'Sidravia daemon'
+    return New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Description 'Sidravia 后台服务'
 }
 
-# Precondition: the product binaries must sit next to this script's parent.
+# 前置条件：产品二进制必须位于本脚本上级目录中。
 if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidravia.exe'))) {
-    throw "missing $InstallDir\sidravia.exe"
+    throw "未找到产品程序：$InstallDir\sidravia.exe"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidraviad.exe'))) {
-    throw "missing $InstallDir\sidraviad.exe"
+    throw "未找到后台服务程序：$InstallDir\sidraviad.exe"
 }
 $CurrentUserSID = $null
 try {
@@ -81,45 +80,45 @@ try {
 } catch {
 }
 if (-not $CurrentUserSID) {
-    throw 'current_user_sid_unavailable'
+    throw 'current_user_sid_unavailable：无法获取当前用户 SID'
 }
 
-# BEFORE: record the current state.
+# 操作前：记录当前状态。
 $BeforePath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $PathPresent = Test-PathEntry -PathValue $BeforePath -Entry $InstallDir
 $BeforeTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $TaskPresent = ($null -ne $BeforeTask)
 
-# 1) Per-user PATH: exact, case-insensitive, idempotent.
+# 1）当前用户 PATH：精确匹配、不区分大小写、幂等。
 if (-not $PathPresent) {
     $NewPath = Add-PathEntry -PathValue $BeforePath -Entry $InstallDir
     [Environment]::SetEnvironmentVariable('Path', $NewPath, 'User')
 }
 
-# 2) User-logon task: idempotent replace.
+# 2）用户登录计划任务：幂等替换。
 $Definition = New-SidraviaLogonTaskDefinition -InstallDirectory $InstallDir -LogLevel $LogLevel -UserSID $CurrentUserSID
 try {
     Register-ScheduledTask -TaskName $TaskName -InputObject $Definition -Force | Out-Null
 } catch {
-    throw [InvalidOperationException]::new('scheduled_task_registration_failed', $_.Exception)
+    throw [InvalidOperationException]::new('scheduled_task_registration_failed：注册 SidraviaDaemon 计划任务失败', $_.Exception)
 }
 
-# AFTER: verify the registered state.
+# 操作后：验证注册状态。
 $AfterPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (-not (Test-PathEntry -PathValue $AfterPath -Entry $InstallDir)) {
-    throw 'verify failed: install directory is not on the user PATH'
+    throw '验证失败：安装目录未加入当前用户 PATH'
 }
 $AfterTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -eq $AfterTask) {
-    throw "verify failed: task $TaskName does not exist"
+    throw "验证失败：计划任务 $TaskName 不存在"
 }
 if ($AfterTask.Actions.Count -ne 1) {
-    throw 'verify failed: task action does not match'
+    throw '验证失败：计划任务动作不匹配'
 }
 $AfterLeaf = Split-Path -Leaf $AfterTask.Actions[0].Execute
 $AfterArgs = $AfterTask.Actions[0].Arguments
 if ($AfterLeaf -ne 'sidravia.exe' -or $AfterArgs -ne "daemon start --log-level $LogLevel") {
-    throw 'verify failed: task action does not match'
+    throw '验证失败：计划任务动作不匹配'
 }
 $AfterPrincipalSID = ConvertTo-SIDValue -Identity ([string]$AfterTask.Principal.UserId)
 $AfterTriggerSID = $null
@@ -129,11 +128,11 @@ if ($AfterTask.Triggers.Count -eq 1) {
 if ($AfterPrincipalSID -ne $CurrentUserSID -or $AfterTriggerSID -ne $CurrentUserSID -or
     [string]$AfterTask.Principal.LogonType -ne 'Interactive' -or
     [string]$AfterTask.Principal.RunLevel -ne 'Limited') {
-    throw 'verify failed: task identity does not match'
+    throw '验证失败：计划任务用户身份不匹配'
 }
 
-# Summary (before -> after).
-if ($PathPresent) { Write-Output "PATH: already present $InstallDir" }
-else { Write-Output "PATH: added $InstallDir" }
-if ($TaskPresent) { Write-Output "Task: updated $TaskName (--log-level $LogLevel)" }
-else { Write-Output "Task: created $TaskName (--log-level $LogLevel)" }
+# 结果摘要（操作前 -> 操作后）。
+if ($PathPresent) { Write-Output "当前用户 PATH 已包含安装目录：$InstallDir" }
+else { Write-Output "安装目录已加入当前用户 PATH：$InstallDir" }
+if ($TaskPresent) { Write-Output "计划任务已更新：$TaskName（--log-level $LogLevel）" }
+else { Write-Output "计划任务已创建：$TaskName（--log-level $LogLevel）" }

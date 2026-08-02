@@ -1,11 +1,10 @@
-# Sidravia user-mode integration uninstaller (Windows).
+# Sidravia Windows 用户态集成卸载脚本。
 #
-# Idempotent: safe to re-run. Revokes only the per-user PATH entry and the
-# user-logon task registered by install.ps1. It verifies the revoked state
-# before and after, and never deletes any Configuration, credential, Profile
-# or log.
+# 本脚本具备幂等性，可以安全地重复运行。它只撤销 install.ps1 注册的当前用户 PATH
+# 条目和用户登录计划任务。脚本会在操作前后验证撤销状态，且绝不删除任何配置、
+# 凭据、Profile 或日志。
 #
-# Usage:
+# 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 [CmdletBinding()]
 param()
@@ -40,35 +39,35 @@ function Remove-PathEntry {
     return $PathValue
 }
 
-# BEFORE: record the current state.
+# 操作前：记录当前状态。
 $BeforePath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $PathPresent = Test-PathEntry -PathValue $BeforePath -Entry $InstallDir
 $BeforeTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $TaskPresent = ($null -ne $BeforeTask)
 
-# 1) Remove the exact per-user PATH entry.
+# 1）移除精确匹配的当前用户 PATH 条目。
 if ($PathPresent) {
     $NewPath = Remove-PathEntry -PathValue $BeforePath -Entry $InstallDir
     [Environment]::SetEnvironmentVariable('Path', $NewPath, 'User')
 }
 
-# 2) Remove the user-logon task.
+# 2）移除用户登录计划任务。
 if ($TaskPresent) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-# AFTER: verify both are gone.
+# 操作后：验证两项状态均已撤销。
 $AfterPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (Test-PathEntry -PathValue $AfterPath -Entry $InstallDir) {
-    throw 'verify failed: install directory is still on the user PATH'
+    throw '验证失败：安装目录仍在当前用户 PATH 中'
 }
 $AfterTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -ne $AfterTask) {
-    throw "verify failed: task $TaskName still exists"
+    throw "验证失败：计划任务 $TaskName 仍然存在"
 }
 
-# Summary (before -> after).
-if ($PathPresent) { Write-Output "PATH: removed $InstallDir" }
-else { Write-Output "PATH: absent (idempotent)" }
-if ($TaskPresent) { Write-Output "Task: removed $TaskName" }
-else { Write-Output "Task: absent (idempotent)" }
+# 结果摘要（操作前 -> 操作后）。
+if ($PathPresent) { Write-Output "安装目录已从当前用户 PATH 移除：$InstallDir" }
+else { Write-Output '当前用户 PATH 中原本没有该安装目录（幂等）' }
+if ($TaskPresent) { Write-Output "计划任务已移除：$TaskName" }
+else { Write-Output "计划任务原本不存在（幂等）：$TaskName" }

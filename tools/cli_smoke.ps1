@@ -1,11 +1,10 @@
-# Sidravia full-CLI-surface smoke script (Windows).
+# Sidravia 命令行完整冒烟测试（Windows）。
 #
-# Runs every sidravia command against a real daemon and reports PASS/FAIL.
-# Commands that need real campus credentials/network (auth start) are run with
-# a placeholder account; if they cannot complete they are recorded as an
-# expected outcome, not a failure. PowerShell 7 and ASCII-only.
+# 本脚本针对真实后台服务运行每个 sidravia 命令，并报告通过/失败结果。
+# 需要真实校园网凭据和网络的命令（auth start）使用占位账号运行；如果无法完成，
+# 会记录为预期结果而不是失败。本脚本仅支持 PowerShell 7，并使用 UTF-8 编码。
 #
-# Usage:
+# 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1 -Sidravia C:\path\sidravia.exe -SkipAuthStart
 [CmdletBinding()]
@@ -19,11 +18,11 @@ $OutputEncoding = $script:NativeUTF8Encoding
 [Console]::OutputEncoding = $script:NativeUTF8Encoding
 
 if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
-    throw 'PowerShell 7 or later is required.'
+    throw '需要 PowerShell 7 或更高版本。'
 }
 
 if (-not (Test-Path -LiteralPath $Sidravia)) {
-    throw "sidravia.exe not found: $Sidravia"
+    throw "未找到 sidravia.exe：$Sidravia"
 }
 $Exe = (Resolve-Path -LiteralPath $Sidravia).Path
 
@@ -107,7 +106,7 @@ function Invoke-Sidravia {
         $code = $LASTEXITCODE
     }
     $ok = $true
-    $note = "exit=$code"
+    $note = "退出码=$code"
     switch ($Expect) {
         'success' { $ok = ($code -eq 0) }
         'failure' { $ok = ($code -ne 0) }
@@ -120,85 +119,85 @@ function Invoke-Sidravia {
     if (-not $ok) {
         $flat = ($out -replace "\r?\n", ' ').Trim()
         if ($flat.Length -gt 160) { $flat = $flat.Substring(0, 160) }
-        $note += "; out=$flat"
+        $note += "; 输出=$flat"
     }
     Add-Check -Name $Name -OK $ok -Note $note
     return $out
 }
 
-Write-Output "== Sidravia CLI smoke: $Exe =="
+Write-Output "== Sidravia 命令行完整冒烟测试：$Exe =="
 
-# Make the run idempotent: stop any daemon first.
-Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect any -Name 'daemon stop (initial cleanup)'
+# 为保证重复运行安全，先停止可能存在的后台服务。
+Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect any -Name '后台服务：初始停止与清理'
 
-# 1. Help surface (identical entrypoints, never dispatch).
-Invoke-Sidravia -CommandArguments @('--help') -Expect success -Name 'help --help'
-Invoke-Sidravia -CommandArguments @('help', 'daemon') -Expect success -Name 'help daemon'
-Invoke-Sidravia -CommandArguments @('help', 'auth', 'start') -Expect success -Name 'help auth start'
-Invoke-Sidravia -CommandArguments @('auth', 'start', '--help') -Expect success -Name 'auth start --help'
-Invoke-Sidravia -CommandArguments @('profile', 'list', '--help') -Expect success -Name 'profile list --help'
+# 1. 帮助界面（所有入口行为一致，且不会派发业务操作）。
+Invoke-Sidravia -CommandArguments @('--help') -Expect success -Name '帮助：--help'
+Invoke-Sidravia -CommandArguments @('help', 'daemon') -Expect success -Name '帮助：daemon'
+Invoke-Sidravia -CommandArguments @('help', 'auth', 'start') -Expect success -Name '帮助：auth start'
+Invoke-Sidravia -CommandArguments @('auth', 'start', '--help') -Expect success -Name '帮助：auth start --help'
+Invoke-Sidravia -CommandArguments @('profile', 'list', '--help') -Expect success -Name '帮助：profile list --help'
 
-# 2. Command absence (retired/moved commands must fail).
-Invoke-Sidravia -CommandArguments @('status') -Expect failure -Name 'retired status rejected'
-Invoke-Sidravia -CommandArguments @('install') -Expect failure -Name 'install command absent'
-Invoke-Sidravia -CommandArguments @('uninstall') -Expect failure -Name 'uninstall command absent'
+# 2. 命令缺失（已退役或移动的命令必须失败）。
+Invoke-Sidravia -CommandArguments @('status') -Expect failure -Name '拒绝已退役的 status 命令'
+Invoke-Sidravia -CommandArguments @('install') -Expect failure -Name 'install 命令不存在'
+Invoke-Sidravia -CommandArguments @('uninstall') -Expect failure -Name 'uninstall 命令不存在'
 
-# 3. Daemon lifecycle.
-Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect stopped -Name 'daemon status initial'
-Invoke-Sidravia -CommandArguments @('daemon', 'start', '--log-level', 'info') -Expect success -Name 'daemon start'
-Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect running -Name 'daemon status running'
-Invoke-Sidravia -CommandArguments @('daemon', 'restart') -Expect success -Name 'daemon restart'
+# 3. 后台服务生命周期。
+Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect stopped -Name '后台服务：初始状态为已停止'
+Invoke-Sidravia -CommandArguments @('daemon', 'start', '--log-level', 'info') -Expect success -Name '后台服务：启动'
+Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect running -Name '后台服务：状态为运行中'
+Invoke-Sidravia -CommandArguments @('daemon', 'restart') -Expect success -Name '后台服务：重启'
 
-# 4. Profile discovery at the program root.
-Invoke-Sidravia -CommandArguments @('profile', 'list') -Expect success -Match 'jlu' -Name 'profile list shows jlu'
+# 4. 在程序根目录发现 Profile。
+Invoke-Sidravia -CommandArguments @('profile', 'list') -Expect success -Match 'jlu' -Name 'Profile 列表包含 jlu'
 
-# 5. Configuration CRUD with a disposable id (always removed).
+# 5. 使用一次性 ID 测试配置增删改查（始终移除）。
 $id = 'smoke-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
-Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect success -Match $id -Name 'config create'
-Invoke-Sidravia -CommandArguments @('config', 'list') -Expect success -Match $id -Name 'config list contains id'
-Invoke-Sidravia -CommandArguments @('config', 'show', $id) -Expect success -Match $id -Name 'config show'
-Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect failure -Name 'config create duplicate fails'
-Invoke-Sidravia -CommandArguments @('config', 'show', 'smoke-missing') -Expect failure -Name 'config show missing fails'
-Invoke-Sidravia -CommandArguments @('config', 'update', $id, '--name', 'SmokeUpdated') -Expect success -Name 'config update'
-Invoke-Sidravia -CommandArguments @('config', 'set-password', $id, '--password-stdin') -Stdin 'smoke-pass-2' -Expect success -Name 'config set-password'
-Invoke-Sidravia -CommandArguments @('config', 'remove', $id, '--yes') -Expect success -Name 'config remove'
+Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect success -Match $id -Name '配置：创建'
+Invoke-Sidravia -CommandArguments @('config', 'list') -Expect success -Match $id -Name '配置：列表包含一次性 ID'
+Invoke-Sidravia -CommandArguments @('config', 'show', $id) -Expect success -Match $id -Name '配置：显示详情'
+Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect failure -Name '配置：拒绝重复创建'
+Invoke-Sidravia -CommandArguments @('config', 'show', 'smoke-missing') -Expect failure -Name '配置：拒绝显示不存在的配置'
+Invoke-Sidravia -CommandArguments @('config', 'update', $id, '--name', 'SmokeUpdated') -Expect success -Name '配置：更新'
+Invoke-Sidravia -CommandArguments @('config', 'set-password', $id, '--password-stdin') -Stdin 'smoke-pass-2' -Expect success -Name '配置：更新密码'
+Invoke-Sidravia -CommandArguments @('config', 'remove', $id, '--yes') -Expect success -Name '配置：移除'
 
-# 6. Session surface.
-Invoke-Sidravia -CommandArguments @('auth', 'list') -Expect success -Name 'auth list'
+# 6. 认证 Session 操作面。
+Invoke-Sidravia -CommandArguments @('auth', 'list') -Expect success -Name '认证：列出 Session'
 if ($SkipAuthStart) {
-    Add-Check -Name 'auth start' -OK $true -Note 'skipped (-SkipAuthStart)'
+    Add-Check -Name '认证：启动 Session' -OK $true -Note '已跳过（-SkipAuthStart）'
 } else {
-    $startOut = Invoke-Sidravia -CommandArguments @('auth', 'start', '--profile', 'jlu', '--username', 'smoke-account', '--password-stdin') -Stdin 'smoke-pass' -Expect any -Name 'auth start'
+    $startOut = Invoke-Sidravia -CommandArguments @('auth', 'start', '--profile', 'jlu', '--username', 'smoke-account', '--password-stdin') -Stdin 'smoke-pass' -Expect any -Name '认证：启动 Session'
     $m = [regex]::Match($startOut, 'session-\d+')
     if ($m.Success) {
         $sid = $m.Value
-        Invoke-Sidravia -CommandArguments @('auth', 'status', $sid) -Expect success -Name 'auth status'
-        Invoke-Sidravia -CommandArguments @('auth', 'restart', $sid) -Expect success -Name 'auth restart'
-        Invoke-Sidravia -CommandArguments @('auth', 'stop', $sid) -Expect success -Name 'auth stop'
-        Invoke-Sidravia -CommandArguments @('auth', 'remove', $sid) -Expect success -Name 'auth remove'
+        Invoke-Sidravia -CommandArguments @('auth', 'status', $sid) -Expect success -Name '认证：查看 Session 状态'
+        Invoke-Sidravia -CommandArguments @('auth', 'restart', $sid) -Expect success -Name '认证：重启 Session'
+        Invoke-Sidravia -CommandArguments @('auth', 'stop', $sid) -Expect success -Name '认证：停止 Session'
+        Invoke-Sidravia -CommandArguments @('auth', 'remove', $sid) -Expect success -Name '认证：移除 Session'
     } else {
-        Add-Check -Name 'auth session-id parse' -OK $true -Note 'expected (needs real campus credentials/network)'
+        Add-Check -Name '认证：解析 Session ID' -OK $true -Note '符合预期（需要真实校园网凭据和网络）'
     }
 }
 
-# 7. Cleanup.
-Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect stopped -Name 'daemon stop (cleanup)'
+# 7. 清理。
+Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect stopped -Name '后台服务：停止并清理'
 
-# Summary.
+# 汇总。
 Write-Output ''
-Write-Output '== Summary (PASS/FAIL) =='
+Write-Output '== 汇总（通过/失败） =='
 $passCount = 0
 foreach ($c in $script:checks) {
     if ($c.OK) { $passCount++ }
-    $mark = if ($c.OK) { 'PASS' } else { 'FAIL' }
+    $mark = if ($c.OK) { '通过' } else { '失败' }
     $note = if ($c.Note) { " [$($c.Note)]" } else { '' }
     Write-Output ("{0,-3} {1}{2}" -f $mark, $c.Name, $note)
 }
 $total = $script:checks.Count
 Write-Output ''
-Write-Output "Total: $total, Passed: $passCount, Failed: $($total - $passCount)"
+Write-Output "总计：$total，通过：$passCount，失败：$($total - $passCount)"
 if ($script:failed.Count -gt 0) {
-    Write-Output 'Unexpected failures:'
+    Write-Output '未预期的失败：'
     foreach ($f in $script:failed) { Write-Output "  - $f" }
     exit 1
 }

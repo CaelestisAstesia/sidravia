@@ -1,8 +1,7 @@
-# Sidravia guided disposable Windows field validation.
+# Sidravia 引导式一次性 Windows 现场验证。
 #
-# Runs the public CLI and shipped integration scripts from a nonce-marked
-# portable sandbox. Raw command output and credentials are never written to
-# the retained report. PowerShell 7 and ASCII-only.
+# 本脚本在带随机标记的便携沙箱中运行公开 CLI 和随包集成脚本。
+# 原始命令输出和凭据绝不会写入保留报告。本脚本仅支持 PowerShell 7，并使用 UTF-8 编码。
 [CmdletBinding()]
 param(
     [ValidatePattern('^[a-z0-9][a-z0-9-]{0,63}$')]
@@ -537,16 +536,16 @@ function Invoke-LocalSuite {
             '-Sidravia', $script:Cli, '-SkipAuthStart'
         ) -StdinValue $null
     }
-    if ($timed.Value.ExitCode -eq 0 -and $timed.Value.Output -match 'Failed:\s*0') {
+    if ($timed.Value.ExitCode -eq 0 -and $timed.Value.Output -match '失败：\s*0') {
         Add-Check -ID 'local.cli_surface' -Status PASS -ReasonCode 'all_checks_passed' -Category automatic -DurationMs $timed.DurationMs
         return $true
     }
     Write-Host ''
-    Write-Host '== Local CLI smoke diagnostics (no field credentials) =='
+    Write-Host '== 本地 CLI 冒烟测试诊断（不含现场凭据） =='
     if ($timed.Value.Output) {
         Write-Host $timed.Value.Output.TrimEnd()
     } else {
-        Write-Host '[no output]'
+        Write-Host '[无输出]'
     }
     Add-Check -ID 'local.cli_surface' -Status FAIL -ReasonCode 'cli_smoke_failed' -Category automatic -DurationMs $timed.DurationMs
     return $false
@@ -562,9 +561,9 @@ function Add-IntegrationProcessCheck {
         return $true
     }
     Write-Host ''
-    Write-Host ('== Integration diagnostics: ' + $ID + ' (no field credentials) ==')
+    Write-Host ('== 用户态集成诊断：' + $ID + '（不含现场凭据） ==')
     if ($Result.Output) { Write-Host $Result.Output.TrimEnd() }
-    else { Write-Host '[no output]' }
+    else { Write-Host '[无输出]' }
     $reason = 'command_failed'
     if ($Result.Output -match 'scheduled_task_registration_failed') {
         $reason = 'scheduled_task_registration_failed'
@@ -578,7 +577,7 @@ function Invoke-IntegrationSuite {
         Add-Check -ID 'integration.user_mode' -Status SKIPPED -ReasonCode 'requested_skip' -Category integration
         return
     }
-    $approval = Read-Host 'Temporarily test current-user PATH and SidraviaDaemon task? Type YES'
+    $approval = Read-Host '临时测试当前用户 PATH 和 SidraviaDaemon 计划任务？请输入 YES'
     if ($approval -cne 'YES') {
         Add-Check -ID 'integration.user_mode' -Status SKIPPED -ReasonCode 'consent_declined' -Category integration
         return
@@ -711,17 +710,17 @@ function Invoke-HotspotContinuity {
         Add-Check -ID 'campus.hotspot_continuity' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
         return $true
     }
-    $approval = Read-Host 'Test authentication continuity while toggling Windows Mobile Hotspot? Type YES'
+    $approval = Read-Host '测试切换 Windows 移动热点时认证是否保持连续？请输入 YES'
     if ($approval -cne 'YES') {
         Add-Check -ID 'campus.hotspot_continuity' -Status SKIPPED -ReasonCode 'consent_declined' -Category campus
         return $true
     }
-    $ready = Read-Host 'Type READY to begin the hotspot continuity observation'
+    $ready = Read-Host '输入 READY 开始观察热点切换期间的认证连续性'
     if ($ready -cne 'READY') {
         Add-Check -ID 'campus.hotspot_continuity' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
         return $true
     }
-    Write-Host 'Toggle Windows Mobile Hotspot once within 10 seconds. Keep the campus-facing link connected and keep the existing TUN campus-route exclusion unchanged.'
+    Write-Host '请在 10 秒内切换一次 Windows 移动热点。保持校园网链路连接，并保持现有 TUN 校园网路由排除设置不变。'
     $deadline = [DateTime]::UtcNow.AddSeconds((Get-HeartbeatWaitSeconds))
     do {
         $status = Invoke-Sidravia -Arguments @('auth', 'status', $SessionID)
@@ -750,17 +749,17 @@ function Invoke-NetworkRecovery {
         Add-Check -ID 'campus.network_recovery' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
         return $true
     }
-    $approval = Read-Host 'Test authentication recovery after disconnecting the campus-facing link? Type YES'
+    $approval = Read-Host '测试校园网链路断开后的认证恢复？请输入 YES'
     if ($approval -cne 'YES') {
         Add-Check -ID 'campus.network_recovery' -Status SKIPPED -ReasonCode 'consent_declined' -Category campus
         return $true
     }
-    $ready = Read-Host 'Type READY, then disconnect the campus-facing link within 10 seconds. Keep it disconnected until loss is observed'
+    $ready = Read-Host '输入 READY 后，请在 10 秒内断开校园网链路，并保持断开直至观察到网络丢失'
     if ($ready -cne 'READY') {
         Add-Check -ID 'campus.network_recovery' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
         return $true
     }
-    Write-Host 'Observing Session state. Disconnect the campus-facing link now.'
+    Write-Host '正在观察 Session 状态。现在请断开校园网链路。'
     $lossDeadline = [DateTime]::UtcNow.AddSeconds(60)
     $observedLoss = $false
     do {
@@ -776,7 +775,7 @@ function Invoke-NetworkRecovery {
         return $false
     }
 
-    Write-Host 'Network loss observed. Reconnect the same campus-facing link now.'
+    Write-Host '已观察到网络断开。现在请重新连接同一校园网链路。'
     $recoveryDeadline = [DateTime]::UtcNow.AddSeconds(120)
     do {
         $status = Invoke-Sidravia -Arguments @('auth', 'status', $SessionID)
@@ -822,9 +821,9 @@ function Invoke-OneShotCampusSuite {
         if ($diagnostics.Failure) { $safeParts.Add('failure=' + $diagnostics.Failure) }
         if ($diagnostics.Recommendation) { $safeParts.Add('recommendation=' + $diagnostics.Recommendation) }
         if ($safeParts.Count -gt 0) {
-            Write-Host ('Authentication diagnostics (safe codes only): ' + ($safeParts.ToArray() -join ', '))
+            Write-Host ('认证诊断（仅安全代码）：' + ($safeParts.ToArray() -join ', '))
         } else {
-            Write-Host 'Authentication diagnostics (safe codes only): unavailable'
+            Write-Host '认证诊断（仅安全代码）：不可用'
         }
         $reason = 'not_authenticated'
         if ($diagnostics.State) { $reason = $diagnostics.State }
@@ -890,7 +889,7 @@ function Invoke-OneShotCampusSuite {
 }
 
 function Invoke-TemporaryConfigurationSuite {
-    $approval = Read-Host 'Temporarily store the entered credentials in the protected sandbox to test AutoLogin? Type YES'
+    $approval = Read-Host '在受保护沙箱中临时保存本次输入的凭据以测试自动登录？请输入 YES'
     if ($approval -cne 'YES') {
         Add-Check -ID 'campus.configuration_autologin' -Status SKIPPED -ReasonCode 'consent_declined' -Category campus
         return
@@ -943,18 +942,18 @@ function Invoke-CampusSuite {
         Add-Check -ID 'campus.full_chain' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
         return
     }
-    Write-Output 'Stop other Dr.COM clients. Stop TUN or exclude RFC1918 campus routes.'
-    $ready = Read-Host 'Confirm the campus link is ready by typing YES'
+    Write-Output '请停止其他 Dr.COM 客户端。停止 TUN，或为 RFC1918 校园网路由设置排除。'
+    $ready = Read-Host '确认校园网链路已就绪，然后输入 YES'
     if ($ready -cne 'YES') {
         Add-Check -ID 'campus.full_chain' -Status BLOCKED -ReasonCode 'campus_precondition_declined' -Category campus
         return
     }
-    $script:Username = Read-Host 'Campus username'
+    $script:Username = Read-Host '校园网账号'
     if ([string]::IsNullOrWhiteSpace($script:Username)) {
         Add-Check -ID 'campus.full_chain' -Status BLOCKED -ReasonCode 'username_missing' -Category campus
         return
     }
-    $script:SecurePassword = Read-Host -AsSecureString -Prompt 'Campus password'
+    $script:SecurePassword = Read-Host -AsSecureString -Prompt '校园网密码'
     if ($null -eq $script:SecurePassword -or $script:SecurePassword.Length -eq 0) {
         Add-Check -ID 'campus.full_chain' -Status BLOCKED -ReasonCode 'password_missing' -Category campus
         return
@@ -1147,7 +1146,7 @@ try {
     if (-not $script:PreconditionBlocked -and -not $script:RequestedFailure) {
         $errorDetails = Get-SanitizedHarnessError -ErrorRecord $_
         Add-Check -ID 'harness.execution' -Status FAIL -ReasonCode $errorDetails.ReasonCode -Category automatic
-        Write-Host ('Harness execution failed [' + $errorDetails.ReasonCode + ':' + $errorDetails.ExceptionType + ']')
+        Write-Host ('现场验证器执行失败 [' + $errorDetails.ReasonCode + ':' + $errorDetails.ExceptionType + ']')
     }
 } finally {
     $cleanup = $false
@@ -1171,16 +1170,141 @@ try {
         $reportErrorType = $_.Exception.GetType().Name
         $script:CleanupFailed = $true
         Add-Check -ID 'report.sanitized' -Status FAIL -ReasonCode 'report_write_failed' -Category cleanup
-        Write-Host ('Sanitized report write failed [report_write_failed:' + $reportErrorType + ']')
+        Write-Host ('脱敏报告写入失败 [report_write_failed:' + $reportErrorType + ']')
     }
 }
 
-Write-Output ''
-Write-Output '== Sidravia field validation =='
-foreach ($check in $script:Checks) {
-    Write-Output ('{0,-7} {1} [{2}]' -f $check.status, $check.id, $check.reasonCode)
+$script:StatusLabels = @{
+    PASS = '通过'
+    FAIL = '失败'
+    BLOCKED = '受阻'
+    SKIPPED = '已跳过'
 }
-if ($script:ReportPath) { Write-Output ('Sanitized report: ' + $script:ReportPath) }
+$script:CheckLabels = @{
+    'preflight.package' = '验证测试包'
+    'preflight.stale_cleanup' = '检查并清理测试残留'
+    'preflight.daemon' = '检查既有后台服务'
+    'preflight.sandbox' = '创建一次性便携沙箱'
+    'local.cli_surface' = '完整 CLI 命令面'
+    'integration.install_first' = '首次运行安装脚本'
+    'integration.install_second' = '再次运行安装脚本'
+    'integration.path_registered' = '注册当前用户 PATH'
+    'integration.task_registered' = '注册用户登录计划任务'
+    'integration.task_start' = '通过计划任务启动后台服务'
+    'integration.uninstall_first' = '首次运行卸载脚本'
+    'integration.uninstall_second' = '再次运行卸载脚本'
+    'integration.path_revoked' = '撤销当前用户 PATH'
+    'integration.task_revoked' = '撤销用户登录计划任务'
+    'integration.user_mode' = '用户态安装集成完整链路'
+    'campus.full_chain' = '校园网完整链路'
+    'campus.daemon' = '启动调试级后台服务'
+    'campus.oneshot_start' = '创建一次性认证 Session'
+    'campus.authentication' = '校园网认证'
+    'campus.selected_binding' = '选择校园网绑定'
+    'campus.fixed_port' = '固定本地端口所有权'
+    'campus.heartbeat' = '认证心跳'
+    'campus.retained_lifecycle' = '保留 Session 生命周期操作'
+    'campus.hotspot_continuity' = '热点切换期间认证连续性'
+    'campus.network_recovery' = '校园网断线与认证恢复'
+    'campus.logout_stop' = '注销并暂停 Session'
+    'campus.session_remove' = '移除 Session'
+    'campus.configuration_autologin' = '受保护配置自动登录'
+    'cleanup.owned_state' = '清理测试器拥有的状态'
+    'harness.execution' = '现场验证器执行'
+    'report.sanitized' = '写入脱敏报告'
+}
+$script:ReasonLabels = @{
+    'package_verified' = '测试包内容与校验和已验证'
+    'no_owned_stale_state' = '不存在测试器拥有的残留状态'
+    'stale_cleanup_required' = '残留状态无法安全清理，需要人工检查'
+    'no_preexisting_daemon' = '运行前不存在 Sidravia 后台服务'
+    'preexisting_daemon' = '检测到运行前已存在的 Sidravia 后台服务'
+    'owned_portable_sandbox' = '已创建并标记测试器拥有的便携沙箱'
+    'all_checks_passed' = '全部命令面检查均已通过'
+    'cli_smoke_failed' = 'CLI 冒烟测试存在失败项'
+    'command_succeeded' = '命令执行成功'
+    'command_failed' = '命令执行失败'
+    'scheduled_task_registration_failed' = '计划任务注册失败'
+    'requested_skip' = '已按启动参数要求跳过'
+    'consent_declined' = '测试者未同意执行该项'
+    'preexisting_integration_state' = '检测到运行前已存在的同名集成状态'
+    'path_present' = '当前用户 PATH 已包含安装目录'
+    'path_missing' = '当前用户 PATH 缺少安装目录'
+    'owned_task_present' = '存在测试器拥有且定义匹配的计划任务'
+    'owned_task_missing_or_mismatched' = '计划任务不存在或定义不匹配'
+    'task_start_command_failed' = '启动计划任务的命令失败'
+    'daemon_running' = '后台服务已进入运行状态'
+    'daemon_readiness_timeout' = '等待后台服务就绪超时'
+    'registration_failed' = '注册未成功，无法测试启动'
+    'path_absent' = '当前用户 PATH 已不包含安装目录'
+    'path_still_present' = '当前用户 PATH 仍包含安装目录'
+    'task_absent' = '计划任务已不存在'
+    'task_still_present' = '计划任务仍然存在'
+    'idempotent_install_action_uninstall' = '安装、重复安装、启动、卸载和重复卸载均符合契约'
+    'integration_contract_failed' = '用户态集成链路存在失败项'
+    'debug_daemon_running' = '调试级后台服务已运行'
+    'daemon_start_failed' = '后台服务启动失败'
+    'session_created' = '已创建认证 Session'
+    'session_start_failed' = '创建认证 Session 失败'
+    'authenticated' = '认证成功'
+    'binding_present' = '已显示所选网络绑定'
+    'binding_missing' = '未显示所选网络绑定'
+    'owned_61440' = '固定端口 61440 由测试后台服务拥有'
+    'fixed_port_owner_mismatch' = '固定端口 61440 的所有者不匹配'
+    'keepalive_phases_completed' = 'KA1 和 KA2 心跳阶段均已完成'
+    'keepalive_phase_missing' = '缺少预期的心跳阶段'
+    'list_status_restart' = '列出、查看状态和重启操作均成功'
+    'retained_operation_failed' = '保留 Session 生命周期操作失败'
+    'transition_declined' = '测试者未确认开始网络操作'
+    'authentication_continuity_observed' = '观察窗口内认证始终保持成功'
+    'continuity_status_unavailable' = '观察期间无法读取可靠的 Session 状态'
+    'unexpected_authentication_loss' = '热点切换期间认证意外丢失'
+    'loss_and_recovery_observed' = '已观察到断线并在重连后恢复认证'
+    'network_loss_not_observed' = '未在等待时间内观察到网络丢失'
+    'authentication_recovery_not_observed' = '重连后未在等待时间内恢复认证'
+    'logout_and_suspended' = '已完成注销且 Session 进入暂停状态'
+    'logout_or_suspend_missing' = '注销阶段或暂停状态不完整'
+    'session_absent' = 'Session 已移除'
+    'session_remove_failed' = 'Session 移除失败'
+    'protected_autologin_authenticated' = '受保护配置已自动登录并认证成功'
+    'protected_result_missing' = '配置创建成功但未识别到受保护结果'
+    'protected_storage_unavailable' = '当前环境无法提供受保护存储'
+    'temporary_configuration_failed' = '临时配置创建失败'
+    'autologin_not_authenticated' = '自动登录未在等待时间内完成认证'
+    'one_shot_prerequisite_failed' = '一次性认证、注销或移除前置条件失败'
+    'campus_precondition_declined' = '测试者未确认校园网前置条件'
+    'username_missing' = '未输入校园网账号'
+    'password_missing' = '未输入校园网密码'
+    'local_suite_failed' = '本地命令面测试失败，后续链路未运行'
+    'all_owned_state_removed' = '测试器拥有的状态已全部移除'
+    'cleanup_incomplete' = '未能确认测试器拥有的状态已全部移除'
+    'report_write_failed' = '脱敏报告写入失败'
+    'sanitized_internal_error' = '发生未公开内部细节的验证器错误'
+    'report_directory_outside_package' = '报告目录超出测试包边界'
+    'unsupported_windows_or_powershell' = '需要受支持的 Windows 和 PowerShell 7'
+    'powershell_host_not_found' = '未找到当前 PowerShell 7 子进程宿主'
+    'package_input_missing' = '测试包缺少必需文件'
+    'package_checksum_missing' = '测试包缺少二进制校验和'
+    'package_checksum_mismatch' = '测试包二进制校验和不匹配'
+    'temporary_parent_is_reparse_point' = '临时目录父路径是重解析点，已拒绝使用'
+    'sandbox_path_escape' = '沙箱路径超出拥有边界'
+}
+
+function Get-LocalizedLabel {
+    param([hashtable]$Labels, [string]$Key, [string]$Fallback)
+    if ($Labels.ContainsKey($Key)) { return $Labels[$Key] }
+    return $Fallback
+}
+
+Write-Output ''
+Write-Output '== Sidravia 现场验证结果 =='
+foreach ($check in $script:Checks) {
+    $statusLabel = Get-LocalizedLabel -Labels $script:StatusLabels -Key $check.status -Fallback $check.status
+    $checkLabel = Get-LocalizedLabel -Labels $script:CheckLabels -Key $check.id -Fallback '未提供中文检查名称'
+    $reasonLabel = Get-LocalizedLabel -Labels $script:ReasonLabels -Key $check.reasonCode -Fallback '未提供中文原因说明'
+    Write-Output ('{0,-6} {1} [{2}]（{3}：{4}）' -f $statusLabel, $checkLabel, $check.id, $check.reasonCode, $reasonLabel)
+}
+if ($script:ReportPath) { Write-Output ('脱敏报告：' + $script:ReportPath) }
 
 if ($script:CleanupFailed) { exit 3 }
 if ($script:RequestedFailure) { exit 1 }
