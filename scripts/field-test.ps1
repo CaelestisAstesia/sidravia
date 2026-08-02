@@ -297,12 +297,20 @@ function Wait-SessionState {
     return $null
 }
 
+function Test-ParenthesizedMachineToken {
+    param([string]$Output, [string]$Token)
+    if ([string]::IsNullOrEmpty($Output) -or [string]::IsNullOrEmpty($Token)) { return $false }
+    $pattern = '(?:\(|\uFF08)' + [regex]::Escape($Token) + '(?:\)|\uFF09)'
+    return [regex]::IsMatch($Output, $pattern)
+}
+
 function Wait-DaemonRunning {
     param([int]$TimeoutSeconds)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
         $result = Invoke-Sidravia -Arguments @('daemon', 'status')
-        if ($result.ExitCode -eq 0 -and $result.Output -match '\(running\)') { return $true }
+        if ($result.ExitCode -eq 0 -and
+            (Test-ParenthesizedMachineToken -Output $result.Output -Token 'running')) { return $true }
         Start-Sleep -Milliseconds 500
     } while ([DateTime]::UtcNow -lt $deadline)
     return $false
@@ -703,34 +711,39 @@ function Invoke-NetworkTransition {
         Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'requested_skip' -Category campus
         return $true
     }
-    $ready = Read-Host 'Type READY, then perform the declared hotspot/network transition within 10 seconds'
+    $ready = Read-Host 'Type READY, then disconnect the campus-facing link within 10 seconds. Keep it disconnected until loss is observed'
     if ($ready -cne 'READY') {
         Add-Check -ID 'campus.network_transition' -Status SKIPPED -ReasonCode 'transition_declined' -Category campus
         return $true
     }
-    Write-Host 'Observing Session state; perform the transition now.'
-    $deadline = [DateTime]::UtcNow.AddSeconds(120)
+    Write-Host 'Observing Session state. Disconnect the campus-facing link now.'
+    $lossDeadline = [DateTime]::UtcNow.AddSeconds(60)
     $observedLoss = $false
-    $recovered = $false
     do {
         $status = Invoke-Sidravia -Arguments @('auth', 'status', $SessionID)
         if ($status.ExitCode -eq 0) {
             $state = Get-SessionState -Output $status.Output
-            if ($state -and $state -ne 'authenticated') { $observedLoss = $true }
-            if ($observedLoss -and $state -eq 'authenticated') { $recovered = $true; break }
+            if ($state -and $state -ne 'authenticated') { $observedLoss = $true; break }
         }
         Start-Sleep -Seconds 2
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if ($recovered) {
-        Add-Check -ID 'campus.network_transition' -Status PASS -ReasonCode 'loss_and_recovery_observed' -Category campus
-        return $true
-    } elseif (-not $observedLoss) {
+    } while ([DateTime]::UtcNow -lt $lossDeadline)
+    if (-not $observedLoss) {
         Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'network_loss_not_observed' -Category campus
         return $false
-    } else {
-        Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'authentication_recovery_not_observed' -Category campus
-        return $false
     }
+
+    Write-Host 'Network loss observed. Reconnect the same campus-facing link now.'
+    $recoveryDeadline = [DateTime]::UtcNow.AddSeconds(120)
+    do {
+        $status = Invoke-Sidravia -Arguments @('auth', 'status', $SessionID)
+        if ($status.ExitCode -eq 0 -and (Get-SessionState -Output $status.Output) -eq 'authenticated') {
+            Add-Check -ID 'campus.network_transition' -Status PASS -ReasonCode 'loss_and_recovery_observed' -Category campus
+            return $true
+        }
+        Start-Sleep -Seconds 2
+    } while ([DateTime]::UtcNow -lt $recoveryDeadline)
+    Add-Check -ID 'campus.network_transition' -Status FAIL -ReasonCode 'authentication_recovery_not_observed' -Category campus
+    return $false
 }
 
 function Remove-TestSession {
@@ -849,7 +862,7 @@ function Invoke-TemporaryConfigurationSuite {
         $script:ConfigurationID = $null
         return
     }
-    if ($create.Output -notmatch '\(protected\)') {
+    if (-not (Test-ParenthesizedMachineToken -Output $create.Output -Token 'protected')) {
         Add-Check -ID 'campus.configuration_autologin' -Status FAIL -ReasonCode 'protected_result_missing' -Category campus
         return
     }
