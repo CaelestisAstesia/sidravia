@@ -38,6 +38,7 @@ $MarkerName = '.sidravia-field-validation'
 $MarkerPrefix = 'sidravia-field-validation-v1:'
 $TaskName = 'SidraviaDaemon'
 $script:PowerShellExe = $null
+$script:ReleasePowerShell = $null
 $PackageRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $TempParent = Join-Path ([IO.Path]::GetTempPath()) 'SidraviaFieldValidation'
 
@@ -48,6 +49,29 @@ function Resolve-ChildPowerShell {
         throw 'powershell_host_not_found'
     }
     return [IO.Path]::GetFullPath($candidate)
+}
+
+# Resolve-ReleasePowerShell is the only release-script host resolver. It accepts
+# only the system Windows PowerShell Desktop 5.1 and returns its path and version
+# after proving PSEdition=Desktop, Major=5 and Minor=1 in a read-only probe.
+function Resolve-ReleasePowerShell {
+    $candidate = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw 'release_powershell_not_found'
+    }
+    $probeCommand = 'if ($PSVersionTable.PSEdition -ne ''Desktop'' -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 1 }; $PSVersionTable.PSVersion.ToString()'
+    $probe = Invoke-CapturedProcess -FilePath $candidate -Arguments @('-NoProfile', '-NonInteractive', '-Command', $probeCommand) -StdinValue $null
+    if ($probe.ExitCode -ne 0) {
+        throw 'unsupported_release_script_host'
+    }
+    $versionText = ($probe.Output -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -First 1).Trim()
+    if (-not $versionText) {
+        throw 'unsupported_release_script_host'
+    }
+    return [pscustomobject]@{
+        Path = [IO.Path]::GetFullPath($candidate)
+        Version = $versionText
+    }
 }
 
 function Get-SanitizedHarnessError {
@@ -594,8 +618,8 @@ function Invoke-IntegrationSuite {
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $install = Join-Path $script:Sandbox (Join-Path 'scripts' 'install.ps1')
     $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
-    $first = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
-    $second = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
+    $first = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
+    $second = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $install, '-LogLevel', 'info') -StdinValue $null
     $firstOK = Add-IntegrationProcessCheck -ID 'integration.install_first' -Result $first
     $secondOK = Add-IntegrationProcessCheck -ID 'integration.install_second' -Result $second
 
@@ -632,8 +656,8 @@ function Invoke-IntegrationSuite {
         Add-Check -ID 'integration.task_start' -Status SKIPPED -ReasonCode 'registration_failed' -Category integration
     }
 
-    $removeFirst = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
-    $removeSecond = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+    $removeFirst = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+    $removeSecond = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
     $removeFirstOK = Add-IntegrationProcessCheck -ID 'integration.uninstall_first' -Result $removeFirst
     $removeSecondOK = Add-IntegrationProcessCheck -ID 'integration.uninstall_second' -Result $removeSecond
     $finalTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -1023,11 +1047,16 @@ function Invoke-OwnedCleanup {
                 $ok = $false
                 $sandboxRemovalSafe = $false
             } elseif ($null -ne $ownedTask -or $ownedPath) {
-                $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
-                $result = Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
-                if ($result.ExitCode -ne 0) {
+                if ($null -eq $script:ReleasePowerShell) {
                     $ok = $false
                     $sandboxRemovalSafe = $false
+                } else {
+                    $uninstall = Join-Path $script:Sandbox (Join-Path 'scripts' 'uninstall.ps1')
+                    $result = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
+                    if ($result.ExitCode -ne 0) {
+                        $ok = $false
+                        $sandboxRemovalSafe = $false
+                    }
                 }
             }
 
@@ -1091,6 +1120,7 @@ function Write-AllowlistReport {
         platform = [ordered]@{
             os = [Environment]::OSVersion.VersionString
             powershell = $PSVersionTable.PSVersion.ToString()
+            releaseScriptPowerShell = $(if ($script:ReleasePowerShell) { $script:ReleasePowerShell.Version } else { $null })
         }
         evidence = [ordered]@{
             automatic = 'reported_per_check'
@@ -1119,6 +1149,17 @@ try {
     $reportRoot = Resolve-ReportDirectory
     $preflight = Invoke-Timed { Test-PackagePreflight }
     Add-Check -ID 'preflight.package' -Status PASS -ReasonCode 'package_verified' -Category automatic -DurationMs $preflight.DurationMs
+
+    try {
+        $script:ReleasePowerShell = Resolve-ReleasePowerShell
+        Add-Check -ID 'preflight.release_host' -Status PASS -ReasonCode 'release_powershell_resolved' -Category automatic
+    } catch {
+        $reason = 'release_powershell_unavailable'
+        if ($_.Exception.Message -eq 'release_powershell_not_found') { $reason = 'release_powershell_not_found' }
+        if ($_.Exception.Message -eq 'unsupported_release_script_host') { $reason = 'unsupported_release_script_host' }
+        Add-Check -ID 'preflight.release_host' -Status BLOCKED -ReasonCode $reason -Category automatic
+        throw $_.Exception.Message
+    }
 
     if (-not (Remove-StaleSandboxes)) {
         Add-Check -ID 'preflight.stale_cleanup' -Status BLOCKED -ReasonCode 'stale_cleanup_required' -Category cleanup
@@ -1182,6 +1223,7 @@ $script:StatusLabels = @{
 }
 $script:CheckLabels = @{
     'preflight.package' = '验证测试包'
+    'preflight.release_host' = '解析正式发行脚本宿主'
     'preflight.stale_cleanup' = '检查并清理测试残留'
     'preflight.daemon' = '检查既有后台服务'
     'preflight.sandbox' = '创建一次性便携沙箱'
@@ -1215,6 +1257,9 @@ $script:CheckLabels = @{
 }
 $script:ReasonLabels = @{
     'package_verified' = '测试包内容与校验和已验证'
+    'release_powershell_resolved' = '已解析并验证系统 Windows PowerShell 5.1'
+    'release_powershell_not_found' = '未找到系统 Windows PowerShell 5.1'
+    'release_powershell_unavailable' = '无法解析正式发行脚本宿主'
     'no_owned_stale_state' = '不存在测试器拥有的残留状态'
     'stale_cleanup_required' = '残留状态无法安全清理，需要人工检查'
     'no_preexisting_daemon' = '运行前不存在 Sidravia 后台服务'

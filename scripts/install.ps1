@@ -1,4 +1,4 @@
-# Sidravia Windows 用户态集成安装脚本。
+﻿# Sidravia Windows 用户态集成安装脚本。
 #
 # 本脚本具备幂等性，可以安全地重复运行。它不区分安装模式，既适用于正式安装目录，
 # 也适用于便携目录；注册目标始终是本脚本所在目录的上级目录。
@@ -15,6 +15,15 @@ param(
     [string]$LogLevel = 'info'
 )
 $ErrorActionPreference = 'Stop'
+
+# 前置门：正式发行脚本只支持并验证 Windows PowerShell 5.1 Desktop。
+# 其他宿主在任何 PATH、任务或文件状态变化前以稳定机器码失败。
+if ($env:OS -ne 'Windows_NT' -or
+    $PSVersionTable.PSEdition -ne 'Desktop' -or
+    $PSVersionTable.PSVersion.Major -ne 5 -or
+    $PSVersionTable.PSVersion.Minor -ne 1) {
+    throw 'unsupported_release_script_host'
+}
 
 $TaskName = 'SidraviaDaemon'
 $InstallDir = Split-Path -Parent $PSScriptRoot

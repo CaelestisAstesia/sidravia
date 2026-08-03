@@ -38,7 +38,7 @@ Release 日期。
 - Dr.COM 5.2.0(D) Challenge、Login、保活和尽力 Logout；
 - Windows 与 Linux/WSL 的共享 domain core、IPC 和运行目录契约；
 - 安全结构化日志、稳定机器码和简体中文 CLI 呈现；
-- 可复现的普通/便携 Windows amd64 zip；
+- 可复现的 portable Release 与 field-validation Windows amd64 zip；
 - 随包官方 `jlu` Profile；
 - Windows 用户 PATH 与登录任务集成脚本。
 
@@ -94,38 +94,51 @@ schema 3 是唯一写出格式。严格 schema 2 文档仍可读取，默认
 
 ## Windows 包和用户态集成
 
-当前 `tools/build` 一次编译同一对 Windows amd64 二进制，生成普通包、便携包和外部
-`SHA256SUMS.txt`。两个 zip 都包含：
+当前 `tools/build` 一次编译同一对 Windows amd64 二进制，生成一个 portable Release zip、
+一个 field-validation zip 和外部 `SHA256SUMS.txt`。正式 Release 精确包含 10 个
+产品/首次使用文件：
 
 - `sidravia.exe` 与 `sidraviad.exe`；
+- `sidravia.portable` 便携标记；
 - `institution-profiles/jlu.json`；
-- `scripts/field-test.ps1` 与 `scripts/cli-smoke.ps1`；
 - `scripts/install.ps1` 与 `scripts/uninstall.ps1`；
-- `BUILD-INFO.txt`、`GETTING-STARTED.md`、`README.md`、`LICENSE` 和内部校验文件。
+- `GETTING-STARTED.md`、`BUILD-INFO.txt`、`LICENSE` 和内部 `SHA256SUMS`。
 
-只有便携包包含 `sidravia.portable`。构建工具不运行 Git，不签名、不上传、不创建 tag 或
-Release。
+Release 不携带开发者向根 `README.md`；包内 `GETTING-STARTED.md` 来自专用发布资产。
+field-validation zip 在相同内容上增加 `scripts/field-test.ps1` 与
+`scripts/cli-smoke.ps1`，用于 Windows 引导式实地验收。构建工具不运行 Git，不签名、
+不上传、不创建 tag 或 Release。
 
 Windows 用户可从解压目录运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+.\sidravia.exe --help
+.\sidravia.exe daemon status
 ```
 
-安装脚本把脚本所在目录加入用户 PATH，并创建登录任务 `SidraviaDaemon`，执行
-`sidravia daemon start --log-level <level>`。两个脚本模式无关、幂等并进行前后自校验。
-卸载只撤销 PATH 条目和登录任务，绝不删除 Configuration、凭据、Profile 或日志。产品中
-不存在 `sidravia install` / `sidravia uninstall` 命令。
+可选集成命令使用系统自带的 Windows PowerShell 5.1，不要求 PowerShell 7：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+```
+
+install 把脚本所在目录加入当前用户 PATH，并创建当前用户登录任务 `SidraviaDaemon`，
+执行 `sidravia daemon start --log-level <level>`。两个脚本只在 Windows PowerShell 5.1
+Desktop 下运行，模式无关、幂等并进行前后自校验。卸载只撤销 PATH 条目和登录任务，绝不
+删除 Configuration、凭据、Profile 或日志。产品中不存在 `sidravia install` /
+`sidravia uninstall` 命令。
 
 ## Windows 引导式实地验收
 
-两个 Windows 包都带有一次性实地验收入口。它在当前用户临时目录创建带随机标记的便携
-沙箱，复用完整 CLI smoke，并可在明确确认后测试校园认证、Session 生命周期、固定端口、
-心跳、Logout、自动登录/重连及 PATH/登录任务脚本：
+field-validation zip 带有一份一次性实地验收入口 `scripts\field-test.ps1`，需要
+PowerShell 7。它在当前用户临时目录创建带随机标记的便携沙箱，复用完整 CLI smoke，并可
+在明确确认后测试校园认证、Session 生命周期、固定端口、心跳、Logout、自动登录/重连及
+PATH/登录任务脚本。field-test 解析并预检系统 Windows PowerShell 5.1，用其执行正式
+install/uninstall，不使用 pwsh 调用正式发行脚本：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\field-test.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\field-test.ps1
 ```
 
 真实账号和隐藏密码每次运行时输入；密码只经 `--password-stdin` 交给 CLI，不进入 argv、

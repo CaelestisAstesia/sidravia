@@ -1,4 +1,4 @@
-# Sidravia Windows 用户态集成卸载脚本。
+﻿# Sidravia Windows 用户态集成卸载脚本。
 #
 # 本脚本具备幂等性，可以安全地重复运行。它只撤销 install.ps1 注册的当前用户 PATH
 # 条目和用户登录计划任务。脚本会在操作前后验证撤销状态，且绝不删除任何配置、
@@ -9,6 +9,15 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+
+# 前置门：正式发行脚本只支持并验证 Windows PowerShell 5.1 Desktop。
+# 其他宿主在任何 PATH、任务或文件状态变化前以稳定机器码失败。
+if ($env:OS -ne 'Windows_NT' -or
+    $PSVersionTable.PSEdition -ne 'Desktop' -or
+    $PSVersionTable.PSVersion.Major -ne 5 -or
+    $PSVersionTable.PSVersion.Minor -ne 1) {
+    throw 'unsupported_release_script_host'
+}
 
 $TaskName = 'SidraviaDaemon'
 $InstallDir = Split-Path -Parent $PSScriptRoot

@@ -71,13 +71,16 @@ OS 用户缓存目录。便携版由同目录普通 `sidravia.portable` marker �
 resolver 不读取当前工作目录，不按可写性猜模式，不扫描另一模式，也不自动复制、迁移或
 回退。`daemon status` 的路径解析严格只读。
 
-`tools/build` 是唯一规范构建入口。普通与便携 Windows amd64 包复用同一对二进制；两个
-zip 都携带官方 Profile 与 `scripts/install.ps1` / `scripts/uninstall.ps1`，仅便携包额外
-携带 marker。构建工具不拥有签名、tag、上传或 Release 权限。
+`tools/build` 是唯一规范构建入口。正式 Release 是 portable-only，精确携带 10 个
+产品/首次使用文件，不包含开发者向根 `README.md`；field-validation zip 在相同内容上
+增加现场验收工具（共 12 文件）。两者复用同一对二进制。构建工具不拥有签名、tag、上传
+或 Release 权限。
 
-PowerShell 脚本是 Windows 用户态部署单元：安装脚本管理用户 PATH 和登录任务
-`SidraviaDaemon`；卸载脚本只撤销这两项，永不删除数据。脚本模式无关、幂等并在前后验证
-状态。Go CLI 不提供 install/uninstall 命令。
+随包 PowerShell 脚本分为两个宿主：正式 `install.ps1` / `uninstall.ps1` 只支持并验证
+Windows PowerShell 5.1（Desktop），管理用户 PATH 与登录任务 `SidraviaDaemon`，卸载只
+撤销这两项、永不删除数据；`field-test.ps1` / `cli-smoke.ps1` 继续以 PowerShell 7 为
+宿主，field-test 只使用经预检的系统 Windows PowerShell 5.1 执行正式脚本。脚本模式无关、
+幂等并在前后验证状态。Go CLI 不提供 install/uninstall 命令。
 
 ## 状态所有权
 

@@ -13,20 +13,20 @@ Alpha.1 曾在一台 Windows 11 机器和吉林大学校园网完成认证、保
 
 `tools/build` 生成：
 
-- `sidravia-v<version>-windows-amd64.zip`；
-- `sidravia-v<version>-windows-amd64-portable.zip`；
+- `sidravia-v<version>-windows-amd64-portable.zip`（正式 portable Release）；
+- `sidravia-v<version>-windows-amd64-portable-field-validation.zip`（现场验收包）；
 - `SHA256SUMS.txt`。
 
-两个 zip 复用同一对二进制并包含：
+两个 zip 复用同一对二进制。正式 Release 精确包含 10 个产品/首次使用文件：
 
-- `sidravia.exe`、`sidraviad.exe`；
+- `sidravia.exe`、`sidraviad.exe` 与 `sidravia.portable`；
 - `institution-profiles\jlu.json`；
 - `scripts\install.ps1`、`scripts\uninstall.ps1`；
-- `BUILD-INFO.txt`、`GETTING-STARTED.md`、`README.md`、`LICENSE`；
-- 内部 `SHA256SUMS`。
+- `GETTING-STARTED.md`、`BUILD-INFO.txt`、`LICENSE` 与内部 `SHA256SUMS`。
 
-只有便携包包含 `sidravia.portable`。候选包可能未签名；必须从可信来源取得并核对外部
-SHA-256。
+Release 不携带开发者向根 `README.md`；包内 `GETTING-STARTED.md` 来自专用发布资产。
+field-validation zip 在相同内容上增加 `scripts\field-test.ps1` 与
+`scripts\cli-smoke.ps1`。候选包可能未签名；必须从可信来源取得并核对外部 SHA-256。
 
 ## 运行目录
 
@@ -164,12 +164,14 @@ D520 JLU Profile 使用独立 fixed `localPort=61440`；绑定失败不回退到
 
 ## 引导式实地验收
 
-解压当前候选包后，可以从包根运行随包脚本：
+解压当前候选包后，可以从包根运行随包脚本。`field-test.ps1` 需要 PowerShell 7：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\field-test.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\field-test.ps1
 ```
 
+field-test 会在任何状态变更前解析并预检系统 Windows PowerShell 5.1，并用它执行正式
+install/uninstall；缺失或版本不符时在状态变化前 BLOCKED，绝不回退到 pwsh 执行正式脚本。
 默认流程先校验包内二进制哈希，再在当前用户临时目录创建带随机标记的便携沙箱，运行完整
 CLI smoke。随后按提示选择是否临时验证当前用户 PATH/`SidraviaDaemon` 任务、校园认证、
 热点/网络转换，以及受保护的临时 Configuration 自动登录。可用参数：
@@ -201,17 +203,19 @@ Workflow 也不在该报告的证明范围。
 
 ## Windows 用户态集成
 
-建议把安装版解压到 `%LOCALAPPDATA%\Programs\Sidravia`，然后从解压目录运行：
+建议把便携包完整解压到固定普通用户可写目录，例如 `%LOCALAPPDATA%\Programs\Sidravia`，
+然后从解压目录运行。`install.ps1` / `uninstall.ps1` 只支持系统自带的
+Windows PowerShell 5.1（Desktop），不要求 PowerShell 7：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -LogLevel debug
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -LogLevel debug
 ```
 
-脚本注册它所在的目录，因此安装版和便携版都可使用。它：
+脚本注册它所在的目录。它是可选的用户态集成，不是 Installer。它：
 
 - 把目录加入用户 PATH；
-- 创建登录计划任务 `SidraviaDaemon`；
+- 创建当前用户登录计划任务 `SidraviaDaemon`；
 - 任务执行 `sidravia daemon start --log-level <level>`；
 - 执行前后验证 PATH 和任务动作；
 - 重复执行安全。
@@ -219,11 +223,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 -LogLe
 撤销集成：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
 uninstall 只移除精确 PATH 条目和登录任务，前后自校验；它绝不删除 Configuration、凭据、
-官方/调试 Profile 或日志。当前没有 Windows Service。
+官方/调试 Profile、日志或程序目录。移动或重命名解压目录前先运行 uninstall，移动后再对新
+目录重跑 install。彻底移除时先 `sidravia.exe daemon stop`，再 uninstall，最后删除整个
+解压目录（含运行后生成的 `config\`、`runtime\`、`logs\`）。当前没有 Windows Service。
 
 ## Mihomo/Clash-family TUN 排障
 

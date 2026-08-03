@@ -354,9 +354,8 @@ func verifyRepoInputs(root, artifact string) error {
 		dir  bool
 	}
 	checks := []inputCheck{
-		{"README.md", false},
 		{"LICENSE", false},
-		{"docs/getting-started-windows.md", false},
+		{"tools/build/assets/GETTING-STARTED.md", false},
 		{"internal/daemon/configuration/profiles/jlu.json", false},
 		{"scripts/install.ps1", false},
 		{"scripts/uninstall.ps1", false},
@@ -382,7 +381,24 @@ func verifyRepoInputs(root, artifact string) error {
 			return fmt.Errorf("repo input %s is not a %s", c.path, kind)
 		}
 	}
+
+	// Release scripts ship byte-for-byte with a UTF-8 BOM so Windows PowerShell
+	// 5.1 reads their UTF-8 content correctly. Reject before building.
+	for _, script := range []string{"scripts/install.ps1", "scripts/uninstall.ps1"} {
+		b, err := os.ReadFile(filepath.Join(root, script))
+		if err != nil {
+			return fmt.Errorf("read %s: %w", script, err)
+		}
+		if !hasUTF8BOM(b) {
+			return fmt.Errorf("release script %s must start with a UTF-8 BOM", script)
+		}
+	}
 	return nil
+}
+
+// hasUTF8BOM reports whether b starts with a UTF-8 byte order mark.
+func hasUTF8BOM(b []byte) bool {
+	return bytes.HasPrefix(b, []byte{0xEF, 0xBB, 0xBF})
 }
 
 func moduleIsSidravia(b []byte) bool {
@@ -608,17 +624,13 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	zipName := artifactFileName(version, artifact)
 	sumsName := "SHA256SUMS.txt"
 
-	readme, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
-	if err != nil {
-		return fmt.Errorf("read README.md: %w", err)
-	}
 	license, err := os.ReadFile(filepath.Join(repoRoot, "LICENSE"))
 	if err != nil {
 		return fmt.Errorf("read LICENSE: %w", err)
 	}
-	gettingStarted, err := os.ReadFile(filepath.Join(repoRoot, "docs", "getting-started-windows.md"))
+	gettingStarted, err := os.ReadFile(filepath.Join(repoRoot, "tools", "build", "assets", "GETTING-STARTED.md"))
 	if err != nil {
-		return fmt.Errorf("read docs/getting-started-windows.md: %w", err)
+		return fmt.Errorf("read tools/build/assets/GETTING-STARTED.md: %w", err)
 	}
 	profile, err := os.ReadFile(filepath.Join(repoRoot, "internal", "daemon", "configuration", "profiles", "jlu.json"))
 	if err != nil {
@@ -647,7 +659,7 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	internalSums := []byte(sha256Hex(cliBytes) + "  sidravia.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
-	entries := assembleEntries(artifact, readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
+	entries := assembleEntries(artifact, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, zipName), entries); err != nil {
 		return fmt.Errorf("write %s: %w", zipName, err)
 	}
@@ -663,12 +675,11 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	return nil
 }
 
-func assembleEntries(artifact string, readme, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
+func assembleEntries(artifact string, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
 	entries := []zipEntry{
 		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, artifact), 0o644},
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
 		{"LICENSE", license, 0o644},
-		{"README.md", readme, 0o644},
 		{"SHA256SUMS", internalSums, 0o644},
 		{"sidravia.exe", cliBytes, 0o755},
 		{"sidravia.portable", nil, 0o644},

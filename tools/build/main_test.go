@@ -33,11 +33,13 @@ func writeTestFile(t *testing.T, path, content string) {
 }
 
 // These representative scripts prove Release/validation content separation.
+// Release scripts carry a UTF-8 BOM; field-test/cli-smoke stay plain ASCII.
 const (
 	testFieldTestScript = "# field-test.ps1\n"
 	testCLISmokeScript  = "# cli-smoke.ps1\n"
-	testInstallScript   = "# install.ps1\n"
-	testUninstallScript = "# uninstall.ps1\n"
+	testInstallScript   = "\xEF\xBB\xBF# install.ps1\n"
+	testUninstallScript = "\xEF\xBB\xBF# uninstall.ps1\n"
+	testGettingStarted  = "# Sidravia package guide\n"
 )
 
 // testProfileJSON is a representative non-secret institution Profile the fake
@@ -78,9 +80,10 @@ func setupRepoRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "go.mod"), "module sidravia\n\ngo 1.26.4\n")
+	// README.md exists in the repo but must not be packaged by the builder.
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
-	writeTestFile(t, filepath.Join(root, "docs", "getting-started-windows.md"), "# Getting started\n")
+	writeTestFile(t, filepath.Join(root, "tools", "build", "assets", "GETTING-STARTED.md"), testGettingStarted)
 	writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json"), testProfileJSON)
 	writeTestFile(t, filepath.Join(root, "scripts", "field-test.ps1"), testFieldTestScript)
 	writeTestFile(t, filepath.Join(root, "scripts", "install.ps1"), testInstallScript)
@@ -440,7 +443,7 @@ func TestZipManifest(t *testing.T) {
 	cliBytes := []byte("FAKE-BINARY-./cmd/sidravia")
 	daemonBytes := []byte("FAKE-BINARY-./cmd/sidraviad")
 	baseExpected := []string{
-		"BUILD-INFO.txt", "GETTING-STARTED.md", "LICENSE", "README.md",
+		"BUILD-INFO.txt", "GETTING-STARTED.md", "LICENSE",
 		"SHA256SUMS", "institution-profiles/jlu.json", "scripts/install.ps1",
 		"scripts/uninstall.ps1", "sidravia.exe", "sidravia.portable", "sidraviad.exe",
 	}
@@ -513,14 +516,14 @@ func TestZipManifest(t *testing.T) {
 		if string(contents["BUILD-INFO.txt"]) != wantInfo {
 			t.Errorf("%s: BUILD-INFO = %q, want %q", tc.artifact, contents["BUILD-INFO.txt"], wantInfo)
 		}
-		if string(contents["README.md"]) != "# Sidravia readme\n" {
-			t.Errorf("%s: README.md wrong", tc.artifact)
+		if _, ok := contents["README.md"]; ok {
+			t.Errorf("%s: archive must not contain README.md", tc.artifact)
 		}
 		if string(contents["LICENSE"]) != "LICENSE TEXT\n" {
 			t.Errorf("%s: LICENSE wrong", tc.artifact)
 		}
-		if string(contents["GETTING-STARTED.md"]) != "# Getting started\n" {
-			t.Errorf("%s: GETTING-STARTED.md wrong", tc.artifact)
+		if string(contents["GETTING-STARTED.md"]) != testGettingStarted {
+			t.Errorf("%s: GETTING-STARTED.md must come from the dedicated package asset", tc.artifact)
 		}
 		if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
 			t.Errorf("%s: profile wrong", tc.artifact)
@@ -717,6 +720,60 @@ func TestFieldToolsAreOnlyValidationInputs(t *testing.T) {
 				t.Errorf("validation output created")
 			}
 		})
+	}
+}
+
+// 8b. release scripts without a UTF-8 BOM are rejected before any build.
+func TestReleaseScriptsRequireBOM(t *testing.T) {
+	for _, script := range []string{"scripts/install.ps1", "scripts/uninstall.ps1"} {
+		t.Run(script, func(t *testing.T) {
+			root := setupRepoRoot(t)
+			// Rewrite without the UTF-8 BOM.
+			raw := []byte("# " + filepath.Base(script) + "\n")
+			if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(script)), raw, 0o644); err != nil {
+				t.Fatalf("rewrite: %v", err)
+			}
+			out := filepath.Join(t.TempDir(), "dist")
+			fb := &fakeBuilder{}
+			tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
+			err := tt.execute(io.Discard, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), "BOM") {
+				t.Fatalf("expected BOM error, got %v", err)
+			}
+			if len(fb.calls) != 0 {
+				t.Errorf("build called %d times", len(fb.calls))
+			}
+			if _, statErr := os.Lstat(out); !os.IsNotExist(statErr) {
+				t.Errorf("output created")
+			}
+		})
+	}
+}
+
+// 8c. shipped script bytes in the zip equal the on-disk source bytes exactly.
+func TestZipScriptBytesMatchSource(t *testing.T) {
+	version := "0.1.0-alpha.2"
+	root := setupRepoRoot(t)
+	out := filepath.Join(t.TempDir(), "dist")
+	cfg := config{version: version, buildID: "buildid123", output: out, goBin: "go", artifact: "field-validation"}
+	if err := newFakeTool(cfg, root, &fakeBuilder{}).execute(io.Discard, io.Discard); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	contents := readZipContents(t, filepath.Join(out, fieldValidationName(version)))
+	sourceMap := map[string]string{
+		"scripts/install.ps1":    "scripts/install.ps1",
+		"scripts/uninstall.ps1":  "scripts/uninstall.ps1",
+		"scripts/field-test.ps1": "scripts/field-test.ps1",
+		"scripts/cli-smoke.ps1":  "tools/cli_smoke.ps1",
+	}
+	for zipName, source := range sourceMap {
+		onDisk, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(source)))
+		if err != nil {
+			t.Fatalf("read source %s: %v", source, err)
+		}
+		if !bytes.Equal(contents[zipName], onDisk) {
+			t.Errorf("zip entry %s differs from source %s bytes", zipName, source)
+		}
 	}
 }
 
