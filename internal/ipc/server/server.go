@@ -78,8 +78,10 @@ var allowedErrorCodes = map[string]struct{}{
 	contract.ErrorCodeProfileOperationFailed:              {},
 	contract.ErrorCodeSessionOperationFailed:              {},
 	contract.ErrorCodeConfigurationNotFound:               {},
+	contract.ErrorCodeConfigurationConflict:               {},
 	contract.ErrorCodeConfigurationOperationFailed:        {},
 	contract.ErrorCodeInsecureStorageConfirmationRequired: {},
+	contract.ErrorCodeConfigurationAutoLoginConflict:      {},
 }
 
 type Server struct {

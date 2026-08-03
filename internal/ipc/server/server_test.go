@@ -42,8 +42,10 @@ func TestNormalizeConfigurationMethodsAndErrors(t *testing.T) {
 	}
 	for _, code := range []string{
 		contract.ErrorCodeConfigurationNotFound,
+		contract.ErrorCodeConfigurationConflict,
 		contract.ErrorCodeConfigurationOperationFailed,
 		contract.ErrorCodeInsecureStorageConfirmationRequired,
+		contract.ErrorCodeConfigurationAutoLoginConflict,
 	} {
 		if got := normalizeErrorCode(code); got != code {
 			t.Fatalf("normalizeErrorCode(%q) = %q", code, got)
@@ -57,18 +59,21 @@ func TestNormalizeConfigurationMethodsAndErrors(t *testing.T) {
 
 func TestConfigurationRequestsLogOnlyAllowlistedMethodAndCode(t *testing.T) {
 	for _, tc := range []struct {
+		name   string
 		method string
 		code   string
 	}{
-		{contract.MethodConfigurationList, contract.ErrorCodeConfigurationOperationFailed},
-		{contract.MethodConfigurationGet, contract.ErrorCodeConfigurationNotFound},
-		{contract.MethodConfigurationCreate, contract.ErrorCodeInsecureStorageConfirmationRequired},
-		{contract.MethodConfigurationUpdate, contract.ErrorCodeConfigurationOperationFailed},
-		{contract.MethodConfigurationSetPassword, contract.ErrorCodeInsecureStorageConfirmationRequired},
-		{contract.MethodConfigurationRemove, contract.ErrorCodeConfigurationNotFound},
-		{contract.MethodSessionStartConfiguration, contract.ErrorCodeSessionOperationFailed},
+		{"list operation failure", contract.MethodConfigurationList, contract.ErrorCodeConfigurationOperationFailed},
+		{"get not found", contract.MethodConfigurationGet, contract.ErrorCodeConfigurationNotFound},
+		{"create conflict", contract.MethodConfigurationCreate, contract.ErrorCodeConfigurationConflict},
+		{"create insecure storage confirmation", contract.MethodConfigurationCreate, contract.ErrorCodeInsecureStorageConfirmationRequired},
+		{"update auto login conflict", contract.MethodConfigurationUpdate, contract.ErrorCodeConfigurationAutoLoginConflict},
+		{"update operation failure", contract.MethodConfigurationUpdate, contract.ErrorCodeConfigurationOperationFailed},
+		{"set password insecure storage confirmation", contract.MethodConfigurationSetPassword, contract.ErrorCodeInsecureStorageConfirmationRequired},
+		{"remove not found", contract.MethodConfigurationRemove, contract.ErrorCodeConfigurationNotFound},
+		{"start configuration session operation failure", contract.MethodSessionStartConfiguration, contract.ErrorCodeSessionOperationFailed},
 	} {
-		t.Run(tc.method, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			var buf safeBuffer
 			const (
 				requestIDMarker = "private-request-id-marker"
