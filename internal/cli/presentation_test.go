@@ -114,6 +114,7 @@ func TestStateReasonMappings(t *testing.T) {
 		"protocol_run_creation_failed":   "无法创建认证协议运行",
 		"protocol_run_failed":            "认证协议运行失败",
 		"protocol_contract_violated":     "认证协议违反内部契约",
+		"automatic_reconnect_disabled":   "自动重连已关闭",
 	}
 	for code, want := range cases {
 		if got := sessionStateReasonText(code); got != want {
@@ -122,6 +123,34 @@ func TestStateReasonMappings(t *testing.T) {
 	}
 	if got := sessionStateReasonText("bogus"); got != "未知原因" {
 		t.Errorf("unknown reason = %q, want plain fallback", got)
+	}
+}
+
+func TestSessionDetailExplainsAutoReconnectDisabled(t *testing.T) {
+	result := minimalSessionResult("blocked_by_error")
+	result.StateReason = &contract.SessionStateReason{Code: "automatic_reconnect_disabled"}
+	result.LastAuthenticationFailure = &contract.SessionAuthenticationFailure{
+		Code:                   "network_timeout",
+		HandlingRecommendation: "block_until_explicit_restart_or_relevant_input_change",
+	}
+
+	var output bytes.Buffer
+	if err := writeSessionResult(&output, result); err != nil {
+		t.Fatalf("writeSessionResult = %v", err)
+	}
+	got := output.String()
+	for _, want := range []string{
+		"原因：自动重连已关闭（automatic_reconnect_disabled）",
+		"处理建议：请检查账号、机构配置和网络后停止并重新启动该 Session（block_until_explicit_restart_or_relevant_input_change）",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q: %q", want, got)
+		}
+	}
+	for _, unwanted := range []string{"将自动稍后重试", "延长等待后重试"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("output contains stale retry guidance %q: %q", unwanted, got)
+		}
 	}
 }
 

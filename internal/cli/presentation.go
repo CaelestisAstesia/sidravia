@@ -217,6 +217,8 @@ func sessionStateReasonText(code string) string {
 		return "认证协议运行失败"
 	case "protocol_contract_violated":
 		return "认证协议违反内部契约"
+	case "automatic_reconnect_disabled":
+		return "自动重连已关闭"
 	default:
 		return "未知原因"
 	}

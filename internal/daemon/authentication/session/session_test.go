@@ -1266,37 +1266,63 @@ func TestSessionDiagnosticsRecordsCommandAndGeneration(t *testing.T) {
 }
 
 func TestSessionAutoReconnectFalseBlocksOnRetryableFailure(t *testing.T) {
-	now := time.Unix(100, 0)
-	policy := standardRetryPolicy()
-	scheduler := &manualRetryScheduler{}
-	factory := &controlledFactory{}
-	definition := validRuntimeDefinition(t)
-	definition.AuthenticationProtocolFactory = factory
-	definition.AutoReconnect = false
-	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-		Now:            func() time.Time { return now },
-		RetryPolicy:    policy,
-		RetryScheduler: scheduler,
-	})
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	session.Start()
-	defer shutdownTestSession(t, session)
+	for _, tc := range []struct {
+		name           string
+		code           protocol.AuthenticationProtocolFailureCode
+		description    string
+		recommendation protocol.AuthenticationProtocolFailureHandlingRecommendation
+	}{
+		{"standard", "network_timeout", "Network operation timed out.", protocol.RetryAfterStandardDelay},
+		{"extended", "server_busy", "The authentication server reported busy.", protocol.RetryAfterExtendedDelay},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Unix(100, 0)
+			policy := standardRetryPolicy()
+			scheduler := &manualRetryScheduler{}
+			factory := &controlledFactory{}
+			definition := validRuntimeDefinition(t)
+			definition.AuthenticationProtocolFactory = factory
+			definition.AutoReconnect = false
+			session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+				Now:            func() time.Time { return now },
+				RetryPolicy:    policy,
+				RetryScheduler: scheduler,
+			})
+			if err != nil {
+				t.Fatalf("NewAuthenticationSession() error = %v", err)
+			}
+			session.Start()
+			defer shutdownTestSession(t, session)
 
-	ctx := testContext(t)
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
-	factory.run(0).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay})
+			ctx := testContext(t)
+			_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+			failure := &protocol.AuthenticationProtocolRunFailure{
+				Code:                   tc.code,
+				Description:            tc.description,
+				HandlingRecommendation: tc.recommendation,
+			}
+			factory.run(0).unblock(failure)
 
-	snapshot := waitForState(t, ctx, session, BlockedByError)
-	if snapshot.StateReason == nil || snapshot.StateReason.Code != StateReasonCodeAutomaticReconnectDisabled {
-		t.Fatalf("state reason = %#v, want %s", snapshot.StateReason, StateReasonCodeAutomaticReconnectDisabled)
-	}
-	if snapshot.NextRetryAt != nil {
-		t.Fatalf("NextRetryAt = %v, want nil", snapshot.NextRetryAt)
-	}
-	if scheduler.count() != 0 {
-		t.Fatalf("scheduler count = %d, want 0", scheduler.count())
+			snapshot := waitForState(t, ctx, session, BlockedByError)
+			if snapshot.StateReason == nil || snapshot.StateReason.Code != StateReasonCodeAutomaticReconnectDisabled {
+				t.Fatalf("state reason = %#v, want %s", snapshot.StateReason, StateReasonCodeAutomaticReconnectDisabled)
+			}
+			if snapshot.LastAuthenticationFailure == nil ||
+				snapshot.LastAuthenticationFailure.Code != tc.code ||
+				snapshot.LastAuthenticationFailure.Description != tc.description ||
+				snapshot.LastAuthenticationFailure.HandlingRecommendation != protocol.BlockUntilExplicitRestartOrRelevantInputChange {
+				t.Fatalf("public failure = %#v", snapshot.LastAuthenticationFailure)
+			}
+			if failure.HandlingRecommendation != tc.recommendation {
+				t.Fatalf("protocol failure recommendation = %q, want %q", failure.HandlingRecommendation, tc.recommendation)
+			}
+			if snapshot.NextRetryAt != nil {
+				t.Fatalf("NextRetryAt = %v, want nil", snapshot.NextRetryAt)
+			}
+			if scheduler.count() != 0 {
+				t.Fatalf("scheduler count = %d, want 0", scheduler.count())
+			}
+		})
 	}
 }
 

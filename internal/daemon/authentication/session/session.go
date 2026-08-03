@@ -883,17 +883,32 @@ func (session *AuthenticationSession) blockForAutomaticReconnectDisabled(failure
 		snapshot.AuthenticationEstablishedAt = nil
 		snapshot.NextRetryAt = nil
 		if failure != nil {
-			snapshot.LastAuthenticationFailure = session.publicFailure(failure)
+			snapshot.LastAuthenticationFailure = session.publicFailureWithRecommendation(
+				failure,
+				protocol.BlockUntilExplicitRestartOrRelevantInputChange,
+			)
 		}
 	})
 }
 
+// publicFailure projects a protocol failure using its recommendation when the
+// Session applies that recommendation unchanged.
 func (session *AuthenticationSession) publicFailure(failure *protocol.AuthenticationProtocolRunFailure) *AuthenticationFailure {
+	return session.publicFailureWithRecommendation(failure, failure.HandlingRecommendation)
+}
+
+// publicFailureWithRecommendation projects the safe protocol failure code and
+// description together with the effective recommendation selected by Session
+// policy. The input protocol failure remains unchanged for Session decisions.
+func (session *AuthenticationSession) publicFailureWithRecommendation(
+	failure *protocol.AuthenticationProtocolRunFailure,
+	recommendation protocol.AuthenticationProtocolFailureHandlingRecommendation,
+) *AuthenticationFailure {
 	forbidden := session.publicFailureForbiddenMaterial(failure)
 	return &AuthenticationFailure{
 		Code:                   protocol.AuthenticationProtocolFailureCode(safePublicFailureCode(string(failure.Code), forbidden)),
 		Description:            safePublicFailureDescription(failure.Description, forbidden),
-		HandlingRecommendation: safePublicFailureRecommendation(failure.HandlingRecommendation, forbidden),
+		HandlingRecommendation: safePublicFailureRecommendation(recommendation, forbidden),
 	}
 }
 
