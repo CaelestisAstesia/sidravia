@@ -237,8 +237,11 @@ def run_go_checks(
     diff_check = Check(argv=["git", "diff", "--check"])
     results.append(run_and_print(diff_check, repo_root, base_env))
 
-    # 6-7. Two Windows amd64 cross-builds
-    for binary_name, cmd_path in [("sidravia.exe", "./cmd/sidravia"), ("sidraviad.exe", "./cmd/sidraviad")]:
+    # 6-7. Two Windows amd64 production cross-builds
+    for binary_name, cmd_path in [
+        ("sidravia.exe", "./cmd/sidravia"),
+        ("sidraviad.exe", "./cmd/sidraviad"),
+    ]:
         build_check = Check(
             argv=[go_executable, "build", "-o", str(build_dir / binary_name), cmd_path],
             env={
@@ -248,6 +251,50 @@ def run_go_checks(
             },
         )
         results.append(run_and_print(build_check, repo_root, base_env))
+
+    # 8-13. Cross-compile platform-specific test packages. The resulting
+    # binaries are only compiler evidence; native execution stays in hosted CI.
+    platform_test_packages = [
+        ("windows", "windows-amd64-internal-cli.test.exe", "./internal/cli"),
+        (
+            "windows",
+            "windows-amd64-internal-daemon-environment.test.exe",
+            "./internal/daemon/environment",
+        ),
+        (
+            "windows",
+            "windows-amd64-internal-daemon-persistence-jsonfile.test.exe",
+            "./internal/daemon/persistence/jsonfile",
+        ),
+        ("darwin", "darwin-amd64-internal-cli.test", "./internal/cli"),
+        (
+            "darwin",
+            "darwin-amd64-internal-daemon-environment.test",
+            "./internal/daemon/environment",
+        ),
+        (
+            "darwin",
+            "darwin-amd64-internal-daemon-host.test",
+            "./internal/daemon/host",
+        ),
+    ]
+    for goos, binary_name, package_path in platform_test_packages:
+        test_compile_check = Check(
+            argv=[
+                go_executable,
+                "test",
+                "-c",
+                "-o",
+                str(build_dir / binary_name),
+                package_path,
+            ],
+            env={
+                "GOOS": goos,
+                "GOARCH": "amd64",
+                "CGO_ENABLED": "0",
+            },
+        )
+        results.append(run_and_print(test_compile_check, repo_root, base_env))
 
     return results
 
@@ -286,6 +333,24 @@ def build_python_checks(
         Check(
             argv=[sys.executable, "-m", "unittest", "discover", "-s", str(wda_tests), "-v"],
             env=env,
+        )
+    )
+
+    # Verifier unit tests run as a public repository check. They import the
+    # module directly, so this does not recursively invoke the verifier.
+    verifier_tests = repo_root / "tools" / "developer" / "tests"
+    checks.append(
+        Check(
+            argv=[
+                sys.executable,
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                str(verifier_tests),
+                "-v",
+            ],
+            env=dict(base_env),
         )
     )
 
