@@ -565,6 +565,44 @@ func TestSessionListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 	}
 }
 
+func TestSessionListDiagnosticGuidanceSanitizesSessionIDAndSkipsUnknownState(t *testing.T) {
+	result := contract.SessionListResult{Sessions: []contract.SessionResult{
+		{
+			AuthenticationSessionID: "blocked\x1b[2J\ninjected",
+			InstitutionProfileID:    "jlu",
+			InstitutionDisplayName:  "吉林大学",
+			AccountName:             "alice",
+			State:                   "blocked_by_error",
+			UpdatedAt:               "2026-08-03T10:00:00+08:00",
+		},
+		{
+			AuthenticationSessionID: "unknown-session",
+			InstitutionProfileID:    "jlu",
+			InstitutionDisplayName:  "吉林大学",
+			AccountName:             "bob",
+			State:                   "unknown_state",
+			UpdatedAt:               "2026-08-03T10:01:00+08:00",
+		},
+	}}
+	var output bytes.Buffer
+	if err := writeSessionList(&output, result); err != nil {
+		t.Fatalf("writeSessionList = %v", err)
+	}
+	got := output.String()
+	if strings.ContainsRune(got, '\x1b') {
+		t.Errorf("diagnostic guidance contains ESC: %q", got)
+	}
+	if strings.Count(got, "\n") != 4 {
+		t.Errorf("diagnostic guidance allowed an extra dynamic line: %q", got)
+	}
+	if !strings.Contains(got, "  查看详情：sidravia auth status blocked�[2J�injected\n") {
+		t.Errorf("blocked Session guidance missing or unsanitized: %q", got)
+	}
+	if strings.Contains(got, "sidravia auth status unknown-session") {
+		t.Errorf("unknown state received diagnostic guidance: %q", got)
+	}
+}
+
 func TestProfileListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 	result := &contract.ProfileListResult{Profiles: []contract.ProfileSummaryResult{{
 		InstitutionProfileID:     "jlu",

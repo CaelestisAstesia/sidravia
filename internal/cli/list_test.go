@@ -82,6 +82,70 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 	}
 }
 
+func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
+	result := contract.SessionListResult{Sessions: []contract.SessionResult{
+		{
+			AuthenticationSessionID:  "session-blocked",
+			InstitutionProfileID:     "jlu",
+			InstitutionDisplayName:   "吉林大学",
+			AuthenticationProtocolID: "drcom-5.2.0-d",
+			AccountName:              "alice",
+			State:                    "blocked_by_error",
+			UpdatedAt:                "2026-08-03T10:00:00+08:00",
+		},
+		{
+			AuthenticationSessionID:  "session-retrying",
+			InstitutionProfileID:     "jlu",
+			InstitutionDisplayName:   "吉林大学",
+			AuthenticationProtocolID: "drcom-5.2.0-d",
+			AccountName:              "bob",
+			State:                    "waiting_before_retry",
+			UpdatedAt:                "2026-08-03T10:01:00+08:00",
+		},
+		{
+			AuthenticationSessionID:  "session-normal",
+			InstitutionProfileID:     "jlu",
+			InstitutionDisplayName:   "吉林大学",
+			AuthenticationProtocolID: "drcom-5.2.0-d",
+			AccountName:              "carol",
+			State:                    "authenticated",
+			UpdatedAt:                "2026-08-03T10:02:00+08:00",
+		},
+	}}
+	data, err := contract.MarshalSessionListResult(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		if method != contract.MethodSessionList {
+			t.Errorf("method = %q, want %q", method, contract.MethodSessionList)
+		}
+		if string(payload) != `{}` {
+			t.Errorf("payload = %s, want {}", payload)
+		}
+		return contract.NewSuccessResponse("1", data), nil
+	}}
+	var output bytes.Buffer
+	if err := runAuthList(hotListDependencies(t, connection, &output)); err != nil {
+		t.Fatalf("runAuthList = %v", err)
+	}
+	got := output.String()
+	for _, command := range []string{
+		"  查看详情：sidravia auth status session-blocked\n",
+		"  查看详情：sidravia auth status session-retrying\n",
+	} {
+		if strings.Count(got, command) != 1 {
+			t.Errorf("status command count for %q = %d, output = %q", command, strings.Count(got, command), got)
+		}
+	}
+	if strings.Contains(got, "sidravia auth status session-normal") {
+		t.Errorf("normal Session received a status command: %q", got)
+	}
+	if connection.callCount != 1 || connection.closeCount != 1 {
+		t.Errorf("calls/close = %d/%d, want 1/1", connection.callCount, connection.closeCount)
+	}
+}
+
 func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 	t.Run("profiles", func(t *testing.T) {
 		data, _ := contract.MarshalProfileListResult(contract.ProfileListResult{Profiles: []contract.ProfileSummaryResult{{

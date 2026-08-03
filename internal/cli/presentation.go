@@ -500,6 +500,11 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 		b.WriteString(p.label("更新时间："))
 		b.WriteString(sanitizeDynamicText(session.UpdatedAt))
 		b.WriteString("\n")
+		if session.State == "blocked_by_error" || session.State == "waiting_before_retry" {
+			b.WriteString("  查看详情：sidravia auth status ")
+			b.WriteString(sanitizeDynamicText(session.AuthenticationSessionID))
+			b.WriteString("\n")
+		}
 	}
 	return b.String()
 }
