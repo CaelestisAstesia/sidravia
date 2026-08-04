@@ -90,6 +90,18 @@ try {
 
     Assert-True ((Invoke-Release -Directory $b -Script 'install.ps1').ExitCode -eq 0) 'B install failed'
     Capture-FixtureRootTask
+    $replacementDefinition = New-TaskDefinition -Executable (Join-Path $a 'sidravia.exe') -Arguments 'daemon start --log-level info'
+    Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -InputObject $replacementDefinition -Force | Out-Null
+    $replacementXML = Export-ScheduledTask -TaskName $taskName -TaskPath $taskPath
+    Remove-FixtureRootTask
+    Assert-True ($null -ne (Get-RootTask)) 'foreign replacement was removed by fixture cleanup'
+    Assert-True ((Export-ScheduledTask -TaskName $taskName -TaskPath $taskPath) -ceq $replacementXML) 'foreign replacement XML changed by fixture cleanup'
+    $currentReplacementXML = Export-ScheduledTask -TaskName $taskName -TaskPath $taskPath
+    Assert-True ($currentReplacementXML -ceq $replacementXML) 'foreign replacement changed before exact cleanup'
+    Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false
+    Assert-True ($null -eq (Get-RootTask)) 'foreign replacement cleanup failed'
+    Assert-True ((Invoke-Release -Directory $b -Script 'install.ps1').ExitCode -eq 0) 'B reinstall after foreign replacement failed'
+    Capture-FixtureRootTask
     Assert-ConflictNoMutation -Directory $a -Case 'old A uninstall against B ownership'
     $cases = @(
         [pscustomobject]@{ Name = 'wrong executable'; Definition = (New-TaskDefinition -Executable (Join-Path $a 'sidravia.exe') -Arguments 'daemon start --log-level info') },
