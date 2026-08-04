@@ -61,6 +61,22 @@ function ConvertTo-SIDValue {
     }
 }
 
+function Get-SidraviaTaskOwnership {
+    param([object]$Task, [string]$InstallDirectory, [string]$UserSID)
+    if ($null -eq $Task) { return 'absent' }
+    if ($Task.TaskPath -ne '\' -or $Task.TaskName -ne $TaskName -or
+        $Task.Actions.Count -ne 1 -or $Task.Triggers.Count -ne 1) { return 'conflict' }
+    $expectedExecutable = [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'sidravia.exe'))
+    try { $actualExecutable = [IO.Path]::GetFullPath([string]$Task.Actions[0].Execute) } catch { return 'conflict' }
+    $principalSID = ConvertTo-SIDValue -Identity ([string]$Task.Principal.UserId)
+    $triggerSID = ConvertTo-SIDValue -Identity ([string]$Task.Triggers[0].UserId)
+    if (-not $actualExecutable.Equals($expectedExecutable, [StringComparison]::OrdinalIgnoreCase) -or
+        [string]$Task.Actions[0].Arguments -notin @('daemon start --log-level info', 'daemon start --log-level debug', 'daemon start --log-level trace') -or
+        $principalSID -ne $UserSID -or $triggerSID -ne $UserSID -or
+        [string]$Task.Principal.LogonType -ne 'Interactive' -or [string]$Task.Principal.RunLevel -ne 'Limited') { return 'conflict' }
+    return 'owned'
+}
+
 function New-SidraviaLogonTaskDefinition {
     param(
         [string]$InstallDirectory,
@@ -95,8 +111,10 @@ if (-not $CurrentUserSID) {
 # 操作前：记录当前状态。
 $BeforePath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $PathPresent = Test-PathEntry -PathValue $BeforePath -Entry $InstallDir
-$BeforeTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-$TaskPresent = ($null -ne $BeforeTask)
+$BeforeTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+$TaskOwnership = Get-SidraviaTaskOwnership -Task $BeforeTask -InstallDirectory $InstallDir -UserSID $CurrentUserSID
+if ($TaskOwnership -eq 'conflict') { throw 'scheduled_task_conflict' }
+$TaskPresent = ($TaskOwnership -eq 'owned')
 
 # 1）当前用户 PATH：精确匹配、不区分大小写、幂等。
 if (-not $PathPresent) {
@@ -107,7 +125,7 @@ if (-not $PathPresent) {
 # 2）用户登录计划任务：幂等替换。
 $Definition = New-SidraviaLogonTaskDefinition -InstallDirectory $InstallDir -LogLevel $LogLevel -UserSID $CurrentUserSID
 try {
-    Register-ScheduledTask -TaskName $TaskName -InputObject $Definition -Force | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -InputObject $Definition -Force | Out-Null
 } catch {
     throw [InvalidOperationException]::new('scheduled_task_registration_failed：注册 SidraviaDaemon 计划任务失败', $_.Exception)
 }
@@ -117,16 +135,15 @@ $AfterPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (-not (Test-PathEntry -PathValue $AfterPath -Entry $InstallDir)) {
     throw '验证失败：安装目录未加入当前用户 PATH'
 }
-$AfterTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$AfterTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
 if ($null -eq $AfterTask) {
     throw "验证失败：计划任务 $TaskName 不存在"
 }
 if ($AfterTask.Actions.Count -ne 1) {
     throw '验证失败：计划任务动作不匹配'
 }
-$AfterLeaf = Split-Path -Leaf $AfterTask.Actions[0].Execute
-$AfterArgs = $AfterTask.Actions[0].Arguments
-if ($AfterLeaf -ne 'sidravia.exe' -or $AfterArgs -ne "daemon start --log-level $LogLevel") {
+$AfterOwnership = Get-SidraviaTaskOwnership -Task $AfterTask -InstallDirectory $InstallDir -UserSID $CurrentUserSID
+if ($AfterOwnership -ne 'owned' -or $AfterTask.Actions[0].Arguments -ne "daemon start --log-level $LogLevel") {
     throw '验证失败：计划任务动作不匹配'
 }
 $AfterPrincipalSID = ConvertTo-SIDValue -Identity ([string]$AfterTask.Principal.UserId)

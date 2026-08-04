@@ -365,7 +365,7 @@ function ConvertTo-SIDValue {
 }
 
 function Get-SandboxTask {
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $task = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
     if ($null -eq $task) { return $null }
     if ($task.Actions.Count -ne 1) { return $null }
     if ($task.Triggers.Count -ne 1) { return $null }
@@ -383,10 +383,10 @@ function Get-SandboxTask {
     if ($principalSID -ne $currentUserSID -or $triggerSID -ne $currentUserSID) { return $null }
     if ([string]$task.Principal.LogonType -ne 'Interactive' -or
         [string]$task.Principal.RunLevel -ne 'Limited') { return $null }
-    $expected = Join-Path $script:Sandbox 'sidravia.exe'
+    $expected = [IO.Path]::GetFullPath((Join-Path $script:Sandbox 'sidravia.exe'))
     $actual = [IO.Path]::GetFullPath($task.Actions[0].Execute)
     if (-not $actual.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) { return $null }
-    if ($task.Actions[0].Arguments -ne 'daemon start --log-level info') { return $null }
+    if ($task.Actions[0].Arguments -notin @('daemon start --log-level info', 'daemon start --log-level debug', 'daemon start --log-level trace')) { return $null }
     return $task
 }
 
@@ -608,7 +608,7 @@ function Invoke-IntegrationSuite {
     }
 
     $beforePath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $beforeTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $beforeTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
     if ((Test-PathEntry -PathValue $beforePath -Entry $script:Sandbox) -or $null -ne $beforeTask) {
         Add-Check -ID 'integration.user_mode' -Status BLOCKED -ReasonCode 'preexisting_integration_state' -Category integration
         return
@@ -639,7 +639,7 @@ function Invoke-IntegrationSuite {
     $taskStartCommandFailed = $false
     if ($null -ne $task -and $pathPresent) {
         try {
-            Start-ScheduledTask -TaskName $TaskName
+            Start-ScheduledTask -TaskName $TaskName -TaskPath '\'
             $taskStarted = Wait-DaemonRunning -TimeoutSeconds 15
         } catch {
             $taskStartCommandFailed = $true
@@ -660,7 +660,7 @@ function Invoke-IntegrationSuite {
     $removeSecond = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
     $removeFirstOK = Add-IntegrationProcessCheck -ID 'integration.uninstall_first' -Result $removeFirst
     $removeSecondOK = Add-IntegrationProcessCheck -ID 'integration.uninstall_second' -Result $removeSecond
-    $finalTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $finalTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
     $finalPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
     if (-not $finalPath) {
         Add-Check -ID 'integration.path_revoked' -Status PASS -ReasonCode 'path_absent' -Category integration
@@ -1040,7 +1040,7 @@ function Invoke-OwnedCleanup {
 
     if ($script:IntegrationOwned -and $script:Sandbox) {
         try {
-            $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            $task = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
             $ownedTask = Get-SandboxTask
             $ownedPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
             if ($null -ne $task -and $null -eq $ownedTask) {
@@ -1060,7 +1060,7 @@ function Invoke-OwnedCleanup {
                 }
             }
 
-            $remainingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            $remainingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
             $remainingPath = Test-PathEntry -PathValue ([Environment]::GetEnvironmentVariable('Path', 'User')) -Entry $script:Sandbox
             if ($null -eq $remainingTask -and -not $remainingPath) {
                 $script:IntegrationOwned = $false

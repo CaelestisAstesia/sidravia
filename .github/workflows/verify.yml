@@ -32,3 +32,7 @@ jobs:
           python-version: '3.14.4'
       - name: Run public repository verifier
         run: python tools/developer/verify_repository.py --scope ${{ matrix.scope }} --go go
+      - name: Verify release scheduled-task ownership
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_release_task_ownership.ps1

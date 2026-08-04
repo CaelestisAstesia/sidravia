@@ -48,11 +48,39 @@ function Remove-PathEntry {
     return $PathValue
 }
 
+function ConvertTo-SIDValue {
+    param([string]$Identity)
+    if ([string]::IsNullOrWhiteSpace($Identity)) { return $null }
+    try { return ([Security.Principal.SecurityIdentifier]::new($Identity)).Value } catch {}
+    try { return ([Security.Principal.NTAccount]::new($Identity).Translate([Security.Principal.SecurityIdentifier])).Value } catch { return $null }
+}
+
+function Get-SidraviaTaskOwnership {
+    param([object]$Task, [string]$InstallDirectory, [string]$UserSID)
+    if ($null -eq $Task) { return 'absent' }
+    if ($Task.TaskPath -ne '\' -or $Task.TaskName -ne $TaskName -or $Task.Actions.Count -ne 1 -or $Task.Triggers.Count -ne 1) { return 'conflict' }
+    $expectedExecutable = [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'sidravia.exe'))
+    try { $actualExecutable = [IO.Path]::GetFullPath([string]$Task.Actions[0].Execute) } catch { return 'conflict' }
+    $principalSID = ConvertTo-SIDValue -Identity ([string]$Task.Principal.UserId)
+    $triggerSID = ConvertTo-SIDValue -Identity ([string]$Task.Triggers[0].UserId)
+    if (-not $actualExecutable.Equals($expectedExecutable, [StringComparison]::OrdinalIgnoreCase) -or
+        [string]$Task.Actions[0].Arguments -notin @('daemon start --log-level info', 'daemon start --log-level debug', 'daemon start --log-level trace') -or
+        $principalSID -ne $UserSID -or $triggerSID -ne $UserSID -or
+        [string]$Task.Principal.LogonType -ne 'Interactive' -or [string]$Task.Principal.RunLevel -ne 'Limited') { return 'conflict' }
+    return 'owned'
+}
+
+$CurrentUserSID = $null
+try { $CurrentUserSID = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch {}
+if (-not $CurrentUserSID) { throw 'current_user_sid_unavailable' }
+
 # 操作前：记录当前状态。
 $BeforePath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $PathPresent = Test-PathEntry -PathValue $BeforePath -Entry $InstallDir
-$BeforeTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-$TaskPresent = ($null -ne $BeforeTask)
+$BeforeTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+$TaskOwnership = Get-SidraviaTaskOwnership -Task $BeforeTask -InstallDirectory $InstallDir -UserSID $CurrentUserSID
+if ($TaskOwnership -eq 'conflict') { throw 'scheduled_task_conflict' }
+$TaskPresent = ($TaskOwnership -eq 'owned')
 
 # 1）移除精确匹配的当前用户 PATH 条目。
 if ($PathPresent) {
@@ -62,7 +90,7 @@ if ($PathPresent) {
 
 # 2）移除用户登录计划任务。
 if ($TaskPresent) {
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false
 }
 
 # 操作后：验证两项状态均已撤销。
@@ -70,7 +98,7 @@ $AfterPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (Test-PathEntry -PathValue $AfterPath -Entry $InstallDir) {
     throw '验证失败：安装目录仍在当前用户 PATH 中'
 }
-$AfterTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$AfterTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
 if ($null -ne $AfterTask) {
     throw "验证失败：计划任务 $TaskName 仍然存在"
 }
