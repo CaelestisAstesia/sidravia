@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 
 	"sidravia/internal/ipc/contract"
 
@@ -95,6 +98,11 @@ type Server struct {
 	// receives the raw request method, which the composition maps to lifecycle
 	// semantics; the server itself knows nothing about daemon lifecycle.
 	responseCommitted func(method string)
+
+	mu          sync.Mutex
+	closing     bool
+	connections map[*websocket.Conn]context.CancelFunc
+	drained     chan struct{}
 }
 
 // NewServer constructs an IPC server. It validates every required dependency
@@ -112,12 +120,16 @@ func NewServer(token string, buildID string, handler Handler, logger *slog.Logge
 	if logger == nil {
 		return nil, errors.New("ipc server: logger is required")
 	}
+	drained := make(chan struct{})
+	close(drained)
 	return &Server{
 		token:             token,
 		buildID:           buildID,
 		handler:           handler,
 		logger:            logger,
 		responseCommitted: responseCommitted,
+		connections:       make(map[*websocket.Conn]context.CancelFunc),
+		drained:           drained,
 	}, nil
 }
 
@@ -165,9 +177,80 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Debug(msgIPCConnectionOpened, slog.String("event", eventIPCConnectionOpened))
+	ctx, cancel := context.WithCancel(r.Context())
+	if !s.register(conn, cancel) {
+		cancel()
+		_ = conn.CloseNow()
+		return
+	}
+	defer s.unregister(conn)
 
-	s.serveConn(r.Context(), conn)
+	s.logger.Debug(msgIPCConnectionOpened, slog.String("event", eventIPCConnectionOpened))
+	s.serveConn(ctx, conn)
+}
+
+func (s *Server) register(conn *websocket.Conn, cancel context.CancelFunc) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return false
+	}
+	if len(s.connections) == 0 {
+		s.drained = make(chan struct{})
+	}
+	s.connections[conn] = cancel
+	return true
+}
+
+func (s *Server) unregister(conn *websocket.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.connections[conn]; !ok {
+		return
+	}
+	delete(s.connections, conn)
+	if len(s.connections) == 0 {
+		close(s.drained)
+	}
+}
+
+// Shutdown closes the admission gate, then cancels and closes every upgraded
+// connection registered before the gate closed. It waits for each ServeHTTP
+// handler to return, bounded by ctx, without starting a waiter goroutine.
+func (s *Server) Shutdown(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("ipc server: shutdown context is required")
+	}
+
+	s.mu.Lock()
+	s.closing = true
+	drained := s.drained
+	connections := make([]struct {
+		conn   *websocket.Conn
+		cancel context.CancelFunc
+	}, 0, len(s.connections))
+	for conn, cancel := range s.connections {
+		connections = append(connections, struct {
+			conn   *websocket.Conn
+			cancel context.CancelFunc
+		}{conn: conn, cancel: cancel})
+	}
+	s.mu.Unlock()
+
+	var closeErr error
+	for _, connection := range connections {
+		connection.cancel()
+		if err := connection.conn.CloseNow(); err != nil && !errors.Is(err, net.ErrClosed) {
+			closeErr = errors.Join(closeErr, fmt.Errorf("ipc server: close connection: %w", err))
+		}
+	}
+
+	select {
+	case <-drained:
+		return closeErr
+	case <-ctx.Done():
+		return errors.Join(closeErr, fmt.Errorf("ipc server: shutdown: %w", ctx.Err()))
+	}
 }
 
 func (s *Server) serveConn(ctx context.Context, conn *websocket.Conn) {

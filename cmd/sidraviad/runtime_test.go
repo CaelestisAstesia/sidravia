@@ -146,6 +146,26 @@ type fakeHostRunner struct {
 	finished chan struct{}
 }
 
+type fakeIPCShutdown struct {
+	err     error
+	called  chan struct{}
+	started chan struct{}
+	release <-chan struct{}
+}
+
+func (s *fakeIPCShutdown) Shutdown(ctx context.Context) error {
+	close(s.started)
+	if s.release != nil {
+		select {
+		case <-s.release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	close(s.called)
+	return s.err
+}
+
 func newFakeHostRunner() *fakeHostRunner {
 	return &fakeHostRunner{
 		release:  make(chan error, 1),
@@ -853,6 +873,24 @@ func TestRuntimeLifecycleShutdownCloseErrorIsReturnedAndJoined(t *testing.T) {
 	})
 }
 
+func TestRuntimeLifecycleJoinsIPCShutdownFailure(t *testing.T) {
+	rt, _, hostRunner, _, _ := newCoordinatedLifecycle(t, discardLogger())
+	hostErr := errors.New("host failure sentinel")
+	ipcErr := errors.New("ipc shutdown failure sentinel")
+	ipc := &fakeIPCShutdown{err: ipcErr, called: make(chan struct{}), started: make(chan struct{})}
+	rt.ipcShutdown = ipc
+
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	hostRunner.signalDone(hostErr)
+	waitForSignal(t, ipc.started, "IPC shutdown start")
+	err := waitForRuntimeResult(t, result)
+	if !errors.Is(err, hostErr) || !errors.Is(err, ipcErr) {
+		t.Fatalf("run() error = %v, want host and IPC shutdown sentinels", err)
+	}
+	waitForSignal(t, ipc.called, "IPC shutdown completion")
+}
+
 // TestRuntimeLogsStartSnapshotStop proves the runtime emits daemon_runtime_started
 // with product_version/build_id/pid, network_snapshot_applied with revision and
 // interface_count, and daemon_runtime_stopped on normal completion.
@@ -1024,41 +1062,40 @@ func TestCompositionDaemonStopTriggersRuntimeShutdown(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+
 	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	defer conn.Close()
+	idle, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	if err != nil {
+		t.Fatalf("connect idle: %v", err)
+	}
+	defer idle.Close()
 
-	for i := 0; i < 2; i++ {
-		resp, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage(`{}`))
-		if err != nil {
-			t.Fatalf("daemon.stop call %d: %v", i+1, err)
-		}
-		if !resp.OK {
-			t.Fatalf("daemon.stop error: %+v", resp.Error)
-		}
-		var stopResult contract.DaemonStopResult
-		if err := json.Unmarshal(resp.Result, &stopResult); err != nil {
-			t.Fatalf("unmarshal stop result: %v", err)
-		}
-		if stopResult.Status != "stopping" {
-			t.Errorf("status = %q, want stopping", stopResult.Status)
-		}
+	resp, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("daemon.stop call: %v", err)
 	}
-	deadline := time.Now().Add(time.Second)
-	for len(rt.stopCh) == 0 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	if !resp.OK {
+		t.Fatalf("daemon.stop error: %+v", resp.Error)
 	}
-	if got := len(rt.stopCh); got != 1 {
-		t.Fatalf("pending stop signals = %d, want exactly 1", got)
+	var stopResult contract.DaemonStopResult
+	if err := json.Unmarshal(resp.Result, &stopResult); err != nil {
+		t.Fatalf("unmarshal stop result: %v", err)
 	}
-
-	result := runRuntime(rt, context.Background())
-	waitForSignal(t, hostRunner.started, "host start")
-	waitForSignal(t, observer.started, "observer start")
+	if stopResult.Status != "stopping" {
+		t.Errorf("status = %q, want stopping", stopResult.Status)
+	}
 	if err := waitForRuntimeResult(t, result); err != nil {
 		t.Fatalf("runtime did not shut down cleanly after daemon.stop: %v", err)
+	}
+	if _, err := idle.Call(ctx, contract.MethodDaemonStatus, json.RawMessage(`{}`)); err == nil {
+		t.Fatal("idle IPC connection remained open after runtime shutdown")
 	}
 }
 

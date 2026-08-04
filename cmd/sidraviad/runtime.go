@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"sidravia/internal/daemon/app"
 	"sidravia/internal/daemon/authentication/protocol"
@@ -66,11 +67,16 @@ type shutdownBoundary interface {
 	Wait()
 }
 
+type ipcShutdownBoundary interface {
+	Shutdown(context.Context) error
+}
+
 type composedRuntime struct {
 	observer       environment.Observer
 	snapshotSink   networkSnapshotSink
 	automaticLogin automaticLoginPerformer
 	shutdown       shutdownBoundary
+	ipcShutdown    ipcShutdownBoundary
 	hostCfg        host.Config
 	hostRunner     func(context.Context, host.Config) error
 	handler        server.Handler
@@ -276,6 +282,7 @@ func composeObjectGraph(
 		snapshotSink:   application,
 		automaticLogin: application,
 		shutdown:       sup,
+		ipcShutdown:    srv,
 		hostCfg:        hostCfg,
 		hostRunner:     hostRunner,
 		handler:        handler,
@@ -360,6 +367,17 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 
 	cancel()
 
+	var ipcResult <-chan error
+	if rt.ipcShutdown != nil {
+		result := make(chan error, 1)
+		ipcCtx, ipcCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		go func() {
+			defer ipcCancel()
+			result <- rt.ipcShutdown.Shutdown(ipcCtx)
+		}()
+		ipcResult = result
+	}
+
 	for received < 3 {
 		result := <-results
 		received++
@@ -369,6 +387,16 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	}
 
 	finalErr := rt.closeAndWait(initiator)
+	if ipcResult != nil {
+		if ipcErr := <-ipcResult; ipcErr != nil {
+			wrapped := fmt.Errorf("sidraviad: IPC shutdown: %w", ipcErr)
+			if finalErr != nil {
+				finalErr = errors.Join(finalErr, wrapped)
+			} else {
+				finalErr = wrapped
+			}
+		}
+	}
 	if finalErr == nil {
 		rt.logger.Info(msgDaemonRuntimeStopped, slog.String("event", eventDaemonRuntimeStopped))
 	}
