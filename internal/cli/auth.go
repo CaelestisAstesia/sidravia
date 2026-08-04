@@ -209,6 +209,10 @@ func withAuthClient(deps authDependencies, operation func(daemonClient) error) e
 func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonClient) error) error {
 	connection, err := acquireDaemonClient(deps)
 	if err != nil {
+		var timeout *daemonReadinessTimeoutError
+		if errors.As(err, &timeout) {
+			return err
+		}
 		return wrapSafeOperation("无法连接 sidraviad（请确认 daemon 已启动；若刚增删过 sidravia.portable 标记，请先停止并重启 daemon）", err)
 	}
 

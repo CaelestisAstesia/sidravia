@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -402,6 +403,61 @@ func TestAuthDiscoveryEarlyChildExitDoesNotDispatchSession(t *testing.T) {
 	}
 	if starts != 1 || staleClient.callCount != 0 || replacementClient.callCount != 0 {
 		t.Fatalf("starts=%d stale calls=%d replacement calls=%d", starts, staleClient.callCount, replacementClient.callCount)
+	}
+}
+
+func TestAuthDiscoveryReadinessTimeoutPassesThroughWithoutSession(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		read func(string) (contract.RuntimeInfo, error)
+	}{
+		{name: "cold", read: func(string) (contract.RuntimeInfo, error) { return contract.RuntimeInfo{}, os.ErrNotExist }},
+		{name: "stale", read: func(string) (contract.RuntimeInfo, error) { return testRuntimeInfo(906), nil }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+				t.Fatal("Session operation ran after ambiguous readiness")
+				return contract.Response{}, nil
+			}}
+			starts := 0
+			var output bytes.Buffer
+			deps := hotAuthDependencies(t, client)
+			deps.stdout = &output
+			deps.connection.discovery = discoveryDependencies{
+				runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
+				readRuntimeInfo: test.read,
+				startDaemon:     func() (daemonLaunch, error) { starts++; return daemonLaunch{}, nil },
+				totalWait:       0, pollInterval: time.Millisecond,
+			}
+			deps.connection.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+				return client, errors.New("not ready")
+			}
+
+			err := runAuthStatus("session-1", deps)
+			if err == nil || err.Error() != "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidravia daemon status 确认状态后再重试" {
+				t.Fatalf("err = %v", err)
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("err does not unwrap context deadline: %v", err)
+			}
+			if starts != 1 || client.callCount != 0 || output.Len() != 0 {
+				t.Fatalf("starts=%d Session calls=%d output=%q", starts, client.callCount, output.String())
+			}
+		})
+	}
+}
+
+func TestWithAuthClientKeepsOrdinaryConnectFailureUnderSafeLabel(t *testing.T) {
+	deps := hotAuthDependencies(t, &fakeDaemonClient{})
+	deps.connection.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+		return nil, errors.New("ordinary connect failure")
+	}
+	deps.connection.discovery.startDaemon = func() (daemonLaunch, error) {
+		return daemonLaunch{}, errors.New("ordinary start failure")
+	}
+	err := runAuthStatus("session-1", deps)
+	if err == nil || !strings.Contains(err.Error(), "无法连接 sidraviad") || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

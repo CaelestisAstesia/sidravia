@@ -192,6 +192,14 @@ func (e *daemonEarlyExitError) Error() string {
 }
 func (e *daemonEarlyExitError) Unwrap() error { return e.cause }
 
+type daemonReadinessTimeoutError struct{}
+
+func (*daemonReadinessTimeoutError) Error() string {
+	return "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidravia daemon status 确认状态后再重试"
+}
+
+func (*daemonReadinessTimeoutError) Unwrap() error { return context.DeadlineExceeded }
+
 func waitForDaemonReadiness(totalWait, pollInterval time.Duration, exited <-chan error, attempt func() (bool, error)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), totalWait)
 	defer cancel()
@@ -219,7 +227,7 @@ func waitForDaemonReadiness(totalWait, pollInterval time.Duration, exited <-chan
 			if ready {
 				return nil
 			}
-			return errors.New("等待 sidraviad 就绪超时；请检查 daemon 日志后重试")
+			return &daemonReadinessTimeoutError{}
 		case <-ticker.C:
 			ready, err := attempt()
 			if err != nil {

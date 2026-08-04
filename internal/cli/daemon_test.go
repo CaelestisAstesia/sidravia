@@ -511,8 +511,11 @@ func TestWaitForDaemonReadinessFinalAttempts(t *testing.T) {
 	})
 	t.Run("nil observation times out", func(t *testing.T) {
 		err := waitForDaemonReadiness(0, time.Millisecond, nil, func() (bool, error) { return false, nil })
-		if err == nil || err.Error() != "等待 sidraviad 就绪超时；请检查 daemon 日志后重试" {
+		if err == nil || err.Error() != "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidravia daemon status 确认状态后再重试" {
 			t.Fatalf("err = %v", err)
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("err does not unwrap context deadline: %v", err)
 		}
 	})
 	t.Run("polling reaches readiness", func(t *testing.T) {
@@ -525,6 +528,37 @@ func TestWaitForDaemonReadinessFinalAttempts(t *testing.T) {
 			t.Fatalf("err = %v attempts = %d", err, attempts)
 		}
 	})
+}
+
+func TestEnsureDaemonRunningTimeoutDoesNotReconsiderLaterReadiness(t *testing.T) {
+	probes, launches := 0, 0
+	deps := ensureDependencies{
+		probe: probeDependencies{
+			runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
+			readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
+				probes++
+				if probes > 2 {
+					return testRuntimeInfo(906), nil
+				}
+				return contract.RuntimeInfo{}, os.ErrNotExist
+			},
+			connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+				return &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+					return daemonStatusResponse(t), nil
+				}}, nil
+			},
+			callTimeout: time.Second,
+		},
+		launch:    func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil },
+		totalWait: 0, pollInterval: time.Millisecond,
+	}
+	err := ensureDaemonRunning(deps)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	if probes != 2 || launches != 1 {
+		t.Fatalf("probes=%d launches=%d, want 2 and 1", probes, launches)
+	}
 }
 
 func TestParseDaemonLogLevel(t *testing.T) {
