@@ -79,7 +79,6 @@ type composedRuntime struct {
 	ipcShutdown    ipcShutdownBoundary
 	hostCfg        host.Config
 	hostRunner     func(context.Context, host.Config) error
-	handler        server.Handler
 	logger         *slog.Logger
 	productVersion string
 	buildID        string
@@ -285,7 +284,6 @@ func composeObjectGraph(
 		ipcShutdown:    srv,
 		hostCfg:        hostCfg,
 		hostRunner:     hostRunner,
-		handler:        handler,
 		logger:         logger,
 		productVersion: productVersion,
 		buildID:        buildID,

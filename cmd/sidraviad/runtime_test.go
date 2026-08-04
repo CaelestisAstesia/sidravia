@@ -291,13 +291,24 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 		rt.shutdown.Wait()
 	}()
 
+	httpServer := httptest.NewServer(rt.hostCfg.Handler)
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
 	ctx := context.Background()
-	result, rpcErr := rt.handler(ctx, contract.MethodDaemonStatus, []byte(`{}`))
-	if rpcErr != nil {
-		t.Fatalf("daemon.status error: %v", rpcErr)
+	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close()
+	statusResponse, err := conn.Call(ctx, contract.MethodDaemonStatus, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("daemon.status call: %v", err)
+	}
+	if !statusResponse.OK {
+		t.Fatalf("daemon.status error: %+v", statusResponse.Error)
 	}
 	var status contract.StatusResult
-	if err := json.Unmarshal(result, &status); err != nil {
+	if err := json.Unmarshal(statusResponse.Result, &status); err != nil {
 		t.Fatalf("unmarshal status: %v", err)
 	}
 	if status.ProductVersion != "1.0.0-test" {
@@ -310,12 +321,15 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 		t.Fatalf("status.Status = %q, want running", status.Status)
 	}
 
-	profileResult, rpcErr := rt.handler(ctx, contract.MethodProfileList, []byte(`{}`))
-	if rpcErr != nil {
-		t.Fatalf("profile.list error: %v", rpcErr)
+	profileResponse, err := conn.Call(ctx, contract.MethodProfileList, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("profile.list call: %v", err)
+	}
+	if !profileResponse.OK {
+		t.Fatalf("profile.list error: %+v", profileResponse.Error)
 	}
 	var profiles contract.ProfileListResult
-	if err := json.Unmarshal(profileResult, &profiles); err != nil {
+	if err := json.Unmarshal(profileResponse.Result, &profiles); err != nil {
 		t.Fatalf("unmarshal profile.list: %v", err)
 	}
 	if len(profiles.Profiles) != 1 {
@@ -365,6 +379,16 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		rt.shutdown.Wait()
 	}()
 
+	httpServer := httptest.NewServer(rt.hostCfg.Handler)
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
+	ctx := context.Background()
+	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close()
+
 	usernameMarker := "fictional-user-7B2F0D91"
 	passwordMarker := "fictional-password-4A8C6E13"
 	startPayload, _ := json.Marshal(contract.SessionStartOneShotPayload{
@@ -376,11 +400,14 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		ProtocolContextOverride:  json.RawMessage(`{}`),
 	})
 
-	ctx := context.Background()
-	result, rpcErr := rt.handler(ctx, contract.MethodSessionStartOneShot, startPayload)
-	if rpcErr != nil {
-		t.Fatalf("session.startOneShot error: %v", rpcErr)
+	startResponse, err := conn.Call(ctx, contract.MethodSessionStartOneShot, startPayload)
+	if err != nil {
+		t.Fatalf("session.startOneShot call: %v", err)
 	}
+	if !startResponse.OK {
+		t.Fatalf("session.startOneShot error: %+v", startResponse.Error)
+	}
+	result := startResponse.Result
 	if !bytes.Contains(result, []byte(usernameMarker)) {
 		t.Fatal("session.startOneShot response omitted the full account name")
 	}
@@ -405,10 +432,14 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		t.Fatalf("session.AccountName = %q, want complete username %q", sessionResult.AccountName, usernameMarker)
 	}
 
-	listedData, listErr := rt.handler(ctx, contract.MethodSessionList, []byte(`{}`))
-	if listErr != nil {
-		t.Fatalf("session.list error: %v", listErr)
+	listResponse, err := conn.Call(ctx, contract.MethodSessionList, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("session.list call: %v", err)
 	}
+	if !listResponse.OK {
+		t.Fatalf("session.list error: %+v", listResponse.Error)
+	}
+	listedData := listResponse.Result
 	var listed contract.SessionListResult
 	if err := json.Unmarshal(listedData, &listed); err != nil {
 		t.Fatalf("unmarshal session.list: %v", err)
@@ -421,9 +452,12 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	stopPayload, _ := json.Marshal(contract.SessionStopPayload{
 		SessionID: sessionResult.AuthenticationSessionID,
 	})
-	_, stopErr := rt.handler(ctx, contract.MethodSessionStop, stopPayload)
-	if stopErr != nil {
-		t.Fatalf("session.stop error: %v", stopErr)
+	stopResponse, err := conn.Call(ctx, contract.MethodSessionStop, stopPayload)
+	if err != nil {
+		t.Fatalf("session.stop call: %v", err)
+	}
+	if !stopResponse.OK {
+		t.Fatalf("session.stop error: %+v", stopResponse.Error)
 	}
 
 	if hostRunner.wasCalled() {
@@ -1008,6 +1042,15 @@ func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
 		rt.shutdown.Close()
 		rt.shutdown.Wait()
 	}()
+	httpServer := httptest.NewServer(rt.hostCfg.Handler)
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
+	ctx := context.Background()
+	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close()
 
 	startPayload, _ := json.Marshal(contract.SessionStartOneShotPayload{
 		DisplayName:              "Test Session",
@@ -1017,8 +1060,12 @@ func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
 		NetworkBindingPolicyMode: "automatically_select_latest_available",
 		ProtocolContextOverride:  json.RawMessage(`{}`),
 	})
-	if _, rpcErr := rt.handler(context.Background(), contract.MethodSessionStartOneShot, startPayload); rpcErr != nil {
-		t.Fatalf("session.startOneShot: %v", rpcErr)
+	response, err := conn.Call(ctx, contract.MethodSessionStartOneShot, startPayload)
+	if err != nil {
+		t.Fatalf("session.startOneShot call: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("session.startOneShot error: %+v", response.Error)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
