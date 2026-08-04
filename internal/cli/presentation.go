@@ -309,6 +309,12 @@ func ipcErrorText(code string) string {
 		return "机构 Profile 操作失败"
 	case "session_operation_failed":
 		return "认证 Session 操作失败"
+	case "session_not_found":
+		return "找不到指定的认证 Session；请运行 sidravia auth list 查看可用 Session"
+	case "session_active_conflict":
+		return "已有认证 Session 正在运行；请先停止或删除现有活动 Session"
+	case "session_state_conflict":
+		return "认证 Session 当前状态不允许该操作；请运行 sidravia auth status 查看状态"
 	case "configuration_not_found":
 		return "找不到指定的认证配置"
 	case "configuration_conflict":
@@ -403,6 +409,11 @@ func renderSessionDetail(p *presentation, result *contract.SessionResult) string
 	b.WriteString(p.label("会话："))
 	b.WriteString(sanitizeDynamicText(result.AuthenticationSessionID))
 	b.WriteString("\n")
+	if result.DisplayName != "" {
+		b.WriteString(p.label("名称："))
+		b.WriteString(sanitizeDynamicText(result.DisplayName))
+		b.WriteString("\n")
+	}
 
 	b.WriteString(p.label("状态："))
 	b.WriteString(p.state(sessionStateText(result.State), result.State))
@@ -477,7 +488,7 @@ func renderSessionDetail(p *presentation, result *contract.SessionResult) string
 func renderSessionList(p *presentation, result *contract.SessionListResult) string {
 	var b strings.Builder
 	if len(result.Sessions) == 0 {
-		b.WriteString("没有 Session。\n")
+		b.WriteString("没有 Session。\n下一步：运行 sidravia help auth start 开始认证。\n")
 		return b.String()
 	}
 	b.WriteString(p.label(fmt.Sprintf("会话（%d）：", len(result.Sessions))))
@@ -485,6 +496,11 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 	for _, session := range result.Sessions {
 		b.WriteString("- ")
 		b.WriteString(sanitizeDynamicText(session.AuthenticationSessionID))
+		if session.DisplayName != "" {
+			b.WriteString(" | ")
+			b.WriteString(p.label("名称："))
+			b.WriteString(sanitizeDynamicText(session.DisplayName))
+		}
 		b.WriteString(" | ")
 		b.WriteString(p.label("状态："))
 		b.WriteString(p.state(sessionStateText(session.State), session.State))
@@ -515,7 +531,7 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 func renderProfileList(p *presentation, result *contract.ProfileListResult) string {
 	var b strings.Builder
 	if len(result.Profiles) == 0 {
-		b.WriteString("没有可用的机构 Profile。\n")
+		b.WriteString("没有可用的机构 Profile。请检查完整 portable 包中的 institution-profiles，并重启 daemon。\n")
 		return b.String()
 	}
 	b.WriteString(p.label(fmt.Sprintf("机构 Profile（%d）：", len(result.Profiles))))
@@ -546,14 +562,44 @@ func renderDaemonStarted() string {
 	return "守护进程：已启动（started）\n"
 }
 
+func renderDaemonAlreadyRunning() string {
+	return "守护进程：已经运行（already_running）\n"
+}
+
 // renderDaemonStopped renders the fixed daemon stopped confirmation line.
 func renderDaemonStopped() string {
 	return "守护进程：已停止（stopped）\n"
 }
 
+func renderDaemonAlreadyStopped() string {
+	return "守护进程：已经停止（already_stopped）\n"
+}
+
 // renderDaemonRestarted renders the fixed daemon restarted confirmation line.
 func renderDaemonRestarted() string {
 	return "守护进程：已重启（restarted）\n"
+}
+
+func renderDaemonStartedFromStopped() string {
+	return "守护进程：原先未运行，现已启动（started_from_stopped）\n"
+}
+
+func renderSessionStartResult(p *presentation, result *contract.SessionStartResult) string {
+	var b strings.Builder
+	switch result.Outcome {
+	case "created":
+		b.WriteString("认证 Session：已创建。\n")
+	case "already_running":
+		b.WriteString("认证 Session：已经运行。\n")
+	case "resumed":
+		b.WriteString("认证 Session：已恢复运行。\n")
+	}
+	b.WriteString("以下是当前 Snapshot；认证可能仍在 daemon 中继续。\n")
+	b.WriteString(renderSessionDetail(p, &result.Session))
+	b.WriteString("查看状态：sidravia auth status ")
+	b.WriteString(sanitizeDynamicText(result.Session.AuthenticationSessionID))
+	b.WriteString("\n")
+	return b.String()
 }
 
 func renderSessionRemoved(result *contract.SessionRemoveResult) string {
@@ -592,7 +638,7 @@ func writeConfiguration(output io.Writer, result contract.ConfigurationResult) e
 func writeConfigurationList(output io.Writer, result contract.ConfigurationListResult) error {
 	if len(result.Configurations) == 0 {
 		p := newPresentation(output)
-		return wrapSafeOperation("写入配置列表", p.complete("尚未保存认证配置。\n"))
+		return wrapSafeOperation("写入配置列表", p.complete("尚未保存认证配置。\n下一步：运行 sidravia config create 创建认证配置。\n"))
 	}
 	var block strings.Builder
 	for index, value := range result.Configurations {

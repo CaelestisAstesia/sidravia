@@ -47,6 +47,9 @@ func TestNormalizeConfigurationMethodsAndErrors(t *testing.T) {
 		contract.ErrorCodeConfigurationOperationFailed,
 		contract.ErrorCodeInsecureStorageConfirmationRequired,
 		contract.ErrorCodeConfigurationAutoLoginConflict,
+		contract.ErrorCodeSessionNotFound,
+		contract.ErrorCodeSessionActiveConflict,
+		contract.ErrorCodeSessionStateConflict,
 	} {
 		if got := normalizeErrorCode(code); got != code {
 			t.Fatalf("normalizeErrorCode(%q) = %q", code, got)

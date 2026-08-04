@@ -415,10 +415,14 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		t.Fatal("raw session.startOneShot response contains password marker")
 	}
 
-	var sessionResult contract.SessionResult
-	if err := json.Unmarshal(result, &sessionResult); err != nil {
-		t.Fatalf("unmarshal session result: %v", err)
+	var startResult contract.SessionStartResult
+	if err := json.Unmarshal(result, &startResult); err != nil {
+		t.Fatalf("unmarshal session start result: %v", err)
 	}
+	if startResult.Outcome != "created" {
+		t.Fatalf("session start outcome = %q, want created", startResult.Outcome)
+	}
+	sessionResult := startResult.Session
 
 	if sessionResult.State != "waiting_for_network" {
 		t.Fatalf("session.State = %q, want waiting_for_network", sessionResult.State)

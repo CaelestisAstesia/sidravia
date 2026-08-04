@@ -206,8 +206,8 @@ func TestRunRejectsBadArguments(t *testing.T) {
 			t.Error("Run returned nil, want usage error")
 			continue
 		}
-		if got := err.Error(); got != commandUsage {
-			t.Errorf("Run error = %q, want static usage", got)
+		if got := err.Error(); !strings.HasPrefix(got, "用法错误，请运行 sidravia help") {
+			t.Errorf("Run error = %q, want safe help guidance", got)
 		}
 		for _, marker := range []string{"profile-marker", "user-marker", "session-marker", "value-marker"} {
 			if strings.Contains(err.Error(), marker) {
@@ -448,8 +448,8 @@ func TestAuthStartRejectsInvalidArgumentsSafely(t *testing.T) {
 			t.Error("invalid auth start returned nil")
 			continue
 		}
-		if err.Error() != commandUsage {
-			t.Errorf("invalid auth start error = %q, want static usage", err)
+		if !strings.HasPrefix(err.Error(), "用法错误，请运行 sidravia help auth start") {
+			t.Errorf("invalid auth start error = %q, want nearest safe help", err)
 		}
 		for _, marker := range []string{"profile-marker", "user-marker", "other-marker", "positional-marker"} {
 			if strings.Contains(err.Error(), marker) {
@@ -482,8 +482,8 @@ func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
 			t.Error("invalid session command returned nil")
 			continue
 		}
-		if err.Error() != commandUsage {
-			t.Errorf("invalid session command error = %q, want static usage", err)
+		if !strings.HasPrefix(err.Error(), "用法错误，请运行 sidravia help auth ") {
+			t.Errorf("invalid session command error = %q, want nearest safe help", err)
 		}
 		if strings.Contains(err.Error(), "marker") {
 			t.Error("usage error contains supplied session marker")

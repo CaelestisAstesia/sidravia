@@ -83,7 +83,7 @@ func TestDaemonStatusUnreachableReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unreachable error")
 	}
-	if err.Error() != "守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）" {
+	if err.Error() != "守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart" {
 		t.Errorf("err = %q", err.Error())
 	}
 	if buf.Len() != 0 {
@@ -98,7 +98,7 @@ func TestDaemonStatusMalformedReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected malformed error")
 	}
-	if err.Error() != "守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）" {
+	if err.Error() != "守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart" {
 		t.Errorf("err = %q", err.Error())
 	}
 	if buf.Len() != 0 {
@@ -191,7 +191,7 @@ func TestDaemonStopRejectsMalformedAndUnreachableRuntimeInfo(t *testing.T) {
 			totalWait:    time.Second,
 			pollInterval: time.Millisecond,
 		}
-		if err := runDaemonStop(deps); err == nil || err.Error() != "守护进程：无法连接（运行信息存在但 daemon 未响应，可能已停止或更换）" {
+		if err := runDaemonStop(deps); err == nil || err.Error() != "守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart" {
 			t.Errorf("state %d error = %v, want fixed unreachable error", state, err)
 		}
 	}
@@ -471,7 +471,7 @@ func TestWaitForDaemonReadinessEarlyExitIsSafe(t *testing.T) {
 	}()
 	select {
 	case err := <-done:
-		if err == nil || err.Error() != "sidraviad 在就绪前退出；请检查 daemon 日志" || !errors.Is(err, cause) {
+		if err == nil || err.Error() != "sidraviad 在就绪前退出；请检查当前模式的 daemon 日志（portable 包位于 logs\\sidraviad.log）" || !errors.Is(err, cause) {
 			t.Fatalf("err = %v", err)
 		}
 	case <-time.After(100 * time.Millisecond):

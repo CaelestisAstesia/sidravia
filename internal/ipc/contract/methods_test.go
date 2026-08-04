@@ -534,3 +534,15 @@ func TestConfigurationUpdatePayloadAcceptsAutoLoginAutoReconnect(t *testing.T) {
 		t.Fatalf("autoReconnect update = %#v", autoReconnect)
 	}
 }
+
+func TestSessionStartResultCodesAndWireShapeAreStable(t *testing.T) {
+	for _, code := range []string{ErrorCodeSessionNotFound, ErrorCodeSessionActiveConflict, ErrorCodeSessionStateConflict} {
+		if code == "" {
+			t.Fatal("empty session error code")
+		}
+	}
+	data, err := MarshalSessionStartResult(SessionStartResult{Outcome: "created", Session: SessionResult{AuthenticationSessionID: "session-1"}})
+	if err != nil || string(data) != `{"outcome":"created","session":{"sessionId":"session-1","displayName":"","institutionProfileId":"","institutionDisplayName":"","authenticationProtocolId":"","accountName":"","intent":"","state":"","revision":0,"updatedAt":""}}` {
+		t.Fatalf("start result = %s, %v", data, err)
+	}
+}

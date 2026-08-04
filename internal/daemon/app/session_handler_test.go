@@ -46,18 +46,21 @@ func (fake *fakeSessionApplication) ListSessions(context.Context) ([]session.Sna
 	return append([]session.Snapshot(nil), fake.snapshots...), nil
 }
 
-func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error) {
+func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error) {
 	fake.startCalls++
 	fake.lastStartInput = input
 	if fake.err != nil {
-		return "", session.Snapshot{}, fake.err
+		return SessionStartResult{}, fake.err
 	}
-	return fake.snapshot.AuthenticationSessionID, fake.snapshot, nil
+	return SessionStartResult{SessionID: fake.snapshot.AuthenticationSessionID, Snapshot: fake.snapshot, Outcome: SessionStartCreated}, nil
 }
-func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error) {
+func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id config.ConfigurationID) (SessionStartResult, error) {
 	fake.configCalls++
 	fake.lastConfigID = id
-	return fake.snapshot.AuthenticationSessionID, fake.snapshot, fake.err
+	if fake.err != nil {
+		return SessionStartResult{}, fake.err
+	}
+	return SessionStartResult{SessionID: fake.snapshot.AuthenticationSessionID, Snapshot: fake.snapshot, Outcome: SessionStartCreated}, nil
 }
 
 func TestSessionHandlerStartConfigurationReturnsCompleteSessionResult(t *testing.T) {
@@ -73,11 +76,14 @@ func TestSessionHandlerStartConfigurationReturnsCompleteSessionResult(t *testing
 	if fake.configCalls != 1 || fake.lastConfigID != "campus" || fake.startCalls != 0 {
 		t.Fatalf("route calls config=%d id=%q one-shot=%d", fake.configCalls, fake.lastConfigID, fake.startCalls)
 	}
-	var got contract.SessionResult
+	var got contract.SessionStartResult
 	if err := json.Unmarshal(result, &got); err != nil {
 		t.Fatal(err)
 	}
-	assertSessionResultMatchesSnapshot(t, got, fullSnapshot())
+	if got.Outcome != "created" {
+		t.Fatalf("outcome = %q", got.Outcome)
+	}
+	assertSessionResultMatchesSnapshot(t, got.Session, fullSnapshot())
 }
 
 func TestSessionHandlerStartConfigurationRejectsMalformedAndHidesFailure(t *testing.T) {
@@ -276,12 +282,12 @@ func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
 		t.Errorf("protocolContextOverride: got %q", string(input.ProtocolContextOverride))
 	}
 
-	var sr contract.SessionResult
+	var sr contract.SessionStartResult
 	if err := json.Unmarshal(result, &sr); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
-	if sr.AuthenticationSessionID != "sess-1" {
-		t.Errorf("sessionId: got %q, want sess-1", sr.AuthenticationSessionID)
+	if sr.Session.AuthenticationSessionID != "sess-1" || sr.Outcome != "created" {
+		t.Errorf("start result: %#v", sr)
 	}
 }
 

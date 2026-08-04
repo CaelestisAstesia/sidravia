@@ -155,3 +155,20 @@ func TestConfigurationHandlerMapsStableErrorsWithoutIdentifiersOrCauses(t *testi
 		})
 	}
 }
+
+func TestConfigurationHandlerMapsResolutionFailures(t *testing.T) {
+	for _, tc := range []struct {
+		failure ResolutionFailureCode
+		code    string
+	}{
+		{ProfileNotFound, contract.ErrorCodeProfileNotFound},
+		{ProtocolNotFound, contract.ErrorCodeProtocolNotFound},
+		{InvalidConfiguration, contract.ErrorCodeInvalidArgument},
+	} {
+		fake := &fakeConfigurationApplication{err: NewResolutionFailure(tc.failure, errors.New("private-cause"))}
+		_, got := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationCreate, []byte(`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+		if got == nil || got.Code != tc.code || strings.Contains(got.Message, "private-cause") {
+			t.Fatalf("failure %q = %#v", tc.failure, got)
+		}
+	}
+}

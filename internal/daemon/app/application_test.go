@@ -172,13 +172,13 @@ func TestStartConfigurationEnsuresSameSessionAndRemoveStopsIt(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
 	ctx := context.Background()
-	first, _, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	firstResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
-	if err != nil || first != second {
-		t.Fatalf("second = %q %v, first %q", second, err, first)
+	secondResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil || firstResult.SessionID != secondResult.SessionID || secondResult.Outcome != SessionStartAlreadyRunning {
+		t.Fatalf("second = %#v %v, first %#v", secondResult, err, firstResult)
 	}
 	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestStartConfigurationEnsuresSameSessionAndRemoveStopsIt(t *testing.T) {
 	if _, err := setup.catalog.Get(ctx, "configuration-1"); err == nil {
 		t.Fatal("configuration remained")
 	}
-	if _, err := setup.supervisor.Get(ctx, first); err == nil {
+	if _, err := setup.supervisor.Get(ctx, firstResult.SessionID); err == nil {
 		t.Fatal("associated Session remained")
 	}
 }
@@ -196,16 +196,16 @@ func TestConfigurationStartActiveAndSuspendedEnsureSameRuntime(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 
-	id, first, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	firstResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	againID, active, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	againResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if againID != id || active.Revision != first.Revision {
-		t.Fatalf("active ensure created or revised Session: first=%q/%d again=%q/%d", id, first.Revision, againID, active.Revision)
+	if againResult.SessionID != firstResult.SessionID || againResult.Snapshot.Revision != firstResult.Snapshot.Revision || againResult.Outcome != SessionStartAlreadyRunning {
+		t.Fatalf("active ensure created or revised Session: first=%#v again=%#v", firstResult, againResult)
 	}
 
 	changedUser := "new-user"
@@ -215,31 +215,31 @@ func TestConfigurationStartActiveAndSuspendedEnsureSameRuntime(t *testing.T) {
 	if _, err := setup.application.SetConfigurationPassword(ctx, "configuration-1", "new-password", false); err != nil {
 		t.Fatal(err)
 	}
-	sameID, immutable, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	sameResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sameID != id || immutable.AccountName != "user" {
-		t.Fatalf("existing RuntimeDefinition changed: id=%q account=%q", sameID, immutable.AccountName)
+	if sameResult.SessionID != firstResult.SessionID || sameResult.Snapshot.AccountName != "user" {
+		t.Fatalf("existing RuntimeDefinition changed: %#v", sameResult)
 	}
 
-	if _, err := setup.application.StopSession(ctx, id); err != nil {
+	if _, err := setup.application.StopSession(ctx, firstResult.SessionID); err != nil {
 		t.Fatal(err)
 	}
-	waitForApplicationSessionState(t, setup.application, id, session.Suspended)
-	resumedID, resumed, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	waitForApplicationSessionState(t, setup.application, firstResult.SessionID, session.Suspended)
+	resumedResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumedID != id || resumed.State == session.Suspended || resumed.AccountName != "user" {
-		t.Fatalf("suspended ensure did not resume immutable Session: %#v", resumed)
+	if resumedResult.SessionID != firstResult.SessionID || resumedResult.Snapshot.State == session.Suspended || resumedResult.Snapshot.AccountName != "user" || resumedResult.Outcome != SessionStartResumed {
+		t.Fatalf("suspended ensure did not resume immutable Session: %#v", resumedResult)
 	}
 }
 
 func TestConfigurationEnsureErrorPreservesAssociation(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	ctx := context.Background()
-	id, _, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,15 +248,15 @@ func TestConfigurationEnsureErrorPreservesAssociation(t *testing.T) {
 	}
 	setup.supervisor.Wait()
 
-	returnedID, _, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	returned, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err == nil {
 		t.Fatal("ensure after Supervisor close succeeded")
 	}
 	setup.application.mu.Lock()
 	associated := setup.application.sessionsByConfig["configuration-1"]
 	setup.application.mu.Unlock()
-	if returnedID != id || associated != id {
-		t.Fatalf("ensure error changed association: returned=%q associated=%q want=%q", returnedID, associated, id)
+	if returned.SessionID != "" || associated != started.SessionID {
+		t.Fatalf("ensure error changed association: returned=%#v associated=%q want=%q", returned, associated, started.SessionID)
 	}
 }
 
@@ -264,11 +264,11 @@ func TestRemoveSessionClearsAssociationButKeepsConfiguration(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
 	ctx := context.Background()
-	id, _, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := setup.application.RemoveSession(ctx, id); err != nil {
+	if err := setup.application.RemoveSession(ctx, started.SessionID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.catalog.Get(ctx, "configuration-1"); err != nil {
@@ -286,7 +286,7 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
 	ctx := context.Background()
-	id, _, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err == nil {
 		t.Fatal("remove succeeded during replacement failure")
 	}
-	if _, err := setup.supervisor.Get(ctx, id); err == nil {
+	if _, err := setup.supervisor.Get(ctx, started.SessionID); err == nil {
 		t.Fatal("Session remained after successful Supervisor removal")
 	}
 	configuration, credential, err := setup.catalog.Resolve(ctx, "configuration-1")
@@ -327,7 +327,7 @@ func TestConfigurationOperationsSerializeWithSessionRemove(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
 	ctx := context.Background()
-	id, _, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
+	started, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestConfigurationOperationsSerializeWithSessionRemove(t *testing.T) {
 		t.Fatal("update did not reach persistence boundary")
 	}
 	removeDone := make(chan error, 1)
-	go func() { removeDone <- setup.application.RemoveSession(ctx, id) }()
+	go func() { removeDone <- setup.application.RemoveSession(ctx, started.SessionID) }()
 	select {
 	case err := <-removeDone:
 		t.Fatalf("RemoveSession crossed opMu: %v", err)
@@ -367,11 +367,11 @@ func TestOneShotIsIndependentOfConfigurationAssociation(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
 	ctx := context.Background()
-	id, _, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
+	started, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := setup.application.RemoveSession(ctx, id); err != nil {
+	if err := setup.application.RemoveSession(ctx, started.SessionID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.catalog.Get(ctx, "configuration-1"); err != nil {

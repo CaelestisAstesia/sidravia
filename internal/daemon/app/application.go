@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -9,6 +10,7 @@ import (
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
+	"sidravia/internal/daemon/persistence"
 	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
@@ -19,6 +21,18 @@ type ConfigurationResult struct {
 	CredentialStored         bool
 	StorageProtection        jsonfile.ProtectionStatus
 }
+
+type SessionStartResult struct {
+	SessionID session.AuthenticationSessionID
+	Snapshot  session.Snapshot
+	Outcome   string
+}
+
+const (
+	SessionStartCreated        = "created"
+	SessionStartAlreadyRunning = "already_running"
+	SessionStartResumed        = "resumed"
+)
 
 type Application struct {
 	catalog                *config.Catalog
@@ -57,7 +71,7 @@ func NewApplication(
 	}, nil
 }
 
-func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error) {
+func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (SessionStartResult, error) {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
 
@@ -65,24 +79,35 @@ func (application *Application) StartConfigurationAuthentication(ctx context.Con
 	existing := application.sessionsByConfig[configurationID]
 	application.mu.Unlock()
 	if existing != "" {
+		before, err := application.sup.Get(ctx, existing)
+		if err != nil {
+			return SessionStartResult{}, err
+		}
 		snapshot, err := application.sup.EnsureRunning(ctx, existing)
-		return existing, snapshot, err
+		if err != nil {
+			return SessionStartResult{}, err
+		}
+		outcome := SessionStartAlreadyRunning
+		if before.State == session.Suspended || before.State == session.Stopping {
+			outcome = SessionStartResumed
+		}
+		return SessionStartResult{SessionID: existing, Snapshot: snapshot, Outcome: outcome}, nil
 	}
 	definition, err := application.authenticationResolver.Resolve(ctx, configurationID, "pending")
 	if err != nil {
-		return "", session.Snapshot{}, err
+		return SessionStartResult{}, err
 	}
 
 	sessionID, snapshot, err := application.sup.StartResolved(ctx, definition, session.MaintainAuthentication)
 	if err != nil {
-		return "", session.Snapshot{}, err
+		return SessionStartResult{}, err
 	}
 
 	application.mu.Lock()
 	application.sessionsByConfig[configurationID] = sessionID
 	application.mu.Unlock()
 
-	return sessionID, snapshot, nil
+	return SessionStartResult{SessionID: sessionID, Snapshot: snapshot, Outcome: SessionStartCreated}, nil
 }
 
 // StartOneShotAuthentication starts a one-shot authentication session from a
@@ -95,23 +120,23 @@ func (application *Application) StartConfigurationAuthentication(ctx context.Con
 // returned ID, and the existing single-active admission rule rejects a second
 // active one-shot or persisted start. If resolution or Supervisor start fails,
 // no session or configuration tracking entry remains.
-func (application *Application) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error) {
+func (application *Application) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error) {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
 
 	definition, err := application.authenticationResolver.ResolveOneShot(ctx, input, "pending")
 	if err != nil {
-		return "", session.Snapshot{}, err
+		return SessionStartResult{}, err
 	}
 
 	sessionID, snapshot, err := application.sup.StartResolved(ctx, definition, session.MaintainAuthentication)
 	if err != nil {
-		return "", session.Snapshot{}, err
+		return SessionStartResult{}, err
 	}
 
 	// One-shot sessions have no Configuration owner and are intentionally not
 	// added to sessionsByConfig.
-	return sessionID, snapshot, nil
+	return SessionStartResult{SessionID: sessionID, Snapshot: snapshot, Outcome: SessionStartCreated}, nil
 }
 
 // PerformAutomaticLogin finds the sole AutoLogin=true Configuration, if any,
@@ -136,7 +161,7 @@ func (application *Application) PerformAutomaticLogin(ctx context.Context) error
 	if autoLoginID == "" {
 		return nil
 	}
-	if _, _, err := application.StartConfigurationAuthentication(ctx, autoLoginID); err != nil {
+	if _, err := application.StartConfigurationAuthentication(ctx, autoLoginID); err != nil {
 		return fmt.Errorf("automatic_login_failed")
 	}
 	return nil
@@ -290,10 +315,14 @@ func (application *Application) RemoveConfiguration(ctx context.Context, id conf
 func (application *Application) enrich(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {
 	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
 	if err != nil {
-		return ConfigurationResult{}, err
+		var failure *persistence.Failure
+		if errors.As(err, &failure) && failure.Code() == persistence.FailureNotFound {
+			return ConfigurationResult{}, NewResolutionFailure(ProfileNotFound, err)
+		}
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
 	if _, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID); err != nil {
-		return ConfigurationResult{}, err
+		return ConfigurationResult{}, NewResolutionFailure(ProtocolNotFound, err)
 	}
 	return ConfigurationResult{
 		Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,

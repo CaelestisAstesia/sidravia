@@ -119,6 +119,17 @@ func configurationInvalid() *contract.Error {
 	return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed configuration payload"}
 }
 func configurationError(err error) *contract.Error {
+	var resolutionFailure *ResolutionFailure
+	if errors.As(err, &resolutionFailure) {
+		switch resolutionFailure.Code() {
+		case ProfileNotFound:
+			return &contract.Error{Code: contract.ErrorCodeProfileNotFound, Message: "institution profile not found"}
+		case ProtocolNotFound:
+			return &contract.Error{Code: contract.ErrorCodeProtocolNotFound, Message: "authentication protocol not found"}
+		case InvalidConfiguration:
+			return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid configuration"}
+		}
+	}
 	var autoLoginConflict config.AutoLoginConflict
 	if errors.As(err, &autoLoginConflict) {
 		return &contract.Error{Code: contract.ErrorCodeConfigurationAutoLoginConflict, Message: "another configuration already enables automatic login"}
@@ -130,6 +141,9 @@ func configurationError(err error) *contract.Error {
 		}
 		if failure.Code() == persistence.FailureConflict {
 			return &contract.Error{Code: contract.ErrorCodeConfigurationConflict, Message: "configuration already exists"}
+		}
+		if failure.Code() == persistence.FailureInvalidArgument {
+			return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid configuration"}
 		}
 		if errors.Is(failure.DiagnosticCause(), jsonfile.ErrInsecureStorageConfirmationRequired) {
 			return &contract.Error{Code: contract.ErrorCodeInsecureStorageConfirmationRequired, Message: "insecure storage confirmation required"}

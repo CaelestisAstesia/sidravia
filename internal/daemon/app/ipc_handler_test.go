@@ -71,12 +71,12 @@ func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) 
 	if publicErr != nil {
 		t.Fatal(publicErr)
 	}
-	var sessionResult contract.SessionResult
-	if err := json.Unmarshal(started, &sessionResult); err != nil {
+	var startResult contract.SessionStartResult
+	if err := json.Unmarshal(started, &startResult); err != nil {
 		t.Fatal(err)
 	}
-	if sessionResult.AuthenticationSessionID == "" || sessionResult.AccountName != "user" {
-		t.Fatalf("startConfiguration result incomplete: %#v", sessionResult)
+	if startResult.Outcome != "created" || startResult.Session.AuthenticationSessionID == "" || startResult.Session.AccountName != "user" {
+		t.Fatalf("startConfiguration result incomplete: %#v", startResult)
 	}
 	if strings.Contains(string(started), passwordMarker) {
 		t.Fatalf("startConfiguration result exposed password: %s", started)
@@ -156,11 +156,12 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 	if cerr != nil {
 		t.Fatalf("session.startOneShot error: %+v", cerr)
 	}
-	var started contract.SessionResult
-	if err := json.Unmarshal(startResult, &started); err != nil {
+	var startedResult contract.SessionStartResult
+	if err := json.Unmarshal(startResult, &startedResult); err != nil {
 		t.Fatalf("unmarshal start result: %v", err)
 	}
-	if started.AuthenticationSessionID == "" {
+	started := startedResult.Session
+	if startedResult.Outcome != "created" || started.AuthenticationSessionID == "" {
 		t.Fatal("start returned empty session ID")
 	}
 	if started.SelectedNetworkBinding == nil {
@@ -266,11 +267,11 @@ func TestIPCHandlerDoesNotLeakPassword(t *testing.T) {
 	}
 
 	// Stop the started session before exercising the failing path.
-	var started contract.SessionResult
-	if err := json.Unmarshal(startResult, &started); err != nil {
+	var startedResult contract.SessionStartResult
+	if err := json.Unmarshal(startResult, &startedResult); err != nil {
 		t.Fatalf("unmarshal start result: %v", err)
 	}
-	if _, cerr := handler(ctx, contract.MethodSessionStop, []byte(`{"sessionId":"`+started.AuthenticationSessionID+`"}`)); cerr != nil {
+	if _, cerr := handler(ctx, contract.MethodSessionStop, []byte(`{"sessionId":"`+startedResult.Session.AuthenticationSessionID+`"}`)); cerr != nil {
 		t.Fatalf("session.stop error: %+v", cerr)
 	}
 

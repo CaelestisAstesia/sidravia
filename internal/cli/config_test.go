@@ -89,7 +89,7 @@ func TestConfigCreateRejectsPasswordOnArgvShape(t *testing.T) {
 		configSetPassword: func(configPasswordOptions) error { return nil }, configRemove: func(string, bool) error { return nil },
 		output: &bytes.Buffer{},
 	}
-	if err := runCommand([]string{"config", "create", "--id", "campus", "--profile", "jlu", "--username", "user", "--password", "secret"}, deps); err != errCommandUsage {
+	if err := runCommand([]string{"config", "create", "--id", "campus", "--profile", "jlu", "--username", "user", "--password", "secret"}, deps); err == nil || !strings.HasPrefix(err.Error(), "用法错误，请运行 sidravia help config create") {
 		t.Fatalf("error = %v", err)
 	}
 }

@@ -94,18 +94,18 @@ func authRemove(sessionID string) error {
 func runAuthStart(options authStartOptions, deps authDependencies) error {
 	return withAuthClient(deps, func(connection daemonClient) error {
 		if options.configurationID != "" {
-			result, err := callSession(deps, connection, contract.MethodSessionStartConfiguration, contract.ConfigurationIDPayload{ConfigurationID: options.configurationID})
+			result, err := callSessionStart(deps, connection, contract.MethodSessionStartConfiguration, contract.ConfigurationIDPayload{ConfigurationID: options.configurationID})
 			if err != nil {
 				return err
 			}
-			return writeSessionResult(deps.stdout, result)
+			return writeSessionStartResult(deps.stdout, result)
 		}
 		if options.sessionID != "" {
-			result, err := callSession(deps, connection, contract.MethodSessionEnsureRunning, contract.SessionEnsureRunningPayload{SessionID: options.sessionID})
+			result, err := callSessionStart(deps, connection, contract.MethodSessionEnsureRunning, contract.SessionEnsureRunningPayload{SessionID: options.sessionID})
 			if err != nil {
 				return err
 			}
-			return writeSessionResult(deps.stdout, result)
+			return writeSessionStartResult(deps.stdout, result)
 		}
 		var password string
 		var err error
@@ -126,12 +126,12 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			NetworkBindingPolicyMode: automaticNetworkBindingPolicy,
 			ProtocolContextOverride:  json.RawMessage("{}"),
 		}
-		result, err := callSession(deps, connection, contract.MethodSessionStartOneShot, payload)
+		result, err := callSessionStart(deps, connection, contract.MethodSessionStartOneShot, payload)
 		password = ""
 		if err != nil {
 			return err
 		}
-		return writeSessionResult(deps.stdout, result)
+		return writeSessionStartResult(deps.stdout, result)
 	})
 }
 
@@ -291,6 +291,31 @@ func callSession(
 	return result, nil
 }
 
+func callSessionStart(deps authDependencies, connection daemonClient, method string, payload any) (contract.SessionStartResult, error) {
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		return contract.SessionStartResult{}, wrapSafeOperation("编码 Session 请求", err)
+	}
+	timeout := deps.connection.callTimeout
+	if method == contract.MethodSessionEnsureRunning || method == contract.MethodSessionStartConfiguration {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	response, err := connection.Call(ctx, method, rawPayload)
+	if err != nil {
+		return contract.SessionStartResult{}, wrapSafeOperation("调用 Session 操作", err)
+	}
+	if !response.OK {
+		code := ""
+		if response.Error != nil {
+			code = response.Error.Code
+		}
+		return contract.SessionStartResult{}, errors.New(ipcErrorText(code))
+	}
+	return decodeSessionStartResult(response.Result)
+}
+
 func decodeSessionRemoveResult(data []byte) (contract.SessionRemoveResult, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -334,6 +359,20 @@ func decodeSessionResult(data []byte) (contract.SessionResult, error) {
 	return result, nil
 }
 
+func decodeSessionStartResult(data []byte) (contract.SessionStartResult, error) {
+	var result contract.SessionStartResult
+	if err := decodeStrictCLI(data, &result); err != nil {
+		return result, err
+	}
+	if result.Outcome != "created" && result.Outcome != "already_running" && result.Outcome != "resumed" {
+		return result, fmt.Errorf("Session 启动结果无效")
+	}
+	if err := validateSessionResult(result.Session); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 func validateSessionResult(result contract.SessionResult) error {
 	switch {
 	case result.AuthenticationSessionID == "":
@@ -359,4 +398,12 @@ func writeSessionResult(output io.Writer, result contract.SessionResult) error {
 	}
 	p := newPresentation(output)
 	return wrapSafeOperation("写入 Session 响应", p.complete(renderSessionDetail(p, &result)))
+}
+
+func writeSessionStartResult(output io.Writer, result contract.SessionStartResult) error {
+	if err := validateSessionResult(result.Session); err != nil {
+		return wrapSafeOperation("渲染 Session 启动响应", err)
+	}
+	p := newPresentation(output)
+	return wrapSafeOperation("写入 Session 启动响应", p.complete(renderSessionStartResult(p, &result)))
 }

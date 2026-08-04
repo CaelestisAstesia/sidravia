@@ -118,7 +118,35 @@ func runCommand(args []string, deps commandDependencies) error {
 	if errors.Is(err, errStatusMoved) {
 		return errStatusMoved
 	}
-	return errCommandUsage
+	return usageErrorFor(args)
+}
+
+// usageErrorFor uses only recognized static command tokens. It never includes
+// a caller-supplied value in output, while still pointing to the nearest help
+// page for a malformed command invocation.
+func usageErrorFor(args []string) error {
+	path := ""
+	if len(args) > 0 {
+		switch args[0] {
+		case "daemon", "auth", "profile", "config":
+			path = args[0]
+		}
+	}
+	if len(args) > 1 {
+		valid := map[string]map[string]bool{
+			"daemon":  {"status": true, "start": true, "stop": true, "restart": true},
+			"auth":    {"list": true, "start": true, "status": true, "stop": true, "restart": true, "remove": true},
+			"profile": {"list": true},
+			"config":  {"list": true, "show": true, "create": true, "update": true, "set-password": true, "remove": true},
+		}
+		if valid[path][args[1]] {
+			path += " " + args[1]
+		}
+	}
+	if path == "" {
+		return errCommandUsage
+	}
+	return errors.New("用法错误，请运行 sidravia help " + path + " 查看帮助")
 }
 
 type commandOperationError struct {
@@ -359,7 +387,7 @@ var helpSpecs = map[string]helpNode{
 		},
 	},
 	"sidravia auth start": {
-		description: "启动一次性认证 Session，或确保 retained Session 正在运行。",
+		description: "启动一次性认证 Session、从配置启动，或确保已有 Session 正在运行。命令只返回初始 Snapshot，不等待认证完成。",
 		usage: []string{
 			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
 			"sidravia auth start --session <session-id>",
@@ -369,7 +397,7 @@ var helpSpecs = map[string]helpNode{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
 			"--password-stdin：从 stdin 读取密码",
-			"--session <session-id>：确保 retained Session 正在运行",
+			"--session <session-id>：确保已有 Session 正在运行",
 			"--config <configuration-id>：从持久配置启动或确保 Session 正在运行",
 		},
 		examples: []string{
@@ -430,23 +458,34 @@ var helpSpecs = map[string]helpNode{
 		usage:       []string{"sidravia config <command>"},
 		children:    []helpChild{{"list", "列出认证配置"}, {"show", "显示认证配置"}, {"create", "创建认证配置"}, {"update", "更新认证配置"}, {"set-password", "更新认证密码"}, {"remove", "删除认证配置"}},
 	},
-	"sidravia config list": {description: "列出认证配置。", usage: []string{"sidravia config list"}},
-	"sidravia config show": {description: "显示认证配置。", usage: []string{"sidravia config show <configuration-id>"}},
+	"sidravia config list": {description: "列出认证配置。", usage: []string{"sidravia config list"}, examples: []string{"sidravia config list"}},
+	"sidravia config show": {description: "显示认证配置。", usage: []string{"sidravia config show <configuration-id>"}, args: []string{"<configuration-id>：配置 ID"}, examples: []string{"sidravia config show campus"}},
 	"sidravia config create": {
 		description: "创建认证配置。",
-		usage:       []string{"sidravia config create --id <id> --profile <profile-id> --username <username> [--name <display-name>] [--password-stdin] [--allow-insecure-storage]"},
+		usage:       []string{"sidravia config create", "sidravia config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage]"},
+		options:     []string{"--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
+		examples:    []string{"sidravia config create", "sidravia config create --id campus --profile jlu --username <username> --password-stdin", "sidravia config create --id campus --profile jlu --username <username> --password-stdin --auto-login --auto-reconnect=false"},
 	},
 	"sidravia config update": {
 		description: "更新认证配置。",
-		usage:       []string{"sidravia config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>]"},
+		usage:       []string{"sidravia config update <configuration-id>", "sidravia config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false]"},
+		args:        []string{"<configuration-id>：配置 ID"},
+		options:     []string{"--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连"},
+		examples:    []string{"sidravia config update campus --auto-login true", "sidravia config update campus --auto-reconnect false"},
 	},
 	"sidravia config set-password": {
 		description: "更新认证密码。",
 		usage:       []string{"sidravia config set-password <configuration-id> [--password-stdin] [--allow-insecure-storage]"},
+		args:        []string{"<configuration-id>：配置 ID"},
+		options:     []string{"--password-stdin：从 stdin 读取密码；非交互模式必需", "--allow-insecure-storage：确认未保护存储风险"},
+		examples:    []string{"sidravia config set-password campus", "sidravia config set-password campus --password-stdin"},
 	},
 	"sidravia config remove": {
 		description: "停止关联 Session 并删除认证配置。",
 		usage:       []string{"sidravia config remove <configuration-id> [--yes]"},
+		args:        []string{"<configuration-id>：配置 ID"},
+		options:     []string{"--yes：非交互方式确认删除"},
+		examples:    []string{"sidravia config remove campus", "sidravia config remove campus --yes"},
 	},
 }
 

@@ -22,6 +22,22 @@ var errBoom = errors.New("simulated build failure")
 var errZip = errors.New("simulated zip failure")
 var errPublish = errors.New("simulated publish failure")
 
+func TestShippedGuideHasOrderedFirstUseJourney(t *testing.T) {
+	guide, err := os.ReadFile(filepath.Join("assets", "GETTING-STARTED.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(guide)
+	previous := -1
+	for _, token := range []string{"daemon start", "daemon status", "profile list", "auth start", "auth status", "daemon stop"} {
+		position := strings.Index(text, token)
+		if position < 0 || position < previous {
+			t.Fatalf("guide order invalid at %q", token)
+		}
+		previous = position
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

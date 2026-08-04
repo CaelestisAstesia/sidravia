@@ -176,8 +176,8 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 		run    func(listDependencies) error
 		want   string
 	}{
-		{"sessions", contract.MethodSessionList, json.RawMessage(`{"sessions":[]}`), runAuthList, "没有 Session。\n"},
-		{"profiles", contract.MethodProfileList, json.RawMessage(`{"profiles":[]}`), runProfileList, "没有可用的机构 Profile。\n"},
+		{"sessions", contract.MethodSessionList, json.RawMessage(`{"sessions":[]}`), runAuthList, "没有 Session。\n下一步：运行 sidravia help auth start 开始认证。\n"},
+		{"profiles", contract.MethodProfileList, json.RawMessage(`{"profiles":[]}`), runProfileList, "没有可用的机构 Profile。请检查完整 portable 包中的 institution-profiles，并重启 daemon。\n"},
 	} {
 		t.Run("empty "+test.name, func(t *testing.T) {
 			connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {

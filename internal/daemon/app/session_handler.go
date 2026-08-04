@@ -8,6 +8,7 @@ import (
 
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
+	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	credential "sidravia/internal/daemon/credentials"
 	"sidravia/internal/ipc/contract"
@@ -18,8 +19,8 @@ import (
 // start, stop and get operations, so the IPC handler never depends on
 // Configuration, Credentials, Supervisor or Session internals.
 type sessionApplication interface {
-	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (session.AuthenticationSessionID, session.Snapshot, error)
-	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID) (session.AuthenticationSessionID, session.Snapshot, error)
+	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error)
+	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID) (SessionStartResult, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
@@ -69,11 +70,11 @@ func handleSessionStartConfiguration(ctx context.Context, application sessionApp
 	if err != nil {
 		return nil, invalidArgumentError()
 	}
-	_, snapshot, err := application.StartConfigurationAuthentication(ctx, config.ConfigurationID(request.ConfigurationID))
+	result, err := application.StartConfigurationAuthentication(ctx, config.ConfigurationID(request.ConfigurationID))
 	if err != nil {
 		return nil, sessionError(err)
 	}
-	return encodeSessionResult(snapshot)
+	return encodeSessionStartResult(result)
 }
 
 func handleSessionEnsureRunning(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
@@ -156,11 +157,11 @@ func handleSessionStartOneShot(ctx context.Context, application sessionApplicati
 		ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(request.ProtocolContextOverride),
 	}
 
-	_, snapshot, err := application.StartOneShotAuthentication(ctx, input)
+	result, err := application.StartOneShotAuthentication(ctx, input)
 	if err != nil {
 		return nil, sessionError(err)
 	}
-	return encodeSessionResult(snapshot)
+	return encodeSessionStartResult(result)
 }
 
 func handleSessionStop(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
@@ -198,6 +199,17 @@ func encodeSessionResult(snapshot session.Snapshot) (json.RawMessage, *contract.
 	return result, nil
 }
 
+func encodeSessionStartResult(result SessionStartResult) (json.RawMessage, *contract.Error) {
+	data, err := contract.MarshalSessionStartResult(contract.SessionStartResult{
+		Outcome: result.Outcome,
+		Session: toSessionResult(result.Snapshot),
+	})
+	if err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeSessionOperationFailed, Message: "failed to encode session start result"}
+	}
+	return data, nil
+}
+
 func invalidArgumentError() *contract.Error {
 	return &contract.Error{
 		Code:    contract.ErrorCodeInvalidArgument,
@@ -210,6 +222,14 @@ func invalidArgumentError() *contract.Error {
 // every other failure maps to session_operation_failed. The message is generic
 // and never includes the username, password, opaque override or wrapped cause.
 func sessionError(err error) *contract.Error {
+	switch {
+	case errors.Is(err, supervisor.ErrSessionNotFound):
+		return &contract.Error{Code: contract.ErrorCodeSessionNotFound, Message: "session not found"}
+	case errors.Is(err, supervisor.ErrActiveSessionConflict):
+		return &contract.Error{Code: contract.ErrorCodeSessionActiveConflict, Message: "another active session exists"}
+	case errors.Is(err, supervisor.ErrSessionStateConflict):
+		return &contract.Error{Code: contract.ErrorCodeSessionStateConflict, Message: "session state does not allow operation"}
+	}
 	var resolutionFailure *ResolutionFailure
 	if errors.As(err, &resolutionFailure) {
 		switch resolutionFailure.Code() {

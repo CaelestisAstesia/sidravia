@@ -109,7 +109,7 @@ func (s *Supervisor) StartResolved(
 		for _, ms := range s.sessions {
 			if (ms.state != stateStopped || ms.reserved) && ms.intent == session.MaintainAuthentication {
 				s.mu.Unlock()
-				return "", Snapshot{}, fmt.Errorf("another maintain_authentication session is active")
+				return "", Snapshot{}, fmt.Errorf("%w", ErrActiveSessionConflict)
 			}
 		}
 	}
@@ -213,7 +213,7 @@ func (s *Supervisor) stopManaged(ctx context.Context, id ID, ms *managedSession)
 	current, ok := s.sessions[id]
 	if !ok || current != ms {
 		s.mu.Unlock()
-		return Snapshot{}, fmt.Errorf("session %q not found", id)
+		return Snapshot{}, fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
 	switch ms.state {
 	case stateStopping, stateStopped:
@@ -227,7 +227,7 @@ func (s *Supervisor) stopManaged(ctx context.Context, id ID, ms *managedSession)
 	case stateActive:
 	default:
 		s.mu.Unlock()
-		return Snapshot{}, fmt.Errorf("session %q is not active", id)
+		return Snapshot{}, fmt.Errorf("%w: %q", ErrSessionStateConflict, id)
 	}
 	ms.state = stateStopping
 	s.mu.Unlock()
@@ -249,7 +249,7 @@ func (s *Supervisor) managed(id ID) (*managedSession, error) {
 	defer s.mu.Unlock()
 	ms, ok := s.sessions[id]
 	if !ok {
-		return nil, fmt.Errorf("session %q not found", id)
+		return nil, fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
 	return ms, nil
 }
@@ -387,7 +387,7 @@ func (s *Supervisor) reserveDeletion(id ID, ms *managedSession) error {
 	defer s.mu.Unlock()
 	current, ok := s.sessions[id]
 	if !ok || current != ms {
-		return fmt.Errorf("session %q not found", id)
+		return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
 	ms.reserved = true
 	return nil
@@ -398,13 +398,13 @@ func (s *Supervisor) reserveAdmission(id ID, ms *managedSession) error {
 	defer s.mu.Unlock()
 	current, ok := s.sessions[id]
 	if !ok || current != ms {
-		return fmt.Errorf("session %q not found", id)
+		return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
 	if ms.intent == session.MaintainAuthentication {
 		for otherID, other := range s.sessions {
 			if otherID != id && other.intent == session.MaintainAuthentication &&
 				(other.state != stateStopped || other.reserved) {
-				return fmt.Errorf("another maintain_authentication session is active")
+				return fmt.Errorf("%w", ErrActiveSessionConflict)
 			}
 		}
 	}
@@ -434,7 +434,7 @@ func (s *Supervisor) waitStopped(ctx context.Context, id ID, ms *managedSession)
 		current, ok := s.sessions[id]
 		if !ok || current != ms {
 			s.mu.Unlock()
-			return fmt.Errorf("session %q not found", id)
+			return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 		}
 		if ms.state == stateStopped {
 			s.mu.Unlock()
@@ -463,11 +463,11 @@ func (s *Supervisor) ForgetStopped(id ID) error {
 	current, ok := s.sessions[id]
 	if !ok || current != ms {
 		s.mu.Unlock()
-		return fmt.Errorf("session %q not found", id)
+		return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
 	if ms.state != stateStopped {
 		s.mu.Unlock()
-		return fmt.Errorf("session %q is still active", id)
+		return fmt.Errorf("%w: %q", ErrSessionStateConflict, id)
 	}
 	delete(s.sessions, id)
 	ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
@@ -482,7 +482,7 @@ func (s *Supervisor) Get(ctx context.Context, id ID) (Snapshot, error) {
 	ms, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return Snapshot{}, fmt.Errorf("session %q not found", id)
+		return Snapshot{}, fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
 	snapshot, err := ms.actor.Snapshot(ctx)
 	if err != nil {

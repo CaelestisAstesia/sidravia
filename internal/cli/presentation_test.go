@@ -447,8 +447,8 @@ func TestStaticUsageDoesNotEchoInvalidMarkers(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run returned nil, want usage error")
 	}
-	if err.Error() != commandUsage {
-		t.Errorf("usage error = %q, want %q", err.Error(), commandUsage)
+	if err.Error() != "用法错误，请运行 sidravia help auth start 查看帮助" {
+		t.Errorf("usage error = %q", err.Error())
 	}
 	for _, marker := range []string{"profile-marker", "user-marker"} {
 		if strings.Contains(err.Error(), marker) {
@@ -777,6 +777,21 @@ func TestDaemonLifecycleRenderers(t *testing.T) {
 	}
 }
 
+func TestActionableSessionErrorGuidanceAndEmptyStates(t *testing.T) {
+	if got := ipcErrorText("session_not_found"); got != "找不到指定的认证 Session；请运行 sidravia auth list 查看可用 Session" {
+		t.Fatalf("session_not_found guidance = %q", got)
+	}
+
+	var sessions bytes.Buffer
+	p := newTestPresentation(&sessions, termenv.Ascii)
+	if err := p.complete(renderSessionList(p, &contract.SessionListResult{})); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessions.String(); got != "没有 Session。\n下一步：运行 sidravia help auth start 开始认证。\n" {
+		t.Fatalf("empty Session list = %q", got)
+	}
+}
+
 func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testing.T) {
 	base := contract.ConfigurationResult{
 		ConfigurationID: "campus\x1b[2J\ninjected", DisplayName: "校园网",
@@ -798,7 +813,7 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 	if err := writeConfigurationList(&empty, contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}}); err != nil {
 		t.Fatal(err)
 	}
-	if empty.String() != "尚未保存认证配置。\n" {
+	if empty.String() != "尚未保存认证配置。\n下一步：运行 sidravia config create 创建认证配置。\n" {
 		t.Fatalf("empty list = %q", empty.String())
 	}
 }

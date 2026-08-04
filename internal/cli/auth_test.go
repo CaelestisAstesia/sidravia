@@ -27,7 +27,7 @@ func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 		if method != contract.MethodSessionEnsureRunning || string(payload) != `{"sessionId":"session-1"}` {
 			t.Fatalf("call = %s %s", method, payload)
 		}
-		return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+		return successSessionStartResponse(t, "already_running", minimalSessionResult("authenticated")), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
 	deps.readStdinPassword = func(io.Reader) (string, error) { t.Fatal("stdin password read"); return "", nil }
@@ -58,7 +58,7 @@ func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordR
 			result := minimalSessionResult("authenticated")
 			result.AuthenticationSessionID = "configuration-session"
 			result.InstitutionDisplayName = "Campus"
-			return successSessionResponse(t, result), nil
+			return successSessionStartResponse(t, "created", result), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
@@ -103,7 +103,7 @@ func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
 		{"ensure", contract.MethodSessionEnsureRunning, func(id string, deps authDependencies) error {
 			return runAuthStart(authStartOptions{sessionID: id}, deps)
 		}, func(t *testing.T) contract.Response {
-			return successSessionResponse(t, minimalSessionResult("authenticated"))
+			return successSessionStartResponse(t, "already_running", minimalSessionResult("authenticated"))
 		}},
 		{"restart", contract.MethodSessionRestart, runAuthRestart, func(t *testing.T) contract.Response {
 			return successSessionResponse(t, minimalSessionResult("authenticating"))
@@ -213,6 +213,15 @@ func successSessionResponse(t *testing.T, result contract.SessionResult) contrac
 	payload, err := contract.MarshalSessionResult(result)
 	if err != nil {
 		t.Fatalf("MarshalSessionResult = %v", err)
+	}
+	return contract.NewSuccessResponse("1", payload)
+}
+
+func successSessionStartResponse(t *testing.T, outcome string, result contract.SessionResult) contract.Response {
+	t.Helper()
+	payload, err := contract.MarshalSessionStartResult(contract.SessionStartResult{Outcome: outcome, Session: result})
+	if err != nil {
+		t.Fatalf("MarshalSessionStartResult = %v", err)
 	}
 	return contract.NewSuccessResponse("1", payload)
 }
@@ -395,7 +404,7 @@ func TestAuthDiscoveryEarlyChildExitDoesNotDispatchSession(t *testing.T) {
 	go func() { _, err := acquireDaemonClient(deps); done <- err }()
 	select {
 	case err := <-done:
-		if err == nil || err.Error() != "sidraviad 在就绪前退出；请检查 daemon 日志" || !errors.Is(err, cause) {
+		if err == nil || err.Error() != "sidraviad 在就绪前退出；请检查当前模式的 daemon 日志（portable 包位于 logs\\sidraviad.log）" || !errors.Is(err, cause) {
 			t.Fatalf("error = %v", err)
 		}
 	case <-time.After(100 * time.Millisecond):
@@ -470,7 +479,7 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 		call: func(gotMethod string, gotPayload json.RawMessage) (contract.Response, error) {
 			method = gotMethod
 			rawPayload = append(json.RawMessage(nil), gotPayload...)
-			return successSessionResponse(t, minimalSessionResult("authenticating")), nil
+			return successSessionStartResponse(t, "created", minimalSessionResult("authenticating")), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
@@ -537,7 +546,7 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 				t.Errorf("method = %q, want session.startOneShot", method)
 			}
 			rawPayload = append(json.RawMessage(nil), payload...)
-			return successSessionResponse(t, minimalSessionResult("waiting_for_network")), nil
+			return successSessionStartResponse(t, "created", minimalSessionResult("waiting_for_network")), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)

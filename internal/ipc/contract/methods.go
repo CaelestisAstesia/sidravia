@@ -55,6 +55,9 @@ const (
 	ErrorCodeProtocolNotFound                    = "protocol_not_found"
 	ErrorCodeProfileOperationFailed              = "profile_operation_failed"
 	ErrorCodeSessionOperationFailed              = "session_operation_failed"
+	ErrorCodeSessionNotFound                     = "session_not_found"
+	ErrorCodeSessionActiveConflict               = "session_active_conflict"
+	ErrorCodeSessionStateConflict                = "session_state_conflict"
 	ErrorCodeConfigurationNotFound               = "configuration_not_found"
 	ErrorCodeConfigurationConflict               = "configuration_conflict"
 	ErrorCodeConfigurationOperationFailed        = "configuration_operation_failed"
@@ -261,6 +264,13 @@ type SessionRemoveResult struct {
 	Status    string `json:"status"`
 }
 
+// SessionStartResult describes the effect of a start/ensure request without
+// overloading the long-lived Session snapshot with operation history.
+type SessionStartResult struct {
+	Outcome string        `json:"outcome"`
+	Session SessionResult `json:"session"`
+}
+
 // DecodeSessionStartOneShotPayload strictly decodes a session.startOneShot
 // payload. It rejects unknown fields, missing required fields, null, trailing
 // JSON values and trailing garbage. The password may be empty; the username,
@@ -413,6 +423,14 @@ type SessionResult struct {
 
 // MarshalSessionResult encodes a SessionResult as JSON.
 func MarshalSessionResult(result SessionResult) (json.RawMessage, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+func MarshalSessionStartResult(result SessionStartResult) (json.RawMessage, error) {
 	data, err := json.Marshal(result)
 	if err != nil {
 		return nil, err

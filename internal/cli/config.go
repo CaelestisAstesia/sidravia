@@ -353,7 +353,8 @@ func runConfigRemove(id string, yes bool, deps authDependencies) error {
 		if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
 			return errors.New("非交互式删除需要 --yes")
 		}
-		confirmed, err := readConfirmation(deps.stdin, deps.stderr, "确认删除配置？[y/N] ")
+		prompt := "确认删除配置 “" + sanitizeDynamicText(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
+		confirmed, err := readConfirmation(deps.stdin, deps.stderr, prompt)
 		if err != nil {
 			return err
 		}

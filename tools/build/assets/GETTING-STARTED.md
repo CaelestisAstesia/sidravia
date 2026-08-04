@@ -10,18 +10,20 @@ Windows PowerShell 5.1。候选包可能未签名；请从可信来源下载并�
 1. 把 zip 内全部文件完整解压到固定目录，例如 `%LOCALAPPDATA%\Programs\Sidravia`。
    该目录必须对当前普通用户可写：程序运行后会在同一目录生成 `config\`、`runtime\`
    与 `logs\` 数据目录。
-2. 运行：
+2. 先确认 daemon 与 Profile：
 
    ```powershell
    .\sidravia.exe --help
-   .\sidravia.exe profile list
    .\sidravia.exe daemon start
    .\sidravia.exe daemon status
-   .\sidravia.exe daemon stop
+   .\sidravia.exe profile list
    ```
 
-3. 认证：`.\sidravia.exe auth start --profile jlu --username <账号>`，随后用
+3. 认证：运行 `.\sidravia.exe auth start --profile jlu --username <账号>`。命令会返回初始
+   Snapshot；认证可能仍在 daemon 中继续。复制实际返回的 SessionID 后运行
    `.\sidravia.exe auth status <session-id>` 查看进度。
+
+4. 不再需要认证时，可选运行 `.\sidravia.exe daemon stop`。
 
 本 zip 包含两个程序 `sidravia.exe` / `sidraviad.exe`、便携标记
 `sidravia.portable`、官方 Profile `institution-profiles\jlu.json`、可选集成脚本

@@ -81,6 +81,10 @@ CLI 与 daemon 各自解析同一 marker。增删 marker 前必须先停止 daem
 `daemon status` 严格只读，不启动 daemon、不创建目录、不轮转日志。stop/restart 始终针对
 命令首次探测的精确 daemon generation。
 
+重复执行 `daemon start` 会明确报告“已经运行”；对未运行的 daemon 执行 `daemon restart`
+会明确报告“原先未运行，现已启动”。如果 runtime 信息存在但无法连接，先稍后运行
+`daemon status`，持续失败时运行 `daemon restart`。stop 超时也必须先用 status 确认结果。
+
 如果 Windows launcher 报告“sidraviad 在就绪前退出”，表示它观察到自己创建的精确子进程
 已退出，并在最后一次 typed readiness 探测后仍未就绪。检查当前模式的
 `logs\sidraviad.log`；CLI 不显示私有 Wait cause。
@@ -124,6 +128,10 @@ Configuration schema 3 拥有两个自动化开关：
 自动连接控制器。严格 schema 2 文件仍可读取，默认
 `AutoLogin=false`、`AutoReconnect=true`，仅打开不会重写。
 
+创建时 `--auto-login` 默认关闭，`--auto-reconnect` 默认开启；更新时分别使用
+`--auto-login true|false` 与 `--auto-reconnect true|false`。完整参数和交互/非交互示例见
+`sidravia help config create` 与 `sidravia help config update`。
+
 ## Session 与认证
 
 先退出其他 Dr.COM 客户端。确认官方 Profile：
@@ -144,7 +152,8 @@ Configuration schema 3 拥有两个自动化开关：
 .\sidravia.exe auth start --config <configuration-id>
 ```
 
-`auth start` 返回初始 Snapshot 后立即退出，不等待认证完成。记下 Session ID：
+`auth start` 返回初始 Snapshot 后立即退出，不等待认证完成；它会说明本次是创建、恢复还是
+已在运行，并输出可复制的 status 命令。记下 Session ID：
 
 ```powershell
 .\sidravia.exe auth list
@@ -158,6 +167,9 @@ Configuration schema 3 拥有两个自动化开关：
 stop 先发布 `stopping`，协议 Run 完成有界清理后才发布 `suspended`。Supervisor 在此之前
 不释放单活动准入。remove 成功意味着 Session actor、协议、revision forwarder 和集合成员
 均已退出。daemon 重启后不恢复旧 SessionID。
+
+找不到 Session 时先运行 `sidravia auth list`；已有其他 Session 活动时先停止或删除它；
+状态冲突时先运行 `sidravia auth status <session-id>` 查看状态。CLI 不显示 daemon 私有原因。
 
 D520 JLU Profile 使用独立 fixed `localPort=61440`；绑定失败不回退到系统分配端口。
 认证成功后应核对网络字段是实际校园物理接口和预期 IPv4。

@@ -30,6 +30,14 @@ func (stubFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtoc
 
 type blockingRun struct{}
 
+func TestMissingSessionPreservesStableErrorIdentity(t *testing.T) {
+	supervisor := New(Dependencies{})
+	_, err := supervisor.Get(context.Background(), "missing")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("missing session error = %v", err)
+	}
+}
+
 func (blockingRun) Execute(ctx context.Context, _ protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
 	<-ctx.Done()
 	return nil
