@@ -369,6 +369,7 @@ function Get-SandboxTask {
     if ($null -eq $task) { return $null }
     if ($task.Actions.Count -ne 1) { return $null }
     if ($task.Triggers.Count -ne 1) { return $null }
+    if ([string]$task.Triggers[0].CimClass.CimClassName -ne 'MSFT_TaskLogonTrigger') { return $null }
     $currentUserSID = $null
     try {
         $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()

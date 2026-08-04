@@ -65,7 +65,8 @@ function Get-SidraviaTaskOwnership {
     param([object]$Task, [string]$InstallDirectory, [string]$UserSID)
     if ($null -eq $Task) { return 'absent' }
     if ($Task.TaskPath -ne '\' -or $Task.TaskName -ne $TaskName -or
-        $Task.Actions.Count -ne 1 -or $Task.Triggers.Count -ne 1) { return 'conflict' }
+        $Task.Actions.Count -ne 1 -or $Task.Triggers.Count -ne 1 -or
+        [string]$Task.Triggers[0].CimClass.CimClassName -ne 'MSFT_TaskLogonTrigger') { return 'conflict' }
     $expectedExecutable = [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'sidravia.exe'))
     try { $actualExecutable = [IO.Path]::GetFullPath([string]$Task.Actions[0].Execute) } catch { return 'conflict' }
     $principalSID = ConvertTo-SIDValue -Identity ([string]$Task.Principal.UserId)
