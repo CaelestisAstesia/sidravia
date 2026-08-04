@@ -303,7 +303,7 @@ func stopGeneration(deps stopDependencies, info contract.RuntimeInfo) error {
 	defer cancel()
 	conn, err := deps.probe.connect(ctx, info)
 	if err != nil {
-		return nil
+		return wrapSafeOperation("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidravia daemon status 后重试", err)
 	}
 	resp, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage("{}"))
 	closeErr := conn.Close()

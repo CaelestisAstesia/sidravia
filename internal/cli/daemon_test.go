@@ -237,6 +237,98 @@ func TestDaemonStopSendsStopAndWaitsForUnreachable(t *testing.T) {
 	}
 }
 
+func TestDaemonStopSecondConnectFailureIsNotSuccess(t *testing.T) {
+	info := testRuntimeInfo(100)
+	cause := errors.New("second connect failed")
+	connects := 0
+	stopCalls := 0
+	deps := stopDependencies{
+		probe: probeDependencies{
+			runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
+			readRuntimeInfo: func(string) (contract.RuntimeInfo, error) { return info, nil },
+			connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+				connects++
+				if connects == 2 {
+					return nil, cause
+				}
+				return &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+					if method == contract.MethodDaemonStop {
+						stopCalls++
+					}
+					return daemonStatusResponse(t), nil
+				}}, nil
+			},
+			callTimeout: time.Second,
+		},
+		totalWait:    time.Second,
+		pollInterval: time.Millisecond,
+	}
+	err := runDaemonStop(deps)
+	if err == nil {
+		t.Fatal("runDaemonStop returned nil")
+	}
+	if err.Error() != "守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidravia daemon status 后重试" {
+		t.Errorf("err = %q", err.Error())
+	}
+	if !errors.Is(err, cause) {
+		t.Errorf("err does not preserve cause: %v", err)
+	}
+	if stopCalls != 0 {
+		t.Errorf("daemon.stop calls = %d, want 0", stopCalls)
+	}
+}
+
+func TestDaemonRestartSecondConnectFailureDoesNotLaunch(t *testing.T) {
+	info := testRuntimeInfo(100)
+	cause := errors.New("second connect failed")
+	connects := 0
+	launches := 0
+	probe := probeDependencies{
+		runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
+		readRuntimeInfo: func(string) (contract.RuntimeInfo, error) { return info, nil },
+		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+			connects++
+			if connects == 2 {
+				return nil, cause
+			}
+			return &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+				return daemonStatusResponse(t), nil
+			}}, nil
+		},
+		callTimeout: time.Second,
+	}
+	deps := restartDependencies{
+		probe: probe,
+		stop: stopDependencies{
+			probe:        probe,
+			totalWait:    time.Second,
+			pollInterval: time.Millisecond,
+		},
+		ensure: ensureDependencies{
+			probe: probe,
+			launch: func(string) (daemonLaunch, error) {
+				launches++
+				return daemonLaunch{}, nil
+			},
+			totalWait:    time.Second,
+			pollInterval: time.Millisecond,
+		},
+	}
+	err := runDaemonRestart(deps)
+	if err == nil {
+		t.Fatal("runDaemonRestart returned nil")
+	}
+	if err.Error() != "守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidravia daemon status 后重试" {
+		t.Errorf("err = %q", err.Error())
+	}
+	if !errors.Is(err, cause) {
+		t.Errorf("err does not preserve cause: %v", err)
+	}
+	if launches != 0 {
+		t.Errorf("launches = %d, want 0", launches)
+	}
+}
+
 func TestDaemonRestartStoppedIsStart(t *testing.T) {
 	reachable := false
 	info := testRuntimeInfo(100)
