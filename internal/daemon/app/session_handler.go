@@ -22,7 +22,7 @@ type sessionApplication interface {
 	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error)
 	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID) (SessionStartResult, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
-	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
+	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (SessionStartResult, error)
 	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	RemoveSession(ctx context.Context, sessionID session.AuthenticationSessionID) error
 	GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
@@ -82,11 +82,11 @@ func handleSessionEnsureRunning(ctx context.Context, application sessionApplicat
 	if err != nil {
 		return nil, invalidArgumentError()
 	}
-	snapshot, err := application.EnsureSessionRunning(ctx, session.AuthenticationSessionID(request.SessionID))
+	result, err := application.EnsureSessionRunning(ctx, session.AuthenticationSessionID(request.SessionID))
 	if err != nil {
 		return nil, sessionError(err)
 	}
-	return encodeSessionResult(snapshot)
+	return encodeSessionStartResult(result)
 }
 
 func handleSessionRestart(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {

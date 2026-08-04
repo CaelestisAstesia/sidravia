@@ -174,6 +174,18 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 		t.Errorf("State: got %q, want %q", started.State, session.Authenticating)
 	}
 
+	ensureResult, cerr := handler(ctx, contract.MethodSessionEnsureRunning, []byte(`{"sessionId":"`+started.AuthenticationSessionID+`"}`))
+	if cerr != nil {
+		t.Fatalf("session.ensureRunning error: %+v", cerr)
+	}
+	var ensuredResult contract.SessionStartResult
+	if err := json.Unmarshal(ensureResult, &ensuredResult); err != nil {
+		t.Fatalf("unmarshal ensure result: %v", err)
+	}
+	if ensuredResult.Outcome != "already_running" || ensuredResult.Session.AuthenticationSessionID != started.AuthenticationSessionID {
+		t.Fatalf("ensure result = %#v", ensuredResult)
+	}
+
 	// Get the same session through the composed IPC handler.
 	getResult, cerr := handler(ctx, contract.MethodSessionGet, []byte(`{"sessionId":"`+started.AuthenticationSessionID+`"}`))
 	if cerr != nil {
@@ -183,7 +195,7 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 	if err := json.Unmarshal(getResult, &got); err != nil {
 		t.Fatalf("unmarshal get result: %v", err)
 	}
-	if got.AuthenticationSessionID != started.AuthenticationSessionID {
+	if got.AuthenticationSessionID != ensuredResult.Session.AuthenticationSessionID {
 		t.Errorf("get session ID: got %q, want %q", got.AuthenticationSessionID, started.AuthenticationSessionID)
 	}
 

@@ -113,10 +113,13 @@ func (fake *fakeSessionApplication) StopSession(ctx context.Context, sessionID s
 	return fake.snapshot, nil
 }
 
-func (fake *fakeSessionApplication) EnsureSessionRunning(_ context.Context, id session.AuthenticationSessionID) (session.Snapshot, error) {
+func (fake *fakeSessionApplication) EnsureSessionRunning(_ context.Context, id session.AuthenticationSessionID) (SessionStartResult, error) {
 	fake.ensureCalls++
 	fake.lastEnsureID = id
-	return fake.snapshot, fake.err
+	if fake.err != nil {
+		return SessionStartResult{}, fake.err
+	}
+	return SessionStartResult{SessionID: id, Snapshot: fake.snapshot, Outcome: SessionStartAlreadyRunning}, nil
 }
 
 func (fake *fakeSessionApplication) RestartSession(_ context.Context, id session.AuthenticationSessionID) (session.Snapshot, error) {
@@ -160,6 +163,17 @@ func TestSessionHandlerRoutesRetainedLifecycleMethods(t *testing.T) {
 			if string(result) != `{"sessionId":"session-1","status":"removed"}` {
 				t.Fatalf("%s result=%s", test.method, result)
 			}
+			continue
+		}
+		if test.method == contract.MethodSessionEnsureRunning {
+			var got contract.SessionStartResult
+			if err := json.Unmarshal(result, &got); err != nil {
+				t.Fatalf("%s decode start result: %v", test.method, err)
+			}
+			if got.Outcome != SessionStartAlreadyRunning {
+				t.Fatalf("%s outcome=%q", test.method, got.Outcome)
+			}
+			assertSessionResultMatchesSnapshot(t, got.Session, fullSnapshot())
 			continue
 		}
 		var got contract.SessionResult

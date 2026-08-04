@@ -128,8 +128,12 @@ func TestDaemonStartIdempotentWhenReachable(t *testing.T) {
 		totalWait:    time.Second,
 		pollInterval: time.Millisecond,
 	}
-	if err := ensureDaemonRunning(deps); err != nil {
-		t.Fatalf("ensureDaemonRunning: %v", err)
+	outcome, err := ensureDaemonRunningWithOutcome(deps)
+	if err != nil {
+		t.Fatalf("ensureDaemonRunningWithOutcome: %v", err)
+	}
+	if outcome != daemonAlreadyRunning {
+		t.Fatalf("outcome = %q, want %q", outcome, daemonAlreadyRunning)
 	}
 	if launches != 0 {
 		t.Errorf("launches = %d, want 0 (idempotent)", launches)
@@ -165,8 +169,12 @@ func TestDaemonStartLaunchesWhenStopped(t *testing.T) {
 		totalWait:    time.Second,
 		pollInterval: time.Millisecond,
 	}
-	if err := ensureDaemonRunning(deps); err != nil {
-		t.Fatalf("ensureDaemonRunning: %v", err)
+	outcome, err := ensureDaemonRunningWithOutcome(deps)
+	if err != nil {
+		t.Fatalf("ensureDaemonRunningWithOutcome: %v", err)
+	}
+	if outcome != daemonStarted {
+		t.Fatalf("outcome = %q, want %q", outcome, daemonStarted)
 	}
 	if launches != 1 {
 		t.Errorf("launches = %d, want 1", launches)
@@ -179,8 +187,12 @@ func TestDaemonStopIdempotentWhenNoDaemon(t *testing.T) {
 		totalWait:    time.Second,
 		pollInterval: time.Millisecond,
 	}
-	if err := runDaemonStop(deps); err != nil {
-		t.Fatalf("runDaemonStop: %v", err)
+	outcome, err := runDaemonStopWithOutcome(deps)
+	if err != nil {
+		t.Fatalf("runDaemonStopWithOutcome: %v", err)
+	}
+	if outcome != daemonAlreadyStopped {
+		t.Fatalf("outcome = %q, want %q", outcome, daemonAlreadyStopped)
 	}
 }
 
@@ -370,8 +382,12 @@ func TestDaemonRestartStoppedIsStart(t *testing.T) {
 			pollInterval: time.Millisecond,
 		},
 	}
-	if err := runDaemonRestart(deps); err != nil {
-		t.Fatalf("runDaemonRestart: %v", err)
+	outcome, err := runDaemonRestartWithOutcome(deps)
+	if err != nil {
+		t.Fatalf("runDaemonRestartWithOutcome: %v", err)
+	}
+	if outcome != daemonStartedFromStopped {
+		t.Fatalf("outcome = %q, want %q", outcome, daemonStartedFromStopped)
 	}
 	if launches != 1 {
 		t.Errorf("launches = %d, want 1", launches)

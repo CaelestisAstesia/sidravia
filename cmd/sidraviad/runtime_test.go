@@ -436,6 +436,24 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		t.Fatalf("session.AccountName = %q, want complete username %q", sessionResult.AccountName, usernameMarker)
 	}
 
+	ensureResponse, err := conn.Call(ctx, contract.MethodSessionEnsureRunning, []byte(`{"sessionId":"`+sessionResult.AuthenticationSessionID+`"}`))
+	if err != nil {
+		t.Fatalf("session.ensureRunning call: %v", err)
+	}
+	if !ensureResponse.OK {
+		t.Fatalf("session.ensureRunning error: %+v", ensureResponse.Error)
+	}
+	if bytes.Contains(ensureResponse.Result, []byte(passwordMarker)) {
+		t.Fatal("raw session.ensureRunning response contains password marker")
+	}
+	var ensured contract.SessionStartResult
+	if err := json.Unmarshal(ensureResponse.Result, &ensured); err != nil {
+		t.Fatalf("unmarshal ensure result: %v", err)
+	}
+	if ensured.Outcome != "already_running" || ensured.Session.AuthenticationSessionID != sessionResult.AuthenticationSessionID || ensured.Session.AccountName != usernameMarker {
+		t.Fatalf("ensure result = %#v", ensured)
+	}
+
 	listResponse, err := conn.Call(ctx, contract.MethodSessionList, json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("session.list call: %v", err)

@@ -37,6 +37,24 @@ func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 	}
 }
 
+func TestRunAuthStartRetainedRejectsRetiredBareSessionResult(t *testing.T) {
+	var output bytes.Buffer
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		if method != contract.MethodSessionEnsureRunning {
+			t.Fatalf("method = %q", method)
+		}
+		return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	deps.stdout = &output
+	if err := runAuthStart(authStartOptions{sessionID: "session-1"}, deps); err == nil {
+		t.Fatal("retired bare result succeeded")
+	}
+	if output.Len() != 0 {
+		t.Fatalf("retired bare result produced success output: %q", output.String())
+	}
+}
+
 func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordRead(t *testing.T) {
 	var output bytes.Buffer
 	connection := &fakeDaemonClient{

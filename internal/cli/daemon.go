@@ -52,6 +52,27 @@ type probeResult struct {
 	status *contract.StatusResult
 }
 
+type daemonStartOutcome string
+
+const (
+	daemonStarted        daemonStartOutcome = "started"
+	daemonAlreadyRunning daemonStartOutcome = "already_running"
+)
+
+type daemonStopOutcome string
+
+const (
+	daemonStopped        daemonStopOutcome = "stopped"
+	daemonAlreadyStopped daemonStopOutcome = "already_stopped"
+)
+
+type daemonRestartOutcome string
+
+const (
+	daemonRestarted          daemonRestartOutcome = "restarted"
+	daemonStartedFromStopped daemonRestartOutcome = "started_from_stopped"
+)
+
 type probeDependencies struct {
 	runtimeInfoPath func() (string, error)
 	readRuntimeInfo func(path string) (contract.RuntimeInfo, error)
@@ -254,21 +275,30 @@ func defaultEnsureDependencies(logLevel string) ensureDependencies {
 // Otherwise it launches at most once and polls until a typed status succeeds or
 // the fixed timeout expires. It does not delete stale runtime information.
 func ensureDaemonRunning(deps ensureDependencies) error {
+	_, err := ensureDaemonRunningWithOutcome(deps)
+	return err
+}
+
+func ensureDaemonRunningWithOutcome(deps ensureDependencies) (daemonStartOutcome, error) {
 	result, err := probeDaemon(deps.probe)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if result.state == probeReachable {
-		return nil
+		return daemonAlreadyRunning, nil
 	}
 	launch, err := deps.launch(deps.logLevel)
 	if err != nil {
-		return wrapSafeOperation("启动 sidraviad", err)
+		return "", wrapSafeOperation("启动 sidraviad", err)
 	}
-	return waitForDaemonReadiness(deps.totalWait, deps.pollInterval, launch.exited, func() (bool, error) {
+	err = waitForDaemonReadiness(deps.totalWait, deps.pollInterval, launch.exited, func() (bool, error) {
 		result, err := probeDaemon(deps.probe)
 		return result.state == probeReachable, err
 	})
+	if err != nil {
+		return "", err
+	}
+	return daemonStarted, nil
 }
 
 // stopDependencies wires runDaemonStop to its collaborators.
@@ -290,19 +320,27 @@ func defaultStopDependencies() stopDependencies {
 // that exact generation is no longer reachable. It is idempotent when no
 // reachable daemon exists. It never terminates by PID.
 func runDaemonStop(deps stopDependencies) error {
+	_, err := runDaemonStopWithOutcome(deps)
+	return err
+}
+
+func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) {
 	result, err := probeDaemon(deps.probe)
 	if err != nil {
-		return err
+		return "", err
 	}
 	switch result.state {
 	case probeStopped:
-		return nil
+		return daemonAlreadyStopped, nil
 	case probeMalformed, probeUnreachable:
-		return errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart")
+		return "", errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart")
 	case probeReachable:
-		return stopGeneration(deps, result.info)
+		if err := stopGeneration(deps, result.info); err != nil {
+			return "", err
+		}
+		return daemonStopped, nil
 	default:
-		return errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart")
+		return "", errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart")
 	}
 }
 
@@ -379,29 +417,37 @@ func defaultRestartDependencies(logLevel string) restartDependencies {
 // runtime info exists, it does not delete it; it attempts a normal start and
 // lets the daemon host own atomic replacement.
 func runDaemonRestart(deps restartDependencies) error {
+	_, err := runDaemonRestartWithOutcome(deps)
+	return err
+}
+
+func runDaemonRestartWithOutcome(deps restartDependencies) (daemonRestartOutcome, error) {
 	result, err := probeDaemon(deps.probe)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if result.state == probeReachable {
 		if err := stopGeneration(deps.stop, result.info); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return ensureDaemonRunning(deps.ensure)
+	if _, err := ensureDaemonRunningWithOutcome(deps.ensure); err != nil {
+		return "", err
+	}
+	if result.state == probeStopped {
+		return daemonStartedFromStopped, nil
+	}
+	return daemonRestarted, nil
 }
 
 // daemonStart, daemonStop and daemonRestart are the production entry points
 // bound to the CLI command tree.
 func daemonStart(logLevel string) error {
-	before, err := probeDaemon(defaultProbeDependencies())
+	outcome, err := ensureDaemonRunningWithOutcome(defaultEnsureDependencies(logLevel))
 	if err != nil {
 		return err
 	}
-	if err := ensureDaemonRunning(defaultEnsureDependencies(logLevel)); err != nil {
-		return err
-	}
-	if before.state == probeReachable {
+	if outcome == daemonAlreadyRunning {
 		p := newPresentation(os.Stdout)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonAlreadyRunning()))
 	}
@@ -413,14 +459,11 @@ func daemonStatus() error {
 }
 
 func daemonStop() error {
-	before, err := probeDaemon(defaultProbeDependencies())
+	outcome, err := runDaemonStopWithOutcome(defaultStopDependencies())
 	if err != nil {
 		return err
 	}
-	if err := runDaemonStop(defaultStopDependencies()); err != nil {
-		return err
-	}
-	if before.state == probeStopped {
+	if outcome == daemonAlreadyStopped {
 		p := newPresentation(os.Stdout)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonAlreadyStopped()))
 	}
@@ -428,14 +471,11 @@ func daemonStop() error {
 }
 
 func daemonRestart(logLevel string) error {
-	before, err := probeDaemon(defaultProbeDependencies())
+	outcome, err := runDaemonRestartWithOutcome(defaultRestartDependencies(logLevel))
 	if err != nil {
 		return err
 	}
-	if err := runDaemonRestart(defaultRestartDependencies(logLevel)); err != nil {
-		return err
-	}
-	if before.state == probeStopped {
+	if outcome == daemonStartedFromStopped {
 		p := newPresentation(os.Stdout)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStartedFromStopped()))
 	}

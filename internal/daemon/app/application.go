@@ -171,8 +171,20 @@ func (application *Application) StopSession(ctx context.Context, sessionID sessi
 	return application.sup.Stop(ctx, sessionID)
 }
 
-func (application *Application) EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
-	return application.sup.EnsureRunning(ctx, sessionID)
+func (application *Application) EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (SessionStartResult, error) {
+	before, err := application.sup.Get(ctx, sessionID)
+	if err != nil {
+		return SessionStartResult{}, err
+	}
+	snapshot, err := application.sup.EnsureRunning(ctx, sessionID)
+	if err != nil {
+		return SessionStartResult{}, err
+	}
+	outcome := SessionStartAlreadyRunning
+	if before.State == session.Suspended || before.State == session.Stopping {
+		outcome = SessionStartResumed
+	}
+	return SessionStartResult{SessionID: sessionID, Snapshot: snapshot, Outcome: outcome}, nil
 }
 
 func (application *Application) RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {

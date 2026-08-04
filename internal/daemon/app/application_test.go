@@ -236,6 +236,36 @@ func TestConfigurationStartActiveAndSuspendedEnsureSameRuntime(t *testing.T) {
 	}
 }
 
+func TestEnsureSessionRunningReportsActiveAndResumedOutcomes(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+
+	started, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := setup.application.EnsureSessionRunning(ctx, started.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Outcome != SessionStartAlreadyRunning || active.SessionID != started.SessionID || active.Snapshot.AuthenticationSessionID != started.SessionID {
+		t.Fatalf("active ensure = %#v", active)
+	}
+
+	if _, err := setup.application.StopSession(ctx, started.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, started.SessionID, session.Suspended)
+	resumed, err := setup.application.EnsureSessionRunning(ctx, started.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Outcome != SessionStartResumed || resumed.SessionID != started.SessionID || resumed.Snapshot.AuthenticationSessionID != started.SessionID {
+		t.Fatalf("resumed ensure = %#v", resumed)
+	}
+}
+
 func TestConfigurationEnsureErrorPreservesAssociation(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	ctx := context.Background()
