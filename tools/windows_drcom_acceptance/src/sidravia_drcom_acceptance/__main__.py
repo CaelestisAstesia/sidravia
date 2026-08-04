@@ -4,7 +4,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence, TextIO
+from typing import Any, Sequence, TextIO
 
 from .evidence import (
     compare_evidence,
@@ -22,19 +22,10 @@ class CliDependencies:
     preflight: Any
     stdout: TextIO
     stderr: TextIO
-    confirm: Callable[[str], bool] | None = None
-    run_handler: Callable[[argparse.Namespace], Any] | None = None
 
 
 def _repository_root() -> Path:
     return Path(__file__).resolve().parents[4]
-
-
-def _default_confirm(prompt: str) -> bool:
-    try:
-        return input(prompt).strip() == "继续"
-    except (EOFError, KeyboardInterrupt):
-        return False
 
 
 def _default_dependencies() -> CliDependencies:
@@ -42,15 +33,13 @@ def _default_dependencies() -> CliDependencies:
         preflight=Preflight(repository_root=_repository_root()),
         stdout=sys.stdout,
         stderr=sys.stderr,
-        confirm=_default_confirm,
-        run_handler=None,
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sidravia-drcom-acceptance",
-        description="Sidravia Windows Dr.COM 离线与实网验收基础设施",
+        description="Sidravia Windows Dr.COM 离线验收与实网研究基础设施",
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
@@ -60,10 +49,6 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument(
         "--validate", action="store_true",
         help="离线比对 transcript、LocalAddr/Session 与 tshark JSON",
-    )
-    mode.add_argument(
-        "--run", action="store_true",
-        help="在预检和集成契约通过后编排一次授权的实网验收",
     )
     parser.add_argument("--transcript", type=Path, help="application transcript JSONL")
     parser.add_argument("--transport", type=Path, help="transport observation JSON")
@@ -116,31 +101,6 @@ def _validate(args: argparse.Namespace, dependencies: CliDependencies) -> int:
     return _render_comparison(result, dependencies.stdout)
 
 
-def _run(args: argparse.Namespace, dependencies: CliDependencies) -> int:
-    report = dependencies.preflight.run()
-    print(render_preflight_zh(report), end="", file=dependencies.stdout)
-    if report.exit_code != 0:
-        return 2
-
-    print(
-        "警告：下一步会进行真实校园网认证并弹出一次 UAC；PCAP 与完整证据是敏感临时制品。",
-        file=dependencies.stdout,
-    )
-    confirm = dependencies.confirm or _default_confirm
-    if not confirm("确认已获授权并接受网络影响？输入“继续”确认："):
-        print("已取消：未触发 UAC、未抓包、未进行认证。", file=dependencies.stdout)
-        return 2
-    if dependencies.run_handler is None:
-        print(
-            "实网编排尚未接入 Sidravia 主任务的 acceptance contract；未触发 UAC。",
-            file=dependencies.stderr,
-        )
-        return 3
-    dependencies.run_handler(args)
-    print("离线与实网证据编排完成；请以清洗后的验收摘要判断结果。", file=dependencies.stdout)
-    return 0
-
-
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -155,7 +115,7 @@ def main(
             return report.exit_code
         if args.validate:
             return _validate(args, active)
-        return _run(args, active)
+        raise AssertionError("parser requires one supported mode")
     except (EvidenceError, ValueError) as error:
         print(f"验收输入错误：{error}", file=active.stderr)
         return 2

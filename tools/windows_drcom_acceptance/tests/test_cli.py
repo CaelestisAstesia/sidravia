@@ -55,10 +55,10 @@ class CliTests(unittest.TestCase):
 
     def test_help_is_chinese_and_has_no_credential_arguments(self):
         help_text = build_parser().format_help()
-        self.assertIn("验收", help_text)
+        self.assertIn("离线验收与实网研究基础设施", help_text)
         self.assertIn("--preflight", help_text)
         self.assertIn("--validate", help_text)
-        self.assertIn("--run", help_text)
+        self.assertNotIn("--run", help_text)
         self.assertNotIn("--password", help_text)
         self.assertNotIn("--username", help_text)
 
@@ -110,37 +110,18 @@ class CliTests(unittest.TestCase):
         self.assertIn("证据无效", self.stderr.getvalue())
         self.assertNotIn("Traceback", self.stderr.getvalue())
 
-    def test_run_stops_before_confirmation_and_handler_when_preflight_fails(self):
-        events = []
-        dependencies = self.dependencies(
-            FakePreflight(report(CheckStatus.FAIL)),
-            confirm=lambda _prompt: events.append("confirm") or True,
-            run_handler=lambda _args: events.append("run"),
-        )
-        status = main(["--run"], dependencies=dependencies)
-        self.assertEqual(status, 2)
-        self.assertEqual(events, [])
-
-    def test_run_warns_then_requires_exact_confirmation_after_preflight(self):
-        events = []
-        dependencies = self.dependencies(
-            FakePreflight(report()),
-            confirm=lambda prompt: events.append(("confirm", prompt)) or False,
-            run_handler=lambda _args: events.append(("run", "")),
-        )
-        status = main(["--run"], dependencies=dependencies)
-        self.assertEqual(status, 2)
-        self.assertEqual(events[0][0], "confirm")
-        self.assertNotIn(("run", ""), events)
-        self.assertIn("真实校园网认证", self.stdout.getvalue())
+    def test_run_is_rejected_by_parser_before_preflight(self):
+        preflight = FakePreflight(report())
+        with self.assertRaises(SystemExit) as raised:
+            main(["--run"], dependencies=self.dependencies(preflight))
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(preflight.calls, 0)
 
     def test_internal_error_returns_three_without_raw_exception_or_traceback(self):
         secret = "SENTINEL-SECRET"
-        dependencies = self.dependencies(
-            confirm=lambda _prompt: True,
-            run_handler=lambda _args: (_ for _ in ()).throw(RuntimeError(secret)),
-        )
-        status = main(["--run"], dependencies=dependencies)
+        preflight = FakePreflight(report())
+        preflight.run = lambda: (_ for _ in ()).throw(RuntimeError(secret))
+        status = main(["--preflight"], dependencies=self.dependencies(preflight))
         self.assertEqual(status, 3)
         self.assertNotIn(secret, self.stderr.getvalue())
         self.assertNotIn("Traceback", self.stderr.getvalue())

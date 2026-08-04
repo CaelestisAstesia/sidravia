@@ -1,16 +1,15 @@
 # Sidravia 命令行完整冒烟测试（Windows）。
 #
-# 本脚本针对真实后台服务运行每个 sidravia 命令，并报告通过/失败结果。
-# 需要真实校园网凭据和网络的命令（auth start）使用占位账号运行；如果无法完成，
-# 会记录为预期结果而不是失败。本脚本仅支持 PowerShell 7，并使用 UTF-8 编码。
+# 本脚本针对本地真实后台服务运行公开 CLI 命令，并报告通过/失败结果。
+# 真实认证由 field-test.ps1 在获授权的 Windows 现场环境中执行。本脚本仅支持
+# PowerShell 7，并使用 UTF-8 编码。
 #
 # 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1 -Sidravia C:\path\sidravia.exe -SkipAuthStart
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1 -Sidravia C:\path\sidravia.exe
 [CmdletBinding()]
 param(
-    [string]$Sidravia = '.\sidravia.exe',
-    [switch]$SkipAuthStart
+    [string]$Sidravia = '.\sidravia.exe'
 )
 $ErrorActionPreference = 'Stop'
 $script:NativeUTF8Encoding = New-Object System.Text.UTF8Encoding($false)
@@ -31,8 +30,13 @@ $script:failed = New-Object System.Collections.Generic.List[string]
 
 function Add-Check {
     param([string]$Name, [bool]$OK, [string]$Note = '')
-    $script:checks.Add([pscustomobject]@{ Name = $Name; OK = $OK; Note = $Note })
+    $script:checks.Add([pscustomobject]@{ Name = $Name; OK = $OK; Skipped = $false; Note = $Note })
     if (-not $OK) { $script:failed.Add("$Name : $Note") }
+}
+
+function Add-SkippedCheck {
+    param([string]$Name, [string]$Note)
+    $script:checks.Add([pscustomobject]@{ Name = $Name; OK = $false; Skipped = $true; Note = $Note })
 }
 
 function Invoke-NativeWithInput {
@@ -164,21 +168,7 @@ Invoke-Sidravia -CommandArguments @('config', 'remove', $id, '--yes') -Expect su
 
 # 6. 认证 Session 操作面。
 Invoke-Sidravia -CommandArguments @('auth', 'list') -Expect success -Name '认证：列出 Session'
-if ($SkipAuthStart) {
-    Add-Check -Name '认证：启动 Session' -OK $true -Note '已跳过（-SkipAuthStart）'
-} else {
-    $startOut = Invoke-Sidravia -CommandArguments @('auth', 'start', '--profile', 'jlu', '--username', 'smoke-account', '--password-stdin') -Stdin 'smoke-pass' -Expect any -Name '认证：启动 Session'
-    $m = [regex]::Match($startOut, 'session-\d+')
-    if ($m.Success) {
-        $sid = $m.Value
-        Invoke-Sidravia -CommandArguments @('auth', 'status', $sid) -Expect success -Name '认证：查看 Session 状态'
-        Invoke-Sidravia -CommandArguments @('auth', 'restart', $sid) -Expect success -Name '认证：重启 Session'
-        Invoke-Sidravia -CommandArguments @('auth', 'stop', $sid) -Expect success -Name '认证：停止 Session'
-        Invoke-Sidravia -CommandArguments @('auth', 'remove', $sid) -Expect success -Name '认证：移除 Session'
-    } else {
-        Add-Check -Name '认证：解析 Session ID' -OK $true -Note '符合预期（需要真实校园网凭据和网络）'
-    }
-}
+Add-SkippedCheck -Name '认证：启动 Session' -Note '本地冒烟不执行真实认证；请使用 field-test.ps1。'
 
 # 7. 清理。
 Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect stopped -Name '后台服务：停止并清理'
@@ -187,15 +177,25 @@ Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect stopped -Name '后
 Write-Output ''
 Write-Output '== 汇总（通过/失败） =='
 $passCount = 0
+$failureCount = 0
+$skippedCount = 0
 foreach ($c in $script:checks) {
-    if ($c.OK) { $passCount++ }
-    $mark = if ($c.OK) { '通过' } else { '失败' }
+    if ($c.Skipped) {
+        $skippedCount++
+        $mark = '跳过'
+    } elseif ($c.OK) {
+        $passCount++
+        $mark = '通过'
+    } else {
+        $failureCount++
+        $mark = '失败'
+    }
     $note = if ($c.Note) { " [$($c.Note)]" } else { '' }
     Write-Output ("{0,-3} {1}{2}" -f $mark, $c.Name, $note)
 }
-$total = $script:checks.Count
+$total = $passCount + $failureCount
 Write-Output ''
-Write-Output "总计：$total，通过：$passCount，失败：$($total - $passCount)"
+Write-Output "总计：$total，通过：$passCount，失败：$failureCount，跳过：$skippedCount"
 if ($script:failed.Count -gt 0) {
     Write-Output '未预期的失败：'
     foreach ($f in $script:failed) { Write-Output "  - $f" }

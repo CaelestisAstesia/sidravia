@@ -558,7 +558,7 @@ function Invoke-LocalSuite {
         Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @(
             '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
             '-File', (Join-Path $script:Sandbox (Join-Path 'scripts' 'cli-smoke.ps1')),
-            '-Sidravia', $script:Cli, '-SkipAuthStart'
+            '-Sidravia', $script:Cli
         ) -StdinValue $null
     }
     if ($timed.Value.ExitCode -eq 0 -and $timed.Value.Output -match '失败：\s*0') {
@@ -595,6 +595,48 @@ function Add-IntegrationProcessCheck {
     }
     Add-Check -ID $ID -Status FAIL -ReasonCode $reason -Category integration
     return $false
+}
+
+function Test-SecondDaemonRejected {
+    $secondDaemon = $null
+    $passed = $false
+    $reasonCode = 'second_daemon_not_rejected'
+    try {
+        $secondDaemon = Start-Process -FilePath (Join-Path $script:Sandbox 'sidraviad.exe') -NoNewWindow -PassThru
+        if ($secondDaemon.WaitForExit(5000)) {
+            $secondDaemon.Refresh()
+            if ($secondDaemon.ExitCode -ne 0) {
+                $passed = $true
+                $reasonCode = 'second_daemon_rejected'
+            }
+        }
+    } catch {
+        $reasonCode = 'second_daemon_launch_failed'
+    } finally {
+        if ($null -ne $secondDaemon) {
+            try {
+                $secondDaemon.Refresh()
+                if (-not $secondDaemon.HasExited) {
+                    $secondDaemon.Kill()
+                    if (-not $secondDaemon.WaitForExit(5000)) {
+                        $reasonCode = 'second_daemon_cleanup_timeout'
+                    }
+                    $passed = $false
+                }
+            } catch {
+                $reasonCode = 'second_daemon_cleanup_failed'
+                $passed = $false
+            } finally {
+                $secondDaemon.Dispose()
+            }
+        }
+        if ($passed) {
+            Add-Check -ID 'integration.single_instance' -Status PASS -ReasonCode $reasonCode -Category integration
+        } else {
+            Add-Check -ID 'integration.single_instance' -Status FAIL -ReasonCode $reasonCode -Category integration
+        }
+    }
+    return $passed
 }
 
 function Invoke-IntegrationSuite {
@@ -638,6 +680,7 @@ function Invoke-IntegrationSuite {
     }
     $taskStarted = $false
     $taskStartCommandFailed = $false
+    $singleInstanceOK = $false
     if ($null -ne $task -and $pathPresent) {
         try {
             Start-ScheduledTask -TaskName $TaskName -TaskPath '\'
@@ -647,14 +690,18 @@ function Invoke-IntegrationSuite {
         }
         if ($taskStartCommandFailed) {
             Add-Check -ID 'integration.task_start' -Status FAIL -ReasonCode 'task_start_command_failed' -Category integration
+            Add-Check -ID 'integration.single_instance' -Status SKIPPED -ReasonCode 'task_start_command_failed' -Category integration
         } elseif ($taskStarted) {
             Add-Check -ID 'integration.task_start' -Status PASS -ReasonCode 'daemon_running' -Category integration
+            $singleInstanceOK = Test-SecondDaemonRejected
         } else {
             Add-Check -ID 'integration.task_start' -Status FAIL -ReasonCode 'daemon_readiness_timeout' -Category integration
+            Add-Check -ID 'integration.single_instance' -Status SKIPPED -ReasonCode 'daemon_readiness_timeout' -Category integration
         }
         $null = Invoke-Sidravia -Arguments @('daemon', 'stop')
     } else {
         Add-Check -ID 'integration.task_start' -Status SKIPPED -ReasonCode 'registration_failed' -Category integration
+        Add-Check -ID 'integration.single_instance' -Status SKIPPED -ReasonCode 'registration_failed' -Category integration
     }
 
     $removeFirst = Invoke-CapturedProcess -FilePath $script:ReleasePowerShell.Path -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $uninstall) -StdinValue $null
@@ -676,7 +723,7 @@ function Invoke-IntegrationSuite {
     if ($null -eq $finalTask -and -not $finalPath) { $script:IntegrationOwned = $false }
     $watch.Stop()
 
-    $ok = $firstOK -and $secondOK -and $pathPresent -and $null -ne $task -and $taskStarted -and
+    $ok = $firstOK -and $secondOK -and $pathPresent -and $null -ne $task -and $taskStarted -and $singleInstanceOK -and
         $removeFirstOK -and $removeSecondOK -and
         $null -eq $finalTask -and -not $finalPath
     if ($ok) {
@@ -1234,6 +1281,7 @@ $script:CheckLabels = @{
     'integration.path_registered' = '注册当前用户 PATH'
     'integration.task_registered' = '注册用户登录计划任务'
     'integration.task_start' = '通过计划任务启动后台服务'
+    'integration.single_instance' = '拒绝第二个后台服务实例'
     'integration.uninstall_first' = '首次运行卸载脚本'
     'integration.uninstall_second' = '再次运行卸载脚本'
     'integration.path_revoked' = '撤销当前用户 PATH'
@@ -1279,6 +1327,11 @@ $script:ReasonLabels = @{
     'owned_task_present' = '存在测试器拥有且定义匹配的计划任务'
     'owned_task_missing_or_mismatched' = '计划任务不存在或定义不匹配'
     'task_start_command_failed' = '启动计划任务的命令失败'
+    'second_daemon_rejected' = '第二个后台服务实例已被拒绝'
+    'second_daemon_not_rejected' = '第二个后台服务实例未在时限内被拒绝'
+    'second_daemon_launch_failed' = '无法启动第二个后台服务实例'
+    'second_daemon_cleanup_timeout' = '第二个后台服务实例清理超时'
+    'second_daemon_cleanup_failed' = '第二个后台服务实例清理失败'
     'daemon_running' = '后台服务已进入运行状态'
     'daemon_readiness_timeout' = '等待后台服务就绪超时'
     'registration_failed' = '注册未成功，无法测试启动'
