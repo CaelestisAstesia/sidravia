@@ -39,12 +39,13 @@ python -m sidravia_drcom_acceptance --validate `
 - `2`：工具、Lua、网卡映射、权限或 Sidravia 集成契约不完整；
 - `3`：验收器自身发生已清洗的内部错误。
 
-截至 2026-07-22 的本机复测发现，机器上已经存在 Wireshark/tshark/dumpcap 4.6.4
-和运行中的 Npcap；本任务没有下载或安装它们。Lua schema v1 已由真实 tshark 的
-离线 fixture 加载通过；额外的合成 PCAP runtime 测试已覆盖 13 个 JLU/legacy 分支
-以及正常、unknown、malformed、truncated 四类状态。预检仍以 `2` 退出，因为普通用户读取 `Get-NetAdapter`
-被拒绝，且未找到 `sidravia.exe`、`sidraviad.exe`，所以 acceptance contract 被
-跳过。该结果没有启动抓包或认证。
+每次预检都会在运行时动态解析 Wireshark、tshark、dumpcap 并查询 Npcap；实际命令
+输出才是该次宿主机的事实。前置工具缺失或不可用时，预检给出可操作的 FAIL，依赖的
+Lua、设备、映射和权限检查会明确标为跳过，而非伪报 Lua 成功或失败；仅在 tshark
+可用时才尝试 Lua 离线 fixture。`test_tshark_runtime.py` 也会动态发现 `tshark.exe`，
+存在时执行真实 Lua runtime fixture，不存在时作为 unittest 跳过。静态 Python/Lua
+契约检查、真实 tshark fixture 执行和真实网络抓包是不同证据；这些自动检查不声称
+真实网络抓包或认证已经完成。
 
 单元测试另覆盖完全缺少 Wireshark/Npcap 的环境：它会给出中文安装操作，并把 Lua
 加载、抓包枚举、网卡映射和权限项标为“跳过：前置工具缺失”，不会误报 Lua 损坏。

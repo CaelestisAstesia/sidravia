@@ -37,5 +37,9 @@ tshark.exe -n -r <fixture.pcap> `
 再用 `-T json` 验证字段形状，并以正常、未知、畸形和 snaplen 截断 PCAP 覆盖
 四类状态。不要把 PCAP 或完整 JSON 上传到 issue、聊天或普通日志。
 
-当前第一阶段机器未安装 Wireshark/Npcap，因此只能确认离线源代码契约，不能声称
-Lua 已被真实 tshark 加载或实网抓包已通过。
+每次运行时都会动态发现 `tshark.exe`：可用时，`test_tshark_runtime.py` 执行真实 Lua
+runtime fixture；不可用时，该测试作为 unittest 跳过。Windows 验收预检同样动态解析
+Wireshark、tshark、dumpcap 并查询 Npcap，前置工具缺失或不可用会报告可操作的 FAIL，
+其依赖的 Lua、设备、映射和权限检查会明确跳过。实际命令输出才是该次宿主机的事实；
+静态 Python/Lua 契约检查、真实 tshark fixture 执行和真实网络抓包是不同证据，自动
+检查不声称真实网络抓包或认证已经完成。
