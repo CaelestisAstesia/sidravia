@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -149,6 +150,59 @@ func TestCatalogFailedReplacePreservesMemoryState(t *testing.T) {
 	}
 	if _, err := catalog.Get(ctx, original.ConfigurationID); err != nil {
 		t.Fatalf("Get() after failed Delete error = %v", err)
+	}
+}
+
+func TestCatalogCommitEnforcesReadableSizeLimit(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	configuration := catalogTestConfiguration("configuration-size-limit", "Size limit")
+	candidate := map[ConfigurationID]catalogRecord{
+		configuration.ConfigurationID: {configuration: configuration, password: ""},
+	}
+	emptyData, err := encodeCatalogDocument(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	passwordLength := int(catalogFileSizeLimit) - len(emptyData)
+	if passwordLength < 0 {
+		t.Fatalf("empty encoded catalog size = %d, limit = %d", len(emptyData), catalogFileSizeLimit)
+	}
+	exactPassword := strings.Repeat("x", passwordLength)
+	candidate[configuration.ConfigurationID] = catalogRecord{configuration: configuration, password: exactPassword}
+	exactData, err := encodeCatalogDocument(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exactData) != int(catalogFileSizeLimit) {
+		t.Fatalf("exact encoded catalog size = %d, limit = %d", len(exactData), catalogFileSizeLimit)
+	}
+
+	store := &catalogMemoryStore{}
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Create(ctx, configuration, exactPassword, false); err != nil {
+		t.Fatalf("Create(exact limit) error = %v", err)
+	}
+	if _, err := OpenCatalog(ctx, store, path); err != nil {
+		t.Fatalf("OpenCatalog() after exact-limit create error = %v", err)
+	}
+
+	replaceCalls := store.replaceCalls
+	if _, err := catalog.SetPassword(ctx, configuration.ConfigurationID, exactPassword+"x", false); configurationPersistenceFailureCode(t, err) != persistence.FailureSizeLimitExceeded {
+		t.Fatalf("SetPassword(one byte over) error = %v", err)
+	}
+	if store.replaceCalls != replaceCalls {
+		t.Fatalf("ReplaceSensitive calls after oversized candidate = %d, want %d", store.replaceCalls, replaceCalls)
+	}
+	_, credential, err := catalog.Resolve(ctx, configuration.ConfigurationID)
+	if err != nil || credential.Password != exactPassword {
+		t.Fatalf("Resolve() after oversized candidate = %#v, %v", credential, err)
+	}
+	if _, err := catalog.SetPassword(ctx, configuration.ConfigurationID, exactPassword, false); err != nil {
+		t.Fatalf("SetPassword(retry exact limit) error = %v", err)
 	}
 }
 

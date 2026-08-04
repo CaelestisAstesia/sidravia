@@ -258,6 +258,9 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 	if err != nil {
 		return err
 	}
+	if int64(len(data)) > catalogFileSizeLimit {
+		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
+	}
 	if err := catalog.store.ReplaceSensitive(ctx, catalog.path, data, allow); err != nil {
 		return err
 	}
