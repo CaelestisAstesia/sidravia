@@ -219,8 +219,8 @@ func TestIPCErrorMappings(t *testing.T) {
 		"protocol_not_found":                     "找不到指定的认证协议",
 		"profile_operation_failed":               "机构 Profile 操作失败",
 		"session_operation_failed":               "认证 Session 操作失败",
-		"configuration_not_found":                "找不到指定的认证配置",
-		"configuration_conflict":                 "认证配置已存在",
+		"configuration_not_found":                "找不到指定的认证配置；请运行 sidravia config list 查看可用配置",
+		"configuration_conflict":                 "认证配置已存在；请运行 sidravia config list 查看现有配置，再运行 sidravia help config update 查看更新方法",
 		"configuration_operation_failed":         "认证配置操作失败",
 		"configuration_auto_login_conflict":      "已有其他配置启用了自动登录",
 		"insecure_storage_confirmation_required": "需要确认不安全存储",
@@ -235,6 +235,18 @@ func TestIPCErrorMappings(t *testing.T) {
 	}
 	if got := ipcErrorText(""); got != "daemon 返回了无法识别的错误" {
 		t.Errorf("missing ipc error = %q, want fallback", got)
+	}
+}
+
+func TestIPCConfigurationErrorsHaveRecoveryCommands(t *testing.T) {
+	cases := map[string]string{
+		"configuration_not_found": "找不到指定的认证配置；请运行 sidravia config list 查看可用配置",
+		"configuration_conflict":  "认证配置已存在；请运行 sidravia config list 查看现有配置，再运行 sidravia help config update 查看更新方法",
+	}
+	for code, want := range cases {
+		if got := ipcErrorText(code); got != want {
+			t.Errorf("ipcErrorText(%q) = %q, want %q", code, got, want)
+		}
 	}
 }
 
@@ -366,9 +378,27 @@ func TestDaemonStatusLineContract(t *testing.T) {
 	p := newTestPresentation(&buf, termenv.Ascii)
 	defer p.close()
 	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running"}))
-	want := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42\n"
+	want := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42\n" +
+		"日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
 	if buf.String() != want {
 		t.Errorf("daemon status = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestDaemonStatusIncludesLogLocationGuidance(t *testing.T) {
+	var buf bytes.Buffer
+	p := newTestPresentation(&buf, termenv.Ascii)
+	defer p.close()
+	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running"}))
+	wantStatus := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42\n"
+	wantLog := "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
+	if got := buf.String(); got != wantStatus+wantLog {
+		t.Fatalf("daemon status guidance = %q, want %q", got, wantStatus+wantLog)
+	}
+	for _, private := range []string{"ws://", "runtime.json", "AppData", "/home/", "endpoint"} {
+		if strings.Contains(buf.String(), private) {
+			t.Errorf("daemon status leaked private implementation text %q: %q", private, buf.String())
+		}
 	}
 }
 
@@ -815,6 +845,27 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 	}
 	if empty.String() != "尚未保存认证配置。\n下一步：运行 sidravia config create 创建认证配置。\n" {
 		t.Fatalf("empty list = %q", empty.String())
+	}
+}
+
+func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
+	withName := contract.ConfigurationResult{
+		ConfigurationID: "campus", DisplayName: "校园\x1b[2J\n配置",
+		InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		Username: "user", CredentialStored: true, StorageProtection: "protected",
+	}
+	if got := renderConfiguration(withName); !strings.Contains(got, "名称：校园�[2J�配置\n") {
+		t.Fatalf("present optional name was not sanitized and rendered: %q", got)
+	}
+	withoutName := withName
+	withoutName.DisplayName = ""
+	got := renderConfiguration(withoutName)
+	if strings.Contains(got, "名称：") {
+		t.Fatalf("unset optional name rendered an empty row: %q", got)
+	}
+	wantOrder := []string{"配置：campus\n", "机构：JLU\n", "协议：drcom\n", "账号：user\n", "凭据：已保存\n", "存储保护：已保护（protected）\n", "自动登录：未启用\n", "自动重连：未启用\n"}
+	if got != strings.Join(wantOrder, "") {
+		t.Fatalf("configuration rows changed when optional name was omitted: %q", got)
 	}
 }
 

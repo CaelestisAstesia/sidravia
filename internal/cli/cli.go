@@ -387,7 +387,7 @@ var helpSpecs = map[string]helpNode{
 		},
 	},
 	"sidravia auth start": {
-		description: "启动一次性认证 Session、从配置启动，或确保已有 Session 正在运行。命令只返回初始 Snapshot，不等待认证完成。",
+		description: "启动一次性认证 Session、从配置启动，或确保已有 Session 正在运行。命令只返回初始 Snapshot，不等待认证完成。下一步：使用返回的 Session ID 运行 sidravia auth status <session-id>；不知道 ID 时先运行 sidravia auth list。",
 		usage: []string{
 			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
 			"sidravia auth start --session <session-id>",

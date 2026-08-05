@@ -516,9 +516,22 @@ func TestWriteStatusSuccessAuthoritative(t *testing.T) {
 	}
 	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d\n",
 		authoritative.Status, authoritative.ProductVersion, authoritative.BuildID, authoritative.PID)
+	expected += "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
 
 	if got := buf.String(); got != expected {
 		t.Errorf("writeStatus output = %q, want %q", got, expected)
+	}
+}
+
+func TestAuthStartHelpIncludesStatusNextStep(t *testing.T) {
+	var output bytes.Buffer
+	deps := commandDependencies{output: &output}
+	if err := runCommand([]string{"auth", "start", "--help"}, deps); err != nil {
+		t.Fatalf("auth start help = %v", err)
+	}
+	want := "下一步：使用返回的 Session ID 运行 sidravia auth status <session-id>；不知道 ID 时先运行 sidravia auth list。"
+	if !strings.Contains(output.String(), want) {
+		t.Fatalf("auth start help omitted actionable next step %q:\n%s", want, output.String())
 	}
 }
 

@@ -316,9 +316,9 @@ func ipcErrorText(code string) string {
 	case "session_state_conflict":
 		return "认证 Session 当前状态不允许该操作；请运行 sidravia auth status 查看状态"
 	case "configuration_not_found":
-		return "找不到指定的认证配置"
+		return "找不到指定的认证配置；请运行 sidravia config list 查看可用配置"
 	case "configuration_conflict":
-		return "认证配置已存在"
+		return "认证配置已存在；请运行 sidravia config list 查看现有配置，再运行 sidravia help config update 查看更新方法"
 	case "configuration_operation_failed":
 		return "认证配置操作失败"
 	case "configuration_auto_login_conflict":
@@ -349,6 +349,7 @@ func renderDaemonStatus(p *presentation, result *contract.StatusResult) string {
 	b.WriteString(p.label("PID："))
 	b.WriteString(strconv.Itoa(result.PID))
 	b.WriteString("\n")
+	b.WriteString("日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n")
 	return b.String()
 }
 
@@ -623,11 +624,29 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 	if result.AutoReconnect {
 		autoReconnect = "已启用"
 	}
-	return "配置：" + sanitizeDynamicText(result.ConfigurationID) + "\n名称：" +
-		sanitizeDynamicText(result.DisplayName) + "\n机构：" + sanitizeDynamicText(institution) +
-		"\n协议：" + sanitizeDynamicText(result.AuthenticationProtocolID) + "\n账号：" +
-		sanitizeDynamicText(result.Username) + "\n凭据：已保存\n存储保护：" + protection +
-		"\n自动登录：" + autoLogin + "\n自动重连：" + autoReconnect + "\n"
+	var b strings.Builder
+	b.WriteString("配置：")
+	b.WriteString(sanitizeDynamicText(result.ConfigurationID))
+	b.WriteString("\n")
+	if result.DisplayName != "" {
+		b.WriteString("名称：")
+		b.WriteString(sanitizeDynamicText(result.DisplayName))
+		b.WriteString("\n")
+	}
+	b.WriteString("机构：")
+	b.WriteString(sanitizeDynamicText(institution))
+	b.WriteString("\n协议：")
+	b.WriteString(sanitizeDynamicText(result.AuthenticationProtocolID))
+	b.WriteString("\n账号：")
+	b.WriteString(sanitizeDynamicText(result.Username))
+	b.WriteString("\n凭据：已保存\n存储保护：")
+	b.WriteString(protection)
+	b.WriteString("\n自动登录：")
+	b.WriteString(autoLogin)
+	b.WriteString("\n自动重连：")
+	b.WriteString(autoReconnect)
+	b.WriteString("\n")
+	return b.String()
 }
 
 func writeConfiguration(output io.Writer, result contract.ConfigurationResult) error {
