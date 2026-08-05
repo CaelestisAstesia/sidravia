@@ -36,3 +36,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_release_task_ownership.ps1
+      - name: Verify field validation integration contract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_field_validation_contract.ps1

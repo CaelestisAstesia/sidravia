@@ -8,6 +8,7 @@ param(
     [string]$Profile = 'jlu',
     [string]$ReportDirectory = 'field-results',
     [switch]$SkipCampus,
+    [switch]$RunIntegration,
     [switch]$SkipIntegration,
     [switch]$SkipNetworkTransition
 )
@@ -39,6 +40,7 @@ $MarkerPrefix = 'sidravia-field-validation-v1:'
 $TaskName = 'SidraviaDaemon'
 $script:PowerShellExe = $null
 $script:ReleasePowerShell = $null
+$script:IntegrationMode = $null
 $PackageRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $TempParent = Join-Path ([IO.Path]::GetTempPath()) 'SidraviaFieldValidation'
 
@@ -86,7 +88,9 @@ function Get-SanitizedHarnessError {
         'temporary_parent_is_reparse_point',
         'sandbox_path_escape',
         'stale_cleanup_required',
-        'preexisting_daemon'
+        'preexisting_daemon',
+        'conflicting_integration_mode',
+        'integration_consent_unavailable'
     )
     $reasonCode = 'sanitized_internal_error'
     if ($allowedReasonCodes -contains $ErrorRecord.Exception.Message) {
@@ -96,6 +100,20 @@ function Get-SanitizedHarnessError {
         ReasonCode = $reasonCode
         ExceptionType = $ErrorRecord.Exception.GetType().Name
     }
+}
+
+function Resolve-IntegrationMode {
+    param([bool]$RunIntegration, [bool]$SkipIntegration)
+    if ($RunIntegration -and $SkipIntegration) { throw 'conflicting_integration_mode' }
+    if ($SkipIntegration) { return 'skip' }
+    if ($RunIntegration) { return 'run' }
+    try {
+        $approval = Read-Host '临时测试当前用户 PATH 和 SidraviaDaemon 计划任务？请输入 YES'
+    } catch {
+        throw 'integration_consent_unavailable'
+    }
+    if ($approval -ceq 'YES') { return 'run' }
+    return 'declined'
 }
 
 function Test-PathUnderRoot {
@@ -640,12 +658,11 @@ function Test-SecondDaemonRejected {
 }
 
 function Invoke-IntegrationSuite {
-    if ($SkipIntegration) {
+    if ($script:IntegrationMode -eq 'skip') {
         Add-Check -ID 'integration.user_mode' -Status SKIPPED -ReasonCode 'requested_skip' -Category integration
         return
     }
-    $approval = Read-Host '临时测试当前用户 PATH 和 SidraviaDaemon 计划任务？请输入 YES'
-    if ($approval -cne 'YES') {
+    if ($script:IntegrationMode -eq 'declined') {
         Add-Check -ID 'integration.user_mode' -Status SKIPPED -ReasonCode 'consent_declined' -Category integration
         return
     }
@@ -1197,6 +1214,7 @@ try {
     $reportRoot = Resolve-ReportDirectory
     $preflight = Invoke-Timed { Test-PackagePreflight }
     Add-Check -ID 'preflight.package' -Status PASS -ReasonCode 'package_verified' -Category automatic -DurationMs $preflight.DurationMs
+    $script:IntegrationMode = Resolve-IntegrationMode -RunIntegration $RunIntegration -SkipIntegration $SkipIntegration
 
     try {
         $script:ReleasePowerShell = Resolve-ReleasePowerShell
@@ -1379,6 +1397,8 @@ $script:ReasonLabels = @{
     'cleanup_incomplete' = '未能确认测试器拥有的状态已全部移除'
     'report_write_failed' = '脱敏报告写入失败'
     'sanitized_internal_error' = '发生未公开内部细节的验证器错误'
+    'conflicting_integration_mode' = '集成运行与跳过模式不能同时指定'
+    'integration_consent_unavailable' = '当前宿主无法请求用户态集成许可'
     'report_directory_outside_package' = '报告目录超出测试包边界'
     'unsupported_windows_or_powershell' = '需要受支持的 Windows 和 PowerShell 7'
     'powershell_host_not_found' = '未找到当前 PowerShell 7 子进程宿主'
