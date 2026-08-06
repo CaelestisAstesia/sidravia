@@ -57,7 +57,6 @@ SCHEMA = {
         "source_commits": {str: str},
         "licenses": {str: str},
         "extracted_files": [str],
-        "specification": str,
     },
     "determinism": {
         "server_secret_hex": str,

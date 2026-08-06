@@ -23,7 +23,7 @@ var errZip = errors.New("simulated zip failure")
 var errPublish = errors.New("simulated publish failure")
 
 func TestShippedGuideHasOrderedFirstUseJourney(t *testing.T) {
-	guide, err := os.ReadFile(filepath.Join("assets", "GETTING-STARTED.md"))
+	guide, err := os.ReadFile(filepath.Join("..", "..", "docs", "guide.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func setupRepoRoot(t *testing.T) string {
 	// README.md exists in the repo but must not be packaged by the builder.
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
-	writeTestFile(t, filepath.Join(root, "tools", "build", "assets", "GETTING-STARTED.md"), testGettingStarted)
+	writeTestFile(t, filepath.Join(root, "docs", "guide.md"), testGettingStarted)
 	writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json"), testProfileJSON)
 	writeTestFile(t, filepath.Join(root, "scripts", "field-test.ps1"), testFieldTestScript)
 	writeTestFile(t, filepath.Join(root, "scripts", "install.ps1"), testInstallScript)
@@ -539,7 +539,7 @@ func TestZipManifest(t *testing.T) {
 			t.Errorf("%s: LICENSE wrong", tc.artifact)
 		}
 		if string(contents["GETTING-STARTED.md"]) != testGettingStarted {
-			t.Errorf("%s: GETTING-STARTED.md must come from the dedicated package asset", tc.artifact)
+			t.Errorf("%s: GETTING-STARTED.md must equal docs/guide.md", tc.artifact)
 		}
 		if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
 			t.Errorf("%s: profile wrong", tc.artifact)

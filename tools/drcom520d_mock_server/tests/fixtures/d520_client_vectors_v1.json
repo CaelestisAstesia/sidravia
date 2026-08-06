@@ -31,8 +31,7 @@
       "参考/ProjectLAINS/crates/daemon/src/auth/wire/v520d.rs",
       "tools/drcom520d_mock_server/src/drcom520d_mock_server/codec.py",
       "tools/drcom520d_mock_server/tests/packet_factory.py"
-    ],
-    "specification": "docs/protocols/drcom-5.2.0-d.md"
+    ]
   },
   "determinism": {
     "server_secret_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",

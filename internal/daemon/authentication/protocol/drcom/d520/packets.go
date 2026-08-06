@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Fixed packet lengths documented in docs/protocols/drcom-5.2.0-d.md.
+// Fixed packet lengths used by the D520 wire codec.
 const (
 	challengeRequestLength = 20
 	loginRequestLength     = 330

@@ -355,7 +355,7 @@ func verifyRepoInputs(root, artifact string) error {
 	}
 	checks := []inputCheck{
 		{"LICENSE", false},
-		{"tools/build/assets/GETTING-STARTED.md", false},
+		{"docs/guide.md", false},
 		{"internal/daemon/configuration/profiles/jlu.json", false},
 		{"scripts/install.ps1", false},
 		{"scripts/uninstall.ps1", false},
@@ -628,9 +628,9 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	if err != nil {
 		return fmt.Errorf("read LICENSE: %w", err)
 	}
-	gettingStarted, err := os.ReadFile(filepath.Join(repoRoot, "tools", "build", "assets", "GETTING-STARTED.md"))
+	gettingStarted, err := os.ReadFile(filepath.Join(repoRoot, "docs", "guide.md"))
 	if err != nil {
-		return fmt.Errorf("read tools/build/assets/GETTING-STARTED.md: %w", err)
+		return fmt.Errorf("read docs/guide.md: %w", err)
 	}
 	profile, err := os.ReadFile(filepath.Join(repoRoot, "internal", "daemon", "configuration", "profiles", "jlu.json"))
 	if err != nil {
