@@ -1,7 +1,15 @@
 # Sidravia
 
-Sidravia 是面向 Dr.COM 网络认证的命令行工具。首版产品是 Windows amd64 portable
-包；Linux/WSL 仅提供源码运行时基线，macOS 不受支持。
+Sidravia 是用于 Windows Dr.COM 网络认证的命令行客户端，由后台 daemon 保持认证状态。
+当前 portable Alpha 自带 JLU Profile，解压后即可运行。
 
-完整的安装、认证、排障、安全和现场验证说明见[用户手册](docs/guide.md)。包内
-`GETTING-STARTED.md` 与该手册逐字节相同。
+在包目录打开 PowerShell：
+
+```powershell
+.\sidravia.exe daemon start
+.\sidravia.exe profile list
+.\sidravia.exe auth start --profile jlu --username '<账号>'
+.\sidravia.exe auth status <session-id>
+```
+
+密码由隐藏提示读取，请勿写入命令行。下载、安装和基本排障见[使用说明](docs/guide.md)。
