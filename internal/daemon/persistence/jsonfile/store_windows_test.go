@@ -397,11 +397,11 @@ func TestWindowsPreExistingNestedChildrenReceiveInheritedAccess(t *testing.T) {
 	if err := os.Mkdir(profileDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	applyWindowsNonInheritedOwnerReadDACL(t, profileDir, owner)
 	profileFile := filepath.Join(profileDir, "jlu.json")
 	if err := os.WriteFile(profileFile, []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	applyWindowsNonInheritedOwnerReadDACL(t, profileDir, owner)
 
 	assertWindowsNoInheritedOwnerSystem(t, profileDir, owner.sid)
 	assertWindowsNoInheritedOwnerSystem(t, profileFile, owner.sid)

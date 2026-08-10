@@ -72,19 +72,15 @@ func captureSourceAddr(t *testing.T, serverConn *net.UDPConn, write func()) *net
 }
 
 // TestUDPFixedLocalPortIsObservedByServer proves a fixed local port is the
-// source port observed by an independent server. The same numeric value is used
-// as the fixed local port (on 127.0.0.1) and the server port (on 127.0.0.2);
-// distinct addresses let the two endpoints share the numeric port without
-// binding the same socket.
+// source port observed by an independent server. The server stays bound to an
+// OS-assigned port while a separate free local port is selected, so both
+// endpoints can use the universally available 127.0.0.1 loopback address.
 func TestUDPFixedLocalPortIsObservedByServer(t *testing.T) {
-	portNum := freeUDPPort(t, net.IPv4(127, 0, 0, 1))
-	serverConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: portNum})
-	if err != nil {
-		t.Fatalf("listen server: %v", err)
-	}
+	serverConn, serverAddr := listenUDP(t, net.IPv4(127, 0, 0, 1))
 	defer serverConn.Close()
+	portNum := freeUDPPort(t, net.IPv4(127, 0, 0, 1))
 
-	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortFixed, value: uint16(portNum)}, netip.MustParseAddr("127.0.0.2"), uint16(portNum))
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortFixed, value: uint16(portNum)}, netip.MustParseAddr("127.0.0.1"), uint16(serverAddr.Port))
 	if err != nil {
 		t.Fatalf("openUDPExchange fixed: %v", err)
 	}
@@ -106,10 +102,10 @@ func TestUDPFixedLocalPortIsObservedByServer(t *testing.T) {
 // TestUDPSystemAssignedBindsNonzeroPort proves system_assigned binds a nonzero
 // OS-selected source port.
 func TestUDPSystemAssignedBindsNonzeroPort(t *testing.T) {
-	serverConn, serverAddr := listenUDP(t, net.IPv4(127, 0, 0, 2))
+	serverConn, serverAddr := listenUDP(t, net.IPv4(127, 0, 0, 1))
 	defer serverConn.Close()
 
-	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, netip.MustParseAddr("127.0.0.2"), uint16(serverAddr.Port))
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, netip.MustParseAddr("127.0.0.1"), uint16(serverAddr.Port))
 	if err != nil {
 		t.Fatalf("openUDPExchange system_assigned: %v", err)
 	}
@@ -141,10 +137,10 @@ func TestUDPOccupiedFixedLocalPortFailsWithoutFallback(t *testing.T) {
 	defer holder.Close()
 	occupiedPort := holder.LocalAddr().(*net.UDPAddr).Port
 
-	serverConn, serverAddr := listenUDP(t, net.IPv4(127, 0, 0, 2))
+	serverConn, serverAddr := listenUDP(t, net.IPv4(127, 0, 0, 1))
 	defer serverConn.Close()
 
-	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortFixed, value: uint16(occupiedPort)}, netip.MustParseAddr("127.0.0.2"), uint16(serverAddr.Port))
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortFixed, value: uint16(occupiedPort)}, netip.MustParseAddr("127.0.0.1"), uint16(serverAddr.Port))
 	if err == nil {
 		if ex != nil {
 			ex.close()
@@ -157,17 +153,18 @@ func TestUDPOccupiedFixedLocalPortFailsWithoutFallback(t *testing.T) {
 }
 
 // TestUDPLocalIPv4AndRemoteEndpointAreIndependent proves the local source IPv4
-// and the remote server endpoint are independent dimensions. The exchange binds
-// 127.0.0.1 and is connected to server A on 127.0.0.2; server A observes the
-// datagram with source IP 127.0.0.1, while server B on 127.0.0.3 receives
-// nothing because connected UDP sends only to the configured remote endpoint.
+// and the remote server endpoint are independent dimensions. The exchange
+// binds 127.0.0.1 and is connected to server A's OS-assigned port; server A
+// observes the datagram with source IP 127.0.0.1, while server B on a different
+// port receives nothing because connected UDP sends only to the configured
+// remote endpoint.
 func TestUDPLocalIPv4AndRemoteEndpointAreIndependent(t *testing.T) {
-	serverA, addrA := listenUDP(t, net.IPv4(127, 0, 0, 2))
+	serverA, addrA := listenUDP(t, net.IPv4(127, 0, 0, 1))
 	defer serverA.Close()
-	serverB, _ := listenUDP(t, net.IPv4(127, 0, 0, 3))
+	serverB, _ := listenUDP(t, net.IPv4(127, 0, 0, 1))
 	defer serverB.Close()
 
-	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, netip.MustParseAddr("127.0.0.2"), uint16(addrA.Port))
+	ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, netip.MustParseAddr("127.0.0.1"), uint16(addrA.Port))
 	if err != nil {
 		t.Fatalf("openUDPExchange: %v", err)
 	}
