@@ -34,8 +34,15 @@ function Remove-FixtureRootTask {
     $script:fixtureTaskXML = $null
 }
 function Invoke-Release { param([string]$Directory, [string]$Script, [string[]]$Arguments = @())
-    $result = & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $Directory ('scripts\' + $Script)) @Arguments 2>&1
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($result | Out-String) }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $result = & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $Directory ('scripts\' + $Script)) @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = ($result | Out-String) }
 }
 function New-Package { param([string]$Name)
     $directory = Join-Path $fixtureRoot $Name
