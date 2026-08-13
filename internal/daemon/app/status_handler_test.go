@@ -15,6 +15,7 @@ import (
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
+	"sidravia/internal/launchcontract"
 )
 
 const statusTestToken = "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab"
@@ -30,7 +31,7 @@ func newStatusTestServer(t *testing.T, token string, handler server.Handler) *se
 }
 
 func TestStatusHandlerSuccess(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
@@ -67,10 +68,32 @@ func TestStatusHandlerSuccess(t *testing.T) {
 	if result.Status != "running" {
 		t.Errorf("status: got %q, want %q", result.Status, "running")
 	}
+	if result.Mode != "headless" || result.DesktopOwnerPID != nil {
+		t.Errorf("headless mode fields = %+v", result)
+	}
+}
+
+func TestStatusHandlerReportsDesktopOwner(t *testing.T) {
+	options, err := launchcontract.Desktop(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := StatusHandler("0.1.0-dev", "dev", options)
+	result, cerr := handler(context.Background(), contract.MethodDaemonStatus, []byte(`{}`))
+	if cerr != nil {
+		t.Fatal(cerr)
+	}
+	var status contract.StatusResult
+	if err := json.Unmarshal(result, &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Mode != "desktop" || status.DesktopOwnerPID == nil || *status.DesktopOwnerPID != 42 {
+		t.Fatalf("status=%+v", status)
+	}
 }
 
 func TestStatusHandlerUnknownMethod(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
@@ -99,7 +122,7 @@ func TestStatusHandlerUnknownMethod(t *testing.T) {
 }
 
 func TestStatusHandlerMalformedRequest(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
@@ -139,7 +162,7 @@ func TestStatusHandlerMalformedRequest(t *testing.T) {
 }
 
 func TestStatusHandlerAuthTokenRejected(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	srv := newStatusTestServer(t, "correct-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab", handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
@@ -156,7 +179,7 @@ func TestStatusHandlerAuthTokenRejected(t *testing.T) {
 }
 
 func TestStatusHandlerBuildIDRejected(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
@@ -173,7 +196,7 @@ func TestStatusHandlerBuildIDRejected(t *testing.T) {
 }
 
 func TestStatusHandlerSequentialRequests(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	srv := newStatusTestServer(t, statusTestToken, handler)
 
 	httpServer := httptest.NewServer(http.HandlerFunc(srv.ServeHTTP))
@@ -203,7 +226,7 @@ func TestStatusHandlerSequentialRequests(t *testing.T) {
 // TestStatusHandlerRejectsNonEmptyPayload proves daemon.status is strictly
 // read-only and accepts only the canonical empty JSON object.
 func TestStatusHandlerRejectsNonEmptyPayload(t *testing.T) {
-	handler := StatusHandler("0.1.0-dev", "dev")
+	handler := StatusHandler("0.1.0-dev", "dev", launchcontract.Headless())
 	for _, payload := range []string{`null`, ``, `{"extra":"x"}`, `{} {}`, `[]`} {
 		_, cerr := handler(context.Background(), contract.MethodDaemonStatus, []byte(payload))
 		if cerr == nil {

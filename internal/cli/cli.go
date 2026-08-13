@@ -76,6 +76,7 @@ type commandDependencies struct {
 	configUpdate      func(configUpdateOptions) error
 	configSetPassword func(configPasswordOptions) error
 	configRemove      func(string, bool) error
+	guiBootstrap      guiBootstrapper
 	output            io.Writer
 }
 
@@ -99,6 +100,7 @@ func defaultCommandDependencies(identity clientbootstrap.Identity) commandDepend
 		configUpdate:      func(options configUpdateOptions) error { return configUpdate(identity, options) },
 		configSetPassword: func(options configPasswordOptions) error { return configSetPassword(identity, options) },
 		configRemove:      func(id string, yes bool) error { return configRemove(identity, id, yes) },
+		guiBootstrap:      defaultGUIBootstrap,
 		output:            os.Stdout,
 	}
 }
@@ -257,7 +259,11 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
 	configCommand := newConfigCommand(deps)
 
-	root.AddCommand(daemon, auth, profile, configCommand, retiredStatus)
+	bootstrap := deps.guiBootstrap
+	if bootstrap == nil {
+		bootstrap = defaultGUIBootstrap
+	}
+	root.AddCommand(daemon, auth, profile, configCommand, retiredStatus, newGUIBootstrapCommand(deps.identity, output, bootstrap))
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := newPresentation(c.OutOrStdout())

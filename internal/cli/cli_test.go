@@ -498,6 +498,7 @@ func TestWriteStatusSuccessAuthoritative(t *testing.T) {
 		BuildID:        "build-deadbeef",
 		PID:            9876,
 		Status:         "running",
+		Mode:           "headless",
 	}
 	payload, err := contract.MarshalStatusResult(result)
 	if err != nil {
@@ -515,8 +516,8 @@ func TestWriteStatusSuccessAuthoritative(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &authoritative); err != nil {
 		t.Fatalf("unmarshal response result: %v", err)
 	}
-	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d\n",
-		authoritative.Status, authoritative.ProductVersion, authoritative.BuildID, authoritative.PID)
+	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d | 模式：%s\n",
+		authoritative.Status, authoritative.ProductVersion, authoritative.BuildID, authoritative.PID, authoritative.Mode)
 	expected += "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
 
 	if got := buf.String(); got != expected {

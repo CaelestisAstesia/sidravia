@@ -377,8 +377,8 @@ func TestDaemonStatusLineContract(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
 	defer p.close()
-	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running"}))
-	want := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42\n" +
+	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: "headless"}))
+	want := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42 | 模式：headless\n" +
 		"日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
 	if buf.String() != want {
 		t.Errorf("daemon status = %q, want %q", buf.String(), want)
@@ -389,8 +389,8 @@ func TestDaemonStatusIncludesLogLocationGuidance(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
 	defer p.close()
-	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running"}))
-	wantStatus := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42\n"
+	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: "headless"}))
+	wantStatus := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42 | 模式：headless\n"
 	wantLog := "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
 	if got := buf.String(); got != wantStatus+wantLog {
 		t.Fatalf("daemon status guidance = %q, want %q", got, wantStatus+wantLog)

@@ -6,10 +6,16 @@ import (
 	"os"
 
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
-func StatusHandler(productVersion string, buildID string) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+func StatusHandler(productVersion string, buildID string, options launchcontract.Options) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 	pid := os.Getpid()
+	ownerPID := (*int)(nil)
+	if options.Mode == launchcontract.ModeDesktop {
+		owner := options.DesktopOwnerPID
+		ownerPID = &owner
+	}
 
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		if method != contract.MethodDaemonStatus {
@@ -28,10 +34,12 @@ func StatusHandler(productVersion string, buildID string) func(ctx context.Conte
 		}
 
 		result, err := contract.MarshalStatusResult(contract.StatusResult{
-			ProductVersion: productVersion,
-			BuildID:        buildID,
-			PID:            pid,
-			Status:         "running",
+			ProductVersion:  productVersion,
+			BuildID:         buildID,
+			PID:             pid,
+			Status:          "running",
+			Mode:            string(options.Mode),
+			DesktopOwnerPID: ownerPID,
 		})
 		if err != nil {
 			return nil, &contract.Error{

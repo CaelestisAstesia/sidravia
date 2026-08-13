@@ -47,7 +47,7 @@ func defaultDaemonOperations(identity clientbootstrap.Identity) daemonOperations
 		},
 		reachable: func(info contract.RuntimeInfo) bool { return clientbootstrap.GenerationReachable(identity, info) },
 		start: func(logLevel string) (clientbootstrap.StartOutcome, error) {
-			return clientbootstrap.Ensure(identity, logLevel)
+			return clientbootstrap.EnsureHeadless(identity, logLevel)
 		},
 	}
 }
@@ -124,6 +124,9 @@ func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) 
 	case clientbootstrap.ProbeMalformed, clientbootstrap.ProbeUnreachable:
 		return "", daemonUnknownError()
 	case clientbootstrap.ProbeReachable:
+		if result.Status != nil && result.Status.Mode == "desktop" {
+			return "", clientbootstrap.ErrModeConflict
+		}
 		if err := stopGeneration(deps, result.Info); err != nil {
 			return "", err
 		}
@@ -197,6 +200,9 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 		return "", err
 	}
 	if result.State == clientbootstrap.ProbeReachable {
+		if result.Status != nil && result.Status.Mode == "desktop" {
+			return "", clientbootstrap.ErrModeConflict
+		}
 		if err := stopGeneration(deps.stop, result.Info); err != nil {
 			return "", err
 		}
@@ -211,7 +217,7 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 }
 
 func daemonStart(identity clientbootstrap.Identity, logLevel string) error {
-	outcome, err := clientbootstrap.Ensure(identity, logLevel)
+	outcome, err := clientbootstrap.EnsureHeadless(identity, logLevel)
 	if err != nil {
 		return err
 	}

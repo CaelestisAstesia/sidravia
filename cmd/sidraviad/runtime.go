@@ -17,11 +17,13 @@ import (
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	"sidravia/internal/daemon/configuration"
+	"sidravia/internal/daemon/desktopowner"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
+	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
 
@@ -82,6 +84,8 @@ type composedRuntime struct {
 	logger         *slog.Logger
 	productVersion string
 	buildID        string
+	launchOptions  launchcontract.Options
+	desktopOwner   desktopowner.Watcher
 	stopCh         chan struct{}
 }
 
@@ -91,6 +95,7 @@ const (
 	runtimeActivityHost runtimeActivity = iota
 	runtimeActivityObserver
 	runtimeActivityDelivery
+	runtimeActivityDesktopOwner
 )
 
 type runtimeActivityResult struct {
@@ -128,8 +133,22 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		return nil, errors.New("sidraviad: BuildID is required")
 	}
 
+	launchOptions, err := launchcontract.Parse(os.Getenv(launchcontract.EnvMode), os.Getenv(launchcontract.EnvDesktopOwnerPID))
+	if err != nil {
+		return nil, fmt.Errorf("sidraviad: parse launch options: %w", err)
+	}
+	var owner desktopowner.Watcher
+	if launchOptions.Mode == launchcontract.ModeDesktop {
+		owner, err = desktopowner.Open(launchOptions.DesktopOwnerPID)
+		if err != nil {
+			return nil, fmt.Errorf("sidraviad: open desktop owner: %w", err)
+		}
+	}
 	paths, err := deriveDefaultPaths()
 	if err != nil {
+		if owner != nil {
+			_ = owner.Close()
+		}
 		return nil, err
 	}
 
@@ -140,11 +159,17 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		OnUnprotected:                      onUnprotected,
 	})
 	if err != nil {
+		if owner != nil {
+			_ = owner.Close()
+		}
 		return nil, fmt.Errorf("sidraviad: create secure store: %w", err)
 	}
 
 	hostInfo, err := environment.ReadSystemHostInformation()
 	if err != nil {
+		if owner != nil {
+			_ = owner.Close()
+		}
 		return nil, fmt.Errorf("sidraviad: read host information: %w", err)
 	}
 
@@ -152,10 +177,17 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 
 	token, err := host.GenerateToken()
 	if err != nil {
+		if owner != nil {
+			_ = owner.Close()
+		}
 		return nil, fmt.Errorf("sidraviad: generate token: %w", err)
 	}
 
-	return composeObjectGraph(ctx, store, paths, hostInfo, observer, host.Run, token, ProductVersion, BuildID, logger, onUnprotected)
+	rt, err := composeObjectGraphWithLaunchOptions(ctx, store, paths, hostInfo, observer, host.Run, token, ProductVersion, BuildID, logger, launchOptions, owner, onUnprotected)
+	if err != nil && owner != nil {
+		_ = owner.Close()
+	}
+	return rt, err
 }
 
 func composeObjectGraph(
@@ -169,6 +201,24 @@ func composeObjectGraph(
 	productVersion string,
 	buildID string,
 	logger *slog.Logger,
+	unprotectedCallbacks ...func(),
+) (*composedRuntime, error) {
+	return composeObjectGraphWithLaunchOptions(ctx, store, paths, hostInfo, observer, hostRunner, token, productVersion, buildID, logger, launchcontract.Headless(), nil, unprotectedCallbacks...)
+}
+
+func composeObjectGraphWithLaunchOptions(
+	ctx context.Context,
+	store configuration.SensitiveStore,
+	paths defaultPaths,
+	hostInfo environment.SystemHostInformation,
+	observer environment.Observer,
+	hostRunner func(context.Context, host.Config) error,
+	token string,
+	productVersion string,
+	buildID string,
+	logger *slog.Logger,
+	launchOptions launchcontract.Options,
+	desktopOwner desktopowner.Watcher,
 	unprotectedCallbacks ...func(),
 ) (*composedRuntime, error) {
 	if ctx == nil {
@@ -194,6 +244,15 @@ func composeObjectGraph(
 	}
 	if logger == nil {
 		return nil, errors.New("sidraviad: logger is required")
+	}
+	if err := launchOptions.Validate(); err != nil {
+		return nil, fmt.Errorf("sidraviad: launch options: %w", err)
+	}
+	if launchOptions.Mode == launchcontract.ModeDesktop && desktopOwner == nil {
+		return nil, errors.New("sidraviad: desktop owner watcher is required")
+	}
+	if launchOptions.Mode == launchcontract.ModeHeadless && desktopOwner != nil {
+		return nil, errors.New("sidraviad: headless daemon cannot have desktop owner watcher")
 	}
 	if hostInfo.HostName == "" {
 		return nil, errors.New("sidraviad: host name is required")
@@ -249,7 +308,7 @@ func composeObjectGraph(
 		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create application: %w", err))
 	}
 
-	handler := app.IPCHandler(application, productVersion, buildID)
+	handler := app.IPCHandler(application, productVersion, buildID, launchOptions)
 	stopCh := make(chan struct{}, 1)
 	var stopOnce sync.Once
 	srv, err := server.NewServer(token, buildID, handler, logger, func(method string) {
@@ -287,6 +346,8 @@ func composeObjectGraph(
 		logger:         logger,
 		productVersion: productVersion,
 		buildID:        buildID,
+		launchOptions:  launchOptions,
+		desktopOwner:   desktopOwner,
 		stopCh:         stopCh,
 	}, nil
 }
@@ -322,7 +383,11 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	defer cancel()
 
 	snapshotCh := make(chan environment.Snapshot, 1)
-	results := make(chan runtimeActivityResult, 3)
+	activityCount := 3
+	if rt.desktopOwner != nil {
+		activityCount++
+	}
+	results := make(chan runtimeActivityResult, activityCount)
 
 	go func() {
 		results <- runtimeActivityResult{
@@ -330,6 +395,12 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 			err:      rt.hostRunner(childCtx, rt.hostCfg),
 		}
 	}()
+
+	if rt.desktopOwner != nil {
+		go func() {
+			results <- runtimeActivityResult{activity: runtimeActivityDesktopOwner, err: rt.desktopOwner.Wait(childCtx)}
+		}()
+	}
 
 	go func() {
 		results <- runtimeActivityResult{
@@ -376,7 +447,7 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 		ipcResult = result
 	}
 
-	for received < 3 {
+	for received < activityCount {
 		result := <-results
 		received++
 		if inspectRemaining && initiator == nil {
@@ -385,6 +456,16 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	}
 
 	finalErr := rt.closeAndWait(initiator)
+	if rt.desktopOwner != nil {
+		if closeErr := rt.desktopOwner.Close(); closeErr != nil {
+			wrapped := fmt.Errorf("sidraviad: close desktop owner: %w", closeErr)
+			if finalErr != nil {
+				finalErr = errors.Join(finalErr, wrapped)
+			} else {
+				finalErr = wrapped
+			}
+		}
+	}
 	if ipcResult != nil {
 		if ipcErr := <-ipcResult; ipcErr != nil {
 			wrapped := fmt.Errorf("sidraviad: IPC shutdown: %w", ipcErr)
@@ -426,6 +507,11 @@ func classifyRuntimeResult(ctx context.Context, result runtimeActivityResult) er
 			return errors.New("sidraviad: snapshot delivery stopped unexpectedly")
 		}
 		return fmt.Errorf("sidraviad: snapshot delivery: %w", result.err)
+	case runtimeActivityDesktopOwner:
+		if result.err == nil {
+			return nil
+		}
+		return fmt.Errorf("sidraviad: desktop owner: %w", result.err)
 	default:
 		return errors.New("sidraviad: unknown runtime activity stopped")
 	}

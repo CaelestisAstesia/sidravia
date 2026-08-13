@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
 
@@ -22,7 +23,7 @@ func TestWindowsLaunchObservesOneWait(t *testing.T) {
 	}
 	cause := errors.New("wait")
 	starts, waits := 0, 0
-	got, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+	got, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
 		resolveLayout: func() (productlayout.Layout, error) {
 			return productlayout.Layout{ExecutableDirectory: `C:\\Sidravia`, DaemonLogPath: log.Name()}, nil
 		},
@@ -46,7 +47,7 @@ func TestWindowsLaunchObservesOneWait(t *testing.T) {
 func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 	t.Run("layout", func(t *testing.T) {
 		cause := errors.New("layout")
-		_, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+		_, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
 			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, cause },
 		})
 		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "解析 sidravia 运行目录") {
@@ -55,7 +56,7 @@ func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 	})
 	t.Run("log", func(t *testing.T) {
 		cause := errors.New("log")
-		_, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+		_, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
 			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, nil },
 			prepareLog:    func(string) (*os.File, error) { return nil, cause },
 		})
@@ -70,7 +71,7 @@ func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 		}
 		cause := errors.New("start")
 		waits := 0
-		launch, err := launchDaemonProcessWith("info", windowsDaemonLauncherDeps{
+		launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
 			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{DaemonLogPath: log.Name()}, nil },
 			prepareLog:    func(string) (*os.File, error) { return log, nil },
 			parentEnv:     func() []string { return nil },
@@ -91,7 +92,10 @@ func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 // mutating the parent environment.
 func TestDaemonEnvForLevelSetsChildLogLevel(t *testing.T) {
 	parentCount := countLogLevel(os.Environ())
-	env := daemonEnvForLevel(os.Environ(), "trace")
+	env, err := launchcontract.ChildEnvironment(os.Environ(), launchcontract.Headless(), "trace")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := countLogLevel(env); got != 1 {
 		t.Errorf("child SIDRAVIA_LOG_LEVEL count = %d, want 1", got)
 	}
@@ -116,7 +120,10 @@ func TestDaemonProcessCommandOwnsBackgroundOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer logFile.Close()
-	cmd := daemonProcessCommand(`C:\Sidravia\sidraviad.exe`, logFile, []string{"PATH=value", "sidravia_log_level=debug"}, "trace")
+	cmd, err := daemonProcessCommand(`C:\Sidravia\sidraviad.exe`, logFile, []string{"PATH=value", "sidravia_log_level=debug"}, launchcontract.Headless(), "trace")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cmd.Stdin != nil {
 		t.Fatal("child inherited stdin")
 	}
@@ -134,7 +141,10 @@ func TestDaemonProcessCommandOwnsBackgroundOutput(t *testing.T) {
 // TestDaemonEnvForLevelEmptyLeavesDefault proves an empty log level does not
 // append a SIDRAVIA_LOG_LEVEL entry, leaving the child at the daemon default.
 func TestDaemonEnvForLevelEmptyLeavesDefault(t *testing.T) {
-	env := daemonEnvForLevel(os.Environ(), "")
+	env, err := launchcontract.ChildEnvironment(os.Environ(), launchcontract.Headless(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := countLogLevel(env); got != 1 {
 		t.Errorf("empty logLevel SIDRAVIA_LOG_LEVEL count = %d, want 1", got)
 	}

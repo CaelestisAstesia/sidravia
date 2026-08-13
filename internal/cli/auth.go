@@ -37,7 +37,9 @@ type authDependencies struct {
 // readiness work to bootstrap. Auth owns only operation deadlines and cleanup.
 func defaultDaemonConnectionDependencies(identity clientbootstrap.Identity) daemonConnectionDependencies {
 	return daemonConnectionDependencies{
-		acquire:     func(ctx context.Context) (daemonClient, error) { return clientbootstrap.Acquire(ctx, identity, "") },
+		acquire: func(ctx context.Context) (daemonClient, error) {
+			return clientbootstrap.AcquireHeadless(ctx, identity, "")
+		},
 		callTimeout: 2 * time.Second,
 	}
 }

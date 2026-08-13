@@ -8,14 +8,15 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
 
 // daemonSiblingName is the exact sibling executable name the CLI launches.
 const daemonSiblingName = "sidraviad"
 
-func launchDaemonProcess(logLevel string) (daemonLaunch, error) {
-	return launchDaemonProcessWith(logLevel, defaultDaemonLauncherDeps())
+func launchDaemonProcess(options launchcontract.Options, logLevel string) (daemonLaunch, error) {
+	return launchDaemonProcessWith(options, logLevel, defaultDaemonLauncherDeps())
 }
 
 // daemonLauncherDeps bundles the operations launchDaemonProcessWith depends on,
@@ -50,7 +51,10 @@ func defaultDaemonLauncherDeps() daemonLauncherDeps {
 // session, releases the process because the CLI does not own a later Wait, and
 // closes only the parent's log handle. Resolve, log, start and release failures
 // are wrapped with fixed safe Chinese operation labels while preserving causes.
-func launchDaemonProcessWith(logLevel string, deps daemonLauncherDeps) (daemonLaunch, error) {
+func launchDaemonProcessWith(options launchcontract.Options, logLevel string, deps daemonLauncherDeps) (daemonLaunch, error) {
+	if err := options.Validate(); err != nil {
+		return daemonLaunch{}, err
+	}
 	layout, err := deps.resolveLayout()
 	if err != nil {
 		return daemonLaunch{}, wrapSafeOperation("解析 sidraviad 运行目录", err)
@@ -66,7 +70,11 @@ func launchDaemonProcessWith(logLevel string, deps daemonLauncherDeps) (daemonLa
 	cmd.Stdin = nil
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = daemonEnvForLevel(deps.parentEnv(), logLevel)
+	cmd.Env, err = launchcontract.ChildEnvironment(deps.parentEnv(), options, logLevel)
+	if err != nil {
+		_ = logFile.Close()
+		return daemonLaunch{}, err
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	if err := deps.start(cmd); err != nil {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
 
@@ -52,7 +53,7 @@ func TestLaunchDaemonProcessLinuxBuildsCommand(t *testing.T) {
 		return f, nil
 	}
 
-	launch, err := launchDaemonProcessWith("debug", deps)
+	launch, err := launchDaemonProcessWith(launchcontract.Headless(), "debug", deps)
 	if err != nil {
 		t.Fatalf("launchDaemonProcessWith = %v, want nil", err)
 	}
@@ -72,7 +73,10 @@ func TestLaunchDaemonProcessLinuxBuildsCommand(t *testing.T) {
 	if capturedCmd.SysProcAttr == nil || !capturedCmd.SysProcAttr.Setsid {
 		t.Error("cmd.SysProcAttr.Setsid = false, want detached session")
 	}
-	wantEnv := daemonEnvForLevel(parentEnv, "debug")
+	wantEnv, err := launchcontract.ChildEnvironment(parentEnv, launchcontract.Headless(), "debug")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !slices.Equal(capturedCmd.Env, wantEnv) {
 		t.Errorf("cmd.Env = %v, want %v", capturedCmd.Env, wantEnv)
 	}
@@ -90,7 +94,7 @@ func TestLaunchDaemonProcessLinuxResolveErrorOwnership(t *testing.T) {
 		start:         func(*exec.Cmd) error { return nil },
 		release:       func(*exec.Cmd) error { return nil },
 	}
-	launch, err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", deps)
 	if launch.exited != nil {
 		t.Errorf("exit observation = %v, want nil", launch.exited)
 	}
@@ -113,7 +117,7 @@ func TestLaunchDaemonProcessLinuxLogErrorOwnership(t *testing.T) {
 		start:      func(*exec.Cmd) error { return nil },
 		release:    func(*exec.Cmd) error { return nil },
 	}
-	launch, err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", deps)
 	if launch.exited != nil {
 		t.Errorf("exit observation = %v, want nil", launch.exited)
 	}
@@ -131,7 +135,7 @@ func TestLaunchDaemonProcessLinuxStartErrorOwnership(t *testing.T) {
 		func(*exec.Cmd) error { return cause },
 		func(*exec.Cmd) error { return nil },
 	)
-	launch, err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", deps)
 	if launch.exited != nil {
 		t.Errorf("exit observation = %v, want nil", launch.exited)
 	}
@@ -149,7 +153,7 @@ func TestLaunchDaemonProcessLinuxReleaseErrorOwnership(t *testing.T) {
 		func(*exec.Cmd) error { return nil },
 		func(*exec.Cmd) error { return cause },
 	)
-	launch, err := launchDaemonProcessWith("info", deps)
+	launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", deps)
 	if launch.exited != nil {
 		t.Errorf("exit observation = %v, want nil", launch.exited)
 	}

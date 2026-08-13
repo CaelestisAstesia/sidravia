@@ -15,10 +15,12 @@ const MethodDaemonStop = "daemon.stop"
 
 // StatusResult is the result of a daemon.status request.
 type StatusResult struct {
-	ProductVersion string `json:"productVersion"`
-	BuildID        string `json:"buildId"`
-	PID            int    `json:"pid"`
-	Status         string `json:"status"`
+	ProductVersion  string `json:"productVersion"`
+	BuildID         string `json:"buildId"`
+	PID             int    `json:"pid"`
+	Status          string `json:"status"`
+	Mode            string `json:"mode"`
+	DesktopOwnerPID *int   `json:"desktopOwnerPid,omitempty"`
 }
 
 // DaemonStopResult is the typed result of a daemon.stop request. The daemon

@@ -89,6 +89,28 @@ func TestDaemonStopTargetsContactedGeneration(t *testing.T) {
 	}
 }
 
+func TestDaemonStopAndRestartRejectDesktopBeforeDispatch(t *testing.T) {
+	info := testRuntimeInfo(100)
+	desktop := &contract.StatusResult{Mode: "desktop"}
+	for _, operation := range []struct {
+		name string
+		run  func() error
+	}{
+		{"stop", func() error {
+			return runDaemonStop(stopDependencies{ops: testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: desktop}, nil), totalWait: time.Second, pollInterval: time.Millisecond})
+		}},
+		{"restart", func() error {
+			return runDaemonRestart(restartDependencies{ops: testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: desktop}, nil), stop: stopDependencies{totalWait: time.Second, pollInterval: time.Millisecond}}, "")
+		}},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			if err := operation.run(); !errors.Is(err, clientbootstrap.ErrModeConflict) {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
 func TestDaemonRestartPreservesStoppedAndRunningPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

@@ -15,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/daemon/desktopowner"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
 func discardLogger() *slog.Logger {
@@ -651,6 +653,34 @@ type fakeAutomaticLoginPerformer struct{}
 
 func (*fakeAutomaticLoginPerformer) PerformAutomaticLogin(context.Context) error { return nil }
 
+type fakeDesktopOwner struct {
+	started    chan struct{}
+	done       chan struct{}
+	release    chan error
+	closeCount int
+	mu         sync.Mutex
+}
+
+func newFakeDesktopOwner() *fakeDesktopOwner {
+	return &fakeDesktopOwner{started: make(chan struct{}), done: make(chan struct{}), release: make(chan error, 1)}
+}
+func (o *fakeDesktopOwner) Wait(ctx context.Context) error {
+	close(o.started)
+	defer close(o.done)
+	select {
+	case err := <-o.release:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
+}
+func (o *fakeDesktopOwner) Close() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.closeCount++
+	return nil
+}
+
 func newLifecycleRuntime(
 	observer *fakeObserver,
 	hostRunner *fakeHostRunner,
@@ -752,6 +782,62 @@ func TestRuntimeLifecycleHostReturnsNilAfterOrderedSnapshotDelivery(t *testing.T
 	waitForSignal(t, sink.done, "delivery completion")
 	assertShutdown(t, shutdown)
 }
+
+func TestDesktopOwnerExitUsesNormalBoundedShutdown(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
+	owner := newFakeDesktopOwner()
+	rt.launchOptions, _ = launchcontract.Desktop(42)
+	rt.desktopOwner = owner
+	shutdown.activityDone = append(shutdown.activityDone, owner.done)
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+	waitForSignal(t, sink.started, "delivery start")
+	waitForSignal(t, owner.started, "owner start")
+	owner.release <- nil
+	if err := waitForRuntimeResult(t, result); err != nil {
+		t.Fatalf("owner exit error=%v", err)
+	}
+	assertShutdown(t, shutdown)
+	owner.mu.Lock()
+	closes := owner.closeCount
+	owner.mu.Unlock()
+	if closes != 1 {
+		t.Fatalf("owner closes=%d", closes)
+	}
+}
+
+func TestDesktopOwnerFailureIsRuntimeFailure(t *testing.T) {
+	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
+	owner := newFakeDesktopOwner()
+	rt.launchOptions, _ = launchcontract.Desktop(42)
+	rt.desktopOwner = owner
+	shutdown.activityDone = append(shutdown.activityDone, owner.done)
+	result := runRuntime(rt, context.Background())
+	waitForSignal(t, hostRunner.started, "host start")
+	waitForSignal(t, observer.started, "observer start")
+	waitForSignal(t, sink.started, "delivery start")
+	cause := errors.New("owner failed")
+	owner.release <- cause
+	if err := waitForRuntimeResult(t, result); !errors.Is(err, cause) {
+		t.Fatalf("err=%v", err)
+	}
+	assertShutdown(t, shutdown)
+}
+
+func TestCompositionLaunchOptionWatcherRequirements(t *testing.T) {
+	paths := testPaths(t)
+	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+	options, _ := launchcontract.Desktop(42)
+	if _, err := composeObjectGraphWithLaunchOptions(context.Background(), newInMemoryStore(), paths, testHostInfo(), newFakeObserver(), newFakeHostRunner().run, "token", "v", "b", discardLogger(), options, nil); err == nil {
+		t.Fatal("desktop accepted no owner")
+	}
+	if _, err := composeObjectGraphWithLaunchOptions(context.Background(), newInMemoryStore(), paths, testHostInfo(), newFakeObserver(), newFakeHostRunner().run, "token", "v", "b", discardLogger(), launchcontract.Headless(), newFakeDesktopOwner()); err == nil {
+		t.Fatal("headless accepted owner")
+	}
+}
+
+var _ desktopowner.Watcher = (*fakeDesktopOwner)(nil)
 
 func TestRuntimeLifecycleHostFailureCancelsOthers(t *testing.T) {
 	rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())

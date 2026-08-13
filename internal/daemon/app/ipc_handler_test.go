@@ -8,12 +8,13 @@ import (
 
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
 func TestIPCHandlerRoutesRetainedMethods(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "version", "build")
+	handler := IPCHandler(setup.application, "version", "build", launchcontract.Headless())
 	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
 		_, publicErr := handler(context.Background(), method, []byte(`{}`))
 		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument {
@@ -25,7 +26,7 @@ func TestIPCHandlerRoutesRetainedMethods(t *testing.T) {
 func TestIPCHandlerRoutesAllConfigurationMethods(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "version", "build")
+	handler := IPCHandler(setup.application, "version", "build", launchcontract.Headless())
 	for _, method := range []string{
 		contract.MethodConfigurationGet,
 		contract.MethodConfigurationCreate,
@@ -55,7 +56,7 @@ func TestIPCHandlerRoutesAllConfigurationMethods(t *testing.T) {
 func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "version", "build")
+	handler := IPCHandler(setup.application, "version", "build", launchcontract.Headless())
 	const passwordMarker = "private-password-marker"
 	create, publicErr := handler(context.Background(), contract.MethodConfigurationCreate, []byte(
 		`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"`+
@@ -86,7 +87,7 @@ func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) 
 func TestIPCHandlerRoutesStatusToStatusHandler(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
+	handler := IPCHandler(setup.application, "0.1.0-dev", "dev", launchcontract.Headless())
 
 	result, cerr := handler(context.Background(), contract.MethodDaemonStatus, []byte(`{}`))
 	if cerr != nil {
@@ -108,12 +109,15 @@ func TestIPCHandlerRoutesStatusToStatusHandler(t *testing.T) {
 	if status.Status != "running" {
 		t.Errorf("status: got %q, want %q", status.Status, "running")
 	}
+	if status.Mode != "headless" || status.DesktopOwnerPID != nil {
+		t.Errorf("status mode = %+v", status)
+	}
 }
 
 func TestIPCHandlerUnknownMethodReturnsUnknownMethod(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
+	handler := IPCHandler(setup.application, "0.1.0-dev", "dev", launchcontract.Headless())
 
 	_, cerr := handler(context.Background(), "daemon.unknown", []byte(`{}`))
 	if cerr == nil {
@@ -142,7 +146,7 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 	ctx := context.Background()
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
+	handler := IPCHandler(setup.application, "0.1.0-dev", "dev", launchcontract.Headless())
 
 	// Apply a usable network snapshot through Application so the one-shot start
 	// selects a binding and enters the protocol-start path.
@@ -232,7 +236,7 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 func TestIPCHandlerListsProfiles(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
+	handler := IPCHandler(setup.application, "0.1.0-dev", "dev", launchcontract.Headless())
 
 	result, cerr := handler(context.Background(), contract.MethodProfileList, []byte(`{}`))
 	if cerr != nil {
@@ -259,7 +263,7 @@ func TestIPCHandlerDoesNotLeakPassword(t *testing.T) {
 	ctx := context.Background()
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "0.1.0-dev", "dev")
+	handler := IPCHandler(setup.application, "0.1.0-dev", "dev", launchcontract.Headless())
 
 	const password = "ipc-handler-password-secret"
 

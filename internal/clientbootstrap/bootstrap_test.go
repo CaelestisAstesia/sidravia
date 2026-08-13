@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
 type fakeClient struct {
@@ -35,12 +36,87 @@ func testIdentity(t *testing.T) Identity {
 }
 
 func statusResponse(t *testing.T) contract.Response {
+	return statusResponseFor(t, "headless", nil)
+}
+
+func statusResponseFor(t *testing.T, mode string, owner *int) contract.Response {
 	t.Helper()
-	b, err := contract.MarshalStatusResult(contract.StatusResult{ProductVersion: "1", BuildID: "build", PID: 1, Status: "running"})
+	b, err := contract.MarshalStatusResult(contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Status: "running", Mode: mode, DesktopOwnerPID: owner})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return contract.NewSuccessResponse("1", b)
+}
+
+func TestEnsureRejectsReachableModeConflictWithoutLaunch(t *testing.T) {
+	owner := 42
+	launches := 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponseFor(t, "desktop", &owner), nil
+		}}, nil
+	})
+	deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+	if _, err := ensure(testIdentity(t), launchcontract.Headless(), "", deps); !errors.Is(err, ErrModeConflict) || launches != 0 {
+		t.Fatalf("err=%v launches=%d", err, launches)
+	}
+}
+
+func TestBootstrapDesktopReturnsMatchingAuthoritativeResult(t *testing.T) {
+	owner := 42
+	options, err := launchcontract.Desktop(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponseFor(t, "desktop", &owner), nil
+		}}, nil
+	})
+	got, err := bootstrapDesktop(testIdentity(t), options, deps)
+	if err != nil || got.Info.PID != 7 || got.Status.DesktopOwnerPID == nil || *got.Status.DesktopOwnerPID != owner {
+		t.Fatalf("result=%+v err=%v", got, err)
+	}
+}
+
+func TestDesktopSameOwnerReusesAndDifferentOwnerConflicts(t *testing.T) {
+	owner := 42
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponseFor(t, "desktop", &owner), nil
+		}}, nil
+	})
+	launches := 0
+	deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+	matching, _ := launchcontract.Desktop(owner)
+	if outcome, err := ensure(testIdentity(t), matching, "", deps); err != nil || outcome != AlreadyRunning || launches != 0 {
+		t.Fatalf("same owner outcome=%q err=%v launches=%d", outcome, err, launches)
+	}
+	different, _ := launchcontract.Desktop(99)
+	if _, err := ensure(testIdentity(t), different, "", deps); !errors.Is(err, ErrModeConflict) || launches != 0 {
+		t.Fatalf("different owner err=%v launches=%d", err, launches)
+	}
+}
+
+func TestDesktopReadinessConflictStopsWithoutFurtherLaunch(t *testing.T) {
+	owner := 42
+	reads, launches := 0, 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		reads++
+		if reads == 1 {
+			return contract.RuntimeInfo{}, os.ErrNotExist
+		}
+		return runtime(7), nil
+	}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponseFor(t, "headless", nil), nil
+		}}, nil
+	})
+	deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+	options, _ := launchcontract.Desktop(owner)
+	if _, err := ensure(testIdentity(t), options, "", deps); !errors.Is(err, ErrModeConflict) || launches != 1 {
+		t.Fatalf("err=%v launches=%d", err, launches)
+	}
 }
 
 func testDependencies(read func(string) (contract.RuntimeInfo, error), connect func(context.Context, contract.RuntimeInfo, Identity) (Client, error)) dependencies {
@@ -48,7 +124,7 @@ func testDependencies(read func(string) (contract.RuntimeInfo, error), connect f
 		runtimeInfoPath: func() (string, error) { return "runtime", nil },
 		readRuntimeInfo: read,
 		connect:         connect,
-		launch:          func(string) (daemonLaunch, error) { return daemonLaunch{}, nil },
+		launch:          func(launchcontract.Options, string) (daemonLaunch, error) { return daemonLaunch{}, nil },
 		callTimeout:     time.Second, totalWait: time.Second, pollInterval: time.Millisecond,
 	}
 }
@@ -88,8 +164,8 @@ func TestEnsureHotColdStaleAndReadiness(t *testing.T) {
 		deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
 		})
-		deps.launch = func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
-		outcome, err := ensure(testIdentity(t), "", deps)
+		deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+		outcome, err := ensure(testIdentity(t), launchcontract.Headless(), "", deps)
 		if err != nil || outcome != AlreadyRunning || launches != 0 {
 			t.Fatalf("outcome=%q err=%v launches=%d", outcome, err, launches)
 		}
@@ -104,8 +180,12 @@ func TestEnsureHotColdStaleAndReadiness(t *testing.T) {
 		}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
 		})
-		deps.launch = func(string) (daemonLaunch, error) { launches++; reachable = true; return daemonLaunch{}, nil }
-		outcome, err := ensure(testIdentity(t), "debug", deps)
+		deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) {
+			launches++
+			reachable = true
+			return daemonLaunch{}, nil
+		}
+		outcome, err := ensure(testIdentity(t), launchcontract.Headless(), "debug", deps)
 		if err != nil || outcome != Started || launches != 1 {
 			t.Fatalf("outcome=%q err=%v launches=%d", outcome, err, launches)
 		}
@@ -113,8 +193,11 @@ func TestEnsureHotColdStaleAndReadiness(t *testing.T) {
 	t.Run("stale", func(t *testing.T) {
 		launches := 0
 		deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) { return nil, errors.New("stale") })
-		deps.launch = func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, errors.New("launch") }
-		if _, err := ensure(testIdentity(t), "", deps); err == nil || launches != 1 {
+		deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) {
+			launches++
+			return daemonLaunch{}, errors.New("launch")
+		}
+		if _, err := ensure(testIdentity(t), launchcontract.Headless(), "", deps); err == nil || launches != 1 {
 			t.Fatalf("err=%v launches=%d", err, launches)
 		}
 	})
@@ -144,7 +227,7 @@ func TestAcquireReturnsOneExactClient(t *testing.T) {
 		}
 		return operation, nil
 	})
-	got, err := acquire(context.Background(), testIdentity(t), "", deps)
+	got, err := acquire(context.Background(), testIdentity(t), launchcontract.Headless(), "", deps)
 	if err != nil || got != operation || connects != 3 {
 		t.Fatalf("got=%v err=%v connects=%d", got, err, connects)
 	}
@@ -166,12 +249,12 @@ func TestIncompatibleGenerationDoesNotConnectOrLaunch(t *testing.T) {
 		connects++
 		return nil, errors.New("must not connect")
 	})
-	deps.launch = func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+	deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
 	result, err := probe(testIdentity(t), deps)
 	if err != nil || result.State != ProbeIncompatible || connects != 0 {
 		t.Fatalf("probe=%+v err=%v connects=%d", result, err, connects)
 	}
-	if _, err := ensure(testIdentity(t), "", deps); !errors.Is(err, ErrIncompatibleGeneration) || connects != 0 || launches != 0 {
+	if _, err := ensure(testIdentity(t), launchcontract.Headless(), "", deps); !errors.Is(err, ErrIncompatibleGeneration) || connects != 0 || launches != 0 {
 		t.Fatalf("ensure err=%v connects=%d launches=%d", err, connects, launches)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
 // IPCHandler returns a transport-neutral handler that routes a fixed set of IPC
@@ -21,8 +22,9 @@ import (
 func IPCHandler(
 	application *Application,
 	productVersion, buildID string,
+	options launchcontract.Options,
 ) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-	status := StatusHandler(productVersion, buildID)
+	status := StatusHandler(productVersion, buildID, options)
 	daemon := DaemonHandler()
 	sessions := SessionHandler(application)
 	profiles := ProfileHandler(application)

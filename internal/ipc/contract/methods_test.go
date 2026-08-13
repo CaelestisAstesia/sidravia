@@ -36,6 +36,21 @@ func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
 	}
 }
 
+func TestMarshalStatusResultCarriesModeAndOptionalOwner(t *testing.T) {
+	owner := 42
+	data, err := MarshalStatusResult(StatusResult{ProductVersion: "v", BuildID: "b", PID: 7, Status: "running", Mode: "desktop", DesktopOwnerPID: &owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatal(err)
+	}
+	if value["mode"] != "desktop" || value["desktopOwnerPid"] != float64(42) {
+		t.Fatalf("status wire=%s", data)
+	}
+}
+
 func TestDecodeSessionStartOneShotPayloadAcceptsEmptyPassword(t *testing.T) {
 	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`)
 	payload, err := DecodeSessionStartOneShotPayload(data)

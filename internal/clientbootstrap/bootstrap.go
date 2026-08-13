@@ -13,6 +13,7 @@ import (
 
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
 
@@ -38,6 +39,8 @@ type Identity struct {
 var (
 	ErrInvalidIdentity        = errors.New("invalid client identity")
 	ErrIncompatibleGeneration = errors.New("incompatible daemon generation")
+	ErrModeConflict           = errors.New("守护进程正在由另一种模式使用；请先退出当前模式")
+	ErrDesktopUnsupported     = errors.New("图形界面 bootstrap 仅支持 Windows")
 )
 
 // NewIdentity validates the identity a client presents to the daemon.
@@ -69,20 +72,6 @@ func wrapSafeOperation(label string, cause error) error {
 	return &safeOperationError{label: label, cause: cause}
 }
 
-func daemonEnvForLevel(parent []string, logLevel string) []string {
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	env := make([]string, 0, len(parent)+1)
-	for _, entry := range parent {
-		name, _, _ := strings.Cut(entry, "=")
-		if !strings.EqualFold(name, "SIDRAVIA_LOG_LEVEL") {
-			env = append(env, entry)
-		}
-	}
-	return append(env, "SIDRAVIA_LOG_LEVEL="+logLevel)
-}
-
 // ProbeState is the read-only state of the generation described by runtime
 // information. Probe never changes runtime state or starts a process.
 type ProbeState int
@@ -112,7 +101,7 @@ type dependencies struct {
 	runtimeInfoPath func() (string, error)
 	readRuntimeInfo func(string) (contract.RuntimeInfo, error)
 	connect         func(context.Context, contract.RuntimeInfo, Identity) (Client, error)
-	launch          func(string) (daemonLaunch, error)
+	launch          func(launchcontract.Options, string) (daemonLaunch, error)
 	callTimeout     time.Duration
 	totalWait       time.Duration
 	pollInterval    time.Duration
@@ -207,6 +196,9 @@ func statusFor(identity Identity, deps dependencies, info contract.RuntimeInfo) 
 	if err := json.Unmarshal(response.Result, &status); err != nil {
 		return nil, false
 	}
+	if status.ProductVersion != identity.ProductVersion || status.BuildID != identity.BuildID || status.PID <= 0 {
+		return nil, false
+	}
 	return &status, true
 }
 
@@ -232,39 +224,84 @@ func generationReachable(identity Identity, deps dependencies, info contract.Run
 	return err == nil && response.OK
 }
 
-// Ensure performs one hot probe, then at most one cold or stale launch and
-// fixed readiness polling. It does not remove stale runtime information.
-func Ensure(identity Identity, logLevel string) (StartOutcome, error) {
-	return ensure(identity, logLevel, defaultDependencies())
+// EnsureHeadless performs one hot probe, then at most one cold or stale
+// headless launch and fixed readiness polling. It does not remove runtime info.
+func EnsureHeadless(identity Identity, logLevel string) (StartOutcome, error) {
+	return ensure(identity, launchcontract.Headless(), logLevel, defaultDependencies())
 }
 
-func ensure(identity Identity, logLevel string, deps dependencies) (StartOutcome, error) {
+func ensure(identity Identity, options launchcontract.Options, logLevel string, deps dependencies) (StartOutcome, error) {
+	if err := options.Validate(); err != nil {
+		return "", err
+	}
 	result, err := probe(identity, deps)
 	if err != nil {
 		return "", err
 	}
 	if result.State == ProbeReachable {
+		if !matchesOptions(result.Status, options) {
+			return "", ErrModeConflict
+		}
 		return AlreadyRunning, nil
 	}
 	if result.State == ProbeIncompatible {
 		return "", ErrIncompatibleGeneration
 	}
-	launched, err := deps.launch(logLevel)
+	launched, err := deps.launch(options, logLevel)
 	if err != nil {
 		return "", wrapSafeOperation("启动 sidraviad", err)
 	}
 	if err := waitForReadiness(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
 		result, err := probe(identity, deps)
-		return err == nil && result.State == ProbeReachable, err
+		if err != nil {
+			return false, err
+		}
+		if result.State == ProbeReachable && !matchesOptions(result.Status, options) {
+			return false, ErrModeConflict
+		}
+		return result.State == ProbeReachable && matchesOptions(result.Status, options), nil
 	}); err != nil {
 		return "", err
 	}
 	return Started, nil
 }
 
-// Acquire ensures the daemon is reachable and opens one direct IPC client.
-func Acquire(ctx context.Context, identity Identity, logLevel string) (Client, error) {
-	return acquire(ctx, identity, logLevel, defaultDependencies())
+// AcquireHeadless ensures a matching headless daemon and opens one direct IPC client.
+func AcquireHeadless(ctx context.Context, identity Identity, logLevel string) (Client, error) {
+	return acquire(ctx, identity, launchcontract.Headless(), logLevel, defaultDependencies())
+}
+
+// DesktopBootstrapResult is authoritative only after desktop readiness has
+// confirmed the exact requested owner and build identity.
+type DesktopBootstrapResult struct {
+	Info   contract.RuntimeInfo
+	Status contract.StatusResult
+}
+
+func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, error) {
+	options, err := launchcontract.Desktop(ownerPID)
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	if !desktopBootstrapSupported() {
+		return DesktopBootstrapResult{}, ErrDesktopUnsupported
+	}
+	return bootstrapDesktop(identity, options, defaultDependencies())
+}
+
+func bootstrapDesktop(identity Identity, options launchcontract.Options, deps dependencies) (DesktopBootstrapResult, error) {
+	if _, err := ensure(identity, options, "", deps); err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	result, err := probe(identity, deps)
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	if result.State != ProbeReachable || !matchesOptions(result.Status, options) ||
+		result.Status.ProductVersion != identity.ProductVersion || result.Status.BuildID != identity.BuildID || result.Status.PID <= 0 {
+		return DesktopBootstrapResult{}, ErrModeConflict
+	}
+	return DesktopBootstrapResult{Info: result.Info, Status: *result.Status}, nil
 }
 
 // IsReadinessUnconfirmed identifies the stable ambiguous-start error without
@@ -274,20 +311,30 @@ func IsReadinessUnconfirmed(err error) bool {
 	return errors.As(err, &timeout)
 }
 
-func acquire(ctx context.Context, identity Identity, logLevel string, deps dependencies) (Client, error) {
-	if _, err := ensure(identity, logLevel, deps); err != nil {
+func acquire(ctx context.Context, identity Identity, options launchcontract.Options, logLevel string, deps dependencies) (Client, error) {
+	if _, err := ensure(identity, options, logLevel, deps); err != nil {
 		return nil, err
 	}
 	result, err := probe(identity, deps)
 	if err != nil {
 		return nil, err
 	}
-	if result.State != ProbeReachable {
+	if result.State != ProbeReachable || !matchesOptions(result.Status, options) {
 		return nil, fmt.Errorf("无法连接 daemon（未找到运行中的 daemon）")
 	}
 	connectCtx, cancel := context.WithTimeout(ctx, deps.callTimeout)
 	defer cancel()
 	return deps.connect(connectCtx, result.Info, identity)
+}
+
+func matchesOptions(status *contract.StatusResult, options launchcontract.Options) bool {
+	if status == nil || status.Mode != string(options.Mode) {
+		return false
+	}
+	if options.Mode == launchcontract.ModeDesktop {
+		return status.DesktopOwnerPID != nil && *status.DesktopOwnerPID == options.DesktopOwnerPID
+	}
+	return status.DesktopOwnerPID == nil
 }
 
 var errDaemonExitedBeforeReadiness = errors.New("sidraviad exited before readiness")
