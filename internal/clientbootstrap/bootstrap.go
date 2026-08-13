@@ -196,10 +196,25 @@ func statusFor(identity Identity, deps dependencies, info contract.RuntimeInfo) 
 	if err := json.Unmarshal(response.Result, &status); err != nil {
 		return nil, false
 	}
-	if status.ProductVersion != identity.ProductVersion || status.BuildID != identity.BuildID || status.PID <= 0 {
+	if !validStatusFor(identity, info, &status) {
 		return nil, false
 	}
 	return &status, true
+}
+
+func validStatusFor(identity Identity, info contract.RuntimeInfo, status *contract.StatusResult) bool {
+	if status == nil || status.ProductVersion != identity.ProductVersion || status.BuildID != identity.BuildID ||
+		status.PID <= 0 || status.PID != info.PID {
+		return false
+	}
+	switch status.Mode {
+	case string(launchcontract.ModeHeadless):
+		return status.DesktopOwnerPID == nil
+	case string(launchcontract.ModeDesktop):
+		return status.DesktopOwnerPID != nil && *status.DesktopOwnerPID > 0
+	default:
+		return false
+	}
 }
 
 // GenerationReachable checks the supplied generation directly. It deliberately
@@ -221,7 +236,11 @@ func generationReachable(identity Identity, deps dependencies, info contract.Run
 	}
 	defer conn.Close()
 	response, err := conn.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
-	return err == nil && response.OK
+	if err != nil || !response.OK {
+		return false
+	}
+	var status contract.StatusResult
+	return json.Unmarshal(response.Result, &status) == nil && validStatusFor(identity, info, &status)
 }
 
 // EnsureHeadless performs one hot probe, then at most one cold or stale

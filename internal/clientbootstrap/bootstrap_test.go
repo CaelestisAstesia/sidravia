@@ -41,7 +41,12 @@ func statusResponse(t *testing.T) contract.Response {
 
 func statusResponseFor(t *testing.T, mode string, owner *int) contract.Response {
 	t.Helper()
-	b, err := contract.MarshalStatusResult(contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Status: "running", Mode: mode, DesktopOwnerPID: owner})
+	return statusResponseValue(t, contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Status: "running", Mode: mode, DesktopOwnerPID: owner})
+}
+
+func statusResponseValue(t *testing.T, value contract.StatusResult) contract.Response {
+	t.Helper()
+	b, err := contract.MarshalStatusResult(value)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,20 +73,20 @@ func TestBootstrapDesktopReturnsMatchingAuthoritativeResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
 			return statusResponseFor(t, "desktop", &owner), nil
 		}}, nil
 	})
 	got, err := bootstrapDesktop(testIdentity(t), options, deps)
-	if err != nil || got.Info.PID != 7 || got.Status.DesktopOwnerPID == nil || *got.Status.DesktopOwnerPID != owner {
+	if err != nil || got.Info.PID != 1 || got.Status.DesktopOwnerPID == nil || *got.Status.DesktopOwnerPID != owner {
 		t.Fatalf("result=%+v err=%v", got, err)
 	}
 }
 
 func TestDesktopSameOwnerReusesAndDifferentOwnerConflicts(t *testing.T) {
 	owner := 42
-	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
 			return statusResponseFor(t, "desktop", &owner), nil
 		}}, nil
@@ -106,7 +111,7 @@ func TestDesktopReadinessConflictStopsWithoutFurtherLaunch(t *testing.T) {
 		if reads == 1 {
 			return contract.RuntimeInfo{}, os.ErrNotExist
 		}
-		return runtime(7), nil
+		return runtime(1), nil
 	}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
 			return statusResponseFor(t, "headless", nil), nil
@@ -118,6 +123,29 @@ func TestDesktopReadinessConflictStopsWithoutFurtherLaunch(t *testing.T) {
 		t.Fatalf("err=%v launches=%d", err, launches)
 	}
 }
+
+func TestProbeRejectsInvalidAuthoritativeStatus(t *testing.T) {
+	identity := testIdentity(t)
+	for _, status := range []contract.StatusResult{
+		{ProductVersion: "1.0.0", BuildID: "build", PID: 2, Mode: "headless"},
+		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "unknown"},
+		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "headless", DesktopOwnerPID: intPtr(42)},
+		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop"},
+		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop", DesktopOwnerPID: intPtr(0)},
+	} {
+		t.Run(status.Mode, func(t *testing.T) {
+			deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+				return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponseValue(t, status), nil }}, nil
+			})
+			result, err := probe(identity, deps)
+			if err != nil || result.State != ProbeUnreachable {
+				t.Fatalf("probe=%+v err=%v", result, err)
+			}
+		})
+	}
+}
+
+func intPtr(value int) *int { return &value }
 
 func testDependencies(read func(string) (contract.RuntimeInfo, error), connect func(context.Context, contract.RuntimeInfo, Identity) (Client, error)) dependencies {
 	return dependencies{
@@ -220,7 +248,7 @@ func TestWaitForReadinessPreservesExitAndTimeoutContracts(t *testing.T) {
 func TestAcquireReturnsOneExactClient(t *testing.T) {
 	operation := &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, nil }}
 	connects := 0
-	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 		connects++
 		if connects < 3 {
 			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil

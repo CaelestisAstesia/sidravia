@@ -67,7 +67,7 @@ func TestDaemonStatusPresentationUsesBootstrapInspection(t *testing.T) {
 func TestDaemonStopTargetsContactedGeneration(t *testing.T) {
 	info := testRuntimeInfo(100)
 	stopped, stopCalls := false, 0
-	ops := testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info}, nil)
+	ops := testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: &contract.StatusResult{Mode: "headless"}}, nil)
 	ops.connect = func(_ context.Context, got contract.RuntimeInfo) (daemonClient, error) {
 		if got.PID != info.PID {
 			t.Fatalf("PID=%d", got.PID)
@@ -89,27 +89,32 @@ func TestDaemonStopTargetsContactedGeneration(t *testing.T) {
 	}
 }
 
-func TestDaemonStopAndRestartRejectDesktopBeforeDispatch(t *testing.T) {
+func TestDaemonStopAndRestartRejectNonHeadlessBeforeDispatch(t *testing.T) {
 	info := testRuntimeInfo(100)
-	desktop := &contract.StatusResult{Mode: "desktop"}
-	for _, operation := range []struct {
-		name string
-		run  func() error
-	}{
-		{"stop", func() error {
-			return runDaemonStop(stopDependencies{ops: testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: desktop}, nil), totalWait: time.Second, pollInterval: time.Millisecond})
-		}},
-		{"restart", func() error {
-			return runDaemonRestart(restartDependencies{ops: testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: desktop}, nil), stop: stopDependencies{totalWait: time.Second, pollInterval: time.Millisecond}}, "")
-		}},
-	} {
-		t.Run(operation.name, func(t *testing.T) {
-			if err := operation.run(); !errors.Is(err, clientbootstrap.ErrModeConflict) {
-				t.Fatalf("err=%v", err)
+	for name, status := range map[string]*contract.StatusResult{"nil": nil, "desktop": &contract.StatusResult{Mode: "desktop"}, "unknown": &contract.StatusResult{Mode: "unknown"}, "headless-owner": &contract.StatusResult{Mode: "headless", DesktopOwnerPID: intPointer(42)}} {
+		t.Run(name, func(t *testing.T) {
+			connects, starts := 0, 0
+			ops := testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: status}, nil)
+			ops.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+				connects++
+				return nil, errors.New("unexpected")
+			}
+			ops.start = func(string) (clientbootstrap.StartOutcome, error) { starts++; return clientbootstrap.Started, nil }
+			stop := stopDependencies{ops: ops, totalWait: time.Second, pollInterval: time.Millisecond}
+			if err := runDaemonStop(stop); !errors.Is(err, clientbootstrap.ErrModeConflict) {
+				t.Fatalf("stop err=%v", err)
+			}
+			if err := runDaemonRestart(restartDependencies{ops: ops, stop: stop}, ""); !errors.Is(err, clientbootstrap.ErrModeConflict) {
+				t.Fatalf("restart err=%v", err)
+			}
+			if connects != 0 || starts != 0 {
+				t.Fatalf("connects=%d starts=%d", connects, starts)
 			}
 		})
 	}
 }
+
+func intPointer(value int) *int { return &value }
 
 func TestDaemonRestartPreservesStoppedAndRunningPolicy(t *testing.T) {
 	for _, tc := range []struct {

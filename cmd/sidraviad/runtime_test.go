@@ -825,6 +825,43 @@ func TestDesktopOwnerFailureIsRuntimeFailure(t *testing.T) {
 	assertShutdown(t, shutdown)
 }
 
+func TestDesktopOwnerJoinsExternalCancellationAndCommittedStop(t *testing.T) {
+	for _, trigger := range []struct {
+		name string
+		fire func(context.CancelFunc, *composedRuntime)
+	}{
+		{"caller cancellation", func(cancel context.CancelFunc, _ *composedRuntime) { cancel() }},
+		{"committed stop", func(_ context.CancelFunc, rt *composedRuntime) { rt.stopCh <- struct{}{} }},
+	} {
+		t.Run(trigger.name, func(t *testing.T) {
+			rt, observer, hostRunner, sink, shutdown := newCoordinatedLifecycle(t, discardLogger())
+			owner := newFakeDesktopOwner()
+			rt.launchOptions, _ = launchcontract.Desktop(42)
+			rt.desktopOwner = owner
+			rt.stopCh = make(chan struct{}, 1)
+			shutdown.activityDone = append(shutdown.activityDone, owner.done)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			result := runRuntime(rt, ctx)
+			waitForSignal(t, hostRunner.started, "host start")
+			waitForSignal(t, observer.started, "observer start")
+			waitForSignal(t, sink.started, "delivery start")
+			waitForSignal(t, owner.started, "owner start")
+			trigger.fire(cancel, rt)
+			if err := waitForRuntimeResult(t, result); err != nil {
+				t.Fatalf("run error=%v", err)
+			}
+			assertShutdown(t, shutdown)
+			owner.mu.Lock()
+			closes := owner.closeCount
+			owner.mu.Unlock()
+			if closes != 1 {
+				t.Fatalf("owner closes=%d", closes)
+			}
+		})
+	}
+}
+
 func TestCompositionLaunchOptionWatcherRequirements(t *testing.T) {
 	paths := testPaths(t)
 	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))

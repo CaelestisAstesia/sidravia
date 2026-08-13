@@ -124,7 +124,7 @@ func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) 
 	case clientbootstrap.ProbeMalformed, clientbootstrap.ProbeUnreachable:
 		return "", daemonUnknownError()
 	case clientbootstrap.ProbeReachable:
-		if result.Status != nil && result.Status.Mode == "desktop" {
+		if !isExplicitHeadless(result.Status) {
 			return "", clientbootstrap.ErrModeConflict
 		}
 		if err := stopGeneration(deps, result.Info); err != nil {
@@ -200,7 +200,7 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 		return "", err
 	}
 	if result.State == clientbootstrap.ProbeReachable {
-		if result.Status != nil && result.Status.Mode == "desktop" {
+		if !isExplicitHeadless(result.Status) {
 			return "", clientbootstrap.ErrModeConflict
 		}
 		if err := stopGeneration(deps.stop, result.Info); err != nil {
@@ -214,6 +214,10 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 		return daemonStartedFromStopped, nil
 	}
 	return daemonRestarted, nil
+}
+
+func isExplicitHeadless(status *contract.StatusResult) bool {
+	return status != nil && status.Mode == "headless" && status.DesktopOwnerPID == nil
 }
 
 func daemonStart(identity clientbootstrap.Identity, logLevel string) error {
