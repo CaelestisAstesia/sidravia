@@ -7,7 +7,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"sidravia/internal/ipc/contract"
 )
@@ -16,19 +15,10 @@ func hotListDependencies(t *testing.T, connection daemonClient, output *bytes.Bu
 	t.Helper()
 	return listDependencies{
 		connection: daemonConnectionDependencies{
-			discovery: discoveryDependencies{
-				runtimeInfoPath: func() (string, error) { return "runtime-path", nil },
-				readRuntimeInfo: func(string) (contract.RuntimeInfo, error) {
-					return testRuntimeInfo(904), nil
-				},
-				startDaemon:  func() (daemonLaunch, error) { t.Fatal("hot discovery started daemon"); return daemonLaunch{}, nil },
-				totalWait:    time.Second,
-				pollInterval: time.Millisecond,
-			},
-			connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+			acquire: func(_ context.Context) (daemonClient, error) {
 				return connection, nil
 			},
-			callTimeout: time.Second,
+			callTimeout: 1,
 		},
 		stdout: output,
 	}

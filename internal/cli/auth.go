@@ -10,20 +10,16 @@ import (
 	"os"
 	"time"
 
-	"sidravia/internal/ipc/client"
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
 )
 
 const automaticNetworkBindingPolicy = "automatically_select_latest_available"
 
-type daemonClient interface {
-	Call(context.Context, string, json.RawMessage) (contract.Response, error)
-	Close() error
-}
+type daemonClient = clientbootstrap.Client
 
 type daemonConnectionDependencies struct {
-	discovery   discoveryDependencies
-	connect     func(context.Context, contract.RuntimeInfo) (daemonClient, error)
+	acquire     func(context.Context) (daemonClient, error)
 	callTimeout time.Duration
 }
 
@@ -37,17 +33,11 @@ type authDependencies struct {
 	inputIsConsole          func(io.Reader) bool
 }
 
-// defaultDaemonConnectionDependencies wires auth commands to the shared daemon
-// discovery chain. It reuses the same hot-connect, single cold-start, stale
-// recovery and fixed wait semantics as `daemon start`'s ensureDaemonRunning,
-// so auth commands never require a separate daemon launch and never call
-// daemon lifecycle methods such as daemon.stop.
+// defaultDaemonConnectionDependencies delegates all discovery, launch and
+// readiness work to bootstrap. Auth owns only operation deadlines and cleanup.
 func defaultDaemonConnectionDependencies() daemonConnectionDependencies {
 	return daemonConnectionDependencies{
-		discovery: defaultDiscoveryDependencies(),
-		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonClient, error) {
-			return client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
-		},
+		acquire:     func(ctx context.Context) (daemonClient, error) { return clientbootstrap.Acquire(ctx, "") },
 		callTimeout: 2 * time.Second,
 	}
 }
@@ -209,8 +199,7 @@ func withAuthClient(deps authDependencies, operation func(daemonClient) error) e
 func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonClient) error) error {
 	connection, err := acquireDaemonClient(deps)
 	if err != nil {
-		var timeout *daemonReadinessTimeoutError
-		if errors.As(err, &timeout) {
+		if clientbootstrap.IsReadinessUnconfirmed(err) {
 			return err
 		}
 		return wrapSafeOperation("无法连接 sidraviad（请确认 daemon 已启动；若刚增删过 sidravia.portable 标记，请先停止并重启 daemon）", err)
@@ -231,21 +220,7 @@ func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonCl
 }
 
 func acquireDaemonClient(deps daemonConnectionDependencies) (daemonClient, error) {
-	var acquired daemonClient
-	err := discoverDaemon(deps.discovery, func(info contract.RuntimeInfo) error {
-		ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
-		defer cancel()
-
-		connection, err := deps.connect(ctx, info)
-		if err != nil {
-			if connection != nil {
-				_ = connection.Close()
-			}
-			return err
-		}
-		acquired = connection
-		return nil
-	})
+	acquired, err := deps.acquire(context.Background())
 	if err != nil {
 		return nil, err
 	}

@@ -3,17 +3,13 @@
 package clientbootstrap
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"sidravia/internal/ipc/contract"
 	"sidravia/internal/productlayout"
 )
 
@@ -162,28 +158,5 @@ func TestLaunchDaemonProcessLinuxReleaseErrorOwnership(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "释放 sidraviad 进程") {
 		t.Errorf("error = %v, want release label", err)
-	}
-}
-
-// TestLaunchDaemonProcessLinuxStatusDoesNotInvokeLauncher proves read-only
-// status reports stopped without connecting or launching when runtime info is
-// missing; the launcher is never on the status path.
-func TestLaunchDaemonProcessLinuxStatusDoesNotInvokeLauncher(t *testing.T) {
-	runtimePath := filepath.Join(t.TempDir(), "runtime", "runtime.json")
-	deps := probeDependencies{
-		runtimeInfoPath: func() (string, error) { return runtimePath, nil },
-		readRuntimeInfo: readRuntimeInfo,
-		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
-			t.Fatal("read-only status must not connect or launch when runtime info is missing")
-			return nil, nil
-		},
-		callTimeout: 2 * time.Second,
-	}
-	var output strings.Builder
-	if err := runDaemonStatus(deps, &output); err != nil {
-		t.Fatalf("runDaemonStatus = %v, want nil", err)
-	}
-	if !strings.Contains(output.String(), "已停止") {
-		t.Errorf("output = %q, want stopped label", output.String())
 	}
 }

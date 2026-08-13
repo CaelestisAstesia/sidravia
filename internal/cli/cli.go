@@ -1,20 +1,15 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/productlayout"
 )
 
 const commandUsage = "用法错误，请运行 sidravia help 查看帮助"
@@ -711,90 +706,6 @@ func isHelpRequest(args []string) bool {
 func renderHelpCompletion(cmd *cobra.Command) error {
 	p := newPresentation(cmd.OutOrStdout())
 	return wrapSafeOperation("显示帮助", p.complete(renderHelp(p, cmd)))
-}
-
-type discoveryDependencies struct {
-	runtimeInfoPath func() (string, error)
-	readRuntimeInfo func(path string) (contract.RuntimeInfo, error)
-	startDaemon     func() (daemonLaunch, error)
-	totalWait       time.Duration
-	pollInterval    time.Duration
-}
-
-func defaultDiscoveryDependencies() discoveryDependencies {
-	return discoveryDependencies{
-		runtimeInfoPath: runtimeInfoPath,
-		readRuntimeInfo: readRuntimeInfo,
-		startDaemon:     startDaemon,
-		totalWait:       5 * time.Second,
-		pollInterval:    200 * time.Millisecond,
-	}
-}
-
-func discoverDaemon(deps discoveryDependencies, operation func(contract.RuntimeInfo) error) error {
-	infoPath, err := deps.runtimeInfoPath()
-	if err != nil {
-		return wrapSafeOperation("运行信息路径", err)
-	}
-
-	// Try to connect to an already-running daemon.
-	info, err := deps.readRuntimeInfo(infoPath)
-	if err == nil {
-		if err := operation(info); err == nil {
-			return nil
-		}
-	}
-
-	// Daemon not reachable - start it.
-	launch, err := deps.startDaemon()
-	if err != nil {
-		return wrapSafeOperation("启动 sidraviad", err)
-	}
-	return waitForDaemonReadiness(deps.totalWait, deps.pollInterval, launch.exited, func() (bool, error) {
-		info, err := deps.readRuntimeInfo(infoPath)
-		if err != nil {
-			return false, nil
-		}
-		return operation(info) == nil, nil
-	})
-}
-
-func runtimeInfoPath() (string, error) {
-	layout, err := productlayout.Resolve()
-	if err != nil {
-		return "", err
-	}
-	return layout.RuntimeInfoPath, nil
-}
-
-func readRuntimeInfo(path string) (contract.RuntimeInfo, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return contract.RuntimeInfo{}, err
-	}
-	return contract.DecodeRuntimeInfo(data)
-}
-
-func connectAndPrint(info contract.RuntimeInfo) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	c, err := client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-
-	resp, err := c.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
-	if err != nil {
-		return err
-	}
-	return writeStatus(os.Stdout, resp)
-}
-
-func startDaemon() (daemonLaunch, error) {
-	exited, err := clientbootstrap.Launch("")
-	return daemonLaunch{exited: exited}, err
 }
 
 // writeStatus renders a daemon.status response to w through the presentation

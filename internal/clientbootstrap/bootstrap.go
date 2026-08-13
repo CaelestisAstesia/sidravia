@@ -1,5 +1,5 @@
 // Package clientbootstrap owns discovery and lifecycle coordination for the
-// local sidraviad process.  CLI presentation deliberately remains outside it.
+// local sidraviad process. CLI presentation deliberately remains outside it.
 package clientbootstrap
 
 import (
@@ -19,11 +19,9 @@ import (
 const (
 	ensureTotalWait    = 5 * time.Second
 	ensurePollInterval = 200 * time.Millisecond
-	stopTotalWait      = 10 * time.Second
-	stopPollInterval   = 200 * time.Millisecond
 )
 
-// Client is the daemon connection consumed by CLI operations.
+// Client is the direct daemon connection consumed by CLI operations.
 type Client interface {
 	Call(context.Context, string, json.RawMessage) (contract.Response, error)
 	Close() error
@@ -42,7 +40,7 @@ func wrapSafeOperation(label string, cause error) error {
 	if cause == nil {
 		return nil
 	}
-	return &safeOperationError{label, cause}
+	return &safeOperationError{label: label, cause: cause}
 }
 
 func daemonEnvForLevel(parent []string, logLevel string) []string {
@@ -59,6 +57,8 @@ func daemonEnvForLevel(parent []string, logLevel string) []string {
 	return append(env, "SIDRAVIA_LOG_LEVEL="+logLevel)
 }
 
+// ProbeState is the read-only state of the generation described by runtime
+// information. Probe never changes runtime state or starts a process.
 type ProbeState int
 
 const (
@@ -74,63 +74,6 @@ type ProbeResult struct {
 	Status *contract.StatusResult
 }
 
-func runtimeInfoPath() (string, error) {
-	layout, err := productlayout.Resolve()
-	if err != nil {
-		return "", err
-	}
-	return layout.RuntimeInfoPath, nil
-}
-func readRuntimeInfo(path string) (contract.RuntimeInfo, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return contract.RuntimeInfo{}, err
-	}
-	return contract.DecodeRuntimeInfo(data)
-}
-
-// Probe is read-only and never starts, stops, removes or rewrites runtime state.
-func Probe() (ProbeResult, error) {
-	path, err := runtimeInfoPath()
-	if err != nil {
-		return ProbeResult{}, wrapSafeOperation("运行信息路径", err)
-	}
-	info, err := readRuntimeInfo(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return ProbeResult{State: ProbeStopped}, nil
-		}
-		return ProbeResult{State: ProbeMalformed}, nil
-	}
-	status, ok := callDaemonStatus(info)
-	if !ok {
-		return ProbeResult{Info: info, State: ProbeUnreachable}, nil
-	}
-	return ProbeResult{Info: info, State: ProbeReachable, Status: status}, nil
-}
-
-func connect(ctx context.Context, info contract.RuntimeInfo) (Client, error) {
-	return client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
-}
-func callDaemonStatus(info contract.RuntimeInfo) (*contract.StatusResult, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	c, err := connect(ctx, info)
-	if err != nil {
-		return nil, false
-	}
-	defer c.Close()
-	resp, err := c.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
-	if err != nil || !resp.OK {
-		return nil, false
-	}
-	var status contract.StatusResult
-	if json.Unmarshal(resp.Result, &status) != nil {
-		return nil, false
-	}
-	return &status, true
-}
-
 type StartOutcome string
 
 const (
@@ -138,32 +81,158 @@ const (
 	AlreadyRunning StartOutcome = "already_running"
 )
 
-func Ensure(logLevel string) (StartOutcome, error) {
-	result, err := Probe()
+type dependencies struct {
+	runtimeInfoPath func() (string, error)
+	readRuntimeInfo func(string) (contract.RuntimeInfo, error)
+	connect         func(context.Context, contract.RuntimeInfo) (Client, error)
+	launch          func(string) (daemonLaunch, error)
+	callTimeout     time.Duration
+	totalWait       time.Duration
+	pollInterval    time.Duration
+}
+
+func defaultDependencies() dependencies {
+	return dependencies{
+		runtimeInfoPath: func() (string, error) {
+			layout, err := productlayout.Resolve()
+			if err != nil {
+				return "", err
+			}
+			return layout.RuntimeInfoPath, nil
+		},
+		readRuntimeInfo: func(path string) (contract.RuntimeInfo, error) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return contract.RuntimeInfo{}, err
+			}
+			return contract.DecodeRuntimeInfo(data)
+		},
+		connect: func(ctx context.Context, info contract.RuntimeInfo) (Client, error) {
+			return client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
+		},
+		launch:       launchDaemonProcess,
+		callTimeout:  2 * time.Second,
+		totalWait:    ensureTotalWait,
+		pollInterval: ensurePollInterval,
+	}
+}
+
+// Probe is read-only and never starts, stops, removes or rewrites runtime state.
+func Probe() (ProbeResult, error) { return probe(defaultDependencies()) }
+
+func probe(deps dependencies) (ProbeResult, error) {
+	path, err := deps.runtimeInfoPath()
+	if err != nil {
+		return ProbeResult{}, wrapSafeOperation("运行信息路径", err)
+	}
+	info, err := deps.readRuntimeInfo(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ProbeResult{State: ProbeStopped}, nil
+		}
+		return ProbeResult{State: ProbeMalformed}, nil
+	}
+	status, ok := statusFor(deps, info)
+	if !ok {
+		return ProbeResult{Info: info, State: ProbeUnreachable}, nil
+	}
+	return ProbeResult{Info: info, State: ProbeReachable, Status: status}, nil
+}
+
+// Connect opens a direct connection to exactly the supplied runtime generation.
+func Connect(ctx context.Context, info contract.RuntimeInfo) (Client, error) {
+	return defaultDependencies().connect(ctx, info)
+}
+
+func statusFor(deps dependencies, info contract.RuntimeInfo) (*contract.StatusResult, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
+	defer cancel()
+	conn, err := deps.connect(ctx, info)
+	if err != nil {
+		return nil, false
+	}
+	defer conn.Close()
+	response, err := conn.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
+	if err != nil || !response.OK {
+		return nil, false
+	}
+	var status contract.StatusResult
+	if err := json.Unmarshal(response.Result, &status); err != nil {
+		return nil, false
+	}
+	return &status, true
+}
+
+// GenerationReachable checks the supplied generation directly. It deliberately
+// does not reread runtime state, so replacement cannot prove an old generation
+// stopped.
+func GenerationReachable(info contract.RuntimeInfo) bool {
+	return generationReachable(defaultDependencies(), info)
+}
+
+func generationReachable(deps dependencies, info contract.RuntimeInfo) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
+	defer cancel()
+	conn, err := deps.connect(ctx, info)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	response, err := conn.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
+	return err == nil && response.OK
+}
+
+// Ensure performs one hot probe, then at most one cold or stale launch and
+// fixed readiness polling. It does not remove stale runtime information.
+func Ensure(logLevel string) (StartOutcome, error) { return ensure(logLevel, defaultDependencies()) }
+
+func ensure(logLevel string, deps dependencies) (StartOutcome, error) {
+	result, err := probe(deps)
 	if err != nil {
 		return "", err
 	}
 	if result.State == ProbeReachable {
 		return AlreadyRunning, nil
 	}
-	launch, err := launchDaemonProcess(logLevel)
+	launched, err := deps.launch(logLevel)
 	if err != nil {
 		return "", wrapSafeOperation("启动 sidraviad", err)
 	}
-	if err := waitForReadiness(ensureTotalWait, ensurePollInterval, launch.exited, func() bool { result, err := Probe(); return err == nil && result.State == ProbeReachable }); err != nil {
+	if err := waitForReadiness(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
+		result, err := probe(deps)
+		return err == nil && result.State == ProbeReachable, err
+	}); err != nil {
 		return "", err
 	}
 	return Started, nil
 }
 
-// Launch starts exactly one sibling daemon process. Readiness remains the
-// caller's responsibility; Ensure is the normal production entry point.
-func Launch(logLevel string) (<-chan error, error) {
-	launch, err := launchDaemonProcess(logLevel)
+// Acquire ensures the daemon is reachable and opens one direct IPC client.
+func Acquire(ctx context.Context, logLevel string) (Client, error) {
+	return acquire(ctx, logLevel, defaultDependencies())
+}
+
+// IsReadinessUnconfirmed identifies the stable ambiguous-start error without
+// exposing discovery paths or private implementation details.
+func IsReadinessUnconfirmed(err error) bool {
+	var timeout *daemonReadinessTimeoutError
+	return errors.As(err, &timeout)
+}
+
+func acquire(ctx context.Context, logLevel string, deps dependencies) (Client, error) {
+	if _, err := ensure(logLevel, deps); err != nil {
+		return nil, err
+	}
+	result, err := probe(deps)
 	if err != nil {
 		return nil, err
 	}
-	return launch.exited, nil
+	if result.State != ProbeReachable {
+		return nil, fmt.Errorf("无法连接 daemon（未找到运行中的 daemon）")
+	}
+	connectCtx, cancel := context.WithTimeout(ctx, deps.callTimeout)
+	defer cancel()
+	return deps.connect(connectCtx, result.Info)
 }
 
 var errDaemonExitedBeforeReadiness = errors.New("sidraviad exited before readiness")
@@ -181,7 +250,8 @@ func (*daemonReadinessTimeoutError) Error() string {
 	return "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidravia daemon status 确认状态后再重试"
 }
 func (*daemonReadinessTimeoutError) Unwrap() error { return context.DeadlineExceeded }
-func waitForReadiness(total, interval time.Duration, exited <-chan error, ready func() bool) error {
+
+func waitForReadiness(total, interval time.Duration, exited <-chan error, attempt func() (bool, error)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), total)
 	defer cancel()
 	ticker := time.NewTicker(interval)
@@ -189,37 +259,34 @@ func waitForReadiness(total, interval time.Duration, exited <-chan error, ready 
 	for {
 		select {
 		case waitErr := <-exited:
-			if ready() {
+			ready, err := attempt()
+			if err != nil {
+				return err
+			}
+			if ready {
 				return nil
 			}
 			if waitErr == nil {
 				waitErr = errDaemonExitedBeforeReadiness
 			}
-			return &daemonEarlyExitError{waitErr}
+			return &daemonEarlyExitError{cause: waitErr}
 		case <-ctx.Done():
-			if ready() {
+			ready, err := attempt()
+			if err != nil {
+				return err
+			}
+			if ready {
 				return nil
 			}
 			return &daemonReadinessTimeoutError{}
 		case <-ticker.C:
-			if ready() {
+			ready, err := attempt()
+			if err != nil {
+				return err
+			}
+			if ready {
 				return nil
 			}
 		}
 	}
-}
-
-// ConnectHeadless ensures a daemon then opens one direct IPC connection.
-func ConnectHeadless(ctx context.Context) (Client, error) {
-	if _, err := Ensure(""); err != nil {
-		return nil, err
-	}
-	result, err := Probe()
-	if err != nil {
-		return nil, err
-	}
-	if result.State != ProbeReachable {
-		return nil, fmt.Errorf("daemon unavailable")
-	}
-	return connect(ctx, result.Info)
 }
