@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
@@ -263,8 +264,11 @@ func waitForDaemonReadiness(totalWait, pollInterval time.Duration, exited <-chan
 
 func defaultEnsureDependencies(logLevel string) ensureDependencies {
 	return ensureDependencies{
-		probe:        defaultProbeDependencies(),
-		launch:       launchDaemonProcess,
+		probe: defaultProbeDependencies(),
+		launch: func(level string) (daemonLaunch, error) {
+			exited, err := clientbootstrap.Launch(level)
+			return daemonLaunch{exited: exited}, err
+		},
 		logLevel:     logLevel,
 		totalWait:    daemonEnsureTotalWait,
 		pollInterval: daemonEnsurePollInterval,
@@ -402,8 +406,11 @@ func defaultRestartDependencies(logLevel string) restartDependencies {
 		probe: probe,
 		stop:  defaultStopDependencies(),
 		ensure: ensureDependencies{
-			probe:        probe,
-			launch:       launchDaemonProcess,
+			probe: probe,
+			launch: func(level string) (daemonLaunch, error) {
+				exited, err := clientbootstrap.Launch(level)
+				return daemonLaunch{exited: exited}, err
+			},
 			logLevel:     logLevel,
 			totalWait:    daemonEnsureTotalWait,
 			pollInterval: daemonEnsurePollInterval,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/productlayout"
@@ -792,7 +793,8 @@ func connectAndPrint(info contract.RuntimeInfo) error {
 }
 
 func startDaemon() (daemonLaunch, error) {
-	return launchDaemonProcess("")
+	exited, err := clientbootstrap.Launch("")
+	return daemonLaunch{exited: exited}, err
 }
 
 // writeStatus renders a daemon.status response to w through the presentation
