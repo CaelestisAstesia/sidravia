@@ -126,26 +126,70 @@ func TestDesktopReadinessConflictStopsWithoutFurtherLaunch(t *testing.T) {
 
 func TestProbeRejectsInvalidAuthoritativeStatus(t *testing.T) {
 	identity := testIdentity(t)
-	for _, status := range []contract.StatusResult{
-		{ProductVersion: "1.0.0", BuildID: "build", PID: 2, Mode: "headless"},
-		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "unknown"},
-		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "headless", DesktopOwnerPID: intPtr(42)},
-		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop"},
-		{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop", DesktopOwnerPID: intPtr(0)},
+	for _, tc := range []struct {
+		name   string
+		status contract.StatusResult
+	}{
+		{"pid", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 2, Mode: "headless"}},
+		{"mode", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "unknown"}},
+		{"headless-owner", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "headless", DesktopOwnerPID: intPtr(42)}},
+		{"desktop-missing-owner", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop"}},
+		{"desktop-zero-owner", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop", DesktopOwnerPID: intPtr(0)}},
 	} {
-		t.Run(status.Mode, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
-				return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponseValue(t, status), nil }}, nil
+				return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+					return statusResponseValue(t, tc.status), nil
+				}}, nil
 			})
 			result, err := probe(identity, deps)
-			if err != nil || result.State != ProbeUnreachable {
+			if err != nil || result.State != ProbeUnreachable || result.Status == nil || result.Status.PID != tc.status.PID || result.Status.Mode != tc.status.Mode {
 				t.Fatalf("probe=%+v err=%v", result, err)
 			}
 		})
 	}
 }
 
+func TestEnsureRejectsAnsweredInvalidStatusWithoutLaunch(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  contract.StatusResult
+		options launchcontract.Options
+		want    error
+	}{
+		{"product-version", contract.StatusResult{ProductVersion: "other", BuildID: "build", PID: 1, Mode: "headless"}, launchcontract.Headless(), ErrIncompatibleGeneration},
+		{"build-id", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "other", PID: 1, Mode: "desktop", DesktopOwnerPID: intPtr(42)}, mustDesktop(t, 42), ErrIncompatibleGeneration},
+		{"pid", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 2, Mode: "headless"}, launchcontract.Headless(), ErrModeConflict},
+		{"mode", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "unknown"}, mustDesktop(t, 42), ErrModeConflict},
+		{"headless-owner", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "headless", DesktopOwnerPID: intPtr(42)}, launchcontract.Headless(), ErrModeConflict},
+		{"desktop-missing-owner", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop"}, mustDesktop(t, 42), ErrModeConflict},
+		{"desktop-zero-owner", contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: 1, Mode: "desktop", DesktopOwnerPID: intPtr(0)}, mustDesktop(t, 42), ErrModeConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			launches := 0
+			deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+				return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+					return statusResponseValue(t, tc.status), nil
+				}}, nil
+			})
+			deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+			if _, err := ensure(testIdentity(t), tc.options, "", deps); !errors.Is(err, tc.want) || launches != 0 {
+				t.Fatalf("err=%v launches=%d", err, launches)
+			}
+		})
+	}
+}
+
 func intPtr(value int) *int { return &value }
+
+func mustDesktop(t *testing.T, owner int) launchcontract.Options {
+	t.Helper()
+	options, err := launchcontract.Desktop(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return options
+}
 
 func testDependencies(read func(string) (contract.RuntimeInfo, error), connect func(context.Context, contract.RuntimeInfo, Identity) (Client, error)) dependencies {
 	return dependencies{
@@ -224,6 +268,10 @@ func TestEnsureHotColdStaleAndReadiness(t *testing.T) {
 		deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) {
 			launches++
 			return daemonLaunch{}, errors.New("launch")
+		}
+		result, err := probe(testIdentity(t), deps)
+		if err != nil || result.State != ProbeUnreachable || result.Status != nil {
+			t.Fatalf("probe=%+v err=%v", result, err)
 		}
 		if _, err := ensure(testIdentity(t), launchcontract.Headless(), "", deps); err == nil || launches != 1 {
 			t.Fatalf("err=%v launches=%d", err, launches)

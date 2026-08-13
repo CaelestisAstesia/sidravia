@@ -156,7 +156,7 @@ func probe(identity Identity, deps dependencies) (ProbeResult, error) {
 	}
 	status, ok := statusFor(identity, deps, info)
 	if !ok {
-		return ProbeResult{Info: info, State: ProbeUnreachable}, nil
+		return ProbeResult{Info: info, State: ProbeUnreachable, Status: status}, nil
 	}
 	return ProbeResult{Info: info, State: ProbeReachable, Status: status}, nil
 }
@@ -196,10 +196,7 @@ func statusFor(identity Identity, deps dependencies, info contract.RuntimeInfo) 
 	if err := json.Unmarshal(response.Result, &status); err != nil {
 		return nil, false
 	}
-	if !validStatusFor(identity, info, &status) {
-		return nil, false
-	}
-	return &status, true
+	return &status, validStatusFor(identity, info, &status)
 }
 
 func validStatusFor(identity Identity, info contract.RuntimeInfo, status *contract.StatusResult) bool {
@@ -265,6 +262,12 @@ func ensure(identity Identity, options launchcontract.Options, logLevel string, 
 	}
 	if result.State == ProbeIncompatible {
 		return "", ErrIncompatibleGeneration
+	}
+	if result.State == ProbeUnreachable && result.Status != nil {
+		if result.Status.ProductVersion != identity.ProductVersion || result.Status.BuildID != identity.BuildID {
+			return "", ErrIncompatibleGeneration
+		}
+		return "", ErrModeConflict
 	}
 	launched, err := deps.launch(options, logLevel)
 	if err != nil {
