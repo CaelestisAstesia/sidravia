@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -120,19 +121,23 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	return root
 }
 
-func configList() error          { return runConfigList(defaultAuthDependencies()) }
-func configShow(id string) error { return runConfigShow(id, defaultAuthDependencies()) }
-func configCreate(options configCreateOptions) error {
-	return runConfigCreate(options, defaultAuthDependencies())
+func configList(identity clientbootstrap.Identity) error {
+	return runConfigList(defaultAuthDependencies(identity))
 }
-func configUpdate(options configUpdateOptions) error {
-	return runConfigUpdate(options, defaultAuthDependencies())
+func configShow(identity clientbootstrap.Identity, id string) error {
+	return runConfigShow(id, defaultAuthDependencies(identity))
 }
-func configSetPassword(options configPasswordOptions) error {
-	return runConfigSetPassword(options, defaultAuthDependencies())
+func configCreate(identity clientbootstrap.Identity, options configCreateOptions) error {
+	return runConfigCreate(options, defaultAuthDependencies(identity))
 }
-func configRemove(id string, yes bool) error {
-	return runConfigRemove(id, yes, defaultAuthDependencies())
+func configUpdate(identity clientbootstrap.Identity, options configUpdateOptions) error {
+	return runConfigUpdate(options, defaultAuthDependencies(identity))
+}
+func configSetPassword(identity clientbootstrap.Identity, options configPasswordOptions) error {
+	return runConfigSetPassword(options, defaultAuthDependencies(identity))
+}
+func configRemove(identity clientbootstrap.Identity, id string, yes bool) error {
+	return runConfigRemove(id, yes, defaultAuthDependencies(identity))
 }
 
 func callConfiguration(deps authDependencies, connection daemonClient, method string, payload any) (json.RawMessage, error) {

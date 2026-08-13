@@ -51,6 +51,17 @@ func TestDaemonStatusPresentationUsesBootstrapInspection(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 	})
+	t.Run("incompatible", func(t *testing.T) {
+		var output strings.Builder
+		result := clientbootstrap.ProbeResult{Info: contract.RuntimeInfo{ProductVersion: "secret-version", BuildID: "secret-build", Token: "secret-token"}, State: clientbootstrap.ProbeIncompatible}
+		if err := runDaemonStatus(testDaemonOperations(result, nil), &output); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		want := "守护进程：当前运行的 daemon 与此 sidravia 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"
+		if output.String() != want || strings.Contains(output.String(), "secret-") {
+			t.Fatalf("output=%q", output.String())
+		}
+	})
 }
 
 func TestDaemonStopTargetsContactedGeneration(t *testing.T) {

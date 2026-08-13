@@ -22,7 +22,16 @@ func (c *fakeClient) Call(_ context.Context, method string, payload json.RawMess
 func (c *fakeClient) Close() error { c.close++; return nil }
 
 func runtime(pid int) contract.RuntimeInfo {
-	return contract.RuntimeInfo{Endpoint: "ws://127.0.0.1:1", Token: "token", BuildID: "build", PID: pid}
+	return contract.RuntimeInfo{Endpoint: "ws://127.0.0.1:1", Token: "token", ProductVersion: "1.0.0", BuildID: "build", PID: pid}
+}
+
+func testIdentity(t *testing.T) Identity {
+	t.Helper()
+	identity, err := NewIdentity("1.0.0", "build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return identity
 }
 
 func statusResponse(t *testing.T) contract.Response {
@@ -34,7 +43,7 @@ func statusResponse(t *testing.T) contract.Response {
 	return contract.NewSuccessResponse("1", b)
 }
 
-func testDependencies(read func(string) (contract.RuntimeInfo, error), connect func(context.Context, contract.RuntimeInfo) (Client, error)) dependencies {
+func testDependencies(read func(string) (contract.RuntimeInfo, error), connect func(context.Context, contract.RuntimeInfo, Identity) (Client, error)) dependencies {
 	return dependencies{
 		runtimeInfoPath: func() (string, error) { return "runtime", nil },
 		readRuntimeInfo: read,
@@ -57,13 +66,15 @@ func TestProbeClassifiesRuntimeState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			connect := func(context.Context, contract.RuntimeInfo) (Client, error) { return nil, errors.New("unreachable") }
+			connect := func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+				return nil, errors.New("unreachable")
+			}
 			if tc.want == ProbeReachable {
-				connect = func(context.Context, contract.RuntimeInfo) (Client, error) {
+				connect = func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 					return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
 				}
 			}
-			got, err := probe(testDependencies(tc.read, connect))
+			got, err := probe(testIdentity(t), testDependencies(tc.read, connect))
 			if err != nil || got.State != tc.want {
 				t.Fatalf("probe = %#v, %v; want %v", got, err, tc.want)
 			}
@@ -74,11 +85,11 @@ func TestProbeClassifiesRuntimeState(t *testing.T) {
 func TestEnsureHotColdStaleAndReadiness(t *testing.T) {
 	t.Run("hot", func(t *testing.T) {
 		launches := 0
-		deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo) (Client, error) {
+		deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
 		})
 		deps.launch = func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
-		outcome, err := ensure("", deps)
+		outcome, err := ensure(testIdentity(t), "", deps)
 		if err != nil || outcome != AlreadyRunning || launches != 0 {
 			t.Fatalf("outcome=%q err=%v launches=%d", outcome, err, launches)
 		}
@@ -90,20 +101,20 @@ func TestEnsureHotColdStaleAndReadiness(t *testing.T) {
 				return contract.RuntimeInfo{}, os.ErrNotExist
 			}
 			return runtime(1), nil
-		}, func(context.Context, contract.RuntimeInfo) (Client, error) {
+		}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
 		})
 		deps.launch = func(string) (daemonLaunch, error) { launches++; reachable = true; return daemonLaunch{}, nil }
-		outcome, err := ensure("debug", deps)
+		outcome, err := ensure(testIdentity(t), "debug", deps)
 		if err != nil || outcome != Started || launches != 1 {
 			t.Fatalf("outcome=%q err=%v launches=%d", outcome, err, launches)
 		}
 	})
 	t.Run("stale", func(t *testing.T) {
 		launches := 0
-		deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo) (Client, error) { return nil, errors.New("stale") })
+		deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) { return nil, errors.New("stale") })
 		deps.launch = func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, errors.New("launch") }
-		if _, err := ensure("", deps); err == nil || launches != 1 {
+		if _, err := ensure(testIdentity(t), "", deps); err == nil || launches != 1 {
 			t.Fatalf("err=%v launches=%d", err, launches)
 		}
 	})
@@ -126,15 +137,55 @@ func TestWaitForReadinessPreservesExitAndTimeoutContracts(t *testing.T) {
 func TestAcquireReturnsOneExactClient(t *testing.T) {
 	operation := &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, nil }}
 	connects := 0
-	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo) (Client, error) {
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(7), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
 		connects++
 		if connects < 3 {
 			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
 		}
 		return operation, nil
 	})
-	got, err := acquire(context.Background(), "", deps)
+	got, err := acquire(context.Background(), testIdentity(t), "", deps)
 	if err != nil || got != operation || connects != 3 {
 		t.Fatalf("got=%v err=%v connects=%d", got, err, connects)
+	}
+}
+
+func TestIdentityRejectsEmptyValues(t *testing.T) {
+	for _, tc := range []Identity{{}, {ProductVersion: "1.0.0"}, {BuildID: "build"}} {
+		if err := tc.validate(); !errors.Is(err, ErrInvalidIdentity) {
+			t.Fatalf("validate(%+v) = %v", tc, err)
+		}
+	}
+}
+
+func TestIncompatibleGenerationDoesNotConnectOrLaunch(t *testing.T) {
+	info := runtime(7)
+	info.BuildID = "other"
+	connects, launches := 0, 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return info, nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		connects++
+		return nil, errors.New("must not connect")
+	})
+	deps.launch = func(string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+	result, err := probe(testIdentity(t), deps)
+	if err != nil || result.State != ProbeIncompatible || connects != 0 {
+		t.Fatalf("probe=%+v err=%v connects=%d", result, err, connects)
+	}
+	if _, err := ensure(testIdentity(t), "", deps); !errors.Is(err, ErrIncompatibleGeneration) || connects != 0 || launches != 0 {
+		t.Fatalf("ensure err=%v connects=%d launches=%d", err, connects, launches)
+	}
+}
+
+func TestConnectPassesClientIdentityToTransport(t *testing.T) {
+	identity := testIdentity(t)
+	info := runtime(7)
+	got, err := connectWithDependencies(context.Background(), identity, info, dependencies{connect: func(_ context.Context, gotInfo contract.RuntimeInfo, gotIdentity Identity) (Client, error) {
+		if gotInfo != info || gotIdentity != identity {
+			t.Fatalf("info=%+v identity=%+v", gotInfo, gotIdentity)
+		}
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, nil }}, nil
+	}})
+	if err != nil || got == nil {
+		t.Fatalf("Connect err=%v client=%v", err, got)
 	}
 }

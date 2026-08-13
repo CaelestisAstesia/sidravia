@@ -35,16 +35,16 @@ type authDependencies struct {
 
 // defaultDaemonConnectionDependencies delegates all discovery, launch and
 // readiness work to bootstrap. Auth owns only operation deadlines and cleanup.
-func defaultDaemonConnectionDependencies() daemonConnectionDependencies {
+func defaultDaemonConnectionDependencies(identity clientbootstrap.Identity) daemonConnectionDependencies {
 	return daemonConnectionDependencies{
-		acquire:     func(ctx context.Context) (daemonClient, error) { return clientbootstrap.Acquire(ctx, "") },
+		acquire:     func(ctx context.Context) (daemonClient, error) { return clientbootstrap.Acquire(ctx, identity, "") },
 		callTimeout: 2 * time.Second,
 	}
 }
 
-func defaultAuthDependencies() authDependencies {
+func defaultAuthDependencies(identity clientbootstrap.Identity) authDependencies {
 	return authDependencies{
-		connection:              defaultDaemonConnectionDependencies(),
+		connection:              defaultDaemonConnectionDependencies(identity),
 		stdin:                   os.Stdin,
 		stdout:                  os.Stdout,
 		stderr:                  os.Stderr,
@@ -61,24 +61,24 @@ func defaultAuthDependencies() authDependencies {
 	}
 }
 
-func authStart(options authStartOptions) error {
-	return runAuthStart(options, defaultAuthDependencies())
+func authStart(identity clientbootstrap.Identity, options authStartOptions) error {
+	return runAuthStart(options, defaultAuthDependencies(identity))
 }
 
-func authStatus(sessionID string) error {
-	return runAuthStatus(sessionID, defaultAuthDependencies())
+func authStatus(identity clientbootstrap.Identity, sessionID string) error {
+	return runAuthStatus(sessionID, defaultAuthDependencies(identity))
 }
 
-func authStop(sessionID string) error {
-	return runAuthStop(sessionID, defaultAuthDependencies())
+func authStop(identity clientbootstrap.Identity, sessionID string) error {
+	return runAuthStop(sessionID, defaultAuthDependencies(identity))
 }
 
-func authRestart(sessionID string) error {
-	return runAuthRestart(sessionID, defaultAuthDependencies())
+func authRestart(identity clientbootstrap.Identity, sessionID string) error {
+	return runAuthRestart(sessionID, defaultAuthDependencies(identity))
 }
 
-func authRemove(sessionID string) error {
-	return runAuthRemove(sessionID, defaultAuthDependencies())
+func authRemove(identity clientbootstrap.Identity, sessionID string) error {
+	return runAuthRemove(sessionID, defaultAuthDependencies(identity))
 }
 
 func runAuthStart(options authStartOptions, deps authDependencies) error {

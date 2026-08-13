@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -18,19 +19,19 @@ type listDependencies struct {
 	stdout     io.Writer
 }
 
-func defaultListDependencies() listDependencies {
+func defaultListDependencies(identity clientbootstrap.Identity) listDependencies {
 	return listDependencies{
-		connection: defaultDaemonConnectionDependencies(),
+		connection: defaultDaemonConnectionDependencies(identity),
 		stdout:     os.Stdout,
 	}
 }
 
-func authList() error {
-	return runAuthList(defaultListDependencies())
+func authList(identity clientbootstrap.Identity) error {
+	return runAuthList(defaultListDependencies(identity))
 }
 
-func profileList() error {
-	return runProfileList(defaultListDependencies())
+func profileList(identity clientbootstrap.Identity) error {
+	return runProfileList(defaultListDependencies(identity))
 }
 
 func runAuthList(deps listDependencies) error {

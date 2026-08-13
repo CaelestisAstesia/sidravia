@@ -386,17 +386,17 @@ func containsExact(env []string, kv string) bool {
 
 // 4. go build argv has correct target, readonly module, trimpath, VCS, ldflags, output.
 
-func TestBuildArgv(t *testing.T) {
-	cli := buildArgv("go", "/p/sidravia.exe", "./cmd/sidravia", "0.1.0-alpha.2", "abc", false)
+func TestBuildArgvInjectsSharedProductIdentity(t *testing.T) {
+	cli := buildArgv("go", "/p/sidravia.exe", "./cmd/sidravia", "0.1.0-alpha.2", "abc")
 	wantCLI := []string{
 		"go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",
-		"-ldflags", "-s -w -buildid=", "-o", "/p/sidravia.exe", "./cmd/sidravia",
+		"-ldflags", "-s -w -buildid= -X main.ProductVersion=0.1.0-alpha.2 -X main.BuildID=abc", "-o", "/p/sidravia.exe", "./cmd/sidravia",
 	}
 	if !sliceEqual(cli, wantCLI) {
 		t.Errorf("cli argv = %v, want %v", cli, wantCLI)
 	}
 
-	daemon := buildArgv("/x/go", "/p/sidraviad.exe", "./cmd/sidraviad", "0.1.0-alpha.2", "abc", true)
+	daemon := buildArgv("/x/go", "/p/sidraviad.exe", "./cmd/sidraviad", "0.1.0-alpha.2", "abc")
 	wantDaemonLdflags := "-s -w -buildid= -X main.ProductVersion=0.1.0-alpha.2 -X main.BuildID=abc"
 	if daemon[0] != "/x/go" || daemon[1] != "build" {
 		t.Errorf("daemon head = %v", daemon[:2])

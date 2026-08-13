@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -780,5 +781,27 @@ func TestNoSettingsCommandExists(t *testing.T) {
 	}
 	if err := runCommand([]string{"config", "settings"}, deps); err == nil {
 		t.Fatal("config settings subcommand unexpectedly accepted")
+	}
+}
+
+func TestDefaultCommandDependenciesCaptureOneIdentityForAllOperations(t *testing.T) {
+	identity, err := clientbootstrap.NewIdentity("0.1.0-dev", "cli-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := defaultCommandDependencies(identity)
+	if deps.identity != identity {
+		t.Fatalf("identity = %+v, want %+v", deps.identity, identity)
+	}
+	for name, operation := range map[string]any{
+		"daemon status": deps.daemonStatus, "daemon start": deps.daemonStart, "daemon stop": deps.daemonStop, "daemon restart": deps.daemonRestart,
+		"auth start": deps.authStart, "auth status": deps.authStatus, "auth stop": deps.authStop, "auth restart": deps.authRestart, "auth remove": deps.authRemove,
+		"auth list": deps.authList, "profile list": deps.profileList,
+		"config list": deps.configList, "config show": deps.configShow, "config create": deps.configCreate, "config update": deps.configUpdate,
+		"config password": deps.configSetPassword, "config remove": deps.configRemove,
+	} {
+		if operation == nil {
+			t.Errorf("%s dependency is nil", name)
+		}
 	}
 }

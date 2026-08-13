@@ -39,14 +39,16 @@ type daemonOperations struct {
 	start     func(string) (clientbootstrap.StartOutcome, error)
 }
 
-func defaultDaemonOperations() daemonOperations {
+func defaultDaemonOperations(identity clientbootstrap.Identity) daemonOperations {
 	return daemonOperations{
-		inspect: clientbootstrap.Probe,
+		inspect: func() (clientbootstrap.ProbeResult, error) { return clientbootstrap.Probe(identity) },
 		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonClient, error) {
-			return clientbootstrap.Connect(ctx, info)
+			return clientbootstrap.Connect(ctx, identity, info)
 		},
-		reachable: clientbootstrap.GenerationReachable,
-		start:     clientbootstrap.Ensure,
+		reachable: func(info contract.RuntimeInfo) bool { return clientbootstrap.GenerationReachable(identity, info) },
+		start: func(logLevel string) (clientbootstrap.StartOutcome, error) {
+			return clientbootstrap.Ensure(identity, logLevel)
+		},
 	}
 }
 
@@ -63,6 +65,8 @@ func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 	case clientbootstrap.ProbeReachable:
 		p := newPresentation(output)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStatus(p, result.Status)))
+	case clientbootstrap.ProbeIncompatible:
+		return writeDaemonIncompatible(output)
 	default:
 		return daemonUnknownError()
 	}
@@ -70,6 +74,11 @@ func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 
 func daemonUnknownError() error {
 	return errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart")
+}
+
+func writeDaemonIncompatible(w io.Writer) error {
+	p := newPresentation(w)
+	return wrapSafeOperation("显示 daemon 状态", p.complete("守护进程：当前运行的 daemon 与此 sidravia 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
 }
 
 func writeDaemonStopped(w io.Writer) error {
@@ -93,8 +102,8 @@ type stopDependencies struct {
 	pollInterval time.Duration
 }
 
-func defaultStopDependencies() stopDependencies {
-	return stopDependencies{ops: defaultDaemonOperations(), totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}
+func defaultStopDependencies(identity clientbootstrap.Identity) stopDependencies {
+	return stopDependencies{ops: defaultDaemonOperations(identity), totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}
 }
 
 // runDaemonStop sends daemon.stop to the contacted generation and waits until
@@ -172,8 +181,8 @@ type restartDependencies struct {
 	stop stopDependencies
 }
 
-func defaultRestartDependencies() restartDependencies {
-	ops := defaultDaemonOperations()
+func defaultRestartDependencies(identity clientbootstrap.Identity) restartDependencies {
+	ops := defaultDaemonOperations(identity)
 	return restartDependencies{ops: ops, stop: stopDependencies{ops: ops, totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}}
 }
 
@@ -201,8 +210,8 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 	return daemonRestarted, nil
 }
 
-func daemonStart(logLevel string) error {
-	outcome, err := clientbootstrap.Ensure(logLevel)
+func daemonStart(identity clientbootstrap.Identity, logLevel string) error {
+	outcome, err := clientbootstrap.Ensure(identity, logLevel)
 	if err != nil {
 		return err
 	}
@@ -213,10 +222,12 @@ func daemonStart(logLevel string) error {
 	return writeDaemonStarted(os.Stdout)
 }
 
-func daemonStatus() error { return runDaemonStatus(defaultDaemonOperations(), os.Stdout) }
+func daemonStatus(identity clientbootstrap.Identity) error {
+	return runDaemonStatus(defaultDaemonOperations(identity), os.Stdout)
+}
 
-func daemonStop() error {
-	outcome, err := runDaemonStopWithOutcome(defaultStopDependencies())
+func daemonStop(identity clientbootstrap.Identity) error {
+	outcome, err := runDaemonStopWithOutcome(defaultStopDependencies(identity))
 	if err != nil {
 		return err
 	}
@@ -227,8 +238,8 @@ func daemonStop() error {
 	return writeDaemonStopped(os.Stdout)
 }
 
-func daemonRestart(logLevel string) error {
-	outcome, err := runDaemonRestartWithOutcome(defaultRestartDependencies(), logLevel)
+func daemonRestart(identity clientbootstrap.Identity, logLevel string) error {
+	outcome, err := runDaemonRestartWithOutcome(defaultRestartDependencies(identity), logLevel)
 	if err != nil {
 		return err
 	}

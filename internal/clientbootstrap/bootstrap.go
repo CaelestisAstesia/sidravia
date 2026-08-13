@@ -27,6 +27,32 @@ type Client interface {
 	Close() error
 }
 
+// Identity is the immutable product identity compiled into a local client.
+// Runtime information locates a daemon generation; it never supplies the
+// client's identity.
+type Identity struct {
+	ProductVersion string
+	BuildID        string
+}
+
+var (
+	ErrInvalidIdentity        = errors.New("invalid client identity")
+	ErrIncompatibleGeneration = errors.New("incompatible daemon generation")
+)
+
+// NewIdentity validates the identity a client presents to the daemon.
+func NewIdentity(productVersion, buildID string) (Identity, error) {
+	if strings.TrimSpace(productVersion) == "" || strings.TrimSpace(buildID) == "" {
+		return Identity{}, ErrInvalidIdentity
+	}
+	return Identity{ProductVersion: productVersion, BuildID: buildID}, nil
+}
+
+func (identity Identity) validate() error {
+	_, err := NewIdentity(identity.ProductVersion, identity.BuildID)
+	return err
+}
+
 type daemonLaunch struct{ exited <-chan error }
 
 type safeOperationError struct {
@@ -66,6 +92,7 @@ const (
 	ProbeReachable
 	ProbeUnreachable
 	ProbeMalformed
+	ProbeIncompatible
 )
 
 type ProbeResult struct {
@@ -84,7 +111,7 @@ const (
 type dependencies struct {
 	runtimeInfoPath func() (string, error)
 	readRuntimeInfo func(string) (contract.RuntimeInfo, error)
-	connect         func(context.Context, contract.RuntimeInfo) (Client, error)
+	connect         func(context.Context, contract.RuntimeInfo, Identity) (Client, error)
 	launch          func(string) (daemonLaunch, error)
 	callTimeout     time.Duration
 	totalWait       time.Duration
@@ -107,8 +134,8 @@ func defaultDependencies() dependencies {
 			}
 			return contract.DecodeRuntimeInfo(data)
 		},
-		connect: func(ctx context.Context, info contract.RuntimeInfo) (Client, error) {
-			return client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
+		connect: func(ctx context.Context, info contract.RuntimeInfo, identity Identity) (Client, error) {
+			return client.Connect(ctx, info.Endpoint, info.Token, identity.BuildID)
 		},
 		launch:       launchDaemonProcess,
 		callTimeout:  2 * time.Second,
@@ -118,9 +145,12 @@ func defaultDependencies() dependencies {
 }
 
 // Probe is read-only and never starts, stops, removes or rewrites runtime state.
-func Probe() (ProbeResult, error) { return probe(defaultDependencies()) }
+func Probe(identity Identity) (ProbeResult, error) { return probe(identity, defaultDependencies()) }
 
-func probe(deps dependencies) (ProbeResult, error) {
+func probe(identity Identity, deps dependencies) (ProbeResult, error) {
+	if err := identity.validate(); err != nil {
+		return ProbeResult{}, err
+	}
 	path, err := deps.runtimeInfoPath()
 	if err != nil {
 		return ProbeResult{}, wrapSafeOperation("运行信息路径", err)
@@ -132,7 +162,10 @@ func probe(deps dependencies) (ProbeResult, error) {
 		}
 		return ProbeResult{State: ProbeMalformed}, nil
 	}
-	status, ok := statusFor(deps, info)
+	if !matchesIdentity(identity, info) {
+		return ProbeResult{Info: info, State: ProbeIncompatible}, nil
+	}
+	status, ok := statusFor(identity, deps, info)
 	if !ok {
 		return ProbeResult{Info: info, State: ProbeUnreachable}, nil
 	}
@@ -140,14 +173,28 @@ func probe(deps dependencies) (ProbeResult, error) {
 }
 
 // Connect opens a direct connection to exactly the supplied runtime generation.
-func Connect(ctx context.Context, info contract.RuntimeInfo) (Client, error) {
-	return defaultDependencies().connect(ctx, info)
+func Connect(ctx context.Context, identity Identity, info contract.RuntimeInfo) (Client, error) {
+	return connectWithDependencies(ctx, identity, info, defaultDependencies())
 }
 
-func statusFor(deps dependencies, info contract.RuntimeInfo) (*contract.StatusResult, bool) {
+func connectWithDependencies(ctx context.Context, identity Identity, info contract.RuntimeInfo, deps dependencies) (Client, error) {
+	if err := identity.validate(); err != nil {
+		return nil, err
+	}
+	if !matchesIdentity(identity, info) {
+		return nil, ErrIncompatibleGeneration
+	}
+	return deps.connect(ctx, info, identity)
+}
+
+func matchesIdentity(identity Identity, info contract.RuntimeInfo) bool {
+	return identity.ProductVersion == info.ProductVersion && identity.BuildID == info.BuildID
+}
+
+func statusFor(identity Identity, deps dependencies, info contract.RuntimeInfo) (*contract.StatusResult, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
 	defer cancel()
-	conn, err := deps.connect(ctx, info)
+	conn, err := deps.connect(ctx, info, identity)
 	if err != nil {
 		return nil, false
 	}
@@ -166,14 +213,17 @@ func statusFor(deps dependencies, info contract.RuntimeInfo) (*contract.StatusRe
 // GenerationReachable checks the supplied generation directly. It deliberately
 // does not reread runtime state, so replacement cannot prove an old generation
 // stopped.
-func GenerationReachable(info contract.RuntimeInfo) bool {
-	return generationReachable(defaultDependencies(), info)
+func GenerationReachable(identity Identity, info contract.RuntimeInfo) bool {
+	return generationReachable(identity, defaultDependencies(), info)
 }
 
-func generationReachable(deps dependencies, info contract.RuntimeInfo) bool {
+func generationReachable(identity Identity, deps dependencies, info contract.RuntimeInfo) bool {
+	if identity.validate() != nil || !matchesIdentity(identity, info) {
+		return false
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
 	defer cancel()
-	conn, err := deps.connect(ctx, info)
+	conn, err := deps.connect(ctx, info, identity)
 	if err != nil {
 		return false
 	}
@@ -184,22 +234,27 @@ func generationReachable(deps dependencies, info contract.RuntimeInfo) bool {
 
 // Ensure performs one hot probe, then at most one cold or stale launch and
 // fixed readiness polling. It does not remove stale runtime information.
-func Ensure(logLevel string) (StartOutcome, error) { return ensure(logLevel, defaultDependencies()) }
+func Ensure(identity Identity, logLevel string) (StartOutcome, error) {
+	return ensure(identity, logLevel, defaultDependencies())
+}
 
-func ensure(logLevel string, deps dependencies) (StartOutcome, error) {
-	result, err := probe(deps)
+func ensure(identity Identity, logLevel string, deps dependencies) (StartOutcome, error) {
+	result, err := probe(identity, deps)
 	if err != nil {
 		return "", err
 	}
 	if result.State == ProbeReachable {
 		return AlreadyRunning, nil
 	}
+	if result.State == ProbeIncompatible {
+		return "", ErrIncompatibleGeneration
+	}
 	launched, err := deps.launch(logLevel)
 	if err != nil {
 		return "", wrapSafeOperation("启动 sidraviad", err)
 	}
 	if err := waitForReadiness(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
-		result, err := probe(deps)
+		result, err := probe(identity, deps)
 		return err == nil && result.State == ProbeReachable, err
 	}); err != nil {
 		return "", err
@@ -208,8 +263,8 @@ func ensure(logLevel string, deps dependencies) (StartOutcome, error) {
 }
 
 // Acquire ensures the daemon is reachable and opens one direct IPC client.
-func Acquire(ctx context.Context, logLevel string) (Client, error) {
-	return acquire(ctx, logLevel, defaultDependencies())
+func Acquire(ctx context.Context, identity Identity, logLevel string) (Client, error) {
+	return acquire(ctx, identity, logLevel, defaultDependencies())
 }
 
 // IsReadinessUnconfirmed identifies the stable ambiguous-start error without
@@ -219,11 +274,11 @@ func IsReadinessUnconfirmed(err error) bool {
 	return errors.As(err, &timeout)
 }
 
-func acquire(ctx context.Context, logLevel string, deps dependencies) (Client, error) {
-	if _, err := ensure(logLevel, deps); err != nil {
+func acquire(ctx context.Context, identity Identity, logLevel string, deps dependencies) (Client, error) {
+	if _, err := ensure(identity, logLevel, deps); err != nil {
 		return nil, err
 	}
-	result, err := probe(deps)
+	result, err := probe(identity, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +287,7 @@ func acquire(ctx context.Context, logLevel string, deps dependencies) (Client, e
 	}
 	connectCtx, cancel := context.WithTimeout(ctx, deps.callTimeout)
 	defer cancel()
-	return deps.connect(connectCtx, result.Info)
+	return deps.connect(connectCtx, result.Info, identity)
 }
 
 var errDaemonExitedBeforeReadiness = errors.New("sidraviad exited before readiness")

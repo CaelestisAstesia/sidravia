@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -21,7 +22,17 @@ var (
 
 // Run executes the CLI with the given arguments.
 func Run(args []string) error {
-	return runCommand(args, defaultCommandDependencies())
+	return RunWithIdentity(args, "0.1.0-dev", "dev")
+}
+
+// RunWithIdentity executes the CLI using the immutable identity compiled into
+// this client binary.
+func RunWithIdentity(args []string, productVersion, buildID string) error {
+	identity, err := clientbootstrap.NewIdentity(productVersion, buildID)
+	if err != nil {
+		return err
+	}
+	return runCommand(args, defaultCommandDependencies(identity))
 }
 
 // WriteError writes a safe Chinese error line for err to w through the
@@ -47,6 +58,7 @@ type authStartOptions struct {
 }
 
 type commandDependencies struct {
+	identity          clientbootstrap.Identity
 	daemonStatus      func() error
 	daemonStart       func(logLevel string) error
 	daemonStop        func() error
@@ -67,25 +79,26 @@ type commandDependencies struct {
 	output            io.Writer
 }
 
-func defaultCommandDependencies() commandDependencies {
+func defaultCommandDependencies(identity clientbootstrap.Identity) commandDependencies {
 	return commandDependencies{
-		daemonStatus:      daemonStatus,
-		daemonStart:       daemonStart,
-		daemonStop:        daemonStop,
-		daemonRestart:     daemonRestart,
-		authStart:         authStart,
-		authStatus:        authStatus,
-		authStop:          authStop,
-		authRestart:       authRestart,
-		authRemove:        authRemove,
-		authList:          authList,
-		profileList:       profileList,
-		configList:        configList,
-		configShow:        configShow,
-		configCreate:      configCreate,
-		configUpdate:      configUpdate,
-		configSetPassword: configSetPassword,
-		configRemove:      configRemove,
+		identity:          identity,
+		daemonStatus:      func() error { return daemonStatus(identity) },
+		daemonStart:       func(logLevel string) error { return daemonStart(identity, logLevel) },
+		daemonStop:        func() error { return daemonStop(identity) },
+		daemonRestart:     func(logLevel string) error { return daemonRestart(identity, logLevel) },
+		authStart:         func(options authStartOptions) error { return authStart(identity, options) },
+		authStatus:        func(sessionID string) error { return authStatus(identity, sessionID) },
+		authStop:          func(sessionID string) error { return authStop(identity, sessionID) },
+		authRestart:       func(sessionID string) error { return authRestart(identity, sessionID) },
+		authRemove:        func(sessionID string) error { return authRemove(identity, sessionID) },
+		authList:          func() error { return authList(identity) },
+		profileList:       func() error { return profileList(identity) },
+		configList:        func() error { return configList(identity) },
+		configShow:        func(id string) error { return configShow(identity, id) },
+		configCreate:      func(options configCreateOptions) error { return configCreate(identity, options) },
+		configUpdate:      func(options configUpdateOptions) error { return configUpdate(identity, options) },
+		configSetPassword: func(options configPasswordOptions) error { return configSetPassword(identity, options) },
+		configRemove:      func(id string, yes bool) error { return configRemove(identity, id, yes) },
 		output:            os.Stdout,
 	}
 }

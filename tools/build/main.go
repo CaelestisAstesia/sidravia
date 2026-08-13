@@ -313,11 +313,8 @@ func buildEnv(parent []string) []string {
 }
 
 // buildArgv returns the full go build argv for one binary.
-func buildArgv(goBin, outPath, pkgPath, version, buildID string, isDaemon bool) []string {
-	ldflags := "-s -w -buildid="
-	if isDaemon {
-		ldflags += " -X main.ProductVersion=" + version + " -X main.BuildID=" + buildID
-	}
+func buildArgv(goBin, outPath, pkgPath, version, buildID string) []string {
+	ldflags := "-s -w -buildid= -X main.ProductVersion=" + version + " -X main.BuildID=" + buildID
 	return []string{
 		goBin, "build",
 		"-mod=readonly",
@@ -491,13 +488,13 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 		return fmt.Errorf("create bin staging: %w", err)
 	}
 
-	cliArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidravia.exe"), "./cmd/sidravia", t.cfg.version, t.cfg.buildID, false)
+	cliArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidravia.exe"), "./cmd/sidravia", t.cfg.version, t.cfg.buildID)
 	fmt.Fprintln(stderr, "building sidravia.exe")
 	cliBytes, err := t.build(env, cliArgv)
 	if err != nil {
 		return fmt.Errorf("build sidravia.exe: %w", err)
 	}
-	daemonArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidraviad.exe"), "./cmd/sidraviad", t.cfg.version, t.cfg.buildID, true)
+	daemonArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidraviad.exe"), "./cmd/sidraviad", t.cfg.version, t.cfg.buildID)
 	fmt.Fprintln(stderr, "building sidraviad.exe")
 	daemonBytes, err := t.build(env, daemonArgv)
 	if err != nil {
