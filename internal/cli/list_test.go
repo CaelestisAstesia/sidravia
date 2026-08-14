@@ -121,14 +121,14 @@ func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
 	}
 	got := output.String()
 	for _, command := range []string{
-		"  查看详情：sidravia auth status session-blocked\n",
-		"  查看详情：sidravia auth status session-retrying\n",
+		"  查看详情：sidraviactl auth status session-blocked\n",
+		"  查看详情：sidraviactl auth status session-retrying\n",
 	} {
 		if strings.Count(got, command) != 1 {
 			t.Errorf("status command count for %q = %d, output = %q", command, strings.Count(got, command), got)
 		}
 	}
-	if strings.Contains(got, "sidravia auth status session-normal") {
+	if strings.Contains(got, "sidraviactl auth status session-normal") {
 		t.Errorf("normal Session received a status command: %q", got)
 	}
 	if connection.callCount != 1 || connection.closeCount != 1 {
@@ -166,7 +166,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 		run    func(listDependencies) error
 		want   string
 	}{
-		{"sessions", contract.MethodSessionList, json.RawMessage(`{"sessions":[]}`), runAuthList, "没有 Session。\n下一步：运行 sidravia help auth start 开始认证。\n"},
+		{"sessions", contract.MethodSessionList, json.RawMessage(`{"sessions":[]}`), runAuthList, "没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n"},
 		{"profiles", contract.MethodProfileList, json.RawMessage(`{"profiles":[]}`), runProfileList, "没有可用的机构 Profile。请检查完整 portable 包中的 institution-profiles，并重启 daemon。\n"},
 	} {
 		t.Run("empty "+test.name, func(t *testing.T) {

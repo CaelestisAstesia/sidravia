@@ -49,7 +49,7 @@ function New-Package { param([string]$Name)
     New-Item -ItemType Directory -Path (Join-Path $directory 'scripts') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repo 'scripts\install.ps1') -Destination (Join-Path $directory 'scripts\install.ps1')
     Copy-Item -LiteralPath (Join-Path $repo 'scripts\uninstall.ps1') -Destination (Join-Path $directory 'scripts\uninstall.ps1')
-    New-Item -ItemType File -Path (Join-Path $directory 'sidravia.exe') -Force | Out-Null
+    New-Item -ItemType File -Path (Join-Path $directory 'sidraviactl.exe') -Force | Out-Null
     New-Item -ItemType File -Path (Join-Path $directory 'sidraviad.exe') -Force | Out-Null
     return $directory
 }
@@ -97,7 +97,7 @@ try {
 
     Assert-True ((Invoke-Release -Directory $b -Script 'install.ps1').ExitCode -eq 0) 'B install failed'
     Capture-FixtureRootTask
-    $replacementDefinition = New-TaskDefinition -Executable (Join-Path $a 'sidravia.exe') -Arguments 'daemon start --log-level info'
+    $replacementDefinition = New-TaskDefinition -Executable (Join-Path $a 'sidraviactl.exe') -Arguments 'daemon start --log-level info'
     Register-ScheduledTask -TaskName $taskName -TaskPath $taskPath -InputObject $replacementDefinition -Force | Out-Null
     $replacementXML = Export-ScheduledTask -TaskName $taskName -TaskPath $taskPath
     Remove-FixtureRootTask
@@ -111,11 +111,11 @@ try {
     Capture-FixtureRootTask
     Assert-ConflictNoMutation -Directory $a -Case 'old A uninstall against B ownership'
     $cases = @(
-        [pscustomobject]@{ Name = 'wrong executable'; Definition = (New-TaskDefinition -Executable (Join-Path $a 'sidravia.exe') -Arguments 'daemon start --log-level info') },
-        [pscustomobject]@{ Name = 'wrong arguments'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidravia.exe') -Arguments 'daemon start --log-level invalid') },
-        [pscustomobject]@{ Name = 'multiple actions'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidravia.exe') -Arguments 'daemon start --log-level info' -ActionCount 2) },
-        [pscustomobject]@{ Name = 'multiple triggers'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidravia.exe') -Arguments 'daemon start --log-level info' -TriggerCount 2) },
-        [pscustomobject]@{ Name = 'wrong trigger type'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidravia.exe') -Arguments 'daemon start --log-level info' -TriggerType Once) }
+        [pscustomobject]@{ Name = 'wrong executable'; Definition = (New-TaskDefinition -Executable (Join-Path $a 'sidraviactl.exe') -Arguments 'daemon start --log-level info') },
+        [pscustomobject]@{ Name = 'wrong arguments'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidraviactl.exe') -Arguments 'daemon start --log-level invalid') },
+        [pscustomobject]@{ Name = 'multiple actions'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidraviactl.exe') -Arguments 'daemon start --log-level info' -ActionCount 2) },
+        [pscustomobject]@{ Name = 'multiple triggers'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidraviactl.exe') -Arguments 'daemon start --log-level info' -TriggerCount 2) },
+        [pscustomobject]@{ Name = 'wrong trigger type'; Definition = (New-TaskDefinition -Executable (Join-Path $b 'sidraviactl.exe') -Arguments 'daemon start --log-level info' -TriggerType Once) }
     )
     foreach ($case in $cases) {
         Set-FixtureRootTask -Definition $case.Definition

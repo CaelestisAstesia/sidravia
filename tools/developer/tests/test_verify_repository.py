@@ -174,7 +174,7 @@ class TestRunGoChecks(unittest.TestCase):
             ([go_exec, "vet", "./..."], None),
             (["git", "diff", "--check"], None),
             (
-                [go_exec, "build", "-o", str(build_dir / "sidravia.exe"), "./cmd/sidravia"],
+                [go_exec, "build", "-o", str(build_dir / "sidraviactl.exe"), "./cmd/sidravia"],
                 {"GOOS": "windows", "GOARCH": "amd64", "CGO_ENABLED": "0"},
             ),
             (

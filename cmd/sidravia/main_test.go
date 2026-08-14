@@ -23,7 +23,7 @@ func TestRunPreservesOrdinaryCLIErrorAndExitCode(t *testing.T) {
 	if got := run([]string{"unknown-command"}, &stderr); got != 1 {
 		t.Fatalf("exit=%d, want 1", got)
 	}
-	if !strings.Contains(stderr.String(), "错误：用法错误，请运行 sidravia help 查看帮助") || strings.Contains(stderr.String(), "schemaVersion") {
+	if !strings.Contains(stderr.String(), "错误：用法错误，请运行 sidraviactl help 查看帮助") || strings.Contains(stderr.String(), "schemaVersion") {
 		t.Fatalf("stderr=%q", stderr.String())
 	}
 }

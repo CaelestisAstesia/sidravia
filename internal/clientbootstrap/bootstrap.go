@@ -371,7 +371,7 @@ func (e *daemonEarlyExitError) Unwrap() error { return e.cause }
 type daemonReadinessTimeoutError struct{}
 
 func (*daemonReadinessTimeoutError) Error() string {
-	return "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidravia daemon status 确认状态后再重试"
+	return "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidraviactl daemon status 确认状态后再重试"
 }
 func (*daemonReadinessTimeoutError) Unwrap() error { return context.DeadlineExceeded }
 

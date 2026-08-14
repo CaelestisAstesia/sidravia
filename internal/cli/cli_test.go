@@ -145,11 +145,11 @@ func TestRetainedCommandsDispatchAndHelpDoesNotDispatch(t *testing.T) {
 		{[]string{"--help"}, []string{"auth"}},
 		{[]string{"auth", "--help"}, []string{"start", "restart", "remove"}},
 		{[]string{"auth", "start", "--help"}, []string{
-			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
-			"sidravia auth start --session <session-id>",
+			"sidraviactl auth start --profile <profile-id> --username <username> [--password-stdin]",
+			"sidraviactl auth start --session <session-id>",
 		}},
-		{[]string{"auth", "restart", "--help"}, []string{"sidravia auth restart <session-id>"}},
-		{[]string{"auth", "remove", "--help"}, []string{"sidravia auth remove <session-id>"}},
+		{[]string{"auth", "restart", "--help"}, []string{"sidraviactl auth restart <session-id>"}},
+		{[]string{"auth", "remove", "--help"}, []string{"sidraviactl auth remove <session-id>"}},
 	} {
 		var output bytes.Buffer
 		deps.output = &output
@@ -207,7 +207,7 @@ func TestRunRejectsBadArguments(t *testing.T) {
 			t.Error("Run returned nil, want usage error")
 			continue
 		}
-		if got := err.Error(); !strings.HasPrefix(got, "用法错误，请运行 sidravia help") {
+		if got := err.Error(); !strings.HasPrefix(got, "用法错误，请运行 sidraviactl help") {
 			t.Errorf("Run error = %q, want safe help guidance", got)
 		}
 		for _, marker := range []string{"profile-marker", "user-marker", "session-marker", "value-marker"} {
@@ -288,7 +288,7 @@ func TestRetiredStatusReturnsMigrationWithoutDispatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("retired status returned nil")
 	}
-	if err.Error() != "命令已迁移，请使用 sidravia daemon status" {
+	if err.Error() != "命令已迁移，请使用 sidraviactl daemon status" {
 		t.Errorf("retired status error = %q", err)
 	}
 	if dispatched {
@@ -449,7 +449,7 @@ func TestAuthStartRejectsInvalidArgumentsSafely(t *testing.T) {
 			t.Error("invalid auth start returned nil")
 			continue
 		}
-		if !strings.HasPrefix(err.Error(), "用法错误，请运行 sidravia help auth start") {
+		if !strings.HasPrefix(err.Error(), "用法错误，请运行 sidraviactl help auth start") {
 			t.Errorf("invalid auth start error = %q, want nearest safe help", err)
 		}
 		for _, marker := range []string{"profile-marker", "user-marker", "other-marker", "positional-marker"} {
@@ -483,7 +483,7 @@ func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
 			t.Error("invalid session command returned nil")
 			continue
 		}
-		if !strings.HasPrefix(err.Error(), "用法错误，请运行 sidravia help auth ") {
+		if !strings.HasPrefix(err.Error(), "用法错误，请运行 sidraviactl help auth ") {
 			t.Errorf("invalid session command error = %q, want nearest safe help", err)
 		}
 		if strings.Contains(err.Error(), "marker") {
@@ -531,7 +531,7 @@ func TestAuthStartHelpIncludesStatusNextStep(t *testing.T) {
 	if err := runCommand([]string{"auth", "start", "--help"}, deps); err != nil {
 		t.Fatalf("auth start help = %v", err)
 	}
-	want := "下一步：使用返回的 Session ID 运行 sidravia auth status <session-id>；不知道 ID 时先运行 sidravia auth list。"
+	want := "下一步：使用返回的 Session ID 运行 sidraviactl auth status <session-id>；不知道 ID 时先运行 sidraviactl auth list。"
 	if !strings.Contains(output.String(), want) {
 		t.Fatalf("auth start help omitted actionable next step %q:\n%s", want, output.String())
 	}
@@ -682,7 +682,7 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 			t.Fatalf("root help = %v", err)
 		}
 		help := buf.String()
-		if !strings.Contains(help, "Sidravia 命令行客户端。\n\n用法：\n  sidravia <command>") {
+		if !strings.Contains(help, "Sidravia 命令行客户端。\n\n用法：\n  sidraviactl <command>") {
 			t.Errorf("root help missing description-usage blank separator:\n%s", help)
 		}
 		if !strings.Contains(help, "\n\n可用命令：") {
@@ -708,7 +708,7 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 			t.Fatal(err)
 		}
 		help := buf.String()
-		if !strings.Contains(help, "用法：\n  sidravia daemon <command>") || strings.Contains(help, " | ") {
+		if !strings.Contains(help, "用法：\n  sidraviactl daemon <command>") || strings.Contains(help, " | ") {
 			t.Fatalf("daemon help is not layered:\n%s", help)
 		}
 	})
@@ -723,7 +723,7 @@ func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 		if !strings.Contains(help, "选项：") {
 			t.Errorf("auth start help missing 选项 section:\n%s", help)
 		}
-		if !strings.Contains(help, "用法：\n  sidravia auth start --profile <profile-id> --username <username> [--password-stdin]\n  sidravia auth start --session <session-id>") {
+		if !strings.Contains(help, "用法：\n  sidraviactl auth start --profile <profile-id> --username <username> [--password-stdin]\n  sidraviactl auth start --session <session-id>") {
 			t.Errorf("auth start usages are not separate lines:\n%s", help)
 		}
 		if !strings.Contains(help, "--profile <profile-id>") {

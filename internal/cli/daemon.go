@@ -73,12 +73,12 @@ func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 }
 
 func daemonUnknownError() error {
-	return errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidravia daemon status；持续失败时运行 sidravia daemon restart")
+	return errors.New("守护进程：无法确认状态（运行信息存在但 daemon 未响应）。请稍后运行 sidraviactl daemon status；持续失败时运行 sidraviactl daemon restart")
 }
 
 func writeDaemonIncompatible(w io.Writer) error {
 	p := newPresentation(w)
-	return wrapSafeOperation("显示 daemon 状态", p.complete("守护进程：当前运行的 daemon 与此 sidravia 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
+	return wrapSafeOperation("显示 daemon 状态", p.complete("守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
 }
 
 func writeDaemonStopped(w io.Writer) error {
@@ -141,7 +141,7 @@ func stopGeneration(deps stopDependencies, info contract.RuntimeInfo) error {
 	defer cancel()
 	conn, err := deps.ops.connect(ctx, info)
 	if err != nil {
-		return wrapSafeOperation("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidravia daemon status 后重试", err)
+		return wrapSafeOperation("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidraviactl daemon status 后重试", err)
 	}
 	response, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage("{}"))
 	closeErr := conn.Close()
@@ -170,7 +170,7 @@ func waitForStoppedGeneration(deps stopDependencies, info contract.RuntimeInfo) 
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.New("等待 sidraviad 停止超时；停止结果尚未确认。请运行 sidravia daemon status 确认状态")
+			return errors.New("等待 sidraviad 停止超时；停止结果尚未确认。请运行 sidraviactl daemon status 确认状态")
 		case <-ticker.C:
 			if !deps.ops.reachable(info) {
 				return nil

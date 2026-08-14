@@ -256,7 +256,7 @@ class ManifestAndCredentialTests(unittest.TestCase):
         values = iter(("fixture-user", secret))
         runner = Runner()
         driver = SidraviaSessionDriver(
-            Path("sidravia.exe"), runner, credential_reader=lambda _label: next(values)
+            Path("sidraviactl.exe"), runner, credential_reader=lambda _label: next(values)
         )
         session_id = driver.create_from_stdin(request(self.root), self.artifacts)
         argv, stdin_text = runner.calls[0]

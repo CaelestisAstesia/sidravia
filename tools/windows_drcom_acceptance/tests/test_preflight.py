@@ -30,7 +30,7 @@ class FakeRunner:
             return "tshark-lua"
         if executable == "dumpcap.exe" and "-D" in call:
             return "dumpcap-devices"
-        if executable == "sidravia.exe" and "contract" in call:
+        if executable == "sidraviactl.exe" and "contract" in call:
             return "sidravia-contract"
         if executable == "powershell.exe":
             return "powershell-adapters"
@@ -98,9 +98,9 @@ class PreflightTests(unittest.TestCase):
                 "Status": "Up",
                 "IPv4": ["10.0.0.2"],
             }], ensure_ascii=False)),
-            "sidravia.exe": result(("sidravia.exe",), 0, "sidravia 0.1.0"),
+            "sidraviactl.exe": result(("sidraviactl.exe",), 0, "sidravia 0.1.0"),
             "sidraviad.exe": result(("sidraviad.exe",), 0, "sidraviad 0.1.0"),
-            "sidravia-contract": result(("sidravia.exe",), 0, json.dumps({
+            "sidravia-contract": result(("sidraviactl.exe",), 0, json.dumps({
                 "schema_version": 1,
                 "capabilities": [
                     "stdin_credentials", "application_transcript_v1",
@@ -115,7 +115,7 @@ class PreflightTests(unittest.TestCase):
             for name in ("Wireshark.exe", "tshark.exe", "dumpcap.exe")
         }
         paths.update({
-            "sidravia.exe": "D:\\Sidravia\\sidravia.exe",
+            "sidraviactl.exe": "D:\\Sidravia\\sidraviactl.exe",
             "sidraviad.exe": "D:\\Sidravia\\sidraviad.exe",
             "powershell.exe": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
             "sc.exe": "C:\\Windows\\System32\\sc.exe",

@@ -488,11 +488,11 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 		return fmt.Errorf("create bin staging: %w", err)
 	}
 
-	cliArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidravia.exe"), "./cmd/sidravia", t.cfg.version, t.cfg.buildID)
-	fmt.Fprintln(stderr, "building sidravia.exe")
+	cliArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidraviactl.exe"), "./cmd/sidravia", t.cfg.version, t.cfg.buildID)
+	fmt.Fprintln(stderr, "building sidraviactl.exe")
 	cliBytes, err := t.build(env, cliArgv)
 	if err != nil {
-		return fmt.Errorf("build sidravia.exe: %w", err)
+		return fmt.Errorf("build sidraviactl.exe: %w", err)
 	}
 	daemonArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidraviad.exe"), "./cmd/sidraviad", t.cfg.version, t.cfg.buildID)
 	fmt.Fprintln(stderr, "building sidraviad.exe")
@@ -653,7 +653,7 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 		}
 	}
 
-	internalSums := []byte(sha256Hex(cliBytes) + "  sidravia.exe\n" +
+	internalSums := []byte(sha256Hex(cliBytes) + "  sidraviactl.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
 	entries := assembleEntries(artifact, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
@@ -678,7 +678,7 @@ func assembleEntries(artifact string, license, gettingStarted, profile, fieldTes
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
 		{"LICENSE", license, 0o644},
 		{"SHA256SUMS", internalSums, 0o644},
-		{"sidravia.exe", cliBytes, 0o755},
+		{"sidraviactl.exe", cliBytes, 0o755},
 		{"sidravia.portable", nil, 0o644},
 		{"sidraviad.exe", daemonBytes, 0o755},
 	}

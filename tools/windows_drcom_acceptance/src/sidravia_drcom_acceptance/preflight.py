@@ -115,7 +115,7 @@ class Preflight:
         wireshark = self._find_executable("Wireshark.exe")
         tshark = self._find_executable("tshark.exe")
         dumpcap = self._find_executable("dumpcap.exe")
-        sidravia = self._find_executable("sidravia.exe")
+        sidravia = self._find_executable("sidraviactl.exe")
         sidraviad = self._find_executable("sidraviad.exe")
 
         wireshark_check = self._version_check(
@@ -170,7 +170,7 @@ class Preflight:
 
         sidravia_check = self._version_check(
             "sidravia", "sidravia", sidravia,
-            "先构建或安装当前分支的 sidravia.exe。",
+            "先构建或安装当前分支的 sidraviactl.exe。",
         )
         sidraviad_check = self._version_check(
             "sidraviad", "sidraviad", sidraviad,
@@ -182,7 +182,7 @@ class Preflight:
         else:
             checks.append(PreflightCheck(
                 "sidravia_contract", "Sidravia 验收契约", CheckStatus.SKIP,
-                "跳过：sidravia.exe 尚不可用。",
+                "跳过：sidraviactl.exe 尚不可用。",
             ))
         return PreflightReport(tuple(checks))
 
@@ -352,7 +352,7 @@ class Preflight:
         if response.returncode != 0:
             return PreflightCheck(
                 "sidravia_contract", "Sidravia 验收契约", CheckStatus.FAIL,
-                "sidravia.exe 尚未实现 acceptance contract probe。",
+                "sidraviactl.exe 尚未实现 acceptance contract probe。",
                 "由主任务实现设计规格第 13 节集成契约。",
             )
         try:

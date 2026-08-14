@@ -219,8 +219,8 @@ func TestIPCErrorMappings(t *testing.T) {
 		"protocol_not_found":                     "找不到指定的认证协议",
 		"profile_operation_failed":               "机构 Profile 操作失败",
 		"session_operation_failed":               "认证 Session 操作失败",
-		"configuration_not_found":                "找不到指定的认证配置；请运行 sidravia config list 查看可用配置",
-		"configuration_conflict":                 "认证配置已存在；请运行 sidravia config list 查看现有配置，再运行 sidravia help config update 查看更新方法",
+		"configuration_not_found":                "找不到指定的认证配置；请运行 sidraviactl config list 查看可用配置",
+		"configuration_conflict":                 "认证配置已存在；请运行 sidraviactl config list 查看现有配置，再运行 sidraviactl help config update 查看更新方法",
 		"configuration_operation_failed":         "认证配置操作失败",
 		"configuration_auto_login_conflict":      "已有其他配置启用了自动登录",
 		"insecure_storage_confirmation_required": "需要确认不安全存储",
@@ -240,8 +240,8 @@ func TestIPCErrorMappings(t *testing.T) {
 
 func TestIPCConfigurationErrorsHaveRecoveryCommands(t *testing.T) {
 	cases := map[string]string{
-		"configuration_not_found": "找不到指定的认证配置；请运行 sidravia config list 查看可用配置",
-		"configuration_conflict":  "认证配置已存在；请运行 sidravia config list 查看现有配置，再运行 sidravia help config update 查看更新方法",
+		"configuration_not_found": "找不到指定的认证配置；请运行 sidraviactl config list 查看可用配置",
+		"configuration_conflict":  "认证配置已存在；请运行 sidraviactl config list 查看现有配置，再运行 sidraviactl help config update 查看更新方法",
 	}
 	for code, want := range cases {
 		if got := ipcErrorText(code); got != want {
@@ -466,8 +466,8 @@ func TestHelpUsesChineseHeadingsAndCanonicalTree(t *testing.T) {
 func TestHelpUsageLinesAreIndentedAndStyledOnlyByProfile(t *testing.T) {
 	var plain bytes.Buffer
 	p := newTestPresentation(&plain, termenv.Ascii)
-	lines := p.helpUsageLines([]string{"sidravia auth start one", "sidravia auth start two"})
-	if strings.Join(lines, "\n") != "用法：\n  sidravia auth start one\n  sidravia auth start two" {
+	lines := p.helpUsageLines([]string{"sidraviactl auth start one", "sidraviactl auth start two"})
+	if strings.Join(lines, "\n") != "用法：\n  sidraviactl auth start one\n  sidraviactl auth start two" {
 		t.Fatalf("usage lines = %#v", lines)
 	}
 }
@@ -477,7 +477,7 @@ func TestStaticUsageDoesNotEchoInvalidMarkers(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run returned nil, want usage error")
 	}
-	if err.Error() != "用法错误，请运行 sidravia help auth start 查看帮助" {
+	if err.Error() != "用法错误，请运行 sidraviactl help auth start 查看帮助" {
 		t.Errorf("usage error = %q", err.Error())
 	}
 	for _, marker := range []string{"profile-marker", "user-marker"} {
@@ -625,10 +625,10 @@ func TestSessionListDiagnosticGuidanceSanitizesSessionIDAndSkipsUnknownState(t *
 	if strings.Count(got, "\n") != 4 {
 		t.Errorf("diagnostic guidance allowed an extra dynamic line: %q", got)
 	}
-	if !strings.Contains(got, "  查看详情：sidravia auth status blocked�[2J�injected\n") {
+	if !strings.Contains(got, "  查看详情：sidraviactl auth status blocked�[2J�injected\n") {
 		t.Errorf("blocked Session guidance missing or unsanitized: %q", got)
 	}
-	if strings.Contains(got, "sidravia auth status unknown-session") {
+	if strings.Contains(got, "sidraviactl auth status unknown-session") {
 		t.Errorf("unknown state received diagnostic guidance: %q", got)
 	}
 }
@@ -750,7 +750,7 @@ func TestWriteErrorSanitizesAndHidesCause(t *testing.T) {
 		t.Fatalf("WriteError = %v", err)
 	}
 	out := buf.String()
-	if !strings.HasPrefix(out, "sidravia：错误：连接 sidraviad\n") {
+	if !strings.HasPrefix(out, "sidraviactl：错误：连接 sidraviad\n") {
 		t.Errorf("WriteError output = %q, want Chinese prefix with safe label only", out)
 	}
 	if strings.Contains(out, "injected underlying cause") {
@@ -771,7 +771,7 @@ func TestWriteErrorSanitizesControlCharacters(t *testing.T) {
 	if strings.Count(out, "\n") != 1 {
 		t.Errorf("WriteError line count = %d, want 1: %q", strings.Count(out, "\n"), out)
 	}
-	if !strings.HasPrefix(out, "sidravia：错误：") {
+	if !strings.HasPrefix(out, "sidraviactl：错误：") {
 		t.Errorf("WriteError missing Chinese prefix: %q", out)
 	}
 }
@@ -808,7 +808,7 @@ func TestDaemonLifecycleRenderers(t *testing.T) {
 }
 
 func TestActionableSessionErrorGuidanceAndEmptyStates(t *testing.T) {
-	if got := ipcErrorText("session_not_found"); got != "找不到指定的认证 Session；请运行 sidravia auth list 查看可用 Session" {
+	if got := ipcErrorText("session_not_found"); got != "找不到指定的认证 Session；请运行 sidraviactl auth list 查看可用 Session" {
 		t.Fatalf("session_not_found guidance = %q", got)
 	}
 
@@ -817,7 +817,7 @@ func TestActionableSessionErrorGuidanceAndEmptyStates(t *testing.T) {
 	if err := p.complete(renderSessionList(p, &contract.SessionListResult{})); err != nil {
 		t.Fatal(err)
 	}
-	if got := sessions.String(); got != "没有 Session。\n下一步：运行 sidravia help auth start 开始认证。\n" {
+	if got := sessions.String(); got != "没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n" {
 		t.Fatalf("empty Session list = %q", got)
 	}
 }
@@ -843,7 +843,7 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 	if err := writeConfigurationList(&empty, contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}}); err != nil {
 		t.Fatal(err)
 	}
-	if empty.String() != "尚未保存认证配置。\n下一步：运行 sidravia config create 创建认证配置。\n" {
+	if empty.String() != "尚未保存认证配置。\n下一步：运行 sidraviactl config create 创建认证配置。\n" {
 		t.Fatalf("empty list = %q", empty.String())
 	}
 }

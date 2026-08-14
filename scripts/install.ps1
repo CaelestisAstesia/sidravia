@@ -3,7 +3,7 @@
 # 本脚本具备幂等性，可以安全地重复运行。它不区分安装模式，既适用于正式安装目录，
 # 也适用于便携目录；注册目标始终是本脚本所在目录的上级目录。
 # 脚本会把该目录加入当前用户 PATH，并创建名为 "SidraviaDaemon" 的用户登录计划任务，
-# 该任务运行 "sidravia daemon start --log-level <level>"。
+# 该任务运行 "sidraviactl daemon start --log-level <level>"。
 # 脚本会在操作前后验证注册状态，且绝不删除任何配置、凭据、Profile 或日志。
 #
 # 用法：
@@ -67,7 +67,7 @@ function Get-SidraviaTaskOwnership {
     if ($Task.TaskPath -ne '\' -or $Task.TaskName -ne $TaskName -or
         $Task.Actions.Count -ne 1 -or $Task.Triggers.Count -ne 1 -or
         [string]$Task.Triggers[0].CimClass.CimClassName -ne 'MSFT_TaskLogonTrigger') { return 'conflict' }
-    $expectedExecutable = [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'sidravia.exe'))
+    $expectedExecutable = [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'sidraviactl.exe'))
     try { $actualExecutable = [IO.Path]::GetFullPath([string]$Task.Actions[0].Execute) } catch { return 'conflict' }
     $principalSID = ConvertTo-SIDValue -Identity ([string]$Task.Principal.UserId)
     $triggerSID = ConvertTo-SIDValue -Identity ([string]$Task.Triggers[0].UserId)
@@ -84,15 +84,15 @@ function New-SidraviaLogonTaskDefinition {
         [string]$LogLevel,
         [string]$UserSID
     )
-    $action = New-ScheduledTaskAction -Execute (Join-Path $InstallDirectory 'sidravia.exe') -Argument "daemon start --log-level $LogLevel"
+    $action = New-ScheduledTaskAction -Execute (Join-Path $InstallDirectory 'sidraviactl.exe') -Argument "daemon start --log-level $LogLevel"
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserSID
     $principal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive -RunLevel Limited
     return New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Description 'Sidravia 后台服务'
 }
 
 # 前置条件：产品二进制必须位于本脚本上级目录中。
-if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidravia.exe'))) {
-    throw "未找到产品程序：$InstallDir\sidravia.exe"
+if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidraviactl.exe'))) {
+    throw "未找到产品程序：$InstallDir\sidraviactl.exe"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'sidraviad.exe'))) {
     throw "未找到后台服务程序：$InstallDir\sidraviad.exe"

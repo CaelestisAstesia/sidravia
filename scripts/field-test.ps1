@@ -402,7 +402,7 @@ function Get-SandboxTask {
     if ($principalSID -ne $currentUserSID -or $triggerSID -ne $currentUserSID) { return $null }
     if ([string]$task.Principal.LogonType -ne 'Interactive' -or
         [string]$task.Principal.RunLevel -ne 'Limited') { return $null }
-    $expected = [IO.Path]::GetFullPath((Join-Path $script:Sandbox 'sidravia.exe'))
+    $expected = [IO.Path]::GetFullPath((Join-Path $script:Sandbox 'sidraviactl.exe'))
     $actual = [IO.Path]::GetFullPath($task.Actions[0].Execute)
     if (-not $actual.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) { return $null }
     if ($task.Actions[0].Arguments -notin @('daemon start --log-level info', 'daemon start --log-level debug', 'daemon start --log-level trace')) { return $null }
@@ -476,7 +476,7 @@ function Remove-StaleSandboxes {
     $ok = $true
     foreach ($directory in (Get-ChildItem -LiteralPath $TempParent -Directory -Force -ErrorAction SilentlyContinue)) {
         if (-not (Test-OwnedSandbox -Path $directory.FullName)) { continue }
-        $staleCli = Join-Path $directory.FullName 'sidravia.exe'
+        $staleCli = Join-Path $directory.FullName 'sidraviactl.exe'
         if (Test-Path -LiteralPath $staleCli -PathType Leaf) {
             try {
                 $stop = Invoke-CapturedProcess -FilePath $staleCli -Arguments @('daemon', 'stop') -StdinValue $null
@@ -511,7 +511,7 @@ function Test-PackagePreflight {
     }
     $script:PowerShellExe = Resolve-ChildPowerShell
     $required = @(
-        'sidravia.exe',
+        'sidraviactl.exe',
         'sidraviad.exe',
         'BUILD-INFO.txt',
         'SHA256SUMS',
@@ -532,7 +532,7 @@ function Test-PackagePreflight {
             $expected[$Matches[2]] = $Matches[1].ToLowerInvariant()
         }
     }
-    foreach ($name in @('sidravia.exe', 'sidraviad.exe')) {
+    foreach ($name in @('sidraviactl.exe', 'sidraviad.exe')) {
         if (-not $expected.ContainsKey($name)) { throw 'package_checksum_missing' }
         $actual = (Get-FileHash -LiteralPath (Join-Path $PackageRoot $name) -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actual -ne $expected[$name]) { throw 'package_checksum_mismatch' }
@@ -556,7 +556,7 @@ function New-Sandbox {
     $null = New-Item -ItemType Directory -Path (Join-Path $script:Sandbox 'institution-profiles')
     $null = New-Item -ItemType Directory -Path (Join-Path $script:Sandbox 'scripts')
 
-    foreach ($name in @('sidravia.exe', 'sidraviad.exe', 'BUILD-INFO.txt', 'SHA256SUMS', 'README.md', 'GETTING-STARTED.md', 'LICENSE')) {
+    foreach ($name in @('sidraviactl.exe', 'sidraviad.exe', 'BUILD-INFO.txt', 'SHA256SUMS', 'README.md', 'GETTING-STARTED.md', 'LICENSE')) {
         $source = Join-Path $PackageRoot $name
         if (Test-Path -LiteralPath $source -PathType Leaf) {
             Copy-Item -LiteralPath $source -Destination (Join-Path $script:Sandbox $name)
@@ -567,7 +567,7 @@ function New-Sandbox {
         Copy-Item -LiteralPath (Join-Path $PackageRoot (Join-Path 'scripts' $name)) -Destination (Join-Path $script:Sandbox (Join-Path 'scripts' $name))
     }
     [IO.File]::WriteAllText((Join-Path $script:Sandbox 'sidravia.portable'), '')
-    $script:Cli = Join-Path $script:Sandbox 'sidravia.exe'
+    $script:Cli = Join-Path $script:Sandbox 'sidraviactl.exe'
     if (-not (Test-PathUnderRoot -Path $script:Cli -Root $script:Sandbox)) { throw 'sandbox_path_escape' }
 }
 
@@ -576,7 +576,7 @@ function Invoke-LocalSuite {
         Invoke-CapturedProcess -FilePath $script:PowerShellExe -Arguments @(
             '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
             '-File', (Join-Path $script:Sandbox (Join-Path 'scripts' 'cli-smoke.ps1')),
-            '-Sidravia', $script:Cli
+            '-SidraviaCtl', $script:Cli
         ) -StdinValue $null
     }
     if ($timed.Value.ExitCode -eq 0 -and $timed.Value.Output -match '失败：\s*0') {

@@ -239,7 +239,7 @@ def run_go_checks(
 
     # 6-7. Two Windows amd64 production cross-builds
     for binary_name, cmd_path in [
-        ("sidravia.exe", "./cmd/sidravia"),
+        ("sidraviactl.exe", "./cmd/sidravia"),
         ("sidraviad.exe", "./cmd/sidraviad"),
     ]:
         build_check = Check(

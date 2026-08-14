@@ -6,10 +6,10 @@ Sidravia 是用于 Windows Dr.COM 网络认证的命令行客户端，由后台 
 在包目录打开 PowerShell：
 
 ```powershell
-.\sidravia.exe daemon start
-.\sidravia.exe profile list
-.\sidravia.exe auth start --profile jlu --username '<账号>'
-.\sidravia.exe auth status <session-id>
+.\sidraviactl.exe daemon start
+.\sidraviactl.exe profile list
+.\sidraviactl.exe auth start --profile jlu --username '<账号>'
+.\sidraviactl.exe auth status <session-id>
 ```
 
 密码由隐藏提示读取，请勿写入命令行。下载、安装和基本排障见[使用说明](docs/guide.md)。

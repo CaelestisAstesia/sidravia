@@ -57,7 +57,7 @@ func TestDaemonStatusPresentationUsesBootstrapInspection(t *testing.T) {
 		if err := runDaemonStatus(testDaemonOperations(result, nil), &output); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		want := "守护进程：当前运行的 daemon 与此 sidravia 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"
+		want := "守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"
 		if output.String() != want || strings.Contains(output.String(), "secret-") {
 			t.Fatalf("output=%q", output.String())
 		}

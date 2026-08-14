@@ -387,10 +387,10 @@ func containsExact(env []string, kv string) bool {
 // 4. go build argv has correct target, readonly module, trimpath, VCS, ldflags, output.
 
 func TestBuildArgvInjectsSharedProductIdentity(t *testing.T) {
-	cli := buildArgv("go", "/p/sidravia.exe", "./cmd/sidravia", "0.1.0-alpha.2", "abc")
+	cli := buildArgv("go", "/p/sidraviactl.exe", "./cmd/sidravia", "0.1.0-alpha.2", "abc")
 	wantCLI := []string{
 		"go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",
-		"-ldflags", "-s -w -buildid= -X main.ProductVersion=0.1.0-alpha.2 -X main.BuildID=abc", "-o", "/p/sidravia.exe", "./cmd/sidravia",
+		"-ldflags", "-s -w -buildid= -X main.ProductVersion=0.1.0-alpha.2 -X main.BuildID=abc", "-o", "/p/sidraviactl.exe", "./cmd/sidravia",
 	}
 	if !sliceEqual(cli, wantCLI) {
 		t.Errorf("cli argv = %v, want %v", cli, wantCLI)
@@ -442,8 +442,8 @@ func TestFakeBuilderTwoCallsReuse(t *testing.T) {
 			t.Errorf("%s: call 1 target = %q", artifact, fb.calls[1][len(fb.calls[1])-1])
 		}
 		contents := readZipContents(t, filepath.Join(out, artifactFileName("0.1.0-alpha.2", artifact)))
-		if !bytes.Equal(contents["sidravia.exe"], []byte("FAKE-BINARY-./cmd/sidravia")) {
-			t.Errorf("%s: sidravia.exe does not match fake output", artifact)
+		if !bytes.Equal(contents["sidraviactl.exe"], []byte("FAKE-BINARY-./cmd/sidravia")) {
+			t.Errorf("%s: sidraviactl.exe does not match fake output", artifact)
 		}
 		if !bytes.Equal(contents["sidraviad.exe"], []byte("FAKE-BINARY-./cmd/sidraviad")) {
 			t.Errorf("%s: sidraviad.exe does not match fake output", artifact)
@@ -461,7 +461,7 @@ func TestZipManifest(t *testing.T) {
 	baseExpected := []string{
 		"BUILD-INFO.txt", "GETTING-STARTED.md", "LICENSE",
 		"SHA256SUMS", "institution-profiles/jlu.json", "scripts/install.ps1",
-		"scripts/uninstall.ps1", "sidravia.exe", "sidravia.portable", "sidraviad.exe",
+		"scripts/uninstall.ps1", "sidraviactl.exe", "sidravia.portable", "sidraviad.exe",
 	}
 
 	for _, tc := range []struct {
@@ -562,7 +562,7 @@ func TestZipManifest(t *testing.T) {
 		if string(contents["scripts/uninstall.ps1"]) != testUninstallScript {
 			t.Errorf("%s: uninstall script wrong", tc.artifact)
 		}
-		wantInternal := sha256Hex(cliBytes) + "  sidravia.exe\n" + sha256Hex(daemonBytes) + "  sidraviad.exe\n"
+		wantInternal := sha256Hex(cliBytes) + "  sidraviactl.exe\n" + sha256Hex(daemonBytes) + "  sidraviad.exe\n"
 		if string(contents["SHA256SUMS"]) != wantInternal {
 			t.Errorf("%s: internal sums = %q, want %q", tc.artifact, contents["SHA256SUMS"], wantInternal)
 		}

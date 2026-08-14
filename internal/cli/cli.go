@@ -13,11 +13,11 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-const commandUsage = "用法错误，请运行 sidravia help 查看帮助"
+const commandUsage = "用法错误，请运行 sidraviactl help 查看帮助"
 
 var (
 	errCommandUsage = errors.New(commandUsage)
-	errStatusMoved  = errors.New("命令已迁移，请使用 sidravia daemon status")
+	errStatusMoved  = errors.New("命令已迁移，请使用 sidraviactl daemon status")
 )
 
 const (
@@ -271,7 +271,7 @@ func usageErrorFor(args []string) error {
 	if path == "" {
 		return errCommandUsage
 	}
-	return errors.New("用法错误，请运行 sidravia help " + path + " 查看帮助")
+	return errors.New("用法错误，请运行 sidraviactl help " + path + " 查看帮助")
 }
 
 type commandOperationError struct {
@@ -295,7 +295,7 @@ func wrapCommandOperation(err error) error {
 
 func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "sidravia",
+		Use:           "sidraviactl",
 		Short:         "Sidravia 命令行客户端",
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -433,9 +433,9 @@ type helpNode struct {
 // path. It is the sole source of CLI help text; Cobra’s generated defaults
 // are never shown.
 var helpSpecs = map[string]helpNode{
-	"sidravia": {
+	"sidraviactl": {
 		description: "Sidravia 命令行客户端。",
-		usage:       []string{"sidravia <command>"},
+		usage:       []string{"sidraviactl <command>"},
 		children: []helpChild{
 			{"daemon", "管理本地 daemon 进程"},
 			{"auth", "管理认证 Session"},
@@ -443,16 +443,16 @@ var helpSpecs = map[string]helpNode{
 			{"config", "管理认证配置"},
 		},
 		examples: []string{
-			"sidravia daemon status",
-			"sidravia auth start --profile jlu --username <username>",
-			"sidravia auth list",
-			"sidravia profile list",
-			"sidravia config list",
+			"sidraviactl daemon status",
+			"sidraviactl auth start --profile jlu --username <username>",
+			"sidraviactl auth list",
+			"sidraviactl profile list",
+			"sidraviactl config list",
 		},
 	},
-	"sidravia daemon": {
+	"sidraviactl daemon": {
 		description: "管理本地 daemon 进程。",
-		usage:       []string{"sidravia daemon <command>"},
+		usage:       []string{"sidraviactl daemon <command>"},
 		children: []helpChild{
 			{"status", "显示 daemon 状态"},
 			{"start", "启动本地 daemon"},
@@ -460,45 +460,45 @@ var helpSpecs = map[string]helpNode{
 			{"restart", "重启本地 daemon"},
 		},
 	},
-	"sidravia daemon status": {
+	"sidraviactl daemon status": {
 		description: "显示本地 daemon 进程状态。",
-		usage:       []string{"sidravia daemon status"},
+		usage:       []string{"sidraviactl daemon status"},
 		examples: []string{
-			"sidravia daemon status",
+			"sidraviactl daemon status",
 		},
 	},
-	"sidravia daemon start": {
+	"sidraviactl daemon start": {
 		description: "启动本地 daemon 进程。",
-		usage:       []string{"sidravia daemon start [--log-level info|debug|trace]"},
+		usage:       []string{"sidraviactl daemon start [--log-level info|debug|trace]"},
 		options: []string{
 			"--log-level info|debug|trace：子进程日志级别，默认 info",
 		},
 		examples: []string{
-			"sidravia daemon start",
-			"sidravia daemon start --log-level debug",
+			"sidraviactl daemon start",
+			"sidraviactl daemon start --log-level debug",
 		},
 	},
-	"sidravia daemon stop": {
+	"sidraviactl daemon stop": {
 		description: "停止本地 daemon 进程。",
-		usage:       []string{"sidravia daemon stop"},
+		usage:       []string{"sidraviactl daemon stop"},
 		examples: []string{
-			"sidravia daemon stop",
+			"sidraviactl daemon stop",
 		},
 	},
-	"sidravia daemon restart": {
+	"sidraviactl daemon restart": {
 		description: "重启本地 daemon 进程。",
-		usage:       []string{"sidravia daemon restart [--log-level info|debug|trace]"},
+		usage:       []string{"sidraviactl daemon restart [--log-level info|debug|trace]"},
 		options: []string{
 			"--log-level info|debug|trace：子进程日志级别，默认 info",
 		},
 		examples: []string{
-			"sidravia daemon restart",
-			"sidravia daemon restart --log-level trace",
+			"sidraviactl daemon restart",
+			"sidraviactl daemon restart --log-level trace",
 		},
 	},
-	"sidravia auth": {
+	"sidraviactl auth": {
 		description: "管理认证 Session。",
-		usage:       []string{"sidravia auth <command>"},
+		usage:       []string{"sidraviactl auth <command>"},
 		children: []helpChild{
 			{"list", "列出 Session"},
 			{"start", "启动一次性认证 Session"},
@@ -508,19 +508,19 @@ var helpSpecs = map[string]helpNode{
 			{"remove", "删除 Session"},
 		},
 	},
-	"sidravia auth list": {
+	"sidraviactl auth list": {
 		description: "列出当前 daemon 进程保留的全部 Session。",
-		usage:       []string{"sidravia auth list"},
+		usage:       []string{"sidraviactl auth list"},
 		examples: []string{
-			"sidravia auth list",
+			"sidraviactl auth list",
 		},
 	},
-	"sidravia auth start": {
-		description: "启动一次性认证 Session、从配置启动，或确保已有 Session 正在运行。命令只返回初始 Snapshot，不等待认证完成。下一步：使用返回的 Session ID 运行 sidravia auth status <session-id>；不知道 ID 时先运行 sidravia auth list。",
+	"sidraviactl auth start": {
+		description: "启动一次性认证 Session、从配置启动，或确保已有 Session 正在运行。命令只返回初始 Snapshot，不等待认证完成。下一步：使用返回的 Session ID 运行 sidraviactl auth status <session-id>；不知道 ID 时先运行 sidraviactl auth list。",
 		usage: []string{
-			"sidravia auth start --profile <profile-id> --username <username> [--password-stdin]",
-			"sidravia auth start --session <session-id>",
-			"sidravia auth start --config <configuration-id>",
+			"sidraviactl auth start --profile <profile-id> --username <username> [--password-stdin]",
+			"sidraviactl auth start --session <session-id>",
+			"sidraviactl auth start --config <configuration-id>",
 		},
 		options: []string{
 			"--profile <profile-id>：机构 Profile ID",
@@ -530,91 +530,91 @@ var helpSpecs = map[string]helpNode{
 			"--config <configuration-id>：从持久配置启动或确保 Session 正在运行",
 		},
 		examples: []string{
-			"sidravia auth start --profile jlu --username <username>",
-			"sidravia auth start --profile jlu --username <username> --password-stdin",
-			"sidravia auth start --session session-1",
-			"sidravia auth start --config campus",
+			"sidraviactl auth start --profile jlu --username <username>",
+			"sidraviactl auth start --profile jlu --username <username> --password-stdin",
+			"sidraviactl auth start --session session-1",
+			"sidraviactl auth start --config campus",
 		},
 	},
-	"sidravia auth status": {
+	"sidraviactl auth status": {
 		description: "显示指定 Session 的公开状态。",
-		usage:       []string{"sidravia auth status <session-id>"},
+		usage:       []string{"sidraviactl auth status <session-id>"},
 		args: []string{
 			"<session-id>：Session ID",
 		},
 		examples: []string{
-			"sidravia auth status session-1",
+			"sidraviactl auth status session-1",
 		},
 	},
-	"sidravia auth stop": {
+	"sidraviactl auth stop": {
 		description: "停止指定 Session。",
-		usage:       []string{"sidravia auth stop <session-id>"},
+		usage:       []string{"sidraviactl auth stop <session-id>"},
 		args: []string{
 			"<session-id>：Session ID",
 		},
 		examples: []string{
-			"sidravia auth stop session-1",
+			"sidraviactl auth stop session-1",
 		},
 	},
-	"sidravia auth restart": {
+	"sidraviactl auth restart": {
 		description: "重启指定 retained Session。",
-		usage:       []string{"sidravia auth restart <session-id>"},
+		usage:       []string{"sidraviactl auth restart <session-id>"},
 		args:        []string{"<session-id>：Session ID"},
-		examples:    []string{"sidravia auth restart session-1"},
+		examples:    []string{"sidraviactl auth restart session-1"},
 	},
-	"sidravia auth remove": {
+	"sidraviactl auth remove": {
 		description: "停止并删除指定 retained Session。",
-		usage:       []string{"sidravia auth remove <session-id>"},
+		usage:       []string{"sidraviactl auth remove <session-id>"},
 		args:        []string{"<session-id>：Session ID"},
-		examples:    []string{"sidravia auth remove session-1"},
+		examples:    []string{"sidraviactl auth remove session-1"},
 	},
-	"sidravia profile": {
+	"sidraviactl profile": {
 		description: "查看机构 Profile。",
-		usage:       []string{"sidravia profile <command>"},
+		usage:       []string{"sidraviactl profile <command>"},
 		children: []helpChild{
 			{"list", "列出机构 Profile"},
 		},
 	},
-	"sidravia profile list": {
+	"sidraviactl profile list": {
 		description: "列出已加载的机构 Profile 摘要。",
-		usage:       []string{"sidravia profile list"},
+		usage:       []string{"sidraviactl profile list"},
 		examples: []string{
-			"sidravia profile list",
+			"sidraviactl profile list",
 		},
 	},
-	"sidravia config": {
+	"sidraviactl config": {
 		description: "管理持久认证配置。",
-		usage:       []string{"sidravia config <command>"},
+		usage:       []string{"sidraviactl config <command>"},
 		children:    []helpChild{{"list", "列出认证配置"}, {"show", "显示认证配置"}, {"create", "创建认证配置"}, {"update", "更新认证配置"}, {"set-password", "更新认证密码"}, {"remove", "删除认证配置"}},
 	},
-	"sidravia config list": {description: "列出认证配置。", usage: []string{"sidravia config list"}, examples: []string{"sidravia config list"}},
-	"sidravia config show": {description: "显示认证配置。", usage: []string{"sidravia config show <configuration-id>"}, args: []string{"<configuration-id>：配置 ID"}, examples: []string{"sidravia config show campus"}},
-	"sidravia config create": {
+	"sidraviactl config list": {description: "列出认证配置。", usage: []string{"sidraviactl config list"}, examples: []string{"sidraviactl config list"}},
+	"sidraviactl config show": {description: "显示认证配置。", usage: []string{"sidraviactl config show <configuration-id>"}, args: []string{"<configuration-id>：配置 ID"}, examples: []string{"sidraviactl config show campus"}},
+	"sidraviactl config create": {
 		description: "创建认证配置。",
-		usage:       []string{"sidravia config create", "sidravia config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage]"},
+		usage:       []string{"sidraviactl config create", "sidraviactl config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage]"},
 		options:     []string{"--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
-		examples:    []string{"sidravia config create", "sidravia config create --id campus --profile jlu --username <username> --password-stdin", "sidravia config create --id campus --profile jlu --username <username> --password-stdin --auto-login --auto-reconnect=false"},
+		examples:    []string{"sidraviactl config create", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin --auto-login --auto-reconnect=false"},
 	},
-	"sidravia config update": {
+	"sidraviactl config update": {
 		description: "更新认证配置。",
-		usage:       []string{"sidravia config update <configuration-id>", "sidravia config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false]"},
+		usage:       []string{"sidraviactl config update <configuration-id>", "sidraviactl config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false]"},
 		args:        []string{"<configuration-id>：配置 ID"},
 		options:     []string{"--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连"},
-		examples:    []string{"sidravia config update campus --auto-login true", "sidravia config update campus --auto-reconnect false"},
+		examples:    []string{"sidraviactl config update campus --auto-login true", "sidraviactl config update campus --auto-reconnect false"},
 	},
-	"sidravia config set-password": {
+	"sidraviactl config set-password": {
 		description: "更新认证密码。",
-		usage:       []string{"sidravia config set-password <configuration-id> [--password-stdin] [--allow-insecure-storage]"},
+		usage:       []string{"sidraviactl config set-password <configuration-id> [--password-stdin] [--allow-insecure-storage]"},
 		args:        []string{"<configuration-id>：配置 ID"},
 		options:     []string{"--password-stdin：从 stdin 读取密码；非交互模式必需", "--allow-insecure-storage：确认未保护存储风险"},
-		examples:    []string{"sidravia config set-password campus", "sidravia config set-password campus --password-stdin"},
+		examples:    []string{"sidraviactl config set-password campus", "sidraviactl config set-password campus --password-stdin"},
 	},
-	"sidravia config remove": {
+	"sidraviactl config remove": {
 		description: "停止关联 Session 并删除认证配置。",
-		usage:       []string{"sidravia config remove <configuration-id> [--yes]"},
+		usage:       []string{"sidraviactl config remove <configuration-id> [--yes]"},
 		args:        []string{"<configuration-id>：配置 ID"},
 		options:     []string{"--yes：非交互方式确认删除"},
-		examples:    []string{"sidravia config remove campus", "sidravia config remove campus --yes"},
+		examples:    []string{"sidraviactl config remove campus", "sidraviactl config remove campus --yes"},
 	},
 }
 

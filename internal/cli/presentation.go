@@ -310,15 +310,15 @@ func ipcErrorText(code string) string {
 	case "session_operation_failed":
 		return "认证 Session 操作失败"
 	case "session_not_found":
-		return "找不到指定的认证 Session；请运行 sidravia auth list 查看可用 Session"
+		return "找不到指定的认证 Session；请运行 sidraviactl auth list 查看可用 Session"
 	case "session_active_conflict":
 		return "已有认证 Session 正在运行；请先停止或删除现有活动 Session"
 	case "session_state_conflict":
-		return "认证 Session 当前状态不允许该操作；请运行 sidravia auth status 查看状态"
+		return "认证 Session 当前状态不允许该操作；请运行 sidraviactl auth status 查看状态"
 	case "configuration_not_found":
-		return "找不到指定的认证配置；请运行 sidravia config list 查看可用配置"
+		return "找不到指定的认证配置；请运行 sidraviactl config list 查看可用配置"
 	case "configuration_conflict":
-		return "认证配置已存在；请运行 sidravia config list 查看现有配置，再运行 sidravia help config update 查看更新方法"
+		return "认证配置已存在；请运行 sidraviactl config list 查看现有配置，再运行 sidraviactl help config update 查看更新方法"
 	case "configuration_operation_failed":
 		return "认证配置操作失败"
 	case "configuration_auto_login_conflict":
@@ -492,7 +492,7 @@ func renderSessionDetail(p *presentation, result *contract.SessionResult) string
 func renderSessionList(p *presentation, result *contract.SessionListResult) string {
 	var b strings.Builder
 	if len(result.Sessions) == 0 {
-		b.WriteString("没有 Session。\n下一步：运行 sidravia help auth start 开始认证。\n")
+		b.WriteString("没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n")
 		return b.String()
 	}
 	b.WriteString(p.label(fmt.Sprintf("会话（%d）：", len(result.Sessions))))
@@ -521,7 +521,7 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 		b.WriteString(sanitizeDynamicText(session.UpdatedAt))
 		b.WriteString("\n")
 		if session.State == "blocked_by_error" || session.State == "waiting_before_retry" {
-			b.WriteString("  查看详情：sidravia auth status ")
+			b.WriteString("  查看详情：sidraviactl auth status ")
 			b.WriteString(sanitizeDynamicText(session.AuthenticationSessionID))
 			b.WriteString("\n")
 		}
@@ -558,7 +558,7 @@ func renderProfileList(p *presentation, result *contract.ProfileListResult) stri
 // followed by the sanitized error message and one newline. An underlying
 // wrapped cause is never printed; only the error's own message text is used.
 func writeErrorLine(err error) string {
-	return "sidravia：错误：" + sanitizeDynamicText(err.Error()) + "\n"
+	return "sidraviactl：错误：" + sanitizeDynamicText(err.Error()) + "\n"
 }
 
 // renderDaemonStarted renders the fixed daemon started confirmation line.
@@ -600,7 +600,7 @@ func renderSessionStartResult(p *presentation, result *contract.SessionStartResu
 	}
 	b.WriteString("以下是当前 Snapshot；认证可能仍在 daemon 中继续。\n")
 	b.WriteString(renderSessionDetail(p, &result.Session))
-	b.WriteString("查看状态：sidravia auth status ")
+	b.WriteString("查看状态：sidraviactl auth status ")
 	b.WriteString(sanitizeDynamicText(result.Session.AuthenticationSessionID))
 	b.WriteString("\n")
 	return b.String()
@@ -660,7 +660,7 @@ func writeConfiguration(output io.Writer, result contract.ConfigurationResult) e
 func writeConfigurationList(output io.Writer, result contract.ConfigurationListResult) error {
 	if len(result.Configurations) == 0 {
 		p := newPresentation(output)
-		return wrapSafeOperation("写入配置列表", p.complete("尚未保存认证配置。\n下一步：运行 sidravia config create 创建认证配置。\n"))
+		return wrapSafeOperation("写入配置列表", p.complete("尚未保存认证配置。\n下一步：运行 sidraviactl config create 创建认证配置。\n"))
 	}
 	var block strings.Builder
 	for index, value := range result.Configurations {

@@ -6,10 +6,10 @@
 #
 # 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1 -Sidravia C:\path\sidravia.exe
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1 -SidraviaCtl C:\path\sidraviactl.exe
 [CmdletBinding()]
 param(
-    [string]$Sidravia = '.\sidravia.exe'
+    [string]$SidraviaCtl = '.\sidraviactl.exe'
 )
 $ErrorActionPreference = 'Stop'
 $script:NativeUTF8Encoding = New-Object System.Text.UTF8Encoding($false)
@@ -20,10 +20,10 @@ if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt
     throw '需要 PowerShell 7 或更高版本。'
 }
 
-if (-not (Test-Path -LiteralPath $Sidravia)) {
-    throw "未找到 sidravia.exe：$Sidravia"
+if (-not (Test-Path -LiteralPath $SidraviaCtl)) {
+    throw "未找到 sidraviactl.exe：$SidraviaCtl"
 }
-$Exe = (Resolve-Path -LiteralPath $Sidravia).Path
+$Exe = (Resolve-Path -LiteralPath $SidraviaCtl).Path
 
 $script:checks = New-Object System.Collections.Generic.List[object]
 $script:failed = New-Object System.Collections.Generic.List[string]
@@ -93,7 +93,7 @@ function Invoke-NativeWithInput {
     }
 }
 
-function Invoke-Sidravia {
+function Invoke-SidraviaCtl {
     param(
         [string[]]$CommandArguments,
         [string]$Stdin,
@@ -132,46 +132,46 @@ function Invoke-Sidravia {
 Write-Output "== Sidravia 命令行完整冒烟测试：$Exe =="
 
 # 为保证重复运行安全，先停止可能存在的后台服务。
-Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect any -Name '后台服务：初始停止与清理'
+Invoke-SidraviaCtl -CommandArguments @('daemon', 'stop') -Expect any -Name '后台服务：初始停止与清理'
 
 # 1. 帮助界面（所有入口行为一致，且不会派发业务操作）。
-Invoke-Sidravia -CommandArguments @('--help') -Expect success -Name '帮助：--help'
-Invoke-Sidravia -CommandArguments @('help', 'daemon') -Expect success -Name '帮助：daemon'
-Invoke-Sidravia -CommandArguments @('help', 'auth', 'start') -Expect success -Name '帮助：auth start'
-Invoke-Sidravia -CommandArguments @('auth', 'start', '--help') -Expect success -Name '帮助：auth start --help'
-Invoke-Sidravia -CommandArguments @('profile', 'list', '--help') -Expect success -Name '帮助：profile list --help'
+Invoke-SidraviaCtl -CommandArguments @('--help') -Expect success -Name '帮助：--help'
+Invoke-SidraviaCtl -CommandArguments @('help', 'daemon') -Expect success -Name '帮助：daemon'
+Invoke-SidraviaCtl -CommandArguments @('help', 'auth', 'start') -Expect success -Name '帮助：auth start'
+Invoke-SidraviaCtl -CommandArguments @('auth', 'start', '--help') -Expect success -Name '帮助：auth start --help'
+Invoke-SidraviaCtl -CommandArguments @('profile', 'list', '--help') -Expect success -Name '帮助：profile list --help'
 
 # 2. 命令缺失（已退役或移动的命令必须失败）。
-Invoke-Sidravia -CommandArguments @('status') -Expect failure -Name '拒绝已退役的 status 命令'
-Invoke-Sidravia -CommandArguments @('install') -Expect failure -Name 'install 命令不存在'
-Invoke-Sidravia -CommandArguments @('uninstall') -Expect failure -Name 'uninstall 命令不存在'
+Invoke-SidraviaCtl -CommandArguments @('status') -Expect failure -Name '拒绝已退役的 status 命令'
+Invoke-SidraviaCtl -CommandArguments @('install') -Expect failure -Name 'install 命令不存在'
+Invoke-SidraviaCtl -CommandArguments @('uninstall') -Expect failure -Name 'uninstall 命令不存在'
 
 # 3. 后台服务生命周期。
-Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect stopped -Name '后台服务：初始状态为已停止'
-Invoke-Sidravia -CommandArguments @('daemon', 'start', '--log-level', 'info') -Expect success -Name '后台服务：启动'
-Invoke-Sidravia -CommandArguments @('daemon', 'status') -Expect running -Name '后台服务：状态为运行中'
-Invoke-Sidravia -CommandArguments @('daemon', 'restart') -Expect success -Name '后台服务：重启'
+Invoke-SidraviaCtl -CommandArguments @('daemon', 'status') -Expect stopped -Name '后台服务：初始状态为已停止'
+Invoke-SidraviaCtl -CommandArguments @('daemon', 'start', '--log-level', 'info') -Expect success -Name '后台服务：启动'
+Invoke-SidraviaCtl -CommandArguments @('daemon', 'status') -Expect running -Name '后台服务：状态为运行中'
+Invoke-SidraviaCtl -CommandArguments @('daemon', 'restart') -Expect success -Name '后台服务：重启'
 
 # 4. 在程序根目录发现 Profile。
-Invoke-Sidravia -CommandArguments @('profile', 'list') -Expect success -Match 'jlu' -Name 'Profile 列表包含 jlu'
+Invoke-SidraviaCtl -CommandArguments @('profile', 'list') -Expect success -Match 'jlu' -Name 'Profile 列表包含 jlu'
 
 # 5. 使用一次性 ID 测试配置增删改查（始终移除）。
 $id = 'smoke-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
-Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect success -Match $id -Name '配置：创建'
-Invoke-Sidravia -CommandArguments @('config', 'list') -Expect success -Match $id -Name '配置：列表包含一次性 ID'
-Invoke-Sidravia -CommandArguments @('config', 'show', $id) -Expect success -Match $id -Name '配置：显示详情'
-Invoke-Sidravia -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect failure -Name '配置：拒绝重复创建'
-Invoke-Sidravia -CommandArguments @('config', 'show', 'smoke-missing') -Expect failure -Name '配置：拒绝显示不存在的配置'
-Invoke-Sidravia -CommandArguments @('config', 'update', $id, '--name', 'SmokeUpdated') -Expect success -Name '配置：更新'
-Invoke-Sidravia -CommandArguments @('config', 'set-password', $id, '--password-stdin') -Stdin 'smoke-pass-2' -Expect success -Name '配置：更新密码'
-Invoke-Sidravia -CommandArguments @('config', 'remove', $id, '--yes') -Expect success -Name '配置：移除'
+Invoke-SidraviaCtl -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect success -Match $id -Name '配置：创建'
+Invoke-SidraviaCtl -CommandArguments @('config', 'list') -Expect success -Match $id -Name '配置：列表包含一次性 ID'
+Invoke-SidraviaCtl -CommandArguments @('config', 'show', $id) -Expect success -Match $id -Name '配置：显示详情'
+Invoke-SidraviaCtl -CommandArguments @('config', 'create', '--id', $id, '--profile', 'jlu', '--username', 'smoke-user', '--password-stdin') -Stdin 'smoke-pass' -Expect failure -Name '配置：拒绝重复创建'
+Invoke-SidraviaCtl -CommandArguments @('config', 'show', 'smoke-missing') -Expect failure -Name '配置：拒绝显示不存在的配置'
+Invoke-SidraviaCtl -CommandArguments @('config', 'update', $id, '--name', 'SmokeUpdated') -Expect success -Name '配置：更新'
+Invoke-SidraviaCtl -CommandArguments @('config', 'set-password', $id, '--password-stdin') -Stdin 'smoke-pass-2' -Expect success -Name '配置：更新密码'
+Invoke-SidraviaCtl -CommandArguments @('config', 'remove', $id, '--yes') -Expect success -Name '配置：移除'
 
 # 6. 认证 Session 操作面。
-Invoke-Sidravia -CommandArguments @('auth', 'list') -Expect success -Name '认证：列出 Session'
+Invoke-SidraviaCtl -CommandArguments @('auth', 'list') -Expect success -Name '认证：列出 Session'
 Add-SkippedCheck -Name '认证：启动 Session' -Note '本地冒烟不执行真实认证；请使用 field-test.ps1。'
 
 # 7. 清理。
-Invoke-Sidravia -CommandArguments @('daemon', 'stop') -Expect stopped -Name '后台服务：停止并清理'
+Invoke-SidraviaCtl -CommandArguments @('daemon', 'stop') -Expect stopped -Name '后台服务：停止并清理'
 
 # 汇总。
 Write-Output ''

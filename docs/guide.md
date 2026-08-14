@@ -18,22 +18,22 @@ Get-Content .\SHA256SUMS.txt
 先退出其他 Dr.COM 客户端，然后在解压目录打开 PowerShell：
 
 ```powershell
-.\sidravia.exe daemon start
-.\sidravia.exe daemon status
-.\sidravia.exe profile list
-.\sidravia.exe auth start --profile jlu --username '<账号>'
+.\sidraviactl.exe daemon start
+.\sidraviactl.exe daemon status
+.\sidraviactl.exe profile list
+.\sidraviactl.exe auth start --profile jlu --username '<账号>'
 ```
 
 密码由隐藏提示读取，请勿写入命令行。命令返回 Session ID 后查询认证状态：
 
 ```powershell
-.\sidravia.exe auth status <session-id>
+.\sidraviactl.exe auth status <session-id>
 ```
 
 不知道 Session ID 时，运行：
 
 ```powershell
-.\sidravia.exe auth list
+.\sidraviactl.exe auth list
 ```
 
 ## 保存认证配置
@@ -41,12 +41,12 @@ Get-Content .\SHA256SUMS.txt
 交互式创建配置，然后使用配置发起认证：
 
 ```powershell
-.\sidravia.exe config create
-.\sidravia.exe auth start --config <configuration-id>
+.\sidraviactl.exe config create
+.\sidraviactl.exe auth start --config <configuration-id>
 ```
 
 `AutoLogin` 控制 daemon 启动后的自动登录，`AutoReconnect` 控制断线后的自动重连。
-可随时运行 `sidravia.exe help config` 查看相关命令。
+可随时运行 `sidraviactl.exe help config` 查看相关命令。
 
 ## 可选的 Windows 集成
 
@@ -69,14 +69,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 - 认证前退出其他 Dr.COM 客户端。
 - 使用 Mihomo、Clash 等 TUN 时，停止 TUN，或让校园网私有地址绕过 TUN。
 - 端口错误时检查 UDP `61440` 是否被其他程序占用。
-- daemon 异常时先运行 `sidravia.exe daemon status`，再查看 `logs\sidraviad.log`。
+- daemon 异常时先运行 `sidraviactl.exe daemon status`，再查看 `logs\sidraviad.log`。
 
 `trace` 日志可能包含敏感认证信息，请勿公开分享。
 
 不再需要后台认证时，可以正常停止 daemon：
 
 ```powershell
-.\sidravia.exe daemon stop
+.\sidraviactl.exe daemon stop
 ```
 
 ## 当前版本
