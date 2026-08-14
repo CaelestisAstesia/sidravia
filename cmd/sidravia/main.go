@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 
 	"sidravia/internal/cli"
@@ -12,9 +13,13 @@ var (
 )
 
 func main() {
-	err := cli.RunWithIdentity(os.Args[1:], ProductVersion, BuildID)
+	os.Exit(run(os.Args[1:], os.Stderr))
+}
+
+func run(args []string, stderr io.Writer) int {
+	err := cli.RunWithIdentity(args, ProductVersion, BuildID)
 	if err != nil {
-		_ = cli.WriteError(os.Stderr, err)
-		os.Exit(1)
+		_ = cli.WriteError(stderr, err)
 	}
+	return cli.ExitCode(err)
 }

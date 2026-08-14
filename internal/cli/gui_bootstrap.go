@@ -30,24 +30,27 @@ func defaultGUIBootstrap(identity clientbootstrap.Identity, ownerPID int) (clien
 
 func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Writer, bootstrap guiBootstrapper) error {
 	if ownerPID <= 0 {
-		return errCommandUsage
+		return invalidGUIBootstrapArguments(errCommandUsage)
 	}
 	result, err := bootstrap(identity, ownerPID)
 	if err != nil {
-		return err
+		return classifyGUIBootstrapFailure(err)
 	}
 	if result.Status.ProductVersion != identity.ProductVersion || result.Status.BuildID != identity.BuildID ||
 		result.Status.Mode != string(launchcontract.ModeDesktop) || result.Status.DesktopOwnerPID == nil || *result.Status.DesktopOwnerPID != ownerPID {
-		return errors.New("图形界面 bootstrap 未确认")
+		return unconfirmedGUIBootstrap(errors.New("GUI bootstrap authoritative confirmation failed"))
 	}
 	value := guiBootstrapSuccess{SchemaVersion: 1, Endpoint: result.Info.Endpoint, Token: result.Info.Token, ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, DaemonPID: result.Status.PID, Mode: string(launchcontract.ModeDesktop)}
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		return errors.New("图形界面 bootstrap 编码失败")
+		return outputGUIBootstrapFailure(err)
 	}
 	encoded = append(encoded, '\n')
 	if n, err := output.Write(encoded); err != nil || n != len(encoded) {
-		return errors.New("图形界面 bootstrap 输出失败")
+		if err == nil {
+			err = io.ErrShortWrite
+		}
+		return outputGUIBootstrapFailure(err)
 	}
 	return nil
 }
@@ -61,7 +64,7 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 		RunE: func(*cobra.Command, []string) error {
 			pid, err := strconv.Atoi(ownerPID)
 			if err != nil || pid <= 0 {
-				return wrapCommandOperation(errCommandUsage)
+				return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 			}
 			return wrapCommandOperation(guiBootstrap(identity, pid, output, bootstrap))
 		},
