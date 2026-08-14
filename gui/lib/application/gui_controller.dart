@@ -18,58 +18,62 @@ class GuiController extends ChangeNotifier {
     this.connector = WebSocketIpcClient.connect,
     this.pollDelay = const Duration(seconds: 3),
   });
-
   final GuiBootstrapper bootstrapper;
   final IpcConnector connector;
   final Duration pollDelay;
   SidraviaIpcClient? _client;
   Timer? _timer;
+  Future<void>? _transition;
   bool _disposed = false;
-  bool _refreshing = false;
+  int _generation = 0;
   GuiConnectionState _state = GuiConnectionState.bootstrapping;
   GuiBootstrapFailure? _failure;
   GuiSnapshot? _snapshot;
-
   GuiConnectionState get state => _state;
   GuiBootstrapFailure? get failure => _failure;
   GuiSnapshot? get snapshot => _snapshot;
 
-  Future<void> start() async {
+  Future<void> start() => _transition ??= _start();
+  Future<void> retry() => start();
+
+  Future<void> _start() async {
+    final generation = ++_generation;
     _timer?.cancel();
+    final old = _client;
+    _client = null;
+    if (old != null) await old.close();
+    if (!_current(generation)) return;
     _state = GuiConnectionState.bootstrapping;
     _failure = null;
-    _snapshot = null;
     _notify();
-    final result = await bootstrapper.bootstrap();
-    if (_disposed) return;
-    if (!result.isSuccess) {
-      _setFailure(result.failure!);
-      return;
-    }
     try {
-      _client = await connector(result.value!);
+      final boot = await bootstrapper.bootstrap();
+      if (!_current(generation)) return;
+      if (!boot.isSuccess) {
+        _setFailure(boot.failure!);
+        return;
+      }
+      final client = await connector(boot.value!);
+      if (!_current(generation)) {
+        await client.close();
+        return;
+      }
+      _client = client;
+      await _refresh(generation, client);
     } on Object {
-      if (!_disposed) _setFailure(GuiBootstrapFailure.failed);
-      return;
+      if (_current(generation)) _setFailure(GuiBootstrapFailure.failed);
+    } finally {
+      if (_generation == generation) _transition = null;
     }
-    await _refresh();
   }
 
-  Future<void> retry() async {
-    await _client?.close();
-    _client = null;
-    await start();
-  }
-
-  Future<void> _refresh() async {
-    if (_disposed || _refreshing || _client == null) return;
-    _refreshing = true;
+  Future<void> _refresh(int generation, SidraviaIpcClient client) async {
     try {
-      final daemon = await _client!.daemonStatus();
-      final profiles = await _client!.profileList();
-      final configurations = await _client!.configurationList();
-      final sessions = await _client!.sessionList();
-      if (_disposed) return;
+      final daemon = await client.daemonStatus();
+      final profiles = await client.profileList();
+      final configurations = await client.configurationList();
+      final sessions = await client.sessionList();
+      if (!_current(generation) || !identical(_client, client)) return;
       _snapshot = GuiSnapshot(
         daemon: daemon,
         profiles: profiles,
@@ -79,25 +83,31 @@ class GuiController extends ChangeNotifier {
       _state = GuiConnectionState.ready;
       _failure = null;
       _notify();
+      _timer?.cancel();
+      _timer = Timer(pollDelay, () {
+        _timer = null;
+        unawaited(_refresh(generation, client));
+      });
     } on Object {
-      if (!_disposed) {
-        _state = _snapshot == null
-            ? GuiConnectionState.failed
-            : GuiConnectionState.stale;
-        _failure = GuiBootstrapFailure.failed;
-        _notify();
-      }
-    } finally {
-      _refreshing = false;
-      if (!_disposed && _client != null) {
-        _timer = Timer(pollDelay, _refresh);
-      }
+      if (!_current(generation) || !identical(_client, client)) return;
+      _timer?.cancel();
+      _timer = null;
+      _client = null;
+      await client.close();
+      _state = _snapshot == null
+          ? GuiConnectionState.failed
+          : GuiConnectionState.stale;
+      _failure = GuiBootstrapFailure.failed;
+      _notify();
     }
   }
 
+  bool _current(int generation) => !_disposed && generation == _generation;
   void _setFailure(GuiBootstrapFailure failure) {
     _failure = failure;
-    _state = failure.code == 'unsupported_platform'
+    _state = _snapshot != null
+        ? GuiConnectionState.stale
+        : failure.code == 'unsupported_platform'
         ? GuiConnectionState.unsupported
         : GuiConnectionState.failed;
     _notify();
@@ -110,6 +120,7 @@ class GuiController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    ++_generation;
     _timer?.cancel();
     unawaited(_client?.close());
     super.dispose();

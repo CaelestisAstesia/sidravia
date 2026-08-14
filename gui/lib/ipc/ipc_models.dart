@@ -1,5 +1,17 @@
 import 'dart:convert';
 
+const daemonModes = {'headless', 'desktop'};
+const sessionIntents = {'maintain_authentication', 'suspend_authentication'};
+const sessionStates = {
+  'suspended',
+  'waiting_for_network',
+  'authenticating',
+  'authenticated',
+  'waiting_before_retry',
+  'blocked_by_error',
+  'stopping',
+};
+
 class DaemonStatus {
   const DaemonStatus({
     required this.productVersion,
@@ -7,13 +19,11 @@ class DaemonStatus {
     required this.pid,
     required this.status,
     required this.mode,
+    this.desktopOwnerPid,
   });
-
-  final String productVersion;
-  final String buildId;
+  final String productVersion, buildId, status, mode;
   final int pid;
-  final String status;
-  final String mode;
+  final int? desktopOwnerPid;
 }
 
 class InstitutionProfile {
@@ -22,10 +32,7 @@ class InstitutionProfile {
     required this.displayName,
     required this.protocolId,
   });
-
-  final String id;
-  final String displayName;
-  final String protocolId;
+  final String id, displayName, protocolId;
 }
 
 class ConfigurationSummary {
@@ -36,14 +43,38 @@ class ConfigurationSummary {
     required this.username,
     required this.credentialStored,
     required this.storageProtection,
+    this.autoLogin = false,
+    this.autoReconnect = false,
   });
+  final String id,
+      displayName,
+      institutionDisplayName,
+      username,
+      storageProtection;
+  final bool credentialStored, autoLogin, autoReconnect;
+}
 
-  final String id;
-  final String displayName;
-  final String institutionDisplayName;
-  final String username;
-  final bool credentialStored;
-  final String storageProtection;
+class SessionStateReason {
+  const SessionStateReason({required this.code, required this.description});
+  final String code, description;
+}
+
+class SessionNetworkBinding {
+  const SessionNetworkBinding({
+    required this.interfaceId,
+    required this.displayName,
+    required this.localIpv4Address,
+  });
+  final String interfaceId, displayName, localIpv4Address;
+}
+
+class SessionAuthenticationFailure {
+  const SessionAuthenticationFailure({
+    required this.code,
+    required this.description,
+    required this.handlingRecommendation,
+  });
+  final String code, description, handlingRecommendation;
 }
 
 class SessionSummary {
@@ -52,12 +83,22 @@ class SessionSummary {
     required this.displayName,
     required this.state,
     required this.intent,
+    this.configurationId,
+    this.stateReason,
+    this.selectedNetworkBinding,
+    this.authenticationEstablishedAt,
+    this.nextRetryAt,
+    this.lastAuthenticationFailure,
+    this.revision = 0,
+    this.updatedAt,
   });
-
-  final String id;
-  final String displayName;
-  final String state;
-  final String intent;
+  final String id, displayName, state, intent;
+  final String? configurationId;
+  final SessionStateReason? stateReason;
+  final SessionNetworkBinding? selectedNetworkBinding;
+  final DateTime? authenticationEstablishedAt, nextRetryAt, updatedAt;
+  final SessionAuthenticationFailure? lastAuthenticationFailure;
+  final int revision;
 }
 
 class GuiSnapshot {
@@ -67,7 +108,6 @@ class GuiSnapshot {
     required this.configurations,
     required this.sessions,
   });
-
   final DaemonStatus daemon;
   final List<InstitutionProfile> profiles;
   final List<ConfigurationSummary> configurations;
@@ -78,71 +118,62 @@ class IpcProtocolException implements Exception {
   const IpcProtocolException();
 }
 
-Map<String, dynamic> decodeObject(String source, Set<String> keys) {
-  final value = jsonDecode(source);
-  if (value is! Map<String, dynamic> ||
-      value.length != keys.length ||
-      !value.keys.toSet().containsAll(keys)) {
-    throw const IpcProtocolException();
-  }
-  return value;
-}
+Map<String, dynamic> decodeObject(String source, Set<String> keys) =>
+    _object(jsonDecode(source), keys);
 
 DaemonStatus decodeDaemonStatus(String source) {
-  final value = decodeObject(source, const {
-    'productVersion',
-    'buildId',
-    'pid',
-    'status',
-    'mode',
-  });
-  if (value['productVersion'] is! String ||
-      value['buildId'] is! String ||
-      value['pid'] is! int ||
-      value['status'] is! String ||
-      value['mode'] is! String ||
-      (value['productVersion'] as String).isEmpty ||
-      (value['buildId'] as String).isEmpty ||
-      (value['pid'] as int) <= 0 ||
-      !const {'headless', 'desktop'}.contains(value['mode'])) {
-    throw const IpcProtocolException();
-  }
+  final raw = jsonDecode(source);
+  if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
+  final mode = _text(raw['mode']);
+  final expected = mode == 'desktop'
+      ? const {
+          'productVersion',
+          'buildId',
+          'pid',
+          'status',
+          'mode',
+          'desktopOwnerPid',
+        }
+      : const {'productVersion', 'buildId', 'pid', 'status', 'mode'};
+  final value = _object(raw, expected);
+  if (!daemonModes.contains(mode)) throw const IpcProtocolException();
   return DaemonStatus(
-    productVersion: value['productVersion'] as String,
-    buildId: value['buildId'] as String,
-    pid: value['pid'] as int,
-    status: value['status'] as String,
-    mode: value['mode'] as String,
+    productVersion: _text(value['productVersion']),
+    buildId: _text(value['buildId']),
+    pid: _positive(value['pid']),
+    status: _text(value['status']),
+    mode: mode,
+    desktopOwnerPid: mode == 'desktop'
+        ? _positive(value['desktopOwnerPid'])
+        : null,
   );
 }
 
-List<InstitutionProfile> decodeProfiles(String source) {
-  final value = decodeObject(source, const {'profiles'});
-  return _list(value['profiles'])
-      .map((entry) {
-        final item = _object(entry, const {
-          'institutionProfileId',
-          'displayName',
-          'authenticationProtocolId',
-        });
-        return InstitutionProfile(
-          id: _nonEmpty(item['institutionProfileId']),
-          displayName: _nonEmpty(item['displayName']),
-          protocolId: _nonEmpty(item['authenticationProtocolId']),
-        );
-      })
-      .toList(growable: false);
-}
+List<InstitutionProfile> decodeProfiles(String source) =>
+    _list(decodeObject(source, const {'profiles'})['profiles'])
+        .map((raw) {
+          final v = _object(raw, const {
+            'institutionProfileId',
+            'displayName',
+            'authenticationProtocolId',
+          });
+          return InstitutionProfile(
+            id: _text(v['institutionProfileId']),
+            displayName: _text(v['displayName']),
+            protocolId: _text(v['authenticationProtocolId']),
+          );
+        })
+        .toList(growable: false);
 
 List<ConfigurationSummary> decodeConfigurations(String source) {
-  final value = decodeObject(source, const {
+  final root = decodeObject(source, const {
     'storageProtection',
     'configurations',
   });
-  _storageProtection(value['storageProtection']);
-  return _list(value['configurations'])
-      .map((entry) {
-        final item = _object(entry, const {
+  _protection(root['storageProtection']);
+  return _list(root['configurations'])
+      .map((raw) {
+        final v = _object(raw, const {
           'configurationId',
           'displayName',
           'institutionProfileId',
@@ -154,61 +185,130 @@ List<ConfigurationSummary> decodeConfigurations(String source) {
           'autoLogin',
           'autoReconnect',
         });
+        _text(v['institutionProfileId']);
+        _text(v['authenticationProtocolId']);
         return ConfigurationSummary(
-          id: _nonEmpty(item['configurationId']),
-          displayName: _nonEmpty(item['displayName']),
-          institutionDisplayName: _nonEmpty(item['institutionDisplayName']),
-          username: _nonEmpty(item['username']),
-          credentialStored: _bool(item['credentialStored']),
-          storageProtection: _storageProtection(item['storageProtection']),
+          id: _text(v['configurationId']),
+          displayName: _text(v['displayName']),
+          institutionDisplayName: _text(v['institutionDisplayName']),
+          username: _text(v['username']),
+          credentialStored: _bool(v['credentialStored']),
+          storageProtection: _protection(v['storageProtection']),
+          autoLogin: _bool(v['autoLogin']),
+          autoReconnect: _bool(v['autoReconnect']),
         );
       })
       .toList(growable: false);
 }
 
-List<SessionSummary> decodeSessions(String source) {
-  final value = decodeObject(source, const {'sessions'});
-  return _list(value['sessions'])
-      .map((entry) {
-        final item = _object(entry, const {
-          'sessionId',
-          'displayName',
-          'institutionProfileId',
-          'institutionDisplayName',
-          'authenticationProtocolId',
-          'accountName',
-          'intent',
-          'state',
-          'revision',
-          'updatedAt',
-        });
-        final state = _nonEmpty(item['state']);
-        final intent = _nonEmpty(item['intent']);
-        if (!const {
-              'suspended',
-              'waiting_for_network',
-              'authenticating',
-              'authenticated',
-              'waiting_before_retry',
-              'blocked_by_error',
-              'stopping',
-            }.contains(state) ||
-            !const {
-              'maintain_authentication',
-              'suspend_authentication',
-            }.contains(intent) ||
-            item['revision'] is! int ||
-            item['updatedAt'] is! String) {
-          throw const IpcProtocolException();
-        }
-        return SessionSummary(
-          id: _nonEmpty(item['sessionId']),
-          displayName: _nonEmpty(item['displayName']),
-          state: state,
-          intent: intent,
-        );
-      })
-      .toList(growable: false);
+List<SessionSummary> decodeSessions(String source) =>
+    _list(decodeObject(source, const {'sessions'})['sessions'])
+        .map(_session)
+        .toList(growable: false);
+SessionSummary _session(Object? raw) {
+  if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
+  const required = {
+    'sessionId',
+    'displayName',
+    'institutionProfileId',
+    'institutionDisplayName',
+    'authenticationProtocolId',
+    'accountName',
+    'intent',
+    'state',
+    'revision',
+    'updatedAt',
+  };
+  const optional = {
+    'configurationId',
+    'stateReason',
+    'selectedNetworkBinding',
+    'authenticationEstablishedAt',
+    'nextRetryAt',
+    'lastAuthenticationFailure',
+  };
+  if (!raw.keys.toSet().containsAll(required) ||
+      raw.keys.any(
+        (key) => !required.contains(key) && !optional.contains(key),
+      )) {
+    throw const IpcProtocolException();
+  }
+  final intent = _text(raw['intent']), state = _text(raw['state']);
+  if (!sessionIntents.contains(intent) || !sessionStates.contains(state)) {
+    throw const IpcProtocolException();
+  }
+  for (final key in const [
+    'sessionId',
+    'displayName',
+    'institutionProfileId',
+    'institutionDisplayName',
+    'authenticationProtocolId',
+    'accountName',
+  ]) {
+    _text(raw[key]);
+  }
+  final revision = raw['revision'];
+  if (revision is! int || revision < 0) throw const IpcProtocolException();
+  return SessionSummary(
+    id: _text(raw['sessionId']),
+    displayName: _text(raw['displayName']),
+    state: state,
+    intent: intent,
+    configurationId: raw.containsKey('configurationId')
+        ? _text(raw['configurationId'])
+        : null,
+    stateReason: raw.containsKey('stateReason')
+        ? _reason(raw['stateReason'])
+        : null,
+    selectedNetworkBinding: raw.containsKey('selectedNetworkBinding')
+        ? _binding(raw['selectedNetworkBinding'])
+        : null,
+    authenticationEstablishedAt: raw.containsKey('authenticationEstablishedAt')
+        ? _time(raw['authenticationEstablishedAt'])
+        : null,
+    nextRetryAt: raw.containsKey('nextRetryAt')
+        ? _time(raw['nextRetryAt'])
+        : null,
+    lastAuthenticationFailure: raw.containsKey('lastAuthenticationFailure')
+        ? _failure(raw['lastAuthenticationFailure'])
+        : null,
+    revision: revision,
+    updatedAt: _time(raw['updatedAt']),
+  );
+}
+
+SessionStateReason _reason(Object? raw) {
+  final v = _object(raw, const {'code', 'description'});
+  return SessionStateReason(
+    code: _text(v['code']),
+    description: _text(v['description']),
+  );
+}
+
+SessionNetworkBinding _binding(Object? raw) {
+  final v = _object(raw, const {
+    'interfaceId',
+    'displayName',
+    'localIpv4Address',
+  });
+  return SessionNetworkBinding(
+    interfaceId: _text(v['interfaceId']),
+    displayName: _text(v['displayName']),
+    localIpv4Address: _text(v['localIpv4Address']),
+  );
+}
+
+SessionAuthenticationFailure _failure(Object? raw) {
+  final v = _object(raw, const {
+    'code',
+    'description',
+    'handlingRecommendation',
+  });
+  return SessionAuthenticationFailure(
+    code: _text(v['code']),
+    description: _text(v['description']),
+    handlingRecommendation: _text(v['handlingRecommendation']),
+  );
 }
 
 Map<String, dynamic> _object(Object? value, Set<String> keys) {
@@ -225,7 +325,7 @@ List<dynamic> _list(Object? value) {
   return value;
 }
 
-String _nonEmpty(Object? value) {
+String _text(Object? value) {
   if (value is! String || value.isEmpty) throw const IpcProtocolException();
   return value;
 }
@@ -235,10 +335,26 @@ bool _bool(Object? value) {
   return value;
 }
 
-String _storageProtection(Object? value) {
-  final protection = _nonEmpty(value);
-  if (!const {'protected', 'unprotected'}.contains(protection)) {
+int _positive(Object? value) {
+  if (value is! int || value <= 0) throw const IpcProtocolException();
+  return value;
+}
+
+DateTime _time(Object? value) {
+  final text = _text(value);
+  if (!RegExp(r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$')
+      .hasMatch(text)) {
     throw const IpcProtocolException();
   }
-  return protection;
+  final parsed = DateTime.tryParse(text);
+  if (parsed == null) throw const IpcProtocolException();
+  return parsed;
+}
+
+String _protection(Object? value) {
+  final text = _text(value);
+  if (!const {'protected', 'unprotected'}.contains(text)) {
+    throw const IpcProtocolException();
+  }
+  return text;
 }

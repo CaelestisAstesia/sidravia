@@ -42,6 +42,33 @@ void main() {
     }
   });
 
+  test('fixture request and error envelopes remain read-only and exact', () {
+    final fixture = _fixture();
+    final cases = _readOnlyCases(fixture);
+    for (final value in cases) {
+      final request =
+          jsonDecode(value['request'] as String) as Map<String, dynamic>;
+      expect(request, {
+        'kind': 'request',
+        'id': request['id'],
+        'method': value['method'],
+        'payload': <String, dynamic>{},
+      });
+      final error =
+          jsonDecode(value['errorResponse'] as String) as Map<String, dynamic>;
+      expect(error.keys.toSet(), {'kind', 'id', 'ok', 'error'});
+      expect(error['kind'], 'response');
+      expect(error['id'], request['id']);
+      expect(error['ok'], isFalse);
+      expect((error['error'] as Map<String, dynamic>).keys.toSet(), {
+        'code',
+        'message',
+      });
+      expect(jsonEncode(error), isNot(contains('password')));
+      expect(jsonEncode(error), isNot(contains('token')));
+    }
+  });
+
   test('read-only result decoders reject unknown and wrong-type data', () {
     expect(
       () => decodeDaemonStatus(
@@ -54,4 +81,84 @@ void main() {
       throwsA(isA<IpcProtocolException>()),
     );
   });
+
+  test(
+    'accepts desktop status and the fixture retained full-detail Session',
+    () {
+      final fixture = jsonDecode(
+        File('../internal/ipc/contract/testdata/v1/conformance.json')
+            .readAsStringSync(),
+      ) as Map<String, dynamic>;
+      final full = (fixture['cases'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((value) => value['method'] == 'session.get');
+      final response =
+          jsonDecode(full['successResponse'] as String) as Map<String, dynamic>;
+      final session = _decodeOneSession(jsonEncode(response['result']));
+      expect(session.configurationId, isNotNull);
+      expect(session.stateReason?.code, 'protocol_run_failed');
+      expect(session.lastAuthenticationFailure?.code, 'credentials_rejected');
+      expect(
+        decodeDaemonStatus(
+          '{"productVersion":"v","buildId":"b","pid":1,"status":"running","mode":"desktop","desktopOwnerPid":2}',
+        ).desktopOwnerPid,
+        2,
+      );
+    },
+  );
+
+  test(
+    'accepts one-shot omission and rejects enum, optional, and field errors',
+    () {
+      final fixture = _fixture();
+      final oneShot = (fixture['cases'] as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((value) => value['method'] == 'session.startOneShot');
+      final oneShotResponse = jsonDecode(
+        oneShot['successResponse'] as String,
+      ) as Map<String, dynamic>;
+      final session =
+          (oneShotResponse['result'] as Map<String, dynamic>)['session'];
+      expect(_decodeOneSession(jsonEncode(session)).configurationId, isNull);
+      expect(
+        () => decodeSessions(
+          '{"sessions":[{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"wrong","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z"}]}',
+        ),
+        throwsA(isA<IpcProtocolException>()),
+      );
+      expect(
+        () => decodeSessions(
+          '{"sessions":[{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z","password":"never"}]}',
+        ),
+        throwsA(isA<IpcProtocolException>()),
+      );
+    },
+  );
+}
+
+Map<String, dynamic> _fixture() => jsonDecode(
+  File('../internal/ipc/contract/testdata/v1/conformance.json')
+      .readAsStringSync(),
+) as Map<String, dynamic>;
+
+List<Map<String, dynamic>> _readOnlyCases(Map<String, dynamic> fixture) =>
+    (fixture['cases'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .where(
+          (value) => const {
+            'daemon.status',
+            'profile.list',
+            'configuration.list',
+            'session.list',
+          }.contains(value['method']),
+        )
+        .toList(growable: false);
+
+SessionSummary _decodeOneSession(String result) {
+  final object = jsonDecode(result) as Map<String, dynamic>;
+  return decodeSessions(
+    jsonEncode({
+      'sessions': [object],
+    }),
+  ).single;
 }

@@ -38,6 +38,35 @@ class GuiBootstrapFailure {
   );
 }
 
+const guiBootstrapFailures = <String, GuiBootstrapFailure>{
+  'invalid_arguments': GuiBootstrapFailure(
+    'invalid_arguments',
+    'GUI bootstrap 参数无效',
+  ),
+  'invalid_client_identity': GuiBootstrapFailure(
+    'invalid_client_identity',
+    'GUI bootstrap 客户端身份无效',
+  ),
+  'unsupported_platform': GuiBootstrapFailure(
+    'unsupported_platform',
+    '当前平台不支持 GUI bootstrap',
+  ),
+  'mode_conflict': GuiBootstrapFailure('mode_conflict', '另一运行模式正在使用 daemon'),
+  'incompatible_build': GuiBootstrapFailure(
+    'incompatible_build',
+    '客户端与 daemon 构建不兼容',
+  ),
+  'startup_unconfirmed': GuiBootstrapFailure(
+    'startup_unconfirmed',
+    'daemon 启动状态尚未确认',
+  ),
+  'bootstrap_failed': GuiBootstrapFailure(
+    'bootstrap_failed',
+    'GUI bootstrap 失败',
+  ),
+  'output_failed': GuiBootstrapFailure('output_failed', 'GUI bootstrap 结果输出失败'),
+};
+
 class GuiBootstrapResult {
   const GuiBootstrapResult.success(this.value) : failure = null;
   const GuiBootstrapResult.failure(this.failure) : value = null;
@@ -94,6 +123,7 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
         endpoint.path != '/ipc' ||
         endpoint.hasQuery ||
         endpoint.hasFragment ||
+        endpoint.userInfo.isNotEmpty ||
         endpoint.port <= 0 ||
         endpoint.port > 65535 ||
         !_isLoopback(endpoint.host)) {
@@ -113,6 +143,46 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
     return const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
   }
 }
+
+GuiBootstrapFailure decodeGuiBootstrapFailure(String source, int exitCode) {
+  try {
+    final value = jsonDecode(source);
+    if (value is! Map<String, dynamic> ||
+        !_hasExactKeys(value, const {'schemaVersion', 'error'}) ||
+        value['schemaVersion'] != 1 ||
+        value['error'] is! Map<String, dynamic>) {
+      return GuiBootstrapFailure.failed;
+    }
+    final error = value['error'] as Map<String, dynamic>;
+    if (!_hasExactKeys(error, const {'code', 'message'}) ||
+        error['code'] is! String ||
+        error['message'] is! String) {
+      return GuiBootstrapFailure.failed;
+    }
+    final mapped = guiBootstrapFailures[error['code']];
+    if (mapped == null ||
+        mapped.message != error['message'] ||
+        _exitFor(mapped.code) != exitCode) {
+      return GuiBootstrapFailure.failed;
+    }
+    return mapped;
+  } on FormatException {
+    return GuiBootstrapFailure.failed;
+  }
+}
+
+int _exitFor(String code) =>
+    const {
+      'invalid_arguments': 2,
+      'invalid_client_identity': 10,
+      'unsupported_platform': 11,
+      'mode_conflict': 12,
+      'incompatible_build': 13,
+      'startup_unconfirmed': 14,
+      'bootstrap_failed': 15,
+      'output_failed': 16,
+    }[code] ??
+    -1;
 
 bool _hasExactKeys(Map<String, dynamic> value, Set<String> expected) =>
     value.length == expected.length && value.keys.toSet().containsAll(expected);

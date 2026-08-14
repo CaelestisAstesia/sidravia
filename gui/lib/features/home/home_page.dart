@@ -38,7 +38,7 @@ class HomePage extends StatelessWidget {
         Text('下一步', style: theme.textTheme.titleLarge),
         const SizedBox(height: 10),
         Text(
-          '完成 daemon 接入后，此处才会显示真实的连接与认证状态。当前界面不会保存或发送任何信息。',
+          '此界面只请求公开 daemon 状态，绝不接受、保存或显示凭据。',
           style: theme.textTheme.bodyLarge?.copyWith(
             height: 1.55,
             color: theme.colorScheme.onSurfaceVariant,
@@ -61,8 +61,10 @@ class _ConnectionFocus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final title = _title(controller);
+    final detail = _detail(controller);
     return Semantics(
-      label: '连接状态：daemon 尚未接入',
+      label: '连接状态：$title。$detail',
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(32),
@@ -89,10 +91,10 @@ class _ConnectionFocus extends StatelessWidget {
                 child: Text('当前状态', style: theme.textTheme.labelLarge),
               ),
               const SizedBox(height: 24),
-              Text(_title(controller), style: theme.textTheme.headlineMedium),
+              Text(title, style: theme.textTheme.headlineMedium),
               const SizedBox(height: 10),
               Text(
-                _detail(controller),
+                detail,
                 style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
               ),
               const SizedBox(height: 28),
@@ -136,7 +138,7 @@ class _ConnectionFocus extends StatelessWidget {
   String _detail(GuiController controller) {
     return switch (controller.state) {
       GuiConnectionState.ready => _daemonDetail(controller.snapshot!),
-      GuiConnectionState.stale => '保留上一次已读取的状态；请重试以重新获取 daemon 信息。',
+      GuiConnectionState.stale => '保留上一次完整读取的状态，但连接已失效；请重试以重新获取 daemon 信息。',
       GuiConnectionState.bootstrapping => '正在通过受限的本机 bootstrap 获取连接。',
       _ => '没有可用的运行状态；重试不会读取或保存任何配置文件。',
     };
@@ -146,8 +148,23 @@ class _ConnectionFocus extends StatelessWidget {
       status.status == 'running' ? 'daemon 已就绪' : 'daemon 状态：${status.status}';
 
   String _daemonDetail(GuiSnapshot snapshot) {
-    final sessionCount = snapshot.sessions.length;
-    if (sessionCount == 0) return 'daemon 已就绪，但尚无会话；这不代表已经认证。';
-    return 'daemon 已就绪，当前有 $sessionCount 个会话；认证状态以会话状态为准。';
+    final active = snapshot.sessions
+        .where((session) => session.state != 'suspended')
+        .toList();
+    if (active.length == 1) return _sessionDetail(active.single);
+    if (active.length > 1) return 'daemon 已就绪，但存在多个活动会话；此界面不会推断认证结果。';
+    if (snapshot.sessions.isNotEmpty) return 'daemon 已就绪，但所有会话均已暂停，尚未认证。';
+    return 'daemon 已就绪，但尚无会话；这不代表已经认证。';
   }
+
+  String _sessionDetail(SessionSummary session) => switch (session.state) {
+    'authenticated' => '会话 ${session.displayName} 已认证。',
+    'authenticating' => '会话 ${session.displayName} 正在认证。',
+    'waiting_for_network' => '会话 ${session.displayName} 正在等待网络。',
+    'waiting_before_retry' => '会话 ${session.displayName} 将在稍后重试认证。',
+    'blocked_by_error' => '会话 ${session.displayName} 因错误未认证。',
+    'stopping' => '会话 ${session.displayName} 正在停止。',
+    'suspended' => '会话 ${session.displayName} 已暂停，尚未认证。',
+    _ => '会话 ${session.displayName} 状态未知。',
+  };
 }
