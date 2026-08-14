@@ -80,6 +80,12 @@ func TestGUIBootstrapFailureNeverWritesSuccessJSON(t *testing.T) {
 		{"unconfirmed owner", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
 			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: "other", BuildID: "build", PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		}, &bytes.Buffer{}, guiBootstrapUnconfirmedCode, 14},
+		{"unconfirmed zero status PID", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
+			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 0, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		}, &bytes.Buffer{}, guiBootstrapUnconfirmedCode, 14},
+		{"unconfirmed mismatched daemon PID", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
+			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 8, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		}, &bytes.Buffer{}, guiBootstrapUnconfirmedCode, 14},
 		{"underlying", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
 			return clientbootstrap.DesktopBootstrapResult{}, errors.New("private-token-marker")
 		}, &bytes.Buffer{}, guiBootstrapFailedCode, 15},
