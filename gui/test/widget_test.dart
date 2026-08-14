@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
@@ -17,12 +19,33 @@ void main() {
     for (final destination in appDestinations) {
       expect(find.text(destination.label), findsWidgets);
     }
+    final homeNode = tester.getSemantics(
+      find.byKey(const ValueKey<String>('destination-home')),
+    );
+    final configurationNode = tester.getSemantics(
+      find.byKey(const ValueKey<String>('destination-configuration')),
+    );
+    final settingsNode = tester.getSemantics(
+      find.byKey(const ValueKey<String>('destination-settings')),
+    );
+    expect(homeNode.flagsCollection.isSelected, ui.Tristate.isTrue);
+    expect(configurationNode.flagsCollection.isSelected, ui.Tristate.isFalse);
+    expect(settingsNode.flagsCollection.isSelected, ui.Tristate.isFalse);
     expect(find.text('daemon 尚未接入'), findsOneWidget);
 
     await tester.tap(find.text('配置').first);
     await tester.pumpAndSettle();
 
     expect(find.text('校园登录'), findsOneWidget);
+    expect(
+      tester
+          .getSemantics(
+            find.byKey(const ValueKey<String>('destination-configuration')),
+          )
+          .flagsCollection
+          .isSelected,
+      ui.Tristate.isTrue,
+    );
   });
 
   testWidgets('narrow shell uses bottom navigation and switches sections', (
@@ -56,5 +79,21 @@ void main() {
 
     expect(find.text('校园登录'), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
+  });
+
+  testWidgets('compact header truncates rather than overflowing', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(220, 360));
+    tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(() {
+      tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+      tester.binding.setSurfaceSize(null);
+    });
+
+    await tester.pumpWidget(const SidraviaApp());
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Sidravia'), findsOneWidget);
   });
 }

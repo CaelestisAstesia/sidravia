@@ -90,33 +90,81 @@ class _Header extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: wide ? 32 : 24, vertical: 14),
-      child: Row(
-        children: [
-          Text('Sidravia', style: theme.textTheme.titleLarge),
-          if (wide) ...[
-            const Spacer(),
-            for (final (index, destination) in appDestinations.indexed)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: TextButton.icon(
-                  key: ValueKey<String>('destination-${destination.id}'),
-                  onPressed: () => onSelected(index),
-                  icon: Icon(
-                    index == selectedIndex
-                        ? destination.selectedIcon
-                        : destination.icon,
+      child: wide
+          ? Row(
+              children: [
+                Text('Sidravia', style: theme.textTheme.titleLarge),
+                const Spacer(),
+                for (final (index, destination) in appDestinations.indexed)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: _HeaderDestination(
+                      destination: destination,
+                      selected: index == selectedIndex,
+                      onPressed: () => onSelected(index),
+                    ),
                   ),
-                  label: Text(destination.label),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Sidravia',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge,
+                  ),
                 ),
-              ),
-          ] else ...[
-            const Spacer(),
-            Text(
-              appDestinations[selectedIndex].title,
-              style: theme.textTheme.labelLarge,
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    appDestinations[selectedIndex].title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.labelLarge,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ],
+    );
+  }
+}
+
+class _HeaderDestination extends StatelessWidget {
+  const _HeaderDestination({
+    required this.destination,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final AppDestination destination;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      key: ValueKey<String>('destination-${destination.id}'),
+      container: true,
+      button: true,
+      selected: selected,
+      label: destination.label,
+      child: TextButton.icon(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          backgroundColor: selected
+              ? colorScheme.primaryContainer
+              : Colors.transparent,
+          foregroundColor: selected
+              ? colorScheme.primary
+              : colorScheme.onSurfaceVariant,
+          shape: const StadiumBorder(),
+        ),
+        icon: Icon(selected ? destination.selectedIcon : destination.icon),
+        label: Text(destination.label),
       ),
     );
   }
