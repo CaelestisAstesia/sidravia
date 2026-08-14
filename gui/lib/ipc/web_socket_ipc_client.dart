@@ -55,85 +55,82 @@ class WebSocketIpcClient implements SidraviaIpcClient {
 
   @override
   Future<DaemonStatus> daemonStatus() async =>
-      decodeDaemonStatus(await _call('daemon.status', const {}));
+      _call('daemon.status', const {}, decodeDaemonStatus);
 
   @override
   Future<List<InstitutionProfile>> profileList() async =>
-      decodeProfiles(await _call('profile.list', const {}));
+      _call('profile.list', const {}, decodeProfiles);
 
   @override
   Future<List<ConfigurationSummary>> configurationList() async =>
-      decodeConfigurations(await _call('configuration.list', const {}));
+      _call('configuration.list', const {}, decodeConfigurations);
 
   @override
   Future<List<SessionSummary>> sessionList() async =>
-      decodeSessions(await _call('session.list', const {}));
+      _call('session.list', const {}, decodeSessions);
 
   @override
   Future<ConfigurationSummary> configurationCreate({
     required String institutionProfileId,
     required String username,
     required String password,
-  }) async => decodeConfiguration(
-    await _call('configuration.create', {
-      'institutionProfileId': institutionProfileId,
-      'username': username,
-      'password': password,
-      'allowInsecureStorage': false,
-      'autoLogin': false,
-      'autoReconnect': true,
-    }),
-  );
+  }) async => _call('configuration.create', {
+    'institutionProfileId': institutionProfileId,
+    'username': username,
+    'password': password,
+    'allowInsecureStorage': false,
+    'autoLogin': false,
+    'autoReconnect': true,
+  }, decodeConfiguration);
 
   @override
   Future<ConfigurationSummary> configurationUpdate({
     required String configurationId,
     required String institutionProfileId,
     required String username,
-  }) async => decodeConfiguration(
-    await _call('configuration.update', {
-      'configurationId': configurationId,
-      'institutionProfileId': institutionProfileId,
-      'username': username,
-    }),
-  );
+  }) async => _call('configuration.update', {
+    'configurationId': configurationId,
+    'institutionProfileId': institutionProfileId,
+    'username': username,
+  }, decodeConfiguration);
 
   @override
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
-  }) async => decodeConfiguration(
-    await _call('configuration.setPassword', {
-      'configurationId': configurationId,
-      'password': password,
-      'allowInsecureStorage': false,
-    }),
-  );
+  }) async => _call('configuration.setPassword', {
+    'configurationId': configurationId,
+    'password': password,
+    'allowInsecureStorage': false,
+  }, decodeConfiguration);
 
   @override
   Future<SessionSummary> sessionStartConfiguration(
     String configurationId,
-  ) async => decodeSessionOperation(
-    await _call('session.startConfiguration', {
-      'configurationId': configurationId,
-    }),
-  );
+  ) async => _call('session.startConfiguration', {
+    'configurationId': configurationId,
+  }, decodeSessionOperation);
 
   @override
   Future<SessionSummary> sessionStop(String sessionId) async =>
-      decodeSession(await _call('session.stop', {'sessionId': sessionId}));
+      _call('session.stop', {'sessionId': sessionId}, decodeSession);
 
   @override
-  Future<SessionSummary> sessionEnsureRunning(String sessionId) async =>
-      decodeSessionOperation(
-        await _call('session.ensureRunning', {'sessionId': sessionId}),
-      );
+  Future<SessionSummary> sessionEnsureRunning(String sessionId) async => _call(
+    'session.ensureRunning',
+    {'sessionId': sessionId},
+    decodeSessionOperation,
+  );
 
   @override
   Future<SessionSummary> sessionRestart(String sessionId) async =>
-      decodeSession(await _call('session.restart', {'sessionId': sessionId}));
+      _call('session.restart', {'sessionId': sessionId}, decodeSession);
 
-  Future<String> _call(String method, Map<String, Object> payload) async {
+  Future<T> _call<T>(
+    String method,
+    Map<String, Object> payload,
+    T Function(String result) decode,
+  ) async {
     if (_closed || _inFlight) throw const IpcProtocolException();
     _inFlight = true;
     try {
@@ -170,7 +167,7 @@ class WebSocketIpcClient implements SidraviaIpcClient {
         if (envelope['result'] is! Map<String, dynamic>) {
           throw const IpcProtocolException();
         }
-        return jsonEncode(envelope['result']);
+        return decode(jsonEncode(envelope['result']));
       }
       final envelope = decodeObject(message, const {
         'kind',

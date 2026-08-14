@@ -140,6 +140,40 @@ void main() {
       throwsA(isA<IpcProtocolException>()),
     );
   });
+
+  test(
+    'invalid typed result invalidates without sending a second request',
+    () async {
+      final received = <Map<String, dynamic>>[];
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          received.add(request);
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': request['id'],
+              'ok': true,
+              'result': {'unexpected': true},
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+
+      await expectLater(
+        client.daemonStatus(),
+        throwsA(isA<IpcProtocolException>()),
+      );
+      await expectLater(
+        client.daemonStatus(),
+        throwsA(isA<IpcProtocolException>()),
+      );
+
+      expect(received, hasLength(1));
+    },
+  );
 }
 
 Future<HttpServer> _server(

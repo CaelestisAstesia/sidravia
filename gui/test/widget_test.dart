@@ -1,12 +1,199 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  testWidgets('wide shell uses selected horizontal navigation', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_app());
+    await tester.pump();
+
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(NavigationBar), findsNothing);
+    for (final destination in appDestinations) {
+      expect(find.text(destination.label), findsWidgets);
+    }
+    expect(
+      tester
+          .getSemantics(find.byKey(const ValueKey<String>('destination-home')))
+          .flagsCollection
+          .isSelected,
+      ui.Tristate.isTrue,
+    );
+    expect(
+      tester
+          .getSemantics(
+            find.byKey(const ValueKey<String>('destination-configuration')),
+          )
+          .flagsCollection
+          .isSelected,
+      ui.Tristate.isFalse,
+    );
+
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('fixture-user'), findsWidgets);
+    expect(
+      tester
+          .getSemantics(
+            find.byKey(const ValueKey<String>('destination-configuration')),
+          )
+          .flagsCollection
+          .isSelected,
+      ui.Tristate.isTrue,
+    );
+  });
+
+  testWidgets('narrow shell uses bottom navigation and switches sections', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_app());
+    await tester.pump();
+
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('启动与路径'), findsOneWidget);
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
+      'Sidravia',
+    );
+  });
+
+  testWidgets('selection survives a responsive layout change', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_app());
+    await tester.pump();
+    await tester.tap(find.text('配置'));
+    await tester.pumpAndSettle();
+    await tester.binding.setSurfaceSize(const Size(1024, 720));
+    await tester.pumpAndSettle();
+
+    expect(find.text('fixture-user'), findsWidgets);
+    expect(find.byType(NavigationBar), findsNothing);
+  });
+
+  testWidgets('compact header truncates rather than overflowing', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(220, 360));
+    tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(() {
+      tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+      tester.binding.setSurfaceSize(null);
+    });
+
+    await tester.pumpWidget(_app());
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Sidravia'), findsOneWidget);
+  });
+
+  testWidgets(
+    'home copy distinguishes ready authentication, stale, and failure',
+    (tester) async {
+      final authenticated = GuiController(
+        bootstrapper: _Bootstrapper(),
+        connector: (_) async => _Client(sessions: const [_authenticated]),
+        pollDelay: const Duration(days: 1),
+      );
+      await authenticated.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(controller: authenticated, onOpenConfiguration: () {}),
+        ),
+      );
+      expect(find.text('会话 校园网络 已认证。'), findsOneWidget);
+      authenticated.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      final failing = GuiController(
+        bootstrapper: _FailureBootstrapper(),
+        pollDelay: const Duration(days: 1),
+      );
+      await failing.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(controller: failing, onOpenConfiguration: () {}),
+        ),
+      );
+      expect(find.text('无法接入 daemon'), findsOneWidget);
+      failing.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      final stale = GuiController(
+        bootstrapper: _SequencedBootstrapper(),
+        connector: (_) async => _Client(),
+        pollDelay: const Duration(days: 1),
+      );
+      await stale.start();
+      await stale.retry();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(controller: stale, onOpenConfiguration: () {}),
+        ),
+      );
+      expect(find.text('状态暂时过期'), findsOneWidget);
+      expect(find.textContaining('保留上一次完整读取的状态'), findsOneWidget);
+      stale.dispose();
+    },
+  );
+
+  testWidgets(
+    'configuration UI keeps zero, one, and multiple snapshots distinct',
+    (tester) async {
+      for (final configurations in [
+        const <ConfigurationSummary>[],
+        const [_configuration],
+        const [_configuration, _other],
+      ]) {
+        await tester.pumpWidget(_app(_Client(configurations: configurations)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('配置').first);
+        await tester.pumpAndSettle();
+
+        switch (configurations.length) {
+          case 0:
+            expect(
+              find.byKey(const ValueKey('configuration-account')),
+              findsOneWidget,
+            );
+          case 1:
+            expect(find.text('fixture-user'), findsWidgets);
+            expect(find.textContaining('吉林大学'), findsWidgets);
+          default:
+            expect(find.text('存在多个登录配置'), findsOneWidget);
+            expect(find.textContaining('不会选择或修改'), findsOneWidget);
+            expect(find.text('fixture-user'), findsNothing);
+            expect(find.text('other'), findsNothing);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
+    },
+  );
+
   testWidgets('zero configuration creates with obscured transient password', (
     tester,
   ) async {
@@ -76,12 +263,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(client.calls, contains('session.ensureRunning'));
   });
+
+  testWidgets('stopping and unknown Sessions expose no mutation', (
+    tester,
+  ) async {
+    for (final session in const [_stopping, _unknown]) {
+      final client = _Client(sessions: [session]);
+      await tester.pumpWidget(_app(client));
+      await tester.pumpAndSettle();
+
+      expect(find.text('连接状态已刷新'), findsOneWidget);
+      expect(find.text('停止认证'), findsNothing);
+      expect(client.calls, isEmpty);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+  });
 }
 
-SidraviaApp _app(_Client client) => SidraviaApp(
+SidraviaApp _app([_Client? client]) => SidraviaApp(
   controller: GuiController(
     bootstrapper: _Bootstrapper(),
-    connector: (_) async => client,
+    connector: (_) async => client ?? _Client(),
     pollDelay: const Duration(days: 1),
   ),
 );
@@ -98,6 +302,24 @@ class _Bootstrapper implements GuiBootstrapper {
       mode: 'desktop',
     ),
   );
+}
+
+class _FailureBootstrapper implements GuiBootstrapper {
+  @override
+  Future<GuiBootstrapResult> bootstrap() async =>
+      const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
+}
+
+class _SequencedBootstrapper implements GuiBootstrapper {
+  var calls = 0;
+
+  @override
+  Future<GuiBootstrapResult> bootstrap() async {
+    calls++;
+    return calls == 1
+        ? _Bootstrapper().bootstrap()
+        : const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
+  }
 }
 
 class _Client implements SidraviaIpcClient {
@@ -216,6 +438,30 @@ const _session = SessionSummary(
   displayName: '',
   accountName: 'fixture-user',
   state: 'suspended',
+  intent: 'suspend_authentication',
+  configurationId: 'cfg-a',
+);
+const _authenticated = SessionSummary(
+  id: 'session-authenticated',
+  displayName: '校园网络',
+  accountName: 'fixture-user',
+  state: 'authenticated',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-a',
+);
+const _stopping = SessionSummary(
+  id: 'session-stopping',
+  displayName: '',
+  accountName: 'fixture-user',
+  state: 'stopping',
+  intent: 'suspend_authentication',
+  configurationId: 'cfg-a',
+);
+const _unknown = SessionSummary(
+  id: 'session-unknown',
+  displayName: '',
+  accountName: 'fixture-user',
+  state: 'unknown',
   intent: 'suspend_authentication',
   configurationId: 'cfg-a',
 );

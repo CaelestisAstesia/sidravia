@@ -159,17 +159,20 @@ class _ConnectionFocus extends StatelessWidget {
       );
     }
     final session = related.single;
-    if (session.state == 'suspended') {
-      return _HomeAction(
+    return switch (session.state) {
+      'suspended' => _HomeAction(
         '恢复认证',
         () => controller.ensureSessionRunning(session.id),
-      );
-    }
-    if (session.state == 'blocked_by_error' ||
-        session.state == 'waiting_before_retry') {
-      return _HomeAction('重新认证', () => controller.restartSession(session.id));
-    }
-    return _HomeAction('停止认证', () => controller.stopSession(session.id));
+      ),
+      'blocked_by_error' || 'waiting_before_retry' => _HomeAction(
+        '重新认证',
+        () => controller.restartSession(session.id),
+      ),
+      'authenticated' || 'authenticating' || 'waiting_for_network' =>
+        _HomeAction('停止认证', () => controller.stopSession(session.id)),
+      'stopping' => null,
+      _ => null,
+    };
   }
 
   String _title(GuiController controller) => switch (controller.state) {
