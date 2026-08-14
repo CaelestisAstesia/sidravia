@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -346,5 +347,55 @@ func TestConnectPassesClientIdentityToTransport(t *testing.T) {
 	}})
 	if err != nil || got == nil {
 		t.Fatalf("Connect err=%v client=%v", err, got)
+	}
+}
+
+func TestConnectExistingHeadlessStoppedNeverLaunches(t *testing.T) {
+	launches := 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return contract.RuntimeInfo{}, os.ErrNotExist }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		t.Fatal("connect called")
+		return nil, nil
+	})
+	deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) { launches++; return daemonLaunch{}, nil }
+	if _, err := connectExistingHeadless(context.Background(), testIdentity(t), deps); !errors.Is(err, ErrDaemonStopped) || launches != 0 {
+		t.Fatalf("err=%v launches=%d", err, launches)
+	}
+}
+
+func TestConnectExistingHeadlessUsesExactProbedGeneration(t *testing.T) {
+	reads, connects := 0, 0
+	operation := &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, nil }}
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		reads++
+		return runtime(1), nil
+	}, func(_ context.Context, info contract.RuntimeInfo, _ Identity) (Client, error) {
+		connects++
+		if info.PID != 1 {
+			t.Fatalf("connected PID=%d", info.PID)
+		}
+		if connects == 1 {
+			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
+		}
+		return operation, nil
+	})
+	got, err := connectExistingHeadless(context.Background(), testIdentity(t), deps)
+	if err != nil || got != operation || reads != 1 || connects != 2 {
+		t.Fatalf("got=%v err=%v reads=%d connects=%d", got, err, reads, connects)
+	}
+}
+
+func TestConnectExistingHeadlessRejectsDesktopAndUnsafeStates(t *testing.T) {
+	owner := 42
+	desktop := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponseFor(t, "desktop", &owner), nil
+		}}, nil
+	})
+	if _, err := connectExistingHeadless(context.Background(), testIdentity(t), desktop); !errors.Is(err, ErrModeConflict) {
+		t.Fatalf("desktop err=%v", err)
+	}
+	malformed := testDependencies(func(string) (contract.RuntimeInfo, error) { return contract.RuntimeInfo{}, errors.New("private path") }, nil)
+	if _, err := connectExistingHeadless(context.Background(), testIdentity(t), malformed); !errors.Is(err, ErrConnectionUnavailable) || strings.Contains(err.Error(), "private") {
+		t.Fatalf("malformed err=%v", err)
 	}
 }

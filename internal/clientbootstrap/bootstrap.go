@@ -38,6 +38,8 @@ type Identity struct {
 
 var (
 	ErrInvalidIdentity        = errors.New("invalid client identity")
+	ErrDaemonStopped          = errors.New("daemon is not running")
+	ErrConnectionUnavailable  = errors.New("unable to connect to daemon")
 	ErrIncompatibleGeneration = errors.New("incompatible daemon generation")
 	ErrModeConflict           = errors.New("守护进程正在由另一种模式使用；请先退出当前模式")
 	ErrDesktopUnsupported     = errors.New("图形界面 bootstrap 仅支持 Windows")
@@ -164,6 +166,44 @@ func probe(identity Identity, deps dependencies) (ProbeResult, error) {
 // Connect opens a direct connection to exactly the supplied runtime generation.
 func Connect(ctx context.Context, identity Identity, info contract.RuntimeInfo) (Client, error) {
 	return connectWithDependencies(ctx, identity, info, defaultDependencies())
+}
+
+// ConnectExistingHeadless opens a client only when the currently described
+// runtime generation is reachable, identity-matching and headless. It never
+// launches a process or changes runtime state.
+func ConnectExistingHeadless(ctx context.Context, identity Identity) (Client, error) {
+	return connectExistingHeadless(ctx, identity, defaultDependencies())
+}
+
+func connectExistingHeadless(ctx context.Context, identity Identity, deps dependencies) (Client, error) {
+	result, err := probe(identity, deps)
+	if err != nil {
+		return nil, err
+	}
+	switch result.State {
+	case ProbeStopped:
+		return nil, ErrDaemonStopped
+	case ProbeIncompatible:
+		return nil, ErrIncompatibleGeneration
+	case ProbeReachable:
+		if result.Status == nil || result.Status.Mode != string(launchcontract.ModeHeadless) || result.Status.DesktopOwnerPID != nil {
+			return nil, ErrModeConflict
+		}
+	case ProbeUnreachable:
+		if result.Status != nil && (result.Status.ProductVersion != identity.ProductVersion || result.Status.BuildID != identity.BuildID) {
+			return nil, ErrIncompatibleGeneration
+		}
+		return nil, ErrConnectionUnavailable
+	default:
+		return nil, ErrConnectionUnavailable
+	}
+	connectCtx, cancel := context.WithTimeout(ctx, deps.callTimeout)
+	defer cancel()
+	connection, err := deps.connect(connectCtx, result.Info, identity)
+	if err != nil {
+		return nil, ErrConnectionUnavailable
+	}
+	return connection, nil
 }
 
 func connectWithDependencies(ctx context.Context, identity Identity, info contract.RuntimeInfo, deps dependencies) (Client, error) {

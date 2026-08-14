@@ -44,6 +44,15 @@ func defaultDaemonConnectionDependencies(identity clientbootstrap.Identity) daem
 	}
 }
 
+func defaultReadOnlyDaemonConnectionDependencies(identity clientbootstrap.Identity) daemonConnectionDependencies {
+	return daemonConnectionDependencies{
+		acquire: func(ctx context.Context) (daemonClient, error) {
+			return clientbootstrap.ConnectExistingHeadless(ctx, identity)
+		},
+		callTimeout: 2 * time.Second,
+	}
+}
+
 func defaultAuthDependencies(identity clientbootstrap.Identity) authDependencies {
 	return authDependencies{
 		connection:              defaultDaemonConnectionDependencies(identity),
@@ -68,7 +77,7 @@ func authStart(identity clientbootstrap.Identity, options authStartOptions) erro
 }
 
 func authStatus(identity clientbootstrap.Identity, sessionID string) error {
-	return runAuthStatus(sessionID, defaultAuthDependencies(identity))
+	return runAuthStatus(sessionID, defaultReadOnlyAuthDependencies(identity))
 }
 
 func authStop(identity clientbootstrap.Identity, sessionID string) error {

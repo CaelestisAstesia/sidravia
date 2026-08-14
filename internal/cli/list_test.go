@@ -271,3 +271,15 @@ func TestListCommandsDoNotCallDaemonStop(t *testing.T) {
 		t.Fatalf("runAuthList: %v", err)
 	}
 }
+
+func TestReadOnlyListAcquisitionFailureWritesNothing(t *testing.T) {
+	var output bytes.Buffer
+	deps := hotListDependencies(t, &fakeDaemonClient{}, &output)
+	deps.connection.acquire = func(context.Context) (daemonClient, error) { return nil, errors.New("stopped") }
+	if err := runAuthList(deps); err == nil {
+		t.Fatal("stopped list returned nil")
+	}
+	if output.Len() != 0 {
+		t.Fatalf("output=%q", output.String())
+	}
+}

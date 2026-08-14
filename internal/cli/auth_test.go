@@ -760,3 +760,19 @@ func TestAuthCommandsDoNotCallDaemonStop(t *testing.T) {
 		t.Fatalf("runAuthStatus: %v", err)
 	}
 }
+
+func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing.T) {
+	var output bytes.Buffer
+	deps := hotAuthDependencies(t, &fakeDaemonClient{})
+	deps.stdout = &output
+	deps.connection.acquire = func(context.Context) (daemonClient, error) {
+		return nil, errors.New("private-runtime-marker")
+	}
+	err := runAuthStatus("session-1", deps)
+	if err == nil || err.Error() != "无法连接 sidraviad（请确认 daemon 已启动；若刚增删过 sidravia.portable 标记，请先停止并重启 daemon）" {
+		t.Fatalf("error=%q", errorString(err))
+	}
+	if output.Len() != 0 || strings.Contains(err.Error(), "private-runtime-marker") {
+		t.Fatalf("output=%q error=%q", output.String(), err.Error())
+	}
+}

@@ -21,7 +21,7 @@ type listDependencies struct {
 
 func defaultListDependencies(identity clientbootstrap.Identity) listDependencies {
 	return listDependencies{
-		connection: defaultDaemonConnectionDependencies(identity),
+		connection: defaultReadOnlyDaemonConnectionDependencies(identity),
 		stdout:     os.Stdout,
 	}
 }

@@ -122,10 +122,16 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 }
 
 func configList(identity clientbootstrap.Identity) error {
-	return runConfigList(defaultAuthDependencies(identity))
+	return runConfigList(defaultReadOnlyAuthDependencies(identity))
 }
 func configShow(identity clientbootstrap.Identity, id string) error {
-	return runConfigShow(id, defaultAuthDependencies(identity))
+	return runConfigShow(id, defaultReadOnlyAuthDependencies(identity))
+}
+
+func defaultReadOnlyAuthDependencies(identity clientbootstrap.Identity) authDependencies {
+	deps := defaultAuthDependencies(identity)
+	deps.connection = defaultReadOnlyDaemonConnectionDependencies(identity)
+	return deps
 }
 func configCreate(identity clientbootstrap.Identity, options configCreateOptions) error {
 	return runConfigCreate(options, defaultAuthDependencies(identity))

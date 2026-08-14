@@ -2,7 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -275,5 +277,21 @@ func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 	}
 	if request.AutoLogin == nil || !*request.AutoLogin || request.AutoReconnect == nil || *request.AutoReconnect {
 		t.Fatalf("update: autoLogin=%v, autoReconnect=%v", request.AutoLogin, request.AutoReconnect)
+	}
+}
+
+func TestReadOnlyConfigAcquisitionFailureWritesNothing(t *testing.T) {
+	var output bytes.Buffer
+	deps := hotAuthDependencies(t, &fakeDaemonClient{})
+	deps.stdout = &output
+	deps.connection.acquire = func(context.Context) (daemonClient, error) { return nil, errors.New("stopped") }
+	if err := runConfigList(deps); err == nil {
+		t.Fatal("stopped config list returned nil")
+	}
+	if err := runConfigShow("campus", deps); err == nil {
+		t.Fatal("stopped config show returned nil")
+	}
+	if output.Len() != 0 {
+		t.Fatalf("output=%q", output.String())
 	}
 }
