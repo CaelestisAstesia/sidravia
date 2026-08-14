@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppSection { home, sessions, configurations, tray, settings }
+enum AppSection { home, configuration, settings }
 
 @immutable
 class AppDestination {
@@ -33,28 +33,12 @@ const appDestinations = <AppDestination>[
     selectedIcon: Icons.home,
   ),
   AppDestination(
-    section: AppSection.sessions,
-    id: 'sessions',
-    label: '会话',
-    title: '会话管理',
-    icon: Icons.sync_alt_outlined,
-    selectedIcon: Icons.sync_alt,
-  ),
-  AppDestination(
-    section: AppSection.configurations,
-    id: 'configurations',
+    section: AppSection.configuration,
+    id: 'configuration',
     label: '配置',
     title: '配置',
     icon: Icons.tune_outlined,
     selectedIcon: Icons.tune,
-  ),
-  AppDestination(
-    section: AppSection.tray,
-    id: 'tray',
-    label: '托盘',
-    title: '托盘',
-    icon: Icons.dock_outlined,
-    selectedIcon: Icons.dock,
   ),
   AppDestination(
     section: AppSection.settings,

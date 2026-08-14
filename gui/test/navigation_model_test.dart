@@ -5,9 +5,7 @@ void main() {
   test('destinations have a stable unique order', () {
     expect(appDestinations.map((destination) => destination.id), [
       'home',
-      'sessions',
-      'configurations',
-      'tray',
+      'configuration',
       'settings',
     ]);
     expect(

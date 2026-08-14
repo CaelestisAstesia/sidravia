@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 
 class SidraviaApp extends StatelessWidget {
@@ -9,7 +10,7 @@ class SidraviaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Sidravia',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true),
+      theme: SidraviaTheme.light(),
       home: const SidraviaShell(),
     );
   }
