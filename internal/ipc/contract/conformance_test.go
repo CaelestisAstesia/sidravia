@@ -98,7 +98,7 @@ func TestV1ConformanceFixture(t *testing.T) {
 				t.Fatalf("request method = %q, want %q", request.Method, item.Method)
 			}
 			decodeMethodPayload(t, request.Method, request.Payload)
-			assertSuccessResponse(t, item, request.ID)
+			assertSuccessResponse(t, item, request)
 			assertErrorResponse(t, item, request.ID)
 		})
 	}
@@ -196,13 +196,13 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 	}
 }
 
-func assertSuccessResponse(t *testing.T, item fixtureCase, requestID string) {
+func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Request) {
 	t.Helper()
 	response, err := contract.DecodeResponse([]byte(item.SuccessResponse))
 	if err != nil {
 		t.Fatalf("success envelope does not decode: %v", err)
 	}
-	if !response.OK || response.ID != requestID || response.Error != nil || response.Result == nil {
+	if !response.OK || response.ID != request.ID || response.Error != nil || response.Result == nil {
 		t.Fatal("success response does not match its request")
 	}
 	requireObjectKeys(t, []byte(item.SuccessResponse), "kind", "id", "ok", "result")
@@ -226,6 +226,15 @@ func assertSuccessResponse(t *testing.T, item fixtureCase, requestID string) {
 		assertSessionResult(t, result.Session, item.Method != contract.MethodSessionStartOneShot, item.Method == contract.MethodSessionStartConfiguration)
 		if result.Outcome == "" {
 			t.Fatal("session start result has no outcome")
+		}
+		if item.Method == contract.MethodSessionStartConfiguration {
+			payload, err := contract.DecodeConfigurationIDPayload(request.Payload)
+			if err != nil {
+				t.Fatalf("configuration start payload does not decode: %v", err)
+			}
+			if result.Session.ConfigurationID != payload.ConfigurationID {
+				t.Fatal("configuration start response does not retain the requested configurationId")
+			}
 		}
 	case contract.MethodSessionStop, contract.MethodSessionRestart, contract.MethodSessionGet:
 		var result contract.SessionResult

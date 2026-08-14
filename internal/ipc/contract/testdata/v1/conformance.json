@@ -124,7 +124,7 @@
     {
       "name": "session-start-configuration",
       "method": "session.startConfiguration",
-      "request": "{\"kind\":\"request\",\"id\":\"v1-17\",\"method\":\"session.startConfiguration\",\"payload\":{\"configurationId\":\"fixture-configuration\"}}",
+      "request": "{\"kind\":\"request\",\"id\":\"v1-17\",\"method\":\"session.startConfiguration\",\"payload\":{\"configurationId\":\"cfg-0123456789abcdef0123456789abcdef\"}}",
       "successResponse": "{\"kind\":\"response\",\"id\":\"v1-17\",\"ok\":true,\"result\":{\"outcome\":\"created\",\"session\":{\"sessionId\":\"session-retained\",\"configurationId\":\"cfg-0123456789abcdef0123456789abcdef\",\"displayName\":\"Library WiFi\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"accountName\":\"fixture-account\",\"intent\":\"maintain_authentication\",\"state\":\"waiting_before_retry\",\"stateReason\":{\"code\":\"protocol_run_failed\",\"description\":\"Authentication protocol run failed; retry is scheduled.\"},\"selectedNetworkBinding\":{\"interfaceId\":\"fixture-ethernet\",\"displayName\":\"Fixture Ethernet\",\"localIpv4Address\":\"10.0.0.2\"},\"authenticationEstablishedAt\":\"2026-08-14T10:00:00Z\",\"nextRetryAt\":\"2026-08-14T10:05:00Z\",\"lastAuthenticationFailure\":{\"code\":\"credentials_rejected\",\"description\":\"Credentials were rejected.\",\"handlingRecommendation\":\"retry_after_standard_delay\"},\"revision\":7,\"updatedAt\":\"2026-08-14T10:00:01Z\"}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-17\",\"ok\":false,\"error\":{\"code\":\"configuration_not_found\",\"message\":\"configuration not found\"}}"
     }
