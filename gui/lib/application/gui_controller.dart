@@ -18,6 +18,7 @@ class GuiController extends ChangeNotifier {
     this.connector = WebSocketIpcClient.connect,
     this.pollDelay = const Duration(seconds: 3),
   });
+
   final GuiBootstrapper bootstrapper;
   final IpcConnector connector;
   final Duration pollDelay;
@@ -29,12 +30,62 @@ class GuiController extends ChangeNotifier {
   GuiConnectionState _state = GuiConnectionState.bootstrapping;
   GuiBootstrapFailure? _failure;
   GuiSnapshot? _snapshot;
+  String? _notice;
+
   GuiConnectionState get state => _state;
   GuiBootstrapFailure? get failure => _failure;
   GuiSnapshot? get snapshot => _snapshot;
+  String? get notice => _notice;
+  bool get busy => _transition != null;
 
   Future<void> start() => _transition ??= _start();
   Future<void> retry() => start();
+
+  Future<bool> createConfiguration({
+    required String institutionProfileId,
+    required String username,
+    required String password,
+  }) => _mutate(
+    (client) => client.configurationCreate(
+      institutionProfileId: institutionProfileId,
+      username: username,
+      password: password,
+    ),
+  );
+
+  Future<bool> updateConfiguration({
+    required String configurationId,
+    required String institutionProfileId,
+    required String username,
+  }) => _mutate(
+    (client) => client.configurationUpdate(
+      configurationId: configurationId,
+      institutionProfileId: institutionProfileId,
+      username: username,
+    ),
+  );
+
+  Future<bool> setPassword({
+    required String configurationId,
+    required String password,
+  }) => _mutate(
+    (client) => client.configurationSetPassword(
+      configurationId: configurationId,
+      password: password,
+    ),
+  );
+
+  Future<bool> startConfiguration(String configurationId) =>
+      _mutate((client) => client.sessionStartConfiguration(configurationId));
+
+  Future<bool> stopSession(String sessionId) =>
+      _mutate((client) => client.sessionStop(sessionId));
+
+  Future<bool> ensureSessionRunning(String sessionId) =>
+      _mutate((client) => client.sessionEnsureRunning(sessionId));
+
+  Future<bool> restartSession(String sessionId) =>
+      _mutate((client) => client.sessionRestart(sessionId));
 
   Future<void> _start() async {
     final generation = ++_generation;
@@ -46,6 +97,7 @@ class GuiController extends ChangeNotifier {
       if (!_current(generation)) return;
       _state = GuiConnectionState.bootstrapping;
       _failure = null;
+      _notice = null;
       _notify();
       final boot = await bootstrapper.bootstrap();
       if (!_current(generation)) return;
@@ -64,6 +116,54 @@ class GuiController extends ChangeNotifier {
       if (_current(generation)) _setFailure(GuiBootstrapFailure.failed);
     } finally {
       if (_generation == generation) _transition = null;
+      _notify();
+    }
+  }
+
+  Future<bool> _mutate(Future<Object?> Function(SidraviaIpcClient) action) {
+    if (_transition != null ||
+        _state != GuiConnectionState.ready ||
+        _client == null) {
+      return Future.value(false);
+    }
+    final completer = Completer<bool>();
+    _transition = _runMutation(action, completer);
+    _notify();
+    return completer.future;
+  }
+
+  Future<void> _runMutation(
+    Future<Object?> Function(SidraviaIpcClient) action,
+    Completer<bool> completer,
+  ) async {
+    final generation = _generation;
+    final client = _client!;
+    _timer?.cancel();
+    _timer = null;
+    _notice = null;
+    try {
+      await action(client);
+      if (!_current(generation) || !identical(_client, client)) {
+        completer.complete(false);
+        return;
+      }
+      await _refresh(generation, client);
+      completer.complete(_state == GuiConnectionState.ready);
+    } on IpcRequestFailure catch (error) {
+      if (_current(generation) && identical(_client, client)) {
+        _notice = _guidance(error.code);
+        _scheduleRefresh(generation, client);
+        _notify();
+      }
+      completer.complete(false);
+    } on Object {
+      if (_current(generation) && identical(_client, client)) {
+        await _invalidate(generation, client);
+      }
+      completer.complete(false);
+    } finally {
+      if (_generation == generation) _transition = null;
+      _notify();
     }
   }
 
@@ -82,25 +182,60 @@ class GuiController extends ChangeNotifier {
       );
       _state = GuiConnectionState.ready;
       _failure = null;
+      _notice = null;
+      _scheduleRefresh(generation, client);
       _notify();
-      _timer?.cancel();
-      _timer = Timer(pollDelay, () {
-        _timer = null;
-        unawaited(_refresh(generation, client));
-      });
     } on Object {
       if (!_current(generation) || !identical(_client, client)) return;
-      _timer?.cancel();
+      await _invalidate(generation, client);
+    }
+  }
+
+  void _scheduleRefresh(int generation, SidraviaIpcClient client) {
+    _timer?.cancel();
+    _timer = Timer(pollDelay, () {
       _timer = null;
-      _client = null;
-      await _closeQuietly(client);
-      _state = _snapshot == null
-          ? GuiConnectionState.failed
-          : GuiConnectionState.stale;
-      _failure = GuiBootstrapFailure.failed;
+      if (_transition != null ||
+          !_current(generation) ||
+          !identical(_client, client)) {
+        return;
+      }
+      _transition = _poll(generation, client);
+      _notify();
+    });
+  }
+
+  Future<void> _poll(int generation, SidraviaIpcClient client) async {
+    try {
+      await _refresh(generation, client);
+    } finally {
+      if (_generation == generation) _transition = null;
       _notify();
     }
   }
+
+  Future<void> _invalidate(int generation, SidraviaIpcClient client) async {
+    _timer?.cancel();
+    _timer = null;
+    _client = null;
+    await _closeQuietly(client);
+    if (!_current(generation)) return;
+    _state = _snapshot == null
+        ? GuiConnectionState.failed
+        : GuiConnectionState.stale;
+    _failure = GuiBootstrapFailure.failed;
+    _notice = null;
+    _notify();
+  }
+
+  String _guidance(String code) => switch (code) {
+    'profile_not_found' => '未找到所选学校配置，请刷新后重试。',
+    'configuration_conflict' => '配置已存在，请刷新后查看。',
+    'insecure_storage_confirmation_required' => '当前存储未受保护，未保存密码。',
+    'session_state_conflict' => '当前会话状态暂不支持此操作。',
+    'session_active_conflict' => '已有活动会话，请刷新后查看。',
+    _ => '操作未完成，请刷新状态后重试。',
+  };
 
   bool _current(int generation) => !_disposed && generation == _generation;
 

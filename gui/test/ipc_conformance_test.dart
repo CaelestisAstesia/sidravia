@@ -151,6 +151,61 @@ void main() {
       expect(() => _sessionAt(timestamp), throwsA(isA<IpcProtocolException>()));
     }
   });
+
+  test('decodes all seven operational fixture requests and success shapes', () {
+    final cases = (_fixture()['cases'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .where(
+          (value) => const {
+            'configuration.create',
+            'configuration.update',
+            'configuration.setPassword',
+            'session.startConfiguration',
+            'session.stop',
+            'session.ensureRunning',
+            'session.restart',
+          }.contains(value['method']),
+        )
+        .toList(growable: false);
+    expect(cases, hasLength(7));
+    for (final value in cases) {
+      final request =
+          jsonDecode(value['request'] as String) as Map<String, dynamic>;
+      expect(request['kind'], 'request');
+      expect(request['method'], value['method']);
+      final result = (jsonDecode(
+        value['successResponse'] as String,
+      ) as Map<String, dynamic>)['result'];
+      switch (value['method']) {
+        case 'configuration.create':
+        case 'configuration.update':
+        case 'configuration.setPassword':
+          expect(
+            decodeConfiguration(jsonEncode(result)).credentialStored,
+            isTrue,
+          );
+        case 'session.startConfiguration':
+        case 'session.ensureRunning':
+          expect(decodeSessionOperation(jsonEncode(result)).id, isNotEmpty);
+        case 'session.stop':
+        case 'session.restart':
+          expect(decodeSession(jsonEncode(result)).id, isNotEmpty);
+      }
+    }
+  });
+
+  test(
+    'empty configuration and session display names use caller fallbacks',
+    () {
+      final configuration = decodeConfiguration(
+        '{"configurationId":"cfg-a","displayName":"","institutionProfileId":"jlu","institutionDisplayName":"JLU","authenticationProtocolId":"d","username":"account","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true}',
+      );
+      final session = _sessionAt('2026-08-14T10:00:00Z');
+      expect(configuration.displayName, isEmpty);
+      expect(configuration.username, 'account');
+      expect(session.accountName, 'a');
+    },
+  );
 }
 
 Map<String, dynamic> _fixture() => jsonDecode(

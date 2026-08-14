@@ -39,7 +39,9 @@ class ConfigurationSummary {
   const ConfigurationSummary({
     required this.id,
     required this.displayName,
+    required this.institutionProfileId,
     required this.institutionDisplayName,
+    required this.authenticationProtocolId,
     required this.username,
     required this.credentialStored,
     required this.storageProtection,
@@ -48,7 +50,9 @@ class ConfigurationSummary {
   });
   final String id,
       displayName,
+      institutionProfileId,
       institutionDisplayName,
+      authenticationProtocolId,
       username,
       storageProtection;
   final bool credentialStored, autoLogin, autoReconnect;
@@ -81,6 +85,7 @@ class SessionSummary {
   const SessionSummary({
     required this.id,
     required this.displayName,
+    required this.accountName,
     required this.state,
     required this.intent,
     this.configurationId,
@@ -92,7 +97,7 @@ class SessionSummary {
     this.revision = 0,
     this.updatedAt,
   });
-  final String id, displayName, state, intent;
+  final String id, displayName, accountName, state, intent;
   final String? configurationId;
   final SessionStateReason? stateReason;
   final SessionNetworkBinding? selectedNetworkBinding;
@@ -116,6 +121,11 @@ class GuiSnapshot {
 
 class IpcProtocolException implements Exception {
   const IpcProtocolException();
+}
+
+class IpcRequestFailure implements Exception {
+  const IpcRequestFailure(this.code);
+  final String code;
 }
 
 Map<String, dynamic> decodeObject(String source, Set<String> keys) =>
@@ -172,39 +182,59 @@ List<ConfigurationSummary> decodeConfigurations(String source) {
   });
   _protection(root['storageProtection']);
   return _list(root['configurations'])
-      .map((raw) {
-        final v = _object(raw, const {
-          'configurationId',
-          'displayName',
-          'institutionProfileId',
-          'institutionDisplayName',
-          'authenticationProtocolId',
-          'username',
-          'credentialStored',
-          'storageProtection',
-          'autoLogin',
-          'autoReconnect',
-        });
-        _text(v['institutionProfileId']);
-        _text(v['authenticationProtocolId']);
-        return ConfigurationSummary(
-          id: _text(v['configurationId']),
-          displayName: _text(v['displayName']),
-          institutionDisplayName: _text(v['institutionDisplayName']),
-          username: _text(v['username']),
-          credentialStored: _bool(v['credentialStored']),
-          storageProtection: _protection(v['storageProtection']),
-          autoLogin: _bool(v['autoLogin']),
-          autoReconnect: _bool(v['autoReconnect']),
-        );
-      })
+      .map(_configuration)
       .toList(growable: false);
+}
+
+ConfigurationSummary decodeConfiguration(String source) =>
+    _configuration(jsonDecode(source));
+
+ConfigurationSummary _configuration(Object? raw) {
+  final v = _object(raw, const {
+    'configurationId',
+    'displayName',
+    'institutionProfileId',
+    'institutionDisplayName',
+    'authenticationProtocolId',
+    'username',
+    'credentialStored',
+    'storageProtection',
+    'autoLogin',
+    'autoReconnect',
+  });
+  return ConfigurationSummary(
+    id: _text(v['configurationId']),
+    displayName: _optionalText(v['displayName']),
+    institutionProfileId: _text(v['institutionProfileId']),
+    institutionDisplayName: _text(v['institutionDisplayName']),
+    authenticationProtocolId: _text(v['authenticationProtocolId']),
+    username: _text(v['username']),
+    credentialStored: _bool(v['credentialStored']),
+    storageProtection: _protection(v['storageProtection']),
+    autoLogin: _bool(v['autoLogin']),
+    autoReconnect: _bool(v['autoReconnect']),
+  );
 }
 
 List<SessionSummary> decodeSessions(String source) =>
     _list(decodeObject(source, const {'sessions'})['sessions'])
         .map(_session)
         .toList(growable: false);
+
+SessionSummary decodeSession(String source) => _session(jsonDecode(source));
+
+SessionSummary decodeSessionOperation(String source) {
+  final value = _object(jsonDecode(source), const {'outcome', 'session'});
+  if (!const {
+    'created',
+    'already_running',
+    'resumed',
+  }.contains(_text(value['outcome']))) {
+    throw const IpcProtocolException();
+  }
+  return _session(value['session']);
+}
+
 SessionSummary _session(Object? raw) {
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
   const required = {
@@ -239,7 +269,6 @@ SessionSummary _session(Object? raw) {
   }
   for (final key in const [
     'sessionId',
-    'displayName',
     'institutionProfileId',
     'institutionDisplayName',
     'authenticationProtocolId',
@@ -251,7 +280,8 @@ SessionSummary _session(Object? raw) {
   if (revision is! int || revision < 0) throw const IpcProtocolException();
   return SessionSummary(
     id: _text(raw['sessionId']),
-    displayName: _text(raw['displayName']),
+    displayName: _optionalText(raw['displayName']),
+    accountName: _text(raw['accountName']),
     state: state,
     intent: intent,
     configurationId: raw.containsKey('configurationId')
@@ -327,6 +357,11 @@ List<dynamic> _list(Object? value) {
 
 String _text(Object? value) {
   if (value is! String || value.isEmpty) throw const IpcProtocolException();
+  return value;
+}
+
+String _optionalText(Object? value) {
+  if (value is! String) throw const IpcProtocolException();
   return value;
 }
 

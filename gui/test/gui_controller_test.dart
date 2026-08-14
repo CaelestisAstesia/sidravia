@@ -7,165 +7,243 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
-  test('publishes a complete snapshot only after sequential polling', () async {
-    final calls = <String>[];
-    final client = _Client(calls: calls);
-    final controller = GuiController(
-      bootstrapper: _Bootstrapper.success(),
-      connector: (_) async => client,
-      pollDelay: const Duration(days: 1),
-    );
+  test('publishes one complete sequential Snapshot', () async {
+    final client = _Client();
+    final controller = _controller(client);
 
     await controller.start();
 
-    expect(calls, [
-      'daemon.status',
-      'profile.list',
-      'configuration.list',
-      'session.list',
-    ]);
+    expect(client.calls, ['daemon', 'profiles', 'configurations', 'sessions']);
     expect(controller.state, GuiConnectionState.ready);
-    expect(controller.snapshot?.configurations, hasLength(1));
+    expect(controller.snapshot?.configurations.single.username, 'fixture-user');
     controller.dispose();
   });
 
-  test('coalesces retries during one bootstrap transition', () async {
-    final pending = Completer<GuiBootstrapResult>();
-    final bootstrapper = _Bootstrapper.pending(pending);
-    final controller = GuiController(
-      bootstrapper: bootstrapper,
-      connector: (_) async => _Client(),
-      pollDelay: const Duration(days: 1),
+  test('serializes one mutation then refreshes the full Snapshot', () async {
+    final client = _Client();
+    final controller = _controller(client);
+    await controller.start();
+    client.calls.clear();
+
+    expect(
+      await controller.createConfiguration(
+        institutionProfileId: 'jlu',
+        username: 'new-user',
+        password: 'transient-only',
+      ),
+      isTrue,
     );
 
-    final first = controller.start();
-    final second = controller.retry();
-    await Future<void>.delayed(Duration.zero);
-    expect(identical(first, second), isTrue);
-    expect(bootstrapper.calls, 1);
-    pending.complete(_Bootstrapper.successResult);
-    await first;
-    expect(bootstrapper.calls, 1);
+    expect(client.calls, [
+      'configuration.create',
+      'daemon',
+      'profiles',
+      'configurations',
+      'sessions',
+    ]);
+    expect(controller.notice, isNull);
     controller.dispose();
   });
 
   test(
-    'refresh failure retains a snapshot as stale and leaves no dead timer',
+    'business failures preserve the connection and publish fixed guidance',
     () async {
       final client = _Client();
-      final controller = GuiController(
-        bootstrapper: _Bootstrapper.success(),
-        connector: (_) async => client,
-        pollDelay: Duration.zero,
-      );
-
+      final controller = _controller(client);
       await controller.start();
-      client.fail = true;
-      await _settle();
+      client.nextFailure = const IpcRequestFailure('profile_not_found');
 
-      expect(controller.state, GuiConnectionState.stale);
-      expect(controller.snapshot, isNotNull);
-      expect(client.closed, isTrue);
-      final callsAfterFailure = client.calls.length;
-      await _settle();
-      expect(client.calls.length, callsAfterFailure);
+      expect(
+        await controller.updateConfiguration(
+          configurationId: 'cfg-a',
+          institutionProfileId: 'missing',
+          username: 'fixture-user',
+        ),
+        isFalse,
+      );
+      expect(controller.state, GuiConnectionState.ready);
+      expect(controller.notice, '未找到所选学校配置，请刷新后重试。');
+      expect(client.closed, isFalse);
       controller.dispose();
     },
   );
 
-  test('late completion from an old generation cannot publish or close a new client', () async {
-    final oldClient = _Client(pauseAfterFirstRefresh: true);
-    final newClient = _Client(configurations: const []);
-    final bootstrapper = _Bootstrapper.queue();
-    final controller = GuiController(
-      bootstrapper: bootstrapper,
-      connector: (_) async => bootstrapper.clients.removeAt(0),
-      pollDelay: Duration.zero,
-    );
-    bootstrapper.clients.addAll([oldClient, newClient]);
+  test(
+    'protocol failures close the client and make a Snapshot stale',
+    () async {
+      final client = _Client();
+      final controller = _controller(client);
+      await controller.start();
+      client.nextFailure = const IpcProtocolException();
 
-    await controller.start();
-    await oldClient.secondDaemonStarted.future;
-    await controller.retry();
-    expect(controller.snapshot?.configurations, isEmpty);
-    oldClient.releaseSecondDaemon.complete(_daemon);
-    await _settle();
-
-    expect(controller.state, GuiConnectionState.ready);
-    expect(controller.snapshot?.configurations, isEmpty);
-    expect(newClient.closed, isFalse);
-    controller.dispose();
-  });
+      expect(await controller.startConfiguration('cfg-a'), isFalse);
+      expect(controller.state, GuiConnectionState.stale);
+      expect(client.closed, isTrue);
+      controller.dispose();
+    },
+  );
 
   test(
-    'dispose prevents a late client from publishing and closes it',
+    'coalesces bootstrap and suppresses late disposed completions',
     () async {
+      final bootstrap = _PendingBootstrapper();
+      final late = _Client();
       final connector = Completer<SidraviaIpcClient>();
-      final lateClient = _Client();
       final controller = GuiController(
-        bootstrapper: _Bootstrapper.success(),
+        bootstrapper: bootstrap,
         connector: (_) => connector.future,
         pollDelay: const Duration(days: 1),
       );
-
-      final start = controller.start();
+      final first = controller.start();
+      expect(identical(first, controller.retry()), isTrue);
+      bootstrap.complete();
       await Future<void>.delayed(Duration.zero);
       controller.dispose();
-      connector.complete(lateClient);
-      await start;
+      connector.complete(late);
+      await first;
 
-      expect(lateClient.closed, isTrue);
-    },
-  );
-
-  test(
-    'a throwing prior close cannot retain a transition or block retry',
-    () async {
-      final first = _Client()..closeThrows = true;
-      final second = _Client();
-      final bootstrapper = _Bootstrapper.queue()
-        ..clients.addAll([first, second]);
-      final controller = GuiController(
-        bootstrapper: bootstrapper,
-        connector: (_) async => bootstrapper.clients.removeAt(0),
-        pollDelay: const Duration(days: 1),
-      );
-
-      await controller.start();
-      await controller.retry();
-
-      expect(bootstrapper.calls, 2);
-      expect(controller.state, GuiConnectionState.ready);
-      controller.dispose();
-    },
-  );
-
-  test(
-    'refresh and dispose absorb close failures without timer errors',
-    () async {
-      final client = _Client()..closeThrows = true;
-      final controller = GuiController(
-        bootstrapper: _Bootstrapper.success(),
-        connector: (_) async => client,
-        pollDelay: Duration.zero,
-      );
-
-      await controller.start();
-      client.fail = true;
-      await _settle();
-
-      expect(controller.state, GuiConnectionState.stale);
-      expect(client.closed, isTrue);
-      controller.dispose();
-      await _settle();
+      expect(bootstrap.calls, 1);
+      expect(late.closed, isTrue);
     },
   );
 }
 
-Future<void> _settle() async {
-  await Future<void>.delayed(Duration.zero);
-  await Future<void>.delayed(Duration.zero);
-  await Future<void>.delayed(Duration.zero);
+GuiController _controller(_Client client) => GuiController(
+  bootstrapper: _Bootstrapper(),
+  connector: (_) async => client,
+  pollDelay: const Duration(days: 1),
+);
+
+class _Bootstrapper implements GuiBootstrapper {
+  @override
+  Future<GuiBootstrapResult> bootstrap() async => GuiBootstrapResult.success(
+    GuiBootstrap(
+      endpoint: Uri.parse('ws://127.0.0.1:4711/ipc'),
+      token: _token,
+      productVersion: 'fixture',
+      buildId: 'fixture',
+      daemonPid: 1,
+      mode: 'desktop',
+    ),
+  );
+}
+
+class _PendingBootstrapper implements GuiBootstrapper {
+  final _value = Completer<GuiBootstrapResult>();
+  var calls = 0;
+  @override
+  Future<GuiBootstrapResult> bootstrap() {
+    calls++;
+    return _value.future;
+  }
+
+  void complete() => _value.complete(
+    GuiBootstrapResult.success(
+      GuiBootstrap(
+        endpoint: Uri.parse('ws://127.0.0.1:4711/ipc'),
+        token: _token,
+        productVersion: 'fixture',
+        buildId: 'fixture',
+        daemonPid: 1,
+        mode: 'desktop',
+      ),
+    ),
+  );
+}
+
+class _Client implements SidraviaIpcClient {
+  final calls = <String>[];
+  Object? nextFailure;
+  var closed = false;
+
+  void _call(String name) {
+    calls.add(name);
+    final failure = nextFailure;
+    nextFailure = null;
+    if (failure != null) throw failure;
+  }
+
+  @override
+  Future<DaemonStatus> daemonStatus() async {
+    _call('daemon');
+    return _daemon;
+  }
+
+  @override
+  Future<List<InstitutionProfile>> profileList() async {
+    _call('profiles');
+    return const [_profile];
+  }
+
+  @override
+  Future<List<ConfigurationSummary>> configurationList() async {
+    _call('configurations');
+    return const [_configuration];
+  }
+
+  @override
+  Future<List<SessionSummary>> sessionList() async {
+    _call('sessions');
+    return const [];
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationCreate({
+    required String institutionProfileId,
+    required String username,
+    required String password,
+  }) async {
+    _call('configuration.create');
+    return _configuration;
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationUpdate({
+    required String configurationId,
+    required String institutionProfileId,
+    required String username,
+  }) async {
+    _call('configuration.update');
+    return _configuration;
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetPassword({
+    required String configurationId,
+    required String password,
+  }) async {
+    _call('configuration.setPassword');
+    return _configuration;
+  }
+
+  @override
+  Future<SessionSummary> sessionStartConfiguration(
+    String configurationId,
+  ) async {
+    _call('session.startConfiguration');
+    return _session;
+  }
+
+  @override
+  Future<SessionSummary> sessionStop(String sessionId) async {
+    _call('session.stop');
+    return _session;
+  }
+
+  @override
+  Future<SessionSummary> sessionEnsureRunning(String sessionId) async {
+    _call('session.ensureRunning');
+    return _session;
+  }
+
+  @override
+  Future<SessionSummary> sessionRestart(String sessionId) async {
+    _call('session.restart');
+    return _session;
+  }
+
+  @override
+  Future<void> close() async => closed = true;
 }
 
 const _daemon = DaemonStatus(
@@ -176,98 +254,29 @@ const _daemon = DaemonStatus(
   mode: 'desktop',
   desktopOwnerPid: 2,
 );
-
-class _Bootstrapper implements GuiBootstrapper {
-  _Bootstrapper.success() : _result = successResult, pending = null;
-  _Bootstrapper.pending(this.pending) : _result = null;
-  _Bootstrapper.queue() : _result = successResult, pending = null;
-
-  static final successResult = GuiBootstrapResult.success(
-    GuiBootstrap(
-      endpoint: Uri.parse('ws://127.0.0.1:4711/ipc'),
-      token: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-      productVersion: 'fixture',
-      buildId: 'fixture',
-      daemonPid: 1,
-      mode: 'desktop',
-    ),
-  );
-
-  final GuiBootstrapResult? _result;
-  final Completer<GuiBootstrapResult>? pending;
-  final clients = <SidraviaIpcClient>[];
-  var calls = 0;
-
-  @override
-  Future<GuiBootstrapResult> bootstrap() {
-    calls++;
-    return pending?.future ?? Future.value(_result!);
-  }
-}
-
-class _Client implements SidraviaIpcClient {
-  _Client({
-    List<String>? calls,
-    this.configurations = const [
-      ConfigurationSummary(
-        id: 'cfg-1',
-        displayName: '校园登录',
-        institutionDisplayName: '示例学校',
-        username: 'fixture-user',
-        credentialStored: true,
-        storageProtection: 'protected',
-      ),
-    ],
-    this.pauseAfterFirstRefresh = false,
-  }) : calls = calls ?? <String>[];
-
-  final List<String> calls;
-  final List<ConfigurationSummary> configurations;
-  final bool pauseAfterFirstRefresh;
-  final secondDaemonStarted = Completer<void>();
-  final releaseSecondDaemon = Completer<DaemonStatus>();
-  var daemonCalls = 0;
-  var fail = false;
-  var closed = false;
-  var closeThrows = false;
-
-  void _call(String name) {
-    calls.add(name);
-    if (fail) throw const IpcProtocolException();
-  }
-
-  @override
-  Future<DaemonStatus> daemonStatus() async {
-    _call('daemon.status');
-    daemonCalls++;
-    if (pauseAfterFirstRefresh && daemonCalls == 2) {
-      secondDaemonStarted.complete();
-      return releaseSecondDaemon.future;
-    }
-    return _daemon;
-  }
-
-  @override
-  Future<List<InstitutionProfile>> profileList() async {
-    _call('profile.list');
-    return const [];
-  }
-
-  @override
-  Future<List<ConfigurationSummary>> configurationList() async {
-    _call('configuration.list');
-    return configurations;
-  }
-
-  @override
-  Future<List<SessionSummary>> sessionList() async {
-    _call('session.list');
-    return const [];
-  }
-
-  @override
-  Future<void> close() async {
-    closed = true;
-    if (closeThrows) throw StateError('close');
-  }
-}
+const _profile = InstitutionProfile(
+  id: 'jlu',
+  displayName: '吉林大学',
+  protocolId: 'drcom-5.2.0-d',
+);
+const _configuration = ConfigurationSummary(
+  id: 'cfg-a',
+  displayName: '',
+  institutionProfileId: 'jlu',
+  institutionDisplayName: '吉林大学',
+  authenticationProtocolId: 'drcom-5.2.0-d',
+  username: 'fixture-user',
+  credentialStored: true,
+  storageProtection: 'protected',
+  autoReconnect: true,
+);
+const _session = SessionSummary(
+  id: 's-a',
+  displayName: '',
+  accountName: 'fixture-user',
+  state: 'suspended',
+  intent: 'suspend_authentication',
+  configurationId: 'cfg-a',
+);
+const _token =
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

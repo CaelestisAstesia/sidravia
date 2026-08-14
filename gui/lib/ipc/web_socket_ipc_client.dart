@@ -55,21 +55,85 @@ class WebSocketIpcClient implements SidraviaIpcClient {
 
   @override
   Future<DaemonStatus> daemonStatus() async =>
-      decodeDaemonStatus(await _call('daemon.status'));
+      decodeDaemonStatus(await _call('daemon.status', const {}));
 
   @override
   Future<List<InstitutionProfile>> profileList() async =>
-      decodeProfiles(await _call('profile.list'));
+      decodeProfiles(await _call('profile.list', const {}));
 
   @override
   Future<List<ConfigurationSummary>> configurationList() async =>
-      decodeConfigurations(await _call('configuration.list'));
+      decodeConfigurations(await _call('configuration.list', const {}));
 
   @override
   Future<List<SessionSummary>> sessionList() async =>
-      decodeSessions(await _call('session.list'));
+      decodeSessions(await _call('session.list', const {}));
 
-  Future<String> _call(String method) async {
+  @override
+  Future<ConfigurationSummary> configurationCreate({
+    required String institutionProfileId,
+    required String username,
+    required String password,
+  }) async => decodeConfiguration(
+    await _call('configuration.create', {
+      'institutionProfileId': institutionProfileId,
+      'username': username,
+      'password': password,
+      'allowInsecureStorage': false,
+      'autoLogin': false,
+      'autoReconnect': true,
+    }),
+  );
+
+  @override
+  Future<ConfigurationSummary> configurationUpdate({
+    required String configurationId,
+    required String institutionProfileId,
+    required String username,
+  }) async => decodeConfiguration(
+    await _call('configuration.update', {
+      'configurationId': configurationId,
+      'institutionProfileId': institutionProfileId,
+      'username': username,
+    }),
+  );
+
+  @override
+  Future<ConfigurationSummary> configurationSetPassword({
+    required String configurationId,
+    required String password,
+  }) async => decodeConfiguration(
+    await _call('configuration.setPassword', {
+      'configurationId': configurationId,
+      'password': password,
+      'allowInsecureStorage': false,
+    }),
+  );
+
+  @override
+  Future<SessionSummary> sessionStartConfiguration(
+    String configurationId,
+  ) async => decodeSessionOperation(
+    await _call('session.startConfiguration', {
+      'configurationId': configurationId,
+    }),
+  );
+
+  @override
+  Future<SessionSummary> sessionStop(String sessionId) async =>
+      decodeSession(await _call('session.stop', {'sessionId': sessionId}));
+
+  @override
+  Future<SessionSummary> sessionEnsureRunning(String sessionId) async =>
+      decodeSessionOperation(
+        await _call('session.ensureRunning', {'sessionId': sessionId}),
+      );
+
+  @override
+  Future<SessionSummary> sessionRestart(String sessionId) async =>
+      decodeSession(await _call('session.restart', {'sessionId': sessionId}));
+
+  Future<String> _call(String method, Map<String, Object> payload) async {
     if (_closed || _inFlight) throw const IpcProtocolException();
     _inFlight = true;
     try {
@@ -79,7 +143,7 @@ class WebSocketIpcClient implements SidraviaIpcClient {
           'kind': 'request',
           'id': id,
           'method': method,
-          'payload': <String, Object>{},
+          'payload': payload,
         }),
       );
       final hasMessage = await _messages.moveNext().timeout(_timeout);
@@ -125,7 +189,9 @@ class WebSocketIpcClient implements SidraviaIpcClient {
           (error['message'] as String).isEmpty) {
         throw const IpcProtocolException();
       }
-      throw const IpcProtocolException();
+      throw IpcRequestFailure(error['code'] as String);
+    } on IpcRequestFailure {
+      rethrow;
     } on Object {
       try {
         await _invalidate();
