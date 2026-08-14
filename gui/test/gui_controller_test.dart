@@ -40,6 +40,7 @@ void main() {
 
     final first = controller.start();
     final second = controller.retry();
+    await Future<void>.delayed(Duration.zero);
     expect(identical(first, second), isTrue);
     expect(bootstrapper.calls, 1);
     pending.complete(_Bootstrapper.successResult);
@@ -116,6 +117,49 @@ void main() {
       expect(lateClient.closed, isTrue);
     },
   );
+
+  test(
+    'a throwing prior close cannot retain a transition or block retry',
+    () async {
+      final first = _Client()..closeThrows = true;
+      final second = _Client();
+      final bootstrapper = _Bootstrapper.queue()
+        ..clients.addAll([first, second]);
+      final controller = GuiController(
+        bootstrapper: bootstrapper,
+        connector: (_) async => bootstrapper.clients.removeAt(0),
+        pollDelay: const Duration(days: 1),
+      );
+
+      await controller.start();
+      await controller.retry();
+
+      expect(bootstrapper.calls, 2);
+      expect(controller.state, GuiConnectionState.ready);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'refresh and dispose absorb close failures without timer errors',
+    () async {
+      final client = _Client()..closeThrows = true;
+      final controller = GuiController(
+        bootstrapper: _Bootstrapper.success(),
+        connector: (_) async => client,
+        pollDelay: Duration.zero,
+      );
+
+      await controller.start();
+      client.fail = true;
+      await _settle();
+
+      expect(controller.state, GuiConnectionState.stale);
+      expect(client.closed, isTrue);
+      controller.dispose();
+      await _settle();
+    },
+  );
 }
 
 Future<void> _settle() async {
@@ -185,6 +229,7 @@ class _Client implements SidraviaIpcClient {
   var daemonCalls = 0;
   var fail = false;
   var closed = false;
+  var closeThrows = false;
 
   void _call(String name) {
     calls.add(name);
@@ -223,5 +268,6 @@ class _Client implements SidraviaIpcClient {
   @override
   Future<void> close() async {
     closed = true;
+    if (closeThrows) throw StateError('close');
   }
 }

@@ -342,8 +342,34 @@ int _positive(Object? value) {
 
 DateTime _time(Object? value) {
   final text = _text(value);
-  if (!RegExp(r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$')
-      .hasMatch(text)) {
+  final match = RegExp(
+    r'^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:Z|[+-](\d\d):(\d\d))$',
+  ).firstMatch(text);
+  if (match == null) {
+    throw const IpcProtocolException();
+  }
+  final year = int.parse(match[1]!);
+  final month = int.parse(match[2]!);
+  final day = int.parse(match[3]!);
+  final hour = int.parse(match[4]!);
+  final minute = int.parse(match[5]!);
+  final second = int.parse(match[6]!);
+  final offsetHour = match[7] == null ? null : int.parse(match[7]!);
+  final offsetMinute = match[8] == null ? null : int.parse(match[8]!);
+  final daysInMonth = switch (month) {
+    1 || 3 || 5 || 7 || 8 || 10 || 12 => 31,
+    4 || 6 || 9 || 11 => 30,
+    2 when year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+    2 => 28,
+    _ => 0,
+  };
+  if (day < 1 ||
+      day > daysInMonth ||
+      hour > 23 ||
+      minute > 59 ||
+      second > 59 ||
+      (offsetHour != null && offsetHour > 23) ||
+      (offsetMinute != null && offsetMinute > 59)) {
     throw const IpcProtocolException();
   }
   final parsed = DateTime.tryParse(text);

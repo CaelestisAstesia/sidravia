@@ -141,8 +141,16 @@ class WebSocketIpcClient implements SidraviaIpcClient {
   Future<void> _invalidate() async {
     if (_closed) return;
     _closed = true;
-    await _messages.cancel();
-    await _socket.close(WebSocketStatus.normalClosure);
+    try {
+      await _messages.cancel();
+    } on Object {
+      // Socket close still runs when cancelling the iterator fails.
+    }
+    try {
+      await _socket.close(WebSocketStatus.normalClosure);
+    } on Object {
+      // The closed state is final even when transport cleanup fails.
+    }
   }
 
   @override

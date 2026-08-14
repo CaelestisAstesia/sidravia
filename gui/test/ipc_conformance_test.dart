@@ -134,6 +134,23 @@ void main() {
       );
     },
   );
+
+  test('strictly validates RFC3339 calendar, clock, and offset components', () {
+    expect(_sessionAt('2024-02-29T23:59:59.123456+23:59').updatedAt, isNotNull);
+    expect(_sessionAt('2024-02-29T00:00:00Z').updatedAt, isNotNull);
+    for (final timestamp in [
+      '2023-02-29T00:00:00Z',
+      '2024-02-30T00:00:00Z',
+      '2024-04-31T00:00:00Z',
+      '2024-01-01T24:00:00Z',
+      '2024-01-01T00:60:00Z',
+      '2024-01-01T00:00:60Z',
+      '2024-01-01T00:00:00+24:00',
+      '2024-01-01T00:00:00+23:60',
+    ]) {
+      expect(() => _sessionAt(timestamp), throwsA(isA<IpcProtocolException>()));
+    }
+  });
 }
 
 Map<String, dynamic> _fixture() => jsonDecode(
@@ -162,3 +179,7 @@ SessionSummary _decodeOneSession(String result) {
     }),
   ).single;
 }
+
+SessionSummary _sessionAt(String timestamp) => _decodeOneSession(
+  '{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"$timestamp"}',
+);

@@ -38,15 +38,15 @@ class GuiController extends ChangeNotifier {
 
   Future<void> _start() async {
     final generation = ++_generation;
-    _timer?.cancel();
-    final old = _client;
-    _client = null;
-    if (old != null) await old.close();
-    if (!_current(generation)) return;
-    _state = GuiConnectionState.bootstrapping;
-    _failure = null;
-    _notify();
     try {
+      _timer?.cancel();
+      final old = _client;
+      _client = null;
+      await _closeQuietly(old);
+      if (!_current(generation)) return;
+      _state = GuiConnectionState.bootstrapping;
+      _failure = null;
+      _notify();
       final boot = await bootstrapper.bootstrap();
       if (!_current(generation)) return;
       if (!boot.isSuccess) {
@@ -55,7 +55,7 @@ class GuiController extends ChangeNotifier {
       }
       final client = await connector(boot.value!);
       if (!_current(generation)) {
-        await client.close();
+        await _closeQuietly(client);
         return;
       }
       _client = client;
@@ -93,7 +93,7 @@ class GuiController extends ChangeNotifier {
       _timer?.cancel();
       _timer = null;
       _client = null;
-      await client.close();
+      await _closeQuietly(client);
       _state = _snapshot == null
           ? GuiConnectionState.failed
           : GuiConnectionState.stale;
@@ -103,6 +103,16 @@ class GuiController extends ChangeNotifier {
   }
 
   bool _current(int generation) => !_disposed && generation == _generation;
+
+  Future<void> _closeQuietly(SidraviaIpcClient? client) async {
+    if (client == null) return;
+    try {
+      await client.close();
+    } on Object {
+      // A close failure must not escape the controller lifecycle boundary.
+    }
+  }
+
   void _setFailure(GuiBootstrapFailure failure) {
     _failure = failure;
     _state = _snapshot != null
@@ -122,7 +132,9 @@ class GuiController extends ChangeNotifier {
     _disposed = true;
     ++_generation;
     _timer?.cancel();
-    unawaited(_client?.close());
+    final client = _client;
+    _client = null;
+    unawaited(_closeQuietly(client));
     super.dispose();
   }
 }
