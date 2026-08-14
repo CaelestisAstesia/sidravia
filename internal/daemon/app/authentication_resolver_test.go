@@ -97,7 +97,7 @@ func newAppTestSetup(t *testing.T) *appTestSetup {
 		t.Fatal(err)
 	}
 	configuration := appTestConfiguration("configuration-1")
-	if err := catalog.Create(ctx, configuration, "secret", false); err != nil {
+	if _, err := catalog.Create(ctx, configuration, "secret", false); err != nil {
 		t.Fatal(err)
 	}
 	return &appTestSetup{authenticationResolver: resolver, configuration: configuration}
@@ -110,7 +110,7 @@ func TestResolverUsesAggregateCredentialAndClonesDefinition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := catalog.Create(ctx, appTestConfiguration("configuration-1"), "secret", false); err != nil {
+	if _, err := catalog.Create(ctx, appTestConfiguration("configuration-1"), "secret", false); err != nil {
 		t.Fatal(err)
 	}
 	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
@@ -128,6 +128,9 @@ func TestResolverUsesAggregateCredentialAndClonesDefinition(t *testing.T) {
 	}
 	if definition.Configuration.AuthenticationSessionID != "session-1" {
 		t.Fatal("session id did not resolve")
+	}
+	if definition.Configuration.ConfigurationID != "configuration-1" {
+		t.Fatalf("configuration identity did not resolve: %q", definition.Configuration.ConfigurationID)
 	}
 	originalOverride := append([]byte(nil), definition.Configuration.ProtocolContextOverride...)
 	definition.Configuration.ProtocolContextOverride[0] = '['
@@ -161,6 +164,9 @@ func TestResolverOneShotDoesNotPersistCredential(t *testing.T) {
 	definition, err := resolver.ResolveOneShot(ctx, validOneShotInput(), "session-1")
 	if err != nil || definition.AuthenticationCredential.Password != "secret" {
 		t.Fatalf("definition/error = %#v/%v", definition, err)
+	}
+	if definition.Configuration.ConfigurationID != "" {
+		t.Fatalf("one-shot ConfigurationID = %q, want empty", definition.Configuration.ConfigurationID)
 	}
 	values, _ := catalog.List(ctx)
 	if len(values) != 0 {
@@ -252,7 +258,7 @@ func TestResolverPassesAutoReconnectFromConfiguration(t *testing.T) {
 	catalog, _ := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
 	configuration := appTestConfiguration("configuration-1")
 	configuration.AutoReconnect = false
-	if err := catalog.Create(ctx, configuration, "secret", false); err != nil {
+	if _, err := catalog.Create(ctx, configuration, "secret", false); err != nil {
 		t.Fatal(err)
 	}
 	profiles, _ := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})

@@ -241,6 +241,7 @@ func initializeAuthenticationSession(
 		selector:                   newAutomaticBindingSelector(),
 		currentSnapshot: Snapshot{
 			AuthenticationSessionID:  configuration.AuthenticationSessionID,
+			ConfigurationID:          configuration.ConfigurationID,
 			DisplayName:              configuration.DisplayName,
 			InstitutionProfileID:     profileID,
 			InstitutionDisplayName:   profileDisplayName,
@@ -653,6 +654,7 @@ func (session *AuthenticationSession) handleReplaceRuntimeDefinition(definition 
 	session.runtimeDefinitionAvailable = true
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.AuthenticationSessionID = definition.Configuration.AuthenticationSessionID
+		snapshot.ConfigurationID = definition.Configuration.ConfigurationID
 		snapshot.DisplayName = definition.Configuration.DisplayName
 		snapshot.InstitutionProfileID = definition.InstitutionProfile.InstitutionProfileID
 		snapshot.InstitutionDisplayName = definition.InstitutionProfile.DisplayName
@@ -689,6 +691,7 @@ func (session *AuthenticationSession) handleReplaceUnresolvedRuntimeDefinition(d
 	session.definition = RuntimeDefinition{}
 	definition = definition.Clone()
 	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.ConfigurationID = definition.Configuration.ConfigurationID
 		snapshot.DisplayName = definition.Configuration.DisplayName
 		snapshot.InstitutionProfileID = definition.Configuration.InstitutionProfileID
 		snapshot.InstitutionDisplayName = definition.ProfileDisplayName

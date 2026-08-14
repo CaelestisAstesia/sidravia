@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -59,10 +60,10 @@ func TestCatalogLifecycleAndRestart(t *testing.T) {
 	second := catalogTestConfiguration("configuration-b", "Second")
 	second.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"server":"b"}`)
 	first := catalogTestConfiguration("configuration-a", "First")
-	if err := catalog.Create(ctx, second, "second-password", false); err != nil {
+	if _, err := catalog.Create(ctx, second, "second-password", false); err != nil {
 		t.Fatalf("Create(second) error = %v", err)
 	}
-	if err := catalog.Create(ctx, first, "", false); err != nil {
+	if _, err := catalog.Create(ctx, first, "", false); err != nil {
 		t.Fatalf("Create(first) error = %v", err)
 	}
 
@@ -115,7 +116,7 @@ func TestCatalogRejectsInvalidCallsAndReportsMissingIDs(t *testing.T) {
 	if err := catalog.Delete(ctx, "missing"); configurationPersistenceFailureCode(t, err) != persistence.FailureNotFound {
 		t.Fatalf("Delete(missing) error = %v", err)
 	}
-	if err := catalog.Create(ctx, Configuration{}, "", false); configurationPersistenceFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.Create(ctx, Configuration{}, "", false); configurationPersistenceFailureCode(t, err) != persistence.FailureInvalidArgument {
 		t.Fatalf("Create(invalid) error = %v", err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -133,7 +134,7 @@ func TestCatalogFailedReplacePreservesMemoryState(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := catalogTestConfiguration("configuration-1", "Original")
-	if err := catalog.Create(ctx, original, "password", false); err != nil {
+	if _, err := catalog.Create(ctx, original, "password", false); err != nil {
 		t.Fatal(err)
 	}
 	store.replaceErr = persistence.NewFailure(persistence.FailureAtomicWrite, errors.New("write failed"))
@@ -183,7 +184,7 @@ func TestCatalogCommitEnforcesReadableSizeLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := catalog.Create(ctx, configuration, exactPassword, false); err != nil {
+	if _, err := catalog.Create(ctx, configuration, exactPassword, false); err != nil {
 		t.Fatalf("Create(exact limit) error = %v", err)
 	}
 	if _, err := OpenCatalog(ctx, store, path); err != nil {
@@ -232,14 +233,51 @@ func TestCatalogCreateRejectsSecondAutoLogin(t *testing.T) {
 	}
 	first := catalogTestConfiguration("configuration-a", "First")
 	first.AutoLogin = true
-	if err := catalog.Create(ctx, first, "password", false); err != nil {
+	if _, err := catalog.Create(ctx, first, "password", false); err != nil {
 		t.Fatalf("Create(first) error = %v", err)
 	}
 	second := catalogTestConfiguration("configuration-b", "Second")
 	second.AutoLogin = true
-	err = catalog.Create(ctx, second, "password", false)
+	_, err = catalog.Create(ctx, second, "password", false)
 	if _, ok := err.(AutoLoginConflict); !ok {
 		t.Fatalf("Create(second) error = %v, want AutoLoginConflict", err)
+	}
+}
+
+func TestCatalogCreateGeneratesAndPersistsOpaqueIdentity(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("", "First")
+	second := catalogTestConfiguration("", "Second")
+	first.InstitutionProfileID, second.InstitutionProfileID = "profile-first", "profile-second"
+	first.Username, second.Username = "first", "second"
+	persistedFirst, err := catalog.Create(ctx, first, "first-password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedSecond, err := catalog.Create(ctx, second, "second-password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	format := regexp.MustCompile(`^cfg-[0-9a-f]{32}$`)
+	if !format.MatchString(string(persistedFirst.ConfigurationID)) || !format.MatchString(string(persistedSecond.ConfigurationID)) || persistedFirst.ConfigurationID == persistedSecond.ConfigurationID {
+		t.Fatalf("generated identities = %q, %q", persistedFirst.ConfigurationID, persistedSecond.ConfigurationID)
+	}
+	got, credential, err := catalog.Resolve(ctx, persistedFirst.ConfigurationID)
+	if err != nil || got.ConfigurationID != persistedFirst.ConfigurationID || credential.Password != "first-password" {
+		t.Fatalf("Resolve(generated) = %#v, %#v, %v", got, credential, err)
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reopened.Get(ctx, persistedSecond.ConfigurationID); err != nil || got.ConfigurationID != persistedSecond.ConfigurationID {
+		t.Fatalf("reopened generated Configuration = %#v, %v", got, err)
 	}
 }
 
@@ -251,11 +289,11 @@ func TestCatalogUpdateRejectsSecondAutoLogin(t *testing.T) {
 	}
 	first := catalogTestConfiguration("configuration-a", "First")
 	first.AutoLogin = true
-	if err := catalog.Create(ctx, first, "password", false); err != nil {
+	if _, err := catalog.Create(ctx, first, "password", false); err != nil {
 		t.Fatal(err)
 	}
 	second := catalogTestConfiguration("configuration-b", "Second")
-	if err := catalog.Create(ctx, second, "password", false); err != nil {
+	if _, err := catalog.Create(ctx, second, "password", false); err != nil {
 		t.Fatal(err)
 	}
 	enable := true
@@ -278,11 +316,11 @@ func TestCatalogUpdateAutoLoginAtomicCommit(t *testing.T) {
 	}
 	first := catalogTestConfiguration("configuration-a", "First")
 	first.AutoLogin = true
-	if err := catalog.Create(ctx, first, "password", false); err != nil {
+	if _, err := catalog.Create(ctx, first, "password", false); err != nil {
 		t.Fatal(err)
 	}
 	second := catalogTestConfiguration("configuration-b", "Second")
-	if err := catalog.Create(ctx, second, "password", false); err != nil {
+	if _, err := catalog.Create(ctx, second, "password", false); err != nil {
 		t.Fatal(err)
 	}
 	store.replaceErr = persistence.NewFailure(persistence.FailureAtomicWrite, errors.New("write failed"))

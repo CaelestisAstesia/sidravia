@@ -232,6 +232,7 @@ func fullSnapshot() session.Snapshot {
 	addr := netip.MustParseAddr("10.0.0.2")
 	return session.Snapshot{
 		AuthenticationSessionID:  "sess-1",
+		ConfigurationID:          "cfg-0123456789abcdef0123456789abcdef",
 		DisplayName:              "Library WiFi",
 		InstitutionProfileID:     "profile-1",
 		InstitutionDisplayName:   "Library",
@@ -411,6 +412,9 @@ func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 	snap := fullSnapshot()
 	if sr.AuthenticationSessionID != string(snap.AuthenticationSessionID) {
 		t.Errorf("sessionId: got %q, want %q", sr.AuthenticationSessionID, snap.AuthenticationSessionID)
+	}
+	if sr.ConfigurationID != string(snap.ConfigurationID) {
+		t.Errorf("configurationId: got %q, want %q", sr.ConfigurationID, snap.ConfigurationID)
 	}
 	if sr.DisplayName != snap.DisplayName {
 		t.Errorf("displayName: got %q, want %q", sr.DisplayName, snap.DisplayName)

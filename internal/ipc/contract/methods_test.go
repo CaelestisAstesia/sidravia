@@ -195,6 +195,7 @@ func TestMarshalSessionResultMapsAllFields(t *testing.T) {
 	retry := "2026-07-24T10:05:00Z"
 	result := SessionResult{
 		AuthenticationSessionID:     "sess-1",
+		ConfigurationID:             "cfg-0123456789abcdef0123456789abcdef",
 		DisplayName:                 "Library WiFi",
 		InstitutionProfileID:        "profile-1",
 		InstitutionDisplayName:      "Library",
@@ -220,6 +221,7 @@ func TestMarshalSessionResultMapsAllFields(t *testing.T) {
 	}
 	expected := map[string]any{
 		"sessionId":                "sess-1",
+		"configurationId":          "cfg-0123456789abcdef0123456789abcdef",
 		"displayName":              "Library WiFi",
 		"institutionProfileId":     "profile-1",
 		"institutionDisplayName":   "Library",
@@ -266,7 +268,7 @@ func TestMarshalSessionResultOmitsOptionalFields(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	for _, key := range []string{"stateReason", "selectedNetworkBinding", "authenticationEstablishedAt", "nextRetryAt", "lastAuthenticationFailure"} {
+	for _, key := range []string{"configurationId", "stateReason", "selectedNetworkBinding", "authenticationEstablishedAt", "nextRetryAt", "lastAuthenticationFailure"} {
 		if _, present := decoded[key]; present {
 			t.Errorf("optional field %q must be omitted when nil: %s", key, string(data))
 		}
@@ -489,6 +491,33 @@ func TestConfigurationUpdateDistinguishesAbsentAndExplicitEmpty(t *testing.T) {
 	}
 	if username.Username == nil || *username.Username != "user" || username.DisplayName != nil {
 		t.Fatalf("username update = %#v", username)
+	}
+}
+
+func TestConfigurationCreateDistinguishesOptionalIdentityAndDisplayName(t *testing.T) {
+	payload, err := DecodeConfigurationCreatePayload([]byte(`{"institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.ConfigurationID != "" || payload.DisplayName != "" {
+		t.Fatalf("omitted optional identity/name = %#v", payload)
+	}
+	payload, err = DecodeConfigurationCreatePayload([]byte(`{"configurationId":"cli-id","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+	if err != nil || payload.ConfigurationID != "cli-id" || payload.DisplayName != "" {
+		t.Fatalf("explicit identity/empty name = %#v, %v", payload, err)
+	}
+	for _, data := range []string{
+		`{"configurationId":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+		`{"configurationId":null,"institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+		`{"displayName":null,"institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+	} {
+		if _, err := DecodeConfigurationCreatePayload([]byte(data)); err == nil {
+			t.Fatalf("accepted invalid optional identity/name: %s", data)
+		}
+	}
+	encoded, err := json.Marshal(ConfigurationCreatePayload{InstitutionProfileID: "jlu", Username: "user"})
+	if err != nil || strings.Contains(string(encoded), "configurationId") || strings.Contains(string(encoded), "displayName") {
+		t.Fatalf("optional empty fields were encoded: %s, %v", encoded, err)
 	}
 }
 

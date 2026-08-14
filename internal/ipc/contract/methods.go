@@ -90,8 +90,8 @@ type ConfigurationIDPayload struct {
 	ConfigurationID string `json:"configurationId"`
 }
 type ConfigurationCreatePayload struct {
-	ConfigurationID      string `json:"configurationId"`
-	DisplayName          string `json:"displayName"`
+	ConfigurationID      string `json:"configurationId,omitempty"`
+	DisplayName          string `json:"displayName,omitempty"`
 	InstitutionProfileID string `json:"institutionProfileId"`
 	Username             string `json:"username"`
 	Password             string `json:"password"`
@@ -157,17 +157,32 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 	if err := decodeStrict(data, &wire); err != nil {
 		return ConfigurationCreatePayload{}, err
 	}
-	if wire.ConfigurationID == nil || wire.DisplayName == nil || wire.InstitutionProfileID == nil ||
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return ConfigurationCreatePayload{}, err
+	}
+	for _, name := range []string{"configurationId", "displayName"} {
+		if raw, present := fields[name]; present && string(raw) == "null" {
+			return ConfigurationCreatePayload{}, fmt.Errorf("configuration create %s must be a string", name)
+		}
+	}
+	if wire.InstitutionProfileID == nil ||
 		wire.Username == nil || wire.Password == nil || wire.AllowInsecureStorage == nil || wire.AutoLogin == nil || wire.AutoReconnect == nil ||
-		*wire.ConfigurationID == "" || *wire.InstitutionProfileID == "" || *wire.Username == "" {
+		wire.ConfigurationID != nil && *wire.ConfigurationID == "" || *wire.InstitutionProfileID == "" || *wire.Username == "" {
 		return ConfigurationCreatePayload{}, fmt.Errorf("missing required configuration field")
 	}
-	return ConfigurationCreatePayload{
-		ConfigurationID: *wire.ConfigurationID, DisplayName: *wire.DisplayName,
+	value := ConfigurationCreatePayload{
 		InstitutionProfileID: *wire.InstitutionProfileID, Username: *wire.Username,
 		Password: *wire.Password, AllowInsecureStorage: *wire.AllowInsecureStorage,
 		AutoLogin: *wire.AutoLogin, AutoReconnect: *wire.AutoReconnect,
-	}, nil
+	}
+	if wire.ConfigurationID != nil {
+		value.ConfigurationID = *wire.ConfigurationID
+	}
+	if wire.DisplayName != nil {
+		value.DisplayName = *wire.DisplayName
+	}
+	return value, nil
 }
 func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, error) {
 	var value ConfigurationUpdatePayload
@@ -407,6 +422,7 @@ type SessionAuthenticationFailure struct {
 // diagnostic causes.
 type SessionResult struct {
 	AuthenticationSessionID     string                        `json:"sessionId"`
+	ConfigurationID             string                        `json:"configurationId,omitempty"`
 	DisplayName                 string                        `json:"displayName"`
 	InstitutionProfileID        string                        `json:"institutionProfileId"`
 	InstitutionDisplayName      string                        `json:"institutionDisplayName"`

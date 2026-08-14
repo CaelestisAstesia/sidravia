@@ -253,6 +253,7 @@ func sessionError(err error) *contract.Error {
 func toSessionResult(snapshot session.Snapshot) contract.SessionResult {
 	result := contract.SessionResult{
 		AuthenticationSessionID:  string(snapshot.AuthenticationSessionID),
+		ConfigurationID:          string(snapshot.ConfigurationID),
 		DisplayName:              snapshot.DisplayName,
 		InstitutionProfileID:     string(snapshot.InstitutionProfileID),
 		InstitutionDisplayName:   snapshot.InstitutionDisplayName,

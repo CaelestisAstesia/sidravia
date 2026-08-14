@@ -21,6 +21,7 @@ type NetworkBindingPolicy struct {
 
 type Configuration struct {
 	AuthenticationSessionID AuthenticationSessionID
+	ConfigurationID         profile.ConfigurationID
 	DisplayName             string
 	InstitutionProfileID    profile.InstitutionProfileID
 	NetworkBindingPolicy    NetworkBindingPolicy
@@ -74,6 +75,7 @@ type NetworkBindingSummary struct {
 
 type Snapshot struct {
 	AuthenticationSessionID     AuthenticationSessionID
+	ConfigurationID             profile.ConfigurationID
 	DisplayName                 string
 	InstitutionProfileID        profile.InstitutionProfileID
 	InstitutionDisplayName      string

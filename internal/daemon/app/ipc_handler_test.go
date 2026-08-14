@@ -84,6 +84,45 @@ func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) 
 	}
 }
 
+func TestIPCHandlerGeneratedConfigurationIdentityReachesRetainedSession(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	handler := IPCHandler(setup.application, "version", "build", launchcontract.Headless())
+	const passwordMarker = "generated-identity-private-password"
+	created, publicErr := handler(ctx, contract.MethodConfigurationCreate, []byte(
+		`{"institutionProfileId":"profile-1","username":"generated-user","password":"`+
+			passwordMarker+`","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+	))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	if strings.Contains(string(created), passwordMarker) {
+		t.Fatalf("create result exposed password: %s", created)
+	}
+	var createResult contract.ConfigurationResult
+	if err := json.Unmarshal(created, &createResult); err != nil {
+		t.Fatal(err)
+	}
+	if len(createResult.ConfigurationID) != len("cfg-")+32 || createResult.ConfigurationID[:4] != "cfg-" {
+		t.Fatalf("generated ConfigurationID = %q", createResult.ConfigurationID)
+	}
+	started, publicErr := handler(ctx, contract.MethodSessionStartConfiguration, []byte(`{"configurationId":"`+createResult.ConfigurationID+`"}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	var startResult contract.SessionStartResult
+	if err := json.Unmarshal(started, &startResult); err != nil {
+		t.Fatal(err)
+	}
+	if startResult.Session.ConfigurationID != createResult.ConfigurationID {
+		t.Fatalf("Session ConfigurationID = %q, want %q", startResult.Session.ConfigurationID, createResult.ConfigurationID)
+	}
+	if strings.Contains(string(started), passwordMarker) {
+		t.Fatalf("Session result exposed password: %s", started)
+	}
+}
+
 func TestIPCHandlerRoutesStatusToStatusHandler(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
@@ -167,6 +206,9 @@ func TestIPCHandlerVerticalSequence(t *testing.T) {
 	started := startedResult.Session
 	if startedResult.Outcome != "created" || started.AuthenticationSessionID == "" {
 		t.Fatal("start returned empty session ID")
+	}
+	if started.ConfigurationID != "" || strings.Contains(string(startResult), `"configurationId"`) {
+		t.Fatalf("one-shot Session exposed ConfigurationID: %#v", started)
 	}
 	if started.SelectedNetworkBinding == nil {
 		t.Fatal("expected selected network binding after applying usable snapshot")

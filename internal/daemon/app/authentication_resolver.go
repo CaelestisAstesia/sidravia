@@ -108,6 +108,7 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 	definition := session.RuntimeDefinition{
 		Configuration: session.Configuration{
 			AuthenticationSessionID: sessionID,
+			ConfigurationID:         configuration.ConfigurationID,
 			DisplayName:             configuration.DisplayName,
 			InstitutionProfileID:    configuration.InstitutionProfileID,
 			NetworkBindingPolicy: session.NetworkBindingPolicy{

@@ -277,6 +277,9 @@ func TestSnapshotExposesAccountNameButNotPassword(t *testing.T) {
 	if snapshot.AccountName != definition.AuthenticationCredential.Username {
 		t.Errorf("AccountName = %q, want complete username %q", snapshot.AccountName, definition.AuthenticationCredential.Username)
 	}
+	if snapshot.ConfigurationID != definition.Configuration.ConfigurationID {
+		t.Errorf("ConfigurationID = %q, want %q", snapshot.ConfigurationID, definition.Configuration.ConfigurationID)
+	}
 
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {
@@ -288,6 +291,27 @@ func TestSnapshotExposesAccountNameButNotPassword(t *testing.T) {
 	}
 	if strings.Contains(public, definition.AuthenticationCredential.Password) {
 		t.Fatalf("public Snapshot exposes password: %s", public)
+	}
+}
+
+func TestSessionRuntimeDefinitionReplacementKeepsConfigurationIdentity(t *testing.T) {
+	definition := validRuntimeDefinition(t)
+	authSession, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time {
+		return time.Unix(100, 0)
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	authSession.Start()
+	defer func() { _ = authSession.Shutdown(context.Background()) }()
+	replacement := validRuntimeDefinition(t)
+	replacement.Configuration.DisplayName = "Changed display name"
+	snapshot, err := authSession.ReplaceRuntimeDefinition(context.Background(), replacement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ConfigurationID != definition.Configuration.ConfigurationID {
+		t.Fatalf("replacement ConfigurationID = %q, want %q", snapshot.ConfigurationID, definition.Configuration.ConfigurationID)
 	}
 }
 
@@ -317,6 +341,7 @@ func validRuntimeDefinition(t *testing.T) RuntimeDefinition {
 	return RuntimeDefinition{
 		Configuration: Configuration{
 			AuthenticationSessionID: "session-1",
+			ConfigurationID:         "cfg-0123456789abcdef0123456789abcdef",
 			DisplayName:             "Campus network",
 			InstitutionProfileID:    "profile-1",
 			NetworkBindingPolicy: NetworkBindingPolicy{

@@ -121,7 +121,7 @@ func newApplicationTestSetup(t *testing.T) *applicationTestSetup {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := catalog.Create(ctx, appTestConfiguration("configuration-1"), "secret", false); err != nil {
+	if _, err := catalog.Create(ctx, appTestConfiguration("configuration-1"), "secret", false); err != nil {
 		t.Fatal(err)
 	}
 	return &applicationTestSetup{application: application, catalog: catalog, supervisor: sup, store: store}
@@ -165,6 +165,24 @@ func TestApplicationConfigurationCRUDAndEnrichment(t *testing.T) {
 	}
 	if _, err := setup.application.SetConfigurationPassword(ctx, "configuration-1", "", false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestApplicationCreateConfigurationReturnsGeneratedPersistedIdentity(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	value := appTestConfiguration("")
+	value.DisplayName = ""
+	created, err := setup.application.CreateConfiguration(context.Background(), value, "private", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created.Configuration.ConfigurationID) != len("cfg-")+32 || created.Configuration.ConfigurationID[:4] != "cfg-" {
+		t.Fatalf("generated Configuration = %#v", created.Configuration)
+	}
+	persisted, err := setup.catalog.Get(context.Background(), created.Configuration.ConfigurationID)
+	if err != nil || persisted.ConfigurationID != created.Configuration.ConfigurationID || persisted.DisplayName != "" {
+		t.Fatalf("persisted generated Configuration = %#v, %v", persisted, err)
 	}
 }
 

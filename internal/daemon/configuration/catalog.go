@@ -2,6 +2,8 @@ package configuration
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -101,31 +103,55 @@ func (catalog *Catalog) List(ctx context.Context) ([]Configuration, error) {
 	return result, nil
 }
 
-func (catalog *Catalog) Create(ctx context.Context, value Configuration, password string, allowUnprotected bool) error {
+func (catalog *Catalog) Create(ctx context.Context, value Configuration, password string, allowUnprotected bool) (Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
-		return err
-	}
-	if err := value.Validate(); err != nil {
-		return catalogInvalidArgument(err)
+		return Configuration{}, err
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
-		return err
+		return Configuration{}, err
+	}
+	if value.ConfigurationID == "" {
+		var err error
+		value.ConfigurationID, err = catalog.nextConfigurationID()
+		if err != nil {
+			return Configuration{}, err
+		}
+	}
+	if err := value.Validate(); err != nil {
+		return Configuration{}, catalogInvalidArgument(err)
 	}
 	if _, exists := catalog.records[value.ConfigurationID]; exists {
-		return persistence.NewFailure(persistence.FailureConflict, nil)
+		return Configuration{}, persistence.NewFailure(persistence.FailureConflict, nil)
 	}
 	if value.AutoLogin {
 		for _, existing := range catalog.records {
 			if existing.configuration.AutoLogin {
-				return AutoLoginConflict{}
+				return Configuration{}, AutoLoginConflict{}
 			}
 		}
 	}
 	candidate := cloneRecords(catalog.records)
 	candidate[value.ConfigurationID] = catalogRecord{configuration: value.Clone(), password: password}
-	return catalog.commit(ctx, candidate, allowUnprotected)
+	if err := catalog.commit(ctx, candidate, allowUnprotected); err != nil {
+		return Configuration{}, err
+	}
+	return value.Clone(), nil
+}
+
+func (catalog *Catalog) nextConfigurationID() (ConfigurationID, error) {
+	for range 8 {
+		var entropy [16]byte
+		if _, err := rand.Read(entropy[:]); err != nil {
+			return "", fmt.Errorf("generate configuration ID: %w", err)
+		}
+		candidate := ConfigurationID(fmt.Sprintf("cfg-%x", entropy))
+		if _, exists := catalog.records[candidate]; !exists {
+			return candidate, nil
+		}
+	}
+	return "", persistence.NewFailure(persistence.FailureConflict, nil)
 }
 
 type Update struct {

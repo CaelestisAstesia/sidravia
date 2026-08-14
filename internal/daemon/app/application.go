@@ -261,10 +261,11 @@ func (application *Application) CreateConfiguration(ctx context.Context, value c
 	if _, err := application.enrich(ctx, value); err != nil {
 		return ConfigurationResult{}, err
 	}
-	if err := application.catalog.Create(ctx, value, password, allow); err != nil {
+	persisted, err := application.catalog.Create(ctx, value, password, allow)
+	if err != nil {
 		return ConfigurationResult{}, err
 	}
-	return application.enrich(ctx, value)
+	return application.enrich(ctx, persisted)
 }
 
 func (application *Application) UpdateConfiguration(ctx context.Context, id config.ConfigurationID, update config.Update) (ConfigurationResult, error) {
