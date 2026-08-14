@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.onOpenConfiguration});
+  const HomePage({
+    super.key,
+    required this.controller,
+    required this.onOpenConfiguration,
+  });
 
+  final GuiController controller;
   final VoidCallback onOpenConfiguration;
 
   @override
@@ -20,7 +27,13 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 40),
-        _ConnectionFocus(onOpenConfiguration: onOpenConfiguration),
+        AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => _ConnectionFocus(
+            controller: controller,
+            onOpenConfiguration: onOpenConfiguration,
+          ),
+        ),
         const SizedBox(height: 40),
         Text('下一步', style: theme.textTheme.titleLarge),
         const SizedBox(height: 10),
@@ -37,9 +50,13 @@ class HomePage extends StatelessWidget {
 }
 
 class _ConnectionFocus extends StatelessWidget {
-  const _ConnectionFocus({required this.onOpenConfiguration});
+  const _ConnectionFocus({
+    required this.controller,
+    required this.onOpenConfiguration,
+  });
 
   final VoidCallback onOpenConfiguration;
+  final GuiController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -72,10 +89,10 @@ class _ConnectionFocus extends StatelessWidget {
                 child: Text('当前状态', style: theme.textTheme.labelLarge),
               ),
               const SizedBox(height: 24),
-              Text('daemon 尚未接入', style: theme.textTheme.headlineMedium),
+              Text(_title(controller), style: theme.textTheme.headlineMedium),
               const SizedBox(height: 10),
               Text(
-                '连接控制将在 daemon bootstrap 与 IPC 接入后启用。',
+                _detail(controller),
                 style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
               ),
               const SizedBox(height: 28),
@@ -83,7 +100,16 @@ class _ConnectionFocus extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  FilledButton(onPressed: null, child: const Text('连接（尚不可用）')),
+                  FilledButton(
+                    onPressed: controller.state == GuiConnectionState.ready
+                        ? null
+                        : controller.retry,
+                    child: Text(
+                      controller.state == GuiConnectionState.ready
+                          ? '连接状态已刷新'
+                          : '重试连接',
+                    ),
+                  ),
                   OutlinedButton(
                     onPressed: onOpenConfiguration,
                     child: const Text('查看配置'),
@@ -95,5 +121,33 @@ class _ConnectionFocus extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _title(GuiController controller) {
+    return switch (controller.state) {
+      GuiConnectionState.bootstrapping => '正在接入 daemon',
+      GuiConnectionState.ready => _daemonTitle(controller.snapshot!.daemon),
+      GuiConnectionState.stale => '状态暂时过期',
+      GuiConnectionState.unsupported => '当前平台不支持 GUI bootstrap',
+      GuiConnectionState.failed => '无法接入 daemon',
+    };
+  }
+
+  String _detail(GuiController controller) {
+    return switch (controller.state) {
+      GuiConnectionState.ready => _daemonDetail(controller.snapshot!),
+      GuiConnectionState.stale => '保留上一次已读取的状态；请重试以重新获取 daemon 信息。',
+      GuiConnectionState.bootstrapping => '正在通过受限的本机 bootstrap 获取连接。',
+      _ => '没有可用的运行状态；重试不会读取或保存任何配置文件。',
+    };
+  }
+
+  String _daemonTitle(DaemonStatus status) =>
+      status.status == 'running' ? 'daemon 已就绪' : 'daemon 状态：${status.status}';
+
+  String _daemonDetail(GuiSnapshot snapshot) {
+    final sessionCount = snapshot.sessions.length;
+    if (sessionCount == 0) return 'daemon 已就绪，但尚无会话；这不代表已经认证。';
+    return 'daemon 已就绪，当前有 $sessionCount 个会话；认证状态以会话状态为准。';
   }
 }

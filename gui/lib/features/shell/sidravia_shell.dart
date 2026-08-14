@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 
 class SidraviaShell extends StatefulWidget {
-  const SidraviaShell({super.key});
+  const SidraviaShell({super.key, required this.controller});
+
+  final GuiController controller;
 
   static const wideLayoutBreakpoint = 760.0;
 
@@ -28,8 +31,11 @@ class _SidraviaShellState extends State<SidraviaShell> {
         final content = IndexedStack(
           index: _selectedIndex,
           children: [
-            HomePage(onOpenConfiguration: () => _selectDestination(1)),
-            const ConfigurationPage(),
+            HomePage(
+              controller: widget.controller,
+              onOpenConfiguration: () => _selectDestination(1),
+            ),
+            ConfigurationPage(controller: widget.controller),
             const SettingsPage(),
           ],
         );
