@@ -8,6 +8,7 @@ import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
+import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 void main() => runApp(const PreviewCatalog());
 
@@ -61,13 +62,15 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
       title: 'Sidravia visual preview',
       debugShowCheckedModeBanner: false,
       theme: SidraviaTheme.light(),
-      home: Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: [
-              if (widget.showToolbar) _buildToolbar(),
-              Expanded(child: _buildSurface()),
-            ],
+      home: SidraviaWindowFrame(
+        child: Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                if (widget.showToolbar) _buildToolbar(),
+                Expanded(child: _buildSurface()),
+              ],
+            ),
           ),
         ),
       ),

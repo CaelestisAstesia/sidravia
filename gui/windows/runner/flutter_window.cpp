@@ -25,6 +25,29 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "sidravia/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        HWND window = GetHandle();
+        if (window == nullptr) {
+          result->Error("window_unavailable", "Window is unavailable.");
+          return;
+        }
+        if (call.method_name() == "minimize") {
+          ShowWindow(window, SW_MINIMIZE);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "close") {
+          result->Success();
+          PostMessage(window, WM_CLOSE, 0, 0);
+          return;
+        }
+        result->NotImplemented();
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +63,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  window_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

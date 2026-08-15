@@ -114,7 +114,13 @@ class _Sidebar extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text('Sidravia', style: theme.textTheme.titleLarge),
+                child: Text(
+                  'Sidravia',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               const SizedBox(height: 32),
               for (final (index, destination) in appDestinations.indexed)
@@ -186,7 +192,7 @@ class _SidebarDestination extends StatelessWidget {
         child: TextButton.icon(
           onPressed: onPressed,
           style: TextButton.styleFrom(
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.center,
             minimumSize: const Size.fromHeight(48),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             backgroundColor: selected

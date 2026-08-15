@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <windowsx.h>
 
 #include "resource.h"
 
@@ -15,18 +16,12 @@ namespace {
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
-#ifndef DWMWA_CAPTION_COLOR
-#define DWMWA_CAPTION_COLOR 35
-#endif
-#ifndef DWMWA_TEXT_COLOR
-#define DWMWA_TEXT_COLOR 36
-#endif
-
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr int kMinimumWindowWidth = 900;
 constexpr int kMinimumWindowHeight = 600;
-constexpr COLORREF kCaptionColor = RGB(0xF9, 0xFA, 0xFC);
-constexpr COLORREF kCaptionTextColor = RGB(0x17, 0x20, 0x33);
+constexpr int kTitleBarHeight = 40;
+constexpr int kWindowControlsWidth = 92;
+constexpr int kResizeBorderWidth = 8;
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
@@ -37,6 +32,50 @@ using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
+}
+
+LRESULT HitTestWindow(HWND window, LPARAM lparam) {
+  POINT cursor = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+  RECT window_rect{};
+  GetWindowRect(window, &window_rect);
+
+  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+  double scale_factor = dpi / 96.0;
+  int resize_border = Scale(kResizeBorderWidth, scale_factor);
+
+  if (!IsZoomed(window)) {
+    bool left = cursor.x >= window_rect.left &&
+                cursor.x < window_rect.left + resize_border;
+    bool right = cursor.x < window_rect.right &&
+                 cursor.x >= window_rect.right - resize_border;
+    bool top = cursor.y >= window_rect.top &&
+               cursor.y < window_rect.top + resize_border;
+    bool bottom = cursor.y < window_rect.bottom &&
+                  cursor.y >= window_rect.bottom - resize_border;
+
+    if (top && left) return HTTOPLEFT;
+    if (top && right) return HTTOPRIGHT;
+    if (bottom && left) return HTBOTTOMLEFT;
+    if (bottom && right) return HTBOTTOMRIGHT;
+    if (left) return HTLEFT;
+    if (right) return HTRIGHT;
+    if (top) return HTTOP;
+    if (bottom) return HTBOTTOM;
+  }
+
+  POINT client = cursor;
+  ScreenToClient(window, &client);
+  RECT client_rect{};
+  GetClientRect(window, &client_rect);
+  int title_bar_height = Scale(kTitleBarHeight, scale_factor);
+  int controls_width = Scale(kWindowControlsWidth, scale_factor);
+  if (client.x >= 0 && client.y >= 0 && client.y < title_bar_height &&
+      client.x < client_rect.right - controls_width) {
+    return HTCAPTION;
+  }
+
+  return HTCLIENT;
 }
 
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
@@ -137,7 +176,8 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(),
+      WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -181,6 +221,12 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_NCCALCSIZE:
+      return 0;
+
+    case WM_NCHITTEST:
+      return HitTestWindow(hwnd, lparam);
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -202,6 +248,16 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_GETMINMAXINFO: {
       auto min_max_info = reinterpret_cast<MINMAXINFO*>(lparam);
       HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      MONITORINFO monitor_info{};
+      monitor_info.cbSize = sizeof(MONITORINFO);
+      if (GetMonitorInfo(monitor, &monitor_info)) {
+        RECT work = monitor_info.rcWork;
+        RECT bounds = monitor_info.rcMonitor;
+        min_max_info->ptMaxPosition.x = work.left - bounds.left;
+        min_max_info->ptMaxPosition.y = work.top - bounds.top;
+        min_max_info->ptMaxSize.x = work.right - work.left;
+        min_max_info->ptMaxSize.y = work.bottom - work.top;
+      }
       UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
       double scale_factor = dpi / 96.0;
       min_max_info->ptMinTrackSize.x =
@@ -289,8 +345,4 @@ void Win32Window::UpdateTheme(HWND const window) {
   BOOL enable_dark_mode = FALSE;
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &enable_dark_mode, sizeof(enable_dark_mode));
-  DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &kCaptionColor,
-                        sizeof(kCaptionColor));
-  DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &kCaptionTextColor,
-                        sizeof(kCaptionTextColor));
 }

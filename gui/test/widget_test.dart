@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
@@ -10,6 +11,7 @@ import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
+import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 void main() {
   test('compact text scaling uses two semantic limits', () {
@@ -29,6 +31,18 @@ void main() {
     expect(find.byKey(const ValueKey<String>('compact-header')), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
     expect(tester.getSize(sidebar).width, 220);
+    final brand = tester.widget<Text>(
+      find.descendant(of: sidebar, matching: find.text('Sidravia')),
+    );
+    expect(brand.textAlign, TextAlign.center);
+    expect(brand.style?.fontWeight, FontWeight.w700);
+    final homeButton = tester.widget<TextButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('destination-home')),
+        matching: find.byType(TextButton),
+      ),
+    );
+    expect(homeButton.style?.alignment, Alignment.center);
     for (final destination in appDestinations) {
       expect(find.text(destination.label), findsWidgets);
     }
@@ -77,6 +91,54 @@ void main() {
           .isSelected,
       ui.Tristate.isTrue,
     );
+  });
+
+  testWidgets('Windows frame exposes direct minimize and close controls', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SidraviaWindowCommands.channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        SidraviaWindowCommands.channel,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SidraviaWindowFrame(
+          platform: TargetPlatform.windows,
+          child: ColoredBox(color: Colors.white),
+        ),
+      ),
+    );
+
+    final titleBar = find.byKey(const ValueKey<String>('windows-title-bar'));
+    final dragRegion = find.byKey(
+      const ValueKey<String>('windows-drag-region'),
+    );
+    expect(tester.getSize(titleBar).height, SidraviaWindowFrame.titleBarHeight);
+    expect(
+      tester.getSize(dragRegion).width,
+      tester.getSize(titleBar).width - SidraviaWindowFrame.controlWidth * 2,
+    );
+    expect(find.byTooltip('最小化'), findsOneWidget);
+    expect(find.byTooltip('关闭'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('window-minimize')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('window-close')));
+    await tester.pump();
+
+    expect(calls.map((call) => call.method), ['minimize', 'close']);
   });
 
   testWidgets('narrow shell uses bottom navigation and switches sections', (

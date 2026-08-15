@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/dev/preview_fixtures.dart';
@@ -43,6 +44,28 @@ void main() {
       expect(find.text('preview.student'), findsNothing);
     },
   );
+
+  testWidgets('Windows preview shares the product-owned frame', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    try {
+      await tester.pumpWidget(const preview.PreviewCatalog());
+      await tester.pumpAndSettle();
+
+      final titleBar = find.byKey(const ValueKey<String>('windows-title-bar'));
+      final toolbar = find.text('开发预览 · 不连接 daemon');
+      expect(titleBar, findsOneWidget);
+      expect(toolbar, findsOneWidget);
+      expect(
+        tester.getBottomLeft(titleBar).dy,
+        lessThanOrEqualTo(tester.getTopLeft(toolbar).dy),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('all official widget previews render without external state', (
     tester,

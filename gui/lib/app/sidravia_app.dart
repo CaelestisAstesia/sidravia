@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
+import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 class SidraviaApp extends StatefulWidget {
   const SidraviaApp({super.key, required this.controller});
@@ -31,7 +32,9 @@ class _SidraviaAppState extends State<SidraviaApp> {
       title: 'Sidravia',
       debugShowCheckedModeBanner: false,
       theme: SidraviaTheme.light(),
-      home: SidraviaShell(controller: widget.controller),
+      home: SidraviaWindowFrame(
+        child: SidraviaShell(controller: widget.controller),
+      ),
     );
   }
 }
