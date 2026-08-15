@@ -33,8 +33,8 @@ void main() {
       lessThanOrEqualTo(tester.getRect(sidebar).right),
     );
     expect(
-      tester.getRect(find.text('连接概览')).left,
-      greaterThan(tester.getRect(sidebar).right),
+      tester.getRect(find.text('校园网')).left,
+      greaterThan(tester.getRect(sidebar).right + 40),
     );
     expect(
       tester
@@ -83,10 +83,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(NavigationBar), findsOneWidget);
-    await tester.tap(find.text('设置'));
+    await tester.tap(find.text('关于'));
     await tester.pumpAndSettle();
 
-    expect(find.text('启动与路径'), findsOneWidget);
+    expect(find.text('校园网认证工具'), findsOneWidget);
     expect(
       tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
       'Sidravia',
@@ -99,7 +99,12 @@ void main() {
 
     await tester.pumpWidget(_app());
     await tester.pump();
-    await tester.tap(find.text('配置'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('配置'),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.binding.setSurfaceSize(const Size(1024, 720));
     await tester.pumpAndSettle();
@@ -145,7 +150,8 @@ void main() {
           home: HomePage(controller: authenticated, onOpenConfiguration: () {}),
         ),
       );
-      expect(find.text('会话 校园网络 已认证。'), findsOneWidget);
+      expect(find.text('已连接'), findsOneWidget);
+      expect(find.text('注销'), findsOneWidget);
       authenticated.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -160,7 +166,8 @@ void main() {
           home: HomePage(controller: failing, onOpenConfiguration: () {}),
         ),
       );
-      expect(find.text('无法接入 daemon'), findsOneWidget);
+      expect(find.text('服务不可用'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
       failing.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -177,11 +184,35 @@ void main() {
           home: HomePage(controller: stale, onOpenConfiguration: () {}),
         ),
       );
-      expect(find.text('状态暂时过期'), findsOneWidget);
-      expect(find.textContaining('保留上一次完整读取的状态'), findsOneWidget);
+      expect(find.text('状态已过期'), findsOneWidget);
+      expect(find.text('无法获取最新连接状态。'), findsOneWidget);
       stale.dispose();
     },
   );
+
+  testWidgets('home presents direct authentication states and safe actions', (
+    tester,
+  ) async {
+    for (final (session, title, action) in [
+      (_authenticating, '正在认证…', '取消'),
+      (_waitingForNetwork, '网络不可用', '取消'),
+      (_blocked, '认证失败', '重试'),
+      (_session, '未连接', '登录'),
+    ]) {
+      await tester.pumpWidget(_app(_Client(sessions: [session])));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text(title), findsOneWidget);
+      expect(find.text(action), findsOneWidget);
+      final surface = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('connection-status-surface')),
+      );
+      expect((surface.decoration! as BoxDecoration).gradient, isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+  });
 
   testWidgets(
     'configuration UI keeps zero, one, and multiple snapshots distinct',
@@ -206,8 +237,8 @@ void main() {
             expect(find.text('fixture-user'), findsWidgets);
             expect(find.textContaining('吉林大学'), findsWidgets);
           default:
-            expect(find.text('存在多个登录配置'), findsOneWidget);
-            expect(find.textContaining('不会选择或修改'), findsOneWidget);
+            expect(find.text('无法管理多个配置'), findsOneWidget);
+            expect(find.textContaining('只支持一个登录配置'), findsOneWidget);
             expect(find.text('fixture-user'), findsNothing);
             expect(find.text('other'), findsNothing);
         }
@@ -228,12 +259,15 @@ void main() {
 
     final password = find.byKey(const ValueKey('configuration-password'));
     expect(tester.widget<TextField>(password).obscureText, isTrue);
+    await tester.tap(find.byTooltip('显示密码'));
+    await tester.pump();
+    expect(tester.widget<TextField>(password).obscureText, isFalse);
     await tester.enterText(
       find.byKey(const ValueKey('configuration-account')),
       'new-user',
     );
     await tester.enterText(password, 'transient-only');
-    await tester.tap(find.text('保存配置'));
+    await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
     expect(client.calls, contains('configuration.create'));
@@ -250,7 +284,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('fixture-user'), findsWidgets);
-      await tester.tap(find.text('保存账号与学校'));
+      await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
       expect(client.calls, contains('configuration.update'));
     },
@@ -264,8 +298,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('配置').first);
       await tester.pumpAndSettle();
-      expect(find.text('存在多个登录配置'), findsOneWidget);
-      expect(find.text('保存配置'), findsNothing);
+      expect(find.text('无法管理多个配置'), findsOneWidget);
+      expect(find.text('保存'), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -281,8 +315,8 @@ void main() {
     final client = _Client(sessions: const [_session]);
     await tester.pumpWidget(_app(client));
     await tester.pumpAndSettle();
-    expect(find.text('恢复认证'), findsOneWidget);
-    await tester.tap(find.text('恢复认证'));
+    expect(find.text('登录'), findsOneWidget);
+    await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
     expect(client.calls, contains('session.ensureRunning'));
   });
@@ -293,10 +327,15 @@ void main() {
     for (final session in const [_stopping, _unknown]) {
       final client = _Client(sessions: [session]);
       await tester.pumpWidget(_app(client));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('连接状态已刷新'), findsOneWidget);
-      expect(find.text('停止认证'), findsNothing);
+      expect(
+        find.text(session.state == 'stopping' ? '正在注销…' : '状态不可用'),
+        findsOneWidget,
+      );
+      expect(find.text('登录'), findsNothing);
+      expect(find.text('注销'), findsNothing);
+      expect(find.text('重试'), findsNothing);
       expect(client.calls, isEmpty);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -471,6 +510,34 @@ const _authenticated = SessionSummary(
   state: 'authenticated',
   intent: 'maintain_authentication',
   configurationId: 'cfg-a',
+);
+const _authenticating = SessionSummary(
+  id: 'session-authenticating',
+  displayName: '校园网络',
+  accountName: 'fixture-user',
+  state: 'authenticating',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-a',
+);
+const _waitingForNetwork = SessionSummary(
+  id: 'session-waiting-network',
+  displayName: '校园网络',
+  accountName: 'fixture-user',
+  state: 'waiting_for_network',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-a',
+);
+const _blocked = SessionSummary(
+  id: 'session-blocked',
+  displayName: '校园网络',
+  accountName: 'fixture-user',
+  state: 'blocked_by_error',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-a',
+  stateReason: SessionStateReason(
+    code: 'fixture_failure',
+    description: '用户名或密码错误。',
+  ),
 );
 const _stopping = SessionSummary(
   id: 'session-stopping',

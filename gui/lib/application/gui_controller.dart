@@ -229,12 +229,12 @@ class GuiController extends ChangeNotifier {
   }
 
   String _guidance(String code) => switch (code) {
-    'profile_not_found' => '未找到所选学校配置，请刷新后重试。',
-    'configuration_conflict' => '配置已存在，请刷新后查看。',
-    'insecure_storage_confirmation_required' => '当前存储未受保护，未保存密码。',
-    'session_state_conflict' => '当前会话状态暂不支持此操作。',
-    'session_active_conflict' => '已有活动会话，请刷新后查看。',
-    _ => '操作未完成，请刷新状态后重试。',
+    'profile_not_found' => '学校配置已不存在，请刷新。',
+    'configuration_conflict' => '登录配置已存在，请刷新。',
+    'insecure_storage_confirmation_required' => '凭据存储未受保护，密码未保存。',
+    'session_state_conflict' => '当前状态无法执行此操作。',
+    'session_active_conflict' => '已有认证会话，请刷新。',
+    _ => '操作失败，请刷新后重试。',
   };
 
   bool _current(int generation) => !_disposed && generation == _generation;

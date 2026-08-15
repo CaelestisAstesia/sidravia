@@ -8,5 +8,11 @@ void main() {
 
     expect(theme.textTheme.bodyLarge?.fontFamily, 'HarmonyOS Sans');
     expect(theme.colorScheme.brightness, Brightness.light);
+    expect(theme.scaffoldBackgroundColor, const Color(0xFFF7F8FA));
+    expect(theme.colorScheme.tertiary, SidraviaColors.connected);
+    expect(
+      theme.navigationBarTheme.backgroundColor,
+      theme.scaffoldBackgroundColor,
+    );
   });
 }

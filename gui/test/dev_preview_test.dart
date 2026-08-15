@@ -26,7 +26,8 @@ void main() {
         find.byKey(const ValueKey<String>('preview-section')),
         findsNothing,
       );
-      expect(find.text('会话 预览校园网络 已认证。'), findsOneWidget);
+      expect(find.text('已连接'), findsOneWidget);
+      expect(find.text('注销'), findsOneWidget);
 
       await tester.tap(find.descendant(of: sidebar, matching: find.text('配置')));
       await tester.pumpAndSettle();
@@ -37,7 +38,7 @@ void main() {
       await tester.tap(find.text(PreviewScenario.noConfiguration.label).last);
       await tester.pumpAndSettle();
 
-      expect(find.text('创建登录配置'), findsOneWidget);
+      expect(find.text('登录信息'), findsOneWidget);
       expect(find.text('preview.student'), findsNothing);
     },
   );
@@ -97,9 +98,9 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(NavigationBar), findsOneWidget);
-      await tester.tap(find.text('设置'));
+      await tester.tap(find.text('关于'));
       await tester.pumpAndSettle();
-      expect(find.text('启动与路径'), findsOneWidget);
+      expect(find.text('校园网认证工具'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -116,7 +117,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('正在接入 daemon'), findsOneWidget);
+    expect(find.text('正在连接…'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -39,9 +39,10 @@ class _SidraviaShellState extends State<SidraviaShell> {
             const SettingsPage(),
           ],
         );
-        final contentSurface = Center(
+        final contentSurface = Align(
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1100),
+            constraints: const BoxConstraints(maxWidth: 1000),
             child: content,
           ),
         );
@@ -55,7 +56,12 @@ class _SidraviaShellState extends State<SidraviaShell> {
                         onSelected: _selectDestination,
                       ),
                       const VerticalDivider(width: 1),
-                      Expanded(child: contentSurface),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 32, right: 24),
+                          child: contentSurface,
+                        ),
+                      ),
                     ],
                   )
                 : Column(
@@ -99,7 +105,7 @@ class _Sidebar extends StatelessWidget {
       key: const ValueKey<String>('wide-sidebar'),
       width: 220,
       child: ColoredBox(
-        color: theme.colorScheme.surfaceContainerLowest,
+        color: theme.scaffoldBackgroundColor,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 20),
           child: Column(
@@ -193,7 +199,7 @@ class _SidebarDestination extends StatelessWidget {
             minimumSize: const Size.fromHeight(48),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             backgroundColor: selected
-                ? colorScheme.primaryContainer
+                ? colorScheme.primary.withValues(alpha: 0.1)
                 : Colors.transparent,
             foregroundColor: selected
                 ? colorScheme.primary

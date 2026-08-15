@@ -11,17 +11,17 @@ class ConfigurationPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 52, 24, 48),
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
       children: [
         Text('配置', style: theme.textTheme.displaySmall),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Text(
-          '配置由 daemon 保存。密码只在输入后直接发送，不会显示或保留在此界面。',
-          style: theme.textTheme.titleMedium?.copyWith(
+          '保存用于校园网认证的登录信息。密码不会在界面中回显。',
+          style: theme.textTheme.bodyLarge?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 28),
         AnimatedBuilder(
           animation: controller,
           builder: (context, _) =>
@@ -46,19 +46,16 @@ class _ConfigurationContent extends StatelessWidget {
     final profiles = snapshot?.profiles ?? const <InstitutionProfile>[];
     Widget content;
     if (!ready) {
-      content = _MessageCard(
-        title: '正在等待 daemon 状态',
-        detail: '连接恢复后才能查看或修改登录配置。',
-      );
+      content = _MessageCard(title: '服务未连接', detail: '连接恢复后才能查看或修改配置。');
     } else if (configurations.length > 1) {
       content = _MessageCard(
-        title: '存在多个登录配置',
-        detail: '此 GUI MVP 不会选择或修改多个配置。请使用高级 CLI 管理它们。',
+        title: '无法管理多个配置',
+        detail: '此版本只支持一个登录配置。请先使用命令行工具处理。',
       );
     } else if (profiles.isEmpty) {
       content = _MessageCard(
-        title: configurations.isEmpty ? '尚无可用学校配置' : '无法编辑当前配置',
-        detail: 'daemon 未提供学校配置，当前不能保存或更新登录信息。',
+        title: configurations.isEmpty ? '没有可用的学校配置' : '无法编辑当前配置',
+        detail: '本机服务未提供学校配置。',
       );
     } else if (configurations.isEmpty) {
       content = _CreateConfigurationForm(
@@ -113,8 +110,8 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
 
   @override
   Widget build(BuildContext context) => _Card(
-    title: '创建登录配置',
-    detail: '保存后由 daemon 生成配置身份。仅使用受保护的凭据存储。',
+    title: '登录信息',
+    detail: '选择学校并填写用户名。',
     children: [
       _ProfileSelector(
         value: _profileId,
@@ -127,15 +124,14 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
         key: const ValueKey('configuration-account'),
         controller: _account,
         enabled: !widget.controller.busy,
-        decoration: const InputDecoration(labelText: '账号'),
+        decoration: const InputDecoration(labelText: '用户名'),
       ),
       const SizedBox(height: 16),
-      TextField(
-        key: const ValueKey('configuration-password'),
+      _PasswordField(
+        fieldKey: const ValueKey('configuration-password'),
         controller: _password,
         enabled: !widget.controller.busy,
-        obscureText: true,
-        decoration: const InputDecoration(labelText: '密码（可留空）'),
+        label: '密码（可选）',
       ),
       const SizedBox(height: 24),
       FilledButton(
@@ -145,7 +141,7 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
                 final account = _account.text;
                 if (account.isEmpty) {
                   ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('请输入账号。')));
+                      .showSnackBar(const SnackBar(content: Text('请输入用户名。')));
                   return;
                 }
                 final saved = await widget.controller.createConfiguration(
@@ -155,7 +151,7 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
                 );
                 if (saved && mounted) _password.clear();
               },
-        child: const Text('保存配置'),
+        child: const Text('保存'),
       ),
     ],
   );
@@ -197,10 +193,9 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
 
   @override
   Widget build(BuildContext context) => _Card(
-    title: widget.configuration.displayName.isEmpty
-        ? widget.configuration.username
-        : widget.configuration.displayName,
-    detail: '${widget.configuration.institutionDisplayName} · 已保存的密码不会显示。',
+    title: '登录信息',
+    detail:
+        '${widget.configuration.institutionDisplayName} · ${widget.configuration.credentialStored ? '密码已保存' : '未保存密码'}',
     children: [
       _ProfileSelector(
         value: _profileId,
@@ -213,7 +208,7 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         key: const ValueKey('configuration-account'),
         controller: _account,
         enabled: !widget.controller.busy,
-        decoration: const InputDecoration(labelText: '账号'),
+        decoration: const InputDecoration(labelText: '用户名'),
       ),
       const SizedBox(height: 16),
       FilledButton.tonal(
@@ -222,7 +217,7 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
             : () async {
                 if (_account.text.isEmpty) {
                   ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('请输入账号。')));
+                      .showSnackBar(const SnackBar(content: Text('请输入用户名。')));
                   return;
                 }
                 await widget.controller.updateConfiguration(
@@ -231,15 +226,14 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
                   username: _account.text,
                 );
               },
-        child: const Text('保存账号与学校'),
+        child: const Text('保存'),
       ),
       const Divider(height: 40),
-      TextField(
-        key: const ValueKey('configuration-password'),
+      _PasswordField(
+        fieldKey: const ValueKey('configuration-password'),
         controller: _password,
         enabled: !widget.controller.busy,
-        obscureText: true,
-        decoration: const InputDecoration(labelText: '替换密码（可留空）'),
+        label: '新密码（可选）',
       ),
       const SizedBox(height: 16),
       FilledButton(
@@ -287,6 +281,47 @@ class _ProfileSelector extends StatelessWidget {
   );
 }
 
+class _PasswordField extends StatefulWidget {
+  const _PasswordField({
+    required this.fieldKey,
+    required this.controller,
+    required this.enabled,
+    required this.label,
+  });
+
+  final Key fieldKey;
+  final TextEditingController controller;
+  final bool enabled;
+  final String label;
+
+  @override
+  State<_PasswordField> createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<_PasswordField> {
+  var _obscured = true;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    key: widget.fieldKey,
+    controller: widget.controller,
+    enabled: widget.enabled,
+    obscureText: _obscured,
+    decoration: InputDecoration(
+      labelText: widget.label,
+      suffixIcon: IconButton(
+        onPressed: widget.enabled
+            ? () => setState(() => _obscured = !_obscured)
+            : null,
+        tooltip: _obscured ? '显示密码' : '隐藏密码',
+        icon: Icon(
+          _obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+        ),
+      ),
+    ),
+  );
+}
+
 class _MessageCard extends StatelessWidget {
   const _MessageCard({required this.title, required this.detail});
   final String title, detail;
@@ -325,12 +360,12 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      constraints: const BoxConstraints(maxWidth: 560),
+      constraints: const BoxConstraints(maxWidth: 600),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

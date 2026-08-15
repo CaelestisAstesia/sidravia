@@ -27,10 +27,10 @@ const appDestinations = <AppDestination>[
   AppDestination(
     section: AppSection.home,
     id: 'home',
-    label: '主页',
-    title: '主页',
-    icon: Icons.home_outlined,
-    selectedIcon: Icons.home,
+    label: '连接',
+    title: '连接',
+    icon: Icons.wifi_outlined,
+    selectedIcon: Icons.wifi,
   ),
   AppDestination(
     section: AppSection.configuration,
@@ -43,9 +43,9 @@ const appDestinations = <AppDestination>[
   AppDestination(
     section: AppSection.settings,
     id: 'settings',
-    label: '设置',
-    title: '设置',
-    icon: Icons.settings_outlined,
-    selectedIcon: Icons.settings,
+    label: '关于',
+    title: '关于',
+    icon: Icons.info_outline,
+    selectedIcon: Icons.info,
   ),
 ];

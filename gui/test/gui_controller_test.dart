@@ -62,7 +62,7 @@ void main() {
         isFalse,
       );
       expect(controller.state, GuiConnectionState.ready);
-      expect(controller.notice, '未找到所选学校配置，请刷新后重试。');
+      expect(controller.notice, '学校配置已不存在，请刷新。');
       expect(client.closed, isFalse);
       controller.dispose();
     },
