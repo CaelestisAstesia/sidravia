@@ -6,6 +6,7 @@ import 'package:sidravia_gui/dev/preview_main.dart';
 @Preview(group: 'Sidravia', name: 'Home · authenticated', size: Size(1280, 720))
 Widget authenticatedHomePreview() => const PreviewCatalog(
   initialScenario: PreviewScenario.authenticated,
+  surface: PreviewSurface.home,
   showToolbar: false,
 );
 
@@ -16,12 +17,10 @@ Widget authenticatedHomePreview() => const PreviewCatalog(
 )
 Widget emptyConfigurationPreview() => const PreviewCatalog(
   initialScenario: PreviewScenario.noConfiguration,
-  initialSection: PreviewSection.configuration,
+  surface: PreviewSurface.configuration,
   showToolbar: false,
 );
 
 @Preview(group: 'Sidravia', name: 'Settings', size: Size(1280, 720))
-Widget settingsPreview() => const PreviewCatalog(
-  initialSection: PreviewSection.settings,
-  showToolbar: false,
-);
+Widget settingsPreview() =>
+    const PreviewCatalog(surface: PreviewSurface.settings, showToolbar: false);

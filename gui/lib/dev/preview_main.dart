@@ -7,29 +7,22 @@ import 'package:sidravia_gui/dev/preview_fixtures.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
+import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 
 void main() => runApp(const PreviewCatalog());
 
-enum PreviewSection {
-  home('主页', Icons.home_outlined),
-  configuration('配置', Icons.manage_accounts_outlined),
-  settings('设置', Icons.settings_outlined);
-
-  const PreviewSection(this.label, this.icon);
-  final String label;
-  final IconData icon;
-}
+enum PreviewSurface { shell, home, configuration, settings }
 
 class PreviewCatalog extends StatefulWidget {
   const PreviewCatalog({
     super.key,
     this.initialScenario = PreviewScenario.authenticated,
-    this.initialSection = PreviewSection.home,
+    this.surface = PreviewSurface.shell,
     this.showToolbar = true,
   });
 
   final PreviewScenario initialScenario;
-  final PreviewSection initialSection;
+  final PreviewSurface surface;
   final bool showToolbar;
 
   @override
@@ -38,7 +31,6 @@ class PreviewCatalog extends StatefulWidget {
 
 class _PreviewCatalogState extends State<PreviewCatalog> {
   late PreviewScenario _scenario = widget.initialScenario;
-  late PreviewSection _section = widget.initialSection;
   late GuiController _controller = _createController(_scenario);
 
   GuiController _createController(PreviewScenario scenario) {
@@ -55,10 +47,6 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
       _controller = _createController(scenario);
     });
     old.dispose();
-  }
-
-  void _selectSection(PreviewSection section) {
-    setState(() => _section = section);
   }
 
   @override
@@ -119,21 +107,6 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
                     ),
                 ],
               ),
-              SegmentedButton<PreviewSection>(
-                key: const ValueKey('preview-section'),
-                segments: [
-                  for (final section in PreviewSection.values)
-                    ButtonSegment(
-                      value: section,
-                      icon: Icon(section.icon),
-                      label: Text(section.label),
-                    ),
-                ],
-                selected: {_section},
-                showSelectedIcon: false,
-                onSelectionChanged: (selection) =>
-                    _selectSection(selection.single),
-              ),
             ],
           ),
         ),
@@ -141,12 +114,13 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
     );
   }
 
-  Widget _buildSurface() => switch (_section) {
-    PreviewSection.home => HomePage(
+  Widget _buildSurface() => switch (widget.surface) {
+    PreviewSurface.shell => SidraviaShell(controller: _controller),
+    PreviewSurface.home => HomePage(
       controller: _controller,
-      onOpenConfiguration: () => _selectSection(PreviewSection.configuration),
+      onOpenConfiguration: () {},
     ),
-    PreviewSection.configuration => ConfigurationPage(controller: _controller),
-    PreviewSection.settings => const SettingsPage(),
+    PreviewSurface.configuration => ConfigurationPage(controller: _controller),
+    PreviewSurface.settings => const SettingsPage(),
   };
 }

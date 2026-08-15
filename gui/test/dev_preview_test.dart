@@ -5,28 +5,42 @@ import 'package:sidravia_gui/dev/preview_main.dart' as preview;
 import 'package:sidravia_gui/dev/widget_previews.dart';
 
 void main() {
-  testWidgets('preview catalog switches fictional state and product page', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 720));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'preview catalog uses real shell navigation with fictional state',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const preview.PreviewCatalog());
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(const preview.PreviewCatalog());
+      await tester.pumpAndSettle();
 
-    expect(find.text('开发预览 · 不连接 daemon'), findsOneWidget);
-    expect(find.text('会话 预览校园网络 已认证。'), findsOneWidget);
+      expect(find.text('开发预览 · 不连接 daemon'), findsOneWidget);
+      final sidebar = find.byKey(const ValueKey<String>('wide-sidebar'));
+      expect(sidebar, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('compact-header')),
+        findsNothing,
+      );
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('preview-section')),
+        findsNothing,
+      );
+      expect(find.text('会话 预览校园网络 已认证。'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('preview-scenario')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(PreviewScenario.noConfiguration.label).last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('配置').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: sidebar, matching: find.text('配置')));
+      await tester.pumpAndSettle();
+      expect(find.text('preview.student'), findsWidgets);
 
-    expect(find.text('创建登录配置'), findsOneWidget);
-    expect(find.text('preview.student'), findsNothing);
-  });
+      await tester.tap(find.byKey(const ValueKey('preview-scenario')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(PreviewScenario.noConfiguration.label).last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('创建登录配置'), findsOneWidget);
+      expect(find.text('preview.student'), findsNothing);
+    },
+  );
 
   testWidgets('all official widget previews render without external state', (
     tester,
@@ -47,49 +61,48 @@ void main() {
     }
   });
 
-  testWidgets('preview controls stay inside a narrow visual surface', (
-    tester,
-  ) async {
-    const size = Size(640, 600);
-    await tester.binding.setSurfaceSize(size);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'preview controls and real narrow navigation stay inside surface',
+    (tester) async {
+      const size = Size(640, 600);
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const preview.PreviewCatalog());
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(const preview.PreviewCatalog());
+      await tester.pumpAndSettle();
 
-    void expectInside(Finder finder) {
-      final rect = tester.getRect(finder);
-      expect(rect.left, greaterThanOrEqualTo(0));
-      expect(rect.top, greaterThanOrEqualTo(0));
-      expect(rect.right, lessThanOrEqualTo(size.width));
-      expect(rect.bottom, lessThanOrEqualTo(size.height));
-    }
+      void expectInside(Finder finder) {
+        final rect = tester.getRect(finder);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.top, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(size.width));
+        expect(rect.bottom, lessThanOrEqualTo(size.height));
+      }
 
-    final scenarioControl = find.byKey(
-      const ValueKey<String>('preview-scenario'),
-    );
-    final sectionControl = find.byKey(
-      const ValueKey<String>('preview-section'),
-    );
-    expectInside(scenarioControl);
-    expectInside(sectionControl);
-    expectInside(
-      find
-          .descendant(
-            of: scenarioControl,
-            matching: find.text(PreviewScenario.authenticated.label),
-          )
-          .first,
-    );
-    for (final section in preview.PreviewSection.values) {
+      final scenarioControl = find.byKey(
+        const ValueKey<String>('preview-scenario'),
+      );
+      expectInside(scenarioControl);
       expectInside(
         find
-            .descendant(of: sectionControl, matching: find.text(section.label))
+            .descendant(
+              of: scenarioControl,
+              matching: find.text(PreviewScenario.authenticated.label),
+            )
             .first,
       );
-    }
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.byKey(const ValueKey<String>('wide-sidebar')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('compact-header')),
+        findsOneWidget,
+      );
+      expect(find.byType(NavigationBar), findsOneWidget);
+      await tester.tap(find.text('设置'));
+      await tester.pumpAndSettle();
+      expect(find.text('启动与路径'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('bootstrapping preview remains bounded and disposable', (
     tester,
@@ -97,6 +110,7 @@ void main() {
     await tester.pumpWidget(
       const preview.PreviewCatalog(
         initialScenario: PreviewScenario.bootstrapping,
+        surface: preview.PreviewSurface.home,
         showToolbar: false,
       ),
     );
