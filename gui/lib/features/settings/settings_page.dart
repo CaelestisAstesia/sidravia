@@ -36,18 +36,20 @@ class SettingsPage extends StatelessWidget {
                       child: Icon(Icons.wifi, color: theme.colorScheme.primary),
                     ),
                     const SizedBox(width: 14),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Sidravia', style: theme.textTheme.titleLarge),
-                        const SizedBox(height: 2),
-                        Text(
-                          '校园网认证工具',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Sidravia', style: theme.textTheme.titleLarge),
+                          const SizedBox(height: 2),
+                          Text(
+                            '校园网认证工具',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),

@@ -7,9 +7,21 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 enum PreviewScenario {
   bootstrapping('正在启动'),
+  failed('服务不可用'),
+  unsupported('平台不支持'),
+  daemonStopped('服务未运行'),
+  noProfile('无学校配置'),
   noConfiguration('尚未配置'),
+  noSession('尚无会话'),
+  disconnected('未连接'),
+  authenticating('正在认证'),
   authenticated('已认证'),
+  waitingForNetwork('等待网络'),
+  waitingBeforeRetry('等待重试'),
   blocked('认证错误'),
+  stopping('正在注销'),
+  unknown('未知状态'),
+  ambiguousSessions('会话关系不明确'),
   multipleObjects('多个对象');
 
   const PreviewScenario(this.label);
@@ -17,14 +29,31 @@ enum PreviewScenario {
 }
 
 GuiController createPreviewController(PreviewScenario scenario) {
-  final bootstrapper = scenario == PreviewScenario.bootstrapping
-      ? const _PendingBootstrapper()
-      : const _PreviewBootstrapper();
+  final bootstrapper = switch (scenario) {
+    PreviewScenario.bootstrapping => const _PendingBootstrapper(),
+    PreviewScenario.failed => const _FailedBootstrapper(
+      GuiBootstrapFailure.failed,
+    ),
+    PreviewScenario.unsupported => const _FailedBootstrapper(
+      GuiBootstrapFailure.unsupportedPlatform,
+    ),
+    _ => const _PreviewBootstrapper(),
+  };
   return GuiController(
     bootstrapper: bootstrapper,
     connector: (_) async => _PreviewClient(scenario),
     pollDelay: const Duration(days: 1),
   );
+}
+
+class _FailedBootstrapper implements GuiBootstrapper {
+  const _FailedBootstrapper(this.failure);
+
+  final GuiBootstrapFailure failure;
+
+  @override
+  Future<GuiBootstrapResult> bootstrap() async =>
+      GuiBootstrapResult.failure(failure);
 }
 
 class _PendingBootstrapper implements GuiBootstrapper {
@@ -57,14 +86,17 @@ class _PreviewClient implements SidraviaIpcClient {
   final PreviewScenario scenario;
 
   @override
-  Future<DaemonStatus> daemonStatus() async => _daemon;
+  Future<DaemonStatus> daemonStatus() async =>
+      scenario == PreviewScenario.daemonStopped ? _stoppedDaemon : _daemon;
 
   @override
-  Future<List<InstitutionProfile>> profileList() async => const [_profile];
+  Future<List<InstitutionProfile>> profileList() async =>
+      scenario == PreviewScenario.noProfile ? const [] : const [_profile];
 
   @override
   Future<List<ConfigurationSummary>> configurationList() async =>
       switch (scenario) {
+        PreviewScenario.noProfile => const [],
         PreviewScenario.noConfiguration => const [],
         PreviewScenario.multipleObjects => const [
           _configuration,
@@ -75,8 +107,18 @@ class _PreviewClient implements SidraviaIpcClient {
 
   @override
   Future<List<SessionSummary>> sessionList() async => switch (scenario) {
+    PreviewScenario.disconnected => const [_suspendedSession],
+    PreviewScenario.authenticating => const [_authenticatingSession],
     PreviewScenario.authenticated => const [_authenticatedSession],
+    PreviewScenario.waitingForNetwork => const [_waitingForNetworkSession],
+    PreviewScenario.waitingBeforeRetry => const [_waitingBeforeRetrySession],
     PreviewScenario.blocked => const [_blockedSession],
+    PreviewScenario.stopping => const [_stoppingSession],
+    PreviewScenario.unknown => const [_unknownSession],
+    PreviewScenario.ambiguousSessions => const [
+      _authenticatedSession,
+      _suspendedSession,
+    ],
     PreviewScenario.multipleObjects => const [
       _authenticatedSession,
       _otherSession,
@@ -134,6 +176,15 @@ const _daemon = DaemonStatus(
   desktopOwnerPid: 4700,
 );
 
+const _stoppedDaemon = DaemonStatus(
+  productVersion: 'preview-only',
+  buildId: 'preview-only',
+  pid: 4711,
+  status: 'stopped',
+  mode: 'desktop',
+  desktopOwnerPid: 4700,
+);
+
 const _profile = InstitutionProfile(
   id: 'preview-university',
   displayName: '预览大学',
@@ -174,6 +225,33 @@ const _authenticatedSession = SessionSummary(
   configurationId: 'cfg-preview-primary',
 );
 
+const _authenticatingSession = SessionSummary(
+  id: 'session-preview-primary',
+  displayName: '预览校园网络',
+  accountName: 'preview.student',
+  state: 'authenticating',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-preview-primary',
+);
+
+const _waitingForNetworkSession = SessionSummary(
+  id: 'session-preview-primary',
+  displayName: '预览校园网络',
+  accountName: 'preview.student',
+  state: 'waiting_for_network',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-preview-primary',
+);
+
+const _waitingBeforeRetrySession = SessionSummary(
+  id: 'session-preview-primary',
+  displayName: '预览校园网络',
+  accountName: 'preview.student',
+  state: 'waiting_before_retry',
+  intent: 'maintain_authentication',
+  configurationId: 'cfg-preview-primary',
+);
+
 const _blockedSession = SessionSummary(
   id: 'session-preview-blocked',
   displayName: '预览校园网络',
@@ -197,6 +275,24 @@ const _suspendedSession = SessionSummary(
   displayName: '预览校园网络',
   accountName: 'preview.student',
   state: 'suspended',
+  intent: 'suspend_authentication',
+  configurationId: 'cfg-preview-primary',
+);
+
+const _stoppingSession = SessionSummary(
+  id: 'session-preview-primary',
+  displayName: '预览校园网络',
+  accountName: 'preview.student',
+  state: 'stopping',
+  intent: 'suspend_authentication',
+  configurationId: 'cfg-preview-primary',
+);
+
+const _unknownSession = SessionSummary(
+  id: 'session-preview-primary',
+  displayName: '预览校园网络',
+  accountName: 'preview.student',
+  state: 'preview_unknown',
   intent: 'suspend_authentication',
   configurationId: 'cfg-preview-primary',
 );

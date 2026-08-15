@@ -120,4 +120,30 @@ void main() {
     expect(find.text('正在连接…'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('every preview scenario renders through the production home', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    for (final scenario in PreviewScenario.values) {
+      await tester.pumpWidget(
+        preview.PreviewCatalog(
+          initialScenario: scenario,
+          surface: preview.PreviewSurface.home,
+          showToolbar: false,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(
+        find.byKey(const ValueKey<String>('connection-status-surface')),
+        findsOneWidget,
+        reason: scenario.name,
+      );
+      expect(tester.takeException(), isNull, reason: scenario.name);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+  });
 }

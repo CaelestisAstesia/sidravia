@@ -106,6 +106,35 @@ void main() {
       expect(late.closed, isTrue);
     },
   );
+
+  test(
+    'polling stays passive and a concurrent user action waits for it',
+    () async {
+      final client = _Client();
+      final controller = GuiController(
+        bootstrapper: _Bootstrapper(),
+        connector: (_) async => client,
+        pollDelay: const Duration(milliseconds: 5),
+      );
+      await controller.start();
+      expect(controller.busy, isFalse);
+
+      final pendingDaemon = Completer<DaemonStatus>();
+      client.nextDaemon = pendingDaemon;
+      await Future<void>.delayed(const Duration(milliseconds: 15));
+
+      expect(controller.busy, isFalse);
+      final mutation = controller.startConfiguration('cfg-a');
+      await Future<void>.delayed(Duration.zero);
+      expect(client.calls, isNot(contains('session.startConfiguration')));
+
+      pendingDaemon.complete(_daemon);
+      expect(await mutation, isTrue);
+      expect(client.calls, contains('session.startConfiguration'));
+      expect(controller.busy, isFalse);
+      controller.dispose();
+    },
+  );
 }
 
 GuiController _controller(_Client client) => GuiController(
@@ -154,6 +183,7 @@ class _PendingBootstrapper implements GuiBootstrapper {
 class _Client implements SidraviaIpcClient {
   final calls = <String>[];
   Object? nextFailure;
+  Completer<DaemonStatus>? nextDaemon;
   var closed = false;
 
   void _call(String name) {
@@ -166,6 +196,9 @@ class _Client implements SidraviaIpcClient {
   @override
   Future<DaemonStatus> daemonStatus() async {
     _call('daemon');
+    final pending = nextDaemon;
+    nextDaemon = null;
+    if (pending != null) return pending.future;
     return _daemon;
   }
 

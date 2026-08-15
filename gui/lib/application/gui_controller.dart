@@ -25,6 +25,7 @@ class GuiController extends ChangeNotifier {
   SidraviaIpcClient? _client;
   Timer? _timer;
   Future<void>? _transition;
+  bool _userBusy = false;
   bool _disposed = false;
   int _generation = 0;
   GuiConnectionState _state = GuiConnectionState.bootstrapping;
@@ -36,9 +37,15 @@ class GuiController extends ChangeNotifier {
   GuiBootstrapFailure? get failure => _failure;
   GuiSnapshot? get snapshot => _snapshot;
   String? get notice => _notice;
-  bool get busy => _transition != null;
+  bool get busy => _userBusy;
 
-  Future<void> start() => _transition ??= _start();
+  Future<void> start() {
+    final current = _transition;
+    if (current != null) return current;
+    _userBusy = true;
+    return _transition = _start();
+  }
+
   Future<void> retry() => start();
 
   Future<bool> createConfiguration({
@@ -115,17 +122,28 @@ class GuiController extends ChangeNotifier {
     } on Object {
       if (_current(generation)) _setFailure(GuiBootstrapFailure.failed);
     } finally {
-      if (_generation == generation) _transition = null;
+      if (_generation == generation) {
+        _transition = null;
+        _userBusy = false;
+      }
       _notify();
     }
   }
 
-  Future<bool> _mutate(Future<Object?> Function(SidraviaIpcClient) action) {
+  Future<bool> _mutate(
+    Future<Object?> Function(SidraviaIpcClient) action,
+  ) async {
+    final current = _transition;
+    if (current != null) {
+      if (_userBusy) return false;
+      await current;
+    }
     if (_transition != null ||
         _state != GuiConnectionState.ready ||
         _client == null) {
-      return Future.value(false);
+      return false;
     }
+    _userBusy = true;
     final completer = Completer<bool>();
     _transition = _runMutation(action, completer);
     _notify();
@@ -162,7 +180,10 @@ class GuiController extends ChangeNotifier {
       }
       completer.complete(false);
     } finally {
-      if (_generation == generation) _transition = null;
+      if (_generation == generation) {
+        _transition = null;
+        _userBusy = false;
+      }
       _notify();
     }
   }

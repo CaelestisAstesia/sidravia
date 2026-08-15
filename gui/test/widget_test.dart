@@ -342,13 +342,111 @@ void main() {
       await tester.pump();
     }
   });
+
+  testWidgets(
+    'configuration reconciles refreshed authoritative values safely',
+    (tester) async {
+      final client = _Client(
+        configurations: [_configuration],
+        profiles: [_profile, _otherProfile],
+      );
+      await tester.pumpWidget(_app(client, const Duration(milliseconds: 100)));
+      await tester.pump();
+      await tester.tap(find.text('配置').first);
+      await tester.pump();
+
+      client.profiles = [_otherProfile];
+      client.configurations = [_serverUpdatedConfiguration];
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+
+      final account = find.byKey(const ValueKey('configuration-account'));
+      expect(tester.widget<TextField>(account).controller?.text, 'server-user');
+      expect(
+        tester
+            .widget<DropdownButtonFormField<String>>(
+              find.byType(DropdownButtonFormField<String>),
+            )
+            .initialValue,
+        'other-university',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('poll refresh preserves active username and password input', (
+    tester,
+  ) async {
+    final client = _Client(
+      configurations: [_configuration],
+      profiles: [_profile, _otherProfile],
+    );
+    await tester.pumpWidget(_app(client, const Duration(milliseconds: 100)));
+    await tester.pump();
+    await tester.tap(find.text('配置').first);
+    await tester.pump();
+
+    final account = find.byKey(const ValueKey('configuration-account'));
+    final password = find.byKey(const ValueKey('configuration-password'));
+    await tester.enterText(account, 'draft-user');
+    await tester.enterText(password, 'draft-secret');
+    client.configurations = [_serverRenamedConfiguration];
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+
+    expect(tester.widget<TextField>(account).controller?.text, 'draft-user');
+    expect(tester.widget<TextField>(password).controller?.text, 'draft-secret');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('all reachable pages fit a compact high-text-scale window', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(() {
+      tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+      tester.binding.setSurfaceSize(null);
+    });
+
+    await tester.pumpWidget(_app());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('配置'),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('关于'),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('查看许可'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查看许可'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LicensePage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
-SidraviaApp _app([_Client? client]) => SidraviaApp(
+SidraviaApp _app([
+  _Client? client,
+  Duration pollDelay = const Duration(days: 1),
+]) => SidraviaApp(
   controller: GuiController(
     bootstrapper: _Bootstrapper(),
     connector: (_) async => client ?? _Client(),
-    pollDelay: const Duration(days: 1),
+    pollDelay: pollDelay,
   ),
 );
 
@@ -388,15 +486,17 @@ class _Client implements SidraviaIpcClient {
   _Client({
     this.configurations = const [_configuration],
     this.sessions = const [],
+    this.profiles = const [_profile],
   });
-  final List<ConfigurationSummary> configurations;
-  final List<SessionSummary> sessions;
+  List<ConfigurationSummary> configurations;
+  List<SessionSummary> sessions;
+  List<InstitutionProfile> profiles;
   final calls = <String>[];
 
   @override
   Future<DaemonStatus> daemonStatus() async => _daemon;
   @override
-  Future<List<InstitutionProfile>> profileList() async => const [_profile];
+  Future<List<InstitutionProfile>> profileList() async => profiles;
   @override
   Future<List<ConfigurationSummary>> configurationList() async =>
       configurations;
@@ -473,6 +573,11 @@ const _profile = InstitutionProfile(
   displayName: '吉林大学',
   protocolId: 'drcom-5.2.0-d',
 );
+const _otherProfile = InstitutionProfile(
+  id: 'other-university',
+  displayName: '另一所大学',
+  protocolId: 'other-protocol',
+);
 const _configuration = ConfigurationSummary(
   id: 'cfg-a',
   displayName: '',
@@ -491,6 +596,28 @@ const _other = ConfigurationSummary(
   institutionDisplayName: '吉林大学',
   authenticationProtocolId: 'drcom-5.2.0-d',
   username: 'other-user',
+  credentialStored: true,
+  storageProtection: 'protected',
+  autoReconnect: true,
+);
+const _serverUpdatedConfiguration = ConfigurationSummary(
+  id: 'cfg-a',
+  displayName: '',
+  institutionProfileId: 'other-university',
+  institutionDisplayName: '另一所大学',
+  authenticationProtocolId: 'other-protocol',
+  username: 'server-user',
+  credentialStored: true,
+  storageProtection: 'protected',
+  autoReconnect: true,
+);
+const _serverRenamedConfiguration = ConfigurationSummary(
+  id: 'cfg-a',
+  displayName: '',
+  institutionProfileId: 'jlu',
+  institutionDisplayName: '吉林大学',
+  authenticationProtocolId: 'drcom-5.2.0-d',
+  username: 'server-renamed',
   credentialStored: true,
   storageProtection: 'protected',
   autoReconnect: true,

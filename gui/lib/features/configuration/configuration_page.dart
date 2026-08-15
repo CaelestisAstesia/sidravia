@@ -102,6 +102,14 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
   final _password = TextEditingController();
 
   @override
+  void didUpdateWidget(covariant _CreateConfigurationForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.profiles.any((profile) => profile.id == _profileId)) {
+      _profileId = widget.profiles.first.id;
+    }
+  }
+
+  @override
   void dispose() {
     _account.dispose();
     _password.dispose();
@@ -183,6 +191,44 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
     text: widget.configuration.username,
   );
   final _password = TextEditingController();
+  late String _authoritativeConfigurationId = widget.configuration.id;
+  late String _authoritativeProfileId =
+      widget.configuration.institutionProfileId;
+  late String _authoritativeUsername = widget.configuration.username;
+
+  @override
+  void didUpdateWidget(covariant _EditConfigurationForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final configuration = widget.configuration;
+    final replaced = configuration.id != _authoritativeConfigurationId;
+    if (replaced) {
+      _account.text = configuration.username;
+      _password.clear();
+    } else if (_account.text == _authoritativeUsername &&
+        configuration.username != _authoritativeUsername) {
+      _account.text = configuration.username;
+    }
+
+    final preferredProfile =
+        widget.profiles.any(
+          (profile) => profile.id == configuration.institutionProfileId,
+        )
+        ? configuration.institutionProfileId
+        : widget.profiles.first.id;
+    final selectedProfileExists = widget.profiles.any(
+      (profile) => profile.id == _profileId,
+    );
+    if (replaced ||
+        !selectedProfileExists ||
+        (_profileId == _authoritativeProfileId &&
+            configuration.institutionProfileId != _authoritativeProfileId)) {
+      _profileId = preferredProfile;
+    }
+
+    _authoritativeConfigurationId = configuration.id;
+    _authoritativeProfileId = configuration.institutionProfileId;
+    _authoritativeUsername = configuration.username;
+  }
 
   @override
   void dispose() {
@@ -267,6 +313,7 @@ class _ProfileSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<String>(
+    key: ValueKey<String>('configuration-profile-$value'),
     initialValue: value,
     onChanged: enabled ? onChanged : null,
     decoration: const InputDecoration(labelText: '学校'),
