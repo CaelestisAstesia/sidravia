@@ -26,7 +26,7 @@ class HomePage extends StatelessWidget {
             Text(
               '校园网',
               style: compact
-                  ? theme.textTheme.labelLarge?.copyWith(
+                  ? theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     )
                   : theme.textTheme.displaySmall,
@@ -89,7 +89,9 @@ class _ConnectionStatus extends StatelessWidget {
                   Expanded(
                     child: Text(
                       presentation.title,
-                      style: theme.textTheme.titleLarge,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -98,7 +100,7 @@ class _ConnectionStatus extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: controller.busy ? null : action.onPressed,
-                  child: Text(action.label),
+                  child: Text(action.label, style: theme.textTheme.labelMedium),
                 ),
               ],
               const SizedBox(height: 12),

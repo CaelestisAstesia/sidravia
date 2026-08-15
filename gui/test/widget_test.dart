@@ -139,9 +139,19 @@ void main() {
         findsOneWidget,
       );
       final header = find.byKey(const ValueKey<String>('compact-header'));
+      final theme = Theme.of(tester.element(header));
       expect(
         find.descendant(of: header, matching: find.text('连接')),
         findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: header, matching: find.text('连接')),
+            )
+            .style
+            ?.fontSize,
+        theme.textTheme.titleSmall?.fontSize,
       );
       expect(
         find.descendant(of: header, matching: find.text('Sidravia')),
@@ -430,6 +440,15 @@ void main() {
     final state = find.text('未连接').first;
     expect(tester.getBottomRight(state).dy, lessThanOrEqualTo(navigationTop));
     expect(tester.getSize(state).height, lessThanOrEqualTo(72));
+    final compactTheme = Theme.of(tester.element(state));
+    expect(
+      tester.widget<Text>(state).style?.fontSize,
+      compactTheme.textTheme.titleMedium?.fontSize,
+    );
+    expect(
+      tester.widget<Text>(find.text('校园网')).style?.fontSize,
+      compactTheme.textTheme.labelMedium?.fontSize,
+    );
     expect(
       tester.getBottomRight(find.widgetWithText(FilledButton, '登录')).dy,
       lessThanOrEqualTo(navigationTop),
@@ -448,11 +467,26 @@ void main() {
       tester.getTopLeft(find.byKey(const ValueKey('configuration-account'))).dy,
       lessThan(navigationTop),
     );
+    final compactAccount = tester.widget<TextField>(
+      find.byKey(const ValueKey('configuration-account')),
+    );
+    expect(
+      compactAccount.style?.fontSize,
+      compactTheme.textTheme.bodyMedium?.fontSize,
+    );
+    expect(
+      compactAccount.decoration?.labelStyle?.fontSize,
+      compactTheme.textTheme.bodyMedium?.fontSize,
+    );
     final compactPassword = tester.widget<TextField>(
       find.byKey(const ValueKey('configuration-password')),
     );
     expect(compactPassword.decoration?.labelText, '新密码');
     expect(compactPassword.decoration?.helperText, '可选');
+    expect(
+      compactPassword.style?.fontSize,
+      compactTheme.textTheme.bodyMedium?.fontSize,
+    );
 
     await tester.tap(
       find.descendant(
@@ -466,6 +500,10 @@ void main() {
     expect(
       tester.getBottomRight(find.text('字体与许可')).dy,
       lessThan(navigationTop),
+    );
+    expect(
+      tester.widget<Text>(find.text('字体与许可')).style?.fontSize,
+      compactTheme.textTheme.labelLarge?.fontSize,
     );
     await tester.ensureVisible(find.text('查看许可'));
     await tester.pumpAndSettle();

@@ -149,7 +149,7 @@ class _CompactHeader extends StatelessWidget {
         child: Text(
           appDestinations[selectedIndex].title,
           maxLines: 1,
-          style: theme.textTheme.titleMedium,
+          style: theme.textTheme.titleSmall,
         ),
       ),
     );

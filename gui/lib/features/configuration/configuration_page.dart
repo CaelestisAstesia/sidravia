@@ -143,6 +143,7 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
         value: _profileId,
         profiles: widget.profiles,
         enabled: !widget.controller.busy,
+        compact: widget.compact,
         onChanged: (value) => setState(() => _profileId = value!),
       ),
       const SizedBox(height: 16),
@@ -150,7 +151,13 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
         key: const ValueKey('configuration-account'),
         controller: _account,
         enabled: !widget.controller.busy,
-        decoration: const InputDecoration(labelText: '用户名'),
+        style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
+        decoration: InputDecoration(
+          labelText: '用户名',
+          labelStyle: widget.compact
+              ? Theme.of(context).textTheme.bodyMedium
+              : null,
+        ),
       ),
       const SizedBox(height: 16),
       _PasswordField(
@@ -179,7 +186,12 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
                 );
                 if (saved && mounted) _password.clear();
               },
-        child: const Text('保存'),
+        child: Text(
+          '保存',
+          style: widget.compact
+              ? Theme.of(context).textTheme.labelMedium
+              : null,
+        ),
       ),
     ],
   );
@@ -269,6 +281,7 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         value: _profileId,
         profiles: widget.profiles,
         enabled: !widget.controller.busy,
+        compact: widget.compact,
         onChanged: (value) => setState(() => _profileId = value!),
       ),
       const SizedBox(height: 16),
@@ -276,7 +289,13 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         key: const ValueKey('configuration-account'),
         controller: _account,
         enabled: !widget.controller.busy,
-        decoration: const InputDecoration(labelText: '用户名'),
+        style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
+        decoration: InputDecoration(
+          labelText: '用户名',
+          labelStyle: widget.compact
+              ? Theme.of(context).textTheme.bodyMedium
+              : null,
+        ),
       ),
       const SizedBox(height: 16),
       FilledButton.tonal(
@@ -294,7 +313,12 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
                   username: _account.text,
                 );
               },
-        child: const Text('保存'),
+        child: Text(
+          '保存',
+          style: widget.compact
+              ? Theme.of(context).textTheme.labelMedium
+              : null,
+        ),
       ),
       const Divider(height: 40),
       _PasswordField(
@@ -316,7 +340,12 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
                 );
                 if (saved && mounted) _password.clear();
               },
-        child: const Text('更新密码'),
+        child: Text(
+          '更新密码',
+          style: widget.compact
+              ? Theme.of(context).textTheme.labelMedium
+              : null,
+        ),
       ),
     ],
   );
@@ -327,29 +356,37 @@ class _ProfileSelector extends StatelessWidget {
     required this.value,
     required this.profiles,
     required this.enabled,
+    required this.compact,
     required this.onChanged,
   });
 
   final String value;
   final List<InstitutionProfile> profiles;
   final bool enabled;
+  final bool compact;
   final ValueChanged<String?> onChanged;
 
   @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
-    key: ValueKey<String>('configuration-profile-$value'),
-    initialValue: value,
-    onChanged: enabled ? onChanged : null,
-    decoration: const InputDecoration(labelText: '学校'),
-    items: profiles
-        .map(
-          (profile) => DropdownMenuItem(
-            value: profile.id,
-            child: Text(profile.displayName),
-          ),
-        )
-        .toList(growable: false),
-  );
+  Widget build(BuildContext context) {
+    final compactStyle = compact
+        ? Theme.of(context).textTheme.bodyMedium
+        : null;
+    return DropdownButtonFormField<String>(
+      key: ValueKey<String>('configuration-profile-$value'),
+      initialValue: value,
+      onChanged: enabled ? onChanged : null,
+      style: compactStyle,
+      decoration: InputDecoration(labelText: '学校', labelStyle: compactStyle),
+      items: profiles
+          .map(
+            (profile) => DropdownMenuItem(
+              value: profile.id,
+              child: Text(profile.displayName),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
 }
 
 class _PasswordField extends StatefulWidget {
@@ -377,25 +414,33 @@ class _PasswordFieldState extends State<_PasswordField> {
   var _obscured = true;
 
   @override
-  Widget build(BuildContext context) => TextField(
-    key: widget.fieldKey,
-    controller: widget.controller,
-    enabled: widget.enabled,
-    obscureText: _obscured,
-    decoration: InputDecoration(
-      labelText: widget.compact ? widget.compactLabel : widget.label,
-      helperText: widget.compact ? '可选' : null,
-      suffixIcon: IconButton(
-        onPressed: widget.enabled
-            ? () => setState(() => _obscured = !_obscured)
-            : null,
-        tooltip: _obscured ? '显示密码' : '隐藏密码',
-        icon: Icon(
-          _obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return TextField(
+      key: widget.fieldKey,
+      controller: widget.controller,
+      enabled: widget.enabled,
+      obscureText: _obscured,
+      style: widget.compact ? theme.textTheme.bodyMedium : null,
+      decoration: InputDecoration(
+        labelText: widget.compact ? widget.compactLabel : widget.label,
+        labelStyle: widget.compact ? theme.textTheme.bodyMedium : null,
+        helperText: widget.compact ? '可选' : null,
+        helperStyle: widget.compact ? theme.textTheme.labelSmall : null,
+        suffixIcon: IconButton(
+          onPressed: widget.enabled
+              ? () => setState(() => _obscured = !_obscured)
+              : null,
+          tooltip: _obscured ? '显示密码' : '隐藏密码',
+          icon: Icon(
+            _obscured
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _MessageCard extends StatelessWidget {
@@ -453,7 +498,7 @@ class _Card extends StatelessWidget {
               Text(
                 title,
                 style: compact
-                    ? theme.textTheme.titleLarge
+                    ? theme.textTheme.titleMedium
                     : theme.textTheme.headlineSmall,
               ),
               SizedBox(height: compact ? 6 : 8),

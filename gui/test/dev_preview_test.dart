@@ -162,6 +162,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('compact preview keeps the primary type hierarchy restrained', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const preview.PreviewCatalog(showToolbar: false));
+    await tester.pumpAndSettle();
+
+    final header = find.byKey(const ValueKey<String>('compact-header'));
+    final theme = Theme.of(tester.element(header));
+    expect(
+      tester
+          .widget<Text>(find.descendant(of: header, matching: find.text('连接')))
+          .style
+          ?.fontSize,
+      theme.textTheme.titleSmall?.fontSize,
+    );
+    expect(
+      tester.widget<Text>(find.text('已连接')).style?.fontSize,
+      theme.textTheme.titleMedium?.fontSize,
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('关于'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.text('Sidravia')).style?.fontSize,
+      theme.textTheme.titleSmall?.fontSize,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('every preview scenario renders through the production home', (
     tester,
   ) async {

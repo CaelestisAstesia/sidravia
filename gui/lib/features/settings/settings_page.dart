@@ -56,7 +56,7 @@ class SettingsPage extends StatelessWidget {
                               Text(
                                 'Sidravia',
                                 style: compact
-                                    ? theme.textTheme.titleMedium
+                                    ? theme.textTheme.titleSmall
                                     : theme.textTheme.titleLarge,
                               ),
                               const SizedBox(height: 2),
@@ -81,7 +81,7 @@ class SettingsPage extends StatelessWidget {
                     Text(
                       '字体与许可',
                       style: compact
-                          ? theme.textTheme.titleSmall
+                          ? theme.textTheme.labelLarge
                           : theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
@@ -102,7 +102,10 @@ class SettingsPage extends StatelessWidget {
                         applicationName: 'Sidravia',
                       ),
                       icon: const Icon(Icons.description_outlined),
-                      label: const Text('查看许可'),
+                      label: Text(
+                        '查看许可',
+                        style: compact ? theme.textTheme.labelMedium : null,
+                      ),
                     ),
                   ],
                 ),
