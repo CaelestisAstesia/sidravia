@@ -11,18 +11,31 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
-  testWidgets('wide shell uses selected horizontal navigation', (tester) async {
+  testWidgets('wide shell uses selected sidebar navigation', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(_app());
     await tester.pump();
 
-    expect(find.byType(NavigationRail), findsNothing);
+    final sidebar = find.byKey(const ValueKey<String>('wide-sidebar'));
+    expect(sidebar, findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('compact-header')), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
+    expect(tester.getSize(sidebar).width, 220);
     for (final destination in appDestinations) {
       expect(find.text(destination.label), findsWidgets);
     }
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('destination-home')))
+          .right,
+      lessThanOrEqualTo(tester.getRect(sidebar).right),
+    );
+    expect(
+      tester.getRect(find.text('连接概览')).left,
+      greaterThan(tester.getRect(sidebar).right),
+    );
     expect(
       tester
           .getSemantics(find.byKey(const ValueKey<String>('destination-home')))
@@ -40,7 +53,7 @@ void main() {
       ui.Tristate.isFalse,
     );
 
-    await tester.tap(find.text('配置').first);
+    await tester.tap(find.descendant(of: sidebar, matching: find.text('配置')));
     await tester.pumpAndSettle();
 
     expect(find.text('fixture-user'), findsWidgets);
@@ -64,8 +77,12 @@ void main() {
     await tester.pumpWidget(_app());
     await tester.pump();
 
+    expect(find.byKey(const ValueKey<String>('wide-sidebar')), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('compact-header')),
+      findsOneWidget,
+    );
     expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.byType(NavigationRail), findsNothing);
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
 
@@ -88,6 +105,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('fixture-user'), findsWidgets);
+    expect(find.byKey(const ValueKey<String>('wide-sidebar')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('compact-header')), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
   });
 
@@ -105,6 +124,10 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey<String>('compact-header')),
+      findsOneWidget,
+    );
     expect(find.text('Sidravia'), findsOneWidget);
   });
 

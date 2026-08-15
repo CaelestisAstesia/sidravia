@@ -39,26 +39,32 @@ class _SidraviaShellState extends State<SidraviaShell> {
             const SettingsPage(),
           ],
         );
+        final contentSurface = Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100),
+            child: content,
+          ),
+        );
         return Scaffold(
           body: SafeArea(
-            child: Column(
-              children: [
-                _Header(
-                  selectedIndex: _selectedIndex,
-                  wide: wide,
-                  onSelected: _selectDestination,
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1100),
-                      child: content,
-                    ),
+            child: wide
+                ? Row(
+                    children: [
+                      _Sidebar(
+                        selectedIndex: _selectedIndex,
+                        onSelected: _selectDestination,
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(child: contentSurface),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      _CompactHeader(selectedIndex: _selectedIndex),
+                      const Divider(height: 1),
+                      Expanded(child: contentSurface),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
           bottomNavigationBar: wide
               ? null
@@ -80,66 +86,86 @@ class _SidraviaShellState extends State<SidraviaShell> {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.selectedIndex,
-    required this.wide,
-    required this.onSelected,
-  });
+class _Sidebar extends StatelessWidget {
+  const _Sidebar({required this.selectedIndex, required this.onSelected});
 
   final int selectedIndex;
-  final bool wide;
   final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: wide ? 32 : 24, vertical: 14),
-      child: wide
-          ? Row(
-              children: [
-                Text('Sidravia', style: theme.textTheme.titleLarge),
-                const Spacer(),
-                for (final (index, destination) in appDestinations.indexed)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: _HeaderDestination(
-                      destination: destination,
-                      selected: index == selectedIndex,
-                      onPressed: () => onSelected(index),
-                    ),
-                  ),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Sidravia',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge,
+    return SizedBox(
+      key: const ValueKey<String>('wide-sidebar'),
+      width: 220,
+      child: ColoredBox(
+        color: theme.colorScheme.surfaceContainerLowest,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text('Sidravia', style: theme.textTheme.titleLarge),
+              ),
+              const SizedBox(height: 32),
+              for (final (index, destination) in appDestinations.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _SidebarDestination(
+                    destination: destination,
+                    selected: index == selectedIndex,
+                    onPressed: () => onSelected(index),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    appDestinations[selectedIndex].title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.end,
-                    style: theme.textTheme.labelLarge,
-                  ),
-                ),
-              ],
-            ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _HeaderDestination extends StatelessWidget {
-  const _HeaderDestination({
+class _CompactHeader extends StatelessWidget {
+  const _CompactHeader({required this.selectedIndex});
+
+  final int selectedIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: const ValueKey<String>('compact-header'),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Sidravia',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleLarge,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              appDestinations[selectedIndex].title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: theme.textTheme.labelLarge,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarDestination extends StatelessWidget {
+  const _SidebarDestination({
     required this.destination,
     required this.selected,
     required this.onPressed,
@@ -158,19 +184,27 @@ class _HeaderDestination extends StatelessWidget {
       button: true,
       selected: selected,
       label: destination.label,
-      child: TextButton.icon(
-        onPressed: onPressed,
-        style: TextButton.styleFrom(
-          backgroundColor: selected
-              ? colorScheme.primaryContainer
-              : Colors.transparent,
-          foregroundColor: selected
-              ? colorScheme.primary
-              : colorScheme.onSurfaceVariant,
-          shape: const StadiumBorder(),
+      child: SizedBox(
+        width: double.infinity,
+        child: TextButton.icon(
+          onPressed: onPressed,
+          style: TextButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            minimumSize: const Size.fromHeight(48),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            backgroundColor: selected
+                ? colorScheme.primaryContainer
+                : Colors.transparent,
+            foregroundColor: selected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          icon: Icon(selected ? destination.selectedIcon : destination.icon),
+          label: Text(destination.label),
         ),
-        icon: Icon(selected ? destination.selectedIcon : destination.icon),
-        label: Text(destination.label),
       ),
     );
   }
