@@ -47,6 +47,50 @@ void main() {
     }
   });
 
+  testWidgets('preview controls stay inside a narrow visual surface', (
+    tester,
+  ) async {
+    const size = Size(640, 600);
+    await tester.binding.setSurfaceSize(size);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const preview.PreviewCatalog());
+    await tester.pumpAndSettle();
+
+    void expectInside(Finder finder) {
+      final rect = tester.getRect(finder);
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.top, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(size.width));
+      expect(rect.bottom, lessThanOrEqualTo(size.height));
+    }
+
+    final scenarioControl = find.byKey(
+      const ValueKey<String>('preview-scenario'),
+    );
+    final sectionControl = find.byKey(
+      const ValueKey<String>('preview-section'),
+    );
+    expectInside(scenarioControl);
+    expectInside(sectionControl);
+    expectInside(
+      find
+          .descendant(
+            of: scenarioControl,
+            matching: find.text(PreviewScenario.authenticated.label),
+          )
+          .first,
+    );
+    for (final section in preview.PreviewSection.values) {
+      expectInside(
+        find
+            .descendant(of: sectionControl, matching: find.text(section.label))
+            .first,
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('bootstrapping preview remains bounded and disposable', (
     tester,
   ) async {

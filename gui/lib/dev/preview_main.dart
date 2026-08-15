@@ -87,46 +87,55 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
   }
 
   Widget _buildToolbar() {
-    return Material(
-      color: const Color(0xFFF0F2F6),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Row(
-          children: [
-            const Icon(Icons.visibility_outlined, size: 20),
-            const SizedBox(width: 8),
-            const Text('开发预览 · 不连接 daemon'),
-            const Spacer(),
-            DropdownButton<PreviewScenario>(
-              key: const ValueKey('preview-scenario'),
-              value: _scenario,
-              underline: const SizedBox.shrink(),
-              onChanged: _selectScenario,
-              items: [
-                for (final scenario in PreviewScenario.values)
-                  DropdownMenuItem(
-                    value: scenario,
-                    child: Text(scenario.label),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 20),
-            SegmentedButton<PreviewSection>(
-              key: const ValueKey('preview-section'),
-              segments: [
-                for (final section in PreviewSection.values)
-                  ButtonSegment(
-                    value: section,
-                    icon: Icon(section.icon),
-                    label: Text(section.label),
-                  ),
-              ],
-              selected: {_section},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) =>
-                  _selectSection(selection.single),
-            ),
-          ],
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        color: const Color(0xFFF0F2F6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Wrap(
+            spacing: 20,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.visibility_outlined, size: 20),
+                  SizedBox(width: 8),
+                  Text('开发预览 · 不连接 daemon'),
+                ],
+              ),
+              DropdownButton<PreviewScenario>(
+                key: const ValueKey('preview-scenario'),
+                value: _scenario,
+                underline: const SizedBox.shrink(),
+                onChanged: _selectScenario,
+                items: [
+                  for (final scenario in PreviewScenario.values)
+                    DropdownMenuItem(
+                      value: scenario,
+                      child: Text(scenario.label),
+                    ),
+                ],
+              ),
+              SegmentedButton<PreviewSection>(
+                key: const ValueKey('preview-section'),
+                segments: [
+                  for (final section in PreviewSection.values)
+                    ButtonSegment(
+                      value: section,
+                      icon: Icon(section.icon),
+                      label: Text(section.label),
+                    ),
+                ],
+                selected: {_section},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) =>
+                    _selectSection(selection.single),
+              ),
+            ],
+          ),
         ),
       ),
     );
