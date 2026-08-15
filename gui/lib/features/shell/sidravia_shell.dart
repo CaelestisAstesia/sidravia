@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -146,10 +147,14 @@ class _CompactHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(
-          appDestinations[selectedIndex].title,
-          maxLines: 1,
-          style: theme.textTheme.titleSmall,
+        child: SidraviaLayout.limitTextScale(
+          compact: true,
+          maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+          child: Text(
+            appDestinations[selectedIndex].title,
+            maxLines: 1,
+            style: theme.textTheme.titleSmall,
+          ),
         ),
       ),
     );

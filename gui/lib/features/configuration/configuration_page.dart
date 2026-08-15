@@ -89,7 +89,7 @@ class _ConfigurationContent extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (controller.notice case final notice?) ...[
-          _Notice(text: notice),
+          _Notice(text: notice, compact: compact),
           const SizedBox(height: 16),
         ],
         content,
@@ -147,16 +147,20 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
         onChanged: (value) => setState(() => _profileId = value!),
       ),
       const SizedBox(height: 16),
-      TextField(
-        key: const ValueKey('configuration-account'),
-        controller: _account,
-        enabled: !widget.controller.busy,
-        style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
-        decoration: InputDecoration(
-          labelText: '用户名',
-          labelStyle: widget.compact
-              ? Theme.of(context).textTheme.bodyMedium
-              : null,
+      SidraviaLayout.limitTextScale(
+        compact: widget.compact,
+        maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+        child: TextField(
+          key: const ValueKey('configuration-account'),
+          controller: _account,
+          enabled: !widget.controller.busy,
+          style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
+          decoration: InputDecoration(
+            labelText: '用户名',
+            labelStyle: widget.compact
+                ? Theme.of(context).textTheme.bodyMedium
+                : null,
+          ),
         ),
       ),
       const SizedBox(height: 16),
@@ -186,11 +190,15 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
                 );
                 if (saved && mounted) _password.clear();
               },
-        child: Text(
-          '保存',
-          style: widget.compact
-              ? Theme.of(context).textTheme.labelMedium
-              : null,
+        child: SidraviaLayout.limitTextScale(
+          compact: widget.compact,
+          maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+          child: Text(
+            '保存',
+            style: widget.compact
+                ? Theme.of(context).textTheme.labelMedium
+                : null,
+          ),
         ),
       ),
     ],
@@ -285,16 +293,20 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         onChanged: (value) => setState(() => _profileId = value!),
       ),
       const SizedBox(height: 16),
-      TextField(
-        key: const ValueKey('configuration-account'),
-        controller: _account,
-        enabled: !widget.controller.busy,
-        style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
-        decoration: InputDecoration(
-          labelText: '用户名',
-          labelStyle: widget.compact
-              ? Theme.of(context).textTheme.bodyMedium
-              : null,
+      SidraviaLayout.limitTextScale(
+        compact: widget.compact,
+        maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+        child: TextField(
+          key: const ValueKey('configuration-account'),
+          controller: _account,
+          enabled: !widget.controller.busy,
+          style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
+          decoration: InputDecoration(
+            labelText: '用户名',
+            labelStyle: widget.compact
+                ? Theme.of(context).textTheme.bodyMedium
+                : null,
+          ),
         ),
       ),
       const SizedBox(height: 16),
@@ -313,11 +325,15 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
                   username: _account.text,
                 );
               },
-        child: Text(
-          '保存',
-          style: widget.compact
-              ? Theme.of(context).textTheme.labelMedium
-              : null,
+        child: SidraviaLayout.limitTextScale(
+          compact: widget.compact,
+          maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+          child: Text(
+            '保存',
+            style: widget.compact
+                ? Theme.of(context).textTheme.labelMedium
+                : null,
+          ),
         ),
       ),
       const Divider(height: 40),
@@ -340,11 +356,15 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
                 );
                 if (saved && mounted) _password.clear();
               },
-        child: Text(
-          '更新密码',
-          style: widget.compact
-              ? Theme.of(context).textTheme.labelMedium
-              : null,
+        child: SidraviaLayout.limitTextScale(
+          compact: widget.compact,
+          maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+          child: Text(
+            '更新密码',
+            style: widget.compact
+                ? Theme.of(context).textTheme.labelMedium
+                : null,
+          ),
         ),
       ),
     ],
@@ -371,20 +391,24 @@ class _ProfileSelector extends StatelessWidget {
     final compactStyle = compact
         ? Theme.of(context).textTheme.bodyMedium
         : null;
-    return DropdownButtonFormField<String>(
-      key: ValueKey<String>('configuration-profile-$value'),
-      initialValue: value,
-      onChanged: enabled ? onChanged : null,
-      style: compactStyle,
-      decoration: InputDecoration(labelText: '学校', labelStyle: compactStyle),
-      items: profiles
-          .map(
-            (profile) => DropdownMenuItem(
-              value: profile.id,
-              child: Text(profile.displayName),
-            ),
-          )
-          .toList(growable: false),
+    return SidraviaLayout.limitTextScale(
+      compact: compact,
+      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+      child: DropdownButtonFormField<String>(
+        key: ValueKey<String>('configuration-profile-$value'),
+        initialValue: value,
+        onChanged: enabled ? onChanged : null,
+        style: compactStyle,
+        decoration: InputDecoration(labelText: '学校', labelStyle: compactStyle),
+        items: profiles
+            .map(
+              (profile) => DropdownMenuItem(
+                value: profile.id,
+                child: Text(profile.displayName),
+              ),
+            )
+            .toList(growable: false),
+      ),
     );
   }
 }
@@ -416,26 +440,30 @@ class _PasswordFieldState extends State<_PasswordField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return TextField(
-      key: widget.fieldKey,
-      controller: widget.controller,
-      enabled: widget.enabled,
-      obscureText: _obscured,
-      style: widget.compact ? theme.textTheme.bodyMedium : null,
-      decoration: InputDecoration(
-        labelText: widget.compact ? widget.compactLabel : widget.label,
-        labelStyle: widget.compact ? theme.textTheme.bodyMedium : null,
-        helperText: widget.compact ? '可选' : null,
-        helperStyle: widget.compact ? theme.textTheme.labelSmall : null,
-        suffixIcon: IconButton(
-          onPressed: widget.enabled
-              ? () => setState(() => _obscured = !_obscured)
-              : null,
-          tooltip: _obscured ? '显示密码' : '隐藏密码',
-          icon: Icon(
-            _obscured
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
+    return SidraviaLayout.limitTextScale(
+      compact: widget.compact,
+      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+      child: TextField(
+        key: widget.fieldKey,
+        controller: widget.controller,
+        enabled: widget.enabled,
+        obscureText: _obscured,
+        style: widget.compact ? theme.textTheme.bodyMedium : null,
+        decoration: InputDecoration(
+          labelText: widget.compact ? widget.compactLabel : widget.label,
+          labelStyle: widget.compact ? theme.textTheme.bodyMedium : null,
+          helperText: widget.compact ? '可选' : null,
+          helperStyle: widget.compact ? theme.textTheme.labelSmall : null,
+          suffixIcon: IconButton(
+            onPressed: widget.enabled
+                ? () => setState(() => _obscured = !_obscured)
+                : null,
+            tooltip: _obscured ? '显示密码' : '隐藏密码',
+            icon: Icon(
+              _obscured
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+            ),
           ),
         ),
       ),
@@ -453,8 +481,9 @@ class _MessageCard extends StatelessWidget {
 }
 
 class _Notice extends StatelessWidget {
-  const _Notice({required this.text});
+  const _Notice({required this.text, required this.compact});
   final String text;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -464,7 +493,11 @@ class _Notice extends StatelessWidget {
       color: Theme.of(context).colorScheme.errorContainer,
       borderRadius: BorderRadius.circular(16),
     ),
-    child: Text(text),
+    child: SidraviaLayout.limitTextScale(
+      compact: compact,
+      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+      child: Text(text),
+    ),
   );
 }
 
@@ -495,20 +528,28 @@ class _Card extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (showHeading) ...[
-              Text(
-                title,
-                style: compact
-                    ? theme.textTheme.titleMedium
-                    : theme.textTheme.headlineSmall,
+              SidraviaLayout.limitTextScale(
+                compact: compact,
+                maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                child: Text(
+                  title,
+                  style: compact
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.headlineSmall,
+                ),
               ),
               SizedBox(height: compact ? 6 : 8),
-              Text(
-                detail,
-                style:
-                    (compact
-                            ? theme.textTheme.bodySmall
-                            : theme.textTheme.bodyMedium)
-                        ?.copyWith(height: compact ? 1.4 : 1.5),
+              SidraviaLayout.limitTextScale(
+                compact: compact,
+                maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                child: Text(
+                  detail,
+                  style:
+                      (compact
+                              ? theme.textTheme.bodySmall
+                              : theme.textTheme.bodyMedium)
+                          ?.copyWith(height: compact ? 1.4 : 1.5),
+                ),
               ),
             ],
             if (children.isNotEmpty) ...[

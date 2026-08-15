@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/dev/preview_fixtures.dart';
 import 'package:sidravia_gui/dev/preview_main.dart' as preview;
 import 'package:sidravia_gui/dev/widget_previews.dart';
+import 'package:sidravia_gui/design/sidravia_layout.dart';
 
 void main() {
   testWidgets(
@@ -184,6 +185,11 @@ void main() {
       tester.widget<Text>(find.text('已连接')).style?.fontSize,
       theme.textTheme.titleMedium?.fontSize,
     );
+    expect(
+      MediaQuery.textScalerOf(tester.element(find.text('已连接'))).scale(10),
+      10,
+    );
+    expect(SidraviaLayout.compactContentMaxTextScale, 1.6);
 
     await tester.tap(
       find.descendant(

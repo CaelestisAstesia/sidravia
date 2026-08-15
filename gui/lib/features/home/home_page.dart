@@ -23,13 +23,17 @@ class HomePage extends StatelessWidget {
         return ListView(
           padding: SidraviaLayout.pagePadding(compact: compact),
           children: [
-            Text(
-              '校园网',
-              style: compact
-                  ? theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    )
-                  : theme.textTheme.displaySmall,
+            SidraviaLayout.limitTextScale(
+              compact: compact,
+              maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+              child: Text(
+                '校园网',
+                style: compact
+                    ? theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      )
+                    : theme.textTheme.displaySmall,
+              ),
             ),
             SizedBox(height: compact ? 12 : 28),
             AnimatedBuilder(
@@ -87,10 +91,14 @@ class _ConnectionStatus extends StatelessWidget {
                   _StatusIndicator(presentation: presentation, size: 40),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      presentation.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    child: SidraviaLayout.limitTextScale(
+                      compact: compact,
+                      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                      child: Text(
+                        presentation.title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
@@ -100,20 +108,31 @@ class _ConnectionStatus extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: controller.busy ? null : action.onPressed,
-                  child: Text(action.label, style: theme.textTheme.labelMedium),
+                  child: SidraviaLayout.limitTextScale(
+                    compact: compact,
+                    maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+                    child: Text(
+                      action.label,
+                      style: theme.textTheme.labelMedium,
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 12),
-              Text(
-                presentation.detail,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  height: 1.4,
-                  color: theme.colorScheme.onSurfaceVariant,
+              SidraviaLayout.limitTextScale(
+                compact: compact,
+                maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                child: Text(
+                  presentation.detail,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    height: 1.4,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (controller.notice case final notice?) ...[
                 const SizedBox(height: 16),
-                _StatusNotice(text: notice),
+                _StatusNotice(text: notice, compact: compact),
               ],
             ] else ...[
               Row(
@@ -140,7 +159,7 @@ class _ConnectionStatus extends StatelessWidget {
               ),
               if (controller.notice case final notice?) ...[
                 const SizedBox(height: 16),
-                _StatusNotice(text: notice),
+                _StatusNotice(text: notice, compact: compact),
               ],
               const SizedBox(height: 28),
               Wrap(
@@ -349,9 +368,10 @@ class _ConnectionStatus extends StatelessWidget {
 }
 
 class _StatusNotice extends StatelessWidget {
-  const _StatusNotice({required this.text});
+  const _StatusNotice({required this.text, required this.compact});
 
   final String text;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -363,10 +383,14 @@ class _StatusNotice extends StatelessWidget {
         color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        text,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onErrorContainer,
+      child: SidraviaLayout.limitTextScale(
+        compact: compact,
+        maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+        child: Text(
+          text,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onErrorContainer,
+          ),
         ),
       ),
     );

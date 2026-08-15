@@ -6,11 +6,17 @@ import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  test('compact text scaling uses two semantic limits', () {
+    expect(SidraviaLayout.compactChromeMaxTextScale, 1.3);
+    expect(SidraviaLayout.compactContentMaxTextScale, 1.6);
+  });
+
   testWidgets('wide shell uses selected sidebar navigation', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -152,6 +158,13 @@ void main() {
             .style
             ?.fontSize,
         theme.textTheme.titleSmall?.fontSize,
+      );
+      expect(
+        _effectiveTextScale(
+          tester,
+          find.descendant(of: header, matching: find.text('连接')),
+        ),
+        closeTo(SidraviaLayout.compactChromeMaxTextScale, 0.001),
       );
       expect(
         find.descendant(of: header, matching: find.text('Sidravia')),
@@ -450,6 +463,18 @@ void main() {
       compactTheme.textTheme.labelMedium?.fontSize,
     );
     expect(
+      _effectiveTextScale(tester, state),
+      closeTo(SidraviaLayout.compactContentMaxTextScale, 0.001),
+    );
+    expect(
+      _effectiveTextScale(tester, find.text('校园网')),
+      closeTo(SidraviaLayout.compactChromeMaxTextScale, 0.001),
+    );
+    expect(
+      _effectiveTextScale(tester, find.text('登录')),
+      closeTo(SidraviaLayout.compactChromeMaxTextScale, 0.001),
+    );
+    expect(
       tester.getBottomRight(find.widgetWithText(FilledButton, '登录')).dy,
       lessThanOrEqualTo(navigationTop),
     );
@@ -478,6 +503,13 @@ void main() {
       compactAccount.decoration?.labelStyle?.fontSize,
       compactTheme.textTheme.bodyMedium?.fontSize,
     );
+    expect(
+      _effectiveTextScale(
+        tester,
+        find.byKey(const ValueKey('configuration-account')),
+      ),
+      closeTo(SidraviaLayout.compactContentMaxTextScale, 0.001),
+    );
     final compactPassword = tester.widget<TextField>(
       find.byKey(const ValueKey('configuration-password')),
     );
@@ -486,6 +518,17 @@ void main() {
     expect(
       compactPassword.style?.fontSize,
       compactTheme.textTheme.bodyMedium?.fontSize,
+    );
+    expect(
+      _effectiveTextScale(
+        tester,
+        find.byKey(const ValueKey('configuration-password')),
+      ),
+      closeTo(SidraviaLayout.compactContentMaxTextScale, 0.001),
+    );
+    expect(
+      _effectiveTextScale(tester, find.text('保存')),
+      closeTo(SidraviaLayout.compactChromeMaxTextScale, 0.001),
     );
 
     await tester.tap(
@@ -505,6 +548,18 @@ void main() {
       tester.widget<Text>(find.text('字体与许可')).style?.fontSize,
       compactTheme.textTheme.labelLarge?.fontSize,
     );
+    expect(
+      _effectiveTextScale(tester, find.text('Sidravia')),
+      closeTo(SidraviaLayout.compactContentMaxTextScale, 0.001),
+    );
+    expect(
+      _effectiveTextScale(tester, find.text('字体与许可')),
+      closeTo(SidraviaLayout.compactChromeMaxTextScale, 0.001),
+    );
+    expect(
+      _effectiveTextScale(tester, find.text('查看许可')),
+      closeTo(SidraviaLayout.compactChromeMaxTextScale, 0.001),
+    );
     await tester.ensureVisible(find.text('查看许可'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('查看许可'));
@@ -512,6 +567,11 @@ void main() {
     expect(find.byType(LicensePage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+double _effectiveTextScale(WidgetTester tester, Finder finder) {
+  const basis = 10.0;
+  return MediaQuery.textScalerOf(tester.element(finder)).scale(basis) / basis;
 }
 
 SidraviaApp _app([

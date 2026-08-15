@@ -53,24 +53,34 @@ class SettingsPage extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Sidravia',
-                                style: compact
-                                    ? theme.textTheme.titleSmall
-                                    : theme.textTheme.titleLarge,
+                              SidraviaLayout.limitTextScale(
+                                compact: compact,
+                                maxScaleFactor:
+                                    SidraviaLayout.compactContentMaxTextScale,
+                                child: Text(
+                                  'Sidravia',
+                                  style: compact
+                                      ? theme.textTheme.titleSmall
+                                      : theme.textTheme.titleLarge,
+                                ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                '校园网认证工具',
-                                style:
-                                    (compact
-                                            ? theme.textTheme.bodySmall
-                                            : theme.textTheme.bodyMedium)
-                                        ?.copyWith(
-                                          color: theme
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
+                              SidraviaLayout.limitTextScale(
+                                compact: compact,
+                                maxScaleFactor:
+                                    SidraviaLayout.compactContentMaxTextScale,
+                                child: Text(
+                                  '校园网认证工具',
+                                  style:
+                                      (compact
+                                              ? theme.textTheme.bodySmall
+                                              : theme.textTheme.bodyMedium)
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                ),
                               ),
                             ],
                           ),
@@ -78,22 +88,30 @@ class SettingsPage extends StatelessWidget {
                       ],
                     ),
                     SizedBox(height: compact ? 18 : 28),
-                    Text(
-                      '字体与许可',
-                      style: compact
-                          ? theme.textTheme.labelLarge
-                          : theme.textTheme.titleMedium,
+                    SidraviaLayout.limitTextScale(
+                      compact: compact,
+                      maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+                      child: Text(
+                        '字体与许可',
+                        style: compact
+                            ? theme.textTheme.labelLarge
+                            : theme.textTheme.titleMedium,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      '界面使用 HarmonyOS Sans。',
-                      style:
-                          (compact
-                                  ? theme.textTheme.bodySmall
-                                  : theme.textTheme.bodyMedium)
-                              ?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
+                    SidraviaLayout.limitTextScale(
+                      compact: compact,
+                      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                      child: Text(
+                        '界面使用 HarmonyOS Sans。',
+                        style:
+                            (compact
+                                    ? theme.textTheme.bodySmall
+                                    : theme.textTheme.bodyMedium)
+                                ?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
@@ -102,9 +120,14 @@ class SettingsPage extends StatelessWidget {
                         applicationName: 'Sidravia',
                       ),
                       icon: const Icon(Icons.description_outlined),
-                      label: Text(
-                        '查看许可',
-                        style: compact ? theme.textTheme.labelMedium : null,
+                      label: SidraviaLayout.limitTextScale(
+                        compact: compact,
+                        maxScaleFactor:
+                            SidraviaLayout.compactChromeMaxTextScale,
+                        child: Text(
+                          '查看许可',
+                          style: compact ? theme.textTheme.labelMedium : null,
+                        ),
                       ),
                     ),
                   ],
