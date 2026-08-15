@@ -57,6 +57,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('fixture-user'), findsWidgets);
+    final widePassword = tester.widget<TextField>(
+      find.byKey(const ValueKey('configuration-password')),
+    );
+    expect(widePassword.decoration?.labelText, '新密码（可选）');
+    expect(widePassword.decoration?.helperText, isNull);
     expect(
       tester
           .getSemantics(
@@ -115,26 +120,35 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
   });
 
-  testWidgets('compact header truncates rather than overflowing', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(220, 360));
-    tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
-    addTearDown(() {
-      tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
-      tester.binding.setSurfaceSize(null);
-    });
+  testWidgets(
+    'compact header keeps one destination title without brand competition',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(220, 360));
+      tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(() {
+        tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+        tester.binding.setSurfaceSize(null);
+      });
 
-    await tester.pumpWidget(_app());
-    await tester.pump();
+      await tester.pumpWidget(_app());
+      await tester.pump();
 
-    expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey<String>('compact-header')),
-      findsOneWidget,
-    );
-    expect(find.text('Sidravia'), findsOneWidget);
-  });
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('compact-header')),
+        findsOneWidget,
+      );
+      final header = find.byKey(const ValueKey<String>('compact-header'));
+      expect(
+        find.descendant(of: header, matching: find.text('连接')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: header, matching: find.text('Sidravia')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
     'home copy distinguishes ready authentication, stale, and failure',
@@ -412,6 +426,14 @@ void main() {
     await tester.pumpWidget(_app());
     await tester.pump();
     expect(tester.takeException(), isNull);
+    final navigationTop = tester.getTopLeft(find.byType(NavigationBar)).dy;
+    final state = find.text('未连接').first;
+    expect(tester.getBottomRight(state).dy, lessThanOrEqualTo(navigationTop));
+    expect(tester.getSize(state).height, lessThanOrEqualTo(72));
+    expect(
+      tester.getBottomRight(find.widgetWithText(FilledButton, '登录')).dy,
+      lessThanOrEqualTo(navigationTop),
+    );
 
     await tester.tap(
       find.descendant(
@@ -421,6 +443,16 @@ void main() {
     );
     await tester.pump();
     expect(tester.takeException(), isNull);
+    expect(find.text('配置'), findsNWidgets(2));
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('configuration-account'))).dy,
+      lessThan(navigationTop),
+    );
+    final compactPassword = tester.widget<TextField>(
+      find.byKey(const ValueKey('configuration-password')),
+    );
+    expect(compactPassword.decoration?.labelText, '新密码');
+    expect(compactPassword.decoration?.helperText, '可选');
 
     await tester.tap(
       find.descendant(
@@ -430,6 +462,11 @@ void main() {
     );
     await tester.pump();
     expect(tester.takeException(), isNull);
+    expect(find.text('关于'), findsNWidgets(2));
+    expect(
+      tester.getBottomRight(find.text('字体与许可')).dy,
+      lessThan(navigationTop),
+    );
     await tester.ensureVisible(find.text('查看许可'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('查看许可'));

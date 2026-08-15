@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
@@ -16,25 +17,38 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
-      children: [
-        Text('校园网', style: theme.textTheme.displaySmall),
-        const SizedBox(height: 28),
-        AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) => Align(
-            alignment: Alignment.centerLeft,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 680),
-              child: _ConnectionStatus(
-                controller: controller,
-                onOpenConfiguration: onOpenConfiguration,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = SidraviaLayout.isCompactWidth(constraints.maxWidth);
+        return ListView(
+          padding: SidraviaLayout.pagePadding(compact: compact),
+          children: [
+            Text(
+              '校园网',
+              style: compact
+                  ? theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    )
+                  : theme.textTheme.displaySmall,
+            ),
+            SizedBox(height: compact ? 12 : 28),
+            AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) => Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: _ConnectionStatus(
+                    controller: controller,
+                    onOpenConfiguration: onOpenConfiguration,
+                    compact: compact,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -43,10 +57,12 @@ class _ConnectionStatus extends StatelessWidget {
   const _ConnectionStatus({
     required this.controller,
     required this.onOpenConfiguration,
+    required this.compact,
   });
 
   final GuiController controller;
   final VoidCallback onOpenConfiguration;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +72,7 @@ class _ConnectionStatus extends StatelessWidget {
       label: '连接状态：${presentation.title}。${presentation.detail}',
       child: Container(
         key: const ValueKey<String>('connection-status-surface'),
-        padding: const EdgeInsets.all(28),
+        padding: EdgeInsets.all(compact ? 16 : 28),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
@@ -65,86 +81,83 @@ class _ConnectionStatus extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: presentation.color.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
+            if (compact) ...[
+              Row(
+                children: [
+                  _StatusIndicator(presentation: presentation, size: 40),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      presentation.title,
+                      style: theme.textTheme.titleLarge,
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: presentation.progress
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: presentation.color,
-                          ),
-                        )
-                      : Icon(
-                          presentation.icon,
-                          size: 22,
-                          color: presentation.color,
-                        ),
-                ),
-                const SizedBox(width: 14),
-                Text(
-                  '连接状态',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                ],
+              ),
+              if (presentation.action case final _HomeAction action) ...[
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: controller.busy ? null : action.onPressed,
+                  child: Text(action.label),
                 ),
               ],
-            ),
-            const SizedBox(height: 24),
-            Text(presentation.title, style: theme.textTheme.headlineMedium),
-            const SizedBox(height: 8),
-            Text(
-              presentation.detail,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                height: 1.5,
-                color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(height: 12),
+              Text(
+                presentation.detail,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  height: 1.4,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            if (controller.notice case final notice?) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer.withValues(
-                    alpha: 0.5,
+              if (controller.notice case final notice?) ...[
+                const SizedBox(height: 16),
+                _StatusNotice(text: notice),
+              ],
+            ] else ...[
+              Row(
+                children: [
+                  _StatusIndicator(presentation: presentation),
+                  const SizedBox(width: 14),
+                  Text(
+                    '连接状态',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(10),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(presentation.title, style: theme.textTheme.headlineMedium),
+              const SizedBox(height: 8),
+              Text(
+                presentation.detail,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  height: 1.5,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                child: Text(
-                  notice,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
-                  ),
-                ),
+              ),
+              if (controller.notice case final notice?) ...[
+                const SizedBox(height: 16),
+                _StatusNotice(text: notice),
+              ],
+              const SizedBox(height: 28),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (presentation.action case final _HomeAction action)
+                    FilledButton(
+                      onPressed: controller.busy ? null : action.onPressed,
+                      child: Text(action.label),
+                    ),
+                  if (presentation.showConfiguration)
+                    OutlinedButton(
+                      onPressed: controller.busy ? null : onOpenConfiguration,
+                      child: const Text('配置'),
+                    ),
+                ],
               ),
             ],
-            const SizedBox(height: 28),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                if (presentation.action case final _HomeAction action)
-                  FilledButton(
-                    onPressed: controller.busy ? null : action.onPressed,
-                    child: Text(action.label),
-                  ),
-                if (presentation.showConfiguration)
-                  OutlinedButton(
-                    onPressed: controller.busy ? null : onOpenConfiguration,
-                    child: const Text('配置'),
-                  ),
-              ],
-            ),
           ],
         ),
       ),
@@ -331,6 +344,59 @@ class _ConnectionStatus extends StatelessWidget {
         ? '请检查用户名、密码和网络后重试。'
         : detail;
   }
+}
+
+class _StatusNotice extends StatelessWidget {
+  const _StatusNotice({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onErrorContainer,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusIndicator extends StatelessWidget {
+  const _StatusIndicator({required this.presentation, this.size = 44});
+
+  final _ConnectionPresentation presentation;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: presentation.color.withValues(alpha: 0.1),
+      shape: BoxShape.circle,
+    ),
+    alignment: Alignment.center,
+    child: presentation.progress
+        ? SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              color: presentation.color,
+            ),
+          )
+        : Icon(presentation.icon, size: 22, color: presentation.color),
+  );
 }
 
 class _ConnectionPresentation {

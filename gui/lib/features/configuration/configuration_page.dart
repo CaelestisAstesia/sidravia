@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 class ConfigurationPage extends StatelessWidget {
@@ -10,32 +11,45 @@ class ConfigurationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
-      children: [
-        Text('配置', style: theme.textTheme.displaySmall),
-        const SizedBox(height: 10),
-        Text(
-          '保存用于校园网认证的登录信息。密码不会在界面中回显。',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 28),
-        AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) =>
-              _ConfigurationContent(controller: controller),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = SidraviaLayout.isCompactWidth(constraints.maxWidth);
+        return ListView(
+          padding: SidraviaLayout.pagePadding(compact: compact),
+          children: [
+            if (!compact) ...[
+              Text('配置', style: theme.textTheme.displaySmall),
+              const SizedBox(height: 10),
+              Text(
+                '保存用于校园网认证的登录信息。密码不会在界面中回显。',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 28),
+            ],
+            AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) => _ConfigurationContent(
+                controller: controller,
+                compact: compact,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _ConfigurationContent extends StatelessWidget {
-  const _ConfigurationContent({required this.controller});
+  const _ConfigurationContent({
+    required this.controller,
+    required this.compact,
+  });
 
   final GuiController controller;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -61,12 +75,14 @@ class _ConfigurationContent extends StatelessWidget {
       content = _CreateConfigurationForm(
         controller: controller,
         profiles: profiles,
+        compact: compact,
       );
     } else {
       content = _EditConfigurationForm(
         controller: controller,
         configuration: configurations.single,
         profiles: profiles,
+        compact: compact,
       );
     }
     return Column(
@@ -86,10 +102,12 @@ class _CreateConfigurationForm extends StatefulWidget {
   const _CreateConfigurationForm({
     required this.controller,
     required this.profiles,
+    required this.compact,
   });
 
   final GuiController controller;
   final List<InstitutionProfile> profiles;
+  final bool compact;
 
   @override
   State<_CreateConfigurationForm> createState() =>
@@ -140,6 +158,8 @@ class _CreateConfigurationFormState extends State<_CreateConfigurationForm> {
         controller: _password,
         enabled: !widget.controller.busy,
         label: '密码（可选）',
+        compactLabel: '密码',
+        compact: widget.compact,
       ),
       const SizedBox(height: 24),
       FilledButton(
@@ -170,11 +190,13 @@ class _EditConfigurationForm extends StatefulWidget {
     required this.controller,
     required this.configuration,
     required this.profiles,
+    required this.compact,
   });
 
   final GuiController controller;
   final ConfigurationSummary configuration;
   final List<InstitutionProfile> profiles;
+  final bool compact;
 
   @override
   State<_EditConfigurationForm> createState() => _EditConfigurationFormState();
@@ -280,6 +302,8 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         controller: _password,
         enabled: !widget.controller.busy,
         label: '新密码（可选）',
+        compactLabel: '新密码',
+        compact: widget.compact,
       ),
       const SizedBox(height: 16),
       FilledButton(
@@ -334,12 +358,16 @@ class _PasswordField extends StatefulWidget {
     required this.controller,
     required this.enabled,
     required this.label,
+    required this.compactLabel,
+    required this.compact,
   });
 
   final Key fieldKey;
   final TextEditingController controller;
   final bool enabled;
   final String label;
+  final String compactLabel;
+  final bool compact;
 
   @override
   State<_PasswordField> createState() => _PasswordFieldState();
@@ -355,7 +383,8 @@ class _PasswordFieldState extends State<_PasswordField> {
     enabled: widget.enabled,
     obscureText: _obscured,
     decoration: InputDecoration(
-      labelText: widget.label,
+      labelText: widget.compact ? widget.compactLabel : widget.label,
+      helperText: widget.compact ? '可选' : null,
       suffixIcon: IconButton(
         onPressed: widget.enabled
             ? () => setState(() => _obscured = !_obscured)
@@ -404,28 +433,46 @@ class _Card extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 600),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            detail,
-            style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
-          ),
-          if (children.isNotEmpty) ...[const SizedBox(height: 24), ...children],
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final theme = Theme.of(context);
+      final compact = SidraviaLayout.isCompactWidth(constraints.maxWidth);
+      final showHeading = !compact || children.isEmpty;
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 600),
+        padding: EdgeInsets.all(SidraviaLayout.cardPadding(compact: compact)),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (showHeading) ...[
+              Text(
+                title,
+                style: compact
+                    ? theme.textTheme.titleLarge
+                    : theme.textTheme.headlineSmall,
+              ),
+              SizedBox(height: compact ? 6 : 8),
+              Text(
+                detail,
+                style:
+                    (compact
+                            ? theme.textTheme.bodySmall
+                            : theme.textTheme.bodyMedium)
+                        ?.copyWith(height: compact ? 1.4 : 1.5),
+              ),
+            ],
+            if (children.isNotEmpty) ...[
+              if (showHeading) SizedBox(height: compact ? 16 : 24),
+              ...children,
+            ],
+          ],
+        ),
+      );
+    },
+  );
 }

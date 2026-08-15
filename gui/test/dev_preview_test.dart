@@ -121,6 +121,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('compact shell does not repeat destination page headings', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const preview.PreviewCatalog(showToolbar: false));
+    await tester.pumpAndSettle();
+
+    final header = find.byKey(const ValueKey<String>('compact-header'));
+    expect(
+      find.descendant(of: header, matching: find.text('Sidravia')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('配置'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: header, matching: find.text('配置')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('关于'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: header, matching: find.text('关于')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('every preview scenario renders through the production home', (
     tester,
   ) async {

@@ -143,28 +143,14 @@ class _CompactHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       key: const ValueKey<String>('compact-header'),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Sidravia',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleLarge,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              appDestinations[selectedIndex].title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: theme.textTheme.labelLarge,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          appDestinations[selectedIndex].title,
+          maxLines: 1,
+          style: theme.textTheme.titleMedium,
+        ),
       ),
     );
   }
