@@ -26,6 +26,11 @@ class DaemonStatus {
   final int? desktopOwnerPid;
 }
 
+class DaemonStopResult {
+  const DaemonStopResult({required this.status});
+  final String status;
+}
+
 class InstitutionProfile {
   const InstitutionProfile({
     required this.id,
@@ -157,6 +162,13 @@ DaemonStatus decodeDaemonStatus(String source) {
         ? _positive(value['desktopOwnerPid'])
         : null,
   );
+}
+
+DaemonStopResult decodeDaemonStop(String source) {
+  final value = decodeObject(source, const {'status'});
+  final status = _text(value['status']);
+  if (status != 'stopping') throw const IpcProtocolException();
+  return DaemonStopResult(status: status);
 }
 
 List<InstitutionProfile> decodeProfiles(String source) =>

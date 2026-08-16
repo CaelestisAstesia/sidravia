@@ -17,11 +17,14 @@ class GuiController extends ChangeNotifier {
     required this.bootstrapper,
     this.connector = WebSocketIpcClient.connect,
     this.pollDelay = const Duration(seconds: 3),
+    this.stopTimeout = const Duration(seconds: 4),
   });
 
   final GuiBootstrapper bootstrapper;
   final IpcConnector connector;
   final Duration pollDelay;
+  final Duration stopTimeout;
+  bool _exitRequested = false;
   SidraviaIpcClient? _client;
   Timer? _timer;
   Future<void>? _transition;
@@ -93,6 +96,37 @@ class GuiController extends ChangeNotifier {
 
   Future<bool> restartSession(String sessionId) =>
       _mutate((client) => client.sessionRestart(sessionId));
+
+  /// Graceful exit requested only by the explicit tray path.
+  ///
+  /// Serializes with an in-flight poll/mutation, cancels future polling and
+  /// submits the existing typed `daemon.stop` at most once within a bounded
+  /// wait. Business, transport, protocol and timeout failures never prevent
+  /// final native destruction; this future always completes.
+  Future<bool> exitAndDisconnect() async {
+    if (_exitRequested) return false;
+    _exitRequested = true;
+    _timer?.cancel();
+    _timer = null;
+    var current = _transition;
+    if (current != null) {
+      try {
+        await current;
+      } on Object {
+        // The exit path must continue even when an in-flight refresh fails.
+      }
+    }
+    if (_disposed) return false;
+    final generation = _generation;
+    final client = _client;
+    if (client is! SidraviaDesktopClient) return false;
+    try {
+      await client.daemonStop().timeout(stopTimeout);
+      return _current(generation);
+    } on Object {
+      return false;
+    }
+  }
 
   Future<void> _start() async {
     final generation = ++_generation;

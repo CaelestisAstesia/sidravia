@@ -6,7 +6,7 @@ import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
-class WebSocketIpcClient implements SidraviaIpcClient {
+class WebSocketIpcClient implements SidraviaDesktopClient {
   WebSocketIpcClient._(
     this._socket, {
     Duration requestTimeout = _requestTimeout,
@@ -64,6 +64,10 @@ class WebSocketIpcClient implements SidraviaIpcClient {
   @override
   Future<List<ConfigurationSummary>> configurationList() async =>
       _call('configuration.list', const {}, decodeConfigurations);
+
+  @override
+  Future<DaemonStopResult> daemonStop() async =>
+      _call('daemon.stop', const {}, decodeDaemonStop);
 
   @override
   Future<List<SessionSummary>> sessionList() async =>

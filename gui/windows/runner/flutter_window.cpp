@@ -1,8 +1,21 @@
 #include "flutter_window.h"
 
+#include <flutter/encodable_value.h>
+#include <shellapi.h>
+
+#include <cwchar>
 #include <optional>
+#include <string>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "resource.h"
+
+namespace {
+constexpr UINT kTrayIconId = 1;
+constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr int kTrayOpenCommand = 1001;
+constexpr int kTrayExitCommand = 1002;
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -48,6 +61,52 @@ bool FlutterWindow::OnCreate() {
         }
         result->NotImplemented();
       });
+
+  desktop_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "sidravia/desktop",
+          &flutter::StandardMethodCodec::GetInstance());
+  desktop_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        if (call.method_name() == "initialize") {
+          result->Success(flutter::EncodableValue(std::string("primary")));
+          return;
+        }
+        if (call.method_name() == "notify") {
+          std::wstring title = L"Sidravia";
+          std::wstring body;
+          const auto* arguments =
+              std::get_if<flutter::EncodableMap>(call.arguments());
+          if (arguments != nullptr) {
+            for (const auto& entry : *arguments) {
+              const auto key = std::get_if<std::string>(&entry.first);
+              const auto value = std::get_if<std::string>(&entry.second);
+              if (key == nullptr || value == nullptr) continue;
+              if (*key == "title") {
+                title = Utf8ToUtf16(*value);
+              } else if (*key == "body") {
+                body = Utf8ToUtf16(*value);
+              }
+            }
+          }
+          NotifyTray(title, body);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "destroy") {
+          RemoveTrayIcon();
+          exit_armed_ = true;
+          result->Success();
+          PostMessage(GetHandle(), WM_CLOSE, 0, 0);
+          return;
+        }
+        result->NotImplemented();
+      });
+
+  activation_message_ =
+      ::RegisterWindowMessageW(L"Sidravia.Gui.Activate");
+  taskbar_created_message_ = ::RegisterWindowMessageW(L"TaskbarCreated");
+  CreateTrayIcon();
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -63,12 +122,117 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  RemoveTrayIcon();
   window_channel_.reset();
+  desktop_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
 
   Win32Window::OnDestroy();
+}
+
+bool FlutterWindow::CreateTrayIcon() {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) return false;
+  NOTIFYICONDATAW nid{};
+  nid.cbSize = sizeof(NOTIFYICONDATAW);
+  nid.hWnd = hwnd;
+  nid.uID = kTrayIconId;
+  nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+  nid.uCallbackMessage = kTrayCallbackMessage;
+  nid.hIcon = ::LoadIcon(::GetModuleHandleW(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+  wcscpy_s(nid.szTip, L"Sidravia");
+  return ::Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
+}
+
+void FlutterWindow::RemoveTrayIcon() {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) return;
+  NOTIFYICONDATAW nid{};
+  nid.cbSize = sizeof(NOTIFYICONDATAW);
+  nid.hWnd = hwnd;
+  nid.uID = kTrayIconId;
+  ::Shell_NotifyIconW(NIM_DELETE, &nid);
+}
+
+void FlutterWindow::RestoreWindow() {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) return;
+  ::ShowWindow(hwnd, SW_RESTORE);
+  if (!::SetForegroundWindow(hwnd)) {
+    ::FlashWindow(hwnd, TRUE);
+  }
+  ::BringWindowToTop(hwnd);
+}
+
+void FlutterWindow::NotifyTray(const std::wstring& title,
+                               const std::wstring& body) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) return;
+  NOTIFYICONDATAW nid{};
+  nid.cbSize = sizeof(NOTIFYICONDATAW);
+  nid.hWnd = hwnd;
+  nid.uID = kTrayIconId;
+  nid.uFlags = NIF_INFO;
+  nid.dwInfoFlags = NIIF_INFO;
+  wcsncpy_s(nid.szInfoTitle, title.c_str(), _TRUNCATE);
+  wcsncpy_s(nid.szInfo, body.c_str(), _TRUNCATE);
+  ::Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+void FlutterWindow::ShowTrayMenu() {
+  HWND hwnd = GetHandle();
+  HMENU menu = ::CreatePopupMenu();
+  ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand, L"打开 Sidravia");
+  ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  ::AppendMenuW(menu, MF_STRING, kTrayExitCommand, L"退出并断开");
+  ::SetMenuDefaultItem(menu, kTrayOpenCommand, FALSE);
+  POINT pt{};
+  ::GetCursorPos(&pt);
+  ::SetForegroundWindow(hwnd);
+  const int command =
+      ::TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                       pt.x, pt.y, 0, hwnd, nullptr);
+  ::DestroyMenu(menu);
+  if (command == kTrayOpenCommand) {
+    RestoreWindow();
+  } else if (command == kTrayExitCommand) {
+    RequestExplicitExit();
+  }
+}
+
+void FlutterWindow::HandleTrayMessage(LPARAM lparam) {
+  switch (lparam) {
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+      RestoreWindow();
+      break;
+    case WM_RBUTTONUP:
+    case WM_CONTEXTMENU:
+      ShowTrayMenu();
+      break;
+    default:
+      break;
+  }
+}
+
+void FlutterWindow::RequestExplicitExit() {
+  if (desktop_channel_ && flutter_controller_) {
+    desktop_channel_->InvokeMethod("exitRequested", nullptr);
+  }
+}
+
+std::wstring FlutterWindow::Utf8ToUtf16(const std::string& utf8) {
+  if (utf8.empty()) return std::wstring();
+  const int size =
+      ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+                            static_cast<int>(utf8.size()), nullptr, 0);
+  if (size <= 0) return std::wstring();
+  std::wstring value(static_cast<size_t>(size), L'\0');
+  ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+                        static_cast<int>(utf8.size()), value.data(), size);
+  return value;
 }
 
 LRESULT
@@ -85,7 +249,25 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     }
   }
 
+  if (activation_message_ != 0 && message == activation_message_) {
+    RestoreWindow();
+    return 0;
+  }
+  if (taskbar_created_message_ != 0 && message == taskbar_created_message_) {
+    CreateTrayIcon();
+    return 0;
+  }
+
   switch (message) {
+    case WM_CLOSE:
+      if (!exit_armed_) {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+      }
+      break;
+    case kTrayCallbackMessage:
+      HandleTrayMessage(lparam);
+      return 0;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;

@@ -7,10 +7,12 @@
 #include <flutter/standard_method_codec.h>
 
 #include <memory>
+#include <string>
 
 #include "win32_window.h"
 
-// A window that does nothing but host a Flutter view.
+// A window that hosts a Flutter view and owns the desktop presence surface
+// (single-instance activation, tray restore/exit and narrow notifications).
 class FlutterWindow : public Win32Window {
  public:
   // Creates a new FlutterWindow hosting a Flutter view running |project|.
@@ -34,6 +36,23 @@ class FlutterWindow : public Win32Window {
   // Application-owned Windows frame commands.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_channel_;
+
+  // Desktop presence commands and native-to-Dart exit requests.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      desktop_channel_;
+
+  bool exit_armed_ = false;
+  UINT activation_message_ = 0;
+  UINT taskbar_created_message_ = 0;
+
+  bool CreateTrayIcon();
+  void RemoveTrayIcon();
+  void RestoreWindow();
+  void NotifyTray(const std::wstring& title, const std::wstring& body);
+  void ShowTrayMenu();
+  void HandleTrayMessage(LPARAM lparam);
+  void RequestExplicitExit();
+  static std::wstring Utf8ToUtf16(const std::string& utf8);
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

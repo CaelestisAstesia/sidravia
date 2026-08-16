@@ -12,7 +12,7 @@ enum PreviewScenario {
   bootstrapping('正在启动'),
   failed('服务不可用'),
   unsupported('平台不支持'),
-  daemonStopped('服务未运行'),
+  daemonUnavailable('服务未运行'),
   noProfile('无学校配置'),
   noConfiguration('尚未配置'),
   noSession('尚无会话'),
@@ -90,7 +90,7 @@ class _PreviewClient implements SidraviaIpcClient {
 
   @override
   Future<DaemonStatus> daemonStatus() async =>
-      scenario == PreviewScenario.daemonStopped ? _stoppedDaemon : _daemon;
+      scenario == PreviewScenario.daemonUnavailable ? _stoppedDaemon : _daemon;
 
   @override
   Future<List<InstitutionProfile>> profileList() async =>

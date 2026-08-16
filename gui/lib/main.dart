@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,15 +9,23 @@ import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/announcement_feed.dart';
 import 'package:sidravia_gui/features/announcements/announcement_store.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final desktop = DesktopPresence();
+  final disposition = await desktop.initialize();
+  if (disposition == DesktopPresenceDisposition.activatedExisting) {
+    desktop.dispose();
+    exit(0);
+  }
   registerHarmonyOSFontLicense();
   runApp(
     SidraviaApp(
       controller: GuiController(bootstrapper: ProcessGuiBootstrap()),
       announcements: _createAnnouncementController(),
+      desktopPresence: desktop,
     ),
   );
 }

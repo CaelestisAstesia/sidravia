@@ -25,3 +25,10 @@ abstract interface class SidraviaIpcClient {
   Future<SessionSummary> sessionRestart(String sessionId);
   Future<void> close();
 }
+
+/// The already-existing typed `daemon.stop` capability. Keeping this separate
+/// lets development previews implement only the shared read/write surface
+/// without ever exposing a stop path.
+abstract interface class SidraviaDesktopClient implements SidraviaIpcClient {
+  Future<DaemonStopResult> daemonStop();
+}

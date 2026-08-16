@@ -7,7 +7,7 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
-  test('sends all seven exact operational fixture shapes', () async {
+  test('sends all eight exact operational fixture shapes', () async {
     final received = <Map<String, dynamic>>[];
     final server = await _server((socket, request) {
       expect(request.headers.value('Authorization'), 'Bearer $_token');
@@ -42,6 +42,7 @@ void main() {
       configurationId: 'fixture-configuration',
       password: '',
     );
+    await client.daemonStop();
     await client.sessionStartConfiguration(
       'cfg-0123456789abcdef0123456789abcdef',
     );
@@ -54,6 +55,7 @@ void main() {
       'configuration.create',
       'configuration.update',
       'configuration.setPassword',
+      'daemon.stop',
       'session.startConfiguration',
       'session.stop',
       'session.ensureRunning',
@@ -72,6 +74,12 @@ void main() {
       'password': '',
       'allowInsecureStorage': false,
     });
+    expect(
+      received.firstWhere(
+        (value) => value['method'] == 'daemon.stop',
+      )['payload'],
+      <String, dynamic>{},
+    );
     expect(
       received.every((value) => (value['id'] as String).startsWith('gui-')),
       isTrue,

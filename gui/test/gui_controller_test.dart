@@ -135,6 +135,70 @@ void main() {
       controller.dispose();
     },
   );
+
+  test('exitAndDisconnect cancels polling, submits daemon.stop once, and is one-shot', () async {
+    final client = _Client();
+    final controller = GuiController(
+      bootstrapper: _Bootstrapper(),
+      connector: (_) async => client,
+      pollDelay: const Duration(milliseconds: 5),
+    );
+    await controller.start();
+    await Future<void>.delayed(const Duration(milliseconds: 15));
+
+    expect(await controller.exitAndDisconnect(), isTrue);
+    expect(client.daemonStopCalls, 1);
+    expect(await controller.exitAndDisconnect(), isFalse);
+    expect(client.daemonStopCalls, 1);
+    controller.dispose();
+  });
+
+  test('exitAndDisconnect remains one-shot despite stop failures', () async {
+    final client = _Client();
+    final controller = GuiController(
+      bootstrapper: _Bootstrapper(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    client.stopFailure = const IpcRequestFailure('invalid_argument');
+
+    expect(await controller.exitAndDisconnect(), isFalse);
+    expect(client.daemonStopCalls, 1);
+    expect(await controller.exitAndDisconnect(), isFalse);
+    expect(client.daemonStopCalls, 1);
+    controller.dispose();
+  });
+
+  test(
+    'exitAndDisconnect times out a hung daemon.stop and still completes',
+    () async {
+      final client = _Client();
+      final controller = GuiController(
+        bootstrapper: _Bootstrapper(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+        stopTimeout: const Duration(milliseconds: 40),
+      );
+      await controller.start();
+      client.pendingStop = Completer<DaemonStopResult>();
+      final watch = Stopwatch()..start();
+
+      expect(await controller.exitAndDisconnect(), isFalse);
+      expect(watch.elapsedMilliseconds, lessThan(500));
+      expect(client.daemonStopCalls, 1);
+      controller.dispose();
+    },
+  );
+
+  test('ordinary dispose never submits daemon.stop', () async {
+    final client = _Client();
+    final controller = _controller(client);
+    await controller.start();
+    controller.dispose();
+
+    expect(client.daemonStopCalls, 0);
+  });
 }
 
 GuiController _controller(_Client client) => GuiController(
@@ -180,10 +244,13 @@ class _PendingBootstrapper implements GuiBootstrapper {
   );
 }
 
-class _Client implements SidraviaIpcClient {
+class _Client implements SidraviaDesktopClient {
   final calls = <String>[];
   Object? nextFailure;
   Completer<DaemonStatus>? nextDaemon;
+  Object? stopFailure;
+  Completer<DaemonStopResult>? pendingStop;
+  var daemonStopCalls = 0;
   var closed = false;
 
   void _call(String name) {
@@ -273,6 +340,18 @@ class _Client implements SidraviaIpcClient {
   Future<SessionSummary> sessionRestart(String sessionId) async {
     _call('session.restart');
     return _session;
+  }
+
+  @override
+  Future<DaemonStopResult> daemonStop() async {
+    daemonStopCalls++;
+    final pending = pendingStop;
+    pendingStop = null;
+    if (pending != null) return pending.future;
+    final failure = stopFailure;
+    stopFailure = null;
+    if (failure != null) throw failure;
+    return const DaemonStopResult(status: 'stopping');
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +9,20 @@ import 'package:sidravia_gui/dev/widget_previews.dart';
 import 'package:sidravia_gui/design/sidravia_layout.dart';
 
 void main() {
+  test('preview entry keeps zero desktop presence surface', () {
+    final main = File('lib/dev/preview_main.dart').readAsStringSync();
+    final fixtures = File('lib/dev/preview_fixtures.dart').readAsStringSync();
+    expect(main, isNot(contains('desktop_presence')));
+    expect(main, isNot(contains('DesktopPresence')));
+    expect(main, isNot(contains('daemonStop')));
+    expect(main, isNot(contains('tray')));
+    expect(main, isNot(contains('notification')));
+    expect(fixtures, isNot(contains('DesktopPresence')));
+    expect(fixtures, isNot(contains('daemonStop')));
+    expect(fixtures, isNot(contains('tray')));
+    expect(fixtures, isNot(contains('notification')));
+  });
+
   testWidgets(
     'preview catalog uses real shell navigation with fictional state',
     (tester) async {

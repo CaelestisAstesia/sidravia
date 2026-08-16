@@ -5,12 +5,31 @@ Sidravia `0.2.0` test-line Flutter visual MVP.
 Windows is the current delivery target. The MVP presents Home, Configuration
 and Settings with a shared responsive navigation model. It bootstraps a
 desktop-owned daemon through the sibling `sidraviactl.exe`, uses typed local
-WebSocket IPC, and exposes one unambiguous Configuration/Session flow. It does
-not yet integrate with the tray or configure startup/PATH.
+WebSocket IPC, and exposes one unambiguous Configuration/Session flow. Tray
+presence and explicit exit are implemented; startup and PATH integration are
+not part of this slice.
 
 The application bundles and uses HarmonyOS Sans. Its license is included at
 `assets/fonts/LICENSE.txt` and is available in Settings from Flutter's standard
 license page.
+
+## Desktop presence
+
+The Windows runner keeps one per-user GUI presence. A second launch restores
+and foregrounds the existing window instead of starting a second Flutter
+engine or desktop daemon. Title-bar close, Alt+F4 and system-menu Close hide
+the window to the tray; the tray `打开 Sidravia` restores it and the tray
+`退出并断开` performs the only ordinary full exit. That exit submits the
+existing typed `daemon.stop` with a bounded wait before destroying the window,
+and falls back to the desktop owner watcher if the stop or transport fails.
+The tray icon is recreated after an Explorer restart. Only the first entry into
+an actionable blocked state and the first recovery from it produce short
+process-local notifications; all other states, polling revisions and dismissed
+notifications stay silent. Desktop UI, tray or notification failure never
+changes or blocks authentication, polling or announcements.
+
+Notifications use `Shell_NotifyIcon` balloon presentation for this unpackaged
+prototype; final identity, toasts and packaging remain GP-03 decisions.
 
 The generated Android runner preserves a future shared-client path; it is not
 an Android build or support claim.
