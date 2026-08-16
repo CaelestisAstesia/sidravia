@@ -84,9 +84,14 @@ class _PreviewBootstrapper implements GuiBootstrapper {
 }
 
 class _PreviewClient implements SidraviaIpcClient {
-  _PreviewClient(this.scenario);
+  _PreviewClient(this.scenario) {
+    _autoLogin = _configuration.autoLogin;
+  }
 
   final PreviewScenario scenario;
+  var _autoLogin = true;
+  var _removedSession = false;
+  var _deletedConfiguration = false;
 
   @override
   Future<DaemonStatus> daemonStatus() async =>
@@ -97,37 +102,42 @@ class _PreviewClient implements SidraviaIpcClient {
       scenario == PreviewScenario.noProfile ? const [] : const [_profile];
 
   @override
-  Future<List<ConfigurationSummary>> configurationList() async =>
-      switch (scenario) {
-        PreviewScenario.noProfile => const [],
-        PreviewScenario.noConfiguration => const [],
-        PreviewScenario.multipleObjects => const [
-          _configuration,
-          _otherConfiguration,
-        ],
-        _ => const [_configuration],
-      };
+  Future<List<ConfigurationSummary>> configurationList() async {
+    if (_deletedConfiguration) return const [];
+    return switch (scenario) {
+      PreviewScenario.noProfile => const [],
+      PreviewScenario.noConfiguration => const [],
+      PreviewScenario.multipleObjects => const [
+        _configuration,
+        _otherConfiguration,
+      ],
+      _ => [_configuration.withAutoLogin(_autoLogin)],
+    };
+  }
 
   @override
-  Future<List<SessionSummary>> sessionList() async => switch (scenario) {
-    PreviewScenario.disconnected => const [_suspendedSession],
-    PreviewScenario.authenticating => const [_authenticatingSession],
-    PreviewScenario.authenticated => const [_authenticatedSession],
-    PreviewScenario.waitingForNetwork => const [_waitingForNetworkSession],
-    PreviewScenario.waitingBeforeRetry => const [_waitingBeforeRetrySession],
-    PreviewScenario.blocked => const [_blockedSession],
-    PreviewScenario.stopping => const [_stoppingSession],
-    PreviewScenario.unknown => const [_unknownSession],
-    PreviewScenario.ambiguousSessions => const [
-      _authenticatedSession,
-      _suspendedSession,
-    ],
-    PreviewScenario.multipleObjects => const [
-      _authenticatedSession,
-      _otherSession,
-    ],
-    _ => const [],
-  };
+  Future<List<SessionSummary>> sessionList() async {
+    if (_removedSession || _deletedConfiguration) return const [];
+    return switch (scenario) {
+      PreviewScenario.disconnected => const [_suspendedSession],
+      PreviewScenario.authenticating => const [_authenticatingSession],
+      PreviewScenario.authenticated => const [_authenticatedSession],
+      PreviewScenario.waitingForNetwork => const [_waitingForNetworkSession],
+      PreviewScenario.waitingBeforeRetry => const [_waitingBeforeRetrySession],
+      PreviewScenario.blocked => const [_blockedSession],
+      PreviewScenario.stopping => const [_stoppingSession],
+      PreviewScenario.unknown => const [_unknownSession],
+      PreviewScenario.ambiguousSessions => const [
+        _authenticatedSession,
+        _suspendedSession,
+      ],
+      PreviewScenario.multipleObjects => const [
+        _authenticatedSession,
+        _otherSession,
+      ],
+      _ => const [],
+    };
+  }
 
   @override
   Future<ConfigurationSummary> configurationCreate({
@@ -167,7 +177,49 @@ class _PreviewClient implements SidraviaIpcClient {
       _authenticatedSession;
 
   @override
+  Future<SessionRemoveResult> sessionRemove(String sessionId) async {
+    _removedSession = true;
+    return SessionRemoveResult(sessionId: sessionId, status: 'removed');
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  }) async {
+    _autoLogin = autoLogin;
+    return _configuration.withAutoLogin(autoLogin);
+  }
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId,
+  ) async {
+    _deletedConfiguration = true;
+    _removedSession = true;
+    return ConfigurationRemoveResult(
+      configurationId: configurationId,
+      status: 'removed',
+    );
+  }
+
+  @override
   Future<void> close() async {}
+}
+
+extension on ConfigurationSummary {
+  ConfigurationSummary withAutoLogin(bool autoLogin) => ConfigurationSummary(
+    id: id,
+    displayName: displayName,
+    institutionProfileId: institutionProfileId,
+    institutionDisplayName: institutionDisplayName,
+    authenticationProtocolId: authenticationProtocolId,
+    username: username,
+    credentialStored: credentialStored,
+    storageProtection: storageProtection,
+    autoLogin: autoLogin,
+    autoReconnect: autoReconnect,
+  );
 }
 
 const _daemon = DaemonStatus(

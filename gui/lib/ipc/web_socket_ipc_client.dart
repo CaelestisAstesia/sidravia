@@ -109,6 +109,27 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
   }, decodeConfiguration);
 
   @override
+  Future<ConfigurationSummary> configurationSetAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  }) async => _call('configuration.update', {
+    'configurationId': configurationId,
+    'autoLogin': autoLogin,
+  }, decodeConfiguration);
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId,
+  ) async => _call(
+    'configuration.remove',
+    {'configurationId': configurationId},
+    (result) => decodeConfigurationRemove(
+      result,
+      expectedConfigurationId: configurationId,
+    ),
+  );
+
+  @override
   Future<SessionSummary> sessionStartConfiguration(
     String configurationId,
   ) async => _call('session.startConfiguration', {
@@ -118,6 +139,13 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
   @override
   Future<SessionSummary> sessionStop(String sessionId) async =>
       _call('session.stop', {'sessionId': sessionId}, decodeSession);
+
+  @override
+  Future<SessionRemoveResult> sessionRemove(String sessionId) async => _call(
+    'session.remove',
+    {'sessionId': sessionId},
+    (result) => decodeSessionRemove(result, expectedSessionId: sessionId),
+  );
 
   @override
   Future<SessionSummary> sessionEnsureRunning(String sessionId) async => _call(

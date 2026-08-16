@@ -31,6 +31,19 @@ class DaemonStopResult {
   final String status;
 }
 
+class SessionRemoveResult {
+  const SessionRemoveResult({required this.sessionId, required this.status});
+  final String sessionId, status;
+}
+
+class ConfigurationRemoveResult {
+  const ConfigurationRemoveResult({
+    required this.configurationId,
+    required this.status,
+  });
+  final String configurationId, status;
+}
+
 class InstitutionProfile {
   const InstitutionProfile({
     required this.id,
@@ -169,6 +182,35 @@ DaemonStopResult decodeDaemonStop(String source) {
   final status = _text(value['status']);
   if (status != 'stopping') throw const IpcProtocolException();
   return DaemonStopResult(status: status);
+}
+
+SessionRemoveResult decodeSessionRemove(
+  String source, {
+  required String expectedSessionId,
+}) {
+  final value = decodeObject(source, const {'sessionId', 'status'});
+  final sessionId = _text(value['sessionId']);
+  final status = _text(value['status']);
+  if (sessionId != expectedSessionId || status != 'removed') {
+    throw const IpcProtocolException();
+  }
+  return SessionRemoveResult(sessionId: sessionId, status: status);
+}
+
+ConfigurationRemoveResult decodeConfigurationRemove(
+  String source, {
+  required String expectedConfigurationId,
+}) {
+  final value = decodeObject(source, const {'configurationId', 'status'});
+  final configurationId = _text(value['configurationId']);
+  final status = _text(value['status']);
+  if (configurationId != expectedConfigurationId || status != 'removed') {
+    throw const IpcProtocolException();
+  }
+  return ConfigurationRemoveResult(
+    configurationId: configurationId,
+    status: status,
+  );
 }
 
 List<InstitutionProfile> decodeProfiles(String source) =>

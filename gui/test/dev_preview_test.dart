@@ -302,4 +302,50 @@ void main() {
       await tester.pump();
     }
   });
+
+  testWidgets(
+    'preview configuration exercises AutoLogin, reset and deletion fictionally',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1500));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        const preview.PreviewCatalog(
+          initialScenario: PreviewScenario.authenticated,
+          surface: preview.PreviewSurface.configuration,
+          showToolbar: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final autoLogin = find.byKey(const ValueKey('configuration-auto-login'));
+      expect(tester.widget<SwitchListTile>(autoLogin).value, isTrue);
+      await tester.tap(autoLogin);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(autoLogin).value, isFalse);
+
+      final reset = find.byKey(const ValueKey('reset-session'));
+      expect(reset, findsOneWidget);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reset-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('reset-session')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('delete-configuration')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('delete-configuration')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('delete-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('configuration-account')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('delete-configuration')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

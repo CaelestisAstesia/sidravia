@@ -629,6 +629,176 @@ void main() {
     expect(find.byType(LicensePage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'configuration page exposes authoritative AutoLogin and reset/delete controls',
+    (tester) async {
+      final client = _Client(sessions: const [_session]);
+      await tester.pumpWidget(_app(client));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('配置').first);
+      await tester.pumpAndSettle();
+
+      final autoLogin = find.byKey(const ValueKey('configuration-auto-login'));
+      expect(autoLogin, findsOneWidget);
+      expect(tester.widget<SwitchListTile>(autoLogin).value, isFalse);
+      expect(find.text('下次桌面服务启动时生效，不会立即登录。'), findsOneWidget);
+      expect(find.byKey(const ValueKey('reset-session')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('delete-configuration')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('reset confirmation cancels without IPC and confirms once', (
+    tester,
+  ) async {
+    final client = _Client(sessions: const [_session]);
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    final reset = find.byKey(const ValueKey('reset-session'));
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    expect(find.text('会话将被停止并移除，登录配置和已保存密码保留。'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reset-cancel')));
+    await tester.pumpAndSettle();
+    expect(client.calls, isNot(contains('session.remove')));
+
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reset-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(
+      client.calls.where((call) => call == 'session.remove'),
+      hasLength(1),
+    );
+    expect(find.byKey(const ValueKey('reset-session')), findsNothing);
+    expect(find.byKey(const ValueKey('delete-configuration')), findsOneWidget);
+  });
+
+  testWidgets('deletion confirmation cancels without IPC and confirms once', (
+    tester,
+  ) async {
+    final client = _Client();
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    final delete = find.byKey(const ValueKey('delete-configuration'));
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(find.text('登录配置、关联会话和已保存密码都会被删除，且无法恢复。'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('delete-cancel')));
+    await tester.pumpAndSettle();
+    expect(client.calls, isNot(contains('configuration.remove')));
+
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('delete-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(
+      client.calls.where((call) => call == 'configuration.remove'),
+      hasLength(1),
+    );
+    expect(find.byKey(const ValueKey('configuration-account')), findsOneWidget);
+  });
+
+  testWidgets('AutoLogin toggle dispatches once and refresh owns display', (
+    tester,
+  ) async {
+    final client = _Client();
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('configuration-auto-login')));
+    await tester.pumpAndSettle();
+
+    expect(
+      client.calls.where((call) => call == 'configuration.setAutoLogin'),
+      hasLength(1),
+    );
+    final autoLogin = tester.widget<SwitchListTile>(
+      find.byKey(const ValueKey('configuration-auto-login')),
+    );
+    expect(autoLogin.value, isTrue);
+    expect(client.configurations.single.autoLogin, isTrue);
+  });
+
+  testWidgets('configuration stays read-only for ambiguous Sessions', (
+    tester,
+  ) async {
+    final foreign = SessionSummary(
+      id: 'session-foreign',
+      displayName: '',
+      accountName: 'other-user',
+      state: 'suspended',
+      intent: 'suspend_authentication',
+      configurationId: 'cfg-foreign',
+    );
+    final client = _Client(sessions: [_session, foreign]);
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('无法管理当前会话'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('configuration-auto-login')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('reset-session')), findsNothing);
+    expect(find.byKey(const ValueKey('delete-configuration')), findsNothing);
+  });
+
+  testWidgets(
+    'compact high-text configuration page fits lifecycle controls without overflow',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 568));
+      tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(() {
+        tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+        tester.binding.setSurfaceSize(null);
+      });
+
+      final client = _Client(sessions: const [_session]);
+      await tester.pumpWidget(_app(client));
+      await tester.pump();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('配置'),
+        ),
+      );
+      await tester.pump();
+
+      for (final key in [
+        'configuration-auto-login',
+        'reset-session',
+        'delete-configuration',
+      ]) {
+        final control = find.byKey(ValueKey(key));
+        expect(control, findsOneWidget, reason: key);
+        await tester.ensureVisible(control);
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: key);
+      }
+
+      await tester.ensureVisible(find.byKey(const ValueKey('reset-session')));
+      await tester.tap(find.byKey(const ValueKey('reset-session')));
+      await tester.pumpAndSettle();
+      expect(find.text('会话将被停止并移除，登录配置和已保存密码保留。'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 double _effectiveTextScale(WidgetTester tester, Finder finder) {
@@ -743,6 +913,39 @@ class _Client implements SidraviaIpcClient {
   }
 
   @override
+  Future<SessionRemoveResult> sessionRemove(String sessionId) async {
+    calls.add('session.remove');
+    sessions = sessions
+        .where((session) => session.id != sessionId)
+        .toList(growable: false);
+    return SessionRemoveResult(sessionId: sessionId, status: 'removed');
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  }) async {
+    calls.add('configuration.setAutoLogin');
+    final result = _withAutoLogin(configurations.single, autoLogin);
+    configurations = [result];
+    return result;
+  }
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId,
+  ) async {
+    calls.add('configuration.remove');
+    configurations = const [];
+    sessions = const [];
+    return ConfigurationRemoveResult(
+      configurationId: configurationId,
+      status: 'removed',
+    );
+  }
+
+  @override
   Future<SessionSummary> sessionEnsureRunning(String sessionId) async {
     calls.add('session.ensureRunning');
     return _session;
@@ -757,6 +960,22 @@ class _Client implements SidraviaIpcClient {
   @override
   Future<void> close() async {}
 }
+
+ConfigurationSummary _withAutoLogin(
+  ConfigurationSummary configuration,
+  bool autoLogin,
+) => ConfigurationSummary(
+  id: configuration.id,
+  displayName: configuration.displayName,
+  institutionProfileId: configuration.institutionProfileId,
+  institutionDisplayName: configuration.institutionDisplayName,
+  authenticationProtocolId: configuration.authenticationProtocolId,
+  username: configuration.username,
+  credentialStored: configuration.credentialStored,
+  storageProtection: configuration.storageProtection,
+  autoLogin: autoLogin,
+  autoReconnect: configuration.autoReconnect,
+);
 
 const _daemon = DaemonStatus(
   productVersion: 'fixture',

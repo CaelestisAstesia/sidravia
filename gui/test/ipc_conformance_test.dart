@@ -152,7 +152,7 @@ void main() {
     }
   });
 
-  test('decodes all seven operational fixture requests and success shapes', () {
+  test('decodes all nine operational fixture requests and success shapes', () {
     final cases = (_fixture()['cases'] as List<dynamic>)
         .cast<Map<String, dynamic>>()
         .where(
@@ -162,12 +162,14 @@ void main() {
             'configuration.setPassword',
             'session.startConfiguration',
             'session.stop',
+            'session.remove',
             'session.ensureRunning',
             'session.restart',
+            'configuration.remove',
           }.contains(value['method']),
         )
         .toList(growable: false);
-    expect(cases, hasLength(7));
+    expect(cases, hasLength(9));
     for (final value in cases) {
       final request =
           jsonDecode(value['request'] as String) as Map<String, dynamic>;
@@ -190,6 +192,22 @@ void main() {
         case 'session.stop':
         case 'session.restart':
           expect(decodeSession(jsonEncode(result)).id, isNotEmpty);
+        case 'session.remove':
+          expect(
+            decodeSessionRemove(
+              jsonEncode(result),
+              expectedSessionId: 'session-retained',
+            ).status,
+            'removed',
+          );
+        case 'configuration.remove':
+          expect(
+            decodeConfigurationRemove(
+              jsonEncode(result),
+              expectedConfigurationId: 'fixture-configuration',
+            ).status,
+            'removed',
+          );
       }
     }
   });

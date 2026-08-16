@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
@@ -54,36 +57,45 @@ class _ConfigurationContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = controller.snapshot;
-    final ready = controller.state == GuiConnectionState.ready;
-    final configurations =
-        snapshot?.configurations ?? const <ConfigurationSummary>[];
     final profiles = snapshot?.profiles ?? const <InstitutionProfile>[];
+    final capabilities = controller.capabilities;
     Widget content;
-    if (!ready) {
-      content = _MessageCard(title: '服务未连接', detail: '连接恢复后才能查看或修改配置。');
-    } else if (configurations.length > 1) {
-      content = _MessageCard(
-        title: '无法管理多个配置',
-        detail: '此版本只支持一个登录配置。请先使用命令行工具处理。',
-      );
-    } else if (profiles.isEmpty) {
-      content = _MessageCard(
-        title: configurations.isEmpty ? '没有可用的学校配置' : '无法编辑当前配置',
-        detail: '本机服务未提供学校配置。',
-      );
-    } else if (configurations.isEmpty) {
-      content = _CreateConfigurationForm(
-        controller: controller,
-        profiles: profiles,
-        compact: compact,
-      );
-    } else {
-      content = _EditConfigurationForm(
-        controller: controller,
-        configuration: configurations.single,
-        profiles: profiles,
-        compact: compact,
-      );
+    switch (capabilities.capability) {
+      case GuiCapabilityState.bootstrapping ||
+          GuiCapabilityState.stale ||
+          GuiCapabilityState.failed ||
+          GuiCapabilityState.unsupported ||
+          GuiCapabilityState.daemonUnavailable:
+        content = _MessageCard(title: '服务未连接', detail: '连接恢复后才能查看或修改配置。');
+      case GuiCapabilityState.multipleConfigurations:
+        content = _MessageCard(
+          title: '无法管理多个配置',
+          detail: '此版本只支持一个登录配置。请先使用命令行工具处理。',
+        );
+      case GuiCapabilityState.ambiguousSessions:
+        content = _MessageCard(title: '无法管理当前会话', detail: '当前会话关系不明确，未执行任何操作。');
+      case GuiCapabilityState.createOnly:
+        if (profiles.isEmpty) {
+          content = _MessageCard(title: '没有可用的学校配置', detail: '本机服务未提供学校配置。');
+        } else {
+          content = _CreateConfigurationForm(
+            controller: controller,
+            profiles: profiles,
+            compact: compact,
+          );
+        }
+      case GuiCapabilityState.manageable:
+        if (profiles.isEmpty) {
+          content = _MessageCard(title: '无法编辑当前配置', detail: '本机服务未提供学校配置。');
+        } else {
+          content = _EditConfigurationForm(
+            controller: controller,
+            configuration: capabilities.configuration!,
+            profiles: profiles,
+            compact: compact,
+            retainedSession: capabilities.retainedSession,
+          );
+        }
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,12 +223,14 @@ class _EditConfigurationForm extends StatefulWidget {
     required this.configuration,
     required this.profiles,
     required this.compact,
+    required this.retainedSession,
   });
 
   final GuiController controller;
   final ConfigurationSummary configuration;
   final List<InstitutionProfile> profiles;
   final bool compact;
+  final SessionSummary? retainedSession;
 
   @override
   State<_EditConfigurationForm> createState() => _EditConfigurationFormState();
@@ -270,6 +284,59 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
     _authoritativeConfigurationId = configuration.id;
     _authoritativeProfileId = configuration.institutionProfileId;
     _authoritativeUsername = configuration.username;
+  }
+
+  Future<void> _confirmResetSession(BuildContext context) async {
+    final session = widget.retainedSession;
+    if (session == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重置会话？'),
+        content: const Text('会话将被停止并移除，登录配置和已保存密码保留。'),
+        actions: [
+          TextButton(
+            key: const ValueKey('reset-cancel'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const ValueKey('reset-confirm'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('重置'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || session != widget.retainedSession) {
+      return;
+    }
+    await widget.controller.resetSession(session.id);
+  }
+
+  Future<void> _confirmDeleteConfiguration(BuildContext context) async {
+    final configuration = widget.configuration;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除配置？'),
+        content: const Text('登录配置、关联会话和已保存密码都会被删除，且无法恢复。'),
+        actions: [
+          TextButton(
+            key: const ValueKey('delete-cancel'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const ValueKey('delete-confirm'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await widget.controller.deleteConfiguration(configuration.id);
   }
 
   @override
@@ -366,6 +433,57 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
                 : null,
           ),
         ),
+      ),
+      const Divider(height: 40),
+      SidraviaLayout.limitTextScale(
+        compact: widget.compact,
+        maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+        child: Material(
+          type: MaterialType.transparency,
+          child: SwitchListTile(
+            key: const ValueKey('configuration-auto-login'),
+            contentPadding: EdgeInsets.zero,
+            value: widget.configuration.autoLogin,
+            onChanged: widget.controller.busy
+                ? null
+                : (value) {
+                    unawaited(
+                      widget.controller.setAutoLogin(
+                        configurationId: widget.configuration.id,
+                        autoLogin: value,
+                      ),
+                    );
+                  },
+            title: Text('自动登录'),
+            subtitle: Text('下次桌面服务启动时生效，不会立即登录。'),
+          ),
+        ),
+      ),
+      if (widget.retainedSession != null) ...[
+        const Divider(height: 40),
+        OutlinedButton.icon(
+          key: const ValueKey('reset-session'),
+          onPressed: widget.controller.busy
+              ? null
+              : () => _confirmResetSession(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          icon: const Icon(Icons.restart_alt_outlined),
+          label: const Text('重置会话'),
+        ),
+      ],
+      const Divider(height: 40),
+      OutlinedButton.icon(
+        key: const ValueKey('delete-configuration'),
+        onPressed: widget.controller.busy
+            ? null
+            : () => _confirmDeleteConfiguration(context),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.error,
+        ),
+        icon: const Icon(Icons.delete_outline),
+        label: const Text('删除配置'),
       ),
     ],
   );

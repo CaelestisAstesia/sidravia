@@ -224,6 +224,178 @@ void main() {
 
     expect(client.daemonStopCalls, 0);
   });
+
+  test('resetSession removes the Session once then refreshes', () async {
+    final client = _Client();
+    final controller = _controller(client);
+    await controller.start();
+    client.calls.clear();
+
+    expect(await controller.resetSession('s-a'), isTrue);
+
+    expect(client.calls, [
+      'session.remove',
+      'daemon',
+      'profiles',
+      'configurations',
+      'sessions',
+    ]);
+    expect(client.sessionRemoveCalls, 1);
+    expect(controller.notice, isNull);
+    controller.dispose();
+  });
+
+  test(
+    'deleteConfiguration removes the Configuration once then refreshes',
+    () async {
+      final client = _Client();
+      final controller = _controller(client);
+      await controller.start();
+      client.calls.clear();
+
+      expect(await controller.deleteConfiguration('cfg-a'), isTrue);
+
+      expect(client.calls, [
+        'configuration.remove',
+        'daemon',
+        'profiles',
+        'configurations',
+        'sessions',
+      ]);
+      expect(client.configurationRemoveCalls, 1);
+      expect(controller.notice, isNull);
+      controller.dispose();
+    },
+  );
+
+  test('setAutoLogin updates once then refreshes from the Snapshot', () async {
+    final client = _Client();
+    final controller = _controller(client);
+    await controller.start();
+    client.calls.clear();
+
+    expect(
+      await controller.setAutoLogin(configurationId: 'cfg-a', autoLogin: false),
+      isTrue,
+    );
+
+    expect(client.calls, [
+      'configuration.setAutoLogin',
+      'daemon',
+      'profiles',
+      'configurations',
+      'sessions',
+    ]);
+    expect(client.autoLoginCalls, 1);
+    expect(controller.snapshot?.configurations.single.autoLogin, isFalse);
+    expect(controller.notice, isNull);
+    controller.dispose();
+  });
+
+  test(
+    'new lifecycle operations preserve the connection and map safe guidance',
+    () async {
+      for (final (count, failure, action, expected) in [
+        (
+          'reset',
+          const IpcRequestFailure('session_not_found'),
+          (GuiController c) => c.resetSession('s-a'),
+          '会话已不存在，请刷新。',
+        ),
+        (
+          'delete',
+          const IpcRequestFailure('configuration_not_found'),
+          (GuiController c) => c.deleteConfiguration('cfg-a'),
+          '登录配置已不存在，请刷新。',
+        ),
+        (
+          'auto-login',
+          const IpcRequestFailure('configuration_auto_login_conflict'),
+          (GuiController c) =>
+              c.setAutoLogin(configurationId: 'cfg-a', autoLogin: true),
+          '其他配置已启用自动登录，请先处理。',
+        ),
+        (
+          'reset fallback',
+          const IpcRequestFailure('unknown_code'),
+          (GuiController c) => c.resetSession('s-a'),
+          '重置会话失败，请重试。',
+        ),
+        (
+          'deletion fallback',
+          const IpcRequestFailure('unknown_code'),
+          (GuiController c) => c.deleteConfiguration('cfg-a'),
+          '删除配置失败，请重试。',
+        ),
+        (
+          'auto-login fallback',
+          const IpcRequestFailure('unknown_code'),
+          (GuiController c) =>
+              c.setAutoLogin(configurationId: 'cfg-a', autoLogin: true),
+          '自动登录设置失败，请重试。',
+        ),
+      ]) {
+        final client = _Client();
+        final controller = _controller(client);
+        await controller.start();
+        client.nextFailure = failure;
+
+        expect(await action(controller), isFalse, reason: count);
+        expect(controller.state, GuiConnectionState.ready, reason: count);
+        expect(controller.notice, expected, reason: count);
+        expect(client.closed, isFalse, reason: count);
+        controller.dispose();
+      }
+    },
+  );
+
+  test(
+    'protocol failures on new lifecycle operations invalidate the client',
+    () async {
+      for (final action in <Future<bool> Function(GuiController)>[
+        (c) => c.resetSession('s-a'),
+        (c) => c.deleteConfiguration('cfg-a'),
+        (c) => c.setAutoLogin(configurationId: 'cfg-a', autoLogin: true),
+      ]) {
+        final client = _Client();
+        final controller = _controller(client);
+        await controller.start();
+        client.nextFailure = const IpcProtocolException();
+
+        expect(await action(controller), isFalse);
+        expect(controller.state, GuiConnectionState.stale);
+        expect(client.closed, isTrue);
+        controller.dispose();
+      }
+    },
+  );
+
+  test(
+    'exit-start suppresses all three lifecycle operations before IPC',
+    () async {
+      final client = _Client();
+      final controller = _controller(client);
+      await controller.start();
+      expect(await controller.exitAndDisconnect(), isTrue);
+      client.calls.clear();
+
+      expect(await controller.resetSession('s-a'), isFalse);
+      expect(await controller.deleteConfiguration('cfg-a'), isFalse);
+      expect(
+        await controller.setAutoLogin(
+          configurationId: 'cfg-a',
+          autoLogin: true,
+        ),
+        isFalse,
+      );
+
+      expect(client.calls, isEmpty);
+      expect(client.sessionRemoveCalls, 0);
+      expect(client.configurationRemoveCalls, 0);
+      expect(client.autoLoginCalls, 0);
+      controller.dispose();
+    },
+  );
 }
 
 GuiController _controller(_Client client) => GuiController(
@@ -276,6 +448,9 @@ class _Client implements SidraviaDesktopClient {
   Object? stopFailure;
   Completer<DaemonStopResult>? pendingStop;
   var daemonStopCalls = 0;
+  var sessionRemoveCalls = 0;
+  var configurationRemoveCalls = 0;
+  var autoLoginCalls = 0;
   var closed = false;
 
   void _call(String name) {
@@ -353,6 +528,46 @@ class _Client implements SidraviaDesktopClient {
   Future<SessionSummary> sessionStop(String sessionId) async {
     _call('session.stop');
     return _session;
+  }
+
+  @override
+  Future<SessionRemoveResult> sessionRemove(String sessionId) async {
+    sessionRemoveCalls++;
+    _call('session.remove');
+    return SessionRemoveResult(sessionId: sessionId, status: 'removed');
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  }) async {
+    autoLoginCalls++;
+    _call('configuration.setAutoLogin');
+    return ConfigurationSummary(
+      id: _configuration.id,
+      displayName: _configuration.displayName,
+      institutionProfileId: _configuration.institutionProfileId,
+      institutionDisplayName: _configuration.institutionDisplayName,
+      authenticationProtocolId: _configuration.authenticationProtocolId,
+      username: _configuration.username,
+      credentialStored: _configuration.credentialStored,
+      storageProtection: _configuration.storageProtection,
+      autoLogin: autoLogin,
+      autoReconnect: _configuration.autoReconnect,
+    );
+  }
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId,
+  ) async {
+    configurationRemoveCalls++;
+    _call('configuration.remove');
+    return ConfigurationRemoveResult(
+      configurationId: configurationId,
+      status: 'removed',
+    );
   }
 
   @override

@@ -21,8 +21,14 @@ abstract interface class SidraviaIpcClient {
   });
   Future<SessionSummary> sessionStartConfiguration(String configurationId);
   Future<SessionSummary> sessionStop(String sessionId);
+  Future<SessionRemoveResult> sessionRemove(String sessionId);
   Future<SessionSummary> sessionEnsureRunning(String sessionId);
   Future<SessionSummary> sessionRestart(String sessionId);
+  Future<ConfigurationSummary> configurationSetAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  });
+  Future<ConfigurationRemoveResult> configurationRemove(String configurationId);
   Future<void> close();
 }
 

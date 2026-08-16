@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
@@ -41,6 +42,8 @@ class GuiController extends ChangeNotifier {
   GuiSnapshot? get snapshot => _snapshot;
   String? get notice => _notice;
   bool get busy => _userBusy;
+  GuiCapabilities get capabilities =>
+      GuiCapabilities(state: _state, snapshot: _snapshot, busy: _userBusy);
 
   Future<void> start() {
     if (_exitRequested) return Future<void>.value();
@@ -97,6 +100,27 @@ class GuiController extends ChangeNotifier {
 
   Future<bool> restartSession(String sessionId) =>
       _mutate((client) => client.sessionRestart(sessionId));
+
+  Future<bool> resetSession(String sessionId) => _mutate(
+    (client) => client.sessionRemove(sessionId),
+    fallback: '重置会话失败，请重试。',
+  );
+
+  Future<bool> deleteConfiguration(String configurationId) => _mutate(
+    (client) => client.configurationRemove(configurationId),
+    fallback: '删除配置失败，请重试。',
+  );
+
+  Future<bool> setAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  }) => _mutate(
+    (client) => client.configurationSetAutoLogin(
+      configurationId: configurationId,
+      autoLogin: autoLogin,
+    ),
+    fallback: '自动登录设置失败，请重试。',
+  );
 
   /// Graceful exit requested only by the explicit tray path.
   ///
@@ -173,8 +197,9 @@ class GuiController extends ChangeNotifier {
   }
 
   Future<bool> _mutate(
-    Future<Object?> Function(SidraviaIpcClient) action,
-  ) async {
+    Future<Object?> Function(SidraviaIpcClient) action, {
+    String fallback = '操作失败，请刷新后重试。',
+  }) async {
     if (_exitRequested) return false;
     final current = _transition;
     if (current != null) {
@@ -189,7 +214,7 @@ class GuiController extends ChangeNotifier {
     }
     _userBusy = true;
     final completer = Completer<bool>();
-    _transition = _runMutation(action, completer);
+    _transition = _runMutation(action, completer, fallback);
     _notify();
     return completer.future;
   }
@@ -197,6 +222,7 @@ class GuiController extends ChangeNotifier {
   Future<void> _runMutation(
     Future<Object?> Function(SidraviaIpcClient) action,
     Completer<bool> completer,
+    String fallback,
   ) async {
     final generation = _generation;
     final client = _client!;
@@ -213,7 +239,7 @@ class GuiController extends ChangeNotifier {
       completer.complete(_state == GuiConnectionState.ready);
     } on IpcRequestFailure catch (error) {
       if (_current(generation) && identical(_client, client)) {
-        _notice = _guidance(error.code);
+        _notice = _guidance(error.code, fallback);
         _scheduleRefresh(generation, client);
         _notify();
       }
@@ -301,13 +327,16 @@ class GuiController extends ChangeNotifier {
     _notify();
   }
 
-  String _guidance(String code) => switch (code) {
+  String _guidance(String code, String fallback) => switch (code) {
     'profile_not_found' => '学校配置已不存在，请刷新。',
     'configuration_conflict' => '登录配置已存在，请刷新。',
     'insecure_storage_confirmation_required' => '凭据存储未受保护，密码未保存。',
     'session_state_conflict' => '当前状态无法执行此操作。',
     'session_active_conflict' => '已有认证会话，请刷新。',
-    _ => '操作失败，请刷新后重试。',
+    'session_not_found' => '会话已不存在，请刷新。',
+    'configuration_not_found' => '登录配置已不存在，请刷新。',
+    'configuration_auto_login_conflict' => '其他配置已启用自动登录，请先处理。',
+    _ => fallback,
   };
 
   bool _current(int generation) => !_disposed && generation == _generation;

@@ -7,7 +7,7 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
-  test('sends all eight exact operational fixture shapes', () async {
+  test('sends all exact operational fixture shapes', () async {
     final received = <Map<String, dynamic>>[];
     final server = await _server((socket, request) {
       expect(request.headers.value('Authorization'), 'Bearer $_token');
@@ -49,6 +49,12 @@ void main() {
     await client.sessionStop('session-retained');
     await client.sessionEnsureRunning('session-retained');
     await client.sessionRestart('session-retained');
+    await client.configurationSetAutoLogin(
+      configurationId: 'fixture-configuration',
+      autoLogin: true,
+    );
+    await client.sessionRemove('session-retained');
+    await client.configurationRemove('fixture-configuration');
     await client.close();
 
     expect(received.map((value) => value['method']), [
@@ -60,6 +66,9 @@ void main() {
       'session.stop',
       'session.ensureRunning',
       'session.restart',
+      'configuration.update',
+      'session.remove',
+      'configuration.remove',
     ]);
     expect(received[0]['payload'], {
       'institutionProfileId': 'jlu',
@@ -79,6 +88,28 @@ void main() {
         (value) => value['method'] == 'daemon.stop',
       )['payload'],
       <String, dynamic>{},
+    );
+    expect(
+      received.where((value) => value['method'] == 'configuration.update'),
+      hasLength(2),
+    );
+    expect(
+      received.lastWhere(
+        (value) => value['method'] == 'configuration.update',
+      )['payload'],
+      {'configurationId': 'fixture-configuration', 'autoLogin': true},
+    );
+    expect(
+      received.lastWhere(
+        (value) => value['method'] == 'session.remove',
+      )['payload'],
+      {'sessionId': 'session-retained'},
+    );
+    expect(
+      received.lastWhere(
+        (value) => value['method'] == 'configuration.remove',
+      )['payload'],
+      {'configurationId': 'fixture-configuration'},
     );
     expect(
       received.every((value) => (value['id'] as String).startsWith('gui-')),

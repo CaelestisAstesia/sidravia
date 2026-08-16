@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/design/sidravia_theme.dart';
@@ -252,25 +253,24 @@ class _ConnectionStatus extends StatelessWidget {
     GuiController controller,
     VoidCallback onOpenConfiguration,
   ) {
-    final snapshot = controller.snapshot!;
-    if (snapshot.daemon.status != 'running') {
-      return const _ConnectionPresentation(
+    final capabilities = controller.capabilities;
+    return switch (capabilities.capability) {
+      GuiCapabilityState.bootstrapping ||
+      GuiCapabilityState.stale ||
+      GuiCapabilityState.failed ||
+      GuiCapabilityState.unsupported => const _ConnectionPresentation(
+        title: '状态已过期',
+        detail: '无法获取最新连接状态。',
+        icon: Icons.sync_problem_outlined,
+        color: SidraviaColors.warning,
+      ),
+      GuiCapabilityState.daemonUnavailable => const _ConnectionPresentation(
         title: '服务不可用',
         detail: '本机服务未运行。',
         icon: Icons.error_outline,
         color: SidraviaColors.danger,
-      );
-    }
-    if (snapshot.configurations.length > 1) {
-      return const _ConnectionPresentation(
-        title: '状态不可用',
-        detail: '检测到多个登录配置，请先使用命令行工具处理。',
-        icon: Icons.info_outline,
-        color: SidraviaColors.warning,
-      );
-    }
-    if (snapshot.configurations.isEmpty) {
-      return _ConnectionPresentation(
+      ),
+      GuiCapabilityState.createOnly => _ConnectionPresentation(
         title: '未连接',
         detail: '尚未保存登录配置。',
         icon: Icons.wifi_off_outlined,
@@ -280,21 +280,34 @@ class _ConnectionStatus extends StatelessWidget {
           return true;
         }),
         showConfiguration: false,
-      );
-    }
-    final configuration = snapshot.configurations.single;
-    final related = snapshot.sessions
-        .where((session) => session.configurationId == configuration.id)
-        .toList(growable: false);
-    if (snapshot.sessions.length != related.length || related.length > 1) {
-      return const _ConnectionPresentation(
+      ),
+      GuiCapabilityState.multipleConfigurations =>
+        const _ConnectionPresentation(
+          title: '状态不可用',
+          detail: '检测到多个登录配置，请先使用命令行工具处理。',
+          icon: Icons.info_outline,
+          color: SidraviaColors.warning,
+        ),
+      GuiCapabilityState.ambiguousSessions => const _ConnectionPresentation(
         title: '状态不可用',
         detail: '当前会话关系不明确，未执行任何操作。',
         icon: Icons.info_outline,
         color: SidraviaColors.warning,
-      );
-    }
-    if (related.isEmpty) {
+      ),
+      GuiCapabilityState.manageable => _manageablePresentation(
+        controller,
+        capabilities,
+      ),
+    };
+  }
+
+  _ConnectionPresentation _manageablePresentation(
+    GuiController controller,
+    GuiCapabilities capabilities,
+  ) {
+    final configuration = capabilities.configuration!;
+    final session = capabilities.retainedSession;
+    if (session == null) {
       return _ConnectionPresentation(
         title: '未连接',
         detail: '${configuration.institutionDisplayName} 尚未认证。',
@@ -306,7 +319,7 @@ class _ConnectionStatus extends StatelessWidget {
         ),
       );
     }
-    return _sessionPresentation(controller, configuration, related.single);
+    return _sessionPresentation(controller, configuration, session);
   }
 
   _ConnectionPresentation _sessionPresentation(
