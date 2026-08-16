@@ -191,6 +191,31 @@ void main() {
     },
   );
 
+  test('exitAndDisconnect applies one deadline to an existing refresh and schedules no poll', () async {
+    final client = _Client();
+    final controller = GuiController(
+      bootstrapper: _Bootstrapper(),
+      connector: (_) async => client,
+      pollDelay: const Duration(milliseconds: 5),
+      stopTimeout: const Duration(milliseconds: 40),
+    );
+    await controller.start();
+    final pendingDaemon = Completer<DaemonStatus>();
+    client.nextDaemon = pendingDaemon;
+    await Future<void>.delayed(const Duration(milliseconds: 15));
+    final callsBeforeExit = client.calls.length;
+    final watch = Stopwatch()..start();
+
+    expect(await controller.exitAndDisconnect(), isFalse);
+    expect(watch.elapsedMilliseconds, lessThan(500));
+    expect(client.daemonStopCalls, 0);
+
+    pendingDaemon.complete(_daemon);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(client.calls.length, callsBeforeExit);
+    controller.dispose();
+  });
+
   test('ordinary dispose never submits daemon.stop', () async {
     final client = _Client();
     final controller = _controller(client);

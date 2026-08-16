@@ -43,6 +43,7 @@ class GuiController extends ChangeNotifier {
   bool get busy => _userBusy;
 
   Future<void> start() {
+    if (_exitRequested) return Future<void>.value();
     final current = _transition;
     if (current != null) return current;
     _userBusy = true;
@@ -108,21 +109,28 @@ class GuiController extends ChangeNotifier {
     _exitRequested = true;
     _timer?.cancel();
     _timer = null;
-    var current = _transition;
+    final deadline = DateTime.now().add(stopTimeout);
+    final current = _transition;
     if (current != null) {
       try {
-        await current;
+        final remaining = deadline.difference(DateTime.now());
+        if (remaining <= Duration.zero) return false;
+        await current.timeout(remaining);
       } on Object {
-        // The exit path must continue even when an in-flight refresh fails.
+        return false;
       }
     }
+    _timer?.cancel();
+    _timer = null;
     if (_disposed) return false;
     final generation = _generation;
     final client = _client;
     if (client is! SidraviaDesktopClient) return false;
     try {
-      await client.daemonStop().timeout(stopTimeout);
-      return _current(generation);
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) return false;
+      await client.daemonStop().timeout(remaining);
+      return !_disposed && generation == _generation;
     } on Object {
       return false;
     }
@@ -141,13 +149,13 @@ class GuiController extends ChangeNotifier {
       _notice = null;
       _notify();
       final boot = await bootstrapper.bootstrap();
-      if (!_current(generation)) return;
+      if (!_canContinue(generation)) return;
       if (!boot.isSuccess) {
         _setFailure(boot.failure!);
         return;
       }
       final client = await connector(boot.value!);
-      if (!_current(generation)) {
+      if (!_canContinue(generation)) {
         await _closeQuietly(client);
         return;
       }
@@ -167,12 +175,14 @@ class GuiController extends ChangeNotifier {
   Future<bool> _mutate(
     Future<Object?> Function(SidraviaIpcClient) action,
   ) async {
+    if (_exitRequested) return false;
     final current = _transition;
     if (current != null) {
       if (_userBusy) return false;
       await current;
     }
     if (_transition != null ||
+        _exitRequested ||
         _state != GuiConnectionState.ready ||
         _client == null) {
       return false;
@@ -195,7 +205,7 @@ class GuiController extends ChangeNotifier {
     _notice = null;
     try {
       await action(client);
-      if (!_current(generation) || !identical(_client, client)) {
+      if (!_canContinue(generation) || !identical(_client, client)) {
         completer.complete(false);
         return;
       }
@@ -225,10 +235,13 @@ class GuiController extends ChangeNotifier {
   Future<void> _refresh(int generation, SidraviaIpcClient client) async {
     try {
       final daemon = await client.daemonStatus();
+      if (!_canContinue(generation) || !identical(_client, client)) return;
       final profiles = await client.profileList();
+      if (!_canContinue(generation) || !identical(_client, client)) return;
       final configurations = await client.configurationList();
+      if (!_canContinue(generation) || !identical(_client, client)) return;
       final sessions = await client.sessionList();
-      if (!_current(generation) || !identical(_client, client)) return;
+      if (!_canContinue(generation) || !identical(_client, client)) return;
       _snapshot = GuiSnapshot(
         daemon: daemon,
         profiles: profiles,
@@ -248,9 +261,14 @@ class GuiController extends ChangeNotifier {
 
   void _scheduleRefresh(int generation, SidraviaIpcClient client) {
     _timer?.cancel();
+    if (_exitRequested) {
+      _timer = null;
+      return;
+    }
     _timer = Timer(pollDelay, () {
       _timer = null;
       if (_transition != null ||
+          _exitRequested ||
           !_current(generation) ||
           !identical(_client, client)) {
         return;
@@ -293,6 +311,8 @@ class GuiController extends ChangeNotifier {
   };
 
   bool _current(int generation) => !_disposed && generation == _generation;
+
+  bool _canContinue(int generation) => !_exitRequested && _current(generation);
 
   Future<void> _closeQuietly(SidraviaIpcClient? client) async {
     if (client == null) return;

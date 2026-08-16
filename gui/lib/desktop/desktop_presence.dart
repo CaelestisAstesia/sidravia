@@ -121,10 +121,6 @@ class DesktopNotificationPolicy {
 
     if (!state.everSeen) {
       state.everSeen = true;
-      if (nowBlocked) {
-        // An already-blocked initial snapshot is not a new human action.
-        state.notifiedBlockedForEpisode = true;
-      }
       return null;
     }
 
@@ -132,7 +128,6 @@ class DesktopNotificationPolicy {
       if (state.notifiedBlockedForEpisode) return null;
       if (wasBlockedAtPrevious) return null;
       state.notifiedBlockedForEpisode = true;
-      state.notifiedRecoveryForPrevious = false;
       return DesktopNotificationDecision(
         title: _blockedTitle,
         body: _blockedBody(session),
@@ -141,7 +136,6 @@ class DesktopNotificationPolicy {
 
     if (state.notifiedBlockedForEpisode) {
       state.notifiedBlockedForEpisode = false;
-      state.notifiedRecoveryForPrevious = true;
       return const DesktopNotificationDecision(
         title: _recoveryTitle,
         body: _recoveryBody,
@@ -166,5 +160,4 @@ class _SessionDesktopState {
   bool everSeen = false;
   bool blockedAtLastSeen = false;
   bool notifiedBlockedForEpisode = false;
-  bool notifiedRecoveryForPrevious = false;
 }

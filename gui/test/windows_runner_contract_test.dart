@@ -38,10 +38,14 @@ void main() {
     final cmake = File('windows/runner/CMakeLists.txt').readAsStringSync();
 
     // Single-instance activation before Flutter bootstrap.
-    expect(main, contains('CreateMutexW'));
-    expect(main, contains('ERROR_ALREADY_EXISTS'));
-    expect(main, contains('FindWindowW'));
-    expect(main, contains('PostMessageW'));
+    expect(main, isNot(contains('CreateMutexW')));
+    expect(flutterWindow, contains('call.method_name() == "initialize"'));
+    expect(flutterWindow, contains('CreateMutexW'));
+    expect(flutterWindow, contains('ERROR_ALREADY_EXISTS'));
+    expect(flutterWindow, contains('HWND_BROADCAST'));
+    expect(flutterWindow, isNot(contains('FindWindowW')));
+    expect(flutterWindow, contains('PostMessageW'));
+    expect(flutterWindow, contains('CreateTrayIcon()'));
 
     // Hidden close versus explicit destroy.
     expect(flutterWindow, contains('WM_CLOSE'));
@@ -54,8 +58,13 @@ void main() {
     expect(flutterWindow, contains('NIM_DELETE'));
     expect(flutterWindow, contains('NIF_INFO'));
     expect(flutterWindow, contains('TaskbarCreated'));
+    expect(
+      flutterWindow,
+      contains('if (desktop_presence_initialized_) CreateTrayIcon();'),
+    );
     expect(flutterWindow, contains('WM_LBUTTONUP'));
     expect(flutterWindow, contains('WM_RBUTTONUP'));
+    expect(flutterWindow, contains('NIN_BALLOONUSERCLICK'));
 
     // Tray menu contract.
     expect(flutterWindow, contains('打开 Sidravia'));
@@ -66,11 +75,15 @@ void main() {
     expect(flutterWindow, contains('"sidravia/desktop"'));
     expect(flutterWindow, contains('"exitRequested"'));
     expect(flutterWindow, contains('call.method_name() == "destroy"'));
+    expect(flutterWindow, contains('exit_request_pending_'));
+    expect(flutterWindow, contains('SetTimer'));
+    expect(flutterWindow, contains('WM_TIMER'));
 
     // Native channel is declared on the window.
     expect(header, contains('desktop_channel_'));
     expect(header, contains('CreateTrayIcon'));
     expect(header, contains('RestoreWindow'));
+    expect(header, contains('desktop_presence_initialized_'));
 
     // The legacy frame channel and desktop presence share shell32 linkage.
     expect(cmake, contains('"shell32.lib"'));

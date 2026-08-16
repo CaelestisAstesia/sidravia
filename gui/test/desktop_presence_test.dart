@@ -69,9 +69,7 @@ void main() {
       isNull,
     );
 
-    final recovery = policy.evaluate(_snapshot([_session('authenticated', 2)]));
-    expect(recovery?.title, '校园网状态已恢复');
-    expect(recovery?.body, '连接状态已更新。');
+    expect(policy.evaluate(_snapshot([_session('authenticated', 2)])), isNull);
 
     expect(policy.evaluate(_snapshot([_session('authenticated', 3)])), isNull);
 
@@ -80,6 +78,10 @@ void main() {
     );
     expect(blocked?.title, '校园网需要处理');
     expect(blocked?.body, '用户名或密码错误。');
+
+    final recovery = policy.evaluate(_snapshot([_session('authenticated', 5)]));
+    expect(recovery?.title, '校园网状态已恢复');
+    expect(recovery?.body, '连接状态已更新。');
   });
 
   test('non-actionable states never produce notifications', () {

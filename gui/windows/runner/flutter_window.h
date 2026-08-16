@@ -42,10 +42,17 @@ class FlutterWindow : public Win32Window {
       desktop_channel_;
 
   bool exit_armed_ = false;
+  bool desktop_presence_initialized_ = false;
+  bool exit_request_pending_ = false;
+  HANDLE single_instance_mutex_ = nullptr;
+  UINT_PTR exit_fallback_timer_ = 0;
   UINT activation_message_ = 0;
   UINT taskbar_created_message_ = 0;
 
   bool CreateTrayIcon();
+  std::string InitializeDesktopPresence();
+  void ReleaseDesktopPresence();
+  void CompleteExplicitExit();
   void RemoveTrayIcon();
   void RestoreWindow();
   void NotifyTray(const std::wstring& title, const std::wstring& body);

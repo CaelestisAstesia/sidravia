@@ -15,6 +15,10 @@ constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
 constexpr int kTrayOpenCommand = 1001;
 constexpr int kTrayExitCommand = 1002;
+constexpr UINT_PTR kExitFallbackTimerId = 1;
+constexpr UINT kExitFallbackMilliseconds = 6000;
+constexpr const wchar_t kSingleInstanceMutexName[] =
+    L"Local\\Sidravia.Gui.DesktopPresence";
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -69,7 +73,13 @@ bool FlutterWindow::OnCreate() {
   desktop_channel_->SetMethodCallHandler(
       [this](const auto& call, auto result) {
         if (call.method_name() == "initialize") {
-          result->Success(flutter::EncodableValue(std::string("primary")));
+          const std::string disposition = InitializeDesktopPresence();
+          if (disposition == "failed") {
+            result->Error("desktop_presence_unavailable",
+                          "Desktop presence is unavailable.");
+          } else {
+            result->Success(flutter::EncodableValue(disposition));
+          }
           return;
         }
         if (call.method_name() == "notify") {
@@ -94,10 +104,8 @@ bool FlutterWindow::OnCreate() {
           return;
         }
         if (call.method_name() == "destroy") {
-          RemoveTrayIcon();
-          exit_armed_ = true;
           result->Success();
-          PostMessage(GetHandle(), WM_CLOSE, 0, 0);
+          CompleteExplicitExit();
           return;
         }
         result->NotImplemented();
@@ -106,7 +114,6 @@ bool FlutterWindow::OnCreate() {
   activation_message_ =
       ::RegisterWindowMessageW(L"Sidravia.Gui.Activate");
   taskbar_created_message_ = ::RegisterWindowMessageW(L"TaskbarCreated");
-  CreateTrayIcon();
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -122,7 +129,12 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (exit_fallback_timer_ != 0 && GetHandle() != nullptr) {
+    ::KillTimer(GetHandle(), exit_fallback_timer_);
+    exit_fallback_timer_ = 0;
+  }
   RemoveTrayIcon();
+  ReleaseDesktopPresence();
   window_channel_.reset();
   desktop_channel_.reset();
   if (flutter_controller_) {
@@ -143,7 +155,50 @@ bool FlutterWindow::CreateTrayIcon() {
   nid.uCallbackMessage = kTrayCallbackMessage;
   nid.hIcon = ::LoadIcon(::GetModuleHandleW(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
   wcscpy_s(nid.szTip, L"Sidravia");
-  return ::Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
+  if (::Shell_NotifyIconW(NIM_ADD, &nid) == FALSE) return false;
+  nid.uVersion = NOTIFYICON_VERSION_4;
+  ::Shell_NotifyIconW(NIM_SETVERSION, &nid);
+  return true;
+}
+
+std::string FlutterWindow::InitializeDesktopPresence() {
+  if (desktop_presence_initialized_) return "primary";
+  single_instance_mutex_ =
+      ::CreateMutexW(nullptr, TRUE, kSingleInstanceMutexName);
+  if (single_instance_mutex_ == nullptr) return "failed";
+  if (::GetLastError() == ERROR_ALREADY_EXISTS) {
+    ::CloseHandle(single_instance_mutex_);
+    single_instance_mutex_ = nullptr;
+    const UINT activate = ::RegisterWindowMessageW(L"Sidravia.Gui.Activate");
+    ::PostMessageW(HWND_BROADCAST, activate, 0, 0);
+    return "activatedExisting";
+  }
+  if (!CreateTrayIcon()) {
+    ReleaseDesktopPresence();
+    return "failed";
+  }
+  desktop_presence_initialized_ = true;
+  return "primary";
+}
+
+void FlutterWindow::ReleaseDesktopPresence() {
+  desktop_presence_initialized_ = false;
+  if (single_instance_mutex_ != nullptr) {
+    ::CloseHandle(single_instance_mutex_);
+    single_instance_mutex_ = nullptr;
+  }
+}
+
+void FlutterWindow::CompleteExplicitExit() {
+  if (exit_armed_) return;
+  exit_armed_ = true;
+  if (exit_fallback_timer_ != 0 && GetHandle() != nullptr) {
+    ::KillTimer(GetHandle(), exit_fallback_timer_);
+    exit_fallback_timer_ = 0;
+  }
+  RemoveTrayIcon();
+  ReleaseDesktopPresence();
+  ::PostMessageW(GetHandle(), WM_CLOSE, 0, 0);
 }
 
 void FlutterWindow::RemoveTrayIcon() {
@@ -203,9 +258,11 @@ void FlutterWindow::ShowTrayMenu() {
 }
 
 void FlutterWindow::HandleTrayMessage(LPARAM lparam) {
-  switch (lparam) {
+  const UINT event = LOWORD(static_cast<DWORD>(lparam));
+  switch (event) {
     case WM_LBUTTONUP:
     case WM_LBUTTONDBLCLK:
+    case NIN_BALLOONUSERCLICK:
       RestoreWindow();
       break;
     case WM_RBUTTONUP:
@@ -218,9 +275,20 @@ void FlutterWindow::HandleTrayMessage(LPARAM lparam) {
 }
 
 void FlutterWindow::RequestExplicitExit() {
+  if (exit_request_pending_) return;
+  exit_request_pending_ = true;
+  exit_fallback_timer_ =
+      ::SetTimer(GetHandle(), kExitFallbackTimerId,
+                 kExitFallbackMilliseconds, nullptr);
+  if (exit_fallback_timer_ == 0) {
+    CompleteExplicitExit();
+    return;
+  }
   if (desktop_channel_ && flutter_controller_) {
     desktop_channel_->InvokeMethod("exitRequested", nullptr);
+    return;
   }
+  CompleteExplicitExit();
 }
 
 std::wstring FlutterWindow::Utf8ToUtf16(const std::string& utf8) {
@@ -250,18 +318,24 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   if (activation_message_ != 0 && message == activation_message_) {
-    RestoreWindow();
+    if (desktop_presence_initialized_) RestoreWindow();
     return 0;
   }
   if (taskbar_created_message_ != 0 && message == taskbar_created_message_) {
-    CreateTrayIcon();
+    if (desktop_presence_initialized_) CreateTrayIcon();
     return 0;
   }
 
   switch (message) {
     case WM_CLOSE:
-      if (!exit_armed_) {
+      if (desktop_presence_initialized_ && !exit_armed_) {
         ShowWindow(hwnd, SW_HIDE);
+        return 0;
+      }
+      break;
+    case WM_TIMER:
+      if (wparam == kExitFallbackTimerId && exit_request_pending_) {
+        CompleteExplicitExit();
         return 0;
       }
       break;
