@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
@@ -308,3 +311,83 @@ const _otherSession = SessionSummary(
 
 const _previewToken =
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+enum PreviewAnnouncementScenario {
+  empty('无公告'),
+  info('普通公告'),
+  maintenance('维护公告'),
+  critical('紧急公告');
+
+  const PreviewAnnouncementScenario(this.label);
+  final String label;
+}
+
+AnnouncementController createPreviewAnnouncementController(
+  PreviewAnnouncementScenario scenario,
+) {
+  return AnnouncementController(
+    endpoint: Uri.parse('https://preview.invalid/announcements.json'),
+    store: MemoryAnnouncementStore(_previewAnnouncementCache(scenario)),
+  );
+}
+
+AnnouncementCache _previewAnnouncementCache(
+  PreviewAnnouncementScenario scenario,
+) {
+  final now = DateTime.now().toUtc();
+  final items = switch (scenario) {
+    PreviewAnnouncementScenario.empty => const <Map<String, Object?>>[],
+    PreviewAnnouncementScenario.info => [
+      _previewAnnouncementItem(
+        'preview-info',
+        'info',
+        '版本更新说明',
+        '这是一条虚构的普通公告，只在公告入口中呈现。',
+        now,
+      ),
+    ],
+    PreviewAnnouncementScenario.maintenance => [
+      _previewAnnouncementItem(
+        'preview-maintenance',
+        'maintenance',
+        '校园网维护',
+        '虚构的维护窗口：认证可能在此期间短暂中断。',
+        now,
+      ),
+    ],
+    PreviewAnnouncementScenario.critical => [
+      _previewAnnouncementItem(
+        'preview-critical',
+        'critical',
+        '认证服务故障',
+        '虚构的紧急公告：认证服务暂时不可用，请稍后再试。',
+        now,
+      ),
+    ],
+  };
+  return AnnouncementCache(
+    feedJson: jsonEncode({
+      'schema': 1,
+      'generatedAt': now.toIso8601String(),
+      'items': items,
+    }),
+    lastSuccessUtc: now,
+  );
+}
+
+Map<String, Object?> _previewAnnouncementItem(
+  String id,
+  String level,
+  String title,
+  String body,
+  DateTime now,
+) => {
+  'id': id,
+  'revision': 1,
+  'level': level,
+  'title': title,
+  'body': body,
+  'publishedAt': now.subtract(const Duration(hours: 3)).toIso8601String(),
+  'startsAt': now.subtract(const Duration(hours: 2)).toIso8601String(),
+  'expiresAt': now.add(const Duration(days: 5)).toIso8601String(),
+};

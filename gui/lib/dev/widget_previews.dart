@@ -24,3 +24,15 @@ Widget emptyConfigurationPreview() => const PreviewCatalog(
 @Preview(group: 'Sidravia', name: 'Settings', size: Size(1280, 720))
 Widget settingsPreview() =>
     const PreviewCatalog(surface: PreviewSurface.settings, showToolbar: false);
+
+@Preview(
+  group: 'Sidravia',
+  name: 'Home · maintenance announcement',
+  size: Size(1280, 720),
+)
+Widget maintenanceAnnouncementHomePreview() => const PreviewCatalog(
+  initialScenario: PreviewScenario.authenticated,
+  announcementScenario: PreviewAnnouncementScenario.maintenance,
+  surface: PreviewSurface.home,
+  showToolbar: false,
+);

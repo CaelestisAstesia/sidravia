@@ -75,6 +75,7 @@ void main() {
 
     for (final widget in [
       authenticatedHomePreview(),
+      maintenanceAnnouncementHomePreview(),
       emptyConfigurationPreview(),
       settingsPreview(),
     ]) {
@@ -128,6 +129,38 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('preview catalog renders all four announcement scenarios', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    for (final scenario in PreviewAnnouncementScenario.values) {
+      await tester.pumpWidget(
+        preview.PreviewCatalog(announcementScenario: scenario),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('preview-announcement-scenario')),
+        findsOneWidget,
+        reason: scenario.name,
+      );
+      expect(tester.takeException(), isNull, reason: scenario.name);
+      final inline = find.byKey(const ValueKey('announcement-inline-notice'));
+      switch (scenario) {
+        case PreviewAnnouncementScenario.maintenance:
+        case PreviewAnnouncementScenario.critical:
+          expect(inline, findsOneWidget, reason: scenario.name);
+        case PreviewAnnouncementScenario.empty:
+        case PreviewAnnouncementScenario.info:
+          expect(inline, findsNothing, reason: scenario.name);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+  });
 
   testWidgets('bootstrapping preview remains bounded and disposable', (
     tester,

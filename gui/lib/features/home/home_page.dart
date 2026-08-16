@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_layout.dart';
 import 'package:sidravia_gui/design/sidravia_theme.dart';
+import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 class HomePage extends StatelessWidget {
@@ -9,10 +11,12 @@ class HomePage extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onOpenConfiguration,
+    this.announcements,
   });
 
   final GuiController controller;
   final VoidCallback onOpenConfiguration;
+  final AnnouncementController? announcements;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +54,20 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             ),
+            if (announcements case final announcements?
+                when announcements.enabled) ...[
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: AnnouncementInlineNotice(
+                    controller: announcements,
+                    compact: compact,
+                  ),
+                ),
+              ),
+            ],
           ],
         );
       },

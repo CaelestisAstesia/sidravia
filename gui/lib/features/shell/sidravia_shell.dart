@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_layout.dart';
+import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 
 class SidraviaShell extends StatefulWidget {
-  const SidraviaShell({super.key, required this.controller});
+  const SidraviaShell({
+    super.key,
+    required this.controller,
+    this.announcements,
+  });
 
   final GuiController controller;
+  final AnnouncementController? announcements;
 
   static const wideLayoutBreakpoint = 760.0;
 
@@ -35,6 +42,7 @@ class _SidraviaShellState extends State<SidraviaShell> {
             HomePage(
               controller: widget.controller,
               onOpenConfiguration: () => _selectDestination(1),
+              announcements: widget.announcements,
             ),
             ConfigurationPage(controller: widget.controller),
             const SettingsPage(),
@@ -55,6 +63,7 @@ class _SidraviaShellState extends State<SidraviaShell> {
                       _Sidebar(
                         selectedIndex: _selectedIndex,
                         onSelected: _selectDestination,
+                        announcements: widget.announcements,
                       ),
                       const VerticalDivider(width: 1),
                       Expanded(
@@ -67,7 +76,10 @@ class _SidraviaShellState extends State<SidraviaShell> {
                   )
                 : Column(
                     children: [
-                      _CompactHeader(selectedIndex: _selectedIndex),
+                      _CompactHeader(
+                        selectedIndex: _selectedIndex,
+                        announcements: widget.announcements,
+                      ),
                       const Divider(height: 1),
                       Expanded(child: contentSurface),
                     ],
@@ -94,10 +106,15 @@ class _SidraviaShellState extends State<SidraviaShell> {
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.selectedIndex, required this.onSelected});
+  const _Sidebar({
+    required this.selectedIndex,
+    required this.onSelected,
+    this.announcements,
+  });
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final AnnouncementController? announcements;
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +149,19 @@ class _Sidebar extends StatelessWidget {
                     onPressed: () => onSelected(index),
                   ),
                 ),
+              if (announcements case final announcements?
+                  when announcements.enabled) ...[
+                const Spacer(),
+                AnnouncementEntryButton(
+                  controller: announcements,
+                  compact: false,
+                  onPressed: () => showAnnouncementSheet(
+                    context,
+                    controller: announcements,
+                    wide: true,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -141,9 +171,10 @@ class _Sidebar extends StatelessWidget {
 }
 
 class _CompactHeader extends StatelessWidget {
-  const _CompactHeader({required this.selectedIndex});
+  const _CompactHeader({required this.selectedIndex, this.announcements});
 
   final int selectedIndex;
+  final AnnouncementController? announcements;
 
   @override
   Widget build(BuildContext context) {
@@ -151,17 +182,34 @@ class _CompactHeader extends StatelessWidget {
     return Padding(
       key: const ValueKey<String>('compact-header'),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: SidraviaLayout.limitTextScale(
-          compact: true,
-          maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
-          child: Text(
-            appDestinations[selectedIndex].title,
-            maxLines: 1,
-            style: theme.textTheme.titleSmall,
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SidraviaLayout.limitTextScale(
+                compact: true,
+                maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+                child: Text(
+                  appDestinations[selectedIndex].title,
+                  maxLines: 1,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ),
           ),
-        ),
+          if (announcements case final announcements?
+              when announcements.enabled)
+            AnnouncementEntryButton(
+              controller: announcements,
+              compact: true,
+              onPressed: () => showAnnouncementSheet(
+                context,
+                controller: announcements,
+                wide: false,
+              ),
+            ),
+        ],
       ),
     );
   }

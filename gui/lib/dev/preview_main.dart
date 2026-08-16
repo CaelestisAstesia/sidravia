@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/dev/preview_fixtures.dart';
+import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -18,11 +19,13 @@ class PreviewCatalog extends StatefulWidget {
   const PreviewCatalog({
     super.key,
     this.initialScenario = PreviewScenario.authenticated,
+    this.announcementScenario = PreviewAnnouncementScenario.empty,
     this.surface = PreviewSurface.shell,
     this.showToolbar = true,
   });
 
   final PreviewScenario initialScenario;
+  final PreviewAnnouncementScenario announcementScenario;
   final PreviewSurface surface;
   final bool showToolbar;
 
@@ -33,9 +36,22 @@ class PreviewCatalog extends StatefulWidget {
 class _PreviewCatalogState extends State<PreviewCatalog> {
   late PreviewScenario _scenario = widget.initialScenario;
   late GuiController _controller = _createController(_scenario);
+  late PreviewAnnouncementScenario _announcementScenario =
+      widget.announcementScenario;
+  late AnnouncementController _announcements = _createAnnouncementController(
+    _announcementScenario,
+  );
 
   GuiController _createController(PreviewScenario scenario) {
     final controller = createPreviewController(scenario);
+    unawaited(controller.start());
+    return controller;
+  }
+
+  AnnouncementController _createAnnouncementController(
+    PreviewAnnouncementScenario scenario,
+  ) {
+    final controller = createPreviewAnnouncementController(scenario);
     unawaited(controller.start());
     return controller;
   }
@@ -50,8 +66,19 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
     old.dispose();
   }
 
+  void _selectAnnouncementScenario(PreviewAnnouncementScenario? scenario) {
+    if (scenario == null || scenario == _announcementScenario) return;
+    final old = _announcements;
+    setState(() {
+      _announcementScenario = scenario;
+      _announcements = _createAnnouncementController(scenario);
+    });
+    old.dispose();
+  }
+
   @override
   void dispose() {
+    _announcements.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -110,6 +137,19 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
                     ),
                 ],
               ),
+              DropdownButton<PreviewAnnouncementScenario>(
+                key: const ValueKey('preview-announcement-scenario'),
+                value: _announcementScenario,
+                underline: const SizedBox.shrink(),
+                onChanged: _selectAnnouncementScenario,
+                items: [
+                  for (final scenario in PreviewAnnouncementScenario.values)
+                    DropdownMenuItem(
+                      value: scenario,
+                      child: Text(scenario.label),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -118,10 +158,14 @@ class _PreviewCatalogState extends State<PreviewCatalog> {
   }
 
   Widget _buildSurface() => switch (widget.surface) {
-    PreviewSurface.shell => SidraviaShell(controller: _controller),
+    PreviewSurface.shell => SidraviaShell(
+      controller: _controller,
+      announcements: _announcements,
+    ),
     PreviewSurface.home => HomePage(
       controller: _controller,
       onOpenConfiguration: () {},
+      announcements: _announcements,
     ),
     PreviewSurface.configuration => ConfigurationPage(controller: _controller),
     PreviewSurface.settings => const SettingsPage(),
