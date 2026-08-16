@@ -168,6 +168,8 @@ final class AnnouncementController extends ChangeNotifier {
         case AnnouncementFetchOutcome.notModified:
           // A 304 without a usable cache is a non-fatal fetch failure.
           if (_feed == null) return;
+          _etag = result.etag ?? _etag;
+          _lastModified = result.lastModified ?? _lastModified;
           _lastSuccessUtc = _nowUtc();
           _persist();
           _notify();

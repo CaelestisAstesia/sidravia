@@ -94,12 +94,14 @@ final class _FakeFetcher implements AnnouncementFetcher {
   final Queue<Object> outcomes = Queue<Object>();
   var calls = 0;
   String? lastEtag;
+  String? lastModified;
   var closed = false;
 
   @override
   Future<AnnouncementFetchResult> fetch({String? etag, String? lastModified}) {
     calls++;
     lastEtag = etag;
+    this.lastModified = lastModified;
     final outcome = outcomes.removeFirst();
     return switch (outcome) {
       AnnouncementFetchResult result => Future.value(result),
@@ -226,7 +228,12 @@ void main() {
         ),
       );
       final fetcher = _FakeFetcher()
-        ..outcomes.add(AnnouncementFetchResult.notModified(etag: '"e1"'));
+        ..outcomes.add(
+          AnnouncementFetchResult.notModified(
+            etag: '"e2"',
+            lastModified: 'Tue, 18 Aug 2026 12:00:00 GMT',
+          ),
+        );
       final controller = AnnouncementController(
         endpoint: _endpoint,
         store: store,
@@ -239,6 +246,8 @@ void main() {
       expect(controller.announcements.map((item) => item.id), ['a-old']);
       expect(store.writes, 1);
       expect(store.lastWritten?.lastSuccessUtc, now);
+      expect(store.lastWritten?.etag, '"e2"');
+      expect(store.lastWritten?.lastModified, 'Tue, 18 Aug 2026 12:00:00 GMT');
 
       await controller.refreshIfDue();
       expect(fetcher.calls, 1);

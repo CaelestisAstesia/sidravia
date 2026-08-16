@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -87,23 +88,43 @@ final class HttpAnnouncementFetcher implements AnnouncementFetcher {
   final Duration timeout;
 
   @override
-  Future<AnnouncementFetchResult> fetch({String? etag, String? lastModified}) {
-    return _fetch(etag: etag, lastModified: lastModified).timeout(
-      timeout,
-      onTimeout: () => throw const AnnouncementFetchException(
-        'announcement fetch timed out',
-      ),
-    );
+  Future<AnnouncementFetchResult> fetch({
+    String? etag,
+    String? lastModified,
+  }) async {
+    final abort = Completer<void>();
+    final abortTimer = Timer(timeout, abort.complete);
+    try {
+      return await _fetch(
+        etag: etag,
+        lastModified: lastModified,
+        abortTrigger: abort.future,
+      ).timeout(
+        timeout,
+        onTimeout: () {
+          if (!abort.isCompleted) abort.complete();
+          throw const AnnouncementFetchException(
+            'announcement fetch timed out',
+          );
+        },
+      );
+    } on http.RequestAbortedException catch (error) {
+      throw AnnouncementFetchException('announcement fetch timed out', error);
+    } finally {
+      abortTimer.cancel();
+    }
   }
 
   Future<AnnouncementFetchResult> _fetch({
     String? etag,
     String? lastModified,
+    required Future<void> abortTrigger,
   }) async {
-    final request = http.Request('GET', endpoint)
-      ..followRedirects = false
-      ..headers['accept'] = 'application/json'
-      ..headers['accept-encoding'] = 'identity';
+    final request =
+        http.AbortableRequest('GET', endpoint, abortTrigger: abortTrigger)
+          ..followRedirects = false
+          ..headers['accept'] = 'application/json'
+          ..headers['accept-encoding'] = 'identity';
     if (etag != null) request.headers['if-none-match'] = etag;
     if (lastModified != null) {
       request.headers['if-modified-since'] = lastModified;

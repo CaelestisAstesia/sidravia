@@ -248,19 +248,13 @@ void main() {
   });
 
   test('times out a stalled request', () async {
-    final completer = Completer<http.Response>();
-    final client = MockClient((request) => completer.future);
+    final client = _AbortTrackingClient();
     await expectLater(
       _fetcher(client, timeout: const Duration(milliseconds: 50)).fetch(),
       throwsA(isA<AnnouncementFetchException>()),
     );
-    completer.complete(
-      http.Response(
-        _feedBody(),
-        200,
-        headers: {'content-type': 'application/json'},
-      ),
-    );
+    await client.whenAborted;
+    expect(client.aborted, isTrue);
   });
 
   test('close closes the underlying client', () {
@@ -268,6 +262,22 @@ void main() {
     _fetcher(client).close();
     expect(client.closed, isTrue);
   });
+}
+
+final class _AbortTrackingClient extends http.BaseClient {
+  final _aborted = Completer<void>();
+  var aborted = false;
+
+  Future<void> get whenAborted => _aborted.future;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final abortable = request as http.Abortable;
+    await abortable.abortTrigger;
+    aborted = true;
+    _aborted.complete();
+    throw http.RequestAbortedException(request.url);
+  }
 }
 
 final class _CloseTrackingClient extends http.BaseClient {
