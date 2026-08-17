@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"sync/atomic"
 
 	"sidravia/internal/daemon/authentication/protocol"
 	environment "sidravia/internal/daemon/environment"
@@ -71,46 +70,7 @@ func (replacement runtimeDefinitionReplacement) valid() bool {
 }
 
 type shutdownCommand struct {
-	reply       chan error
-	preparation *shutdownPreparation
-}
-
-type shutdownPreparationDecision uint8
-
-const (
-	shutdownPreparationAbort shutdownPreparationDecision = iota + 1
-	shutdownPreparationCommit
-)
-
-type shutdownPreparation struct {
-	prepared    chan Snapshot
-	decision    chan shutdownPreparationDecision
-	decisionAck chan struct{}
-	decided     atomic.Bool
-}
-
-func newShutdownPreparation() *shutdownPreparation {
-	return &shutdownPreparation{
-		prepared:    make(chan Snapshot, 1),
-		decision:    make(chan shutdownPreparationDecision, 1),
-		decisionAck: make(chan struct{}),
-	}
-}
-
-func (preparation *shutdownPreparation) Abort() bool {
-	return preparation.decide(shutdownPreparationAbort)
-}
-
-func (preparation *shutdownPreparation) Commit() bool {
-	return preparation.decide(shutdownPreparationCommit)
-}
-
-func (preparation *shutdownPreparation) decide(decision shutdownPreparationDecision) bool {
-	if preparation == nil || !preparation.decided.CompareAndSwap(false, true) {
-		return false
-	}
-	preparation.decision <- decision
-	return true
+	reply chan error
 }
 
 type snapshotQuery struct{ reply chan snapshotReply }
@@ -146,28 +106,6 @@ func (session *AuthenticationSession) send(ctx context.Context, message sessionM
 	select {
 	case session.inbox <- message:
 		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-session.done:
-		return ErrAuthenticationSessionClosed
-	}
-}
-
-func (session *AuthenticationSession) sendFromWatcher(ctx context.Context, message sessionMessage) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	select {
-	case <-session.admission:
-		defer session.releaseAdmission()
-		select {
-		case session.inbox <- message:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-session.done:
-			return ErrAuthenticationSessionClosed
-		}
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-session.done:

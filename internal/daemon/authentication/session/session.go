@@ -294,14 +294,6 @@ func (session *AuthenticationSession) Snapshot(ctx context.Context) (Snapshot, e
 	return receiveSnapshotReply(ctx, session.done, reply)
 }
 
-func (session *AuthenticationSession) snapshotForWatcher(ctx context.Context) (Snapshot, error) {
-	reply := make(chan snapshotReply, 1)
-	if err := session.sendFromWatcher(ctx, snapshotQuery{reply: reply}); err != nil {
-		return Snapshot{}, err
-	}
-	return receiveSnapshotReply(ctx, session.done, reply)
-}
-
 func (session *AuthenticationSession) ApplySystemNetworkSnapshot(ctx context.Context, network environment.Snapshot) (Snapshot, error) {
 	reply := make(chan snapshotReply, 1)
 	if err := session.send(ctx, systemNetworkSnapshotCommand{network: network, reply: reply}); err != nil {
@@ -399,16 +391,6 @@ func (session *AuthenticationSession) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (session *AuthenticationSession) beginDeletionPreparation(
-	ctx context.Context,
-	preparation *shutdownPreparation,
-) error {
-	if preparation == nil {
-		return errors.New("shutdown preparation is required")
-	}
-	return session.beginShutdown(ctx, shutdownCommand{preparation: preparation})
-}
-
 func receiveSnapshotReply(ctx context.Context, done <-chan struct{}, reply <-chan snapshotReply) (Snapshot, error) {
 	select {
 	case result := <-reply:
@@ -471,14 +453,7 @@ func (session *AuthenticationSession) run() {
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case shutdownCommand:
 			session.diagnostics.SessionCommand("shutdown")
-			if message.preparation != nil {
-				decision := session.handleShutdownPreparation(message.preparation)
-				if decision == shutdownPreparationAbort {
-					continue
-				}
-			} else {
-				session.handleShutdown(message.reply)
-			}
+			session.handleShutdown(message.reply)
 			if session.shuttingDown && session.active == nil {
 				session.completeShutdown()
 				return
@@ -726,21 +701,6 @@ func (session *AuthenticationSession) handleShutdown(reply chan error) {
 	session.invalidateRetrySchedule()
 	session.shutdownReplies = append(session.shutdownReplies, reply)
 	session.cancelActive(protocol.TerminateWithBestEffortLogout)
-}
-
-func (session *AuthenticationSession) handleShutdownPreparation(preparation *shutdownPreparation) shutdownPreparationDecision {
-	preparation.prepared <- session.currentSnapshot.Clone()
-	decision := <-preparation.decision
-	if decision == shutdownPreparationAbort {
-		session.closed.Store(false)
-		close(preparation.decisionAck)
-		return decision
-	}
-	session.shuttingDown = true
-	session.invalidateRetrySchedule()
-	session.cancelActive(protocol.TerminateWithBestEffortLogout)
-	close(preparation.decisionAck)
-	return decision
 }
 
 func (session *AuthenticationSession) handleAuthenticationEstablished(event authenticationEstablishedEvent) {
