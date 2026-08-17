@@ -13,11 +13,8 @@ import (
 )
 
 const (
-	SchemaVersion1               uint64 = 1
-	AuthenticationFileSizeLimit  int64  = 16 * 1024 * 1024
-	ApplicationSettingsSizeLimit int64  = 1 * 1024 * 1024
-	ProfileFileSizeLimit         int64  = 1 * 1024 * 1024
-	RawRecordSizeLimit           int64  = 1 * 1024 * 1024
+	SchemaVersion1       uint64 = 1
+	ProfileFileSizeLimit int64  = 1 * 1024 * 1024
 )
 
 func ReadLimited(reader io.Reader, maximum int64) ([]byte, error) {
@@ -127,30 +124,6 @@ func MarshalDeterministic(value any) ([]byte, error) {
 		return nil, invalidDocument(err)
 	}
 	return data, nil
-}
-
-func MarshalRawRecordEnvelope(schemaVersion uint64, records []json.RawMessage) ([]byte, error) {
-	for _, record := range records {
-		if int64(len(record)) > RawRecordSizeLimit {
-			return nil, persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
-		}
-		if err := validateOneValue(record); err != nil {
-			return nil, invalidDocument(err)
-		}
-	}
-
-	result := make([]byte, 0, 32)
-	result = append(result, `{"schemaVersion":`...)
-	result = strconv.AppendUint(result, schemaVersion, 10)
-	result = append(result, `,"records":[`...)
-	for index, record := range records {
-		if index > 0 {
-			result = append(result, ',')
-		}
-		result = append(result, record...)
-	}
-	result = append(result, ']', '}')
-	return result, nil
 }
 
 func invalidDocument(cause error) error {

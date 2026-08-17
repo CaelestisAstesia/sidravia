@@ -79,7 +79,6 @@ func TestStrictJSONValidationRejectsInvalidUTF8(t *testing.T) {
 	invalidFieldDocument := []byte("{\"field\":\"\xff\"}")
 	invalidSchemaDocument := []byte("{\"schemaVersion\":1,\"payload\":\"\xff\"}")
 	invalidOpaque := json.RawMessage("{\"payload\":\"\xff\"}")
-	invalidRecord := json.RawMessage("{\"payload\":\"\xff\"}")
 	var destination strictDocument
 	for _, test := range []struct {
 		name string
@@ -89,7 +88,6 @@ func TestStrictJSONValidationRejectsInvalidUTF8(t *testing.T) {
 		{name: "require fields", err: RequireObjectFields(invalidFieldDocument, "field")},
 		{name: "require schema", err: RequireSchemaVersion(invalidSchemaDocument, SchemaVersion1)},
 		{name: "validate opaque", err: ValidateOpaqueObjectOrNull(invalidOpaque)},
-		{name: "raw envelope", err: rawEnvelopeError(invalidRecord)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := failureCode(t, test.err); got != persistence.FailureInvalidDocument {
@@ -99,7 +97,7 @@ func TestStrictJSONValidationRejectsInvalidUTF8(t *testing.T) {
 	}
 }
 
-func TestOpaqueAndRawValidationAcceptLargeJSONNumbers(t *testing.T) {
+func TestOpaqueValidationAcceptsLargeJSONNumbers(t *testing.T) {
 	data := []byte(`{"name":"one","configuration":{"protocolContextOverride":{"large":1e400}}}`)
 	var destination strictDocument
 	if err := DecodeStrict(data, &destination, "/configuration/protocolContextOverride"); err != nil {
@@ -107,9 +105,6 @@ func TestOpaqueAndRawValidationAcceptLargeJSONNumbers(t *testing.T) {
 	}
 	if err := ValidateOpaqueObjectOrNull(json.RawMessage(`{"large":1e400}`)); err != nil {
 		t.Fatalf("ValidateOpaqueObjectOrNull rejected 1e400: %v", err)
-	}
-	if _, err := MarshalRawRecordEnvelope(SchemaVersion1, []json.RawMessage{json.RawMessage(`{"large":1e400}`)}); err != nil {
-		t.Fatalf("MarshalRawRecordEnvelope rejected 1e400: %v", err)
 	}
 }
 
@@ -189,43 +184,6 @@ func TestMarshalDeterministicUsesOwnedStructOrderWithoutNewline(t *testing.T) {
 	if bytes.HasSuffix(got, []byte("\n")) {
 		t.Fatal("MarshalDeterministic added a trailing newline")
 	}
-}
-
-func TestMarshalRawRecordEnvelopePreservesEveryRawElementByte(t *testing.T) {
-	records := []json.RawMessage{json.RawMessage(" {\"id\":1} "), json.RawMessage("\n[true, false]\t")}
-	got, err := MarshalRawRecordEnvelope(SchemaVersion1, records)
-	if err != nil {
-		t.Fatalf("MarshalRawRecordEnvelope() error = %v", err)
-	}
-	want := "{\"schemaVersion\":1,\"records\":[" + string(records[0]) + "," + string(records[1]) + "]}"
-	if string(got) != want {
-		t.Fatalf("MarshalRawRecordEnvelope() = %q, want exact raw preservation %q", got, want)
-	}
-}
-
-func TestMarshalRawRecordEnvelopeRejectsOversizedOrFramingInvalidElement(t *testing.T) {
-	overLimit := json.RawMessage(append(bytes.Repeat([]byte(" "), int(RawRecordSizeLimit)), []byte("null")...))
-	for _, test := range []struct {
-		name    string
-		records []json.RawMessage
-		want    persistence.FailureCode
-	}{
-		{name: "oversized", records: []json.RawMessage{overLimit}, want: persistence.FailureSizeLimitExceeded},
-		{name: "multiple values", records: []json.RawMessage{json.RawMessage(`{} {}`)}, want: persistence.FailureInvalidDocument},
-		{name: "empty", records: []json.RawMessage{json.RawMessage("")}, want: persistence.FailureInvalidDocument},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := MarshalRawRecordEnvelope(SchemaVersion1, test.records)
-			if got := failureCode(t, err); got != test.want {
-				t.Fatalf("failure code = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
-func rawEnvelopeError(record json.RawMessage) error {
-	_, err := MarshalRawRecordEnvelope(SchemaVersion1, []json.RawMessage{record})
-	return err
 }
 
 func failureCode(t *testing.T, err error) persistence.FailureCode {
