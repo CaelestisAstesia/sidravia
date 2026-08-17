@@ -12,9 +12,11 @@ import (
 var ErrInvalidNamespace = errors.New("productlayout: invalid runtime namespace")
 
 // Namespace is the immutable opt-in runtime isolation identifier. The zero
-// value is the exact production namespace. Values are only created through
-// NewNamespace so no caller can mutate or forge a namespace after validation.
-type Namespace string
+// value is the exact production namespace. Its value is private so callers
+// cannot forge a namespace without passing NewNamespace validation.
+type Namespace struct {
+	value string
+}
 
 const maxNamespaceLen = 64
 
@@ -31,41 +33,41 @@ var reservedNamespaces = map[string]struct{}{
 // reserved production alias, at most maxNamespaceLen bytes.
 func NewNamespace(raw string) (Namespace, error) {
 	if raw == "" {
-		return Namespace(""), nil
+		return Namespace{}, nil
 	}
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return Namespace(""), ErrInvalidNamespace
+		return Namespace{}, ErrInvalidNamespace
 	}
 	if value != raw {
 		// Surrounding whitespace is not silently accepted by a strict grammar.
-		return Namespace(""), ErrInvalidNamespace
+		return Namespace{}, ErrInvalidNamespace
 	}
 	if len(raw) > maxNamespaceLen {
-		return Namespace(""), ErrInvalidNamespace
+		return Namespace{}, ErrInvalidNamespace
 	}
 	if strings.ContainsAny(raw, `/\`) || strings.Contains(raw, ":") {
-		return Namespace(""), ErrInvalidNamespace
+		return Namespace{}, ErrInvalidNamespace
 	}
 	if _, reserved := reservedNamespaces[strings.ToLower(raw)]; reserved {
-		return Namespace(""), ErrInvalidNamespace
+		return Namespace{}, ErrInvalidNamespace
 	}
 	if strings.HasPrefix(raw, ".") || strings.HasSuffix(raw, ".") || strings.Contains(raw, "..") {
-		return Namespace(""), ErrInvalidNamespace
+		return Namespace{}, ErrInvalidNamespace
 	}
 	for _, r := range raw {
 		if r > unicode.MaxASCII || !namespaceASCII(r) {
-			return Namespace(""), ErrInvalidNamespace
+			return Namespace{}, ErrInvalidNamespace
 		}
 	}
-	return Namespace(raw), nil
+	return Namespace{value: raw}, nil
 }
 
 // IsProduction reports whether the namespace is the exact production namespace.
-func (n Namespace) IsProduction() bool { return n == "" }
+func (n Namespace) IsProduction() bool { return n.value == "" }
 
 // String returns the exact verified value. It is empty for production.
-func (n Namespace) String() string { return string(n) }
+func (n Namespace) String() string { return n.value }
 
 func namespaceASCII(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||

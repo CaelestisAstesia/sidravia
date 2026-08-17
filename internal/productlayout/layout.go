@@ -49,7 +49,7 @@ const portableMarker = "sidravia.portable"
 // fails instead of falling back to either mode, and any IO error other than
 // not-exist is preserved as the cause.
 func Resolve() (Layout, error) {
-	return ResolveNamespace(Namespace(""))
+	return ResolveNamespace(Namespace{})
 }
 
 // ResolveNamespace resolves the isolated layout for the supplied namespace. The
@@ -77,7 +77,7 @@ func defaultResolver() osResolver {
 }
 
 func resolve(r osResolver) (Layout, error) {
-	return resolveWithNamespace(r, Namespace(""))
+	return resolveWithNamespace(r, Namespace{})
 }
 
 func resolveWithNamespace(r osResolver, ns Namespace) (Layout, error) {

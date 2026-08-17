@@ -275,7 +275,7 @@ func TestResolveNamespaceProductionIsByteIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withNs, err := resolveWithNamespace(r, Namespace(""))
+	withNs, err := resolveWithNamespace(r, Namespace{})
 	if err != nil {
 		t.Fatal(err)
 	}

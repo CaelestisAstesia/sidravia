@@ -368,14 +368,11 @@ type DesktopBootstrapResult struct {
 
 func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, error) {
 	deps := defaultDependencies()
-	ns, err := deps.namespace()
-	if err != nil {
-		return DesktopBootstrapResult{}, wrapSafeOperation("运行命名空间", err)
-	}
-	if !ns.IsProduction() {
-		return DesktopBootstrapResult{}, ErrDesktopUnsupported
-	}
-	options, err := launchcontract.Desktop(ownerPID)
+	return bootstrapDesktopWithDependencies(identity, ownerPID, deps)
+}
+
+func bootstrapDesktopWithDependencies(identity Identity, ownerPID int, deps dependencies) (DesktopBootstrapResult, error) {
+	options, err := desktopOptionsWithNamespace(ownerPID, deps)
 	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
@@ -383,6 +380,18 @@ func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, 
 		return DesktopBootstrapResult{}, ErrDesktopUnsupported
 	}
 	return bootstrapDesktop(identity, options, deps)
+}
+
+func desktopOptionsWithNamespace(ownerPID int, deps dependencies) (launchcontract.Options, error) {
+	ns, err := deps.namespace()
+	if err != nil {
+		return launchcontract.Options{}, wrapSafeOperation("运行命名空间", err)
+	}
+	options, err := launchcontract.New(launchcontract.ModeDesktop, ownerPID, ns.String())
+	if err != nil {
+		return launchcontract.Options{}, err
+	}
+	return options, nil
 }
 
 func bootstrapDesktop(identity Identity, options launchcontract.Options, deps dependencies) (DesktopBootstrapResult, error) {

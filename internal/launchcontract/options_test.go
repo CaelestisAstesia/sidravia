@@ -23,7 +23,7 @@ func TestParseValidatesModesAndOwner(t *testing.T) {
 		{"other", "", "", Options{}, true},
 		{"headless", "", "isolated-1", Options{Mode: ModeHeadless, Namespace: "isolated-1"}, false},
 		{"headless", "", "bad/name", Options{}, true},
-		{"desktop", "42", "isolated-1", Options{}, true},
+		{"desktop", "42", "isolated-1", Options{Mode: ModeDesktop, DesktopOwnerPID: 42, Namespace: "isolated-1"}, false},
 	} {
 		got, err := Parse(tc.mode, tc.owner, tc.namespace)
 		if tc.bad {

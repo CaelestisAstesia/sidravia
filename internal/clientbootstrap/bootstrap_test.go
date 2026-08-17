@@ -86,6 +86,43 @@ func TestBootstrapDesktopReturnsMatchingAuthoritativeResult(t *testing.T) {
 	}
 }
 
+func TestDesktopOptionsPreserveNamespace(t *testing.T) {
+	ns, err := productlayout.NewNamespace("mock-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := testDependencies(nil, nil)
+	deps.namespace = func() (productlayout.Namespace, error) { return ns, nil }
+	options, err := desktopOptionsWithNamespace(42, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Mode != launchcontract.ModeDesktop || options.DesktopOwnerPID != 42 || options.Namespace != "mock-test" {
+		t.Fatalf("options=%+v, want desktop owner 42 namespace mock-test", options)
+	}
+}
+
+func TestBootstrapDesktopNamespaceFailureStopsBeforeProbeOrLaunch(t *testing.T) {
+	reads, launches := 0, 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		reads++
+		return contract.RuntimeInfo{}, nil
+	}, nil)
+	deps.namespace = func() (productlayout.Namespace, error) {
+		return productlayout.Namespace{}, productlayout.ErrInvalidNamespace
+	}
+	deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) {
+		launches++
+		return daemonLaunch{}, nil
+	}
+	if _, err := bootstrapDesktopWithDependencies(testIdentity(t), 42, deps); !errors.Is(err, productlayout.ErrInvalidNamespace) {
+		t.Fatalf("err=%v, want invalid namespace", err)
+	}
+	if reads != 0 || launches != 0 {
+		t.Fatalf("reads=%d launches=%d, want both zero", reads, launches)
+	}
+}
+
 func TestDesktopSameOwnerReusesAndDifferentOwnerConflicts(t *testing.T) {
 	owner := 42
 	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil }, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
@@ -199,7 +236,7 @@ func testDependencies(read func(string) (contract.RuntimeInfo, error), connect f
 		readRuntimeInfo: read,
 		connect:         connect,
 		launch:          func(launchcontract.Options, string) (daemonLaunch, error) { return daemonLaunch{}, nil },
-		namespace:       func() (productlayout.Namespace, error) { return productlayout.Namespace(""), nil },
+		namespace:       func() (productlayout.Namespace, error) { return productlayout.Namespace{}, nil },
 		callTimeout:     time.Second, totalWait: time.Second, pollInterval: time.Millisecond,
 	}
 }
@@ -403,7 +440,10 @@ func TestConnectExistingHeadlessRejectsDesktopAndUnsafeStates(t *testing.T) {
 }
 
 func TestProbeUsesNamespaceForRuntimeInfoPath(t *testing.T) {
-	got := productlayout.Namespace("injected")
+	got, err := productlayout.NewNamespace("injected")
+	if err != nil {
+		t.Fatal(err)
+	}
 	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
 		return contract.RuntimeInfo{}, os.ErrNotExist
 	}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) { return nil, nil })
@@ -415,7 +455,7 @@ func TestProbeUsesNamespaceForRuntimeInfoPath(t *testing.T) {
 	if _, err := probe(testIdentity(t), deps); err != nil {
 		t.Fatal(err)
 	}
-	if got != "mock-test" {
+	if got.String() != "mock-test" {
 		t.Fatalf("runtimeInfoPath namespace = %q, want mock-test", got)
 	}
 }

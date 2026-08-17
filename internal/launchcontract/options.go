@@ -58,9 +58,6 @@ func New(mode Mode, ownerPID int, namespace string) (Options, error) {
 		if ownerPID <= 0 {
 			return Options{}, ErrInvalidOptions
 		}
-		if !ns.IsProduction() {
-			return Options{}, ErrInvalidOptions
-		}
 	default:
 		return Options{}, ErrInvalidOptions
 	}

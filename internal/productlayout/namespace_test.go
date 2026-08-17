@@ -9,9 +9,9 @@ func TestNewNamespaceValidatesGrammar(t *testing.T) {
 	for _, tc := range []struct {
 		raw  string
 		ok   bool
-		want Namespace
+		want string
 	}{
-		{"", true, Namespace("")},
+		{"", true, ""},
 		{"isolated-1", true, "isolated-1"},
 		{"mock-test", true, "mock-test"},
 		{"a.b_c-9", true, "a.b_c-9"},
@@ -31,7 +31,7 @@ func TestNewNamespaceValidatesGrammar(t *testing.T) {
 		{"x12345678901234567890123456789012345678901234567890123456789012345", false, ""},
 	} {
 		got, err := NewNamespace(tc.raw)
-		if tc.ok && (err != nil || got != tc.want) {
+		if tc.ok && (err != nil || got.String() != tc.want) {
 			t.Fatalf("NewNamespace(%q)=%q,%v want %q", tc.raw, got, err, tc.want)
 		}
 		if !tc.ok && !errors.Is(err, ErrInvalidNamespace) {
