@@ -45,11 +45,15 @@ class GuiCapabilities {
       return GuiCapabilityState.daemonUnavailable;
     }
     final configurations = snapshot!.configurations;
-    if (configurations.isEmpty) return GuiCapabilityState.createOnly;
+    final sessions = snapshot!.sessions;
+    if (configurations.isEmpty) {
+      return sessions.isEmpty
+          ? GuiCapabilityState.createOnly
+          : GuiCapabilityState.ambiguousSessions;
+    }
     if (configurations.length > 1) {
       return GuiCapabilityState.multipleConfigurations;
     }
-    final sessions = snapshot!.sessions;
     final belongs = sessions.every(
       (session) => session.configurationId == configurations.single.id,
     );
@@ -75,7 +79,10 @@ class GuiCapabilities {
   }
 
   SessionSummary? get retainedSession {
-    if (!canResetSession) return null;
+    if (capability != GuiCapabilityState.manageable ||
+        snapshot!.sessions.isEmpty) {
+      return null;
+    }
     return snapshot!.sessions.single;
   }
 }

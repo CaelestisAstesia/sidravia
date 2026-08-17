@@ -13,6 +13,18 @@ void main() {
     expect(capabilities.retainedSession, isNull);
   });
 
+  test('zero Configuration with an observed Session stays read-only', () {
+    final capabilities = _caps(
+      snapshot: _snapshot(
+        configurations: const [],
+        sessions: [_session(id: 's-orphan', configurationId: null)],
+      ),
+    );
+    expect(capabilities.capability, GuiCapabilityState.ambiguousSessions);
+    expect(capabilities.canCreate, isFalse);
+    expect(capabilities.canManage, isFalse);
+  });
+
   test('one Configuration with no Session is manageable without reset', () {
     final capabilities = _caps(snapshot: _snapshot());
     expect(capabilities.capability, GuiCapabilityState.manageable);
@@ -97,12 +109,19 @@ void main() {
   });
 
   test('in-flight mutation stays read-only even for a manageable target', () {
-    final capabilities = _caps(snapshot: _snapshot(), busy: true);
+    final capabilities = _caps(
+      snapshot: _snapshot(
+        sessions: [_session(id: 's-a', configurationId: 'cfg-a')],
+      ),
+      busy: true,
+    );
     expect(capabilities.capability, GuiCapabilityState.manageable);
     expect(capabilities.canManage, isFalse);
     expect(capabilities.canEditAutoLogin, isFalse);
     expect(capabilities.canDeleteConfiguration, isFalse);
     expect(capabilities.canResetSession, isFalse);
+    expect(capabilities.configuration?.id, 'cfg-a');
+    expect(capabilities.retainedSession?.id, 's-a');
   });
 }
 

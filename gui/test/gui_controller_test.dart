@@ -293,6 +293,57 @@ void main() {
   });
 
   test(
+    'lifecycle mutations revalidate targets after an in-flight poll',
+    () async {
+      for (final (name, action, mutationCall)
+          in <(String, Future<bool> Function(GuiController), String)>[
+            (
+              'reset',
+              (controller) => controller.resetSession('s-a'),
+              'session.remove',
+            ),
+            (
+              'delete',
+              (controller) => controller.deleteConfiguration('cfg-a'),
+              'configuration.remove',
+            ),
+            (
+              'auto-login',
+              (controller) => controller.setAutoLogin(
+                configurationId: 'cfg-a',
+                autoLogin: true,
+              ),
+              'configuration.setAutoLogin',
+            ),
+          ]) {
+        final client = _Client();
+        final controller = GuiController(
+          bootstrapper: _Bootstrapper(),
+          connector: (_) async => client,
+          pollDelay: const Duration(milliseconds: 5),
+        );
+        await controller.start();
+        client.calls.clear();
+
+        final pendingDaemon = Completer<DaemonStatus>();
+        client.nextDaemon = pendingDaemon;
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+        client.configurations = const [_otherConfiguration];
+        client.sessions = const [_otherSession];
+
+        final mutation = action(controller);
+        await Future<void>.delayed(Duration.zero);
+        expect(client.calls, isNot(contains(mutationCall)), reason: name);
+
+        pendingDaemon.complete(_daemon);
+        expect(await mutation, isFalse, reason: name);
+        expect(client.calls, isNot(contains(mutationCall)), reason: name);
+        controller.dispose();
+      }
+    },
+  );
+
+  test(
     'new lifecycle operations preserve the connection and map safe guidance',
     () async {
       for (final (count, failure, action, expected) in [
@@ -443,6 +494,8 @@ class _PendingBootstrapper implements GuiBootstrapper {
 
 class _Client implements SidraviaDesktopClient {
   final calls = <String>[];
+  List<ConfigurationSummary> configurations = const [_configuration];
+  List<SessionSummary> sessions = const [_session];
   Object? nextFailure;
   Completer<DaemonStatus>? nextDaemon;
   Object? stopFailure;
@@ -478,13 +531,13 @@ class _Client implements SidraviaDesktopClient {
   @override
   Future<List<ConfigurationSummary>> configurationList() async {
     _call('configurations');
-    return const [_configuration];
+    return configurations;
   }
 
   @override
   Future<List<SessionSummary>> sessionList() async {
     _call('sessions');
-    return const [];
+    return sessions;
   }
 
   @override
@@ -534,6 +587,9 @@ class _Client implements SidraviaDesktopClient {
   Future<SessionRemoveResult> sessionRemove(String sessionId) async {
     sessionRemoveCalls++;
     _call('session.remove');
+    sessions = sessions
+        .where((session) => session.id != sessionId)
+        .toList(growable: false);
     return SessionRemoveResult(sessionId: sessionId, status: 'removed');
   }
 
@@ -544,7 +600,7 @@ class _Client implements SidraviaDesktopClient {
   }) async {
     autoLoginCalls++;
     _call('configuration.setAutoLogin');
-    return ConfigurationSummary(
+    final updated = ConfigurationSummary(
       id: _configuration.id,
       displayName: _configuration.displayName,
       institutionProfileId: _configuration.institutionProfileId,
@@ -556,6 +612,8 @@ class _Client implements SidraviaDesktopClient {
       autoLogin: autoLogin,
       autoReconnect: _configuration.autoReconnect,
     );
+    configurations = [updated];
+    return updated;
   }
 
   @override
@@ -564,6 +622,8 @@ class _Client implements SidraviaDesktopClient {
   ) async {
     configurationRemoveCalls++;
     _call('configuration.remove');
+    configurations = const [];
+    sessions = const [];
     return ConfigurationRemoveResult(
       configurationId: configurationId,
       status: 'removed',
@@ -622,6 +682,17 @@ const _configuration = ConfigurationSummary(
   storageProtection: 'protected',
   autoReconnect: true,
 );
+const _otherConfiguration = ConfigurationSummary(
+  id: 'cfg-b',
+  displayName: '',
+  institutionProfileId: 'jlu',
+  institutionDisplayName: '吉林大学',
+  authenticationProtocolId: 'drcom-5.2.0-d',
+  username: 'other-user',
+  credentialStored: true,
+  storageProtection: 'protected',
+  autoReconnect: true,
+);
 const _session = SessionSummary(
   id: 's-a',
   displayName: '',
@@ -629,6 +700,14 @@ const _session = SessionSummary(
   state: 'suspended',
   intent: 'suspend_authentication',
   configurationId: 'cfg-a',
+);
+const _otherSession = SessionSummary(
+  id: 's-b',
+  displayName: '',
+  accountName: 'other-user',
+  state: 'suspended',
+  intent: 'suspend_authentication',
+  configurationId: 'cfg-b',
 );
 const _token =
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

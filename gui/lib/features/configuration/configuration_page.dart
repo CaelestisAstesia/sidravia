@@ -85,17 +85,13 @@ class _ConfigurationContent extends StatelessWidget {
           );
         }
       case GuiCapabilityState.manageable:
-        if (profiles.isEmpty) {
-          content = _MessageCard(title: '无法编辑当前配置', detail: '本机服务未提供学校配置。');
-        } else {
-          content = _EditConfigurationForm(
-            controller: controller,
-            configuration: capabilities.configuration!,
-            profiles: profiles,
-            compact: compact,
-            retainedSession: capabilities.retainedSession,
-          );
-        }
+        content = _EditConfigurationForm(
+          controller: controller,
+          configuration: capabilities.configuration!,
+          profiles: profiles,
+          compact: compact,
+          retainedSession: capabilities.retainedSession,
+        );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,12 +233,10 @@ class _EditConfigurationForm extends StatefulWidget {
 }
 
 class _EditConfigurationFormState extends State<_EditConfigurationForm> {
-  late String _profileId =
-      widget.profiles.any(
-        (profile) => profile.id == widget.configuration.institutionProfileId,
-      )
-      ? widget.configuration.institutionProfileId
-      : widget.profiles.first.id;
+  late String? _profileId = _preferredProfileId(
+    widget.profiles,
+    widget.configuration.institutionProfileId,
+  );
   late final _account = TextEditingController(
     text: widget.configuration.username,
   );
@@ -265,12 +259,10 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
       _account.text = configuration.username;
     }
 
-    final preferredProfile =
-        widget.profiles.any(
-          (profile) => profile.id == configuration.institutionProfileId,
-        )
-        ? configuration.institutionProfileId
-        : widget.profiles.first.id;
+    final preferredProfile = _preferredProfileId(
+      widget.profiles,
+      configuration.institutionProfileId,
+    );
     final selectedProfileExists = widget.profiles.any(
       (profile) => profile.id == _profileId,
     );
@@ -308,7 +300,9 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         ],
       ),
     );
-    if (confirmed != true || !mounted || session != widget.retainedSession) {
+    if (confirmed != true ||
+        !mounted ||
+        session.id != widget.retainedSession?.id) {
       return;
     }
     await widget.controller.resetSession(session.id);
@@ -335,7 +329,11 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true ||
+        !mounted ||
+        configuration.id != widget.configuration.id) {
+      return;
+    }
     await widget.controller.deleteConfiguration(configuration.id);
   }
 
@@ -352,57 +350,67 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
     detail:
         '${widget.configuration.institutionDisplayName} · ${widget.configuration.credentialStored ? '密码已保存' : '未保存密码'}',
     children: [
-      _ProfileSelector(
-        value: _profileId,
-        profiles: widget.profiles,
-        enabled: !widget.controller.busy,
-        compact: widget.compact,
-        onChanged: (value) => setState(() => _profileId = value!),
-      ),
-      const SizedBox(height: 16),
-      SidraviaLayout.limitTextScale(
-        compact: widget.compact,
-        maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-        child: TextField(
-          key: const ValueKey('configuration-account'),
-          controller: _account,
+      if (widget.profiles.isEmpty)
+        Text(
+          '本机服务未提供学校配置，学校和用户名暂不可编辑。',
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        )
+      else ...[
+        _ProfileSelector(
+          value: _profileId!,
+          profiles: widget.profiles,
           enabled: !widget.controller.busy,
-          style: widget.compact ? Theme.of(context).textTheme.bodyMedium : null,
-          decoration: InputDecoration(
-            labelText: '用户名',
-            labelStyle: widget.compact
+          compact: widget.compact,
+          onChanged: (value) => setState(() => _profileId = value!),
+        ),
+        const SizedBox(height: 16),
+        SidraviaLayout.limitTextScale(
+          compact: widget.compact,
+          maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+          child: TextField(
+            key: const ValueKey('configuration-account'),
+            controller: _account,
+            enabled: !widget.controller.busy,
+            style: widget.compact
                 ? Theme.of(context).textTheme.bodyMedium
                 : null,
+            decoration: InputDecoration(
+              labelText: '用户名',
+              labelStyle: widget.compact
+                  ? Theme.of(context).textTheme.bodyMedium
+                  : null,
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 16),
-      FilledButton.tonal(
-        onPressed: widget.controller.busy
-            ? null
-            : () async {
-                if (_account.text.isEmpty) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('请输入用户名。')));
-                  return;
-                }
-                await widget.controller.updateConfiguration(
-                  configurationId: widget.configuration.id,
-                  institutionProfileId: _profileId,
-                  username: _account.text,
-                );
-              },
-        child: SidraviaLayout.limitTextScale(
-          compact: widget.compact,
-          maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
-          child: Text(
-            '保存',
-            style: widget.compact
-                ? Theme.of(context).textTheme.labelMedium
-                : null,
+        const SizedBox(height: 16),
+        FilledButton.tonal(
+          onPressed: widget.controller.busy
+              ? null
+              : () async {
+                  if (_account.text.isEmpty) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('请输入用户名。')));
+                    return;
+                  }
+                  await widget.controller.updateConfiguration(
+                    configurationId: widget.configuration.id,
+                    institutionProfileId: _profileId!,
+                    username: _account.text,
+                  );
+                },
+          child: SidraviaLayout.limitTextScale(
+            compact: widget.compact,
+            maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
+            child: Text(
+              '保存',
+              style: widget.compact
+                  ? Theme.of(context).textTheme.labelMedium
+                  : null,
+            ),
           ),
         ),
-      ),
+      ],
       const Divider(height: 40),
       _PasswordField(
         fieldKey: const ValueKey('configuration-password'),
@@ -487,6 +495,16 @@ class _EditConfigurationFormState extends State<_EditConfigurationForm> {
       ),
     ],
   );
+}
+
+String? _preferredProfileId(
+  List<InstitutionProfile> profiles,
+  String authoritativeId,
+) {
+  if (profiles.isEmpty) return null;
+  return profiles.any((profile) => profile.id == authoritativeId)
+      ? authoritativeId
+      : profiles.first.id;
 }
 
 class _ProfileSelector extends StatelessWidget {

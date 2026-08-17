@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -681,6 +683,37 @@ void main() {
     expect(find.byKey(const ValueKey('delete-configuration')), findsOneWidget);
   });
 
+  testWidgets('reset confirmation survives a same-ID polling refresh', (
+    tester,
+  ) async {
+    final client = _Client(sessions: const [_session]);
+    await tester.pumpWidget(_app(client, const Duration(milliseconds: 5)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('reset-session')));
+    await tester.pumpAndSettle();
+    client.sessions = const [
+      SessionSummary(
+        id: 'session-a',
+        displayName: 'refreshed-object',
+        accountName: 'fixture-user',
+        state: 'suspended',
+        intent: 'suspend_authentication',
+        configurationId: 'cfg-a',
+      ),
+    ];
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.tap(find.byKey(const ValueKey('reset-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(
+      client.calls.where((call) => call == 'session.remove'),
+      hasLength(1),
+    );
+  });
+
   testWidgets('deletion confirmation cancels without IPC and confirms once', (
     tester,
   ) async {
@@ -708,6 +741,80 @@ void main() {
       hasLength(1),
     );
     expect(find.byKey(const ValueKey('configuration-account')), findsOneWidget);
+  });
+
+  testWidgets('deletion confirmation rejects a changed Configuration ID', (
+    tester,
+  ) async {
+    final client = _Client();
+    await tester.pumpWidget(_app(client, const Duration(milliseconds: 5)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('delete-configuration')));
+    await tester.pumpAndSettle();
+    client.configurations = const [_other];
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.tap(find.byKey(const ValueKey('delete-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(client.calls, isNot(contains('configuration.remove')));
+  });
+
+  testWidgets('missing profiles keeps independent lifecycle controls', (
+    tester,
+  ) async {
+    final client = _Client(profiles: const [], sessions: const [_session]);
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('配置').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('本机服务未提供学校配置，学校和用户名暂不可编辑。'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('configuration-profile-jlu')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('configuration-account')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('configuration-auto-login')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('reset-session')), findsOneWidget);
+    expect(find.byKey(const ValueKey('delete-configuration')), findsOneWidget);
+  });
+
+  testWidgets('Home preserves the retained Session while a mutation is busy', (
+    tester,
+  ) async {
+    final client = _Client(sessions: const [_authenticated]);
+    final controller = GuiController(
+      bootstrapper: _Bootstrapper(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    final pendingAutoLogin = Completer<ConfigurationSummary>();
+    client.pendingAutoLogin = pendingAutoLogin;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(controller: controller, onOpenConfiguration: () {}),
+      ),
+    );
+
+    final mutation = controller.setAutoLogin(
+      configurationId: 'cfg-a',
+      autoLogin: true,
+    );
+    await tester.pump();
+    expect(controller.busy, isTrue);
+    expect(find.text('已连接'), findsOneWidget);
+    expect(find.text('未连接'), findsNothing);
+
+    pendingAutoLogin.complete(_withAutoLogin(_configuration, true));
+    await mutation;
+    controller.dispose();
   });
 
   testWidgets('AutoLogin toggle dispatches once and refresh owns display', (
@@ -859,6 +966,7 @@ class _Client implements SidraviaIpcClient {
   List<SessionSummary> sessions;
   List<InstitutionProfile> profiles;
   final calls = <String>[];
+  Completer<ConfigurationSummary>? pendingAutoLogin;
 
   @override
   Future<DaemonStatus> daemonStatus() async => _daemon;
@@ -927,6 +1035,9 @@ class _Client implements SidraviaIpcClient {
     required bool autoLogin,
   }) async {
     calls.add('configuration.setAutoLogin');
+    final pending = pendingAutoLogin;
+    pendingAutoLogin = null;
+    if (pending != null) return pending.future;
     final result = _withAutoLogin(configurations.single, autoLogin);
     configurations = [result];
     return result;

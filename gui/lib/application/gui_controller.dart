@@ -104,11 +104,17 @@ class GuiController extends ChangeNotifier {
   Future<bool> resetSession(String sessionId) => _mutate(
     (client) => client.sessionRemove(sessionId),
     fallback: '重置会话失败，请重试。',
+    allowed: (capabilities) =>
+        capabilities.canResetSession &&
+        capabilities.retainedSession?.id == sessionId,
   );
 
   Future<bool> deleteConfiguration(String configurationId) => _mutate(
     (client) => client.configurationRemove(configurationId),
     fallback: '删除配置失败，请重试。',
+    allowed: (capabilities) =>
+        capabilities.canDeleteConfiguration &&
+        capabilities.configuration?.id == configurationId,
   );
 
   Future<bool> setAutoLogin({
@@ -120,6 +126,9 @@ class GuiController extends ChangeNotifier {
       autoLogin: autoLogin,
     ),
     fallback: '自动登录设置失败，请重试。',
+    allowed: (capabilities) =>
+        capabilities.canEditAutoLogin &&
+        capabilities.configuration?.id == configurationId,
   );
 
   /// Graceful exit requested only by the explicit tray path.
@@ -199,6 +208,7 @@ class GuiController extends ChangeNotifier {
   Future<bool> _mutate(
     Future<Object?> Function(SidraviaIpcClient) action, {
     String fallback = '操作失败，请刷新后重试。',
+    bool Function(GuiCapabilities capabilities)? allowed,
   }) async {
     if (_exitRequested) return false;
     final current = _transition;
@@ -212,6 +222,7 @@ class GuiController extends ChangeNotifier {
         _client == null) {
       return false;
     }
+    if (allowed != null && !allowed(capabilities)) return false;
     _userBusy = true;
     final completer = Completer<bool>();
     _transition = _runMutation(action, completer, fallback);
