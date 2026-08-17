@@ -225,7 +225,7 @@ func TestSessionBlocksOnZeroOrNegativeRetryDelay(t *testing.T) {
 	}
 }
 
-func TestSessionCancelsRetryOnSuspendRestartReplacementAndShutdown(t *testing.T) {
+func TestSessionCancelsRetryOnSuspendRestartAndShutdown(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		apply func(context.Context, *AuthenticationSession, *controlledFactory) (Snapshot, error)
@@ -240,15 +240,6 @@ func TestSessionCancelsRetryOnSuspendRestartReplacementAndShutdown(t *testing.T)
 			name: "restart",
 			apply: func(ctx context.Context, session *AuthenticationSession, _ *controlledFactory) (Snapshot, error) {
 				return session.Restart(ctx)
-			},
-		},
-		{
-			name: "replacement",
-			apply: func(ctx context.Context, session *AuthenticationSession, factory *controlledFactory) (Snapshot, error) {
-				definition := validRuntimeDefinition(t)
-				definition.AuthenticationProtocolFactory = factory
-				definition.Configuration.DisplayName = "Replacement"
-				return session.ReplaceRuntimeDefinition(ctx, definition)
 			},
 		},
 	} {
@@ -290,7 +281,7 @@ func TestSessionCancelsRetryOnSuspendRestartReplacementAndShutdown(t *testing.T)
 	})
 }
 
-func TestSessionResetsFailureCountAfterRestartReplacementAndBindingChange(t *testing.T) {
+func TestSessionResetsFailureCountAfterRestartAndBindingChange(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		apply func(context.Context, *AuthenticationSession, *controlledFactory) error
@@ -299,15 +290,6 @@ func TestSessionResetsFailureCountAfterRestartReplacementAndBindingChange(t *tes
 			name: "restart",
 			apply: func(ctx context.Context, session *AuthenticationSession, _ *controlledFactory) error {
 				_, err := session.Restart(ctx)
-				return err
-			},
-		},
-		{
-			name: "replacement",
-			apply: func(ctx context.Context, session *AuthenticationSession, factory *controlledFactory) error {
-				definition := validRuntimeDefinition(t)
-				definition.AuthenticationProtocolFactory = factory
-				_, err := session.ReplaceRuntimeDefinition(ctx, definition)
 				return err
 			},
 		},

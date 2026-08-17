@@ -294,27 +294,6 @@ func TestSnapshotExposesAccountNameButNotPassword(t *testing.T) {
 	}
 }
 
-func TestSessionRuntimeDefinitionReplacementKeepsConfigurationIdentity(t *testing.T) {
-	definition := validRuntimeDefinition(t)
-	authSession, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time {
-		return time.Unix(100, 0)
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	authSession.Start()
-	defer func() { _ = authSession.Shutdown(context.Background()) }()
-	replacement := validRuntimeDefinition(t)
-	replacement.Configuration.DisplayName = "Changed display name"
-	snapshot, err := authSession.ReplaceRuntimeDefinition(context.Background(), replacement)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.ConfigurationID != definition.Configuration.ConfigurationID {
-		t.Fatalf("replacement ConfigurationID = %q, want %q", snapshot.ConfigurationID, definition.Configuration.ConfigurationID)
-	}
-}
-
 func TestRuntimeDefinitionCloneDoesNotAliasOpaqueProtocolJSON(t *testing.T) {
 	original := validRuntimeDefinition(t)
 	cloned := original.Clone()

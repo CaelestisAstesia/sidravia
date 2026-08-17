@@ -289,55 +289,6 @@ func TestRestartClearsBlockAndStartsNewGeneration(t *testing.T) {
 	third.unblock(nil)
 }
 
-func TestReplaceRuntimeDefinitionIsAtomicAndUsesBestEffortLogout(t *testing.T) {
-	assertReplacementValidationPrecedesEnqueue(t)
-
-	oldFactory := &controlledFactory{holdCancellation: true}
-	definition := validRuntimeDefinition(t)
-	definition.AuthenticationProtocolFactory = oldFactory
-	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(nil))
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	session.Start()
-	ctx := testContext(t)
-	defer shutdownTestSession(t, session)
-
-	network := usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet")
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, network)
-	oldRun := oldFactory.run(0)
-	defer oldRun.unblock(nil)
-	if err := oldRun.waitForStart(ctx); err != nil {
-		t.Fatalf("old run did not start: %v", err)
-	}
-
-	newFactory := &controlledFactory{}
-	replacement := replacementRuntimeDefinition(t, newFactory)
-	got, err := session.ReplaceRuntimeDefinition(ctx, replacement)
-	if err != nil {
-		t.Fatalf("replaceRuntimeDefinition() error = %v", err)
-	}
-	if got.AuthenticationSessionID != replacement.Configuration.AuthenticationSessionID ||
-		got.DisplayName != replacement.Configuration.DisplayName ||
-		got.InstitutionProfileID != replacement.InstitutionProfile.InstitutionProfileID ||
-		got.InstitutionDisplayName != replacement.InstitutionProfile.DisplayName ||
-		got.AccountName != replacement.AccountName() {
-		t.Fatalf("replacement snapshot mixed runtime definitions: %#v", got)
-	}
-	if got.State != Authenticating || got.StateReason != nil || got.AuthenticationEstablishedAt != nil || got.NextRetryAt != nil {
-		t.Fatalf("replacement did not reset runtime state: %#v", got)
-	}
-	assertCleanupRequirement(t, oldRun.waitForCancellation(ctx), protocol.TerminateWithBestEffortLogout)
-	if calls := len(newFactory.creationInputs()); calls != 0 {
-		t.Fatalf("replacement overlapped old run with %d new runs", calls)
-	}
-
-	oldRun.unblock(blockingCommandFailure("canceled-old-definition-failure"))
-	newRun := waitForFactoryRun(t, ctx, newFactory, 0)
-	assertExactFactoryInputs(t, newFactory.creationInputs()[0], replacement, network)
-	newRun.unblock(nil)
-}
-
 func TestShutdownWaitsForRunCleanupAndRejectsNewMessages(t *testing.T) {
 	factory := &controlledFactory{holdCancellation: true}
 	session := newTestSession(t, factory, MaintainAuthentication)
@@ -395,12 +346,6 @@ func TestShutdownWaitsForRunCleanupAndRejectsNewMessages(t *testing.T) {
 		{name: "activate", call: func() error { _, err := session.Activate(ctx); return err }},
 		{name: "suspend", call: func() error { _, err := session.Suspend(ctx); return err }},
 		{name: "restart", call: func() error { _, err := session.Restart(ctx); return err }},
-		{name: "replace", call: func() error {
-			invalid := replacementRuntimeDefinition(t, &controlledFactory{})
-			invalid.Configuration.AuthenticationSessionID = ""
-			_, err := session.ReplaceRuntimeDefinition(ctx, invalid)
-			return err
-		}},
 		{name: "shutdown", call: func() error { return session.Shutdown(ctx) }},
 	}
 	for _, test := range closedCalls {
@@ -646,66 +591,6 @@ func TestCanceledRunDoesNotOverwriteLastAuthenticationFailure(t *testing.T) {
 	}
 }
 
-func assertReplacementValidationPrecedesEnqueue(t *testing.T) {
-	t.Helper()
-	session, err := NewAuthenticationSession(validRuntimeDefinition(t), MaintainAuthentication, testDependencies(nil))
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	invalid := validRuntimeDefinition(t)
-	invalid.Configuration.AuthenticationSessionID = ""
-
-	callContext, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	result := make(chan error, 1)
-	go func() {
-		_, err := session.ReplaceRuntimeDefinition(callContext, invalid)
-		result <- err
-	}()
-	deadline := testContext(t)
-	for {
-		select {
-		case err := <-result:
-			if err == nil || err.Error() != "authentication session ID is required" {
-				t.Fatalf("invalid replacement error = %v", err)
-			}
-			if messages := len(session.inbox); messages != 0 {
-				t.Fatalf("invalid replacement enqueued %d messages", messages)
-			}
-			return
-		case <-deadline.Done():
-			cancel()
-			t.Fatal(deadline.Err())
-		default:
-			if messages := len(session.inbox); messages != 0 {
-				cancel()
-				<-result
-				t.Fatalf("invalid replacement enqueued %d messages", messages)
-			}
-		}
-	}
-}
-
-func replacementRuntimeDefinition(t *testing.T, factory *controlledFactory) RuntimeDefinition {
-	t.Helper()
-	replacement := validRuntimeDefinition(t)
-	replacement.Configuration.AuthenticationSessionID = "session-2"
-	replacement.Configuration.DisplayName = "Replacement network"
-	replacement.Configuration.InstitutionProfileID = "profile-2"
-	replacement.Configuration.ProtocolContextOverride = []byte(`{"network":"replacement"}`)
-	replacement.AuthenticationCredential.Username = "replacement-account"
-	replacement.AuthenticationCredential.Password = "replacement-secret"
-	replacement.InstitutionProfile.InstitutionProfileID = "profile-2"
-	replacement.InstitutionProfile.DisplayName = "Replacement institution"
-	replacement.InstitutionProfile.InstitutionProtocolConfiguration = []byte(`{"realm":"replacement"}`)
-	replacement.AuthenticationProtocolFactory = factory
-	replacement.SystemHostInformation.HostName = "replacement-host"
-	replacement.SystemHostInformation.OperatingSystemFamily = "replacement-os"
-	replacement.SystemHostInformation.OperatingSystemRelease = "replacement-release"
-	replacement.SystemHostInformation.MachineArchitecture = "replacement-architecture"
-	return replacement
-}
-
 func blockingCommandFailure(code protocol.AuthenticationProtocolFailureCode) *protocol.AuthenticationProtocolRunFailure {
 	return &protocol.AuthenticationProtocolRunFailure{
 		Code:                   code,
@@ -759,12 +644,6 @@ func closedSessionCalls(t *testing.T, ctx context.Context, session *Authenticati
 		{name: "activate", call: func() error { _, err := session.Activate(ctx); return err }},
 		{name: "suspend", call: func() error { _, err := session.Suspend(ctx); return err }},
 		{name: "restart", call: func() error { _, err := session.Restart(ctx); return err }},
-		{name: "replace", call: func() error {
-			invalid := replacementRuntimeDefinition(t, &controlledFactory{})
-			invalid.Configuration.AuthenticationSessionID = ""
-			_, err := session.ReplaceRuntimeDefinition(ctx, invalid)
-			return err
-		}},
 		{name: "shutdown", call: func() error { return session.Shutdown(ctx) }},
 	}
 }

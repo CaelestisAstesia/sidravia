@@ -80,14 +80,3 @@ func (definition RuntimeDefinition) Clone() RuntimeDefinition {
 	)
 	return cloned
 }
-
-func cloneProtocolContextOverride(
-	override protocol.AuthenticationProtocolContextOverride,
-) protocol.AuthenticationProtocolContextOverride {
-	if override == nil {
-		return nil
-	}
-	cloned := make(protocol.AuthenticationProtocolContextOverride, len(override))
-	copy(cloned, override)
-	return cloned
-}

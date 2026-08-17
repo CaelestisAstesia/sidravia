@@ -439,71 +439,6 @@ func TestSessionSnapshotsAndRuntimeDefinitionAreCloned(t *testing.T) {
 	}
 }
 
-func TestSessionClonesRuntimeDefinitionBeforeReplaceIsEnqueued(t *testing.T) {
-	baseFactory := &controlledFactory{holdCancellation: true}
-	factory := newBlockingCreationFactory(baseFactory)
-	definition := validRuntimeDefinition(t)
-	definition.AuthenticationProtocolFactory = factory
-	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	session.Start()
-	ctx := testContext(t)
-	defer shutdownTestSession(t, session)
-
-	applyDone := make(chan error, 1)
-	go func() {
-		_, err := session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
-		applyDone <- err
-	}()
-	select {
-	case <-factory.creationEntered:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	replacement := validRuntimeDefinition(t)
-	replacement.AuthenticationProtocolFactory = factory
-	replacement.Configuration.ProtocolContextOverride = []byte(`{"network":"queued1"}`)
-	replaceCtx, cancelReplace := context.WithCancel(context.Background())
-	replaceDone := make(chan error, 1)
-	go func() {
-		_, err := session.ReplaceRuntimeDefinition(replaceCtx, replacement)
-		replaceDone <- err
-	}()
-	waitForInboxMessage(t, ctx, session)
-	cancelReplace()
-	select {
-	case err := <-replaceDone:
-		if err == nil {
-			t.Fatal("replaceRuntimeDefinition() returned nil after caller cancellation")
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	copy(replacement.Configuration.ProtocolContextOverride, []byte(`{"network":"mutated"}`))
-	close(factory.releaseCreation)
-	select {
-	case err := <-applyDone:
-		if err != nil {
-			t.Fatalf("applySystemNetworkSnapshot() error = %v", err)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	first := baseFactory.run(0)
-	if cause := first.waitForCancellation(ctx); cause == nil {
-		t.Fatal("first run was not cancelled by replacement")
-	}
-	first.unblock(nil)
-	second := waitForFactoryRun(t, ctx, baseFactory, 1)
-	defer second.unblock(nil)
-	if got := string(baseFactory.creationInputs()[1].ProtocolContextOverride); got != `{"network":"queued1"}` {
-		t.Fatalf("replacement runtime definition was mutated after enqueue: %q", got)
-	}
-	second.unblock(nil)
-}
-
 func TestSessionRevisionEventsCoalesce(t *testing.T) {
 	factory := &controlledFactory{}
 	session := newTestSession(t, factory, MaintainAuthentication)
@@ -630,17 +565,6 @@ func TestStoppingCannotBeOverwrittenByInputsOrCallbacks(t *testing.T) {
 	session.post(authenticationEstablishedEvent{generation: 1})
 	if got := sessionSnapshot(t, ctx, session); got.State != Stopping || got.Revision < stopping.Revision {
 		t.Fatalf("callback overwrote stopping: %#v", got)
-	}
-
-	replacement := validRuntimeDefinition(t)
-	replacement.AuthenticationProtocolFactory = factory
-	replacement.Configuration.AuthenticationSessionID = stopping.AuthenticationSessionID
-	got, err := session.replaceRuntimeDefinitionForSupervisor(ctx, replacement)
-	if err != nil || got.State != Stopping || got.Intent != SuspendAuthentication {
-		t.Fatalf("replacement while stopping = (%#v, %v)", got, err)
-	}
-	if calls := len(factory.creationInputs()); calls != 1 {
-		t.Fatalf("stopping inputs created %d runs, want 1", calls)
 	}
 
 	run.unblock(nil)

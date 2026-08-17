@@ -67,13 +67,12 @@ type Dependencies struct {
 }
 
 type AuthenticationSession struct {
-	definition                 RuntimeDefinition
-	runtimeDefinitionAvailable bool
-	now                        func() time.Time
-	retryPolicy                RetryPolicy
-	retryScheduler             RetryScheduler
-	diagnostics                Diagnostics
-	protocolDiagnostics        protocol.AuthenticationProtocolDiagnostics
+	definition          RuntimeDefinition
+	now                 func() time.Time
+	retryPolicy         RetryPolicy
+	retryScheduler      RetryScheduler
+	diagnostics         Diagnostics
+	protocolDiagnostics protocol.AuthenticationProtocolDiagnostics
 
 	inbox        chan sessionMessage
 	privateInbox chan sessionMessage
@@ -132,46 +131,6 @@ func NewAuthenticationSessionWithInitialRevision(
 	definition = definition.Clone()
 	return initializeAuthenticationSession(
 		definition,
-		true,
-		unresolvedRuntimeDefinition{},
-		initialIntent,
-		initialRevision,
-		dependencies,
-	)
-}
-
-type unresolvedRuntimeDefinition struct {
-	Configuration            Configuration
-	ProfileDisplayName       string
-	AuthenticationProtocolID protocol.AuthenticationProtocolID
-	AccountName              string
-}
-
-func (definition unresolvedRuntimeDefinition) Clone() unresolvedRuntimeDefinition {
-	cloned := definition
-	cloned.Configuration.ProtocolContextOverride = cloneProtocolContextOverride(
-		definition.Configuration.ProtocolContextOverride,
-	)
-	return cloned
-}
-
-func newUnresolvedAuthenticationSession(
-	definition unresolvedRuntimeDefinition,
-	initialIntent Intent,
-	initialRevision uint64,
-	dependencies Dependencies,
-) (*AuthenticationSession, error) {
-	definition = definition.Clone()
-	if definition.Configuration.AuthenticationSessionID == "" {
-		return nil, errors.New("authentication session ID is required")
-	}
-	if initialRevision == 0 {
-		return nil, errors.New("authentication session revision is required")
-	}
-	return initializeAuthenticationSession(
-		RuntimeDefinition{},
-		false,
-		definition,
 		initialIntent,
 		initialRevision,
 		dependencies,
@@ -180,8 +139,6 @@ func newUnresolvedAuthenticationSession(
 
 func initializeAuthenticationSession(
 	definition RuntimeDefinition,
-	runtimeDefinitionAvailable bool,
-	unresolved unresolvedRuntimeDefinition,
 	initialIntent Intent,
 	initialRevision uint64,
 	dependencies Dependencies,
@@ -206,15 +163,6 @@ func initializeAuthenticationSession(
 	accountName := definition.AccountName()
 	state := initialState(initialIntent)
 	stateReason := initialStateReason(initialIntent)
-	if !runtimeDefinitionAvailable {
-		configuration = unresolved.Configuration
-		profileID = unresolved.Configuration.InstitutionProfileID
-		profileDisplayName = unresolved.ProfileDisplayName
-		protocolID = unresolved.AuthenticationProtocolID
-		accountName = unresolved.AccountName
-		state = BlockedByError
-		stateReason = runtimeDefinitionUnavailableReason()
-	}
 	diagnostics := dependencies.Diagnostics
 	if diagnostics == nil {
 		diagnostics = NoopDiagnostics{}
@@ -226,19 +174,18 @@ func initializeAuthenticationSession(
 	admission := make(chan struct{}, 1)
 	admission <- struct{}{}
 	session := &AuthenticationSession{
-		definition:                 definition,
-		runtimeDefinitionAvailable: runtimeDefinitionAvailable,
-		now:                        now,
-		retryPolicy:                dependencies.RetryPolicy,
-		retryScheduler:             dependencies.RetryScheduler,
-		diagnostics:                diagnostics,
-		protocolDiagnostics:        protocolDiagnostics,
-		inbox:                      make(chan sessionMessage, 32),
-		privateInbox:               make(chan sessionMessage, 1),
-		done:                       make(chan struct{}),
-		revisions:                  make(chan RevisionEvent, 1),
-		admission:                  admission,
-		selector:                   newAutomaticBindingSelector(),
+		definition:          definition,
+		now:                 now,
+		retryPolicy:         dependencies.RetryPolicy,
+		retryScheduler:      dependencies.RetryScheduler,
+		diagnostics:         diagnostics,
+		protocolDiagnostics: protocolDiagnostics,
+		inbox:               make(chan sessionMessage, 32),
+		privateInbox:        make(chan sessionMessage, 1),
+		done:                make(chan struct{}),
+		revisions:           make(chan RevisionEvent, 1),
+		admission:           admission,
+		selector:            newAutomaticBindingSelector(),
 		currentSnapshot: Snapshot{
 			AuthenticationSessionID:  configuration.AuthenticationSessionID,
 			ConfigurationID:          configuration.ConfigurationID,
@@ -255,13 +202,6 @@ func initializeAuthenticationSession(
 		},
 	}
 	return session, nil
-}
-
-func runtimeDefinitionUnavailableReason() *StateReason {
-	return &StateReason{
-		Code:        StateReasonCodeRuntimeDefinitionUnavailable,
-		Description: "Authentication session configuration is unavailable.",
-	}
 }
 
 func initialState(intent Intent) State {
@@ -326,56 +266,6 @@ func (session *AuthenticationSession) Restart(ctx context.Context) (Snapshot, er
 	return receiveSnapshotReply(ctx, session.done, reply)
 }
 
-func (session *AuthenticationSession) ReplaceRuntimeDefinition(ctx context.Context, definition RuntimeDefinition) (Snapshot, error) {
-	if session.closed.Load() {
-		return Snapshot{}, ErrAuthenticationSessionClosed
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	definition = definition.Clone()
-	if err := definition.Validate(); err != nil {
-		return Snapshot{}, err
-	}
-	return session.replaceRuntimeDefinitionWithMessage(ctx, runtimeDefinitionReplacement{definition: &definition})
-}
-
-func (session *AuthenticationSession) replaceRuntimeDefinitionForSupervisor(ctx context.Context, definition RuntimeDefinition) (Snapshot, error) {
-	if session.closed.Load() {
-		return Snapshot{}, ErrAuthenticationSessionClosed
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	definition = definition.Clone()
-	if err := definition.Validate(); err != nil {
-		return Snapshot{}, err
-	}
-	return session.replaceRuntimeDefinitionWithMessage(ctx, runtimeDefinitionReplacement{definition: &definition, preserveSessionID: true})
-}
-
-func (session *AuthenticationSession) replaceUnresolvedRuntimeDefinition(ctx context.Context, definition unresolvedRuntimeDefinition) (Snapshot, error) {
-	if session.closed.Load() {
-		return Snapshot{}, ErrAuthenticationSessionClosed
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	definition = definition.Clone()
-	if definition.Configuration.AuthenticationSessionID == "" {
-		return Snapshot{}, errors.New("authentication session ID is required")
-	}
-	return session.replaceRuntimeDefinitionWithMessage(ctx, runtimeDefinitionReplacement{unresolved: &definition, preserveSessionID: true})
-}
-
-func (session *AuthenticationSession) replaceRuntimeDefinitionWithMessage(ctx context.Context, replacement runtimeDefinitionReplacement) (Snapshot, error) {
-	reply := make(chan snapshotReply, 1)
-	if err := session.send(ctx, replaceRuntimeDefinitionCommand{replacement: replacement.clone(), reply: reply}); err != nil {
-		return Snapshot{}, err
-	}
-	return receiveSnapshotReply(ctx, session.done, reply)
-}
-
 func (session *AuthenticationSession) Shutdown(ctx context.Context) error {
 	reply := make(chan error, 1)
 	if err := session.beginShutdown(ctx, shutdownCommand{reply: reply}); err != nil {
@@ -429,28 +319,6 @@ func (session *AuthenticationSession) run() {
 			session.diagnostics.SessionCommand("restart")
 			session.handleRestart()
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
-		case replaceRuntimeDefinitionCommand:
-			session.diagnostics.SessionCommand("replace_runtime_definition")
-			if !message.replacement.valid() {
-				message.reply <- snapshotReply{err: errors.New("runtime definition replacement is invalid")}
-				continue
-			}
-			var replacementSessionID AuthenticationSessionID
-			if message.replacement.definition != nil {
-				replacementSessionID = message.replacement.definition.Configuration.AuthenticationSessionID
-			} else {
-				replacementSessionID = message.replacement.unresolved.Configuration.AuthenticationSessionID
-			}
-			if message.replacement.preserveSessionID && replacementSessionID != session.currentSnapshot.AuthenticationSessionID {
-				message.reply <- snapshotReply{err: errors.New("authentication session ID cannot be replaced")}
-				continue
-			}
-			if message.replacement.definition != nil {
-				session.handleReplaceRuntimeDefinition(*message.replacement.definition)
-			} else {
-				session.handleReplaceUnresolvedRuntimeDefinition(*message.replacement.unresolved)
-			}
-			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case shutdownCommand:
 			session.diagnostics.SessionCommand("shutdown")
 			session.handleShutdown(message.reply)
@@ -491,10 +359,6 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 			if snapshot.State == Stopping {
 				return
 			}
-			if !session.runtimeDefinitionAvailable {
-				forceRuntimeDefinitionUnavailable(snapshot)
-				return
-			}
 			if snapshot.Intent == MaintainAuthentication {
 				snapshot.State = WaitingForNetwork
 				snapshot.StateReason = &StateReason{Code: StateReasonCodeNetworkUnavailable, Description: "No usable network is available."}
@@ -516,19 +380,12 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 		if snapshot.State == Stopping {
 			return
 		}
-		if !session.runtimeDefinitionAvailable {
-			forceRuntimeDefinitionUnavailable(snapshot)
-			return
-		}
 		if changed && snapshot.Intent == MaintainAuthentication && session.active != nil && session.active.established {
 			snapshot.State = Authenticating
 			snapshot.StateReason = nil
 			snapshot.AuthenticationEstablishedAt = nil
 		}
 	})
-	if !session.runtimeDefinitionAvailable {
-		return
-	}
 	if session.active != nil {
 		if changed {
 			session.cancelActive(protocol.TerminateWithoutLogout)
@@ -552,10 +409,6 @@ func (session *AuthenticationSession) handleActivate() {
 		return
 	}
 	session.updateSnapshot(func(snapshot *Snapshot) { snapshot.Intent = MaintainAuthentication })
-	if !session.runtimeDefinitionAvailable {
-		session.updateSnapshot(forceRuntimeDefinitionUnavailable)
-		return
-	}
 	if !session.hasDesiredBinding {
 		session.updateSnapshot(func(snapshot *Snapshot) {
 			snapshot.State = WaitingForNetwork
@@ -595,13 +448,6 @@ func (session *AuthenticationSession) handleRestart() {
 	}
 	session.resetRetryState()
 	session.automaticReconnectBlocked = false
-	if !session.runtimeDefinitionAvailable {
-		session.updateSnapshot(func(snapshot *Snapshot) {
-			snapshot.Intent = MaintainAuthentication
-			forceRuntimeDefinitionUnavailable(snapshot)
-		})
-		return
-	}
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.Intent = MaintainAuthentication
 		snapshot.AuthenticationEstablishedAt = nil
@@ -619,77 +465,6 @@ func (session *AuthenticationSession) handleRestart() {
 		return
 	}
 	session.startRunIfNeeded()
-}
-
-func (session *AuthenticationSession) handleReplaceRuntimeDefinition(definition RuntimeDefinition) {
-	session.resetRetryState()
-	hadActiveRun := session.active != nil
-	wasStopping := session.currentSnapshot.State == Stopping
-	session.definition = definition.Clone()
-	session.runtimeDefinitionAvailable = true
-	session.updateSnapshot(func(snapshot *Snapshot) {
-		snapshot.AuthenticationSessionID = definition.Configuration.AuthenticationSessionID
-		snapshot.ConfigurationID = definition.Configuration.ConfigurationID
-		snapshot.DisplayName = definition.Configuration.DisplayName
-		snapshot.InstitutionProfileID = definition.InstitutionProfile.InstitutionProfileID
-		snapshot.InstitutionDisplayName = definition.InstitutionProfile.DisplayName
-		snapshot.AuthenticationProtocolID = definition.InstitutionProfile.AuthenticationProtocolID
-		snapshot.AccountName = definition.AccountName()
-		snapshot.AuthenticationEstablishedAt = nil
-		snapshot.NextRetryAt = nil
-		switch {
-		case wasStopping:
-			snapshot.State = Stopping
-			snapshot.StateReason = nil
-		case snapshot.Intent == SuspendAuthentication:
-			snapshot.State = Suspended
-			snapshot.StateReason = nil
-		case hadActiveRun:
-			snapshot.State = Authenticating
-			snapshot.StateReason = nil
-		case !session.hasDesiredBinding:
-			snapshot.State = WaitingForNetwork
-			snapshot.StateReason = &StateReason{Code: StateReasonCodeNetworkUnavailable, Description: "No usable network is available."}
-		}
-	})
-	if session.active != nil {
-		session.cancelActive(protocol.TerminateWithBestEffortLogout)
-		return
-	}
-	session.startRunForRelevantInputChangeIfNeeded()
-}
-
-func (session *AuthenticationSession) handleReplaceUnresolvedRuntimeDefinition(definition unresolvedRuntimeDefinition) {
-	session.resetRetryState()
-	wasStopping := session.currentSnapshot.State == Stopping
-	session.runtimeDefinitionAvailable = false
-	session.definition = RuntimeDefinition{}
-	definition = definition.Clone()
-	session.updateSnapshot(func(snapshot *Snapshot) {
-		snapshot.ConfigurationID = definition.Configuration.ConfigurationID
-		snapshot.DisplayName = definition.Configuration.DisplayName
-		snapshot.InstitutionProfileID = definition.Configuration.InstitutionProfileID
-		snapshot.InstitutionDisplayName = definition.ProfileDisplayName
-		snapshot.AuthenticationProtocolID = definition.AuthenticationProtocolID
-		snapshot.AccountName = definition.AccountName
-		snapshot.LastAuthenticationFailure = nil
-		if wasStopping {
-			snapshot.State = Stopping
-			snapshot.StateReason = nil
-			snapshot.AuthenticationEstablishedAt = nil
-			snapshot.NextRetryAt = nil
-			return
-		}
-		forceRuntimeDefinitionUnavailable(snapshot)
-	})
-	session.cancelActive(protocol.TerminateWithBestEffortLogout)
-}
-
-func forceRuntimeDefinitionUnavailable(snapshot *Snapshot) {
-	snapshot.State = BlockedByError
-	snapshot.StateReason = runtimeDefinitionUnavailableReason()
-	snapshot.AuthenticationEstablishedAt = nil
-	snapshot.NextRetryAt = nil
 }
 
 func (session *AuthenticationSession) handleShutdown(reply chan error) {
@@ -1027,7 +802,7 @@ func (session *AuthenticationSession) startRunAfterRetryDelayIfNeeded() {
 }
 
 func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
-	if !session.runtimeDefinitionAvailable || session.shuttingDown || session.active != nil || session.currentSnapshot.Intent != MaintainAuthentication || !session.hasDesiredBinding || session.automaticReconnectBlocked {
+	if session.shuttingDown || session.active != nil || session.currentSnapshot.Intent != MaintainAuthentication || !session.hasDesiredBinding || session.automaticReconnectBlocked {
 		return
 	}
 	if !allowRecoveryState && (session.currentSnapshot.State == BlockedByError || session.currentSnapshot.State == WaitingBeforeRetry) {

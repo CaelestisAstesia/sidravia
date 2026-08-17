@@ -23,52 +23,6 @@ type activateCommand struct{ reply chan snapshotReply }
 type suspendCommand struct{ reply chan snapshotReply }
 type restartCommand struct{ reply chan snapshotReply }
 
-type replaceRuntimeDefinitionCommand struct {
-	replacement runtimeDefinitionReplacement
-	reply       chan snapshotReply
-}
-
-type runtimeDefinitionReplacement struct {
-	definition        *RuntimeDefinition
-	unresolved        *unresolvedRuntimeDefinition
-	preserveSessionID bool
-}
-
-func (replacement runtimeDefinitionReplacement) clone() runtimeDefinitionReplacement {
-	cloned := runtimeDefinitionReplacement{}
-	cloned.preserveSessionID = replacement.preserveSessionID
-	if replacement.definition != nil {
-		definition := replacement.definition.Clone()
-		definition.Configuration.ProtocolContextOverride = cloneProtocolContextOverride(
-			replacement.definition.Configuration.ProtocolContextOverride,
-		)
-		definition.InstitutionProfile.InstitutionProtocolConfiguration = cloneInstitutionProtocolConfiguration(
-			replacement.definition.InstitutionProfile.InstitutionProtocolConfiguration,
-		)
-		cloned.definition = &definition
-	}
-	if replacement.unresolved != nil {
-		unresolved := replacement.unresolved.Clone()
-		cloned.unresolved = &unresolved
-	}
-	return cloned
-}
-
-func cloneInstitutionProtocolConfiguration(
-	configuration protocol.InstitutionProtocolConfiguration,
-) protocol.InstitutionProtocolConfiguration {
-	if configuration == nil {
-		return nil
-	}
-	cloned := make(protocol.InstitutionProtocolConfiguration, len(configuration))
-	copy(cloned, configuration)
-	return cloned
-}
-
-func (replacement runtimeDefinitionReplacement) valid() bool {
-	return (replacement.definition == nil) != (replacement.unresolved == nil)
-}
-
 type shutdownCommand struct {
 	reply chan error
 }
@@ -90,7 +44,6 @@ func (systemNetworkSnapshotCommand) isSessionMessage()           {}
 func (activateCommand) isSessionMessage()                        {}
 func (suspendCommand) isSessionMessage()                         {}
 func (restartCommand) isSessionMessage()                         {}
-func (replaceRuntimeDefinitionCommand) isSessionMessage()        {}
 func (shutdownCommand) isSessionMessage()                        {}
 func (snapshotQuery) isSessionMessage()                          {}
 func (authenticationEstablishedEvent) isSessionMessage()         {}
