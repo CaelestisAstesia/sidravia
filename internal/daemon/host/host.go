@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"sidravia/internal/productlayout"
 )
 
 // Config holds the parameters needed to start the daemon host.
@@ -14,10 +17,23 @@ type Config struct {
 	ProductVersion                     string
 	BuildID                            string
 	Token                              string
+	Namespace                          productlayout.Namespace
 	RuntimeInfoPath                    string
 	Handler                            http.Handler
 	AllowUnsupportedProtectionFallback bool
 	OnUnprotected                      func()
+}
+
+// daemonMutexName returns the Windows singleton name for one user and one
+// validated runtime namespace. The production namespace deliberately keeps
+// the historical byte-exact name; isolated namespaces use a case-folded,
+// deterministic suffix so Windows aliases share ownership.
+func daemonMutexName(sid string, namespace productlayout.Namespace) string {
+	name := "Local\\Sidravia-" + sid
+	if value := namespace.String(); value != "" {
+		name += "-ns-" + strings.ToLower(value)
+	}
+	return name
 }
 
 // GenerateToken creates a random 64-character lowercase hex token.

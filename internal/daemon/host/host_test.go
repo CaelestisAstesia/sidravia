@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"sidravia/internal/productlayout"
 )
 
 func TestShutdownHTTPServerInvokesShutdownOnce(t *testing.T) {
@@ -22,6 +24,41 @@ func TestShutdownHTTPServerInvokesShutdownOnce(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("shutdown function called %d times, want 1", count)
+	}
+}
+
+func TestDaemonMutexNamePreservesProductionCompatibility(t *testing.T) {
+	production, err := productlayout.NewNamespace("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := daemonMutexName("S-1-5-21", production); got != "Local\\Sidravia-S-1-5-21" {
+		t.Fatalf("production mutex name = %q", got)
+	}
+}
+
+func TestDaemonMutexNameIsNamespaceOwnedAndCaseFolded(t *testing.T) {
+	alpha, err := productlayout.NewNamespace("Alpha_01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias, err := productlayout.NewNamespace("aLPha_01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := productlayout.NewNamespace("beta_01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := daemonMutexName("S-1-5-21", alpha)
+	if got := daemonMutexName("S-1-5-21", alpha); got != a {
+		t.Fatalf("same namespace is not deterministic: %q vs %q", got, a)
+	}
+	if got := daemonMutexName("S-1-5-21", alias); got != a {
+		t.Fatalf("case alias mutex = %q, want %q", got, a)
+	}
+	if got := daemonMutexName("S-1-5-21", beta); got == a {
+		t.Fatalf("different namespace shares mutex %q", got)
 	}
 }
 

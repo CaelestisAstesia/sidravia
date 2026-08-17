@@ -19,6 +19,19 @@ constexpr UINT_PTR kExitFallbackTimerId = 1;
 constexpr UINT kExitFallbackMilliseconds = 6000;
 constexpr const wchar_t kSingleInstanceMutexName[] =
     L"Local\\Sidravia.Gui.DesktopPresence";
+constexpr const wchar_t kActivationMessageName[] = L"Sidravia.Gui.Activate";
+
+std::wstring NamespaceScopedName(const wchar_t* production_name,
+                                 const std::string& namespace_name) {
+  if (namespace_name.empty()) return production_name;
+  std::wstring folded;
+  folded.reserve(namespace_name.size());
+  for (const unsigned char value : namespace_name) {
+    folded.push_back(static_cast<wchar_t>(
+        value >= 'A' && value <= 'Z' ? value + ('a' - 'A') : value));
+  }
+  return std::wstring(production_name) + L"-ns-" + folded;
+}
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -73,7 +86,14 @@ bool FlutterWindow::OnCreate() {
   desktop_channel_->SetMethodCallHandler(
       [this](const auto& call, auto result) {
         if (call.method_name() == "initialize") {
-          const std::string disposition = InitializeDesktopPresence();
+          const auto* namespace_value =
+              std::get_if<std::string>(call.arguments());
+          if (namespace_value == nullptr) {
+            result->Error("invalid_namespace", "Invalid runtime namespace.");
+            return;
+          }
+          const std::string disposition =
+              InitializeDesktopPresence(*namespace_value);
           if (disposition == "failed") {
             result->Error("desktop_presence_unavailable",
                           "Desktop presence is unavailable.");
@@ -111,8 +131,6 @@ bool FlutterWindow::OnCreate() {
         result->NotImplemented();
       });
 
-  activation_message_ =
-      ::RegisterWindowMessageW(L"Sidravia.Gui.Activate");
   taskbar_created_message_ = ::RegisterWindowMessageW(L"TaskbarCreated");
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
@@ -161,16 +179,23 @@ bool FlutterWindow::CreateTrayIcon() {
   return true;
 }
 
-std::string FlutterWindow::InitializeDesktopPresence() {
+std::string FlutterWindow::InitializeDesktopPresence(
+    const std::string& namespace_name) {
   if (desktop_presence_initialized_) return "primary";
+  single_instance_mutex_name_ =
+      NamespaceScopedName(kSingleInstanceMutexName, namespace_name);
+  activation_message_name_ =
+      NamespaceScopedName(kActivationMessageName, namespace_name);
+  activation_message_ =
+      ::RegisterWindowMessageW(activation_message_name_.c_str());
+  if (activation_message_ == 0) return "failed";
   single_instance_mutex_ =
-      ::CreateMutexW(nullptr, TRUE, kSingleInstanceMutexName);
+      ::CreateMutexW(nullptr, TRUE, single_instance_mutex_name_.c_str());
   if (single_instance_mutex_ == nullptr) return "failed";
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
     ::CloseHandle(single_instance_mutex_);
     single_instance_mutex_ = nullptr;
-    const UINT activate = ::RegisterWindowMessageW(L"Sidravia.Gui.Activate");
-    ::PostMessageW(HWND_BROADCAST, activate, 0, 0);
+    ::PostMessageW(HWND_BROADCAST, activation_message_, 0, 0);
     return "activatedExisting";
   }
   if (!CreateTrayIcon()) {

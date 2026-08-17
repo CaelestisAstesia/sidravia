@@ -41,6 +41,16 @@ void main() {
     expect(main, isNot(contains('CreateMutexW')));
     expect(flutterWindow, contains('call.method_name() == "initialize"'));
     expect(flutterWindow, contains('CreateMutexW'));
+    expect(flutterWindow, contains('kSingleInstanceMutexName'));
+    expect(flutterWindow, contains('kActivationMessageName'));
+    expect(flutterWindow, contains('NamespaceScopedName'));
+    expect(flutterWindow, contains('value >= \'A\' && value <= \'Z\''));
+    expect(
+      flutterWindow,
+      contains('InitializeDesktopPresence(*namespace_value)'),
+    );
+    expect(flutterWindow, contains('activation_message_name_'));
+    expect(flutterWindow, contains('single_instance_mutex_name_'));
     expect(flutterWindow, contains('ERROR_ALREADY_EXISTS'));
     expect(flutterWindow, contains('HWND_BROADCAST'));
     expect(flutterWindow, isNot(contains('FindWindowW')));

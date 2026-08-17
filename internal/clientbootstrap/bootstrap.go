@@ -143,12 +143,16 @@ func defaultDependencies() dependencies {
 func Probe(identity Identity) (ProbeResult, error) { return probe(identity, defaultDependencies()) }
 
 func probe(identity Identity, deps dependencies) (ProbeResult, error) {
-	if err := identity.validate(); err != nil {
-		return ProbeResult{}, err
-	}
 	ns, err := deps.namespace()
 	if err != nil {
 		return ProbeResult{}, wrapSafeOperation("运行命名空间", err)
+	}
+	return probeWithNamespace(identity, ns, deps)
+}
+
+func probeWithNamespace(identity Identity, ns productlayout.Namespace, deps dependencies) (ProbeResult, error) {
+	if err := identity.validate(); err != nil {
+		return ProbeResult{}, err
 	}
 	path, err := deps.runtimeInfoPath(ns)
 	if err != nil {
@@ -184,7 +188,11 @@ func ConnectExistingHeadless(ctx context.Context, identity Identity) (Client, er
 }
 
 func connectExistingHeadless(ctx context.Context, identity Identity, deps dependencies) (Client, error) {
-	result, err := probe(identity, deps)
+	ns, err := deps.namespace()
+	if err != nil {
+		return nil, wrapSafeOperation("运行命名空间", err)
+	}
+	result, err := probeWithNamespace(identity, ns, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -292,11 +300,12 @@ func generationReachable(identity Identity, deps dependencies, info contract.Run
 // headless launch and fixed readiness polling. It does not remove runtime info.
 func EnsureHeadless(identity Identity, logLevel string) (StartOutcome, error) {
 	deps := defaultDependencies()
-	options, err := headlessOptionsWithNamespace(deps)
+	ns, err := deps.namespace()
 	if err != nil {
-		return "", err
+		return "", wrapSafeOperation("运行命名空间", err)
 	}
-	return ensure(identity, options, logLevel, deps)
+	options := headlessOptions(ns)
+	return ensureWithNamespace(identity, options, logLevel, ns, deps)
 }
 
 func headlessOptionsWithNamespace(deps dependencies) (launchcontract.Options, error) {
@@ -304,14 +313,26 @@ func headlessOptionsWithNamespace(deps dependencies) (launchcontract.Options, er
 	if err != nil {
 		return launchcontract.Options{}, wrapSafeOperation("运行命名空间", err)
 	}
-	return launchcontract.Options{Mode: launchcontract.ModeHeadless, Namespace: ns.String()}, nil
+	return headlessOptions(ns), nil
+}
+
+func headlessOptions(ns productlayout.Namespace) launchcontract.Options {
+	return launchcontract.Options{Mode: launchcontract.ModeHeadless, Namespace: ns.String()}
 }
 
 func ensure(identity Identity, options launchcontract.Options, logLevel string, deps dependencies) (StartOutcome, error) {
+	ns, err := deps.namespace()
+	if err != nil {
+		return "", wrapSafeOperation("运行命名空间", err)
+	}
+	return ensureWithNamespace(identity, options, logLevel, ns, deps)
+}
+
+func ensureWithNamespace(identity Identity, options launchcontract.Options, logLevel string, ns productlayout.Namespace, deps dependencies) (StartOutcome, error) {
 	if err := options.Validate(); err != nil {
 		return "", err
 	}
-	result, err := probe(identity, deps)
+	result, err := probeWithNamespace(identity, ns, deps)
 	if err != nil {
 		return "", err
 	}
@@ -335,7 +356,7 @@ func ensure(identity Identity, options launchcontract.Options, logLevel string, 
 		return "", wrapSafeOperation("启动 sidraviad", err)
 	}
 	if err := waitForReadiness(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
-		result, err := probe(identity, deps)
+		result, err := probeWithNamespace(identity, ns, deps)
 		if err != nil {
 			return false, err
 		}
@@ -352,11 +373,12 @@ func ensure(identity Identity, options launchcontract.Options, logLevel string, 
 // AcquireHeadless ensures a matching headless daemon and opens one direct IPC client.
 func AcquireHeadless(ctx context.Context, identity Identity, logLevel string) (Client, error) {
 	deps := defaultDependencies()
-	options, err := headlessOptionsWithNamespace(deps)
+	ns, err := deps.namespace()
 	if err != nil {
-		return nil, err
+		return nil, wrapSafeOperation("运行命名空间", err)
 	}
-	return acquire(ctx, identity, options, logLevel, deps)
+	options := headlessOptions(ns)
+	return acquireWithNamespace(ctx, identity, options, logLevel, ns, deps)
 }
 
 // DesktopBootstrapResult is authoritative only after desktop readiness has
@@ -368,11 +390,23 @@ type DesktopBootstrapResult struct {
 
 func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, error) {
 	deps := defaultDependencies()
-	return bootstrapDesktopWithDependencies(identity, ownerPID, deps)
+	ns, err := deps.namespace()
+	if err != nil {
+		return DesktopBootstrapResult{}, wrapSafeOperation("运行命名空间", err)
+	}
+	return bootstrapDesktopWithNamespace(identity, ownerPID, ns, deps)
 }
 
 func bootstrapDesktopWithDependencies(identity Identity, ownerPID int, deps dependencies) (DesktopBootstrapResult, error) {
-	options, err := desktopOptionsWithNamespace(ownerPID, deps)
+	ns, err := deps.namespace()
+	if err != nil {
+		return DesktopBootstrapResult{}, wrapSafeOperation("运行命名空间", err)
+	}
+	return bootstrapDesktopWithNamespace(identity, ownerPID, ns, deps)
+}
+
+func bootstrapDesktopWithNamespace(identity Identity, ownerPID int, ns productlayout.Namespace, deps dependencies) (DesktopBootstrapResult, error) {
+	options, err := desktopOptions(ownerPID, ns)
 	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
@@ -387,6 +421,10 @@ func desktopOptionsWithNamespace(ownerPID int, deps dependencies) (launchcontrac
 	if err != nil {
 		return launchcontract.Options{}, wrapSafeOperation("运行命名空间", err)
 	}
+	return desktopOptions(ownerPID, ns)
+}
+
+func desktopOptions(ownerPID int, ns productlayout.Namespace) (launchcontract.Options, error) {
 	options, err := launchcontract.New(launchcontract.ModeDesktop, ownerPID, ns.String())
 	if err != nil {
 		return launchcontract.Options{}, err
@@ -395,10 +433,14 @@ func desktopOptionsWithNamespace(ownerPID int, deps dependencies) (launchcontrac
 }
 
 func bootstrapDesktop(identity Identity, options launchcontract.Options, deps dependencies) (DesktopBootstrapResult, error) {
-	if _, err := ensure(identity, options, "", deps); err != nil {
+	ns, err := productlayout.NewNamespace(options.Namespace)
+	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
-	result, err := probe(identity, deps)
+	if _, err := ensureWithNamespace(identity, options, "", ns, deps); err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	result, err := probeWithNamespace(identity, ns, deps)
 	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
@@ -417,10 +459,18 @@ func IsReadinessUnconfirmed(err error) bool {
 }
 
 func acquire(ctx context.Context, identity Identity, options launchcontract.Options, logLevel string, deps dependencies) (Client, error) {
-	if _, err := ensure(identity, options, logLevel, deps); err != nil {
+	ns, err := deps.namespace()
+	if err != nil {
+		return nil, wrapSafeOperation("运行命名空间", err)
+	}
+	return acquireWithNamespace(ctx, identity, options, logLevel, ns, deps)
+}
+
+func acquireWithNamespace(ctx context.Context, identity Identity, options launchcontract.Options, logLevel string, ns productlayout.Namespace, deps dependencies) (Client, error) {
+	if _, err := ensureWithNamespace(identity, options, logLevel, ns, deps); err != nil {
 		return nil, err
 	}
-	result, err := probe(identity, deps)
+	result, err := probeWithNamespace(identity, ns, deps)
 	if err != nil {
 		return nil, err
 	}

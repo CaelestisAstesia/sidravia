@@ -490,3 +490,101 @@ func TestEnsureColdLaunchPropagatesNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEnsureFreezesNamespaceAcrossLaunchAndReadiness(t *testing.T) {
+	ns, err := productlayout.NewNamespace("frozen-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := productlayout.NewNamespace("changed-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespaceCalls := 0
+	pathNamespaces := []productlayout.Namespace{}
+	launchedNamespace := ""
+	reachable := false
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		if !reachable {
+			return contract.RuntimeInfo{}, os.ErrNotExist
+		}
+		return runtime(1), nil
+	}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponse(t), nil
+		}}, nil
+	})
+	deps.namespace = func() (productlayout.Namespace, error) {
+		namespaceCalls++
+		if namespaceCalls == 1 {
+			return ns, nil
+		}
+		return other, nil
+	}
+	deps.runtimeInfoPath = func(got productlayout.Namespace) (string, error) {
+		pathNamespaces = append(pathNamespaces, got)
+		return "runtime", nil
+	}
+	deps.launch = func(options launchcontract.Options, _ string) (daemonLaunch, error) {
+		launchedNamespace = options.Namespace
+		reachable = true
+		return daemonLaunch{}, nil
+	}
+	if _, err := ensure(testIdentity(t), headlessOptions(ns), "", deps); err != nil {
+		t.Fatal(err)
+	}
+	if namespaceCalls != 1 {
+		t.Fatalf("namespace source calls = %d, want 1", namespaceCalls)
+	}
+	if launchedNamespace != ns.String() {
+		t.Fatalf("launched namespace = %q, want %q", launchedNamespace, ns.String())
+	}
+	if len(pathNamespaces) == 0 {
+		t.Fatal("runtime path was never resolved")
+	}
+	for _, got := range pathNamespaces {
+		if got != ns {
+			t.Fatalf("runtime path namespace = %q, want frozen %q", got.String(), ns.String())
+		}
+	}
+}
+
+func TestAcquireFreezesNamespaceForFinalConnection(t *testing.T) {
+	ns, err := productlayout.NewNamespace("acquire-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := productlayout.NewNamespace("acquire-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespaceCalls, reads, connects := 0, 0, 0
+	operation := &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, nil }}
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		reads++
+		return runtime(1), nil
+	}, func(_ context.Context, info contract.RuntimeInfo, _ Identity) (Client, error) {
+		connects++
+		if info.PID != 1 {
+			t.Fatalf("connected PID = %d, want 1", info.PID)
+		}
+		if connects <= 2 {
+			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
+		}
+		return operation, nil
+	})
+	deps.namespace = func() (productlayout.Namespace, error) {
+		namespaceCalls++
+		if namespaceCalls == 1 {
+			return ns, nil
+		}
+		return other, nil
+	}
+	got, err := acquire(context.Background(), testIdentity(t), headlessOptions(ns), "", deps)
+	if err != nil || got != operation {
+		t.Fatalf("client = %v error = %v", got, err)
+	}
+	if namespaceCalls != 1 || reads != 2 || connects != 3 {
+		t.Fatalf("namespace calls = %d, reads = %d, connects = %d", namespaceCalls, reads, connects)
+	}
+}

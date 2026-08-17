@@ -14,7 +14,10 @@ import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final desktop = DesktopPresence();
+  final rawNamespace = Platform.environment['SIDRAVIA_NAMESPACE'];
+  final namespace = validateDesktopNamespace(rawNamespace);
+  if (namespace == null) exit(2);
+  final desktop = DesktopPresence(namespace: namespace);
   final disposition = await desktop.initialize();
   if (disposition == DesktopPresenceDisposition.activatedExisting) {
     desktop.dispose();

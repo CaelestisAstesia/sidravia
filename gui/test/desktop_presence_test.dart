@@ -16,6 +16,7 @@ void main() {
 
       messenger.setMockMethodCallHandler(channel, (call) async {
         expect(call.method, 'initialize');
+        expect(call.arguments, '');
         return 'activatedExisting';
       });
       final presence = DesktopPresence(channel: channel);
@@ -30,6 +31,46 @@ void main() {
       expect(await presence.initialize(), DesktopPresenceDisposition.primary);
     },
   );
+
+  test('validates production, accepted and rejected runtime namespaces', () {
+    expect(validateDesktopNamespace(null), '');
+    expect(validateDesktopNamespace(''), '');
+    expect(validateDesktopNamespace('ns02-native-a'), 'ns02-native-a');
+    expect(validateDesktopNamespace('A.B_c-9'), 'A.B_c-9');
+    for (final invalid in [
+      ' production',
+      'production ',
+      '../invalid',
+      'a:b',
+      '.leading',
+      'trailing.',
+      'a..b',
+      'DEFAULT',
+      'prod',
+      'é',
+    ]) {
+      expect(validateDesktopNamespace(invalid), isNull, reason: invalid);
+    }
+    expect(validateDesktopNamespace('a' * 65), isNull);
+  });
+
+  test('initialize passes the exact validated namespace argument', () async {
+    const channel = MethodChannel(desktopPresenceChannelName);
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'initialize');
+      expect(call.arguments, 'Ns02-Native-A');
+      return 'primary';
+    });
+    final presence = DesktopPresence(
+      channel: channel,
+      namespace: validateDesktopNamespace('Ns02-Native-A')!,
+    );
+    addTearDown(presence.dispose);
+    expect(await presence.initialize(), DesktopPresenceDisposition.primary);
+  });
 
   test(
     'native initialization failure never blocks the primary bootstrap',

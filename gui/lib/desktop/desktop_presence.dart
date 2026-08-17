@@ -5,15 +5,34 @@ const desktopPresenceChannelName = 'sidravia/desktop';
 
 enum DesktopPresenceDisposition { primary, activatedExisting }
 
+/// Validates the advanced runtime namespace at the native shell boundary.
+/// Null and empty input select the byte-compatible production namespace.
+String? validateDesktopNamespace(String? value) {
+  if (value == null || value.isEmpty) return '';
+  if (value.length > 64 ||
+      !RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(value) ||
+      value.startsWith('.') ||
+      value.endsWith('.') ||
+      value.contains('..')) {
+    return null;
+  }
+  final folded = value.toLowerCase();
+  if (folded == 'production' || folded == 'default' || folded == 'prod') {
+    return null;
+  }
+  return value;
+}
+
 class DesktopPresence {
-  DesktopPresence({MethodChannel? channel})
+  DesktopPresence({MethodChannel? channel, this._namespace = ''})
     : _channel = channel ?? const MethodChannel(desktopPresenceChannelName) {
     _channel!.setMethodCallHandler(_onNativeCall);
   }
 
-  DesktopPresence.disabled() : _channel = null;
+  DesktopPresence.disabled() : _channel = null, _namespace = '';
 
   final MethodChannel? _channel;
+  final String _namespace;
   final DesktopNotificationPolicy _policy = DesktopNotificationPolicy();
   bool _operational = true;
   Future<void> Function()? onExitRequested;
@@ -28,7 +47,10 @@ class DesktopPresence {
     final channel = _channel;
     if (channel == null) return DesktopPresenceDisposition.primary;
     try {
-      final value = await channel.invokeMethod<String>('initialize');
+      final value = await channel.invokeMethod<String>(
+        'initialize',
+        _namespace,
+      );
       if (value == 'activatedExisting') {
         return DesktopPresenceDisposition.activatedExisting;
       }

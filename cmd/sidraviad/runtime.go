@@ -256,6 +256,10 @@ func composeObjectGraphWithLaunchOptions(
 	if err := launchOptions.Validate(); err != nil {
 		return nil, fmt.Errorf("sidraviad: launch options: %w", err)
 	}
+	namespace, err := productlayout.NewNamespace(launchOptions.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("sidraviad: runtime namespace: %w", err)
+	}
 	if launchOptions.Mode == launchcontract.ModeDesktop && desktopOwner == nil {
 		return nil, errors.New("sidraviad: desktop owner watcher is required")
 	}
@@ -337,6 +341,7 @@ func composeObjectGraphWithLaunchOptions(
 		ProductVersion:                     productVersion,
 		BuildID:                            buildID,
 		Token:                              token,
+		Namespace:                          namespace,
 		RuntimeInfoPath:                    paths.runtimeInfo,
 		Handler:                            http.HandlerFunc(srv.ServeHTTP),
 		AllowUnsupportedProtectionFallback: paths.portable,

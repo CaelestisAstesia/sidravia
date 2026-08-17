@@ -28,8 +28,8 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	sid := tokenUser.User.Sid.String()
 
-	// Create named mutex for single-instance enforcement.
-	mutexName := "Local\\Sidravia-" + sid
+	// Create a namespace-owned mutex for single-instance enforcement.
+	mutexName := daemonMutexName(sid, cfg.Namespace)
 	mutexNameUTF16, err := windows.UTF16PtrFromString(mutexName)
 	if err != nil {
 		return fmt.Errorf("host: mutex name: %w", err)

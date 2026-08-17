@@ -22,6 +22,7 @@ import (
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/productlayout"
 )
 
 func discardLogger() *slog.Logger {
@@ -1425,5 +1426,26 @@ func TestDeriveDefaultPathsIsolatesNamespace(t *testing.T) {
 		if !strings.Contains(p, "mock-test") {
 			t.Fatalf("namespace path %q missing isolation", p)
 		}
+	}
+}
+
+func TestCompositionPassesExactLaunchNamespaceToHostConfig(t *testing.T) {
+	options, err := launchcontract.New(launchcontract.ModeHeadless, 0, "Ns02-Test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := productlayout.NewNamespace(options.Namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, err := composeObjectGraphWithLaunchOptions(
+		context.Background(), newInMemoryStore(), testPaths(t), testHostInfo(),
+		newFakeObserver(), newFakeHostRunner().run, "token", "v", "b", discardLogger(), options, nil,
+	)
+	if err != nil {
+		t.Fatalf("composeObjectGraphWithLaunchOptions() error = %v", err)
+	}
+	if rt.hostCfg.Namespace != want {
+		t.Fatalf("host namespace = %q, want %q", rt.hostCfg.Namespace.String(), want.String())
 	}
 }
