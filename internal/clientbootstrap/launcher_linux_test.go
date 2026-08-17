@@ -17,7 +17,7 @@ import (
 func portableLauncherDeps(t *testing.T, parentEnv []string, start func(*exec.Cmd) error, release func(*exec.Cmd) error) daemonLauncherDeps {
 	t.Helper()
 	return daemonLauncherDeps{
-		resolveLayout: func() (productlayout.Layout, error) {
+		resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) {
 			return productlayout.Layout{
 				Mode:                productlayout.ModePortable,
 				ExecutableDirectory: "/opt/sidravia",
@@ -88,7 +88,7 @@ func TestLaunchDaemonProcessLinuxBuildsCommand(t *testing.T) {
 func TestLaunchDaemonProcessLinuxResolveErrorOwnership(t *testing.T) {
 	cause := errors.New("injected resolve failure")
 	deps := daemonLauncherDeps{
-		resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, cause },
+		resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) { return productlayout.Layout{}, cause },
 		prepareLog:    func(string) (*os.File, error) { return os.CreateTemp(t.TempDir(), "log-*") },
 		parentEnv:     func() []string { return nil },
 		start:         func(*exec.Cmd) error { return nil },
@@ -109,7 +109,7 @@ func TestLaunchDaemonProcessLinuxResolveErrorOwnership(t *testing.T) {
 func TestLaunchDaemonProcessLinuxLogErrorOwnership(t *testing.T) {
 	cause := errors.New("injected log failure")
 	deps := daemonLauncherDeps{
-		resolveLayout: func() (productlayout.Layout, error) {
+		resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) {
 			return productlayout.Layout{ExecutableDirectory: "/opt/sidravia", DaemonLogPath: "/opt/sidravia/logs/sidraviad.log"}, nil
 		},
 		prepareLog: func(string) (*os.File, error) { return nil, cause },

@@ -100,10 +100,11 @@ const (
 )
 
 type dependencies struct {
-	runtimeInfoPath func() (string, error)
+	runtimeInfoPath func(productlayout.Namespace) (string, error)
 	readRuntimeInfo func(string) (contract.RuntimeInfo, error)
 	connect         func(context.Context, contract.RuntimeInfo, Identity) (Client, error)
 	launch          func(launchcontract.Options, string) (daemonLaunch, error)
+	namespace       func() (productlayout.Namespace, error)
 	callTimeout     time.Duration
 	totalWait       time.Duration
 	pollInterval    time.Duration
@@ -111,8 +112,8 @@ type dependencies struct {
 
 func defaultDependencies() dependencies {
 	return dependencies{
-		runtimeInfoPath: func() (string, error) {
-			layout, err := productlayout.Resolve()
+		runtimeInfoPath: func(ns productlayout.Namespace) (string, error) {
+			layout, err := productlayout.ResolveNamespace(ns)
 			if err != nil {
 				return "", err
 			}
@@ -128,7 +129,10 @@ func defaultDependencies() dependencies {
 		connect: func(ctx context.Context, info contract.RuntimeInfo, identity Identity) (Client, error) {
 			return client.Connect(ctx, info.Endpoint, info.Token, identity.BuildID)
 		},
-		launch:       launchDaemonProcess,
+		launch: launchDaemonProcess,
+		namespace: func() (productlayout.Namespace, error) {
+			return productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
+		},
 		callTimeout:  2 * time.Second,
 		totalWait:    ensureTotalWait,
 		pollInterval: ensurePollInterval,
@@ -142,7 +146,11 @@ func probe(identity Identity, deps dependencies) (ProbeResult, error) {
 	if err := identity.validate(); err != nil {
 		return ProbeResult{}, err
 	}
-	path, err := deps.runtimeInfoPath()
+	ns, err := deps.namespace()
+	if err != nil {
+		return ProbeResult{}, wrapSafeOperation("运行命名空间", err)
+	}
+	path, err := deps.runtimeInfoPath(ns)
 	if err != nil {
 		return ProbeResult{}, wrapSafeOperation("运行信息路径", err)
 	}
@@ -283,7 +291,20 @@ func generationReachable(identity Identity, deps dependencies, info contract.Run
 // EnsureHeadless performs one hot probe, then at most one cold or stale
 // headless launch and fixed readiness polling. It does not remove runtime info.
 func EnsureHeadless(identity Identity, logLevel string) (StartOutcome, error) {
-	return ensure(identity, launchcontract.Headless(), logLevel, defaultDependencies())
+	deps := defaultDependencies()
+	options, err := headlessOptionsWithNamespace(deps)
+	if err != nil {
+		return "", err
+	}
+	return ensure(identity, options, logLevel, deps)
+}
+
+func headlessOptionsWithNamespace(deps dependencies) (launchcontract.Options, error) {
+	ns, err := deps.namespace()
+	if err != nil {
+		return launchcontract.Options{}, wrapSafeOperation("运行命名空间", err)
+	}
+	return launchcontract.Options{Mode: launchcontract.ModeHeadless, Namespace: ns.String()}, nil
 }
 
 func ensure(identity Identity, options launchcontract.Options, logLevel string, deps dependencies) (StartOutcome, error) {
@@ -330,7 +351,12 @@ func ensure(identity Identity, options launchcontract.Options, logLevel string, 
 
 // AcquireHeadless ensures a matching headless daemon and opens one direct IPC client.
 func AcquireHeadless(ctx context.Context, identity Identity, logLevel string) (Client, error) {
-	return acquire(ctx, identity, launchcontract.Headless(), logLevel, defaultDependencies())
+	deps := defaultDependencies()
+	options, err := headlessOptionsWithNamespace(deps)
+	if err != nil {
+		return nil, err
+	}
+	return acquire(ctx, identity, options, logLevel, deps)
 }
 
 // DesktopBootstrapResult is authoritative only after desktop readiness has
@@ -341,6 +367,14 @@ type DesktopBootstrapResult struct {
 }
 
 func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, error) {
+	deps := defaultDependencies()
+	ns, err := deps.namespace()
+	if err != nil {
+		return DesktopBootstrapResult{}, wrapSafeOperation("运行命名空间", err)
+	}
+	if !ns.IsProduction() {
+		return DesktopBootstrapResult{}, ErrDesktopUnsupported
+	}
 	options, err := launchcontract.Desktop(ownerPID)
 	if err != nil {
 		return DesktopBootstrapResult{}, err
@@ -348,7 +382,7 @@ func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, 
 	if !desktopBootstrapSupported() {
 		return DesktopBootstrapResult{}, ErrDesktopUnsupported
 	}
-	return bootstrapDesktop(identity, options, defaultDependencies())
+	return bootstrapDesktop(identity, options, deps)
 }
 
 func bootstrapDesktop(identity Identity, options launchcontract.Options, deps dependencies) (DesktopBootstrapResult, error) {

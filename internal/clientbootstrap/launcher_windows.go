@@ -25,7 +25,7 @@ func launchDaemonProcess(options launchcontract.Options, logLevel string) (daemo
 }
 
 type windowsDaemonLauncherDeps struct {
-	resolveLayout func() (productlayout.Layout, error)
+	resolveLayout func(productlayout.Namespace) (productlayout.Layout, error)
 	prepareLog    func(string) (*os.File, error)
 	parentEnv     func() []string
 	start         func(*exec.Cmd) error
@@ -33,14 +33,18 @@ type windowsDaemonLauncherDeps struct {
 }
 
 func defaultWindowsDaemonLauncherDeps() windowsDaemonLauncherDeps {
-	return windowsDaemonLauncherDeps{productlayout.Resolve, prepareDaemonLog, os.Environ, func(c *exec.Cmd) error { return c.Start() }, func(c *exec.Cmd) error { return c.Wait() }}
+	return windowsDaemonLauncherDeps{productlayout.ResolveNamespace, prepareDaemonLog, os.Environ, func(c *exec.Cmd) error { return c.Start() }, func(c *exec.Cmd) error { return c.Wait() }}
 }
 
 func launchDaemonProcessWith(options launchcontract.Options, logLevel string, deps windowsDaemonLauncherDeps) (daemonLaunch, error) {
 	if err := options.Validate(); err != nil {
 		return daemonLaunch{}, err
 	}
-	layout, err := deps.resolveLayout()
+	ns, err := productlayout.NewNamespace(options.Namespace)
+	if err != nil {
+		return daemonLaunch{}, err
+	}
+	layout, err := deps.resolveLayout(ns)
 	if err != nil {
 		return daemonLaunch{}, fmt.Errorf("解析 sidravia 运行目录: %w", err)
 	}

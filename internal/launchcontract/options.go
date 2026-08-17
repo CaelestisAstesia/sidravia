@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"sidravia/internal/productlayout"
 )
 
 const (
 	EnvMode            = "SIDRAVIA_DAEMON_MODE"
 	EnvDesktopOwnerPID = "SIDRAVIA_DESKTOP_OWNER_PID"
 	EnvLogLevel        = "SIDRAVIA_LOG_LEVEL"
+	EnvNamespace       = "SIDRAVIA_NAMESPACE"
 )
 
 type Mode string
@@ -29,17 +32,22 @@ var ErrInvalidOptions = errors.New("invalid daemon launch options")
 type Options struct {
 	Mode            Mode
 	DesktopOwnerPID int
+	Namespace       string
 }
 
 func Headless() Options { return Options{Mode: ModeHeadless} }
 
 func Desktop(ownerPID int) (Options, error) {
-	return New(ModeDesktop, ownerPID)
+	return New(ModeDesktop, ownerPID, "")
 }
 
-func New(mode Mode, ownerPID int) (Options, error) {
+func New(mode Mode, ownerPID int, namespace string) (Options, error) {
 	if mode == "" {
 		mode = ModeHeadless
+	}
+	ns, err := productlayout.NewNamespace(namespace)
+	if err != nil {
+		return Options{}, ErrInvalidOptions
 	}
 	switch mode {
 	case ModeHeadless:
@@ -50,18 +58,21 @@ func New(mode Mode, ownerPID int) (Options, error) {
 		if ownerPID <= 0 {
 			return Options{}, ErrInvalidOptions
 		}
+		if !ns.IsProduction() {
+			return Options{}, ErrInvalidOptions
+		}
 	default:
 		return Options{}, ErrInvalidOptions
 	}
-	return Options{Mode: mode, DesktopOwnerPID: ownerPID}, nil
+	return Options{Mode: mode, DesktopOwnerPID: ownerPID, Namespace: ns.String()}, nil
 }
 
 func (o Options) Validate() error {
-	_, err := New(o.Mode, o.DesktopOwnerPID)
+	_, err := New(o.Mode, o.DesktopOwnerPID, o.Namespace)
 	return err
 }
 
-func Parse(modeValue, ownerPIDValue string) (Options, error) {
+func Parse(modeValue, ownerPIDValue, namespaceValue string) (Options, error) {
 	mode := Mode(strings.TrimSpace(modeValue))
 	ownerPID := 0
 	if ownerPIDValue != "" {
@@ -71,7 +82,7 @@ func Parse(modeValue, ownerPIDValue string) (Options, error) {
 		}
 		ownerPID = parsed
 	}
-	return New(mode, ownerPID)
+	return New(mode, ownerPID, namespaceValue)
 }
 
 // ChildEnvironment returns a new exact child environment. It removes all
@@ -83,15 +94,18 @@ func ChildEnvironment(parent []string, options Options, logLevel string) ([]stri
 	if logLevel == "" {
 		logLevel = "info"
 	}
-	result := make([]string, 0, len(parent)+3)
+	result := make([]string, 0, len(parent)+4)
 	for _, entry := range parent {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) {
+		if strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) {
 			continue
 		}
 		result = append(result, entry)
 	}
 	result = append(result, EnvMode+"="+string(options.Mode), EnvLogLevel+"="+logLevel)
+	if options.Namespace != "" {
+		result = append(result, EnvNamespace+"="+options.Namespace)
+	}
 	if options.Mode == ModeDesktop {
 		result = append(result, fmt.Sprintf("%s=%d", EnvDesktopOwnerPID, options.DesktopOwnerPID))
 	}

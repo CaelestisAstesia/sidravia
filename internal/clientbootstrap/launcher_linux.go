@@ -23,7 +23,7 @@ func launchDaemonProcess(options launchcontract.Options, logLevel string) (daemo
 // so tests can inject private replacements for layout resolution, log
 // preparation, environment, start and release. It is not an exported seam.
 type daemonLauncherDeps struct {
-	resolveLayout func() (productlayout.Layout, error)
+	resolveLayout func(productlayout.Namespace) (productlayout.Layout, error)
 	prepareLog    func(string) (*os.File, error)
 	parentEnv     func() []string
 	start         func(*exec.Cmd) error
@@ -32,7 +32,7 @@ type daemonLauncherDeps struct {
 
 func defaultDaemonLauncherDeps() daemonLauncherDeps {
 	return daemonLauncherDeps{
-		resolveLayout: productlayout.Resolve,
+		resolveLayout: productlayout.ResolveNamespace,
 		prepareLog:    prepareDaemonLog,
 		parentEnv:     os.Environ,
 		start:         func(cmd *exec.Cmd) error { return cmd.Start() },
@@ -55,7 +55,11 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 	if err := options.Validate(); err != nil {
 		return daemonLaunch{}, err
 	}
-	layout, err := deps.resolveLayout()
+	ns, err := productlayout.NewNamespace(options.Namespace)
+	if err != nil {
+		return daemonLaunch{}, err
+	}
+	layout, err := deps.resolveLayout(ns)
 	if err != nil {
 		return daemonLaunch{}, wrapSafeOperation("解析 sidraviad 运行目录", err)
 	}

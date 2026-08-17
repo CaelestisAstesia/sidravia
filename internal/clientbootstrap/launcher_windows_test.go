@@ -24,7 +24,7 @@ func TestWindowsLaunchObservesOneWait(t *testing.T) {
 	cause := errors.New("wait")
 	starts, waits := 0, 0
 	got, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
-		resolveLayout: func() (productlayout.Layout, error) {
+		resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) {
 			return productlayout.Layout{ExecutableDirectory: `C:\\Sidravia`, DaemonLogPath: log.Name()}, nil
 		},
 		prepareLog: func(string) (*os.File, error) { return log, nil }, parentEnv: func() []string { return nil },
@@ -48,7 +48,7 @@ func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 	t.Run("layout", func(t *testing.T) {
 		cause := errors.New("layout")
 		_, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
-			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, cause },
+			resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) { return productlayout.Layout{}, cause },
 		})
 		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "解析 sidravia 运行目录") {
 			t.Fatalf("error = %v", err)
@@ -57,7 +57,7 @@ func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 	t.Run("log", func(t *testing.T) {
 		cause := errors.New("log")
 		_, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
-			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{}, nil },
+			resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) { return productlayout.Layout{}, nil },
 			prepareLog:    func(string) (*os.File, error) { return nil, cause },
 		})
 		if !errors.Is(err, cause) {
@@ -72,11 +72,13 @@ func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
 		cause := errors.New("start")
 		waits := 0
 		launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
-			resolveLayout: func() (productlayout.Layout, error) { return productlayout.Layout{DaemonLogPath: log.Name()}, nil },
-			prepareLog:    func(string) (*os.File, error) { return log, nil },
-			parentEnv:     func() []string { return nil },
-			start:         func(*exec.Cmd) error { return cause },
-			wait:          func(*exec.Cmd) error { waits++; return nil },
+			resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) {
+				return productlayout.Layout{DaemonLogPath: log.Name()}, nil
+			},
+			prepareLog: func(string) (*os.File, error) { return log, nil },
+			parentEnv:  func() []string { return nil },
+			start:      func(*exec.Cmd) error { return cause },
+			wait:       func(*exec.Cmd) error { waits++; return nil },
 		})
 		if launch.exited != nil || !errors.Is(err, cause) || waits != 0 {
 			t.Fatalf("launch=%#v error=%v waits=%d", launch, err, waits)

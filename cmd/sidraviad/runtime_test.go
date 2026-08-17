@@ -1406,3 +1406,24 @@ func TestDeliverSnapshotsAutomaticLoginFailureDoesNotTerminateDaemon(t *testing.
 		t.Fatalf("runtime error = %v", err)
 	}
 }
+
+func TestDeriveDefaultPathsIsolatesNamespace(t *testing.T) {
+	prod, err := deriveDefaultPaths("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns, err := deriveDefaultPaths("mock-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{prod.profiles, prod.configurations, prod.runtimeInfo} {
+		if strings.Contains(p, "mock-test") {
+			t.Fatalf("production path %q contains namespace", p)
+		}
+	}
+	for _, p := range []string{ns.profiles, ns.configurations, ns.runtimeInfo} {
+		if !strings.Contains(p, "mock-test") {
+			t.Fatalf("namespace path %q missing isolation", p)
+		}
+	}
+}

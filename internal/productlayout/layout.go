@@ -31,6 +31,7 @@ const (
 // on success.
 type Layout struct {
 	Mode                         Mode
+	Namespace                    Namespace
 	ExecutableDirectory          string
 	ConfigurationsPath           string
 	InstitutionProfilesDirectory string
@@ -48,7 +49,13 @@ const portableMarker = "sidravia.portable"
 // fails instead of falling back to either mode, and any IO error other than
 // not-exist is preserved as the cause.
 func Resolve() (Layout, error) {
-	return resolve(defaultResolver())
+	return ResolveNamespace(Namespace(""))
+}
+
+// ResolveNamespace resolves the isolated layout for the supplied namespace. The
+// production namespace must produce exactly the same paths as Resolve.
+func ResolveNamespace(ns Namespace) (Layout, error) {
+	return resolveWithNamespace(defaultResolver(), ns)
 }
 
 // osResolver bundles the host calls the resolver depends on, so tests can
@@ -70,6 +77,10 @@ func defaultResolver() osResolver {
 }
 
 func resolve(r osResolver) (Layout, error) {
+	return resolveWithNamespace(r, Namespace(""))
+}
+
+func resolveWithNamespace(r osResolver, ns Namespace) (Layout, error) {
 	exe, err := r.executable()
 	if err != nil {
 		return Layout{}, fmt.Errorf("productlayout: resolve executable: %w", err)
@@ -86,6 +97,7 @@ func resolve(r osResolver) (Layout, error) {
 
 	layout := Layout{
 		Mode:                mode,
+		Namespace:           ns,
 		ExecutableDirectory: exeDir,
 	}
 	switch mode {
@@ -98,15 +110,31 @@ func resolve(r osResolver) (Layout, error) {
 		if err != nil {
 			return Layout{}, err
 		}
-		layout.ConfigurationsPath = filepath.Join(configRoot, "configurations.json")
-		layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "institution-profiles")
-		layout.RuntimeInfoPath = filepath.Join(cacheRoot, "runtime.json")
-		layout.DaemonLogPath = filepath.Join(cacheRoot, "logs", "sidraviad.log")
+		if ns.IsProduction() {
+			layout.ConfigurationsPath = filepath.Join(configRoot, "configurations.json")
+			layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "institution-profiles")
+			layout.RuntimeInfoPath = filepath.Join(cacheRoot, "runtime.json")
+			layout.DaemonLogPath = filepath.Join(cacheRoot, "logs", "sidraviad.log")
+			return layout, nil
+		}
+		root := filepath.Join(configRoot, "namespaces", ns.String())
+		layout.ConfigurationsPath = filepath.Join(root, "configurations.json")
+		layout.InstitutionProfilesDirectory = filepath.Join(root, "institution-profiles")
+		layout.RuntimeInfoPath = filepath.Join(root, "runtime.json")
+		layout.DaemonLogPath = filepath.Join(root, "logs", "sidraviad.log")
 	case ModePortable:
-		layout.ConfigurationsPath = filepath.Join(exeDir, "config", "configurations.json")
-		layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "institution-profiles")
-		layout.RuntimeInfoPath = filepath.Join(exeDir, "runtime", "runtime.json")
-		layout.DaemonLogPath = filepath.Join(exeDir, "logs", "sidraviad.log")
+		if ns.IsProduction() {
+			layout.ConfigurationsPath = filepath.Join(exeDir, "config", "configurations.json")
+			layout.InstitutionProfilesDirectory = filepath.Join(exeDir, "institution-profiles")
+			layout.RuntimeInfoPath = filepath.Join(exeDir, "runtime", "runtime.json")
+			layout.DaemonLogPath = filepath.Join(exeDir, "logs", "sidraviad.log")
+			return layout, nil
+		}
+		root := filepath.Join(exeDir, "namespaces", ns.String())
+		layout.ConfigurationsPath = filepath.Join(root, "configurations.json")
+		layout.InstitutionProfilesDirectory = filepath.Join(root, "institution-profiles")
+		layout.RuntimeInfoPath = filepath.Join(root, "runtime.json")
+		layout.DaemonLogPath = filepath.Join(root, "logs", "sidraviad.log")
 	}
 	return layout, nil
 }

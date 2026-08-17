@@ -265,3 +265,81 @@ func TestResolveDefaultReturnsInstalledLayout(t *testing.T) {
 	}
 	assertAbsoluteClean(t, layout)
 }
+
+func TestResolveNamespaceProductionIsByteIdentical(t *testing.T) {
+	exeDir := t.TempDir()
+	configDir := t.TempDir()
+	cacheDir := t.TempDir()
+	r := testResolver(t, exeDir, configDir, cacheDir)
+	prod, err := resolve(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withNs, err := resolveWithNamespace(r, Namespace(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prod != withNs {
+		t.Fatalf("production namespace layout differs: %#v != %#v", prod, withNs)
+	}
+}
+
+func TestResolveNamespaceInstalledIsolatedRoot(t *testing.T) {
+	exeDir := t.TempDir()
+	configDir := t.TempDir()
+	cacheDir := t.TempDir()
+	ns, err := NewNamespace("mock-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := resolveWithNamespace(testResolver(t, exeDir, configDir, cacheDir), ns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.Namespace != ns {
+		t.Fatalf("Namespace = %q, want %q", layout.Namespace, ns)
+	}
+	root := filepath.Join(configDir, "Sidravia", "namespaces", "mock-test")
+	if layout.ConfigurationsPath != filepath.Join(root, "configurations.json") {
+		t.Fatalf("ConfigurationsPath = %q", layout.ConfigurationsPath)
+	}
+	if layout.InstitutionProfilesDirectory != filepath.Join(root, "institution-profiles") {
+		t.Fatalf("InstitutionProfilesDirectory = %q", layout.InstitutionProfilesDirectory)
+	}
+	if layout.RuntimeInfoPath != filepath.Join(root, "runtime.json") {
+		t.Fatalf("RuntimeInfoPath = %q", layout.RuntimeInfoPath)
+	}
+	if layout.DaemonLogPath != filepath.Join(root, "logs", "sidraviad.log") {
+		t.Fatalf("DaemonLogPath = %q", layout.DaemonLogPath)
+	}
+	assertAbsoluteClean(t, layout)
+}
+
+func TestResolveNamespacePortableIsolatedRoot(t *testing.T) {
+	exeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(exeDir, portableMarker), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ns, err := NewNamespace("mock-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := resolveWithNamespace(testResolver(t, exeDir, t.TempDir(), t.TempDir()), ns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(exeDir, "namespaces", "mock-test")
+	if layout.ConfigurationsPath != filepath.Join(root, "configurations.json") {
+		t.Fatalf("ConfigurationsPath = %q", layout.ConfigurationsPath)
+	}
+	if layout.InstitutionProfilesDirectory != filepath.Join(root, "institution-profiles") {
+		t.Fatalf("InstitutionProfilesDirectory = %q", layout.InstitutionProfilesDirectory)
+	}
+	if layout.RuntimeInfoPath != filepath.Join(root, "runtime.json") {
+		t.Fatalf("RuntimeInfoPath = %q", layout.RuntimeInfoPath)
+	}
+	if layout.DaemonLogPath != filepath.Join(root, "logs", "sidraviad.log") {
+		t.Fatalf("DaemonLogPath = %q", layout.DaemonLogPath)
+	}
+	assertAbsoluteClean(t, layout)
+}

@@ -11,6 +11,7 @@ import (
 
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/productlayout"
 )
 
 type fakeClient struct {
@@ -194,10 +195,11 @@ func mustDesktop(t *testing.T, owner int) launchcontract.Options {
 
 func testDependencies(read func(string) (contract.RuntimeInfo, error), connect func(context.Context, contract.RuntimeInfo, Identity) (Client, error)) dependencies {
 	return dependencies{
-		runtimeInfoPath: func() (string, error) { return "runtime", nil },
+		runtimeInfoPath: func(productlayout.Namespace) (string, error) { return "runtime", nil },
 		readRuntimeInfo: read,
 		connect:         connect,
 		launch:          func(launchcontract.Options, string) (daemonLaunch, error) { return daemonLaunch{}, nil },
+		namespace:       func() (productlayout.Namespace, error) { return productlayout.Namespace(""), nil },
 		callTimeout:     time.Second, totalWait: time.Second, pollInterval: time.Millisecond,
 	}
 }
@@ -397,5 +399,54 @@ func TestConnectExistingHeadlessRejectsDesktopAndUnsafeStates(t *testing.T) {
 	malformed := testDependencies(func(string) (contract.RuntimeInfo, error) { return contract.RuntimeInfo{}, errors.New("private path") }, nil)
 	if _, err := connectExistingHeadless(context.Background(), testIdentity(t), malformed); !errors.Is(err, ErrConnectionUnavailable) || strings.Contains(err.Error(), "private") {
 		t.Fatalf("malformed err=%v", err)
+	}
+}
+
+func TestProbeUsesNamespaceForRuntimeInfoPath(t *testing.T) {
+	got := productlayout.Namespace("injected")
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		return contract.RuntimeInfo{}, os.ErrNotExist
+	}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) { return nil, nil })
+	deps.runtimeInfoPath = func(ns productlayout.Namespace) (string, error) {
+		got = ns
+		return "runtime", nil
+	}
+	deps.namespace = func() (productlayout.Namespace, error) { return productlayout.NewNamespace("mock-test") }
+	if _, err := probe(testIdentity(t), deps); err != nil {
+		t.Fatal(err)
+	}
+	if got != "mock-test" {
+		t.Fatalf("runtimeInfoPath namespace = %q, want mock-test", got)
+	}
+}
+
+func TestEnsureColdLaunchPropagatesNamespace(t *testing.T) {
+	ns, err := productlayout.NewNamespace("mock-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reachable := false
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		if !reachable {
+			return contract.RuntimeInfo{}, os.ErrNotExist
+		}
+		return runtime(1), nil
+	}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) { return statusResponse(t), nil }}, nil
+	})
+	deps.namespace = func() (productlayout.Namespace, error) { return ns, nil }
+	deps.launch = func(options launchcontract.Options, _ string) (daemonLaunch, error) {
+		if options.Namespace != "mock-test" {
+			t.Fatalf("launch namespace = %q, want mock-test", options.Namespace)
+		}
+		reachable = true
+		return daemonLaunch{}, nil
+	}
+	options, err := headlessOptionsWithNamespace(deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensure(testIdentity(t), options, "", deps); err != nil {
+		t.Fatal(err)
 	}
 }

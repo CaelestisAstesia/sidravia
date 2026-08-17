@@ -103,8 +103,12 @@ type runtimeActivityResult struct {
 	err      error
 }
 
-func deriveDefaultPaths() (defaultPaths, error) {
-	layout, err := productlayout.Resolve()
+func deriveDefaultPaths(namespace string) (defaultPaths, error) {
+	ns, err := productlayout.NewNamespace(namespace)
+	if err != nil {
+		return defaultPaths{}, fmt.Errorf("sidraviad: invalid runtime namespace: %w", err)
+	}
+	layout, err := productlayout.ResolveNamespace(ns)
 	if err != nil {
 		return defaultPaths{}, fmt.Errorf("sidraviad: derive default paths: %w", err)
 	}
@@ -133,7 +137,11 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		return nil, errors.New("sidraviad: BuildID is required")
 	}
 
-	launchOptions, err := launchcontract.Parse(os.Getenv(launchcontract.EnvMode), os.Getenv(launchcontract.EnvDesktopOwnerPID))
+	launchOptions, err := launchcontract.Parse(
+		os.Getenv(launchcontract.EnvMode),
+		os.Getenv(launchcontract.EnvDesktopOwnerPID),
+		os.Getenv(launchcontract.EnvNamespace),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: parse launch options: %w", err)
 	}
@@ -144,7 +152,7 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 			return nil, fmt.Errorf("sidraviad: open desktop owner: %w", err)
 		}
 	}
-	paths, err := deriveDefaultPaths()
+	paths, err := deriveDefaultPaths(launchOptions.Namespace)
 	if err != nil {
 		if owner != nil {
 			_ = owner.Close()
