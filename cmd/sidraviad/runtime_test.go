@@ -68,7 +68,7 @@ func (s *inMemoryStore) Replace(_ context.Context, path string, data []byte) err
 	return nil
 }
 
-func (s *inMemoryStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ bool) error {
+func (s *inMemoryStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ int64, _ bool) error {
 	return s.Replace(ctx, path, data)
 }
 

@@ -34,7 +34,7 @@ func (s *appMemoryStore) Replace(_ context.Context, path string, data []byte) er
 	s.data[path] = append([]byte(nil), data...)
 	return nil
 }
-func (s *appMemoryStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ bool) error {
+func (s *appMemoryStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ int64, _ bool) error {
 	return s.Replace(ctx, path, data)
 }
 func (s *appMemoryStore) ProtectionStatus() jsonfile.ProtectionStatus {

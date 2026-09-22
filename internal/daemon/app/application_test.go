@@ -44,10 +44,10 @@ func (store *controlledAppStore) Read(_ context.Context, path string, _ int64) (
 }
 
 func (store *controlledAppStore) Replace(ctx context.Context, path string, data []byte) error {
-	return store.ReplaceSensitive(ctx, path, data, false)
+	return store.ReplaceSensitive(ctx, path, data, 0, false)
 }
 
-func (store *controlledAppStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ bool) error {
+func (store *controlledAppStore) ReplaceSensitive(ctx context.Context, path string, data []byte, _ int64, _ bool) error {
 	store.mu.Lock()
 	block, entered := store.block, store.entered
 	store.block, store.entered = nil, nil

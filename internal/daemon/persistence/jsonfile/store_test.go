@@ -236,6 +236,31 @@ func TestSecureStoreReplaceUsesSameDirectorySecureTempAndOneNewline(t *testing.T
 	}
 }
 
+func TestSecureStoreReplaceSensitiveEnforcesPersistedSizeLimitBeforeWriting(t *testing.T) {
+	operations := &fakeSecureFileOperations{commitResult: true}
+	store := newFakeStore(t, operations)
+	path := testDestination(t)
+	document := []byte(`{"a":1}`)
+
+	// The document persists with one trailing newline, so the persisted size is
+	// one byte above the caller's data and that is what a maximum limits.
+	if err := store.ReplaceSensitive(context.Background(), path, document, int64(len(document))+1, true); err != nil {
+		t.Fatalf("ReplaceSensitive(at persisted limit) error = %v", err)
+	}
+	if string(operations.destination) != "{\"a\":1}\n" {
+		t.Fatalf("destination = %q", operations.destination)
+	}
+
+	operations.calls = nil
+	requireFailureCode(t, store.ReplaceSensitive(context.Background(), path, document, int64(len(document)), true), persistence.FailureSizeLimitExceeded)
+	if len(operations.calls) != 0 {
+		t.Fatalf("rejected replacement touched the filesystem: %v", operations.calls)
+	}
+	if string(operations.destination) != "{\"a\":1}\n" {
+		t.Fatalf("rejected replacement changed the destination to %q", operations.destination)
+	}
+}
+
 func TestSecureStoreReplaceOrdersWriteSyncCloseContextAndCommit(t *testing.T) {
 	operations := &fakeSecureFileOperations{inspectExists: true, commitResult: true}
 	if err := newFakeStore(t, operations).Replace(context.Background(), testDestination(t), []byte(`{}`)); err != nil {

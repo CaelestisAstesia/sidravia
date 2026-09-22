@@ -64,7 +64,7 @@ func TestSensitiveFallbackRequiresAuthorizationBeforeTemp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.ReplaceSensitive(context.Background(), testDestination(t), []byte(`{"password":""}`), false)
+	err = store.ReplaceSensitive(context.Background(), testDestination(t), []byte(`{"password":""}`), 0, false)
 	var failure *persistence.Failure
 	if !errors.As(err, &failure) || !errors.Is(failure.DiagnosticCause(), ErrInsecureStorageConfirmationRequired) {
 		t.Fatalf("ReplaceSensitive() = %v", err)

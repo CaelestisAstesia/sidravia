@@ -28,10 +28,15 @@ func (store *catalogMemoryStore) Read(_ context.Context, _ string, maximum int64
 }
 
 func (store *catalogMemoryStore) Replace(_ context.Context, _ string, data []byte) error {
-	return store.ReplaceSensitive(context.Background(), "", data, true)
+	return store.ReplaceSensitive(context.Background(), "", data, 0, true)
 }
 
-func (store *catalogMemoryStore) ReplaceSensitive(_ context.Context, _ string, data []byte, _ bool) error {
+func (store *catalogMemoryStore) ReplaceSensitive(_ context.Context, _ string, data []byte, maximum int64, _ bool) error {
+	// Model the jsonfile contract: the persisted document is one byte longer
+	// than the caller's data, and a maximum applies to those bytes.
+	if maximum > 0 && int64(len(data))+1 > maximum {
+		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
+	}
 	store.replaceCalls++
 	if store.replaceErr != nil {
 		return store.replaceErr
@@ -165,18 +170,29 @@ func TestCatalogCommitEnforcesReadableSizeLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	passwordLength := int(catalogFileSizeLimit) - len(emptyData)
-	if passwordLength < 0 {
+	// The store persists the document plus one trailing newline, so the largest
+	// document that can still be read back is one byte below the limit.
+	atLimitLength := int(catalogFileSizeLimit) - len(emptyData)
+	if atLimitLength < 1 {
 		t.Fatalf("empty encoded catalog size = %d, limit = %d", len(emptyData), catalogFileSizeLimit)
 	}
-	exactPassword := strings.Repeat("x", passwordLength)
-	candidate[configuration.ConfigurationID] = catalogRecord{configuration: configuration, password: exactPassword}
-	exactData, err := encodeCatalogDocument(candidate)
+	atLimitPassword := strings.Repeat("x", atLimitLength)
+	candidate[configuration.ConfigurationID] = catalogRecord{configuration: configuration, password: atLimitPassword}
+	atLimitData, err := encodeCatalogDocument(candidate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(exactData) != int(catalogFileSizeLimit) {
-		t.Fatalf("exact encoded catalog size = %d, limit = %d", len(exactData), catalogFileSizeLimit)
+	if len(atLimitData) != int(catalogFileSizeLimit) {
+		t.Fatalf("at-limit encoded catalog size = %d, limit = %d", len(atLimitData), catalogFileSizeLimit)
+	}
+	underPassword := strings.Repeat("x", atLimitLength-1)
+	candidate[configuration.ConfigurationID] = catalogRecord{configuration: configuration, password: underPassword}
+	underData, err := encodeCatalogDocument(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(underData) != int(catalogFileSizeLimit)-1 {
+		t.Fatalf("under-limit encoded catalog size = %d, want %d", len(underData), catalogFileSizeLimit-1)
 	}
 
 	store := &catalogMemoryStore{}
@@ -184,26 +200,32 @@ func TestCatalogCommitEnforcesReadableSizeLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := catalog.Create(ctx, configuration, exactPassword, false); err != nil {
-		t.Fatalf("Create(exact limit) error = %v", err)
+	if _, err := catalog.Create(ctx, configuration, atLimitPassword, false); configurationPersistenceFailureCode(t, err) != persistence.FailureSizeLimitExceeded {
+		t.Fatalf("Create(at persisted limit) error = %v", err)
+	}
+	if store.replaceCalls != 0 {
+		t.Fatalf("ReplaceSensitive calls after rejected candidate = %d, want 0", store.replaceCalls)
+	}
+	if _, err := catalog.Create(ctx, configuration, underPassword, false); err != nil {
+		t.Fatalf("Create(one byte under) error = %v", err)
 	}
 	if _, err := OpenCatalog(ctx, store, path); err != nil {
-		t.Fatalf("OpenCatalog() after exact-limit create error = %v", err)
+		t.Fatalf("OpenCatalog() after one-byte-under create error = %v", err)
+	}
+	if store.readMaximum != catalogFileSizeLimit {
+		t.Fatalf("read maximum = %d, want %d", store.readMaximum, catalogFileSizeLimit)
 	}
 
 	replaceCalls := store.replaceCalls
-	if _, err := catalog.SetPassword(ctx, configuration.ConfigurationID, exactPassword+"x", false); configurationPersistenceFailureCode(t, err) != persistence.FailureSizeLimitExceeded {
-		t.Fatalf("SetPassword(one byte over) error = %v", err)
+	if _, err := catalog.SetPassword(ctx, configuration.ConfigurationID, atLimitPassword, false); configurationPersistenceFailureCode(t, err) != persistence.FailureSizeLimitExceeded {
+		t.Fatalf("SetPassword(at persisted limit) error = %v", err)
 	}
 	if store.replaceCalls != replaceCalls {
 		t.Fatalf("ReplaceSensitive calls after oversized candidate = %d, want %d", store.replaceCalls, replaceCalls)
 	}
 	_, credential, err := catalog.Resolve(ctx, configuration.ConfigurationID)
-	if err != nil || credential.Password != exactPassword {
-		t.Fatalf("Resolve() after oversized candidate = %#v, %v", credential, err)
-	}
-	if _, err := catalog.SetPassword(ctx, configuration.ConfigurationID, exactPassword, false); err != nil {
-		t.Fatalf("SetPassword(retry exact limit) error = %v", err)
+	if err != nil || credential.Password != underPassword {
+		t.Fatalf("Resolve() after rejected candidate = %#v, %v", credential, err)
 	}
 }
 

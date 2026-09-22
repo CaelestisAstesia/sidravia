@@ -84,7 +84,25 @@ func (store *SecureStore) ProtectionStatus() ProtectionStatus {
 	return store.protection
 }
 
-func (store *SecureStore) ReplaceSensitive(ctx context.Context, destination string, data []byte, allowUnprotected bool) error {
+// persistedTrailingBytes is the exact number of bytes replace appends to the
+// caller's document. The persisted size of a replacement is therefore
+// len(data)+persistedTrailingBytes, and a size limit must be applied to those
+// bytes so that any successful replacement can be read back with the same
+// limit.
+const persistedTrailingBytes = 1
+
+func persistedSize(data []byte) int64 {
+	return int64(len(data)) + persistedTrailingBytes
+}
+
+// ReplaceSensitive replaces the destination with data plus the persisted
+// trailing bytes. A maximum above zero is enforced against those exact bytes
+// before any directory, temporary file, protection call or replacement, so a
+// rejected document has no filesystem effect. Zero means no limit.
+func (store *SecureStore) ReplaceSensitive(ctx context.Context, destination string, data []byte, maximum int64, allowUnprotected bool) error {
+	if maximum > 0 && persistedSize(data) > maximum {
+		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
+	}
 	return store.replace(ctx, destination, data, true, allowUnprotected)
 }
 
@@ -213,7 +231,7 @@ func (store *SecureStore) replace(ctx context.Context, destination string, data 
 		}
 	}()
 
-	payload := make([]byte, len(data)+1)
+	payload := make([]byte, persistedSize(data))
 	copy(payload, data)
 	payload[len(data)] = '\n'
 	for len(payload) > 0 {

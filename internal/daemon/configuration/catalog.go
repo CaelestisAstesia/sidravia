@@ -17,7 +17,7 @@ const catalogFileSizeLimit int64 = 1 * 1024 * 1024
 
 type SensitiveStore interface {
 	jsonfile.Store
-	ReplaceSensitive(context.Context, string, []byte, bool) error
+	ReplaceSensitive(context.Context, string, []byte, int64, bool) error
 	ProtectionStatus() jsonfile.ProtectionStatus
 }
 
@@ -284,10 +284,10 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 	if err != nil {
 		return err
 	}
-	if int64(len(data)) > catalogFileSizeLimit {
-		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
-	}
-	if err := catalog.store.ReplaceSensitive(ctx, catalog.path, data, allow); err != nil {
+	// The store applies catalogFileSizeLimit to the exact bytes it persists and
+	// re-reads, so a candidate that could not be read back is rejected before any
+	// replacement and before the in-memory authority is committed.
+	if err := catalog.store.ReplaceSensitive(ctx, catalog.path, data, catalogFileSizeLimit, allow); err != nil {
 		return err
 	}
 	catalog.records = candidate
