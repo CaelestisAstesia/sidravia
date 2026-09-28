@@ -32,6 +32,48 @@ const (
 	daemonStartedFromStopped daemonRestartOutcome = "started_from_stopped"
 )
 
+const (
+	daemonStatusFailureMessage  = "守护进程：无法确认状态。请运行 sidraviactl daemon status；持续失败时运行 sidraviactl daemon restart"
+	daemonStartFailureMessage   = "守护进程：启动失败。请运行 sidraviactl daemon status 确认状态后再重试"
+	daemonStopFailureMessage    = "守护进程：停止结果无法确认。请运行 sidraviactl daemon status 确认状态后再重试"
+	daemonRestartFailureMessage = "守护进程：重启失败。请运行 sidraviactl daemon status 确认状态后再重试"
+	daemonIncompatibleMessage   = "守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。"
+	daemonReadinessMessage      = "守护进程：启动状态尚未确认。请运行 sidraviactl daemon status 确认后再重试"
+)
+
+// daemonCommandError owns the human-readable failure at the public daemon
+// command boundary. It retains the original error chain for callers while
+// ensuring that neither a wrapped cause nor an arbitrary outer message is
+// written to the terminal.
+func daemonCommandError(command string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, clientbootstrap.ErrModeConflict) {
+		return wrapSafeOperation(clientbootstrap.ErrModeConflict.Error(), err)
+	}
+	if errors.Is(err, clientbootstrap.ErrIncompatibleGeneration) {
+		return wrapSafeOperation(daemonIncompatibleMessage, err)
+	}
+	if clientbootstrap.IsReadinessUnconfirmed(err) {
+		return wrapSafeOperation(daemonReadinessMessage, err)
+	}
+	var safe safeOperationError
+	if errors.As(err, &safe) {
+		return wrapSafeOperation(safe.label, err)
+	}
+	message := daemonStatusFailureMessage
+	switch command {
+	case "start":
+		message = daemonStartFailureMessage
+	case "stop":
+		message = daemonStopFailureMessage
+	case "restart":
+		message = daemonRestartFailureMessage
+	}
+	return wrapSafeOperation(message, err)
+}
+
 type daemonOperations struct {
 	inspect   func() (clientbootstrap.ProbeResult, error)
 	connect   func(context.Context, contract.RuntimeInfo) (daemonClient, error)

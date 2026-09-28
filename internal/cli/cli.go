@@ -323,12 +323,18 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 			Short: "显示 daemon 状态",
 			Args:  cobra.NoArgs,
 			RunE: func(*cobra.Command, []string) error {
-				return wrapCommandOperation(deps.daemonStatus())
+				return wrapCommandOperation(daemonCommandError("status", deps.daemonStatus()))
 			},
 		},
-		newDaemonLogLevelCommand("start", "启动本地 daemon", deps.daemonStart),
-		newListCommand("stop", "停止本地 daemon", deps.daemonStop),
-		newDaemonLogLevelCommand("restart", "重启本地 daemon", deps.daemonRestart),
+		newDaemonLogLevelCommand("start", "启动本地 daemon", func(level string) error {
+			return daemonCommandError("start", deps.daemonStart(level))
+		}),
+		newListCommand("stop", "停止本地 daemon", func() error {
+			return daemonCommandError("stop", deps.daemonStop())
+		}),
+		newDaemonLogLevelCommand("restart", "重启本地 daemon", func(level string) error {
+			return daemonCommandError("restart", deps.daemonRestart(level))
+		}),
 	)
 
 	retiredStatus := &cobra.Command{

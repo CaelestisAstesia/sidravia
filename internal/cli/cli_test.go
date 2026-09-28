@@ -311,6 +311,95 @@ func TestCommandOperationErrorPreservesCause(t *testing.T) {
 	}
 }
 
+func TestDaemonCommandFailuresUseSafePublicMessages(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		set  func(*commandDependencies, error)
+		want string
+	}{
+		{
+			name: "status",
+			args: []string{"daemon", "status"},
+			set: func(deps *commandDependencies, err error) {
+				deps.daemonStatus = func() error { return err }
+			},
+			want: daemonStatusFailureMessage,
+		},
+		{
+			name: "start",
+			args: []string{"daemon", "start"},
+			set: func(deps *commandDependencies, err error) {
+				deps.daemonStart = func(string) error { return err }
+			},
+			want: daemonStartFailureMessage,
+		},
+		{
+			name: "stop",
+			args: []string{"daemon", "stop"},
+			set: func(deps *commandDependencies, err error) {
+				deps.daemonStop = func() error { return err }
+			},
+			want: daemonStopFailureMessage,
+		},
+		{
+			name: "restart",
+			args: []string{"daemon", "restart"},
+			set: func(deps *commandDependencies, err error) {
+				deps.daemonRestart = func(string) error { return err }
+			},
+			want: daemonRestartFailureMessage,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cause := errors.New("injected lifecycle cause")
+			privateMarker := `C:\Users\private\sidraviad.exe: access denied`
+			wrapped := fmt.Errorf("outer lifecycle context: %w", fmt.Errorf("%s: %w", privateMarker, cause))
+			deps := commandDependencies{output: io.Discard}
+			test.set(&deps, wrapped)
+
+			err := runCommand(test.args, deps)
+			if err == nil || !errors.Is(err, cause) {
+				t.Fatalf("command error = %v, want wrapped cause", err)
+			}
+			var output bytes.Buffer
+			if writeErr := WriteError(&output, err); writeErr != nil {
+				t.Fatalf("WriteError() error = %v", writeErr)
+			}
+			want := "sidraviactl：错误：" + test.want + "\n"
+			if output.String() != want || strings.Contains(output.String(), privateMarker) || strings.Contains(output.String(), "outer lifecycle context") {
+				t.Fatalf("WriteError() = %q, want %q", output.String(), want)
+			}
+		})
+	}
+}
+
+func TestDaemonStopAmbiguityKeepsItsTypedSafeMessage(t *testing.T) {
+	cause := errors.New("private transport cause")
+	privateMarker := `C:\Users\private\sidraviad.exe: connect failed`
+	ambiguity := "守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidraviactl daemon status 后重试"
+	deps := commandDependencies{
+		output: io.Discard,
+		daemonStop: func() error {
+			return fmt.Errorf("outer bootstrap context: %w", wrapSafeOperation(ambiguity, fmt.Errorf("%s: %w", privateMarker, cause)))
+		},
+	}
+	err := runCommand([]string{"daemon", "stop"}, deps)
+	if err == nil || !errors.Is(err, cause) {
+		t.Fatalf("daemon stop error = %v, want preserved transport cause", err)
+	}
+	var output bytes.Buffer
+	if writeErr := WriteError(&output, err); writeErr != nil {
+		t.Fatalf("WriteError() error = %v", writeErr)
+	}
+	want := "sidraviactl：错误：" + ambiguity + "\n"
+	if output.String() != want || strings.Contains(output.String(), privateMarker) || strings.Contains(output.String(), "outer bootstrap context") {
+		t.Fatalf("WriteError() = %q, want %q", output.String(), want)
+	}
+}
+
 func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
