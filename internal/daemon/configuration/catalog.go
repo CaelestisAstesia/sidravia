@@ -82,6 +82,24 @@ func (catalog *Catalog) Get(ctx context.Context, id ConfigurationID) (Configurat
 	return record.configuration.Clone(), nil
 }
 
+// HasRecord reports whether the catalog owns the Configuration aggregate. It
+// deliberately does not expose the private password field.
+func (catalog *Catalog) HasRecord(ctx context.Context, id ConfigurationID) (bool, error) {
+	if !validConfigurationID(string(id)) {
+		return false, catalogInvalidArgument(nil)
+	}
+	if err := validateCatalogContext(ctx); err != nil {
+		return false, err
+	}
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
+	if err := validateCatalogContext(ctx); err != nil {
+		return false, err
+	}
+	_, exists := catalog.records[id]
+	return exists, nil
+}
+
 func (catalog *Catalog) List(ctx context.Context) ([]Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
 		return nil, err

@@ -131,6 +131,25 @@ func TestCatalogRejectsInvalidCallsAndReportsMissingIDs(t *testing.T) {
 	}
 }
 
+func TestCatalogHasRecordDoesNotDependOnPasswordContents(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := catalog.HasRecord(ctx, "configuration-a"); err != nil || stored {
+		t.Fatalf("missing HasRecord = %v, %v", stored, err)
+	}
+	value := catalogTestConfiguration("configuration-a", "A")
+	if _, err := catalog.Create(ctx, value, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := catalog.HasRecord(ctx, value.ConfigurationID); err != nil || !stored {
+		t.Fatalf("empty-password HasRecord = %v, %v", stored, err)
+	}
+}
+
 func TestCatalogFailedReplacePreservesMemoryState(t *testing.T) {
 	ctx := context.Background()
 	store := &catalogMemoryStore{}

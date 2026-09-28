@@ -166,6 +166,10 @@ func TestApplicationConfigurationCRUDAndEnrichment(t *testing.T) {
 	if _, err := setup.application.SetConfigurationPassword(ctx, "configuration-1", "", false); err != nil {
 		t.Fatal(err)
 	}
+	values, _, err = setup.application.ListConfigurations(ctx)
+	if err != nil || len(values) != 1 || !values[0].CredentialStored {
+		t.Fatalf("empty-password credential projection = %#v, %v", values, err)
+	}
 }
 
 func TestApplicationCreateConfigurationReturnsGeneratedPersistedIdentity(t *testing.T) {

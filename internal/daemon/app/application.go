@@ -337,9 +337,17 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 	if _, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID); err != nil {
 		return ConfigurationResult{}, NewResolutionFailure(ProtocolNotFound, err)
 	}
+	stored := false
+	if value.ConfigurationID != "" {
+		var err error
+		stored, err = application.catalog.HasRecord(ctx, value.ConfigurationID)
+		if err != nil {
+			return ConfigurationResult{}, err
+		}
+	}
 	return ConfigurationResult{
 		Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
 		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
-		CredentialStored:         true, StorageProtection: application.catalog.StorageProtection(),
+		CredentialStored:         stored, StorageProtection: application.catalog.StorageProtection(),
 	}, nil
 }
