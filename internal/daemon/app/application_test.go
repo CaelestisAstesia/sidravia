@@ -376,42 +376,119 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 }
 
 func TestConfigurationOperationsSerializeWithSessionRemove(t *testing.T) {
-	setup := newApplicationTestSetup(t)
-	defer setup.cleanup()
-	ctx := context.Background()
-	started, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
-	if err != nil {
-		t.Fatal(err)
+	operations := []struct {
+		name string
+		call func(context.Context, *Application, session.AuthenticationSessionID) error
+	}{
+		{
+			name: "StopSession",
+			call: func(ctx context.Context, application *Application, id session.AuthenticationSessionID) error {
+				_, err := application.StopSession(ctx, id)
+				return err
+			},
+		},
+		{
+			name: "EnsureSessionRunning",
+			call: func(ctx context.Context, application *Application, id session.AuthenticationSessionID) error {
+				_, err := application.EnsureSessionRunning(ctx, id)
+				return err
+			},
+		},
+		{
+			name: "RestartSession",
+			call: func(ctx context.Context, application *Application, id session.AuthenticationSessionID) error {
+				_, err := application.RestartSession(ctx, id)
+				return err
+			},
+		},
+		{
+			name: "RemoveSession",
+			call: func(ctx context.Context, application *Application, id session.AuthenticationSessionID) error {
+				return application.RemoveSession(ctx, id)
+			},
+		},
 	}
-	setup.store.mu.Lock()
-	setup.store.block = make(chan struct{})
-	setup.store.entered = make(chan struct{})
-	release, entered := setup.store.block, setup.store.entered
-	setup.store.mu.Unlock()
-	name := "changed"
-	updateDone := make(chan error, 1)
-	go func() {
-		_, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &name})
-		updateDone <- err
-	}()
-	select {
-	case <-entered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("update did not reach persistence boundary")
-	}
-	removeDone := make(chan error, 1)
-	go func() { removeDone <- setup.application.RemoveSession(ctx, started.SessionID) }()
-	select {
-	case err := <-removeDone:
-		t.Fatalf("RemoveSession crossed opMu: %v", err)
-	case <-time.After(20 * time.Millisecond):
-	}
-	close(release)
-	if err := <-updateDone; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-removeDone; err != nil {
-		t.Fatal(err)
+
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			defer setup.cleanup()
+			ctx := context.Background()
+			started, err := setup.application.StartOneShotAuthentication(ctx, validOneShotInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			setup.store.mu.Lock()
+			setup.store.block = make(chan struct{})
+			setup.store.entered = make(chan struct{})
+			release, entered := setup.store.block, setup.store.entered
+			setup.store.mu.Unlock()
+
+			var releaseOnce sync.Once
+			releasePersistence := func() { releaseOnce.Do(func() { close(release) }) }
+			name := "changed"
+			updateDone := make(chan error, 1)
+			operationDone := make(chan error, 1)
+			updateStarted, operationStarted := false, false
+			defer func() {
+				releasePersistence()
+				if updateStarted {
+					select {
+					case <-updateDone:
+					case <-time.After(2 * time.Second):
+						t.Error("timed out draining configuration update")
+					}
+				}
+				if operationStarted {
+					select {
+					case <-operationDone:
+					case <-time.After(2 * time.Second):
+						t.Error("timed out draining Session operation")
+					}
+				}
+			}()
+
+			updateStarted = true
+			go func() {
+				_, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &name})
+				updateDone <- err
+			}()
+			select {
+			case <-entered:
+			case <-time.After(2 * time.Second):
+				t.Fatal("update did not reach persistence boundary")
+			}
+
+			operationStarted = true
+			go func() { operationDone <- operation.call(ctx, setup.application, started.SessionID) }()
+			select {
+			case err := <-operationDone:
+				operationStarted = false
+				t.Fatalf("%s crossed opMu while Configuration persistence was blocked: %v", operation.name, err)
+			case <-time.After(20 * time.Millisecond):
+			}
+
+			releasePersistence()
+			select {
+			case err := <-updateDone:
+				updateStarted = false
+				if err != nil {
+					t.Fatalf("configuration update: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for configuration update")
+			}
+			select {
+			case err := <-operationDone:
+				operationStarted = false
+				if err != nil {
+					t.Fatalf("%s after Configuration persistence: %v", operation.name, err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("timed out waiting for %s", operation.name)
+			}
+		})
 	}
 }
 

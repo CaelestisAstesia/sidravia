@@ -168,10 +168,15 @@ func (application *Application) PerformAutomaticLogin(ctx context.Context) error
 }
 
 func (application *Application) StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	return application.sup.Stop(ctx, sessionID)
 }
 
 func (application *Application) EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (SessionStartResult, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+
 	before, err := application.sup.Get(ctx, sessionID)
 	if err != nil {
 		return SessionStartResult{}, err
@@ -188,6 +193,8 @@ func (application *Application) EnsureSessionRunning(ctx context.Context, sessio
 }
 
 func (application *Application) RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	return application.sup.Restart(ctx, sessionID)
 }
 
