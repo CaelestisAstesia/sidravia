@@ -40,7 +40,7 @@ const (
 	methodUnknown = "unknown"
 	// errorCodeInternal is the normalized error code for any value that is not
 	// part of the current IPC contract.
-	errorCodeInternal = "internal_error"
+	errorCodeInternal = contract.ErrorCodeInternalError
 	// stageEncode and stageWrite are the only response-failure stages.
 	stageEncode = "encode"
 	stageWrite  = "write"
@@ -74,6 +74,7 @@ var allowedMethods = map[string]struct{}{
 // an arbitrary diagnostic string can never reach the log.
 var allowedErrorCodes = map[string]struct{}{
 	contract.ErrorCodeUnknownMethod:                       {},
+	contract.ErrorCodeInternalError:                       {},
 	contract.ErrorCodeMalformed:                           {},
 	contract.ErrorCodeInvalidArgument:                     {},
 	contract.ErrorCodeProfileNotFound:                     {},
@@ -298,7 +299,24 @@ func (s *Server) serveConn(ctx context.Context, conn *websocket.Conn) {
 				slog.String("event", eventIPCResponseFailed),
 				slog.String("stage", stageEncode),
 			)
-			return
+			// A handler result may contain invalid JSON even though the request
+			// was accepted. Return one fixed, known-encodable response carrying
+			// the original request ID, then continue serving the connection.
+			fallback := contract.NewErrorResponse(resp.ID, contract.ErrorCodeInternalError, "internal error")
+			fallbackData, fallbackErr := contract.EncodeResponse(fallback)
+			if fallbackErr != nil {
+				// This is unreachable for the fixed fallback, but preserve the
+				// existing transport policy if that invariant ever changes.
+				return
+			}
+			if err := conn.Write(ctx, websocket.MessageText, fallbackData); err != nil {
+				s.logger.Warn(msgIPCResponseFailed,
+					slog.String("event", eventIPCResponseFailed),
+					slog.String("stage", stageWrite),
+				)
+				return
+			}
+			continue
 		}
 		if err := conn.Write(ctx, websocket.MessageText, respData); err != nil {
 			s.logger.Warn(msgIPCResponseFailed,

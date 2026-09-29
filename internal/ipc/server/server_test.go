@@ -445,6 +445,10 @@ func TestIPCResponseFailedOnEncode(t *testing.T) {
 	conn := dial(t, wsURL)
 	defer conn.Close(websocket.StatusNormalClosure, "")
 	writeRequest(t, conn, "1", contract.MethodDaemonStatus, json.RawMessage(`{}`))
+	response := readResponse(t, conn)
+	if response.ID != "1" || response.OK || response.Error == nil || response.Error.Code != contract.ErrorCodeInternalError || response.Error.Message != "internal error" {
+		t.Fatalf("fallback response = %#v", response)
+	}
 
 	waitForLogEvent(t, &buf, "event=ipc_response_failed")
 	output := buf.String()
@@ -459,6 +463,25 @@ func TestIPCResponseFailedOnEncode(t *testing.T) {
 	}
 	if strings.Contains(output, "injected-encode-marker-5E") {
 		t.Fatalf("encode error leaked into log, got:\n%s", output)
+	}
+}
+
+func TestIPCErrorResponseEncodesAndPreservesRequestID(t *testing.T) {
+	var buf safeBuffer
+	handler := func(_ context.Context, _ string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
+		return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid argument"}
+	}
+	_, wsURL := newTestServer(t, handler, &buf)
+	conn := dial(t, wsURL)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	writeRequest(t, conn, "error-request-id", contract.MethodDaemonStatus, json.RawMessage(`{}`))
+	response := readResponse(t, conn)
+	if response.ID != "error-request-id" || response.OK || response.Error == nil || response.Error.Code != contract.ErrorCodeInvalidArgument || response.Error.Message != "invalid argument" {
+		t.Fatalf("error response = %#v", response)
+	}
+	waitForLogEvent(t, &buf, "event=ipc_request_rejected")
+	if strings.Contains(buf.String(), "event=ipc_response_failed") {
+		t.Fatalf("normal error response unexpectedly failed encoding: %s", buf.String())
 	}
 }
 

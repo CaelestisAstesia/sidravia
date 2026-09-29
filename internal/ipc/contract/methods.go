@@ -49,6 +49,7 @@ func MarshalStatusResult(result StatusResult) (json.RawMessage, error) {
 // Error codes returned by the daemon.
 const (
 	ErrorCodeUnknownMethod                       = "unknown_method"
+	ErrorCodeInternalError                       = "internal_error"
 	ErrorCodeMalformed                           = "malformed_request"
 	ErrorCodeInvalidArgument                     = "invalid_argument"
 	ErrorCodeProfileNotFound                     = "profile_not_found"
