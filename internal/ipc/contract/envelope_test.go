@@ -53,6 +53,26 @@ func TestDecodeRequestUnknownFields(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestRejectsDuplicateKeysAtEveryNestingLevel(t *testing.T) {
+	for _, data := range [][]byte{
+		[]byte(`{"kind":"request","id":"1","id":"2","method":"daemon.status","payload":{}}`),
+		[]byte(`{"kind":"request","id":"1","method":"daemon.status","payload":{"nested":{"x":1,"x":2}}}`),
+		[]byte(`{"kind":"request","id":"1","method":"daemon.status","payload":[{"x":1,"x":2}]}`),
+		[]byte(`{"kind":"request","id":"1","method":"daemon.status","payload":{"a":1,"\u0061":2}}`),
+	} {
+		if _, err := DecodeRequest(data); err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+			t.Fatalf("DecodeRequest(%s) error = %v, want duplicate object key", data, err)
+		}
+	}
+}
+
+func TestDecodeRequestAllowsSameKeyInSiblingObjects(t *testing.T) {
+	data := []byte(`{"kind":"request","id":"1","method":"daemon.status","payload":[{"x":1},{"x":2}]}`)
+	if _, err := DecodeRequest(data); err != nil {
+		t.Fatalf("DecodeRequest() error = %v", err)
+	}
+}
+
 func TestDecodeRequestTrailingData(t *testing.T) {
 	data := []byte(`{"kind":"request","id":"1","method":"daemon.status","payload":{}}garbage`)
 	_, err := DecodeRequest(data)
@@ -154,6 +174,13 @@ func TestDecodeResponseUnknownFields(t *testing.T) {
 	_, err := DecodeResponse(data)
 	if err == nil {
 		t.Fatal("expected error for unknown fields")
+	}
+}
+
+func TestDecodeResponseRejectsDuplicateNestedResultKeys(t *testing.T) {
+	data := []byte(`{"kind":"response","id":"1","ok":true,"result":{"items":[{"value":1,"value":2}]}}`)
+	if _, err := DecodeResponse(data); err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+		t.Fatalf("DecodeResponse() error = %v, want duplicate object key", err)
 	}
 }
 

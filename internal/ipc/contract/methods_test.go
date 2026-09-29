@@ -36,6 +36,25 @@ func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
 	}
 }
 
+func TestDecodeSessionStartOneShotPayloadRejectsDuplicateAndEscapedKeys(t *testing.T) {
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatic","protocolContextOverride":{"x":1,"\u0078":2}}`)
+	if _, err := DecodeSessionStartOneShotPayload(data); err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v, want duplicate object key", err)
+	}
+}
+
+func TestDecodeSessionStartOneShotPayloadPreservesLargeNumbersAndSiblingObjects(t *testing.T) {
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatic","protocolContextOverride":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}`)
+	payload, err := DecodeSessionStartOneShotPayload(data)
+	if err != nil {
+		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v", err)
+	}
+	want := `[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]`
+	if string(payload.ProtocolContextOverride) != want {
+		t.Fatalf("protocol context changed: %s", payload.ProtocolContextOverride)
+	}
+}
+
 func TestMarshalStatusResultCarriesModeAndOptionalOwner(t *testing.T) {
 	owner := 42
 	data, err := MarshalStatusResult(StatusResult{ProductVersion: "v", BuildID: "b", PID: 7, Status: "running", Mode: "desktop", DesktopOwnerPID: &owner})

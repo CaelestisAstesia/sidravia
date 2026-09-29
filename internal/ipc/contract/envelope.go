@@ -37,6 +37,7 @@ type Error struct {
 func DecodeRequest(data []byte) (Request, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	var req Request
 	if err := decoder.Decode(&req); err != nil {
 		return Request{}, fmt.Errorf("decode request: %w", err)
@@ -46,6 +47,9 @@ func DecodeRequest(data []byte) (Request, error) {
 		return Request{}, fmt.Errorf("decode request: trailing data after envelope")
 	} else if err != io.EOF {
 		return Request{}, fmt.Errorf("decode request: trailing garbage")
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return Request{}, fmt.Errorf("decode request: %w", err)
 	}
 	if req.Kind != string(KindRequest) {
 		return Request{}, fmt.Errorf("decode request: kind must be %q", KindRequest)
@@ -73,6 +77,7 @@ func EncodeResponse(resp Response) ([]byte, error) {
 func DecodeResponse(data []byte) (Response, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	var resp Response
 	if err := decoder.Decode(&resp); err != nil {
 		return Response{}, fmt.Errorf("decode response: %w", err)
@@ -82,6 +87,9 @@ func DecodeResponse(data []byte) (Response, error) {
 		return Response{}, fmt.Errorf("decode response: trailing data")
 	} else if err != io.EOF {
 		return Response{}, fmt.Errorf("decode response: trailing garbage")
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return Response{}, fmt.Errorf("decode response: %w", err)
 	}
 	if resp.Kind != string(KindResponse) {
 		return Response{}, fmt.Errorf("decode response: kind must be %q", KindResponse)

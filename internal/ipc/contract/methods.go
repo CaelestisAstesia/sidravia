@@ -1,10 +1,8 @@
 package contract
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 )
 
 // MethodDaemonStatus is the method name for daemon status queries.
@@ -368,28 +366,6 @@ func decodeSessionIDPayload(data []byte, payload any, sessionID *string) error {
 	}
 	if *sessionID == "" {
 		return fmt.Errorf("decode session payload: missing sessionId")
-	}
-	return nil
-}
-
-// decodeStrict decodes exactly one JSON value into target while rejecting
-// unknown fields, null or empty input, trailing JSON values and trailing
-// garbage. It mirrors the strictness of DecodeRequest for inner payloads.
-func decodeStrict(data []byte, target any) error {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 || string(trimmed) == "null" {
-		return fmt.Errorf("decode payload: missing payload")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
-		return fmt.Errorf("decode payload: trailing data")
-	} else if err != io.EOF {
-		return fmt.Errorf("decode payload: trailing garbage")
 	}
 	return nil
 }
