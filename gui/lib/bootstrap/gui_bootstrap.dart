@@ -81,6 +81,18 @@ abstract interface class GuiBootstrapper {
   Future<GuiBootstrapResult> bootstrap();
 }
 
+/// Explicit platform boundary for targets that do not yet have a local
+/// daemon-launch adapter. Keeping this as a typed bootstrapper lets the
+/// application and feature layers remain platform-neutral while a future
+/// adapter is added.
+class UnsupportedGuiBootstrapper implements GuiBootstrapper {
+  const UnsupportedGuiBootstrapper();
+
+  @override
+  Future<GuiBootstrapResult> bootstrap() async =>
+      const GuiBootstrapResult.failure(GuiBootstrapFailure.unsupportedPlatform);
+}
+
 GuiBootstrapResult decodeGuiBootstrap(String source) {
   try {
     final decoded = jsonDecode(source);
