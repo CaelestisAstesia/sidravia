@@ -8,6 +8,7 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/announcement_feed.dart';
 import 'package:sidravia_gui/features/announcements/announcement_store.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
 import 'package:sidravia_gui/platform/sidravia_platform.dart';
 
