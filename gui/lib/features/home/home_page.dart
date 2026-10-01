@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/design/sidravia_layout.dart';
-import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
@@ -12,415 +12,194 @@ class HomePage extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onOpenConfiguration,
+    this.onOpenAdvanced,
     this.announcements,
   });
 
   final GuiController controller;
   final VoidCallback onOpenConfiguration;
+  final VoidCallback? onOpenAdvanced;
   final AnnouncementController? announcements;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = SidraviaLayout.isCompactWidth(constraints.maxWidth);
-        return ListView(
-          padding: SidraviaLayout.pagePadding(compact: compact),
-          children: [
-            SidraviaLayout.limitTextScale(
-              compact: compact,
-              maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
-              child: Text(
-                '校园网',
-                style: compact
-                    ? theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      )
-                    : theme.textTheme.displaySmall,
+        return AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => ListView(
+            padding: SidraviaLayout.pagePadding(compact: compact),
+            children: [
+              _PageHeading(eyebrow: 'Sidravia', title: '仪表板', compact: compact),
+              if (announcements case final feed? when feed.enabled) ...[
+                const SizedBox(height: 20),
+                AnnouncementInlineNotice(controller: feed, compact: compact),
+              ],
+              const SizedBox(height: 20),
+              _ConnectionCard(
+                controller: controller,
+                compact: compact,
+                onOpenConfiguration: onOpenConfiguration,
               ),
-            ),
-            SizedBox(height: compact ? 12 : 28),
-            AnimatedBuilder(
-              animation: controller,
-              builder: (context, _) => Align(
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
-                  child: _ConnectionStatus(
-                    controller: controller,
-                    onOpenConfiguration: onOpenConfiguration,
-                    compact: compact,
-                  ),
+              if (onOpenAdvanced != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const ValueKey('open-advanced'),
+                  onPressed: onOpenAdvanced,
+                  icon: const Icon(Icons.analytics_outlined),
+                  label: const Text('查看连接详情'),
                 ),
-              ),
-            ),
-            if (announcements case final announcements?
-                when announcements.enabled) ...[
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
-                  child: AnnouncementInlineNotice(
-                    controller: announcements,
-                    compact: compact,
-                  ),
-                ),
-              ),
+              ],
             ],
-          ],
+          ),
         );
       },
     );
   }
 }
 
-class _ConnectionStatus extends StatelessWidget {
-  const _ConnectionStatus({
-    required this.controller,
-    required this.onOpenConfiguration,
+class _PageHeading extends StatelessWidget {
+  const _PageHeading({
+    required this.eyebrow,
+    required this.title,
     required this.compact,
   });
 
-  final GuiController controller;
-  final VoidCallback onOpenConfiguration;
+  final String eyebrow;
+  final String title;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final presentation = _presentation(controller, onOpenConfiguration);
-    return Semantics(
-      label: '连接状态：${presentation.title}。${presentation.detail}',
-      child: Container(
-        key: const ValueKey<String>('connection-status-surface'),
-        padding: EdgeInsets.all(compact ? 16 : 28),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          eyebrow,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (compact) ...[
-              Row(
-                children: [
-                  _StatusIndicator(presentation: presentation, size: 40),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SidraviaLayout.limitTextScale(
-                      compact: compact,
-                      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-                      child: Text(
-                        presentation.title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (presentation.action case final _HomeAction action) ...[
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: controller.busy ? null : action.onPressed,
-                  child: SidraviaLayout.limitTextScale(
-                    compact: compact,
-                    maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
-                    child: Text(
-                      action.label,
-                      style: theme.textTheme.labelMedium,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              SidraviaLayout.limitTextScale(
-                compact: compact,
-                maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-                child: Text(
-                  presentation.detail,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    height: 1.4,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              if (controller.notice case final notice?) ...[
-                const SizedBox(height: 16),
-                _StatusNotice(text: notice, compact: compact),
-              ],
-            ] else ...[
-              Row(
-                children: [
-                  _StatusIndicator(presentation: presentation),
-                  const SizedBox(width: 14),
-                  Text(
-                    '连接状态',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(presentation.title, style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              Text(
-                presentation.detail,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  height: 1.5,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (controller.notice case final notice?) ...[
-                const SizedBox(height: 16),
-                _StatusNotice(text: notice, compact: compact),
-              ],
-              const SizedBox(height: 28),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  if (presentation.action case final _HomeAction action)
-                    FilledButton(
-                      onPressed: controller.busy ? null : action.onPressed,
-                      child: Text(action.label),
-                    ),
-                  if (presentation.showConfiguration)
-                    OutlinedButton(
-                      onPressed: controller.busy ? null : onOpenConfiguration,
-                      child: const Text('配置'),
-                    ),
-                ],
-              ),
-            ],
-          ],
+        const SizedBox(height: 5),
+        Text(
+          title,
+          style: compact
+              ? theme.textTheme.headlineSmall
+              : theme.textTheme.displaySmall,
         ),
-      ),
+      ],
     );
-  }
-
-  _ConnectionPresentation _presentation(
-    GuiController controller,
-    VoidCallback onOpenConfiguration,
-  ) => switch (controller.state) {
-    GuiConnectionState.bootstrapping => const _ConnectionPresentation(
-      title: '正在连接…',
-      detail: '正在连接本机服务。',
-      icon: Icons.sync,
-      color: SidraviaColors.progress,
-      progress: true,
-      showConfiguration: false,
-    ),
-    GuiConnectionState.ready => _readyPresentation(
-      controller,
-      onOpenConfiguration,
-    ),
-    GuiConnectionState.stale => _ConnectionPresentation(
-      title: '状态已过期',
-      detail: '无法获取最新连接状态。',
-      icon: Icons.sync_problem_outlined,
-      color: SidraviaColors.warning,
-      action: _HomeAction('重试', () async {
-        await controller.retry();
-        return controller.state == GuiConnectionState.ready;
-      }),
-    ),
-    GuiConnectionState.unsupported => const _ConnectionPresentation(
-      title: '当前平台不支持',
-      detail: '此版本仅支持 Windows 桌面端。',
-      icon: Icons.block_outlined,
-      color: SidraviaColors.neutral,
-      showConfiguration: false,
-    ),
-    GuiConnectionState.failed => _ConnectionPresentation(
-      title: '服务不可用',
-      detail: '无法连接本机服务。',
-      icon: Icons.error_outline,
-      color: SidraviaColors.danger,
-      action: _HomeAction('重试', () async {
-        await controller.retry();
-        return controller.state == GuiConnectionState.ready;
-      }),
-    ),
-  };
-
-  _ConnectionPresentation _readyPresentation(
-    GuiController controller,
-    VoidCallback onOpenConfiguration,
-  ) {
-    final capabilities = controller.capabilities;
-    return switch (capabilities.capability) {
-      GuiCapabilityState.bootstrapping ||
-      GuiCapabilityState.stale ||
-      GuiCapabilityState.failed ||
-      GuiCapabilityState.unsupported => const _ConnectionPresentation(
-        title: '状态已过期',
-        detail: '无法获取最新连接状态。',
-        icon: Icons.sync_problem_outlined,
-        color: SidraviaColors.warning,
-      ),
-      GuiCapabilityState.daemonUnavailable => const _ConnectionPresentation(
-        title: '服务不可用',
-        detail: '本机服务未运行。',
-        icon: Icons.error_outline,
-        color: SidraviaColors.danger,
-      ),
-      GuiCapabilityState.createOnly => _ConnectionPresentation(
-        title: '未连接',
-        detail: '尚未保存登录配置。',
-        icon: Icons.wifi_off_outlined,
-        color: SidraviaColors.neutral,
-        action: _HomeAction('添加配置', () async {
-          onOpenConfiguration();
-          return true;
-        }),
-        showConfiguration: false,
-      ),
-      GuiCapabilityState.multipleConfigurations =>
-        const _ConnectionPresentation(
-          title: '状态不可用',
-          detail: '检测到多个登录配置，请先使用命令行工具处理。',
-          icon: Icons.info_outline,
-          color: SidraviaColors.warning,
-        ),
-      GuiCapabilityState.ambiguousSessions => const _ConnectionPresentation(
-        title: '状态不可用',
-        detail: '当前会话关系不明确，未执行任何操作。',
-        icon: Icons.info_outline,
-        color: SidraviaColors.warning,
-      ),
-      GuiCapabilityState.manageable => _manageablePresentation(
-        controller,
-        capabilities,
-      ),
-    };
-  }
-
-  _ConnectionPresentation _manageablePresentation(
-    GuiController controller,
-    GuiCapabilities capabilities,
-  ) {
-    final configuration = capabilities.configuration!;
-    final session = capabilities.retainedSession;
-    if (session == null) {
-      return _ConnectionPresentation(
-        title: '未连接',
-        detail: '${configuration.institutionDisplayName} 尚未认证。',
-        icon: Icons.wifi_off_outlined,
-        color: SidraviaColors.neutral,
-        action: _HomeAction(
-          '登录',
-          () => controller.startConfiguration(configuration.id),
-        ),
-      );
-    }
-    return _sessionPresentation(controller, configuration, session);
-  }
-
-  _ConnectionPresentation _sessionPresentation(
-    GuiController controller,
-    ConfigurationSummary configuration,
-    SessionSummary session,
-  ) => switch (session.state) {
-    'authenticated' => _ConnectionPresentation(
-      title: '已连接',
-      detail: '已通过 ${configuration.institutionDisplayName} 认证。',
-      icon: Icons.check,
-      color: SidraviaColors.connected,
-      action: _HomeAction('注销', () => controller.stopSession(session.id)),
-    ),
-    'authenticating' => _ConnectionPresentation(
-      title: '正在认证…',
-      detail: '正在使用 ${configuration.institutionDisplayName} 认证。',
-      icon: Icons.sync,
-      color: SidraviaColors.progress,
-      progress: true,
-      action: _HomeAction('取消', () => controller.stopSession(session.id)),
-    ),
-    'waiting_for_network' => _ConnectionPresentation(
-      title: '网络不可用',
-      detail: '未检测到可用的校园网。',
-      icon: Icons.signal_wifi_statusbar_connected_no_internet_4_outlined,
-      color: SidraviaColors.warning,
-      action: _HomeAction('取消', () => controller.stopSession(session.id)),
-    ),
-    'waiting_before_retry' => _ConnectionPresentation(
-      title: '等待重试…',
-      detail: '认证将在稍后自动重试。',
-      icon: Icons.schedule_outlined,
-      color: SidraviaColors.warning,
-      action: _HomeAction('立即重试', () => controller.restartSession(session.id)),
-    ),
-    'blocked_by_error' => _ConnectionPresentation(
-      title: '认证失败',
-      detail: _failureDetail(session),
-      icon: Icons.error_outline,
-      color: SidraviaColors.danger,
-      action: _HomeAction('重试', () => controller.restartSession(session.id)),
-    ),
-    'stopping' => const _ConnectionPresentation(
-      title: '正在注销…',
-      detail: '正在结束当前认证。',
-      icon: Icons.sync,
-      color: SidraviaColors.progress,
-      progress: true,
-    ),
-    'suspended' => _ConnectionPresentation(
-      title: '未连接',
-      detail: '${configuration.institutionDisplayName} 尚未认证。',
-      icon: Icons.wifi_off_outlined,
-      color: SidraviaColors.neutral,
-      action: _HomeAction(
-        '登录',
-        () => controller.ensureSessionRunning(session.id),
-      ),
-    ),
-    _ => const _ConnectionPresentation(
-      title: '状态不可用',
-      detail: '无法识别当前认证状态。',
-      icon: Icons.help_outline,
-      color: SidraviaColors.warning,
-    ),
-  };
-
-  String _failureDetail(SessionSummary session) {
-    final detail =
-        session.lastAuthenticationFailure?.description ??
-        session.stateReason?.description;
-    return detail == null || detail.trim().isEmpty
-        ? '请检查用户名、密码和网络后重试。'
-        : detail;
   }
 }
 
-class _StatusNotice extends StatelessWidget {
-  const _StatusNotice({required this.text, required this.compact});
+class _ConnectionCard extends StatelessWidget {
+  const _ConnectionCard({
+    required this.controller,
+    required this.compact,
+    required this.onOpenConfiguration,
+  });
 
-  final String text;
+  final GuiController controller;
   final bool compact;
+  final VoidCallback onOpenConfiguration;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: SidraviaLayout.limitTextScale(
-        compact: compact,
-        maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-        child: Text(
-          text,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onErrorContainer,
+    final presentation = _connectionPresentation(
+      controller,
+      onOpenConfiguration,
+    );
+    final config = controller.capabilities.configuration;
+    final session = controller.capabilities.retainedSession;
+    final institution = config?.institutionDisplayName ?? '未选择机构';
+    return Semantics(
+      label: '连接状态：${presentation.title}。${presentation.detail}',
+      child: Card(
+        key: const ValueKey<String>('connection-status-surface'),
+        child: Padding(
+          padding: EdgeInsets.all(SidraviaLayout.cardPadding(compact: compact)),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.55,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      institution,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      config?.username ?? '尚未配置账户',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                presentation.title,
+                textAlign: TextAlign.center,
+                style: compact
+                    ? theme.textTheme.headlineSmall
+                    : theme.textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                presentation.detail,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.45,
+                ),
+              ),
+              if (session?.authenticationEstablishedAt
+                  case final established?) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '认证开始于 ${_formatTime(established)}',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (controller.notice case final notice?) ...[
+                const SizedBox(height: 16),
+                _Notice(text: notice),
+              ],
+              if (presentation.action case final action?) ...[
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const ValueKey('connection-primary-action'),
+                    onPressed: controller.busy
+                        ? null
+                        : () {
+                            action.onPressed();
+                          },
+                    child: Text(action.label),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -428,31 +207,23 @@ class _StatusNotice extends StatelessWidget {
   }
 }
 
-class _StatusIndicator extends StatelessWidget {
-  const _StatusIndicator({required this.presentation, this.size = 44});
-
-  final _ConnectionPresentation presentation;
-  final double size;
+class _Notice extends StatelessWidget {
+  const _Notice({required this.text});
+  final String text;
 
   @override
   Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
+    width: double.infinity,
+    padding: const EdgeInsets.all(13),
     decoration: BoxDecoration(
-      color: presentation.color.withValues(alpha: 0.1),
-      shape: BoxShape.circle,
+      color: Theme.of(context).colorScheme.errorContainer
+          .withValues(alpha: 0.65),
+      borderRadius: BorderRadius.circular(12),
     ),
-    alignment: Alignment.center,
-    child: presentation.progress
-        ? SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.2,
-              color: presentation.color,
-            ),
-          )
-        : Icon(presentation.icon, size: 22, color: presentation.color),
+    child: Text(
+      text,
+      style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+    ),
   );
 }
 
@@ -460,25 +231,174 @@ class _ConnectionPresentation {
   const _ConnectionPresentation({
     required this.title,
     required this.detail,
-    required this.icon,
-    required this.color,
     this.action,
-    this.progress = false,
-    this.showConfiguration = true,
   });
-
   final String title;
   final String detail;
-  final IconData icon;
-  final Color color;
   final _HomeAction? action;
-  final bool progress;
-  final bool showConfiguration;
 }
 
 class _HomeAction {
   const _HomeAction(this.label, this.onPressed);
-
   final String label;
   final Future<bool> Function() onPressed;
+}
+
+_ConnectionPresentation _connectionPresentation(
+  GuiController controller,
+  VoidCallback onOpenConfiguration,
+) {
+  switch (controller.state) {
+    case GuiConnectionState.bootstrapping:
+      return const _ConnectionPresentation(
+        title: '正在准备连接',
+        detail: '正在连接本机服务，请稍候。',
+      );
+    case GuiConnectionState.stale:
+      return _ConnectionPresentation(
+        title: '状态暂时不可用',
+        detail: '无法取得最新连接状态。',
+        action: _HomeAction('重试', () async {
+          await controller.retry();
+          return true;
+        }),
+      );
+    case GuiConnectionState.failed:
+      return _ConnectionPresentation(
+        title: '服务不可用',
+        detail: '无法连接本机服务。',
+        action: _HomeAction('重试', () async {
+          await controller.retry();
+          return true;
+        }),
+      );
+    case GuiConnectionState.unsupported:
+      return const _ConnectionPresentation(
+        title: '当前平台暂不支持',
+        detail: '本版本暂未提供此平台的本机服务连接。',
+      );
+    case GuiConnectionState.ready:
+      break;
+  }
+  switch (controller.capabilities.capability) {
+    case GuiCapabilityState.createOnly:
+      return _ConnectionPresentation(
+        title: '尚未配置',
+        detail: '添加一个校园网账户后即可开始连接。',
+        action: _HomeAction('前往配置', () async {
+          onOpenConfiguration();
+          return true;
+        }),
+      );
+    case GuiCapabilityState.daemonUnavailable:
+      return const _ConnectionPresentation(
+        title: '服务未运行',
+        detail: '本机认证服务当前不可用。',
+      );
+    case GuiCapabilityState.multipleConfigurations:
+      return const _ConnectionPresentation(
+        title: '配置需要整理',
+        detail: '检测到多个登录配置，请先使用命令行工具处理。',
+      );
+    case GuiCapabilityState.ambiguousSessions:
+      return const _ConnectionPresentation(
+        title: '会话状态不明确',
+        detail: '当前会话关系无法确认，未执行操作。',
+      );
+    case GuiCapabilityState.bootstrapping:
+    case GuiCapabilityState.stale:
+    case GuiCapabilityState.failed:
+    case GuiCapabilityState.unsupported:
+      return const _ConnectionPresentation(
+        title: '状态暂时不可用',
+        detail: '无法取得最新连接状态。',
+      );
+    case GuiCapabilityState.manageable:
+      final configuration = controller.capabilities.configuration!;
+      final session = controller.capabilities.retainedSession;
+      if (session == null) {
+        return _ConnectionPresentation(
+          title: '未连接',
+          detail: '${configuration.institutionDisplayName} 已准备就绪。',
+          action: _HomeAction(
+            '开始连接',
+            () => controller.startConfiguration(configuration.id),
+          ),
+        );
+      }
+      return _sessionPresentation(controller, session);
+  }
+}
+
+_ConnectionPresentation _sessionPresentation(
+  GuiController controller,
+  SessionSummary session,
+) {
+  switch (session.state) {
+    case 'authenticated':
+      return _ConnectionPresentation(
+        title: '已连接',
+        detail: '认证成功，当前连接正在保持。',
+        action: _HomeAction('断开连接', () => controller.stopSession(session.id)),
+      );
+    case 'authenticating':
+      return _ConnectionPresentation(
+        title: '正在认证',
+        detail: '正在向校园网提交认证请求。',
+        action: _HomeAction('取消连接', () => controller.stopSession(session.id)),
+      );
+    case 'waiting_for_network':
+      return _ConnectionPresentation(
+        title: '等待网络',
+        detail: '未检测到可用的校园网连接。',
+        action: _HomeAction('取消连接', () => controller.stopSession(session.id)),
+      );
+    case 'waiting_before_retry':
+      return _ConnectionPresentation(
+        title: '等待重试',
+        detail: session.nextRetryAt == null
+            ? '认证将在稍后自动重试。'
+            : '认证将在 ${_formatTime(session.nextRetryAt!)} 重试。',
+        action: _HomeAction(
+          '立即重试',
+          () => controller.restartSession(session.id),
+        ),
+      );
+    case 'blocked_by_error':
+      final detail =
+          session.lastAuthenticationFailure?.description ??
+          session.stateReason?.description ??
+          '认证失败，请检查配置后重试。';
+      return _ConnectionPresentation(
+        title: '连接失败',
+        detail: detail,
+        action: _HomeAction(
+          '重新连接',
+          () => controller.restartSession(session.id),
+        ),
+      );
+    case 'stopping':
+      return const _ConnectionPresentation(title: '正在断开', detail: '正在结束当前认证。');
+    case 'suspended':
+      return _ConnectionPresentation(
+        title: '未连接',
+        detail: '连接已暂停。',
+        action: _HomeAction(
+          '开始连接',
+          () => controller.ensureSessionRunning(session.id),
+        ),
+      );
+    default:
+      return const _ConnectionPresentation(
+        title: '状态未知',
+        detail: '无法识别当前认证状态。',
+      );
+  }
+}
+
+String _formatTime(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:sidravia_gui/design/sidravia_layout.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -6,111 +7,91 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = SidraviaLayout.isCompactWidth(constraints.maxWidth);
+        final theme = Theme.of(context);
         return ListView(
           padding: SidraviaLayout.pagePadding(compact: compact),
           children: [
-            if (!compact) ...[
-              Text('关于', style: theme.textTheme.displaySmall),
-              const SizedBox(height: 28),
-            ],
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 600),
+            Text(
+              '选项',
+              style: compact
+                  ? theme.textTheme.headlineSmall
+                  : theme.textTheme.displaySmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '管理界面偏好和桌面行为。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Card(
+              child: Column(
+                children: [
+                  const _OptionHeader(
+                    icon: Icons.palette_outlined,
+                    title: '外观',
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.brightness_auto_outlined),
+                    title: const Text('主题模式'),
+                    subtitle: const Text('跟随系统设置'),
+                    trailing: Chip(label: const Text('系统')),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.text_fields_outlined),
+                    title: const Text('字体'),
+                    subtitle: const Text('HarmonyOS Sans'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Card(
+              child: Column(
+                children: [
+                  const _OptionHeader(
+                    icon: Icons.desktop_windows_outlined,
+                    title: '桌面行为',
+                  ),
+                  const Divider(height: 1),
+                  const ListTile(
+                    leading: Icon(Icons.notifications_none_outlined),
+                    title: Text('系统托盘'),
+                    subtitle: Text('桌面模式下由系统托盘管理窗口显示状态'),
+                  ),
+                  const ListTile(
+                    leading: Icon(Icons.refresh_outlined),
+                    title: Text('状态刷新'),
+                    subtitle: Text('连接状态由本机服务持续同步'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Card(
+              child: Padding(
                 padding: EdgeInsets.all(
                   SidraviaLayout.cardPadding(compact: compact),
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.1,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.wifi,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SidraviaLayout.limitTextScale(
-                                compact: compact,
-                                maxScaleFactor:
-                                    SidraviaLayout.compactContentMaxTextScale,
-                                child: Text(
-                                  'Sidravia',
-                                  style: compact
-                                      ? theme.textTheme.titleSmall
-                                      : theme.textTheme.titleLarge,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              SidraviaLayout.limitTextScale(
-                                compact: compact,
-                                maxScaleFactor:
-                                    SidraviaLayout.compactContentMaxTextScale,
-                                child: Text(
-                                  '校园网认证工具',
-                                  style:
-                                      (compact
-                                              ? theme.textTheme.bodySmall
-                                              : theme.textTheme.bodyMedium)
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: compact ? 18 : 28),
-                    SidraviaLayout.limitTextScale(
-                      compact: compact,
-                      maxScaleFactor: SidraviaLayout.compactChromeMaxTextScale,
-                      child: Text(
-                        '字体与许可',
-                        style: compact
-                            ? theme.textTheme.labelLarge
-                            : theme.textTheme.titleMedium,
+                    Text(
+                      '关于 Sidravia',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    SidraviaLayout.limitTextScale(
-                      compact: compact,
-                      maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-                      child: Text(
-                        '界面使用 HarmonyOS Sans。',
-                        style:
-                            (compact
-                                    ? theme.textTheme.bodySmall
-                                    : theme.textTheme.bodyMedium)
-                                ?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '校园网认证工具',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -120,15 +101,7 @@ class SettingsPage extends StatelessWidget {
                         applicationName: 'Sidravia',
                       ),
                       icon: const Icon(Icons.description_outlined),
-                      label: SidraviaLayout.limitTextScale(
-                        compact: compact,
-                        maxScaleFactor:
-                            SidraviaLayout.compactChromeMaxTextScale,
-                        child: Text(
-                          '查看许可',
-                          style: compact ? theme.textTheme.labelMedium : null,
-                        ),
-                      ),
+                      label: const Text('查看许可'),
                     ),
                   ],
                 ),
@@ -139,4 +112,26 @@ class SettingsPage extends StatelessWidget {
       },
     );
   }
+}
+
+class _OptionHeader extends StatelessWidget {
+  const _OptionHeader({required this.icon, required this.title});
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+    child: Row(
+      children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
+    ),
+  );
 }

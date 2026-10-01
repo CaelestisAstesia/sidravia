@@ -105,36 +105,34 @@ void main() {
     );
   });
 
-  testWidgets('compact layout shows a header entry and keeps three tabs', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final gui = await _gui();
-    final announcements = await _started([_item('m1', 'maintenance')]);
-    addTearDown(announcements.dispose);
+  testWidgets(
+    'compact layout shows a header entry and keeps the four sections',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gui = await _gui();
+      final announcements = await _started([_item('m1', 'maintenance')]);
+      addTearDown(announcements.dispose);
 
-    await tester.pumpWidget(_shellApp(gui, announcements));
-    await tester.pump();
+      await tester.pumpWidget(_shellApp(gui, announcements));
+      await tester.pump();
 
-    final entry = find.byKey(const ValueKey('announcement-entry-compact'));
-    expect(entry, findsOneWidget);
-    expect(find.byKey(const ValueKey('announcement-entry-wide')), findsNothing);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('compact-header')),
-        matching: entry,
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.byType(NavigationDestination),
-      ),
-      findsNWidgets(3),
-    );
-  });
+      final entry = find.byKey(const ValueKey('announcement-entry-compact'));
+      expect(entry, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('announcement-entry-wide')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('compact-header')),
+          matching: entry,
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('compact-navigation')), findsOneWidget);
+    },
+  );
 
   testWidgets('a disabled controller hides every announcement surface', (
     tester,
@@ -241,8 +239,8 @@ void main() {
     expect(status, findsOneWidget);
     expect(inline, findsOneWidget);
     expect(
-      tester.getTopLeft(inline).dy,
-      greaterThan(tester.getBottomLeft(status).dy),
+      tester.getBottomLeft(inline).dy,
+      lessThan(tester.getTopLeft(status).dy),
     );
 
     await tester.tap(

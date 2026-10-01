@@ -45,7 +45,7 @@ void main() {
         findsNothing,
       );
       expect(find.text('已连接'), findsOneWidget);
-      expect(find.text('注销'), findsOneWidget);
+      expect(find.text('断开连接'), findsOneWidget);
 
       await tester.tap(find.descendant(of: sidebar, matching: find.text('配置')));
       await tester.pumpAndSettle();
@@ -138,10 +138,15 @@ void main() {
         find.byKey(const ValueKey<String>('compact-header')),
         findsOneWidget,
       );
-      expect(find.byType(NavigationBar), findsOneWidget);
-      await tester.tap(find.text('关于'));
+      expect(
+        find.byKey(const ValueKey<String>('compact-navigation')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('destination-options')),
+      );
       await tester.pumpAndSettle();
-      expect(find.text('校园网认证工具'), findsOneWidget);
+      expect(find.text('选项'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );
@@ -190,7 +195,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('正在连接…'), findsOneWidget);
+    expect(find.text('正在准备连接'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -211,7 +216,7 @@ void main() {
 
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
+        of: find.byKey(const ValueKey<String>('compact-navigation')),
         matching: find.text('配置'),
       ),
     );
@@ -223,13 +228,13 @@ void main() {
 
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('关于'),
+        of: find.byKey(const ValueKey<String>('compact-navigation')),
+        matching: find.text('选项'),
       ),
     );
     await tester.pumpAndSettle();
     expect(
-      find.descendant(of: header, matching: find.text('关于')),
+      find.descendant(of: header, matching: find.text('选项')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -248,14 +253,14 @@ void main() {
     final theme = Theme.of(tester.element(header));
     expect(
       tester
-          .widget<Text>(find.descendant(of: header, matching: find.text('连接')))
+          .widget<Text>(find.descendant(of: header, matching: find.text('仪表板')))
           .style
           ?.fontSize,
       theme.textTheme.titleSmall?.fontSize,
     );
     expect(
       tester.widget<Text>(find.text('已连接')).style?.fontSize,
-      theme.textTheme.titleMedium?.fontSize,
+      theme.textTheme.headlineSmall?.fontSize,
     );
     expect(
       MediaQuery.textScalerOf(tester.element(find.text('已连接'))).scale(10),
@@ -265,15 +270,12 @@ void main() {
 
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('关于'),
+        of: find.byKey(const ValueKey<String>('compact-navigation')),
+        matching: find.text('选项'),
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<Text>(find.text('Sidravia')).style?.fontSize,
-      theme.textTheme.titleSmall?.fontSize,
-    );
+    expect(find.text('选项'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

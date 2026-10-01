@@ -3,16 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/design/sidravia_theme.dart';
 
 void main() {
-  test('light theme uses the bundled HarmonyOS Sans family', () {
-    final theme = SidraviaTheme.light();
+  test('theme exposes HarmonyOS Sans and light/dark variants', () {
+    final light = SidraviaTheme.light();
+    final dark = SidraviaTheme.dark();
 
-    expect(theme.textTheme.bodyLarge?.fontFamily, 'HarmonyOS Sans');
-    expect(theme.colorScheme.brightness, Brightness.light);
-    expect(theme.scaffoldBackgroundColor, const Color(0xFFF7F8FA));
-    expect(theme.colorScheme.tertiary, SidraviaColors.connected);
-    expect(
-      theme.navigationBarTheme.backgroundColor,
-      theme.scaffoldBackgroundColor,
-    );
+    expect(light.textTheme.bodyLarge?.fontFamily, 'HarmonyOS Sans');
+    expect(dark.textTheme.bodyLarge?.fontFamily, 'HarmonyOS Sans');
+    expect(light.colorScheme.brightness, Brightness.light);
+    expect(dark.colorScheme.brightness, Brightness.dark);
+    expect(light.scaffoldBackgroundColor, const Color(0xFFF4F6F9));
+    expect(light.colorScheme.tertiary, SidraviaColors.connected);
   });
 }

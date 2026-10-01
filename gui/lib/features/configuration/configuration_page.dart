@@ -20,17 +20,20 @@ class ConfigurationPage extends StatelessWidget {
         return ListView(
           padding: SidraviaLayout.pagePadding(compact: compact),
           children: [
-            if (!compact) ...[
-              Text('配置', style: theme.textTheme.displaySmall),
-              const SizedBox(height: 10),
-              Text(
-                '保存用于校园网认证的登录信息。密码不会在界面中回显。',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+            Text(
+              '配置',
+              style: compact
+                  ? theme.textTheme.headlineSmall
+                  : theme.textTheme.displaySmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '保存用于校园网认证的登录信息。密码不会在界面中回显。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: 28),
-            ],
+            ),
+            const SizedBox(height: 22),
             AnimatedBuilder(
               animation: controller,
               builder: (context, _) => _ConfigurationContent(
@@ -623,16 +626,21 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(maxWidth: 560),
-    padding: const EdgeInsets.all(16),
+    constraints: const BoxConstraints(maxWidth: 600),
+    width: double.infinity,
+    padding: const EdgeInsets.all(15),
     decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.errorContainer,
-      borderRadius: BorderRadius.circular(16),
+      color: Theme.of(context).colorScheme.errorContainer
+          .withValues(alpha: 0.7),
+      borderRadius: BorderRadius.circular(14),
     ),
     child: SidraviaLayout.limitTextScale(
       compact: compact,
       maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-      child: Text(text),
+      child: Text(
+        text,
+        style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+      ),
     ),
   );
 }
@@ -652,47 +660,43 @@ class _Card extends StatelessWidget {
       final theme = Theme.of(context);
       final compact = SidraviaLayout.isCompactWidth(constraints.maxWidth);
       final showHeading = !compact || children.isEmpty;
-      return Container(
-        constraints: const BoxConstraints(maxWidth: 600),
-        padding: EdgeInsets.all(SidraviaLayout.cardPadding(compact: compact)),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (showHeading) ...[
-              SidraviaLayout.limitTextScale(
-                compact: compact,
-                maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-                child: Text(
-                  title,
-                  style: compact
-                      ? theme.textTheme.titleMedium
-                      : theme.textTheme.headlineSmall,
+      return Card(
+        child: Padding(
+          padding: EdgeInsets.all(SidraviaLayout.cardPadding(compact: compact)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (showHeading) ...[
+                SidraviaLayout.limitTextScale(
+                  compact: compact,
+                  maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                  child: Text(
+                    title,
+                    style: compact
+                        ? theme.textTheme.titleMedium
+                        : theme.textTheme.headlineSmall,
+                  ),
                 ),
-              ),
-              SizedBox(height: compact ? 6 : 8),
-              SidraviaLayout.limitTextScale(
-                compact: compact,
-                maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
-                child: Text(
-                  detail,
-                  style:
-                      (compact
-                              ? theme.textTheme.bodySmall
-                              : theme.textTheme.bodyMedium)
-                          ?.copyWith(height: compact ? 1.4 : 1.5),
+                SizedBox(height: compact ? 6 : 8),
+                SidraviaLayout.limitTextScale(
+                  compact: compact,
+                  maxScaleFactor: SidraviaLayout.compactContentMaxTextScale,
+                  child: Text(
+                    detail,
+                    style:
+                        (compact
+                                ? theme.textTheme.bodySmall
+                                : theme.textTheme.bodyMedium)
+                            ?.copyWith(height: compact ? 1.4 : 1.5),
+                  ),
                 ),
-              ),
+              ],
+              if (children.isNotEmpty) ...[
+                if (showHeading) SizedBox(height: compact ? 16 : 24),
+                ...children,
+              ],
             ],
-            if (children.isNotEmpty) ...[
-              if (showHeading) SizedBox(height: compact ? 16 : 24),
-              ...children,
-            ],
-          ],
+          ),
         ),
       );
     },
