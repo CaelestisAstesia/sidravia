@@ -2,9 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/shared/theme/app_theme.dart';
+import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 class SidraviaApp extends StatefulWidget {
@@ -79,10 +80,13 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'Sidravia',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      home: const SidraviaWindowFrame(child: Scaffold(body: SizedBox.expand())),
+      theme: SidraviaTheme.light(),
+      home: SidraviaWindowFrame(
+        child: SidraviaShell(
+          controller: widget.controller,
+          announcements: widget.announcements,
+        ),
+      ),
     );
   }
 }
