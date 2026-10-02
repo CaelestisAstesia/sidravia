@@ -192,13 +192,16 @@ class _DesktopHeader extends StatelessWidget {
           const Spacer(),
           if (announcements case final announcements?
               when announcements.enabled)
-            AnnouncementEntryButton(
-              controller: announcements,
-              compact: false,
-              onPressed: () => showAnnouncementSheet(
-                context,
+            SizedBox(
+              width: 180,
+              child: AnnouncementEntryButton(
                 controller: announcements,
-                wide: true,
+                compact: false,
+                onPressed: () => showAnnouncementSheet(
+                  context,
+                  controller: announcements,
+                  wide: true,
+                ),
               ),
             ),
         ],
