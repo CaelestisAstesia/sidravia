@@ -61,7 +61,7 @@ void main() {
     },
   );
 
-  testWidgets('Windows preview shares the product-owned frame', (tester) async {
+  testWidgets('Windows preview uses the native window frame', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -70,13 +70,11 @@ void main() {
       await tester.pumpWidget(const preview.PreviewCatalog());
       await tester.pumpAndSettle();
 
-      final titleBar = find.byKey(const ValueKey<String>('windows-title-bar'));
       final toolbar = find.text('开发预览 · 不连接 daemon');
-      expect(titleBar, findsOneWidget);
       expect(toolbar, findsOneWidget);
       expect(
-        tester.getBottomLeft(titleBar).dy,
-        lessThanOrEqualTo(tester.getTopLeft(toolbar).dy),
+        find.byKey(const ValueKey<String>('windows-title-bar')),
+        findsNothing,
       );
     } finally {
       debugDefaultTargetPlatformOverride = null;

@@ -51,24 +51,23 @@ class _SidraviaShellState extends State<SidraviaShell> {
         final contentSurface = Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
+            constraints: const BoxConstraints(maxWidth: 1180),
             child: content,
           ),
         );
         return Scaffold(
           body: SafeArea(
             child: wide
-                ? Row(
+                ? Column(
                     children: [
-                      _Sidebar(
+                      _DesktopHeader(
                         selectedIndex: _selectedIndex,
-                        onSelected: _selectDestination,
                         announcements: widget.announcements,
                       ),
-                      const VerticalDivider(width: 1),
+                      const Divider(height: 1),
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 32, right: 24),
+                          padding: const EdgeInsets.symmetric(horizontal: 48),
                           child: contentSurface,
                         ),
                       ),
@@ -101,71 +100,6 @@ class _SidraviaShellState extends State<SidraviaShell> {
                 ),
         );
       },
-    );
-  }
-}
-
-class _Sidebar extends StatelessWidget {
-  const _Sidebar({
-    required this.selectedIndex,
-    required this.onSelected,
-    this.announcements,
-  });
-
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-  final AnnouncementController? announcements;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      key: const ValueKey<String>('wide-sidebar'),
-      width: 220,
-      child: ColoredBox(
-        color: theme.scaffoldBackgroundColor,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(
-                  'Sidravia',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              for (final (index, destination) in appDestinations.indexed)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _SidebarDestination(
-                    destination: destination,
-                    selected: index == selectedIndex,
-                    onPressed: () => onSelected(index),
-                  ),
-                ),
-              if (announcements case final announcements?
-                  when announcements.enabled) ...[
-                const Spacer(),
-                AnnouncementEntryButton(
-                  controller: announcements,
-                  compact: false,
-                  onPressed: () => showAnnouncementSheet(
-                    context,
-                    controller: announcements,
-                    wide: true,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -215,47 +149,59 @@ class _CompactHeader extends StatelessWidget {
   }
 }
 
-class _SidebarDestination extends StatelessWidget {
-  const _SidebarDestination({
-    required this.destination,
-    required this.selected,
-    required this.onPressed,
-  });
+class _DesktopHeader extends StatelessWidget {
+  const _DesktopHeader({required this.selectedIndex, this.announcements});
 
-  final AppDestination destination;
-  final bool selected;
-  final VoidCallback onPressed;
+  final int selectedIndex;
+  final AnnouncementController? announcements;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Semantics(
-      key: ValueKey<String>('destination-${destination.id}'),
-      container: true,
-      button: true,
-      selected: selected,
-      label: destination.label,
-      child: SizedBox(
-        width: double.infinity,
-        child: TextButton.icon(
-          onPressed: onPressed,
-          style: TextButton.styleFrom(
-            alignment: Alignment.center,
-            minimumSize: const Size.fromHeight(48),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            backgroundColor: selected
-                ? colorScheme.primary.withValues(alpha: 0.1)
-                : Colors.transparent,
-            foregroundColor: selected
-                ? colorScheme.primary
-                : colorScheme.onSurfaceVariant,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+    return Padding(
+      key: const ValueKey<String>('desktop-header'),
+      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 12),
+      child: Row(
+        children: [
+          Text(
+            'Sidravia',
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
-          icon: Icon(selected ? destination.selectedIcon : destination.icon),
-          label: Text(destination.label),
-        ),
+          const SizedBox(width: 28),
+          for (final (index, destination) in appDestinations.indexed)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Semantics(
+                key: ValueKey<String>('destination-${destination.id}'),
+                button: true,
+                selected: index == selectedIndex,
+                label: destination.label,
+                child: TextButton.icon(
+                  onPressed: () => context
+                      .findAncestorStateOfType<_SidraviaShellState>()
+                      ?._selectDestination(index),
+                  icon: Icon(
+                    index == selectedIndex
+                        ? destination.selectedIcon
+                        : destination.icon,
+                  ),
+                  label: Text(destination.label),
+                ),
+              ),
+            ),
+          const Spacer(),
+          if (announcements case final announcements?
+              when announcements.enabled)
+            AnnouncementEntryButton(
+              controller: announcements,
+              compact: false,
+              onPressed: () => showAnnouncementSheet(
+                context,
+                controller: announcements,
+                wide: true,
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -95,7 +95,7 @@ void main() {
     );
   });
 
-  testWidgets('Windows frame exposes direct minimize and close controls', (
+  testWidgets('Windows frame leaves caption controls to the native window', (
     tester,
   ) async {
     final calls = <MethodCall>[];
@@ -123,24 +123,16 @@ void main() {
       ),
     );
 
-    final titleBar = find.byKey(const ValueKey<String>('windows-title-bar'));
-    final dragRegion = find.byKey(
-      const ValueKey<String>('windows-drag-region'),
-    );
-    expect(tester.getSize(titleBar).height, SidraviaWindowFrame.titleBarHeight);
     expect(
-      tester.getSize(dragRegion).width,
-      tester.getSize(titleBar).width - SidraviaWindowFrame.controlWidth * 2,
+      find.byKey(const ValueKey<String>('windows-title-bar')),
+      findsNothing,
     );
-    expect(find.byTooltip('最小化'), findsOneWidget);
-    expect(find.byTooltip('关闭'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey<String>('window-minimize')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('window-close')));
-    await tester.pump();
-
-    expect(calls.map((call) => call.method), ['minimize', 'close']);
+    expect(
+      find.byKey(const ValueKey<String>('windows-drag-region')),
+      findsNothing,
+    );
+    expect(find.byType(ColoredBox), findsAtLeastNWidgets(1));
+    expect(calls, isEmpty);
   });
 
   testWidgets('narrow shell uses bottom navigation and switches sections', (

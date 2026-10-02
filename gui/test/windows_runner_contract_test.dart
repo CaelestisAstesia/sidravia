@@ -3,22 +3,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Windows runner owns a DPI-aware resizable custom frame', () {
+  test('Windows runner owns a DPI-aware native resizable frame', () {
     final runner = File('windows/runner/win32_window.cpp').readAsStringSync();
     final main = File('windows/runner/main.cpp').readAsStringSync();
     final flutterWindow = File('windows/runner/flutter_window.cpp')
         .readAsStringSync();
 
-    expect(runner, isNot(contains('WS_OVERLAPPEDWINDOW')));
-    expect(runner, contains('WS_POPUP | WS_THICKFRAME'));
-    expect(runner, contains('WS_MINIMIZEBOX'));
-    expect(runner, contains('WS_MAXIMIZEBOX'));
-    expect(runner, contains('WS_SYSMENU'));
-    expect(runner, contains('WM_NCCALCSIZE'));
-    expect(runner, contains('WM_NCHITTEST'));
-    expect(runner, contains('HTCAPTION'));
-    expect(runner, contains('kTitleBarHeight = 40'));
-    expect(runner, contains('kWindowControlsWidth = 92'));
+    expect(runner, contains('WS_OVERLAPPEDWINDOW'));
+    expect(runner, isNot(contains('WS_POPUP')));
+    expect(runner, isNot(contains('WM_NCCALCSIZE')));
+    expect(runner, isNot(contains('WM_NCHITTEST')));
     expect(runner, contains('WM_GETMINMAXINFO'));
     expect(runner, contains('kMinimumWindowWidth = 900'));
     expect(runner, contains('kMinimumWindowHeight = 600'));
