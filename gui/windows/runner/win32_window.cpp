@@ -20,7 +20,7 @@ constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr int kMinimumWindowWidth = 900;
 constexpr int kMinimumWindowHeight = 600;
 constexpr int kTitleBarHeight = 40;
-constexpr int kWindowControlsWidth = 92;
+constexpr int kWindowControlsWidth = 138;
 constexpr int kResizeBorderWidth = 8;
 
 // The number of Win32Window objects that currently exist.
@@ -32,6 +32,20 @@ using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
+}
+
+RECT ChildContentRect(HWND window) {
+  RECT frame{};
+  GetClientRect(window, &frame);
+  if (IsZoomed(window)) return frame;
+  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+  const int border = Scale(kResizeBorderWidth, dpi / 96.0);
+  frame.left += border;
+  frame.top += border;
+  frame.right -= border;
+  frame.bottom -= border;
+  return frame;
 }
 
 LRESULT HitTestWindow(HWND window, LPARAM lparam) {
@@ -267,7 +281,7 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
-      RECT rect = GetClientArea();
+      RECT rect = ChildContentRect(hwnd);
       if (child_content_ != nullptr) {
         // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
@@ -310,7 +324,7 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
-  RECT frame = GetClientArea();
+  RECT frame = ChildContentRect(window_handle_);
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);

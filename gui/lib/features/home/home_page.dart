@@ -115,88 +115,101 @@ class HomePage extends StatelessWidget {
     final primaryEnabled =
         controller.state == GuiConnectionState.ready &&
         (configuration == null ? controller.capabilities.canCreate : canStart);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => onNavigate(AppPage.configuration),
-                  style: TextButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    padding: EdgeInsets.zero,
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          constraints.maxWidth >= 760 ? 56 : 24,
+          24,
+          constraints.maxWidth >= 760 ? 56 : 24,
+          36,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => onNavigate(AppPage.configuration),
+                    style: TextButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          configuration?.institutionDisplayName ?? '尚未配置',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          configuration?.username ?? '点击添加连接配置',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        configuration?.institutionDisplayName ?? '尚未配置',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                IconButton(
+                  tooltip: '设置',
+                  onPressed: () => onNavigate(AppPage.settings),
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ],
+            ),
+            const SizedBox(height: 30),
+            _StatusBlock(state: state),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => onNavigate(
+                          configuration == null
+                              ? AppPage.settings
+                              : session == null
+                              ? AppPage.configuration
+                              : AppPage.details,
+                        ),
+                        child: Text(secondaryLabel),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        configuration?.username ?? '点击添加连接配置',
-                        style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: primaryEnabled
+                            ? () => _primary(session, configuration)
+                            : null,
+                        child: Text(primaryLabel),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ),
-              IconButton(
-                tooltip: '设置',
-                onPressed: () => onNavigate(AppPage.settings),
-                icon: const Icon(Icons.settings_outlined),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
-          _StatusBlock(state: state),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => onNavigate(
-                    configuration == null
-                        ? AppPage.settings
-                        : session == null
-                        ? AppPage.configuration
-                        : AppPage.details,
-                  ),
-                  child: Text(secondaryLabel),
-                ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: FilledButton(
-                  onPressed: primaryEnabled
-                      ? () => _primary(session, configuration)
-                      : null,
-                  child: Text(primaryLabel),
-                ),
-              ),
-            ],
-          ),
-          if (controller.notice case final notice?)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                notice,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-          if (announcements?.enabled ?? false)
-            AnnouncementEntry(
-              controller: announcements!,
-              onOpen: () =>
-                  showAnnouncementSheet(context, controller: announcements!),
-            ),
-        ],
+            if (controller.notice case final notice?)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  notice,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            if (announcements?.enabled ?? false)
+              AnnouncementEntry(
+                controller: announcements!,
+                onOpen: () =>
+                    showAnnouncementSheet(context, controller: announcements!),
+              ),
+          ],
+        ),
       ),
     );
   }

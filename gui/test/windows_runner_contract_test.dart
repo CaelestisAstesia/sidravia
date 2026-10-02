@@ -18,13 +18,16 @@ void main() {
     expect(runner, contains('WM_NCHITTEST'));
     expect(runner, contains('HTCAPTION'));
     expect(runner, contains('kTitleBarHeight = 40'));
-    expect(runner, contains('kWindowControlsWidth = 92'));
+    expect(runner, contains('kWindowControlsWidth = 138'));
     expect(runner, contains('WM_GETMINMAXINFO'));
     expect(runner, contains('kMinimumWindowWidth = 900'));
     expect(runner, contains('kMinimumWindowHeight = 600'));
     expect(flutterWindow, contains('"sidravia/window"'));
     expect(flutterWindow, contains('call.method_name() == "minimize"'));
     expect(flutterWindow, contains('ShowWindow(window, SW_MINIMIZE)'));
+    expect(flutterWindow, contains('call.method_name() == "beginDrag"'));
+    expect(flutterWindow, contains('WM_NCLBUTTONDOWN'));
+    expect(flutterWindow, contains('call.method_name() == "toggleMaximize"'));
     expect(flutterWindow, contains('call.method_name() == "close"'));
     expect(flutterWindow, contains('PostMessage(window, WM_CLOSE, 0, 0)'));
     expect(main, contains('Win32Window::Size size(1280, 720)'));

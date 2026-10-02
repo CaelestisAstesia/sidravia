@@ -7,6 +7,11 @@ abstract final class SidraviaWindowCommands {
 
   static Future<void> minimize() => channel.invokeMethod<void>('minimize');
 
+  static Future<void> beginDrag() => channel.invokeMethod<void>('beginDrag');
+
+  static Future<void> toggleMaximize() =>
+      channel.invokeMethod<void>('toggleMaximize');
+
   static Future<void> close() => channel.invokeMethod<void>('close');
 }
 
@@ -35,10 +40,20 @@ class SidraviaWindowFrame extends StatelessWidget {
             height: titleBarHeight,
             child: Row(
               children: [
-                const Expanded(
-                  child: SizedBox.expand(
-                    key: ValueKey<String>('windows-drag-region'),
+                Expanded(
+                  child: GestureDetector(
+                    key: const ValueKey<String>('windows-drag-region'),
+                    behavior: HitTestBehavior.opaque,
+                    onPanStart: (_) => SidraviaWindowCommands.beginDrag(),
+                    onDoubleTap: SidraviaWindowCommands.toggleMaximize,
+                    child: const SizedBox.expand(),
                   ),
+                ),
+                _WindowControlButton(
+                  key: const ValueKey<String>('window-maximize'),
+                  tooltip: '最大化或还原',
+                  icon: Icons.crop_square,
+                  onPressed: SidraviaWindowCommands.toggleMaximize,
                 ),
                 _WindowControlButton(
                   key: const ValueKey<String>('window-minimize'),

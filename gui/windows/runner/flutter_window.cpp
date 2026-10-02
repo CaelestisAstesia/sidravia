@@ -71,6 +71,17 @@ bool FlutterWindow::OnCreate() {
           result->Success();
           return;
         }
+        if (call.method_name() == "beginDrag") {
+          ReleaseCapture();
+          SendMessage(window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "toggleMaximize") {
+          ShowWindow(window, IsZoomed(window) ? SW_RESTORE : SW_MAXIMIZE);
+          result->Success();
+          return;
+        }
         if (call.method_name() == "close") {
           result->Success();
           PostMessage(window, WM_CLOSE, 0, 0);
