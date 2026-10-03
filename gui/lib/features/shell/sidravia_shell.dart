@@ -45,7 +45,7 @@ class _SidraviaShellState extends State<SidraviaShell> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820),
+            constraints: const BoxConstraints(maxWidth: 960),
             child: AnimatedBuilder(
               animation: widget.controller,
               builder: (context, _) => switch (_page) {

@@ -170,9 +170,9 @@ class HomePage extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 28),
             _StatusBlock(state: state),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Align(
               alignment: Alignment.center,
               child: ConstrainedBox(
@@ -213,12 +213,15 @@ class HomePage extends StatelessWidget {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ),
-            if (announcements?.enabled ?? false)
+            if (announcements?.enabled ?? false) ...[
+              const SizedBox(height: 30),
+              const Divider(height: 1),
               AnnouncementEntry(
                 controller: announcements!,
                 onOpen: () =>
                     showAnnouncementSheet(context, controller: announcements!),
               ),
+            ],
           ],
         ),
       ),
@@ -271,49 +274,58 @@ class _StatusBlock extends StatelessWidget {
       _HomeTone.error => Theme.of(context).colorScheme.error,
       _HomeTone.idle => Theme.of(context).colorScheme.outline,
     };
-    return Column(
-      children: [
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: .1),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: color.withValues(alpha: .3)),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            state.glyph,
-            style: TextStyle(
-              color: color,
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 258),
+      child: Column(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: color.withValues(alpha: .3)),
             ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          state.title,
-          style: Theme.of(context).textTheme.headlineMedium
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          state.detail,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-        if (state.context.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 14),
+            alignment: Alignment.center,
             child: Text(
-              state.context,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+              state.glyph,
+              style: TextStyle(
+                color: color,
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-      ],
+          const SizedBox(height: 14),
+          Text(
+            state.title,
+            style: Theme.of(context).textTheme.headlineMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            state.detail,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 92),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: state.context.isEmpty
+                  ? const SizedBox.shrink()
+                  : Text(
+                      state.context,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
