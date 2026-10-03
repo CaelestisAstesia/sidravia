@@ -275,9 +275,14 @@ void FlutterWindow::NotifyTray(const std::wstring& title,
 void FlutterWindow::ShowTrayMenu() {
   HWND hwnd = GetHandle();
   HMENU menu = ::CreatePopupMenu();
-  ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand, L"打开 Sidravia");
+  // Keep the native menu Unicode and expose the same hierarchy as the HTML
+  // tray mockup: a read-only status header followed by lifecycle actions.
+  ::AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"已连接");
+  ::AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"校园网");
+  ::AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"状态由主窗口提供");
   ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-  ::AppendMenuW(menu, MF_STRING, kTrayExitCommand, L"退出并断开");
+  ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand, L"显示主界面");
+  ::AppendMenuW(menu, MF_STRING, kTrayExitCommand, L"退出 Sidravia");
   ::SetMenuDefaultItem(menu, kTrayOpenCommand, FALSE);
   POINT pt{};
   ::GetCursorPos(&pt);
