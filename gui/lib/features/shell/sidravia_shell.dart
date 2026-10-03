@@ -42,9 +42,10 @@ class _SidraviaShellState extends State<SidraviaShell> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) => Scaffold(
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1180),
+            constraints: const BoxConstraints(maxWidth: 820),
             child: AnimatedBuilder(
               animation: widget.controller,
               builder: (context, _) => switch (_page) {

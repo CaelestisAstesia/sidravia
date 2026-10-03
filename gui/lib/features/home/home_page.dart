@@ -135,18 +135,29 @@ class HomePage extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       padding: EdgeInsets.zero,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          configuration?.institutionDisplayName ?? '尚未配置',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                configuration?.institutionDisplayName ?? '尚未配置',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                configuration?.username ?? '点击添加连接配置',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          configuration?.username ?? '点击添加连接配置',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        Icon(
+                          Icons.chevron_right,
+                          size: 22,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ],
                     ),
