@@ -44,7 +44,7 @@ class _SidraviaShellState extends State<SidraviaShell> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1040),
+            constraints: const BoxConstraints(maxWidth: 1180),
             child: AnimatedBuilder(
               animation: widget.controller,
               builder: (context, _) => switch (_page) {

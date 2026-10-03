@@ -19,9 +19,6 @@ namespace {
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr int kMinimumWindowWidth = 900;
 constexpr int kMinimumWindowHeight = 600;
-constexpr int kTitleBarHeight = 40;
-constexpr int kWindowControlsWidth = 138;
-constexpr int kResizeBorderWidth = 8;
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
@@ -32,64 +29,6 @@ using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
-}
-
-RECT ChildContentRect(HWND window) {
-  RECT frame{};
-  GetClientRect(window, &frame);
-  if (IsZoomed(window)) return frame;
-  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
-  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-  const int border = Scale(kResizeBorderWidth, dpi / 96.0);
-  frame.left += border;
-  frame.top += border;
-  frame.right -= border;
-  frame.bottom -= border;
-  return frame;
-}
-
-LRESULT HitTestWindow(HWND window, LPARAM lparam) {
-  POINT cursor = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-  RECT window_rect{};
-  GetWindowRect(window, &window_rect);
-
-  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
-  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-  double scale_factor = dpi / 96.0;
-  int resize_border = Scale(kResizeBorderWidth, scale_factor);
-
-  if (!IsZoomed(window)) {
-    bool left = cursor.x >= window_rect.left &&
-                cursor.x < window_rect.left + resize_border;
-    bool right = cursor.x < window_rect.right &&
-                 cursor.x >= window_rect.right - resize_border;
-    bool top = cursor.y >= window_rect.top &&
-               cursor.y < window_rect.top + resize_border;
-    bool bottom = cursor.y < window_rect.bottom &&
-                  cursor.y >= window_rect.bottom - resize_border;
-
-    if (top && left) return HTTOPLEFT;
-    if (top && right) return HTTOPRIGHT;
-    if (bottom && left) return HTBOTTOMLEFT;
-    if (bottom && right) return HTBOTTOMRIGHT;
-    if (left) return HTLEFT;
-    if (right) return HTRIGHT;
-    if (top) return HTTOP;
-    if (bottom) return HTBOTTOM;
-  }
-
-  POINT client = cursor;
-  ScreenToClient(window, &client);
-  RECT client_rect{};
-  GetClientRect(window, &client_rect);
-  int title_bar_height = Scale(kTitleBarHeight, scale_factor);
-  int controls_width = Scale(kWindowControlsWidth, scale_factor);
-  if (client.x >= 0 && client.y >= 0 && client.y < title_bar_height &&
-      client.x < client_rect.right - controls_width) {
-    return HTCAPTION;
-  }
-
-  return HTCLIENT;
 }
 
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
@@ -191,7 +130,7 @@ bool Win32Window::Create(const std::wstring& title,
 
   HWND window = CreateWindow(
       window_class, title.c_str(),
-      WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU,
+      WS_OVERLAPPEDWINDOW,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -235,12 +174,6 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
-    case WM_NCCALCSIZE:
-      return 0;
-
-    case WM_NCHITTEST:
-      return HitTestWindow(hwnd, lparam);
-
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -281,7 +214,7 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
-      RECT rect = ChildContentRect(hwnd);
+      RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
         // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
@@ -324,7 +257,7 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
-  RECT frame = ChildContentRect(window_handle_);
+  RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);
