@@ -74,8 +74,10 @@ void main() {
     expect(flutterWindow, contains('NIN_BALLOONUSERCLICK'));
 
     // Tray menu contract.
-    expect(flutterWindow, contains('显示主界面'));
-    expect(flutterWindow, contains('退出 Sidravia'));
+    expect(flutterWindow, contains('kTrayOpenCommand'));
+    expect(flutterWindow, contains('kTrayExitCommand'));
+    expect(flutterWindow, contains('\\u663E\\u793A\\u4E3B\\u754C\\u9762'));
+    expect(flutterWindow, contains('\\u9000\\u51FA Sidravia'));
     expect(flutterWindow, contains('TPM_RETURNCMD'));
 
     // Explicit exit flows through Dart before native destruction.
