@@ -22,7 +22,7 @@ class AnnouncementEntry extends StatelessWidget {
                 : controller.announcements.first);
         if (item == null) return const SizedBox.shrink();
         return Padding(
-          padding: const EdgeInsets.only(top: 28),
+          padding: EdgeInsets.zero,
           child: TextButton(
             onPressed: () {
               controller.markCurrentRead();
