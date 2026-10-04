@@ -248,16 +248,32 @@ class HomeView extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final padding = constraints.maxWidth >= 760 ? 36.0 : 24.0;
+        // HTML's 760px outer frame has two 1px borders. The native
+        // content viewport excludes those borders and the reserved top area.
+        final wide = constraints.maxWidth >= 758;
         return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(padding, 12, padding, 26),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _HomeHeader(data: data),
-              _StatusBlock(data: data),
-              _HomeActions(data: data),
-            ],
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              key: const ValueKey('home-page'),
+              constraints: BoxConstraints(
+                maxWidth: 620,
+                minHeight: constraints.maxHeight,
+              ),
+              child: Padding(
+                padding: wide
+                    ? const EdgeInsets.fromLTRB(36, 16, 36, 32)
+                    : const EdgeInsets.fromLTRB(24, 12, 24, 26),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _HomeHeader(data: data),
+                    _StatusBlock(data: data),
+                    _HomeActions(data: data),
+                  ],
+                ),
+              ),
+            ),
           ),
         );
       },
@@ -597,7 +613,8 @@ class _StatusBlock extends StatelessWidget {
               key: const ValueKey('home-context'),
               constraints: const BoxConstraints(minHeight: 92),
               child: Center(
-                child: Padding(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 310),
                   padding: const EdgeInsets.symmetric(
                     vertical: 9,
                     horizontal: 4,

@@ -1,0 +1,310 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/features/announcements/announcement_feed.dart';
+import 'package:sidravia_gui/features/announcements/announcement_model.dart';
+import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
+
+/// Memory-only replacement at the existing typed client boundary.
+/// No process, filesystem, socket, HTTP client or credential store is used.
+class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
+  OfflineDemoClient({DateTime? now}) {
+    _session = _newSession(
+      'authenticated',
+      establishedAt: (now ?? DateTime.now()).subtract(
+        const Duration(hours: 2, minutes: 18),
+      ),
+    );
+  }
+
+  static const profile = InstitutionProfile(
+    id: 'jlu',
+    displayName: '吉林大学',
+    protocolId: 'drcom-5.2.0-d',
+  );
+  ConfigurationSummary? _configuration = const ConfigurationSummary(
+    id: 'demo-config',
+    displayName: '吉林大学',
+    institutionProfileId: 'jlu',
+    institutionDisplayName: '吉林大学',
+    authenticationProtocolId: 'drcom-5.2.0-d',
+    username: 'student01',
+    credentialStored: true,
+    storageProtection: 'protected',
+  );
+  SessionSummary? _session;
+  int _revision = 0;
+  String _feedback = '模拟已连接；没有连接真实校园网';
+  final List<String> _operations = [];
+  bool _closed = false;
+
+  String get feedback => _feedback;
+  List<String> get operations => List.unmodifiable(_operations);
+  bool get closed => _closed;
+
+  void _record(String operation, String feedback) {
+    _operations.add(operation);
+    _feedback = feedback;
+    notifyListeners();
+  }
+
+  ConfigurationSummary _requireConfiguration(String id) {
+    final c = _configuration;
+    if (c == null || c.id != id) {
+      throw const IpcRequestFailure('configuration_not_found');
+    }
+    return c;
+  }
+
+  SessionSummary _requireSession(String id) {
+    final s = _session;
+    if (s == null || s.id != id) {
+      throw const IpcRequestFailure('session_not_found');
+    }
+    return s;
+  }
+
+  SessionSummary _newSession(String state, {DateTime? establishedAt}) {
+    final c = _configuration!;
+    return SessionSummary(
+      id: 'demo-session',
+      configurationId: c.id,
+      displayName: c.displayName,
+      accountName: c.username,
+      state: state,
+      intent: state == 'suspended'
+          ? 'suspend_authentication'
+          : 'maintain_authentication',
+      selectedNetworkBinding: const SessionNetworkBinding(
+        interfaceId: 'demo-ethernet',
+        displayName: '以太网',
+        localIpv4Address: '192.168.1.20',
+      ),
+      authenticationEstablishedAt: establishedAt,
+      revision: ++_revision,
+    );
+  }
+
+  ConfigurationSummary _replaceConfiguration({
+    String? username,
+    String? institutionProfileId,
+    bool? credentialStored,
+    bool? autoLogin,
+  }) {
+    final c = _configuration!;
+    return _configuration = ConfigurationSummary(
+      id: c.id,
+      displayName: c.displayName,
+      institutionProfileId: institutionProfileId ?? c.institutionProfileId,
+      institutionDisplayName: c.institutionDisplayName,
+      authenticationProtocolId: c.authenticationProtocolId,
+      username: username ?? c.username,
+      credentialStored: credentialStored ?? c.credentialStored,
+      storageProtection: c.storageProtection,
+      autoLogin: autoLogin ?? c.autoLogin,
+      autoReconnect: c.autoReconnect,
+    );
+  }
+
+  @override
+  Future<DaemonStatus> daemonStatus() async => const DaemonStatus(
+    productVersion: 'offline-demo',
+    buildId: 'offline-demo',
+    pid: 1,
+    status: 'running',
+    mode: 'desktop',
+    desktopOwnerPid: 1,
+  );
+  @override
+  Future<List<InstitutionProfile>> profileList() async => const [profile];
+  @override
+  Future<List<ConfigurationSummary>> configurationList() async => [
+    ?_configuration,
+  ];
+  @override
+  Future<List<SessionSummary>> sessionList() async => [?_session];
+
+  @override
+  Future<ConfigurationSummary> configurationCreate({
+    required String institutionProfileId,
+    required String username,
+    required String password,
+  }) async {
+    if (_configuration != null) {
+      throw const IpcRequestFailure('configuration_conflict');
+    }
+    if (institutionProfileId != profile.id) {
+      throw const IpcRequestFailure('profile_not_found');
+    }
+    _configuration = ConfigurationSummary(
+      id: 'demo-config',
+      displayName: profile.displayName,
+      institutionProfileId: profile.id,
+      institutionDisplayName: profile.displayName,
+      authenticationProtocolId: profile.protocolId,
+      username: username,
+      credentialStored: password.isNotEmpty,
+      storageProtection: 'protected',
+    );
+    _record('configuration.create', '已模拟创建配置；密码内容未保存');
+    return _configuration!;
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationUpdate({
+    required String configurationId,
+    required String institutionProfileId,
+    required String username,
+  }) async {
+    _requireConfiguration(configurationId);
+    if (institutionProfileId != profile.id) {
+      throw const IpcRequestFailure('profile_not_found');
+    }
+    final c = _replaceConfiguration(
+      username: username,
+      institutionProfileId: institutionProfileId,
+    );
+    _record('configuration.update', '已模拟保存配置；仅保留在本次演示内存中');
+    return c;
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetPassword({
+    required String configurationId,
+    required String password,
+  }) async {
+    _requireConfiguration(configurationId);
+    final c = _replaceConfiguration(credentialStored: password.isNotEmpty);
+    _record('configuration.set_password', '已模拟设置密码；密码内容未保存');
+    return c;
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetAutoLogin({
+    required String configurationId,
+    required bool autoLogin,
+  }) async {
+    _requireConfiguration(configurationId);
+    final c = _replaceConfiguration(autoLogin: autoLogin);
+    _record(
+      'configuration.set_auto_login',
+      '已模拟${autoLogin ? '启用' : '关闭'}自动登录；不会执行真实认证',
+    );
+    return c;
+  }
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId,
+  ) async {
+    _requireConfiguration(configurationId);
+    _configuration = null;
+    _session = null;
+    _record('configuration.remove', '已模拟删除配置');
+    return ConfigurationRemoveResult(
+      configurationId: configurationId,
+      status: 'removed',
+    );
+  }
+
+  @override
+  Future<SessionSummary> sessionStartConfiguration(
+    String configurationId,
+  ) async {
+    _requireConfiguration(configurationId);
+    _session = _newSession('authenticated', establishedAt: DateTime.now());
+    _record('session.start_configuration', '已模拟连接成功；没有进行真实认证');
+    return _session!;
+  }
+
+  @override
+  Future<SessionSummary> sessionStop(String sessionId) async {
+    _requireSession(sessionId);
+    _session = _newSession('suspended');
+    _record('session.stop', '已模拟断开连接；没有影响真实网络');
+    return _session!;
+  }
+
+  @override
+  Future<SessionSummary> sessionEnsureRunning(String sessionId) async {
+    _requireSession(sessionId);
+    _session = _newSession('authenticated', establishedAt: DateTime.now());
+    _record('session.ensure_running', '已模拟恢复连接；没有进行真实认证');
+    return _session!;
+  }
+
+  @override
+  Future<SessionSummary> sessionRestart(String sessionId) async {
+    _requireSession(sessionId);
+    _session = _newSession('authenticated', establishedAt: DateTime.now());
+    _record('session.restart', '已模拟重新连接；没有进行真实认证');
+    return _session!;
+  }
+
+  @override
+  Future<SessionRemoveResult> sessionRemove(String sessionId) async {
+    _requireSession(sessionId);
+    _session = null;
+    _record('session.remove', '已模拟重置会话');
+    return SessionRemoveResult(sessionId: sessionId, status: 'removed');
+  }
+
+  @override
+  Future<void> close() async {
+    _closed = true;
+  }
+}
+
+class OfflineDemoBootstrap implements GuiBootstrapper {
+  @override
+  Future<GuiBootstrapResult> bootstrap() async => GuiBootstrapResult.success(
+    GuiBootstrap(
+      endpoint: Uri.parse('ws://offline.invalid/ipc'),
+      token: 'offline-only',
+      productVersion: 'offline-demo',
+      buildId: 'offline-demo',
+      daemonPid: 1,
+      mode: 'desktop',
+    ),
+  );
+}
+
+class OfflineAnnouncementFetcher implements AnnouncementFetcher {
+  OfflineAnnouncementFetcher(this.now);
+  final DateTime now;
+  bool closed = false;
+  static final endpoint = Uri.parse('https://offline.invalid/announcements');
+  @override
+  Future<AnnouncementFetchResult> fetch({
+    String? etag,
+    String? lastModified,
+  }) async {
+    final raw = jsonEncode({
+      'schema': 1,
+      'generatedAt': now.toIso8601String(),
+      'items': [
+        {
+          'id': 'offline-maintenance',
+          'revision': 1,
+          'level': 'maintenance',
+          'title': '校园网维护安排',
+          'body': '这是离线演示公告。配置、导航与连接操作仅使用内存模拟数据，不会访问校园网或真实账号。',
+          'publishedAt': now.toIso8601String(),
+          'startsAt': now.toIso8601String(),
+          'expiresAt': now.add(const Duration(days: 365)).toIso8601String(),
+        },
+      ],
+    });
+    return AnnouncementFetchResult.updated(
+      feed: AnnouncementDocument.decode(raw, endpoint: endpoint),
+      rawBody: raw,
+    );
+  }
+
+  @override
+  void close() {
+    closed = true;
+  }
+}
