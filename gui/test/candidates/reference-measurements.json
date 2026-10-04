@@ -1,0 +1,212 @@
+{
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1280,
+    "height": 1000
+  },
+  "dpr": 1,
+  "measurements": {
+    "#window": {
+      "x": 310,
+      "y": 64,
+      "width": 400,
+      "height": 690,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    ".view": {
+      "x": 311,
+      "y": 111,
+      "width": 398,
+      "height": 642,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    ".home-head": {
+      "x": 335,
+      "y": 123,
+      "width": 350,
+      "height": 42,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#institution": {
+      "x": 335,
+      "y": 126.203125,
+      "width": 64,
+      "height": 19.1875,
+      "font": "650 16px / 19.2px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#username": {
+      "x": 335,
+      "y": 147.390625,
+      "width": 64,
+      "height": 14.390625,
+      "font": "12px / 14.4px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(101, 115, 130)"
+    },
+    "#statusBlock": {
+      "x": 335,
+      "y": 193,
+      "width": 350,
+      "height": 258,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#statusMark": {
+      "x": 488,
+      "y": 201,
+      "width": 44,
+      "height": 44,
+      "font": "700 21px / 21px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(34, 115, 79)"
+    },
+    "#statusTitle": {
+      "x": 466.125,
+      "y": 258,
+      "width": 87.75,
+      "height": 34.5,
+      "font": "650 30px / 34.5px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#statusDetail": {
+      "x": 414.5,
+      "y": 301.5,
+      "width": 191,
+      "height": 20.140625,
+      "font": "13px / 20.15px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(101, 115, 130)"
+    },
+    ".status-context": {
+      "x": 343,
+      "y": 335.640625,
+      "width": 334,
+      "height": 92,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#contextNote": {
+      "x": 452,
+      "y": 363.9375,
+      "width": 116,
+      "height": 35.390625,
+      "font": "12px / 17.4px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(101, 115, 130)"
+    },
+    "#actions": {
+      "x": 350,
+      "y": 465,
+      "width": 320,
+      "height": 42,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#secondaryAction": {
+      "x": 350,
+      "y": 465,
+      "width": 155.5,
+      "height": 42,
+      "font": "600 13px / 20px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#primaryAction": {
+      "x": 514.5,
+      "y": 465,
+      "width": 155.5,
+      "height": 42,
+      "font": "600 13px / 20px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    ".divider": {
+      "x": 335,
+      "y": 537,
+      "width": 350,
+      "height": 1,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    "#noticeButton": {
+      "x": 335,
+      "y": 558,
+      "width": 350,
+      "height": 71,
+      "font": "16px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    ".notice-meta": {
+      "x": 335,
+      "y": 558,
+      "width": 332,
+      "height": 16,
+      "font": "600 11px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(49, 95, 149)"
+    },
+    ".notice strong": {
+      "x": 335,
+      "y": 582,
+      "width": 332,
+      "height": 19,
+      "font": "600 13px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(24, 33, 43)"
+    },
+    ".notice p": {
+      "x": 335,
+      "y": 611,
+      "width": 332,
+      "height": 18,
+      "font": "12px / 18px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(101, 115, 130)"
+    },
+    ".notice .arrow": {
+      "x": 679,
+      "y": 579.5,
+      "width": 6,
+      "height": 28,
+      "font": "20px Inter, \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+      "color": "rgb(101, 115, 130)"
+    }
+  },
+  "fonts": {
+    "#institution": {
+      "fonts": [
+        {
+          "familyName": "Microsoft YaHei UI",
+          "postScriptName": "MicrosoftYaHeiUI-Bold",
+          "isCustomFont": false,
+          "glyphCount": 4
+        }
+      ]
+    },
+    "#username": {
+      "fonts": [
+        {
+          "familyName": "Segoe UI",
+          "postScriptName": "SegoeUI",
+          "isCustomFont": false,
+          "glyphCount": 9
+        }
+      ]
+    },
+    "#statusTitle": {
+      "fonts": [
+        {
+          "familyName": "Microsoft YaHei UI",
+          "postScriptName": "MicrosoftYaHeiUI-Bold",
+          "isCustomFont": false,
+          "glyphCount": 3
+        }
+      ]
+    },
+    "#statusGlyph": {
+      "fonts": [
+        {
+          "familyName": "Cascadia Code",
+          "postScriptName": "CascadiaCode-Roman",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    }
+  }
+}

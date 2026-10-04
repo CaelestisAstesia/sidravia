@@ -24,6 +24,7 @@ class HomeViewData {
     required this.onSettings,
     required this.onSecondary,
     required this.onPrimary,
+    this.actionError,
     this.notice,
   });
   final String institution, username, state, detail, context, glyph;
@@ -33,6 +34,7 @@ class HomeViewData {
   final bool primaryEnabled;
   final VoidCallback onHeader, onSettings, onSecondary;
   final VoidCallback? onPrimary;
+  final String? actionError;
   final HomeNotice? notice;
 }
 
@@ -64,6 +66,13 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([controller, ?announcements]),
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final session = _session;
     final configuration = _configuration;
     final state = _state(session, configuration);
@@ -91,6 +100,15 @@ class HomePage extends StatelessWidget {
         (announcements == null || announcements!.announcements.isEmpty
             ? null
             : announcements!.announcements.first);
+    final notice = item == null || announcements?.enabled != true
+        ? null
+        : HomeNotice(
+            title: item.title,
+            onOpen: () {
+              announcements!.markCurrentRead();
+              showAnnouncementSheet(context, controller: announcements!);
+            },
+          );
     return HomeView(
       data: HomeViewData(
         institution: configuration?.institutionDisplayName ?? '尚未配置',
@@ -121,11 +139,9 @@ class HomePage extends StatelessWidget {
         onPrimary: primaryEnabled
             ? () => _primary(session, configuration)
             : null,
-        notice: item == null
-            ? null
-            : HomeNotice(title: item.title, onOpen: () {}),
+        actionError: controller.notice,
+        notice: notice,
       ),
-      announcementController: announcements,
     );
   }
 
@@ -225,39 +241,26 @@ class HomePage extends StatelessWidget {
 /// Shared production/preview presentation component. Only [HomeViewData] and
 /// callbacks differ between the real controller and the isolated fixture.
 class HomeView extends StatelessWidget {
-  const HomeView({super.key, required this.data, this.announcementController});
+  const HomeView({super.key, required this.data});
   final HomeViewData data;
-  final AnnouncementController? announcementController;
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final padding = width >= 760 ? 36.0 : 20.0;
-    final notice = data.notice;
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(padding, 12, padding, 26),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _HomeHeader(data: data),
-          _StatusBlock(data: data),
-          _HomeActions(
-            data: data,
-            hasLiveNotice: announcementController != null,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final padding = constraints.maxWidth >= 760 ? 36.0 : 24.0;
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(padding, 12, padding, 26),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _HomeHeader(data: data),
+              _StatusBlock(data: data),
+              _HomeActions(data: data),
+            ],
           ),
-          if (notice != null && announcementController != null) ...[
-            const SizedBox(height: 30),
-            const Divider(height: 1),
-            AnnouncementEntry(
-              controller: announcementController!,
-              onOpen: () => showAnnouncementSheet(
-                context,
-                controller: announcementController!,
-              ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -269,54 +272,82 @@ class _HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 28),
     child: Row(
+      key: const ValueKey('home-header'),
       children: [
         Expanded(
-          child: TextButton(
-            onPressed: data.onHeader,
-            style: TextButton.styleFrom(
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.fromLTRB(10, 3, 14, 3),
-              minimumSize: const Size(0, 42),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        data.institution,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          height: 1.2,
-                        ),
-                      ),
-                      Text(
-                        data.username,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, height: 1.2),
-                      ),
-                    ],
-                  ),
+          child: Transform.translate(
+            offset: const Offset(-10, 0),
+            child: TextButton(
+              onPressed: data.onHeader,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.inkLight,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.fromLTRB(10, 3, 14, 3),
+                minimumSize: const Size(0, 42),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const Icon(Icons.chevron_right, size: 16),
-              ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data.institution,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          data.username,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.mutedLight,
+                            fontSize: 12,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 16,
+                    color: AppColors.mutedLight,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        IconButton(
-          tooltip: '设置',
-          onPressed: data.onSettings,
-          icon: const Icon(Icons.settings_outlined, size: 20),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 42,
+          height: 42,
+          child: IconButton(
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              minimumSize: const Size(42, 42),
+            ),
+            tooltip: '设置',
+            onPressed: data.onSettings,
+            icon: const Icon(
+              Icons.settings_outlined,
+              size: 20,
+              color: AppColors.mutedLight,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+          ),
         ),
       ],
     ),
@@ -324,55 +355,77 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _HomeActions extends StatelessWidget {
-  const _HomeActions({required this.data, required this.hasLiveNotice});
+  const _HomeActions({required this.data});
   final HomeViewData data;
-  final bool hasLiveNotice;
   @override
   Widget build(BuildContext context) {
     final primary = data.primaryKind == HomeButtonKind.primary;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: 320,
-          child: Row(
-            children: [
-              Expanded(
-                child: _HomeButton(
-                  label: data.secondaryLabel,
-                  onPressed: data.onSecondary,
-                  primary: false,
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.center,
+          child: ConstrainedBox(
+            key: const ValueKey('home-actions'),
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _HomeButton(
+                    label: data.secondaryLabel,
+                    onPressed: data.onSecondary,
+                    primary: false,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: _HomeButton(
-                  label: data.primaryLabel,
-                  onPressed: data.onPrimary,
-                  primary: primary,
+                const SizedBox(width: 9),
+                Expanded(
+                  child: _HomeButton(
+                    label: data.primaryLabel,
+                    onPressed: data.onPrimary,
+                    primary: primary,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-        if (data.notice != null && !hasLiveNotice) ...[
+        if (data.actionError != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            data.actionError!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.danger, fontSize: 12),
+          ),
+        ],
+        if (data.notice != null) ...[
           const SizedBox(height: 30),
-          const Divider(height: 1),
-          _Notice(data: data),
+          const SizedBox(
+            key: ValueKey('home-divider'),
+            height: 1,
+            child: ColoredBox(color: AppColors.lineSoftLight),
+          ),
+          const SizedBox(height: 20),
+          HomeNoticeView(notice: data.notice!),
         ],
       ],
     );
   }
 }
 
-class _Notice extends StatelessWidget {
-  const _Notice({required this.data});
-  final HomeViewData data;
+class HomeNoticeView extends StatelessWidget {
+  const HomeNoticeView({super.key, required this.notice});
+  final HomeNotice notice;
   @override
   Widget build(BuildContext context) => TextButton(
-    onPressed: data.notice!.onOpen,
+    key: const ValueKey('home-notice'),
+    onPressed: notice.onOpen,
     style: TextButton.styleFrom(
       alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.only(top: 18),
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      foregroundColor: AppColors.inkLight,
       shape: const RoundedRectangleBorder(),
     ),
     child: Row(
@@ -380,33 +433,50 @@ class _Notice extends StatelessWidget {
       children: [
         Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 '校园网公告',
                 style: TextStyle(
                   color: AppColors.accent,
                   fontSize: 11,
+                  height: 16 / 11,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 8),
               Text(
-                data.notice!.title,
+                notice.title,
                 style: const TextStyle(
                   fontSize: 13,
+                  height: 19 / 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 10),
               const Text(
                 '点击查看公告页面',
-                style: TextStyle(fontSize: 12, height: 1.5),
+                style: TextStyle(
+                  color: AppColors.mutedLight,
+                  fontSize: 12,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
         ),
-        const Icon(Icons.chevron_right, size: 20),
+        const SizedBox(width: 12),
+        const SizedBox(
+          width: 6,
+          child: Text(
+            '›',
+            style: TextStyle(
+              color: AppColors.mutedLight,
+              fontSize: 20,
+              height: 1.4,
+            ),
+          ),
+        ),
       ],
     ),
   );
@@ -422,17 +492,37 @@ class _HomeButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool primary;
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 42,
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 42),
     child: primary
         ? FilledButton(
             onPressed: onPressed,
-            style: AppButtonStyles.primary,
+            style: AppButtonStyles.primary.copyWith(
+              textStyle: const WidgetStatePropertyAll(
+                TextStyle(
+                  fontFamily: 'HarmonyOS Sans',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 20 / 13,
+                ),
+              ),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: Text(label),
           )
         : OutlinedButton(
             onPressed: onPressed,
-            style: AppButtonStyles.secondary,
+            style: AppButtonStyles.secondary.copyWith(
+              textStyle: const WidgetStatePropertyAll(
+                TextStyle(
+                  fontFamily: 'HarmonyOS Sans',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 20 / 13,
+                ),
+              ),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: Text(label),
           ),
   );
@@ -450,18 +540,22 @@ class _StatusBlock extends StatelessWidget {
       HomeTone.idle => AppColors.mutedLight,
     };
     return ConstrainedBox(
+      key: const ValueKey('home-status'),
       constraints: const BoxConstraints(minHeight: 258),
       child: Padding(
         padding: const EdgeInsets.only(top: 8, left: 8, right: 8),
         child: Column(
           children: [
             Container(
+              key: const ValueKey('home-mark'),
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: .11),
+                color: Color.lerp(AppColors.surfaceLight, color, .11),
                 borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: color.withValues(alpha: .28)),
+                border: Border.all(
+                  color: Color.lerp(AppColors.lineLight, color, .28)!,
+                ),
               ),
               alignment: Alignment.center,
               child: Text(
@@ -471,6 +565,7 @@ class _StatusBlock extends StatelessWidget {
                   fontSize: 21,
                   fontWeight: FontWeight.w700,
                   height: 1,
+                  fontFamilyFallback: const ['Segoe UI Symbol'],
                 ),
               ),
             ),
@@ -490,17 +585,32 @@ class _StatusBlock extends StatelessWidget {
               child: Text(
                 data.detail,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, height: 1.55),
+                style: const TextStyle(
+                  color: AppColors.mutedLight,
+                  fontSize: 13,
+                  height: 1.55,
+                ),
               ),
             ),
             const SizedBox(height: 14),
-            SizedBox(
-              height: 92,
+            ConstrainedBox(
+              key: const ValueKey('home-context'),
+              constraints: const BoxConstraints(minHeight: 92),
               child: Center(
-                child: Text(
-                  data.context,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, height: 1.45),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 9,
+                    horizontal: 4,
+                  ),
+                  child: Text(
+                    data.context,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.mutedLight,
+                      fontSize: 12,
+                      height: 1.45,
+                    ),
+                  ),
                 ),
               ),
             ),
