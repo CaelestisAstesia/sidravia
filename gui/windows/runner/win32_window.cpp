@@ -3,6 +3,8 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 #include <windowsx.h>
+#include <commctrl.h>
+#include "frame_geometry.h"
 
 #include "resource.h"
 
@@ -86,7 +88,7 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClassName;
-    window_class.style = CS_HREDRAW | CS_VREDRAW;
+    window_class.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
@@ -175,6 +177,16 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_NCCALCSIZE:
+      if (custom_frame_enabled_) {
+        // Entire outer rectangle becomes client space. No native caption deduction.
+        // GETMINMAXINFO constrains maximization to the current monitor work area.
+        return 0;
+      }
+      break;
+    case WM_NCHITTEST:
+      if (custom_frame_enabled_) return FrameHitTest(lparam);
+      break;
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -207,11 +219,10 @@ Win32Window::MessageHandler(HWND hwnd,
         min_max_info->ptMaxSize.y = work.bottom - work.top;
       }
       UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-      double scale_factor = dpi / 96.0;
       min_max_info->ptMinTrackSize.x =
-          Scale(kMinimumWindowWidth, scale_factor);
+          sidravia_frame::PhysicalMinimum(kMinimumWindowWidth, dpi);
       min_max_info->ptMinTrackSize.y =
-          Scale(kMinimumWindowHeight, scale_factor);
+          sidravia_frame::PhysicalMinimum(kMinimumWindowHeight, dpi);
       return 0;
     }
     case WM_SIZE: {
@@ -225,7 +236,7 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      if (LOWORD(wparam) != WA_INACTIVE && child_content_ != nullptr) {
         SetFocus(child_content_);
       }
       return 0;
@@ -258,6 +269,7 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
+  SetWindowSubclass(content, ChildFrameProc, 1, reinterpret_cast<DWORD_PTR>(this));
   RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
@@ -290,7 +302,68 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  BOOL enable_dark_mode = FALSE;
+  BOOL enable_dark_mode = frame_dark_ ? TRUE : FALSE;
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &enable_dark_mode, sizeof(enable_dark_mode));
+}
+
+void Win32Window::EnableCustomFrame(bool enabled) {
+  custom_frame_enabled_ = enabled;
+  // Attribute 33 is DWMWA_WINDOW_CORNER_PREFERENCE, value 1 is DONOTROUND.
+  // Older Windows safely returns E_INVALIDARG; keep native rectangular fallback.
+  const int preference = 1;
+  corner_result_ = DwmSetWindowAttribute(window_handle_, 33, &preference,
+                                        sizeof(preference));
+  SetWindowPos(window_handle_, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+               SWP_FRAMECHANGED);
+}
+
+LRESULT Win32Window::FrameHitTest(LPARAM screen_point) {
+  POINT point{GET_X_LPARAM(screen_point), GET_Y_LPARAM(screen_point)};
+  ScreenToClient(window_handle_, &point);
+  RECT rect = GetClientArea();
+  const auto hit = sidravia_frame::HitTest(
+      point.x, point.y, rect.right, rect.bottom, GetDpiForWindow(window_handle_),
+      IsZoomed(window_handle_) != FALSE, custom_frame_enabled_, frame_modal_blocked_);
+  using sidravia_frame::Hit;
+  switch (hit) {
+    case Hit::caption: return HTCAPTION;
+    case Hit::maximize: return HTMAXBUTTON;
+    case Hit::left: return HTLEFT;
+    case Hit::right: return HTRIGHT;
+    case Hit::top: return HTTOP;
+    case Hit::bottom: return HTBOTTOM;
+    case Hit::top_left: return HTTOPLEFT;
+    case Hit::top_right: return HTTOPRIGHT;
+    case Hit::bottom_left: return HTBOTTOMLEFT;
+    case Hit::bottom_right: return HTBOTTOMRIGHT;
+    default: return HTCLIENT;
+  }
+}
+
+LRESULT CALLBACK Win32Window::ChildFrameProc(HWND child, UINT message,
+    WPARAM wparam, LPARAM lparam, UINT_PTR id, DWORD_PTR data) {
+  auto* owner = reinterpret_cast<Win32Window*>(data);
+  if (owner->custom_frame_enabled_) {
+    if (message == WM_NCHITTEST && owner->FrameHitTest(lparam) != HTCLIENT) {
+      // Let the same-thread parent own non-client operations; Flutter's child
+      // would otherwise consume caption/resize messages across the full surface.
+      return HTTRANSPARENT;
+    }
+    if (message == WM_SYSKEYDOWN && (lparam & (1L << 29))) {
+      if (wparam == VK_SPACE || wparam == VK_F4) {
+        return SendMessage(owner->window_handle_, WM_SYSCOMMAND,
+            wparam == VK_SPACE ? SC_KEYMENU : SC_CLOSE,
+            wparam == VK_SPACE ? L' ' : 0);
+      }
+    }
+  }
+  if (message == WM_NCDESTROY) RemoveWindowSubclass(child, ChildFrameProc, id);
+  return DefSubclassProc(child, message, wparam, lparam);
+}
+
+void Win32Window::SetFrameDarkMode(bool dark) {
+  frame_dark_ = dark;
+  UpdateTheme(window_handle_);
 }

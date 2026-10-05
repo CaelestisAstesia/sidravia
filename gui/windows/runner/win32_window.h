@@ -49,6 +49,14 @@ class Win32Window {
   // window properties. Returns nullptr if the window has been destroyed.
   HWND GetHandle();
 
+  void EnableCustomFrame(bool enabled);
+  void SetFrameDarkMode(bool dark);
+  bool frame_dark_mode() const { return frame_dark_; }
+  LRESULT FrameHitTest(LPARAM screen_point);
+  void SetFrameModalBlocked(bool blocked) { frame_modal_blocked_ = blocked; }
+  bool custom_frame_enabled() const { return custom_frame_enabled_; }
+  HRESULT corner_result() const { return corner_result_; }
+
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
@@ -88,8 +96,14 @@ class Win32Window {
   static Win32Window* GetThisFromHandle(HWND const window) noexcept;
 
   // Update the window frame's theme to match the system theme.
-  static void UpdateTheme(HWND const window);
+  void UpdateTheme(HWND const window);
 
+  static LRESULT CALLBACK ChildFrameProc(HWND, UINT, WPARAM, LPARAM,
+                                         UINT_PTR, DWORD_PTR);
+  bool frame_dark_ = false;
+  bool frame_modal_blocked_ = false;
+  bool custom_frame_enabled_ = false;
+  HRESULT corner_result_ = E_NOTIMPL;
   bool quit_on_close_ = false;
 
   // window handle for top level window.

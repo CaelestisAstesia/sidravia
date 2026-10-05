@@ -2,6 +2,9 @@
 
 #include <flutter/encodable_value.h>
 #include <shellapi.h>
+#include <dwmapi.h>
+#include <windowsx.h>
+#include "frame_geometry.h"
 
 #include <cwchar>
 #include <optional>
@@ -64,6 +67,31 @@ bool FlutterWindow::OnCreate() {
         HWND window = GetHandle();
         if (window == nullptr) {
           result->Error("window_unavailable", "Window is unavailable.");
+          return;
+        }
+        if (call.method_name() == "setDarkMode") {
+          const auto* dark = std::get_if<bool>(call.arguments());
+          if (!dark) { result->Error("invalid_theme", "Expected bool"); return; }
+          // Preserve the Dart-owned appearance through DWM color changes.
+          SetFrameDarkMode(*dark);
+          result->Success(); return;
+        }
+        if (call.method_name() == "setModalBlocked") {
+          const auto* blocked = std::get_if<bool>(call.arguments());
+          if (!blocked) { result->Error("invalid_modal", "Expected bool"); return; }
+          SetFrameModalBlocked(*blocked);
+          result->Success(); return;
+        }
+        if (call.method_name() == "configureFrame") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          if (!enabled) { result->Error("invalid_frame", "Expected bool"); return; }
+          EnableCustomFrame(*enabled);
+          result->Success(flutter::EncodableValue(WindowState()));
+          return;
+        }
+        if (call.method_name() == "getState" ||
+            call.method_name() == "diagnostics") {
+          result->Success(flutter::EncodableValue(WindowState()));
           return;
         }
         if (call.method_name() == "minimize") {
@@ -351,6 +379,49 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Frame messages must precede Flutter's top-level handling.
+  if (custom_frame_enabled()) {
+    if (message == WM_NCHITTEST || message == WM_NCCALCSIZE ||
+        message == WM_GETMINMAXINFO) {
+      return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+    }
+    if (message == WM_NCMOUSEMOVE) {
+      const bool hovered = wparam == HTMAXBUTTON;
+      if (maximize_hovered_ != hovered) {
+        maximize_hovered_ = hovered;
+        PublishWindowState();
+      }
+      TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT), TME_LEAVE | TME_NONCLIENT,
+                             hwnd, 0};
+      TrackMouseEvent(&track);
+      LRESULT dwm_result = 0;
+      // Preserve the Windows 11 shell's HTMAXBUTTON hover/snap protocol.
+      DwmDefWindowProc(hwnd, message, wparam, lparam, &dwm_result);
+    }
+    if (message == WM_NCMOUSELEAVE) {
+      maximize_hovered_ = false; maximize_pressed_ = false;
+      PublishWindowState();
+    }
+    if (message == WM_NCLBUTTONDOWN && wparam == HTMAXBUTTON) {
+      maximize_pressed_ = true; PublishWindowState();
+      return 0;
+    }
+    if (message == WM_NCLBUTTONUP && wparam == HTMAXBUTTON) {
+      const bool activate = maximize_pressed_;
+      maximize_pressed_ = false; PublishWindowState();
+      if (activate) ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
+      return 0;
+    }
+    if (message == WM_SIZE || message == WM_DPICHANGED || message == WM_MOVE) {
+      const auto result = Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+      PublishWindowState();
+      // Flutter also needs the DPI/size event; its result must not skip native state.
+      if (flutter_controller_) {
+        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam, lparam);
+      }
+      return result;
+    }
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -392,4 +463,50 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+}
+
+flutter::EncodableMap FlutterWindow::WindowState() {
+  HWND hwnd = GetHandle();
+  RECT outer{}, visible{}, client{};
+  GetWindowRect(hwnd, &outer);
+  visible = outer;
+  const HRESULT visible_result = DwmGetWindowAttribute(
+      hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &visible, sizeof(visible));
+  GetClientRect(hwnd, &client);
+  const double dpi = static_cast<double>(GetDpiForWindow(hwnd));
+  const double scale = dpi / 96.0;
+  using flutter::EncodableValue;
+  const auto rectangle = [](RECT r) {
+    return EncodableValue(flutter::EncodableList{
+        EncodableValue(static_cast<int>(r.left)), EncodableValue(static_cast<int>(r.top)),
+        EncodableValue(static_cast<int>(r.right-r.left)),
+        EncodableValue(static_cast<int>(r.bottom-r.top))});
+  };
+  return {
+    {EncodableValue("maximized"), EncodableValue(IsZoomed(hwnd) != FALSE)},
+    {EncodableValue("minimized"), EncodableValue(IsIconic(hwnd) != FALSE)},
+    {EncodableValue("maximizeHovered"), EncodableValue(maximize_hovered_)},
+    {EncodableValue("maximizePressed"), EncodableValue(maximize_pressed_)},
+    {EncodableValue("dpi"), EncodableValue(dpi)},
+    {EncodableValue("outerPhysical"), rectangle(outer)},
+    {EncodableValue("visiblePhysical"), rectangle(visible)},
+    {EncodableValue("clientPhysical"), rectangle(client)},
+    {EncodableValue("clientLogicalWidth"), EncodableValue(client.right/scale)},
+    {EncodableValue("clientLogicalHeight"), EncodableValue(client.bottom/scale)},
+    {EncodableValue("topLogical"), EncodableValue(custom_frame_enabled() ? 46.0 : 0.0)},
+    {EncodableValue("contentLogicalHeight"), EncodableValue(
+        client.bottom/scale - (custom_frame_enabled() ? 46.0 : 0.0))},
+    {EncodableValue("customFrame"), EncodableValue(custom_frame_enabled())},
+    {EncodableValue("darkFrame"), EncodableValue(frame_dark_mode())},
+    {EncodableValue("cornerHRESULT"), EncodableValue(static_cast<int>(corner_result()))},
+    {EncodableValue("visibleHRESULT"), EncodableValue(static_cast<int>(visible_result))},
+    {EncodableValue("closeToTray"), EncodableValue(desktop_presence_initialized_)},
+  };
+}
+
+void FlutterWindow::PublishWindowState() {
+  if (window_channel_ && GetHandle()) {
+    window_channel_->InvokeMethod("stateChanged",
+        std::make_unique<flutter::EncodableValue>(WindowState()));
+  }
 }

@@ -41,6 +41,10 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       desktop_channel_;
 
+  flutter::EncodableMap WindowState();
+  void PublishWindowState();
+  bool maximize_hovered_ = false;
+  bool maximize_pressed_ = false;
   bool exit_armed_ = false;
   bool desktop_presence_initialized_ = false;
   bool exit_request_pending_ = false;

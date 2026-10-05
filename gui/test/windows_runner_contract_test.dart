@@ -11,8 +11,8 @@ void main() {
 
     expect(runner, contains('WS_OVERLAPPEDWINDOW'));
     expect(runner, isNot(contains('WS_POPUP')));
-    expect(runner, isNot(contains('WM_NCCALCSIZE')));
-    expect(runner, isNot(contains('WM_NCHITTEST')));
+    expect(runner, contains('WM_NCCALCSIZE'));
+    expect(runner, contains('WM_NCHITTEST'));
     expect(runner, contains('WM_GETMINMAXINFO'));
     expect(runner, contains('kMinimumWindowWidth = 360'));
     expect(runner, contains('kMinimumWindowHeight = 640'));

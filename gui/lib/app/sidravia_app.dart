@@ -26,6 +26,7 @@ class SidraviaApp extends StatefulWidget {
 
 class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   final _appearance = Appearance();
+  final _windowObserver = SidraviaWindowObserver();
   @override
   void initState() {
     super.initState();
@@ -84,6 +85,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       valueListenable: _appearance,
       builder: (context, mode, _) => MaterialApp(
         title: 'Sidravia',
+        navigatorObservers: [_windowObserver],
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
