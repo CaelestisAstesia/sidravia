@@ -581,54 +581,75 @@ class _HomeButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool primary;
   @override
-  Widget build(BuildContext context) => ConstrainedBox(
-    constraints: const BoxConstraints(minHeight: 42),
-    child: primary
-        ? FilledButton(
-            onPressed: onPressed,
-            style: AppButtonStyles.primary.copyWith(
-              backgroundColor: WidgetStatePropertyAll(
-                Theme.of(context).colorScheme.primary,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(9),
+      boxShadow: primary && onPressed != null
+          ? [
+              BoxShadow(
+                color: Theme.of(context).colorScheme.primary
+                    .withValues(alpha: .2),
+                offset: const Offset(0, 5),
+                blurRadius: 14,
               ),
-              foregroundColor: WidgetStatePropertyAll(
-                Theme.of(context).colorScheme.onPrimary,
-              ),
-              textStyle: WidgetStatePropertyAll(
-                TextStyle(
-                  fontFamily: 'HarmonyOS Sans',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 20 / 13,
+            ]
+          : const [],
+    ),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight:
+            Theme.of(context).platform == TargetPlatform.android ||
+                Theme.of(context).platform == TargetPlatform.iOS
+            ? 48
+            : 42,
+      ),
+      child: primary
+          ? FilledButton(
+              onPressed: onPressed,
+              style: AppButtonStyles.primary.copyWith(
+                backgroundColor: WidgetStatePropertyAll(
+                  Theme.of(context).colorScheme.primary,
                 ),
-              ),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(label),
-          )
-        : OutlinedButton(
-            onPressed: onPressed,
-            style: AppButtonStyles.secondary.copyWith(
-              backgroundColor: WidgetStatePropertyAll(
-                Theme.of(context).colorScheme.surface,
-              ),
-              foregroundColor: WidgetStatePropertyAll(
-                Theme.of(context).colorScheme.onSurface,
-              ),
-              side: WidgetStatePropertyAll(
-                BorderSide(color: Theme.of(context).colorScheme.outline),
-              ),
-              textStyle: WidgetStatePropertyAll(
-                TextStyle(
-                  fontFamily: 'HarmonyOS Sans',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 20 / 13,
+                foregroundColor: WidgetStatePropertyAll(
+                  Theme.of(context).colorScheme.onPrimary,
                 ),
+                textStyle: WidgetStatePropertyAll(
+                  TextStyle(
+                    fontFamily: 'HarmonyOS Sans',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 20 / 13,
+                  ),
+                ),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              child: Text(label),
+            )
+          : OutlinedButton(
+              onPressed: onPressed,
+              style: AppButtonStyles.secondary.copyWith(
+                backgroundColor: WidgetStatePropertyAll(
+                  Theme.of(context).colorScheme.surface,
+                ),
+                foregroundColor: WidgetStatePropertyAll(
+                  Theme.of(context).colorScheme.onSurface,
+                ),
+                side: WidgetStatePropertyAll(
+                  BorderSide(color: Theme.of(context).colorScheme.outline),
+                ),
+                textStyle: WidgetStatePropertyAll(
+                  TextStyle(
+                    fontFamily: 'HarmonyOS Sans',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 20 / 13,
+                  ),
+                ),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(label),
             ),
-            child: Text(label),
-          ),
+    ),
   );
 }
 
@@ -712,15 +733,15 @@ class _StatusBlock extends StatelessWidget {
               key: const ValueKey('home-context'),
               constraints: const BoxConstraints(minHeight: 92),
               child: Center(
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 310),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 9,
-                    horizontal: 4,
-                  ),
-                  child: data.issue != null
-                      ? _HomeIssue(failure: data.issue!)
-                      : Text(
+                child: data.issue != null
+                    ? _HomeIssue(failure: data.issue!)
+                    : Container(
+                        constraints: const BoxConstraints(maxWidth: 310),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 9,
+                          horizontal: 4,
+                        ),
+                        child: Text(
                           data.context,
                           textAlign: TextAlign.center,
                           style: TextStyle(
@@ -731,7 +752,7 @@ class _StatusBlock extends StatelessWidget {
                             height: 1.45,
                           ),
                         ),
-                ),
+                      ),
               ),
             ),
           ],
@@ -775,7 +796,11 @@ class _HomeIssue extends StatelessWidget {
         children: [
           Text(
             failure.description,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              fontSize: 13,
+              height: 19 / 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 5),
           Text(
@@ -791,6 +816,7 @@ class _HomeIssue extends StatelessWidget {
             failure.code,
             style: TextStyle(
               fontSize: 11,
+              height: 14 / 11,
               fontFamily: 'monospace',
               color: scheme.onSurfaceVariant,
             ),

@@ -50,7 +50,11 @@ class AdvancedPage extends StatelessWidget {
           ];
     return DesignPage(
       children: [
-        DesignHeader(title: detailsOnly ? '连接详情' : '技术诊断', onBack: onBack),
+        DesignHeader(
+          title: detailsOnly ? '连接详情' : '技术诊断',
+          onBack: onBack,
+          bottomSpacing: detailsOnly ? 24 : 14,
+        ),
         if (!detailsOnly) ...[
           const DesignHelper(
             '用于排障和 issue reporting。连续日志与底层控制仍由 sidraviactl / 日志系统承担。',

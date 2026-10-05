@@ -306,6 +306,8 @@ class OfflineDemoBootstrap implements GuiBootstrapper {
 class OfflineAnnouncementFetcher implements AnnouncementFetcher {
   OfflineAnnouncementFetcher(this.now);
   final DateTime now;
+  bool active = true;
+  int revision = 1;
   bool closed = false;
   static final endpoint = Uri.parse('https://offline.invalid/announcements');
   @override
@@ -317,16 +319,17 @@ class OfflineAnnouncementFetcher implements AnnouncementFetcher {
       'schema': 1,
       'generatedAt': now.toIso8601String(),
       'items': [
-        {
-          'id': 'offline-maintenance',
-          'revision': 1,
-          'level': 'maintenance',
-          'title': '校园网维护安排',
-          'body': '这是离线演示公告。配置、导航与连接操作仅使用内存模拟数据，不会访问校园网或真实账号。',
-          'publishedAt': now.toIso8601String(),
-          'startsAt': now.toIso8601String(),
-          'expiresAt': now.add(const Duration(days: 365)).toIso8601String(),
-        },
+        if (active)
+          {
+            'id': 'offline-maintenance',
+            'revision': revision,
+            'level': 'maintenance',
+            'title': revision == 1 ? '校园网维护安排' : '校园网公告更新（模拟）',
+            'body': '这是离线演示公告。配置、导航与连接操作仅使用内存模拟数据，不会访问校园网或真实账号。',
+            'publishedAt': now.toIso8601String(),
+            'startsAt': now.toIso8601String(),
+            'expiresAt': now.add(const Duration(days: 365)).toIso8601String(),
+          },
       ],
     });
     return AnnouncementFetchResult.updated(

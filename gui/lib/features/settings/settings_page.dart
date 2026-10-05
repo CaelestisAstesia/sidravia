@@ -80,27 +80,46 @@ class SettingsPage extends StatelessWidget {
             DesignRow(
               title: '外观模式',
               subtitle: label,
-              trailing: DropdownButton<ThemeMode>(
-                value: mode,
-                underline: const SizedBox.shrink(),
-                style: TextStyle(
-                  fontFamily: 'HarmonyOS Sans',
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurface,
+              trailing: Container(
+                constraints: BoxConstraints(
+                  minWidth: 92,
+                  minHeight:
+                      Theme.of(context).platform == TargetPlatform.android ||
+                          Theme.of(context).platform == TargetPlatform.iOS
+                      ? 48
+                      : 30,
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: ThemeMode.system,
-                    child: Text('跟随系统'),
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline,
                   ),
-                  DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
-                  DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
-                ],
-                onChanged: appearance == null
-                    ? null
-                    : (value) {
-                        if (value != null) appearance.value = value;
-                      },
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: DropdownButton<ThemeMode>(
+                  isDense: true,
+                  value: mode,
+                  underline: const SizedBox.shrink(),
+                  style: TextStyle(
+                    fontFamily: 'HarmonyOS Sans',
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: ThemeMode.system,
+                      child: Text('跟随系统'),
+                    ),
+                    DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
+                    DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
+                  ],
+                  onChanged: appearance == null
+                      ? null
+                      : (value) {
+                          if (value != null) appearance.value = value;
+                        },
+                ),
               ),
             ),
             DesignRow(

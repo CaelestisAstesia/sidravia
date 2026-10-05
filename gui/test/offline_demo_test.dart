@@ -14,6 +14,37 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
   testWidgets(
+    'developer controls switch actual state feed and theme outside shell',
+    (tester) async {
+      await tester.pumpWidget(const OfflineDemoApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('演示场景'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('等待重试').last);
+      await tester.pumpAndSettle();
+      expect(find.text('停止重试'), findsOneWidget);
+      await tester.tap(find.text('隐藏公告（模拟）'));
+      await tester.pumpAndSettle();
+      expect(find.byType(HomeNoticeView), findsNothing);
+      await tester.tap(find.text('显示公告（模拟）'));
+      await tester.pumpAndSettle();
+      expect(find.byType(HomeNoticeView), findsOneWidget);
+      await tester.tap(find.text('更新公告（模拟）'));
+      await tester.pumpAndSettle();
+      expect(find.text('校园网公告更新（模拟）'), findsOneWidget);
+      await tester.tap(find.byTooltip('演示外观'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('深色').last);
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.byType(HomePage))).brightness,
+        Brightness.dark,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
     'interactive entry labels offline mode and uses the production shell',
     (tester) async {
       await tester.pumpWidget(const OfflineDemoApp());

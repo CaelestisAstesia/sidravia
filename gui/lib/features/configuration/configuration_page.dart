@@ -62,7 +62,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
             initialValue: _profile,
             decoration: const InputDecoration(
               isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              constraints: BoxConstraints(minHeight: 40),
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             ),
             isExpanded: true,
             items: [
@@ -98,14 +99,19 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 vertical: 9,
               ),
               isDense: true,
+              constraints: const BoxConstraints(minHeight: 40),
               hintText: '输入校园网账号',
             ),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 21),
         Text(
           creating ? '首次连接需要机构、账号和密码。' : '密码已保存。出于安全原因，Sidravia 不会回显现有密码。',
-          style: Theme.of(context).textTheme.bodySmall,
+          style: TextStyle(
+            fontSize: 11,
+            height: 1.5,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 7),
         DesignField(
@@ -125,6 +131,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 vertical: 9,
               ),
               isDense: true,
+              constraints: const BoxConstraints(minHeight: 40),
               hintText: creating ? '输入校园网密码' : '仅在需要修改时填写',
             ),
           ),

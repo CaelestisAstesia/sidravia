@@ -37,12 +37,14 @@ class DesignHeader extends StatelessWidget {
     required this.title,
     required this.onBack,
     this.backLabel = '返回',
+    this.bottomSpacing = 24,
   });
   final String title, backLabel;
+  final double bottomSpacing;
   final VoidCallback onBack;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 24),
+    padding: EdgeInsets.only(bottom: bottomSpacing),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -50,7 +52,11 @@ class DesignHeader extends StatelessWidget {
           onPressed: onBack,
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 4),
-            minimumSize: Size.zero,
+            minimumSize:
+                (Theme.of(context).platform == TargetPlatform.android ||
+                    Theme.of(context).platform == TargetPlatform.iOS)
+                ? const Size(48, 48)
+                : Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.standard,
             foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -60,7 +66,10 @@ class DesignHeader extends StatelessWidget {
             children: [
               const Icon(Icons.chevron_left, size: 16),
               const SizedBox(width: 7),
-              Text(backLabel, style: const TextStyle(fontSize: 13)),
+              Text(
+                backLabel,
+                style: const TextStyle(fontSize: 13, height: 20 / 13),
+              ),
             ],
           ),
         ),
@@ -69,6 +78,7 @@ class DesignHeader extends StatelessWidget {
           title,
           style: const TextStyle(
             fontSize: 20,
+            height: 1.4,
             fontWeight: FontWeight.w600,
             letterSpacing: -.2,
           ),
@@ -88,6 +98,7 @@ class DesignSectionTitle extends StatelessWidget {
       title,
       style: TextStyle(
         fontSize: 11,
+        height: 16 / 11,
         letterSpacing: .66,
         fontWeight: FontWeight.w700,
         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -110,13 +121,24 @@ class DesignGroup extends StatelessWidget {
     child: Column(
       children: [
         for (var i = 0; i < children.length; i++) ...[
-          if (i > 0)
+          if (i > 0 && !children.every((w) => w is DesignRow && w.diagnostic))
             Divider(
               height: 1,
               thickness: 1,
               color: Theme.of(context).dividerColor,
             ),
-          children[i],
+          if (i > 0 && children.every((w) => w is DesignRow && w.diagnostic))
+            DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+              ),
+              child: children[i],
+            )
+          else
+            children[i],
         ],
       ],
     ),
@@ -156,6 +178,7 @@ class DesignRow extends StatelessWidget {
                     title,
                     style: TextStyle(
                       fontSize: diagnostic ? 12 : 13,
+                      height: diagnostic ? 1.5 : 19 / 13,
                       fontWeight: diagnostic
                           ? FontWeight.w400
                           : FontWeight.w600,
@@ -203,15 +226,18 @@ class DesignRow extends StatelessWidget {
         ),
       ),
     );
-    return Material(
-      color: Colors.transparent,
-      child: onTap == null
-          ? content
-          : InkWell(
-              onTap: onTap,
-              hoverColor: scheme.surfaceContainerHighest,
-              child: content,
-            ),
+    return Semantics(
+      button: onTap != null,
+      child: Material(
+        color: Colors.transparent,
+        child: onTap == null
+            ? content
+            : InkWell(
+                onTap: onTap,
+                hoverColor: scheme.surfaceContainerHighest,
+                child: content,
+              ),
+      ),
     );
   }
 }
@@ -309,11 +335,21 @@ class DesignField extends StatelessWidget {
         label,
         style: TextStyle(
           fontSize: 12,
+          height: 1.5,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
       const SizedBox(height: 6),
-      child,
+      ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight:
+              Theme.of(context).platform == TargetPlatform.android ||
+                  Theme.of(context).platform == TargetPlatform.iOS
+              ? 48
+              : 0,
+        ),
+        child: child,
+      ),
       if (error != null) ...[
         const SizedBox(height: 6),
         Text(

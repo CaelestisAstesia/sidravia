@@ -86,6 +86,7 @@ Future<void> showAnnouncementSheet(
         side: BorderSide(color: Theme.of(context).colorScheme.outline),
       ),
       child: ConstrainedBox(
+        key: const ValueKey('announcement-panel'),
         constraints: const BoxConstraints(maxWidth: 340, maxHeight: 360),
         child: SizedBox(
           width: 340,

@@ -39,11 +39,10 @@ class FailingClient extends OfflineDemoClient {
 }
 
 void main() {
-  for (final entry in states.entries) {
-    testWidgets('formal HomePage ${entry.key} binds correct action', (
-      tester,
-    ) async {
-      final client = OfflineDemoClient()..selectScenario(entry.key);
+  testWidgets(
+    'Windows formal top edges navigate; Tab Enter and Escape return',
+    (tester) async {
+      final client = OfflineDemoClient();
       final controller = GuiController(
         bootstrapper: OfflineDemoBootstrap(),
         connector: (_) async => client,
@@ -56,24 +55,81 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(HomePage), findsOneWidget);
-      expect(find.text(entry.value[0]), findsAtLeastNWidgets(1));
-      expect(find.text(entry.value[2]), findsOneWidget);
-      expect(find.textContaining('30 秒'), findsNothing);
-      if (entry.key == 'blocked_by_error') {
-        expect(find.text('credential_invalid'), findsOneWidget);
-      }
-      await tester.tap(find.text(entry.value[1]));
+      final header = find.byKey(const ValueKey('home-configuration-button'));
+      final settings = find.byKey(const ValueKey('home-settings-button'));
+      var r = tester.getRect(header);
+      expect(r.height, 42);
+      expect(tester.getRect(settings).height, 42);
+      await tester.tapAt(Offset(r.center.dx, r.top + 1));
       await tester.pumpAndSettle();
-      if (entry.key == 'empty') {
-        expect(find.text('保存配置'), findsOneWidget);
-      } else {
-        expect(client.operations.last, entry.value[3]);
-      }
+      expect(find.text('保存更改'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(HomePage), findsOneWidget);
+      r = tester.getRect(header);
+      await tester.tapAt(Offset(r.center.dx, r.bottom - 1));
+      await tester.pumpAndSettle();
+      expect(find.text('保存更改'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus, isNotNull);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.byType(HomePage), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       controller.dispose();
       client.dispose();
-    });
+    },
+  );
+
+  for (final entry in states.entries) {
+    for (final platform in [
+      TargetPlatform.windows,
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+    ]) {
+      for (final dark in [false, true]) {
+        testWidgets(
+          'formal HomePage ${entry.key} $platform dark=$dark binds correct action',
+          (tester) async {
+            final client = OfflineDemoClient()..selectScenario(entry.key);
+            final controller = GuiController(
+              bootstrapper: OfflineDemoBootstrap(),
+              connector: (_) async => client,
+            );
+            await controller.start();
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: (dark ? AppTheme.dark() : AppTheme.light()).copyWith(
+                  platform: platform,
+                ),
+                home: SidraviaShell(controller: controller),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(find.byType(HomePage), findsOneWidget);
+            expect(find.text(entry.value[0]), findsAtLeastNWidgets(1));
+            expect(find.text(entry.value[2]), findsOneWidget);
+            expect(find.textContaining('30 秒'), findsNothing);
+            if (entry.key == 'blocked_by_error') {
+              expect(find.text('credential_invalid'), findsOneWidget);
+            }
+            await tester.tap(find.text(entry.value[1]));
+            await tester.pumpAndSettle();
+            if (entry.key == 'empty') {
+              expect(find.text('保存配置'), findsOneWidget);
+            } else {
+              expect(client.operations.last, entry.value[3]);
+            }
+            await tester.pumpWidget(const SizedBox.shrink());
+            controller.dispose();
+            client.dispose();
+          },
+        );
+      }
+    }
   }
   testWidgets(
     'retry secondary stops the actual session; failure secondary opens configuration',

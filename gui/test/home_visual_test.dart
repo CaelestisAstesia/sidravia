@@ -66,7 +66,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
+          theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
           home: const Scaffold(
             body: SizedBox.expand(
               child: RepaintBoundary(
