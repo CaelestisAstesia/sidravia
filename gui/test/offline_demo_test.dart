@@ -65,7 +65,7 @@ void main() {
       await tester.tap(find.text('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
-      await tester.tap(find.byType(SwitchListTile).first);
+      await tester.tap(find.byKey(const ValueKey('auto-login-switch')));
       await tester.pumpAndSettle();
       expect(controller.capabilities.configuration!.autoLogin, isTrue);
       expect(client.operations, contains('configuration.set_auto_login'));
@@ -162,7 +162,7 @@ void main() {
       expect(announcements.unreadCount, 1);
       await tester.tap(find.byType(HomeNoticeView));
       await tester.pumpAndSettle();
-      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.byType(Dialog), findsOneWidget);
       expect(find.textContaining('这是离线演示公告'), findsOneWidget);
       expect(announcements.unreadCount, 0);
       await tester.pumpWidget(const SizedBox.shrink());

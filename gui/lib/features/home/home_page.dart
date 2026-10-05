@@ -25,6 +25,7 @@ class HomeViewData {
     required this.onSecondary,
     required this.onPrimary,
     this.actionError,
+    this.issue,
     this.notice,
   });
   final String institution, username, state, detail, context, glyph;
@@ -32,9 +33,11 @@ class HomeViewData {
   final String secondaryLabel, primaryLabel;
   final HomeButtonKind primaryKind;
   final bool primaryEnabled;
-  final VoidCallback onHeader, onSettings, onSecondary;
+  final VoidCallback onHeader, onSettings;
+  final VoidCallback? onSecondary;
   final VoidCallback? onPrimary;
   final String? actionError;
+  final SessionAuthenticationFailure? issue;
   final HomeNotice? notice;
 }
 
@@ -89,10 +92,18 @@ class HomePage extends StatelessWidget {
         ? '立即重试'
         : session.state == 'blocked_by_error'
         ? '重新连接'
+        : session.state == 'authenticating'
+        ? '取消连接'
+        : session.state == 'waiting_for_network'
+        ? '取消等待'
         : '断开连接';
     final secondaryLabel = configuration == null
         ? '连接设置'
         : session == null || session.state == 'suspended'
+        ? '更改配置'
+        : session.state == 'waiting_before_retry'
+        ? '停止重试'
+        : session.state == 'blocked_by_error'
         ? '更改配置'
         : '连接详情';
     final item =
@@ -129,17 +140,47 @@ class HomePage extends StatelessWidget {
             : HomeButtonKind.primary,
         onHeader: () => onNavigate(AppPage.configuration),
         onSettings: () => onNavigate(AppPage.settings),
-        onSecondary: () => onNavigate(
-          configuration == null
-              ? AppPage.settings
-              : session == null || session.state == 'suspended'
-              ? AppPage.configuration
-              : AppPage.details,
-        ),
+        onSecondary:
+            session?.state == 'waiting_before_retry' &&
+                !controller.capabilities.canManage
+            ? null
+            : () {
+                if (session?.state == 'waiting_before_retry') {
+                  if (controller.capabilities.canManage) {
+                    controller.stopSession(session!.id);
+                  }
+                } else {
+                  onNavigate(
+                    configuration == null
+                        ? AppPage.settings
+                        : session == null ||
+                              [
+                                'suspended',
+                                'blocked_by_error',
+                              ].contains(session.state)
+                        ? AppPage.configuration
+                        : AppPage.details,
+                  );
+                }
+              },
         onPrimary: primaryEnabled
             ? () => _primary(session, configuration)
             : null,
-        actionError: controller.notice,
+        actionError:
+            controller.notice ??
+            (controller.state != GuiConnectionState.ready
+                ? switch (controller.state) {
+                    GuiConnectionState.bootstrapping => '正在初始化连接服务…',
+                    GuiConnectionState.unsupported => '此平台暂不支持真实认证。',
+                    GuiConnectionState.stale => '连接服务失联，当前信息可能已过期。',
+                    _ => '连接服务不可用，请重试。',
+                  }
+                : !primaryEnabled
+                ? (controller.busy ? '正在处理操作，请稍候。' : '当前配置或会话关系不允许执行连接操作。')
+                : null),
+        issue: session?.state == 'blocked_by_error'
+            ? session?.lastAuthenticationFailure
+            : null,
         notice: notice,
       ),
     );
@@ -292,7 +333,7 @@ class _HomeHeader extends StatelessWidget {
     final scaler = MediaQuery.textScalerOf(context);
     final textHeight = scaler.scale(16) * 1.2 + 2 + scaler.scale(12) * 1.2 + 6;
     final height = textHeight > (touch ? 48 : 42)
-        ? textHeight
+        ? textHeight.ceilToDouble()
         : (touch ? 48.0 : 42.0);
     return Padding(
       padding: const EdgeInsets.only(bottom: 28),
@@ -308,7 +349,7 @@ class _HomeHeader extends StatelessWidget {
                   key: const ValueKey('home-configuration-button'),
                   onPressed: data.onHeader,
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.inkLight,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
                     visualDensity: VisualDensity.standard,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     alignment: Alignment.centerLeft,
@@ -330,19 +371,21 @@ class _HomeHeader extends StatelessWidget {
                               data.institution,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 height: 1.2,
                               ),
                             ),
-                            const SizedBox(height: 2),
+                            SizedBox(height: 2),
                             Text(
                               data.username,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.mutedLight,
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                                 fontSize: 12,
                                 height: 1.2,
                               ),
@@ -350,10 +393,10 @@ class _HomeHeader extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const Icon(
+                      Icon(
                         Icons.chevron_right,
                         size: 16,
-                        color: AppColors.mutedLight,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ],
                   ),
@@ -361,7 +404,7 @@ class _HomeHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           SizedBox(
             width: touch ? 48 : 42,
             height: height,
@@ -377,10 +420,10 @@ class _HomeHeader extends StatelessWidget {
               ),
               tooltip: '设置',
               onPressed: data.onSettings,
-              icon: const Icon(
+              icon: Icon(
                 Icons.settings_outlined,
                 size: 20,
-                color: AppColors.mutedLight,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               padding: EdgeInsets.zero,
               constraints: BoxConstraints.tightFor(
@@ -404,7 +447,7 @@ class _HomeActions extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
         Align(
           alignment: Alignment.center,
           child: ConstrainedBox(
@@ -419,7 +462,7 @@ class _HomeActions extends StatelessWidget {
                     primary: false,
                   ),
                 ),
-                const SizedBox(width: 9),
+                SizedBox(width: 9),
                 Expanded(
                   child: _HomeButton(
                     label: data.primaryLabel,
@@ -432,21 +475,26 @@ class _HomeActions extends StatelessWidget {
           ),
         ),
         if (data.actionError != null) ...[
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Text(
             data.actionError!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.danger, fontSize: 12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontSize: 12,
+            ),
           ),
         ],
         if (data.notice != null) ...[
-          const SizedBox(height: 30),
-          const SizedBox(
+          SizedBox(height: 30),
+          SizedBox(
             key: ValueKey('home-divider'),
             height: 1,
-            child: ColoredBox(color: AppColors.lineSoftLight),
+            child: ColoredBox(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           HomeNoticeView(notice: data.notice!),
         ],
       ],
@@ -466,7 +514,7 @@ class HomeNoticeView extends StatelessWidget {
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      foregroundColor: AppColors.inkLight,
+      foregroundColor: Theme.of(context).colorScheme.onSurface,
       shape: const RoundedRectangleBorder(),
     ),
     child: Row(
@@ -479,26 +527,26 @@ class HomeNoticeView extends StatelessWidget {
               Text(
                 '校园网公告',
                 style: TextStyle(
-                  color: AppColors.accent,
+                  color: Theme.of(context).colorScheme.primary,
                   fontSize: 11,
                   height: 16 / 11,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 notice.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   height: 19 / 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 10),
-              const Text(
+              SizedBox(height: 10),
+              Text(
                 '点击查看公告页面',
                 style: TextStyle(
-                  color: AppColors.mutedLight,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   height: 1.5,
                 ),
@@ -506,13 +554,13 @@ class HomeNoticeView extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        const SizedBox(
+        SizedBox(width: 12),
+        SizedBox(
           width: 6,
           child: Text(
             '›',
             style: TextStyle(
-              color: AppColors.mutedLight,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 20,
               height: 1.4,
             ),
@@ -539,7 +587,13 @@ class _HomeButton extends StatelessWidget {
         ? FilledButton(
             onPressed: onPressed,
             style: AppButtonStyles.primary.copyWith(
-              textStyle: const WidgetStatePropertyAll(
+              backgroundColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.primary,
+              ),
+              foregroundColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.onPrimary,
+              ),
+              textStyle: WidgetStatePropertyAll(
                 TextStyle(
                   fontFamily: 'HarmonyOS Sans',
                   fontSize: 13,
@@ -554,7 +608,16 @@ class _HomeButton extends StatelessWidget {
         : OutlinedButton(
             onPressed: onPressed,
             style: AppButtonStyles.secondary.copyWith(
-              textStyle: const WidgetStatePropertyAll(
+              backgroundColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.surface,
+              ),
+              foregroundColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.onSurface,
+              ),
+              side: WidgetStatePropertyAll(
+                BorderSide(color: Theme.of(context).colorScheme.outline),
+              ),
+              textStyle: WidgetStatePropertyAll(
                 TextStyle(
                   fontFamily: 'HarmonyOS Sans',
                   fontSize: 13,
@@ -575,10 +638,13 @@ class _StatusBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (data.tone) {
-      HomeTone.success => AppColors.success,
-      HomeTone.warning => AppColors.warning,
-      HomeTone.error => AppColors.danger,
-      HomeTone.idle => AppColors.mutedLight,
+      HomeTone.success =>
+        Theme.of(context).brightness == Brightness.dark
+            ? AppColors.successDark
+            : AppColors.success,
+      HomeTone.warning => Theme.of(context).colorScheme.tertiary,
+      HomeTone.error => Theme.of(context).colorScheme.error,
+      HomeTone.idle => Theme.of(context).colorScheme.onSurfaceVariant,
     };
     return ConstrainedBox(
       key: const ValueKey('home-status'),
@@ -592,10 +658,18 @@ class _StatusBlock extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Color.lerp(AppColors.surfaceLight, color, .11),
+                color: Color.lerp(
+                  Theme.of(context).colorScheme.surface,
+                  color,
+                  .11,
+                ),
                 borderRadius: BorderRadius.circular(13),
                 border: Border.all(
-                  color: Color.lerp(AppColors.lineLight, color, .28)!,
+                  color: Color.lerp(
+                    Theme.of(context).colorScheme.outline,
+                    color,
+                    .28,
+                  )!,
                 ),
               ),
               alignment: Alignment.center,
@@ -610,30 +684,30 @@ class _StatusBlock extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 13),
+            SizedBox(height: 13),
             Text(
               data.state,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 30,
                 height: 1.15,
                 fontWeight: FontWeight.w600,
                 letterSpacing: -.75,
               ),
             ),
-            const SizedBox(height: 9),
+            SizedBox(height: 9),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 300),
               child: Text(
                 data.detail,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: AppColors.mutedLight,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
                   height: 1.55,
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             ConstrainedBox(
               key: const ValueKey('home-context'),
               constraints: const BoxConstraints(minHeight: 92),
@@ -644,15 +718,19 @@ class _StatusBlock extends StatelessWidget {
                     vertical: 9,
                     horizontal: 4,
                   ),
-                  child: Text(
-                    data.context,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.mutedLight,
-                      fontSize: 12,
-                      height: 1.45,
-                    ),
-                  ),
+                  child: data.issue != null
+                      ? _HomeIssue(failure: data.issue!)
+                      : Text(
+                          data.context,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                            fontSize: 12,
+                            height: 1.45,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -673,4 +751,52 @@ class _HomeState {
   );
   final String title, detail, context, glyph;
   final HomeTone tone;
+}
+
+class _HomeIssue extends StatelessWidget {
+  const _HomeIssue({required this.failure});
+  final SessionAuthenticationFailure failure;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 320),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: Color.lerp(scheme.surface, scheme.error, .06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Color.lerp(scheme.outline, scheme.error, .35)!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            failure.description,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            failure.handlingRecommendation,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            failure.code,
+            style: TextStyle(
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

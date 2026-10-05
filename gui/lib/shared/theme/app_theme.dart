@@ -128,9 +128,18 @@ abstract final class AppTheme {
           side: BorderSide(color: scheme.outline),
         ),
       ),
-      filledButtonTheme: FilledButtonThemeData(style: AppButtonStyles.primary),
+      filledButtonTheme: FilledButtonThemeData(
+        style: AppButtonStyles.primary.copyWith(
+          backgroundColor: WidgetStatePropertyAll(scheme.primary),
+          foregroundColor: WidgetStatePropertyAll(scheme.onPrimary),
+        ),
+      ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: AppButtonStyles.secondary,
+        style: AppButtonStyles.secondary.copyWith(
+          backgroundColor: WidgetStatePropertyAll(scheme.surface),
+          foregroundColor: WidgetStatePropertyAll(scheme.onSurface),
+          side: WidgetStatePropertyAll(BorderSide(color: scheme.outline)),
+        ),
       ),
     );
   }

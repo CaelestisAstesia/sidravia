@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class ConfigurationPage extends StatefulWidget {
   const ConfigurationPage({
@@ -19,6 +20,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   late final TextEditingController _password;
   String? _profile;
   bool _saving = false;
+  String? _usernameError, _passwordError;
 
   @override
   void initState() {
@@ -51,15 +53,18 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     final c = widget.controller.capabilities.configuration;
     final profiles = snapshot?.profiles ?? const <InstitutionProfile>[];
     final creating = c == null;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _BackHeader(title: '连接配置', onBack: widget.onBack),
-          DropdownButtonFormField<String>(
+    return DesignPage(
+      children: [
+        DesignHeader(title: '连接配置', onBack: widget.onBack),
+        DesignField(
+          label: '机构',
+          child: DropdownButtonFormField<String>(
             initialValue: _profile,
-            decoration: const InputDecoration(labelText: '机构'),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            ),
+            isExpanded: true,
             items: [
               for (final profile in profiles)
                 DropdownMenuItem(
@@ -67,69 +72,176 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                   child: Text(profile.displayName),
                 ),
             ],
-            onChanged: widget.controller.busy
+            onChanged:
+                widget.controller.busy ||
+                    !(creating
+                        ? widget.controller.capabilities.canCreate
+                        : widget.controller.capabilities.canManage)
                 ? null
                 : (value) => setState(() => _profile = value),
           ),
-          const SizedBox(height: 14),
-          TextField(
+        ),
+        const SizedBox(height: 14),
+        DesignField(
+          label: '认证账号',
+          error: _usernameError,
+          child: TextField(
             controller: _username,
-            enabled: !widget.controller.busy,
-            decoration: const InputDecoration(
-              labelText: '认证账号',
+            enabled:
+                !widget.controller.busy &&
+                (creating
+                    ? widget.controller.capabilities.canCreate
+                    : widget.controller.capabilities.canManage),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 9,
+              ),
+              isDense: true,
               hintText: '输入校园网账号',
             ),
           ),
-          const SizedBox(height: 14),
-          Text(
-            '密码已保存。出于安全原因，Sidravia 不会回显现有密码。',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 7),
-          TextField(
+        ),
+        const SizedBox(height: 14),
+        Text(
+          creating ? '首次连接需要机构、账号和密码。' : '密码已保存。出于安全原因，Sidravia 不会回显现有密码。',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 7),
+        DesignField(
+          label: creating ? '认证密码' : '设置新密码',
+          error: _passwordError,
+          child: TextField(
             controller: _password,
             obscureText: true,
-            enabled: !widget.controller.busy,
+            enabled:
+                !widget.controller.busy &&
+                (creating
+                    ? widget.controller.capabilities.canCreate
+                    : widget.controller.capabilities.canManage),
             decoration: InputDecoration(
-              labelText: creating ? '认证密码' : '设置新密码',
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 9,
+              ),
+              isDense: true,
               hintText: creating ? '输入校园网密码' : '仅在需要修改时填写',
             ),
           ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+        ),
+        const SizedBox(height: 18),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            OutlinedButton(onPressed: widget.onBack, child: const Text('取消')),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed:
+                  _saving ||
+                      !(creating
+                          ? widget.controller.capabilities.canCreate
+                          : widget.controller.capabilities.canManage)
+                  ? null
+                  : _save,
+              child: Text(creating ? '保存配置' : '保存更改'),
+            ),
+          ],
+        ),
+        if (widget.controller.notice != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              widget.controller.notice!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        if (!creating) ...[
+          const SizedBox(height: 24),
+          const DesignSectionTitle('更多操作'),
+          DesignGroup(
             children: [
-              TextButton(onPressed: widget.onBack, child: const Text('取消')),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _saving ? null : _save,
-                child: Text(creating ? '保存配置' : '保存更改'),
+              DesignRow(
+                title: '移除当前会话',
+                subtitle: widget.controller.capabilities.canResetSession
+                    ? '清理当前 Session 记录'
+                    : '没有可清理的会话或当前不可操作',
+                onTap: widget.controller.capabilities.canResetSession
+                    ? () => _confirmMutation(false)
+                    : null,
+              ),
+              DesignRow(
+                title: '删除登录配置',
+                subtitle: widget.controller.capabilities.canDeleteConfiguration
+                    ? '删除已保存的账号与凭据'
+                    : '当前状态不允许删除',
+                danger: true,
+                onTap: widget.controller.capabilities.canDeleteConfiguration
+                    ? () => _confirmMutation(true)
+                    : null,
               ),
             ],
           ),
-          if (!creating)
-            Padding(
-              padding: const EdgeInsets.only(top: 28),
-              child: OutlinedButton(
-                onPressed: null,
-                child: const Text('删除登录配置（暂不可用）'),
-              ),
-            ),
         ],
-      ),
+      ],
     );
   }
 
+  Future<void> _confirmMutation(bool delete) async {
+    final c = widget.controller.capabilities.configuration;
+    final session = widget.controller.capabilities.retainedSession;
+    final allowed = delete
+        ? widget.controller.capabilities.canDeleteConfiguration
+        : widget.controller.capabilities.canResetSession;
+    if (!allowed || c == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(delete ? '删除登录配置？' : '移除当前会话？'),
+        content: Text(delete ? '此操作会删除已保存的账号与凭据。' : '此操作会清理当前 Session 记录。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final ok = delete
+        ? await widget.controller.deleteConfiguration(c.id)
+        : session != null && await widget.controller.resetSession(session.id);
+    if (ok && mounted) widget.onBack();
+  }
+
   Future<void> _save() async {
+    if (!(widget.controller.capabilities.configuration == null
+        ? widget.controller.capabilities.canCreate
+        : widget.controller.capabilities.canManage)) {
+      return;
+    }
     if (_profile == null ||
         _username.text.trim().isEmpty ||
         (_password.text.isEmpty &&
             widget.controller.capabilities.configuration == null)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请填写机构、账号和密码。')));
+      setState(() {
+        _usernameError = _username.text.trim().isEmpty ? '请输入校园网账号。' : null;
+        _passwordError =
+            _password.text.isEmpty &&
+                widget.controller.capabilities.configuration == null
+            ? '首次配置需要填写密码。'
+            : null;
+      });
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _usernameError = null;
+      _passwordError = null;
+    });
     final c = widget.controller.capabilities.configuration;
     var ok = false;
     if (c == null) {
@@ -157,31 +269,4 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       if (ok) widget.onBack();
     }
   }
-}
-
-class _BackHeader extends StatelessWidget {
-  const _BackHeader({required this.title, required this.onBack});
-  final String title;
-  final VoidCallback onBack;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextButton.icon(
-          onPressed: onBack,
-          style: TextButton.styleFrom(padding: EdgeInsets.zero),
-          icon: const Icon(Icons.chevron_left),
-          label: const Text('返回'),
-        ),
-        const SizedBox(height: 9),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
-    ),
-  );
 }

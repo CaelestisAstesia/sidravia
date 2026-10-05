@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
@@ -12,164 +14,118 @@ class SettingsPage extends StatelessWidget {
   final GuiController controller;
   final ValueChanged<AppPage> onNavigate;
   final VoidCallback onBack;
-
   @override
   Widget build(BuildContext context) {
-    final configuration = controller.capabilities.configuration;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Header(onBack: onBack),
-          const _SectionTitle('连接'),
-          Card(
-            child: Column(
-              children: [
-                _RowButton(
-                  title: '连接配置',
-                  subtitle: configuration == null
-                      ? '尚未配置 · 点击添加'
-                      : '${configuration.institutionDisplayName} · ${configuration.username}',
-                  onTap: () => onNavigate(AppPage.configuration),
-                ),
-                const _Divider(),
-                _SwitchRow(
-                  title: '启动时自动登录',
-                  subtitle: '打开 Sidravia 后自动开始认证',
-                  value: configuration?.autoLogin ?? false,
-                  enabled:
-                      configuration != null &&
-                      controller.capabilities.canEditAutoLogin,
-                  onChanged: configuration == null
-                      ? null
-                      : (value) => controller.setAutoLogin(
-                          configurationId: configuration.id,
-                          autoLogin: value,
-                        ),
-                ),
-                const _Divider(),
-                const _SwitchRow(
-                  title: '自动重连',
-                  subtitle: '后端能力暂不可用',
-                  value: false,
-                  enabled: false,
-                  onChanged: null,
-                ),
-              ],
+    final c = controller.capabilities.configuration;
+    final appearance = AppearanceScope.maybeOf(context);
+    final mode = appearance?.value ?? ThemeMode.system;
+    final label = switch (mode) {
+      ThemeMode.system => '跟随系统',
+      ThemeMode.light => '浅色',
+      ThemeMode.dark => '深色',
+    };
+    return DesignPage(
+      children: [
+        DesignHeader(title: '设置', onBack: onBack, backLabel: '返回连接'),
+        const DesignSectionTitle('连接'),
+        DesignGroup(
+          children: [
+            DesignRow(
+              title: '连接配置',
+              subtitle: c == null
+                  ? '尚未配置 · 点击添加'
+                  : '${c.institutionDisplayName} · ${c.username}',
+              onTap: () => onNavigate(AppPage.configuration),
+            ),
+            DesignRow(
+              title: '启动时自动登录',
+              subtitle: controller.capabilities.canEditAutoLogin
+                  ? '打开 Sidravia 后自动开始认证'
+                  : '当前配置或连接状态不允许修改',
+              trailing: DesignSwitch(
+                key: const ValueKey('auto-login-switch'),
+                label: '启动时自动登录',
+                value: c?.autoLogin ?? false,
+                onChanged: c != null && controller.capabilities.canEditAutoLogin
+                    ? (value) => controller.setAutoLogin(
+                        configurationId: c.id,
+                        autoLogin: value,
+                      )
+                    : null,
+              ),
+            ),
+            const DesignRow(
+              title: '自动重连',
+              subtitle: '后端能力暂不可用',
+              trailing: DesignSwitch(
+                label: '自动重连',
+                value: false,
+                onChanged: null,
+              ),
+            ),
+          ],
+        ),
+        if (controller.notice != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              controller.notice!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
-          const SizedBox(height: 24),
-          const _SectionTitle('应用'),
-          Card(
-            child: Column(
-              children: [
-                const _RowButton(title: '外观模式', subtitle: '跟随系统', onTap: null),
-                const _Divider(),
-                _RowButton(
-                  title: '技术诊断',
-                  subtitle: 'Daemon、Session 与故障信息',
-                  onTap: () => onNavigate(AppPage.diagnostics),
+        const SizedBox(height: 24),
+        const DesignSectionTitle('应用'),
+        DesignGroup(
+          children: [
+            DesignRow(
+              title: '外观模式',
+              subtitle: label,
+              trailing: DropdownButton<ThemeMode>(
+                value: mode,
+                underline: const SizedBox.shrink(),
+                style: TextStyle(
+                  fontFamily: 'HarmonyOS Sans',
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
-                const _Divider(),
-                const _RowButton(
-                  title: '关于 Sidravia',
-                  subtitle: '版本、许可与项目链接',
-                  onTap: null,
-                ),
-              ],
+                items: const [
+                  DropdownMenuItem(
+                    value: ThemeMode.system,
+                    child: Text('跟随系统'),
+                  ),
+                  DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
+                  DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
+                ],
+                onChanged: appearance == null
+                    ? null
+                    : (value) {
+                        if (value != null) appearance.value = value;
+                      },
+              ),
             ),
-          ),
-        ],
-      ),
+            DesignRow(
+              title: '技术诊断',
+              subtitle: 'Daemon、Session 与故障信息',
+              onTap: () => onNavigate(AppPage.diagnostics),
+            ),
+            DesignRow(
+              title: '关于 Sidravia',
+              subtitle: '版本、许可与项目链接',
+              onTap: () => showAboutDialog(
+                context: context,
+                applicationName: 'Sidravia',
+                applicationVersion:
+                    controller.snapshot?.daemon.productVersion ?? '暂不可用',
+                children: [
+                  const Text('https://github.com/CaelestisAstesia/sidravia'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        const DesignHelper('外观选择仅在本次运行中生效。'),
+      ],
     );
   }
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.onBack});
-  final VoidCallback onBack;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextButton.icon(
-          onPressed: onBack,
-          style: TextButton.styleFrom(padding: EdgeInsets.zero),
-          icon: const Icon(Icons.chevron_left),
-          label: const Text('返回连接'),
-        ),
-        const SizedBox(height: 9),
-        Text(
-          '设置',
-          style: Theme.of(context).textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
-    ),
-  );
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 9),
-    child: Text(
-      text.toUpperCase(),
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-        letterSpacing: 1,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
-}
-
-class _Divider extends StatelessWidget {
-  const _Divider();
-  @override
-  Widget build(BuildContext context) =>
-      Divider(height: 1, indent: 14, endIndent: 14);
-}
-
-class _RowButton extends StatelessWidget {
-  const _RowButton({
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-  final String title, subtitle;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => ListTile(
-    enabled: onTap != null,
-    title: Text(title),
-    subtitle: Text(subtitle),
-    trailing: const Icon(Icons.chevron_right),
-    onTap: onTap,
-  );
-}
-
-class _SwitchRow extends StatelessWidget {
-  const _SwitchRow({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-  final String title, subtitle;
-  final bool value, enabled;
-  final ValueChanged<bool>? onChanged;
-  @override
-  Widget build(BuildContext context) => SwitchListTile(
-    title: Text(title),
-    subtitle: Text(subtitle),
-    value: value,
-    onChanged: enabled ? onChanged : null,
-  );
 }

@@ -44,6 +44,31 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   List<String> get operations => List.unmodifiable(_operations);
   bool get closed => _closed;
 
+  void selectScenario(String scenario) {
+    if (scenario == 'empty') {
+      _configuration = null;
+      _session = null;
+    } else {
+      _configuration ??= const ConfigurationSummary(
+        id: 'demo-config',
+        displayName: '吉林大学',
+        institutionProfileId: 'jlu',
+        institutionDisplayName: '吉林大学',
+        authenticationProtocolId: 'drcom-5.2.0-d',
+        username: 'student01',
+        credentialStored: true,
+        storageProtection: 'protected',
+      );
+      _session = _newSession(
+        scenario,
+        establishedAt: scenario == 'authenticated'
+            ? DateTime.now().subtract(const Duration(hours: 2, minutes: 18))
+            : null,
+      );
+    }
+    _record('demo.scenario', '已切换模拟场景：$scenario；无真实网络操作');
+  }
+
   void _record(String operation, String feedback) {
     _operations.add(operation);
     _feedback = feedback;
@@ -83,6 +108,13 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
         localIpv4Address: '192.168.1.20',
       ),
       authenticationEstablishedAt: establishedAt,
+      lastAuthenticationFailure: state == 'blocked_by_error'
+          ? const SessionAuthenticationFailure(
+              code: 'credential_invalid',
+              description: '服务器拒绝了本次认证',
+              handlingRecommendation: '请先核对账号或密码，再重新尝试连接。',
+            )
+          : null,
       revision: ++_revision,
     );
   }

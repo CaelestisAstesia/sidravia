@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
@@ -40,41 +41,54 @@ class _SidraviaShellState extends State<SidraviaShell> {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => Scaffold(
-      body: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
-            child: AnimatedBuilder(
-              animation: widget.controller,
-              builder: (context, _) => switch (_page) {
-                AppPage.home => HomePage(
-                  controller: widget.controller,
-                  announcements: widget.announcements,
-                  onNavigate: _go,
+    builder: (context, constraints) => CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (_page != AppPage.home) _back();
+        },
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () {
+          if (_page != AppPage.home) _back();
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 960),
+                child: AnimatedBuilder(
+                  animation: widget.controller,
+                  builder: (context, _) => switch (_page) {
+                    AppPage.home => HomePage(
+                      controller: widget.controller,
+                      announcements: widget.announcements,
+                      onNavigate: _go,
+                    ),
+                    AppPage.settings => SettingsPage(
+                      controller: widget.controller,
+                      onNavigate: _go,
+                      onBack: _back,
+                    ),
+                    AppPage.configuration => ConfigurationPage(
+                      controller: widget.controller,
+                      onBack: _back,
+                    ),
+                    AppPage.details => AdvancedPage(
+                      controller: widget.controller,
+                      detailsOnly: true,
+                      onBack: _back,
+                      onDiagnostics: () => _go(AppPage.diagnostics),
+                    ),
+                    AppPage.diagnostics => AdvancedPage(
+                      controller: widget.controller,
+                      detailsOnly: false,
+                      onBack: _back,
+                    ),
+                  },
                 ),
-                AppPage.settings => SettingsPage(
-                  controller: widget.controller,
-                  onNavigate: _go,
-                  onBack: _back,
-                ),
-                AppPage.configuration => ConfigurationPage(
-                  controller: widget.controller,
-                  onBack: _back,
-                ),
-                AppPage.details => AdvancedPage(
-                  controller: widget.controller,
-                  detailsOnly: true,
-                  onBack: _back,
-                  onDiagnostics: () => _go(AppPage.diagnostics),
-                ),
-                AppPage.diagnostics => AdvancedPage(
-                  controller: widget.controller,
-                  detailsOnly: false,
-                  onBack: _back,
-                ),
-              },
+              ),
             ),
           ),
         ),

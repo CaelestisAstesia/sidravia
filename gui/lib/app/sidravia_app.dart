@@ -6,6 +6,7 @@ import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
+import 'package:sidravia_gui/shared/theme/appearance.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 class SidraviaApp extends StatefulWidget {
@@ -24,6 +25,7 @@ class SidraviaApp extends StatefulWidget {
 }
 
 class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
+  final _appearance = Appearance();
   @override
   void initState() {
     super.initState();
@@ -71,20 +73,27 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     }
     widget.announcements?.dispose();
     widget.controller.dispose();
+    _appearance.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Sidravia',
-    debugShowCheckedModeBanner: false,
-    theme: AppTheme.light(),
-    darkTheme: AppTheme.dark(),
-    themeMode: ThemeMode.system,
-    home: SidraviaWindowFrame(
-      child: SidraviaShell(
-        controller: widget.controller,
-        announcements: widget.announcements,
+  Widget build(BuildContext context) => AppearanceScope(
+    appearance: _appearance,
+    child: ValueListenableBuilder<ThemeMode>(
+      valueListenable: _appearance,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'Sidravia',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: mode,
+        home: SidraviaWindowFrame(
+          child: SidraviaShell(
+            controller: widget.controller,
+            announcements: widget.announcements,
+          ),
+        ),
       ),
     ),
   );

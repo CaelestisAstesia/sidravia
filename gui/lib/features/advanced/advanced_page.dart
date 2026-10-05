@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class AdvancedPage extends StatelessWidget {
   const AdvancedPage({
@@ -18,76 +20,114 @@ class AdvancedPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller.capabilities.configuration;
     final s = controller.capabilities.retainedSession;
-    final rows = <MapEntry<String, String>>[
-      MapEntry('状态', _state(s)),
-      if (s?.selectedNetworkBinding != null)
-        MapEntry('网络适配器', s!.selectedNetworkBinding!.displayName)
-      else
-        const MapEntry('网络适配器', '暂不可用'),
-      if (s?.selectedNetworkBinding?.localIpv4Address case final ip?
-          when ip.isNotEmpty)
-        MapEntry('本机 IPv4', ip)
-      else
-        const MapEntry('本机 IPv4', '暂不可用'),
-      MapEntry(
-        '认证建立',
-        s?.authenticationEstablishedAt?.toLocal().toString() ?? '暂不可用',
-      ),
-    ];
-    if (!detailsOnly) {
-      rows.addAll([
-        MapEntry('daemon', controller.snapshot?.daemon.status ?? '暂不可用'),
-        MapEntry('session_id', s?.id ?? '暂不可用'),
-        MapEntry('configuration_id', c?.id ?? '暂不可用'),
-        MapEntry('auth_protocol', c?.authenticationProtocolId ?? '暂不可用'),
-        MapEntry('last_error', s?.lastAuthenticationFailure?.code ?? '暂不可用'),
-      ]);
-    }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _BackHeader(title: detailsOnly ? '连接详情' : '技术诊断', onBack: onBack),
-          Card(
-            child: Column(
-              children: [
-                for (var i = 0; i < rows.length; i++)
-                  _InfoRow(entry: rows[i], first: i == 0),
-              ],
-            ),
+    final d = controller.snapshot?.daemon;
+    final rows = detailsOnly
+        ? <MapEntry<String, String>>[
+            MapEntry('状态', c == null ? '尚未配置' : _state(s)),
+            MapEntry('认证协议', c?.authenticationProtocolId ?? '暂不可用'),
+            if (s?.selectedNetworkBinding != null &&
+                !['suspended', 'waiting_for_network'].contains(s?.state)) ...[
+              MapEntry('网络适配器', s!.selectedNetworkBinding!.displayName),
+              MapEntry('本机 IPv4', s.selectedNetworkBinding!.localIpv4Address),
+            ],
+            if (s?.authenticationEstablishedAt != null &&
+                s?.state == 'authenticated')
+              MapEntry(
+                '认证建立',
+                s!.authenticationEstablishedAt!.toLocal().toString(),
+              ),
+          ]
+        : <MapEntry<String, String>>[
+            MapEntry('daemon', d?.status ?? '暂不可用'),
+            MapEntry('version', d?.productVersion ?? '暂不可用'),
+            MapEntry('build_id', d?.buildId ?? '暂不可用'),
+            MapEntry('mode', d?.mode ?? '暂不可用'),
+            MapEntry('session_state', s?.state ?? '暂不可用'),
+            MapEntry('session_id', s?.id ?? '暂不可用'),
+            MapEntry('configuration_id', c?.id ?? '暂不可用'),
+            if (s?.lastAuthenticationFailure != null)
+              MapEntry('last_error', s!.lastAuthenticationFailure!.code),
+          ];
+    return DesignPage(
+      children: [
+        DesignHeader(title: detailsOnly ? '连接详情' : '技术诊断', onBack: onBack),
+        if (!detailsOnly) ...[
+          const DesignHelper(
+            '用于排障和 issue reporting。连续日志与底层控制仍由 sidraviactl / 日志系统承担。',
           ),
-          if (detailsOnly && onDiagnostics != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: OutlinedButton(
-                onPressed: onDiagnostics,
-                child: const Text('技术诊断'),
-              ),
-            ),
-          if (!detailsOnly)
-            Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: null,
-                      child: const Text('复制诊断信息（暂不可用）'),
-                    ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: null,
-                      child: const Text('打开日志目录（暂不可用）'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          const SizedBox(height: 16),
         ],
-      ),
+        DesignGroup(
+          children: [
+            for (final row in rows)
+              DesignRow(
+                title: row.key,
+                value: row.value,
+                diagnostic: !detailsOnly,
+              ),
+          ],
+        ),
+        if (detailsOnly) ...[
+          const SizedBox(height: 7),
+          const DesignHelper('这里只显示理解当前连接所需的信息；更底层的数据放在技术诊断。'),
+          const SizedBox(height: 24),
+          DesignGroup(
+            children: [
+              DesignRow(
+                title: '技术诊断',
+                subtitle: '查看 daemon、session、错误代码等工程信息',
+                onTap: onDiagnostics,
+              ),
+            ],
+          ),
+        ] else ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: d == null
+                      ? null
+                      : () async {
+                          try {
+                            await Clipboard.setData(
+                              ClipboardData(
+                                text: rows
+                                    .map((r) => '${r.key}: ${r.value}')
+                                    .join('\n'),
+                              ),
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('诊断信息已复制。')),
+                              );
+                            }
+                          } on Object {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('复制失败，请重试。')),
+                              );
+                            }
+                          }
+                        },
+                  child: Text(d == null ? '复制诊断信息（暂不可用）' : '复制诊断信息'),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Expanded(
+                child: OutlinedButton(
+                  onPressed: null,
+                  child: Text('打开日志目录（暂不可用）'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          const DesignHelper(
+            '更深层操作：sidraviactl status、日志查询、原始 IPC / Session 管理。日志目录缺少现有平台封装。',
+          ),
+        ],
+      ],
     );
   }
 
@@ -99,63 +139,4 @@ class AdvancedPage extends StatelessWidget {
     'blocked_by_error' => '认证失败',
     _ => '未连接',
   };
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.entry, required this.first});
-  final MapEntry<String, String> entry;
-  final bool first;
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      border: first
-          ? null
-          : Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            entry.key,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-        Flexible(
-          child: Text(
-            entry.value,
-            textAlign: TextAlign.right,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _BackHeader extends StatelessWidget {
-  const _BackHeader({required this.title, required this.onBack});
-  final String title;
-  final VoidCallback onBack;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextButton.icon(
-          onPressed: onBack,
-          style: TextButton.styleFrom(padding: EdgeInsets.zero),
-          icon: const Icon(Icons.chevron_left),
-          label: const Text('返回'),
-        ),
-        const SizedBox(height: 9),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
-    ),
-  );
 }
