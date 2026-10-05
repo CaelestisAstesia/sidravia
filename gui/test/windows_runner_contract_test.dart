@@ -14,8 +14,8 @@ void main() {
     expect(runner, isNot(contains('WM_NCCALCSIZE')));
     expect(runner, isNot(contains('WM_NCHITTEST')));
     expect(runner, contains('WM_GETMINMAXINFO'));
-    expect(runner, contains('kMinimumWindowWidth = 900'));
-    expect(runner, contains('kMinimumWindowHeight = 600'));
+    expect(runner, contains('kMinimumWindowWidth = 360'));
+    expect(runner, contains('kMinimumWindowHeight = 640'));
     expect(flutterWindow, contains('"sidravia/window"'));
     expect(flutterWindow, contains('call.method_name() == "minimize"'));
     expect(flutterWindow, contains('ShowWindow(window, SW_MINIMIZE)'));
@@ -24,7 +24,7 @@ void main() {
     expect(flutterWindow, contains('call.method_name() == "toggleMaximize"'));
     expect(flutterWindow, contains('call.method_name() == "close"'));
     expect(flutterWindow, contains('PostMessage(window, WM_CLOSE, 0, 0)'));
-    expect(main, contains('Win32Window::Size size(1280, 720)'));
+    expect(main, contains('Win32Window::Size size(400, 690)'));
   });
 
   test('Windows runner owns the desktop presence surface', () {

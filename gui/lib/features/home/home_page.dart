@@ -285,89 +285,114 @@ class _HomeHeader extends StatelessWidget {
   const _HomeHeader({required this.data});
   final HomeViewData data;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 28),
-    child: Row(
-      key: const ValueKey('home-header'),
-      children: [
-        Expanded(
-          child: Transform.translate(
-            offset: const Offset(-10, 0),
-            child: TextButton(
-              onPressed: data.onHeader,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.inkLight,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.fromLTRB(10, 3, 14, 3),
-                minimumSize: const Size(0, 42),
+  Widget build(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    final touch =
+        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+    final scaler = MediaQuery.textScalerOf(context);
+    final textHeight = scaler.scale(16) * 1.2 + 2 + scaler.scale(12) * 1.2 + 6;
+    final height = textHeight > (touch ? 48 : 42)
+        ? textHeight
+        : (touch ? 48.0 : 42.0);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 28),
+      child: Row(
+        key: const ValueKey('home-header'),
+        children: [
+          Expanded(
+            child: Transform.translate(
+              offset: const Offset(-10, 0),
+              child: SizedBox(
+                height: height,
+                child: TextButton(
+                  key: const ValueKey('home-configuration-button'),
+                  onPressed: data.onHeader,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.inkLight,
+                    visualDensity: VisualDensity.standard,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.fromLTRB(10, 3, 14, 3),
+                    minimumSize: const Size(0, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              data.institution,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              data.username,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.mutedLight,
+                                fontSize: 12,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: AppColors.mutedLight,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: touch ? 48 : 42,
+            height: height,
+            child: IconButton(
+              key: const ValueKey('home-settings-button'),
+              style: IconButton.styleFrom(
+                visualDensity: VisualDensity.standard,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: Size(touch ? 48 : 42, height),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          data.institution,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            height: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          data.username,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.mutedLight,
-                            fontSize: 12,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 16,
-                    color: AppColors.mutedLight,
-                  ),
-                ],
+              tooltip: '设置',
+              onPressed: data.onSettings,
+              icon: const Icon(
+                Icons.settings_outlined,
+                size: 20,
+                color: AppColors.mutedLight,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(
+                width: touch ? 48 : 42,
+                height: height,
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 42,
-          height: 42,
-          child: IconButton(
-            style: IconButton.styleFrom(
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: const Size(42, 42),
-            ),
-            tooltip: '设置',
-            onPressed: data.onSettings,
-            icon: const Icon(
-              Icons.settings_outlined,
-              size: 20,
-              color: AppColors.mutedLight,
-            ),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 42, height: 42),
-          ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _HomeActions extends StatelessWidget {

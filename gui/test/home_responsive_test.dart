@@ -48,7 +48,7 @@ Future<void> loadCaptureFonts() async {
 
 Widget surface(Widget child) => MaterialApp(
   debugShowCheckedModeBanner: false,
-  theme: AppTheme.light(),
+  theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
   home: Scaffold(
     body: SizedBox.expand(
       child: RepaintBoundary(

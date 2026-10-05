@@ -17,8 +17,9 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
-constexpr int kMinimumWindowWidth = 900;
-constexpr int kMinimumWindowHeight = 600;
+// Logical outer-frame minimum; Scale converts it to monitor physical pixels.
+constexpr int kMinimumWindowWidth = 360;
+constexpr int kMinimumWindowHeight = 640;
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
