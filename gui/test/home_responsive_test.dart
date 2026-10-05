@@ -104,55 +104,60 @@ Future<void> capture(WidgetTester tester, String name) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   for (final entry in sizes.entries) {
-    testWidgets('home follows HTML width/padding and flow at ${entry.key}', (
-      tester,
-    ) async {
-      tester.view.devicePixelRatio = 1;
-      tester.platformDispatcher.textScaleFactorTestValue = 1;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await tester.binding.setSurfaceSize(entry.value);
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.runAsync(loadCaptureFonts);
-      await tester.pumpWidget(surface(const HomeFixture()));
-      await tester.pumpAndSettle();
-      final width = entry.value.width;
-      final pageWidth = width.clamp(0, 620).toDouble();
-      final wide = width >= 758;
-      final pad = wide ? 36.0 : 24.0;
-      final header = tester.getRect(find.byKey(const ValueKey('home-header')));
-      expect(header.left, (width - pageWidth) / 2 + pad);
-      expect(header.top, wide ? 16 : 12);
-      expect(header.width, pageWidth - 2 * pad);
-      expect(
-        tester.getSize(find.byKey(const ValueKey('home-mark'))),
-        const Size(44, 44),
-      );
-      expect(
-        tester.getSize(find.byKey(const ValueKey('home-actions'))).width,
-        (pageWidth - 2 * pad).clamp(0, 320),
-      );
-      final notice = tester.getRect(find.byKey(const ValueKey('home-notice')));
-      expect(notice.left, header.left);
-      // Announcement stays in content flow even when the window is tall.
-      expect(notice.top, wide ? 451 : 447);
-      final position = tester
-          .state<ScrollableState>(find.byType(Scrollable).first)
-          .position;
-      if (entry.key == 'short') {
-        expect(position.maxScrollExtent, greaterThan(0));
-        await capture(tester, entry.key);
-        await tester.ensureVisible(find.byType(HomeNoticeView));
+    testWidgets(
+      'home follows continuous width/padding and flow at ${entry.key}',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 1;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.binding.setSurfaceSize(entry.value);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.runAsync(loadCaptureFonts);
+        await tester.pumpWidget(surface(const HomeFixture()));
         await tester.pumpAndSettle();
-        expect(
-          tester.getRect(find.byType(HomeNoticeView)).bottom,
-          lessThanOrEqualTo(entry.value.height),
+        final width = entry.value.width;
+        final pageWidth = width.clamp(0, 620).toDouble();
+        final t = ((width - 620) / 138).clamp(0.0, 1.0);
+        final pad = 24.0 + 12.0 * t;
+        final header = tester.getRect(
+          find.byKey(const ValueKey('home-header')),
         );
-      } else {
-        await capture(tester, entry.key);
-      }
-      expect(tester.takeException(), isNull);
-    });
+        expect(header.left, (width - pageWidth) / 2 + pad);
+        expect(header.top, 12 + 4 * t);
+        expect(header.width, pageWidth - 2 * pad);
+        expect(
+          tester.getSize(find.byKey(const ValueKey('home-mark'))),
+          const Size(44, 44),
+        );
+        expect(
+          tester.getSize(find.byKey(const ValueKey('home-actions'))).width,
+          (pageWidth - 2 * pad).clamp(0, 320),
+        );
+        final notice = tester.getRect(
+          find.byKey(const ValueKey('home-notice')),
+        );
+        expect(notice.left, header.left);
+        // Announcement stays in content flow even when the window is tall.
+        expect(notice.top, closeTo(447 + 4 * t, .00001));
+        final position = tester
+            .state<ScrollableState>(find.byType(Scrollable).first)
+            .position;
+        if (entry.key == 'short') {
+          expect(position.maxScrollExtent, greaterThan(0));
+          await capture(tester, entry.key);
+          await tester.ensureVisible(find.byType(HomeNoticeView));
+          await tester.pumpAndSettle();
+          expect(
+            tester.getRect(find.byType(HomeNoticeView)).bottom,
+            lessThanOrEqualTo(entry.value.height),
+          );
+        } else {
+          await capture(tester, entry.key);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets(

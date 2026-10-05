@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
@@ -286,40 +287,14 @@ class HomeView extends StatelessWidget {
   final HomeViewData data;
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // HTML's 760px outer frame has two 1px borders. The native
-        // content viewport excludes those borders and the reserved top area.
-        final wide = constraints.maxWidth >= 758;
-        return SingleChildScrollView(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              key: const ValueKey('home-page'),
-              constraints: BoxConstraints(
-                maxWidth: 620,
-                minHeight: constraints.maxHeight,
-              ),
-              child: Padding(
-                padding: wide
-                    ? const EdgeInsets.fromLTRB(36, 16, 36, 32)
-                    : const EdgeInsets.fromLTRB(24, 12, 24, 26),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _HomeHeader(data: data),
-                    _StatusBlock(data: data),
-                    _HomeActions(data: data),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => DesignPage(
+    pageKey: const ValueKey('home-page'),
+    children: [
+      _HomeHeader(data: data),
+      _StatusBlock(data: data),
+      _HomeActions(data: data),
+    ],
+  );
 }
 
 class _HomeHeader extends StatelessWidget {

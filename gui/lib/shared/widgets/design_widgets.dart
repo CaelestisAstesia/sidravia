@@ -1,27 +1,42 @@
 import 'package:flutter/material.dart';
 
 class DesignPage extends StatelessWidget {
-  const DesignPage({super.key, required this.children});
+  const DesignPage({super.key, required this.children, this.pageKey});
+  final Key? pageKey;
+
+  /// Preserve reference spacing through 620px, then reach the wide endpoint
+  /// continuously over the available parent width (not the capped page width).
+  static EdgeInsets paddingForWidth(double width) {
+    final t = ((width - 620) / (758 - 620)).clamp(0.0, 1.0);
+    return EdgeInsets.fromLTRB(
+      24 + 12 * t,
+      12 + 4 * t,
+      24 + 12 * t,
+      26 + 6 * t,
+    );
+  }
+
   final List<Widget> children;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final wide = constraints.maxWidth >= 758;
-      return SingleChildScrollView(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: 620,
-              minHeight: constraints.maxHeight,
-            ),
-            child: Padding(
-              padding: wide
-                  ? const EdgeInsets.fromLTRB(36, 16, 36, 32)
-                  : const EdgeInsets.fromLTRB(24, 12, 24, 26),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: children,
+      return ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: SingleChildScrollView(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              key: pageKey,
+              constraints: BoxConstraints(
+                maxWidth: 620,
+                minHeight: constraints.maxHeight,
+              ),
+              child: Padding(
+                padding: paddingForWidth(constraints.maxWidth),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: children,
+                ),
               ),
             ),
           ),

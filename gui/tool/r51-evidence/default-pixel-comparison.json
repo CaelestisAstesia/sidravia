@@ -1,0 +1,10 @@
+{
+  "baseline": "R5 candidates/content.png",
+  "candidate": "R51 responsive/reference/flutter-content.png",
+  "size": [
+    398,
+    642
+  ],
+  "differentRgbaChannels": 0,
+  "goldenApproved": false
+}

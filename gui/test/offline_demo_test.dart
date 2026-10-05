@@ -183,6 +183,7 @@ void main() {
       await announcements.start();
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
           home: SidraviaShell(
             controller: controller,
             announcements: announcements,
