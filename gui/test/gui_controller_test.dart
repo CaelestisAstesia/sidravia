@@ -35,7 +35,7 @@ void main() {
       await controller.start();
       final previous = controller.snapshot;
       client.nextDaemon = Completer<DaemonStatus>();
-      final mutation = controller.stopSession('session-a');
+      final mutation = controller.startConfiguration('cfg-a');
       client.nextDaemon!.completeError(
         const IpcTransportException('ipc_timeout'),
       );
@@ -61,7 +61,9 @@ void main() {
   });
 
   test('serializes one mutation then refreshes the full Snapshot', () async {
-    final client = _Client();
+    final client = _Client()
+      ..configurations = []
+      ..sessions = [];
     final controller = _controller(client);
     await controller.start();
     client.calls.clear();

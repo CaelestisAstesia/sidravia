@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
@@ -6,6 +7,9 @@ import 'package:sidravia_gui/features/announcements/announcement_controller.dart
 import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
+
+export 'package:sidravia_gui/application/connection_presentation.dart'
+    show HomeTone, HomeButtonKind;
 
 @immutable
 class HomeViewData {
@@ -42,10 +46,6 @@ class HomeViewData {
   final HomeNotice? notice;
 }
 
-enum HomeTone { success, warning, error, idle }
-
-enum HomeButtonKind { primary, secondary }
-
 @immutable
 class HomeNotice {
   const HomeNotice({required this.title, required this.onOpen});
@@ -64,10 +64,6 @@ class HomePage extends StatelessWidget {
   final ValueChanged<AppPage> onNavigate;
   final AnnouncementController? announcements;
 
-  SessionSummary? get _session => controller.capabilities.retainedSession;
-  ConfigurationSummary? get _configuration =>
-      controller.capabilities.configuration;
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -77,52 +73,7 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _build(BuildContext context) {
-    final session = _session;
-    final configuration = _configuration;
-    final canRetry =
-        controller.state == GuiConnectionState.failed ||
-        controller.state == GuiConnectionState.stale;
-    final lastConfigurations = controller.snapshot?.configurations;
-    final displayedConfiguration =
-        configuration ??
-        (controller.state != GuiConnectionState.ready &&
-                lastConfigurations?.length == 1
-            ? lastConfigurations!.single
-            : null);
-    final state = _state(session, configuration);
-    final canStart =
-        controller.capabilities.canCreate || controller.capabilities.canManage;
-    final primaryEnabled = canRetry
-        ? !controller.busy
-        : !controller.sessionNeedsReset &&
-              controller.state == GuiConnectionState.ready &&
-              (configuration == null
-                  ? controller.capabilities.canCreate
-                  : canStart);
-    final primaryLabel = canRetry
-        ? '重试连接'
-        : configuration == null
-        ? '添加配置'
-        : session == null || session.state == SessionState.suspended
-        ? '开始连接'
-        : session.state == SessionState.waitingBeforeRetry
-        ? '立即重试'
-        : session.state == SessionState.blockedByError
-        ? '重新连接'
-        : session.state == SessionState.authenticating
-        ? '取消连接'
-        : session.state == SessionState.waitingForNetwork
-        ? '取消等待'
-        : '断开连接';
-    final secondaryLabel = configuration == null
-        ? '连接设置'
-        : session == null || session.state == SessionState.suspended
-        ? '更改配置'
-        : session.state == SessionState.waitingBeforeRetry
-        ? '停止重试'
-        : session.state == SessionState.blockedByError
-        ? '更改配置'
-        : '连接详情';
+    final p = controller.connectionPresentation;
     final item =
         announcements?.inlineNotice ??
         (announcements == null || announcements!.announcements.isEmpty
@@ -139,212 +90,42 @@ class HomePage extends StatelessWidget {
           );
     return HomeView(
       data: HomeViewData(
-        institution:
-            displayedConfiguration?.institutionDisplayName ??
-            (controller.state == GuiConnectionState.ready ? '尚未配置' : '连接服务'),
-        username:
-            displayedConfiguration?.username ??
-            (controller.state == GuiConnectionState.ready
-                ? '点击添加连接配置'
-                : '配置状态暂不可用'),
-        state: state.title,
-        detail: state.detail,
-        context: state.context,
-        glyph: state.glyph,
-        tone: state.tone,
-        secondaryLabel: secondaryLabel,
-        primaryLabel: primaryLabel,
-        primaryEnabled: primaryEnabled,
-        primaryKind:
-            (session?.state == SessionState.authenticated ||
-                session?.state == SessionState.authenticating ||
-                session?.state == SessionState.waitingForNetwork)
-            ? HomeButtonKind.secondary
-            : HomeButtonKind.primary,
+        institution: p.institution,
+        username: p.username,
+        state: p.statusTitle,
+        detail: p.statusDetail,
+        context: p.statusContext,
+        glyph: p.glyph,
+        tone: p.tone,
+        secondaryLabel: p.secondaryLabel,
+        primaryLabel: p.primaryLabel,
+        primaryEnabled: p.primaryEnabled,
+        primaryKind: p.primaryKind,
         onHeader: () => onNavigate(AppPage.configuration),
         onSettings: () => onNavigate(AppPage.settings),
-        onSecondary:
-            session?.state == SessionState.waitingBeforeRetry &&
-                !controller.capabilities.canManage
-            ? null
-            : () {
-                if (session?.state == SessionState.waitingBeforeRetry) {
-                  if (controller.capabilities.canManage) {
-                    controller.stopSession(session!.id);
-                  }
-                } else {
-                  onNavigate(
-                    configuration == null
-                        ? AppPage.settings
-                        : session == null ||
-                              [
-                                SessionState.suspended,
-                                SessionState.blockedByError,
-                              ].contains(session.state)
-                        ? AppPage.configuration
-                        : AppPage.details,
-                  );
-                }
-              },
-        onPrimary: primaryEnabled
-            ? () {
-                if (canRetry) {
-                  controller.retry();
-                } else {
-                  _primary(session, configuration);
-                }
-              }
+        onSecondary: p.secondaryEnabled
+            ? () => _perform(p.secondaryAction)
             : null,
-        actionError:
-            controller.notice ??
-            (controller.state != GuiConnectionState.ready
-                ? switch (controller.state) {
-                    GuiConnectionState.bootstrapping => '正在初始化连接服务…',
-                    GuiConnectionState.unsupported => '此平台暂不支持真实认证。',
-                    GuiConnectionState.stale => '连接服务失联，当前信息可能已过期。',
-                    _ => '连接服务不可用，请重试。',
-                  }
-                : !primaryEnabled
-                ? (controller.sessionNeedsReset
-                      ? '请先在连接配置中移除旧会话。'
-                      : controller.busy
-                      ? '正在处理操作，请稍候。'
-                      : '当前配置或会话关系不允许执行连接操作。')
-                : null),
-        issue: session?.state == SessionState.blockedByError
-            ? session?.lastAuthenticationFailure
-            : null,
+        onPrimary: p.primaryEnabled ? () => _perform(p.primaryAction) : null,
+        actionError: p.actionError,
+        issue: p.issue,
         notice: notice,
       ),
     );
   }
 
-  _HomeState _state(
-    SessionSummary? session,
-    ConfigurationSummary? configuration,
-  ) {
-    switch (controller.state) {
-      case GuiConnectionState.bootstrapping:
-        return const _HomeState(
-          '正在连接服务',
-          '正在初始化连接服务…',
-          '',
-          '↻',
-          HomeTone.warning,
-        );
-      case GuiConnectionState.failed:
-        return const _HomeState(
-          '服务不可用',
-          '暂时无法读取连接状态',
-          '请重试连接服务',
-          '!',
-          HomeTone.error,
-        );
-      case GuiConnectionState.stale:
-        return const _HomeState(
-          '服务失联',
-          '暂时无法确认当前连接状态',
-          '账号信息来自上次成功读取',
-          '!',
-          HomeTone.warning,
-        );
-      case GuiConnectionState.unsupported:
-        return const _HomeState(
-          '平台暂不支持',
-          '此平台暂不支持真实认证',
-          '',
-          '—',
-          HomeTone.idle,
-        );
-      case GuiConnectionState.ready:
-        break;
+  void _perform(GuiConnectionAction action) {
+    switch (action.kind) {
+      case GuiConnectionActionKind.addConfiguration ||
+          GuiConnectionActionKind.editConfiguration:
+        onNavigate(AppPage.configuration);
+      case GuiConnectionActionKind.showSettings:
+        onNavigate(AppPage.settings);
+      case GuiConnectionActionKind.showDetails:
+        onNavigate(AppPage.details);
+      default:
+        controller.performConnectionAction(action);
     }
-    if (configuration == null) {
-      return const _HomeState(
-        '尚未配置',
-        '添加连接配置后即可开始连接',
-        '保存机构、账号和密码后即可开始认证',
-        '+',
-        HomeTone.idle,
-      );
-    }
-    if (session == null) {
-      return const _HomeState('未连接', '准备就绪，可以开始连接', '', '—', HomeTone.idle);
-    }
-    return switch (session.state) {
-      SessionState.authenticated => _HomeState(
-        '已连接',
-        _connectedDetail(session),
-        _binding(session),
-        '✓',
-        HomeTone.success,
-      ),
-      SessionState.authenticating => const _HomeState(
-        '正在认证',
-        '正在向校园网提交认证信息…',
-        '等待认证结果',
-        '↻',
-        HomeTone.warning,
-      ),
-      SessionState.waitingForNetwork => const _HomeState(
-        '等待网络',
-        '暂未发现可用的校园网络',
-        '检测到可用网络后会继续认证',
-        '!',
-        HomeTone.warning,
-      ),
-      SessionState.waitingBeforeRetry => const _HomeState(
-        '等待重试',
-        '认证暂未成功，将自动重试',
-        '可以立即重试',
-        '↻',
-        HomeTone.warning,
-      ),
-      SessionState.blockedByError => _HomeState(
-        '认证失败',
-        '本次认证没有完成',
-        session.lastAuthenticationFailure?.description ?? '',
-        '×',
-        HomeTone.error,
-      ),
-      _ => const _HomeState('未连接', '准备就绪，可以开始连接', '', '—', HomeTone.idle),
-    };
-  }
-
-  static String _connectedDetail(SessionSummary session) {
-    final at = session.authenticationEstablishedAt;
-    if (at == null) return '认证成功';
-    final elapsed = DateTime.now().difference(at.toLocal());
-    if (elapsed.inMinutes < 1) return '认证成功 · 刚刚连接';
-    return '认证成功 · 已连接 ${elapsed.inHours} 小时 ${elapsed.inMinutes % 60} 分钟';
-  }
-
-  static String _binding(SessionSummary session) {
-    final binding = session.selectedNetworkBinding;
-    if (binding == null) return '网络适配器：暂不可用';
-    return binding.localIpv4Address.isEmpty
-        ? binding.displayName
-        : '${binding.displayName} · ${binding.localIpv4Address}';
-  }
-
-  Future<void> _primary(
-    SessionSummary? session,
-    ConfigurationSummary? configuration,
-  ) async {
-    if (configuration == null) {
-      onNavigate(AppPage.configuration);
-      return;
-    }
-    if (session == null || session.state == SessionState.suspended) {
-      await controller.startConfiguration(configuration.id);
-      return;
-    }
-    if (session.state == SessionState.waitingBeforeRetry ||
-        session.state == SessionState.blockedByError) {
-      await controller.restartSession(session.id);
-      return;
-    }
-    await controller.stopSession(session.id);
   }
 }
 
@@ -803,18 +584,6 @@ class _StatusBlock extends StatelessWidget {
       ),
     );
   }
-}
-
-class _HomeState {
-  const _HomeState(
-    this.title,
-    this.detail,
-    this.context,
-    this.glyph,
-    this.tone,
-  );
-  final String title, detail, context, glyph;
-  final HomeTone tone;
 }
 
 class _HomeIssue extends StatelessWidget {

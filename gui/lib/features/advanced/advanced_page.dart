@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class AdvancedPage extends StatelessWidget {
@@ -18,27 +17,23 @@ class AdvancedPage extends StatelessWidget {
   final VoidCallback? onDiagnostics;
   @override
   Widget build(BuildContext context) {
-    final c = controller.capabilities.configuration;
-    final s = controller.capabilities.retainedSession;
+    final p = controller.connectionPresentation;
+    final raw = controller.snapshot;
+    final c = raw?.configurations.length == 1
+        ? raw!.configurations.single
+        : null;
+    final s = raw?.sessions.length == 1 ? raw!.sessions.single : null;
     final d = controller.snapshot?.daemon;
     final rows = detailsOnly
         ? <MapEntry<String, String>>[
-            MapEntry('状态', c == null ? '尚未配置' : _state(s)),
-            MapEntry('认证协议', c?.authenticationProtocolId ?? '暂不可用'),
-            if (s?.selectedNetworkBinding != null &&
-                ![
-                  SessionState.suspended,
-                  SessionState.waitingForNetwork,
-                ].contains(s?.state)) ...[
-              MapEntry('网络适配器', s!.selectedNetworkBinding!.displayName),
-              MapEntry('本机 IPv4', s.selectedNetworkBinding!.localIpv4Address),
+            MapEntry('状态', p.statusTitle),
+            MapEntry('认证协议', p.protocol ?? '暂不可用'),
+            if (p.networkBinding != null) ...[
+              MapEntry('网络适配器', p.networkBinding!.displayName),
+              MapEntry('本机 IPv4', p.networkBinding!.localIpv4Address),
             ],
-            if (s?.authenticationEstablishedAt != null &&
-                s?.state == SessionState.authenticated)
-              MapEntry(
-                '认证建立',
-                s!.authenticationEstablishedAt!.toLocal().toString(),
-              ),
+            if (p.establishedAt != null)
+              MapEntry('认证建立', p.establishedAt!.toLocal().toString()),
           ]
         : <MapEntry<String, String>>[
             MapEntry('daemon', d?.status ?? '暂不可用'),
@@ -50,6 +45,14 @@ class AdvancedPage extends StatelessWidget {
             MapEntry('version', d?.productVersion ?? '暂不可用'),
             MapEntry('build_id', d?.buildId ?? '暂不可用'),
             MapEntry('mode', d?.mode ?? '暂不可用'),
+            MapEntry(
+              'configuration_count',
+              raw?.configurations.length.toString() ?? '暂不可用',
+            ),
+            MapEntry(
+              'session_count',
+              raw?.sessions.length.toString() ?? '暂不可用',
+            ),
             MapEntry('session_state', s?.state.wireValue ?? '暂不可用'),
             MapEntry('session_id', s?.id ?? '暂不可用'),
             MapEntry('configuration_id', c?.id ?? '暂不可用'),
@@ -146,13 +149,4 @@ class AdvancedPage extends StatelessWidget {
       ],
     );
   }
-
-  static String _state(SessionSummary? s) => switch (s?.state) {
-    SessionState.authenticated => '已连接',
-    SessionState.authenticating => '正在认证',
-    SessionState.waitingForNetwork => '等待网络',
-    SessionState.waitingBeforeRetry => '等待重试',
-    SessionState.blockedByError => '认证失败',
-    _ => '未连接',
-  };
 }

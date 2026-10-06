@@ -27,9 +27,7 @@ class SettingsPage extends StatelessWidget {
           children: [
             DesignRow(
               title: '连接配置',
-              subtitle: c == null
-                  ? '尚未配置 · 点击添加'
-                  : '${c.institutionDisplayName} · ${c.username}',
+              subtitle: controller.capabilities.configurationDescription,
               onTap: () => onNavigate(AppPage.configuration),
             ),
             DesignRow(
@@ -68,7 +66,9 @@ class SettingsPage extends StatelessWidget {
         if (!controller.capabilities.canEditAutoLogin)
           Padding(
             padding: const EdgeInsets.only(top: 7),
-            child: DesignHelper(_disabledReason(controller)),
+            child: DesignHelper(
+              controller.capabilities.settingsDisabledReason ?? '',
+            ),
           ),
         if (c != null)
           const Padding(
@@ -124,19 +124,6 @@ class SettingsPage extends StatelessWidget {
       ],
     );
   }
-}
-
-String _disabledReason(GuiController controller) {
-  if (controller.busy) return '正在处理操作，请稍后修改连接设置。';
-  if (controller.state == GuiConnectionState.unsupported) {
-    return '当前平台暂不支持连接设置。';
-  }
-  if (!controller.capabilities.isReady) return '通信尚未就绪，暂时无法修改连接设置。';
-  if (controller.snapshot?.daemon.status != 'running') {
-    return '核心服务未运行，暂时无法修改连接设置。';
-  }
-  if (controller.snapshot?.configurations.isEmpty ?? true) return '请先添加连接配置。';
-  return '配置或会话关系不明确，暂时无法修改连接设置。';
 }
 
 class AppearanceSelector extends StatelessWidget {

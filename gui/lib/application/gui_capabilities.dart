@@ -76,6 +76,41 @@ class GuiCapabilities {
 
   bool get canResetSession => canManage && snapshot!.sessions.isNotEmpty;
 
+  bool matchesConfiguration(String id) => canManage && configuration?.id == id;
+  bool matchesSession(String id) => canManage && retainedSession?.id == id;
+  bool get canConnect =>
+      canManage && retainedSession?.state != SessionState.stopping;
+  bool get canStop =>
+      canConnect &&
+      retainedSession != null &&
+      retainedSession!.state != SessionState.suspended;
+
+  String? get settingsDisabledReason {
+    if (busy) return '正在处理操作，请稍后修改连接设置。';
+    return switch (capability) {
+      GuiCapabilityState.manageable => null,
+      GuiCapabilityState.unsupported => '当前平台暂不支持连接设置。',
+      GuiCapabilityState.bootstrapping ||
+      GuiCapabilityState.stale ||
+      GuiCapabilityState.failed => '通信尚未就绪，暂时无法修改连接设置。',
+      GuiCapabilityState.daemonUnavailable => '核心服务未运行，暂时无法修改连接设置。',
+      GuiCapabilityState.createOnly => '请先添加连接配置。',
+      GuiCapabilityState.multipleConfigurations =>
+        '存在多个连接配置 · 请使用 sidraviactl 管理',
+      GuiCapabilityState.ambiguousSessions => '配置或会话关系不明确，暂时无法修改连接设置。',
+    };
+  }
+
+  String get configurationDescription => switch (capability) {
+    GuiCapabilityState.manageable =>
+      '${configuration!.institutionDisplayName} · ${configuration!.username}',
+    GuiCapabilityState.createOnly => '尚未配置 · 点击添加',
+    GuiCapabilityState.multipleConfigurations =>
+      '存在多个连接配置 · 请使用 sidraviactl 管理',
+    GuiCapabilityState.ambiguousSessions => '会话关系不明确 · 请使用 sidraviactl 管理',
+    _ => '配置状态暂不可用',
+  };
+
   ConfigurationSummary? get configuration {
     if (capability != GuiCapabilityState.manageable) return null;
     return snapshot!.configurations.single;

@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 
@@ -53,6 +54,44 @@ class GuiController extends ChangeNotifier {
   GuiCapabilities get capabilities =>
       GuiCapabilities(state: _state, snapshot: _snapshot, busy: _userBusy);
 
+  ConnectionPresentation get connectionPresentation =>
+      ConnectionPresentation.project(
+        capabilities,
+        sessionNeedsReset: sessionNeedsReset,
+        notice: notice,
+      );
+
+  Future<bool> performConnectionAction(GuiConnectionAction action) {
+    if (action.kind == GuiConnectionActionKind.retryIpc) return _retryAction();
+    final id = action.targetId;
+    if (id == null) return Future.value(false);
+    return _mutate(
+      (client) => switch (action.kind) {
+        GuiConnectionActionKind.start => client.sessionStartConfiguration(id),
+        GuiConnectionActionKind.reconnect => client.sessionRestart(id),
+        GuiConnectionActionKind.stop => client.sessionStop(id),
+        _ => throw StateError('Non-mutation connection action'),
+      },
+      allowed: (_) {
+        final p = connectionPresentation;
+        bool matches(GuiConnectionAction current) =>
+            current.kind == action.kind && current.targetId == id;
+        return (p.primaryEnabled && matches(p.primaryAction)) ||
+            (p.secondaryEnabled && matches(p.secondaryAction));
+      },
+    );
+  }
+
+  Future<bool> _retryAction() async {
+    if (busy ||
+        (state != GuiConnectionState.failed &&
+            state != GuiConnectionState.stale)) {
+      return false;
+    }
+    await retry();
+    return state == GuiConnectionState.ready;
+  }
+
   Future<void> start() {
     if (_exitRequested) return Future<void>.value();
     final current = _transition;
@@ -73,6 +112,7 @@ class GuiController extends ChangeNotifier {
       username: username,
       password: password,
     ),
+    allowed: (caps) => caps.canCreate,
   );
 
   Future<bool> updateConfiguration({
@@ -89,6 +129,7 @@ class GuiController extends ChangeNotifier {
       password: password,
       allowInsecureStorage: allowInsecureStorage,
     ),
+    allowed: (caps) => caps.matchesConfiguration(configurationId),
   );
 
   Future<bool> setPassword({
@@ -99,19 +140,31 @@ class GuiController extends ChangeNotifier {
       configurationId: configurationId,
       password: password,
     ),
+    allowed: (caps) => caps.matchesConfiguration(configurationId),
   );
 
-  Future<bool> startConfiguration(String configurationId) =>
-      _mutate((client) => client.sessionStartConfiguration(configurationId));
-
-  Future<bool> stopSession(String sessionId) =>
-      _mutate((client) => client.sessionStop(sessionId));
-
-  Future<bool> ensureSessionRunning(String sessionId) =>
-      _mutate((client) => client.sessionEnsureRunning(sessionId));
-
-  Future<bool> restartSession(String sessionId) =>
-      _mutate((client) => client.sessionRestart(sessionId));
+  Future<bool> startConfiguration(String configurationId) => _mutate(
+    (client) => client.sessionStartConfiguration(configurationId),
+    allowed: (caps) =>
+        caps.canConnect &&
+        caps.matchesConfiguration(configurationId) &&
+        !sessionNeedsReset,
+  );
+  Future<bool> stopSession(String sessionId) => _mutate(
+    (client) => client.sessionStop(sessionId),
+    allowed: (caps) =>
+        caps.canStop && caps.matchesSession(sessionId) && !sessionNeedsReset,
+  );
+  Future<bool> ensureSessionRunning(String sessionId) => _mutate(
+    (client) => client.sessionEnsureRunning(sessionId),
+    allowed: (caps) =>
+        caps.canConnect && caps.matchesSession(sessionId) && !sessionNeedsReset,
+  );
+  Future<bool> restartSession(String sessionId) => _mutate(
+    (client) => client.sessionRestart(sessionId),
+    allowed: (caps) =>
+        caps.canConnect && caps.matchesSession(sessionId) && !sessionNeedsReset,
+  );
 
   Future<bool> resetSession(String sessionId) => _mutate(
     (client) => client.sessionRemove(sessionId),
