@@ -5,6 +5,7 @@
 #include <windowsx.h>
 #include <commctrl.h>
 #include "frame_geometry.h"
+#include "frame_decoration.h"
 
 #include "resource.h"
 
@@ -202,6 +203,7 @@ Win32Window::MessageHandler(HWND hwnd,
 
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+      if (custom_frame_enabled_) UpdateFrameExtension(hwnd, true);
 
       return 0;
     }
@@ -226,6 +228,7 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
+      if (custom_frame_enabled_) UpdateFrameExtension(hwnd);
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
         // Size and position the child window.
@@ -236,10 +239,17 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
+      frame_active_ = LOWORD(wparam) != WA_INACTIVE;
+      UpdateTheme(hwnd);
+      if (custom_frame_enabled_) UpdateFrameExtension(hwnd);
       if (LOWORD(wparam) != WA_INACTIVE && child_content_ != nullptr) {
         SetFocus(child_content_);
       }
       return 0;
+
+    case WM_DWMCOMPOSITIONCHANGED:
+      if (custom_frame_enabled_) ApplyFrameDecoration(hwnd);
+      break;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
@@ -305,22 +315,50 @@ void Win32Window::UpdateTheme(HWND const window) {
   BOOL enable_dark_mode = frame_dark_ ? TRUE : FALSE;
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &enable_dark_mode, sizeof(enable_dark_mode));
+  const auto decoration = sidravia_frame::DecorationFor(
+      custom_frame_enabled_, IsZoomed(window) != FALSE, frame_dark_, frame_active_);
+  const auto rgb = decoration.border_rgb;
+  const COLORREF border = custom_frame_enabled_
+      ? RGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF)
+      : DWMWA_COLOR_DEFAULT;
+  border_result_ = DwmSetWindowAttribute(window, DWMWA_BORDER_COLOR, &border,
+                                        sizeof(border));
+}
+
+void Win32Window::ApplyFrameDecoration(HWND window) {
+  const auto decoration = sidravia_frame::DecorationFor(
+      custom_frame_enabled_, IsZoomed(window) != FALSE, frame_dark_, frame_active_);
+  // This is a request to DWM, not evidence that corners are visibly rounded.
+  // Unsupported systems keep their rectangular native frame.
+  const DWM_WINDOW_CORNER_PREFERENCE preference = decoration.request_round
+      ? DWMWCP_ROUND : DWMWCP_DEFAULT;
+  corner_result_ = DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE,
+                                        &preference,
+                                        sizeof(preference));
+  const DWMNCRENDERINGPOLICY policy = custom_frame_enabled_
+      ? DWMNCRP_ENABLED : DWMNCRP_USEWINDOWSTYLE;
+  rendering_policy_result_ = DwmSetWindowAttribute(
+      window, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
+  UpdateFrameExtension(window, true);
+  UpdateTheme(window);
+}
+
+void Win32Window::UpdateFrameExtension(HWND window, bool force) {
+  const auto decoration = sidravia_frame::DecorationFor(
+      custom_frame_enabled_, IsZoomed(window) != FALSE, frame_dark_, frame_active_);
+  const int edge = decoration.client_edge_pixels;
+  if (!force && edge == frame_extension_pixels_) return;
+  frame_extension_pixels_ = edge;
+  // A positive one-physical-pixel inset enables DWM composition of the custom
+  // frame. It does not inset/resize the Flutter child or create transparent space.
+  // No full-window glass (-1 margins); DWM retains ownership of its outer shadow.
+  const MARGINS margins{edge, edge, edge, edge};
+  frame_extension_result_ = DwmExtendFrameIntoClientArea(window, &margins);
 }
 
 void Win32Window::EnableCustomFrame(bool enabled) {
   custom_frame_enabled_ = enabled;
-  // Attribute 33 is DWMWA_WINDOW_CORNER_PREFERENCE, value 1 is DONOTROUND.
-  // Older Windows safely returns E_INVALIDARG; keep native rectangular fallback.
-  const int preference = 1;
-  corner_result_ = DwmSetWindowAttribute(window_handle_, 33, &preference,
-                                        sizeof(preference));
-  // DWMWA_BORDER_COLOR (34): the Flutter frame draws one physical-pixel edge.
-  // Suppress the Win11 edge to avoid a double outline; restore the system
-  // default when disabling the custom frame. Older systems return E_INVALIDARG.
-  // This changes only the border, not DWM non-client rendering/shadow policy.
-  const COLORREF border = enabled ? 0xFFFFFFFE : 0xFFFFFFFF;
-  border_result_ = DwmSetWindowAttribute(window_handle_, 34, &border,
-                                        sizeof(border));
+  ApplyFrameDecoration(window_handle_);
   SetWindowPos(window_handle_, nullptr, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                SWP_FRAMECHANGED);

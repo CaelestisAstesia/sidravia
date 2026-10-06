@@ -57,6 +57,9 @@ class Win32Window {
   bool custom_frame_enabled() const { return custom_frame_enabled_; }
   HRESULT corner_result() const { return corner_result_; }
   HRESULT border_result() const { return border_result_; }
+  HRESULT rendering_policy_result() const { return rendering_policy_result_; }
+  HRESULT frame_extension_result() const { return frame_extension_result_; }
+  int frame_extension_pixels() const { return frame_extension_pixels_; }
 
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
@@ -98,14 +101,20 @@ class Win32Window {
 
   // Update the window frame's theme to match the system theme.
   void UpdateTheme(HWND const window);
+  void ApplyFrameDecoration(HWND window);
+  void UpdateFrameExtension(HWND window, bool force = false);
 
   static LRESULT CALLBACK ChildFrameProc(HWND, UINT, WPARAM, LPARAM,
                                          UINT_PTR, DWORD_PTR);
   bool frame_dark_ = false;
+  bool frame_active_ = false;
   bool frame_modal_blocked_ = false;
   bool custom_frame_enabled_ = false;
   HRESULT corner_result_ = E_NOTIMPL;
   HRESULT border_result_ = E_NOTIMPL;
+  HRESULT rendering_policy_result_ = E_NOTIMPL;
+  HRESULT frame_extension_result_ = E_NOTIMPL;
+  int frame_extension_pixels_ = 0;
   bool quit_on_close_ = false;
 
   // window handle for top level window.
