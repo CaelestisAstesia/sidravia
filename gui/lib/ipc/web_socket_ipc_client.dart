@@ -94,7 +94,6 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     'allowInsecureStorage': allowInsecureStorage,
     'autoLogin': autoLogin,
     'autoReconnect': autoReconnect,
-    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override

@@ -1,5 +1,6 @@
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
@@ -97,6 +98,27 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final capability = widget.controller.capabilities.capability;
+    if (!_hydrated ||
+        (capability != GuiCapabilityState.createOnly &&
+            capability != GuiCapabilityState.manageable)) {
+      final guidance = switch (capability) {
+        GuiCapabilityState.multipleConfigurations =>
+          '检测到多个连接配置，当前 GUI 暂不支持选择。请使用 sidraviactl 管理。',
+        GuiCapabilityState.ambiguousSessions =>
+          '配置或会话关系不明确，当前 GUI 无法安全编辑。请使用 sidraviactl 管理。',
+        GuiCapabilityState.daemonUnavailable => '核心服务未运行，暂时无法读取连接配置。',
+        GuiCapabilityState.unsupported => '当前平台暂不支持连接配置。',
+        GuiCapabilityState.createOnly => '正在准备机构信息，请稍后再试。',
+        _ => '通信尚未就绪，暂时无法读取连接配置。',
+      };
+      return DesignPage(
+        children: [
+          DesignHeader(title: '连接配置', onBack: widget.onBack),
+          DesignHelper(guidance),
+        ],
+      );
+    }
     final snapshot = widget.controller.snapshot;
     final profiles = snapshot?.profiles ?? const <InstitutionProfile>[];
     final creating = _creating;

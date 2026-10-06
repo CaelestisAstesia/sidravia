@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';
@@ -12,6 +13,40 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
+  testWidgets('captured edit and header intents cannot navigate from A to B', (
+    tester,
+  ) async {
+    final client = NavigationClient();
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    final destinations = <AppPage>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(controller: controller, onNavigate: destinations.add),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final old = tester.widget<HomeView>(find.byType(HomeView)).data;
+    old.onSecondary!();
+    expect(destinations, [AppPage.configuration]);
+    destinations.clear();
+    client.configuration = otherConfiguration;
+    await controller.retry();
+    old.onSecondary!();
+    old.onHeader();
+    expect(destinations, isEmpty);
+    await tester.pumpAndSettle();
+    tester.widget<HomeView>(find.byType(HomeView)).data.onSecondary!();
+    expect(destinations, [AppPage.configuration]);
+    expect(client.operations, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+    client.dispose();
+  });
   final matrix =
       <
         SessionState,
@@ -312,4 +347,23 @@ class TopologyClient extends OfflineDemoClient {
   Future<List<SessionSummary>> sessionList() async => [
     session(SessionState.authenticated, id: 'orphan', configurationId: null),
   ];
+}
+
+class NavigationClient extends OfflineDemoClient {
+  ConfigurationSummary configuration = const ConfigurationSummary(
+    id: 'demo-config',
+    displayName: '',
+    institutionProfileId: 'jlu',
+    institutionDisplayName: '吉林大学',
+    authenticationProtocolId: 'd',
+    username: 'u',
+    credentialStored: true,
+    storageProtection: 'protected',
+  );
+  @override
+  Future<List<ConfigurationSummary>> configurationList() async => [
+    configuration,
+  ];
+  @override
+  Future<List<SessionSummary>> sessionList() async => [];
 }

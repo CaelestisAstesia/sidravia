@@ -135,7 +135,6 @@ class GuiController extends ChangeNotifier {
     required String institutionProfileId,
     required String username,
     String? password,
-    bool allowInsecureStorage = false,
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
     (client, allow) => client.configurationUpdate(
@@ -143,7 +142,7 @@ class GuiController extends ChangeNotifier {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
-      allowInsecureStorage: allow || allowInsecureStorage,
+      allowInsecureStorage: allow,
     ),
     operation: password == null
         ? GuiOperation.updateConfiguration
@@ -428,6 +427,11 @@ class GuiController extends ChangeNotifier {
       if (!_canContinue(generation) || !identical(_client, client)) return;
       final sessions = await client.sessionList();
       if (!_canContinue(generation) || !identical(_client, client)) return;
+      // Session IDs are local to a daemon instance. A stale reconnect to the
+      // same PID retains its marker; only a complete new snapshot replaces it.
+      if (_snapshot?.daemon.pid != daemon.pid) {
+        _outdatedSessionId = null;
+      }
       _snapshot = GuiSnapshot(
         daemon: daemon,
         profiles: profiles,

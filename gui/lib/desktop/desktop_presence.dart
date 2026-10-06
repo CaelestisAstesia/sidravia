@@ -120,13 +120,18 @@ const _recoveryBody = '连接状态已更新。';
 
 /// Derives at most one blocked/recovered notification per complete snapshot.
 ///
-/// A session is identified by its SessionID and only revisions newer than the
+/// A session is identified by daemon PID and SessionID; only revisions newer than the
 /// last considered revision can trigger a transition. Starting already blocked
 /// never emits a startup notification.
 class DesktopNotificationPolicy {
   final Map<String, _SessionDesktopState> _sessions = {};
+  int? _daemonPid;
 
   DesktopNotificationDecision? evaluate(GuiSnapshot snapshot) {
+    if (_daemonPid != snapshot.daemon.pid) {
+      _sessions.clear();
+      _daemonPid = snapshot.daemon.pid;
+    }
     for (final session in snapshot.sessions) {
       final decision = _evaluateSession(session);
       if (decision != null) return decision;

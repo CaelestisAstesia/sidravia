@@ -74,6 +74,7 @@ class HomePage extends StatelessWidget {
 
   Widget _build(BuildContext context) {
     final p = controller.connectionPresentation;
+    final configurationId = controller.capabilities.configuration?.id;
     final item =
         announcements?.inlineNotice ??
         (announcements == null || announcements!.announcements.isEmpty
@@ -101,7 +102,14 @@ class HomePage extends StatelessWidget {
         primaryLabel: p.primaryLabel,
         primaryEnabled: p.primaryEnabled,
         primaryKind: p.primaryKind,
-        onHeader: () => onNavigate(AppPage.configuration),
+        onHeader: () => _perform(
+          GuiConnectionAction(
+            configurationId == null
+                ? GuiConnectionActionKind.addConfiguration
+                : GuiConnectionActionKind.editConfiguration,
+            configurationId,
+          ),
+        ),
         onSettings: () => onNavigate(AppPage.settings),
         onSecondary: p.secondaryEnabled
             ? () => _perform(p.secondaryAction)
@@ -116,9 +124,13 @@ class HomePage extends StatelessWidget {
 
   void _perform(GuiConnectionAction action) {
     switch (action.kind) {
-      case GuiConnectionActionKind.addConfiguration ||
-          GuiConnectionActionKind.editConfiguration:
+      case GuiConnectionActionKind.addConfiguration:
         onNavigate(AppPage.configuration);
+      case GuiConnectionActionKind.editConfiguration:
+        final id = action.targetId;
+        if (id != null && controller.capabilities.matchesConfiguration(id)) {
+          onNavigate(AppPage.configuration);
+        }
       case GuiConnectionActionKind.showSettings:
         onNavigate(AppPage.settings);
       case GuiConnectionActionKind.showDetails:

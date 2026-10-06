@@ -251,6 +251,39 @@ void main() {
     (op) => op != GuiOperation.connection,
   );
   for (final op in operations) {
+    test('$op waits for explicit callback before authorized retry', () async {
+      final client = ConsentClient();
+      if (op == GuiOperation.createConfiguration) {
+        client.selectScenario('empty');
+      }
+      final c = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+      );
+      await c.start();
+      final confirmation = Completer<bool>();
+      final asked = Completer<void>();
+      final result = invoke(
+        c,
+        op,
+        confirm: (requested) {
+          expect(requested, op);
+          expect(client.attempts.map((a) => a.$2), [false]);
+          asked.complete();
+          return confirmation.future;
+        },
+      );
+      await asked.future;
+      await pumpEventQueue();
+      expect(client.attempts.map((a) => a.$2), [false]);
+      confirmation.complete(true);
+      expect(await result, isTrue);
+      expect(client.attempts.map((a) => a.$2), [false, true]);
+      expect(client.attempts.first.$3, client.attempts.last.$3);
+      c.dispose();
+      client.dispose();
+    });
     test('$op no implicit consent and operation-aware safe guidance', () async {
       final client = ConsentClient();
       if (op == GuiOperation.createConfiguration) {

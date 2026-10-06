@@ -7,6 +7,51 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  for (final nextPid in [100, 200]) {
+    test(
+      'outdated marker follows daemon identity on stale reconnect pid=$nextPid',
+      () async {
+        final client = _Client()
+          ..daemon = const DaemonStatus(
+            productVersion: 'fixture',
+            buildId: 'fixture',
+            pid: 100,
+            status: 'running',
+            mode: 'desktop',
+          );
+        final controller = _controller(client);
+        await controller.start();
+        client.nextFailure = const IpcRequestFailure(
+          'configuration_session_invalidation_failed',
+        );
+        expect(
+          await controller.updateConfiguration(
+            configurationId: 'cfg-a',
+            institutionProfileId: 'jlu',
+            username: 'new',
+          ),
+          isFalse,
+        );
+        expect(controller.sessionNeedsReset, isTrue);
+        client.nextFailure = const IpcTransportException('ipc_disconnected');
+        await controller.retry();
+        expect(controller.state, GuiConnectionState.stale);
+        expect(controller.sessionNeedsReset, isTrue);
+        client.daemon = DaemonStatus(
+          productVersion: 'fixture',
+          buildId: 'fixture',
+          pid: nextPid,
+          status: 'running',
+          mode: 'desktop',
+        );
+        await controller.retry();
+        expect(controller.state, GuiConnectionState.ready);
+        expect(controller.snapshot!.sessions.single.id, 's-a');
+        expect(controller.sessionNeedsReset, nextPid == 100);
+        controller.dispose();
+      },
+    );
+  }
   test(
     'IPC diagnostics distinguish connection, timeout and protocol',
     () async {
@@ -541,6 +586,7 @@ class _Client implements SidraviaDesktopClient {
   (bool, bool, bool)? createPolicy;
   List<ConfigurationSummary> configurations = const [_configuration];
   List<SessionSummary> sessions = const [_session];
+  DaemonStatus daemon = _daemon;
   Object? nextFailure;
   Completer<DaemonStatus>? nextDaemon;
   Object? stopFailure;
@@ -564,7 +610,7 @@ class _Client implements SidraviaDesktopClient {
     final pending = nextDaemon;
     nextDaemon = null;
     if (pending != null) return pending.future;
-    return _daemon;
+    return daemon;
   }
 
   @override

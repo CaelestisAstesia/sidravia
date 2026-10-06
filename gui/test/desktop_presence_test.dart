@@ -7,6 +7,44 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  for (final initialState in ['authenticated', 'blocked_by_error']) {
+    test(
+      'daemon restart observes reused session freshly from $initialState',
+      () {
+        final policy = DesktopNotificationPolicy();
+        expect(
+          policy.evaluate(_snapshot([_session('authenticated', 90)], pid: 100)),
+          isNull,
+        );
+        expect(
+          policy
+              .evaluate(_snapshot([_session('blocked_by_error', 91)], pid: 100))
+              ?.title,
+          '校园网需要处理',
+        );
+        expect(
+          policy.evaluate(_snapshot([_session(initialState, 1)], pid: 200)),
+          isNull,
+        );
+        expect(
+          policy.evaluate(_snapshot([_session('authenticated', 2)], pid: 200)),
+          isNull,
+        );
+        expect(
+          policy
+              .evaluate(_snapshot([_session('blocked_by_error', 3)], pid: 200))
+              ?.title,
+          '校园网需要处理',
+        );
+        expect(
+          policy
+              .evaluate(_snapshot([_session('authenticated', 4)], pid: 200))
+              ?.title,
+          '校园网状态已恢复',
+        );
+      },
+    );
+  }
   test(
     'initialize reports activatedExisting and primary from native',
     () async {
@@ -200,19 +238,20 @@ void main() {
   });
 }
 
-GuiSnapshot _snapshot(List<SessionSummary> sessions) => GuiSnapshot(
-  daemon: const DaemonStatus(
-    productVersion: 'test',
-    buildId: 'test',
-    pid: 1,
-    status: 'running',
-    mode: 'desktop',
-    desktopOwnerPid: 2,
-  ),
-  profiles: const [],
-  configurations: const [],
-  sessions: sessions,
-);
+GuiSnapshot _snapshot(List<SessionSummary> sessions, {int pid = 1}) =>
+    GuiSnapshot(
+      daemon: DaemonStatus(
+        productVersion: 'test',
+        buildId: 'test',
+        pid: pid,
+        status: 'running',
+        mode: 'desktop',
+        desktopOwnerPid: 2,
+      ),
+      profiles: const [],
+      configurations: const [],
+      sessions: sessions,
+    );
 
 SessionSummary _session(String state, int revision, {String? description}) =>
     SessionSummary(
