@@ -315,9 +315,7 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 		return err
 	}
 	catalog.records = candidate
-	if allow && catalog.store.ProtectionStatus() == jsonfile.ProtectionUnprotected {
-		catalog.unprotectedConsent = true
-	}
+	catalog.unprotectedConsent = allow && catalog.store.ProtectionStatus() == jsonfile.ProtectionUnprotected
 	return nil
 }
 

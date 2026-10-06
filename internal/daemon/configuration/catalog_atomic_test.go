@@ -139,3 +139,32 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 		})
 	}
 }
+
+func TestProtectionRecoveryRevokesEarlierDowngradeConsent(t *testing.T) {
+	ctx := context.Background()
+	store := &consentCatalogStore{status: jsonfile.ProtectionUnprotected, unsupported: true}
+	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = catalog.Create(ctx, catalogTestConfiguration("a", "user"), "password", true); err != nil {
+		t.Fatal(err)
+	}
+	store.unsupported = false
+	store.status = jsonfile.ProtectionProtected
+	name := "protected-again"
+	if _, err = catalog.Update(ctx, "a", Update{DisplayName: &name}); err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), store.data...)
+	store.unsupported = true
+	if err = catalog.Delete(ctx, "a"); !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) {
+		t.Fatal("old consent authorized a new downgrade")
+	}
+	if !bytes.Equal(before, store.data) {
+		t.Fatal("unconsented downgrade changed disk")
+	}
+	if _, err = catalog.Get(ctx, "a"); err != nil {
+		t.Fatal("denial removed config")
+	}
+}
