@@ -268,8 +268,9 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     final ok = delete
         ? await widget.controller.deleteConfiguration(
             c.id,
-            onInsecureStorageConfirmation: (operation) =>
-                confirmInsecureStorage(context, operation),
+            onInsecureStorageConfirmation: (operation) => mounted
+                ? confirmInsecureStorage(context, operation)
+                : Future.value(false),
           )
         : session != null && await widget.controller.resetSession(session.id);
     if (ok && mounted) widget.onBack();
@@ -304,8 +305,9 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         institutionProfileId: profile,
         username: username,
         password: password,
-        onInsecureStorageConfirmation: (operation) =>
-            confirmInsecureStorage(context, operation),
+        onInsecureStorageConfirmation: (operation) => mounted
+            ? confirmInsecureStorage(context, operation)
+            : Future.value(false),
       );
     } else {
       ok = await controller.updateConfiguration(
@@ -313,8 +315,9 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         institutionProfileId: profile,
         username: username,
         password: password.isEmpty ? null : password,
-        onInsecureStorageConfirmation: (operation) =>
-            confirmInsecureStorage(context, operation),
+        onInsecureStorageConfirmation: (operation) => mounted
+            ? confirmInsecureStorage(context, operation)
+            : Future.value(false),
       );
     }
     if (mounted) {

@@ -172,7 +172,81 @@ Future<bool> invoke(
   ),
   _ => Future.value(false),
 };
+
+class DelayedConsentClient extends ConsentClient {
+  final gate = Completer<void>();
+  @override
+  Future<ConfigurationSummary> configurationUpdate({
+    required String configurationId,
+    required String institutionProfileId,
+    required String username,
+    String? password,
+    bool allowInsecureStorage = false,
+  }) async {
+    await gate.future;
+    return super.configurationUpdate(
+      configurationId: configurationId,
+      institutionProfileId: institutionProfileId,
+      username: username,
+      password: password,
+      allowInsecureStorage: allowInsecureStorage,
+    );
+  }
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async {
+    await gate.future;
+    return super.configurationRemove(
+      configurationId,
+      allowInsecureStorage: allowInsecureStorage,
+    );
+  }
+}
+
 void main() {
+  for (final delete in [false, true]) {
+    testWidgets('late security rejection after leaving form delete=$delete', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final client = DelayedConsentClient();
+      final c = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+      );
+      await c.start();
+      await tester.pumpWidget(MaterialApp(home: SidraviaShell(controller: c)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-configuration-button')));
+      await tester.pumpAndSettle();
+      if (delete) {
+        await tester.tap(find.text('删除登录配置'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('确认'));
+      } else {
+        await tester.enterText(find.byType(TextField).first, 'new-user');
+        await tester.tap(find.text('保存更改'));
+      }
+      await tester.pump();
+      await tester.tap(find.text('返回'));
+      await tester.pumpAndSettle();
+      client.gate.complete();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('允许未受保护的存储？'), findsNothing);
+      expect(client.attempts.map((a) => a.$2), [false]);
+      expect(c.busy, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      c.dispose();
+      client.dispose();
+    });
+  }
+
   final operations = GuiOperation.values.where(
     (op) => op != GuiOperation.connection,
   );
