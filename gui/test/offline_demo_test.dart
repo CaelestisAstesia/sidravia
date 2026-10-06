@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -152,12 +153,18 @@ void main() {
       await tester.tap(find.text('断开连接'));
       await tester.pumpAndSettle();
       expect(find.text('未连接'), findsOneWidget);
-      expect(controller.capabilities.retainedSession!.state, 'suspended');
+      expect(
+        controller.capabilities.retainedSession!.state,
+        SessionState.suspended,
+      );
       expect(client.operations.last, 'session.stop');
       await tester.tap(find.text('开始连接'));
       await tester.pumpAndSettle();
       expect(find.text('已连接'), findsOneWidget);
-      expect(controller.capabilities.retainedSession!.state, 'authenticated');
+      expect(
+        controller.capabilities.retainedSession!.state,
+        SessionState.authenticated,
+      );
       expect(client.operations.last, 'session.start_configuration');
       expect(client.feedback, contains('没有进行真实认证'));
       await tester.pumpWidget(const SizedBox.shrink());

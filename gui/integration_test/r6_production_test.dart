@@ -166,16 +166,25 @@ void main() {
       expect(await c.startConfiguration(configurationId), isTrue);
       final sessionId = c.snapshot!.sessions.single.id;
       expect(c.snapshot!.sessions.single.configurationId, configurationId);
-      expect(c.snapshot!.sessions.single.intent, 'maintain_authentication');
+      expect(
+        c.snapshot!.sessions.single.intent,
+        SessionIntent.maintainAuthentication,
+      );
       expect(await c.stopSession(sessionId), isTrue);
-      expect(c.snapshot!.sessions.single.intent, 'suspend_authentication');
-      expect(c.snapshot!.sessions.single.state, 'suspended');
+      expect(
+        c.snapshot!.sessions.single.intent,
+        SessionIntent.suspendAuthentication,
+      );
+      expect(c.snapshot!.sessions.single.state, SessionState.suspended);
       configuration = c.snapshot!.configurations.single;
       expect(configuration.autoLogin, isFalse);
       expect(configuration.autoReconnect, isTrue);
       expect(await c.ensureSessionRunning(sessionId), isTrue);
       expect(c.snapshot!.sessions.single.id, sessionId);
-      expect(c.snapshot!.sessions.single.intent, 'maintain_authentication');
+      expect(
+        c.snapshot!.sessions.single.intent,
+        SessionIntent.maintainAuthentication,
+      );
       expect(await c.restartSession(sessionId), isTrue);
       expect(c.snapshot!.sessions.single.id, sessionId);
       expect(await c.stopSession(sessionId), isTrue);

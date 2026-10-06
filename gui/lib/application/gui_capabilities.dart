@@ -1,4 +1,5 @@
-import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/application/gui_connection_state.dart';
+import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 /// Owns the single strict actionable-target projection shared by Home and

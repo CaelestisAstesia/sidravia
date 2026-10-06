@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -324,8 +325,8 @@ final _homeSnapshot = GuiSnapshot(
       id: 'session-a',
       displayName: '吉林大学',
       accountName: 'student01',
-      state: 'authenticated',
-      intent: 'maintain_authentication',
+      state: SessionState.authenticated,
+      intent: SessionIntent.maintainAuthentication,
       configurationId: 'cfg-a',
       selectedNetworkBinding: SessionNetworkBinding(
         interfaceId: 'ethernet',

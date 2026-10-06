@@ -763,16 +763,16 @@ const _session = SessionSummary(
   id: 's-a',
   displayName: '',
   accountName: 'fixture-user',
-  state: 'suspended',
-  intent: 'suspend_authentication',
+  state: SessionState.suspended,
+  intent: SessionIntent.suspendAuthentication,
   configurationId: 'cfg-a',
 );
 const _otherSession = SessionSummary(
   id: 's-b',
   displayName: '',
   accountName: 'other-user',
-  state: 'suspended',
-  intent: 'suspend_authentication',
+  state: SessionState.suspended,
+  intent: SessionIntent.suspendAuthentication,
   configurationId: 'cfg-b',
 );
 const _token =

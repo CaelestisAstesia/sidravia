@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
@@ -218,8 +219,8 @@ SessionSummary _session(String state, int revision, {String? description}) =>
       id: 'session-a',
       displayName: '',
       accountName: 'user',
-      state: state,
-      intent: 'maintain_authentication',
+      state: SessionState.decode(state),
+      intent: SessionIntent.maintainAuthentication,
       configurationId: 'cfg-a',
       revision: revision,
       stateReason: description == null

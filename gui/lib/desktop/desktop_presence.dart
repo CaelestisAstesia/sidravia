@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
@@ -138,7 +139,7 @@ class DesktopNotificationPolicy {
     if (session.revision <= state.lastRevision) return null;
     state.lastRevision = session.revision;
     final wasBlockedAtPrevious = state.blockedAtLastSeen;
-    final nowBlocked = session.state == 'blocked_by_error';
+    final nowBlocked = session.state == SessionState.blockedByError;
     state.blockedAtLastSeen = nowBlocked;
 
     if (!state.everSeen) {

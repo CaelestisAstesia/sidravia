@@ -1,3 +1,6 @@
+import 'package:sidravia_gui/application/gui_connection_state.dart';
+import 'package:sidravia_gui/application/gui_snapshot.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -7,7 +10,8 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
-enum GuiConnectionState { bootstrapping, ready, stale, failed, unsupported }
+// Retain the controller entrypoint's public lifecycle type for tool clients.
+export 'gui_connection_state.dart';
 
 typedef IpcConnector = Future<SidraviaIpcClient> Function(
   GuiBootstrap bootstrap,

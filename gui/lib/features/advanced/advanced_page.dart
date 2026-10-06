@@ -26,12 +26,15 @@ class AdvancedPage extends StatelessWidget {
             MapEntry('状态', c == null ? '尚未配置' : _state(s)),
             MapEntry('认证协议', c?.authenticationProtocolId ?? '暂不可用'),
             if (s?.selectedNetworkBinding != null &&
-                !['suspended', 'waiting_for_network'].contains(s?.state)) ...[
+                ![
+                  SessionState.suspended,
+                  SessionState.waitingForNetwork,
+                ].contains(s?.state)) ...[
               MapEntry('网络适配器', s!.selectedNetworkBinding!.displayName),
               MapEntry('本机 IPv4', s.selectedNetworkBinding!.localIpv4Address),
             ],
             if (s?.authenticationEstablishedAt != null &&
-                s?.state == 'authenticated')
+                s?.state == SessionState.authenticated)
               MapEntry(
                 '认证建立',
                 s!.authenticationEstablishedAt!.toLocal().toString(),
@@ -47,7 +50,7 @@ class AdvancedPage extends StatelessWidget {
             MapEntry('version', d?.productVersion ?? '暂不可用'),
             MapEntry('build_id', d?.buildId ?? '暂不可用'),
             MapEntry('mode', d?.mode ?? '暂不可用'),
-            MapEntry('session_state', s?.state ?? '暂不可用'),
+            MapEntry('session_state', s?.state.wireValue ?? '暂不可用'),
             MapEntry('session_id', s?.id ?? '暂不可用'),
             MapEntry('configuration_id', c?.id ?? '暂不可用'),
             if (s?.lastAuthenticationFailure != null)
@@ -145,11 +148,11 @@ class AdvancedPage extends StatelessWidget {
   }
 
   static String _state(SessionSummary? s) => switch (s?.state) {
-    'authenticated' => '已连接',
-    'authenticating' => '正在认证',
-    'waiting_for_network' => '等待网络',
-    'waiting_before_retry' => '等待重试',
-    'blocked_by_error' => '认证失败',
+    SessionState.authenticated => '已连接',
+    SessionState.authenticating => '正在认证',
+    SessionState.waitingForNetwork => '等待网络',
+    SessionState.waitingBeforeRetry => '等待重试',
+    SessionState.blockedByError => '认证失败',
     _ => '未连接',
   };
 }

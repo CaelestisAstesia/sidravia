@@ -99,10 +99,10 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       configurationId: c.id,
       displayName: c.displayName,
       accountName: c.username,
-      state: state,
+      state: SessionState.decode(state),
       intent: state == 'suspended'
-          ? 'suspend_authentication'
-          : 'maintain_authentication',
+          ? SessionIntent.suspendAuthentication
+          : SessionIntent.maintainAuthentication,
       selectedNetworkBinding: const SessionNetworkBinding(
         interfaceId: 'demo-ethernet',
         displayName: '以太网',

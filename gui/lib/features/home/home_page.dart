@@ -103,24 +103,24 @@ class HomePage extends StatelessWidget {
         ? '重试连接'
         : configuration == null
         ? '添加配置'
-        : session == null || session.state == 'suspended'
+        : session == null || session.state == SessionState.suspended
         ? '开始连接'
-        : session.state == 'waiting_before_retry'
+        : session.state == SessionState.waitingBeforeRetry
         ? '立即重试'
-        : session.state == 'blocked_by_error'
+        : session.state == SessionState.blockedByError
         ? '重新连接'
-        : session.state == 'authenticating'
+        : session.state == SessionState.authenticating
         ? '取消连接'
-        : session.state == 'waiting_for_network'
+        : session.state == SessionState.waitingForNetwork
         ? '取消等待'
         : '断开连接';
     final secondaryLabel = configuration == null
         ? '连接设置'
-        : session == null || session.state == 'suspended'
+        : session == null || session.state == SessionState.suspended
         ? '更改配置'
-        : session.state == 'waiting_before_retry'
+        : session.state == SessionState.waitingBeforeRetry
         ? '停止重试'
-        : session.state == 'blocked_by_error'
+        : session.state == SessionState.blockedByError
         ? '更改配置'
         : '连接详情';
     final item =
@@ -156,19 +156,19 @@ class HomePage extends StatelessWidget {
         primaryLabel: primaryLabel,
         primaryEnabled: primaryEnabled,
         primaryKind:
-            (session?.state == 'authenticated' ||
-                session?.state == 'authenticating' ||
-                session?.state == 'waiting_for_network')
+            (session?.state == SessionState.authenticated ||
+                session?.state == SessionState.authenticating ||
+                session?.state == SessionState.waitingForNetwork)
             ? HomeButtonKind.secondary
             : HomeButtonKind.primary,
         onHeader: () => onNavigate(AppPage.configuration),
         onSettings: () => onNavigate(AppPage.settings),
         onSecondary:
-            session?.state == 'waiting_before_retry' &&
+            session?.state == SessionState.waitingBeforeRetry &&
                 !controller.capabilities.canManage
             ? null
             : () {
-                if (session?.state == 'waiting_before_retry') {
+                if (session?.state == SessionState.waitingBeforeRetry) {
                   if (controller.capabilities.canManage) {
                     controller.stopSession(session!.id);
                   }
@@ -178,8 +178,8 @@ class HomePage extends StatelessWidget {
                         ? AppPage.settings
                         : session == null ||
                               [
-                                'suspended',
-                                'blocked_by_error',
+                                SessionState.suspended,
+                                SessionState.blockedByError,
                               ].contains(session.state)
                         ? AppPage.configuration
                         : AppPage.details,
@@ -211,7 +211,7 @@ class HomePage extends StatelessWidget {
                       ? '正在处理操作，请稍候。'
                       : '当前配置或会话关系不允许执行连接操作。')
                 : null),
-        issue: session?.state == 'blocked_by_error'
+        issue: session?.state == SessionState.blockedByError
             ? session?.lastAuthenticationFailure
             : null,
         notice: notice,
@@ -272,35 +272,35 @@ class HomePage extends StatelessWidget {
       return const _HomeState('未连接', '准备就绪，可以开始连接', '', '—', HomeTone.idle);
     }
     return switch (session.state) {
-      'authenticated' => _HomeState(
+      SessionState.authenticated => _HomeState(
         '已连接',
         _connectedDetail(session),
         _binding(session),
         '✓',
         HomeTone.success,
       ),
-      'authenticating' => const _HomeState(
+      SessionState.authenticating => const _HomeState(
         '正在认证',
         '正在向校园网提交认证信息…',
         '等待认证结果',
         '↻',
         HomeTone.warning,
       ),
-      'waiting_for_network' => const _HomeState(
+      SessionState.waitingForNetwork => const _HomeState(
         '等待网络',
         '暂未发现可用的校园网络',
         '检测到可用网络后会继续认证',
         '!',
         HomeTone.warning,
       ),
-      'waiting_before_retry' => const _HomeState(
+      SessionState.waitingBeforeRetry => const _HomeState(
         '等待重试',
         '认证暂未成功，将自动重试',
         '可以立即重试',
         '↻',
         HomeTone.warning,
       ),
-      'blocked_by_error' => _HomeState(
+      SessionState.blockedByError => _HomeState(
         '认证失败',
         '本次认证没有完成',
         session.lastAuthenticationFailure?.description ?? '',
@@ -335,12 +335,12 @@ class HomePage extends StatelessWidget {
       onNavigate(AppPage.configuration);
       return;
     }
-    if (session == null || session.state == 'suspended') {
+    if (session == null || session.state == SessionState.suspended) {
       await controller.startConfiguration(configuration.id);
       return;
     }
-    if (session.state == 'waiting_before_retry' ||
-        session.state == 'blocked_by_error') {
+    if (session.state == SessionState.waitingBeforeRetry ||
+        session.state == SessionState.blockedByError) {
       await controller.restartSession(session.id);
       return;
     }
