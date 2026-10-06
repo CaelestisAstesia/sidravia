@@ -84,6 +84,7 @@ void main() {
       'configurations',
       'sessions',
     ]);
+    expect(client.createPolicy, (false, true, false));
     expect(controller.notice, isNull);
     controller.dispose();
   });
@@ -537,6 +538,7 @@ class _PendingBootstrapper implements GuiBootstrapper {
 
 class _Client implements SidraviaDesktopClient {
   final calls = <String>[];
+  (bool, bool, bool)? createPolicy;
   List<ConfigurationSummary> configurations = const [_configuration];
   List<SessionSummary> sessions = const [_session];
   Object? nextFailure;
@@ -588,7 +590,11 @@ class _Client implements SidraviaDesktopClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   }) async {
+    createPolicy = (autoLogin, autoReconnect, allowInsecureStorage);
     _call('configuration.create');
     return _configuration;
   }

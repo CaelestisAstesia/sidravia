@@ -14,6 +14,43 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
+  test(
+    'GUI create defaults agree with explicit demo input semantics',
+    () async {
+      final client = OfflineDemoClient()..selectScenario('empty');
+      final c = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+      );
+      await c.start();
+      expect(
+        await c.createConfiguration(
+          institutionProfileId: 'jlu',
+          username: 'u',
+          password: 'p',
+        ),
+        isTrue,
+      );
+      expect(c.snapshot!.configurations.single.autoLogin, isFalse);
+      expect(c.snapshot!.configurations.single.autoReconnect, isTrue);
+      c.dispose();
+      client.dispose();
+      final explicit = OfflineDemoClient()..selectScenario('empty');
+      final result = await explicit.configurationCreate(
+        institutionProfileId: 'jlu',
+        username: 'u',
+        password: 'p',
+        autoLogin: true,
+        autoReconnect: false,
+        allowInsecureStorage: false,
+      );
+      expect(result.autoLogin, isTrue);
+      expect(result.autoReconnect, isFalse);
+      explicit.dispose();
+    },
+  );
+
   testWidgets(
     'developer controls switch actual state feed and theme outside shell',
     (tester) async {

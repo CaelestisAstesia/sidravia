@@ -111,6 +111,10 @@ class GuiController extends ChangeNotifier {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+
+      autoLogin: false,
+      autoReconnect: true,
+      allowInsecureStorage: false,
     ),
     allowed: (caps) => caps.canCreate,
   );

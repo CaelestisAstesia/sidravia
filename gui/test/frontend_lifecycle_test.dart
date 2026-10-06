@@ -54,12 +54,19 @@ class _DelayedSaveClient extends OfflineDemoClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   }) async {
     await createGate.future;
     return super.configurationCreate(
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+
+      autoLogin: autoLogin,
+      autoReconnect: autoReconnect,
+      allowInsecureStorage: allowInsecureStorage,
     );
   }
 }

@@ -84,13 +84,16 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   }) async => _call('configuration.create', {
     'institutionProfileId': institutionProfileId,
     'username': username,
     'password': password,
-    'allowInsecureStorage': false,
-    'autoLogin': false,
-    'autoReconnect': true,
+    'allowInsecureStorage': allowInsecureStorage,
+    'autoLogin': autoLogin,
+    'autoReconnect': autoReconnect,
   }, decodeConfiguration);
 
   @override

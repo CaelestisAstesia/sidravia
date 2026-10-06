@@ -9,6 +9,9 @@ abstract interface class SidraviaIpcClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   });
   Future<ConfigurationSummary> configurationUpdate({
     required String configurationId,

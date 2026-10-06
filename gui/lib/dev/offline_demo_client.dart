@@ -165,6 +165,9 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   }) async {
     if (_configuration != null) {
       throw const IpcRequestFailure('configuration_conflict');
@@ -181,6 +184,8 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       username: username,
       credentialStored: password.isNotEmpty,
       storageProtection: 'protected',
+      autoLogin: autoLogin,
+      autoReconnect: autoReconnect,
     );
     _record('configuration.create', '已模拟创建配置；密码内容未保存');
     return _configuration!;

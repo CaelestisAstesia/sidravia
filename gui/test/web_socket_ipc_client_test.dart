@@ -7,6 +7,45 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  test(
+    'transport serializes supplied creation policy without replacing it',
+    () async {
+      Map<String, dynamic>? request;
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          request = jsonDecode(message as String) as Map<String, dynamic>;
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': request!['id'],
+              'ok': true,
+              'result': _fixtureResult('configuration.create'),
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final c = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await c.configurationCreate(
+        institutionProfileId: 'jlu',
+        username: 'u',
+        password: 'p',
+        autoLogin: true,
+        autoReconnect: false,
+        allowInsecureStorage: true,
+      );
+      expect(request!['payload'], {
+        'institutionProfileId': 'jlu',
+        'username': 'u',
+        'password': 'p',
+        'autoLogin': true,
+        'autoReconnect': false,
+        'allowInsecureStorage': true,
+      });
+      await c.close();
+    },
+  );
+
   test('refused connection has a fixed transport code', () async {
     final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = socket.port;
@@ -114,6 +153,10 @@ void main() {
       institutionProfileId: 'jlu',
       username: 'fixture-user',
       password: 'fixture-configuration-password',
+
+      autoLogin: false,
+      autoReconnect: true,
+      allowInsecureStorage: false,
     );
     await client.configurationUpdate(
       configurationId: 'fixture-configuration',
@@ -240,6 +283,10 @@ void main() {
         institutionProfileId: 'jlu',
         username: 'u',
         password: '',
+
+        autoLogin: false,
+        autoReconnect: true,
+        allowInsecureStorage: false,
       ),
       throwsA(isA<IpcRequestFailure>()),
     );
