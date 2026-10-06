@@ -178,6 +178,7 @@ class AppearanceSelector extends StatelessWidget {
       key: const ValueKey('appearance-selector'),
       width: (textWidth + 46).clamp(92, double.infinity),
       constraints: BoxConstraints(minHeight: touch ? 48 : 30),
+      alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 7),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,

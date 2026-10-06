@@ -14,6 +14,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
+import 'home_responsive_test.dart' as fonts;
+
 void main() {
   testWidgets(
     'formal settings reconnect saves true false, failures, guards, no session mutation',
@@ -210,12 +212,17 @@ void main() {
     },
   );
 
-  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+  ]) {
     for (final scale in [1.0, 2.0]) {
       for (final dark in [false, true]) {
         testWidgets('appearance centered $platform scale=$scale dark=$dark', (
           tester,
         ) async {
+          await tester.runAsync(fonts.loadCaptureFonts);
           await tester.binding.setSurfaceSize(const Size(360, 640));
           addTearDown(() => tester.binding.setSurfaceSize(null));
           final mode = ValueNotifier(ThemeMode.system);
@@ -254,6 +261,22 @@ void main() {
             final region = find.byKey(
               ValueKey('appearance-text-region-${value.name}'),
             );
+            final frame = tester.getRect(
+              find.byKey(const ValueKey('appearance-selector')),
+            );
+            expect(
+              tester.getRect(region).center.dy,
+              closeTo(frame.center.dy, .01),
+              reason: 'selected region must center within the full outer frame',
+            );
+            final arrow = find.descendant(
+              of: find.byKey(const ValueKey('appearance-selector')),
+              matching: find.byIcon(Icons.arrow_drop_down),
+            );
+            expect(
+              tester.getRect(arrow).center.dy,
+              closeTo(frame.center.dy, .01),
+            );
             final text = find.descendant(
               of: region,
               matching: find.byType(Text),
@@ -274,7 +297,7 @@ void main() {
           }
           expect(
             start.height,
-            greaterThanOrEqualTo(platform == TargetPlatform.android ? 48 : 30),
+            greaterThanOrEqualTo(platform == TargetPlatform.windows ? 30 : 48),
           );
           await tester.tap(find.byType(DropdownButton<ThemeMode>));
           await tester.pumpAndSettle();
