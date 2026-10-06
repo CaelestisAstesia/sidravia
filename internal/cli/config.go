@@ -151,6 +151,9 @@ func callConfiguration(deps authDependencies, connection daemonClient, method st
 	if err != nil {
 		return nil, wrapSafeOperation("编码配置请求", err)
 	}
+	// Clear the CLI-owned wire bytes after the synchronous call on all exits.
+	// This does not erase immutable password strings or transport copies.
+	defer clear(data)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	response, err := connection.Call(ctx, method, data)
@@ -240,7 +243,6 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		if err != nil {
 			return err
 		}
-		defer func() { password = "" }()
 		if interactive && !options.allowInsecure {
 			raw, listErr := callConfiguration(deps, connection, contract.MethodConfigurationList, struct{}{})
 			if listErr != nil {
@@ -343,7 +345,6 @@ func runConfigSetPassword(options configPasswordOptions, deps authDependencies) 
 	if err != nil {
 		return err
 	}
-	defer func() { password = "" }()
 	return withAuthClient(deps, func(connection daemonClient) error {
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationSetPassword, contract.ConfigurationSetPasswordPayload{ConfigurationID: options.id, Password: password, AllowInsecureStorage: options.allowInsecure})
 		if err != nil {

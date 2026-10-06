@@ -43,6 +43,12 @@ var errPasswordTooLong = errors.New("密码输入超过 4096 字节")
 func readPasswordLine(input io.Reader) (string, error) {
 	line := make([]byte, 0, maxPasswordBytes+2)
 	var one [1]byte
+	// Clear only the mutable bytes this reader owns. The returned string and
+	// copies made by callers cannot be reliably erased through this buffer.
+	defer func() {
+		clear(line[:cap(line)])
+		clear(one[:])
+	}()
 
 	for {
 		n, err := input.Read(one[:])

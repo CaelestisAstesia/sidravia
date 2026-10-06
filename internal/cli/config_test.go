@@ -12,6 +12,43 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
+func TestConfigurationPasswordCallsClearOwnedWireBytes(t *testing.T) {
+	cause := errors.New("fictional transport failure")
+	for _, method := range []string{contract.MethodConfigurationCreate, contract.MethodConfigurationSetPassword} {
+		for _, outcome := range []string{"success", "transport", "typed error"} {
+			t.Run(method+"/"+outcome, func(t *testing.T) {
+				var retained json.RawMessage
+				connection := &fakeDaemonClient{call: func(gotMethod string, buffer json.RawMessage) (contract.Response, error) {
+					retained = buffer
+					var value struct {
+						Password string `json:"password"`
+					}
+					if gotMethod != method || json.Unmarshal(buffer, &value) != nil || value.Password != "fictional" {
+						t.Fatal("wire payload changed before Call consumed it")
+					}
+					switch outcome {
+					case "transport":
+						return contract.Response{}, cause
+					case "typed error":
+						return contract.NewErrorResponse("1", contract.ErrorCodeInvalidArgument, "invalid"), nil
+					default:
+						return contract.NewSuccessResponse("1", json.RawMessage(`{}`)), nil
+					}
+				}}
+				var payload any = contract.ConfigurationSetPasswordPayload{ConfigurationID: "campus", Password: "fictional"}
+				if method == contract.MethodConfigurationCreate {
+					payload = contract.ConfigurationCreatePayload{ConfigurationID: "campus", InstitutionProfileID: "jlu", Username: "user", Password: "fictional"}
+				}
+				_, err := callConfiguration(hotAuthDependencies(t, connection), connection, method, payload)
+				if (err == nil) != (outcome == "success") || (outcome == "transport" && !errors.Is(err, cause)) {
+					t.Fatal("operation error behavior changed")
+				}
+				assertClearedBytes(t, retained)
+			})
+		}
+	}
+}
+
 func TestConfigurationDecodersAndPresentationHidePassword(t *testing.T) {
 	raw, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 		ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
@@ -101,7 +138,7 @@ func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedMethod = method
-		capturedPayload = payload
+		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -134,7 +171,7 @@ func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
-		capturedPayload = payload
+		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -165,7 +202,7 @@ func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
 func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
-		capturedPayload = payload
+		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -195,7 +232,7 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 			listRaw, _ := contract.MarshalConfigurationListResult(contract.ConfigurationListResult{StorageProtection: "protected", Configurations: nil})
 			return contract.NewSuccessResponse("1", listRaw), nil
 		}
-		capturedPayload = payload
+		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -223,7 +260,7 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
-		capturedPayload = payload
+		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -254,7 +291,7 @@ func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
-		capturedPayload = payload
+		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
 			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",

@@ -8,6 +8,53 @@ import (
 	"testing"
 )
 
+type retainedPasswordScratchReader struct {
+	input   io.Reader
+	scratch []byte
+}
+
+func (reader *retainedPasswordScratchReader) Read(buffer []byte) (int, error) {
+	reader.scratch = buffer
+	return reader.input.Read(buffer)
+}
+
+func assertClearedBytes(t *testing.T, buffer []byte) {
+	t.Helper()
+	if len(buffer) == 0 {
+		t.Fatal("no owned buffer was observed")
+	}
+	for _, value := range buffer {
+		if value != 0 {
+			t.Fatal("owned buffer was not cleared")
+		}
+	}
+}
+
+func TestReadPasswordClearsOwnedScratchOnEveryExit(t *testing.T) {
+	cause := errors.New("fictional read failure")
+	for _, test := range []struct {
+		name    string
+		input   io.Reader
+		want    string
+		failure error
+	}{
+		{"success", strings.NewReader("fictional\r\n"), "fictional", nil},
+		{"EOF", strings.NewReader("fictional"), "fictional", nil},
+		{"limit", strings.NewReader(strings.Repeat("a", maxPasswordBytes+2)), "", errPasswordTooLong},
+		{"read failure", io.MultiReader(strings.NewReader("fictional"), errorReader{err: cause}), "", cause},
+		{"no progress", errorReader{}, "", io.ErrNoProgress},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reader := &retainedPasswordScratchReader{input: test.input}
+			value, err := readPasswordLine(reader)
+			if !errors.Is(err, test.failure) || value != test.want {
+				t.Fatal("password input behavior changed")
+			}
+			assertClearedBytes(t, reader.scratch)
+		})
+	}
+}
+
 func TestReadPasswordStdinFirstLineBehavior(t *testing.T) {
 	tests := []struct {
 		name  string

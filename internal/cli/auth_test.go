@@ -21,6 +21,41 @@ type fakeDaemonClient struct {
 	closeErr    error
 }
 
+func TestSessionStartClearsOwnedWireBytesOnEveryExit(t *testing.T) {
+	cause := errors.New("fictional transport failure")
+	for _, outcome := range []string{"success", "transport", "typed error", "decode error"} {
+		t.Run(outcome, func(t *testing.T) {
+			var retained json.RawMessage
+			connection := &fakeDaemonClient{call: func(method string, buffer json.RawMessage) (contract.Response, error) {
+				retained = buffer
+				value, err := contract.DecodeSessionStartOneShotPayload(buffer)
+				if method != contract.MethodSessionStartOneShot || err != nil || value.Password != "fictional" {
+					t.Fatal("wire payload changed before Call consumed it")
+				}
+				switch outcome {
+				case "transport":
+					return contract.Response{}, cause
+				case "typed error":
+					return contract.NewErrorResponse("1", contract.ErrorCodeInvalidArgument, "invalid"), nil
+				case "decode error":
+					return contract.NewSuccessResponse("1", json.RawMessage(`invalid`)), nil
+				default:
+					return successSessionStartResponse(t, "created", minimalSessionResult("authenticated")), nil
+				}
+			}}
+			deps := hotAuthDependencies(t, connection)
+			_, err := callSessionStart(deps, connection, contract.MethodSessionStartOneShot, contract.SessionStartOneShotPayload{
+				InstitutionProfileID: "jlu", Username: "user", Password: "fictional",
+				NetworkBindingPolicyMode: "automatic", ProtocolContextOverride: json.RawMessage(`{}`),
+			})
+			if (err == nil) != (outcome == "success") || (outcome == "transport" && !errors.Is(err, cause)) {
+				t.Fatal("operation error behavior changed")
+			}
+			assertClearedBytes(t, retained)
+		})
+	}
+}
+
 func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodSessionEnsureRunning || string(payload) != `{"sessionId":"session-1"}` {

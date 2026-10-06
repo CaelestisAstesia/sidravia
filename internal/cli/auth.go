@@ -128,7 +128,6 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			ProtocolContextOverride:  json.RawMessage("{}"),
 		}
 		result, err := callSessionStart(deps, connection, contract.MethodSessionStartOneShot, payload)
-		password = ""
 		if err != nil {
 			return err
 		}
@@ -282,6 +281,9 @@ func callSessionStart(deps authDependencies, connection daemonClient, method str
 	if err != nil {
 		return contract.SessionStartResult{}, wrapSafeOperation("编码 Session 请求", err)
 	}
+	// Call consumes this buffer synchronously; transport copies and strings
+	// have separate lifetimes and are outside this cleanup.
+	defer clear(rawPayload)
 	timeout := deps.connection.callTimeout
 	if method == contract.MethodSessionEnsureRunning || method == contract.MethodSessionStartConfiguration {
 		timeout = 30 * time.Second
