@@ -20,6 +20,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   late final TextEditingController _password;
   String? _profile;
   bool _saving = false;
+  bool _hydrated = false;
   String? _usernameError, _passwordError;
 
   @override
@@ -31,13 +32,25 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   }
 
   void _sync() {
+    if (_hydrated || !widget.controller.capabilities.isReady) return;
     final c = widget.controller.capabilities.configuration;
     final profiles =
         widget.controller.snapshot?.profiles ?? const <InstitutionProfile>[];
+    if (c == null &&
+        (!widget.controller.capabilities.canCreate || profiles.isEmpty)) {
+      return;
+    }
     _username.text = c?.username ?? '';
     _profile =
         c?.institutionProfileId ??
         (profiles.isEmpty ? null : profiles.first.id);
+    _hydrated = true;
+  }
+
+  @override
+  void didUpdateWidget(covariant ConfigurationPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
   }
 
   @override
@@ -74,7 +87,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 ),
             ],
             onChanged:
-                widget.controller.busy ||
+                _saving ||
+                    widget.controller.busy ||
                     !(creating
                         ? widget.controller.capabilities.canCreate
                         : widget.controller.capabilities.canManage)
@@ -89,6 +103,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           child: TextField(
             controller: _username,
             enabled:
+                !_saving &&
                 !widget.controller.busy &&
                 (creating
                     ? widget.controller.capabilities.canCreate
@@ -121,6 +136,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
             controller: _password,
             obscureText: true,
             enabled:
+                !_saving &&
                 !widget.controller.busy &&
                 (creating
                     ? widget.controller.capabilities.canCreate
@@ -250,28 +266,32 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _passwordError = null;
     });
     final c = widget.controller.capabilities.configuration;
+    final controller = widget.controller;
+    final profile = _profile!;
+    final username = _username.text.trim();
+    final password = _password.text;
     var ok = false;
     if (c == null) {
-      ok = await widget.controller.createConfiguration(
-        institutionProfileId: _profile!,
-        username: _username.text.trim(),
-        password: _password.text,
+      ok = await controller.createConfiguration(
+        institutionProfileId: profile,
+        username: username,
+        password: password,
       );
     } else {
-      ok = await widget.controller.updateConfiguration(
+      ok = await controller.updateConfiguration(
         configurationId: c.id,
-        institutionProfileId: _profile!,
-        username: _username.text.trim(),
+        institutionProfileId: profile,
+        username: username,
       );
-      if (ok && _password.text.isNotEmpty) {
-        ok = await widget.controller.setPassword(
+      if (ok && password.isNotEmpty) {
+        ok = await controller.setPassword(
           configurationId: c.id,
-          password: _password.text,
+          password: password,
         );
       }
     }
-    _password.clear();
     if (mounted) {
+      _password.clear();
       setState(() => _saving = false);
       if (ok) widget.onBack();
     }

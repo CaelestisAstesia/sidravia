@@ -14,7 +14,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: SidraviaShell(controller: controller)),
     );
-    expect(find.text('尚未配置'), findsAtLeastNWidgets(1));
+    expect(find.text('正在连接服务'), findsOneWidget);
+    expect(find.text('尚未配置'), findsNothing);
     expect(find.byTooltip('设置'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('wide-sidebar')), findsNothing);
     controller.dispose();

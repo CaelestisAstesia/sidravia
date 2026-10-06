@@ -79,13 +79,28 @@ class HomePage extends StatelessWidget {
   Widget _build(BuildContext context) {
     final session = _session;
     final configuration = _configuration;
+    final canRetry =
+        controller.state == GuiConnectionState.failed ||
+        controller.state == GuiConnectionState.stale;
+    final lastConfigurations = controller.snapshot?.configurations;
+    final displayedConfiguration =
+        configuration ??
+        (controller.state != GuiConnectionState.ready &&
+                lastConfigurations?.length == 1
+            ? lastConfigurations!.single
+            : null);
     final state = _state(session, configuration);
     final canStart =
         controller.capabilities.canCreate || controller.capabilities.canManage;
-    final primaryEnabled =
-        controller.state == GuiConnectionState.ready &&
-        (configuration == null ? controller.capabilities.canCreate : canStart);
-    final primaryLabel = configuration == null
+    final primaryEnabled = canRetry
+        ? !controller.busy
+        : controller.state == GuiConnectionState.ready &&
+              (configuration == null
+                  ? controller.capabilities.canCreate
+                  : canStart);
+    final primaryLabel = canRetry
+        ? '重试连接'
+        : configuration == null
         ? '添加配置'
         : session == null || session.state == 'suspended'
         ? '开始连接'
@@ -123,8 +138,14 @@ class HomePage extends StatelessWidget {
           );
     return HomeView(
       data: HomeViewData(
-        institution: configuration?.institutionDisplayName ?? '尚未配置',
-        username: configuration?.username ?? '点击添加连接配置',
+        institution:
+            displayedConfiguration?.institutionDisplayName ??
+            (controller.state == GuiConnectionState.ready ? '尚未配置' : '连接服务'),
+        username:
+            displayedConfiguration?.username ??
+            (controller.state == GuiConnectionState.ready
+                ? '点击添加连接配置'
+                : '配置状态暂不可用'),
         state: state.title,
         detail: state.detail,
         context: state.context,
@@ -165,7 +186,13 @@ class HomePage extends StatelessWidget {
                 }
               },
         onPrimary: primaryEnabled
-            ? () => _primary(session, configuration)
+            ? () {
+                if (canRetry) {
+                  controller.retry();
+                } else {
+                  _primary(session, configuration);
+                }
+              }
             : null,
         actionError:
             controller.notice ??
@@ -191,6 +218,42 @@ class HomePage extends StatelessWidget {
     SessionSummary? session,
     ConfigurationSummary? configuration,
   ) {
+    switch (controller.state) {
+      case GuiConnectionState.bootstrapping:
+        return const _HomeState(
+          '正在连接服务',
+          '正在初始化连接服务…',
+          '',
+          '↻',
+          HomeTone.warning,
+        );
+      case GuiConnectionState.failed:
+        return const _HomeState(
+          '服务不可用',
+          '暂时无法读取连接状态',
+          '请重试连接服务',
+          '!',
+          HomeTone.error,
+        );
+      case GuiConnectionState.stale:
+        return const _HomeState(
+          '服务失联',
+          '暂时无法确认当前连接状态',
+          '账号信息来自上次成功读取',
+          '!',
+          HomeTone.warning,
+        );
+      case GuiConnectionState.unsupported:
+        return const _HomeState(
+          '平台暂不支持',
+          '此平台暂不支持真实认证',
+          '',
+          '—',
+          HomeTone.idle,
+        );
+      case GuiConnectionState.ready:
+        break;
+    }
     if (configuration == null) {
       return const _HomeState(
         '尚未配置',
