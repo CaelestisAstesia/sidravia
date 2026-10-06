@@ -338,6 +338,7 @@ class ReconnectClient extends OfflineDemoClient {
   Future<ConfigurationSummary> configurationSetAutoReconnect({
     required String configurationId,
     required bool autoReconnect,
+    bool allowInsecureStorage = false,
   }) async {
     calls++;
     if (fail) throw const IpcRequestFailure('session_state_conflict');

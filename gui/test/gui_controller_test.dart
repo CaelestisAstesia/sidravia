@@ -615,6 +615,7 @@ class _Client implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   }) async {
     _call('configuration.setPassword');
     return _configuration;
@@ -648,6 +649,7 @@ class _Client implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    bool allowInsecureStorage = false,
   }) async {
     autoLoginCalls++;
     _call('configuration.setAutoLogin');
@@ -671,6 +673,7 @@ class _Client implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetAutoReconnect({
     required String configurationId,
     required bool autoReconnect,
+    bool allowInsecureStorage = false,
   }) async {
     _call('configuration.setAutoReconnect');
     final c = configurations.single;
@@ -692,8 +695,9 @@ class _Client implements SidraviaDesktopClient {
 
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
-    String configurationId,
-  ) async {
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async {
     configurationRemoveCalls++;
     _call('configuration.remove');
     configurations = const [];

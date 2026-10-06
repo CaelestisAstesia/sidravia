@@ -367,6 +367,7 @@ class _StopAfterMutation implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetAutoReconnect({
     required String configurationId,
     required bool autoReconnect,
+    bool allowInsecureStorage = false,
   }) async {
     final result = await real.configurationSetAutoReconnect(
       configurationId: configurationId,

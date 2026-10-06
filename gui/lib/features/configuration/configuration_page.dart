@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
@@ -265,7 +266,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     );
     if (confirmed != true || !mounted) return;
     final ok = delete
-        ? await widget.controller.deleteConfiguration(c.id)
+        ? await widget.controller.deleteConfiguration(
+            c.id,
+            onInsecureStorageConfirmation: (operation) =>
+                confirmInsecureStorage(context, operation),
+          )
         : session != null && await widget.controller.resetSession(session.id);
     if (ok && mounted) widget.onBack();
   }
@@ -299,6 +304,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         institutionProfileId: profile,
         username: username,
         password: password,
+        onInsecureStorageConfirmation: (operation) =>
+            confirmInsecureStorage(context, operation),
       );
     } else {
       ok = await controller.updateConfiguration(
@@ -306,6 +313,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         institutionProfileId: profile,
         username: username,
         password: password.isEmpty ? null : password,
+        onInsecureStorageConfirmation: (operation) =>
+            confirmInsecureStorage(context, operation),
       );
     }
     if (mounted) {

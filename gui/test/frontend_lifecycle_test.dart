@@ -40,6 +40,7 @@ class _DelayedSaveClient extends OfflineDemoClient {
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   }) async {
     submittedPassword = password;
     await passwordGate.future;

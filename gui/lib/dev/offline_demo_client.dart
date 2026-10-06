@@ -221,6 +221,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   }) async {
     _requireConfiguration(configurationId);
     final c = _replaceConfiguration(credentialStored: password.isNotEmpty);
@@ -233,6 +234,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   Future<ConfigurationSummary> configurationSetAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    bool allowInsecureStorage = false,
   }) async {
     _requireConfiguration(configurationId);
     final c = _replaceConfiguration(autoLogin: autoLogin);
@@ -247,6 +249,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   Future<ConfigurationSummary> configurationSetAutoReconnect({
     required String configurationId,
     required bool autoReconnect,
+    bool allowInsecureStorage = false,
   }) async {
     final previous = _requireConfiguration(configurationId);
     final c = _replaceConfiguration(autoReconnect: autoReconnect);
@@ -257,8 +260,9 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
 
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
-    String configurationId,
-  ) async {
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async {
     _requireConfiguration(configurationId);
     _configuration = null;
     _session = null;

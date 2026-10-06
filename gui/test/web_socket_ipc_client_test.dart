@@ -8,6 +8,70 @@ import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
   test(
+    'explicit consent reaches password settings and removal wire primitives',
+    () async {
+      final received = <Map<String, dynamic>>[];
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final req = jsonDecode(message as String) as Map<String, dynamic>;
+          received.add(req);
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': req['id'],
+              'ok': true,
+              'result': _fixtureResult(req['method'] as String),
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final c = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await c.configurationSetPassword(
+        configurationId: 'fixture-configuration',
+        password: 'fixture',
+        allowInsecureStorage: true,
+      );
+      await c.configurationSetAutoLogin(
+        configurationId: 'fixture-configuration',
+        autoLogin: true,
+        allowInsecureStorage: true,
+      );
+      await c.configurationSetAutoReconnect(
+        configurationId: 'fixture-configuration',
+        autoReconnect: true,
+        allowInsecureStorage: true,
+      );
+      await c.configurationRemove(
+        'fixture-configuration',
+        allowInsecureStorage: true,
+      );
+      expect(received.map((r) => r['payload']), [
+        {
+          'configurationId': 'fixture-configuration',
+          'password': 'fixture',
+          'allowInsecureStorage': true,
+        },
+        {
+          'configurationId': 'fixture-configuration',
+          'autoLogin': true,
+          'allowInsecureStorage': true,
+        },
+        {
+          'configurationId': 'fixture-configuration',
+          'autoReconnect': true,
+          'allowInsecureStorage': true,
+        },
+        {
+          'configurationId': 'fixture-configuration',
+          'allowInsecureStorage': true,
+        },
+      ]);
+      await c.close();
+    },
+  );
+
+  test(
     'transport serializes supplied creation policy without replacing it',
     () async {
       Map<String, dynamic>? request;

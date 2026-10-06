@@ -94,6 +94,7 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     'allowInsecureStorage': allowInsecureStorage,
     'autoLogin': autoLogin,
     'autoReconnect': autoReconnect,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override
@@ -115,36 +116,45 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.setPassword', {
     'configurationId': configurationId,
     'password': password,
-    'allowInsecureStorage': false,
+    'allowInsecureStorage': allowInsecureStorage,
   }, decodeConfiguration);
 
   @override
   Future<ConfigurationSummary> configurationSetAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.update', {
     'configurationId': configurationId,
     'autoLogin': autoLogin,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override
   Future<ConfigurationSummary> configurationSetAutoReconnect({
     required String configurationId,
     required bool autoReconnect,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.update', {
     'configurationId': configurationId,
     'autoReconnect': autoReconnect,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
-    String configurationId,
-  ) async => _call(
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async => _call(
     'configuration.remove',
-    {'configurationId': configurationId},
+    {
+      'configurationId': configurationId,
+      if (allowInsecureStorage) 'allowInsecureStorage': true,
+    },
     (result) => decodeConfigurationRemove(
       result,
       expectedConfigurationId: configurationId,

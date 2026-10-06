@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
@@ -63,10 +64,17 @@ class GuiController extends ChangeNotifier {
 
   Future<bool> performConnectionAction(GuiConnectionAction action) {
     if (action.kind == GuiConnectionActionKind.retryIpc) return _retryAction();
+    if (!const {
+      GuiConnectionActionKind.start,
+      GuiConnectionActionKind.reconnect,
+      GuiConnectionActionKind.stop,
+    }.contains(action.kind)) {
+      return Future.value(false);
+    }
     final id = action.targetId;
     if (id == null) return Future.value(false);
     return _mutate(
-      (client) => switch (action.kind) {
+      (client, allow) => switch (action.kind) {
         GuiConnectionActionKind.start => client.sessionStartConfiguration(id),
         GuiConnectionActionKind.reconnect => client.sessionRestart(id),
         GuiConnectionActionKind.stop => client.sessionStop(id),
@@ -106,16 +114,19 @@ class GuiController extends ChangeNotifier {
     required String institutionProfileId,
     required String username,
     required String password,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
-    (client) => client.configurationCreate(
+    (client, allow) => client.configurationCreate(
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
 
       autoLogin: false,
       autoReconnect: true,
-      allowInsecureStorage: false,
+      allowInsecureStorage: allow,
     ),
+    operation: GuiOperation.createConfiguration,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     allowed: (caps) => caps.canCreate,
   );
 
@@ -125,61 +136,78 @@ class GuiController extends ChangeNotifier {
     required String username,
     String? password,
     bool allowInsecureStorage = false,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
-    (client) => client.configurationUpdate(
+    (client, allow) => client.configurationUpdate(
       configurationId: configurationId,
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
-      allowInsecureStorage: allowInsecureStorage,
+      allowInsecureStorage: allow || allowInsecureStorage,
     ),
+    operation: password == null
+        ? GuiOperation.updateConfiguration
+        : GuiOperation.updatePassword,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     allowed: (caps) => caps.matchesConfiguration(configurationId),
   );
 
   Future<bool> setPassword({
     required String configurationId,
     required String password,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
-    (client) => client.configurationSetPassword(
+    (client, allow) => client.configurationSetPassword(
       configurationId: configurationId,
       password: password,
+      allowInsecureStorage: allow,
     ),
+    operation: GuiOperation.updatePassword,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     allowed: (caps) => caps.matchesConfiguration(configurationId),
   );
 
   Future<bool> startConfiguration(String configurationId) => _mutate(
-    (client) => client.sessionStartConfiguration(configurationId),
+    (client, allow) => client.sessionStartConfiguration(configurationId),
     allowed: (caps) =>
         caps.canConnect &&
         caps.matchesConfiguration(configurationId) &&
         !sessionNeedsReset,
   );
   Future<bool> stopSession(String sessionId) => _mutate(
-    (client) => client.sessionStop(sessionId),
+    (client, allow) => client.sessionStop(sessionId),
     allowed: (caps) =>
         caps.canStop && caps.matchesSession(sessionId) && !sessionNeedsReset,
   );
   Future<bool> ensureSessionRunning(String sessionId) => _mutate(
-    (client) => client.sessionEnsureRunning(sessionId),
+    (client, allow) => client.sessionEnsureRunning(sessionId),
     allowed: (caps) =>
         caps.canConnect && caps.matchesSession(sessionId) && !sessionNeedsReset,
   );
   Future<bool> restartSession(String sessionId) => _mutate(
-    (client) => client.sessionRestart(sessionId),
+    (client, allow) => client.sessionRestart(sessionId),
     allowed: (caps) =>
         caps.canConnect && caps.matchesSession(sessionId) && !sessionNeedsReset,
   );
 
   Future<bool> resetSession(String sessionId) => _mutate(
-    (client) => client.sessionRemove(sessionId),
+    (client, allow) => client.sessionRemove(sessionId),
     fallback: '重置会话失败，请重试。',
     allowed: (capabilities) =>
         capabilities.canResetSession &&
         capabilities.retainedSession?.id == sessionId,
   );
 
-  Future<bool> deleteConfiguration(String configurationId) => _mutate(
-    (client) => client.configurationRemove(configurationId),
+  Future<bool> deleteConfiguration(
+    String configurationId, {
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
+  }) => _mutate(
+    (client, allow) => client.configurationRemove(
+      configurationId,
+      allowInsecureStorage: allow,
+    ),
+    operation: GuiOperation.deleteConfiguration,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     fallback: '删除配置失败，请重试。',
     allowed: (capabilities) =>
         capabilities.canDeleteConfiguration &&
@@ -189,12 +217,16 @@ class GuiController extends ChangeNotifier {
   Future<bool> setAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
-    (client) => client.configurationSetAutoLogin(
+    (client, allow) => client.configurationSetAutoLogin(
       configurationId: configurationId,
       autoLogin: autoLogin,
+      allowInsecureStorage: allow,
     ),
     fallback: '自动登录设置失败，请重试。',
+    operation: GuiOperation.autoLogin,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     allowed: (capabilities) =>
         capabilities.canEditAutoLogin &&
         capabilities.configuration?.id == configurationId,
@@ -203,12 +235,16 @@ class GuiController extends ChangeNotifier {
   Future<bool> setAutoReconnect({
     required String configurationId,
     required bool autoReconnect,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
-    (client) => client.configurationSetAutoReconnect(
+    (client, allow) => client.configurationSetAutoReconnect(
       configurationId: configurationId,
       autoReconnect: autoReconnect,
+      allowInsecureStorage: allow,
     ),
     fallback: '自动重连设置失败，请重试。',
+    operation: GuiOperation.autoReconnect,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     allowed: (capabilities) =>
         capabilities.canEditAutoReconnect &&
         capabilities.configuration?.id == configurationId,
@@ -289,8 +325,11 @@ class GuiController extends ChangeNotifier {
   }
 
   Future<bool> _mutate(
-    Future<Object?> Function(SidraviaIpcClient) action, {
+    Future<Object?> Function(SidraviaIpcClient, bool) action, {
     String fallback = '操作失败，请刷新后重试。',
+    GuiOperation operation = GuiOperation.connection,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
+    bool allowInsecureStorage = false,
     bool Function(GuiCapabilities capabilities)? allowed,
   }) async {
     if (_exitRequested) return false;
@@ -307,16 +346,39 @@ class GuiController extends ChangeNotifier {
     }
     if (allowed != null && !allowed(capabilities)) return false;
     _userBusy = true;
-    final completer = Completer<bool>();
-    _transition = _runMutation(action, completer, fallback);
+    final generation = _generation;
+    final completer = Completer<GuiMutationResult>();
+    _transition = _runMutation(
+      action,
+      completer,
+      fallback,
+      operation,
+      allowInsecureStorage,
+    );
     _notify();
-    return completer.future;
+    final result = await completer.future;
+    if (result.errorCode != 'insecure_storage_confirmation_required' ||
+        allowInsecureStorage ||
+        onInsecureStorageConfirmation == null) {
+      return result.succeeded;
+    }
+    final confirmed = await onInsecureStorageConfirmation(operation);
+    if (!confirmed || !_canContinue(generation)) return false;
+    return _mutate(
+      action,
+      fallback: fallback,
+      operation: operation,
+      allowed: allowed,
+      allowInsecureStorage: true,
+    );
   }
 
   Future<void> _runMutation(
-    Future<Object?> Function(SidraviaIpcClient) action,
-    Completer<bool> completer,
+    Future<Object?> Function(SidraviaIpcClient, bool) action,
+    Completer<GuiMutationResult> completer,
     String fallback,
+    GuiOperation operation,
+    bool allowInsecureStorage,
   ) async {
     final generation = _generation;
     final client = _client!;
@@ -324,29 +386,29 @@ class GuiController extends ChangeNotifier {
     _timer = null;
     _notice = null;
     try {
-      await action(client);
+      await action(client, allowInsecureStorage);
       if (!_canContinue(generation) || !identical(_client, client)) {
-        completer.complete(false);
+        completer.complete(const GuiMutationResult(false));
         return;
       }
       await _refresh(generation, client);
-      completer.complete(_state == GuiConnectionState.ready);
+      completer.complete(GuiMutationResult(_state == GuiConnectionState.ready));
     } on IpcRequestFailure catch (error) {
       if (_current(generation) && identical(_client, client)) {
         if (error.code == 'configuration_session_invalidation_failed') {
           _outdatedSessionId = capabilities.retainedSession?.id;
           await _refresh(generation, client);
         }
-        _notice = _guidance(error.code, fallback);
+        _notice = _guidance(operation, error.code, fallback);
         _scheduleRefresh(generation, client);
         _notify();
       }
-      completer.complete(false);
+      completer.complete(GuiMutationResult(false, error.code));
     } on Object catch (error) {
       if (_current(generation) && identical(_client, client)) {
         await _invalidate(generation, client, error);
       }
-      completer.complete(false);
+      completer.complete(const GuiMutationResult(false));
     } finally {
       if (_generation == generation) {
         _transition = null;
@@ -437,19 +499,21 @@ class GuiController extends ChangeNotifier {
         : 'ipc_protocol_error',
   );
 
-  String _guidance(String code, String fallback) => switch (code) {
-    'configuration_session_invalidation_failed' =>
-      '配置已提交，旧会话清理未完成；请在连接配置中移除旧会话后重试。',
-    'profile_not_found' => '学校配置已不存在，请刷新。',
-    'configuration_conflict' => '登录配置已存在，请刷新。',
-    'insecure_storage_confirmation_required' => '凭据存储未受保护，密码未保存。',
-    'session_state_conflict' => '当前状态无法执行此操作。',
-    'session_active_conflict' => '已有认证会话，请刷新。',
-    'session_not_found' => '会话已不存在，请刷新。',
-    'configuration_not_found' => '登录配置已不存在，请刷新。',
-    'configuration_auto_login_conflict' => '其他配置已启用自动登录，请先处理。',
-    _ => fallback,
-  };
+  String _guidance(GuiOperation operation, String code, String fallback) =>
+      switch (code) {
+        'configuration_session_invalidation_failed' =>
+          '配置已提交，旧会话清理未完成；请在连接配置中移除旧会话后重试。',
+        'profile_not_found' => '学校配置已不存在，请刷新。',
+        'configuration_conflict' => '登录配置已存在，请刷新。',
+        'insecure_storage_confirmation_required' =>
+          operation.insecureStorageGuidance,
+        'session_state_conflict' => '当前状态无法执行此操作。',
+        'session_active_conflict' => '已有认证会话，请刷新。',
+        'session_not_found' => '会话已不存在，请刷新。',
+        'configuration_not_found' => '登录配置已不存在，请刷新。',
+        'configuration_auto_login_conflict' => '其他配置已启用自动登录，请先处理。',
+        _ => fallback,
+      };
 
   bool _current(int generation) => !_disposed && generation == _generation;
 

@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -41,6 +42,8 @@ class SettingsPage extends StatelessWidget {
                     ? (value) => controller.setAutoLogin(
                         configurationId: c.id,
                         autoLogin: value,
+                        onInsecureStorageConfirmation: (operation) =>
+                            confirmInsecureStorage(context, operation),
                       )
                     : null,
               ),
@@ -57,6 +60,8 @@ class SettingsPage extends StatelessWidget {
                     ? (value) => controller.setAutoReconnect(
                         configurationId: c.id,
                         autoReconnect: value,
+                        onInsecureStorageConfirmation: (operation) =>
+                            confirmInsecureStorage(context, operation),
                       )
                     : null,
               ),
