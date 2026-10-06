@@ -47,13 +47,20 @@ class SettingsPage extends StatelessWidget {
                     : null,
               ),
             ),
-            const DesignRow(
+            DesignRow(
               title: '自动重连',
               subtitle: '连接中断后自动尝试重新认证',
               trailing: DesignSwitch(
+                key: const ValueKey('auto-reconnect-switch'),
                 label: '自动重连',
-                value: false,
-                onChanged: null,
+                value: c?.autoReconnect ?? false,
+                onChanged:
+                    c != null && controller.capabilities.canEditAutoReconnect
+                    ? (value) => controller.setAutoReconnect(
+                        configurationId: c.id,
+                        autoReconnect: value,
+                      )
+                    : null,
               ),
             ),
           ],
@@ -62,6 +69,13 @@ class SettingsPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 7),
             child: DesignHelper(_disabledReason(controller)),
+          ),
+        if (c != null)
+          const Padding(
+            padding: EdgeInsets.only(top: 7),
+            child: DesignHelper(
+              '自动重连设置用于之后新建的会话；已有会话继续使用创建时的策略，普通重新连接可能复用已有会话。',
+            ),
           ),
         if (controller.notice != null)
           Padding(
@@ -116,6 +130,9 @@ class SettingsPage extends StatelessWidget {
 
 String _disabledReason(GuiController controller) {
   if (controller.busy) return '正在处理操作，请稍后修改连接设置。';
+  if (controller.state == GuiConnectionState.unsupported) {
+    return '当前平台暂不支持连接设置。';
+  }
   if (!controller.capabilities.isReady) return '通信尚未就绪，暂时无法修改连接设置。';
   if (controller.snapshot?.daemon.status != 'running') {
     return '核心服务未运行，暂时无法修改连接设置。';

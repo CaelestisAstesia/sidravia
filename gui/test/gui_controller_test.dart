@@ -617,6 +617,29 @@ class _Client implements SidraviaDesktopClient {
   }
 
   @override
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+  }) async {
+    _call('configuration.setAutoReconnect');
+    final c = configurations.single;
+    final updated = ConfigurationSummary(
+      id: c.id,
+      displayName: c.displayName,
+      institutionProfileId: c.institutionProfileId,
+      institutionDisplayName: c.institutionDisplayName,
+      authenticationProtocolId: c.authenticationProtocolId,
+      username: c.username,
+      credentialStored: c.credentialStored,
+      storageProtection: c.storageProtection,
+      autoLogin: c.autoLogin,
+      autoReconnect: autoReconnect,
+    );
+    configurations = [updated];
+    return updated;
+  }
+
+  @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId,
   ) async {

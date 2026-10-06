@@ -131,6 +131,20 @@ class GuiController extends ChangeNotifier {
         capabilities.configuration?.id == configurationId,
   );
 
+  Future<bool> setAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+  }) => _mutate(
+    (client) => client.configurationSetAutoReconnect(
+      configurationId: configurationId,
+      autoReconnect: autoReconnect,
+    ),
+    fallback: '自动重连设置失败，请重试。',
+    allowed: (capabilities) =>
+        capabilities.canEditAutoReconnect &&
+        capabilities.configuration?.id == configurationId,
+  );
+
   /// Graceful exit requested only by the explicit tray path.
   ///
   /// Serializes with an in-flight poll/mutation, cancels future polling and

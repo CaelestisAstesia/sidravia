@@ -69,6 +69,8 @@ class GuiCapabilities {
 
   bool get canEditAutoLogin => canManage;
 
+  bool get canEditAutoReconnect => canManage;
+
   bool get canDeleteConfiguration => canManage;
 
   bool get canResetSession => canManage && snapshot!.sessions.isNotEmpty;

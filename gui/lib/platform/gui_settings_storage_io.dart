@@ -44,6 +44,9 @@ FileSystemEntityType _portableMarker(String marker) {
   return FileSystemEntityType.notFound;
 }
 
+String _join(String root, String suffix) =>
+    '$root${root.endsWith(Platform.pathSeparator) ? '' : Platform.pathSeparator}$suffix';
+
 GuiSettingsLocation resolveWindowsGuiSettings({
   required String executable,
   required String? userConfigRoot,
@@ -60,7 +63,7 @@ GuiSettingsLocation resolveWindowsGuiSettings({
   final exeRoot = File.fromUri(
     directory.uri.normalizePath().resolve('__path_anchor__'),
   ).parent.path;
-  final marker = '$exeRoot${Platform.pathSeparator}sidravia.portable';
+  final marker = _join(exeRoot, 'sidravia.portable');
   final kind = (inspectMarker ?? _portableMarker)(marker);
   if (kind != FileSystemEntityType.file &&
       kind != FileSystemEntityType.notFound) {
@@ -69,25 +72,32 @@ GuiSettingsLocation resolveWindowsGuiSettings({
   final portable = kind == FileSystemEntityType.file;
   String root;
   if (portable) {
-    root = exeRoot;
-    root += namespace.isEmpty
-        ? '${Platform.pathSeparator}config'
-        : '${Platform.pathSeparator}namespaces${Platform.pathSeparator}$namespace';
+    root = _join(
+      exeRoot,
+      namespace.isEmpty
+          ? 'config'
+          : 'namespaces${Platform.pathSeparator}$namespace',
+    );
   } else {
     if (userConfigRoot == null || !Directory(userConfigRoot).isAbsolute) {
       throw const FormatException('User configuration root is unavailable');
     }
-    root =
-        '${File.fromUri(Directory(userConfigRoot).uri.normalizePath().resolve('__path_anchor__')).parent.path}${Platform.pathSeparator}Sidravia';
+    root = _join(
+      File.fromUri(
+        Directory(userConfigRoot).uri
+            .normalizePath()
+            .resolve('__path_anchor__'),
+      ).parent.path,
+      'Sidravia',
+    );
     if (namespace.isNotEmpty) {
-      root +=
-          '${Platform.pathSeparator}namespaces${Platform.pathSeparator}$namespace';
+      root = _join(root, 'namespaces${Platform.pathSeparator}$namespace');
     }
   }
   return GuiSettingsLocation(
     portable ? 'portable' : 'installed',
     namespace,
-    '$root${Platform.pathSeparator}gui-settings.json',
+    _join(root, 'gui-settings.json'),
   );
 }
 

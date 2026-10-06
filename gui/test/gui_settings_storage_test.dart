@@ -120,6 +120,18 @@ void main() {
       }
     }
   });
+  test('drive or filesystem root produces a clean joined path', () {
+    final driveRoot = Directory(root.path).uri.resolve('/').toFilePath();
+    final result = resolveWindowsGuiSettings(
+      executable: '${driveRoot}Sidravia.exe',
+      userConfigRoot: driveRoot,
+      inspectMarker: (_) => FileSystemEntityType.file,
+    );
+    expect(
+      result.path,
+      '${driveRoot}config${Platform.pathSeparator}gui-settings.json',
+    );
+  });
   test('same Go namespace valid invalid cases', () {
     for (final value in ['', 'isolated-1', 'mock-test', 'a.b_c-9']) {
       expect(validGuiNamespace(value), true);

@@ -118,6 +118,15 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
   }, decodeConfiguration);
 
   @override
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+  }) async => _call('configuration.update', {
+    'configurationId': configurationId,
+    'autoReconnect': autoReconnect,
+  }, decodeConfiguration);
+
+  @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId,
   ) async => _call(

@@ -1,0 +1,67 @@
+{
+  "windowsNativeDisk": [
+    {
+      "layouts": [
+        {
+          "mode": "installed",
+          "namespace": "",
+          "path": "D:\\Downloads\\Sidravia-Settings-Demo\\evidence\\windows-layout-final\\user-config\\Sidravia\\gui-settings.json",
+          "platform": "windows"
+        },
+        {
+          "mode": "installed",
+          "namespace": "review-isolated",
+          "path": "D:\\Downloads\\Sidravia-Settings-Demo\\evidence\\windows-layout-final\\user-config\\Sidravia\\namespaces\\review-isolated\\gui-settings.json",
+          "platform": "windows"
+        },
+        {
+          "mode": "portable",
+          "namespace": "",
+          "path": "D:\\Downloads\\Sidravia-Settings-Demo\\evidence\\windows-layout-final\\program\\config\\gui-settings.json",
+          "platform": "windows"
+        },
+        {
+          "mode": "portable",
+          "namespace": "review-isolated",
+          "path": "D:\\Downloads\\Sidravia-Settings-Demo\\evidence\\windows-layout-final\\program\\namespaces\\review-isolated\\gui-settings.json",
+          "platform": "windows"
+        }
+      ],
+      "invalidDirectoryRejected": true
+    },
+    {
+      "pid": 14092,
+      "path": "D:\\Downloads\\Sidravia-Settings-Demo\\evidence\\windows-persistence-final\\gui-settings.json",
+      "initial": null,
+      "restored": "dark",
+      "platform": "windows"
+    },
+    {
+      "pid": 59312,
+      "path": "D:\\Downloads\\Sidravia-Settings-Demo\\evidence\\windows-persistence-final\\gui-settings.json",
+      "initial": "dark",
+      "restored": "dark",
+      "platform": "windows"
+    }
+  ],
+  "linuxSeparateProcesses": [
+    {
+      "pid": 5403,
+      "path": "/mnt/d/Downloads/Sidravia-Settings-Demo/evidence/persistence/gui-settings.json",
+      "initial": null,
+      "restored": "dark",
+      "platform": "linux"
+    },
+    {
+      "pid": 5442,
+      "path": "/mnt/d/Downloads/Sidravia-Settings-Demo/evidence/persistence/gui-settings.json",
+      "initial": "dark",
+      "restored": "dark",
+      "platform": "linux"
+    }
+  ],
+  "guiNativeInteraction": "not verified: computer-use initialization sandboxCwd URI failure",
+  "campus": "not performed",
+  "namespaceInPersistentDemo": "isolated demo explicit directory, not production namespace store",
+  "fullTests": 259
+}

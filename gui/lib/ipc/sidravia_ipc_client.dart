@@ -28,6 +28,10 @@ abstract interface class SidraviaIpcClient {
     required String configurationId,
     required bool autoLogin,
   });
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+  });
   Future<ConfigurationRemoveResult> configurationRemove(String configurationId);
   Future<void> close();
 }

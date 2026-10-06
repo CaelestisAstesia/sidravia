@@ -124,6 +124,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     String? institutionProfileId,
     bool? credentialStored,
     bool? autoLogin,
+    bool? autoReconnect,
   }) {
     final c = _configuration!;
     return _configuration = ConfigurationSummary(
@@ -136,7 +137,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       credentialStored: credentialStored ?? c.credentialStored,
       storageProtection: c.storageProtection,
       autoLogin: autoLogin ?? c.autoLogin,
-      autoReconnect: c.autoReconnect,
+      autoReconnect: autoReconnect ?? c.autoReconnect,
     );
   }
 
@@ -224,6 +225,17 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       'configuration.set_auto_login',
       '已模拟${autoLogin ? '启用' : '关闭'}自动登录；不会执行真实认证',
     );
+    return c;
+  }
+
+  @override
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+  }) async {
+    _requireConfiguration(configurationId);
+    final c = _replaceConfiguration(autoReconnect: autoReconnect);
+    _record('configuration.set_auto_reconnect', '已模拟保存自动重连设置；没有执行真实认证或修改当前会话');
     return c;
   }
 

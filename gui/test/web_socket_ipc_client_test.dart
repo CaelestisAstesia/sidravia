@@ -7,6 +7,47 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  test('auto reconnect true false use exact update payload and authoritative return', () async {
+    final received = <Map<String, dynamic>>[];
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        received.add(request);
+        final payload = request['payload'] as Map<String, dynamic>;
+        final result = {
+          ..._fixtureResult('configuration.update'),
+          'autoReconnect': payload['autoReconnect'],
+        };
+        socket.add(
+          jsonEncode({
+            'kind': 'response',
+            'id': request['id'],
+            'ok': true,
+            'result': result,
+          }),
+        );
+      });
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    for (final value in [true, false]) {
+      final result = await client.configurationSetAutoReconnect(
+        configurationId: 'fixture-configuration',
+        autoReconnect: value,
+      );
+      expect(result.autoReconnect, value);
+      expect(received.last['method'], 'configuration.update');
+      expect(received.last['payload'], {
+        'configurationId': 'fixture-configuration',
+        'autoReconnect': value,
+      });
+      expect(result.autoLogin, true);
+      expect(result.username, 'fixture-user');
+    }
+    await client.close();
+    expect(received, hasLength(2));
+  });
+
   test('sends all exact operational fixture shapes', () async {
     final received = <Map<String, dynamic>>[];
     final server = await _server((socket, request) {
