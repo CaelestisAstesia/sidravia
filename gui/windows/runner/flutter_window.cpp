@@ -303,13 +303,7 @@ void FlutterWindow::NotifyTray(const std::wstring& title,
 void FlutterWindow::ShowTrayMenu() {
   HWND hwnd = GetHandle();
   HMENU menu = ::CreatePopupMenu();
-  // Keep the native menu Unicode and expose the same hierarchy as the HTML
-  // tray mockup: a read-only status header followed by lifecycle actions.
-  ::AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"\u5DF2\u8FDE\u63A5");
-  ::AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"\u6821\u56ED\u7F51");
-  ::AppendMenuW(menu, MF_STRING | MF_GRAYED, 0,
-                L"\u72B6\u6001\u7531\u4E3B\u7A97\u53E3\u63D0\u4F9B");
-  ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  // Native tray exposes lifecycle actions; connection state belongs to Dart.
   ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand,
                 L"\u663E\u793A\u4E3B\u754C\u9762");
   ::AppendMenuW(menu, MF_STRING, kTrayExitCommand,

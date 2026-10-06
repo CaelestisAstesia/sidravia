@@ -73,6 +73,15 @@ void main() {
     expect(flutterWindow, contains('WM_RBUTTONUP'));
     expect(flutterWindow, contains('NIN_BALLOONUSERCLICK'));
 
+    // Tray menu contract: no fabricated connection status.
+    final menu = flutterWindow
+        .split('void FlutterWindow::ShowTrayMenu()')
+        .last
+        .split('void FlutterWindow::')
+        .first;
+    expect(RegExp(r'::AppendMenuW\(').allMatches(menu), hasLength(2));
+    expect(menu, isNot(contains('MF_GRAYED')));
+    expect(menu, isNot(contains('\\u5DF2\\u8FDE\\u63A5')));
     // Tray menu contract.
     expect(flutterWindow, contains('kTrayOpenCommand'));
     expect(flutterWindow, contains('kTrayExitCommand'));
