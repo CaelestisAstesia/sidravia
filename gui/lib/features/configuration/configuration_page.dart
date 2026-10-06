@@ -21,6 +21,18 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   String? _profile;
   bool _saving = false;
   bool _hydrated = false;
+  String? _boundConfigurationId;
+  bool _creating = true;
+  bool _targetChanged = false;
+  static const _changedTargetGuidance = '连接配置已被其他客户端更改，请重新打开后继续编辑。';
+  bool get _canSave =>
+      _hydrated &&
+      !_targetChanged &&
+      (_creating
+          ? widget.controller.capabilities.canCreate
+          : widget.controller.capabilities.matchesConfiguration(
+              _boundConfigurationId!,
+            ));
   String? _usernameError, _passwordError;
 
   @override
@@ -29,10 +41,24 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _username = TextEditingController();
     _password = TextEditingController();
     _sync();
+    widget.controller.addListener(_onSnapshot);
+  }
+
+  void _onSnapshot() {
+    if (mounted) setState(_sync);
   }
 
   void _sync() {
-    if (_hydrated || !widget.controller.capabilities.isReady) return;
+    if (!widget.controller.capabilities.isReady) return;
+    if (_hydrated) {
+      final caps = widget.controller.capabilities;
+      if (_creating
+          ? !caps.canCreate && !widget.controller.busy
+          : caps.configuration?.id != _boundConfigurationId) {
+        _targetChanged = true;
+      }
+      return;
+    }
     final c = widget.controller.capabilities.configuration;
     final profiles =
         widget.controller.snapshot?.profiles ?? const <InstitutionProfile>[];
@@ -44,17 +70,25 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _profile =
         c?.institutionProfileId ??
         (profiles.isEmpty ? null : profiles.first.id);
+    _boundConfigurationId = c?.id;
+    _creating = c == null;
     _hydrated = true;
   }
 
   @override
   void didUpdateWidget(covariant ConfigurationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onSnapshot);
+      widget.controller.addListener(_onSnapshot);
+      if (_hydrated) _targetChanged = true;
+    }
     _sync();
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onSnapshot);
     _username.dispose();
     _password.dispose();
     super.dispose();
@@ -63,9 +97,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   @override
   Widget build(BuildContext context) {
     final snapshot = widget.controller.snapshot;
-    final c = widget.controller.capabilities.configuration;
     final profiles = snapshot?.profiles ?? const <InstitutionProfile>[];
-    final creating = c == null;
+    final creating = _creating;
     return DesignPage(
       children: [
         DesignHeader(title: '连接配置', onBack: widget.onBack),
@@ -86,12 +119,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                   child: Text(profile.displayName),
                 ),
             ],
-            onChanged:
-                _saving ||
-                    widget.controller.busy ||
-                    !(creating
-                        ? widget.controller.capabilities.canCreate
-                        : widget.controller.capabilities.canManage)
+            onChanged: _saving || widget.controller.busy || !_canSave
                 ? null
                 : (value) => setState(() => _profile = value),
           ),
@@ -102,12 +130,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           error: _usernameError,
           child: TextField(
             controller: _username,
-            enabled:
-                !_saving &&
-                !widget.controller.busy &&
-                (creating
-                    ? widget.controller.capabilities.canCreate
-                    : widget.controller.capabilities.canManage),
+            enabled: !_saving && !widget.controller.busy && _canSave,
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 10,
@@ -135,12 +158,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           child: TextField(
             controller: _password,
             obscureText: true,
-            enabled:
-                !_saving &&
-                !widget.controller.busy &&
-                (creating
-                    ? widget.controller.capabilities.canCreate
-                    : widget.controller.capabilities.canManage),
+            enabled: !_saving && !widget.controller.busy && _canSave,
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 10,
@@ -159,17 +177,16 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
             OutlinedButton(onPressed: widget.onBack, child: const Text('取消')),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed:
-                  _saving ||
-                      !(creating
-                          ? widget.controller.capabilities.canCreate
-                          : widget.controller.capabilities.canManage)
-                  ? null
-                  : _save,
+              onPressed: _saving || !_canSave ? null : _save,
               child: Text(creating ? '保存配置' : '保存更改'),
             ),
           ],
         ),
+        if (_targetChanged)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(_changedTargetGuidance),
+          ),
         if (widget.controller.notice != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -185,20 +202,28 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
             children: [
               DesignRow(
                 title: '移除当前会话',
-                subtitle: widget.controller.capabilities.canResetSession
+                subtitle:
+                    !_targetChanged &&
+                        widget.controller.capabilities.canResetSession
                     ? '清理当前 Session 记录'
                     : '没有可清理的会话或当前不可操作',
-                onTap: widget.controller.capabilities.canResetSession
+                onTap:
+                    !_targetChanged &&
+                        widget.controller.capabilities.canResetSession
                     ? () => _confirmMutation(false)
                     : null,
               ),
               DesignRow(
                 title: '删除登录配置',
-                subtitle: widget.controller.capabilities.canDeleteConfiguration
+                subtitle:
+                    !_targetChanged &&
+                        widget.controller.capabilities.canDeleteConfiguration
                     ? '删除已保存的账号与凭据'
                     : '当前状态不允许删除',
                 danger: true,
-                onTap: widget.controller.capabilities.canDeleteConfiguration
+                onTap:
+                    !_targetChanged &&
+                        widget.controller.capabilities.canDeleteConfiguration
                     ? () => _confirmMutation(true)
                     : null,
               ),
@@ -215,7 +240,12 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     final allowed = delete
         ? widget.controller.capabilities.canDeleteConfiguration
         : widget.controller.capabilities.canResetSession;
-    if (!allowed || c == null) return;
+    if (!allowed ||
+        c == null ||
+        _targetChanged ||
+        c.id != _boundConfigurationId) {
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -241,20 +271,13 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   }
 
   Future<void> _save() async {
-    if (!(widget.controller.capabilities.configuration == null
-        ? widget.controller.capabilities.canCreate
-        : widget.controller.capabilities.canManage)) {
-      return;
-    }
+    if (!_canSave) return;
     if (_profile == null ||
         _username.text.trim().isEmpty ||
-        (_password.text.isEmpty &&
-            widget.controller.capabilities.configuration == null)) {
+        (_password.text.isEmpty && _creating)) {
       setState(() {
         _usernameError = _username.text.trim().isEmpty ? '请输入校园网账号。' : null;
-        _passwordError =
-            _password.text.isEmpty &&
-                widget.controller.capabilities.configuration == null
+        _passwordError = _password.text.isEmpty && _creating
             ? '首次配置需要填写密码。'
             : null;
       });
@@ -265,13 +288,13 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _usernameError = null;
       _passwordError = null;
     });
-    final c = widget.controller.capabilities.configuration;
+    final boundId = _boundConfigurationId;
     final controller = widget.controller;
     final profile = _profile!;
     final username = _username.text.trim();
     final password = _password.text;
     var ok = false;
-    if (c == null) {
+    if (_creating) {
       ok = await controller.createConfiguration(
         institutionProfileId: profile,
         username: username,
@@ -279,7 +302,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       );
     } else {
       ok = await controller.updateConfiguration(
-        configurationId: c.id,
+        configurationId: boundId!,
         institutionProfileId: profile,
         username: username,
         password: password.isEmpty ? null : password,
