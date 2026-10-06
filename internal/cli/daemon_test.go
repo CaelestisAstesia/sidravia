@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +63,26 @@ func TestDaemonStatusPresentationUsesBootstrapInspection(t *testing.T) {
 			t.Fatalf("output=%q", output.String())
 		}
 	})
+}
+
+func TestRunDaemonStatusSuccessAuthoritative(t *testing.T) {
+	result := &contract.StatusResult{
+		ProductVersion: "1.4.2",
+		BuildID:        "build-deadbeef",
+		PID:            9876,
+		Status:         "running",
+		Mode:           "headless",
+	}
+	var output strings.Builder
+	if err := runDaemonStatus(testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Status: result}, nil), &output); err != nil {
+		t.Fatalf("runDaemonStatus = %v, want nil", err)
+	}
+	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d | 模式：%s\n",
+		result.Status, result.ProductVersion, result.BuildID, result.PID, result.Mode)
+	expected += "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
+	if got := output.String(); got != expected {
+		t.Errorf("runDaemonStatus output = %q, want %q", got, expected)
+	}
 }
 
 func TestDaemonStopTargetsContactedGeneration(t *testing.T) {

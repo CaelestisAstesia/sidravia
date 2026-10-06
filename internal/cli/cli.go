@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/ipc/contract"
 )
 
 const commandUsage = "用法错误，请运行 sidraviactl help 查看帮助"
@@ -845,26 +844,4 @@ func isHelpRequest(args []string) bool {
 func renderHelpCompletion(cmd *cobra.Command) error {
 	p := newPresentation(cmd.OutOrStdout())
 	return wrapSafeOperation("显示帮助", p.complete(renderHelp(p, cmd)))
-}
-
-// writeStatus renders a daemon.status response to w through the presentation
-// boundary. A non-OK response is mapped to fixed Chinese guidance without the
-// daemon message; otherwise the StatusResult is decoded and rendered as the
-// canonical one-line Chinese format. It never writes a partial success line.
-func writeStatus(w io.Writer, resp contract.Response) error {
-	if !resp.OK {
-		code := ""
-		if resp.Error != nil {
-			code = resp.Error.Code
-		}
-		return errors.New(ipcErrorText(code))
-	}
-
-	var result contract.StatusResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return wrapSafeOperation("解码 daemon 状态响应", err)
-	}
-
-	p := newPresentation(w)
-	return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStatus(p, &result)))
 }

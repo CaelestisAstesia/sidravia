@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -581,39 +580,6 @@ func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
 	}
 }
 
-func TestWriteStatusSuccessAuthoritative(t *testing.T) {
-	result := contract.StatusResult{
-		ProductVersion: "1.4.2",
-		BuildID:        "build-deadbeef",
-		PID:            9876,
-		Status:         "running",
-		Mode:           "headless",
-	}
-	payload, err := contract.MarshalStatusResult(result)
-	if err != nil {
-		t.Fatalf("marshal status result: %v", err)
-	}
-	resp := contract.NewSuccessResponse("1", payload)
-
-	var buf bytes.Buffer
-	if err := writeStatus(&buf, resp); err != nil {
-		t.Fatalf("writeStatus = %v, want nil", err)
-	}
-
-	// The expected line is built only from the Response.
-	var authoritative contract.StatusResult
-	if err := json.Unmarshal(resp.Result, &authoritative); err != nil {
-		t.Fatalf("unmarshal response result: %v", err)
-	}
-	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d | 模式：%s\n",
-		authoritative.Status, authoritative.ProductVersion, authoritative.BuildID, authoritative.PID, authoritative.Mode)
-	expected += "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
-
-	if got := buf.String(); got != expected {
-		t.Errorf("writeStatus output = %q, want %q", got, expected)
-	}
-}
-
 func TestAuthStartHelpIncludesStatusNextStep(t *testing.T) {
 	var output bytes.Buffer
 	deps := commandDependencies{output: &output}
@@ -623,30 +589,6 @@ func TestAuthStartHelpIncludesStatusNextStep(t *testing.T) {
 	want := "下一步：使用返回的 Session ID 运行 sidraviactl auth status <session-id>；不知道 ID 时先运行 sidraviactl auth list。"
 	if !strings.Contains(output.String(), want) {
 		t.Fatalf("auth start help omitted actionable next step %q:\n%s", want, output.String())
-	}
-}
-
-func TestWriteStatusDaemonError(t *testing.T) {
-	resp := contract.NewErrorResponse("1", "internal", "daemon exploded")
-	var buf bytes.Buffer
-	err := writeStatus(&buf, resp)
-	if err == nil {
-		t.Fatal("writeStatus = nil, want error")
-	}
-	if buf.Len() != 0 {
-		t.Errorf("writer = %q, want empty", buf.String())
-	}
-}
-
-func TestWriteStatusMalformedResult(t *testing.T) {
-	resp := contract.NewSuccessResponse("1", json.RawMessage("not-valid-json"))
-	var buf bytes.Buffer
-	err := writeStatus(&buf, resp)
-	if err == nil {
-		t.Fatal("writeStatus = nil, want error")
-	}
-	if buf.Len() != 0 {
-		t.Errorf("writer = %q, want empty", buf.String())
 	}
 }
 
