@@ -101,7 +101,7 @@ void main() {
         final prefix = portable
             ? (ns.isEmpty ? '$exe/config' : '$exe/namespaces/$ns')
             : (ns.isEmpty ? '$user/Sidravia' : '$user/Sidravia/namespaces/$ns');
-        expect(result.path, '$prefix/gui-settings.json');
+        expect(result.path, File('$prefix/gui-settings.json').uri.toFilePath());
         expect(result.mode, portable ? 'portable' : 'installed');
         final previous = Directory.current;
         try {
@@ -121,7 +121,9 @@ void main() {
     }
   });
   test('drive or filesystem root produces a clean joined path', () {
-    final driveRoot = Directory(root.path).uri.resolve('/').toFilePath();
+    final driveRoot = Platform.isWindows
+        ? '${root.path.substring(0, 2)}${Platform.pathSeparator}'
+        : '/';
     final result = resolveWindowsGuiSettings(
       executable: '${driveRoot}Sidravia.exe',
       userConfigRoot: driveRoot,
