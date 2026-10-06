@@ -105,7 +105,10 @@ class SettingsPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 7),
-        const DesignHelper('外观选择仅在本次运行中生效。'),
+        if (appearance?.feedback != null)
+          DesignHelper(appearance!.feedback!)
+        else if (appearance != null && !appearance.persistent)
+          const DesignHelper('离线演示：外观只保存在演示内存中。'),
       ],
     );
   }

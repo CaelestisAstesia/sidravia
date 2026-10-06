@@ -198,10 +198,10 @@ void main() {
       expect(position.pixels, greaterThan(0));
       expect(find.byType(Scrollbar), findsNothing);
       expect(find.byType(RawScrollbar), findsNothing);
-      await tester.ensureVisible(find.text('外观选择仅在本次运行中生效。'));
+      await tester.ensureVisible(find.text('关于 Sidravia'));
       await tester.pumpAndSettle();
       expect(
-        tester.getRect(find.text('外观选择仅在本次运行中生效。')).bottom,
+        tester.getRect(find.text('关于 Sidravia')).bottom,
         lessThanOrEqualTo(220),
       );
       await tester.pumpWidget(const SizedBox.shrink());

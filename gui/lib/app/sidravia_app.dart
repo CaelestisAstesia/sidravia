@@ -15,8 +15,10 @@ class SidraviaApp extends StatefulWidget {
     required this.controller,
     this.announcements,
     this.desktopPresence,
+    this.appearance,
   });
   final GuiController controller;
+  final Appearance? appearance;
   final AnnouncementController? announcements;
   final DesktopPresence? desktopPresence;
 
@@ -25,7 +27,7 @@ class SidraviaApp extends StatefulWidget {
 }
 
 class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
-  final _appearance = Appearance();
+  late final _appearance = widget.appearance ?? Appearance();
   final _windowObserver = SidraviaWindowObserver();
   @override
   void initState() {

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:sidravia_gui/platform/gui_settings_storage.dart';
+
 import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
 
 import 'package:flutter/services.dart';
@@ -15,17 +17,26 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
 
-void main() => runApp(const OfflineDemoApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const directory = String.fromEnvironment('SIDRAVIA_DEMO_SETTINGS_DIR');
+  final appearance = directory.isEmpty
+      ? Appearance()
+      : Appearance(store: isolatedDemoGuiSettingsStore(directory));
+  await appearance.initialize();
+  runApp(OfflineDemoApp(appearance: appearance));
+}
 
 /// Composition only: every destination is the unchanged production page.
 class OfflineDemoApp extends StatefulWidget {
-  const OfflineDemoApp({super.key});
+  const OfflineDemoApp({super.key, this.appearance});
+  final Appearance? appearance;
   @override
   State<OfflineDemoApp> createState() => _OfflineDemoAppState();
 }
 
 class _OfflineDemoAppState extends State<OfflineDemoApp> {
-  final _appearance = Appearance();
+  late final _appearance = widget.appearance ?? Appearance();
   final _windowObserver = SidraviaWindowObserver();
   late final OfflineDemoClient _client;
   late final GuiController _controller;

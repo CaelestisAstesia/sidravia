@@ -1,9 +1,61 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
+  test(
+    'late startup read never overwrites user selection; saves serialize',
+    () async {
+      final store = ControlledStore();
+      final appearance = Appearance(store: store);
+      appearance.value = ThemeMode.dark;
+      appearance.value = ThemeMode.light;
+      appearance.value = ThemeMode.system;
+      store.readResult.complete(GuiAppearanceMode.light);
+      await appearance.settled;
+      expect(appearance.value, ThemeMode.system);
+      expect(store.saved, [
+        GuiAppearanceMode.dark,
+        GuiAppearanceMode.light,
+        GuiAppearanceMode.system,
+      ]);
+      expect(store.maximumActive, 1);
+      appearance.dispose();
+    },
+  );
+  test('failed load blocks overwrite but user theme applies', () async {
+    final store = ControlledStore();
+    final appearance = Appearance(store: store);
+    final loading = appearance.initialize();
+    store.readResult.completeError(const FormatException());
+    await loading;
+    appearance.value = ThemeMode.dark;
+    await appearance.settled;
+    expect(appearance.value, ThemeMode.dark);
+    expect(store.saved, isEmpty);
+    expect(appearance.feedback, contains('原文件保留'));
+    appearance.dispose();
+  });
+  test(
+    'save failure does not report success or revert current theme',
+    () async {
+      final store = ControlledStore()..failSave = true;
+      store.readResult.complete(null);
+      final appearance = Appearance(store: store);
+      await appearance.initialize();
+      appearance.value = ThemeMode.dark;
+      await appearance.settled;
+      expect(appearance.value, ThemeMode.dark);
+      expect(appearance.feedback, contains('未能保存'));
+      appearance.dispose();
+    },
+  );
+
   for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
     for (final scale in [1.0, 2.0]) {
       for (final dark in [false, true]) {
@@ -78,5 +130,25 @@ void main() {
         });
       }
     }
+  }
+}
+
+class ControlledStore implements GuiSettingsStore {
+  final readResult = Completer<GuiAppearanceMode?>();
+  final saved = <GuiAppearanceMode>[];
+  int active = 0, maximumActive = 0;
+  bool failSave = false;
+  @override
+  bool get persistent => true;
+  @override
+  Future<GuiAppearanceMode?> read() => readResult.future;
+  @override
+  Future<void> save(GuiAppearanceMode mode) async {
+    active++;
+    if (active > maximumActive) maximumActive = active;
+    await Future<void>.delayed(Duration.zero);
+    active--;
+    if (failSave) throw StateError('fixture');
+    saved.add(mode);
   }
 }
