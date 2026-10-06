@@ -168,6 +168,7 @@ void main() {
     );
     await started;
     expect(controller.announcements.map((item) => item.id), ['b-new']);
+    await pumpEventQueue();
     expect(store.lastWritten?.etag, '"e2"');
     expect(store.lastWritten?.lastSuccessUtc, now);
   });
@@ -244,8 +245,10 @@ void main() {
 
       await controller.start();
       expect(controller.announcements.map((item) => item.id), ['a-old']);
+      await pumpEventQueue();
       expect(store.writes, 1);
       expect(store.lastWritten?.lastSuccessUtc, now);
+      await pumpEventQueue();
       expect(store.lastWritten?.etag, '"e2"');
       expect(store.lastWritten?.lastModified, 'Tue, 18 Aug 2026 12:00:00 GMT');
 
@@ -405,6 +408,7 @@ void main() {
     expect(controller.unreadCount, 2);
     controller.markCurrentRead();
     expect(controller.unreadCount, 0);
+    await pumpEventQueue();
     expect(store.lastWritten?.readKeys, containsAll(<String>['a@1', 'b@1']));
 
     final capped = _FakeStore(
@@ -423,6 +427,7 @@ void main() {
     await cappedController.start();
     expect(cappedController.unreadCount, 1);
     cappedController.markCurrentRead();
+    await pumpEventQueue();
     final keys = capped.lastWritten?.readKeys;
     expect(keys, hasLength(128));
     expect(keys?.first, 'new-item@1');
@@ -445,6 +450,7 @@ void main() {
       controller.dismissInline('m@1');
       expect(controller.inlineNotice, isNull);
       expect(controller.announcements.map((item) => item.id), ['m']);
+      await pumpEventQueue();
       expect(store.lastWritten?.dismissedKeys, contains('m@1'));
     },
   );
