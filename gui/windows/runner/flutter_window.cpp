@@ -412,7 +412,8 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       if (activate) ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
       return 0;
     }
-    if (message == WM_SIZE || message == WM_DPICHANGED || message == WM_MOVE) {
+    if (message == WM_SIZE || message == WM_DPICHANGED || message == WM_MOVE ||
+        message == WM_ACTIVATE) {
       const auto result = Win32Window::MessageHandler(hwnd, message, wparam, lparam);
       PublishWindowState();
       // Flutter also needs the DPI/size event; its result must not skip native state.
@@ -472,6 +473,11 @@ flutter::EncodableMap FlutterWindow::WindowState() {
   visible = outer;
   const HRESULT visible_result = DwmGetWindowAttribute(
       hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &visible, sizeof(visible));
+  BOOL composition = FALSE, non_client_rendering = FALSE;
+  const HRESULT composition_result = DwmIsCompositionEnabled(&composition);
+  const HRESULT non_client_result = DwmGetWindowAttribute(
+      hwnd, DWMWA_NCRENDERING_ENABLED, &non_client_rendering,
+      sizeof(non_client_rendering));
   GetClientRect(hwnd, &client);
   const double dpi = static_cast<double>(GetDpiForWindow(hwnd));
   const double scale = dpi / 96.0;
@@ -484,6 +490,7 @@ flutter::EncodableMap FlutterWindow::WindowState() {
   };
   return {
     {EncodableValue("maximized"), EncodableValue(IsZoomed(hwnd) != FALSE)},
+    {EncodableValue("active"), EncodableValue(GetForegroundWindow() == hwnd)},
     {EncodableValue("minimized"), EncodableValue(IsIconic(hwnd) != FALSE)},
     {EncodableValue("maximizeHovered"), EncodableValue(maximize_hovered_)},
     {EncodableValue("maximizePressed"), EncodableValue(maximize_pressed_)},
@@ -499,6 +506,11 @@ flutter::EncodableMap FlutterWindow::WindowState() {
     {EncodableValue("customFrame"), EncodableValue(custom_frame_enabled())},
     {EncodableValue("darkFrame"), EncodableValue(frame_dark_mode())},
     {EncodableValue("cornerHRESULT"), EncodableValue(static_cast<int>(corner_result()))},
+    {EncodableValue("borderHRESULT"), EncodableValue(static_cast<int>(border_result()))},
+    {EncodableValue("dwmComposition"), EncodableValue(composition != FALSE)},
+    {EncodableValue("compositionHRESULT"), EncodableValue(static_cast<int>(composition_result))},
+    {EncodableValue("nonClientRendering"), EncodableValue(non_client_rendering != FALSE)},
+    {EncodableValue("nonClientHRESULT"), EncodableValue(static_cast<int>(non_client_result))},
     {EncodableValue("visibleHRESULT"), EncodableValue(static_cast<int>(visible_result))},
     {EncodableValue("closeToTray"), EncodableValue(desktop_presence_initialized_)},
   };

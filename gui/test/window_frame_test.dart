@@ -84,6 +84,7 @@ void main() {
             ]),
           );
         } else {
+          expect(find.byKey(const ValueKey('window-outline')), findsNothing);
           expect(calls, isEmpty);
         }
       }, variant: TargetPlatformVariant({platform}));
@@ -236,6 +237,125 @@ void main() {
     },
     variant: TargetPlatformVariant({TargetPlatform.windows}),
   );
+  for (final dpr in [1.0, 1.25, 1.5, 2.0]) {
+    for (final dark in [false, true]) {
+      testWidgets('one physical pixel outline dpr=$dpr dark=$dark', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = dpr;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.binding.setSurfaceSize(const Size(400, 688));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        var taps = 0;
+        final background = dark ? AppColors.bgDark : AppColors.bgLight;
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: dark ? AppTheme.dark() : AppTheme.light(),
+            home: RepaintBoundary(
+              key: const ValueKey('outline-capture'),
+              child: SidraviaWindowFrame(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => taps++,
+                  child: ColoredBox(
+                    key: const ValueKey('outline-business'),
+                    color: background,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final content = tester.getRect(
+          find.byKey(const ValueKey('outline-business')),
+        );
+        expect(content, const Rect.fromLTWH(0, 46, 400, 642));
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('outline-capture')),
+        );
+        Future<void> checkPixels(String state, Color expected) async {
+          await tester.runAsync(() async {
+            final image = await boundary.toImage(pixelRatio: dpr);
+            final bytes = await image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            );
+            final pixels = bytes!.buffer.asUint8List();
+            final w = image.width, h = image.height;
+            List<int> rgba(Color color) => [
+              (color.r * 255).round(),
+              (color.g * 255).round(),
+              (color.b * 255).round(),
+              (color.a * 255).round(),
+            ];
+            List<int> pixel(int x, int y) =>
+                pixels.sublist((y * w + x) * 4, (y * w + x) * 4 + 4);
+            // Exactly one outer pixel on each side, with unchanged page pixels
+            // immediately inside it. This detects blurry/thick or doubled edges.
+            expect(pixel(0, h ~/ 2), rgba(expected));
+            expect(pixel(w - 1, h ~/ 2), rgba(expected));
+            expect(pixel(w ~/ 2, 0), rgba(expected));
+            expect(pixel(w ~/ 2, h - 1), rgba(expected));
+            expect(pixel(1, h ~/ 2), rgba(background));
+            expect(pixel(w - 2, h ~/ 2), rgba(background));
+            expect(pixel(w ~/ 2, 1), rgba(background));
+            expect(pixel(w ~/ 2, h - 2), rgba(background));
+            const output = String.fromEnvironment('EDGE_OUTPUT');
+            if (output.isNotEmpty && dpr == 1) {
+              final png = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              await Directory(output).create(recursive: true);
+              await File('$output/${dark ? "dark" : "light"}-$state.png')
+                  .writeAsBytes(png!.buffer.asUint8List());
+            }
+            image.dispose();
+          });
+        }
+
+        Future<void> state(bool active, bool maximized) async {
+          await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+            'sidravia/window',
+            const StandardMethodCodec().encodeMethodCall(
+              MethodCall('stateChanged', {
+                'active': active,
+                'maximized': maximized,
+              }),
+            ),
+            (_) {},
+          );
+          await tester.pumpAndSettle();
+          expect(
+            tester.getRect(find.byKey(const ValueKey('outline-business'))),
+            content,
+          );
+        }
+
+        await checkPixels(
+          'active',
+          dark ? const Color(0xff5d6878) : const Color(0xffa6b1bf),
+        );
+        // The paint layer must not intercept business input at the inner edge.
+        await tester.tapAt(const Offset(.2, 140));
+        expect(taps, 1);
+        await state(false, false);
+        await checkPixels(
+          'inactive',
+          dark ? const Color(0xff465160) : const Color(0xffbec6d0),
+        );
+        await state(false, true);
+        await checkPixels('maximized', background);
+        await state(true, false);
+        await checkPixels(
+          'restored',
+          dark ? const Color(0xff5d6878) : const Color(0xffa6b1bf),
+        );
+        expect(tester.takeException(), isNull);
+      }, variant: TargetPlatformVariant({TargetPlatform.windows}));
+    }
+  }
   testWidgets('same business-size frame candidate', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);

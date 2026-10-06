@@ -49,6 +49,7 @@ class SidraviaWindowFrame extends StatefulWidget {
 
 class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
   bool _maximized = false, _hovered = false, _pressed = false;
+  bool _active = true;
   String? _error;
   final _maximizeTooltip = GlobalKey<TooltipState>();
   Brightness? _brightness;
@@ -108,6 +109,7 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
       _maximized = value['maximized'] == true;
       _hovered = value['maximizeHovered'] == true;
       _pressed = value['maximizePressed'] == true;
+      if (value['active'] is bool) _active = value['active'] as bool;
     });
     if (_hovered && !wasHovered) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -141,61 +143,76 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
   Widget build(BuildContext context) {
     if (!_windows) return widget.child;
     final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: Column(
-        children: [
-          SizedBox(
-            key: const ValueKey('window-top'),
-            height: 46,
-            child: Stack(
-              children: [
-                // Native HTCAPTION owns this blank area, including double-click.
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Row(
-                    children: [
-                      _control(
-                        '最小化',
-                        Icons.remove,
-                        SidraviaWindowCommands.minimize,
-                      ),
-                      const SizedBox(width: 2),
-                      _control(
-                        _maximized ? '还原' : '最大化',
-                        _maximized ? Icons.filter_none : Icons.crop_square,
-                        SidraviaWindowCommands.toggleMaximize,
-                        tooltipKey: _maximizeTooltip,
-                        hovered: _hovered,
-                        pressed: _pressed,
-                      ),
-                      const SizedBox(width: 2),
-                      _control(
-                        '关闭',
-                        Icons.close,
-                        SidraviaWindowCommands.close,
-                        close: true,
-                      ),
-                    ],
-                  ),
-                ),
-                if (_error != null)
+    return CustomPaint(
+      key: const ValueKey('window-outline'),
+      foregroundPainter: _maximized
+          ? null
+          : _WindowOutline(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? (_active
+                        ? const Color(0xff5d6878)
+                        : const Color(0xff465160))
+                  : (_active
+                        ? const Color(0xffa6b1bf)
+                        : const Color(0xffbec6d0)),
+              devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+            ),
+      child: Material(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          children: [
+            SizedBox(
+              key: const ValueKey('window-top'),
+              height: 46,
+              child: Stack(
+                children: [
+                  // Native HTCAPTION owns this blank area, including double-click.
                   Positioned(
-                    left: 8,
-                    top: 4,
-                    right: 128,
-                    child: Text(
-                      _error!,
-                      maxLines: 2,
-                      style: TextStyle(fontSize: 10, color: scheme.error),
+                    top: 10,
+                    right: 10,
+                    child: Row(
+                      children: [
+                        _control(
+                          '最小化',
+                          Icons.remove,
+                          SidraviaWindowCommands.minimize,
+                        ),
+                        const SizedBox(width: 2),
+                        _control(
+                          _maximized ? '还原' : '最大化',
+                          _maximized ? Icons.filter_none : Icons.crop_square,
+                          SidraviaWindowCommands.toggleMaximize,
+                          tooltipKey: _maximizeTooltip,
+                          hovered: _hovered,
+                          pressed: _pressed,
+                        ),
+                        const SizedBox(width: 2),
+                        _control(
+                          '关闭',
+                          Icons.close,
+                          SidraviaWindowCommands.close,
+                          close: true,
+                        ),
+                      ],
                     ),
                   ),
-              ],
+                  if (_error != null)
+                    Positioned(
+                      left: 8,
+                      top: 4,
+                      right: 128,
+                      child: Text(
+                        _error!,
+                        maxLines: 2,
+                        style: TextStyle(fontSize: 10, color: scheme.error),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          Expanded(child: widget.child),
-        ],
+            Expanded(child: widget.child),
+          ],
+        ),
       ),
     );
   }
@@ -275,6 +292,40 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
       ),
     );
   }
+}
+
+/// Paints inside the client rectangle without consuming layout or pointer space.
+/// A filled, pixel-aligned strip avoids the blur of a centered logical stroke.
+class _WindowOutline extends CustomPainter {
+  const _WindowOutline({required this.color, required this.devicePixelRatio});
+  final Color color;
+  final double devicePixelRatio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final thickness = 1 / devicePixelRatio;
+    final paint = Paint()
+      ..color = color
+      ..isAntiAlias = false;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, thickness), paint);
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.height - thickness, size.width, thickness),
+      paint,
+    );
+    canvas.drawRect(Rect.fromLTWH(0, 0, thickness, size.height), paint);
+    canvas.drawRect(
+      Rect.fromLTWH(size.width - thickness, 0, thickness, size.height),
+      paint,
+    );
+  }
+
+  @override
+  bool hitTest(Offset position) => false;
+
+  @override
+  bool shouldRepaint(_WindowOutline oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.devicePixelRatio != devicePixelRatio;
 }
 
 // Original HTML SVG paths, using its 24-unit viewBox and 17px control icon.

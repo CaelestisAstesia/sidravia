@@ -314,6 +314,13 @@ void Win32Window::EnableCustomFrame(bool enabled) {
   const int preference = 1;
   corner_result_ = DwmSetWindowAttribute(window_handle_, 33, &preference,
                                         sizeof(preference));
+  // DWMWA_BORDER_COLOR (34): the Flutter frame draws one physical-pixel edge.
+  // Suppress the Win11 edge to avoid a double outline; restore the system
+  // default when disabling the custom frame. Older systems return E_INVALIDARG.
+  // This changes only the border, not DWM non-client rendering/shadow policy.
+  const COLORREF border = enabled ? 0xFFFFFFFE : 0xFFFFFFFF;
+  border_result_ = DwmSetWindowAttribute(window_handle_, 34, &border,
+                                        sizeof(border));
   SetWindowPos(window_handle_, nullptr, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                SWP_FRAMECHANGED);
