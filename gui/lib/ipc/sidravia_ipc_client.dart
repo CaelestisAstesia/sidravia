@@ -14,6 +14,8 @@ abstract interface class SidraviaIpcClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   });
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,

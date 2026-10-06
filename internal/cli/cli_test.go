@@ -48,7 +48,7 @@ func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
 		configCreate:      func(options configCreateOptions) error { calls = append(calls, "create:"+options.id); return nil },
 		configUpdate:      func(options configUpdateOptions) error { calls = append(calls, "update:"+options.id); return nil },
 		configSetPassword: func(options configPasswordOptions) error { calls = append(calls, "password:"+options.id); return nil },
-		configRemove: func(id string, yes bool) error {
+		configRemove: func(id string, yes, allow bool) error {
 			calls = append(calls, fmt.Sprintf("remove:%s:%t", id, yes))
 			return nil
 		},
@@ -863,7 +863,7 @@ func TestNoSettingsCommandExists(t *testing.T) {
 		configCreate:      func(configCreateOptions) error { return nil },
 		configUpdate:      func(configUpdateOptions) error { return nil },
 		configSetPassword: func(configPasswordOptions) error { return nil },
-		configRemove:      func(string, bool) error { return nil },
+		configRemove:      func(string, bool, bool) error { return nil },
 		output:            io.Discard,
 	}
 	if err := runCommand([]string{"settings"}, deps); err == nil {

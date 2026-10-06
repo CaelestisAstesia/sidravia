@@ -36,6 +36,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   );
   SessionSummary? _session;
   int _revision = 0;
+  int _sessionSerial = 0;
   String _feedback = '模拟已连接；没有连接真实校园网';
   final List<String> _operations = [];
   bool _closed = false;
@@ -94,7 +95,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   SessionSummary _newSession(String state, {DateTime? establishedAt}) {
     final c = _configuration!;
     return SessionSummary(
-      id: 'demo-session',
+      id: _sessionSerial == 0 ? 'demo-session' : 'demo-session-$_sessionSerial',
       configurationId: c.id,
       displayName: c.displayName,
       accountName: c.username,
@@ -190,15 +191,23 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async {
-    _requireConfiguration(configurationId);
+    final previous = _requireConfiguration(configurationId);
     if (institutionProfileId != profile.id) {
       throw const IpcRequestFailure('profile_not_found');
     }
     final c = _replaceConfiguration(
       username: username,
       institutionProfileId: institutionProfileId,
+      credentialStored: password == null ? previous.credentialStored : true,
     );
+    if (username != previous.username ||
+        institutionProfileId != previous.institutionProfileId ||
+        password != null) {
+      _session = null;
+    }
     _record('configuration.update', '已模拟保存配置；仅保留在本次演示内存中');
     return c;
   }
@@ -210,6 +219,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
   }) async {
     _requireConfiguration(configurationId);
     final c = _replaceConfiguration(credentialStored: password.isNotEmpty);
+    _session = null;
     _record('configuration.set_password', '已模拟设置密码；密码内容未保存');
     return c;
   }
@@ -233,9 +243,10 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     required String configurationId,
     required bool autoReconnect,
   }) async {
-    _requireConfiguration(configurationId);
+    final previous = _requireConfiguration(configurationId);
     final c = _replaceConfiguration(autoReconnect: autoReconnect);
-    _record('configuration.set_auto_reconnect', '已模拟保存自动重连设置；没有执行真实认证或修改当前会话');
+    if (previous.autoReconnect != autoReconnect) _session = null;
+    _record('configuration.set_auto_reconnect', '已模拟保存自动重连设置；模拟会话按设置变更处理');
     return c;
   }
 
@@ -258,6 +269,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     String configurationId,
   ) async {
     _requireConfiguration(configurationId);
+    if (_session == null) _sessionSerial++;
     _session = _newSession('authenticated', establishedAt: DateTime.now());
     _record('session.start_configuration', '已模拟连接成功；没有进行真实认证');
     return _session!;

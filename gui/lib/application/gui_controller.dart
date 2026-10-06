@@ -36,6 +36,10 @@ class GuiController extends ChangeNotifier {
   GuiBootstrapFailure? _failure;
   GuiSnapshot? _snapshot;
   String? _notice;
+  String? _outdatedSessionId;
+  bool get sessionNeedsReset =>
+      _outdatedSessionId != null &&
+      _snapshot?.sessions.any((s) => s.id == _outdatedSessionId) == true;
 
   GuiConnectionState get state => _state;
   GuiBootstrapFailure? get failure => _failure;
@@ -71,11 +75,15 @@ class GuiController extends ChangeNotifier {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) => _mutate(
     (client) => client.configurationUpdate(
       configurationId: configurationId,
       institutionProfileId: institutionProfileId,
       username: username,
+      password: password,
+      allowInsecureStorage: allowInsecureStorage,
     ),
   );
 
@@ -264,6 +272,10 @@ class GuiController extends ChangeNotifier {
       completer.complete(_state == GuiConnectionState.ready);
     } on IpcRequestFailure catch (error) {
       if (_current(generation) && identical(_client, client)) {
+        if (error.code == 'configuration_session_invalidation_failed') {
+          _outdatedSessionId = capabilities.retainedSession?.id;
+          await _refresh(generation, client);
+        }
         _notice = _guidance(error.code, fallback);
         _scheduleRefresh(generation, client);
         _notify();
@@ -365,6 +377,8 @@ class GuiController extends ChangeNotifier {
   );
 
   String _guidance(String code, String fallback) => switch (code) {
+    'configuration_session_invalidation_failed' =>
+      '配置已提交，旧会话清理未完成；请在连接配置中移除旧会话后重试。',
     'profile_not_found' => '学校配置已不存在，请刷新。',
     'configuration_conflict' => '登录配置已存在，请刷新。',
     'insecure_storage_confirmation_required' => '凭据存储未受保护，密码未保存。',

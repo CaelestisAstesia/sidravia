@@ -45,6 +45,7 @@ func TestNormalizeConfigurationMethodsAndErrors(t *testing.T) {
 		contract.ErrorCodeConfigurationNotFound,
 		contract.ErrorCodeConfigurationConflict,
 		contract.ErrorCodeConfigurationOperationFailed,
+		contract.ErrorCodeConfigurationSessionInvalidationFailed,
 		contract.ErrorCodeInsecureStorageConfirmationRequired,
 		contract.ErrorCodeConfigurationAutoLoginConflict,
 		contract.ErrorCodeSessionNotFound,

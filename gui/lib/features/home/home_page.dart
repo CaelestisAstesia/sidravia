@@ -94,7 +94,8 @@ class HomePage extends StatelessWidget {
         controller.capabilities.canCreate || controller.capabilities.canManage;
     final primaryEnabled = canRetry
         ? !controller.busy
-        : controller.state == GuiConnectionState.ready &&
+        : !controller.sessionNeedsReset &&
+              controller.state == GuiConnectionState.ready &&
               (configuration == null
                   ? controller.capabilities.canCreate
                   : canStart);
@@ -204,7 +205,11 @@ class HomePage extends StatelessWidget {
                     _ => '连接服务不可用，请重试。',
                   }
                 : !primaryEnabled
-                ? (controller.busy ? '正在处理操作，请稍候。' : '当前配置或会话关系不允许执行连接操作。')
+                ? (controller.sessionNeedsReset
+                      ? '请先在连接配置中移除旧会话。'
+                      : controller.busy
+                      ? '正在处理操作，请稍候。'
+                      : '当前配置或会话关系不允许执行连接操作。')
                 : null),
         issue: session?.state == 'blocked_by_error'
             ? session?.lastAuthenticationFailure

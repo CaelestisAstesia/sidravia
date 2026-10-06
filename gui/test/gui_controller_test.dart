@@ -596,6 +596,8 @@ class _Client implements SidraviaDesktopClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async {
     _call('configuration.update');
     return _configuration;

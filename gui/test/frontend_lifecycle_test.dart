@@ -22,12 +22,17 @@ class _DelayedSaveClient extends OfflineDemoClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async {
+    submittedPassword = password;
     await updateGate.future;
     return super.configurationUpdate(
       configurationId: configurationId,
       institutionProfileId: institutionProfileId,
       username: username,
+      password: password,
+      allowInsecureStorage: allowInsecureStorage,
     );
   }
 
@@ -235,43 +240,43 @@ void main() {
   });
 
   for (final leaveDuringPassword in [false, true]) {
-    testWidgets('save survives Escape, password stage=$leaveDuringPassword', (
-      tester,
-    ) async {
-      final client = _DelayedSaveClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-        pollDelay: const Duration(days: 1),
-      );
-      await controller.start();
-      await _mount(tester, controller);
-      await _openConfiguration(tester);
-      await tester.enterText(find.byType(TextField).first, 'saved-account');
-      await tester.enterText(find.byType(TextField).last, 'fake-password');
-      await tester.tap(find.text('保存更改'));
-      await tester.pump();
-      if (leaveDuringPassword) {
-        client.updateGate.complete();
+    testWidgets(
+      'atomic save survives Escape, delayed frame=$leaveDuringPassword',
+      (tester) async {
+        final client = _DelayedSaveClient();
+        final controller = GuiController(
+          bootstrapper: OfflineDemoBootstrap(),
+          connector: (_) async => client,
+          pollDelay: const Duration(days: 1),
+        );
+        await controller.start();
+        await _mount(tester, controller);
+        await _openConfiguration(tester);
+        await tester.enterText(find.byType(TextField).first, 'saved-account');
+        await tester.enterText(find.byType(TextField).last, 'fake-password');
+        await tester.tap(find.text('保存更改'));
+        await tester.pump();
+        if (leaveDuringPassword) {
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(client.submittedPassword, 'fake-password');
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
+        expect(find.byType(ConfigurationPage), findsNothing);
+        client.updateGate.complete();
+        client.passwordGate.complete();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
         expect(client.submittedPassword, 'fake-password');
-      }
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-      expect(find.byType(ConfigurationPage), findsNothing);
-      if (!leaveDuringPassword) client.updateGate.complete();
-      client.passwordGate.complete();
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(client.submittedPassword, 'fake-password');
-      expect(
-        controller.snapshot!.configurations.single.username,
-        'saved-account',
-      );
-      expect(controller.busy, isFalse);
-      expect(find.byType(HomePage), findsOneWidget);
-      await _unmount(tester, controller);
-    });
+        expect(
+          controller.snapshot!.configurations.single.username,
+          'saved-account',
+        );
+        expect(controller.busy, isFalse);
+        expect(find.byType(HomePage), findsOneWidget);
+        await _unmount(tester, controller);
+      },
+    );
   }
 
   testWidgets('first create survives Cancel while request is pending', (

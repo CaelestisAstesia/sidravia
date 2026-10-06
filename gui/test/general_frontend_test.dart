@@ -28,12 +28,16 @@ class FailingClient extends OfflineDemoClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async {
     if (fail) throw const IpcRequestFailure('session_state_conflict');
     return super.configurationUpdate(
       configurationId: configurationId,
       institutionProfileId: institutionProfileId,
       username: username,
+      password: password,
+      allowInsecureStorage: allowInsecureStorage,
     );
   }
 }

@@ -119,6 +119,8 @@ void main() {
       configurationId: 'fixture-configuration',
       institutionProfileId: 'jlu',
       username: 'fixture-user',
+      password: 'replacement-password',
+      allowInsecureStorage: true,
     );
     await client.configurationSetPassword(
       configurationId: 'fixture-configuration',
@@ -159,6 +161,13 @@ void main() {
       'allowInsecureStorage': false,
       'autoLogin': false,
       'autoReconnect': true,
+    });
+    expect(received[1]['payload'], {
+      'configurationId': 'fixture-configuration',
+      'institutionProfileId': 'jlu',
+      'username': 'fixture-user',
+      'password': 'replacement-password',
+      'allowInsecureStorage': true,
     });
     expect(received[2]['payload'], {
       'configurationId': 'fixture-configuration',

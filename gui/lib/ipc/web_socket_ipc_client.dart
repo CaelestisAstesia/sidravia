@@ -98,10 +98,14 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.update', {
     'configurationId': configurationId,
     'institutionProfileId': institutionProfileId,
     'username': username,
+    'password': ?password,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override

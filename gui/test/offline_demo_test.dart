@@ -104,6 +104,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
 
+      expect(controller.snapshot!.sessions, isEmpty);
+      await controller.startConfiguration('demo-config');
+      await tester.pumpAndSettle();
       await tester.tap(find.text('连接详情'));
       await tester.pumpAndSettle();
       expect(

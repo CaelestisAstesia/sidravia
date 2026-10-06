@@ -74,8 +74,11 @@ func (fake *fakeConfigurationApplication) SetConfigurationPassword(_ context.Con
 	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationSetPassword, id, password, allow
 	return fake.result, fake.err
 }
-func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id config.ConfigurationID) error {
+func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id config.ConfigurationID, allow ...bool) error {
 	fake.method, fake.id = contract.MethodConfigurationRemove, id
+	if len(allow) > 0 {
+		fake.allow = allow[0]
+	}
 	return fake.err
 }
 
@@ -170,5 +173,22 @@ func TestConfigurationHandlerMapsResolutionFailures(t *testing.T) {
 		if got == nil || got.Code != tc.code || strings.Contains(got.Message, "private-cause") {
 			t.Fatalf("failure %q = %#v", tc.failure, got)
 		}
+	}
+}
+
+func TestConfigurationHandlerForwardsAtomicPasswordAndRemoveConsent(t *testing.T) {
+	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
+	h := ConfigurationHandler(fake)
+	if _, err := h(context.Background(), contract.MethodConfigurationUpdate, []byte(`{"configurationId":"campus","username":"new","password":"private","allowInsecureStorage":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if fake.update.Password == nil || *fake.update.Password != "private" || !fake.update.AllowInsecureStorage {
+		t.Fatal("atomic password/consent lost")
+	}
+	if _, err := h(context.Background(), contract.MethodConfigurationRemove, []byte(`{"configurationId":"campus","allowInsecureStorage":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !fake.allow || fake.method != contract.MethodConfigurationRemove {
+		t.Fatal("remove consent lost")
 	}
 }

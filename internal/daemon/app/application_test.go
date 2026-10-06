@@ -230,11 +230,13 @@ func TestConfigurationStartActiveAndSuspendedEnsureSameRuntime(t *testing.T) {
 		t.Fatalf("active ensure created or revised Session: first=%#v again=%#v", firstResult, againResult)
 	}
 
+	// Direct catalog edits prove the Session actor retains its cloned runtime.
+	// Application edits are separately tested to retire that immutable Session.
 	changedUser := "new-user"
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &changedUser}); err != nil {
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Username: &changedUser}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := setup.application.SetConfigurationPassword(ctx, "configuration-1", "new-password", false); err != nil {
+	if _, err := setup.catalog.SetPassword(ctx, "configuration-1", "new-password", false); err != nil {
 		t.Fatal(err)
 	}
 	sameResult, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
@@ -348,8 +350,8 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err == nil {
 		t.Fatal("remove succeeded during replacement failure")
 	}
-	if _, err := setup.supervisor.Get(ctx, started.SessionID); err == nil {
-		t.Fatal("Session remained after successful Supervisor removal")
+	if _, err := setup.supervisor.Get(ctx, started.SessionID); err != nil {
+		t.Fatal("Session changed before successful persistence")
 	}
 	configuration, credential, err := setup.catalog.Resolve(ctx, "configuration-1")
 	if err != nil {
@@ -361,8 +363,8 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	setup.application.mu.Lock()
 	associated := setup.application.sessionsByConfig["configuration-1"]
 	setup.application.mu.Unlock()
-	if associated != "" {
-		t.Fatalf("association remained after successful Session removal: %q", associated)
+	if associated != started.SessionID {
+		t.Fatalf("association changed after failed persistence: %q", associated)
 	}
 	setup.store.mu.Lock()
 	setup.store.fail = false

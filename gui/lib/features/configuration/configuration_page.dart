@@ -282,13 +282,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         configurationId: c.id,
         institutionProfileId: profile,
         username: username,
+        password: password.isEmpty ? null : password,
       );
-      if (ok && password.isNotEmpty) {
-        ok = await controller.setPassword(
-          configurationId: c.id,
-          password: password,
-        );
-      }
     }
     if (mounted) {
       _password.clear();

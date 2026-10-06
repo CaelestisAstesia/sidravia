@@ -17,7 +17,7 @@ type configurationApplication interface {
 	CreateConfiguration(context.Context, config.Configuration, string, bool) (ConfigurationResult, error)
 	UpdateConfiguration(context.Context, config.ConfigurationID, config.Update) (ConfigurationResult, error)
 	SetConfigurationPassword(context.Context, config.ConfigurationID, string, bool) (ConfigurationResult, error)
-	RemoveConfiguration(context.Context, config.ConfigurationID) error
+	RemoveConfiguration(context.Context, config.ConfigurationID, ...bool) error
 }
 
 func ConfigurationHandler(application configurationApplication) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
@@ -68,7 +68,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 				converted := config.InstitutionProfileID(*request.InstitutionProfileID)
 				profile = &converted
 			}
-			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect})
+			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationSetPassword:
 			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
@@ -78,11 +78,11 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			value, err := application.SetConfigurationPassword(ctx, config.ConfigurationID(request.ConfigurationID), request.Password, request.AllowInsecureStorage)
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationRemove:
-			request, err := contract.DecodeConfigurationIDPayload(payload)
+			request, err := contract.DecodeConfigurationRemovePayload(payload)
 			if err != nil {
 				return nil, configurationInvalid()
 			}
-			if err := application.RemoveConfiguration(ctx, config.ConfigurationID(request.ConfigurationID)); err != nil {
+			if err := application.RemoveConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), request.AllowInsecureStorage); err != nil {
 				return nil, configurationError(err)
 			}
 			result, err := contract.MarshalConfigurationRemoveResult(contract.ConfigurationRemoveResult{ConfigurationID: request.ConfigurationID, Status: "removed"})
@@ -119,6 +119,9 @@ func configurationInvalid() *contract.Error {
 	return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed configuration payload"}
 }
 func configurationError(err error) *contract.Error {
+	if errors.Is(err, ErrConfigurationSessionInvalidation) {
+		return &contract.Error{Code: contract.ErrorCodeConfigurationSessionInvalidationFailed, Message: "configuration committed; session cleanup required"}
+	}
 	var resolutionFailure *ResolutionFailure
 	if errors.As(err, &resolutionFailure) {
 		switch resolutionFailure.Code() {

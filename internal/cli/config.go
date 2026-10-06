@@ -24,6 +24,7 @@ type configCreateOptions struct {
 	autoLoginExplicit, autoReconnectExplicit bool
 }
 type configUpdateOptions struct {
+	allowInsecure            bool
 	id                       string
 	name, profile, username  *string
 	autoLogin, autoReconnect *bool
@@ -98,6 +99,7 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 		}
 		return wrapCommandOperation(deps.configUpdate(update))
 	}}
+	updateCommand.Flags().BoolVar(&update.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
 	updateCommand.Flags().String("name", "", "显示名称")
 	updateCommand.Flags().String("profile", "", "Profile ID")
 	updateCommand.Flags().String("username", "", "账号")
@@ -112,10 +114,11 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	passwordCommand.Flags().BoolVar(&password.passwordStdin, "password-stdin", false, "从 stdin 读取密码")
 	passwordCommand.Flags().BoolVar(&password.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
 
-	var yes bool
+	var yes, allowRemove bool
 	removeCommand := &cobra.Command{Use: "remove <configuration-id>", Short: "删除认证配置", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error {
-		return wrapCommandOperation(deps.configRemove(args[0], yes))
+		return wrapCommandOperation(deps.configRemove(args[0], yes, allowRemove))
 	}}
+	removeCommand.Flags().BoolVar(&allowRemove, "allow-insecure-storage", false, "允许未保护存储")
 	removeCommand.Flags().BoolVar(&yes, "yes", false, "确认删除")
 	root.AddCommand(createCommand, updateCommand, passwordCommand, removeCommand)
 	return root
@@ -142,8 +145,8 @@ func configUpdate(identity clientbootstrap.Identity, options configUpdateOptions
 func configSetPassword(identity clientbootstrap.Identity, options configPasswordOptions) error {
 	return runConfigSetPassword(options, defaultAuthDependencies(identity))
 }
-func configRemove(identity clientbootstrap.Identity, id string, yes bool) error {
-	return runConfigRemove(id, yes, defaultAuthDependencies(identity))
+func configRemove(identity clientbootstrap.Identity, id string, yes, allow bool) error {
+	return runConfigRemove(id, yes, defaultAuthDependencies(identity), allow)
 }
 
 func callConfiguration(deps authDependencies, connection daemonClient, method string, payload any) (json.RawMessage, error) {
@@ -279,6 +282,11 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 	})
 }
 func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
+	if options.allowInsecure {
+		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
+			return wrapSafeOperation("写入存储警告", err)
+		}
+	}
 	return withAuthClient(deps, func(connection daemonClient) error {
 		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil {
 			if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
@@ -307,7 +315,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 			}
 		}
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationUpdate, contract.ConfigurationUpdatePayload{
-			ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile, Username: options.username,
+			ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile, Username: options.username, AllowInsecureStorage: options.allowInsecure,
 			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect,
 		})
 		if err != nil {
@@ -320,7 +328,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		if err := writeConfiguration(deps.stdout, result); err != nil {
 			return err
 		}
-		return writeAll(deps.stdout, "现有 Session 保留旧运行定义；请删除后从配置重新启动以应用更改。\n")
+		return writeAll(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
 	})
 }
 func runConfigSetPassword(options configPasswordOptions, deps authDependencies) error {
@@ -356,10 +364,16 @@ func runConfigSetPassword(options configPasswordOptions, deps authDependencies) 
 		if err := writeConfiguration(deps.stdout, result); err != nil {
 			return err
 		}
-		return writeAll(deps.stdout, "现有 Session 保留旧运行定义；请删除后从配置重新启动以应用更改。\n")
+		return writeAll(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
 	})
 }
-func runConfigRemove(id string, yes bool, deps authDependencies) error {
+func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) error {
+	permitted := len(allow) > 0 && allow[0]
+	if permitted {
+		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
+			return wrapSafeOperation("写入存储警告", err)
+		}
+	}
 	if !yes {
 		if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
 			return errors.New("非交互式删除需要 --yes")
@@ -374,7 +388,7 @@ func runConfigRemove(id string, yes bool, deps authDependencies) error {
 		}
 	}
 	return withAuthClient(deps, func(connection daemonClient) error {
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationRemove, contract.ConfigurationIDPayload{ConfigurationID: id})
+		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationRemove, contract.ConfigurationRemovePayload{ConfigurationID: id, AllowInsecureStorage: permitted})
 		if err != nil {
 			return err
 		}
