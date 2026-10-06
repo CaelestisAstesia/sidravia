@@ -110,8 +110,8 @@ void main() {
         tester.widget<AdvancedPage>(find.byType(AdvancedPage)).detailsOnly,
         isTrue,
       );
-      await tester.ensureVisible(find.text('技术诊断'));
-      await tester.tap(find.text('技术诊断'));
+      await tester.ensureVisible(find.text('诊断'));
+      await tester.tap(find.text('诊断'));
       await tester.pumpAndSettle();
       expect(
         tester.widget<AdvancedPage>(find.byType(AdvancedPage)).detailsOnly,

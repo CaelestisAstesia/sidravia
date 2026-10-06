@@ -8,7 +8,7 @@ extension AppPageCopy on AppPage {
     AppPage.settings => '设置',
     AppPage.configuration => '连接配置',
     AppPage.details => '连接详情',
-    AppPage.diagnostics => '技术诊断',
+    AppPage.diagnostics => '诊断',
   };
 
   IconData get icon => switch (this) {

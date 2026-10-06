@@ -19,11 +19,6 @@ class SettingsPage extends StatelessWidget {
     final c = controller.capabilities.configuration;
     final appearance = AppearanceScope.maybeOf(context);
     final mode = appearance?.value ?? ThemeMode.system;
-    final label = switch (mode) {
-      ThemeMode.system => '跟随系统',
-      ThemeMode.light => '浅色',
-      ThemeMode.dark => '深色',
-    };
     return DesignPage(
       children: [
         DesignHeader(title: '设置', onBack: onBack, backLabel: '返回连接'),
@@ -39,9 +34,7 @@ class SettingsPage extends StatelessWidget {
             ),
             DesignRow(
               title: '启动时自动登录',
-              subtitle: controller.capabilities.canEditAutoLogin
-                  ? '打开 Sidravia 后自动开始认证'
-                  : '当前配置或连接状态不允许修改',
+              subtitle: '启动Sidravia后自动开始认证',
               trailing: DesignSwitch(
                 key: const ValueKey('auto-login-switch'),
                 label: '启动时自动登录',
@@ -56,7 +49,7 @@ class SettingsPage extends StatelessWidget {
             ),
             const DesignRow(
               title: '自动重连',
-              subtitle: '后端能力暂不可用',
+              subtitle: '连接中断后自动尝试重新认证',
               trailing: DesignSwitch(
                 label: '自动重连',
                 value: false,
@@ -65,6 +58,11 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
         ),
+        if (!controller.capabilities.canEditAutoLogin)
+          Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: DesignHelper(_disabledReason(controller)),
+          ),
         if (controller.notice != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -79,52 +77,16 @@ class SettingsPage extends StatelessWidget {
           children: [
             DesignRow(
               title: '外观模式',
-              subtitle: label,
-              trailing: Container(
-                constraints: BoxConstraints(
-                  minWidth: 92,
-                  minHeight:
-                      Theme.of(context).platform == TargetPlatform.android ||
-                          Theme.of(context).platform == TargetPlatform.iOS
-                      ? 48
-                      : 30,
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 7),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: DropdownButton<ThemeMode>(
-                  isDense: true,
-                  value: mode,
-                  underline: const SizedBox.shrink(),
-                  style: TextStyle(
-                    fontFamily: 'HarmonyOS Sans',
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: ThemeMode.system,
-                      child: Text('跟随系统'),
-                    ),
-                    DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
-                    DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
-                  ],
-                  onChanged: appearance == null
-                      ? null
-                      : (value) {
-                          if (value != null) appearance.value = value;
-                        },
-                ),
+              trailing: AppearanceSelector(
+                value: mode,
+                onChanged: appearance == null
+                    ? null
+                    : (value) => appearance.value = value,
               ),
             ),
             DesignRow(
-              title: '技术诊断',
-              subtitle: 'Daemon、Session 与故障信息',
+              title: '诊断',
+              subtitle: '核心、会话与故障信息',
               onTap: () => onNavigate(AppPage.diagnostics),
             ),
             DesignRow(
@@ -145,6 +107,97 @@ class SettingsPage extends StatelessWidget {
         const SizedBox(height: 7),
         const DesignHelper('外观选择仅在本次运行中生效。'),
       ],
+    );
+  }
+}
+
+String _disabledReason(GuiController controller) {
+  if (controller.busy) return '正在处理操作，请稍后修改连接设置。';
+  if (!controller.capabilities.isReady) return '通信尚未就绪，暂时无法修改连接设置。';
+  if (controller.snapshot?.daemon.status != 'running') {
+    return '核心服务未运行，暂时无法修改连接设置。';
+  }
+  if (controller.snapshot?.configurations.isEmpty ?? true) return '请先添加连接配置。';
+  return '配置或会话关系不明确，暂时无法修改连接设置。';
+}
+
+class AppearanceSelector extends StatelessWidget {
+  const AppearanceSelector({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
+  final ThemeMode value;
+  final ValueChanged<ThemeMode>? onChanged;
+  static const labels = {
+    ThemeMode.system: '跟随系统',
+    ThemeMode.light: '浅色',
+    ThemeMode.dark: '深色',
+  };
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontFamily: 'HarmonyOS Sans',
+      fontSize: 11,
+      height: 1.35,
+      color: Theme.of(context).colorScheme.onSurface,
+    );
+    final scaler = MediaQuery.textScalerOf(context);
+    final painter = TextPainter(
+      text: TextSpan(text: '跟随系统', style: style),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    )..layout();
+    final textWidth = painter.width;
+    painter.dispose();
+    final touch = [
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+    ].contains(Theme.of(context).platform);
+    return Container(
+      key: const ValueKey('appearance-selector'),
+      width: (textWidth + 46).clamp(92, double.infinity),
+      constraints: BoxConstraints(minHeight: touch ? 48 : 30),
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: DropdownButton<ThemeMode>(
+        value: value,
+        isDense: true,
+        isExpanded: true,
+        alignment: Alignment.center,
+        underline: const SizedBox.shrink(),
+        style: style,
+        icon: const SizedBox(
+          width: 24,
+          child: Icon(Icons.arrow_drop_down, size: 20),
+        ),
+        selectedItemBuilder: (context) => labels.entries
+            .map(
+              (entry) => Center(
+                key: ValueKey('appearance-text-region-${entry.key.name}'),
+                child: Text(entry.value, textAlign: TextAlign.center),
+              ),
+            )
+            .toList(),
+        items: labels.entries
+            .map(
+              (entry) => DropdownMenuItem(
+                value: entry.key,
+                alignment: Alignment.center,
+                child: Text(entry.value, textAlign: TextAlign.center),
+              ),
+            )
+            .toList(),
+        onChanged: onChanged == null
+            ? null
+            : (mode) {
+                if (mode != null) onChanged!(mode);
+              },
+      ),
     );
   }
 }

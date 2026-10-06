@@ -279,8 +279,8 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(find.byTooltip('设置'));
           await tester.pumpAndSettle();
-          await tester.ensureVisible(find.text('技术诊断'));
-          await tester.tap(find.text('技术诊断'));
+          await tester.ensureVisible(find.text('诊断'));
+          await tester.tap(find.text('诊断'));
           await tester.pumpAndSettle();
           expect(find.text('daemon'), findsOneWidget);
           await tester.ensureVisible(find.text('返回'));

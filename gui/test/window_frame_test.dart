@@ -211,7 +211,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('home-settings-button')));
       await tester.pumpAndSettle();
-      expect(find.text('技术诊断'), findsOneWidget);
+      expect(find.text('诊断'), findsOneWidget);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);

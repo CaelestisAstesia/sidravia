@@ -51,7 +51,7 @@ class AdvancedPage extends StatelessWidget {
     return DesignPage(
       children: [
         DesignHeader(
-          title: detailsOnly ? '连接详情' : '技术诊断',
+          title: detailsOnly ? '连接详情' : '诊断',
           onBack: onBack,
           bottomSpacing: detailsOnly ? 24 : 14,
         ),
@@ -73,12 +73,12 @@ class AdvancedPage extends StatelessWidget {
         ),
         if (detailsOnly) ...[
           const SizedBox(height: 7),
-          const DesignHelper('这里只显示理解当前连接所需的信息；更底层的数据放在技术诊断。'),
+          const DesignHelper('这里只显示理解当前连接所需的信息；更底层的数据放在诊断。'),
           const SizedBox(height: 24),
           DesignGroup(
             children: [
               DesignRow(
-                title: '技术诊断',
+                title: '诊断',
                 subtitle: '查看 daemon、session、错误代码等工程信息',
                 onTap: onDiagnostics,
               ),
