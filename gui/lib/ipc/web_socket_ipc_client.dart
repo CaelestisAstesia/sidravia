@@ -39,9 +39,15 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
         await connecting.timeout(requestTimeout),
         requestTimeout: requestTimeout,
       );
-    } on Object {
+    } on Object catch (error) {
       unawaited(_closeIfConnected(connecting));
-      rethrow;
+      throw IpcTransportException(
+        error is TimeoutException
+            ? 'ipc_timeout'
+            : error is WebSocketException
+            ? 'ipc_handshake_failed'
+            : 'ipc_connection_failed',
+      );
     }
   }
 
@@ -185,7 +191,9 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
         }),
       );
       final hasMessage = await _messages.moveNext().timeout(_timeout);
-      if (!hasMessage) throw const IpcProtocolException();
+      if (!hasMessage) {
+        throw const IpcTransportException('ipc_disconnected');
+      }
       final message = _messages.current;
       if (message is! String ||
           utf8.encode(message).length > _maximumMessageBytes) {
@@ -230,11 +238,18 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
       throw IpcRequestFailure(error['code'] as String);
     } on IpcRequestFailure {
       rethrow;
-    } on Object {
+    } on Object catch (error) {
       try {
         await _invalidate();
       } on Object {
         // The public transport boundary remains a stable protocol failure.
+      }
+      if (error is IpcTransportException) rethrow;
+      if (error is TimeoutException) {
+        throw const IpcTransportException('ipc_timeout');
+      }
+      if (error is SocketException || error is WebSocketException) {
+        throw const IpcTransportException('ipc_disconnected');
       }
       throw const IpcProtocolException();
     } finally {

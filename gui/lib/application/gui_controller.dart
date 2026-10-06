@@ -208,8 +208,8 @@ class GuiController extends ChangeNotifier {
       }
       _client = client;
       await _refresh(generation, client);
-    } on Object {
-      if (_current(generation)) _setFailure(GuiBootstrapFailure.failed);
+    } on Object catch (error) {
+      if (_current(generation)) _setFailure(_ipcFailure(error));
     } finally {
       if (_generation == generation) {
         _transition = null;
@@ -269,9 +269,9 @@ class GuiController extends ChangeNotifier {
         _notify();
       }
       completer.complete(false);
-    } on Object {
+    } on Object catch (error) {
       if (_current(generation) && identical(_client, client)) {
-        await _invalidate(generation, client);
+        await _invalidate(generation, client, error);
       }
       completer.complete(false);
     } finally {
@@ -304,9 +304,9 @@ class GuiController extends ChangeNotifier {
       _notice = null;
       _scheduleRefresh(generation, client);
       _notify();
-    } on Object {
+    } on Object catch (error) {
       if (!_current(generation) || !identical(_client, client)) return;
-      await _invalidate(generation, client);
+      await _invalidate(generation, client, error);
     }
   }
 
@@ -338,7 +338,11 @@ class GuiController extends ChangeNotifier {
     }
   }
 
-  Future<void> _invalidate(int generation, SidraviaIpcClient client) async {
+  Future<void> _invalidate(
+    int generation,
+    SidraviaIpcClient client,
+    Object error,
+  ) async {
     _timer?.cancel();
     _timer = null;
     _client = null;
@@ -347,10 +351,18 @@ class GuiController extends ChangeNotifier {
     _state = _snapshot == null
         ? GuiConnectionState.failed
         : GuiConnectionState.stale;
-    _failure = GuiBootstrapFailure.failed;
+    _failure = _ipcFailure(error);
     _notice = null;
     _notify();
   }
+
+  GuiBootstrapFailure _ipcFailure(Object error) => guiIpcFailure(
+    error is IpcTransportException
+        ? error.code
+        : error is IpcRequestFailure
+        ? 'ipc_business_rejected'
+        : 'ipc_protocol_error',
+  );
 
   String _guidance(String code, String fallback) => switch (code) {
     'profile_not_found' => '学校配置已不存在，请刷新。',

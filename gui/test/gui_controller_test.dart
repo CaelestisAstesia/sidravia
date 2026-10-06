@@ -7,6 +7,47 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  test(
+    'IPC diagnostics distinguish connection, timeout and protocol',
+    () async {
+      for (final code in [
+        'ipc_connection_failed',
+        'ipc_handshake_failed',
+        'ipc_timeout',
+      ]) {
+        final controller = GuiController(
+          bootstrapper: _Bootstrapper(),
+          connector: (_) async => throw IpcTransportException(code),
+        );
+        await controller.start();
+        expect(controller.state, GuiConnectionState.failed);
+        expect(controller.failure?.code, code);
+        controller.dispose();
+      }
+    },
+  );
+
+  test(
+    'mutation success followed by refresh failure preserves stale snapshot',
+    () async {
+      final client = _Client();
+      final controller = _controller(client);
+      await controller.start();
+      final previous = controller.snapshot;
+      client.nextDaemon = Completer<DaemonStatus>();
+      final mutation = controller.stopSession('session-a');
+      client.nextDaemon!.completeError(
+        const IpcTransportException('ipc_timeout'),
+      );
+      expect(await mutation, isFalse);
+      expect(controller.state, GuiConnectionState.stale);
+      expect(controller.failure?.code, 'ipc_timeout');
+      expect(identical(controller.snapshot, previous), isTrue);
+      expect(client.closed, isTrue);
+      controller.dispose();
+    },
+  );
+
   test('publishes one complete sequential Snapshot', () async {
     final client = _Client();
     final controller = _controller(client);

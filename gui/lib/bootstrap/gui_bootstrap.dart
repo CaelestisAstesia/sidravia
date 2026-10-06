@@ -67,6 +67,27 @@ const guiBootstrapFailures = <String, GuiBootstrapFailure>{
   'output_failed': GuiBootstrapFailure('output_failed', 'GUI bootstrap 结果输出失败'),
 };
 
+GuiBootstrapFailure guiIpcFailure(String code) => switch (code) {
+  'ipc_connection_failed' => const GuiBootstrapFailure(
+    'ipc_connection_failed',
+    '无法连接后台服务，请重试',
+  ),
+  'ipc_handshake_failed' => const GuiBootstrapFailure(
+    'ipc_handshake_failed',
+    '后台连接校验失败，请检查客户端与服务版本',
+  ),
+  'ipc_timeout' => const GuiBootstrapFailure('ipc_timeout', '后台响应超时，请重试'),
+  'ipc_disconnected' => const GuiBootstrapFailure(
+    'ipc_disconnected',
+    '后台连接已中断，请重新连接',
+  ),
+  'ipc_business_rejected' => const GuiBootstrapFailure(
+    'ipc_business_rejected',
+    '后台拒绝读取状态，请重试或查看诊断',
+  ),
+  _ => const GuiBootstrapFailure('ipc_protocol_error', '后台响应不兼容，请检查客户端与服务版本'),
+};
+
 class GuiBootstrapResult {
   const GuiBootstrapResult.success(this.value) : failure = null;
   const GuiBootstrapResult.failure(this.failure) : value = null;

@@ -39,6 +39,11 @@ class AdvancedPage extends StatelessWidget {
           ]
         : <MapEntry<String, String>>[
             MapEntry('daemon', d?.status ?? '暂不可用'),
+            MapEntry('ipc_state', controller.state.name),
+            if (controller.failure != null) ...[
+              MapEntry('ipc_error', controller.failure!.code),
+              MapEntry('ipc_message', controller.failure!.message),
+            ],
             MapEntry('version', d?.productVersion ?? '暂不可用'),
             MapEntry('build_id', d?.buildId ?? '暂不可用'),
             MapEntry('mode', d?.mode ?? '暂不可用'),
@@ -90,7 +95,7 @@ class AdvancedPage extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: d == null
+                  onPressed: d == null && controller.failure == null
                       ? null
                       : () async {
                           try {
@@ -114,7 +119,11 @@ class AdvancedPage extends StatelessWidget {
                             }
                           }
                         },
-                  child: Text(d == null ? '复制诊断信息（暂不可用）' : '复制诊断信息'),
+                  child: Text(
+                    d == null && controller.failure == null
+                        ? '复制诊断信息（暂不可用）'
+                        : '复制诊断信息',
+                  ),
                 ),
               ),
               const SizedBox(width: 9),

@@ -141,6 +141,12 @@ class IpcProtocolException implements Exception {
   const IpcProtocolException();
 }
 
+/// Stable transport diagnostics; never contains socket text, endpoints or tokens.
+class IpcTransportException implements Exception {
+  const IpcTransportException(this.code);
+  final String code;
+}
+
 class IpcRequestFailure implements Exception {
   const IpcRequestFailure(this.code);
   final String code;

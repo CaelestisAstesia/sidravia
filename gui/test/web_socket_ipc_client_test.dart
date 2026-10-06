@@ -7,6 +7,47 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  test('refused connection has a fixed transport code', () async {
+    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = socket.port;
+    await socket.close();
+    await expectLater(
+      WebSocketIpcClient.connect(_bootstrap(port)),
+      throwsA(
+        isA<IpcTransportException>().having(
+          (e) => e.code,
+          'code',
+          'ipc_connection_failed',
+        ),
+      ),
+    );
+  });
+  test('real socket timeout invalidates with a distinct code', () async {
+    final server = await _server((socket, _) {
+      socket.listen((_) {});
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(
+      _bootstrap(server.port),
+      requestTimeout: const Duration(milliseconds: 30),
+    );
+    await expectLater(
+      client.daemonStatus(),
+      throwsA(
+        isA<IpcTransportException>().having(
+          (e) => e.code,
+          'code',
+          'ipc_timeout',
+        ),
+      ),
+    );
+    await expectLater(
+      client.daemonStatus(),
+      throwsA(isA<IpcProtocolException>()),
+    );
+    await client.close();
+  });
+
   test('auto reconnect true false use exact update payload and authoritative return', () async {
     final received = <Map<String, dynamic>>[];
     final server = await _server((socket, _) {
