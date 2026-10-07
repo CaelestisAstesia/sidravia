@@ -855,6 +855,41 @@
       "result": "{\"observedAt\":\"2026-10-07T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"240.0.0.1\",\"port\":61440},\"route\":{\"interfaceId\":\"test\",\"interfaceIndex\":1,\"sourceIPv4\":\"127.0.0.1\",\"destinationPrefix\":\"224.0.0.0/4\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":0,\"interfaceMetric\":0,\"effectiveMetric\":0},\"probe\":{\"status\":\"not_requested\"}}",
       "validPayload": true,
       "validResult": false
+    },
+    {
+      "name": "unsigned-negative-zero-routeMetric",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"test\",\"interfaceIndex\":1,\"sourceIPv4\":\"127.0.0.1\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":-0,\"interfaceMetric\":0,\"effectiveMetric\":0},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unsigned-negative-zero-interfaceMetric",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"test\",\"interfaceIndex\":1,\"sourceIPv4\":\"127.0.0.1\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":0,\"interfaceMetric\":-0,\"effectiveMetric\":0},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unsigned-negative-zero-effectiveMetric",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"test\",\"interfaceIndex\":1,\"sourceIPv4\":\"127.0.0.1\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":0,\"interfaceMetric\":0,\"effectiveMetric\":-0},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unsigned-negative-zero-roundTripTimeMs",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"test\",\"interfaceIndex\":1,\"sourceIPv4\":\"127.0.0.1\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":0,\"interfaceMetric\":0,\"effectiveMetric\":0},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":-0}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unsigned-positive-zero-control",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"test\",\"interfaceIndex\":1,\"sourceIPv4\":\"127.0.0.1\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":0,\"interfaceMetric\":0,\"effectiveMetric\":0},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0}}",
+      "validPayload": true,
+      "validResult": true
     }
   ]
 }

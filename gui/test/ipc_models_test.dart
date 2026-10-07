@@ -41,6 +41,38 @@ void main() {
     }
     // Legacy method numeric semantics remain jsonDecode's, with no BigInt opt-in.
     expect((decodeBindingCheckedJson('{"revision":1}') as Map)['revision'], 1);
+    expect((decodeBindingCheckedJson('{"value":-0}') as Map)['value'], 0);
+    expect(
+      decodeBindingCheckedJson(
+        '{"value":"-0"}',
+        preserveNetworkRunGeneration: true,
+      ),
+      {'value': '-0'},
+    );
+  });
+  test('network result unsigned fields reject raw negative zero only', () {
+    const diagnosis =
+        r'{"observedAt":"2026-10-07T01:02:03Z","selectionBasis":"os_route_proposal","status":"available","target":{"address":"192.0.2.1","port":61440},"route":{"interfaceId":"test","interfaceIndex":1,"sourceIPv4":"127.0.0.1","destinationPrefix":"192.0.2.0/24","nextHopIPv4":"0.0.0.0","routeMetric":0,"interfaceMetric":0,"effectiveMetric":0},"probe":{"status":"reachable","roundTripTimeMs":0}}';
+    expect(decodeNetworkDiagnosis(diagnosis).probe!.roundTripTimeMs, 0);
+    for (final field in [
+      'routeMetric',
+      'interfaceMetric',
+      'effectiveMetric',
+      'roundTripTimeMs',
+    ]) {
+      final negativeZero = diagnosis.replaceFirst('"$field":0', '"$field":-0');
+      expect(
+        () => decodeNetworkDiagnosis(negativeZero),
+        throwsA(isA<IpcProtocolException>()),
+        reason: field,
+      );
+    }
+    expect(
+      () => decodeNetworkInterfaces(
+        networkResult.replaceFirst('"prefixLength":8', '"prefixLength":-0'),
+      ),
+      throwsA(isA<IpcProtocolException>()),
+    );
   });
   test('diagnosis request selectors are exclusive and reject raw Unicode', () {
     expect(networkDiagnosisPayload(sessionId: 'retained', probe: true), {

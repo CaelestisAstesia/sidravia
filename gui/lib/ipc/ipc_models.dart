@@ -306,6 +306,9 @@ Object? decodeBindingCheckedJson(
         }
         return n;
       }
+      if (strictUnicode && token == '-0') {
+        throw const IpcProtocolException();
+      }
       return jsonDecode(token);
     };
     final decoded = value();
