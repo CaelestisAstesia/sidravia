@@ -17,14 +17,14 @@ void main() {
     expect(flutterWindow, isNot(contains('configureFrame')));
     expect(flutterWindow, isNot(contains('WM_NCHITTEST')));
     expect(flutterWindow, contains('setDarkMode'));
-    expect(runner, contains('kMinimumWindowWidth = 360'));
-    expect(runner, contains('kMinimumWindowHeight = 640'));
+    expect(runner, contains('kMinimumWindowWidth = 900'));
+    expect(runner, contains('kMinimumWindowHeight = 600'));
     expect(flutterWindow, contains('"sidravia/window"'));
     expect(flutterWindow, contains('call.method_name() == "minimize"'));
     expect(flutterWindow, contains('ShowWindow(window, SW_MINIMIZE)'));
     expect(flutterWindow, contains('call.method_name() == "close"'));
     expect(flutterWindow, contains('PostMessage(window, WM_CLOSE, 0, 0)'));
-    expect(main, contains('Win32Window::Size size(400, 690)'));
+    expect(main, contains('Win32Window::Size size(1280, 720)'));
   });
 
   test('Windows runner owns the desktop presence surface', () {
