@@ -52,6 +52,51 @@ void main() {
     }
   });
 
+  test('rejects duplicate decoded member names at every object depth', () {
+    for (final source in [
+      r'{"id":"request-1","id":"request-1"}',
+      r'{"id":"request-1","\u0069d":"request-1"}',
+      r'{"kind":"response","kind":"response"}',
+      r'{"ok":true,"ok":true}',
+      r'{"error":{"code":"conflict","code":"conflict","message":"safe"}}',
+      r'{"error":{"code":"conflict","message":"safe","\u006dessage":"safe"}}',
+      r'{"networkBindingPolicy":{"mode":"automatically_select_latest_available","mode":"automatically_select_latest_available"}}',
+    ]) {
+      expect(
+        () => decodeBindingCheckedJson(source),
+        throwsA(isA<IpcProtocolException>()),
+        reason: source,
+      );
+    }
+
+    const session =
+        r'{"sessions":[{"sessionId":"s","sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z"}]}';
+    expect(() => decodeSessions(session), throwsA(isA<IpcProtocolException>()));
+
+    const configuration =
+        r'{"storageProtection":"protected","configurations":[{"configurationId":"cfg-a","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","username":"u","username":"u","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}]}';
+    expect(
+      () => decodeConfigurations(configuration),
+      throwsA(isA<IpcProtocolException>()),
+    );
+    expect(
+      () => decodeBindingCheckedJson('{"value":NaN}'),
+      throwsA(isA<IpcProtocolException>()),
+    );
+  });
+
+  test(
+    'keeps duplicate names local to each object and ignores string contents',
+    () {
+      final decoded = decodeBindingCheckedJson(
+        r'{"left":{"id":"left"},"right":{"id":"right"},"text":"{\"id\":\"first\",\"id\":\"second\"}"}',
+      ) as Map<String, dynamic>;
+      expect((decoded['left'] as Map<String, dynamic>)['id'], 'left');
+      expect((decoded['right'] as Map<String, dynamic>)['id'], 'right');
+      expect(decoded['text'], r'{"id":"first","id":"second"}');
+    },
+  );
+
   test('decodes the committed daemon.stop success result strictly', () {
     final result = decodeDaemonStop('{"status":"stopping"}');
     expect(result.status, 'stopping');

@@ -170,98 +170,98 @@ class NetworkBindingPolicy {
   int get hashCode => Object.hash(mode, interfaceId, localIpv4Address);
 }
 
-// Scan raw JSON before maps erase duplicates. Only owned binding keys are
-// checked; string keys are decoded so escaped and literal aliases coincide.
+// Scan raw JSON before maps erase duplicates. Object keys are decoded so
+// escaped and literal aliases coincide; each object owns its own key set.
 Object? decodeBindingCheckedJson(String source) {
-  var i = 0;
-  void whitespace() {
-    while (i < source.length &&
-        const [9, 10, 13, 32].contains(source.codeUnitAt(i))) {
-      i++;
+  try {
+    var i = 0;
+    void whitespace() {
+      while (i < source.length &&
+          const [9, 10, 13, 32].contains(source.codeUnitAt(i))) {
+        i++;
+      }
     }
-  }
 
-  String string() {
-    final start = i;
-    if (i >= source.length || source[i] != '"') {
+    String string() {
+      final start = i;
+      if (i >= source.length || source[i] != '"') {
+        throw const IpcProtocolException();
+      }
+      i++;
+      while (i < source.length) {
+        if (source[i] == '\\') {
+          i += 2;
+          continue;
+        }
+        if (source[i++] == '"') {
+          return jsonDecode(source.substring(start, i)) as String;
+        }
+      }
       throw const IpcProtocolException();
     }
-    i++;
-    while (i < source.length) {
-      if (source[i] == '\\') {
-        i += 2;
-        continue;
+
+    late void Function() value;
+    value = () {
+      whitespace();
+      if (i >= source.length) throw const IpcProtocolException();
+      if (source[i] == '{') {
+        i++;
+        whitespace();
+        final keys = <String>{};
+        if (i < source.length && source[i] == '}') {
+          i++;
+          return;
+        }
+        while (true) {
+          whitespace();
+          if (!keys.add(string())) throw const IpcProtocolException();
+          whitespace();
+          if (i >= source.length || source[i++] != ':') {
+            throw const IpcProtocolException();
+          }
+          value();
+          whitespace();
+          if (i >= source.length) throw const IpcProtocolException();
+          final next = source[i++];
+          if (next == '}') return;
+          if (next != ',') throw const IpcProtocolException();
+        }
       }
-      if (source[i++] == '"') {
-        return jsonDecode(source.substring(start, i)) as String;
+      if (source[i] == '[') {
+        i++;
+        whitespace();
+        if (i < source.length && source[i] == ']') {
+          i++;
+          return;
+        }
+        while (true) {
+          value();
+          whitespace();
+          if (i >= source.length) throw const IpcProtocolException();
+          final next = source[i++];
+          if (next == ']') return;
+          if (next != ',') throw const IpcProtocolException();
+        }
       }
-    }
+      if (source[i] == '"') {
+        string();
+        return;
+      }
+      final start = i;
+      while (i < source.length &&
+          !const [',', '}', ']', ' ', '\t', '\n', '\r'].contains(source[i])) {
+        i++;
+      }
+      if (start == i) throw const IpcProtocolException();
+      jsonDecode(source.substring(start, i));
+    };
+    value();
+    whitespace();
+    if (i != source.length) throw const IpcProtocolException();
+    return jsonDecode(source);
+  } on FormatException {
     throw const IpcProtocolException();
   }
-
-  late void Function(bool) value;
-  value = (bool policy) {
-    whitespace();
-    if (i >= source.length) throw const IpcProtocolException();
-    if (source[i] == '{') {
-      i++;
-      whitespace();
-      final keys = <String>{};
-      if (i < source.length && source[i] == '}') {
-        i++;
-        return;
-      }
-      while (true) {
-        whitespace();
-        final key = string();
-        if ((policy || key == 'networkBindingPolicy') && !keys.add(key)) {
-          throw const IpcProtocolException();
-        }
-        keys.add(key);
-        whitespace();
-        if (i >= source.length || source[i++] != ':') {
-          throw const IpcProtocolException();
-        }
-        value(key == 'networkBindingPolicy');
-        whitespace();
-        if (i >= source.length) throw const IpcProtocolException();
-        final next = source[i++];
-        if (next == '}') return;
-        if (next != ',') throw const IpcProtocolException();
-      }
-    }
-    if (source[i] == '[') {
-      i++;
-      whitespace();
-      if (i < source.length && source[i] == ']') {
-        i++;
-        return;
-      }
-      while (true) {
-        value(false);
-        whitespace();
-        if (i >= source.length) throw const IpcProtocolException();
-        final next = source[i++];
-        if (next == ']') return;
-        if (next != ',') throw const IpcProtocolException();
-      }
-    }
-    if (source[i] == '"') {
-      string();
-      return;
-    }
-    final start = i;
-    while (i < source.length &&
-        !const [',', '}', ']', ' ', '\t', '\n', '\r'].contains(source[i])) {
-      i++;
-    }
-    if (start == i) throw const IpcProtocolException();
-    jsonDecode(source.substring(start, i));
-  };
-  value(false);
-  whitespace();
-  if (i != source.length) throw const IpcProtocolException();
-  return jsonDecode(source);
 }
 
 class ConfigurationSummary {

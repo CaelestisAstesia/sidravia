@@ -45,6 +45,141 @@ void main() {
     });
   }
 
+  test('duplicate raw response members invalidate the socket before the next request', () async {
+    Future<void> status(WebSocketIpcClient client) async {
+      await client.daemonStatus();
+    }
+
+    Future<void> configurations(WebSocketIpcClient client) async {
+      await client.configurationList();
+    }
+
+    Future<void> sessions(WebSocketIpcClient client) async {
+      await client.sessionList();
+    }
+
+    Future<void> createConfiguration(WebSocketIpcClient client) async {
+      await client.configurationCreate(
+        networkBindingPolicy: const NetworkBindingPolicy.automatic(),
+        institutionProfileId: 'jlu',
+        username: 'u',
+        password: 'p',
+        autoLogin: false,
+        autoReconnect: true,
+        allowInsecureStorage: false,
+      );
+    }
+
+    Future<void> verify(
+      String name,
+      Future<void> Function(WebSocketIpcClient) request,
+      String Function(String id) response,
+    ) async {
+      final received = <String>[];
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final raw = jsonDecode(message as String) as Map<String, dynamic>;
+          final id = raw['id'] as String;
+          received.add(id);
+          socket.add(response(id));
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await expectLater(
+        request(client),
+        throwsA(isA<IpcProtocolException>()),
+        reason: name,
+      );
+      await expectLater(
+        request(client),
+        throwsA(isA<IpcProtocolException>()),
+        reason: '$name after invalidation',
+      );
+      expect(received, hasLength(1), reason: name);
+      await client.close();
+      await server.close(force: true);
+    }
+
+    final statusResult = jsonEncode(_fixtureResult('daemon.status'));
+    final sessionResult = jsonEncode(_fixtureResult('session.restart'))
+        .replaceFirst(
+          '"sessionId":"session-retained"',
+          '"sessionId":"session-retained","sessionId":"session-retained"',
+        );
+    final configurationResult =
+        jsonEncode(_fixtureResult('configuration.create')).replaceFirst(
+          '"username":"fixture-user"',
+          '"username":"fixture-user","username":"fixture-user"',
+        );
+    final policyDuplicateResult =
+        jsonEncode(_fixtureResult('configuration.create')).replaceFirst(
+          '"mode":"automatically_select_latest_available"',
+          '"mode":"automatically_select_latest_available","mode":"automatically_select_latest_available"',
+        );
+    String success(String id, String result) =>
+        '{"kind":"response","id":${jsonEncode(id)},"ok":true,"result":$result}';
+    final escapedIdKey = r'"\u0069d"';
+
+    await verify(
+      'literal duplicate id',
+      status,
+      (id) =>
+          '{"kind":"response","id":${jsonEncode(id)},"id":${jsonEncode(id)},"ok":true,"result":$statusResult}',
+    );
+    await verify(
+      'escaped id alias',
+      status,
+      (id) =>
+          '{"kind":"response","id":${jsonEncode(id)},$escapedIdKey:${jsonEncode(id)},"ok":true,"result":$statusResult}',
+    );
+    await verify(
+      'duplicate kind',
+      status,
+      (id) =>
+          '{"kind":"response","kind":"response","id":${jsonEncode(id)},"ok":true,"result":$statusResult}',
+    );
+    await verify(
+      'duplicate ok',
+      status,
+      (id) =>
+          '{"kind":"response","id":${jsonEncode(id)},"ok":true,"ok":true,"result":$statusResult}',
+    );
+    await verify(
+      'duplicate error code',
+      createConfiguration,
+      (id) =>
+          '{"kind":"response","id":${jsonEncode(id)},"ok":false,"error":{"code":"configuration_conflict","code":"configuration_conflict","message":"safe"}}',
+    );
+    await verify(
+      'duplicate error message alias',
+      createConfiguration,
+      (id) =>
+          '{"kind":"response","id":${jsonEncode(id)},"ok":false,"error":{"code":"configuration_conflict","message":"safe",${r'"\u006dessage"'}:"safe"}}',
+    );
+    await verify(
+      'nested Session member in list',
+      sessions,
+      (id) => success(id, '{"sessions":[$sessionResult]}'),
+    );
+    await verify(
+      'nested Configuration member in list',
+      configurations,
+      (id) => success(
+        id,
+        '{"storageProtection":"protected","configurations":[$configurationResult]}',
+      ),
+    );
+    await verify(
+      'nested binding policy member',
+      configurations,
+      (id) => success(
+        id,
+        '{"storageProtection":"protected","configurations":[$policyDuplicateResult]}',
+      ),
+    );
+  });
+
   test(
     'explicit consent reaches password settings and removal wire primitives',
     () async {
