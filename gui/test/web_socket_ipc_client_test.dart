@@ -102,11 +102,15 @@ void main() {
     }
 
     final statusResult = jsonEncode(_fixtureResult('daemon.status'));
-    final sessionResult = jsonEncode(_fixtureResult('session.restart'))
-        .replaceFirst(
-          '"sessionId":"session-retained"',
-          '"sessionId":"session-retained","sessionId":"session-retained"',
-        );
+    final validSessionsEnvelope = {
+      'sessions': [_fixtureResult('session.ensureRunning')['session']],
+    };
+    final validSessionsJson = jsonEncode(validSessionsEnvelope);
+    expect(decodeSessions(validSessionsJson), hasLength(1));
+    final sessionResult = validSessionsJson.replaceFirst(
+      '"sessionId":"session-retained"',
+      '"sessionId":"session-retained","sessionId":"session-retained"',
+    );
     final configurationResult =
         jsonEncode(_fixtureResult('configuration.create')).replaceFirst(
           '"username":"fixture-user"',
@@ -160,7 +164,7 @@ void main() {
     await verify(
       'nested Session member in list',
       sessions,
-      (id) => success(id, '{"sessions":[$sessionResult]}'),
+      (id) => success(id, sessionResult),
     );
     await verify(
       'nested Configuration member in list',
