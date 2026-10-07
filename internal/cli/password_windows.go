@@ -33,3 +33,12 @@ func readInteractivePassword(input io.Reader, errorOutput io.Writer) (string, er
 		},
 	)
 }
+
+func isConsoleInput(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	if !ok {
+		return false
+	}
+	var mode uint32
+	return windows.GetConsoleMode(windows.Handle(file.Fd()), &mode) == nil
+}

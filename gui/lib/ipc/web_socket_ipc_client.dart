@@ -69,6 +69,17 @@ class WebSocketIpcClient
   );
 
   @override
+  Future<ConfigurationSummary> configurationSetNetworkBindingPolicy({
+    required String configurationId,
+    required NetworkBindingPolicy policy,
+    bool allowInsecureStorage = false,
+  }) async => _call('configuration.update', {
+    'configurationId': configurationId,
+    'networkBindingPolicy': policy.toJson(),
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
+  }, decodeConfiguration);
+
+  @override
   Future<DaemonStatus> daemonStatus() async =>
       _call('daemon.status', const {}, decodeDaemonStatus);
 

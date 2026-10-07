@@ -32,6 +32,15 @@ func readInteractivePassword(input io.Reader, errorOutput io.Writer) (string, er
 	return readInteractivePasswordWith(input, errorOutput, unix.IoctlGetTermios, unix.IoctlSetTermios)
 }
 
+func isConsoleInput(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	if !ok {
+		return false
+	}
+	_, err := unix.IoctlGetTermios(int(file.Fd()), unix.TCGETS)
+	return err == nil
+}
+
 func readInteractivePasswordWith(input io.Reader, errorOutput io.Writer, get termiosGetter, set termiosSetter) (string, error) {
 	file, ok := input.(*os.File)
 	if !ok {

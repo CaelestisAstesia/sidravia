@@ -258,6 +258,13 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		if options.id == "" || options.profile == "" || options.username == "" {
 			return errors.New("配置输入不能为空")
 		}
+		if interactive && !options.binding.supplied() {
+			selected, err := selectNetworkBinding(deps, connection)
+			if err != nil {
+				return err
+			}
+			policy = &selected
+		}
 		var password string
 		if options.passwordStdin {
 			password, err = deps.readStdinPassword(deps.stdin)

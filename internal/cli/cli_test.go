@@ -81,6 +81,13 @@ func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
 		if !strings.Contains(output.String(), "用法：") {
 			t.Fatalf("help %q missing usage:\n%s", args, output.String())
 		}
+		if strings.Join(args, " ") == "config create --help" {
+			for _, expected := range []string{"自动绑定", "--interface-id", "--local-ipv4"} {
+				if !strings.Contains(output.String(), expected) {
+					t.Fatalf("config create help omitted %q:\n%s", expected, output.String())
+				}
+			}
+		}
 	}
 	if len(calls) != before {
 		t.Fatal("configuration help dispatched an operation")

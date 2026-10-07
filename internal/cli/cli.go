@@ -605,9 +605,9 @@ var helpSpecs = map[string]helpNode{
 	"sidraviactl config list": {description: "列出认证配置。", usage: []string{"sidraviactl config list"}, examples: []string{"sidraviactl config list"}},
 	"sidraviactl config show": {description: "显示认证配置。", usage: []string{"sidraviactl config show <configuration-id>"}, args: []string{"<configuration-id>：配置 ID"}, examples: []string{"sidraviactl config show campus"}},
 	"sidraviactl config create": {
-		description: "创建认证配置。",
+		description: "创建认证配置。交互模式下默认提供自动绑定，并可按已观察网卡选择接口和 IPv4；非交互模式不提示并默认自动绑定。使用时 Session 会重新核对网卡事实。",
 		usage:       []string{"sidraviactl config create", "sidraviactl config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage]"},
-		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
+		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时提供以跳过交互选择并指定真实绑定；非交互未指定时自动绑定", "--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
 		examples:    []string{"sidraviactl config create", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin --auto-login --auto-reconnect=false"},
 	},
 	"sidraviactl config update": {

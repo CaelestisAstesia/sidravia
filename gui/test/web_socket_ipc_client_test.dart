@@ -445,6 +445,89 @@ void main() {
     expect(received, hasLength(2));
   });
 
+  test(
+    'network binding policy update preserves typed policy and consent payload',
+    () async {
+      final received = <Map<String, dynamic>>[];
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          received.add(request);
+          final payload = request['payload'] as Map<String, dynamic>;
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': request['id'],
+              'ok': true,
+              'result': {
+                ..._fixtureResult('configuration.create'),
+                'networkBindingPolicy': payload['networkBindingPolicy'],
+              },
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      final policies = [
+        const NetworkBindingPolicy.automatic(),
+        NetworkBindingPolicy.explicit('software-loopback', '127.0.0.1'),
+      ];
+      for (var index = 0; index < policies.length; index++) {
+        final policy = policies[index];
+        final result = await client.configurationSetNetworkBindingPolicy(
+          configurationId: 'fixture-configuration',
+          policy: policy,
+          allowInsecureStorage: index == 1,
+        );
+        expect(result.networkBindingPolicy, policy);
+        expect(received.last['method'], 'configuration.update');
+        expect(received.last['payload'], {
+          'configurationId': 'fixture-configuration',
+          'networkBindingPolicy': policy.toJson(),
+          if (index == 1) 'allowInsecureStorage': true,
+        });
+      }
+      expect(received, hasLength(2));
+      await client.close();
+
+      final rejected = await _server((socket, _) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': request['id'],
+              'ok': false,
+              'error': {
+                'code': 'insecure_storage_confirmation_required',
+                'message': 'safe',
+              },
+            }),
+          );
+        });
+      });
+      addTearDown(() => rejected.close(force: true));
+      final rejectedClient = await WebSocketIpcClient.connect(
+        _bootstrap(rejected.port),
+      );
+      await expectLater(
+        rejectedClient.configurationSetNetworkBindingPolicy(
+          configurationId: 'fixture-configuration',
+          policy: policies.last,
+        ),
+        throwsA(
+          isA<IpcRequestFailure>().having(
+            (error) => error.code,
+            'code',
+            'insecure_storage_confirmation_required',
+          ),
+        ),
+      );
+      await rejectedClient.close();
+    },
+  );
+
   test('sends all exact operational fixture shapes', () async {
     final received = <Map<String, dynamic>>[];
     final server = await _server((socket, request) {
