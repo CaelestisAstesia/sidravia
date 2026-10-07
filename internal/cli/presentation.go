@@ -294,6 +294,9 @@ func daemonStatusText(code string) string {
 // ipcErrorText maps an IPC error code to fixed Simplified Chinese guidance.
 // Unknown or missing codes use the safe generic message.
 func ipcErrorText(code string) string {
+	if code == contract.ErrorCodeConfigurationSessionInvalidationFailed {
+		return "配置已提交，旧会话清理未完成；请移除旧会话后重试连接"
+	}
 	switch code {
 	case "unknown_method":
 		return "daemon 不支持该操作"

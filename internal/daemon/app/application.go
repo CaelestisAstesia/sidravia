@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
+	"time"
 
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
@@ -42,6 +44,7 @@ type Application struct {
 	mu                     sync.Mutex
 	opMu                   sync.Mutex // serializes configuration and Session operations
 	sessionsByConfig       map[config.ConfigurationID]session.AuthenticationSessionID
+	invalidSessions        map[session.AuthenticationSessionID]bool // owned by opMu; never reuse a retired runtime
 }
 
 func NewApplication(
@@ -68,6 +71,7 @@ func NewApplication(
 		authenticationResolver: authenticationResolver,
 		sup:                    sup,
 		sessionsByConfig:       make(map[config.ConfigurationID]session.AuthenticationSessionID),
+		invalidSessions:        make(map[session.AuthenticationSessionID]bool),
 	}, nil
 }
 
@@ -78,6 +82,12 @@ func (application *Application) StartConfigurationAuthentication(ctx context.Con
 	application.mu.Lock()
 	existing := application.sessionsByConfig[configurationID]
 	application.mu.Unlock()
+	if existing != "" && application.invalidSessions[existing] {
+		if err := application.retireConfigurationSession(ctx, configurationID); err != nil {
+			return SessionStartResult{}, err
+		}
+		existing = ""
+	}
 	if existing != "" {
 		before, err := application.sup.Get(ctx, existing)
 		if err != nil {
@@ -177,6 +187,9 @@ func (application *Application) EnsureSessionRunning(ctx context.Context, sessio
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
 
+	if application.invalidSessions[sessionID] {
+		return SessionStartResult{}, supervisor.ErrSessionStateConflict
+	}
 	before, err := application.sup.Get(ctx, sessionID)
 	if err != nil {
 		return SessionStartResult{}, err
@@ -195,6 +208,9 @@ func (application *Application) EnsureSessionRunning(ctx context.Context, sessio
 func (application *Application) RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
+	if application.invalidSessions[sessionID] {
+		return session.Snapshot{}, supervisor.ErrSessionStateConflict
+	}
 	return application.sup.Restart(ctx, sessionID)
 }
 
@@ -204,6 +220,7 @@ func (application *Application) RemoveSession(ctx context.Context, sessionID ses
 	if err := application.sup.Remove(ctx, sessionID); err != nil {
 		return err
 	}
+	delete(application.invalidSessions, sessionID)
 	application.mu.Lock()
 	for configurationID, associated := range application.sessionsByConfig {
 		if associated == sessionID {
@@ -215,10 +232,14 @@ func (application *Application) RemoveSession(ctx context.Context, sessionID ses
 }
 
 func (application *Application) GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	return application.sup.Get(ctx, sessionID)
 }
 
 func (application *Application) ListSessions(ctx context.Context) ([]session.Snapshot, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	return application.sup.List(ctx)
 }
 
@@ -239,6 +260,8 @@ func (application *Application) ApplySystemNetworkSnapshot(
 }
 
 func (application *Application) ListConfigurations(ctx context.Context) ([]ConfigurationResult, jsonfile.ProtectionStatus, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	values, err := application.catalog.List(ctx)
 	if err != nil {
 		return nil, "", err
@@ -255,6 +278,8 @@ func (application *Application) ListConfigurations(ctx context.Context) ([]Confi
 }
 
 func (application *Application) GetConfiguration(ctx context.Context, id config.ConfigurationID) (ConfigurationResult, error) {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	value, err := application.catalog.Get(ctx, id)
 	if err != nil {
 		return ConfigurationResult{}, err
@@ -292,6 +317,12 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if update.Username != nil {
 		candidate.Username = *update.Username
 	}
+	if update.AutoLogin != nil {
+		candidate.AutoLogin = *update.AutoLogin
+	}
+	if update.AutoReconnect != nil {
+		candidate.AutoReconnect = *update.AutoReconnect
+	}
 	if _, err := application.enrich(ctx, candidate); err != nil {
 		return ConfigurationResult{}, err
 	}
@@ -299,37 +330,52 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if err != nil {
 		return ConfigurationResult{}, err
 	}
+	// Display labels and logon policy do not affect the immutable authentication runtime.
+	current.DisplayName, candidate.DisplayName = "", ""
+	current.AutoLogin, candidate.AutoLogin = false, false
+	if update.Password != nil || !reflect.DeepEqual(current, candidate) {
+		if err := application.retireConfigurationSession(ctx, id); err != nil {
+			return ConfigurationResult{}, err
+		}
+	}
 	return application.enrich(ctx, value)
 }
+
+// ErrConfigurationSessionInvalidation distinguishes a durable edit from failed cleanup.
+var ErrConfigurationSessionInvalidation = errors.New("configuration committed; session cleanup required")
 
 func (application *Application) SetConfigurationPassword(ctx context.Context, id config.ConfigurationID, password string, allow bool) (ConfigurationResult, error) {
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
-	value, err := application.catalog.SetPassword(ctx, id, password, allow)
-	if err != nil {
-		return ConfigurationResult{}, err
-	}
-	return application.enrich(ctx, value)
+	return application.UpdateConfiguration(ctx, id, config.Update{Password: &password, AllowInsecureStorage: allow})
 }
 
-func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID) error {
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
-	if _, err := application.catalog.Get(ctx, id); err != nil {
-		return err
-	}
+func (application *Application) retireConfigurationSession(ctx context.Context, id config.ConfigurationID) error {
 	application.mu.Lock()
 	sessionID := application.sessionsByConfig[id]
 	application.mu.Unlock()
-	if sessionID != "" {
-		if err := application.sup.Remove(ctx, sessionID); err != nil {
-			return err
-		}
-		application.mu.Lock()
-		delete(application.sessionsByConfig, id)
-		application.mu.Unlock()
+	if sessionID == "" {
+		return nil
 	}
-	return application.catalog.Delete(ctx, id)
+	application.invalidSessions[sessionID] = true
+	// Once persistence commits, caller cancellation must not skip cleanup.
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 4*time.Second)
+	defer cancel()
+	if err := application.sup.Remove(cleanup, sessionID); err != nil && !errors.Is(err, supervisor.ErrSessionNotFound) {
+		return errors.Join(ErrConfigurationSessionInvalidation, err)
+	}
+	delete(application.invalidSessions, sessionID)
+	application.mu.Lock()
+	delete(application.sessionsByConfig, id)
+	application.mu.Unlock()
+	return nil
+}
+
+func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID, allow ...bool) error {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	if err := application.catalog.Delete(ctx, id, allow...); err != nil {
+		return err
+	}
+	return application.retireConfigurationSession(ctx, id)
 }
 
 func (application *Application) enrich(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {

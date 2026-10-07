@@ -1,51 +1,21 @@
 import 'package:flutter/material.dart';
 
-enum AppSection { home, configuration, settings }
+enum AppPage { home, settings, configuration, details, diagnostics }
 
-@immutable
-class AppDestination {
-  const AppDestination({
-    required this.section,
-    required this.id,
-    required this.label,
-    required this.title,
-    required this.icon,
-    required this.selectedIcon,
-  });
+extension AppPageCopy on AppPage {
+  String get title => switch (this) {
+    AppPage.home => '连接',
+    AppPage.settings => '设置',
+    AppPage.configuration => '连接配置',
+    AppPage.details => '连接详情',
+    AppPage.diagnostics => '诊断',
+  };
 
-  final AppSection section;
-  final String id;
-  final String label;
-  final String title;
-  final IconData icon;
-  final IconData selectedIcon;
-
-  ValueKey<String> get sectionKey => ValueKey<String>('section-$id');
+  IconData get icon => switch (this) {
+    AppPage.home => Icons.wifi_rounded,
+    AppPage.settings => Icons.settings_outlined,
+    AppPage.configuration => Icons.badge_outlined,
+    AppPage.details => Icons.info_outline,
+    AppPage.diagnostics => Icons.code_outlined,
+  };
 }
-
-const appDestinations = <AppDestination>[
-  AppDestination(
-    section: AppSection.home,
-    id: 'home',
-    label: '连接',
-    title: '连接',
-    icon: Icons.wifi_outlined,
-    selectedIcon: Icons.wifi,
-  ),
-  AppDestination(
-    section: AppSection.configuration,
-    id: 'configuration',
-    label: '配置',
-    title: '配置',
-    icon: Icons.tune_outlined,
-    selectedIcon: Icons.tune,
-  ),
-  AppDestination(
-    section: AppSection.settings,
-    id: 'settings',
-    label: '关于',
-    title: '关于',
-    icon: Icons.info_outline,
-    selectedIcon: Icons.info,
-  ),
-];

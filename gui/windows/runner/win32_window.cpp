@@ -2,7 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
-#include <windowsx.h>
+#include "frame_geometry.h"
 
 #include "resource.h"
 
@@ -17,8 +17,9 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
-constexpr int kMinimumWindowWidth = 900;
-constexpr int kMinimumWindowHeight = 600;
+// Logical outer-frame minimum; Scale converts it to monitor physical pixels.
+constexpr int kMinimumWindowWidth = 360;
+constexpr int kMinimumWindowHeight = 640;
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
@@ -85,7 +86,7 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClassName;
-    window_class.style = CS_HREDRAW | CS_VREDRAW;
+    window_class.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
@@ -195,22 +196,11 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_GETMINMAXINFO: {
       auto min_max_info = reinterpret_cast<MINMAXINFO*>(lparam);
       HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-      MONITORINFO monitor_info{};
-      monitor_info.cbSize = sizeof(MONITORINFO);
-      if (GetMonitorInfo(monitor, &monitor_info)) {
-        RECT work = monitor_info.rcWork;
-        RECT bounds = monitor_info.rcMonitor;
-        min_max_info->ptMaxPosition.x = work.left - bounds.left;
-        min_max_info->ptMaxPosition.y = work.top - bounds.top;
-        min_max_info->ptMaxSize.x = work.right - work.left;
-        min_max_info->ptMaxSize.y = work.bottom - work.top;
-      }
       UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-      double scale_factor = dpi / 96.0;
       min_max_info->ptMinTrackSize.x =
-          Scale(kMinimumWindowWidth, scale_factor);
+          sidravia_frame::PhysicalMinimum(kMinimumWindowWidth, dpi);
       min_max_info->ptMinTrackSize.y =
-          Scale(kMinimumWindowHeight, scale_factor);
+          sidravia_frame::PhysicalMinimum(kMinimumWindowHeight, dpi);
       return 0;
     }
     case WM_SIZE: {
@@ -224,10 +214,15 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      UpdateTheme(hwnd);
+      if (LOWORD(wparam) != WA_INACTIVE && child_content_ != nullptr) {
         SetFocus(child_content_);
       }
       return 0;
+
+    case WM_DWMCOMPOSITIONCHANGED:
+      UpdateTheme(hwnd);
+      break;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
@@ -289,7 +284,12 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  BOOL enable_dark_mode = FALSE;
+  BOOL enable_dark_mode = frame_dark_ ? TRUE : FALSE;
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &enable_dark_mode, sizeof(enable_dark_mode));
+}
+
+void Win32Window::SetFrameDarkMode(bool dark) {
+  frame_dark_ = dark;
+  UpdateTheme(window_handle_);
 }

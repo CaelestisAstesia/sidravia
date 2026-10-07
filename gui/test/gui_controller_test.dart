@@ -7,6 +7,92 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  for (final nextPid in [100, 200]) {
+    test(
+      'outdated marker follows daemon identity on stale reconnect pid=$nextPid',
+      () async {
+        final client = _Client()
+          ..daemon = const DaemonStatus(
+            productVersion: 'fixture',
+            buildId: 'fixture',
+            pid: 100,
+            status: 'running',
+            mode: 'desktop',
+          );
+        final controller = _controller(client);
+        await controller.start();
+        client.nextFailure = const IpcRequestFailure(
+          'configuration_session_invalidation_failed',
+        );
+        expect(
+          await controller.updateConfiguration(
+            configurationId: 'cfg-a',
+            institutionProfileId: 'jlu',
+            username: 'new',
+          ),
+          isFalse,
+        );
+        expect(controller.sessionNeedsReset, isTrue);
+        client.nextFailure = const IpcTransportException('ipc_disconnected');
+        await controller.retry();
+        expect(controller.state, GuiConnectionState.stale);
+        expect(controller.sessionNeedsReset, isTrue);
+        client.daemon = DaemonStatus(
+          productVersion: 'fixture',
+          buildId: 'fixture',
+          pid: nextPid,
+          status: 'running',
+          mode: 'desktop',
+        );
+        await controller.retry();
+        expect(controller.state, GuiConnectionState.ready);
+        expect(controller.snapshot!.sessions.single.id, 's-a');
+        expect(controller.sessionNeedsReset, nextPid == 100);
+        controller.dispose();
+      },
+    );
+  }
+  test(
+    'IPC diagnostics distinguish connection, timeout and protocol',
+    () async {
+      for (final code in [
+        'ipc_connection_failed',
+        'ipc_handshake_failed',
+        'ipc_timeout',
+      ]) {
+        final controller = GuiController(
+          bootstrapper: _Bootstrapper(),
+          connector: (_) async => throw IpcTransportException(code),
+        );
+        await controller.start();
+        expect(controller.state, GuiConnectionState.failed);
+        expect(controller.failure?.code, code);
+        controller.dispose();
+      }
+    },
+  );
+
+  test(
+    'mutation success followed by refresh failure preserves stale snapshot',
+    () async {
+      final client = _Client();
+      final controller = _controller(client);
+      await controller.start();
+      final previous = controller.snapshot;
+      client.nextDaemon = Completer<DaemonStatus>();
+      final mutation = controller.startConfiguration('cfg-a');
+      client.nextDaemon!.completeError(
+        const IpcTransportException('ipc_timeout'),
+      );
+      expect(await mutation, isFalse);
+      expect(controller.state, GuiConnectionState.stale);
+      expect(controller.failure?.code, 'ipc_timeout');
+      expect(identical(controller.snapshot, previous), isTrue);
+      expect(client.closed, isTrue);
+      controller.dispose();
+    },
+  );
+
   test('publishes one complete sequential Snapshot', () async {
     final client = _Client();
     final controller = _controller(client);
@@ -20,7 +106,9 @@ void main() {
   });
 
   test('serializes one mutation then refreshes the full Snapshot', () async {
-    final client = _Client();
+    final client = _Client()
+      ..configurations = []
+      ..sessions = [];
     final controller = _controller(client);
     await controller.start();
     client.calls.clear();
@@ -41,6 +129,7 @@ void main() {
       'configurations',
       'sessions',
     ]);
+    expect(client.createPolicy, (false, true, false));
     expect(controller.notice, isNull);
     controller.dispose();
   });
@@ -494,8 +583,10 @@ class _PendingBootstrapper implements GuiBootstrapper {
 
 class _Client implements SidraviaDesktopClient {
   final calls = <String>[];
+  (bool, bool, bool)? createPolicy;
   List<ConfigurationSummary> configurations = const [_configuration];
   List<SessionSummary> sessions = const [_session];
+  DaemonStatus daemon = _daemon;
   Object? nextFailure;
   Completer<DaemonStatus>? nextDaemon;
   Object? stopFailure;
@@ -519,7 +610,7 @@ class _Client implements SidraviaDesktopClient {
     final pending = nextDaemon;
     nextDaemon = null;
     if (pending != null) return pending.future;
-    return _daemon;
+    return daemon;
   }
 
   @override
@@ -545,7 +636,11 @@ class _Client implements SidraviaDesktopClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   }) async {
+    createPolicy = (autoLogin, autoReconnect, allowInsecureStorage);
     _call('configuration.create');
     return _configuration;
   }
@@ -555,6 +650,8 @@ class _Client implements SidraviaDesktopClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async {
     _call('configuration.update');
     return _configuration;
@@ -564,6 +661,7 @@ class _Client implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   }) async {
     _call('configuration.setPassword');
     return _configuration;
@@ -597,6 +695,7 @@ class _Client implements SidraviaDesktopClient {
   Future<ConfigurationSummary> configurationSetAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    bool allowInsecureStorage = false,
   }) async {
     autoLoginCalls++;
     _call('configuration.setAutoLogin');
@@ -617,9 +716,34 @@ class _Client implements SidraviaDesktopClient {
   }
 
   @override
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+    bool allowInsecureStorage = false,
+  }) async {
+    _call('configuration.setAutoReconnect');
+    final c = configurations.single;
+    final updated = ConfigurationSummary(
+      id: c.id,
+      displayName: c.displayName,
+      institutionProfileId: c.institutionProfileId,
+      institutionDisplayName: c.institutionDisplayName,
+      authenticationProtocolId: c.authenticationProtocolId,
+      username: c.username,
+      credentialStored: c.credentialStored,
+      storageProtection: c.storageProtection,
+      autoLogin: c.autoLogin,
+      autoReconnect: autoReconnect,
+    );
+    configurations = [updated];
+    return updated;
+  }
+
+  @override
   Future<ConfigurationRemoveResult> configurationRemove(
-    String configurationId,
-  ) async {
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async {
     configurationRemoveCalls++;
     _call('configuration.remove');
     configurations = const [];
@@ -697,16 +821,16 @@ const _session = SessionSummary(
   id: 's-a',
   displayName: '',
   accountName: 'fixture-user',
-  state: 'suspended',
-  intent: 'suspend_authentication',
+  state: SessionState.suspended,
+  intent: SessionIntent.suspendAuthentication,
   configurationId: 'cfg-a',
 );
 const _otherSession = SessionSummary(
   id: 's-b',
   displayName: '',
   accountName: 'other-user',
-  state: 'suspended',
-  intent: 'suspend_authentication',
+  state: SessionState.suspended,
+  intent: SessionIntent.suspendAuthentication,
   configurationId: 'cfg-b',
 );
 const _token =

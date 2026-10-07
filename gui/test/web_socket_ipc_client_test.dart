@@ -7,6 +7,191 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  test(
+    'explicit consent reaches password settings and removal wire primitives',
+    () async {
+      final received = <Map<String, dynamic>>[];
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final req = jsonDecode(message as String) as Map<String, dynamic>;
+          received.add(req);
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': req['id'],
+              'ok': true,
+              'result': _fixtureResult(req['method'] as String),
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final c = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await c.configurationSetPassword(
+        configurationId: 'fixture-configuration',
+        password: 'fixture',
+        allowInsecureStorage: true,
+      );
+      await c.configurationSetAutoLogin(
+        configurationId: 'fixture-configuration',
+        autoLogin: true,
+        allowInsecureStorage: true,
+      );
+      await c.configurationSetAutoReconnect(
+        configurationId: 'fixture-configuration',
+        autoReconnect: true,
+        allowInsecureStorage: true,
+      );
+      await c.configurationRemove(
+        'fixture-configuration',
+        allowInsecureStorage: true,
+      );
+      expect(received.map((r) => r['payload']), [
+        {
+          'configurationId': 'fixture-configuration',
+          'password': 'fixture',
+          'allowInsecureStorage': true,
+        },
+        {
+          'configurationId': 'fixture-configuration',
+          'autoLogin': true,
+          'allowInsecureStorage': true,
+        },
+        {
+          'configurationId': 'fixture-configuration',
+          'autoReconnect': true,
+          'allowInsecureStorage': true,
+        },
+        {
+          'configurationId': 'fixture-configuration',
+          'allowInsecureStorage': true,
+        },
+      ]);
+      await c.close();
+    },
+  );
+
+  test(
+    'transport serializes supplied creation policy without replacing it',
+    () async {
+      Map<String, dynamic>? request;
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          request = jsonDecode(message as String) as Map<String, dynamic>;
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': request!['id'],
+              'ok': true,
+              'result': _fixtureResult('configuration.create'),
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final c = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await c.configurationCreate(
+        institutionProfileId: 'jlu',
+        username: 'u',
+        password: 'p',
+        autoLogin: true,
+        autoReconnect: false,
+        allowInsecureStorage: true,
+      );
+      expect(request!['payload'], {
+        'institutionProfileId': 'jlu',
+        'username': 'u',
+        'password': 'p',
+        'autoLogin': true,
+        'autoReconnect': false,
+        'allowInsecureStorage': true,
+      });
+      await c.close();
+    },
+  );
+
+  test('refused connection has a fixed transport code', () async {
+    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = socket.port;
+    await socket.close();
+    await expectLater(
+      WebSocketIpcClient.connect(_bootstrap(port)),
+      throwsA(
+        isA<IpcTransportException>().having(
+          (e) => e.code,
+          'code',
+          'ipc_connection_failed',
+        ),
+      ),
+    );
+  });
+  test('real socket timeout invalidates with a distinct code', () async {
+    final server = await _server((socket, _) {
+      socket.listen((_) {});
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(
+      _bootstrap(server.port),
+      requestTimeout: const Duration(milliseconds: 30),
+    );
+    await expectLater(
+      client.daemonStatus(),
+      throwsA(
+        isA<IpcTransportException>().having(
+          (e) => e.code,
+          'code',
+          'ipc_timeout',
+        ),
+      ),
+    );
+    await expectLater(
+      client.daemonStatus(),
+      throwsA(isA<IpcProtocolException>()),
+    );
+    await client.close();
+  });
+
+  test('auto reconnect true false use exact update payload and authoritative return', () async {
+    final received = <Map<String, dynamic>>[];
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        received.add(request);
+        final payload = request['payload'] as Map<String, dynamic>;
+        final result = {
+          ..._fixtureResult('configuration.update'),
+          'autoReconnect': payload['autoReconnect'],
+        };
+        socket.add(
+          jsonEncode({
+            'kind': 'response',
+            'id': request['id'],
+            'ok': true,
+            'result': result,
+          }),
+        );
+      });
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    for (final value in [true, false]) {
+      final result = await client.configurationSetAutoReconnect(
+        configurationId: 'fixture-configuration',
+        autoReconnect: value,
+      );
+      expect(result.autoReconnect, value);
+      expect(received.last['method'], 'configuration.update');
+      expect(received.last['payload'], {
+        'configurationId': 'fixture-configuration',
+        'autoReconnect': value,
+      });
+      expect(result.autoLogin, true);
+      expect(result.username, 'fixture-user');
+    }
+    await client.close();
+    expect(received, hasLength(2));
+  });
+
   test('sends all exact operational fixture shapes', () async {
     final received = <Map<String, dynamic>>[];
     final server = await _server((socket, request) {
@@ -32,11 +217,17 @@ void main() {
       institutionProfileId: 'jlu',
       username: 'fixture-user',
       password: 'fixture-configuration-password',
+
+      autoLogin: false,
+      autoReconnect: true,
+      allowInsecureStorage: false,
     );
     await client.configurationUpdate(
       configurationId: 'fixture-configuration',
       institutionProfileId: 'jlu',
       username: 'fixture-user',
+      password: 'replacement-password',
+      allowInsecureStorage: true,
     );
     await client.configurationSetPassword(
       configurationId: 'fixture-configuration',
@@ -77,6 +268,13 @@ void main() {
       'allowInsecureStorage': false,
       'autoLogin': false,
       'autoReconnect': true,
+    });
+    expect(received[1]['payload'], {
+      'configurationId': 'fixture-configuration',
+      'institutionProfileId': 'jlu',
+      'username': 'fixture-user',
+      'password': 'replacement-password',
+      'allowInsecureStorage': true,
     });
     expect(received[2]['payload'], {
       'configurationId': 'fixture-configuration',
@@ -149,6 +347,10 @@ void main() {
         institutionProfileId: 'jlu',
         username: 'u',
         password: '',
+
+        autoLogin: false,
+        autoReconnect: true,
+        allowInsecureStorage: false,
       ),
       throwsA(isA<IpcRequestFailure>()),
     );

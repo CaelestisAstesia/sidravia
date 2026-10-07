@@ -48,22 +48,23 @@ func MarshalStatusResult(result StatusResult) (json.RawMessage, error) {
 
 // Error codes returned by the daemon.
 const (
-	ErrorCodeUnknownMethod                       = "unknown_method"
-	ErrorCodeInternalError                       = "internal_error"
-	ErrorCodeMalformed                           = "malformed_request"
-	ErrorCodeInvalidArgument                     = "invalid_argument"
-	ErrorCodeProfileNotFound                     = "profile_not_found"
-	ErrorCodeProtocolNotFound                    = "protocol_not_found"
-	ErrorCodeProfileOperationFailed              = "profile_operation_failed"
-	ErrorCodeSessionOperationFailed              = "session_operation_failed"
-	ErrorCodeSessionNotFound                     = "session_not_found"
-	ErrorCodeSessionActiveConflict               = "session_active_conflict"
-	ErrorCodeSessionStateConflict                = "session_state_conflict"
-	ErrorCodeConfigurationNotFound               = "configuration_not_found"
-	ErrorCodeConfigurationConflict               = "configuration_conflict"
-	ErrorCodeConfigurationOperationFailed        = "configuration_operation_failed"
-	ErrorCodeInsecureStorageConfirmationRequired = "insecure_storage_confirmation_required"
-	ErrorCodeConfigurationAutoLoginConflict      = "configuration_auto_login_conflict"
+	ErrorCodeUnknownMethod                          = "unknown_method"
+	ErrorCodeInternalError                          = "internal_error"
+	ErrorCodeMalformed                              = "malformed_request"
+	ErrorCodeInvalidArgument                        = "invalid_argument"
+	ErrorCodeProfileNotFound                        = "profile_not_found"
+	ErrorCodeProtocolNotFound                       = "protocol_not_found"
+	ErrorCodeProfileOperationFailed                 = "profile_operation_failed"
+	ErrorCodeSessionOperationFailed                 = "session_operation_failed"
+	ErrorCodeSessionNotFound                        = "session_not_found"
+	ErrorCodeSessionActiveConflict                  = "session_active_conflict"
+	ErrorCodeSessionStateConflict                   = "session_state_conflict"
+	ErrorCodeConfigurationNotFound                  = "configuration_not_found"
+	ErrorCodeConfigurationConflict                  = "configuration_conflict"
+	ErrorCodeConfigurationOperationFailed           = "configuration_operation_failed"
+	ErrorCodeConfigurationSessionInvalidationFailed = "configuration_session_invalidation_failed"
+	ErrorCodeInsecureStorageConfirmationRequired    = "insecure_storage_confirmation_required"
+	ErrorCodeConfigurationAutoLoginConflict         = "configuration_auto_login_conflict"
 )
 
 // Method names for one-shot Session operations.
@@ -99,6 +100,8 @@ type ConfigurationCreatePayload struct {
 	AutoReconnect        bool   `json:"autoReconnect"`
 }
 type ConfigurationUpdatePayload struct {
+	Password             *string `json:"password,omitempty"`
+	AllowInsecureStorage bool    `json:"allowInsecureStorage,omitempty"`
 	ConfigurationID      string  `json:"configurationId"`
 	DisplayName          *string `json:"displayName,omitempty"`
 	InstitutionProfileID *string `json:"institutionProfileId,omitempty"`
@@ -183,12 +186,46 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 	}
 	return value, nil
 }
+
+type ConfigurationRemovePayload struct {
+	ConfigurationID      string `json:"configurationId"`
+	AllowInsecureStorage bool   `json:"allowInsecureStorage,omitempty"`
+}
+
+func DecodeConfigurationRemovePayload(data []byte) (ConfigurationRemovePayload, error) {
+	var value ConfigurationRemovePayload
+	if err := decodeStrict(data, &value); err != nil {
+		return value, err
+	}
+	if value.ConfigurationID == "" {
+		return value, fmt.Errorf("missing configurationId")
+	}
+	if err := rejectNullFields(data, "allowInsecureStorage"); err != nil {
+		return value, err
+	}
+	return value, nil
+}
+func rejectNullFields(data []byte, names ...string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, name := range names {
+		if raw, ok := fields[name]; ok && string(raw) == "null" {
+			return fmt.Errorf("null optional configuration field")
+		}
+	}
+	return nil
+}
 func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, error) {
 	var value ConfigurationUpdatePayload
 	if err := decodeStrict(data, &value); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
-	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil {
+	if err := rejectNullFields(data, "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage"); err != nil {
+		return ConfigurationUpdatePayload{}, err
+	}
+	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil && value.Password == nil {
 		return ConfigurationUpdatePayload{}, fmt.Errorf("missing configuration update")
 	}
 	if value.InstitutionProfileID != nil && *value.InstitutionProfileID == "" || value.Username != nil && *value.Username == "" {

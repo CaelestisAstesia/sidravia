@@ -9,15 +9,21 @@ abstract interface class SidraviaIpcClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   });
   Future<ConfigurationSummary> configurationUpdate({
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   });
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   });
   Future<SessionSummary> sessionStartConfiguration(String configurationId);
   Future<SessionSummary> sessionStop(String sessionId);
@@ -27,8 +33,17 @@ abstract interface class SidraviaIpcClient {
   Future<ConfigurationSummary> configurationSetAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    bool allowInsecureStorage = false,
   });
-  Future<ConfigurationRemoveResult> configurationRemove(String configurationId);
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+    bool allowInsecureStorage = false,
+  });
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  });
   Future<void> close();
 }
 

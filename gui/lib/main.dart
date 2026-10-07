@@ -1,23 +1,37 @@
 import 'dart:io';
 
+import 'package:sidravia_gui/platform/gui_settings_storage.dart';
+import 'package:sidravia_gui/shared/theme/appearance.dart';
+
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/announcement_feed.dart';
 import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
+import 'package:sidravia_gui/platform/sidravia_platform.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final rawNamespace = Platform.environment['SIDRAVIA_NAMESPACE'];
   final namespace = validateDesktopNamespace(rawNamespace);
   if (namespace == null) exit(2);
-  final desktop = DesktopPresence(namespace: namespace);
+  // Appearance restoration is independent of bootstrap/IPC readiness.
+  late final Appearance appearance;
+  try {
+    appearance = Appearance(
+      store: await productionGuiSettingsStore(namespace: namespace),
+    );
+  } on Object {
+    appearance = Appearance(store: UnavailableGuiSettingsStore());
+  }
+  await appearance.initialize();
+  final platform = SidraviaPlatform.detect(namespace: namespace);
+  final desktop = platform.desktopPresence;
   final disposition = await desktop.initialize();
   if (disposition == DesktopPresenceDisposition.activatedExisting) {
     desktop.dispose();
@@ -26,9 +40,10 @@ Future<void> main() async {
   registerHarmonyOSFontLicense();
   runApp(
     SidraviaApp(
-      controller: GuiController(bootstrapper: ProcessGuiBootstrap()),
+      controller: GuiController(bootstrapper: platform.bootstrapper),
       announcements: _createAnnouncementController(),
       desktopPresence: desktop,
+      appearance: appearance,
     ),
   );
 }

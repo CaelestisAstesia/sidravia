@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/design/sidravia_theme.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
+import 'package:sidravia_gui/shared/theme/appearance.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 class SidraviaApp extends StatefulWidget {
@@ -14,9 +15,10 @@ class SidraviaApp extends StatefulWidget {
     required this.controller,
     this.announcements,
     this.desktopPresence,
+    this.appearance,
   });
-
   final GuiController controller;
+  final Appearance? appearance;
   final AnnouncementController? announcements;
   final DesktopPresence? desktopPresence;
 
@@ -25,13 +27,15 @@ class SidraviaApp extends StatefulWidget {
 }
 
 class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
+  late final _appearance = widget.appearance ?? Appearance();
+  final _windowObserver = SidraviaWindowObserver();
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.controller.addListener(_handleControllerChanged);
-    widget.controller.start();
-    widget.announcements?.start();
+    unawaited(widget.controller.start());
+    unawaited(widget.announcements?.start() ?? Future<void>.value());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = _handleExitRequested;
@@ -40,8 +44,8 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   }
 
   void _handleControllerChanged() {
-    final desktop = widget.desktopPresence;
     final snapshot = widget.controller.snapshot;
+    final desktop = widget.desktopPresence;
     if (desktop != null && snapshot != null) {
       unawaited(desktop.considerSnapshot(snapshot));
     }
@@ -57,7 +61,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      widget.announcements?.refreshIfDue();
+      unawaited(widget.announcements?.refreshIfDue() ?? Future<void>.value());
     }
   }
 
@@ -72,21 +76,29 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     }
     widget.announcements?.dispose();
     widget.controller.dispose();
+    _appearance.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Sidravia',
-      debugShowCheckedModeBanner: false,
-      theme: SidraviaTheme.light(),
-      home: SidraviaWindowFrame(
-        child: SidraviaShell(
-          controller: widget.controller,
-          announcements: widget.announcements,
+  Widget build(BuildContext context) => AppearanceScope(
+    appearance: _appearance,
+    child: ValueListenableBuilder<ThemeMode>(
+      valueListenable: _appearance,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'Sidravia',
+        navigatorObservers: [_windowObserver],
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: mode,
+        home: SidraviaWindowFrame(
+          child: SidraviaShell(
+            controller: widget.controller,
+            announcements: widget.announcements,
+          ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

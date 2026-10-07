@@ -5,6 +5,41 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
+  test(
+    'all legal Session states and intents decode; unknown or missing reject',
+    () {
+      final source = jsonDecode(
+        '{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z"}',
+      ) as Map<String, dynamic>;
+      for (final state in SessionState.values) {
+        for (final intent in SessionIntent.values) {
+          final result = decodeSession(
+            jsonEncode({
+              ...source,
+              'state': state.wireValue,
+              'intent': intent.wireValue,
+            }),
+          );
+          expect(result.state, state);
+          expect(result.intent, intent);
+        }
+      }
+      for (final key in ['state', 'intent']) {
+        for (final value in ['unknown', null, 1]) {
+          expect(
+            () => decodeSession(jsonEncode({...source, key: value})),
+            throwsA(isA<IpcProtocolException>()),
+          );
+        }
+        final missing = {...source}..remove(key);
+        expect(
+          () => decodeSession(jsonEncode(missing)),
+          throwsA(isA<IpcProtocolException>()),
+        );
+      }
+    },
+  );
+
   test('consumes all four read-only IPC fixture examples', () {
     final fixture = jsonDecode(
       File('../internal/ipc/contract/testdata/v1/conformance.json')

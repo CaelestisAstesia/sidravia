@@ -125,7 +125,7 @@ func TestConfigCreateRejectsPasswordOnArgvShape(t *testing.T) {
 	deps := commandDependencies{
 		configList: func() error { return nil }, configShow: func(string) error { return nil },
 		configCreate: func(configCreateOptions) error { return nil }, configUpdate: func(configUpdateOptions) error { return nil },
-		configSetPassword: func(configPasswordOptions) error { return nil }, configRemove: func(string, bool) error { return nil },
+		configSetPassword: func(configPasswordOptions) error { return nil }, configRemove: func(string, bool, bool) error { return nil },
 		output: &bytes.Buffer{},
 	}
 	if err := runCommand([]string{"config", "create", "--id", "campus", "--profile", "jlu", "--username", "user", "--password", "secret"}, deps); err == nil || !strings.HasPrefix(err.Error(), "用法错误，请运行 sidraviactl help config create") {
@@ -330,5 +330,23 @@ func TestReadOnlyConfigAcquisitionFailureWritesNothing(t *testing.T) {
 	}
 	if output.Len() != 0 {
 		t.Fatalf("output=%q", output.String())
+	}
+}
+
+func TestUpdateAndRemoveExposeExplicitInsecureStorageConsent(t *testing.T) {
+	var update configUpdateOptions
+	var removeConsent bool
+	deps := commandDependencies{output: &bytes.Buffer{}, configUpdate: func(o configUpdateOptions) error { update = o; return nil }, configRemove: func(_ string, _ bool, allow bool) error { removeConsent = allow; return nil }}
+	if err := runCommand([]string{"config", "update", "campus", "--username", "new", "--allow-insecure-storage"}, deps); err != nil {
+		t.Fatal(err)
+	}
+	if !update.allowInsecure || update.username == nil || *update.username != "new" {
+		t.Fatal("update consent lost")
+	}
+	if err := runCommand([]string{"config", "remove", "campus", "--yes", "--allow-insecure-storage"}, deps); err != nil {
+		t.Fatal(err)
+	}
+	if !removeConsent {
+		t.Fatal("remove consent lost")
 	}
 }

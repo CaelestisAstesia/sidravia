@@ -2,6 +2,7 @@
 
 #include <flutter/encodable_value.h>
 #include <shellapi.h>
+#include <dwmapi.h>
 
 #include <cwchar>
 #include <optional>
@@ -64,6 +65,18 @@ bool FlutterWindow::OnCreate() {
         HWND window = GetHandle();
         if (window == nullptr) {
           result->Error("window_unavailable", "Window is unavailable.");
+          return;
+        }
+        if (call.method_name() == "setDarkMode") {
+          const auto* dark = std::get_if<bool>(call.arguments());
+          if (!dark) { result->Error("invalid_theme", "Expected bool"); return; }
+          // Preserve the Dart-owned appearance through DWM color changes.
+          SetFrameDarkMode(*dark);
+          result->Success(); return;
+        }
+        if (call.method_name() == "getState" ||
+            call.method_name() == "diagnostics") {
+          result->Success(flutter::EncodableValue(WindowState()));
           return;
         }
         if (call.method_name() == "minimize") {
@@ -264,9 +277,11 @@ void FlutterWindow::NotifyTray(const std::wstring& title,
 void FlutterWindow::ShowTrayMenu() {
   HWND hwnd = GetHandle();
   HMENU menu = ::CreatePopupMenu();
-  ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand, L"打开 Sidravia");
-  ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-  ::AppendMenuW(menu, MF_STRING, kTrayExitCommand, L"退出并断开");
+  // Native tray exposes lifecycle actions; connection state belongs to Dart.
+  ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand,
+                L"\u663E\u793A\u4E3B\u754C\u9762");
+  ::AppendMenuW(menu, MF_STRING, kTrayExitCommand,
+                L"\u9000\u51FA Sidravia");
   ::SetMenuDefaultItem(menu, kTrayOpenCommand, FALSE);
   POINT pt{};
   ::GetCursorPos(&pt);
@@ -373,4 +388,59 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+}
+
+flutter::EncodableMap FlutterWindow::WindowState() {
+  HWND hwnd = GetHandle();
+  RECT outer{}, visible{}, client{};
+  GetWindowRect(hwnd, &outer);
+  visible = outer;
+  const HRESULT visible_result = DwmGetWindowAttribute(
+      hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &visible, sizeof(visible));
+  BOOL composition = FALSE, non_client_rendering = FALSE;
+  const HRESULT composition_result = DwmIsCompositionEnabled(&composition);
+  const HRESULT non_client_result = DwmGetWindowAttribute(
+      hwnd, DWMWA_NCRENDERING_ENABLED, &non_client_rendering,
+      sizeof(non_client_rendering));
+  GetClientRect(hwnd, &client);
+  const double dpi = static_cast<double>(GetDpiForWindow(hwnd));
+  const double scale = dpi / 96.0;
+  using flutter::EncodableValue;
+  const auto rectangle = [](RECT r) {
+    return EncodableValue(flutter::EncodableList{
+        EncodableValue(static_cast<int>(r.left)), EncodableValue(static_cast<int>(r.top)),
+        EncodableValue(static_cast<int>(r.right-r.left)),
+        EncodableValue(static_cast<int>(r.bottom-r.top))});
+  };
+  return {
+    {EncodableValue("maximized"), EncodableValue(IsZoomed(hwnd) != FALSE)},
+    {EncodableValue("active"), EncodableValue(GetForegroundWindow() == hwnd)},
+    {EncodableValue("minimized"), EncodableValue(IsIconic(hwnd) != FALSE)},
+    {EncodableValue("maximizeHovered"), EncodableValue(maximize_hovered_)},
+    {EncodableValue("maximizePressed"), EncodableValue(maximize_pressed_)},
+    {EncodableValue("dpi"), EncodableValue(dpi)},
+    {EncodableValue("outerPhysical"), rectangle(outer)},
+    {EncodableValue("visiblePhysical"), rectangle(visible)},
+    {EncodableValue("clientPhysical"), rectangle(client)},
+    {EncodableValue("clientLogicalWidth"), EncodableValue(client.right/scale)},
+    {EncodableValue("clientLogicalHeight"), EncodableValue(client.bottom/scale)},
+    {EncodableValue("topLogical"), EncodableValue(0.0)},
+    {EncodableValue("contentLogicalHeight"), EncodableValue(
+        client.bottom/scale - (0.0))},
+    {EncodableValue("customFrame"), EncodableValue(false)},
+    {EncodableValue("darkFrame"), EncodableValue(frame_dark_mode())},
+    {EncodableValue("dwmComposition"), EncodableValue(composition != FALSE)},
+    {EncodableValue("compositionHRESULT"), EncodableValue(static_cast<int>(composition_result))},
+    {EncodableValue("nonClientRendering"), EncodableValue(non_client_rendering != FALSE)},
+    {EncodableValue("nonClientHRESULT"), EncodableValue(static_cast<int>(non_client_result))},
+    {EncodableValue("visibleHRESULT"), EncodableValue(static_cast<int>(visible_result))},
+    {EncodableValue("closeToTray"), EncodableValue(desktop_presence_initialized_)},
+  };
+}
+
+void FlutterWindow::PublishWindowState() {
+  if (window_channel_ && GetHandle()) {
+    window_channel_->InvokeMethod("stateChanged",
+        std::make_unique<flutter::EncodableValue>(WindowState()));
+  }
 }

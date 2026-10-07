@@ -1,0 +1,1146 @@
+{
+  "sourceSHA256": "53b0f460a6aba89ae1397747b89294a4f6055c9dde2d118055c2b34c54a4e813",
+  "environment": "WSL Chromium DPR1; Flutter Windows widget configuration; HarmonyOS vs Segoe/YaHei; candidates only",
+  "cases": [
+    {
+      "name": "dark-account",
+      "changedChannels": 87256,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 2.5,
+          "width": 0,
+          "height": 0.3125
+        },
+        "TextField": {
+          "x": 0,
+          "y": 2,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-authenticated",
+      "changedChannels": 27660,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-authenticating",
+      "changedChannels": 28955,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-blocked_by_error",
+      "changedChannels": 50779,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-issue": {
+          "x": 0,
+          "y": -0.140625,
+          "width": 0,
+          "height": 1
+        }
+      }
+    },
+    {
+      "name": "dark-details",
+      "changedChannels": 95911,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 12
+        }
+      }
+    },
+    {
+      "name": "dark-diagnostics",
+      "changedChannels": 93840,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 1,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-empty",
+      "changedChannels": 47971,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-modal",
+      "changedChannels": 746202,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "Dialog": {
+          "x": 0,
+          "y": 23,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-settings",
+      "changedChannels": 45766,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0.46875
+        }
+      }
+    },
+    {
+      "name": "dark-suspended",
+      "changedChannels": 37208,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-waiting_before_retry",
+      "changedChannels": 42375,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "dark-waiting_for_network",
+      "changedChannels": 32655,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-account",
+      "changedChannels": 88957,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 2.5,
+          "width": 0,
+          "height": 0.3125
+        },
+        "TextField": {
+          "x": 0,
+          "y": 2,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-authenticated",
+      "changedChannels": 27771,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-authenticating",
+      "changedChannels": 27527,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-blocked_by_error",
+      "changedChannels": 53135,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-issue": {
+          "x": 0,
+          "y": -0.140625,
+          "width": 0,
+          "height": 1
+        }
+      }
+    },
+    {
+      "name": "light-details",
+      "changedChannels": 95696,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 12
+        }
+      }
+    },
+    {
+      "name": "light-diagnostics",
+      "changedChannels": 93826,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 1,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-empty",
+      "changedChannels": 50303,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-modal",
+      "changedChannels": 456356,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "Dialog": {
+          "x": 0,
+          "y": 23,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-settings",
+      "changedChannels": 45789,
+      "deltas": {
+        "DesignHeader": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "DesignGroup": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0.46875
+        }
+      }
+    },
+    {
+      "name": "light-suspended",
+      "changedChannels": 39572,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-waiting_before_retry",
+      "changedChannels": 43209,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    },
+    {
+      "name": "light-waiting_for_network",
+      "changedChannels": 31138,
+      "deltas": {
+        "home-configuration-button": {
+          "x": 0,
+          "y": 0,
+          "width": -10,
+          "height": 0
+        },
+        "home-settings-button": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-header": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-status": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-mark": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-context": {
+          "x": 0,
+          "y": 0.359375,
+          "width": 0,
+          "height": 0
+        },
+        "home-actions": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-divider": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "home-notice": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    }
+  ]
+}

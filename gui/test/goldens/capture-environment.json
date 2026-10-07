@@ -1,0 +1,12 @@
+{
+  "fixture": "home / connected / light / active announcement",
+  "html_design_window": "400x690",
+  "flutter_content_canvas": "400x644",
+  "flutter_capture": "Flutter widget golden (Linux/WSL), not Windows native",
+  "flutter": "3.47.0",
+  "dpr": 1.0,
+  "text_scale": 1.0,
+  "font": "HarmonyOS Sans asset; Linux widget rasterizer rendered missing CJK/glyphs as tofu",
+  "reference_capture": null,
+  "overlay_capture": null
+}

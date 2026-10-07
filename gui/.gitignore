@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Frontend local preferences; never commit user data
+gui-settings.json
+gui-settings.json.*.tmp

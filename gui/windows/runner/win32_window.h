@@ -49,6 +49,9 @@ class Win32Window {
   // window properties. Returns nullptr if the window has been destroyed.
   HWND GetHandle();
 
+  void SetFrameDarkMode(bool dark);
+  bool frame_dark_mode() const { return frame_dark_; }
+
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
@@ -88,8 +91,8 @@ class Win32Window {
   static Win32Window* GetThisFromHandle(HWND const window) noexcept;
 
   // Update the window frame's theme to match the system theme.
-  static void UpdateTheme(HWND const window);
-
+  void UpdateTheme(HWND const window);
+  bool frame_dark_ = false;
   bool quit_on_close_ = false;
 
   // window handle for top level window.

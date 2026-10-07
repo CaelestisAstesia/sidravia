@@ -36,10 +36,11 @@ func (AutoLoginConflict) Error() string {
 }
 
 type Catalog struct {
-	mu      sync.Mutex
-	store   SensitiveStore
-	path    string
-	records map[ConfigurationID]catalogRecord
+	mu                 sync.Mutex
+	store              SensitiveStore
+	path               string
+	records            map[ConfigurationID]catalogRecord
+	unprotectedConsent bool
 }
 
 func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catalog, error) {
@@ -173,6 +174,8 @@ func (catalog *Catalog) nextConfigurationID() (ConfigurationID, error) {
 }
 
 type Update struct {
+	Password             *string
+	AllowInsecureStorage bool
 	DisplayName          *string
 	InstitutionProfileID *InstitutionProfileID
 	Username             *string
@@ -184,7 +187,7 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	if err := validateCatalogContext(ctx); err != nil {
 		return Configuration{}, err
 	}
-	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil {
+	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil {
 		return Configuration{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
@@ -211,6 +214,9 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	if update.AutoReconnect != nil {
 		record.configuration.AutoReconnect = *update.AutoReconnect
 	}
+	if update.Password != nil {
+		record.password = *update.Password
+	}
 	if err := record.configuration.Validate(); err != nil {
 		return Configuration{}, catalogInvalidArgument(err)
 	}
@@ -223,7 +229,7 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	}
 	candidate := cloneRecords(catalog.records)
 	candidate[id] = record
-	if err := catalog.commit(ctx, candidate, true); err != nil {
+	if err := catalog.commit(ctx, candidate, update.AllowInsecureStorage || update.Password == nil && catalog.unprotectedConsent); err != nil {
 		return Configuration{}, err
 	}
 	return record.configuration.Clone(), nil
@@ -254,7 +260,7 @@ func (catalog *Catalog) SetPassword(ctx context.Context, id ConfigurationID, pas
 	return record.configuration.Clone(), nil
 }
 
-func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID) error {
+func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, allow ...bool) error {
 	if err := validateCatalogContext(ctx); err != nil {
 		return err
 	}
@@ -271,7 +277,7 @@ func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID) error {
 	}
 	candidate := cloneRecords(catalog.records)
 	delete(candidate, id)
-	return catalog.commit(ctx, candidate, true)
+	return catalog.commit(ctx, candidate, len(allow) > 0 && allow[0] || catalog.unprotectedConsent)
 }
 
 func (catalog *Catalog) Resolve(ctx context.Context, id ConfigurationID) (Configuration, credentials.AuthenticationCredential, error) {
@@ -309,6 +315,7 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 		return err
 	}
 	catalog.records = candidate
+	catalog.unprotectedConsent = allow && catalog.store.ProtectionStatus() == jsonfile.ProtectionUnprotected
 	return nil
 }
 

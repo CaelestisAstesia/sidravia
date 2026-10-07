@@ -39,9 +39,15 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
         await connecting.timeout(requestTimeout),
         requestTimeout: requestTimeout,
       );
-    } on Object {
+    } on Object catch (error) {
       unawaited(_closeIfConnected(connecting));
-      rethrow;
+      throw IpcTransportException(
+        error is TimeoutException
+            ? 'ipc_timeout'
+            : error is WebSocketException
+            ? 'ipc_handshake_failed'
+            : 'ipc_connection_failed',
+      );
     }
   }
 
@@ -78,13 +84,16 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     required String institutionProfileId,
     required String username,
     required String password,
+    required bool autoLogin,
+    required bool autoReconnect,
+    required bool allowInsecureStorage,
   }) async => _call('configuration.create', {
     'institutionProfileId': institutionProfileId,
     'username': username,
     'password': password,
-    'allowInsecureStorage': false,
-    'autoLogin': false,
-    'autoReconnect': true,
+    'allowInsecureStorage': allowInsecureStorage,
+    'autoLogin': autoLogin,
+    'autoReconnect': autoReconnect,
   }, decodeConfiguration);
 
   @override
@@ -92,37 +101,59 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     required String configurationId,
     required String institutionProfileId,
     required String username,
+    String? password,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.update', {
     'configurationId': configurationId,
     'institutionProfileId': institutionProfileId,
     'username': username,
+    'password': ?password,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override
   Future<ConfigurationSummary> configurationSetPassword({
     required String configurationId,
     required String password,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.setPassword', {
     'configurationId': configurationId,
     'password': password,
-    'allowInsecureStorage': false,
+    'allowInsecureStorage': allowInsecureStorage,
   }, decodeConfiguration);
 
   @override
   Future<ConfigurationSummary> configurationSetAutoLogin({
     required String configurationId,
     required bool autoLogin,
+    bool allowInsecureStorage = false,
   }) async => _call('configuration.update', {
     'configurationId': configurationId,
     'autoLogin': autoLogin,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
+  }, decodeConfiguration);
+
+  @override
+  Future<ConfigurationSummary> configurationSetAutoReconnect({
+    required String configurationId,
+    required bool autoReconnect,
+    bool allowInsecureStorage = false,
+  }) async => _call('configuration.update', {
+    'configurationId': configurationId,
+    'autoReconnect': autoReconnect,
+    if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
-    String configurationId,
-  ) async => _call(
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async => _call(
     'configuration.remove',
-    {'configurationId': configurationId},
+    {
+      'configurationId': configurationId,
+      if (allowInsecureStorage) 'allowInsecureStorage': true,
+    },
     (result) => decodeConfigurationRemove(
       result,
       expectedConfigurationId: configurationId,
@@ -176,7 +207,9 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
         }),
       );
       final hasMessage = await _messages.moveNext().timeout(_timeout);
-      if (!hasMessage) throw const IpcProtocolException();
+      if (!hasMessage) {
+        throw const IpcTransportException('ipc_disconnected');
+      }
       final message = _messages.current;
       if (message is! String ||
           utf8.encode(message).length > _maximumMessageBytes) {
@@ -221,11 +254,18 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
       throw IpcRequestFailure(error['code'] as String);
     } on IpcRequestFailure {
       rethrow;
-    } on Object {
+    } on Object catch (error) {
       try {
         await _invalidate();
       } on Object {
         // The public transport boundary remains a stable protocol failure.
+      }
+      if (error is IpcTransportException) rethrow;
+      if (error is TimeoutException) {
+        throw const IpcTransportException('ipc_timeout');
+      }
+      if (error is SocketException || error is WebSocketException) {
+        throw const IpcTransportException('ipc_disconnected');
       }
       throw const IpcProtocolException();
     } finally {

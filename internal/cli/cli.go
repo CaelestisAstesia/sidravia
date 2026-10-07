@@ -177,7 +177,7 @@ type commandDependencies struct {
 	configCreate      func(configCreateOptions) error
 	configUpdate      func(configUpdateOptions) error
 	configSetPassword func(configPasswordOptions) error
-	configRemove      func(string, bool) error
+	configRemove      func(string, bool, bool) error
 	guiBootstrap      guiBootstrapper
 	output            io.Writer
 }
@@ -201,7 +201,7 @@ func defaultCommandDependencies(identity clientbootstrap.Identity) commandDepend
 		configCreate:      func(options configCreateOptions) error { return configCreate(identity, options) },
 		configUpdate:      func(options configUpdateOptions) error { return configUpdate(identity, options) },
 		configSetPassword: func(options configPasswordOptions) error { return configSetPassword(identity, options) },
-		configRemove:      func(id string, yes bool) error { return configRemove(identity, id, yes) },
+		configRemove:      func(id string, yes, allow bool) error { return configRemove(identity, id, yes, allow) },
 		guiBootstrap:      defaultGUIBootstrap,
 		output:            os.Stdout,
 	}

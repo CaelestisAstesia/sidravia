@@ -1,173 +1,41 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/design/sidravia_theme.dart';
-import 'package:sidravia_gui/dev/preview_fixtures.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
-import 'package:sidravia_gui/features/settings/settings_page.dart';
-import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
-import 'package:sidravia_gui/window/sidravia_window_frame.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-void main() => runApp(const PreviewCatalog());
+void main() => runApp(const _PreviewApp());
 
-enum PreviewSurface { shell, home, configuration, settings }
-
-class PreviewCatalog extends StatefulWidget {
-  const PreviewCatalog({
-    super.key,
-    this.initialScenario = PreviewScenario.authenticated,
-    this.announcementScenario = PreviewAnnouncementScenario.empty,
-    this.surface = PreviewSurface.shell,
-    this.showToolbar = true,
-  });
-
-  final PreviewScenario initialScenario;
-  final PreviewAnnouncementScenario announcementScenario;
-  final PreviewSurface surface;
-  final bool showToolbar;
-
+class _PreviewApp extends StatelessWidget {
+  const _PreviewApp();
   @override
-  State<PreviewCatalog> createState() => _PreviewCatalogState();
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.light(),
+    home: const Scaffold(body: HomeFixture()),
+  );
 }
 
-class _PreviewCatalogState extends State<PreviewCatalog> {
-  late PreviewScenario _scenario = widget.initialScenario;
-  late GuiController _controller = _createController(_scenario);
-  late PreviewAnnouncementScenario _announcementScenario =
-      widget.announcementScenario;
-  late AnnouncementController _announcements = _createAnnouncementController(
-    _announcementScenario,
+/// Fixed, offline fixture for the reference 400x690 design window.
+class HomeFixture extends StatelessWidget {
+  const HomeFixture({super.key});
+  @override
+  Widget build(BuildContext context) => HomeView(
+    data: HomeViewData(
+      institution: '吉林大学',
+      username: 'student01',
+      state: '已连接',
+      detail: '认证成功 · 已连接 2 小时 18 分钟',
+      context: '以太网 · 192.168.1.20',
+      glyph: '✓',
+      tone: HomeTone.success,
+      secondaryLabel: '连接详情',
+      primaryLabel: '断开连接',
+      primaryKind: HomeButtonKind.secondary,
+      primaryEnabled: true,
+      onHeader: () {},
+      onSettings: () {},
+      onSecondary: () {},
+      onPrimary: () {},
+      notice: HomeNotice(title: '校园网维护安排', onOpen: () {}),
+    ),
   );
-
-  GuiController _createController(PreviewScenario scenario) {
-    final controller = createPreviewController(scenario);
-    unawaited(controller.start());
-    return controller;
-  }
-
-  AnnouncementController _createAnnouncementController(
-    PreviewAnnouncementScenario scenario,
-  ) {
-    final controller = createPreviewAnnouncementController(scenario);
-    unawaited(controller.start());
-    return controller;
-  }
-
-  void _selectScenario(PreviewScenario? scenario) {
-    if (scenario == null || scenario == _scenario) return;
-    final old = _controller;
-    setState(() {
-      _scenario = scenario;
-      _controller = _createController(scenario);
-    });
-    old.dispose();
-  }
-
-  void _selectAnnouncementScenario(PreviewAnnouncementScenario? scenario) {
-    if (scenario == null || scenario == _announcementScenario) return;
-    final old = _announcements;
-    setState(() {
-      _announcementScenario = scenario;
-      _announcements = _createAnnouncementController(scenario);
-    });
-    old.dispose();
-  }
-
-  @override
-  void dispose() {
-    _announcements.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Sidravia visual preview',
-      debugShowCheckedModeBanner: false,
-      theme: SidraviaTheme.light(),
-      home: SidraviaWindowFrame(
-        child: Scaffold(
-          body: SafeArea(
-            child: Column(
-              children: [
-                if (widget.showToolbar) _buildToolbar(),
-                Expanded(child: _buildSurface()),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildToolbar() {
-    return SizedBox(
-      width: double.infinity,
-      child: Material(
-        color: const Color(0xFFF0F2F6),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: Wrap(
-            spacing: 20,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.visibility_outlined, size: 20),
-                  SizedBox(width: 8),
-                  Text('开发预览 · 不连接 daemon'),
-                ],
-              ),
-              DropdownButton<PreviewScenario>(
-                key: const ValueKey('preview-scenario'),
-                value: _scenario,
-                underline: const SizedBox.shrink(),
-                onChanged: _selectScenario,
-                items: [
-                  for (final scenario in PreviewScenario.values)
-                    DropdownMenuItem(
-                      value: scenario,
-                      child: Text(scenario.label),
-                    ),
-                ],
-              ),
-              DropdownButton<PreviewAnnouncementScenario>(
-                key: const ValueKey('preview-announcement-scenario'),
-                value: _announcementScenario,
-                underline: const SizedBox.shrink(),
-                onChanged: _selectAnnouncementScenario,
-                items: [
-                  for (final scenario in PreviewAnnouncementScenario.values)
-                    DropdownMenuItem(
-                      value: scenario,
-                      child: Text(scenario.label),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSurface() => switch (widget.surface) {
-    PreviewSurface.shell => SidraviaShell(
-      controller: _controller,
-      announcements: _announcements,
-    ),
-    PreviewSurface.home => HomePage(
-      controller: _controller,
-      onOpenConfiguration: () {},
-      announcements: _announcements,
-    ),
-    PreviewSurface.configuration => ConfigurationPage(controller: _controller),
-    PreviewSurface.settings => const SettingsPage(),
-  };
 }

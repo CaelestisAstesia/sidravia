@@ -14,14 +14,17 @@ void main() {
     expect(runner, isNot(contains('WM_NCCALCSIZE')));
     expect(runner, isNot(contains('WM_NCHITTEST')));
     expect(runner, contains('WM_GETMINMAXINFO'));
-    expect(runner, contains('kMinimumWindowWidth = 900'));
-    expect(runner, contains('kMinimumWindowHeight = 600'));
+    expect(flutterWindow, isNot(contains('configureFrame')));
+    expect(flutterWindow, isNot(contains('WM_NCHITTEST')));
+    expect(flutterWindow, contains('setDarkMode'));
+    expect(runner, contains('kMinimumWindowWidth = 360'));
+    expect(runner, contains('kMinimumWindowHeight = 640'));
     expect(flutterWindow, contains('"sidravia/window"'));
     expect(flutterWindow, contains('call.method_name() == "minimize"'));
     expect(flutterWindow, contains('ShowWindow(window, SW_MINIMIZE)'));
     expect(flutterWindow, contains('call.method_name() == "close"'));
     expect(flutterWindow, contains('PostMessage(window, WM_CLOSE, 0, 0)'));
-    expect(main, contains('Win32Window::Size size(1280, 720)'));
+    expect(main, contains('Win32Window::Size size(400, 690)'));
   });
 
   test('Windows runner owns the desktop presence surface', () {
@@ -70,9 +73,20 @@ void main() {
     expect(flutterWindow, contains('WM_RBUTTONUP'));
     expect(flutterWindow, contains('NIN_BALLOONUSERCLICK'));
 
+    // Tray menu contract: no fabricated connection status.
+    final menu = flutterWindow
+        .split('void FlutterWindow::ShowTrayMenu()')
+        .last
+        .split('void FlutterWindow::')
+        .first;
+    expect(RegExp(r'::AppendMenuW\(').allMatches(menu), hasLength(2));
+    expect(menu, isNot(contains('MF_GRAYED')));
+    expect(menu, isNot(contains('\\u5DF2\\u8FDE\\u63A5')));
     // Tray menu contract.
-    expect(flutterWindow, contains('打开 Sidravia'));
-    expect(flutterWindow, contains('退出并断开'));
+    expect(flutterWindow, contains('kTrayOpenCommand'));
+    expect(flutterWindow, contains('kTrayExitCommand'));
+    expect(flutterWindow, contains('\\u663E\\u793A\\u4E3B\\u754C\\u9762'));
+    expect(flutterWindow, contains('\\u9000\\u51FA Sidravia'));
     expect(flutterWindow, contains('TPM_RETURNCMD'));
 
     // Explicit exit flows through Dart before native destruction.

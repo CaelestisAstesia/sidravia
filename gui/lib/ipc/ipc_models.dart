@@ -1,16 +1,35 @@
 import 'dart:convert';
 
 const daemonModes = {'headless', 'desktop'};
-const sessionIntents = {'maintain_authentication', 'suspend_authentication'};
-const sessionStates = {
-  'suspended',
-  'waiting_for_network',
-  'authenticating',
-  'authenticated',
-  'waiting_before_retry',
-  'blocked_by_error',
-  'stopping',
-};
+
+enum SessionState {
+  suspended('suspended'),
+  waitingForNetwork('waiting_for_network'),
+  authenticating('authenticating'),
+  authenticated('authenticated'),
+  waitingBeforeRetry('waiting_before_retry'),
+  blockedByError('blocked_by_error'),
+  stopping('stopping');
+
+  const SessionState(this.wireValue);
+  final String wireValue;
+  static SessionState decode(String value) => values.firstWhere(
+    (state) => state.wireValue == value,
+    orElse: () => throw const IpcProtocolException(),
+  );
+}
+
+enum SessionIntent {
+  maintainAuthentication('maintain_authentication'),
+  suspendAuthentication('suspend_authentication');
+
+  const SessionIntent(this.wireValue);
+  final String wireValue;
+  static SessionIntent decode(String value) => values.firstWhere(
+    (intent) => intent.wireValue == value,
+    orElse: () => throw const IpcProtocolException(),
+  );
+}
 
 class DaemonStatus {
   const DaemonStatus({
@@ -115,7 +134,9 @@ class SessionSummary {
     this.revision = 0,
     this.updatedAt,
   });
-  final String id, displayName, accountName, state, intent;
+  final String id, displayName, accountName;
+  final SessionState state;
+  final SessionIntent intent;
   final String? configurationId;
   final SessionStateReason? stateReason;
   final SessionNetworkBinding? selectedNetworkBinding;
@@ -124,21 +145,14 @@ class SessionSummary {
   final int revision;
 }
 
-class GuiSnapshot {
-  const GuiSnapshot({
-    required this.daemon,
-    required this.profiles,
-    required this.configurations,
-    required this.sessions,
-  });
-  final DaemonStatus daemon;
-  final List<InstitutionProfile> profiles;
-  final List<ConfigurationSummary> configurations;
-  final List<SessionSummary> sessions;
-}
-
 class IpcProtocolException implements Exception {
   const IpcProtocolException();
+}
+
+/// Stable transport diagnostics; never contains socket text, endpoints or tokens.
+class IpcTransportException implements Exception {
+  const IpcTransportException(this.code);
+  final String code;
 }
 
 class IpcRequestFailure implements Exception {
@@ -317,10 +331,8 @@ SessionSummary _session(Object? raw) {
       )) {
     throw const IpcProtocolException();
   }
-  final intent = _text(raw['intent']), state = _text(raw['state']);
-  if (!sessionIntents.contains(intent) || !sessionStates.contains(state)) {
-    throw const IpcProtocolException();
-  }
+  final intent = SessionIntent.decode(_text(raw['intent']));
+  final state = SessionState.decode(_text(raw['state']));
   for (final key in const [
     'sessionId',
     'institutionProfileId',

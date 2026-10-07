@@ -1,6 +1,7 @@
+import 'package:sidravia_gui/application/gui_connection_state.dart';
+import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
@@ -148,8 +149,8 @@ SessionSummary _session({required String id, String? configurationId}) =>
       id: id,
       displayName: '',
       accountName: 'fixture-user',
-      state: 'suspended',
-      intent: 'suspend_authentication',
+      state: SessionState.suspended,
+      intent: SessionIntent.suspendAuthentication,
       configurationId: configurationId,
     );
 

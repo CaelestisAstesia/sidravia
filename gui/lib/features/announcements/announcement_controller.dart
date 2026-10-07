@@ -31,6 +31,7 @@ final class AnnouncementController extends ChangeNotifier {
   bool _started = false;
   int _generation = 0;
   Future<void>? _refreshInFlight;
+  Future<void> _writes = Future<void>.value();
 
   AnnouncementDocument? _feed;
   String? _feedJson;
@@ -183,21 +184,22 @@ final class AnnouncementController extends ChangeNotifier {
     final feedJson = _feedJson;
     final lastSuccess = _lastSuccessUtc;
     if (feedJson == null || lastSuccess == null) return;
-    unawaited(_persistSafely(feedJson, lastSuccess));
+    final cache = AnnouncementCache(
+      feedJson: feedJson,
+      lastSuccessUtc: lastSuccess,
+      etag: _etag,
+      lastModified: _lastModified,
+      readKeys: _readKeys,
+      dismissedKeys: _dismissedKeys,
+    );
+    // Capture all fields at enqueue time; complete each multi-key write before
+    // starting the next. A failed write must not poison subsequent writes.
+    _writes = _writes.then((_) => _persistSafely(cache));
   }
 
-  Future<void> _persistSafely(String feedJson, DateTime lastSuccess) async {
+  Future<void> _persistSafely(AnnouncementCache cache) async {
     try {
-      await store.write(
-        AnnouncementCache(
-          feedJson: feedJson,
-          lastSuccessUtc: lastSuccess,
-          etag: _etag,
-          lastModified: _lastModified,
-          readKeys: _readKeys,
-          dismissedKeys: _dismissedKeys,
-        ),
-      );
+      await store.write(cache);
     } on Object {
       // A store failure only means this state does not survive the process.
     }
