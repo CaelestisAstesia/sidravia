@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"slices"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -30,49 +29,14 @@ func newSystemObserver() Observer {
 // ordered slice. No shell-out, registry access, watcher, goroutine or retry
 // beyond the bounded buffer resize is used.
 func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
-	const flags = windows.GAA_FLAG_INCLUDE_PREFIX | windows.GAA_FLAG_INCLUDE_GATEWAYS
-	const maxResizeAttempts = 4
-
-	size := uint32(15000)
-	var buffer []byte
-	succeeded := false
-	for attempt := 0; attempt < maxResizeAttempts; attempt++ {
-		buffer = make([]byte, size)
-		err := windows.GetAdaptersAddresses(
-			windows.AF_INET,
-			flags,
-			0,
-			(*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0])),
-			&size,
-		)
-		if err == nil {
-			succeeded = true
-			break
-		}
-		if err == windows.ERROR_NO_DATA {
-			// The requested family has no address data, which is a valid
-			// empty collection rather than a fatal observation error.
-			return nil, nil
-		}
-		if err != windows.ERROR_BUFFER_OVERFLOW {
-			return nil, fmt.Errorf("read windows network interfaces: %w", err)
-		}
-		if size <= uint32(len(buffer)) {
-			return nil, fmt.Errorf("read windows network interfaces: %w", err)
-		}
+	buffer, adapters, err := readWindowsAdapters()
+	if err != nil {
+		return nil, err
 	}
-	if !succeeded {
-		return nil, fmt.Errorf(
-			"read windows network interfaces: buffer overflow persisted after %d attempts",
-			maxResizeAttempts,
-		)
-	}
-
-	adapters := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0]))
-	// buffer is referenced through &buffer[0] above; keep it alive until the
-	// retained values have been copied out, because the adapter linked list and
-	// its strings live inside buffer.
 	defer runtime.KeepAlive(buffer)
+	if adapters == nil {
+		return nil, nil
+	}
 
 	interfaces := make([]NetworkInterface, 0)
 	for aa := adapters; aa != nil; aa = aa.Next {
