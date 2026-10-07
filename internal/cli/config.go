@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
@@ -20,6 +21,8 @@ const insecureStorageWarning = "警告：可访问便携目录的用户可能读
 type configCreateOptions struct {
 	binding                                  bindingFlags
 	id, name, profile, username              string
+	protocolOverrideFile                     string
+	protocolOverrideFileSet                  bool
 	passwordStdin, allowInsecure             bool
 	autoLogin, autoReconnect                 bool
 	autoLoginExplicit, autoReconnectExplicit bool
@@ -28,9 +31,44 @@ type configUpdateOptions struct {
 	binding                  bindingFlags
 	allowInsecure            bool
 	id                       string
+	protocolOverrideFile     string
+	protocolOverrideFileSet  bool
+	clearProtocolOverride    bool
 	name, profile, username  *string
 	autoLogin, autoReconnect *bool
 }
+
+type protocolOverridePathFlag struct {
+	value    string
+	set      bool
+	target   *string
+	supplied *bool
+}
+
+func (flag *protocolOverridePathFlag) Set(value string) error {
+	if flag.set {
+		return errCommandUsage
+	}
+	flag.value = value
+	flag.set = true
+	if flag.target != nil {
+		*flag.target = value
+	}
+	if flag.supplied != nil {
+		*flag.supplied = true
+	}
+	return nil
+}
+
+func (flag *protocolOverridePathFlag) String() string { return flag.value }
+func (flag *protocolOverridePathFlag) Type() string   { return "string" }
+
+func addProtocolOverrideFileFlag(flags *pflag.FlagSet, value *string, supplied *bool) {
+	flag := &protocolOverridePathFlag{target: value, supplied: supplied}
+	flags.Var(flag, "protocol-override-file", "从严格 JSON 对象文件读取协议上下文 Override；保存后结束旧 Session，不会自动连接")
+	flags.Lookup("protocol-override-file").NoOptDefVal = ""
+}
+
 type configPasswordOptions struct {
 	id                           string
 	passwordStdin, allowInsecure bool
@@ -43,6 +81,10 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 
 	var create configCreateOptions
 	createCommand := &cobra.Command{Use: "create", Short: "创建认证配置", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		create.protocolOverrideFileSet = cmd.Flags().Changed("protocol-override-file")
+		if create.protocolOverrideFileSet && (create.protocolOverrideFile == "" || containsNUL(create.protocolOverrideFile)) {
+			return errCommandUsage
+		}
 		create.binding.interfaceSet = cmd.Flags().Changed("interface-id")
 		create.binding.addressSet = cmd.Flags().Changed("local-ipv4")
 		if _, err := create.binding.policy(false); err != nil {
@@ -62,10 +104,16 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	createCommand.Flags().BoolVar(&create.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
 	createCommand.Flags().BoolVar(&create.autoLogin, "auto-login", false, "自动登录")
 	createCommand.Flags().BoolVar(&create.autoReconnect, "auto-reconnect", true, "自动重连")
+	addProtocolOverrideFileFlag(createCommand.Flags(), &create.protocolOverrideFile, &create.protocolOverrideFileSet)
 
 	var update configUpdateOptions
 	updateCommand := &cobra.Command{Use: "update <configuration-id>", Short: "更新认证配置", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		update.id = args[0]
+		update.protocolOverrideFileSet = cmd.Flags().Changed("protocol-override-file")
+		update.clearProtocolOverride = cmd.Flags().Changed("clear-protocol-override") && update.clearProtocolOverride
+		if cmd.Flags().Changed("clear-protocol-override") && !update.clearProtocolOverride || update.protocolOverrideFileSet && (update.protocolOverrideFile == "" || containsNUL(update.protocolOverrideFile)) || update.clearProtocolOverride && update.protocolOverrideFileSet {
+			return errCommandUsage
+		}
 		update.binding.interfaceSet = cmd.Flags().Changed("interface-id")
 		update.binding.addressSet = cmd.Flags().Changed("local-ipv4")
 		if _, err := update.binding.policy(true); err != nil {
@@ -122,6 +170,8 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	updateCommand.Flags().String("username", "", "账号")
 	updateCommand.Flags().String("auto-login", "", "自动登录（true 或 false）")
 	updateCommand.Flags().String("auto-reconnect", "", "自动重连（true 或 false）")
+	addProtocolOverrideFileFlag(updateCommand.Flags(), &update.protocolOverrideFile, &update.protocolOverrideFileSet)
+	updateCommand.Flags().BoolVar(&update.clearProtocolOverride, "clear-protocol-override", false, "清除已保存的协议上下文 Override；保存后结束旧 Session，不会自动连接")
 
 	var password configPasswordOptions
 	passwordCommand := &cobra.Command{Use: "set-password <configuration-id>", Short: "更新认证密码", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error {
@@ -220,6 +270,10 @@ func runConfigShow(id string, deps authDependencies) error {
 	})
 }
 func runConfigCreate(options configCreateOptions, deps authDependencies) error {
+	protocolOverride, err := loadProtocolContextOverride(options.protocolOverrideFile, options.protocolOverrideFileSet)
+	if err != nil {
+		return err
+	}
 	policy, err := options.binding.policy(false)
 	if err != nil {
 		return err
@@ -300,6 +354,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 			NetworkBindingPolicy: *policy, ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile,
 			Username: options.username, Password: password, AllowInsecureStorage: options.allowInsecure,
 			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect,
+			ProtocolContextOverride: protocolOverride,
 		})
 		if err != nil {
 			return err
@@ -312,6 +367,16 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 	})
 }
 func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
+	if options.clearProtocolOverride && options.protocolOverrideFileSet {
+		return errors.New("协议上下文 Override 文件与清除选项不能同时使用")
+	}
+	protocolOverride, err := loadProtocolContextOverride(options.protocolOverrideFile, options.protocolOverrideFileSet)
+	if err != nil {
+		return err
+	}
+	if options.clearProtocolOverride {
+		protocolOverride = json.RawMessage("null")
+	}
 	policy, err := options.binding.policy(true)
 	if err != nil {
 		return err
@@ -322,7 +387,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		}
 	}
 	return withAuthClient(deps, func(connection daemonClient) error {
-		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil && policy == nil {
+		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil && policy == nil && !options.protocolOverrideFileSet && !options.clearProtocolOverride {
 			if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
 				return errors.New("非交互式更新需要至少一个更新选项")
 			}
@@ -350,7 +415,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		}
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationUpdate, contract.ConfigurationUpdatePayload{
 			NetworkBindingPolicy: policy, ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile, Username: options.username, AllowInsecureStorage: options.allowInsecure,
-			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect,
+			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect, ProtocolContextOverride: protocolOverride,
 		})
 		if err != nil {
 			return err

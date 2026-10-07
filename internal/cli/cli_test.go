@@ -39,6 +39,54 @@ func TestParseAuthStartConfigurationModeIsExclusive(t *testing.T) {
 	}
 }
 
+func TestParseAuthStartProtocolOverrideFileFormsAndConflicts(t *testing.T) {
+	for _, args := range [][]string{
+		{"--profile", "jlu", "--username", "user", "--protocol-override-file", "override.json"},
+		{"--profile", "jlu", "--username", "user", "--protocol-override-file=override.json"},
+	} {
+		options, err := parseAuthStart(args)
+		if err != nil || !options.protocolOverrideFileSet || options.protocolOverrideFile != "override.json" {
+			t.Fatalf("parse %q = %#v, %v", args, options, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"--profile", "jlu", "--username", "user", "--protocol-override-file"},
+		{"--profile", "jlu", "--username", "user", "--protocol-override-file="},
+		{"--profile", "jlu", "--username", "user", "--protocol-override-file", "a", "--protocol-override-file", "b"},
+		{"--profile", "jlu", "--username", "user", "--protocol-override-file", "a\x00b"},
+		{"--session", "s", "--protocol-override-file", "override.json"},
+		{"--config", "c", "--protocol-override-file", "override.json"},
+	} {
+		if _, err := parseAuthStart(args); err == nil {
+			t.Fatalf("accepted invalid override arguments %q", args)
+		}
+	}
+}
+
+func TestConfigOverrideFlagsRejectInvalidCombinationsBeforeDispatch(t *testing.T) {
+	calls := 0
+	deps := commandDependencies{
+		configCreate: func(configCreateOptions) error { calls++; return nil },
+		configUpdate: func(configUpdateOptions) error { calls++; return nil },
+		output:       io.Discard,
+	}
+	for _, args := range [][]string{
+		{"config", "create", "--protocol-override-file"},
+		{"config", "create", "--protocol-override-file="},
+		{"config", "create", "--protocol-override-file", "a", "--protocol-override-file", "b"},
+		{"config", "update", "campus", "--clear-protocol-override=false"},
+		{"config", "update", "campus", "--clear-protocol-override", "--protocol-override-file", "override.json"},
+		{"config", "update", "campus", "--protocol-override-file"},
+	} {
+		if err := runCommand(args, deps); err == nil || !strings.HasPrefix(err.Error(), "用法错误") {
+			t.Errorf("%q error = %v, want safe usage error", args, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("invalid override commands dispatched %d operations", calls)
+	}
+}
+
 func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
 	var calls []string
 	deps := commandDependencies{

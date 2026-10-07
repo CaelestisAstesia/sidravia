@@ -153,12 +153,14 @@ func ExitCode(err error) int {
 }
 
 type authStartOptions struct {
-	binding         bindingFlags
-	profileID       string
-	username        string
-	sessionID       string
-	configurationID string
-	passwordStdin   bool
+	binding                 bindingFlags
+	profileID               string
+	username                string
+	sessionID               string
+	configurationID         string
+	protocolOverrideFile    string
+	protocolOverrideFileSet bool
+	passwordStdin           bool
 }
 
 type commandDependencies struct {
@@ -556,6 +558,7 @@ var helpSpecs = map[string]helpNode{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
 			"--password-stdin：从 stdin 读取密码",
+			"--protocol-override-file <path>：从严格 JSON 对象文件读取协议上下文 Override（仅一次性认证）",
 			"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定；不可用时等待，不回退",
 			"--session <session-id>：确保已有 Session 正在运行",
 			"--config <configuration-id>：从持久配置启动或确保 Session 正在运行",
@@ -622,15 +625,15 @@ var helpSpecs = map[string]helpNode{
 	"sidraviactl config show": {description: "显示认证配置。", usage: []string{"sidraviactl config show <configuration-id>"}, args: []string{"<configuration-id>：配置 ID"}, examples: []string{"sidraviactl config show campus"}},
 	"sidraviactl config create": {
 		description: "创建认证配置。交互模式下默认提供自动绑定，并可按已观察网卡选择接口和 IPv4；非交互模式不提示并默认自动绑定。使用时 Session 会重新核对网卡事实。",
-		usage:       []string{"sidraviactl config create", "sidraviactl config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage]"},
-		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时提供以跳过交互选择并指定真实绑定；非交互未指定时自动绑定", "--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
+		usage:       []string{"sidraviactl config create", "sidraviactl config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage] [--protocol-override-file PATH]"},
+		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时提供以跳过交互选择并指定真实绑定；非交互未指定时自动绑定", "--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--protocol-override-file PATH：读取替换用的严格 JSON 对象；保存后结束旧 Session，不自动连接", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
 		examples:    []string{"sidraviactl config create", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin --auto-login --auto-reconnect=false"},
 	},
 	"sidraviactl config update": {
 		description: "更新认证配置。",
-		usage:       []string{"sidraviactl config update <configuration-id>", "sidraviactl config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false]"},
+		usage:       []string{"sidraviactl config update <configuration-id>", "sidraviactl config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false] [--protocol-override-file PATH | --clear-protocol-override]"},
 		args:        []string{"<configuration-id>：配置 ID"},
-		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--automatic-binding：恢复自动选择，与显式绑定互斥", "--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连"},
+		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--automatic-binding：恢复自动选择，与显式绑定互斥", "--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连", "--protocol-override-file PATH：替换为严格 JSON 对象；保存后结束旧 Session，不自动连接", "--clear-protocol-override：清除 Override；与文件选项互斥；保存后结束旧 Session，不自动连接"},
 		examples:    []string{"sidraviactl config update campus --auto-login true", "sidraviactl config update campus --auto-reconnect false"},
 	},
 	"sidraviactl config set-password": {
@@ -779,6 +782,25 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 			index++
 			continue
 		}
+		if flag == "--protocol-override-file" {
+			if options.protocolOverrideFileSet {
+				return authStartOptions{}, errCommandUsage
+			}
+			if !hasValue {
+				if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
+					return authStartOptions{}, errCommandUsage
+				}
+				value = args[index+1]
+				index++
+			}
+			if value == "" || strings.ContainsRune(value, '\x00') {
+				return authStartOptions{}, errCommandUsage
+			}
+			options.protocolOverrideFile = value
+			options.protocolOverrideFileSet = true
+			index++
+			continue
+		}
 		switch args[index] {
 		case "--profile":
 			if profileSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
@@ -827,7 +849,7 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 		return authStartOptions{}, errors.New("网卡绑定选项不能与 --session 或 --config 同时使用")
 	}
 	if sessionSet || configSet {
-		if sessionSet && configSet || profileSet || usernameSet || passwordStdinSet {
+		if sessionSet && configSet || profileSet || usernameSet || passwordStdinSet || options.protocolOverrideFileSet {
 			return authStartOptions{}, errCommandUsage
 		}
 		return options, nil

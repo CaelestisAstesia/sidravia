@@ -558,6 +558,83 @@ func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 	}
 }
 
+func TestConfigOverrideCreateReplaceAndClearPayloads(t *testing.T) {
+	result, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		Username: "user", CredentialStored: true, StorageProtection: "protected",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name   string
+		method string
+		call   func(authDependencies) error
+		want   string
+	}{
+		{
+			name:   "create replacement",
+			method: contract.MethodConfigurationCreate,
+			call: func(deps authDependencies) error {
+				return runConfigCreate(configCreateOptions{id: "campus", profile: "jlu", username: "user", passwordStdin: true,
+					protocolOverrideFile: writeOverrideFixture(t, `{"x":"✓"}`), protocolOverrideFileSet: true}, deps)
+			},
+			want: `{"x":"✓"}`,
+		},
+		{
+			name:   "update replacement",
+			method: contract.MethodConfigurationUpdate,
+			call: func(deps authDependencies) error {
+				return runConfigUpdate(configUpdateOptions{id: "campus", protocolOverrideFile: writeOverrideFixture(t, `{"x":"✓"}`), protocolOverrideFileSet: true}, deps)
+			},
+			want: `{"x":"✓"}`,
+		},
+		{
+			name:   "update clear",
+			method: contract.MethodConfigurationUpdate,
+			call: func(deps authDependencies) error {
+				return runConfigUpdate(configUpdateOptions{id: "campus", clearProtocolOverride: true}, deps)
+			},
+			want: "null",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var wire json.RawMessage
+			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+				if method != test.method {
+					t.Fatalf("method = %q, want %q", method, test.method)
+				}
+				wire = append(json.RawMessage(nil), payload...)
+				return contract.NewSuccessResponse("1", result), nil
+			}}
+			deps := hotAuthDependencies(t, connection)
+			deps.stdin = strings.NewReader("password\n")
+			deps.readStdinPassword = readPasswordStdin
+			deps.inputIsConsole = func(io.Reader) bool { return false }
+			if err := test.call(deps); err != nil {
+				t.Fatal(err)
+			}
+			var payload map[string]json.RawMessage
+			if err := json.Unmarshal(wire, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(payload["protocolContextOverride"]); got != test.want {
+				t.Fatalf("protocolContextOverride = %s, want %s; wire=%s", got, test.want, wire)
+			}
+		})
+	}
+}
+
+func writeOverrideFixture(t *testing.T, content string) string {
+	t.Helper()
+	path := t.TempDir() + "/override.json"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestReadOnlyConfigAcquisitionFailureWritesNothing(t *testing.T) {
 	var output bytes.Buffer
 	deps := hotAuthDependencies(t, &fakeDaemonClient{})

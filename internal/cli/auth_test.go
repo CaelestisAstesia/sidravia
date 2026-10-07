@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -490,6 +492,65 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 		if strings.Contains(visible, username) || strings.Contains(visible, password) {
 			t.Error("stdin start exposed a credential marker")
 		}
+	}
+}
+
+func TestAuthStartOverrideFileLoadsBeforeAcquisitionAndUsesOneShotPayload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "override.json")
+	if err := os.WriteFile(path, []byte(`{"factory-private-key":{"scope":"lab"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var wire json.RawMessage
+	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		if method != contract.MethodSessionStartOneShot {
+			t.Fatalf("method = %q", method)
+		}
+		wire = append(json.RawMessage(nil), payload...)
+		return successSessionStartResponse(t, "created", minimalSessionResult("authenticating")), nil
+	}}
+	deps := hotAuthDependencies(t, connection)
+	acquired := false
+	deps.connection.acquire = func(context.Context) (daemonClient, error) {
+		acquired = true
+		return connection, nil
+	}
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) {
+		if !acquired {
+			t.Fatal("password was read before daemon acquisition")
+		}
+		return "password", nil
+	}
+	options := authStartOptions{profileID: "jlu", username: "user", protocolOverrideFile: path, protocolOverrideFileSet: true}
+	if err := runAuthStart(options, deps); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		ProtocolContextOverride json.RawMessage `json:"protocolContextOverride"`
+	}
+	if err := json.Unmarshal(wire, &payload); err != nil || string(payload.ProtocolContextOverride) != `{"factory-private-key":{"scope":"lab"}}` {
+		t.Fatalf("payload override = %s, error=%v", payload.ProtocolContextOverride, err)
+	}
+}
+
+func TestAuthStartInvalidOverrideDoesNotAcquireOrReadPassword(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "private-path-marker.json")
+	content := `[]`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deps := hotAuthDependencies(t, &fakeDaemonClient{})
+	acquisitions, passwordReads := 0, 0
+	deps.connection.acquire = func(context.Context) (daemonClient, error) {
+		acquisitions++
+		return nil, errors.New("should not acquire")
+	}
+	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { passwordReads++; return "", nil }
+	err := runAuthStart(authStartOptions{profileID: "jlu", username: "user", protocolOverrideFile: path, protocolOverrideFileSet: true}, deps)
+	if err == nil || acquisitions != 0 || passwordReads != 0 {
+		t.Fatalf("error=%v acquisitions=%d passwordReads=%d", err, acquisitions, passwordReads)
+	}
+	if strings.Contains(err.Error(), path) || strings.Contains(err.Error(), content) {
+		t.Fatalf("public error leaked override details: %v", err)
 	}
 }
 
