@@ -174,6 +174,7 @@ func (catalog *Catalog) nextConfigurationID() (ConfigurationID, error) {
 }
 
 type Update struct {
+	NetworkBindingPolicy *NetworkBindingPolicy
 	Password             *string
 	AllowInsecureStorage bool
 	DisplayName          *string
@@ -187,7 +188,7 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	if err := validateCatalogContext(ctx); err != nil {
 		return Configuration{}, err
 	}
-	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil {
+	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil && update.NetworkBindingPolicy == nil {
 		return Configuration{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
@@ -198,6 +199,9 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	record, exists := catalog.records[id]
 	if !exists {
 		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+	}
+	if update.NetworkBindingPolicy != nil {
+		record.configuration.NetworkBindingPolicy = *update.NetworkBindingPolicy
 	}
 	if update.DisplayName != nil {
 		record.configuration.DisplayName = *update.DisplayName

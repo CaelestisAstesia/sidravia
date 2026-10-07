@@ -259,7 +259,7 @@ func fullSnapshot() session.Snapshot {
 }
 
 func validStartPayload() []byte {
-	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"SECRET-USER","password":"SECRET-PASS","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{"marker":"OVERRIDE-MARKER"}}`)
+	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"SECRET-USER","password":"SECRET-PASS","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"marker":"OVERRIDE-MARKER"}}`)
 }
 
 func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {

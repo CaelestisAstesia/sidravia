@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/netip"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
@@ -179,7 +180,7 @@ func TestCleanupFailureQuarantinesOldRuntime(t *testing.T) {
 }
 
 func TestRuntimeMetadataChangesRetireButAutoLoginDoesNot(t *testing.T) {
-	for _, field := range []string{"profile", "autoReconnect", "autoLogin"} {
+	for _, field := range []string{"profile", "autoReconnect", "autoLogin", "binding"} {
 		t.Run(field, func(t *testing.T) {
 			setup := newApplicationTestSetup(t)
 			defer setup.cleanup()
@@ -196,6 +197,9 @@ func TestRuntimeMetadataChangesRetireButAutoLoginDoesNot(t *testing.T) {
 			}
 			update := config.Update{}
 			switch field {
+			case "binding":
+				policy := config.NetworkBindingPolicy{Mode: config.ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+				update.NetworkBindingPolicy = &policy
 			case "profile":
 				id := config.InstitutionProfileID("profile-2")
 				update.InstitutionProfileID = &id

@@ -137,6 +137,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       username: username ?? c.username,
       credentialStored: credentialStored ?? c.credentialStored,
       storageProtection: c.storageProtection,
+      networkBindingPolicy: c.networkBindingPolicy,
       autoLogin: autoLogin ?? c.autoLogin,
       autoReconnect: autoReconnect ?? c.autoReconnect,
     );
@@ -162,6 +163,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
 
   @override
   Future<ConfigurationSummary> configurationCreate({
+    required NetworkBindingPolicy networkBindingPolicy,
     required String institutionProfileId,
     required String username,
     required String password,
@@ -184,6 +186,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       username: username,
       credentialStored: password.isNotEmpty,
       storageProtection: 'protected',
+      networkBindingPolicy: networkBindingPolicy,
       autoLogin: autoLogin,
       autoReconnect: autoReconnect,
     );

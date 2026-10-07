@@ -145,7 +145,7 @@ func assertEnums(t *testing.T, enums fixtureEnums) {
 		string(session.WaitingBeforeRetry), string(session.BlockedByError), string(session.Stopping),
 	})
 	assertEnum(t, "storageProtections", enums.StorageProtections, []string{string(jsonfile.ProtectionProtected), string(jsonfile.ProtectionUnprotected)})
-	assertEnum(t, "networkBindingPolicyModes", enums.NetworkBindingPolicyModes, []string{string(session.AutomaticallySelectLatestAvailable)})
+	assertEnum(t, "networkBindingPolicyModes", enums.NetworkBindingPolicyModes, []string{string(session.AutomaticallySelectLatestAvailable), string(session.ExplicitInterfaceAndLocalIPv4)})
 }
 
 func assertEnum(t *testing.T, name string, got, want []string) {

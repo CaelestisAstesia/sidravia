@@ -506,3 +506,39 @@ func cloneNetworkInterfaceFacts(facts environment.NetworkInterfaceFacts) environ
 	}
 	return cloned
 }
+
+func TestExplicitBindingSelectorObservedPairAndRevisionGate(t *testing.T) {
+	policy := NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+	selector := newPolicyBindingSelector(policy)
+	facts := environment.NetworkInterfaceFacts{InterfaceID: "lo", OperationalState: environment.OperationalStateUp, EndpointInterface: true, IPv4AddressAssignments: []environment.IPv4AddressAssignment{{Address: policy.LocalIPv4Address, PrefixLength: 32}, {Address: policy.LocalIPv4Address, PrefixLength: 8}}}
+	physical := networkInterface(t, "physical", environment.PhysicalMediumWired, "192.0.2.1", 24)
+	if _, ok := selector.Select(snapshot(t, 1, physical)); ok {
+		t.Fatal("fell back to physical")
+	}
+	binding, ok := selector.Select(snapshot(t, 2, physical, newNetworkInterface(t, facts)))
+	if !ok {
+		t.Fatal("explicit software binding missing")
+	}
+	assertBinding(t, binding, "lo", "127.0.0.1", 8)
+	if _, ok = selector.Select(snapshot(t, 2, physical)); !ok {
+		t.Fatal("equal revision replaced binding")
+	}
+	if _, ok = selector.Select(snapshot(t, 1)); !ok {
+		t.Fatal("stale revision replaced binding")
+	}
+	facts.OperationalState = environment.OperationalStateDown
+	if _, ok = selector.Select(snapshot(t, 3, physical, newNetworkInterface(t, facts))); ok {
+		t.Fatal("Down binding accepted")
+	}
+	facts.OperationalState = environment.OperationalStateUp
+	facts.IPv4AddressAssignments[0].Address = netip.MustParseAddr("127.0.0.2")
+	facts.IPv4AddressAssignments = facts.IPv4AddressAssignments[:1]
+	if _, ok = selector.Select(snapshot(t, 4, physical, newNetworkInterface(t, facts))); ok {
+		t.Fatal("mismatched address accepted")
+	}
+	auto := newAutomaticBindingSelector()
+	facts.IPv4AddressAssignments[0].Address = policy.LocalIPv4Address
+	if _, ok = auto.Select(snapshot(t, 1, newNetworkInterface(t, facts))); ok {
+		t.Fatal("automatic used software loopback")
+	}
+}

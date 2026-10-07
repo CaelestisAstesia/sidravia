@@ -93,6 +93,13 @@ func authRemove(identity clientbootstrap.Identity, sessionID string) error {
 }
 
 func runAuthStart(options authStartOptions, deps authDependencies) error {
+	policy, err := options.binding.policy(false)
+	if err != nil {
+		return err
+	}
+	if options.binding.supplied() && (options.sessionID != "" || options.configurationID != "") {
+		return errors.New("网卡绑定选项不能与 --session 或 --config 同时使用")
+	}
 	return withAuthClient(deps, func(connection daemonClient) error {
 		if options.configurationID != "" {
 			result, err := callSessionStart(deps, connection, contract.MethodSessionStartConfiguration, contract.ConfigurationIDPayload{ConfigurationID: options.configurationID})
@@ -120,12 +127,12 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 		}
 
 		payload := contract.SessionStartOneShotPayload{
-			DisplayName:              options.profileID,
-			InstitutionProfileID:     options.profileID,
-			Username:                 options.username,
-			Password:                 password,
-			NetworkBindingPolicyMode: automaticNetworkBindingPolicy,
-			ProtocolContextOverride:  json.RawMessage("{}"),
+			DisplayName:             options.profileID,
+			InstitutionProfileID:    options.profileID,
+			Username:                options.username,
+			Password:                password,
+			NetworkBindingPolicy:    *policy,
+			ProtocolContextOverride: json.RawMessage("{}"),
 		}
 		result, err := callSessionStart(deps, connection, contract.MethodSessionStartOneShot, payload)
 		if err != nil {
@@ -394,4 +401,33 @@ func writeSessionStartResult(output io.Writer, result contract.SessionStartResul
 	}
 	p := newPresentation(output)
 	return wrapSafeOperation("写入 Session 启动响应", p.complete(renderSessionStartResult(p, &result)))
+}
+
+// bindingFlags retains flag presence so an explicit empty value is invalid.
+type bindingFlags struct {
+	interfaceID, localIPv4              string
+	interfaceSet, addressSet, automatic bool
+}
+
+func (flags bindingFlags) supplied() bool {
+	return flags.interfaceSet || flags.addressSet || flags.automatic
+}
+func (flags bindingFlags) policy(preserve bool) (*contract.NetworkBindingPolicy, error) {
+	if flags.automatic && (flags.interfaceSet || flags.addressSet) {
+		return nil, errors.New("--automatic-binding 不能与指定网卡或 IPv4 同时使用")
+	}
+	if flags.interfaceSet != flags.addressSet {
+		return nil, errors.New("--interface-id 与 --local-ipv4 必须同时提供")
+	}
+	if !flags.supplied() && preserve {
+		return nil, nil
+	}
+	policy := contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy}
+	if flags.interfaceSet {
+		policy = contract.NetworkBindingPolicy{Mode: "explicit_interface_and_local_ipv4", InterfaceID: flags.interfaceID, LocalIPv4Address: flags.localIPv4}
+	}
+	if _, err := policy.Domain(); err != nil {
+		return nil, errors.New("指定网卡 ID 或本地 IPv4 地址无效")
+	}
+	return &policy, nil
 }

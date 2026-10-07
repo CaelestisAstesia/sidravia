@@ -18,12 +18,14 @@ import (
 const insecureStorageWarning = "警告：可访问便携目录的用户可能读取或修改认证配置和密码、daemon 运行 token，以及敏感 Trace 日志。\n"
 
 type configCreateOptions struct {
+	binding                                  bindingFlags
 	id, name, profile, username              string
 	passwordStdin, allowInsecure             bool
 	autoLogin, autoReconnect                 bool
 	autoLoginExplicit, autoReconnectExplicit bool
 }
 type configUpdateOptions struct {
+	binding                  bindingFlags
 	allowInsecure            bool
 	id                       string
 	name, profile, username  *string
@@ -41,10 +43,17 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 
 	var create configCreateOptions
 	createCommand := &cobra.Command{Use: "create", Short: "创建认证配置", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		create.binding.interfaceSet = cmd.Flags().Changed("interface-id")
+		create.binding.addressSet = cmd.Flags().Changed("local-ipv4")
+		if _, err := create.binding.policy(false); err != nil {
+			return err
+		}
 		create.autoLoginExplicit = cmd.Flags().Changed("auto-login")
 		create.autoReconnectExplicit = cmd.Flags().Changed("auto-reconnect")
 		return wrapCommandOperation(deps.configCreate(create))
 	}}
+	createCommand.Flags().StringVar(&create.binding.interfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
+	createCommand.Flags().StringVar(&create.binding.localIPv4, "local-ipv4", "", "本地 IPv4（须同时提供 --interface-id）")
 	createCommand.Flags().StringVar(&create.id, "id", "", "配置 ID")
 	createCommand.Flags().StringVar(&create.name, "name", "", "显示名称")
 	createCommand.Flags().StringVar(&create.profile, "profile", "", "Profile ID")
@@ -57,6 +66,11 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	var update configUpdateOptions
 	updateCommand := &cobra.Command{Use: "update <configuration-id>", Short: "更新认证配置", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		update.id = args[0]
+		update.binding.interfaceSet = cmd.Flags().Changed("interface-id")
+		update.binding.addressSet = cmd.Flags().Changed("local-ipv4")
+		if _, err := update.binding.policy(true); err != nil {
+			return err
+		}
 		if cmd.Flags().Changed("name") {
 			value, _ := cmd.Flags().GetString("name")
 			update.name = &value
@@ -99,6 +113,9 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 		}
 		return wrapCommandOperation(deps.configUpdate(update))
 	}}
+	updateCommand.Flags().StringVar(&update.binding.interfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
+	updateCommand.Flags().StringVar(&update.binding.localIPv4, "local-ipv4", "", "本地 IPv4（须同时提供 --interface-id）")
+	updateCommand.Flags().BoolVar(&update.binding.automatic, "automatic-binding", false, "恢复自动绑定")
 	updateCommand.Flags().BoolVar(&update.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
 	updateCommand.Flags().String("name", "", "显示名称")
 	updateCommand.Flags().String("profile", "", "Profile ID")
@@ -203,6 +220,10 @@ func runConfigShow(id string, deps authDependencies) error {
 	})
 }
 func runConfigCreate(options configCreateOptions, deps authDependencies) error {
+	policy, err := options.binding.policy(false)
+	if err != nil {
+		return err
+	}
 	interactive := deps.inputIsConsole != nil && deps.inputIsConsole(deps.stdin)
 	if !interactive && (options.id == "" || options.profile == "" || options.username == "" || !options.passwordStdin) {
 		return errors.New("非交互式创建需要 --id、--profile、--username 和 --password-stdin")
@@ -269,7 +290,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 			}
 		}
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationCreate, contract.ConfigurationCreatePayload{
-			ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile,
+			NetworkBindingPolicy: *policy, ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile,
 			Username: options.username, Password: password, AllowInsecureStorage: options.allowInsecure,
 			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect,
 		})
@@ -284,13 +305,17 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 	})
 }
 func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
+	policy, err := options.binding.policy(true)
+	if err != nil {
+		return err
+	}
 	if options.allowInsecure {
 		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
 			return wrapSafeOperation("写入存储警告", err)
 		}
 	}
 	return withAuthClient(deps, func(connection daemonClient) error {
-		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil {
+		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil && policy == nil {
 			if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
 				return errors.New("非交互式更新需要至少一个更新选项")
 			}
@@ -317,7 +342,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 			}
 		}
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationUpdate, contract.ConfigurationUpdatePayload{
-			ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile, Username: options.username, AllowInsecureStorage: options.allowInsecure,
+			NetworkBindingPolicy: policy, ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile, Username: options.username, AllowInsecureStorage: options.allowInsecure,
 			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect,
 		})
 		if err != nil {
@@ -417,6 +442,9 @@ func decodeConfiguration(data []byte) (contract.ConfigurationResult, error) {
 	var result contract.ConfigurationResult
 	if err := decodeStrictCLI(data, &result); err != nil {
 		return result, err
+	}
+	if _, err := result.NetworkBindingPolicy.Domain(); err != nil {
+		return contract.ConfigurationResult{}, fmt.Errorf("配置绑定结果无效")
 	}
 	if result.ConfigurationID == "" || result.InstitutionProfileID == "" || result.AuthenticationProtocolID == "" || result.Username == "" || !result.CredentialStored || result.StorageProtection != "protected" && result.StorageProtection != "unprotected" {
 		return contract.ConfigurationResult{}, fmt.Errorf("配置结果无效")

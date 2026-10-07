@@ -633,6 +633,7 @@ class _Client implements SidraviaDesktopClient {
 
   @override
   Future<ConfigurationSummary> configurationCreate({
+    required NetworkBindingPolicy networkBindingPolicy,
     required String institutionProfileId,
     required String username,
     required String password,

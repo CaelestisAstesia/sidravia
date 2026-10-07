@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -36,7 +37,7 @@ func TestCatalogDocumentRoundTripIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"schemaVersion":3,"configurations":[{"configurationId":"configuration-a","displayName":"First","institutionProfileId":"profile-a","username":"user-a","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null,"autoLogin":false,"autoReconnect":false},{"configurationId":"configuration-b","displayName":"Second","institutionProfileId":"profile-b","username":"user-b","password":"password-b","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"server":"b"},"autoLogin":false,"autoReconnect":false}]}`
+	want := `{"schemaVersion":4,"configurations":[{"configurationId":"configuration-a","displayName":"First","institutionProfileId":"profile-a","username":"user-a","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null,"autoLogin":false,"autoReconnect":false},{"configurationId":"configuration-b","displayName":"Second","institutionProfileId":"profile-b","username":"user-b","password":"password-b","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"server":"b"},"autoLogin":false,"autoReconnect":false}]}`
 	if string(data) != want {
 		t.Fatalf("encoded document differs: %s", data)
 	}
@@ -73,7 +74,7 @@ func TestDecodeCatalogDocumentRejectsInvalidDocuments(t *testing.T) {
 		{"unknown root", `{"schemaVersion":2,"configurations":[],"extra":true}`, persistence.FailureInvalidDocument},
 		{"missing field", `{"schemaVersion":2,"configurations":[{"configurationId":"configuration-1"}]}`, persistence.FailureInvalidDocument},
 		{"old schema", `{"schemaVersion":1,"configurations":[]}`, persistence.FailureUnsupportedSchemaVersion},
-		{"future schema", `{"schemaVersion":4,"configurations":[]}`, persistence.FailureUnsupportedSchemaVersion},
+		{"future schema", `{"schemaVersion":5,"configurations":[]}`, persistence.FailureUnsupportedSchemaVersion},
 		{"duplicate id", `{"schemaVersion":2,"configurations":[` + valid + `,` + valid + `]}`, persistence.FailureInvalidDocument},
 		{"invalid id", `{"schemaVersion":2,"configurations":[{"configurationId":"Invalid","displayName":"","institutionProfileId":"p","username":"u","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}]}`, persistence.FailureInvalidDocument},
 		{"trailing", `{"schemaVersion":2,"configurations":[]} {}`, persistence.FailureInvalidDocument},
@@ -164,5 +165,29 @@ func TestDecodeCatalogDocumentRejectsMultipleAutoLoginTrue(t *testing.T) {
 	data := []byte(`{"schemaVersion":3,"configurations":[` + makeEntry("configuration-a") + `,` + makeEntry("configuration-b") + `]}`)
 	if _, err := decodeCatalogDocument(data); err == nil {
 		t.Fatal("accepted document with more than one autoLogin=true")
+	}
+}
+
+func TestCatalogStrictPolicyMigrationAndSchema4(t *testing.T) {
+	base := `{"schemaVersion":3,"configurations":[{"configurationId":"configuration-1","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null,"autoLogin":false,"autoReconnect":true}]}`
+	explicit := `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","localIpv4Address":"127.0.0.1"}`
+	for _, schema := range []string{"2", "3", "4"} {
+		data := strings.Replace(base, `"schemaVersion":3`, `"schemaVersion":`+schema, 1)
+		if schema == "2" {
+			data = strings.Replace(data, `,"autoLogin":false,"autoReconnect":true`, "", 1)
+		}
+		records, err := decodeCatalogDocument([]byte(data))
+		if err != nil || records["configuration-1"].configuration.NetworkBindingPolicy.Mode != AutomaticallySelectLatestAvailable {
+			t.Fatal("automatic migration failed", err)
+		}
+		changed := strings.Replace(data, `{"mode":"automatically_select_latest_available"}`, explicit, 1)
+		_, err = decodeCatalogDocument([]byte(changed))
+		if (err == nil) != (schema == "4") {
+			t.Fatal("schema-specific explicit policy contract differs")
+		}
+		nullTarget := strings.Replace(data, `{"mode":"automatically_select_latest_available"}`, `{"mode":"automatically_select_latest_available","interfaceId":null}`, 1)
+		if _, err = decodeCatalogDocument([]byte(nullTarget)); err == nil {
+			t.Fatal("mixed old policy accepted")
+		}
 	}
 }

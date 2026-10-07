@@ -101,7 +101,7 @@ func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
 	}{
 		{contract.MethodConfigurationList, `{}`, `{"storageProtection":"protected","configurations":[]}`},
 		{contract.MethodConfigurationGet, `{"configurationId":"campus"}`, ""},
-		{contract.MethodConfigurationCreate, `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`, ""},
+		{contract.MethodConfigurationCreate, `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`, ""},
 		{contract.MethodConfigurationUpdate, `{"configurationId":"campus","displayName":""}`, ""},
 		{contract.MethodConfigurationSetPassword, `{"configurationId":"campus","password":"","allowInsecureStorage":false}`, ""},
 		{contract.MethodConfigurationRemove, `{"configurationId":"campus"}`, `{"configurationId":"campus","status":"removed"}`},
@@ -169,7 +169,7 @@ func TestConfigurationHandlerMapsResolutionFailures(t *testing.T) {
 		{InvalidConfiguration, contract.ErrorCodeInvalidArgument},
 	} {
 		fake := &fakeConfigurationApplication{err: NewResolutionFailure(tc.failure, errors.New("private-cause"))}
-		_, got := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationCreate, []byte(`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+		_, got := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationCreate, []byte(`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
 		if got == nil || got.Code != tc.code || strings.Contains(got.Message, "private-cause") {
 			t.Fatalf("failure %q = %#v", tc.failure, got)
 		}

@@ -1,12 +1,36 @@
 {
   "schemaVersion": 1,
   "enums": {
-    "daemonModes": ["headless", "desktop"],
-    "sessionStartOutcomes": ["created", "already_running", "resumed"],
-    "sessionIntents": ["maintain_authentication", "suspend_authentication"],
-    "sessionStates": ["suspended", "waiting_for_network", "authenticating", "authenticated", "waiting_before_retry", "blocked_by_error", "stopping"],
-    "storageProtections": ["protected", "unprotected"],
-    "networkBindingPolicyModes": ["automatically_select_latest_available"]
+    "daemonModes": [
+      "headless",
+      "desktop"
+    ],
+    "sessionStartOutcomes": [
+      "created",
+      "already_running",
+      "resumed"
+    ],
+    "sessionIntents": [
+      "maintain_authentication",
+      "suspend_authentication"
+    ],
+    "sessionStates": [
+      "suspended",
+      "waiting_for_network",
+      "authenticating",
+      "authenticated",
+      "waiting_before_retry",
+      "blocked_by_error",
+      "stopping"
+    ],
+    "storageProtections": [
+      "protected",
+      "unprotected"
+    ],
+    "networkBindingPolicyModes": [
+      "automatically_select_latest_available",
+      "explicit_interface_and_local_ipv4"
+    ]
   },
   "cases": [
     {
@@ -26,7 +50,7 @@
     {
       "name": "session-start-one-shot",
       "method": "session.startOneShot",
-      "request": "{\"kind\":\"request\",\"id\":\"v1-03\",\"method\":\"session.startOneShot\",\"payload\":{\"displayName\":\"Fixture one-shot\",\"institutionProfileId\":\"jlu\",\"username\":\"fixture-user\",\"password\":\"fixture-one-shot-password\",\"networkBindingPolicyMode\":\"automatically_select_latest_available\",\"protocolContextOverride\":{}}}",
+      "request": "{\"kind\":\"request\",\"id\":\"v1-03\",\"method\":\"session.startOneShot\",\"payload\":{\"displayName\":\"Fixture one-shot\",\"institutionProfileId\":\"jlu\",\"username\":\"fixture-user\",\"password\":\"fixture-one-shot-password\",\"protocolContextOverride\":{},\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
       "successResponse": "{\"kind\":\"response\",\"id\":\"v1-03\",\"ok\":true,\"result\":{\"outcome\":\"created\",\"session\":{\"sessionId\":\"session-one-shot\",\"displayName\":\"Fixture one-shot\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"accountName\":\"fixture-account\",\"intent\":\"maintain_authentication\",\"state\":\"waiting_for_network\",\"revision\":1,\"updatedAt\":\"2026-08-14T10:00:00Z\"}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-03\",\"ok\":false,\"error\":{\"code\":\"profile_not_found\",\"message\":\"institution profile not found\"}}"
     },
@@ -90,28 +114,28 @@
       "name": "configuration-get-explicit-id",
       "method": "configuration.get",
       "request": "{\"kind\":\"request\",\"id\":\"v1-12\",\"method\":\"configuration.get\",\"payload\":{\"configurationId\":\"fixture-configuration\"}}",
-      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-12\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Fixture Configuration\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":false,\"autoReconnect\":true}}",
+      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-12\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Fixture Configuration\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":false,\"autoReconnect\":true,\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-12\",\"ok\":false,\"error\":{\"code\":\"configuration_not_found\",\"message\":\"configuration not found\"}}"
     },
     {
       "name": "configuration-create-generated-id",
       "method": "configuration.create",
-      "request": "{\"kind\":\"request\",\"id\":\"v1-13\",\"method\":\"configuration.create\",\"payload\":{\"institutionProfileId\":\"jlu\",\"username\":\"fixture-user\",\"password\":\"fixture-configuration-password\",\"allowInsecureStorage\":false,\"autoLogin\":false,\"autoReconnect\":true}}",
-      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-13\",\"ok\":true,\"result\":{\"configurationId\":\"cfg-0123456789abcdef0123456789abcdef\",\"displayName\":\"fixture-user\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":false,\"autoReconnect\":true}}",
+      "request": "{\"kind\":\"request\",\"id\":\"v1-13\",\"method\":\"configuration.create\",\"payload\":{\"institutionProfileId\":\"jlu\",\"username\":\"fixture-user\",\"password\":\"fixture-configuration-password\",\"allowInsecureStorage\":false,\"autoLogin\":false,\"autoReconnect\":true,\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
+      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-13\",\"ok\":true,\"result\":{\"configurationId\":\"cfg-0123456789abcdef0123456789abcdef\",\"displayName\":\"fixture-user\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":false,\"autoReconnect\":true,\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-13\",\"ok\":false,\"error\":{\"code\":\"configuration_conflict\",\"message\":\"configuration already exists\"}}"
     },
     {
       "name": "configuration-update-explicit-id",
       "method": "configuration.update",
-      "request": "{\"kind\":\"request\",\"id\":\"v1-14\",\"method\":\"configuration.update\",\"payload\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Renamed Fixture\",\"autoLogin\":true}}",
-      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-14\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Renamed Fixture\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":true,\"autoReconnect\":true}}",
+      "request": "{\"kind\":\"request\",\"id\":\"v1-14\",\"method\":\"configuration.update\",\"payload\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Renamed Fixture\",\"autoLogin\":true,\"networkBindingPolicy\":{\"mode\":\"explicit_interface_and_local_ipv4\",\"interfaceId\":\"fixture-loopback\",\"localIpv4Address\":\"127.0.0.1\"}}}",
+      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-14\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Renamed Fixture\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":true,\"autoReconnect\":true,\"networkBindingPolicy\":{\"mode\":\"explicit_interface_and_local_ipv4\",\"interfaceId\":\"fixture-loopback\",\"localIpv4Address\":\"127.0.0.1\"}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-14\",\"ok\":false,\"error\":{\"code\":\"configuration_auto_login_conflict\",\"message\":\"another configuration already enables automatic login\"}}"
     },
     {
       "name": "configuration-set-password",
       "method": "configuration.setPassword",
       "request": "{\"kind\":\"request\",\"id\":\"v1-15\",\"method\":\"configuration.setPassword\",\"payload\":{\"configurationId\":\"fixture-configuration\",\"password\":\"\",\"allowInsecureStorage\":false}}",
-      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-15\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Fixture Configuration\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":false,\"autoReconnect\":true}}",
+      "successResponse": "{\"kind\":\"response\",\"id\":\"v1-15\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"displayName\":\"Fixture Configuration\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"username\":\"fixture-user\",\"credentialStored\":true,\"storageProtection\":\"protected\",\"autoLogin\":false,\"autoReconnect\":true,\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-15\",\"ok\":false,\"error\":{\"code\":\"insecure_storage_confirmation_required\",\"message\":\"insecure storage confirmation required\"}}"
     },
     {

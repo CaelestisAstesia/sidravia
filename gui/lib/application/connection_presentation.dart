@@ -176,8 +176,12 @@ class ConnectionPresentation {
               primaryLabel = '取消连接';
             case SessionState.waitingForNetwork:
               title = '等待网络';
-              detail = '暂未发现可用的校园网络';
-              context = '检测到可用网络后会继续认证';
+              detail = s.stateReason?.code == 'network_binding_unavailable'
+                  ? '指定网卡或 IPv4 地址不可用'
+                  : '暂未发现可用的校园网络';
+              context = s.stateReason?.code == 'network_binding_unavailable'
+                  ? '请检查指定网卡和 IPv4；恢复后继续认证'
+                  : '检测到可用网络后会继续认证';
               glyph = '!';
               tone = HomeTone.warning;
               primaryLabel = '取消等待';

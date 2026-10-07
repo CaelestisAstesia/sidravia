@@ -33,6 +33,7 @@ class ConsentClient extends OfflineDemoClient {
       replaced ? [] : super.sessionList();
   @override
   Future<ConfigurationSummary> configurationCreate({
+    required NetworkBindingPolicy networkBindingPolicy,
     required String institutionProfileId,
     required String username,
     required String password,
@@ -42,6 +43,7 @@ class ConsentClient extends OfflineDemoClient {
   }) async {
     reject(GuiOperation.createConfiguration, allowInsecureStorage);
     return super.configurationCreate(
+      networkBindingPolicy: networkBindingPolicy,
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,

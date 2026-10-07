@@ -152,6 +152,7 @@ func ExitCode(err error) int {
 }
 
 type authStartOptions struct {
+	binding         bindingFlags
 	profileID       string
 	username        string
 	sessionID       string
@@ -531,6 +532,7 @@ var helpSpecs = map[string]helpNode{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
 			"--password-stdin：从 stdin 读取密码",
+			"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定；不可用时等待，不回退",
 			"--session <session-id>：确保已有 Session 正在运行",
 			"--config <configuration-id>：从持久配置启动或确保 Session 正在运行",
 		},
@@ -597,14 +599,14 @@ var helpSpecs = map[string]helpNode{
 	"sidraviactl config create": {
 		description: "创建认证配置。",
 		usage:       []string{"sidraviactl config create", "sidraviactl config create --id <id> --profile <profile-id> --username <username> --password-stdin [--name <display-name>] [--auto-login] [--auto-reconnect=false] [--allow-insecure-storage]"},
-		options:     []string{"--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
+		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--id <id>：配置 ID（交互模式可输入）", "--profile <profile-id>：机构 Profile ID（交互模式可选择）", "--username <username>：认证账号（交互模式可输入）", "--name <display-name>：显示名称", "--password-stdin：从 stdin 读取密码；非交互模式必需", "--auto-login：启用自动登录，默认 false", "--auto-reconnect[=true|false]：自动重连，默认 true", "--allow-insecure-storage：确认未保护存储风险"},
 		examples:    []string{"sidraviactl config create", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin", "sidraviactl config create --id campus --profile jlu --username <username> --password-stdin --auto-login --auto-reconnect=false"},
 	},
 	"sidraviactl config update": {
 		description: "更新认证配置。",
 		usage:       []string{"sidraviactl config update <configuration-id>", "sidraviactl config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false]"},
 		args:        []string{"<configuration-id>：配置 ID"},
-		options:     []string{"--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连"},
+		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--automatic-binding：恢复自动选择，与显式绑定互斥", "--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连"},
 		examples:    []string{"sidraviactl config update campus --auto-login true", "sidraviactl config update campus --auto-reconnect false"},
 	},
 	"sidraviactl config set-password": {
@@ -698,7 +700,7 @@ func newAuthStartCommand(deps commandDependencies) *cobra.Command {
 			}
 			options, err := parseAuthStart(args)
 			if err != nil {
-				return errCommandUsage
+				return err
 			}
 			return wrapCommandOperation(deps.authStart(options))
 		},
@@ -728,6 +730,31 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 	var profileSet, usernameSet, sessionSet, configSet, passwordStdinSet bool
 
 	for index := 0; index < len(args); {
+		flag, value, hasValue := strings.Cut(args[index], "=")
+		if flag == "--interface-id" || flag == "--local-ipv4" {
+			if !hasValue {
+				if index+1 >= len(args) {
+					return authStartOptions{}, errors.New("网卡绑定选项需要值")
+				}
+				value = args[index+1]
+				index++
+			}
+			if flag == "--interface-id" {
+				if options.binding.interfaceSet {
+					return authStartOptions{}, errors.New("重复的网卡绑定选项")
+				}
+				options.binding.interfaceSet = true
+				options.binding.interfaceID = value
+			} else {
+				if options.binding.addressSet {
+					return authStartOptions{}, errors.New("重复的网卡绑定选项")
+				}
+				options.binding.addressSet = true
+				options.binding.localIPv4 = value
+			}
+			index++
+			continue
+		}
 		switch args[index] {
 		case "--profile":
 			if profileSet || index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
@@ -769,6 +796,12 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 		}
 	}
 
+	if _, err := options.binding.policy(false); err != nil {
+		return authStartOptions{}, err
+	}
+	if (sessionSet || configSet) && options.binding.supplied() {
+		return authStartOptions{}, errors.New("网卡绑定选项不能与 --session 或 --config 同时使用")
+	}
 	if sessionSet || configSet {
 		if sessionSet && configSet || profileSet || usernameSet || passwordStdinSet {
 			return authStartOptions{}, errCommandUsage

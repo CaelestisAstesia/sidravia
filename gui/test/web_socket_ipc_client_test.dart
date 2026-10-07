@@ -7,6 +7,44 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  for (final listing in [false, true]) {
+    test('raw WebSocket binding duplicate rejected listing=$listing', () async {
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          final result = _fixtureResult('configuration.create');
+          final wire =
+              jsonEncode(
+                listing
+                    ? {
+                        'storageProtection': 'protected',
+                        'configurations': [result],
+                      }
+                    : result,
+              ).replaceFirst(
+                '"mode":"automatically_select_latest_available"',
+                r'"mode":"automatically_select_latest_available","\u006dode":"automatically_select_latest_available"',
+              );
+          socket.add(
+            '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$wire}',
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await expectLater(
+        listing
+            ? client.configurationList()
+            : client.configurationSetAutoLogin(
+                configurationId: 'fixture-configuration',
+                autoLogin: true,
+              ),
+        throwsA(isA<IpcProtocolException>()),
+      );
+      await client.close();
+    });
+  }
+
   test(
     'explicit consent reaches password settings and removal wire primitives',
     () async {
@@ -91,6 +129,7 @@ void main() {
       addTearDown(() => server.close(force: true));
       final c = await WebSocketIpcClient.connect(_bootstrap(server.port));
       await c.configurationCreate(
+        networkBindingPolicy: const NetworkBindingPolicy.automatic(),
         institutionProfileId: 'jlu',
         username: 'u',
         password: 'p',
@@ -99,6 +138,9 @@ void main() {
         allowInsecureStorage: true,
       );
       expect(request!['payload'], {
+        'networkBindingPolicy': {
+          'mode': 'automatically_select_latest_available',
+        },
         'institutionProfileId': 'jlu',
         'username': 'u',
         'password': 'p',
@@ -214,6 +256,7 @@ void main() {
     final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
 
     await client.configurationCreate(
+      networkBindingPolicy: const NetworkBindingPolicy.automatic(),
       institutionProfileId: 'jlu',
       username: 'fixture-user',
       password: 'fixture-configuration-password',
@@ -262,6 +305,7 @@ void main() {
       'configuration.remove',
     ]);
     expect(received[0]['payload'], {
+      'networkBindingPolicy': {'mode': 'automatically_select_latest_available'},
       'institutionProfileId': 'jlu',
       'username': 'fixture-user',
       'password': 'fixture-configuration-password',
@@ -344,6 +388,7 @@ void main() {
     final client = await WebSocketIpcClient.connect(_bootstrap(business.port));
     await expectLater(
       client.configurationCreate(
+        networkBindingPolicy: const NetworkBindingPolicy.automatic(),
         institutionProfileId: 'jlu',
         username: 'u',
         password: '',

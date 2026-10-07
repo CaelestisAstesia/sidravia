@@ -15,6 +15,52 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
   test(
+    'offline metadata password and preferences preserve explicit binding',
+    () async {
+      final client = OfflineDemoClient()..selectScenario('empty');
+      final policy = NetworkBindingPolicy.explicit('lo', '127.0.0.1');
+      final created = await client.configurationCreate(
+        networkBindingPolicy: policy,
+        institutionProfileId: 'jlu',
+        username: 'u',
+        password: 'p',
+        autoLogin: false,
+        autoReconnect: true,
+        allowInsecureStorage: false,
+      );
+      final updated = await client.configurationUpdate(
+        configurationId: created.id,
+        institutionProfileId: 'jlu',
+        username: 'new',
+        password: 'replacement',
+      );
+      expect(updated.networkBindingPolicy, policy);
+      expect(
+        (await client.configurationSetAutoLogin(
+          configurationId: created.id,
+          autoLogin: true,
+        )).networkBindingPolicy,
+        policy,
+      );
+      expect(
+        (await client.configurationSetAutoReconnect(
+          configurationId: created.id,
+          autoReconnect: false,
+        )).networkBindingPolicy,
+        policy,
+      );
+      expect(
+        (await client.configurationSetPassword(
+          configurationId: created.id,
+          password: 'new',
+        )).networkBindingPolicy,
+        policy,
+      );
+      client.dispose();
+    },
+  );
+
+  test(
     'GUI create defaults agree with explicit demo input semantics',
     () async {
       final client = OfflineDemoClient()..selectScenario('empty');
@@ -32,12 +78,17 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        c.snapshot!.configurations.single.networkBindingPolicy,
+        const NetworkBindingPolicy.automatic(),
+      );
       expect(c.snapshot!.configurations.single.autoLogin, isFalse);
       expect(c.snapshot!.configurations.single.autoReconnect, isTrue);
       c.dispose();
       client.dispose();
       final explicit = OfflineDemoClient()..selectScenario('empty');
       final result = await explicit.configurationCreate(
+        networkBindingPolicy: const NetworkBindingPolicy.automatic(),
         institutionProfileId: 'jlu',
         username: 'u',
         password: 'p',

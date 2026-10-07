@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"sort"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -11,7 +12,8 @@ import (
 	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
-const catalogSchemaVersion uint64 = 3
+const catalogSchemaVersion uint64 = 4
+const catalogSchemaVersion3 uint64 = 3
 const catalogSchemaVersion2 uint64 = 2
 
 type catalogDocumentEnvelope struct {
@@ -19,10 +21,14 @@ type catalogDocumentEnvelope struct {
 	Configurations *[]json.RawMessage `json:"configurations"`
 }
 type persistentNetworkBindingPolicy struct {
-	Mode *NetworkBindingPolicyMode `json:"mode"`
+	Mode             *NetworkBindingPolicyMode `json:"mode"`
+	InterfaceID      *string                   `json:"interfaceId"`
+	LocalIPv4Address *string                   `json:"localIpv4Address"`
 }
 type persistentNetworkBindingPolicyOutput struct {
-	Mode NetworkBindingPolicyMode `json:"mode"`
+	Mode             NetworkBindingPolicyMode `json:"mode"`
+	InterfaceID      string                   `json:"interfaceId,omitempty"`
+	LocalIPv4Address string                   `json:"localIpv4Address,omitempty"`
 }
 type persistentConfiguration struct {
 	ConfigurationID         *ConfigurationID      `json:"configurationId"`
@@ -70,7 +76,7 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 		return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
 	}
 	switch *document.SchemaVersion {
-	case catalogSchemaVersion2, catalogSchemaVersion:
+	case catalogSchemaVersion2, catalogSchemaVersion3, catalogSchemaVersion:
 	default:
 		return nil, persistence.NewFailure(persistence.FailureUnsupportedSchemaVersion, nil)
 	}
@@ -99,6 +105,36 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 		if err := jsonfile.DecodeStrict(in.NetworkBindingPolicy, &binding); err != nil || binding.Mode == nil {
 			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 		}
+		policy := NetworkBindingPolicy{Mode: *binding.Mode}
+		var policyFields map[string]json.RawMessage
+		if err := json.Unmarshal(in.NetworkBindingPolicy, &policyFields); err != nil {
+			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
+		}
+		if *document.SchemaVersion != catalogSchemaVersion {
+			if len(policyFields) != 1 || binding.InterfaceID != nil || binding.LocalIPv4Address != nil || policy.Mode != AutomaticallySelectLatestAvailable {
+				return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+			}
+		} else {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(in.NetworkBindingPolicy, &fields); err != nil {
+				return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
+			}
+			if policy.Mode == AutomaticallySelectLatestAvailable {
+				if len(fields) != 1 {
+					return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+				}
+			} else {
+				if policy.Mode != ExplicitInterfaceAndLocalIPv4 || len(fields) != 3 || binding.InterfaceID == nil || binding.LocalIPv4Address == nil {
+					return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+				}
+				address, err := netip.ParseAddr(*binding.LocalIPv4Address)
+				if err != nil || address.String() != *binding.LocalIPv4Address {
+					return nil, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+				}
+				policy.InterfaceID = *binding.InterfaceID
+				policy.LocalIPv4Address = address
+			}
+		}
 		if err := jsonfile.ValidateOpaqueObjectOrNull(in.ProtocolContextOverride); err != nil {
 			return nil, err
 		}
@@ -106,7 +142,7 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 		if !bytes.Equal(bytes.TrimSpace(in.ProtocolContextOverride), []byte("null")) {
 			override = append(override, in.ProtocolContextOverride...)
 		}
-		value := Configuration{ConfigurationID: *in.ConfigurationID, DisplayName: *in.DisplayName, InstitutionProfileID: *in.InstitutionProfileID, Username: *in.Username, NetworkBindingPolicy: NetworkBindingPolicy{Mode: *binding.Mode}, ProtocolContextOverride: override, AutoLogin: autoLogin, AutoReconnect: autoReconnect}
+		value := Configuration{ConfigurationID: *in.ConfigurationID, DisplayName: *in.DisplayName, InstitutionProfileID: *in.InstitutionProfileID, Username: *in.Username, NetworkBindingPolicy: policy, ProtocolContextOverride: override, AutoLogin: autoLogin, AutoReconnect: autoReconnect}
 		if err := value.Validate(); err != nil {
 			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 		}
@@ -141,7 +177,16 @@ func encodeCatalogDocument(records map[ConfigurationID]catalogRecord) ([]byte, e
 		if len(record.configuration.ProtocolContextOverride) > 0 {
 			override = append(json.RawMessage(nil), record.configuration.ProtocolContextOverride...)
 		}
-		out = append(out, persistentConfigurationOutput{ConfigurationID: id, DisplayName: record.configuration.DisplayName, InstitutionProfileID: record.configuration.InstitutionProfileID, Username: record.configuration.Username, Password: record.password, NetworkBindingPolicy: persistentNetworkBindingPolicyOutput{Mode: record.configuration.NetworkBindingPolicy.Mode}, ProtocolContextOverride: override, AutoLogin: record.configuration.AutoLogin, AutoReconnect: record.configuration.AutoReconnect})
+		out = append(out, persistentConfigurationOutput{ConfigurationID: id, DisplayName: record.configuration.DisplayName, InstitutionProfileID: record.configuration.InstitutionProfileID, Username: record.configuration.Username, Password: record.password, NetworkBindingPolicy: persistentPolicyOutput(record.configuration.NetworkBindingPolicy), ProtocolContextOverride: override, AutoLogin: record.configuration.AutoLogin, AutoReconnect: record.configuration.AutoReconnect})
 	}
 	return jsonfile.MarshalDeterministic(catalogDocumentOutput{SchemaVersion: catalogSchemaVersion, Configurations: out})
+}
+
+func persistentPolicyOutput(policy NetworkBindingPolicy) persistentNetworkBindingPolicyOutput {
+	out := persistentNetworkBindingPolicyOutput{Mode: policy.Mode}
+	if policy.Mode == ExplicitInterfaceAndLocalIPv4 {
+		out.InterfaceID = policy.InterfaceID
+		out.LocalIPv4Address = policy.LocalIPv4Address.String()
+	}
+	return out
 }

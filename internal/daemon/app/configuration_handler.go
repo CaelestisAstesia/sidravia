@@ -52,10 +52,11 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			if err != nil {
 				return nil, configurationInvalid()
 			}
+			policy, _ := request.NetworkBindingPolicy.Domain()
 			value, err := application.CreateConfiguration(ctx, config.Configuration{
 				ConfigurationID: config.ConfigurationID(request.ConfigurationID),
 				DisplayName:     request.DisplayName, InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
-				Username: request.Username, NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
+				Username: request.Username, NetworkBindingPolicy: policy, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
 			}, request.Password, request.AllowInsecureStorage)
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationUpdate:
@@ -63,12 +64,17 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			if err != nil {
 				return nil, configurationInvalid()
 			}
+			var policy *config.NetworkBindingPolicy
+			if request.NetworkBindingPolicy != nil {
+				converted, _ := request.NetworkBindingPolicy.Domain()
+				policy = &converted
+			}
 			var profile *config.InstitutionProfileID
 			if request.InstitutionProfileID != nil {
 				converted := config.InstitutionProfileID(*request.InstitutionProfileID)
 				profile = &converted
 			}
-			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
+			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationSetPassword:
 			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
@@ -98,7 +104,8 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 
 func toConfigurationResult(value ConfigurationResult) contract.ConfigurationResult {
 	return contract.ConfigurationResult{
-		ConfigurationID: string(value.Configuration.ConfigurationID), DisplayName: value.Configuration.DisplayName,
+		NetworkBindingPolicy: contract.NetworkBindingPolicyFromDomain(value.Configuration.NetworkBindingPolicy),
+		ConfigurationID:      string(value.Configuration.ConfigurationID), DisplayName: value.Configuration.DisplayName,
 		InstitutionProfileID: string(value.Configuration.InstitutionProfileID), InstitutionDisplayName: value.InstitutionDisplayName,
 		AuthenticationProtocolID: value.AuthenticationProtocolID, Username: value.Configuration.Username,
 		CredentialStored: value.CredentialStored, StorageProtection: string(value.StorageProtection),

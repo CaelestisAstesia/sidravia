@@ -52,6 +52,7 @@ class _DelayedSaveClient extends OfflineDemoClient {
 
   @override
   Future<ConfigurationSummary> configurationCreate({
+    required NetworkBindingPolicy networkBindingPolicy,
     required String institutionProfileId,
     required String username,
     required String password,
@@ -61,6 +62,7 @@ class _DelayedSaveClient extends OfflineDemoClient {
   }) async {
     await createGate.future;
     return super.configurationCreate(
+      networkBindingPolicy: networkBindingPolicy,
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,

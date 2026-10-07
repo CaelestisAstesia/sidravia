@@ -144,6 +144,7 @@ func handleSessionStartOneShot(ctx context.Context, application sessionApplicati
 		return nil, invalidArgumentError()
 	}
 
+	policy, _ := request.NetworkBindingPolicy.Domain()
 	input := OneShotAuthenticationInput{
 		DisplayName:          request.DisplayName,
 		InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
@@ -151,9 +152,7 @@ func handleSessionStartOneShot(ctx context.Context, application sessionApplicati
 			Username: request.Username,
 			Password: request.Password,
 		},
-		NetworkBindingPolicy: session.NetworkBindingPolicy{
-			Mode: session.NetworkBindingPolicyMode(request.NetworkBindingPolicyMode),
-		},
+		NetworkBindingPolicy:    policy,
 		ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(request.ProtocolContextOverride),
 	}
 

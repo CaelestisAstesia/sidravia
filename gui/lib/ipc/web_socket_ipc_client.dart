@@ -81,6 +81,7 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
 
   @override
   Future<ConfigurationSummary> configurationCreate({
+    required NetworkBindingPolicy networkBindingPolicy,
     required String institutionProfileId,
     required String username,
     required String password,
@@ -88,6 +89,7 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
     required bool autoReconnect,
     required bool allowInsecureStorage,
   }) async => _call('configuration.create', {
+    'networkBindingPolicy': networkBindingPolicy.toJson(),
     'institutionProfileId': institutionProfileId,
     'username': username,
     'password': password,
@@ -215,7 +217,7 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
           utf8.encode(message).length > _maximumMessageBytes) {
         throw const IpcProtocolException();
       }
-      final raw = jsonDecode(message);
+      final raw = decodeBindingCheckedJson(message);
       if (raw is! Map<String, dynamic> ||
           raw['kind'] != 'response' ||
           raw['id'] != id ||

@@ -60,7 +60,7 @@ func TestIPCHandlerConfigurationCreateAndStartDoNotExposePassword(t *testing.T) 
 	const passwordMarker = "private-password-marker"
 	create, publicErr := handler(context.Background(), contract.MethodConfigurationCreate, []byte(
 		`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"`+
-			passwordMarker+`","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+			passwordMarker+`","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
 	))
 	if publicErr != nil {
 		t.Fatal(publicErr)
@@ -92,7 +92,7 @@ func TestIPCHandlerGeneratedConfigurationIdentityReachesRetainedSession(t *testi
 	const passwordMarker = "generated-identity-private-password"
 	created, publicErr := handler(ctx, contract.MethodConfigurationCreate, []byte(
 		`{"institutionProfileId":"profile-1","username":"generated-user","password":"`+
-			passwordMarker+`","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+			passwordMarker+`","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
 	))
 	if publicErr != nil {
 		t.Fatal(publicErr)
@@ -350,12 +350,12 @@ func TestIPCHandlerDoesNotLeakPassword(t *testing.T) {
 func ipcStartPayload(t *testing.T, password, profileID string) []byte {
 	t.Helper()
 	data, err := json.Marshal(contract.SessionStartOneShotPayload{
-		DisplayName:              "secrecy display",
-		InstitutionProfileID:     profileID,
-		Username:                 "secrecy-user",
-		Password:                 password,
-		NetworkBindingPolicyMode: "automatically_select_latest_available",
-		ProtocolContextOverride:  json.RawMessage(`{}`),
+		DisplayName:             "secrecy display",
+		InstitutionProfileID:    profileID,
+		Username:                "secrecy-user",
+		Password:                password,
+		NetworkBindingPolicy:    contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
+		ProtocolContextOverride: json.RawMessage(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)

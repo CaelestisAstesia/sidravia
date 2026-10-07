@@ -6,6 +6,7 @@ abstract interface class SidraviaIpcClient {
   Future<List<ConfigurationSummary>> configurationList();
   Future<List<SessionSummary>> sessionList();
   Future<ConfigurationSummary> configurationCreate({
+    required NetworkBindingPolicy networkBindingPolicy,
     required String institutionProfileId,
     required String username,
     required String password,

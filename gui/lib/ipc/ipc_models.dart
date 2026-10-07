@@ -72,6 +72,198 @@ class InstitutionProfile {
   final String id, displayName, protocolId;
 }
 
+class NetworkBindingPolicy {
+  const NetworkBindingPolicy.automatic()
+    : mode = 'automatically_select_latest_available',
+      interfaceId = null,
+      localIpv4Address = null;
+  const NetworkBindingPolicy._(
+    this.mode,
+    this.interfaceId,
+    this.localIpv4Address,
+  );
+  factory NetworkBindingPolicy.explicit(String id, String address) {
+    final runes = id.runes.toList();
+    bool space(int r) =>
+        const {
+          0x9,
+          0xa,
+          0xb,
+          0xc,
+          0xd,
+          0x20,
+          0x85,
+          0xa0,
+          0x1680,
+          0x2028,
+          0x2029,
+          0x202f,
+          0x205f,
+          0x3000,
+        }.contains(r) ||
+        (r >= 0x2000 && r <= 0x200a);
+    if (runes.isEmpty ||
+        utf8.encode(id).length > 256 ||
+        space(runes.first) ||
+        space(runes.last) ||
+        runes.any(
+          (r) =>
+              r <= 0x1f ||
+              (r >= 0x7f && r <= 0x9f) ||
+              (r >= 0xd800 && r <= 0xdfff),
+        )) {
+      throw const IpcProtocolException();
+    }
+    final parts = address.split('.');
+    if (parts.length != 4) throw const IpcProtocolException();
+    final values = <int>[];
+    for (final part in parts) {
+      final n = int.tryParse(part);
+      if (n == null || n < 0 || n > 255 || n.toString() != part) {
+        throw const IpcProtocolException();
+      }
+      values.add(n);
+    }
+    if (values.every((n) => n == 0) ||
+        (values.first >= 224 && values.first <= 239)) {
+      throw const IpcProtocolException();
+    }
+    return NetworkBindingPolicy._(
+      'explicit_interface_and_local_ipv4',
+      id,
+      address,
+    );
+  }
+  final String mode;
+  final String? interfaceId, localIpv4Address;
+  Map<String, Object> toJson() => {
+    'mode': mode,
+    'interfaceId': ?interfaceId,
+    'localIpv4Address': ?localIpv4Address,
+  };
+  String get summary => interfaceId == null
+      ? '自动选择可用网卡'
+      : '指定网卡：$interfaceId\n本地 IPv4：$localIpv4Address';
+  static NetworkBindingPolicy decode(Object? raw) {
+    if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
+    if (raw['mode'] == 'automatically_select_latest_available') {
+      _object(raw, const {'mode'});
+      return const NetworkBindingPolicy.automatic();
+    }
+    final v = _object(raw, const {'mode', 'interfaceId', 'localIpv4Address'});
+    if (v['mode'] != 'explicit_interface_and_local_ipv4') {
+      throw const IpcProtocolException();
+    }
+    return NetworkBindingPolicy.explicit(
+      _text(v['interfaceId']),
+      _text(v['localIpv4Address']),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is NetworkBindingPolicy &&
+      mode == other.mode &&
+      interfaceId == other.interfaceId &&
+      localIpv4Address == other.localIpv4Address;
+  @override
+  int get hashCode => Object.hash(mode, interfaceId, localIpv4Address);
+}
+
+// Scan raw JSON before maps erase duplicates. Only owned binding keys are
+// checked; string keys are decoded so escaped and literal aliases coincide.
+Object? decodeBindingCheckedJson(String source) {
+  var i = 0;
+  void whitespace() {
+    while (i < source.length &&
+        const [9, 10, 13, 32].contains(source.codeUnitAt(i))) {
+      i++;
+    }
+  }
+
+  String string() {
+    final start = i;
+    if (i >= source.length || source[i] != '"') {
+      throw const IpcProtocolException();
+    }
+    i++;
+    while (i < source.length) {
+      if (source[i] == '\\') {
+        i += 2;
+        continue;
+      }
+      if (source[i++] == '"') {
+        return jsonDecode(source.substring(start, i)) as String;
+      }
+    }
+    throw const IpcProtocolException();
+  }
+
+  late void Function(bool) value;
+  value = (bool policy) {
+    whitespace();
+    if (i >= source.length) throw const IpcProtocolException();
+    if (source[i] == '{') {
+      i++;
+      whitespace();
+      final keys = <String>{};
+      if (i < source.length && source[i] == '}') {
+        i++;
+        return;
+      }
+      while (true) {
+        whitespace();
+        final key = string();
+        if ((policy || key == 'networkBindingPolicy') && !keys.add(key)) {
+          throw const IpcProtocolException();
+        }
+        keys.add(key);
+        whitespace();
+        if (i >= source.length || source[i++] != ':') {
+          throw const IpcProtocolException();
+        }
+        value(key == 'networkBindingPolicy');
+        whitespace();
+        if (i >= source.length) throw const IpcProtocolException();
+        final next = source[i++];
+        if (next == '}') return;
+        if (next != ',') throw const IpcProtocolException();
+      }
+    }
+    if (source[i] == '[') {
+      i++;
+      whitespace();
+      if (i < source.length && source[i] == ']') {
+        i++;
+        return;
+      }
+      while (true) {
+        value(false);
+        whitespace();
+        if (i >= source.length) throw const IpcProtocolException();
+        final next = source[i++];
+        if (next == ']') return;
+        if (next != ',') throw const IpcProtocolException();
+      }
+    }
+    if (source[i] == '"') {
+      string();
+      return;
+    }
+    final start = i;
+    while (i < source.length &&
+        !const [',', '}', ']', ' ', '\t', '\n', '\r'].contains(source[i])) {
+      i++;
+    }
+    if (start == i) throw const IpcProtocolException();
+    jsonDecode(source.substring(start, i));
+  };
+  value(false);
+  whitespace();
+  if (i != source.length) throw const IpcProtocolException();
+  return jsonDecode(source);
+}
+
 class ConfigurationSummary {
   const ConfigurationSummary({
     required this.id,
@@ -82,6 +274,7 @@ class ConfigurationSummary {
     required this.username,
     required this.credentialStored,
     required this.storageProtection,
+    this.networkBindingPolicy = const NetworkBindingPolicy.automatic(),
     this.autoLogin = false,
     this.autoReconnect = false,
   });
@@ -92,6 +285,7 @@ class ConfigurationSummary {
       authenticationProtocolId,
       username,
       storageProtection;
+  final NetworkBindingPolicy networkBindingPolicy;
   final bool credentialStored, autoLogin, autoReconnect;
 }
 
@@ -161,10 +355,10 @@ class IpcRequestFailure implements Exception {
 }
 
 Map<String, dynamic> decodeObject(String source, Set<String> keys) =>
-    _object(jsonDecode(source), keys);
+    _object(decodeBindingCheckedJson(source), keys);
 
 DaemonStatus decodeDaemonStatus(String source) {
-  final raw = jsonDecode(source);
+  final raw = decodeBindingCheckedJson(source);
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
   final mode = _text(raw['mode']);
   final expected = mode == 'desktop'
@@ -255,7 +449,7 @@ List<ConfigurationSummary> decodeConfigurations(String source) {
 }
 
 ConfigurationSummary decodeConfiguration(String source) =>
-    _configuration(jsonDecode(source));
+    _configuration(decodeBindingCheckedJson(source));
 
 ConfigurationSummary _configuration(Object? raw) {
   final v = _object(raw, const {
@@ -269,6 +463,7 @@ ConfigurationSummary _configuration(Object? raw) {
     'storageProtection',
     'autoLogin',
     'autoReconnect',
+    'networkBindingPolicy',
   });
   return ConfigurationSummary(
     id: _text(v['configurationId']),
@@ -281,6 +476,9 @@ ConfigurationSummary _configuration(Object? raw) {
     storageProtection: _protection(v['storageProtection']),
     autoLogin: _bool(v['autoLogin']),
     autoReconnect: _bool(v['autoReconnect']),
+    networkBindingPolicy: NetworkBindingPolicy.decode(
+      v['networkBindingPolicy'],
+    ),
   );
 }
 
@@ -289,10 +487,14 @@ List<SessionSummary> decodeSessions(String source) =>
         .map(_session)
         .toList(growable: false);
 
-SessionSummary decodeSession(String source) => _session(jsonDecode(source));
+SessionSummary decodeSession(String source) =>
+    _session(decodeBindingCheckedJson(source));
 
 SessionSummary decodeSessionOperation(String source) {
-  final value = _object(jsonDecode(source), const {'outcome', 'session'});
+  final value = _object(decodeBindingCheckedJson(source), const {
+    'outcome',
+    'session',
+  });
   if (!const {
     'created',
     'already_running',

@@ -16,6 +16,7 @@ type bindingKey struct {
 }
 
 type automaticBindingSelector struct {
+	policy             NetworkBindingPolicy
 	firstAvailableAt   map[bindingKey]uint64
 	lastRevision       uint64
 	hasSnapshot        bool
@@ -37,6 +38,19 @@ func (selector *automaticBindingSelector) Select(
 	}
 
 	candidates := availableBindingCandidates(snapshot)
+	if selector.policy.Mode == ExplicitInterfaceAndLocalIPv4 {
+		candidates = nil
+		for _, iface := range snapshot.Interfaces() {
+			if string(iface.InterfaceID) != selector.policy.InterfaceID || iface.OperationalState != environment.OperationalStateUp {
+				continue
+			}
+			for _, assignment := range iface.IPv4AddressAssignments() {
+				if assignment.Address == selector.policy.LocalIPv4Address {
+					candidates = append(candidates, bindingCandidate{networkInterface: iface, localAddress: assignment, key: bindingKey{interfaceID: iface.InterfaceID, address: assignment.Address, prefixLength: assignment.PrefixLength}})
+				}
+			}
+		}
+	}
 	availableKeys := make(map[bindingKey]struct{}, len(candidates))
 	for _, candidate := range candidates {
 		availableKeys[candidate.key] = struct{}{}
@@ -172,4 +186,10 @@ func bindingsHaveEquivalentAuthenticationFacts(
 	rightDHCPServer, rightHasDHCPServer := rightInterface.DHCPServerIPv4Address()
 	return leftHasDHCPServer == rightHasDHCPServer &&
 		(!leftHasDHCPServer || leftDHCPServer == rightDHCPServer)
+}
+
+func newPolicyBindingSelector(policy NetworkBindingPolicy) *automaticBindingSelector {
+	selector := newAutomaticBindingSelector()
+	selector.policy = policy
+	return selector
 }

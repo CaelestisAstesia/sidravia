@@ -1352,3 +1352,70 @@ func TestSessionAutoReconnectFalseSuspendReachesSuspended(t *testing.T) {
 		t.Fatalf("state = %v, want %v", suspended.State, Suspended)
 	}
 }
+
+func TestExplicitSessionUnavailableNeverRunsAndLossWaits(t *testing.T) {
+	for _, reconnect := range []bool{true, false} {
+		t.Run(fmt.Sprint(reconnect), func(t *testing.T) {
+			ctx := testContext(t)
+			factory := &controlledFactory{holdCancellation: true}
+			definition := validRuntimeDefinition(t)
+			definition.AuthenticationProtocolFactory = factory
+			definition.AutoReconnect = reconnect
+			definition.Configuration.NetworkBindingPolicy = NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "target", LocalIPv4Address: netip.MustParseAddr("192.0.2.10")}
+			s, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Start()
+			defer shutdownTestSession(t, s)
+			check := func(got Snapshot) {
+				t.Helper()
+				if got.State != WaitingForNetwork || got.SelectedNetworkBinding != nil || got.StateReason == nil || got.StateReason.Code != StateReasonCodeNetworkBindingUnavailable || got.StateReason.Description != "The selected network binding is unavailable." {
+					t.Fatal("unavailable binding state differs")
+				}
+			}
+			check(sessionSnapshot(t, ctx, s))
+			got, err := s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "other", "Other"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			check(got)
+			if len(factory.creationInputs()) != 0 {
+				t.Fatal("unavailable target started Run")
+			}
+			_, err = s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "target", "Target"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run := waitForFactoryRun(t, ctx, factory, 0)
+			defer run.unblock(nil)
+			if err = run.establish(ctx); err != nil {
+				t.Fatal(err)
+			}
+			waitForState(t, ctx, s, Authenticated)
+			got, err = s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 3, "other", "Other"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			check(got)
+			assertCleanupRequirement(t, run.waitForCancellation(ctx), protocol.TerminateWithoutLogout)
+			_, err = s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 4, "target", "Target"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(factory.creationInputs()) != 1 {
+				t.Fatal("replacement Run overlapped cleanup")
+			}
+			run.unblock(nil)
+			if reconnect {
+				next := waitForFactoryRun(t, ctx, factory, 1)
+				next.unblock(nil)
+			} else {
+				got = waitForState(t, ctx, s, BlockedByError)
+				if got.StateReason == nil || got.StateReason.Code != StateReasonCodeAutomaticReconnectDisabled {
+					t.Fatal("automatic reconnect policy lost")
+				}
+			}
+		})
+	}
+}

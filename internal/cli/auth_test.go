@@ -46,7 +46,7 @@ func TestSessionStartClearsOwnedWireBytesOnEveryExit(t *testing.T) {
 			deps := hotAuthDependencies(t, connection)
 			_, err := callSessionStart(deps, connection, contract.MethodSessionStartOneShot, contract.SessionStartOneShotPayload{
 				InstitutionProfileID: "jlu", Username: "user", Password: "fictional",
-				NetworkBindingPolicyMode: "automatic", ProtocolContextOverride: json.RawMessage(`{}`),
+				NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"}, ProtocolContextOverride: json.RawMessage(`{}`),
 			})
 			if (err == nil) != (outcome == "success") || (outcome == "transport" && !errors.Is(err, cause)) {
 				t.Fatal("operation error behavior changed")
@@ -418,7 +418,7 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 	}
 	if decoded.DisplayName != "profile-1" ||
 		decoded.InstitutionProfileID != "profile-1" ||
-		decoded.NetworkBindingPolicyMode != automaticNetworkBindingPolicy ||
+		decoded.NetworkBindingPolicy.Mode != automaticNetworkBindingPolicy ||
 		string(decoded.ProtocolContextOverride) != "{}" {
 		t.Error("start payload non-secret fields differ from accepted values")
 	}
@@ -482,7 +482,7 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 		decoded.InstitutionProfileID != "profile-1" ||
 		decoded.Username != username ||
 		decoded.Password != password ||
-		decoded.NetworkBindingPolicyMode != automaticNetworkBindingPolicy ||
+		decoded.NetworkBindingPolicy.Mode != automaticNetworkBindingPolicy ||
 		string(decoded.ProtocolContextOverride) != "{}" {
 		t.Error("stdin start payload differs from accepted input")
 	}
@@ -809,5 +809,33 @@ func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing
 	}
 	if output.Len() != 0 || strings.Contains(err.Error(), "private-runtime-marker") {
 		t.Fatalf("output=%q error=%q", output.String(), err.Error())
+	}
+}
+
+func TestBindingFlagsRejectBeforeDaemonOrPassword(t *testing.T) {
+	deps := authDependencies{connection: daemonConnectionDependencies{acquire: func(context.Context) (daemonClient, error) {
+		t.Fatal("invalid binding acquired daemon")
+		return nil, nil
+	}}, readStdinPassword: func(io.Reader) (string, error) { t.Fatal("invalid binding read password"); return "", nil }}
+	for _, binding := range []bindingFlags{{interfaceSet: true, interfaceID: "lo"}, {interfaceSet: true, addressSet: true, interfaceID: "", localIPv4: "127.0.0.1"}, {interfaceSet: true, addressSet: true, interfaceID: "lo", localIPv4: "::1"}} {
+		if runAuthStart(authStartOptions{binding: binding, profileID: "p", username: "u", passwordStdin: true}, deps) == nil {
+			t.Fatal("invalid one-shot accepted")
+		}
+		if runConfigCreate(configCreateOptions{binding: binding}, deps) == nil {
+			t.Fatal("invalid create accepted")
+		}
+		if runConfigUpdate(configUpdateOptions{binding: binding}, deps) == nil {
+			t.Fatal("invalid update accepted")
+		}
+	}
+	valid := bindingFlags{interfaceSet: true, addressSet: true, interfaceID: "lo", localIPv4: "127.0.0.1"}
+	if runAuthStart(authStartOptions{binding: valid, sessionID: "s"}, deps) == nil {
+		t.Fatal("bound ensure accepted")
+	}
+	if policy, err := (bindingFlags{}).policy(true); err != nil || policy != nil {
+		t.Fatal("omitted update did not preserve")
+	}
+	if policy, err := (bindingFlags{automatic: true}).policy(true); err != nil || policy.Mode != automaticNetworkBindingPolicy {
+		t.Fatal("automatic reset failed")
 	}
 }

@@ -11,13 +11,12 @@ import (
 
 type AuthenticationSessionID string
 
-type NetworkBindingPolicyMode string
+type NetworkBindingPolicyMode = profile.NetworkBindingPolicyMode
 
-const AutomaticallySelectLatestAvailable NetworkBindingPolicyMode = "automatically_select_latest_available"
+const AutomaticallySelectLatestAvailable = profile.AutomaticallySelectLatestAvailable
+const ExplicitInterfaceAndLocalIPv4 = profile.ExplicitInterfaceAndLocalIPv4
 
-type NetworkBindingPolicy struct {
-	Mode NetworkBindingPolicyMode
-}
+type NetworkBindingPolicy = profile.NetworkBindingPolicy
 
 type Configuration struct {
 	AuthenticationSessionID AuthenticationSessionID
@@ -48,6 +47,7 @@ const (
 )
 
 const (
+	StateReasonCodeNetworkBindingUnavailable    = "network_binding_unavailable"
 	StateReasonCodeNetworkUnavailable           = "network_unavailable"
 	StateReasonCodeRuntimeDefinitionUnavailable = "runtime_definition_unavailable"
 	StateReasonCodeProtocolRunCreationFailed    = "protocol_run_creation_failed"

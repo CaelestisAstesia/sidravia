@@ -66,8 +66,8 @@ func newSystemObserver() Observer {
 	}
 }
 
-// collectLinuxInterfaces enumerates interfaces, omits loopback, classifies each
-// remaining interface from sysfs facts, and returns a stable, sorted slice.
+// collectLinuxInterfaces enumerates interfaces, retains loopback, classifies each
+// observed interface from sysfs facts, and returns a stable, sorted slice.
 // Any source or unexpected sysfs stat error stops collection with a wrapped
 // cause; an absent sysfs path is an ordinary false fact.
 func collectLinuxInterfaces(source linuxSourceFunc, stat statFunc) ([]NetworkInterface, error) {
@@ -77,9 +77,6 @@ func collectLinuxInterfaces(source linuxSourceFunc, stat statFunc) ([]NetworkInt
 	}
 	results := make([]NetworkInterface, 0, len(entries))
 	for _, entry := range entries {
-		if entry.Flags&net.FlagLoopback != 0 {
-			continue
-		}
 		networkIface, err := buildLinuxInterface(entry, stat)
 		if err != nil {
 			return nil, err
@@ -141,7 +138,7 @@ func buildLinuxInterface(entry linuxInterfaceEntry, stat statFunc) (NetworkInter
 	return networkIface, nil
 }
 
-// collectLinuxIPv4Assignments retains only valid, non-unspecified, non-loopback,
+// collectLinuxIPv4Assignments retains only valid, non-unspecified,
 // non-multicast IPv4 unicast assignments with their real prefix lengths, then
 // sorts and deduplicates them so enumeration order alone cannot advance a
 // revision.
@@ -165,7 +162,7 @@ func collectLinuxIPv4Assignments(addrs []net.Addr) []IPv4AddressAssignment {
 		if !ok {
 			continue
 		}
-		if addr4.IsUnspecified() || addr4.IsLoopback() || addr4.IsMulticast() {
+		if addr4.IsUnspecified() || addr4.IsMulticast() {
 			continue
 		}
 		assignment := IPv4AddressAssignment{Address: addr4, PrefixLength: uint8(ones)}

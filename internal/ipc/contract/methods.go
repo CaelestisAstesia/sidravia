@@ -1,8 +1,11 @@
 package contract
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/netip"
+	config "sidravia/internal/daemon/configuration"
 )
 
 // MethodDaemonStatus is the method name for daemon status queries.
@@ -86,28 +89,105 @@ const (
 	MethodSessionStartConfiguration = "session.startConfiguration"
 )
 
+// NetworkBindingPolicy is the strict same-build wire value.
+type NetworkBindingPolicy struct {
+	Mode             string `json:"mode"`
+	InterfaceID      string `json:"interfaceId,omitempty"`
+	LocalIPv4Address string `json:"localIpv4Address,omitempty"`
+}
+
+func (policy NetworkBindingPolicy) Domain() (config.NetworkBindingPolicy, error) {
+	value := config.NetworkBindingPolicy{Mode: config.NetworkBindingPolicyMode(policy.Mode), InterfaceID: policy.InterfaceID}
+	if policy.LocalIPv4Address != "" {
+		address, err := netip.ParseAddr(policy.LocalIPv4Address)
+		if err != nil || address.String() != policy.LocalIPv4Address {
+			return value, fmt.Errorf("invalid network binding policy")
+		}
+		value.LocalIPv4Address = address
+	}
+	return value, value.Validate()
+}
+func NetworkBindingPolicyFromDomain(policy config.NetworkBindingPolicy) NetworkBindingPolicy {
+	value := NetworkBindingPolicy{Mode: string(policy.Mode), InterfaceID: policy.InterfaceID}
+	if policy.LocalIPv4Address.IsValid() {
+		value.LocalIPv4Address = policy.LocalIPv4Address.String()
+	}
+	return value
+}
+func (policy *NetworkBindingPolicy) UnmarshalJSON(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return fmt.Errorf("invalid network binding policy")
+	}
+	fields := map[string]string{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("invalid network binding policy")
+		}
+		name, ok := key.(string)
+		if !ok {
+			return fmt.Errorf("invalid network binding policy")
+		}
+		if _, duplicate := fields[name]; duplicate {
+			return fmt.Errorf("duplicate network binding policy field")
+		}
+		if name != "mode" && name != "interfaceId" && name != "localIpv4Address" {
+			return fmt.Errorf("unknown network binding policy field")
+		}
+		var raw json.RawMessage
+		if decoder.Decode(&raw) != nil {
+			return fmt.Errorf("invalid network binding policy")
+		}
+		var value string
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &value) != nil {
+			return fmt.Errorf("invalid network binding policy")
+		}
+		fields[name] = value
+	}
+	if _, err := decoder.Token(); err != nil {
+		return fmt.Errorf("invalid network binding policy")
+	}
+	candidate := NetworkBindingPolicy{Mode: fields["mode"], InterfaceID: fields["interfaceId"], LocalIPv4Address: fields["localIpv4Address"]}
+	if candidate.Mode == string(config.AutomaticallySelectLatestAvailable) {
+		if len(fields) != 1 {
+			return fmt.Errorf("mixed network binding policy")
+		}
+	} else if candidate.Mode != string(config.ExplicitInterfaceAndLocalIPv4) || len(fields) != 3 {
+		return fmt.Errorf("missing network binding policy target")
+	}
+	if _, err := candidate.Domain(); err != nil {
+		return fmt.Errorf("invalid network binding policy")
+	}
+	*policy = candidate
+	return nil
+}
+
 type ConfigurationIDPayload struct {
 	ConfigurationID string `json:"configurationId"`
 }
 type ConfigurationCreatePayload struct {
-	ConfigurationID      string `json:"configurationId,omitempty"`
-	DisplayName          string `json:"displayName,omitempty"`
-	InstitutionProfileID string `json:"institutionProfileId"`
-	Username             string `json:"username"`
-	Password             string `json:"password"`
-	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
-	AutoLogin            bool   `json:"autoLogin"`
-	AutoReconnect        bool   `json:"autoReconnect"`
+	NetworkBindingPolicy NetworkBindingPolicy `json:"networkBindingPolicy"`
+	ConfigurationID      string               `json:"configurationId,omitempty"`
+	DisplayName          string               `json:"displayName,omitempty"`
+	InstitutionProfileID string               `json:"institutionProfileId"`
+	Username             string               `json:"username"`
+	Password             string               `json:"password"`
+	AllowInsecureStorage bool                 `json:"allowInsecureStorage"`
+	AutoLogin            bool                 `json:"autoLogin"`
+	AutoReconnect        bool                 `json:"autoReconnect"`
 }
 type ConfigurationUpdatePayload struct {
-	Password             *string `json:"password,omitempty"`
-	AllowInsecureStorage bool    `json:"allowInsecureStorage,omitempty"`
-	ConfigurationID      string  `json:"configurationId"`
-	DisplayName          *string `json:"displayName,omitempty"`
-	InstitutionProfileID *string `json:"institutionProfileId,omitempty"`
-	Username             *string `json:"username,omitempty"`
-	AutoLogin            *bool   `json:"autoLogin,omitempty"`
-	AutoReconnect        *bool   `json:"autoReconnect,omitempty"`
+	NetworkBindingPolicy *NetworkBindingPolicy `json:"networkBindingPolicy,omitempty"`
+	Password             *string               `json:"password,omitempty"`
+	AllowInsecureStorage bool                  `json:"allowInsecureStorage,omitempty"`
+	ConfigurationID      string                `json:"configurationId"`
+	DisplayName          *string               `json:"displayName,omitempty"`
+	InstitutionProfileID *string               `json:"institutionProfileId,omitempty"`
+	Username             *string               `json:"username,omitempty"`
+	AutoLogin            *bool                 `json:"autoLogin,omitempty"`
+	AutoReconnect        *bool                 `json:"autoReconnect,omitempty"`
 }
 type ConfigurationSetPasswordPayload struct {
 	ConfigurationID      string `json:"configurationId"`
@@ -115,16 +195,17 @@ type ConfigurationSetPasswordPayload struct {
 	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
 }
 type ConfigurationResult struct {
-	ConfigurationID          string `json:"configurationId"`
-	DisplayName              string `json:"displayName"`
-	InstitutionProfileID     string `json:"institutionProfileId"`
-	InstitutionDisplayName   string `json:"institutionDisplayName"`
-	AuthenticationProtocolID string `json:"authenticationProtocolId"`
-	Username                 string `json:"username"`
-	CredentialStored         bool   `json:"credentialStored"`
-	StorageProtection        string `json:"storageProtection"`
-	AutoLogin                bool   `json:"autoLogin"`
-	AutoReconnect            bool   `json:"autoReconnect"`
+	ConfigurationID          string               `json:"configurationId"`
+	DisplayName              string               `json:"displayName"`
+	InstitutionProfileID     string               `json:"institutionProfileId"`
+	InstitutionDisplayName   string               `json:"institutionDisplayName"`
+	AuthenticationProtocolID string               `json:"authenticationProtocolId"`
+	Username                 string               `json:"username"`
+	CredentialStored         bool                 `json:"credentialStored"`
+	StorageProtection        string               `json:"storageProtection"`
+	AutoLogin                bool                 `json:"autoLogin"`
+	AutoReconnect            bool                 `json:"autoReconnect"`
+	NetworkBindingPolicy     NetworkBindingPolicy `json:"networkBindingPolicy"`
 }
 type ConfigurationListResult struct {
 	StorageProtection string                `json:"storageProtection"`
@@ -147,14 +228,15 @@ func DecodeConfigurationIDPayload(data []byte) (ConfigurationIDPayload, error) {
 }
 func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, error) {
 	var wire struct {
-		ConfigurationID      *string `json:"configurationId"`
-		DisplayName          *string `json:"displayName"`
-		InstitutionProfileID *string `json:"institutionProfileId"`
-		Username             *string `json:"username"`
-		Password             *string `json:"password"`
-		AllowInsecureStorage *bool   `json:"allowInsecureStorage"`
-		AutoLogin            *bool   `json:"autoLogin"`
-		AutoReconnect        *bool   `json:"autoReconnect"`
+		NetworkBindingPolicy *NetworkBindingPolicy `json:"networkBindingPolicy"`
+		ConfigurationID      *string               `json:"configurationId"`
+		DisplayName          *string               `json:"displayName"`
+		InstitutionProfileID *string               `json:"institutionProfileId"`
+		Username             *string               `json:"username"`
+		Password             *string               `json:"password"`
+		AllowInsecureStorage *bool                 `json:"allowInsecureStorage"`
+		AutoLogin            *bool                 `json:"autoLogin"`
+		AutoReconnect        *bool                 `json:"autoReconnect"`
 	}
 	if err := decodeStrict(data, &wire); err != nil {
 		return ConfigurationCreatePayload{}, err
@@ -168,12 +250,13 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 			return ConfigurationCreatePayload{}, fmt.Errorf("configuration create %s must be a string", name)
 		}
 	}
-	if wire.InstitutionProfileID == nil ||
+	if wire.NetworkBindingPolicy == nil || wire.InstitutionProfileID == nil ||
 		wire.Username == nil || wire.Password == nil || wire.AllowInsecureStorage == nil || wire.AutoLogin == nil || wire.AutoReconnect == nil ||
 		wire.ConfigurationID != nil && *wire.ConfigurationID == "" || *wire.InstitutionProfileID == "" || *wire.Username == "" {
 		return ConfigurationCreatePayload{}, fmt.Errorf("missing required configuration field")
 	}
 	value := ConfigurationCreatePayload{
+		NetworkBindingPolicy: *wire.NetworkBindingPolicy,
 		InstitutionProfileID: *wire.InstitutionProfileID, Username: *wire.Username,
 		Password: *wire.Password, AllowInsecureStorage: *wire.AllowInsecureStorage,
 		AutoLogin: *wire.AutoLogin, AutoReconnect: *wire.AutoReconnect,
@@ -222,10 +305,10 @@ func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, 
 	if err := decodeStrict(data, &value); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
-	if err := rejectNullFields(data, "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage"); err != nil {
+	if err := rejectNullFields(data, "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage", "networkBindingPolicy"); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
-	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil && value.Password == nil {
+	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil && value.Password == nil && value.NetworkBindingPolicy == nil {
 		return ConfigurationUpdatePayload{}, fmt.Errorf("missing configuration update")
 	}
 	if value.InstitutionProfileID != nil && *value.InstitutionProfileID == "" || value.Username != nil && *value.Username == "" {
@@ -282,12 +365,12 @@ func DecodeEmptyPayload(data []byte) error {
 // never interprets it. It deliberately omits ConfigurationID,
 // arbitrary environment facts, factory selection and a generic parameter map.
 type SessionStartOneShotPayload struct {
-	DisplayName              string          `json:"displayName"`
-	InstitutionProfileID     string          `json:"institutionProfileId"`
-	Username                 string          `json:"username"`
-	Password                 string          `json:"password"`
-	NetworkBindingPolicyMode string          `json:"networkBindingPolicyMode"`
-	ProtocolContextOverride  json.RawMessage `json:"protocolContextOverride"`
+	DisplayName             string               `json:"displayName"`
+	InstitutionProfileID    string               `json:"institutionProfileId"`
+	Username                string               `json:"username"`
+	Password                string               `json:"password"`
+	NetworkBindingPolicy    NetworkBindingPolicy `json:"networkBindingPolicy"`
+	ProtocolContextOverride json.RawMessage      `json:"protocolContextOverride"`
 }
 
 // SessionStopPayload is the typed payload for a session.stop request.
@@ -341,8 +424,8 @@ func DecodeSessionStartOneShotPayload(data []byte) (SessionStartOneShotPayload, 
 	if payload.Username == "" {
 		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing username")
 	}
-	if payload.NetworkBindingPolicyMode == "" {
-		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing networkBindingPolicyMode")
+	if _, err := payload.NetworkBindingPolicy.Domain(); err != nil {
+		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing networkBindingPolicy")
 	}
 	if len(payload.ProtocolContextOverride) == 0 || string(payload.ProtocolContextOverride) == "null" {
 		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing protocolContextOverride")

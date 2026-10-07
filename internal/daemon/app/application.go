@@ -308,6 +308,9 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 		return ConfigurationResult{}, err
 	}
 	candidate := current
+	if update.NetworkBindingPolicy != nil {
+		candidate.NetworkBindingPolicy = *update.NetworkBindingPolicy
+	}
 	if update.DisplayName != nil {
 		candidate.DisplayName = *update.DisplayName
 	}

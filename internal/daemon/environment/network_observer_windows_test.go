@@ -2,7 +2,10 @@
 
 package environment
 
-import "testing"
+import (
+	"net/netip"
+	"testing"
+)
 
 func TestDecodeWindowsInterfaceClassification(t *testing.T) {
 	tests := []struct {
@@ -62,5 +65,16 @@ func TestDecodeWindowsInterfaceClassification(t *testing.T) {
 				t.Fatalf("decodeWindowsInterfaceClassification(%08b) = %+v, want %+v", test.flags, got, test.want)
 			}
 		})
+	}
+}
+
+func TestWindowsObserverRetainsRealLoopbackIPv4(t *testing.T) {
+	if !isUsableUnicastIPv4(netip.MustParseAddr("127.0.0.1")) {
+		t.Fatal("loopback IPv4 omitted")
+	}
+	for _, ip := range []string{"0.0.0.0", "224.0.0.1"} {
+		if isUsableUnicastIPv4(netip.MustParseAddr(ip)) {
+			t.Fatal("unusable IPv4 retained")
+		}
 	}
 }

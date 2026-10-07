@@ -56,7 +56,7 @@ func staticSource(entries []linuxInterfaceEntry) linuxSourceFunc {
 	return func() ([]linuxInterfaceEntry, error) { return entries, nil }
 }
 
-func TestCollectLinuxInterfacesOmitsLoopback(t *testing.T) {
+func TestCollectLinuxInterfacesRetainsLoopback(t *testing.T) {
 	entries := []linuxInterfaceEntry{
 		{Name: "lo", Flags: net.FlagUp | net.FlagLoopback, Addresses: []net.Addr{linuxAddr("127.0.0.1", 8)}},
 		{Name: "eth0", Flags: net.FlagUp, HardwareAddr: []byte{1, 2, 3, 4, 5, 6}, Addresses: []net.Addr{linuxAddr("192.168.1.10", 24)}},
@@ -65,8 +65,8 @@ func TestCollectLinuxInterfacesOmitsLoopback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collectLinuxInterfaces = %v, want nil", err)
 	}
-	if len(ifaces) != 1 || string(ifaces[0].InterfaceID) != "eth0" {
-		t.Fatalf("interfaces = %+v, want only eth0", ifaces)
+	if len(ifaces) != 2 || string(ifaces[1].InterfaceID) != "lo" || ifaces[1].IPv4AddressAssignments()[0].Address != mustParseIPv4("127.0.0.1") {
+		t.Fatalf("interfaces = %+v, want eth0 and real loopback", ifaces)
 	}
 }
 

@@ -51,7 +51,8 @@ func TestConfigurationPasswordCallsClearOwnedWireBytes(t *testing.T) {
 
 func TestConfigurationDecodersAndPresentationHidePassword(t *testing.T) {
 	raw, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-		ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
 		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	})
@@ -73,7 +74,8 @@ func TestConfigurationDecodersAndPresentationHidePassword(t *testing.T) {
 
 func TestConfigurationDecodersRejectUnknownTrailingAndIncompleteResults(t *testing.T) {
 	valid := contract.ConfigurationResult{
-		ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	}
 	data, err := json.Marshal(valid)
@@ -140,7 +142,8 @@ func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 		capturedMethod = method
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: false, AutoReconnect: true,
 		})
@@ -173,7 +176,8 @@ func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -204,7 +208,8 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -234,7 +239,8 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 		}
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -262,7 +268,8 @@ func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: false, AutoReconnect: true,
 		})
@@ -293,7 +300,8 @@ func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
-			ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})

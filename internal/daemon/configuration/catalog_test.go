@@ -1,8 +1,10 @@
 package configuration
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"net/netip"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -376,5 +378,45 @@ func TestCatalogUpdateAutoLoginAtomicCommit(t *testing.T) {
 	gotSecond, err := catalog.Get(ctx, second.ConfigurationID)
 	if err != nil || gotSecond.AutoLogin {
 		t.Fatalf("second configuration after failed update = %#v, %v", gotSecond, err)
+	}
+}
+
+func TestCatalogBindingOnlyUpdatePreservationAndRejectedWrite(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	c, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Create(ctx, catalogTestConfiguration("bound", "Bound"), "private", false); err != nil {
+		t.Fatal(err)
+	}
+	policy := NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+	if _, err = c.Update(ctx, "bound", Update{NetworkBindingPolicy: &policy}); err != nil {
+		t.Fatal(err)
+	}
+	name := "Renamed"
+	if _, err = c.Update(ctx, "bound", Update{DisplayName: &name}); err != nil {
+		t.Fatal(err)
+	}
+	got, cred, err := c.Resolve(ctx, "bound")
+	if err != nil || got.NetworkBindingPolicy != policy || cred.Password != "private" {
+		t.Fatal("metadata update lost binding or credential")
+	}
+	before := append([]byte(nil), store.data...)
+	bad := policy
+	bad.InterfaceID = ""
+	calls := store.replaceCalls
+	if _, err = c.Update(ctx, "bound", Update{NetworkBindingPolicy: &bad}); err == nil || !bytes.Equal(before, store.data) || calls != store.replaceCalls {
+		t.Fatal("invalid policy mutated persistent state")
+	}
+	automatic := NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable}
+	store.replaceErr = errors.New("rejected write")
+	if _, err = c.Update(ctx, "bound", Update{NetworkBindingPolicy: &automatic}); err == nil || !bytes.Equal(before, store.data) {
+		t.Fatal("failed persistence committed binding")
+	}
+	got, err = c.Get(ctx, "bound")
+	if err != nil || got.NetworkBindingPolicy != policy {
+		t.Fatal("failed persistence mutated memory")
 	}
 }

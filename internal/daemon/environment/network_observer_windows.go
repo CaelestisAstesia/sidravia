@@ -26,7 +26,7 @@ func newSystemObserver() Observer {
 // readWindowsNetworkInterfaces collects real Windows adapter facts through
 // GetAdaptersAddresses. It requests unicast, DNS and gateway information for
 // the IPv4 family, copies every retained value out of the temporary Windows
-// buffer, omits loopback and tunnel adapters, and returns a deterministically
+// buffer, retains loopback and omits tunnel adapters, and returns a deterministically
 // ordered slice. No shell-out, registry access, watcher, goroutine or retry
 // beyond the bounded buffer resize is used.
 func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
@@ -80,7 +80,7 @@ func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
 		if interfaceID == "" {
 			return nil, fmt.Errorf("read windows network interfaces: adapter with empty name")
 		}
-		if aa.IfType == windows.IF_TYPE_SOFTWARE_LOOPBACK || aa.IfType == windows.IF_TYPE_TUNNEL {
+		if aa.IfType == windows.IF_TYPE_TUNNEL {
 			continue
 		}
 
@@ -256,7 +256,7 @@ func socketAddressToIPv4(sa windows.SocketAddress) (netip.Addr, bool) {
 }
 
 func isUsableUnicastIPv4(addr netip.Addr) bool {
-	return !addr.IsUnspecified() && !addr.IsLoopback() && !addr.IsMulticast()
+	return !addr.IsUnspecified() && !addr.IsMulticast()
 }
 
 func isRetainedServiceIPv4(addr netip.Addr) bool {

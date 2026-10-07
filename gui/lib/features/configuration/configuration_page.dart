@@ -125,6 +125,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     return DesignPage(
       children: [
         DesignHeader(title: '连接配置', onBack: widget.onBack),
+        DesignHelper(
+          (widget.controller.capabilities.configuration?.networkBindingPolicy ??
+                  const NetworkBindingPolicy.automatic())
+              .summary,
+        ),
         DesignField(
           label: '机构',
           child: DropdownButtonFormField<String>(

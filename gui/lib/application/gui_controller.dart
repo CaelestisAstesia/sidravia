@@ -117,6 +117,7 @@ class GuiController extends ChangeNotifier {
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
     (client, allow) => client.configurationCreate(
+      networkBindingPolicy: const NetworkBindingPolicy.automatic(),
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,

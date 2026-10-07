@@ -162,7 +162,7 @@ func initializeAuthenticationSession(
 	protocolID := definition.InstitutionProfile.AuthenticationProtocolID
 	accountName := definition.AccountName()
 	state := initialState(initialIntent)
-	stateReason := initialStateReason(initialIntent)
+	stateReason := initialStateReason(initialIntent, configuration.NetworkBindingPolicy)
 	diagnostics := dependencies.Diagnostics
 	if diagnostics == nil {
 		diagnostics = NoopDiagnostics{}
@@ -185,7 +185,7 @@ func initializeAuthenticationSession(
 		done:                make(chan struct{}),
 		revisions:           make(chan RevisionEvent, 1),
 		admission:           admission,
-		selector:            newAutomaticBindingSelector(),
+		selector:            newPolicyBindingSelector(configuration.NetworkBindingPolicy),
 		currentSnapshot: Snapshot{
 			AuthenticationSessionID:  configuration.AuthenticationSessionID,
 			ConfigurationID:          configuration.ConfigurationID,
@@ -211,8 +211,11 @@ func initialState(intent Intent) State {
 	return WaitingForNetwork
 }
 
-func initialStateReason(intent Intent) *StateReason {
+func initialStateReason(intent Intent, policies ...NetworkBindingPolicy) *StateReason {
 	if intent == MaintainAuthentication {
+		if len(policies) > 0 && policies[0].Mode == ExplicitInterfaceAndLocalIPv4 {
+			return &StateReason{Code: StateReasonCodeNetworkBindingUnavailable, Description: "The selected network binding is unavailable."}
+		}
 		return &StateReason{Code: StateReasonCodeNetworkUnavailable, Description: "No usable network is available."}
 	}
 	return nil
@@ -361,7 +364,7 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 			}
 			if snapshot.Intent == MaintainAuthentication {
 				snapshot.State = WaitingForNetwork
-				snapshot.StateReason = &StateReason{Code: StateReasonCodeNetworkUnavailable, Description: "No usable network is available."}
+				snapshot.StateReason = initialStateReason(MaintainAuthentication, session.definition.Configuration.NetworkBindingPolicy)
 				snapshot.AuthenticationEstablishedAt = nil
 			}
 		})
@@ -412,7 +415,7 @@ func (session *AuthenticationSession) handleActivate() {
 	if !session.hasDesiredBinding {
 		session.updateSnapshot(func(snapshot *Snapshot) {
 			snapshot.State = WaitingForNetwork
-			snapshot.StateReason = &StateReason{Code: StateReasonCodeNetworkUnavailable, Description: "No usable network is available."}
+			snapshot.StateReason = initialStateReason(MaintainAuthentication, session.definition.Configuration.NetworkBindingPolicy)
 		})
 		return
 	}
@@ -458,7 +461,7 @@ func (session *AuthenticationSession) handleRestart() {
 			return
 		}
 		snapshot.State = WaitingForNetwork
-		snapshot.StateReason = &StateReason{Code: StateReasonCodeNetworkUnavailable, Description: "No usable network is available."}
+		snapshot.StateReason = initialStateReason(MaintainAuthentication, session.definition.Configuration.NetworkBindingPolicy)
 	})
 	if session.active != nil {
 		session.cancelActive(protocol.TerminateWithBestEffortLogout)

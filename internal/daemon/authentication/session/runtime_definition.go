@@ -26,8 +26,8 @@ func (definition RuntimeDefinition) Validate() error {
 	if definition.Configuration.InstitutionProfileID == "" {
 		return fmt.Errorf("institution profile ID is required")
 	}
-	if definition.Configuration.NetworkBindingPolicy.Mode != AutomaticallySelectLatestAvailable {
-		return fmt.Errorf("unsupported network binding policy mode %q", definition.Configuration.NetworkBindingPolicy.Mode)
+	if err := definition.Configuration.NetworkBindingPolicy.Validate(); err != nil {
+		return err
 	}
 	if definition.InstitutionProfile.InstitutionProfileID == "" {
 		return fmt.Errorf("institution profile ID is required")

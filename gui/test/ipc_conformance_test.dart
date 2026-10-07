@@ -251,7 +251,7 @@ void main() {
     'empty configuration and session display names use caller fallbacks',
     () {
       final configuration = decodeConfiguration(
-        '{"configurationId":"cfg-a","displayName":"","institutionProfileId":"jlu","institutionDisplayName":"JLU","authenticationProtocolId":"d","username":"account","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true}',
+        '{"configurationId":"cfg-a","displayName":"","institutionProfileId":"jlu","institutionDisplayName":"JLU","authenticationProtocolId":"d","username":"account","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true}',
       );
       final session = _sessionAt('2026-08-14T10:00:00Z');
       expect(configuration.displayName, isEmpty);

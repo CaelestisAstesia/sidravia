@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"net/netip"
 	"testing"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -49,5 +50,31 @@ func TestConfigurationCloneOwnsProtocolContextOverride(t *testing.T) {
 	cloned.ProtocolContextOverride[0] = '['
 	if original.ProtocolContextOverride[0] == '[' {
 		t.Fatal("Clone() shared ProtocolContextOverride storage with the original")
+	}
+}
+
+func TestExplicitNetworkBindingPolicyValidation(t *testing.T) {
+	valid := NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "Loopback-真实", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+	if err := valid.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"", " leading", "trailing\u00a0", "a\n", "a\u0085b", string([]byte{0xff})} {
+		v := valid
+		v.InterfaceID = id
+		if v.Validate() == nil {
+			t.Fatal("invalid id accepted")
+		}
+	}
+	for _, ip := range []string{"0.0.0.0", "224.0.0.1", "::ffff:127.0.0.1", "::1"} {
+		v := valid
+		v.LocalIPv4Address = netip.MustParseAddr(ip)
+		if v.Validate() == nil {
+			t.Fatal("invalid address accepted")
+		}
+	}
+	v := valid
+	v.Mode = AutomaticallySelectLatestAvailable
+	if v.Validate() == nil {
+		t.Fatal("mixed automatic target accepted")
 	}
 }

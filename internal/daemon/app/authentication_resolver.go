@@ -111,9 +111,7 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 			ConfigurationID:         configuration.ConfigurationID,
 			DisplayName:             configuration.DisplayName,
 			InstitutionProfileID:    configuration.InstitutionProfileID,
-			NetworkBindingPolicy: session.NetworkBindingPolicy{
-				Mode: session.NetworkBindingPolicyMode(configuration.NetworkBindingPolicy.Mode),
-			},
+			NetworkBindingPolicy:    configuration.NetworkBindingPolicy,
 			ProtocolContextOverride: configuration.ProtocolContextOverride,
 		},
 		AuthenticationCredential:      credentialValue,

@@ -8,7 +8,7 @@ import (
 )
 
 func validStartJSON() []byte {
-	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{"custom":"value"}}`)
+	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"custom":"value"}}`)
 }
 
 func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
@@ -28,8 +28,8 @@ func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
 	if payload.Password != "secret" {
 		t.Errorf("password: got %q, want %q", payload.Password, "secret")
 	}
-	if payload.NetworkBindingPolicyMode != "automatically_select_latest_available" {
-		t.Errorf("networkBindingPolicyMode: got %q", payload.NetworkBindingPolicyMode)
+	if payload.NetworkBindingPolicy.Mode != "automatically_select_latest_available" {
+		t.Errorf("networkBindingPolicyMode: got %q", payload.NetworkBindingPolicy.Mode)
 	}
 	if string(payload.ProtocolContextOverride) != `{"custom":"value"}` {
 		t.Errorf("protocolContextOverride: got %q", string(payload.ProtocolContextOverride))
@@ -37,14 +37,14 @@ func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
 }
 
 func TestDecodeSessionStartOneShotPayloadRejectsDuplicateAndEscapedKeys(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatic","protocolContextOverride":{"x":1,"\u0078":2}}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"x":1,"\u0078":2}}`)
 	if _, err := DecodeSessionStartOneShotPayload(data); err == nil || !strings.Contains(err.Error(), "duplicate object key") {
 		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v, want duplicate object key", err)
 	}
 }
 
 func TestDecodeSessionStartOneShotPayloadPreservesLargeNumbersAndSiblingObjects(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatic","protocolContextOverride":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}`)
 	payload, err := DecodeSessionStartOneShotPayload(data)
 	if err != nil {
 		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v", err)
@@ -71,7 +71,7 @@ func TestMarshalStatusResultCarriesModeAndOptionalOwner(t *testing.T) {
 }
 
 func TestDecodeSessionStartOneShotPayloadAcceptsEmptyPassword(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`)
 	payload, err := DecodeSessionStartOneShotPayload(data)
 	if err != nil {
 		t.Fatalf("expected valid decode with empty password, got error: %v", err)
@@ -82,24 +82,24 @@ func TestDecodeSessionStartOneShotPayloadAcceptsEmptyPassword(t *testing.T) {
 }
 
 func TestDecodeSessionStartOneShotPayloadRejectsEmptyUsername(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`)
 	if _, err := DecodeSessionStartOneShotPayload(data); err == nil {
 		t.Fatal("expected error for empty username, got nil")
 	}
 }
 
 func TestDecodeSessionStartOneShotPayloadRejects(t *testing.T) {
-	base := `{"institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`
+	base := `{"institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`
 	cases := []struct {
 		name string
 		data string
 	}{
-		{"unknown field", `{"displayName":"x","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{},"extra":"y"}`},
-		{"missing username", `{"institutionProfileId":"profile-1","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`},
-		{"missing profile id", `{"username":"alice","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`},
+		{"unknown field", `{"displayName":"x","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{},"extra":"y"}`},
+		{"missing username", `{"institutionProfileId":"profile-1","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`},
+		{"missing profile id", `{"username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`},
 		{"missing binding mode", `{"institutionProfileId":"profile-1","username":"alice","protocolContextOverride":{}}`},
-		{"missing override", `{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatically_select_latest_available"}`},
-		{"null override", `{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":null}`},
+		{"missing override", `{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`},
+		{"null override", `{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}`},
 		{"null payload", `null`},
 		{"empty payload", ``},
 		{"trailing value", base + `{"second":1}`},
@@ -121,15 +121,15 @@ func TestDecodeSessionStartOneShotPayloadDoesNotLeakPassword(t *testing.T) {
 	}{
 		{
 			"trailing garbage after password",
-			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}!!!`,
+			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}!!!`,
 		},
 		{
 			"malformed json around password",
-			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{ INVALID}`,
+			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{ INVALID}`,
 		},
 		{
 			"unknown field with password",
-			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{},"extra":"y"}`,
+			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{},"extra":"y"}`,
 		},
 	}
 	for _, tc := range cases {
@@ -443,7 +443,7 @@ func TestConfigurationPayloadDecodersAreStrict(t *testing.T) {
 		},
 		{
 			name:  "create",
-			valid: `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+			valid: `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
 			decode: func(data []byte) error {
 				_, err := DecodeConfigurationCreatePayload(data)
 				return err
@@ -455,8 +455,8 @@ func TestConfigurationPayloadDecodersAreStrict(t *testing.T) {
 				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":""}`,
 				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"","password":"","allowInsecureStorage":false}`,
 				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"extra":true}`,
-				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false}`,
-				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoReconnect":false}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false}`,
+				`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoReconnect":false}`,
 			},
 		},
 		{
@@ -514,21 +514,21 @@ func TestConfigurationUpdateDistinguishesAbsentAndExplicitEmpty(t *testing.T) {
 }
 
 func TestConfigurationCreateDistinguishesOptionalIdentityAndDisplayName(t *testing.T) {
-	payload, err := DecodeConfigurationCreatePayload([]byte(`{"institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+	payload, err := DecodeConfigurationCreatePayload([]byte(`{"institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if payload.ConfigurationID != "" || payload.DisplayName != "" {
 		t.Fatalf("omitted optional identity/name = %#v", payload)
 	}
-	payload, err = DecodeConfigurationCreatePayload([]byte(`{"configurationId":"cli-id","displayName":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+	payload, err = DecodeConfigurationCreatePayload([]byte(`{"configurationId":"cli-id","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
 	if err != nil || payload.ConfigurationID != "cli-id" || payload.DisplayName != "" {
 		t.Fatalf("explicit identity/empty name = %#v, %v", payload, err)
 	}
 	for _, data := range []string{
-		`{"configurationId":"","institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
-		`{"configurationId":null,"institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
-		`{"displayName":null,"institutionProfileId":"jlu","username":"user","password":"","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+		`{"configurationId":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+		`{"configurationId":null,"institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+		`{"displayName":null,"institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
 	} {
 		if _, err := DecodeConfigurationCreatePayload([]byte(data)); err == nil {
 			t.Fatalf("accepted invalid optional identity/name: %s", data)
@@ -542,7 +542,8 @@ func TestConfigurationCreateDistinguishesOptionalIdentityAndDisplayName(t *testi
 
 func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
 	value := ConfigurationResult{
-		ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
+		NetworkBindingPolicy: NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
+		ConfigurationID:      "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
 		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	}
@@ -550,7 +551,7 @@ func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = `{"configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false}`
+	const expected = `{"configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`
 	if string(data) != expected {
 		t.Fatalf("configuration result = %s", data)
 	}
@@ -607,5 +608,24 @@ func TestSessionStartResultCodesAndWireShapeAreStable(t *testing.T) {
 	data, err := MarshalSessionStartResult(SessionStartResult{Outcome: "created", Session: SessionResult{AuthenticationSessionID: "session-1"}})
 	if err != nil || string(data) != `{"outcome":"created","session":{"sessionId":"session-1","displayName":"","institutionProfileId":"","institutionDisplayName":"","authenticationProtocolId":"","accountName":"","intent":"","state":"","revision":0,"updatedAt":""}}` {
 		t.Fatalf("start result = %s, %v", data, err)
+	}
+}
+
+func TestNetworkBindingPolicyStrictOwnedShape(t *testing.T) {
+	automatic := `{"mode":"automatically_select_latest_available"}`
+	explicit := `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"Lo-ID","localIpv4Address":"127.0.0.1"}`
+	for _, raw := range []string{automatic, explicit} {
+		value, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","networkBindingPolicy":` + raw + `}`))
+		if err != nil || value.NetworkBindingPolicy == nil {
+			t.Fatal("binding-only update rejected", err)
+		}
+	}
+	for _, raw := range []string{`null`, `{}`, `{"mode":null}`, `{"mode":"unknown"}`, `{"mode":"automatically_select_latest_available","interfaceId":null}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo"}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","localIpv4Address":"127.000.0.1"}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","localIpv4Address":"::ffff:127.0.0.1"}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","localIpv4Address":"0.0.0.0"}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","localIpv4Address":"224.0.0.1"}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo ","localIpv4Address":"127.0.0.1"}`, `{"mode":"automatically_select_latest_available","mode":"automatically_select_latest_available"}`, `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","\u0069nterfaceId":"lo","localIpv4Address":"127.0.0.1"}`, `{"mode":"automatically_select_latest_available","unknown":true}`} {
+		if _, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"campus","networkBindingPolicy":` + raw + `}`)); err == nil {
+			t.Fatal("invalid binding policy accepted")
+		}
+	}
+	if _, err := DecodeSessionStartOneShotPayload([]byte(`{"institutionProfileId":"p","username":"u","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`)); err == nil {
+		t.Fatal("old one-shot wire accepted")
 	}
 }

@@ -207,6 +207,8 @@ func sessionStateText(code string) string {
 // sessionStateReasonText maps a Session state reason code to Simplified Chinese.
 func sessionStateReasonText(code string) string {
 	switch code {
+	case "network_binding_unavailable":
+		return "指定网卡或 IPv4 地址不可用"
 	case "network_unavailable":
 		return "没有可用网络"
 	case "runtime_definition_unavailable":
@@ -651,6 +653,15 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 	b.WriteString(autoLogin)
 	b.WriteString("\n自动重连：")
 	b.WriteString(autoReconnect)
+	b.WriteString("\n网络绑定：")
+	if result.NetworkBindingPolicy.Mode == "explicit_interface_and_local_ipv4" {
+		b.WriteString("指定网卡 ")
+		b.WriteString(sanitizeDynamicText(result.NetworkBindingPolicy.InterfaceID))
+		b.WriteString(" · ")
+		b.WriteString(sanitizeDynamicText(result.NetworkBindingPolicy.LocalIPv4Address))
+	} else {
+		b.WriteString("自动选择可用网卡")
+	}
 	b.WriteString("\n")
 	return b.String()
 }

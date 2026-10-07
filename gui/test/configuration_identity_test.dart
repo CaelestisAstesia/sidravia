@@ -51,6 +51,54 @@ class ReplacementClient extends OfflineDemoClient {
 }
 
 void main() {
+  testWidgets('explicit binding is read-only and wraps at 320 scale 2', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = OfflineDemoClient()..selectScenario('empty');
+    final policy = NetworkBindingPolicy.explicit(
+      'loopback-interface-with-a-long-observed-id',
+      '127.0.0.1',
+    );
+    await client.configurationCreate(
+      networkBindingPolicy: policy,
+      institutionProfileId: 'jlu',
+      username: 'u',
+      password: 'p',
+      autoLogin: false,
+      autoReconnect: true,
+      allowInsecureStorage: false,
+    );
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: ConfigurationPage(controller: controller, onBack: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(policy.summary), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+    client.dispose();
+  });
+
   for (final lifecycle in [
     'bootstrapping',
     'failed',

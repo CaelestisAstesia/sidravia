@@ -824,7 +824,8 @@ func TestActionableSessionErrorGuidanceAndEmptyStates(t *testing.T) {
 
 func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testing.T) {
 	base := contract.ConfigurationResult{
-		ConfigurationID: "campus\x1b[2J\ninjected", DisplayName: "校园网",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus\x1b[2J\ninjected", DisplayName: "校园网",
 		InstitutionProfileID: "jlu", InstitutionDisplayName: "吉林大学",
 		AuthenticationProtocolID: "drcom", Username: "user\nmarker",
 		CredentialStored: true, StorageProtection: "protected",
@@ -850,7 +851,8 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 
 func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 	withName := contract.ConfigurationResult{
-		ConfigurationID: "campus", DisplayName: "校园\x1b[2J\n配置",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", DisplayName: "校园\x1b[2J\n配置",
 		InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	}
@@ -863,7 +865,7 @@ func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 	if strings.Contains(got, "名称：") {
 		t.Fatalf("unset optional name rendered an empty row: %q", got)
 	}
-	wantOrder := []string{"配置：campus\n", "机构：JLU\n", "协议：drcom\n", "账号：user\n", "凭据：已保存\n", "存储保护：已保护（protected）\n", "自动登录：未启用\n", "自动重连：未启用\n"}
+	wantOrder := []string{"配置：campus\n", "机构：JLU\n", "协议：drcom\n", "账号：user\n", "凭据：已保存\n", "存储保护：已保护（protected）\n", "自动登录：未启用\n", "自动重连：未启用\n", "网络绑定：自动选择可用网卡\n"}
 	if got != strings.Join(wantOrder, "") {
 		t.Fatalf("configuration rows changed when optional name was omitted: %q", got)
 	}
@@ -871,7 +873,8 @@ func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 
 func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
 	result := contract.ConfigurationResult{
-		ConfigurationID: "campus", InstitutionProfileID: "jlu",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", InstitutionProfileID: "jlu",
 		AuthenticationProtocolID: "drcom", Username: "user",
 		CredentialStored: true, StorageProtection: "protected",
 	}
@@ -888,7 +891,8 @@ func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
 
 func TestRenderConfigurationShowsAutoLoginAutoReconnect(t *testing.T) {
 	enabled := contract.ConfigurationResult{
-		ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 		AutoLogin: true, AutoReconnect: true,
 	}
@@ -898,7 +902,8 @@ func TestRenderConfigurationShowsAutoLoginAutoReconnect(t *testing.T) {
 	}
 
 	disabled := contract.ConfigurationResult{
-		ConfigurationID: "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 		AutoLogin: false, AutoReconnect: false,
 	}
