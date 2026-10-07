@@ -97,6 +97,7 @@ type AuthenticationSession struct {
 	lastStopCleanupFailure    *protocol.AuthenticationProtocolRunFailure
 	shuttingDown              bool
 	automaticReconnectBlocked bool
+	explicitRestartPending    bool
 	shutdownReplies           []chan error
 }
 
@@ -395,6 +396,11 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 		}
 		return
 	}
+	if session.explicitRestartPending {
+		session.explicitRestartPending = false
+		session.startRun(true)
+		return
+	}
 	if session.currentSnapshot.Intent != MaintainAuthentication {
 		return
 	}
@@ -429,6 +435,7 @@ func (session *AuthenticationSession) handleSuspend() {
 	if session.currentSnapshot.State == Stopping || session.currentSnapshot.State == Suspended {
 		return
 	}
+	session.explicitRestartPending = false
 	session.invalidateRetryScheduleState()
 	session.lastStopCleanupFailure = nil
 	hadActiveRun := session.active != nil
@@ -449,6 +456,7 @@ func (session *AuthenticationSession) handleRestart() {
 	if session.currentSnapshot.State == Stopping {
 		return
 	}
+	session.explicitRestartPending = true
 	session.resetRetryState()
 	session.automaticReconnectBlocked = false
 	session.updateSnapshot(func(snapshot *Snapshot) {
@@ -467,7 +475,10 @@ func (session *AuthenticationSession) handleRestart() {
 		session.cancelActive(protocol.TerminateWithBestEffortLogout)
 		return
 	}
-	session.startRunIfNeeded()
+	if session.hasDesiredBinding {
+		session.explicitRestartPending = false
+		session.startRun(true)
+	}
 }
 
 func (session *AuthenticationSession) handleShutdown(reply chan error) {
@@ -475,6 +486,7 @@ func (session *AuthenticationSession) handleShutdown(reply chan error) {
 		session.shutdownReplies = append(session.shutdownReplies, reply)
 		return
 	}
+	session.explicitRestartPending = false
 	session.shuttingDown = true
 	session.invalidateRetrySchedule()
 	session.shutdownReplies = append(session.shutdownReplies, reply)
@@ -513,6 +525,13 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 		}
 		if session.currentSnapshot.Intent == SuspendAuthentication {
 			session.completeSuspensionIfReady()
+			return
+		}
+		if !session.shuttingDown && session.explicitRestartPending {
+			if session.hasDesiredBinding && session.currentSnapshot.Intent == MaintainAuthentication {
+				session.explicitRestartPending = false
+				session.startRun(true)
+			}
 			return
 		}
 		if !session.shuttingDown && session.currentSnapshot.Intent == MaintainAuthentication && session.hasDesiredBinding {
