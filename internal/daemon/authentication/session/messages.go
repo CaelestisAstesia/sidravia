@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"net/netip"
 
 	"sidravia/internal/daemon/authentication/protocol"
 	environment "sidravia/internal/daemon/environment"
@@ -28,6 +29,21 @@ type shutdownCommand struct {
 }
 
 type snapshotQuery struct{ reply chan snapshotReply }
+
+type networkDiagnosticsReply struct{ snapshot NetworkDiagnosticsSnapshot }
+type networkDiagnosticsQuery struct{ reply chan networkDiagnosticsReply }
+type protocolSocketOpenedEvent struct {
+	generation    uint64
+	local, remote netip.AddrPort
+}
+type protocolSocketClosedEvent struct {
+	generation uint64
+	closed     bool
+}
+
+func (networkDiagnosticsQuery) isSessionMessage()   {}
+func (protocolSocketOpenedEvent) isSessionMessage() {}
+func (protocolSocketClosedEvent) isSessionMessage() {}
 
 type authenticationEstablishedEvent struct{ generation uint64 }
 

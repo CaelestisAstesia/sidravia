@@ -1425,3 +1425,40 @@ func TestSupervisorPassesDiagnosticsToSession(t *testing.T) {
 	}
 	t.Fatal("diagnostics sink was not invoked for session creation")
 }
+
+func TestSupervisorNetworkDiagnosticsMissingRetainedAndReadOnly(t *testing.T) {
+	supervisor := New(testSupervisorDeps())
+	defer func() { supervisor.Close(); supervisor.Wait() }()
+	if _, err := supervisor.GetNetworkDiagnostics(context.Background(), "missing"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("missing = %v", err)
+	}
+	factory := newStateFactory()
+	definition := testRuntimeDefinition()
+	definition.AuthenticationProtocolFactory = factory
+	id, before, err := supervisor.StartResolved(context.Background(), definition, session.SuspendAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := supervisor.GetNetworkDiagnostics(context.Background(), id)
+	if err != nil || got.Snapshot.Revision != before.Revision || got.Snapshot.State != session.Suspended || got.ProtocolSocket.State != session.ProtocolSocketNotObserved || got.ProtocolSocket.RunGeneration != 0 || factory.count() != 0 {
+		t.Fatalf("retained query = %#v, %v; runs=%d", got, err, factory.count())
+	}
+	cause := errors.New("diagnostic query canceled")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(cause)
+	if _, err := supervisor.GetNetworkDiagnostics(ctx, id); !errors.Is(err, cause) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("actor cause = %v", err)
+	}
+	if _, err := supervisor.GetNetworkDiagnostics(nil, id); err == nil {
+		t.Fatal("nil actor context accepted")
+	}
+	if err := supervisor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.GetNetworkDiagnostics(context.Background(), id); !errors.Is(err, session.ErrAuthenticationSessionClosed) {
+		t.Fatalf("closed actor = %v", err)
+	}
+	if factory.count() != 0 {
+		t.Fatal("diagnostics started Run")
+	}
+}

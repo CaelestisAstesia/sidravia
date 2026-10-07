@@ -492,6 +492,16 @@ func (s *Supervisor) Get(ctx context.Context, id ID) (Snapshot, error) {
 	return snapshot, nil
 }
 
+// GetNetworkDiagnostics reads one managed actor without starting a Run or
+// holding the Supervisor map mutex while waiting for its reply.
+func (s *Supervisor) GetNetworkDiagnostics(ctx context.Context, id ID) (session.NetworkDiagnosticsSnapshot, error) {
+	ms, err := s.managed(id)
+	if err != nil {
+		return session.NetworkDiagnosticsSnapshot{}, err
+	}
+	return ms.actor.QueryNetworkDiagnostics(ctx)
+}
+
 // List returns snapshots for all known sessions.
 func (s *Supervisor) List(ctx context.Context) ([]Snapshot, error) {
 	s.mu.Lock()

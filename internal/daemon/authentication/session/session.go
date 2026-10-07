@@ -84,6 +84,7 @@ type AuthenticationSession struct {
 
 	// The fields below are owned exclusively by run.
 	currentSnapshot           Snapshot
+	protocolSocket            ProtocolSocketObservation
 	selector                  *automaticBindingSelector
 	lastNetworkRevision       uint64
 	hasNetworkRevision        bool
@@ -187,6 +188,7 @@ func initializeAuthenticationSession(
 		revisions:           make(chan RevisionEvent, 1),
 		admission:           admission,
 		selector:            newPolicyBindingSelector(configuration.NetworkBindingPolicy),
+		protocolSocket:      ProtocolSocketObservation{State: ProtocolSocketNotObserved},
 		currentSnapshot: Snapshot{
 			AuthenticationSessionID:  configuration.AuthenticationSessionID,
 			ConfigurationID:          configuration.ConfigurationID,
@@ -307,6 +309,12 @@ func (session *AuthenticationSession) run() {
 		switch message := message.(type) {
 		case snapshotQuery:
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
+		case networkDiagnosticsQuery:
+			message.reply <- networkDiagnosticsReply{snapshot: NetworkDiagnosticsSnapshot{Snapshot: session.currentSnapshot.Clone(), ProtocolSocket: session.protocolSocket}}
+		case protocolSocketOpenedEvent:
+			session.handleProtocolSocketOpened(message)
+		case protocolSocketClosedEvent:
+			session.handleProtocolSocketClosed(message)
 		case systemNetworkSnapshotCommand:
 			session.diagnostics.SessionCommand("apply_network_snapshot")
 			session.handleNetworkSnapshot(message.network)
@@ -512,6 +520,10 @@ func (session *AuthenticationSession) handleAuthenticationEstablished(event auth
 func (session *AuthenticationSession) handleProtocolRunFinished(event authenticationProtocolRunFinishedEvent) {
 	if session.active == nil || session.active.generation != event.generation {
 		return
+	}
+	if session.protocolSocket.RunGeneration == event.generation && session.protocolSocket.State == ProtocolSocketOpen {
+		session.protocolSocket.State = ProtocolSocketCloseUnconfirmed
+		session.protocolSocket.UpdatedAt = session.now()
 	}
 	if cancellationCause := context.Cause(session.active.context); cancellationCause != nil {
 		event.cancellationCause = cancellationCause
@@ -861,6 +873,7 @@ func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel}
 	session.active = active
+	session.protocolSocket = ProtocolSocketObservation{RunGeneration: generation, State: ProtocolSocketNotObserved, UpdatedAt: session.now()}
 	session.diagnostics.ProtocolRunGeneration(generation)
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.State = Authenticating

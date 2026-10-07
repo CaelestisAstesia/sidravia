@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"time"
 
 	protocol "sidravia/internal/daemon/authentication/protocol"
@@ -61,14 +63,38 @@ func newExecution(definition runDefinition, observer protocol.AuthenticationProt
 // AuthenticationEstablished notification, then periodic KA1 + KA2 1-3
 // heartbeats. It returns nil on cancellation after the requested cleanup, or a
 // stable public failure on any protocol failure.
-func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) (result *protocol.AuthenticationProtocolRunFailure) {
 	exec := newExecution(r.definition, observer, r.diagnostics)
 	ex, err := openUDPExchange(r.definition.socketSourceIPv4, r.definition.cfg.localPort, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
 	if err != nil {
 		return networkIOError("open socket", err).toFailure()
 	}
+	networkObserver, observesNetwork := observer.(protocol.AuthenticationProtocolRunNetworkObserver)
+	openingAccepted := false
+	defer func() {
+		closeErr := ex.close()
+		if openingAccepted {
+			networkObserver.ProtocolSocketClosed(closeErr == nil)
+		}
+		if closeErr != nil {
+			if result == nil {
+				result = networkIOError("close socket", closeErr).toFailure()
+			} else {
+				result.DiagnosticCause = errors.Join(result.DiagnosticCause, closeErr)
+			}
+		}
+	}()
 	exec.exchange = ex
-	defer exec.exchange.close()
+	if observesNetwork {
+		local := ex.conn.LocalAddr().(*net.UDPAddr).AddrPort()
+		remote := ex.conn.RemoteAddr().(*net.UDPAddr).AddrPort()
+		local = netip.AddrPortFrom(local.Addr().Unmap(), local.Port())
+		remote = netip.AddrPortFrom(remote.Addr().Unmap(), remote.Port())
+		if err := networkObserver.ProtocolSocketOpened(local, remote); err != nil {
+			return contractViolationError("socket observation", err).toFailure()
+		}
+		openingAccepted = true
+	}
 
 	var failure *runError
 	if failure = exec.challenge(ctx); failure == nil {

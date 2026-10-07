@@ -3,6 +3,7 @@ package d520
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -1009,12 +1010,21 @@ func TestRunReportedIPv4IsIndependentFromActualSocketSource(t *testing.T) {
 	// either the selected real source or the effective reported wire context.
 	inputs.SelectedSystemNetworkBinding = buildBinding(t, "127.0.0.2", nil, nil, nil)
 	inputs.ProtocolContextOverride[0] = 0
-	observer := newRecordingObserver(nil)
+	observer := &socketRecordingObserver{recordingObserver: newRecordingObserver(nil)}
 	_, cancel, done := startRun(t, run, observer)
 	defer cancel(context.Canceled)
 	observer.waitForEstablished(t, time.Second)
 	cancel(context.Canceled)
 	assertRunReturns(t, done, true, time.Second)
+	if len(observer.opened) != 1 || len(observer.closed) != 1 || !observer.closed[0] {
+		t.Fatalf("socket observations: %#v / %v", observer.opened, observer.closed)
+	}
+	actual := observer.opened[0]
+	wantRemote := netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), uint16(conn.LocalAddr().(*net.UDPAddr).Port))
+	if actual.remote != wantRemote || actual.local.Addr() != netip.MustParseAddr("127.0.0.1") || actual.local.Port() == 0 {
+		t.Fatalf("actual endpoints: %#v", actual)
+	}
+	assertSocketPortReleased(t, actual.local)
 	var source netip.AddrPort
 	sawLogin, sawType3 := false, false
 	for len(received) > 0 {
@@ -1024,6 +1034,9 @@ func TestRunReportedIPv4IsIndependentFromActualSocketSource(t *testing.T) {
 		}
 		if source.IsValid() && datagram.source != source {
 			t.Fatal("Run changed socket source")
+		}
+		if datagram.source != actual.local {
+			t.Fatalf("observed local %v differs from real source %v", actual.local, datagram.source)
 		}
 		source = datagram.source
 		packet := datagram.packet
@@ -1043,4 +1056,94 @@ func TestRunReportedIPv4IsIndependentFromActualSocketSource(t *testing.T) {
 	if !sawLogin || !sawType3 || !source.IsValid() {
 		t.Fatal("missing observed source/Login/KA2 evidence")
 	}
+}
+
+type observedSocketEndpoints struct{ local, remote netip.AddrPort }
+type socketRecordingObserver struct {
+	*recordingObserver
+	opened           []observedSocketEndpoints
+	closed           []bool
+	openingError     error
+	openedAtRequests int
+}
+
+func (o *socketRecordingObserver) ProtocolSocketOpened(local, remote netip.AddrPort) error {
+	o.opened = append(o.opened, observedSocketEndpoints{local, remote})
+	if o.peer != nil {
+		o.openedAtRequests = len(o.peer.requests())
+	}
+	return o.openingError
+}
+func (o *socketRecordingObserver) ProtocolSocketClosed(closed bool) {
+	o.closed = append(o.closed, closed)
+}
+
+func assertSocketPortReleased(t *testing.T, endpoint netip.AddrPort) {
+	t.Helper()
+	conn, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(endpoint))
+	if err != nil {
+		t.Fatalf("owned socket port still occupied after Execute: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunSocketClosesAfterNegativeAuthentication(t *testing.T) {
+	respond := defaultPeerResponder()
+	peer := newTestPeer(t, func(req []byte) [][]byte {
+		if isLoginReq(req) {
+			return [][]byte{peerLoginRejection(0x03)}
+		}
+		return respond(req)
+	})
+	observer := &socketRecordingObserver{recordingObserver: newRecordingObserver(peer)}
+	failure := buildTestRun(t, peer, defaultTestDurations(), testCredential()).Execute(context.Background(), observer)
+	if failure == nil || failure.Code != "credential_invalid" {
+		t.Fatalf("failure = %#v", failure)
+	}
+	if len(observer.opened) != 1 || len(observer.closed) != 1 || !observer.closed[0] {
+		t.Fatalf("observations = %#v / %v", observer.opened, observer.closed)
+	}
+	if observer.openedAtRequests != 0 {
+		t.Fatal("opening callback followed first exchange")
+	}
+	assertSocketPortReleased(t, observer.opened[0].local)
+}
+
+func TestRunSocketOpenFailureHasNoObservations(t *testing.T) {
+	peer := newTestPeer(t, defaultPeerResponder())
+	occupied, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	inputs := factoryInputs(testConfigJSON(peer.port(), defaultTestDurations()), testCredential(), testBinding(t))
+	inputs.InstitutionProtocolConfiguration = protocol.InstitutionProtocolConfiguration(bytes.Replace(inputs.InstitutionProtocolConfiguration, []byte(`{"mode": "system_assigned"}`), []byte(fmt.Sprintf(`{"mode":"fixed","value":%d}`, occupied.LocalAddr().(*net.UDPAddr).Port)), 1))
+	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer := &socketRecordingObserver{recordingObserver: newRecordingObserver(peer)}
+	failure := run.Execute(context.Background(), observer)
+	if failure == nil || failure.Code != "network_io_failed" {
+		t.Fatalf("failure = %#v", failure)
+	}
+	if len(observer.opened) != 0 || len(observer.closed) != 0 || len(peer.requests()) != 0 {
+		t.Fatal("failed open invented an observation or exchanged data")
+	}
+}
+
+func TestRunRejectedOpeningPreservesCauseAndClosesWithoutCallback(t *testing.T) {
+	peer := newTestPeer(t, defaultPeerResponder())
+	cause := errors.New("observer rejected socket contract")
+	observer := &socketRecordingObserver{recordingObserver: newRecordingObserver(peer), openingError: cause}
+	failure := buildTestRun(t, peer, defaultTestDurations(), testCredential()).Execute(context.Background(), observer)
+	if failure == nil || failure.Code != "protocol_contract_violated" || !errors.Is(failure.DiagnosticCause, cause) {
+		t.Fatalf("failure = %#v", failure)
+	}
+	if len(observer.opened) != 1 || len(observer.closed) != 0 || len(peer.requests()) != 0 {
+		t.Fatal("rejected opening exchanged data or emitted closure")
+	}
+	assertSocketPortReleased(t, observer.opened[0].local)
 }

@@ -3,6 +3,7 @@ package d520
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	protocol "sidravia/internal/daemon/authentication/protocol"
@@ -24,6 +25,14 @@ func (factory) ProtocolID() protocol.AuthenticationProtocolID { return ProtocolI
 func (factory) ValidateInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConfiguration) error {
 	_, err := decodeInstitutionProtocolConfiguration(raw)
 	return err
+}
+
+func (factory) NetworkDiagnosticEndpoint(raw protocol.InstitutionProtocolConfiguration) (netip.AddrPort, error) {
+	cfg, err := decodeInstitutionProtocolConfiguration(raw)
+	if err != nil {
+		return netip.AddrPort{}, err
+	}
+	return netip.AddrPortFrom(cfg.serverAddress, cfg.serverPort), nil
 }
 
 func (factory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {

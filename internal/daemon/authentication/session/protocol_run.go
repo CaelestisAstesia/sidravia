@@ -2,7 +2,9 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/netip"
 
 	"sidravia/internal/daemon/authentication/protocol"
 )
@@ -14,6 +16,22 @@ type protocolRunObserver struct {
 
 func (observer protocolRunObserver) AuthenticationEstablished() {
 	observer.session.post(authenticationEstablishedEvent{generation: observer.generation})
+}
+
+func (observer protocolRunObserver) ProtocolSocketOpened(local, remote netip.AddrPort) error {
+	if !validProtocolSocketEndpoint(local) || !validProtocolSocketEndpoint(remote) {
+		return errors.New("authentication protocol socket endpoints are invalid")
+	}
+	observer.session.post(protocolSocketOpenedEvent{generation: observer.generation, local: local, remote: remote})
+	return nil
+}
+
+func validProtocolSocketEndpoint(endpoint netip.AddrPort) bool {
+	return endpoint.Addr().Is4() && !endpoint.Addr().IsUnspecified() && endpoint.Port() != 0
+}
+
+func (observer protocolRunObserver) ProtocolSocketClosed(closed bool) {
+	observer.session.post(protocolSocketClosedEvent{generation: observer.generation, closed: closed})
 }
 
 func (session *AuthenticationSession) executeProtocolRun(run *activeProtocolRun) {

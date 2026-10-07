@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"net/netip"
 
 	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
@@ -27,6 +28,19 @@ type AuthenticationProtocolFactory interface {
 	ValidateInstitutionProtocolConfiguration(InstitutionProtocolConfiguration) error
 	ValidateProtocolContextOverride(AuthenticationProtocolContextOverride) error
 	CreateAuthenticationProtocolRun(AuthenticationProtocolRunCreationInputs) (AuthenticationProtocolRun, error)
+}
+
+// AuthenticationProtocolNetworkTargetProvider exposes a compiled Profile target
+// without creating a Run or resolving credentials or reported-context overrides.
+type AuthenticationProtocolNetworkTargetProvider interface {
+	NetworkDiagnosticEndpoint(InstitutionProtocolConfiguration) (netip.AddrPort, error)
+}
+
+// AuthenticationProtocolRunNetworkObserver receives actual owned socket facts.
+// It is optional and separate from the logging diagnostics sink.
+type AuthenticationProtocolRunNetworkObserver interface {
+	ProtocolSocketOpened(local, remote netip.AddrPort) error
+	ProtocolSocketClosed(closed bool)
 }
 
 type AuthenticationProtocolRunObserver interface {

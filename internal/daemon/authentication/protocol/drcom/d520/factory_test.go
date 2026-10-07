@@ -1,6 +1,7 @@
 package d520
 
 import (
+	"bytes"
 	"context"
 	"net/netip"
 	"strings"
@@ -352,5 +353,30 @@ func TestFactoryAbsentAndEmptyOverridesPreserveDefinitionAndPackets(t *testing.T
 		if err != nil || def != legacy || string(packet) != string(expected) {
 			t.Fatal("identity override changed legacy bytes or defaults")
 		}
+	}
+}
+
+func TestFactoryNetworkDiagnosticEndpointCompilesProfileWithoutRunInputs(t *testing.T) {
+	provider, ok := NewFactory().(protocol.AuthenticationProtocolNetworkTargetProvider)
+	if !ok {
+		t.Fatal("D520 lacks target capability")
+	}
+	raw := testConfigJSON(12345, defaultTestDurations())
+	before := bytes.Clone(raw)
+	endpoint, err := provider.NetworkDiagnosticEndpoint(raw)
+	if err != nil || endpoint != netip.MustParseAddrPort("127.0.0.1:12345") {
+		t.Fatalf("target = %v, %v", endpoint, err)
+	}
+	if !bytes.Equal(raw, before) {
+		t.Fatal("target compilation mutated Profile")
+	}
+	if endpoint, err := provider.NetworkDiagnosticEndpoint(protocol.InstitutionProtocolConfiguration(`{"serverAddress":"127.0.0.1","serverPort":12345}`)); err == nil || endpoint.IsValid() {
+		t.Fatalf("malformed Profile returned %v, %v", endpoint, err)
+	}
+	// The established decoder's limited-broadcast grammar is retained.
+	raw = bytes.Replace(raw, []byte("127.0.0.1"), []byte("255.255.255.255"), 1)
+	endpoint, err = provider.NetworkDiagnosticEndpoint(raw)
+	if err != nil || endpoint != netip.MustParseAddrPort("255.255.255.255:12345") {
+		t.Fatalf("broadcast target = %v, %v", endpoint, err)
 	}
 }
