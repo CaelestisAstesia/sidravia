@@ -507,6 +507,49 @@ func cloneNetworkInterfaceFacts(facts environment.NetworkInterfaceFacts) environ
 	return cloned
 }
 
+func TestExplicitBindingSelectorKeepsPrefixOrderAcrossDisappearance(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		initialOrder    []uint8
+		reappearedOrder []uint8
+	}{
+		{name: "short prefix first", initialOrder: []uint8{8, 32}, reappearedOrder: []uint8{32, 8}},
+		{name: "long prefix first", initialOrder: []uint8{32, 8}, reappearedOrder: []uint8{8, 32}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			address := netip.MustParseAddr("127.0.0.1")
+			selector := newPolicyBindingSelector(NetworkBindingPolicy{
+				Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: address,
+			})
+			snapshotWithPrefixes := func(revision uint64, prefixes ...uint8) environment.Snapshot {
+				assignments := make([]environment.IPv4AddressAssignment, 0, len(prefixes))
+				for _, prefix := range prefixes {
+					assignments = append(assignments, environment.IPv4AddressAssignment{Address: address, PrefixLength: prefix})
+				}
+				iface := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+					InterfaceID: "lo", OperationalState: environment.OperationalStateUp,
+					EndpointInterface: true, IPv4AddressAssignments: assignments,
+				})
+				return snapshot(t, revision, iface)
+			}
+			selectPrefix := func(revision uint64, prefixes ...uint8) {
+				t.Helper()
+				binding, ok := selector.Select(snapshotWithPrefixes(revision, prefixes...))
+				if !ok {
+					t.Fatal("explicit Select() reported no binding")
+				}
+				assertBinding(t, binding, "lo", address.String(), 8)
+			}
+
+			selectPrefix(10, test.initialOrder...)
+			selectPrefix(10, 32)
+			selectPrefix(9, 32)
+			selectPrefix(11, 8)
+			selectPrefix(12, test.reappearedOrder...)
+		})
+	}
+}
+
 func TestExplicitBindingSelectorObservedPairAndRevisionGate(t *testing.T) {
 	policy := NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
 	selector := newPolicyBindingSelector(policy)

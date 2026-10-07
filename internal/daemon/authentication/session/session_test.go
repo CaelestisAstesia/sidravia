@@ -848,6 +848,76 @@ func waitForInboxMessage(t *testing.T, ctx context.Context, session *Authenticat
 	}
 }
 
+func TestExplicitSessionKeepsEstablishedRunWhenNonselectedPrefixChanges(t *testing.T) {
+	ctx := testContext(t)
+	factory := &controlledFactory{holdCancellation: true}
+	address := netip.MustParseAddr("127.0.0.1")
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.Configuration.NetworkBindingPolicy = NetworkBindingPolicy{
+		Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: address,
+	}
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	defer shutdownTestSession(t, session)
+
+	snapshotWithPrefixes := func(revision uint64, prefixes ...uint8) environment.Snapshot {
+		assignments := make([]environment.IPv4AddressAssignment, 0, len(prefixes))
+		for _, prefix := range prefixes {
+			assignments = append(assignments, environment.IPv4AddressAssignment{Address: address, PrefixLength: prefix})
+		}
+		iface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
+			InterfaceID: "lo", OperationalState: environment.OperationalStateUp,
+			EndpointInterface: true, IPv4AddressAssignments: assignments,
+		})
+		if err != nil {
+			t.Fatalf("NewNetworkInterface() error = %v", err)
+		}
+		return environment.NewSnapshot(revision, time.Unix(int64(revision), 0), []environment.NetworkInterface{iface})
+	}
+	apply := func(revision uint64, prefixes ...uint8) Snapshot {
+		t.Helper()
+		got, err := session.ApplySystemNetworkSnapshot(ctx, snapshotWithPrefixes(revision, prefixes...))
+		if err != nil {
+			t.Fatalf("ApplySystemNetworkSnapshot(%d) error = %v", revision, err)
+		}
+		return got
+	}
+
+	initial := apply(1, 8, 32)
+	if initial.State != Authenticating {
+		t.Fatalf("initial state = %v, want %v", initial.State, Authenticating)
+	}
+	run := waitForFactoryRun(t, ctx, factory, 0)
+	defer run.unblock(nil)
+	if selected := factory.creationInputs()[0].SelectedSystemNetworkBinding.LocalIPv4AddressAssignment(); selected.PrefixLength != 8 {
+		t.Fatalf("initial run prefix = %d, want 8", selected.PrefixLength)
+	}
+	if err := run.establish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitForState(t, ctx, session, Authenticated)
+
+	for _, update := range []struct {
+		revision uint64
+		prefixes []uint8
+	}{
+		{revision: 2, prefixes: []uint8{8}},
+		{revision: 3, prefixes: []uint8{32, 8}},
+	} {
+		got := apply(update.revision, update.prefixes...)
+		if got.State != Authenticated {
+			t.Fatalf("state at revision %d = %v, want existing authenticated Run", update.revision, got.State)
+		}
+		if count := len(factory.creationInputs()); count != 1 {
+			t.Fatalf("factory creation count at revision %d = %d, want 1", update.revision, count)
+		}
+	}
+}
+
 func usableSystemNetworkSnapshot(t *testing.T, revision uint64, interfaceID, displayName string) environment.Snapshot {
 	t.Helper()
 	networkInterface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{

@@ -51,20 +51,26 @@ func (selector *automaticBindingSelector) Select(
 			}
 		}
 	}
-	availableKeys := make(map[bindingKey]struct{}, len(candidates))
-	for _, candidate := range candidates {
-		availableKeys[candidate.key] = struct{}{}
-	}
-	for key := range selector.firstAvailableAt {
-		if _, available := availableKeys[key]; !available {
-			delete(selector.firstAvailableAt, key)
+	if selector.policy.Mode == ExplicitInterfaceAndLocalIPv4 {
+		for index := range candidates {
+			candidates[index].firstAvailableAt = 0
 		}
-	}
-	for index := range candidates {
-		if _, known := selector.firstAvailableAt[candidates[index].key]; !known {
-			selector.firstAvailableAt[candidates[index].key] = snapshot.Revision
+	} else {
+		availableKeys := make(map[bindingKey]struct{}, len(candidates))
+		for _, candidate := range candidates {
+			availableKeys[candidate.key] = struct{}{}
 		}
-		candidates[index].firstAvailableAt = selector.firstAvailableAt[candidates[index].key]
+		for key := range selector.firstAvailableAt {
+			if _, available := availableKeys[key]; !available {
+				delete(selector.firstAvailableAt, key)
+			}
+		}
+		for index := range candidates {
+			if _, known := selector.firstAvailableAt[candidates[index].key]; !known {
+				selector.firstAvailableAt[candidates[index].key] = snapshot.Revision
+			}
+			candidates[index].firstAvailableAt = selector.firstAvailableAt[candidates[index].key]
+		}
 	}
 
 	selector.lastRevision = snapshot.Revision
