@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -455,7 +456,7 @@ func TestSessionRevisionEventsCoalesce(t *testing.T) {
 	final := sessionSnapshot(t, ctx, session)
 	select {
 	case event := <-session.RevisionEvents():
-		if event.Revision != final.Revision || event.AuthenticationSessionID != final.AuthenticationSessionID {
+		if event.Revision != final.Revision || event.AuthenticationSessionID != final.AuthenticationSessionID || !reflect.DeepEqual(event.Snapshot, final) {
 			t.Fatalf("coalesced revision event = %#v, final snapshot = %#v", event, final)
 		}
 	case <-ctx.Done():
@@ -595,8 +596,8 @@ func assertRevisionIncreased(t *testing.T, operation string, got, previous Snaps
 func assertRevisionEvent(t *testing.T, ctx context.Context, revisions <-chan RevisionEvent, snapshot Snapshot) {
 	t.Helper()
 	select {
-	case event := <-revisions:
-		if event.AuthenticationSessionID != snapshot.AuthenticationSessionID || event.Revision != snapshot.Revision {
+	case event, ok := <-revisions:
+		if !ok || event.AuthenticationSessionID != snapshot.AuthenticationSessionID || event.Revision != snapshot.Revision || !reflect.DeepEqual(event.Snapshot, snapshot) {
 			t.Fatalf("revision event = %#v, want session %q revision %d", event, snapshot.AuthenticationSessionID, snapshot.Revision)
 		}
 	case <-ctx.Done():
@@ -607,7 +608,10 @@ func assertRevisionEvent(t *testing.T, ctx context.Context, revisions <-chan Rev
 func drainRevisionEvents(revisions <-chan RevisionEvent) {
 	for {
 		select {
-		case <-revisions:
+		case _, ok := <-revisions:
+			if !ok {
+				return
+			}
 		default:
 			return
 		}
@@ -1659,5 +1663,34 @@ func TestExplicitSessionUnavailableNeverRunsAndLossWaits(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSessionRevisionEventRetainsInitialPublicationAndOwnsClone(t *testing.T) {
+	factory := &controlledFactory{}
+	actor := newTestSession(t, factory, MaintainAuthentication)
+	defer shutdownTestSession(t, actor)
+	ctx := testContext(t)
+	initial := sessionSnapshot(t, ctx, actor)
+	var event RevisionEvent
+	select {
+	case event = <-actor.RevisionEvents():
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if event.Revision != initial.Revision || event.AuthenticationSessionID != initial.AuthenticationSessionID || !reflect.DeepEqual(event.Snapshot, initial) {
+		t.Fatalf("initial paired event = %#v", event)
+	}
+	event.Snapshot.StateReason.Description = "receiver mutation"
+	if !reflect.DeepEqual(sessionSnapshot(t, ctx, actor), initial) {
+		t.Fatal("initial receiver changed actor")
+	}
+	updated, err := actor.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRevisionEvent(t, ctx, actor.RevisionEvents(), updated)
+	if event.Snapshot.Revision != initial.Revision || event.Snapshot.SelectedNetworkBinding != nil || event.Snapshot.ProtocolSocket.RunGeneration != 0 {
+		t.Fatal("older event acquired later actor contents")
 	}
 }

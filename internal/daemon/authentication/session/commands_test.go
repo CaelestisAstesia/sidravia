@@ -356,7 +356,7 @@ func TestShutdownWaitsForRunCleanupAndRejectsNewMessages(t *testing.T) {
 	if got := len(session.inbox); got != inboxLength {
 		t.Fatalf("closed calls changed inbox length from %d to %d", inboxLength, got)
 	}
-	assertRevisionEventsOpen(t, session.RevisionEvents())
+	assertRevisionEventsClosed(t, ctx, session.RevisionEvents())
 }
 
 func TestShutdownClosesAdmissionBeforeItsCommandCanRun(t *testing.T) {
@@ -535,6 +535,7 @@ func TestCanceledShutdownEnqueueReopensAdmission(t *testing.T) {
 		t.Fatalf("snapshot after canceled shutdown enqueue error = %v", err)
 	}
 
+	assertRevisionEventsOpen(t, session.RevisionEvents())
 	finalShutdown := make(chan error, 1)
 	go func() { finalShutdown <- session.Shutdown(ctx) }()
 	assertCleanupRequirement(t, run.waitForCancellation(ctx), protocol.TerminateWithBestEffortLogout)
@@ -679,4 +680,38 @@ func waitForInboxLength(t *testing.T, ctx context.Context, session *Authenticati
 		default:
 		}
 	}
+}
+
+func assertRevisionEventsClosed(t *testing.T, ctx context.Context, revisions <-chan RevisionEvent) {
+	t.Helper()
+	for {
+		select {
+		case _, ok := <-revisions:
+			if !ok {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("revision stream did not close after successful shutdown")
+		}
+	}
+}
+
+func TestPreCanceledShutdownKeepsProducerRevisionStreamOpen(t *testing.T) {
+	actor := newTestSession(t, &controlledFactory{}, SuspendAuthentication)
+	defer shutdownTestSession(t, actor)
+	ctx := testContext(t)
+	before := sessionSnapshot(t, ctx, actor)
+	drainRevisionEvents(actor.RevisionEvents())
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := actor.Shutdown(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled Shutdown = %v", err)
+	}
+	assertRevisionEventsOpen(t, actor.RevisionEvents())
+	after, err := actor.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNextRevision(t, "post-cancellation network update", after, before)
+	assertRevisionEvent(t, ctx, actor.RevisionEvents(), after)
 }

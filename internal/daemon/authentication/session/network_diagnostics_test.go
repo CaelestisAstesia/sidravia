@@ -41,7 +41,7 @@ func TestNetworkDiagnosticsQueryIsClonedReadOnlyActorTuple(t *testing.T) {
 	defer shutdownTestSession(t, actor)
 	ctx := testContext(t)
 	initial := queryDiagnostics(t, ctx, actor)
-	if initial.ProtocolSocket.State != ProtocolSocketNotObserved || initial.ProtocolSocket.RunGeneration != 0 || initial.ProtocolSocket.LocalEndpoint.IsValid() {
+	if initial.ProtocolSocket != (ProtocolSocketObservation{State: ProtocolSocketNotObserved}) || initial.Snapshot.ProtocolSocket != initial.ProtocolSocket {
 		t.Fatalf("initial = %#v", initial)
 	}
 	initial.Snapshot.StateReason.Description = "caller mutation"
@@ -61,8 +61,9 @@ func TestNetworkDiagnosticsQueryIsClonedReadOnlyActorTuple(t *testing.T) {
 	}
 	// A close without an accepted opening must not invent socket facts.
 	observer.ProtocolSocketClosed(true)
-	if queryDiagnostics(t, ctx, actor).ProtocolSocket != before.ProtocolSocket {
-		t.Fatal("close without open changed observation")
+	withoutOpen := queryDiagnostics(t, ctx, actor)
+	if !reflect.DeepEqual(withoutOpen, before) {
+		t.Fatal("close without open changed actor tuple or revision")
 	}
 	local, remote := netip.MustParseAddrPort("127.0.0.1:40001"), netip.MustParseAddrPort("255.255.255.255:61440")
 	if err := observer.ProtocolSocketOpened(local, remote); err != nil {
@@ -72,14 +73,16 @@ func TestNetworkDiagnosticsQueryIsClonedReadOnlyActorTuple(t *testing.T) {
 	if opened.ProtocolSocket != (ProtocolSocketObservation{RunGeneration: 1, State: ProtocolSocketOpen, LocalEndpoint: local, RemoteEndpoint: remote, UpdatedAt: time.Unix(100, 0)}) {
 		t.Fatalf("opened = %#v", opened.ProtocolSocket)
 	}
-	if !reflect.DeepEqual(opened.Snapshot, before.Snapshot) {
-		t.Fatal("socket observation revised public Snapshot")
+	if opened.Snapshot.ProtocolSocket != opened.ProtocolSocket {
+		t.Fatal("diagnostic socket differs from actor Snapshot")
 	}
+	assertNextRevision(t, "accepted socket opening", opened.Snapshot, before.Snapshot)
+	assertRevisionEvent(t, ctx, actor.RevisionEvents(), opened.Snapshot)
 	if err := observer.ProtocolSocketOpened(netip.MustParseAddrPort("127.0.0.2:40002"), remote); err != nil {
 		t.Fatal(err)
 	}
-	if queryDiagnostics(t, ctx, actor).ProtocolSocket != opened.ProtocolSocket {
-		t.Fatal("duplicate opening replaced facts")
+	if !reflect.DeepEqual(queryDiagnostics(t, ctx, actor), opened) {
+		t.Fatal("duplicate opening replaced actor tuple or revision")
 	}
 	opened.Snapshot.SelectedNetworkBinding.InterfaceID = "caller mutation"
 	got := queryDiagnostics(t, ctx, actor)
@@ -87,7 +90,8 @@ func TestNetworkDiagnosticsQueryIsClonedReadOnlyActorTuple(t *testing.T) {
 		t.Fatal("diagnostics query mutated actor or created Run")
 	}
 	// Canceled active contexts still accept actual closure before finished.
-	if _, err := actor.Suspend(ctx); err != nil {
+	stopping, err := actor.Suspend(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if cause := run.waitForCancellation(ctx); cause == nil {
@@ -95,9 +99,11 @@ func TestNetworkDiagnosticsQueryIsClonedReadOnlyActorTuple(t *testing.T) {
 	}
 	observer.ProtocolSocketClosed(true)
 	closed := queryDiagnostics(t, ctx, actor)
-	if closed.ProtocolSocket.State != ProtocolSocketClosed || closed.ProtocolSocket.LocalEndpoint != local {
+	if closed.ProtocolSocket.State != ProtocolSocketClosed || closed.ProtocolSocket.LocalEndpoint != local || closed.Snapshot.ProtocolSocket != closed.ProtocolSocket {
 		t.Fatalf("closed = %#v", closed)
 	}
+	assertNextRevision(t, "accepted canceled socket closure", closed.Snapshot, stopping)
+	assertRevisionEvent(t, ctx, actor.RevisionEvents(), closed.Snapshot)
 	run.unblock(nil)
 	waitForState(t, ctx, actor, Suspended)
 	if queryDiagnostics(t, ctx, actor).ProtocolSocket != closed.ProtocolSocket {
@@ -165,20 +171,27 @@ func TestNetworkDiagnosticsGenerationIgnoresStaleAndRetainsFailedClose(t *testin
 		t.Fatal(err)
 	}
 	oldObserver.ProtocolSocketClosed(false)
-	if queryDiagnostics(t, ctx, actor).ProtocolSocket != fresh.ProtocolSocket {
-		t.Fatal("old generation changed new observation")
+	if !reflect.DeepEqual(queryDiagnostics(t, ctx, actor), fresh) {
+		t.Fatal("old generation changed actor tuple or revision")
 	}
 	local = netip.MustParseAddrPort("127.0.0.2:40002")
 	if err := newObserver.ProtocolSocketOpened(local, remote); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := actor.Suspend(ctx); err != nil {
+	stopping, err := actor.Suspend(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if second.waitForCancellation(ctx) == nil {
 		t.Fatal("second Run not canceled")
 	}
 	newObserver.ProtocolSocketClosed(false)
+	closeFailed := queryDiagnostics(t, ctx, actor)
+	if closeFailed.ProtocolSocket.State != ProtocolSocketCloseFailed || closeFailed.Snapshot.ProtocolSocket != closeFailed.ProtocolSocket {
+		t.Fatal("close_failed missing from full Snapshot")
+	}
+	assertNextRevision(t, "accepted failed closure", closeFailed.Snapshot, stopping)
+	assertRevisionEvent(t, ctx, actor.RevisionEvents(), closeFailed.Snapshot)
 	second.unblock(nil)
 	waitForState(t, ctx, actor, Suspended)
 	failed := queryDiagnostics(t, ctx, actor)
@@ -186,8 +199,8 @@ func TestNetworkDiagnosticsGenerationIgnoresStaleAndRetainsFailedClose(t *testin
 		t.Fatalf("failed close = %#v", failed)
 	}
 	newObserver.ProtocolSocketClosed(true)
-	if queryDiagnostics(t, ctx, actor).ProtocolSocket != failed.ProtocolSocket {
-		t.Fatal("late callback inferred successful close")
+	if !reflect.DeepEqual(queryDiagnostics(t, ctx, actor), failed) {
+		t.Fatal("late callback changed actor tuple or revision")
 	}
 }
 
@@ -225,7 +238,7 @@ func TestNetworkDiagnosticsFailedFactoryRetainsPreviousGeneration(t *testing.T) 
 		t.Fatal(err)
 	}
 	failed := queryDiagnostics(t, ctx, actor)
-	if failed.Snapshot.State != BlockedByError || failed.Snapshot.SelectedNetworkBinding.InterfaceID != "second" || failed.ProtocolSocket != retained {
+	if failed.Snapshot.State != BlockedByError || failed.Snapshot.SelectedNetworkBinding.InterfaceID != "second" || failed.ProtocolSocket != retained || failed.Snapshot.ProtocolSocket != retained {
 		t.Fatalf("failed factory relabeled prior socket: %#v", failed)
 	}
 	if len(factory.creationInputs()) != 2 {
@@ -235,7 +248,8 @@ func TestNetworkDiagnosticsFailedFactoryRetainsPreviousGeneration(t *testing.T) 
 
 func TestNetworkDiagnosticsMissingCloseIsUnconfirmed(t *testing.T) {
 	factory := &controlledFactory{holdCancellation: true}
-	actor := newTestSession(t, factory, MaintainAuthentication)
+	capture := &captureDiagnostics{}
+	actor := newDiagnosticsSession(t, factory, capture)
 	defer shutdownTestSession(t, actor)
 	ctx := testContext(t)
 	if _, err := actor.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First")); err != nil {
@@ -248,11 +262,30 @@ func TestNetworkDiagnosticsMissingCloseIsUnconfirmed(t *testing.T) {
 	if err := observer.ProtocolSocketOpened(local, remote); err != nil {
 		t.Fatal(err)
 	}
+	opened := queryDiagnostics(t, ctx, actor).Snapshot
 	run.unblock(nil)
 	waitForState(t, ctx, actor, BlockedByError)
 	got := queryDiagnostics(t, ctx, actor)
-	if got.ProtocolSocket.State != ProtocolSocketCloseUnconfirmed || got.ProtocolSocket.LocalEndpoint != local || got.ProtocolSocket.RemoteEndpoint != remote {
+	if got.ProtocolSocket.State != ProtocolSocketCloseUnconfirmed || got.ProtocolSocket.LocalEndpoint != local || got.ProtocolSocket.RemoteEndpoint != remote || got.Snapshot.ProtocolSocket != got.ProtocolSocket {
 		t.Fatalf("unconfirmed = %#v", got)
+	}
+	if got.Snapshot.Revision != opened.Revision+2 {
+		t.Fatal("missing closure and Run failure did not each commit one revision")
+	}
+	capture.mu.Lock()
+	records := append([]Snapshot(nil), capture.snapshots...)
+	capture.mu.Unlock()
+	found := false
+	for _, record := range records {
+		if record.Revision == opened.Revision+1 {
+			found = true
+			if record.ProtocolSocket.State != ProtocolSocketCloseUnconfirmed || record.ProtocolSocket.LocalEndpoint != local || record.State != opened.State {
+				t.Fatal("unconfirmed transition missing from full actor commit")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no committed unconfirmed revision")
 	}
 	observer.ProtocolSocketClosed(true)
 	if queryDiagnostics(t, ctx, actor).ProtocolSocket != got.ProtocolSocket {

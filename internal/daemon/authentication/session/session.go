@@ -21,6 +21,7 @@ var ErrAuthenticationSessionClosed = errors.New("authentication session is close
 type RevisionEvent struct {
 	AuthenticationSessionID AuthenticationSessionID
 	Revision                uint64
+	Snapshot                Snapshot
 }
 
 // Diagnostics observes Session lifecycle events without altering Session
@@ -84,7 +85,6 @@ type AuthenticationSession struct {
 
 	// The fields below are owned exclusively by run.
 	currentSnapshot           Snapshot
-	protocolSocket            ProtocolSocketObservation
 	selector                  *automaticBindingSelector
 	lastNetworkRevision       uint64
 	hasNetworkRevision        bool
@@ -188,8 +188,8 @@ func initializeAuthenticationSession(
 		revisions:           make(chan RevisionEvent, 1),
 		admission:           admission,
 		selector:            newPolicyBindingSelector(configuration.NetworkBindingPolicy),
-		protocolSocket:      ProtocolSocketObservation{State: ProtocolSocketNotObserved},
 		currentSnapshot: Snapshot{
+			ProtocolSocket:           ProtocolSocketObservation{State: ProtocolSocketNotObserved},
 			AuthenticationSessionID:  configuration.AuthenticationSessionID,
 			ConfigurationID:          configuration.ConfigurationID,
 			DisplayName:              configuration.DisplayName,
@@ -299,6 +299,7 @@ func receiveSnapshotReply(ctx context.Context, done <-chan struct{}, reply <-cha
 }
 
 func (session *AuthenticationSession) run() {
+	defer close(session.revisions)
 	session.publishInitialRevision()
 	for {
 		var message sessionMessage
@@ -310,7 +311,7 @@ func (session *AuthenticationSession) run() {
 		case snapshotQuery:
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case networkDiagnosticsQuery:
-			message.reply <- networkDiagnosticsReply{snapshot: NetworkDiagnosticsSnapshot{Snapshot: session.currentSnapshot.Clone(), ProtocolSocket: session.protocolSocket}}
+			message.reply <- networkDiagnosticsReply{snapshot: NetworkDiagnosticsSnapshot{Snapshot: session.currentSnapshot.Clone(), ProtocolSocket: session.currentSnapshot.ProtocolSocket}}
 		case protocolSocketOpenedEvent:
 			session.handleProtocolSocketOpened(message)
 		case protocolSocketClosedEvent:
@@ -521,9 +522,11 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 	if session.active == nil || session.active.generation != event.generation {
 		return
 	}
-	if session.protocolSocket.RunGeneration == event.generation && session.protocolSocket.State == ProtocolSocketOpen {
-		session.protocolSocket.State = ProtocolSocketCloseUnconfirmed
-		session.protocolSocket.UpdatedAt = session.now()
+	if session.currentSnapshot.ProtocolSocket.RunGeneration == event.generation && session.currentSnapshot.ProtocolSocket.State == ProtocolSocketOpen {
+		session.updateSnapshot(func(snapshot *Snapshot) {
+			snapshot.ProtocolSocket.State = ProtocolSocketCloseUnconfirmed
+			snapshot.ProtocolSocket.UpdatedAt = session.now()
+		})
 	}
 	if cancellationCause := context.Cause(session.active.context); cancellationCause != nil {
 		event.cancellationCause = cancellationCause
@@ -873,9 +876,9 @@ func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel}
 	session.active = active
-	session.protocolSocket = ProtocolSocketObservation{RunGeneration: generation, State: ProtocolSocketNotObserved, UpdatedAt: session.now()}
 	session.diagnostics.ProtocolRunGeneration(generation)
 	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.ProtocolSocket = ProtocolSocketObservation{RunGeneration: generation, State: ProtocolSocketNotObserved, UpdatedAt: session.now()}
 		snapshot.State = Authenticating
 		snapshot.StateReason = nil
 		snapshot.AuthenticationEstablishedAt = nil
@@ -910,7 +913,7 @@ func publicSnapshotsEqual(left, right Snapshot) bool {
 func (session *AuthenticationSession) publishInitialRevision() { session.publishRevision() }
 
 func (session *AuthenticationSession) publishRevision() {
-	event := RevisionEvent{AuthenticationSessionID: session.currentSnapshot.AuthenticationSessionID, Revision: session.currentSnapshot.Revision}
+	event := RevisionEvent{AuthenticationSessionID: session.currentSnapshot.AuthenticationSessionID, Revision: session.currentSnapshot.Revision, Snapshot: session.currentSnapshot.Clone()}
 	select {
 	case session.revisions <- event:
 	default:

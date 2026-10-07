@@ -583,15 +583,16 @@ func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
 			if !ok {
 				return
 			}
+			// Only this latest query updates private stopped admission; the
+			// publication below retains its own revision and Snapshot even on closure.
 			snapshot, err := managed.actor.Snapshot(context.Background())
-			if err != nil {
-				continue
+			if err == nil {
+				s.observeStoppedRevision(id, managed, snapshot)
 			}
-			s.observeStoppedRevision(id, managed, snapshot)
 			s.publishRevision(RevisionEvent{
-				SessionID: id,
+				SessionID: event.AuthenticationSessionID,
 				Revision:  event.Revision,
-				Snapshot:  snapshot,
+				Snapshot:  event.Snapshot.Clone(),
 			})
 		case <-managed.stopFwd:
 			return
@@ -617,15 +618,17 @@ func (s *Supervisor) publishRevision(event RevisionEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sub := range s.subs {
+		subscriberEvent := event
+		subscriberEvent.Snapshot = event.Snapshot.Clone()
 		select {
-		case sub <- event:
+		case sub <- subscriberEvent:
 		default:
 			select {
 			case <-sub:
 			default:
 			}
 			select {
-			case sub <- event:
+			case sub <- subscriberEvent:
 			default:
 			}
 		}

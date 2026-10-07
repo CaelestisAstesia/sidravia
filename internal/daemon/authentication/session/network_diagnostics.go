@@ -61,21 +61,25 @@ func (session *AuthenticationSession) QueryNetworkDiagnostics(ctx context.Contex
 }
 
 func (session *AuthenticationSession) handleProtocolSocketOpened(event protocolSocketOpenedEvent) {
-	if session.active == nil || session.active.generation != event.generation || session.protocolSocket.RunGeneration != event.generation || session.protocolSocket.State != ProtocolSocketNotObserved {
+	if session.active == nil || session.active.generation != event.generation || session.currentSnapshot.ProtocolSocket.RunGeneration != event.generation || session.currentSnapshot.ProtocolSocket.State != ProtocolSocketNotObserved {
 		return
 	}
-	session.protocolSocket = ProtocolSocketObservation{RunGeneration: event.generation, State: ProtocolSocketOpen, LocalEndpoint: event.local, RemoteEndpoint: event.remote, UpdatedAt: session.now()}
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.ProtocolSocket = ProtocolSocketObservation{RunGeneration: event.generation, State: ProtocolSocketOpen, LocalEndpoint: event.local, RemoteEndpoint: event.remote, UpdatedAt: session.now()}
+	})
 }
 
 func (session *AuthenticationSession) handleProtocolSocketClosed(event protocolSocketClosedEvent) {
-	if session.active == nil || session.active.generation != event.generation || session.protocolSocket.RunGeneration != event.generation || session.protocolSocket.State != ProtocolSocketOpen {
+	if session.active == nil || session.active.generation != event.generation || session.currentSnapshot.ProtocolSocket.RunGeneration != event.generation || session.currentSnapshot.ProtocolSocket.State != ProtocolSocketOpen {
 		return
 	}
-	session.protocolSocket.State = ProtocolSocketCloseFailed
-	if event.closed {
-		session.protocolSocket.State = ProtocolSocketClosed
-	}
-	session.protocolSocket.UpdatedAt = session.now()
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.ProtocolSocket.State = ProtocolSocketCloseFailed
+		if event.closed {
+			snapshot.ProtocolSocket.State = ProtocolSocketClosed
+		}
+		snapshot.ProtocolSocket.UpdatedAt = session.now()
+	})
 }
 
 // NetworkDiagnosticTarget is immutable trusted Profile and policy input. It

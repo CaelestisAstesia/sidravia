@@ -85,6 +85,7 @@ type Snapshot struct {
 	State                       State
 	StateReason                 *StateReason
 	SelectedNetworkBinding      *NetworkBindingSummary
+	ProtocolSocket              ProtocolSocketObservation
 	AuthenticationEstablishedAt *time.Time
 	NextRetryAt                 *time.Time
 	LastAuthenticationFailure   *AuthenticationFailure
