@@ -18,6 +18,7 @@ import (
 )
 
 type ConfigurationResult struct {
+	RuntimeAvailability      ConfigurationRuntimeAvailability
 	Configuration            config.Configuration
 	InstitutionDisplayName   string
 	AuthenticationProtocolID string
@@ -261,31 +262,52 @@ func (application *Application) ApplySystemNetworkSnapshot(
 }
 
 func (application *Application) ListConfigurations(ctx context.Context) ([]ConfigurationResult, jsonfile.ProtectionStatus, error) {
+	if err := readModelContextError(ctx); err != nil {
+		return nil, "", err
+	}
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
+	if err := readModelContextError(ctx); err != nil {
+		return nil, "", err
+	}
 	values, err := application.catalog.List(ctx)
 	if err != nil {
+		if contextErr := readModelContextError(ctx); contextErr != nil {
+			err = errors.Join(err, contextErr)
+		}
 		return nil, "", err
 	}
 	results := make([]ConfigurationResult, 0, len(values))
 	for _, value := range values {
-		result, err := application.enrich(ctx, value)
+		result, err := application.describeConfiguration(ctx, value)
 		if err != nil {
 			return nil, "", err
 		}
 		results = append(results, result)
 	}
+	if err := readModelContextError(ctx); err != nil {
+		return nil, "", err
+	}
 	return results, application.catalog.StorageProtection(), nil
 }
 
 func (application *Application) GetConfiguration(ctx context.Context, id config.ConfigurationID) (ConfigurationResult, error) {
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
-	value, err := application.catalog.Get(ctx, id)
-	if err != nil {
+	if err := readModelContextError(ctx); err != nil {
 		return ConfigurationResult{}, err
 	}
-	return application.enrich(ctx, value)
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
+	if err := readModelContextError(ctx); err != nil {
+		return ConfigurationResult{}, err
+	}
+	value, err := application.catalog.Get(ctx, id)
+	if err != nil {
+		if contextErr := readModelContextError(ctx); contextErr != nil {
+			err = errors.Join(err, contextErr)
+		}
+		return ConfigurationResult{}, err
+	}
+	return application.describeConfiguration(ctx, value)
 }
 
 func (application *Application) CreateConfiguration(ctx context.Context, value config.Configuration, password string, allow bool) (ConfigurationResult, error) {
@@ -413,7 +435,7 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 		}
 	}
 	return ConfigurationResult{
-		Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
+		RuntimeAvailability: ConfigurationRuntimeAvailable, Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
 		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
 		CredentialStored:         stored, StorageProtection: application.catalog.StorageProtection(),
 	}, nil

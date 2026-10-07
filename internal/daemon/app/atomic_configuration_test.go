@@ -12,6 +12,7 @@ import (
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -461,5 +462,91 @@ func TestOverrideWriteFailureAndCleanupFailureRetainExistingAtomicRules(t *testi
 				t.Fatal("quarantined runtime can restart")
 			}
 		})
+	}
+}
+
+// This Run models a genuine in-progress owned cleanup: cancellation is observed
+// promptly, but completion remains controlled until the test releases it.
+type cleanupDeadlineFactory struct {
+	appTestProtocolFactory
+	canceled chan struct{}
+	release  <-chan struct{}
+}
+
+func (f *cleanupDeadlineFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	return cleanupDeadlineRun{canceled: f.canceled, release: f.release}, nil
+}
+
+type cleanupDeadlineRun struct {
+	canceled chan struct{}
+	release  <-chan struct{}
+}
+
+func (r cleanupDeadlineRun) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	observer.AuthenticationEstablished()
+	<-ctx.Done()
+	close(r.canceled)
+	<-r.release
+	return nil
+}
+func TestRealCleanupDeadlineIsQueryableOnFirstFullSessionView(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseRun := func() { releaseOnce.Do(func() { close(release) }) }
+	// Registered before any fatal assertion: unblock owned cleanup before Close.
+	defer func() { releaseRun(); setup.cleanup() }()
+	canceled := make(chan struct{})
+	factory := &cleanupDeadlineFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}, canceled: canceled, release: release}
+	registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	ctx := context.Background()
+	if err := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, started.SessionID, session.Authenticated)
+	username := "durably-saved-new-user"
+	began := time.Now()
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username})
+	if !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) || time.Since(began) < 3900*time.Millisecond {
+		t.Fatalf("real four-second cleanup boundary missing: %v", err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("owned Run cancellation not observed")
+	}
+	value, err := setup.catalog.Get(ctx, "configuration-1")
+	if err != nil || value.Username != username {
+		t.Fatal("cleanup failure lost durable edit")
+	}
+	query, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	view, err := setup.application.ListSessionView(query)
+	if err != nil || len(view.Sessions) != 1 || view.Sessions[0].AuthenticationSessionID != started.SessionID || view.Sessions[0].State != session.Stopping || len(view.CleanupRequiredSessionIDs) != 1 || view.CleanupRequiredSessionIDs[0] != started.SessionID {
+		t.Fatalf("first complete readonly query lost stopping/quarantine: %#v %v", view, err)
+	}
+	if _, err := setup.application.EnsureSessionRunning(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+		t.Fatal("quarantined ID can ensure")
+	}
+	if _, err := setup.application.RestartSession(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+		t.Fatal("quarantined ID can restart")
+	}
+	releaseRun()
+	remove, cancelRemove := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelRemove()
+	if err := setup.application.RemoveSession(remove, started.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := setup.application.ListSessionView(ctx)
+	if err != nil || fresh.Sessions == nil || fresh.CleanupRequiredSessionIDs == nil || len(fresh.Sessions) != 0 || len(fresh.CleanupRequiredSessionIDs) != 0 {
+		t.Fatal("explicit Remove did not clear owner projections")
 	}
 }

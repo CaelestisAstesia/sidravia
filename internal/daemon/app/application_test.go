@@ -155,12 +155,12 @@ func TestApplicationConfigurationCRUDAndEnrichment(t *testing.T) {
 	if err != nil || len(values) != 1 || protection != "protected" {
 		t.Fatalf("list = %#v %q %v", values, protection, err)
 	}
-	if !values[0].CredentialStored || values[0].AuthenticationProtocolID != "drcom" {
+	if !values[0].CredentialStored || values[0].AuthenticationProtocolID != "drcom" || values[0].RuntimeAvailability != ConfigurationRuntimeAvailable {
 		t.Fatalf("result = %#v", values[0])
 	}
 	name := ""
 	updated, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &name})
-	if err != nil || updated.Configuration.DisplayName != "" {
+	if err != nil || updated.Configuration.DisplayName != "" || updated.RuntimeAvailability != ConfigurationRuntimeAvailable {
 		t.Fatalf("update = %#v %v", updated, err)
 	}
 	if _, err := setup.application.SetConfigurationPassword(ctx, "configuration-1", "", false); err != nil {
@@ -180,6 +180,9 @@ func TestApplicationCreateConfigurationReturnsGeneratedPersistedIdentity(t *test
 	created, err := setup.application.CreateConfiguration(context.Background(), value, "private", false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if created.RuntimeAvailability != ConfigurationRuntimeAvailable {
+		t.Fatal("valid create availability missing")
 	}
 	if len(created.Configuration.ConfigurationID) != len("cfg-")+32 || created.Configuration.ConfigurationID[:4] != "cfg-" {
 		t.Fatalf("generated Configuration = %#v", created.Configuration)
