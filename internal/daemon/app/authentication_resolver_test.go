@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -286,5 +287,72 @@ func TestResolverOneShotSetsAutoReconnectTrue(t *testing.T) {
 	}
 	if !definition.AutoReconnect {
 		t.Fatal("one-shot AutoReconnect = false, want true")
+	}
+}
+
+type resolverDiagnosticFactory struct {
+	appTestProtocolFactory
+	cause error
+	calls int
+}
+
+func (f *resolverDiagnosticFactory) NetworkDiagnosticEndpoint(raw protocol.InstitutionProtocolConfiguration) (netip.AddrPort, error) {
+	f.calls++
+	if len(raw) > 0 {
+		raw[0] = '['
+	}
+	return netip.MustParseAddrPort("192.0.2.1:61440"), f.cause
+}
+func TestDiagnosticResolverUsesPublicAggregateAndClonedProfile(t *testing.T) {
+	ctx := context.Background()
+	setup := newAppTestSetup(t)
+	resolver := setup.authenticationResolver
+	// An absent password remains an allowed diagnosis input; it is never resolved.
+	if _, err := resolver.configurations.SetPassword(ctx, "configuration-1", "", false); err != nil {
+		t.Fatal(err)
+	}
+	factory := &resolverDiagnosticFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}}
+	registry, _ := protocol.NewAuthenticationProtocolRegistry(factory)
+	resolver.protocols = registry
+	before, _ := resolver.configurations.Get(ctx, "configuration-1")
+	target, err := resolver.ResolveNetworkDiagnosticTarget(ctx, "configuration-1")
+	if err != nil || !target.Supported || target.Endpoint.String() != "192.0.2.1:61440" || target.Policy != before.NetworkBindingPolicy {
+		t.Fatal("target resolution failed")
+	}
+	profile, _ := resolver.profiles.Get(ctx, "profile-1")
+	if string(profile.InstitutionProtocolConfiguration) != "{}" {
+		t.Fatal("provider mutated catalog Profile")
+	}
+	after, _ := resolver.configurations.Get(ctx, "configuration-1")
+	if !bytes.Equal(before.ProtocolContextOverride, after.ProtocolContextOverride) {
+		t.Fatal("diagnosis mutated aggregate")
+	}
+	cause := errors.New("private-compiled-cause")
+	factory.cause = cause
+	if _, err := resolver.ResolveNetworkDiagnosticTarget(ctx, "configuration-1"); !errors.Is(err, cause) {
+		t.Fatal("compiled provider cause lost")
+	}
+	for _, test := range []struct {
+		id   config.ConfigurationID
+		code ResolutionFailureCode
+	}{{"missing", ConfigurationNotFound}} {
+		_, err := resolver.ResolveNetworkDiagnosticTarget(ctx, test.id)
+		var failure *ResolutionFailure
+		if !errors.As(err, &failure) || failure.Code() != test.code {
+			t.Fatal("resolution classification lost")
+		}
+	}
+	emptyProfiles, _ := config.NewProfileCatalog(nil)
+	resolver.profiles = emptyProfiles
+	_, err = resolver.ResolveNetworkDiagnosticTarget(ctx, "configuration-1")
+	var failure *ResolutionFailure
+	if !errors.As(err, &failure) || failure.Code() != ProfileNotFound {
+		t.Fatal("missing Profile not classified")
+	}
+	resolver.profiles, _ = config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	resolver.protocols, _ = protocol.NewAuthenticationProtocolRegistry()
+	_, err = resolver.ResolveNetworkDiagnosticTarget(ctx, "configuration-1")
+	if !errors.As(err, &failure) || failure.Code() != ProtocolNotFound {
+		t.Fatal("missing protocol not classified")
 	}
 }

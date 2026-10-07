@@ -7,6 +7,107 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  test('diagnosis optional adapter sends selector and preserves actual Run uint64', () async {
+    final requests = <Map<String, dynamic>>[];
+    const result =
+        '{"observedAt":"2026-10-07T01:02:03Z","selectionBasis":"session_binding","status":"unsupported","unsupportedReason":"protocol","protocolSocket":{"state":"not_observed","runGeneration":18446744073709551615,"updatedAt":"2026-10-07T01:02:03Z"}}';
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        requests.add(request);
+        socket.add(
+          '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$result}',
+        );
+      });
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    final value = await client.networkDiagnose(
+      sessionId: 'retained',
+      probe: true,
+    );
+    expect(
+      value.protocolSocket!.runGeneration,
+      BigInt.parse('18446744073709551615'),
+    );
+    expect(requests.single['method'], 'network.diagnose');
+    expect(requests.single['payload'], {
+      'sessionId': 'retained',
+      'probe': true,
+    });
+    await expectLater(
+      client.networkDiagnose(),
+      throwsA(isA<IpcProtocolException>()),
+    );
+    expect(requests, hasLength(1));
+    await client.close();
+  });
+  test('diagnosis raw malformed envelopes and errors preserve boundaries', () async {
+    for (final variant in [
+      'duplicate',
+      'bad-generation',
+      'wrong-id',
+      'error',
+    ]) {
+      var calls = 0;
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          calls++;
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          if (variant == 'error') {
+            socket.add(
+              jsonEncode({
+                'kind': 'response',
+                'id': request['id'],
+                'ok': false,
+                'error': {
+                  'code': 'configuration_not_found',
+                  'message': 'configuration not found',
+                },
+              }),
+            );
+            return;
+          }
+          var result =
+              '{"observedAt":"2026-10-07T01:02:03Z","selectionBasis":"os_route_proposal","status":"unsupported","unsupportedReason":"protocol","protocolSocket":{"state":"not_observed","runGeneration":0}}';
+          if (variant == 'duplicate') {
+            result = result.replaceFirst(
+              '"runGeneration":0',
+              r'"runGeneration":0,"\u0072unGeneration":0',
+            );
+          }
+          if (variant == 'bad-generation') {
+            result = result.replaceFirst(
+              '"runGeneration":0',
+              '"runGeneration":1e0',
+            );
+          }
+          socket.add(
+            '{"kind":"response","id":${jsonEncode(variant == 'wrong-id' ? 'wrong' : request['id'])},"ok":true,"result":$result}',
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await expectLater(
+        client.networkDiagnose(configurationId: 'c'),
+        throwsA(
+          variant == 'error'
+              ? isA<IpcRequestFailure>()
+              : isA<IpcProtocolException>(),
+        ),
+      );
+      if (variant != 'error') {
+        await expectLater(
+          client.networkDiagnose(configurationId: 'c'),
+          throwsA(isA<IpcProtocolException>()),
+        );
+        expect(calls, 1);
+      }
+      await client.close();
+    }
+  });
+
   test('network optional client sends exact read-only request and keeps uint64 token', () async {
     final requests = <Map<String, dynamic>>[];
     final server = await _server((socket, _) {

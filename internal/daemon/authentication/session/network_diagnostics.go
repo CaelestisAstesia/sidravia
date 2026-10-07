@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"sidravia/internal/daemon/authentication/protocol"
 	"time"
 )
 
@@ -75,4 +76,41 @@ func (session *AuthenticationSession) handleProtocolSocketClosed(event protocolS
 		session.protocolSocket.State = ProtocolSocketClosed
 	}
 	session.protocolSocket.UpdatedAt = session.now()
+}
+
+// NetworkDiagnosticTarget is immutable trusted Profile and policy input. It
+// contains neither credentials nor reported protocol-context overrides.
+type NetworkDiagnosticTarget struct {
+	Endpoint  netip.AddrPort
+	Policy    NetworkBindingPolicy
+	Supported bool
+}
+
+func (session *AuthenticationSession) NetworkDiagnosticTarget(ctx context.Context) (NetworkDiagnosticTarget, error) {
+	if ctx == nil {
+		return NetworkDiagnosticTarget{}, errors.New("network diagnostics context is required")
+	}
+	if ctx.Err() != nil {
+		return NetworkDiagnosticTarget{}, errors.Join(ctx.Err(), context.Cause(ctx))
+	}
+	if session.closed.Load() {
+		return NetworkDiagnosticTarget{}, ErrAuthenticationSessionClosed
+	}
+	target := NetworkDiagnosticTarget{Policy: session.definition.Configuration.NetworkBindingPolicy}
+	provider, ok := session.definition.AuthenticationProtocolFactory.(protocol.AuthenticationProtocolNetworkTargetProvider)
+	if !ok {
+		return target, nil
+	}
+	endpoint, err := provider.NetworkDiagnosticEndpoint(append(protocol.InstitutionProtocolConfiguration(nil), session.definition.InstitutionProfile.InstitutionProtocolConfiguration...))
+	if err != nil {
+		return NetworkDiagnosticTarget{}, err
+	}
+	if ctx.Err() != nil {
+		return NetworkDiagnosticTarget{}, errors.Join(ctx.Err(), context.Cause(ctx))
+	}
+	if session.closed.Load() {
+		return NetworkDiagnosticTarget{}, ErrAuthenticationSessionClosed
+	}
+	target.Endpoint, target.Supported = endpoint, true
+	return target, nil
 }

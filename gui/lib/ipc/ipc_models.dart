@@ -175,11 +175,12 @@ class NetworkBindingPolicy {
 Object? decodeBindingCheckedJson(
   String source, {
   bool preserveNetworkRevision = false,
+  bool preserveNetworkRunGeneration = false,
 }) {
   try {
     var i = 0;
-    var depth = 0;
-    final revisions = <int, String>{};
+    final strictUnicode =
+        preserveNetworkRevision || preserveNetworkRunGeneration;
     void whitespace() {
       while (i < source.length &&
           const [9, 10, 13, 32].contains(source.codeUnitAt(i))) {
@@ -199,97 +200,118 @@ Object? decodeBindingCheckedJson(
           continue;
         }
         if (source[i++] == '"') {
-          return jsonDecode(source.substring(start, i)) as String;
+          final text = jsonDecode(source.substring(start, i)) as String;
+          if (strictUnicode &&
+              text.runes.any((r) => r >= 0xd800 && r <= 0xdfff)) {
+            throw const IpcProtocolException();
+          }
+          return text;
         }
       }
       throw const IpcProtocolException();
     }
 
-    late void Function() value;
-    value = () {
+    late Object? Function([String?]) value;
+    value = ([String? key]) {
       whitespace();
-      if (i >= source.length) throw const IpcProtocolException();
+      if (i >= source.length) {
+        throw const IpcProtocolException();
+      }
+      final exact =
+          preserveNetworkRevision && key == 'revision' ||
+          preserveNetworkRunGeneration && key == 'runGeneration';
       if (source[i] == '{') {
+        if (exact) {
+          throw const IpcProtocolException();
+        }
         i++;
-        depth++;
         whitespace();
-        final keys = <String>{};
+        final result = <String, dynamic>{};
         if (i < source.length && source[i] == '}') {
           i++;
-          depth--;
-          return;
+          return result;
         }
         while (true) {
           whitespace();
-          final key = string();
-          if (!keys.add(key)) throw const IpcProtocolException();
+          final name = string();
+          if (result.containsKey(name)) {
+            throw const IpcProtocolException();
+          }
           whitespace();
           if (i >= source.length || source[i++] != ':') {
             throw const IpcProtocolException();
           }
+          result[name] = value(name);
           whitespace();
-          final start = i;
-          final objectDepth = depth;
-          value();
-          if (preserveNetworkRevision && key == 'revision') {
-            revisions[objectDepth] = source.substring(start, i);
+          if (i >= source.length) {
+            throw const IpcProtocolException();
           }
-          whitespace();
-          if (i >= source.length) throw const IpcProtocolException();
           final next = source[i++];
           if (next == '}') {
-            depth--;
-            return;
+            return result;
           }
-          if (next != ',') throw const IpcProtocolException();
+          if (next != ',') {
+            throw const IpcProtocolException();
+          }
         }
       }
       if (source[i] == '[') {
+        if (exact) {
+          throw const IpcProtocolException();
+        }
         i++;
         whitespace();
+        final result = <dynamic>[];
         if (i < source.length && source[i] == ']') {
           i++;
-          return;
+          return result;
         }
         while (true) {
-          value();
+          result.add(value());
           whitespace();
-          if (i >= source.length) throw const IpcProtocolException();
+          if (i >= source.length) {
+            throw const IpcProtocolException();
+          }
           final next = source[i++];
-          if (next == ']') return;
-          if (next != ',') throw const IpcProtocolException();
+          if (next == ']') {
+            return result;
+          }
+          if (next != ',') {
+            throw const IpcProtocolException();
+          }
         }
       }
       if (source[i] == '"') {
-        string();
-        return;
+        if (exact) {
+          throw const IpcProtocolException();
+        }
+        return string();
       }
       final start = i;
       while (i < source.length &&
           !const [',', '}', ']', ' ', '\t', '\n', '\r'].contains(source[i])) {
         i++;
       }
-      if (start == i) throw const IpcProtocolException();
-      jsonDecode(source.substring(start, i));
+      if (start == i) {
+        throw const IpcProtocolException();
+      }
+      final token = source.substring(start, i);
+      if (exact) {
+        if (!RegExp(r'^(0|[1-9][0-9]*)$').hasMatch(token)) {
+          throw const IpcProtocolException();
+        }
+        final n = BigInt.parse(token);
+        if (n > BigInt.parse('18446744073709551615')) {
+          throw const IpcProtocolException();
+        }
+        return n;
+      }
+      return jsonDecode(token);
     };
-    value();
+    final decoded = value();
     whitespace();
-    if (i != source.length) throw const IpcProtocolException();
-    final decoded = jsonDecode(source);
-    if (preserveNetworkRevision &&
-        decoded is Map<String, dynamic> &&
-        decoded['ok'] != false) {
-      final envelope = decoded['result'];
-      final target = envelope is Map<String, dynamic> ? envelope : decoded;
-      final token = revisions[envelope is Map<String, dynamic> ? 2 : 1];
-      if (token == null || !RegExp(r'^(0|[1-9][0-9]*)$').hasMatch(token)) {
-        throw const IpcProtocolException();
-      }
-      final revision = BigInt.parse(token);
-      if (revision > BigInt.parse('18446744073709551615')) {
-        throw const IpcProtocolException();
-      }
-      target['revision'] = revision;
+    if (i != source.length) {
+      throw const IpcProtocolException();
     }
     return decoded;
   } on FormatException {
@@ -890,5 +912,353 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
     revision: revision,
     interfaces: rows,
     observedAt: observedAt,
+  );
+}
+
+class NetworkEndpoint {
+  const NetworkEndpoint(this.address, this.port);
+  final String address;
+  final int port;
+}
+
+class NetworkDiagnosticRoute {
+  const NetworkDiagnosticRoute({
+    required this.interfaceId,
+    required this.interfaceIndex,
+    required this.sourceIPv4,
+    required this.destinationPrefix,
+    required this.nextHopIPv4,
+    required this.routeMetric,
+    required this.interfaceMetric,
+    required this.effectiveMetric,
+  });
+  final String interfaceId, sourceIPv4, destinationPrefix, nextHopIPv4;
+  final int interfaceIndex, routeMetric, interfaceMetric, effectiveMetric;
+}
+
+class NetworkDiagnosticProbe {
+  const NetworkDiagnosticProbe(this.status, this.roundTripTimeMs);
+  final String status;
+  final int? roundTripTimeMs;
+}
+
+class NetworkProtocolSocket {
+  const NetworkProtocolSocket({
+    required this.state,
+    required this.runGeneration,
+    this.updatedAt,
+    this.localEndpoint,
+    this.remoteEndpoint,
+  });
+  final String state;
+  final BigInt runGeneration;
+  final String? updatedAt;
+  final NetworkEndpoint? localEndpoint, remoteEndpoint;
+}
+
+class NetworkDiagnosis {
+  const NetworkDiagnosis({
+    required this.observedAt,
+    required this.selectionBasis,
+    required this.status,
+    this.unsupportedReason,
+    this.target,
+    this.route,
+    this.probe,
+    this.protocolSocket,
+  });
+  final String observedAt, selectionBasis, status;
+  final String? unsupportedReason;
+  final NetworkEndpoint? target;
+  final NetworkDiagnosticRoute? route;
+  final NetworkDiagnosticProbe? probe;
+  final NetworkProtocolSocket? protocolSocket;
+}
+
+const networkSelectionBases = {
+  'session_binding',
+  'configuration_explicit',
+  'os_route_proposal',
+};
+const networkDiagnosticStatuses = {
+  'available',
+  'unsupported',
+  'binding_unavailable',
+  'route_unavailable',
+};
+const networkUnsupportedReasons = {'platform', 'protocol', 'destination'};
+const networkProbeStatuses = {
+  'not_requested',
+  'reachable',
+  'no_reply',
+  'unreachable',
+  'failed',
+};
+const networkSocketStates = {
+  'not_observed',
+  'open',
+  'closed',
+  'close_failed',
+  'close_unconfirmed',
+};
+int _networkUint(Object? value, int max, {bool positive = false}) {
+  if (value is! int || value < (positive ? 1 : 0) || value > max) {
+    throw const IpcProtocolException();
+  }
+  return value;
+}
+
+String _networkEnum(Object? value, Set<String> allowed) {
+  final text = _text(value);
+  if (!allowed.contains(text)) {
+    throw const IpcProtocolException();
+  }
+  return text;
+}
+
+String _networkTime(Object? value) {
+  final text = _text(value);
+  if (!RegExp(
+    r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$',
+  ).hasMatch(text)) {
+    throw const IpcProtocolException();
+  }
+  final parsed = _time(text);
+  if (parsed.isAtSameMomentAs(DateTime.utc(1)) &&
+      !RegExp(r'\.\d*[1-9]\d*').hasMatch(text)) {
+    throw const IpcProtocolException();
+  }
+  return text;
+}
+
+int _networkIPv4(String text, {bool zero = false, bool broadcast = false}) {
+  final parts = text.split('.');
+  if (parts.length != 4) {
+    throw const IpcProtocolException();
+  }
+  var n = 0;
+  for (final part in parts) {
+    final v = int.tryParse(part);
+    if (v == null || v < 0 || v > 255 || v.toString() != part) {
+      throw const IpcProtocolException();
+    }
+    n = n * 256 + v;
+  }
+  if ((!zero && n == 0) ||
+      (!broadcast && n == 4294967295) ||
+      (n >= 3758096384 && n <= 4026531839)) {
+    throw const IpcProtocolException();
+  }
+  return n;
+}
+
+NetworkEndpoint _networkEndpoint(Object? raw, {bool broadcast = false}) {
+  final v = _object(raw, const {'address', 'port'});
+  final address = _text(v['address']);
+  _networkIPv4(address, broadcast: broadcast);
+  return NetworkEndpoint(
+    address,
+    _networkUint(v['port'], 65535, positive: true),
+  );
+}
+
+Map<String, dynamic> _networkObject(
+  Object? raw,
+  Set<String> required,
+  Set<String> optional,
+) {
+  if (raw is! Map<String, dynamic> ||
+      !raw.keys.toSet().containsAll(required) ||
+      raw.keys.any((k) => !required.contains(k) && !optional.contains(k)) ||
+      raw.values.any((v) => v == null)) {
+    throw const IpcProtocolException();
+  }
+  return raw;
+}
+
+NetworkDiagnosis decodeNetworkDiagnosis(String source) =>
+    decodeNetworkDiagnosisValue(
+      decodeBindingCheckedJson(source, preserveNetworkRunGeneration: true),
+    );
+NetworkDiagnosis decodeNetworkDiagnosisValue(Object? raw) {
+  final v = _networkObject(
+    raw,
+    const {'observedAt', 'selectionBasis', 'status'},
+    const {'unsupportedReason', 'target', 'route', 'probe', 'protocolSocket'},
+  );
+  final observed = _networkTime(v['observedAt']);
+  final basis = _networkEnum(v['selectionBasis'], networkSelectionBases);
+  final status = _networkEnum(v['status'], networkDiagnosticStatuses);
+  final reason = v.containsKey('unsupportedReason')
+      ? _networkEnum(v['unsupportedReason'], networkUnsupportedReasons)
+      : null;
+  if (status == 'unsupported' ? reason == null : reason != null) {
+    throw const IpcProtocolException();
+  }
+  final target = v.containsKey('target')
+      ? _networkEndpoint(
+          v['target'],
+          broadcast: status == 'unsupported' && reason == 'destination',
+        )
+      : null;
+  if (target == null &&
+      !(status == 'unsupported' &&
+          (reason == 'protocol' || reason == 'destination'))) {
+    throw const IpcProtocolException();
+  }
+  NetworkDiagnosticRoute? route;
+  NetworkDiagnosticProbe? probe;
+  if (status == 'available') {
+    final r = _object(v['route'], const {
+      'interfaceId',
+      'interfaceIndex',
+      'sourceIPv4',
+      'destinationPrefix',
+      'nextHopIPv4',
+      'routeMetric',
+      'interfaceMetric',
+      'effectiveMetric',
+    });
+    final source = _text(r['sourceIPv4']);
+    _networkIPv4(source);
+    final next = _text(r['nextHopIPv4']);
+    _networkIPv4(next, zero: true);
+    final prefix = _text(r['destinationPrefix']);
+    final parts = prefix.split('/');
+    if (parts.length != 2) {
+      throw const IpcProtocolException();
+    }
+    final bits = int.tryParse(parts[1]);
+    if (bits == null || bits < 0 || bits > 32 || bits.toString() != parts[1]) {
+      throw const IpcProtocolException();
+    }
+    final address = _networkIPv4(parts[0], zero: true, broadcast: true);
+    final block = 1 << (32 - bits);
+    if (address % block != 0 ||
+        _networkIPv4(target!.address) ~/ block != address ~/ block) {
+      throw const IpcProtocolException();
+    }
+    final rm = _networkUint(r['routeMetric'], 4294967295);
+    final im = _networkUint(r['interfaceMetric'], 4294967295);
+    final em = _networkUint(r['effectiveMetric'], 8589934590);
+    if (rm + im != em) {
+      throw const IpcProtocolException();
+    }
+    route = NetworkDiagnosticRoute(
+      interfaceId: _text(r['interfaceId']),
+      interfaceIndex: _networkUint(
+        r['interfaceIndex'],
+        4294967295,
+        positive: true,
+      ),
+      sourceIPv4: source,
+      destinationPrefix: prefix,
+      nextHopIPv4: next,
+      routeMetric: rm,
+      interfaceMetric: im,
+      effectiveMetric: em,
+    );
+    final p = _networkObject(
+      v['probe'],
+      const {'status'},
+      const {'roundTripTimeMs'},
+    );
+    final ps = _networkEnum(p['status'], networkProbeStatuses);
+    final rtt = p.containsKey('roundTripTimeMs')
+        ? _networkUint(p['roundTripTimeMs'], 4294967295)
+        : null;
+    if ((ps == 'reachable') != (rtt != null)) {
+      throw const IpcProtocolException();
+    }
+    probe = NetworkDiagnosticProbe(ps, rtt);
+  } else if (v.containsKey('route') || v.containsKey('probe')) {
+    throw const IpcProtocolException();
+  }
+  NetworkProtocolSocket? socket;
+  if (v.containsKey('protocolSocket')) {
+    final s = _networkObject(
+      v['protocolSocket'],
+      const {'state', 'runGeneration'},
+      const {'updatedAt', 'localEndpoint', 'remoteEndpoint'},
+    );
+    final state = _networkEnum(s['state'], networkSocketStates);
+    final generation = s['runGeneration'];
+    if (generation is! BigInt ||
+        generation < BigInt.zero ||
+        generation > BigInt.parse('18446744073709551615')) {
+      throw const IpcProtocolException();
+    }
+    final updated = s.containsKey('updatedAt')
+        ? _networkTime(s['updatedAt'])
+        : null;
+    NetworkEndpoint? local, remote;
+    if (state == 'not_observed') {
+      if (s.containsKey('localEndpoint') ||
+          s.containsKey('remoteEndpoint') ||
+          (generation == BigInt.zero) != (updated == null)) {
+        throw const IpcProtocolException();
+      }
+    } else {
+      if (generation == BigInt.zero || updated == null) {
+        throw const IpcProtocolException();
+      }
+      local = _networkEndpoint(s['localEndpoint']);
+      remote = _networkEndpoint(s['remoteEndpoint'], broadcast: true);
+    }
+    socket = NetworkProtocolSocket(
+      state: state,
+      runGeneration: generation,
+      updatedAt: updated,
+      localEndpoint: local,
+      remoteEndpoint: remote,
+    );
+  }
+  return NetworkDiagnosis(
+    observedAt: observed,
+    selectionBasis: basis,
+    status: status,
+    unsupportedReason: reason,
+    target: target,
+    route: route,
+    probe: probe,
+    protocolSocket: socket,
+  );
+}
+
+Map<String, Object> networkDiagnosisPayload({
+  String? configurationId,
+  String? sessionId,
+  bool probe = false,
+}) {
+  if ((configurationId == null) == (sessionId == null) ||
+      configurationId == '' ||
+      sessionId == '' ||
+      [configurationId, sessionId].whereType<String>().any(
+        (s) => s.runes.any((r) => r >= 0xd800 && r <= 0xdfff),
+      )) {
+    throw const IpcProtocolException();
+  }
+  return {
+    'configurationId': ?configurationId,
+    'sessionId': ?sessionId,
+    if (probe) 'probe': true,
+  };
+}
+
+Map<String, Object> decodeNetworkDiagnosisPayload(String source) {
+  final v = _networkObject(
+    decodeBindingCheckedJson(source, preserveNetworkRunGeneration: true),
+    const {},
+    const {'configurationId', 'sessionId', 'probe'},
+  );
+  if (v.containsKey('configurationId') == v.containsKey('sessionId')) {
+    throw const IpcProtocolException();
+  }
+  return networkDiagnosisPayload(
+    configurationId: v.containsKey('configurationId')
+        ? _text(v['configurationId'])
+        : null,
+    sessionId: v.containsKey('sessionId') ? _text(v['sessionId']) : null,
+    probe: v.containsKey('probe') ? _bool(v['probe']) : false,
   );
 }

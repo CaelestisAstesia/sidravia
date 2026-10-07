@@ -631,3 +631,12 @@ func (s *Supervisor) publishRevision(event RevisionEvent) {
 		}
 	}
 }
+
+// GetNetworkDiagnosticTarget releases the managed map lock before delegating.
+func (s *Supervisor) GetNetworkDiagnosticTarget(ctx context.Context, id ID) (session.NetworkDiagnosticTarget, error) {
+	ms, err := s.managed(id)
+	if err != nil {
+		return session.NetworkDiagnosticTarget{}, err
+	}
+	return ms.actor.NetworkDiagnosticTarget(ctx)
+}

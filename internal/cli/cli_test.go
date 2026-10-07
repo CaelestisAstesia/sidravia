@@ -875,3 +875,40 @@ func TestNetworkCommandAndHelpOnlyDispatchQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestNetworkDiagnoseCommandExclusiveSelectorAndOperationFreeHelp(t *testing.T) {
+	calls := 0
+	deps := commandDependencies{networkDiagnose: func(request contract.NetworkDiagnosePayload) error {
+		calls++
+		if request.ConfigurationID != "c" && request.SessionID != "s" {
+			t.Fatal("selector changed")
+		}
+		return nil
+	}, output: io.Discard}
+	for _, args := range [][]string{{"network", "diagnose", "--config", "c"}, {"network", "diagnose", "--session", "s", "--probe"}} {
+		if err := runCommand(args, deps); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 2 {
+		t.Fatal("valid commands not dispatched")
+	}
+	for _, args := range [][]string{{"network", "diagnose", "--probe"}, {"network", "diagnose", "--config", ""}, {"network", "diagnose", "--config", "c", "--session", "s"}, {"network", "diagnose", "--config", "c", "extra"}} {
+		if err := runCommand(args, deps); err == nil {
+			t.Fatal("invalid selector accepted")
+		}
+	}
+	for _, args := range [][]string{{"network"}, {"network", "diagnose"}, {"help", "network", "diagnose"}, {"network", "diagnose", "-h"}, {"network", "diagnose", "--help"}} {
+		var output bytes.Buffer
+		deps.output = &output
+		if err := runCommand(args, deps); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(output.String(), "用法：") || !strings.Contains(output.String(), "diagnose") {
+			t.Fatal("static help omitted")
+		}
+	}
+	if calls != 2 {
+		t.Fatal("help or invalid selectors dispatched")
+	}
+}

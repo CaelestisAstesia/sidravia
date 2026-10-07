@@ -6,6 +6,59 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('checked tree preserves simultaneous nested uint64 without precision laundering', () {
+    const wire =
+        '{"revision":9007199254740993,"nested":{"runGeneration":18446744073709551615},"other":[{"runGeneration":9007199254740995}]}';
+    final tree = decodeBindingCheckedJson(
+      wire,
+      preserveNetworkRevision: true,
+      preserveNetworkRunGeneration: true,
+    ) as Map<String, dynamic>;
+    expect(tree['revision'], BigInt.parse('9007199254740993'));
+    expect(
+      (tree['nested'] as Map)['runGeneration'],
+      BigInt.parse('18446744073709551615'),
+    );
+    expect(
+      ((tree['other'] as List).single as Map)['runGeneration'],
+      BigInt.parse('9007199254740995'),
+    );
+    for (final token in [
+      '1.0',
+      '1e0',
+      '-1',
+      '-0',
+      '18446744073709551616',
+      'null',
+    ]) {
+      expect(
+        () => decodeBindingCheckedJson(
+          '{"nested":{"runGeneration":$token}}',
+          preserveNetworkRunGeneration: true,
+        ),
+        throwsA(isA<IpcProtocolException>()),
+      );
+    }
+    // Legacy method numeric semantics remain jsonDecode's, with no BigInt opt-in.
+    expect((decodeBindingCheckedJson('{"revision":1}') as Map)['revision'], 1);
+  });
+  test('diagnosis request selectors are exclusive and reject raw Unicode', () {
+    expect(networkDiagnosisPayload(sessionId: 'retained', probe: true), {
+      'sessionId': 'retained',
+      'probe': true,
+    });
+    for (final raw in [
+      r'{"sessionId":"\ud800"}',
+      r'{"configurationId":"c","\u0063onfigurationId":"c"}',
+      '{"sessionId":"s","probe":null}',
+    ]) {
+      expect(
+        () => decodeNetworkDiagnosisPayload(raw),
+        throwsA(isA<IpcProtocolException>()),
+      );
+    }
+  });
+
   test('network rejects isolated surrogate originals consistently with Go', () {
     for (final field in ['interfaceId', 'displayName']) {
       final old = field == 'interfaceId'

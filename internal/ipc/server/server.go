@@ -50,6 +50,7 @@ const (
 // other method supplied by a peer is normalized to methodUnknown so an
 // arbitrary peer string can never reach the log.
 var allowedMethods = map[string]struct{}{
+	contract.MethodNetworkDiagnose:           {},
 	contract.MethodNetworkInterfaces:         {},
 	contract.MethodDaemonStatus:              {},
 	contract.MethodDaemonStop:                {},

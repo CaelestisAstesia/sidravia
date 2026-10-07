@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -194,4 +195,42 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 	}
 
 	return definition, nil
+}
+
+// ResolveNetworkDiagnosticTarget reads only public Configuration and compiled
+// Profile data. It never resolves a credential or creates a protocol Run.
+func (resolver *AuthenticationResolver) ResolveNetworkDiagnosticTarget(ctx context.Context, id config.ConfigurationID) (session.NetworkDiagnosticTarget, error) {
+	if ctx == nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(InvalidConfiguration, errors.New("context is required"))
+	}
+	if ctx.Err() != nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(InvalidConfiguration, errors.Join(ctx.Err(), context.Cause(ctx)))
+	}
+	value, err := resolver.configurations.Get(ctx, id)
+	if err != nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(ConfigurationNotFound, err)
+	}
+	profile, err := resolver.profiles.Get(ctx, value.InstitutionProfileID)
+	if err != nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(ProfileNotFound, err)
+	}
+	factory, err := resolver.protocols.GetFactory(profile.AuthenticationProtocolID)
+	if err != nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(ProtocolNotFound, err)
+	}
+	raw := append(protocol.InstitutionProtocolConfiguration(nil), profile.InstitutionProtocolConfiguration...)
+	if err := factory.ValidateInstitutionProtocolConfiguration(raw); err != nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	target := session.NetworkDiagnosticTarget{Policy: value.NetworkBindingPolicy}
+	provider, ok := factory.(protocol.AuthenticationProtocolNetworkTargetProvider)
+	if !ok {
+		return target, nil
+	}
+	endpoint, err := provider.NetworkDiagnosticEndpoint(append(protocol.InstitutionProtocolConfiguration(nil), profile.InstitutionProtocolConfiguration...))
+	if err != nil {
+		return session.NetworkDiagnosticTarget{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	target.Endpoint, target.Supported = endpoint, true
+	return target, nil
 }

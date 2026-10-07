@@ -1462,3 +1462,11 @@ func TestSupervisorNetworkDiagnosticsMissingRetainedAndReadOnly(t *testing.T) {
 		t.Fatal("diagnostics started Run")
 	}
 }
+
+func TestSupervisorReadOnlyNetworkTargetMissingAndUnsupported(t *testing.T) {
+	sup := New(Dependencies{})
+	defer func() { _ = sup.Close(); sup.Wait() }()
+	if _, err := sup.GetNetworkDiagnosticTarget(context.Background(), "missing"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatal("missing target classification lost")
+	}
+}

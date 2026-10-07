@@ -293,3 +293,66 @@ func TestNetworkDiagnosticsQueryContextAndShutdown(t *testing.T) {
 		t.Fatalf("shutdown query = %v", err)
 	}
 }
+
+type immutableTargetFactory struct {
+	controlledFactory
+	reads int
+	cause error
+}
+
+func (f *immutableTargetFactory) NetworkDiagnosticEndpoint(raw protocol.InstitutionProtocolConfiguration) (netip.AddrPort, error) {
+	f.reads++
+	if len(raw) > 0 {
+		raw[0] = '['
+	}
+	return netip.MustParseAddrPort("192.0.2.1:61440"), f.cause
+}
+func TestImmutableNetworkTargetDoesNotCreateRunOrAliasDefinition(t *testing.T) {
+	factory := &immutableTargetFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	original := append([]byte(nil), definition.InstitutionProfile.InstitutionProtocolConfiguration...)
+	actor, err := NewAuthenticationSession(definition, SuspendAuthentication, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor.Start()
+	defer func() {
+		if !actor.closed.Load() {
+			shutdownTestSession(t, actor)
+		}
+	}()
+	definition.InstitutionProfile.InstitutionProtocolConfiguration[0] = '!'
+	got, err := actor.NetworkDiagnosticTarget(context.Background())
+	if err != nil || !got.Supported || got.Endpoint.String() != "192.0.2.1:61440" || len(factory.creationInputs()) != 0 || !reflect.DeepEqual(actor.definition.InstitutionProfile.InstitutionProtocolConfiguration, protocol.InstitutionProtocolConfiguration(original)) {
+		t.Fatal("immutable target mutated definition or created Run")
+	}
+	cause := errors.New("target-cause")
+	factory.cause = cause
+	if _, err := actor.NetworkDiagnosticTarget(context.Background()); !errors.Is(err, cause) {
+		t.Fatal("provider cause lost")
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(cause)
+	for _, ctx := range []context.Context{nil, ctx} {
+		_, err := actor.NetworkDiagnosticTarget(ctx)
+		if err == nil {
+			t.Fatal("invalid context accepted")
+		}
+		if ctx != nil && !errors.Is(err, cause) {
+			t.Fatal("cancellation cause lost")
+		}
+	}
+	if err := actor.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := actor.NetworkDiagnosticTarget(context.Background()); !errors.Is(err, ErrAuthenticationSessionClosed) {
+		t.Fatal("closed target available")
+	}
+	unsupported := newTestSession(t, &controlledFactory{}, SuspendAuthentication)
+	defer shutdownTestSession(t, unsupported)
+	target, err := unsupported.NetworkDiagnosticTarget(context.Background())
+	if err != nil || target.Supported || target.Endpoint.IsValid() {
+		t.Fatal("provider-less target invented")
+	}
+}

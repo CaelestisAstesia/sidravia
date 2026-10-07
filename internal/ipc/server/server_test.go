@@ -846,3 +846,25 @@ func TestNormalizeOnlyExactNetworkQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestTrustedNetworkDiagnosisMethodIsAllowlistedWithoutLoggingSelector(t *testing.T) {
+	var buf safeBuffer
+	handler := func(_ context.Context, method string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
+		if method != contract.MethodNetworkDiagnose {
+			t.Error("diagnosis dispatch changed")
+		}
+		return nil, &contract.Error{Code: contract.ErrorCodeConfigurationNotFound, Message: "configuration not found"}
+	}
+	_, url := newTestServer(t, handler, &buf)
+	conn := dial(t, url)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	writeRequest(t, conn, "diagnostic-private-id", contract.MethodNetworkDiagnose, json.RawMessage(`{"configurationId":"private-selector"}`))
+	response := readResponse(t, conn)
+	if response.OK || response.ID != "diagnostic-private-id" || response.Error.Code != contract.ErrorCodeConfigurationNotFound {
+		t.Fatal("diagnosis response contract lost")
+	}
+	waitForLogEvent(t, &buf, "method="+contract.MethodNetworkDiagnose)
+	if strings.Contains(buf.String(), "private-selector") || strings.Contains(buf.String(), "diagnostic-private-id") {
+		t.Fatal("diagnosis selector leaked into log")
+	}
+}

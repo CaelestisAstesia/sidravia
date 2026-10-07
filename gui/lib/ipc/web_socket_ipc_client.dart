@@ -61,6 +61,22 @@ class WebSocketIpcClient
   }
 
   @override
+  Future<NetworkDiagnosis> networkDiagnose({
+    String? configurationId,
+    String? sessionId,
+    bool probe = false,
+  }) async => _call(
+    'network.diagnose',
+    networkDiagnosisPayload(
+      configurationId: configurationId,
+      sessionId: sessionId,
+      probe: probe,
+    ),
+    decodeNetworkDiagnosis,
+    decodeValue: decodeNetworkDiagnosisValue,
+  );
+
+  @override
   Future<NetworkInterfacesSnapshot> networkInterfaces() async => _call(
     'network.interfaces',
     const {},
@@ -241,6 +257,7 @@ class WebSocketIpcClient
       final raw = decodeBindingCheckedJson(
         message,
         preserveNetworkRevision: method == 'network.interfaces',
+        preserveNetworkRunGeneration: method == 'network.diagnose',
       );
       if (raw is! Map<String, dynamic> ||
           raw['kind'] != 'response' ||

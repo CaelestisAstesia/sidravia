@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
+	"sidravia/internal/daemon/authentication/supervisor"
 	"slices"
 	"time"
 
@@ -47,6 +49,25 @@ func networkInterfacesResult(snapshot environment.Snapshot, available bool) cont
 
 func NetworkHandler(application *Application) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+		if method == contract.MethodNetworkDiagnose {
+			request, err := contract.DecodeNetworkDiagnosePayload(payload)
+			if err != nil {
+				return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
+			}
+			value, err := application.DiagnoseNetwork(ctx, request)
+			if err != nil {
+				var resolution *ResolutionFailure
+				if errors.As(err, &resolution) || errors.Is(err, supervisor.ErrSessionNotFound) || errors.Is(err, supervisor.ErrSessionStateConflict) {
+					return nil, sessionError(err)
+				}
+				return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "network diagnosis failed"}
+			}
+			encoded, err := contract.MarshalNetworkDiagnoseResult(value)
+			if err != nil {
+				return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "network diagnosis failed"}
+			}
+			return encoded, nil
+		}
 		if method != contract.MethodNetworkInterfaces {
 			return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported network method"}
 		}

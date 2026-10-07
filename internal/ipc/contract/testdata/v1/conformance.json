@@ -30,6 +30,36 @@
     "networkBindingPolicyModes": [
       "automatically_select_latest_available",
       "explicit_interface_and_local_ipv4"
+    ],
+    "networkSelectionBases": [
+      "session_binding",
+      "configuration_explicit",
+      "os_route_proposal"
+    ],
+    "networkDiagnosticStatuses": [
+      "available",
+      "unsupported",
+      "binding_unavailable",
+      "route_unavailable"
+    ],
+    "networkUnsupportedReasons": [
+      "platform",
+      "protocol",
+      "destination"
+    ],
+    "networkProbeStatuses": [
+      "not_requested",
+      "reachable",
+      "no_reply",
+      "unreachable",
+      "failed"
+    ],
+    "networkSocketStates": [
+      "not_observed",
+      "open",
+      "closed",
+      "close_failed",
+      "close_unconfirmed"
     ]
   },
   "cases": [
@@ -158,6 +188,638 @@
       "request": "{\"kind\":\"request\",\"id\":\"network-1\",\"method\":\"network.interfaces\",\"payload\":{}}",
       "successResponse": "{\"kind\":\"response\",\"id\":\"network-1\",\"ok\":true,\"result\":{\"available\":true,\"revision\":1,\"interfaces\":[{\"interfaceId\":\"loopback-fixture\",\"displayName\":\"Loopback\",\"operationalState\":\"up\",\"physicalMedium\":\"unknown\",\"hardwareBacked\":false,\"physicalConnectorPresent\":false,\"filterInterface\":false,\"endpointInterface\":false,\"addressAssignmentMethod\":\"unknown\",\"ipv4Assignments\":[{\"address\":\"127.0.0.1\",\"prefixLength\":8,\"automaticCandidate\":false,\"explicitBindable\":true}]}],\"observedAt\":\"2026-10-07T01:02:03.123456789Z\"}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"network-1\",\"ok\":false,\"error\":{\"code\":\"invalid_argument\",\"message\":\"malformed network payload\"}}"
+    },
+    {
+      "name": "trusted-network-diagnosis",
+      "method": "network.diagnose",
+      "request": "{\"kind\":\"request\",\"id\":\"network-diagnose\",\"method\":\"network.diagnose\",\"payload\":{\"configurationId\":\"fixture-configuration\",\"probe\":true}}",
+      "successResponse": "{\"kind\":\"response\",\"id\":\"network-diagnose\",\"ok\":true,\"result\":{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}}",
+      "errorResponse": "{\"kind\":\"response\",\"id\":\"network-diagnose\",\"ok\":false,\"error\":{\"code\":\"invalid_argument\",\"message\":\"malformed network payload\"}}"
+    }
+  ],
+  "networkDiagnosticCases": [
+    {
+      "name": "available-zero-rtt-maximum-values",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "unsupported",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"unsupported\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"unsupportedReason\":\"platform\"}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "binding_unavailable",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"binding_unavailable\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "route_unavailable",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"route_unavailable\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "unsupported-protocol",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"configuration_explicit\",\"status\":\"unsupported\",\"unsupportedReason\":\"protocol\"}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "unsupported-destination",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"configuration_explicit\",\"status\":\"unsupported\",\"unsupportedReason\":\"destination\"}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "broadcast-destination",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"unsupported\",\"target\":{\"address\":\"255.255.255.255\",\"port\":1},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}},\"unsupportedReason\":\"destination\"}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "socket-not_observed",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"not_observed\",\"runGeneration\":9007199254740993,\"updatedAt\":\"2026-10-07T01:02:03.123456789Z\"}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "socket-open",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"open\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "socket-closed",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "socket-close_failed",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"close_failed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "socket-close_unconfirmed",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"close_unconfirmed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "socket-zero",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"not_observed\",\"runGeneration\":0}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "probe-not_requested",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"not_requested\"},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "probe-reachable",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "probe-no_reply",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"no_reply\"},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "probe-unreachable",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"unreachable\"},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "probe-failed",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"failed\"},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-18",
+      "payload": "{}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-19",
+      "payload": "{\"configurationId\":\"\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-20",
+      "payload": "{\"sessionId\":\"\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-21",
+      "payload": "{\"configurationId\":\"c\",\"sessionId\":\"s\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-22",
+      "payload": "{\"configurationId\":null}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-23",
+      "payload": "{\"configurationId\":1}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-24",
+      "payload": "{\"configurationId\":\"c\",\"probe\":null}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-25",
+      "payload": "{\"configurationId\":\"c\",\"probe\":1}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-26",
+      "payload": "{\"configurationId\":\"c\",\"target\":\"192.0.2.1\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-27",
+      "payload": "{\"configurationId\":\"c\",\"\\u0063onfigurationId\":\"c\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-28",
+      "payload": "{\"sessionId\":\"\\ud800\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "invalid-payload-29",
+      "payload": "{\"configurationId\":\"c\"} {}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": false,
+      "validResult": true
+    },
+    {
+      "name": "session-probe",
+      "payload": "{\"sessionId\":\"retained\",\"probe\":true}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "bad-root-31",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"unknown\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-32",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"unknown\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-33",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"0001-01-01T00:00:00Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-34",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-02-30T01:02:03Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-35",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-01-01T24:00:00Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-36",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-01-01T00:00:00+24:00\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-37",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}},\"unsupportedReason\":\"platform\"}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-38",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":null,\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-39",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":null,\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "bad-root-40",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":null,\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-observedAt",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-selectionBasis",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-status",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-target",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-route",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-probe",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "omitted-socket",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0}}",
+      "validPayload": true,
+      "validResult": true
+    },
+    {
+      "name": "invalid-target-48",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"::ffff:192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-target-49",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"0.0.0.0\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-target-50",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"224.0.0.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-target-51",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"255.255.255.255\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-target-52",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.000.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-target-53",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":0},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-target-54",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":65536},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-55",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-56",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"\\ud800\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-57",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":0,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-58",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":4294967296,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-59",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"255.255.255.255\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-60",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"224.0.0.1\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-61",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.1/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-62",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.3.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-63",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/33\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-64",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934589},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-route-65",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":-1,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-probe-66",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":4294967296},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-probe-67",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"unknown\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-protocolSocket-68",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"unknown\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-protocolSocket-69",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":0,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-protocolSocket-70",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":-1,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-protocolSocket-71",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551616,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-protocolSocket-72",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":null,\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "invalid-protocolSocket-73",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":null,\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unknown-target",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440,\"extra\":1},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unknown-route",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590,\"extra\":1},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unknown-probe",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0,\"extra\":1},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "unknown-protocolSocket",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440},\"extra\":1}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "generation-token-1.0",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":1.0,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "generation-token-1e0",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":1e0,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "generation-token--0",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":-0,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "generation-token-null",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":null,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "duplicate-82",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":1,\"\\u0072unGeneration\":2,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "duplicate-83",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceId\":\"other\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-rtt",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\"},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "negative-rtt",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"no_reply\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"192.0.2.2\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "local-broadcast",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"closed\",\"runGeneration\":18446744073709551615,\"updatedAt\":\"2026-10-07T01:02:03Z\",\"localEndpoint\":{\"address\":\"255.255.255.255\",\"port\":40001},\"remoteEndpoint\":{\"address\":\"255.255.255.255\",\"port\":61440}}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "missing-unobserved-time",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"not_observed\",\"runGeneration\":1}}",
+      "validPayload": true,
+      "validResult": false
+    },
+    {
+      "name": "zero-generation-time",
+      "payload": "{\"configurationId\":\"fixture-configuration\"}",
+      "result": "{\"observedAt\":\"2026-10-07T01:02:03.123456789Z\",\"selectionBasis\":\"os_route_proposal\",\"status\":\"available\",\"target\":{\"address\":\"192.0.2.1\",\"port\":61440},\"route\":{\"interfaceId\":\"owned-interface\",\"interfaceIndex\":1,\"sourceIPv4\":\"192.0.2.2\",\"destinationPrefix\":\"192.0.2.0/24\",\"nextHopIPv4\":\"0.0.0.0\",\"routeMetric\":4294967295,\"interfaceMetric\":4294967295,\"effectiveMetric\":8589934590},\"probe\":{\"status\":\"reachable\",\"roundTripTimeMs\":0},\"protocolSocket\":{\"state\":\"not_observed\",\"runGeneration\":0,\"updatedAt\":\"2026-10-07T01:02:03.123456789Z\"}}",
+      "validPayload": true,
+      "validResult": false
     }
   ]
 }

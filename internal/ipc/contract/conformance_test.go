@@ -19,12 +19,26 @@ import (
 const fixturePath = "testdata/v1/conformance.json"
 
 type conformanceFixture struct {
-	SchemaVersion int           `json:"schemaVersion"`
-	Enums         fixtureEnums  `json:"enums"`
-	Cases         []fixtureCase `json:"cases"`
+	SchemaVersion          int                     `json:"schemaVersion"`
+	Enums                  fixtureEnums            `json:"enums"`
+	Cases                  []fixtureCase           `json:"cases"`
+	NetworkDiagnosticCases []networkDiagnosticCase `json:"networkDiagnosticCases"`
 }
 
+type networkDiagnosticCase struct {
+	Name         string `json:"name"`
+	Payload      string `json:"payload"`
+	Result       string `json:"result"`
+	ValidPayload *bool  `json:"validPayload"`
+	ValidResult  *bool  `json:"validResult"`
+}
 type fixtureEnums struct {
+	NetworkSelectionBases     []string `json:"networkSelectionBases"`
+	NetworkDiagnosticStatuses []string `json:"networkDiagnosticStatuses"`
+	NetworkUnsupportedReasons []string `json:"networkUnsupportedReasons"`
+	NetworkProbeStatuses      []string `json:"networkProbeStatuses"`
+	NetworkSocketStates       []string `json:"networkSocketStates"`
+
 	DaemonModes               []string `json:"daemonModes"`
 	SessionStartOutcomes      []string `json:"sessionStartOutcomes"`
 	SessionIntents            []string `json:"sessionIntents"`
@@ -51,6 +65,7 @@ func TestV1ConformanceFixture(t *testing.T) {
 	expectedMethods := map[string]struct{}{
 		contract.MethodDaemonStatus:              {},
 		contract.MethodNetworkInterfaces:         {},
+		contract.MethodNetworkDiagnose:           {},
 		contract.MethodDaemonStop:                {},
 		contract.MethodSessionStartOneShot:       {},
 		contract.MethodSessionStop:               {},
@@ -137,6 +152,11 @@ func decodeStrictJSON(t *testing.T, data []byte, target any) {
 }
 
 func assertEnums(t *testing.T, enums fixtureEnums) {
+	assertEnum(t, "networkSelectionBases", enums.NetworkSelectionBases, []string{"session_binding", "configuration_explicit", "os_route_proposal"})
+	assertEnum(t, "networkDiagnosticStatuses", enums.NetworkDiagnosticStatuses, []string{"available", "unsupported", "binding_unavailable", "route_unavailable"})
+	assertEnum(t, "networkUnsupportedReasons", enums.NetworkUnsupportedReasons, []string{"platform", "protocol", "destination"})
+	assertEnum(t, "networkProbeStatuses", enums.NetworkProbeStatuses, []string{"not_requested", "reachable", "no_reply", "unreachable", "failed"})
+	assertEnum(t, "networkSocketStates", enums.NetworkSocketStates, []string{"not_observed", "open", "closed", "close_failed", "close_unconfirmed"})
 	t.Helper()
 	assertEnum(t, "daemonModes", enums.DaemonModes, []string{string(launchcontract.ModeHeadless), string(launchcontract.ModeDesktop)})
 	assertEnum(t, "sessionStartOutcomes", enums.SessionStartOutcomes, []string{app.SessionStartCreated, app.SessionStartAlreadyRunning, app.SessionStartResumed})
@@ -167,6 +187,8 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 	t.Helper()
 	var err error
 	switch method {
+	case contract.MethodNetworkDiagnose:
+		_, err = contract.DecodeNetworkDiagnosePayload(payload)
 	case contract.MethodNetworkInterfaces, contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList, contract.MethodConfigurationList:
 		err = contract.DecodeEmptyPayload(payload)
 	case contract.MethodSessionStartOneShot:
@@ -209,6 +231,11 @@ func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Requ
 	requireObjectKeys(t, []byte(item.SuccessResponse), "kind", "id", "ok", "result")
 
 	switch item.Method {
+	case contract.MethodNetworkDiagnose:
+		result, err := contract.DecodeNetworkDiagnoseResult(response.Result)
+		if err != nil || result.Status != "available" || result.ProtocolSocket.RunGeneration != ^uint64(0) {
+			t.Fatal("network diagnosis fixture invalid")
+		}
 	case contract.MethodNetworkInterfaces:
 		result, err := contract.DecodeNetworkInterfacesResult(response.Result)
 		if err != nil || !result.Available || result.Revision != 1 || len(result.Interfaces) != 1 {
@@ -330,7 +357,7 @@ func assertErrorResponse(t *testing.T, item fixtureCase, requestID string) {
 
 func reachableError(method string) contract.Error {
 	switch method {
-	case contract.MethodNetworkInterfaces:
+	case contract.MethodNetworkInterfaces, contract.MethodNetworkDiagnose:
 		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
 	case contract.MethodDaemonStatus, contract.MethodDaemonStop:
 		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed daemon payload"}
@@ -401,5 +428,29 @@ func assertSecretNegativeSpace(t *testing.T, fixture conformanceFixture) {
 	}
 	if strings.Contains(string(enums), oneShotMarker) || strings.Contains(string(enums), configurationMarker) {
 		t.Fatal("fixture enum contains a request secret marker")
+	}
+}
+
+func TestNetworkDiagnosisSharedStrictCases(t *testing.T) {
+	fixture := loadFixture(t)
+	if len(fixture.NetworkDiagnosticCases) == 0 {
+		t.Fatal("missing diagnosis cases")
+	}
+	seen := map[string]bool{}
+	for _, item := range fixture.NetworkDiagnosticCases {
+		if item.Name == "" || seen[item.Name] || item.Payload == "" || item.Result == "" || item.ValidPayload == nil || item.ValidResult == nil {
+			t.Fatal("invalid diagnosis fixture metadata")
+		}
+		seen[item.Name] = true
+		t.Run(item.Name, func(t *testing.T) {
+			_, err := contract.DecodeNetworkDiagnosePayload([]byte(item.Payload))
+			if (err == nil) != *item.ValidPayload {
+				t.Fatalf("payload accept=%t expected=%t", err == nil, *item.ValidPayload)
+			}
+			_, err = contract.DecodeNetworkDiagnoseResult([]byte(item.Result))
+			if (err == nil) != *item.ValidResult {
+				t.Fatalf("result accept=%t expected=%t: %v", err == nil, *item.ValidResult, err)
+			}
+		})
 	}
 }

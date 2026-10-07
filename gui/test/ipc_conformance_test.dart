@@ -5,9 +5,91 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
-  test('fixture names exactly all eighteen owned v1 methods', () {
+  test('shared diagnosis metadata, selector and strict result parity', () {
+    final fixture = _fixture();
+    expect(fixture.keys.toSet(), {
+      'schemaVersion',
+      'enums',
+      'cases',
+      'networkDiagnosticCases',
+    });
+    final enums = fixture['enums'] as Map<String, dynamic>;
+    final expected = {
+      'networkSelectionBases': networkSelectionBases,
+      'networkDiagnosticStatuses': networkDiagnosticStatuses,
+      'networkUnsupportedReasons': networkUnsupportedReasons,
+      'networkProbeStatuses': networkProbeStatuses,
+      'networkSocketStates': networkSocketStates,
+    };
+    for (final entry in expected.entries) {
+      expect((enums[entry.key] as List).toSet(), entry.value);
+      expect(enums[entry.key], hasLength(entry.value.length));
+    }
+    final seen = <String>{};
+    final cases = fixture['networkDiagnosticCases'] as List;
+    expect(cases, isNotEmpty);
+    for (final raw in cases) {
+      final item = raw as Map<String, dynamic>;
+      expect(item.keys.toSet(), {
+        'name',
+        'payload',
+        'result',
+        'validPayload',
+        'validResult',
+      });
+      expect(item['name'], isA<String>());
+      expect(item['name'], isNotEmpty);
+      expect(seen.add(item['name'] as String), isTrue);
+      expect(item['payload'], isA<String>());
+      expect(item['result'], isA<String>());
+      expect(item['validPayload'], isA<bool>());
+      expect(item['validResult'], isA<bool>());
+      final payload = item['payload'] as String;
+      final result = item['result'] as String;
+      if (item['validPayload'] == true) {
+        expect(decodeNetworkDiagnosisPayload(payload), isNotEmpty);
+      } else {
+        expect(
+          () => decodeNetworkDiagnosisPayload(payload),
+          throwsA(isA<IpcProtocolException>()),
+          reason: item['name'] as String,
+        );
+      }
+      if (item['validResult'] == true) {
+        expect(decodeNetworkDiagnosis(result).status, isNotEmpty);
+      } else {
+        expect(
+          () => decodeNetworkDiagnosis(result),
+          throwsA(isA<IpcProtocolException>()),
+          reason: item['name'] as String,
+        );
+      }
+    }
+    final mainCase = (fixture['cases'] as List)
+        .cast<Map<String, dynamic>>()
+        .singleWhere((c) => c['method'] == 'network.diagnose');
+    final request = decodeBindingCheckedJson(
+      mainCase['request'] as String,
+    ) as Map<String, dynamic>;
+    expect(decodeNetworkDiagnosisPayload(jsonEncode(request['payload'])), {
+      'configurationId': 'fixture-configuration',
+      'probe': true,
+    });
+    final response = decodeBindingCheckedJson(
+      mainCase['successResponse'] as String,
+      preserveNetworkRunGeneration: true,
+    ) as Map<String, dynamic>;
+    expect(
+      decodeNetworkDiagnosisValue(response['result'])
+          .protocolSocket!
+          .runGeneration,
+      BigInt.parse('18446744073709551615'),
+    );
+  });
+
+  test('fixture names exactly all nineteen owned v1 methods', () {
     final cases = (_fixture()['cases'] as List).cast<Map<String, dynamic>>();
-    expect(cases, hasLength(18));
+    expect(cases, hasLength(19));
     expect(cases.map((c) => c['method']).toSet(), {
       'daemon.status',
       'daemon.stop',
@@ -27,6 +109,7 @@ void main() {
       'configuration.remove',
       'session.startConfiguration',
       'network.interfaces',
+      'network.diagnose',
     });
   });
   test(

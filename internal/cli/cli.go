@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/ipc/contract"
 )
 
 const commandUsage = "用法错误，请运行 sidraviactl help 查看帮助"
@@ -174,6 +175,7 @@ type commandDependencies struct {
 	authList          func() error
 	profileList       func() error
 	networkInterfaces func() error
+	networkDiagnose   func(contract.NetworkDiagnosePayload) error
 	configList        func() error
 	configShow        func(string) error
 	configCreate      func(configCreateOptions) error
@@ -199,6 +201,9 @@ func defaultCommandDependencies(identity clientbootstrap.Identity) commandDepend
 		authList:          func() error { return authList(identity) },
 		profileList:       func() error { return profileList(identity) },
 		networkInterfaces: func() error { return networkInterfaces(identity) },
+		networkDiagnose: func(request contract.NetworkDiagnosePayload) error {
+			return runNetworkDiagnose(defaultListDependencies(identity), request)
+		},
 		configList:        func() error { return configList(identity) },
 		configShow:        func(id string) error { return configShow(identity, id) },
 		configCreate:      func(options configCreateOptions) error { return configCreate(identity, options) },
@@ -264,7 +269,7 @@ func usageErrorFor(args []string) error {
 			"daemon":  {"status": true, "start": true, "stop": true, "restart": true},
 			"auth":    {"list": true, "start": true, "status": true, "stop": true, "restart": true, "remove": true},
 			"profile": {"list": true},
-			"network": {"interfaces": true},
+			"network": {"interfaces": true, "diagnose": true},
 			"config":  {"list": true, "show": true, "create": true, "update": true, "set-password": true, "remove": true},
 		}
 		if valid[path][args[1]] {
@@ -381,7 +386,7 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	}
 	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
 	network := &cobra.Command{Use: "network", Short: "查看网络观察", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return wrapCommandOperation(renderHelpCompletion(cmd)) }}
-	network.AddCommand(newListCommand("interfaces", "列出已观察网卡", deps.networkInterfaces))
+	network.AddCommand(newListCommand("interfaces", "列出已观察网卡", deps.networkInterfaces), newNetworkDiagnoseCommand(deps))
 	configCommand := newConfigCommand(deps)
 
 	bootstrap := deps.guiBootstrap
@@ -444,7 +449,8 @@ type helpNode struct {
 // path. It is the sole source of CLI help text; Cobra’s generated defaults
 // are never shown.
 var helpSpecs = map[string]helpNode{
-	"sidraviactl network":            {description: "只读查看已有 daemon 接受的网络观察。", usage: []string{"sidraviactl network <command>"}, children: []helpChild{{"interfaces", "列出已观察网卡"}}},
+	"sidraviactl network":            {description: "只读查看已有 daemon 接受的网络观察。", usage: []string{"sidraviactl network <command>"}, children: []helpChild{{"interfaces", "列出已观察网卡"}, {"diagnose", "诊断受信认证目标"}}},
+	"sidraviactl network diagnose":   {description: "只读诊断已有配置或 Session 的受信认证目标；只连接已有 headless daemon。IP 回显不证明认证成功或 Internet 可用。", usage: []string{"sidraviactl network diagnose (--config ID | --session ID) [--probe]"}, options: []string{"--config ID    已有配置，与 --session 二选一", "--session ID   当前 daemon 保留的 Session", "--probe        明确请求一次有界 IP 回显"}, examples: []string{"sidraviactl network diagnose --config campus", "sidraviactl network diagnose --session session-id --probe"}},
 	"sidraviactl network interfaces": {description: "列出网卡与 IPv4 候选；使用时重新核对绑定。", usage: []string{"sidraviactl network interfaces"}, examples: []string{"sidraviactl network interfaces"}},
 	"sidraviactl": {
 		description: "Sidravia 命令行客户端。",

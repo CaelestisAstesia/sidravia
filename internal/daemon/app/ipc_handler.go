@@ -54,7 +54,7 @@ func IPCHandler(
 			contract.MethodConfigurationSetPassword,
 			contract.MethodConfigurationRemove:
 			return configurations(ctx, method, payload)
-		case contract.MethodNetworkInterfaces:
+		case contract.MethodNetworkInterfaces, contract.MethodNetworkDiagnose:
 			return network(ctx, method, payload)
 		case contract.MethodProfileList:
 			return profiles(ctx, method, payload)

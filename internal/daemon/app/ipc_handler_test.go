@@ -362,3 +362,15 @@ func ipcStartPayload(t *testing.T, password, profileID string) []byte {
 	}
 	return data
 }
+
+func TestFixedIPCDispatchRecognizesOnlyTrustedNetworkDiagnosis(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := IPCHandler(setup.application, "v", "b", launchcontract.Headless())
+	if _, rpc := handler(context.Background(), contract.MethodNetworkDiagnose, []byte(`{"configurationId":"missing"}`)); rpc == nil || rpc.Code != contract.ErrorCodeConfigurationNotFound {
+		t.Fatal("new fixed method not routed")
+	}
+	if _, rpc := handler(context.Background(), "network.diagnose.other", []byte(`{}`)); rpc == nil || rpc.Code != contract.ErrorCodeUnknownMethod {
+		t.Fatal("network prefix dispatch broadened")
+	}
+}
