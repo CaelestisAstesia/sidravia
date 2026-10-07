@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"testing"
 	"time"
@@ -315,4 +316,48 @@ func TestSupervisorFailedStartAfterSnapshotLeavesNoResidual(t *testing.T) {
 		t.Errorf("initial binding InterfaceID = %q, want iface-1", initial.SelectedNetworkBinding.InterfaceID)
 	}
 	_ = id
+}
+
+func TestLatestSystemNetworkSnapshotAuthorityAndIsolation(t *testing.T) {
+	sup := New(testSupervisorDeps())
+	defer func() { _ = sup.Close(); sup.Wait() }()
+	ctx := context.Background()
+	if got, available, err := sup.LatestSystemNetworkSnapshot(ctx); err != nil || available || got.Revision != 0 {
+		t.Fatalf("initial read = %v %t %v", got, available, err)
+	}
+	if err := sup.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshotWithInterface(5, "accepted", "192.0.2.5")); err != nil {
+		t.Fatal(err)
+	}
+	for _, snapshot := range []environment.Snapshot{testNetworkSnapshotWithInterface(5, "equal-rejected", "192.0.2.6"), testNetworkSnapshotWithInterface(4, "old-rejected", "192.0.2.4")} {
+		if err := sup.ApplySystemNetworkSnapshot(ctx, snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, available, err := sup.LatestSystemNetworkSnapshot(ctx)
+	if err != nil || !available || got.Revision != 5 || got.ObservedAt != time.Unix(5, 0) || got.Interfaces()[0].InterfaceID != "accepted" {
+		t.Fatalf("authority = %v %t %v", got, available, err)
+	}
+	rows := got.Interfaces()
+	rows[0].InterfaceID = "mutated"
+	assignments := rows[0].IPv4AddressAssignments()
+	assignments[0].Address = netip.MustParseAddr("192.0.2.99")
+	got.Revision = 99
+	got.ObservedAt = time.Time{}
+	again, _, err := sup.LatestSystemNetworkSnapshot(ctx)
+	if err != nil || again.Revision != 5 || again.Interfaces()[0].InterfaceID != "accepted" || again.Interfaces()[0].IPv4AddressAssignments()[0].Address.String() != "192.0.2.5" {
+		t.Fatal("caller mutated accepted facts")
+	}
+	if _, _, err := sup.LatestSystemNetworkSnapshot(nil); err == nil {
+		t.Fatal("nil context accepted")
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, _, err := sup.LatestSystemNetworkSnapshot(cancelled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancel cause = %v", err)
+	}
+	_ = sup.Close()
+	sup.Wait()
+	if _, _, err := sup.LatestSystemNetworkSnapshot(ctx); err == nil {
+		t.Fatal("closed Supervisor returned facts")
+	}
 }

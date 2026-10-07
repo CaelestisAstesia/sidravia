@@ -173,6 +173,7 @@ type commandDependencies struct {
 	authRemove        func(string) error
 	authList          func() error
 	profileList       func() error
+	networkInterfaces func() error
 	configList        func() error
 	configShow        func(string) error
 	configCreate      func(configCreateOptions) error
@@ -197,6 +198,7 @@ func defaultCommandDependencies(identity clientbootstrap.Identity) commandDepend
 		authRemove:        func(sessionID string) error { return authRemove(identity, sessionID) },
 		authList:          func() error { return authList(identity) },
 		profileList:       func() error { return profileList(identity) },
+		networkInterfaces: func() error { return networkInterfaces(identity) },
 		configList:        func() error { return configList(identity) },
 		configShow:        func(id string) error { return configShow(identity, id) },
 		configCreate:      func(options configCreateOptions) error { return configCreate(identity, options) },
@@ -253,7 +255,7 @@ func usageErrorFor(args []string) error {
 	path := ""
 	if len(args) > 0 {
 		switch args[0] {
-		case "daemon", "auth", "profile", "config":
+		case "daemon", "auth", "profile", "config", "network":
 			path = args[0]
 		}
 	}
@@ -262,6 +264,7 @@ func usageErrorFor(args []string) error {
 			"daemon":  {"status": true, "start": true, "stop": true, "restart": true},
 			"auth":    {"list": true, "start": true, "status": true, "stop": true, "restart": true, "remove": true},
 			"profile": {"list": true},
+			"network": {"interfaces": true},
 			"config":  {"list": true, "show": true, "create": true, "update": true, "set-password": true, "remove": true},
 		}
 		if valid[path][args[1]] {
@@ -377,13 +380,15 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		},
 	}
 	profile.AddCommand(newListCommand("list", "列出机构 Profile", deps.profileList))
+	network := &cobra.Command{Use: "network", Short: "查看网络观察", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return wrapCommandOperation(renderHelpCompletion(cmd)) }}
+	network.AddCommand(newListCommand("interfaces", "列出已观察网卡", deps.networkInterfaces))
 	configCommand := newConfigCommand(deps)
 
 	bootstrap := deps.guiBootstrap
 	if bootstrap == nil {
 		bootstrap = defaultGUIBootstrap
 	}
-	root.AddCommand(daemon, auth, profile, configCommand, retiredStatus, newGUIBootstrapCommand(deps.identity, output, bootstrap))
+	root.AddCommand(daemon, auth, profile, network, configCommand, retiredStatus, newGUIBootstrapCommand(deps.identity, output, bootstrap))
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := newPresentation(c.OutOrStdout())
@@ -439,6 +444,8 @@ type helpNode struct {
 // path. It is the sole source of CLI help text; Cobra’s generated defaults
 // are never shown.
 var helpSpecs = map[string]helpNode{
+	"sidraviactl network":            {description: "只读查看已有 daemon 接受的网络观察。", usage: []string{"sidraviactl network <command>"}, children: []helpChild{{"interfaces", "列出已观察网卡"}}},
+	"sidraviactl network interfaces": {description: "列出网卡与 IPv4 候选；使用时重新核对绑定。", usage: []string{"sidraviactl network interfaces"}, examples: []string{"sidraviactl network interfaces"}},
 	"sidraviactl": {
 		description: "Sidravia 命令行客户端。",
 		usage:       []string{"sidraviactl <command>"},
@@ -446,6 +453,7 @@ var helpSpecs = map[string]helpNode{
 			{"daemon", "管理本地 daemon 进程"},
 			{"auth", "管理认证 Session"},
 			{"profile", "查看机构 Profile"},
+			{"network", "查看网络观察"},
 			{"config", "管理认证配置"},
 		},
 		examples: []string{

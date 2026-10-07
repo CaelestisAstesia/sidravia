@@ -172,9 +172,14 @@ class NetworkBindingPolicy {
 
 // Scan raw JSON before maps erase duplicates. Object keys are decoded so
 // escaped and literal aliases coincide; each object owns its own key set.
-Object? decodeBindingCheckedJson(String source) {
+Object? decodeBindingCheckedJson(
+  String source, {
+  bool preserveNetworkRevision = false,
+}) {
   try {
     var i = 0;
+    var depth = 0;
+    final revisions = <int, String>{};
     void whitespace() {
       while (i < source.length &&
           const [9, 10, 13, 32].contains(source.codeUnitAt(i))) {
@@ -206,24 +211,36 @@ Object? decodeBindingCheckedJson(String source) {
       if (i >= source.length) throw const IpcProtocolException();
       if (source[i] == '{') {
         i++;
+        depth++;
         whitespace();
         final keys = <String>{};
         if (i < source.length && source[i] == '}') {
           i++;
+          depth--;
           return;
         }
         while (true) {
           whitespace();
-          if (!keys.add(string())) throw const IpcProtocolException();
+          final key = string();
+          if (!keys.add(key)) throw const IpcProtocolException();
           whitespace();
           if (i >= source.length || source[i++] != ':') {
             throw const IpcProtocolException();
           }
+          whitespace();
+          final start = i;
+          final objectDepth = depth;
           value();
+          if (preserveNetworkRevision && key == 'revision') {
+            revisions[objectDepth] = source.substring(start, i);
+          }
           whitespace();
           if (i >= source.length) throw const IpcProtocolException();
           final next = source[i++];
-          if (next == '}') return;
+          if (next == '}') {
+            depth--;
+            return;
+          }
           if (next != ',') throw const IpcProtocolException();
         }
       }
@@ -258,7 +275,23 @@ Object? decodeBindingCheckedJson(String source) {
     value();
     whitespace();
     if (i != source.length) throw const IpcProtocolException();
-    return jsonDecode(source);
+    final decoded = jsonDecode(source);
+    if (preserveNetworkRevision &&
+        decoded is Map<String, dynamic> &&
+        decoded['ok'] != false) {
+      final envelope = decoded['result'];
+      final target = envelope is Map<String, dynamic> ? envelope : decoded;
+      final token = revisions[envelope is Map<String, dynamic> ? 2 : 1];
+      if (token == null || !RegExp(r'^(0|[1-9][0-9]*)$').hasMatch(token)) {
+        throw const IpcProtocolException();
+      }
+      final revision = BigInt.parse(token);
+      if (revision > BigInt.parse('18446744073709551615')) {
+        throw const IpcProtocolException();
+      }
+      target['revision'] = revision;
+    }
+    return decoded;
   } on FormatException {
     throw const IpcProtocolException();
   }
@@ -686,4 +719,176 @@ String _protection(Object? value) {
     throw const IpcProtocolException();
   }
   return text;
+}
+
+// These immutable wire models are an optional query capability; the GUI does
+// not fetch them or own another network cache.
+class NetworkInterfacesSnapshot {
+  NetworkInterfacesSnapshot({
+    required this.available,
+    required this.revision,
+    required List<NetworkInterfaceRow> interfaces,
+    this.observedAt,
+  }) : interfaces = List.unmodifiable(interfaces);
+  final bool available;
+  final BigInt revision;
+  final String? observedAt;
+  final List<NetworkInterfaceRow> interfaces;
+}
+
+class NetworkInterfaceRow {
+  NetworkInterfaceRow({
+    required this.interfaceId,
+    required this.displayName,
+    required this.operationalState,
+    required this.physicalMedium,
+    required this.hardwareBacked,
+    required this.physicalConnectorPresent,
+    required this.filterInterface,
+    required this.endpointInterface,
+    required this.addressAssignmentMethod,
+    required List<NetworkIPv4Assignment> ipv4Assignments,
+  }) : ipv4Assignments = List.unmodifiable(ipv4Assignments);
+  final String interfaceId,
+      displayName,
+      operationalState,
+      physicalMedium,
+      addressAssignmentMethod;
+  final bool hardwareBacked,
+      physicalConnectorPresent,
+      filterInterface,
+      endpointInterface;
+  final List<NetworkIPv4Assignment> ipv4Assignments;
+}
+
+class NetworkIPv4Assignment {
+  const NetworkIPv4Assignment({
+    required this.address,
+    required this.prefixLength,
+    required this.automaticCandidate,
+    required this.explicitBindable,
+  });
+  final String address;
+  final int prefixLength;
+  final bool automaticCandidate, explicitBindable;
+}
+
+NetworkInterfacesSnapshot decodeNetworkInterfaces(String source) =>
+    decodeNetworkInterfacesValue(
+      decodeBindingCheckedJson(source, preserveNetworkRevision: true),
+    );
+
+NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
+  if (raw is! Map<String, dynamic> || raw['available'] is! bool) {
+    throw const IpcProtocolException();
+  }
+  final available = raw['available'] as bool;
+  final root = _object(raw, {
+    'available',
+    'revision',
+    'interfaces',
+    if (available) 'observedAt',
+  });
+  final revision = root['revision'];
+  if (revision is! BigInt ||
+      (available ? revision <= BigInt.zero : revision != BigInt.zero)) {
+    throw const IpcProtocolException();
+  }
+  final rows = _list(root['interfaces']).map((raw) {
+    final row = _object(raw, const {
+      'interfaceId',
+      'displayName',
+      'operationalState',
+      'physicalMedium',
+      'hardwareBacked',
+      'physicalConnectorPresent',
+      'filterInterface',
+      'endpointInterface',
+      'addressAssignmentMethod',
+      'ipv4Assignments',
+    });
+    String enumValue(String key, Set<String> allowed) {
+      final value = _text(row[key]);
+      if (!allowed.contains(value)) throw const IpcProtocolException();
+      return value;
+    }
+
+    final id = _text(row['interfaceId']);
+    final name = _optionalText(row['displayName']);
+    if ([
+      id,
+      name,
+    ].any((text) => text.runes.any((r) => r >= 0xd800 && r <= 0xdfff))) {
+      throw const IpcProtocolException();
+    }
+    return NetworkInterfaceRow(
+      interfaceId: id,
+      displayName: name,
+      operationalState: enumValue('operationalState', const {'up', 'down'}),
+      physicalMedium: enumValue('physicalMedium', const {
+        'wired',
+        'wireless',
+        'unknown',
+      }),
+      addressAssignmentMethod: enumValue('addressAssignmentMethod', const {
+        'unknown',
+        'static',
+        'dhcp',
+      }),
+      hardwareBacked: _bool(row['hardwareBacked']),
+      physicalConnectorPresent: _bool(row['physicalConnectorPresent']),
+      filterInterface: _bool(row['filterInterface']),
+      endpointInterface: _bool(row['endpointInterface']),
+      ipv4Assignments: _list(row['ipv4Assignments']).map((raw) {
+        final address = _object(raw, const {
+          'address',
+          'prefixLength',
+          'automaticCandidate',
+          'explicitBindable',
+        });
+        final text = _text(address['address']);
+        final parts = text.split('.');
+        if (parts.length != 4 ||
+            parts.any((p) {
+              final n = int.tryParse(p);
+              return n == null || n < 0 || n > 255 || n.toString() != p;
+            })) {
+          throw const IpcProtocolException();
+        }
+        final prefix = address['prefixLength'];
+        if (prefix is! int || prefix < 0 || prefix > 32) {
+          throw const IpcProtocolException();
+        }
+        return NetworkIPv4Assignment(
+          address: text,
+          prefixLength: prefix,
+          automaticCandidate: _bool(address['automaticCandidate']),
+          explicitBindable: _bool(address['explicitBindable']),
+        );
+      }).toList(),
+    );
+  }).toList();
+  String? observedAt;
+  if (available) {
+    observedAt = _text(root['observedAt']);
+    if (!RegExp(
+      r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$',
+    ).hasMatch(observedAt)) {
+      throw const IpcProtocolException();
+    }
+    final observed = _time(observedAt);
+    // Reject the zero Go observation, while retaining nonzero nanoseconds.
+    if (observed.isAtSameMomentAs(DateTime.utc(1)) &&
+        !RegExp(r'\.\d*[1-9]\d*').hasMatch(observedAt)) {
+      throw const IpcProtocolException();
+    }
+  } else if (rows.isNotEmpty) {
+    throw const IpcProtocolException();
+  }
+  return NetworkInterfacesSnapshot(
+    available: available,
+    revision: revision,
+    interfaces: rows,
+    observedAt: observedAt,
+  );
 }

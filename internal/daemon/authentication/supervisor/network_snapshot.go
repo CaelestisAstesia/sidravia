@@ -104,3 +104,26 @@ func (s *Supervisor) deliverNetworkSnapshot(
 	}
 	return nil
 }
+
+// LatestSystemNetworkSnapshot reads the last accepted facts, without observing
+// the OS again. Availability distinguishes no observation from an empty one.
+func (s *Supervisor) LatestSystemNetworkSnapshot(ctx context.Context) (environment.Snapshot, bool, error) {
+	if ctx == nil {
+		return environment.Snapshot{}, false, errors.New("supervisor: context is required for reading network snapshot")
+	}
+	if err := ctx.Err(); err != nil {
+		return environment.Snapshot{}, false, fmt.Errorf("supervisor: read network snapshot: %w", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed.Load() {
+		return environment.Snapshot{}, false, errors.New("supervisor is closed")
+	}
+	if err := ctx.Err(); err != nil {
+		return environment.Snapshot{}, false, fmt.Errorf("supervisor: read network snapshot: %w", err)
+	}
+	if !s.hasLatestNetwork {
+		return environment.Snapshot{}, false, nil
+	}
+	return environment.NewSnapshot(s.latestNetwork.Revision, s.latestNetwork.ObservedAt, s.latestNetwork.Interfaces()), true, nil
+}

@@ -100,15 +100,8 @@ type bindingCandidate struct {
 func availableBindingCandidates(snapshot environment.Snapshot) []bindingCandidate {
 	var candidates []bindingCandidate
 	for _, networkInterface := range snapshot.Interfaces() {
-		if networkInterface.OperationalState != environment.OperationalStateUp ||
-			!networkInterface.HardwareBacked ||
-			!networkInterface.PhysicalConnectorPresent ||
-			networkInterface.FilterInterface ||
-			networkInterface.EndpointInterface {
-			continue
-		}
 		for _, assignment := range networkInterface.IPv4AddressAssignments() {
-			if assignment.Address.IsLoopback() {
+			if !IsAutomaticBindingCandidate(networkInterface, assignment) {
 				continue
 			}
 			candidates = append(candidates, bindingCandidate{
@@ -201,4 +194,11 @@ func newPolicyBindingSelector(policy NetworkBindingPolicy) *automaticBindingSele
 	selector := newAutomaticBindingSelector()
 	selector.policy = policy
 	return selector
+}
+
+// IsAutomaticBindingCandidate is the shared automatic selection eligibility
+// rule. The selector still owns availability history and candidate ordering.
+func IsAutomaticBindingCandidate(iface environment.NetworkInterface, assignment environment.IPv4AddressAssignment) bool {
+	return iface.OperationalState == environment.OperationalStateUp &&
+		iface.HardwareBacked && iface.PhysicalConnectorPresent && !iface.FilterInterface && !iface.EndpointInterface && !assignment.Address.IsLoopback()
 }

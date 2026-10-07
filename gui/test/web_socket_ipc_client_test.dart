@@ -7,6 +7,78 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 
 void main() {
+  test('network optional client sends exact read-only request and keeps uint64 token', () async {
+    final requests = <Map<String, dynamic>>[];
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        requests.add(request);
+        final result = jsonEncode(_fixtureResult('network.interfaces'))
+            .replaceFirst('"revision":1', '"revision":18446744073709551615');
+        socket.add(
+          '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$result}',
+        );
+      });
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    final snapshot = await client.networkInterfaces();
+    expect(snapshot.revision, BigInt.parse('18446744073709551615'));
+    expect(requests.single['method'], 'network.interfaces');
+    expect(requests.single['payload'], isEmpty);
+    expect(
+      snapshot.interfaces.single.ipv4Assignments.single.explicitBindable,
+      isTrue,
+    );
+    await client.close();
+  });
+  test('network malformed raw result invalidates socket and safe request failures propagate', () async {
+    for (final duplicate in [true, false]) {
+      var calls = 0;
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          calls++;
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          if (duplicate) {
+            final result = jsonEncode(
+              _fixtureResult('network.interfaces'),
+            ).replaceFirst('"revision":1', r'"revision":1,"\u0072evision":1');
+            socket.add(
+              '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$result}',
+            );
+          } else {
+            socket.add(
+              jsonEncode({
+                'kind': 'response',
+                'id': request['id'],
+                'ok': false,
+                'error': {
+                  'code': 'internal_error',
+                  'message': 'network query failed',
+                },
+              }),
+            );
+          }
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await expectLater(
+        client.networkInterfaces(),
+        throwsA(
+          duplicate ? isA<IpcProtocolException>() : isA<IpcRequestFailure>(),
+        ),
+      );
+      if (duplicate) {
+        await expectLater(
+          client.networkInterfaces(),
+          throwsA(isA<IpcProtocolException>()),
+        );
+        expect(calls, 1);
+      }
+      await client.close();
+    }
+  });
   for (final listing in [false, true]) {
     test('raw WebSocket binding duplicate rejected listing=$listing', () async {
       final server = await _server((socket, _) {

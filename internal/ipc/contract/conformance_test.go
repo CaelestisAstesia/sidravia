@@ -50,6 +50,7 @@ func TestV1ConformanceFixture(t *testing.T) {
 
 	expectedMethods := map[string]struct{}{
 		contract.MethodDaemonStatus:              {},
+		contract.MethodNetworkInterfaces:         {},
 		contract.MethodDaemonStop:                {},
 		contract.MethodSessionStartOneShot:       {},
 		contract.MethodSessionStop:               {},
@@ -166,7 +167,7 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 	t.Helper()
 	var err error
 	switch method {
-	case contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList, contract.MethodConfigurationList:
+	case contract.MethodNetworkInterfaces, contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList, contract.MethodConfigurationList:
 		err = contract.DecodeEmptyPayload(payload)
 	case contract.MethodSessionStartOneShot:
 		_, err = contract.DecodeSessionStartOneShotPayload(payload)
@@ -208,6 +209,12 @@ func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Requ
 	requireObjectKeys(t, []byte(item.SuccessResponse), "kind", "id", "ok", "result")
 
 	switch item.Method {
+	case contract.MethodNetworkInterfaces:
+		result, err := contract.DecodeNetworkInterfacesResult(response.Result)
+		if err != nil || !result.Available || result.Revision != 1 || len(result.Interfaces) != 1 {
+			t.Fatal("network query fixture invalid")
+		}
+
 	case contract.MethodDaemonStatus:
 		var result contract.StatusResult
 		decodeStrictJSON(t, response.Result, &result)
@@ -323,6 +330,8 @@ func assertErrorResponse(t *testing.T, item fixtureCase, requestID string) {
 
 func reachableError(method string) contract.Error {
 	switch method {
+	case contract.MethodNetworkInterfaces:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
 	case contract.MethodDaemonStatus, contract.MethodDaemonStop:
 		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed daemon payload"}
 	case contract.MethodSessionStartOneShot:

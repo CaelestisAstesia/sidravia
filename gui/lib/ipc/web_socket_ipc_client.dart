@@ -6,7 +6,8 @@ import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
-class WebSocketIpcClient implements SidraviaDesktopClient {
+class WebSocketIpcClient
+    implements SidraviaDesktopClient, SidraviaNetworkClient {
   WebSocketIpcClient._(
     this._socket, {
     Duration requestTimeout = _requestTimeout,
@@ -58,6 +59,14 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
       // The connection failure remains the stable public failure.
     }
   }
+
+  @override
+  Future<NetworkInterfacesSnapshot> networkInterfaces() async => _call(
+    'network.interfaces',
+    const {},
+    decodeNetworkInterfaces,
+    decodeValue: decodeNetworkInterfacesValue,
+  );
 
   @override
   Future<DaemonStatus> daemonStatus() async =>
@@ -194,8 +203,9 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
   Future<T> _call<T>(
     String method,
     Map<String, Object> payload,
-    T Function(String result) decode,
-  ) async {
+    T Function(String result) decode, {
+    T Function(Object? result)? decodeValue,
+  }) async {
     if (_closed || _inFlight) throw const IpcProtocolException();
     _inFlight = true;
     try {
@@ -217,7 +227,10 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
           utf8.encode(message).length > _maximumMessageBytes) {
         throw const IpcProtocolException();
       }
-      final raw = decodeBindingCheckedJson(message);
+      final raw = decodeBindingCheckedJson(
+        message,
+        preserveNetworkRevision: method == 'network.interfaces',
+      );
       if (raw is! Map<String, dynamic> ||
           raw['kind'] != 'response' ||
           raw['id'] != id ||
@@ -234,7 +247,9 @@ class WebSocketIpcClient implements SidraviaDesktopClient {
         if (envelope['result'] is! Map<String, dynamic>) {
           throw const IpcProtocolException();
         }
-        return decode(jsonEncode(envelope['result']));
+        return decodeValue != null
+            ? decodeValue(raw['result'])
+            : decode(jsonEncode(envelope['result']));
       }
       final envelope = decodeObject(message, const {
         'kind',

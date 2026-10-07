@@ -54,3 +54,8 @@ abstract interface class SidraviaIpcClient {
 abstract interface class SidraviaDesktopClient implements SidraviaIpcClient {
   Future<DaemonStopResult> daemonStop();
 }
+
+/// Optional discovery; preview clients and the shared UI surface stay unchanged.
+abstract interface class SidraviaNetworkClient {
+  Future<NetworkInterfacesSnapshot> networkInterfaces();
+}

@@ -29,6 +29,7 @@ func IPCHandler(
 	sessions := SessionHandler(application)
 	profiles := ProfileHandler(application)
 	configurations := ConfigurationHandler(application)
+	network := NetworkHandler(application)
 
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		switch method {
@@ -53,6 +54,8 @@ func IPCHandler(
 			contract.MethodConfigurationSetPassword,
 			contract.MethodConfigurationRemove:
 			return configurations(ctx, method, payload)
+		case contract.MethodNetworkInterfaces:
+			return network(ctx, method, payload)
 		case contract.MethodProfileList:
 			return profiles(ctx, method, payload)
 		default:

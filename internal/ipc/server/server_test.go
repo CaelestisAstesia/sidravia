@@ -835,3 +835,14 @@ func TestShutdownClosesAdmissionGateBeforeLateUpgrade(t *testing.T) {
 		t.Fatalf("late upgrade entered handler %d times", got)
 	}
 }
+
+func TestNormalizeOnlyExactNetworkQuery(t *testing.T) {
+	if normalizeMethod(contract.MethodNetworkInterfaces) != contract.MethodNetworkInterfaces {
+		t.Fatal("network query missing from log allowlist")
+	}
+	for _, method := range []string{"network.interfaces.private", "network.private-interface-id", "NETWORK.INTERFACES"} {
+		if normalizeMethod(method) != methodUnknown {
+			t.Fatal("untrusted network method logged")
+		}
+	}
+}

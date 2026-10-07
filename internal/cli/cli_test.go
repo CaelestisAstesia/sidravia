@@ -837,3 +837,34 @@ func TestDefaultCommandDependenciesCaptureOneIdentityForAllOperations(t *testing
 		}
 	}
 }
+
+func TestNetworkCommandAndHelpOnlyDispatchQuery(t *testing.T) {
+	calls := 0
+	var output bytes.Buffer
+	deps := commandDependencies{networkInterfaces: func() error { calls++; return nil }, output: &output}
+	if err := runCommand([]string{"network", "interfaces"}, deps); err != nil || calls != 1 {
+		t.Fatalf("query dispatch = %d %v", calls, err)
+	}
+	var leafHelp string
+	for _, args := range [][]string{{"network"}, {"help", "network"}, {"network", "--help"}, {"network", "-h"}, {"help", "network", "interfaces"}, {"network", "interfaces", "--help"}, {"network", "interfaces", "-h"}} {
+		output.Reset()
+		if err := runCommand(args, deps); err != nil {
+			t.Fatalf("%q help: %v", args, err)
+		}
+		if !strings.Contains(output.String(), "用法：") || calls != 1 {
+			t.Fatal("help dispatched query or lacked usage")
+		}
+		if strings.Contains(output.String(), "sidraviactl network interfaces\n") {
+			if leafHelp == "" {
+				leafHelp = output.String()
+			} else if leafHelp != output.String() {
+				t.Fatal("leaf help differs")
+			}
+		}
+	}
+	for _, args := range [][]string{{"network", "interfaces", "--json"}, {"network", "interfaces", "extra"}} {
+		if err := runCommand(args, deps); err == nil || calls != 1 {
+			t.Fatal("invalid query invocation dispatched")
+		}
+	}
+}

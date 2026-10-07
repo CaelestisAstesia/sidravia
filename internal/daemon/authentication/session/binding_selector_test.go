@@ -637,3 +637,31 @@ func TestAutomaticBindingSelectorIgnoresNewerPhysicalLoopbackOnly(t *testing.T) 
 	}
 	assertBinding(t, binding, "ordinary", "192.0.2.10", 24)
 }
+
+func TestSharedAutomaticCandidateMatchesActualSelector(t *testing.T) {
+	for _, test := range []struct {
+		name                                  string
+		state                                 environment.OperationalState
+		hardware, connector, filter, endpoint bool
+		address                               string
+		eligible                              bool
+	}{
+		{"physical", environment.OperationalStateUp, true, true, false, false, "192.0.2.1", true},
+		{"physical-loopback", environment.OperationalStateUp, true, true, false, false, "127.0.0.1", false},
+		{"software", environment.OperationalStateUp, false, false, false, false, "192.0.2.1", false},
+		{"down", environment.OperationalStateDown, true, true, false, false, "192.0.2.1", false},
+		{"no-connector", environment.OperationalStateUp, true, false, false, false, "192.0.2.1", false},
+		{"filter", environment.OperationalStateUp, true, true, true, false, "192.0.2.1", false},
+		{"endpoint", environment.OperationalStateUp, true, true, false, true, "192.0.2.1", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			assignment := environment.IPv4AddressAssignment{Address: netip.MustParseAddr(test.address), PrefixLength: 24}
+			iface := newNetworkInterface(t, environment.NetworkInterfaceFacts{InterfaceID: environment.InterfaceID(test.name), OperationalState: test.state, PhysicalMedium: environment.PhysicalMediumUnknown, HardwareBacked: test.hardware, PhysicalConnectorPresent: test.connector, FilterInterface: test.filter, EndpointInterface: test.endpoint, IPv4AddressAssignments: []environment.IPv4AddressAssignment{assignment}})
+			eligible := IsAutomaticBindingCandidate(iface, assignment)
+			_, selected := newAutomaticBindingSelector().Select(snapshot(t, 1, iface))
+			if eligible != test.eligible || selected != eligible {
+				t.Fatalf("predicate/selector = %t/%t, want %t", eligible, selected, test.eligible)
+			}
+		})
+	}
+}

@@ -5,6 +5,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
+  test('fixture names exactly all eighteen owned v1 methods', () {
+    final cases = (_fixture()['cases'] as List).cast<Map<String, dynamic>>();
+    expect(cases, hasLength(18));
+    expect(cases.map((c) => c['method']).toSet(), {
+      'daemon.status',
+      'daemon.stop',
+      'session.startOneShot',
+      'session.stop',
+      'session.ensureRunning',
+      'session.restart',
+      'session.remove',
+      'session.get',
+      'session.list',
+      'profile.list',
+      'configuration.list',
+      'configuration.get',
+      'configuration.create',
+      'configuration.update',
+      'configuration.setPassword',
+      'configuration.remove',
+      'session.startConfiguration',
+      'network.interfaces',
+    });
+  });
   test(
     'all legal Session states and intents decode; unknown or missing reject',
     () {
@@ -40,7 +64,7 @@ void main() {
     },
   );
 
-  test('consumes all four read-only IPC fixture examples', () {
+  test('consumes all five read-only IPC fixture examples', () {
     final fixture = jsonDecode(
       File('../internal/ipc/contract/testdata/v1/conformance.json')
           .readAsStringSync(),
@@ -54,10 +78,11 @@ void main() {
             'profile.list',
             'configuration.list',
             'session.list',
+            'network.interfaces',
           }.contains(value['method']),
         )
         .toList(growable: false);
-    expect(cases.map((value) => value['method']).toSet(), hasLength(4));
+    expect(cases.map((value) => value['method']).toSet(), hasLength(5));
 
     for (final value in cases) {
       final response = jsonDecode(
@@ -73,6 +98,16 @@ void main() {
           expect(decodeConfigurations(result), isEmpty);
         case 'session.list':
           expect(decodeSessions(result), isEmpty);
+        case 'network.interfaces':
+          expect(
+            decodeNetworkInterfaces(result)
+                .interfaces
+                .single
+                .ipv4Assignments
+                .single
+                .explicitBindable,
+            isTrue,
+          );
       }
     }
   });
@@ -275,6 +310,7 @@ List<Map<String, dynamic>> _readOnlyCases(Map<String, dynamic> fixture) =>
             'profile.list',
             'configuration.list',
             'session.list',
+            'network.interfaces',
           }.contains(value['method']),
         )
         .toList(growable: false);
