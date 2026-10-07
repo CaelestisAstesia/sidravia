@@ -6,6 +6,23 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('export useful facts survive typed strict decoding', () {
+    final value = decodeDiagnosticExport(
+      r'{"schemaVersion":1,"generatedAt":"2026-10-07T01:02:03Z","productVersion":"v","buildId":"b","operatingSystem":"windows","architecture":"amd64","network":{"available":true,"interfaceCount":1,"ipv4AssignmentCount":2,"upInterfaceCount":1,"automaticCandidateCount":2,"explicitBindableCount":0},"catalog":{"storageProtection":"protected","totalConfigurations":2,"autoLoginConfigurations":0,"autoReconnectConfigurations":1,"automaticBindingConfigurations":2,"explicitBindingConfigurations":0,"availableConfigurations":1,"profileUnavailableConfigurations":0,"protocolUnavailableConfigurations":0,"overrideInvalidConfigurations":1},"sessions":{"totalCount":1,"truncated":false,"items":[{"state":"stopping","intent":"suspend_authentication","reasonCode":"protocol_run_failed","selectedBinding":true,"protocolSocketState":"close_unconfirmed","failureCategory":"network_io_failure","recoveryRecommendation":"retry_after_standard_delay","cleanupRequired":true}]}}',
+    );
+    expect(value.network.upInterfaceCount, 1);
+    expect(value.network.automaticCandidateCount, 2);
+    expect(value.network.explicitBindableCount, 0);
+    expect(value.catalog.availableConfigurations, 1);
+    expect(value.catalog.overrideInvalidConfigurations, 1);
+    expect(value.sessions.items.single.failureCategory, 'network_io_failure');
+    expect(
+      value.sessions.items.single.recoveryRecommendation,
+      'retry_after_standard_delay',
+    );
+    expect(value.sessions.items.single.cleanupRequired, isTrue);
+    expect(() => value.sessions.items.clear(), throwsUnsupportedError);
+  });
   test('export unsigned raw mode is opt in and typed items immutable', () {
     expect(decodeBindingCheckedJson('{"old":1e0}'), {'old': 1.0});
     for (final token in ['-0', '0.0', '0e0']) {
@@ -33,6 +50,9 @@ void main() {
         reasonCode: 'other',
         selectedBinding: false,
         protocolSocketState: 'other',
+        failureCategory: 'other',
+        recoveryRecommendation: 'other',
+        cleanupRequired: false,
       ),
     );
     expect(sessions.items, isEmpty);

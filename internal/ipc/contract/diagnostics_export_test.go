@@ -52,3 +52,18 @@ func TestDiagnosticExportRawUnicodeAndValidatedMarshal(t *testing.T) {
 		t.Fatal("unexpected allowlist")
 	}
 }
+
+func TestDiagnosticExportMaximumRowsWithUsefulSafeCategories(t *testing.T) {
+	value := DiagnosticsExportResult{SchemaVersion: 1, GeneratedAt: "2026-10-07T01:02:03Z", ProductVersion: "v", BuildID: "b", OperatingSystem: "windows", Architecture: "amd64", Catalog: DiagnosticExportCatalog{StorageProtection: "protected"}, Sessions: DiagnosticExportSessions{TotalCount: 64, Items: []DiagnosticExportSession{}}}
+	for i := 0; i < 64; i++ {
+		value.Sessions.Items = append(value.Sessions.Items, DiagnosticExportSession{State: "waiting_before_retry", Intent: "maintain_authentication", ReasonCode: "runtime_definition_unavailable", ProtocolSocketState: "close_unconfirmed", FailureCategory: "runtime_definition_unavailable", RecoveryRecommendation: "block_until_explicit_restart_or_relevant_input_change", CleanupRequired: true})
+	}
+	raw, err := MarshalDiagnosticsExportResult(value)
+	if err != nil || len(raw) > MaximumDiagnosticExportBytes {
+		t.Fatalf("valid maximum rows exceed cap: %d %v", len(raw), err)
+	}
+	decoded, err := DecodeDiagnosticsExportResult(raw)
+	if err != nil || len(decoded.Sessions.Items) != 64 || !decoded.Sessions.Items[63].CleanupRequired {
+		t.Fatal("maximum safe facts lost")
+	}
+}

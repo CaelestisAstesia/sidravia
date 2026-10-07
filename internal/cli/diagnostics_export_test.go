@@ -120,7 +120,7 @@ func TestRunDiagnosticsExportRPCAndInvalidArtifactCreateNoFile(t *testing.T) {
 	})
 	t.Run("invalid artifact", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "diagnostics.json")
-		bad := []byte(`{"schemaVersion":1,"generatedAt":"2026-10-07T00:00:00Z","productVersion":"1","buildId":"b","operatingSystem":"windows","architecture":"amd64","network":{"available":false},"catalog":{"storageProtection":"protected","totalConfigurations":0,"autoLoginConfigurations":0,"autoReconnectConfigurations":0,"automaticBindingConfigurations":0,"explicitBindingConfigurations":0},"sessions":{"totalCount":0,"truncated":false,"items":[]},"secret":"private artifact marker"}`)
+		bad := []byte(`{"schemaVersion":1,"generatedAt":"2026-10-07T00:00:00Z","productVersion":"1","buildId":"b","operatingSystem":"windows","architecture":"amd64","network":{"available":false},"catalog":{"storageProtection":"protected","totalConfigurations":0,"autoLoginConfigurations":0,"autoReconnectConfigurations":0,"automaticBindingConfigurations":0,"explicitBindingConfigurations":0,"availableConfigurations":0,"profileUnavailableConfigurations":0,"protocolUnavailableConfigurations":0,"overrideInvalidConfigurations":0},"sessions":{"totalCount":0,"truncated":false,"items":[]},"secret":"private artifact marker"}`)
 		connection := diagnosticsExportClient(t, bad, nil)
 		var output bytes.Buffer
 		err := runDiagnosticsExport(diagnosticsExportDependencies(connection, &output), path)

@@ -1330,14 +1330,44 @@ const diagnosticSocketStates = {
   'other',
 };
 
+const diagnosticFailureCategories = {
+  'none',
+  'network_timeout',
+  'network_io_failure',
+  'server_busy',
+  'authentication_rejected',
+  'binding_rejected',
+  'protocol_incompatible',
+  'protocol_response_invalid',
+  'protocol_contract_violated',
+  'logout_cleanup_failed',
+  'run_creation_failed',
+  'runtime_definition_unavailable',
+  'other',
+};
+const diagnosticRecoveryRecommendations = {
+  'none',
+  'retry_after_standard_delay',
+  'retry_after_extended_delay',
+  'block_until_explicit_restart_or_relevant_input_change',
+  'other',
+};
+
 class DiagnosticExportNetwork {
   const DiagnosticExportNetwork({
     required this.available,
     this.interfaceCount,
     this.ipv4AssignmentCount,
+    this.upInterfaceCount,
+    this.automaticCandidateCount,
+    this.explicitBindableCount,
   });
   final bool available;
-  final int? interfaceCount, ipv4AssignmentCount;
+  final int? interfaceCount,
+      ipv4AssignmentCount,
+      upInterfaceCount,
+      automaticCandidateCount,
+      explicitBindableCount;
 }
 
 class DiagnosticExportCatalog {
@@ -1348,13 +1378,21 @@ class DiagnosticExportCatalog {
     required this.autoReconnectConfigurations,
     required this.automaticBindingConfigurations,
     required this.explicitBindingConfigurations,
+    required this.availableConfigurations,
+    required this.profileUnavailableConfigurations,
+    required this.protocolUnavailableConfigurations,
+    required this.overrideInvalidConfigurations,
   });
   final String storageProtection;
   final int totalConfigurations,
       autoLoginConfigurations,
       autoReconnectConfigurations,
       automaticBindingConfigurations,
-      explicitBindingConfigurations;
+      explicitBindingConfigurations,
+      availableConfigurations,
+      profileUnavailableConfigurations,
+      protocolUnavailableConfigurations,
+      overrideInvalidConfigurations;
 }
 
 class DiagnosticExportSession {
@@ -1364,9 +1402,17 @@ class DiagnosticExportSession {
     required this.reasonCode,
     required this.selectedBinding,
     required this.protocolSocketState,
+    required this.failureCategory,
+    required this.recoveryRecommendation,
+    required this.cleanupRequired,
   });
-  final String state, intent, reasonCode, protocolSocketState;
-  final bool selectedBinding;
+  final String state,
+      intent,
+      reasonCode,
+      protocolSocketState,
+      failureCategory,
+      recoveryRecommendation;
+  final bool selectedBinding, cleanupRequired;
 }
 
 class DiagnosticExportSessions {
@@ -1457,8 +1503,20 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
     'available',
     if (available) 'interfaceCount',
     if (available) 'ipv4AssignmentCount',
+    if (available) 'upInterfaceCount',
+    if (available) 'automaticCandidateCount',
+    if (available) 'explicitBindableCount',
   });
   final network = DiagnosticExportNetwork(
+    upInterfaceCount: available
+        ? _networkUint(n['upInterfaceCount'], 4294967295)
+        : null,
+    automaticCandidateCount: available
+        ? _networkUint(n['automaticCandidateCount'], 4294967295)
+        : null,
+    explicitBindableCount: available
+        ? _networkUint(n['explicitBindableCount'], 4294967295)
+        : null,
     available: available,
     interfaceCount: available
         ? _networkUint(n['interfaceCount'], 4294967295)
@@ -1467,6 +1525,12 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
         ? _networkUint(n['ipv4AssignmentCount'], 4294967295)
         : null,
   );
+  if (available &&
+      (network.upInterfaceCount! > network.interfaceCount! ||
+          network.automaticCandidateCount! > network.ipv4AssignmentCount! ||
+          network.explicitBindableCount! > network.ipv4AssignmentCount!)) {
+    throw const IpcProtocolException();
+  }
   final c = _object(v['catalog'], const {
     'storageProtection',
     'totalConfigurations',
@@ -1474,6 +1538,10 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
     'autoReconnectConfigurations',
     'automaticBindingConfigurations',
     'explicitBindingConfigurations',
+    'availableConfigurations',
+    'profileUnavailableConfigurations',
+    'protocolUnavailableConfigurations',
+    'overrideInvalidConfigurations',
   });
   final total = _networkUint(c['totalConfigurations'], 4294967295);
   final login = _networkUint(c['autoLoginConfigurations'], 4294967295);
@@ -1489,7 +1557,34 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
       automatic + explicit != total) {
     throw const IpcProtocolException();
   }
+  final availableConfigurations = _networkUint(
+    c['availableConfigurations'],
+    4294967295,
+  );
+  final profileUnavailable = _networkUint(
+    c['profileUnavailableConfigurations'],
+    4294967295,
+  );
+  final protocolUnavailable = _networkUint(
+    c['protocolUnavailableConfigurations'],
+    4294967295,
+  );
+  final overrideInvalid = _networkUint(
+    c['overrideInvalidConfigurations'],
+    4294967295,
+  );
+  if (availableConfigurations +
+          profileUnavailable +
+          protocolUnavailable +
+          overrideInvalid !=
+      total) {
+    throw const IpcProtocolException();
+  }
   final catalog = DiagnosticExportCatalog(
+    availableConfigurations: availableConfigurations,
+    profileUnavailableConfigurations: profileUnavailable,
+    protocolUnavailableConfigurations: protocolUnavailable,
+    overrideInvalidConfigurations: overrideInvalid,
     storageProtection: _protection(c['storageProtection']),
     totalConfigurations: total,
     autoLoginConfigurations: login,
@@ -1507,8 +1602,20 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
       'reasonCode',
       'selectedBinding',
       'protocolSocketState',
+      'failureCategory',
+      'recoveryRecommendation',
+      'cleanupRequired',
     });
     return DiagnosticExportSession(
+      failureCategory: _networkEnum(
+        item['failureCategory'],
+        diagnosticFailureCategories,
+      ),
+      recoveryRecommendation: _networkEnum(
+        item['recoveryRecommendation'],
+        diagnosticRecoveryRecommendations,
+      ),
+      cleanupRequired: _bool(item['cleanupRequired']),
       state: _networkEnum(item['state'], diagnosticSessionStates),
       intent: _networkEnum(item['intent'], diagnosticSessionIntents),
       reasonCode: _networkEnum(item['reasonCode'], diagnosticReasonCodes),

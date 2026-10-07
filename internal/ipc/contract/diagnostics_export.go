@@ -23,17 +23,24 @@ type DiagnosticsExportResult struct {
 	Sessions        DiagnosticExportSessions `json:"sessions"`
 }
 type DiagnosticExportNetwork struct {
-	Available           bool    `json:"available"`
-	InterfaceCount      *uint32 `json:"interfaceCount,omitempty"`
-	IPv4AssignmentCount *uint32 `json:"ipv4AssignmentCount,omitempty"`
+	Available               bool    `json:"available"`
+	InterfaceCount          *uint32 `json:"interfaceCount,omitempty"`
+	IPv4AssignmentCount     *uint32 `json:"ipv4AssignmentCount,omitempty"`
+	UpInterfaceCount        *uint32 `json:"upInterfaceCount,omitempty"`
+	AutomaticCandidateCount *uint32 `json:"automaticCandidateCount,omitempty"`
+	ExplicitBindableCount   *uint32 `json:"explicitBindableCount,omitempty"`
 }
 type DiagnosticExportCatalog struct {
-	StorageProtection              string `json:"storageProtection"`
-	TotalConfigurations            uint32 `json:"totalConfigurations"`
-	AutoLoginConfigurations        uint32 `json:"autoLoginConfigurations"`
-	AutoReconnectConfigurations    uint32 `json:"autoReconnectConfigurations"`
-	AutomaticBindingConfigurations uint32 `json:"automaticBindingConfigurations"`
-	ExplicitBindingConfigurations  uint32 `json:"explicitBindingConfigurations"`
+	AvailableConfigurations           uint32 `json:"availableConfigurations"`
+	ProfileUnavailableConfigurations  uint32 `json:"profileUnavailableConfigurations"`
+	ProtocolUnavailableConfigurations uint32 `json:"protocolUnavailableConfigurations"`
+	OverrideInvalidConfigurations     uint32 `json:"overrideInvalidConfigurations"`
+	StorageProtection                 string `json:"storageProtection"`
+	TotalConfigurations               uint32 `json:"totalConfigurations"`
+	AutoLoginConfigurations           uint32 `json:"autoLoginConfigurations"`
+	AutoReconnectConfigurations       uint32 `json:"autoReconnectConfigurations"`
+	AutomaticBindingConfigurations    uint32 `json:"automaticBindingConfigurations"`
+	ExplicitBindingConfigurations     uint32 `json:"explicitBindingConfigurations"`
 }
 type DiagnosticExportSessions struct {
 	TotalCount uint32                    `json:"totalCount"`
@@ -41,11 +48,14 @@ type DiagnosticExportSessions struct {
 	Items      []DiagnosticExportSession `json:"items"`
 }
 type DiagnosticExportSession struct {
-	State               string `json:"state"`
-	Intent              string `json:"intent"`
-	ReasonCode          string `json:"reasonCode"`
-	SelectedBinding     bool   `json:"selectedBinding"`
-	ProtocolSocketState string `json:"protocolSocketState"`
+	FailureCategory        string `json:"failureCategory"`
+	RecoveryRecommendation string `json:"recoveryRecommendation"`
+	CleanupRequired        bool   `json:"cleanupRequired"`
+	State                  string `json:"state"`
+	Intent                 string `json:"intent"`
+	ReasonCode             string `json:"reasonCode"`
+	SelectedBinding        bool   `json:"selectedBinding"`
+	ProtocolSocketState    string `json:"protocolSocketState"`
 }
 
 func DecodeDiagnosticsExportPayload(data []byte) error { return networkObject(data, nil) }
@@ -69,7 +79,7 @@ func diagnosticEnum(value string, allowed ...string) bool {
 	return false
 }
 func (value *DiagnosticExportNetwork) UnmarshalJSON(data []byte) error {
-	if err := networkObject(data, []string{"available"}, "interfaceCount", "ipv4AssignmentCount"); err != nil {
+	if err := networkObject(data, []string{"available"}, "interfaceCount", "ipv4AssignmentCount", "upInterfaceCount", "automaticCandidateCount", "explicitBindableCount"); err != nil {
 		return err
 	}
 	type plain DiagnosticExportNetwork
@@ -78,17 +88,20 @@ func (value *DiagnosticExportNetwork) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if wire.Available {
-		if wire.InterfaceCount == nil || wire.IPv4AssignmentCount == nil {
+		if wire.InterfaceCount == nil || wire.IPv4AssignmentCount == nil || wire.UpInterfaceCount == nil || wire.AutomaticCandidateCount == nil || wire.ExplicitBindableCount == nil {
 			return errors.New("missing diagnostic network counts")
 		}
-	} else if wire.InterfaceCount != nil || wire.IPv4AssignmentCount != nil {
+		if *wire.UpInterfaceCount > *wire.InterfaceCount || *wire.AutomaticCandidateCount > *wire.IPv4AssignmentCount || *wire.ExplicitBindableCount > *wire.IPv4AssignmentCount {
+			return errors.New("invalid diagnostic network counts")
+		}
+	} else if wire.InterfaceCount != nil || wire.IPv4AssignmentCount != nil || wire.UpInterfaceCount != nil || wire.AutomaticCandidateCount != nil || wire.ExplicitBindableCount != nil {
 		return errors.New("unexpected diagnostic network counts")
 	}
 	*value = DiagnosticExportNetwork(wire)
 	return nil
 }
 func (value *DiagnosticExportCatalog) UnmarshalJSON(data []byte) error {
-	if err := networkObject(data, []string{"storageProtection", "totalConfigurations", "autoLoginConfigurations", "autoReconnectConfigurations", "automaticBindingConfigurations", "explicitBindingConfigurations"}); err != nil {
+	if err := networkObject(data, []string{"storageProtection", "totalConfigurations", "autoLoginConfigurations", "autoReconnectConfigurations", "automaticBindingConfigurations", "explicitBindingConfigurations", "availableConfigurations", "profileUnavailableConfigurations", "protocolUnavailableConfigurations", "overrideInvalidConfigurations"}); err != nil {
 		return err
 	}
 	type plain DiagnosticExportCatalog
@@ -98,6 +111,9 @@ func (value *DiagnosticExportCatalog) UnmarshalJSON(data []byte) error {
 	}
 	if !diagnosticEnum(wire.StorageProtection, "protected", "unprotected") || wire.AutoLoginConfigurations > 1 || wire.AutoLoginConfigurations > wire.TotalConfigurations || wire.AutoReconnectConfigurations > wire.TotalConfigurations || uint64(wire.AutomaticBindingConfigurations)+uint64(wire.ExplicitBindingConfigurations) != uint64(wire.TotalConfigurations) {
 		return errors.New("invalid diagnostic catalog counts")
+	}
+	if uint64(wire.AvailableConfigurations)+uint64(wire.ProfileUnavailableConfigurations)+uint64(wire.ProtocolUnavailableConfigurations)+uint64(wire.OverrideInvalidConfigurations) != uint64(wire.TotalConfigurations) {
+		return errors.New("invalid diagnostic availability counts")
 	}
 	*value = DiagnosticExportCatalog(wire)
 	return nil
@@ -122,7 +138,7 @@ func (value *DiagnosticExportSessions) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (value *DiagnosticExportSession) UnmarshalJSON(data []byte) error {
-	if err := networkObject(data, []string{"state", "intent", "reasonCode", "selectedBinding", "protocolSocketState"}); err != nil {
+	if err := networkObject(data, []string{"state", "intent", "reasonCode", "selectedBinding", "protocolSocketState", "failureCategory", "recoveryRecommendation", "cleanupRequired"}); err != nil {
 		return err
 	}
 	type plain DiagnosticExportSession
@@ -132,6 +148,9 @@ func (value *DiagnosticExportSession) UnmarshalJSON(data []byte) error {
 	}
 	if !diagnosticEnum(wire.State, "suspended", "waiting_for_network", "authenticating", "authenticated", "waiting_before_retry", "blocked_by_error", "stopping", "other") || !diagnosticEnum(wire.Intent, "maintain_authentication", "suspend_authentication", "other") || !diagnosticEnum(wire.ReasonCode, "network_binding_unavailable", "network_unavailable", "runtime_definition_unavailable", "protocol_run_creation_failed", "protocol_run_failed", "protocol_contract_violated", "automatic_reconnect_disabled", "none", "other") || !diagnosticEnum(wire.ProtocolSocketState, "not_observed", "open", "closed", "close_failed", "close_unconfirmed", "other") {
 		return errors.New("invalid diagnostic session category")
+	}
+	if !diagnosticEnum(wire.FailureCategory, "none", "network_timeout", "network_io_failure", "server_busy", "authentication_rejected", "binding_rejected", "protocol_incompatible", "protocol_response_invalid", "protocol_contract_violated", "logout_cleanup_failed", "run_creation_failed", "runtime_definition_unavailable", "other") || !diagnosticEnum(wire.RecoveryRecommendation, "none", "retry_after_standard_delay", "retry_after_extended_delay", "block_until_explicit_restart_or_relevant_input_change", "other") {
+		return errors.New("invalid diagnostic recovery category")
 	}
 	*value = DiagnosticExportSession(wire)
 	return nil

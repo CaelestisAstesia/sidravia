@@ -15,6 +15,8 @@ void main() {
       'diagnosticSessionIntents': diagnosticSessionIntents,
       'diagnosticReasonCodes': diagnosticReasonCodes,
       'diagnosticSocketStates': diagnosticSocketStates,
+      'diagnosticFailureCategories': diagnosticFailureCategories,
+      'diagnosticRecoveryRecommendations': diagnosticRecoveryRecommendations,
     };
     for (final entry in expected.entries) {
       expect((enums[entry.key] as List).toSet(), entry.value);

@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"time"
 
+	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
@@ -30,7 +31,7 @@ func (application *Application) ExportDiagnostics(ctx context.Context, productVe
 	if err != nil {
 		return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export catalog: %w", errors.Join(err, context.Cause(ctx)))
 	}
-	catalog, err := diagnosticCatalog(values, string(application.catalog.StorageProtection()))
+	catalog, err := application.diagnosticCatalog(ctx, values, string(application.catalog.StorageProtection()))
 	if err != nil {
 		return contract.DiagnosticsExportResult{}, err
 	}
@@ -52,7 +53,7 @@ func (application *Application) ExportDiagnostics(ctx context.Context, productVe
 		if err != nil {
 			return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export actor: %w", errors.Join(err, context.Cause(ctx)))
 		}
-		sessions.Items = append(sessions.Items, diagnosticSession(paired))
+		sessions.Items = append(sessions.Items, diagnosticSession(paired, application.invalidSessions[snapshot.AuthenticationSessionID]))
 	}
 	snapshot, available, err := application.sup.LatestSystemNetworkSnapshot(ctx)
 	if err != nil {
@@ -88,7 +89,7 @@ func diagnosticCount(count uint64) (uint32, error) {
 	}
 	return uint32(count), nil
 }
-func diagnosticCatalog(values []config.Configuration, protection string) (contract.DiagnosticExportCatalog, error) {
+func (application *Application) diagnosticCatalog(ctx context.Context, values []config.Configuration, protection string) (contract.DiagnosticExportCatalog, error) {
 	result := contract.DiagnosticExportCatalog{StorageProtection: protection}
 	if protection != "protected" && protection != "unprotected" {
 		return result, errors.New("unsupported diagnostic storage protection")
@@ -99,6 +100,22 @@ func diagnosticCatalog(values []config.Configuration, protection string) (contra
 	}
 	result.TotalConfigurations = total
 	for _, value := range values {
+		row, err := application.describeConfiguration(ctx, value)
+		if err != nil {
+			return result, err
+		}
+		switch row.RuntimeAvailability {
+		case ConfigurationRuntimeAvailable:
+			result.AvailableConfigurations++
+		case ConfigurationRuntimeProfileUnavailable:
+			result.ProfileUnavailableConfigurations++
+		case ConfigurationRuntimeProtocolUnavailable:
+			result.ProtocolUnavailableConfigurations++
+		case ConfigurationRuntimeOverrideInvalid:
+			result.OverrideInvalidConfigurations++
+		default:
+			return result, errors.New("unsupported diagnostic availability")
+		}
 		if value.AutoLogin {
 			result.AutoLoginConfigurations++
 		}
@@ -124,32 +141,82 @@ func diagnosticNetwork(snapshot environment.Snapshot, available bool) (contract.
 	if !available {
 		return result, nil
 	}
-	interfaces := snapshot.Interfaces()
-	ifaceCount, err := diagnosticCount(uint64(len(interfaces)))
+	projection := networkInterfacesResult(snapshot, available)
+	ifaceCount, err := diagnosticCount(uint64(len(projection.Interfaces)))
 	if err != nil {
 		return result, err
 	}
-	var addresses uint64
-	for _, iface := range interfaces {
-		addresses += uint64(len(iface.IPv4AddressAssignments()))
+	var addresses, up, automatic, explicit uint64
+	for _, iface := range projection.Interfaces {
+		if iface.OperationalState == "up" {
+			up++
+		}
+		addresses += uint64(len(iface.IPv4Assignments))
 		if addresses > uint64(^uint32(0)) {
 			return result, errors.New("diagnostic count exceeds limit")
+		}
+		for _, assignment := range iface.IPv4Assignments {
+			if assignment.AutomaticCandidate {
+				automatic++
+			}
+			if assignment.ExplicitBindable {
+				explicit++
+			}
 		}
 	}
 	addressCount, err := diagnosticCount(addresses)
 	if err != nil {
 		return result, err
 	}
+	upCount, err := diagnosticCount(up)
+	if err != nil {
+		return result, err
+	}
+	automaticCount, err := diagnosticCount(automatic)
+	if err != nil {
+		return result, err
+	}
+	explicitCount, err := diagnosticCount(explicit)
+	if err != nil {
+		return result, err
+	}
 	result.InterfaceCount, result.IPv4AssignmentCount = &ifaceCount, &addressCount
+	result.UpInterfaceCount, result.AutomaticCandidateCount, result.ExplicitBindableCount = &upCount, &automaticCount, &explicitCount
 	return result, nil
 }
-func diagnosticSession(paired session.NetworkDiagnosticsSnapshot) contract.DiagnosticExportSession {
+func diagnosticSession(paired session.NetworkDiagnosticsSnapshot, cleanupRequired bool) contract.DiagnosticExportSession {
 	snapshot := paired.Snapshot
 	reason := "none"
 	if snapshot.StateReason != nil {
 		reason = diagnosticCategory(snapshot.StateReason.Code, session.StateReasonCodeNetworkBindingUnavailable, session.StateReasonCodeNetworkUnavailable, session.StateReasonCodeRuntimeDefinitionUnavailable, session.StateReasonCodeProtocolRunCreationFailed, session.StateReasonCodeProtocolRunFailed, session.StateReasonCodeProtocolContractViolated, session.StateReasonCodeAutomaticReconnectDisabled)
 	}
-	return contract.DiagnosticExportSession{State: diagnosticCategory(string(snapshot.State), string(session.Suspended), string(session.WaitingForNetwork), string(session.Authenticating), string(session.Authenticated), string(session.WaitingBeforeRetry), string(session.BlockedByError), string(session.Stopping)), Intent: diagnosticCategory(string(snapshot.Intent), string(session.MaintainAuthentication), string(session.SuspendAuthentication)), ReasonCode: reason, SelectedBinding: snapshot.SelectedNetworkBinding != nil, ProtocolSocketState: diagnosticCategory(string(paired.ProtocolSocket.State), string(session.ProtocolSocketNotObserved), string(session.ProtocolSocketOpen), string(session.ProtocolSocketClosed), string(session.ProtocolSocketCloseFailed), string(session.ProtocolSocketCloseUnconfirmed))}
+	failure, recovery := "none", "none"
+	if snapshot.LastAuthenticationFailure != nil {
+		failure = diagnosticFailureCategory(string(snapshot.LastAuthenticationFailure.Code))
+		recovery = diagnosticCategory(string(snapshot.LastAuthenticationFailure.HandlingRecommendation), string(protocol.RetryAfterStandardDelay), string(protocol.RetryAfterExtendedDelay), string(protocol.BlockUntilExplicitRestartOrRelevantInputChange))
+	}
+	return contract.DiagnosticExportSession{FailureCategory: failure, RecoveryRecommendation: recovery, CleanupRequired: cleanupRequired, State: diagnosticCategory(string(snapshot.State), string(session.Suspended), string(session.WaitingForNetwork), string(session.Authenticating), string(session.Authenticated), string(session.WaitingBeforeRetry), string(session.BlockedByError), string(session.Stopping)), Intent: diagnosticCategory(string(snapshot.Intent), string(session.MaintainAuthentication), string(session.SuspendAuthentication)), ReasonCode: reason, SelectedBinding: snapshot.SelectedNetworkBinding != nil, ProtocolSocketState: diagnosticCategory(string(paired.ProtocolSocket.State), string(session.ProtocolSocketNotObserved), string(session.ProtocolSocketOpen), string(session.ProtocolSocketClosed), string(session.ProtocolSocketCloseFailed), string(session.ProtocolSocketCloseUnconfirmed))}
+}
+
+// Map account-specific outcomes to a single safe category; unknown codes never
+// become artifact text. Recovery is independently projected from the actor.
+func diagnosticFailureCategory(code string) string {
+	switch code {
+	case "credential_invalid", "session_in_use", "insufficient_funds", "account_frozen", "too_many_sessions", "authentication_rejected":
+		return "authentication_rejected"
+	case "binding_ip_mismatch", "binding_mac_mismatch", "binding_pair_mismatch", "dhcp_required":
+		return "binding_rejected"
+	case "network_io_failed":
+		return "network_io_failure"
+	case "incompatible_version":
+		return "protocol_incompatible"
+	case "protocol_run_creation_failed", "run_creation_failed":
+		return "run_creation_failed"
+	case "runtime_definition_unavailable":
+		return "runtime_definition_unavailable"
+	default:
+		return diagnosticCategory(code, "network_timeout", "server_busy", "protocol_response_invalid", "protocol_contract_violated", "logout_cleanup_failed")
+	}
 }
 func DiagnosticsExportHandler(application *Application, productVersion, buildID string) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
