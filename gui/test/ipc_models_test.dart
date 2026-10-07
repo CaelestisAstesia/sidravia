@@ -6,6 +6,73 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('network rejects isolated surrogate originals consistently with Go', () {
+    for (final field in ['interfaceId', 'displayName']) {
+      final old = field == 'interfaceId'
+          ? '"interfaceId":"loopback"'
+          : '"displayName":""';
+      for (final malformed in [
+        r'\ud800',
+        r'\udfff',
+        r'\ud800\u0041',
+        r'\udc00\ud800',
+        r'\ud800 \udc00',
+        r'\ud800\\udc00',
+      ]) {
+        final wire = networkResult.replaceFirst(
+          old,
+          '"$field":"private-marker$malformed"',
+        );
+        expect(
+          () => decodeNetworkInterfaces(wire),
+          throwsA(isA<IpcProtocolException>()),
+        );
+      }
+    }
+    for (final wire in [
+      networkResult.replaceFirst('"displayName"', r'"private-key\ud800"'),
+      networkResult.replaceFirst('"address"', r'"private-key\udfff"'),
+    ]) {
+      expect(
+        () => decodeNetworkInterfaces(wire),
+        throwsA(isA<IpcProtocolException>()),
+      );
+    }
+  });
+  test(
+    'network keeps paired escapes literal Unicode and escaped backslashes',
+    () {
+      for (final spelling in <String, String>{
+        r'"\ud83d\ude00"': '😀',
+        r'"\uD83D\uDe00"': '😀',
+        '"网卡"': '网卡',
+        '"𐐷"': '𐐷',
+        '"�"': '�',
+        r'"\ufffd"': '�',
+        r'"literal\\ud800"': r'literal\ud800',
+        r'"quote\"then\\ud800"': r'quote"then\ud800',
+        r'"path\\\\ud800"': r'path\\ud800',
+      }.entries) {
+        for (final field in ['interfaceId', 'displayName']) {
+          final old = field == 'interfaceId'
+              ? '"interfaceId":"loopback"'
+              : '"displayName":""';
+          final result = decodeNetworkInterfaces(
+            networkResult.replaceFirst(old, '"$field":${spelling.key}'),
+          );
+          final row = result.interfaces.single;
+          expect(
+            field == 'interfaceId' ? row.interfaceId : row.displayName,
+            spelling.value,
+          );
+        }
+      }
+      final result = decodeNetworkInterfaces(
+        networkResult.replaceFirst('"displayName"', r'"\u0064isplayName"'),
+      );
+      expect(result.interfaces.single.displayName, isEmpty);
+    },
+  );
   test('network facts are immutable and preserve full uint64 raw integers', () {
     final result = decodeNetworkInterfaces(networkResult);
     expect(result.available, isTrue);

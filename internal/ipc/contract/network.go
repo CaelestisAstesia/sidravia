@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"regexp"
+	"strconv"
 	"time"
 	"unicode/utf8"
 )
@@ -39,6 +40,9 @@ type NetworkIPv4Assignment struct {
 }
 
 func networkObject(data []byte, required []string, optional ...string) error {
+	if err := validateNetworkUnicode(data); err != nil {
+		return err
+	}
 	var fields map[string]json.RawMessage
 	if err := decodeStrict(data, &fields); err != nil {
 		return err
@@ -156,4 +160,59 @@ func MarshalNetworkInterfacesResult(value NetworkInterfacesResult) (json.RawMess
 		return nil, err
 	}
 	return json.RawMessage(data), nil
+}
+
+// validateNetworkUnicode keeps the new owned result strict before encoding/json
+// can replace invalid UTF-8 or unpaired UTF-16 escapes with U+FFFD. It scans all
+// strings, including nested member names; JSON syntax remains decodeStrict's
+// responsibility. Escaped backslashes and quotes are skipped as single escapes.
+func validateNetworkUnicode(data []byte) error {
+	invalid := errors.New("invalid network result Unicode")
+	if !utf8.Valid(data) {
+		return invalid
+	}
+	codeUnit := func(offset int) (uint16, bool) {
+		if offset+4 > len(data) {
+			return 0, false
+		}
+		unit, err := strconv.ParseUint(string(data[offset:offset+4]), 16, 16)
+		return uint16(unit), err == nil
+	}
+	inString := false
+	for i := 0; i < len(data); i++ {
+		if data[i] == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString || data[i] != '\\' {
+			continue
+		}
+		if i+1 >= len(data) {
+			continue
+		}
+		if data[i+1] != 'u' {
+			i++
+			continue
+		}
+		unit, ok := codeUnit(i + 2)
+		if !ok {
+			return invalid
+		}
+		switch {
+		case unit >= 0xd800 && unit <= 0xdbff:
+			if i+12 > len(data) || data[i+6] != '\\' || data[i+7] != 'u' {
+				return invalid
+			}
+			low, ok := codeUnit(i + 8)
+			if !ok || low < 0xdc00 || low > 0xdfff {
+				return invalid
+			}
+			i += 11
+		case unit >= 0xdc00 && unit <= 0xdfff:
+			return invalid
+		default:
+			i += 5
+		}
+	}
+	return nil
 }
