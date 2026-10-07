@@ -273,13 +273,13 @@ func composeObjectGraphWithLaunchOptions(
 	if len(unprotectedCallbacks) > 0 {
 		onUnprotected = unprotectedCallbacks[0]
 	}
-	for name, path := range map[string]string{
-		"profiles":       paths.profiles,
-		"configurations": paths.configurations,
-		"runtime info":   paths.runtimeInfo,
+	for _, entry := range []struct{ name, path string }{
+		{"profiles", paths.profiles},
+		{"configurations", paths.configurations},
+		{"runtime info", paths.runtimeInfo},
 	} {
-		if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-			return nil, fmt.Errorf("sidraviad: %s path must be absolute and clean", name)
+		if entry.path == "" || !filepath.IsAbs(entry.path) || filepath.Clean(entry.path) != entry.path {
+			return nil, fmt.Errorf("sidraviad: %s path must be absolute and clean", entry.name)
 		}
 	}
 

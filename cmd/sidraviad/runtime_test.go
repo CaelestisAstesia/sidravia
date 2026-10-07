@@ -1449,3 +1449,34 @@ func TestCompositionPassesExactLaunchNamespaceToHostConfig(t *testing.T) {
 		t.Fatalf("host namespace = %q, want %q", rt.hostCfg.Namespace.String(), want.String())
 	}
 }
+
+func TestComposeObjectGraphRejectsInvalidPathsInOrder(t *testing.T) {
+	for _, invalid := range []string{"", "relative", "/unclean/../path"} {
+		for first := 0; first < 3; first++ {
+			names := []string{"profiles", "configurations", "runtime info"}
+			t.Run(names[first]+"/"+invalid, func(t *testing.T) {
+				paths := testPaths(t)
+				fields := []*string{&paths.profiles, &paths.configurations, &paths.runtimeInfo}
+				for _, field := range fields[first:] {
+					*field = invalid
+				}
+				store := newInMemoryStore()
+				rt, err := composeObjectGraph(context.Background(), store, paths,
+					testHostInfo(), newFakeObserver(), newFakeHostRunner().run,
+					"test-token", "1.0.0-test", "abc1234", discardLogger())
+				if rt != nil {
+					rt.shutdown.Close()
+					rt.shutdown.Wait()
+					t.Fatal("invalid paths produced a runtime")
+				}
+				want := "sidraviad: " + names[first] + " path must be absolute and clean"
+				if err == nil || err.Error() != want {
+					t.Fatalf("error = %v, want %q", err, want)
+				}
+				if len(store.opened) != 0 {
+					t.Fatal("store was accessed before path rejection")
+				}
+			})
+		}
+	}
+}
