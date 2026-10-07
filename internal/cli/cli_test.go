@@ -421,7 +421,8 @@ func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 	}
 	if got := rootHelp.String(); !strings.Contains(got, "\n  auth ") ||
 		!strings.Contains(got, "\n  daemon ") ||
-		!strings.Contains(got, "\n  profile ") {
+		!strings.Contains(got, "\n  profile ") ||
+		!strings.Contains(got, "\n  diagnostics ") {
 		t.Errorf("root help omitted resource commands:\n%s", got)
 	}
 	if strings.Contains(rootHelp.String(), "\n  status ") {
@@ -836,7 +837,8 @@ func TestDefaultCommandDependenciesCaptureOneIdentityForAllOperations(t *testing
 		"daemon status": deps.daemonStatus, "daemon start": deps.daemonStart, "daemon stop": deps.daemonStop, "daemon restart": deps.daemonRestart,
 		"auth start": deps.authStart, "auth status": deps.authStatus, "auth stop": deps.authStop, "auth restart": deps.authRestart, "auth remove": deps.authRemove,
 		"auth list": deps.authList, "profile list": deps.profileList,
-		"config list": deps.configList, "config show": deps.configShow, "config create": deps.configCreate, "config update": deps.configUpdate,
+		"diagnostics export": deps.diagnosticsExport,
+		"config list":        deps.configList, "config show": deps.configShow, "config create": deps.configCreate, "config update": deps.configUpdate,
 		"config password": deps.configSetPassword, "config remove": deps.configRemove,
 	} {
 		if operation == nil {
