@@ -70,37 +70,158 @@ function Get-SidraviaTaskOwnership {
     return 'owned'
 }
 
+function Get-SidraviaUserPath {
+    return [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
+# Compare-before-write recovery is best-effort; concurrent Task Scheduler or
+# registry writers can still race between a check and its compensating write.
+function Set-SidraviaUserPath {
+    param([AllowNull()][object]$Value)
+    if ($null -eq $Value) {
+        [Environment]::SetEnvironmentVariable('Path', $null, 'User')
+    } else {
+        [Environment]::SetEnvironmentVariable('Path', [string]$Value, 'User')
+    }
+}
+
+function Get-SidraviaTask {
+    try {
+        $items = @(Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop)
+        if ($items.Count -eq 0) { return $null }
+        if ($items.Count -ne 1) { throw 'scheduled_task_query_ambiguous' }
+        return $items[0]
+    } catch {
+        if ($_.FullyQualifiedErrorId -eq 'CmdletizationQuery_NotFound,Get-ScheduledTask' -and
+            $_.CategoryInfo.Category -eq [System.Management.Automation.ErrorCategory]::ObjectNotFound) {
+            return $null
+        }
+        throw
+    }
+}
+
+function Get-SidraviaTaskXml {
+    param([object]$Task)
+    if ($null -eq $Task) { return $null }
+    $xmlText = Export-ScheduledTask -InputObject $Task -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace([string]$xmlText)) { throw 'scheduled_task_export_empty' }
+    return ([xml]$xmlText).OuterXml
+}
+
+function Get-SidraviaPathRecoveryState {
+    param([bool]$Attempted, [AllowNull()][object]$OldPath, [AllowNull()][object]$OwnPath)
+    if (-not $Attempted) { return 'unchanged' }
+    try { $current = Get-SidraviaUserPath } catch { return 'unknown' }
+    if ($current -ceq $OldPath) { return 'unchanged' }
+    if ($current -cne $OwnPath) { return 'changed_externally' }
+    try {
+        Set-SidraviaUserPath -Value $OldPath
+        if ((Get-SidraviaUserPath) -ceq $OldPath) { return 'restored' }
+        return 'rollback_failed'
+    } catch {
+        try {
+            $afterFailure = Get-SidraviaUserPath
+            if ($afterFailure -ceq $OldPath) { return 'restored' }
+            if ($afterFailure -cne $OwnPath) { return 'changed_externally' }
+        } catch { return 'unknown' }
+        return 'rollback_failed'
+    }
+}
+
+function Restore-SidraviaRemovedTask {
+    param([AllowNull()][object]$OldXml, [string]$InstallDirectory, [string]$UserSID)
+    try {
+        $current = Get-SidraviaTask
+        if ($null -eq $current) {
+            Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -Xml $OldXml -Force -ErrorAction Stop | Out-Null
+            $after = Get-SidraviaTask
+            if ($null -ne $after -and
+                (Get-SidraviaTaskOwnership -Task $after -InstallDirectory $InstallDirectory -UserSID $UserSID) -eq 'owned' -and
+                (Get-SidraviaTaskXml -Task $after) -ceq $OldXml) { return 'restored' }
+            return 'rollback_failed'
+        }
+        $ownership = Get-SidraviaTaskOwnership -Task $current -InstallDirectory $InstallDirectory -UserSID $UserSID
+        $currentXml = Get-SidraviaTaskXml -Task $current
+        if ($ownership -eq 'owned' -and $currentXml -ceq $OldXml) { return 'unchanged' }
+        return 'changed_externally'
+    } catch {
+        try {
+            $afterFailure = Get-SidraviaTask
+            if ($null -ne $afterFailure -and
+                (Get-SidraviaTaskOwnership -Task $afterFailure -InstallDirectory $InstallDirectory -UserSID $UserSID) -eq 'owned' -and
+                (Get-SidraviaTaskXml -Task $afterFailure) -ceq $OldXml) { return 'restored' }
+        } catch { return 'unknown' }
+        return 'rollback_failed'
+    }
+}
+
+function Compare-SidraviaTaskSnapshot {
+    param([AllowNull()][object]$OldXml, [string]$InstallDirectory, [string]$UserSID)
+    try {
+        $current = Get-SidraviaTask
+        if ($null -eq $current) {
+            if ($null -eq $OldXml) { return 'unchanged' }
+            return 'changed_externally'
+        }
+        if ($null -eq $OldXml) { return 'changed_externally' }
+        if ((Get-SidraviaTaskOwnership -Task $current -InstallDirectory $InstallDirectory -UserSID $UserSID) -eq 'owned' -and
+            (Get-SidraviaTaskXml -Task $current) -ceq $OldXml) { return 'unchanged' }
+        return 'changed_externally'
+    } catch { return 'unknown' }
+}
+
 $CurrentUserSID = $null
 try { $CurrentUserSID = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch {}
 if (-not $CurrentUserSID) { throw 'current_user_sid_unavailable' }
 
-# 操作前：记录当前状态。
-$BeforePath = [Environment]::GetEnvironmentVariable('Path', 'User')
+# 操作前：记录当前状态及完整的 owned task 定义。
+$BeforePath = Get-SidraviaUserPath
 $PathPresent = Test-PathEntry -PathValue $BeforePath -Entry $InstallDir
-$BeforeTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+$BeforeTask = Get-SidraviaTask
 $TaskOwnership = Get-SidraviaTaskOwnership -Task $BeforeTask -InstallDirectory $InstallDir -UserSID $CurrentUserSID
 if ($TaskOwnership -eq 'conflict') { throw 'scheduled_task_conflict' }
 $TaskPresent = ($TaskOwnership -eq 'owned')
+$BeforeTaskXml = $null
+if ($TaskPresent) { $BeforeTaskXml = Get-SidraviaTaskXml -Task $BeforeTask }
 
-# 1）移除精确匹配的当前用户 PATH 条目。
+$NewPath = $BeforePath
 if ($PathPresent) {
     $NewPath = Remove-PathEntry -PathValue $BeforePath -Entry $InstallDir
-    [Environment]::SetEnvironmentVariable('Path', $NewPath, 'User')
+    if ($NewPath -ceq '') { $NewPath = $null }
 }
+$PathAttempted = $false
+$TaskAttempted = $false
+$stage = 'path_write'
+try {
+    if ($PathPresent) {
+        $PathAttempted = $true
+        Set-SidraviaUserPath -Value $NewPath
+    }
 
-# 2）移除用户登录计划任务。
-if ($TaskPresent) {
-    Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false
-}
+    $stage = 'task_unregistration'
+    if ($TaskPresent) {
+        $TaskAttempted = $true
+        Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false -ErrorAction Stop
+    }
 
-# 操作后：验证两项状态均已撤销。
-$AfterPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if (Test-PathEntry -PathValue $AfterPath -Entry $InstallDir) {
-    throw '验证失败：安装目录仍在当前用户 PATH 中'
-}
-$AfterTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
-if ($null -ne $AfterTask) {
-    throw "验证失败：计划任务 $TaskName 仍然存在"
+    $stage = 'post_validation'
+    $AfterPath = Get-SidraviaUserPath
+    if (Test-PathEntry -PathValue $AfterPath -Entry $InstallDir) {
+        throw '验证失败：安装目录仍在当前用户 PATH 中'
+    }
+    $AfterTask = Get-SidraviaTask
+    if ($null -ne $AfterTask) { throw "验证失败：计划任务 $TaskName 仍然存在" }
+} catch {
+    $cause = $_.Exception
+    $pathState = Get-SidraviaPathRecoveryState -Attempted $PathAttempted -OldPath $BeforePath -OwnPath $NewPath
+    if ($TaskAttempted) {
+        $taskState = Restore-SidraviaRemovedTask -OldXml $BeforeTaskXml -InstallDirectory $InstallDir -UserSID $CurrentUserSID
+    } else {
+        $taskState = Compare-SidraviaTaskSnapshot -OldXml $BeforeTaskXml -InstallDirectory $InstallDir -UserSID $CurrentUserSID
+    }
+    $code = "uninstall_${stage}_failed"
+    $message = "$code：path=$pathState; task=$taskState"
+    throw [InvalidOperationException]::new($message, $cause)
 }
 
 # 结果摘要（操作前 -> 操作后）。
