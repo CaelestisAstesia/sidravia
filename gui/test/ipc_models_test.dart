@@ -58,6 +58,13 @@ void main() {
       );
     }
   });
+  test('accepts a multicast route prefix containing a unicast target', () {
+    const result =
+        r'{"observedAt":"2026-10-07T01:02:03Z","selectionBasis":"os_route_proposal","status":"available","target":{"address":"240.0.0.1","port":61440},"route":{"interfaceId":"test","interfaceIndex":1,"sourceIPv4":"127.0.0.1","destinationPrefix":"224.0.0.0/3","nextHopIPv4":"0.0.0.0","routeMetric":0,"interfaceMetric":0,"effectiveMetric":0},"probe":{"status":"not_requested"}}';
+    final diagnosis = decodeNetworkDiagnosis(result);
+    expect(diagnosis.target!.address, '240.0.0.1');
+    expect(diagnosis.route!.destinationPrefix, '224.0.0.0/3');
+  });
 
   test('network rejects isolated surrogate originals consistently with Go', () {
     for (final field in ['interfaceId', 'displayName']) {

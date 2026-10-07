@@ -1031,7 +1031,12 @@ String _networkTime(Object? value) {
   return text;
 }
 
-int _networkIPv4(String text, {bool zero = false, bool broadcast = false}) {
+int _networkIPv4(
+  String text, {
+  bool zero = false,
+  bool broadcast = false,
+  bool multicast = false,
+}) {
   final parts = text.split('.');
   if (parts.length != 4) {
     throw const IpcProtocolException();
@@ -1046,7 +1051,7 @@ int _networkIPv4(String text, {bool zero = false, bool broadcast = false}) {
   }
   if ((!zero && n == 0) ||
       (!broadcast && n == 4294967295) ||
-      (n >= 3758096384 && n <= 4026531839)) {
+      (!multicast && n >= 3758096384 && n <= 4026531839)) {
     throw const IpcProtocolException();
   }
   return n;
@@ -1132,7 +1137,12 @@ NetworkDiagnosis decodeNetworkDiagnosisValue(Object? raw) {
     if (bits == null || bits < 0 || bits > 32 || bits.toString() != parts[1]) {
       throw const IpcProtocolException();
     }
-    final address = _networkIPv4(parts[0], zero: true, broadcast: true);
+    final address = _networkIPv4(
+      parts[0],
+      zero: true,
+      broadcast: true,
+      multicast: true,
+    );
     final block = 1 << (32 - bits);
     if (address % block != 0 ||
         _networkIPv4(target!.address) ~/ block != address ~/ block) {
