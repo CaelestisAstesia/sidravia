@@ -353,7 +353,6 @@ func verifyRepoInputs(root, artifact string) error {
 	checks := []inputCheck{
 		{"LICENSE", false},
 		{"docs/guide.md", false},
-		{"internal/daemon/configuration/profiles/jlu.json", false},
 		{"scripts/install.ps1", false},
 		{"scripts/uninstall.ps1", false},
 		{"cmd/sidravia", true},
@@ -416,7 +415,7 @@ type tool struct {
 	cfg              config
 	repoRoot         string
 	build            buildFunc
-	packageArtifacts func(repoRoot, staging, version, buildID, artifact string, cliBytes, daemonBytes []byte) error
+	packageArtifacts func(repoRoot, staging, version, buildID, artifact string, profiles []zipEntry, cliBytes, daemonBytes []byte) error
 	publish          func(staging, out string) error
 	runtimeVersion   func() string
 	probeGoVersion   func(goBin string) (string, error)
@@ -449,6 +448,10 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	}
 	if err := verifyRepoInputs(t.repoRoot, t.cfg.artifact); err != nil {
 		return err
+	}
+	profiles, err := loadOfficialProfileEntries(t.repoRoot)
+	if err != nil {
+		return fmt.Errorf("load official institution profiles: %w", err)
 	}
 
 	out, err := filepath.Abs(t.cfg.output)
@@ -502,7 +505,7 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	}
 
 	fmt.Fprintln(stderr, "packaging archives")
-	if err := t.packageArtifacts(t.repoRoot, staging, t.cfg.version, t.cfg.buildID, t.cfg.artifact, cliBytes, daemonBytes); err != nil {
+	if err := t.packageArtifacts(t.repoRoot, staging, t.cfg.version, t.cfg.buildID, t.cfg.artifact, profiles, cliBytes, daemonBytes); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(binDir); err != nil {
@@ -617,7 +620,7 @@ func artifactFileName(version, artifact string) string {
 }
 
 // writeArtifacts builds one selected portable zip and SHA256SUMS.txt in staging.
-func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliBytes, daemonBytes []byte) error {
+func writeArtifacts(repoRoot, staging, version, buildID, artifact string, profiles []zipEntry, cliBytes, daemonBytes []byte) error {
 	zipName := artifactFileName(version, artifact)
 	sumsName := "SHA256SUMS.txt"
 
@@ -628,10 +631,6 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	gettingStarted, err := os.ReadFile(filepath.Join(repoRoot, "docs", "guide.md"))
 	if err != nil {
 		return fmt.Errorf("read docs/guide.md: %w", err)
-	}
-	profile, err := os.ReadFile(filepath.Join(repoRoot, "internal", "daemon", "configuration", "profiles", "jlu.json"))
-	if err != nil {
-		return fmt.Errorf("read internal/daemon/configuration/profiles/jlu.json: %w", err)
 	}
 	installScript, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "install.ps1"))
 	if err != nil {
@@ -656,7 +655,7 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	internalSums := []byte(sha256Hex(cliBytes) + "  sidraviactl.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
-	entries := assembleEntries(artifact, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
+	entries := assembleEntries(artifact, license, gettingStarted, profiles, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, zipName), entries); err != nil {
 		return fmt.Errorf("write %s: %w", zipName, err)
 	}
@@ -672,7 +671,7 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, cliByt
 	return nil
 }
 
-func assembleEntries(artifact string, license, gettingStarted, profile, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
+func assembleEntries(artifact string, license, gettingStarted []byte, profiles []zipEntry, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
 	entries := []zipEntry{
 		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, artifact), 0o644},
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
@@ -682,7 +681,7 @@ func assembleEntries(artifact string, license, gettingStarted, profile, fieldTes
 		{"sidravia.portable", nil, 0o644},
 		{"sidraviad.exe", daemonBytes, 0o755},
 	}
-	entries = append(entries, zipEntry{"institution-profiles/jlu.json", profile, 0o644})
+	entries = append(entries, profiles...)
 	entries = append(entries, zipEntry{"scripts/install.ps1", installScript, 0o644})
 	entries = append(entries, zipEntry{"scripts/uninstall.ps1", uninstallScript, 0o644})
 	if artifact == "field-validation" {

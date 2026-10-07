@@ -696,7 +696,7 @@ func TestMissingOfficialProfileFailsInputs(t *testing.T) {
 	fb := &fakeBuilder{}
 	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
 	err := tt.execute(io.Discard, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "jlu.json") {
+	if err == nil || !strings.Contains(err.Error(), "no lowercase .json Profiles") {
 		t.Fatalf("expected missing-profile input error, got %v", err)
 	}
 	if len(fb.calls) != 0 {
@@ -819,7 +819,7 @@ func TestZipFailureCleans(t *testing.T) {
 	out := filepath.Join(outParent, "dist")
 	fb := &fakeBuilder{}
 	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
-	tt.packageArtifacts = func(string, string, string, string, string, []byte, []byte) error { return errZip }
+	tt.packageArtifacts = func(string, string, string, string, string, []zipEntry, []byte, []byte) error { return errZip }
 	err := tt.execute(io.Discard, io.Discard)
 	if !errors.Is(err, errZip) {
 		t.Fatalf("expected errZip, got %v", err)
