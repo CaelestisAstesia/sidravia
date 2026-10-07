@@ -436,25 +436,9 @@ func decodeLocalPort(obj map[string]json.RawMessage) (localPort, error) {
 	}
 }
 
-// validateProtocolContextOverride accepts only an absent value or a JSON
-// object with no fields (such as `{}` with surrounding whitespace). It rejects
-// explicit null, fields, arrays, scalars, malformed input and trailing
-// values. The override cannot change environment, Profile or Run-private
-// state.
+// validateProtocolContextOverride validates only the protocol-owned reported
+// context. Host-dependent final merging is checked when creating a Run.
 func validateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
-	if len(raw) == 0 {
-		return nil
-	}
-	trimmed := bytes.TrimSpace(raw)
-	if bytes.Equal(trimmed, []byte("null")) {
-		return fmt.Errorf("protocol context override must be absent or an empty object")
-	}
-	obj, err := decodeStrictObject(trimmed)
-	if err != nil {
-		return fmt.Errorf("protocol context override is invalid: %w", err)
-	}
-	if len(obj) != 0 {
-		return fmt.Errorf("protocol context override must be an empty object")
-	}
-	return nil
+	_, err := decodeProtocolContextOverride(raw)
+	return err
 }

@@ -63,7 +63,7 @@ func newExecution(definition runDefinition, observer protocol.AuthenticationProt
 // stable public failure on any protocol failure.
 func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
 	exec := newExecution(r.definition, observer, r.diagnostics)
-	ex, err := openUDPExchange(r.definition.login.clientIPv4, r.definition.cfg.localPort, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
+	ex, err := openUDPExchange(r.definition.socketSourceIPv4, r.definition.cfg.localPort, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
 	if err != nil {
 		return networkIOError("open socket", err).toFailure()
 	}

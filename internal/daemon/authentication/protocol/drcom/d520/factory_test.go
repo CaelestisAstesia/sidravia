@@ -281,3 +281,76 @@ func TestFactoryUsesNoopWhenDiagnosticsNil(t *testing.T) {
 		t.Error("diagnostics is nil, want Noop implementation")
 	}
 }
+
+func TestFactoryReportedMACRescuesMissingLoopbackMAC(t *testing.T) {
+	inputs := factoryInputs(validConfig(t), testCredential(), buildBinding(t, "127.0.0.1", nil, nil, nil))
+	for _, absent := range []protocol.AuthenticationProtocolContextOverride{nil, []byte(`{}`)} {
+		inputs.ProtocolContextOverride = absent
+		run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+		if err == nil || run != nil {
+			t.Fatal("missing legacy MAC accepted")
+		}
+	}
+	inputs.ProtocolContextOverride = []byte(`{"schemaVersion":1,"reportedMAC":"02:00:00:00:00:01"}`)
+	if _, err := NewFactory().CreateAuthenticationProtocolRun(inputs); err != nil {
+		t.Fatalf("effective valid MAC rejected: %v", err)
+	}
+	inputs.SelectedSystemNetworkBinding = buildBinding(t, "0.0.0.0", nil, nil, nil)
+	inputs.ProtocolContextOverride = []byte(`{"schemaVersion":1,"reportedMAC":"02:00:00:00:00:01","reportedIPv4":"192.0.2.1"}`)
+	if run, err := NewFactory().CreateAuthenticationProtocolRun(inputs); err == nil || run != nil {
+		t.Fatal("override rescued invalid actual source")
+	}
+}
+
+func TestFactoryPartialOSOverrideValidatesFinalMergedText(t *testing.T) {
+	inputs := factoryInputs(validConfig(t), testCredential(), testBinding(t))
+	inputs.SystemHostInformation.OperatingSystemRelease = strings.Repeat("r", 20)
+	inputs.ProtocolContextOverride = []byte(`{"schemaVersion":1,"osFamily":"abcdefghijkl"}`)
+	if err := NewFactory().ValidateProtocolContextOverride(inputs.ProtocolContextOverride); err != nil {
+		t.Fatalf("standalone partial should be valid: %v", err)
+	}
+	if run, err := NewFactory().CreateAuthenticationProtocolRun(inputs); err == nil || run != nil {
+		t.Fatal("oversized final merged OS accepted")
+	}
+	inputs.ProtocolContextOverride = []byte(`{"schemaVersion":1,"osFamily":"","hostName":""}`)
+	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.(*d520Run).definition.login.hostOS != strings.Repeat("r", 20) || run.(*d520Run).definition.login.hostName != "" {
+		t.Fatal("empty present field failed to clear")
+	}
+	inputs.SystemHostInformation.OperatingSystemFamily = " Windows "
+	inputs.SystemHostInformation.OperatingSystemRelease = " 10 "
+	inputs.ProtocolContextOverride = []byte(`{"schemaVersion":1,"osRelease":"11"}`)
+	run, err = NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil || run.(*d520Run).definition.login.hostOS != "Windows 11" {
+		t.Fatal("partial merge lost observed trimmed counterpart")
+	}
+}
+
+func TestFactoryAbsentAndEmptyOverridesPreserveDefinitionAndPackets(t *testing.T) {
+	inputs := factoryInputs(validConfig(t), testCredential(), testBinding(t))
+	inputs.ProtocolContextOverride = nil
+	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := run.(*d520Run).definition
+	expected, err := buildLoginRequest(legacy.login, [4]byte{1, 2, 3, 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{`{}`, `  {}  `, `{"schemaVersion":1}`} {
+		inputs.ProtocolContextOverride = []byte(raw)
+		run, err = NewFactory().CreateAuthenticationProtocolRun(inputs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		def := run.(*d520Run).definition
+		packet, err := buildLoginRequest(def.login, [4]byte{1, 2, 3, 4})
+		if err != nil || def != legacy || string(packet) != string(expected) {
+			t.Fatal("identity override changed legacy bytes or defaults")
+		}
+	}
+}

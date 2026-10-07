@@ -1,8 +1,10 @@
 package d520
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -957,5 +959,88 @@ func TestFactoryPropagatesLocalPortAndPaddingIntoRun(t *testing.T) {
 	}
 	if d520.definition.login.loginAuthExtensionPadding != [2]byte{0xaa, 0xbb} {
 		t.Fatalf("loginAuthExtensionPadding = %x, want aabb", d520.definition.login.loginAuthExtensionPadding)
+	}
+}
+
+// This fixture uses the existing Go-owned loopback responder and observer, but
+// records ReadFromUDP's source address alongside the existing wire requests.
+// It sends no traffic beyond 127.0.0.1 and owns and awaits its server goroutine.
+func TestRunReportedIPv4IsIndependentFromActualSocketSource(t *testing.T) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type receivedDatagram struct {
+		source netip.AddrPort
+		packet []byte
+	}
+	received := make(chan receivedDatagram, 32)
+	stopped := make(chan struct{})
+	respond := defaultPeerResponder()
+	go func() {
+		defer close(stopped)
+		buf := make([]byte, 1500)
+		for {
+			n, source, err := conn.ReadFromUDPAddrPort(buf)
+			if err != nil {
+				return
+			}
+			packet := bytes.Clone(buf[:n])
+			select {
+			case received <- receivedDatagram{source, packet}:
+			default:
+				return
+			}
+			for _, response := range respond(packet) {
+				if _, err := conn.WriteToUDPAddrPort(response, source); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() { conn.Close(); <-stopped })
+	inputs := factoryInputs(testConfigJSON(conn.LocalAddr().(*net.UDPAddr).Port, defaultTestDurations()), testCredential(), buildBinding(t, "127.0.0.1", nil, nil, nil))
+	inputs.ProtocolContextOverride = []byte(`{"schemaVersion":1,"reportedIPv4":"192.0.2.42","reportedMAC":"02:00:00:00:00:01"}`)
+	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After creation, even replacing binding/override buffers cannot change
+	// either the selected real source or the effective reported wire context.
+	inputs.SelectedSystemNetworkBinding = buildBinding(t, "127.0.0.2", nil, nil, nil)
+	inputs.ProtocolContextOverride[0] = 0
+	observer := newRecordingObserver(nil)
+	_, cancel, done := startRun(t, run, observer)
+	defer cancel(context.Canceled)
+	observer.waitForEstablished(t, time.Second)
+	cancel(context.Canceled)
+	assertRunReturns(t, done, true, time.Second)
+	var source netip.AddrPort
+	sawLogin, sawType3 := false, false
+	for len(received) > 0 {
+		datagram := <-received
+		if datagram.source.Addr() != netip.MustParseAddr("127.0.0.1") || datagram.source.Port() == 0 {
+			t.Fatalf("unexpected actual socket source %v", datagram.source)
+		}
+		if source.IsValid() && datagram.source != source {
+			t.Fatal("Run changed socket source")
+		}
+		source = datagram.source
+		packet := datagram.packet
+		switch {
+		case isLoginReq(packet):
+			sawLogin = true
+			if !bytes.Equal(packet[81:85], []byte{192, 0, 2, 42}) || !bytes.Equal(packet[97:105], md5C([4]byte{192, 0, 2, 42})) {
+				t.Fatal("Login or MD5-C used actual source instead of reported IP")
+			}
+		case isKA2Req(packet) && packet[5] == ka2Type3:
+			sawType3 = true
+			if !bytes.Equal(packet[28:32], []byte{192, 0, 2, 42}) {
+				t.Fatal("KA2 used actual source instead of reported IP")
+			}
+		}
+	}
+	if !sawLogin || !sawType3 || !source.IsValid() {
+		t.Fatal("missing observed source/Login/KA2 evidence")
 	}
 }

@@ -35,7 +35,8 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 	if err != nil {
 		return nil, err
 	}
-	if err := validateProtocolContextOverride(inputs.ProtocolContextOverride); err != nil {
+	override, err := decodeProtocolContextOverride(inputs.ProtocolContextOverride)
+	if err != nil {
 		return nil, err
 	}
 
@@ -45,18 +46,43 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 	}
 
 	binding := inputs.SelectedSystemNetworkBinding
-	clientIPv4, err := selectClientIPv4(binding)
+	socketSourceIPv4, err := selectClientIPv4(binding)
 	if err != nil {
 		return nil, err
 	}
-	mac, err := selectMAC(binding)
-	if err != nil {
-		return nil, err
+	var mac [6]byte
+	if override.reportedMAC != nil {
+		mac = *override.reportedMAC
+	} else {
+		mac, err = selectMAC(binding)
+		if err != nil {
+			return nil, err
+		}
 	}
+	clientIPv4 := socketSourceIPv4
+	if override.reportedIPv4 != nil {
+		clientIPv4 = *override.reportedIPv4
+	}
+	override.applyCompatibility(&cfg)
 	primaryDNS, secondaryDNS := selectDNS(binding)
 	dhcpIPv4 := selectDHCP(binding)
 
+	if override.reportedDNSIPv4 != nil {
+		primaryDNS, secondaryDNS = override.reportedDNSIPv4[0], override.reportedDNSIPv4[1]
+	}
+	if override.reportedDHCPIPv4 != nil {
+		dhcpIPv4 = *override.reportedDHCPIPv4
+	}
 	host := inputs.SystemHostInformation
+	if override.hostName != nil {
+		host.HostName = *override.hostName
+	}
+	if override.osFamily != nil {
+		host.OperatingSystemFamily = *override.osFamily
+	}
+	if override.osRelease != nil {
+		host.OperatingSystemRelease = *override.osRelease
+	}
 	login := loginInput{
 		username:                  credentialValue.Username,
 		password:                  credentialValue.Password,
@@ -86,8 +112,9 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 	}
 	return &d520Run{
 		definition: runDefinition{
-			login: login,
-			cfg:   cfg,
+			login:            login,
+			cfg:              cfg,
+			socketSourceIPv4: socketSourceIPv4,
 		},
 		diagnostics: diagnostics,
 	}, nil
@@ -96,11 +123,13 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 // runDefinition is the immutable private Run definition. login holds the
 // per-packet inputs (authExtTail is generated fresh per execution and
 // overwrites the zero placeholder before use); cfg holds the institution
-// Profile values the Run needs at execution time. No caller-owned mutable
+// Profile values the Run needs at execution time. socketSourceIPv4 is the
+// actual binding and is never replaced by the reported clientIPv4. No caller-owned mutable
 // slice or JSON buffer is retained.
 type runDefinition struct {
-	login loginInput
-	cfg   institutionConfig
+	login            loginInput
+	cfg              institutionConfig
+	socketSourceIPv4 [4]byte
 }
 
 // selectClientIPv4 takes the client IPv4 from the selected binding and rejects
