@@ -542,3 +542,55 @@ func TestExplicitBindingSelectorObservedPairAndRevisionGate(t *testing.T) {
 		t.Fatal("automatic used software loopback")
 	}
 }
+
+func TestAutomaticBindingSelectorRejectsPhysicalLoopbackOnly(t *testing.T) {
+	for _, address := range []string{"127.0.0.1", "127.42.0.2"} {
+		t.Run(address, func(t *testing.T) {
+			physical := networkInterface(t, "physical", environment.PhysicalMediumWired, address, 8)
+			if binding, ok := newAutomaticBindingSelector().Select(snapshot(t, 1, physical)); ok {
+				t.Fatalf("automatic selected loopback binding: %+v", binding)
+			}
+			policy := NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "physical", LocalIPv4Address: netip.MustParseAddr(address)}
+			binding, ok := newPolicyBindingSelector(policy).Select(snapshot(t, 1, physical))
+			if !ok {
+				t.Fatal("explicit observed physical loopback binding missing")
+			}
+			assertBinding(t, binding, "physical", address, 8)
+		})
+	}
+}
+
+func TestAutomaticBindingSelectorUsesOrdinaryAddressAlongsideLoopback(t *testing.T) {
+	physical := newNetworkInterface(t, environment.NetworkInterfaceFacts{
+		InterfaceID:              "physical",
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{
+			{Address: netip.MustParseAddr("127.0.0.1"), PrefixLength: 8},
+			{Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24},
+		},
+	})
+	binding, ok := newAutomaticBindingSelector().Select(snapshot(t, 1, physical))
+	if !ok {
+		t.Fatal("ordinary binding missing alongside loopback")
+	}
+	assertBinding(t, binding, "physical", "192.0.2.10", 24)
+}
+
+func TestAutomaticBindingSelectorIgnoresNewerPhysicalLoopbackOnly(t *testing.T) {
+	selector := newAutomaticBindingSelector()
+	ordinary := networkInterface(t, "ordinary", environment.PhysicalMediumWireless, "192.0.2.10", 24)
+	loopback := networkInterface(t, "newer", environment.PhysicalMediumWired, "127.0.0.1", 8)
+	binding, ok := selector.Select(snapshot(t, 1, ordinary))
+	if !ok {
+		t.Fatal("initial ordinary binding missing")
+	}
+	assertBinding(t, binding, "ordinary", "192.0.2.10", 24)
+	binding, ok = selector.Select(snapshot(t, 2, ordinary, loopback))
+	if !ok {
+		t.Fatal("ordinary binding lost when loopback appeared")
+	}
+	assertBinding(t, binding, "ordinary", "192.0.2.10", 24)
+}

@@ -102,6 +102,9 @@ func availableBindingCandidates(snapshot environment.Snapshot) []bindingCandidat
 			continue
 		}
 		for _, assignment := range networkInterface.IPv4AddressAssignments() {
+			if assignment.Address.IsLoopback() {
+				continue
+			}
 			candidates = append(candidates, bindingCandidate{
 				networkInterface: networkInterface,
 				localAddress:     assignment,
