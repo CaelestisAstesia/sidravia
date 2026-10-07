@@ -1,8 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/features/announcements/announcement_model.dart';
 import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/announcement_model.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AnnouncementEntry extends StatelessWidget {
   const AnnouncementEntry({
@@ -310,13 +311,31 @@ class _AnnouncementContentState extends State<AnnouncementContent> {
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    if (item.actionLabel != null)
+                    if (item.actionLabel != null && item.actionUrl != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 18),
-                        child: Text(
-                          item.actionLabel!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
+                        child: TextButton(
+                          onPressed: () async {
+                            try {
+                              await launchUrl(
+                                item.actionUrl!,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            } on Object {
+                              // Opening an announcement link is non-fatal.
+                            }
+                          },
+                          style: TextButton.styleFrom(
+                            alignment: Alignment.centerLeft,
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            item.actionLabel!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
                       ),
