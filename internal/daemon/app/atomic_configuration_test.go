@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"reflect"
 	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
+	"strings"
 	"testing"
 	"time"
 )
@@ -227,6 +230,235 @@ func TestRuntimeMetadataChangesRetireButAutoLoginDoesNot(t *testing.T) {
 			next, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
 			if err != nil || next.SessionID == started.SessionID {
 				t.Fatalf("next session: %v", err)
+			}
+		})
+	}
+}
+
+// The transport Run remains controlled; override validation is delegated to
+// the real selected protocol boundary without producing authentication traffic.
+type overrideEditFactory struct{ editFactory }
+
+func (*overrideEditFactory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
+	return d520.NewFactory().ValidateProtocolContextOverride(raw)
+}
+
+func TestOverrideSaveRetiresOnlyAfterCommitAndExplicitConnectUsesNewBytes(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	factory := &overrideEditFactory{editFactory: editFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}, credentials: make(chan protocol.AuthenticationProtocolRunCreationInputs, 4)}}
+	registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	if err := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	old, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, old.SessionID, session.Authenticated)
+	<-factory.credentials
+	invalid := protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":2,"private-marker":"secret"}`)
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &invalid}); err == nil {
+		t.Fatal("invalid override saved")
+	}
+	unchanged, err := setup.catalog.Get(ctx, "configuration-1")
+	if err != nil || string(unchanged.ProtocolContextOverride) != `{}` {
+		t.Fatal("invalid override partially changed durable data")
+	}
+	if _, err := setup.application.GetSession(ctx, old.SessionID); err != nil {
+		t.Fatal("invalid override retired existing Session")
+	}
+	select {
+	case <-factory.credentials:
+		t.Fatal("invalid override created Run")
+	default:
+	}
+
+	replacement := protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":1,"hostName":"new-reported-host"}`)
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &replacement}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetSession(ctx, old.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
+		t.Fatal("save retained immutable old Session")
+	}
+	if list, err := setup.application.ListSessions(ctx); err != nil || len(list) != 0 {
+		t.Fatal("save auto-connected")
+	}
+	select {
+	case <-factory.credentials:
+		t.Fatal("save created Run")
+	default:
+	}
+	persisted, err := setup.catalog.Get(ctx, "configuration-1")
+	if err != nil || !bytes.Equal(persisted.ProtocolContextOverride, replacement) {
+		t.Fatal("save not durable")
+	}
+	next, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil || next.SessionID == old.SessionID {
+		t.Fatalf("explicit new connection: %v", err)
+	}
+	waitForApplicationSessionState(t, setup.application, next.SessionID, session.Authenticated)
+	select {
+	case input := <-factory.credentials:
+		if !bytes.Equal(input.ProtocolContextOverride, replacement) {
+			t.Fatal("next Run used old override")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("next explicit Run absent")
+	}
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &replacement}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetSession(ctx, next.SessionID); err != nil {
+		t.Fatal("same runtime bytes retired Session")
+	}
+	var clear protocol.AuthenticationProtocolContextOverride
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &clear}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetSession(ctx, next.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
+		t.Fatal("clear retained old runtime")
+	}
+	select {
+	case <-factory.credentials:
+		t.Fatal("clear auto-created Run")
+	default:
+	}
+	cleared, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, cleared.SessionID, session.Authenticated)
+	select {
+	case input := <-factory.credentials:
+		if len(input.ProtocolContextOverride) != 0 {
+			t.Fatal("clear not used by next Run")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("clear explicit Run absent")
+	}
+}
+
+func TestRealD520OverrideWriteValidationPreservesLegacyReadAndOldSession(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	old, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d520Profile := appTestProfile("d520-profile")
+	d520Profile.AuthenticationProtocolID = d520.ProtocolID
+	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1"), d520Profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.profiles = profiles
+	setup.application.authenticationResolver.profiles = profiles
+	registry, err := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"}, d520.NewFactory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	value := appTestConfiguration("candidate")
+	value.InstitutionProfileID = "d520-profile"
+	setup.store.mu.Lock()
+	disk := make(map[string][]byte)
+	for k, v := range setup.store.data {
+		disk[k] = bytes.Clone(v)
+	}
+	setup.store.mu.Unlock()
+	for _, raw := range []string{`{"schemaVersion":2}`, `{"schemaVersion":1,"private-secret-marker":"private-value"}`, `{"schemaVersion":1,"reportedIPv4":"224.0.0.1"}`} {
+		value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(raw)
+		_, err := setup.application.CreateConfiguration(ctx, value, "private-password", false)
+		var failure *ResolutionFailure
+		if !errors.As(err, &failure) || failure.Code() != InvalidConfiguration || failure.Unwrap() == nil {
+			t.Fatalf("selected D520 validation missing: %v", err)
+		}
+		public := configurationError(err)
+		if public.Code != "invalid_argument" || strings.Contains(public.Message, "private") {
+			t.Fatal("raw override cause leaked")
+		}
+		if _, err := setup.application.GetSession(ctx, old.SessionID); err != nil {
+			t.Fatal("invalid create retired existing Session")
+		}
+	}
+	setup.store.mu.Lock()
+	unchanged := reflect.DeepEqual(disk, setup.store.data)
+	setup.store.mu.Unlock()
+	if !unchanged {
+		t.Fatal("invalid selected override wrote store")
+	}
+	value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":1,"hostName":"reported"}`)
+	if _, err := setup.application.CreateConfiguration(ctx, value, "private-password", false); err != nil {
+		t.Fatal(err)
+	}
+	// Catalog remains protocol-opaque; legacy read-only paths stay readable.
+	opaque := protocol.AuthenticationProtocolContextOverride(`{"private-old-key":true}`)
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{ProtocolContextOverride: &opaque}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetConfiguration(ctx, "configuration-1"); err != nil {
+		t.Fatal("legacy read-only enrichment newly validates override")
+	}
+	profileID := config.InstitutionProfileID("d520-profile")
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{InstitutionProfileID: &profileID}); err == nil {
+		t.Fatal("candidate Profile failed to validate retained override")
+	}
+	current, _ := setup.catalog.Get(ctx, "configuration-1")
+	if current.InstitutionProfileID != "profile-1" || !bytes.Equal(current.ProtocolContextOverride, opaque) {
+		t.Fatal("invalid candidate mutated committed record")
+	}
+	if _, err := setup.application.GetSession(ctx, old.SessionID); err != nil {
+		t.Fatal("invalid candidate retired old Session")
+	}
+}
+
+func TestOverrideWriteFailureAndCleanupFailureRetainExistingAtomicRules(t *testing.T) {
+	for _, cleanupFailure := range []bool{false, true} {
+		t.Run(map[bool]string{false: "store failure", true: "cleanup failure"}[cleanupFailure], func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			defer setup.cleanup()
+			ctx := context.Background()
+			started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			replacement := protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":1,"hostName":"saved"}`)
+			if cleanupFailure {
+				_ = setup.supervisor.Close()
+			} else {
+				setup.store.mu.Lock()
+				setup.store.fail = true
+				setup.store.mu.Unlock()
+			}
+			_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &replacement})
+			current, readErr := setup.catalog.Get(ctx, "configuration-1")
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if !cleanupFailure {
+				if err == nil || string(current.ProtocolContextOverride) != `{}` {
+					t.Fatal("failed store partially saved")
+				}
+				if _, err := setup.application.GetSession(ctx, started.SessionID); err != nil {
+					t.Fatal("failed store retired Session")
+				}
+				return
+			}
+			if !errors.Is(err, ErrConfigurationSessionInvalidation) || !bytes.Equal(current.ProtocolContextOverride, replacement) {
+				t.Fatal("cleanup failure lost durable replacement")
+			}
+			if _, err := setup.application.EnsureSessionRunning(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+				t.Fatal("quarantined runtime can ensure")
+			}
+			if _, err := setup.application.RestartSession(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+				t.Fatal("quarantined runtime can restart")
 			}
 		})
 	}

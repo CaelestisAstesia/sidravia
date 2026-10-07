@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
@@ -290,6 +291,10 @@ func (application *Application) GetConfiguration(ctx context.Context, id config.
 func (application *Application) CreateConfiguration(ctx context.Context, value config.Configuration, password string, allow bool) (ConfigurationResult, error) {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
+	value = value.Clone()
+	if err := application.validateConfigurationOverride(ctx, value); err != nil {
+		return ConfigurationResult{}, err
+	}
 	if _, err := application.enrich(ctx, value); err != nil {
 		return ConfigurationResult{}, err
 	}
@@ -307,7 +312,10 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if err != nil {
 		return ConfigurationResult{}, err
 	}
-	candidate := current
+	candidate := current.Clone()
+	if update.ProtocolContextOverride != nil {
+		candidate.ProtocolContextOverride = append(protocol.AuthenticationProtocolContextOverride(nil), (*update.ProtocolContextOverride)...)
+	}
 	if update.NetworkBindingPolicy != nil {
 		candidate.NetworkBindingPolicy = *update.NetworkBindingPolicy
 	}
@@ -325,6 +333,9 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	}
 	if update.AutoReconnect != nil {
 		candidate.AutoReconnect = *update.AutoReconnect
+	}
+	if err := application.validateConfigurationOverride(ctx, candidate); err != nil {
+		return ConfigurationResult{}, err
 	}
 	if _, err := application.enrich(ctx, candidate); err != nil {
 		return ConfigurationResult{}, err
@@ -406,4 +417,26 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
 		CredentialStored:         stored, StorageProtection: application.catalog.StorageProtection(),
 	}, nil
+}
+
+// validateConfigurationOverride is write-only validation of public candidate
+// data. It never resolves stored credentials or creates a protocol Run, and
+// leaves legacy read-only enrichment unchanged.
+func (application *Application) validateConfigurationOverride(ctx context.Context, value config.Configuration) error {
+	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
+	if err != nil {
+		var failure *persistence.Failure
+		if errors.As(err, &failure) && failure.Code() == persistence.FailureNotFound {
+			return NewResolutionFailure(ProfileNotFound, err)
+		}
+		return NewResolutionFailure(InvalidConfiguration, err)
+	}
+	factory, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID)
+	if err != nil {
+		return NewResolutionFailure(ProtocolNotFound, err)
+	}
+	if err := factory.ValidateProtocolContextOverride(append(protocol.AuthenticationProtocolContextOverride(nil), value.ProtocolContextOverride...)); err != nil {
+		return NewResolutionFailure(InvalidConfiguration, err)
+	}
+	return nil
 }

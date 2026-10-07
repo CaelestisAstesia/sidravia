@@ -44,12 +44,12 @@ func TestDecodeSessionStartOneShotPayloadRejectsDuplicateAndEscapedKeys(t *testi
 }
 
 func TestDecodeSessionStartOneShotPayloadPreservesLargeNumbersAndSiblingObjects(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"entries":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}}`)
 	payload, err := DecodeSessionStartOneShotPayload(data)
 	if err != nil {
 		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v", err)
 	}
-	want := `[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]`
+	want := `{"entries":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}`
 	if string(payload.ProtocolContextOverride) != want {
 		t.Fatalf("protocol context changed: %s", payload.ProtocolContextOverride)
 	}
@@ -627,5 +627,79 @@ func TestNetworkBindingPolicyStrictOwnedShape(t *testing.T) {
 	}
 	if _, err := DecodeSessionStartOneShotPayload([]byte(`{"institutionProfileId":"p","username":"u","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`)); err == nil {
 		t.Fatal("old one-shot wire accepted")
+	}
+}
+
+func TestProtocolContextOverrideGenericBoundAndRawShape(t *testing.T) {
+	for _, raw := range []string{`{}`, `{"schemaVersion":1}`, `{"nested":[{"number":99999999999999999999},{"number":99999999999999999999}]}`, `{"unicode":"\ud83d\ude00"}`} {
+		source := []byte(raw)
+		result, err := DecodeProtocolContextOverride(source)
+		if err != nil || string(result) != raw {
+			t.Fatalf("valid generic override: %v", err)
+		}
+		source[0] = '['
+		if string(result) != raw {
+			t.Fatal("decoder result aliases source")
+		}
+	}
+	for _, raw := range []string{`null`, `[]`, `"private-secret"`, `1`, `{"private-secret":1,"\u0070rivate-secret":2}`, `{"nested":{"x":1,"x":2}}`, `{"x":"\ud800"}`, `{"x":"\udc00"}`, `{} {}`, `{"bad":"` + string([]byte{0xff}) + `"}`, `{broken-private-secret}`} {
+		_, err := DecodeProtocolContextOverride([]byte(raw))
+		if err == nil || err.Error() != "protocol context override must be one bounded strict object" {
+			t.Fatalf("unsafe or missing rejection: %v", err)
+		}
+	}
+	exact := []byte("{" + strings.Repeat(" ", MaximumProtocolContextOverrideBytes-2) + "}")
+	if _, err := DecodeProtocolContextOverride(exact); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeProtocolContextOverride(append(exact, ' ')); err == nil {
+		t.Fatal("raw source limit not enforced")
+	}
+}
+func TestConfigurationOverridePresenceReplacementClearAndOneShotObject(t *testing.T) {
+	create := `{"institutionProfileId":"p","username":"u","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`
+	omitted, err := DecodeConfigurationCreatePayload([]byte(create))
+	if err != nil || len(omitted.ProtocolContextOverride) != 0 {
+		t.Fatal("legacy create changed")
+	}
+	for _, raw := range []string{`{}`, `{"schemaVersion":1}`} {
+		payload := strings.TrimSuffix(create, "}") + `,"protocolContextOverride":` + raw + `}`
+		value, err := DecodeConfigurationCreatePayload([]byte(payload))
+		if err != nil || string(value.ProtocolContextOverride) != raw {
+			t.Fatal("create object not retained")
+		}
+	}
+	for _, raw := range []string{`null`, `[]`, `1`, `{"x":"\ud800"}`, `{"x":1,"x":2}`} {
+		payload := strings.TrimSuffix(create, "}") + `,"protocolContextOverride":` + raw + `}`
+		if _, err := DecodeConfigurationCreatePayload([]byte(payload)); err == nil {
+			t.Fatalf("create accepted %s", raw)
+		}
+	}
+	retained, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"c","displayName":""}`))
+	if err != nil || len(retained.ProtocolContextOverride) != 0 {
+		t.Fatal("omission not distinct")
+	}
+	for _, raw := range []string{`null`, `{}`, `{"schemaVersion":1}`} {
+		value, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"c","protocolContextOverride":` + raw + `}`))
+		if err != nil || string(value.ProtocolContextOverride) != raw {
+			t.Fatal("update presence lost")
+		}
+	}
+	for _, raw := range []string{`[]`, `"private"`, `{"nested":{"x":1,"x":2}}`, `{"x":"\ud800"}`} {
+		if _, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"c","protocolContextOverride":` + raw + `}`)); err == nil {
+			t.Fatal("update malformed object accepted")
+		}
+	}
+	if _, err := DecodeSessionStartOneShotPayload(bytes.Replace(validStartJSON(), []byte(`{"custom":"value"}`), []byte(`[]`), 1)); err == nil {
+		t.Fatal("oneShot array root accepted")
+	}
+	oversized := []byte("{" + strings.Repeat(" ", MaximumProtocolContextOverrideBytes) + "}")
+	if _, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"c","protocolContextOverride":` + string(oversized) + `}`)); err == nil {
+		t.Fatal("field limit not enforced")
+	}
+	// The guard limits the override field, not the surrounding credential source.
+	largePassword := strings.Repeat("a", MaximumProtocolContextOverrideBytes+1)
+	if _, err := DecodeConfigurationCreatePayload([]byte(strings.Replace(create, `"password":""`, `"password":"`+largePassword+`"`, 1))); err != nil {
+		t.Fatal("password-containing envelope incorrectly capped")
 	}
 }

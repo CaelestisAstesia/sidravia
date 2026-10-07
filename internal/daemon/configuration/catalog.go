@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 
+	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/persistence"
 	"sidravia/internal/daemon/persistence/jsonfile"
@@ -174,21 +175,22 @@ func (catalog *Catalog) nextConfigurationID() (ConfigurationID, error) {
 }
 
 type Update struct {
-	NetworkBindingPolicy *NetworkBindingPolicy
-	Password             *string
-	AllowInsecureStorage bool
-	DisplayName          *string
-	InstitutionProfileID *InstitutionProfileID
-	Username             *string
-	AutoLogin            *bool
-	AutoReconnect        *bool
+	ProtocolContextOverride *protocol.AuthenticationProtocolContextOverride
+	NetworkBindingPolicy    *NetworkBindingPolicy
+	Password                *string
+	AllowInsecureStorage    bool
+	DisplayName             *string
+	InstitutionProfileID    *InstitutionProfileID
+	Username                *string
+	AutoLogin               *bool
+	AutoReconnect           *bool
 }
 
 func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update Update) (Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
 		return Configuration{}, err
 	}
-	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil && update.NetworkBindingPolicy == nil {
+	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil && update.NetworkBindingPolicy == nil && update.ProtocolContextOverride == nil {
 		return Configuration{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
@@ -199,6 +201,10 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	record, exists := catalog.records[id]
 	if !exists {
 		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+	}
+	record.configuration = record.configuration.Clone()
+	if update.ProtocolContextOverride != nil {
+		record.configuration.ProtocolContextOverride = append(protocol.AuthenticationProtocolContextOverride(nil), (*update.ProtocolContextOverride)...)
 	}
 	if update.NetworkBindingPolicy != nil {
 		record.configuration.NetworkBindingPolicy = *update.NetworkBindingPolicy

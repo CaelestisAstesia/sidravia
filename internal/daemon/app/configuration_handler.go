@@ -1,10 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 
+	"sidravia/internal/daemon/authentication/protocol"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/persistence"
 	"sidravia/internal/daemon/persistence/jsonfile"
@@ -54,8 +56,9 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			}
 			policy, _ := request.NetworkBindingPolicy.Domain()
 			value, err := application.CreateConfiguration(ctx, config.Configuration{
-				ConfigurationID: config.ConfigurationID(request.ConfigurationID),
-				DisplayName:     request.DisplayName, InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
+				ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(request.ProtocolContextOverride),
+				ConfigurationID:         config.ConfigurationID(request.ConfigurationID),
+				DisplayName:             request.DisplayName, InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
 				Username: request.Username, NetworkBindingPolicy: policy, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
 			}, request.Password, request.AllowInsecureStorage)
 			return encodeConfiguration(value, err)
@@ -74,7 +77,15 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 				converted := config.InstitutionProfileID(*request.InstitutionProfileID)
 				profile = &converted
 			}
-			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
+			var override *protocol.AuthenticationProtocolContextOverride
+			if len(request.ProtocolContextOverride) > 0 {
+				var converted protocol.AuthenticationProtocolContextOverride
+				if !bytes.Equal(bytes.TrimSpace(request.ProtocolContextOverride), []byte("null")) {
+					converted = append(converted, request.ProtocolContextOverride...)
+				}
+				override = &converted
+			}
+			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationSetPassword:
 			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)

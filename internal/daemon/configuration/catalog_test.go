@@ -3,6 +3,7 @@ package configuration
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"path/filepath"
@@ -418,5 +419,80 @@ func TestCatalogBindingOnlyUpdatePreservationAndRejectedWrite(t *testing.T) {
 	got, err = c.Get(ctx, "bound")
 	if err != nil || got.NetworkBindingPolicy != policy {
 		t.Fatal("failed persistence mutated memory")
+	}
+}
+
+func TestCatalogOverrideReplaceOmitClearCloneAndFailedCommit(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	path := filepath.Join(t.TempDir(), "config.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := catalogTestConfiguration("a", "label")
+	value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"old":1}`)
+	if _, err = catalog.Create(ctx, value, "private-password", false); err != nil {
+		t.Fatal(err)
+	}
+	replacement := protocol.AuthenticationProtocolContextOverride(`{"new":{"opaque":true}}`)
+	got, err := catalog.Update(ctx, "a", Update{ProtocolContextOverride: &replacement})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement[0] = '['
+	got.ProtocolContextOverride[0] = '['
+	stored, err := catalog.Get(ctx, "a")
+	if err != nil || string(stored.ProtocolContextOverride) != `{"new":{"opaque":true}}` {
+		t.Fatal("committed override aliases caller/result")
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundtrip, err := reopened.Get(ctx, "a")
+	if err != nil || !bytes.Equal(roundtrip.ProtocolContextOverride, stored.ProtocolContextOverride) {
+		t.Fatal("override not durable")
+	}
+	name := "metadata"
+	if _, err = catalog.Update(ctx, "a", Update{DisplayName: &name}); err != nil {
+		t.Fatal(err)
+	}
+	retained, _ := catalog.Get(ctx, "a")
+	if !bytes.Equal(retained.ProtocolContextOverride, stored.ProtocolContextOverride) {
+		t.Fatal("omission cleared override")
+	}
+	before := bytes.Clone(store.data)
+	cause := errors.New("private-store-failure")
+	store.replaceErr = cause
+	next := protocol.AuthenticationProtocolContextOverride(`{"next":1}`)
+	if _, err = catalog.Update(ctx, "a", Update{ProtocolContextOverride: &next}); !errors.Is(err, cause) {
+		t.Fatal("write cause lost")
+	}
+	retained, _ = catalog.Get(ctx, "a")
+	if !bytes.Equal(store.data, before) || !bytes.Equal(retained.ProtocolContextOverride, stored.ProtocolContextOverride) {
+		t.Fatal("failed commit altered override")
+	}
+	store.replaceErr = nil
+	var clear protocol.AuthenticationProtocolContextOverride
+	if _, err = catalog.Update(ctx, "a", Update{ProtocolContextOverride: &clear}); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, credentials, err := reopened.Resolve(ctx, "a")
+	if err != nil || len(retained.ProtocolContextOverride) != 0 || credentials.Password != "private-password" || retained.DisplayName != name {
+		t.Fatal("clear did not persist independently")
+	}
+	var doc struct {
+		SchemaVersion  int `json:"schemaVersion"`
+		Configurations []struct {
+			Override json.RawMessage `json:"protocolContextOverride"`
+		} `json:"configurations"`
+	}
+	if err := json.Unmarshal(store.data, &doc); err != nil || doc.SchemaVersion != 4 || len(doc.Configurations) != 1 || string(doc.Configurations[0].Override) != "null" {
+		t.Fatal("existing schema/null persistence changed")
 	}
 }

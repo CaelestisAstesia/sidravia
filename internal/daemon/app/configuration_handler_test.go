@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/daemon/authentication/protocol"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/persistence"
 	"sidravia/internal/daemon/persistence/jsonfile"
@@ -43,6 +44,7 @@ func TestConfigurationHandlerRejectsUnknownCreateFields(t *testing.T) {
 }
 
 type fakeConfigurationApplication struct {
+	created    config.Configuration
 	result     ConfigurationResult
 	list       []ConfigurationResult
 	protection jsonfile.ProtectionStatus
@@ -63,6 +65,7 @@ func (fake *fakeConfigurationApplication) GetConfiguration(_ context.Context, id
 	return fake.result, fake.err
 }
 func (fake *fakeConfigurationApplication) CreateConfiguration(_ context.Context, value config.Configuration, password string, allow bool) (ConfigurationResult, error) {
+	fake.created = value
 	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationCreate, value.ConfigurationID, password, allow
 	return fake.result, fake.err
 }
@@ -190,5 +193,54 @@ func TestConfigurationHandlerForwardsAtomicPasswordAndRemoveConsent(t *testing.T
 	}
 	if !fake.allow || fake.method != contract.MethodConfigurationRemove {
 		t.Fatal("remove consent lost")
+	}
+}
+
+func TestConfigurationHandlerOverrideTypedMappingAndPrivacy(t *testing.T) {
+	ctx := context.Background()
+	private := `{"schemaVersion":1,"hostName":"private-override-marker"}`
+	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
+	fake.result.Configuration.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(private)
+	handler := ConfigurationHandler(fake)
+	create := `{"institutionProfileId":"jlu","username":"u","password":"private-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false,"protocolContextOverride":` + private + `}`
+	raw, publicErr := handler(ctx, contract.MethodConfigurationCreate, []byte(create))
+	if publicErr != nil || string(fake.created.ProtocolContextOverride) != private {
+		t.Fatal("create override not forwarded")
+	}
+	if strings.Contains(string(raw), "private-") || strings.Contains(string(raw), "protocolContextOverride") {
+		t.Fatal("raw override echoed")
+	}
+	for _, input := range []string{`{"configurationId":"campus","displayName":"label"}`, `{"configurationId":"campus","protocolContextOverride":` + private + `}`, `{"configurationId":"campus","protocolContextOverride":null}`} {
+		fake.update = config.Update{}
+		_, publicErr := handler(ctx, contract.MethodConfigurationUpdate, []byte(input))
+		if publicErr != nil {
+			t.Fatal(publicErr)
+		}
+		switch {
+		case strings.Contains(input, "displayName"):
+			if fake.update.ProtocolContextOverride != nil {
+				t.Fatal("omission replaced override")
+			}
+		case strings.Contains(input, ":null"):
+			if fake.update.ProtocolContextOverride == nil || len(*fake.update.ProtocolContextOverride) != 0 {
+				t.Fatal("null not mapped to typed clear")
+			}
+		default:
+			if fake.update.ProtocolContextOverride == nil || string(*fake.update.ProtocolContextOverride) != private {
+				t.Fatal("object not mapped to replacement")
+			}
+		}
+	}
+	for _, input := range []string{strings.Replace(create, private, "null", 1), `{"configurationId":"campus","protocolContextOverride":[]}`, `{"configurationId":"campus","protocolContextOverride":{"private":1,"private":2}}`} {
+		fake.method = ""
+		_, publicErr := handler(ctx, map[bool]string{true: contract.MethodConfigurationCreate, false: contract.MethodConfigurationUpdate}[strings.Contains(input, "institutionProfileId")], []byte(input))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "malformed configuration payload" || fake.method != "" {
+			t.Fatal("invalid override reached application or leaked error")
+		}
+	}
+	fake.err = NewResolutionFailure(InvalidConfiguration, errors.New("private-cause-marker"))
+	_, publicErr = handler(ctx, contract.MethodConfigurationUpdate, []byte(`{"configurationId":"campus","protocolContextOverride":{}}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "invalid configuration" {
+		t.Fatal("selected Factory error boundary changed")
 	}
 }

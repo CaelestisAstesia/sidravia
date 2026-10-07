@@ -168,26 +168,28 @@ type ConfigurationIDPayload struct {
 	ConfigurationID string `json:"configurationId"`
 }
 type ConfigurationCreatePayload struct {
-	NetworkBindingPolicy NetworkBindingPolicy `json:"networkBindingPolicy"`
-	ConfigurationID      string               `json:"configurationId,omitempty"`
-	DisplayName          string               `json:"displayName,omitempty"`
-	InstitutionProfileID string               `json:"institutionProfileId"`
-	Username             string               `json:"username"`
-	Password             string               `json:"password"`
-	AllowInsecureStorage bool                 `json:"allowInsecureStorage"`
-	AutoLogin            bool                 `json:"autoLogin"`
-	AutoReconnect        bool                 `json:"autoReconnect"`
+	ProtocolContextOverride json.RawMessage      `json:"protocolContextOverride,omitempty"`
+	NetworkBindingPolicy    NetworkBindingPolicy `json:"networkBindingPolicy"`
+	ConfigurationID         string               `json:"configurationId,omitempty"`
+	DisplayName             string               `json:"displayName,omitempty"`
+	InstitutionProfileID    string               `json:"institutionProfileId"`
+	Username                string               `json:"username"`
+	Password                string               `json:"password"`
+	AllowInsecureStorage    bool                 `json:"allowInsecureStorage"`
+	AutoLogin               bool                 `json:"autoLogin"`
+	AutoReconnect           bool                 `json:"autoReconnect"`
 }
 type ConfigurationUpdatePayload struct {
-	NetworkBindingPolicy *NetworkBindingPolicy `json:"networkBindingPolicy,omitempty"`
-	Password             *string               `json:"password,omitempty"`
-	AllowInsecureStorage bool                  `json:"allowInsecureStorage,omitempty"`
-	ConfigurationID      string                `json:"configurationId"`
-	DisplayName          *string               `json:"displayName,omitempty"`
-	InstitutionProfileID *string               `json:"institutionProfileId,omitempty"`
-	Username             *string               `json:"username,omitempty"`
-	AutoLogin            *bool                 `json:"autoLogin,omitempty"`
-	AutoReconnect        *bool                 `json:"autoReconnect,omitempty"`
+	ProtocolContextOverride json.RawMessage       `json:"protocolContextOverride,omitempty"`
+	NetworkBindingPolicy    *NetworkBindingPolicy `json:"networkBindingPolicy,omitempty"`
+	Password                *string               `json:"password,omitempty"`
+	AllowInsecureStorage    bool                  `json:"allowInsecureStorage,omitempty"`
+	ConfigurationID         string                `json:"configurationId"`
+	DisplayName             *string               `json:"displayName,omitempty"`
+	InstitutionProfileID    *string               `json:"institutionProfileId,omitempty"`
+	Username                *string               `json:"username,omitempty"`
+	AutoLogin               *bool                 `json:"autoLogin,omitempty"`
+	AutoReconnect           *bool                 `json:"autoReconnect,omitempty"`
 }
 type ConfigurationSetPasswordPayload struct {
 	ConfigurationID      string `json:"configurationId"`
@@ -228,15 +230,16 @@ func DecodeConfigurationIDPayload(data []byte) (ConfigurationIDPayload, error) {
 }
 func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, error) {
 	var wire struct {
-		NetworkBindingPolicy *NetworkBindingPolicy `json:"networkBindingPolicy"`
-		ConfigurationID      *string               `json:"configurationId"`
-		DisplayName          *string               `json:"displayName"`
-		InstitutionProfileID *string               `json:"institutionProfileId"`
-		Username             *string               `json:"username"`
-		Password             *string               `json:"password"`
-		AllowInsecureStorage *bool                 `json:"allowInsecureStorage"`
-		AutoLogin            *bool                 `json:"autoLogin"`
-		AutoReconnect        *bool                 `json:"autoReconnect"`
+		ProtocolContextOverride json.RawMessage       `json:"protocolContextOverride"`
+		NetworkBindingPolicy    *NetworkBindingPolicy `json:"networkBindingPolicy"`
+		ConfigurationID         *string               `json:"configurationId"`
+		DisplayName             *string               `json:"displayName"`
+		InstitutionProfileID    *string               `json:"institutionProfileId"`
+		Username                *string               `json:"username"`
+		Password                *string               `json:"password"`
+		AllowInsecureStorage    *bool                 `json:"allowInsecureStorage"`
+		AutoLogin               *bool                 `json:"autoLogin"`
+		AutoReconnect           *bool                 `json:"autoReconnect"`
 	}
 	if err := decodeStrict(data, &wire); err != nil {
 		return ConfigurationCreatePayload{}, err
@@ -255,9 +258,18 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 		wire.ConfigurationID != nil && *wire.ConfigurationID == "" || *wire.InstitutionProfileID == "" || *wire.Username == "" {
 		return ConfigurationCreatePayload{}, fmt.Errorf("missing required configuration field")
 	}
+	var override json.RawMessage
+	if len(wire.ProtocolContextOverride) > 0 {
+		var err error
+		override, err = DecodeProtocolContextOverride(wire.ProtocolContextOverride)
+		if err != nil {
+			return ConfigurationCreatePayload{}, err
+		}
+	}
 	value := ConfigurationCreatePayload{
-		NetworkBindingPolicy: *wire.NetworkBindingPolicy,
-		InstitutionProfileID: *wire.InstitutionProfileID, Username: *wire.Username,
+		ProtocolContextOverride: override,
+		NetworkBindingPolicy:    *wire.NetworkBindingPolicy,
+		InstitutionProfileID:    *wire.InstitutionProfileID, Username: *wire.Username,
 		Password: *wire.Password, AllowInsecureStorage: *wire.AllowInsecureStorage,
 		AutoLogin: *wire.AutoLogin, AutoReconnect: *wire.AutoReconnect,
 	}
@@ -308,11 +320,18 @@ func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, 
 	if err := rejectNullFields(data, "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage", "networkBindingPolicy"); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
-	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil && value.Password == nil && value.NetworkBindingPolicy == nil {
+	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil && value.Password == nil && value.NetworkBindingPolicy == nil && len(value.ProtocolContextOverride) == 0 {
 		return ConfigurationUpdatePayload{}, fmt.Errorf("missing configuration update")
 	}
 	if value.InstitutionProfileID != nil && *value.InstitutionProfileID == "" || value.Username != nil && *value.Username == "" {
 		return ConfigurationUpdatePayload{}, fmt.Errorf("empty required configuration field")
+	}
+	if len(value.ProtocolContextOverride) > 0 && !bytes.Equal(bytes.TrimSpace(value.ProtocolContextOverride), []byte("null")) {
+		raw, err := DecodeProtocolContextOverride(value.ProtocolContextOverride)
+		if err != nil {
+			return ConfigurationUpdatePayload{}, err
+		}
+		value.ProtocolContextOverride = raw
 	}
 	return value, nil
 }
@@ -430,6 +449,11 @@ func DecodeSessionStartOneShotPayload(data []byte) (SessionStartOneShotPayload, 
 	if len(payload.ProtocolContextOverride) == 0 || string(payload.ProtocolContextOverride) == "null" {
 		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing protocolContextOverride")
 	}
+	raw, err := DecodeProtocolContextOverride(payload.ProtocolContextOverride)
+	if err != nil {
+		return SessionStartOneShotPayload{}, err
+	}
+	payload.ProtocolContextOverride = raw
 	return payload, nil
 }
 
@@ -595,4 +619,22 @@ func MarshalProfileListResult(result ProfileListResult) (json.RawMessage, error)
 		return nil, err
 	}
 	return json.RawMessage(data), nil
+}
+
+// MaximumProtocolContextOverrideBytes bounds one opaque override source object.
+const MaximumProtocolContextOverrideBytes = 16384
+
+// DecodeProtocolContextOverride validates generic original JSON shape only;
+// the selected protocol Factory owns schema and field semantics. Errors never
+// reproduce untrusted member names, values or parser diagnostics.
+func DecodeProtocolContextOverride(data []byte) (json.RawMessage, error) {
+	invalid := fmt.Errorf("protocol context override must be one bounded strict object")
+	if len(data) > MaximumProtocolContextOverrideBytes || validateNetworkUnicode(data) != nil {
+		return nil, invalid
+	}
+	var object map[string]json.RawMessage
+	if decodeStrict(data, &object) != nil || object == nil {
+		return nil, invalid
+	}
+	return append(json.RawMessage(nil), data...), nil
 }
