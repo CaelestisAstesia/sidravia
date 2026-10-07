@@ -7,7 +7,10 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 class WebSocketIpcClient
-    implements SidraviaDesktopClient, SidraviaNetworkClient {
+    implements
+        SidraviaDesktopClient,
+        SidraviaNetworkClient,
+        SidraviaDiagnosticClient {
   WebSocketIpcClient._(
     this._socket, {
     Duration requestTimeout = _requestTimeout,
@@ -59,6 +62,14 @@ class WebSocketIpcClient
       // The connection failure remains the stable public failure.
     }
   }
+
+  @override
+  Future<DiagnosticExport> diagnosticsExport() async => _call(
+    'diagnostics.export',
+    const {},
+    decodeDiagnosticExport,
+    decodeValue: decodeDiagnosticExportValue,
+  );
 
   @override
   Future<NetworkDiagnosis> networkDiagnose({
@@ -258,6 +269,7 @@ class WebSocketIpcClient
         message,
         preserveNetworkRevision: method == 'network.interfaces',
         preserveNetworkRunGeneration: method == 'network.diagnose',
+        strictUnsignedNumbers: method == 'diagnostics.export',
       );
       if (raw is! Map<String, dynamic> ||
           raw['kind'] != 'response' ||

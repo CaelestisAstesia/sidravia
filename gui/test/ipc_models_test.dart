@@ -6,6 +6,43 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('export unsigned raw mode is opt in and typed items immutable', () {
+    expect(decodeBindingCheckedJson('{"old":1e0}'), {'old': 1.0});
+    for (final token in ['-0', '0.0', '0e0']) {
+      expect(
+        () => decodeBindingCheckedJson(
+          '{"n":$token}',
+          strictUnsignedNumbers: true,
+        ),
+        throwsA(isA<IpcProtocolException>()),
+      );
+    }
+    expect(decodeBindingCheckedJson('{"n":0}', strictUnsignedNumbers: true), {
+      'n': 0,
+    });
+    final items = <DiagnosticExportSession>[];
+    final sessions = DiagnosticExportSessions(
+      totalCount: 0,
+      truncated: false,
+      items: items,
+    );
+    items.add(
+      const DiagnosticExportSession(
+        state: 'other',
+        intent: 'other',
+        reasonCode: 'other',
+        selectedBinding: false,
+        protocolSocketState: 'other',
+      ),
+    );
+    expect(sessions.items, isEmpty);
+    expect(() => sessions.items.clear(), throwsUnsupportedError);
+    expect(
+      () => decodeDiagnosticExport(' ' * 32769),
+      throwsA(isA<IpcProtocolException>()),
+    );
+  });
+
   test('checked tree preserves simultaneous nested uint64 without precision laundering', () {
     const wire =
         '{"revision":9007199254740993,"nested":{"runGeneration":18446744073709551615},"other":[{"runGeneration":9007199254740995}]}';

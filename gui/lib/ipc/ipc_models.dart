@@ -176,11 +176,14 @@ Object? decodeBindingCheckedJson(
   String source, {
   bool preserveNetworkRevision = false,
   bool preserveNetworkRunGeneration = false,
+  bool strictUnsignedNumbers = false,
 }) {
   try {
     var i = 0;
     final strictUnicode =
-        preserveNetworkRevision || preserveNetworkRunGeneration;
+        preserveNetworkRevision ||
+        preserveNetworkRunGeneration ||
+        strictUnsignedNumbers;
     void whitespace() {
       while (i < source.length &&
           const [9, 10, 13, 32].contains(source.codeUnitAt(i))) {
@@ -241,7 +244,15 @@ Object? decodeBindingCheckedJson(
           if (i >= source.length || source[i++] != ':') {
             throw const IpcProtocolException();
           }
+          whitespace();
+          final valueStart = i;
           result[name] = value(name);
+          if (strictUnsignedNumbers &&
+              name == 'result' &&
+              utf8.encode(source.substring(valueStart, i)).length >
+                  maximumDiagnosticExportBytes) {
+            throw const IpcProtocolException();
+          }
           whitespace();
           if (i >= source.length) {
             throw const IpcProtocolException();
@@ -305,6 +316,11 @@ Object? decodeBindingCheckedJson(
           throw const IpcProtocolException();
         }
         return n;
+      }
+      if (strictUnsignedNumbers &&
+          RegExp(r'^[-0-9]').hasMatch(token) &&
+          !RegExp(r'^(0|[1-9][0-9]*)$').hasMatch(token)) {
+        throw const IpcProtocolException();
       }
       if (strictUnicode && token == '-0') {
         throw const IpcProtocolException();
@@ -1273,5 +1289,253 @@ Map<String, Object> decodeNetworkDiagnosisPayload(String source) {
         : null,
     sessionId: v.containsKey('sessionId') ? _text(v['sessionId']) : null,
     probe: v.containsKey('probe') ? _bool(v['probe']) : false,
+  );
+}
+
+const maximumDiagnosticExportBytes = 32768;
+const diagnosticOperatingSystems = {'windows', 'linux', 'darwin', 'other'};
+const diagnosticArchitectures = {'amd64', 'arm64', '386', 'other'};
+const diagnosticSessionStates = {
+  'suspended',
+  'waiting_for_network',
+  'authenticating',
+  'authenticated',
+  'waiting_before_retry',
+  'blocked_by_error',
+  'stopping',
+  'other',
+};
+const diagnosticSessionIntents = {
+  'maintain_authentication',
+  'suspend_authentication',
+  'other',
+};
+const diagnosticReasonCodes = {
+  'network_binding_unavailable',
+  'network_unavailable',
+  'runtime_definition_unavailable',
+  'protocol_run_creation_failed',
+  'protocol_run_failed',
+  'protocol_contract_violated',
+  'automatic_reconnect_disabled',
+  'none',
+  'other',
+};
+const diagnosticSocketStates = {
+  'not_observed',
+  'open',
+  'closed',
+  'close_failed',
+  'close_unconfirmed',
+  'other',
+};
+
+class DiagnosticExportNetwork {
+  const DiagnosticExportNetwork({
+    required this.available,
+    this.interfaceCount,
+    this.ipv4AssignmentCount,
+  });
+  final bool available;
+  final int? interfaceCount, ipv4AssignmentCount;
+}
+
+class DiagnosticExportCatalog {
+  const DiagnosticExportCatalog({
+    required this.storageProtection,
+    required this.totalConfigurations,
+    required this.autoLoginConfigurations,
+    required this.autoReconnectConfigurations,
+    required this.automaticBindingConfigurations,
+    required this.explicitBindingConfigurations,
+  });
+  final String storageProtection;
+  final int totalConfigurations,
+      autoLoginConfigurations,
+      autoReconnectConfigurations,
+      automaticBindingConfigurations,
+      explicitBindingConfigurations;
+}
+
+class DiagnosticExportSession {
+  const DiagnosticExportSession({
+    required this.state,
+    required this.intent,
+    required this.reasonCode,
+    required this.selectedBinding,
+    required this.protocolSocketState,
+  });
+  final String state, intent, reasonCode, protocolSocketState;
+  final bool selectedBinding;
+}
+
+class DiagnosticExportSessions {
+  DiagnosticExportSessions({
+    required this.totalCount,
+    required this.truncated,
+    required List<DiagnosticExportSession> items,
+  }) : items = List.unmodifiable(items);
+  final int totalCount;
+  final bool truncated;
+  final List<DiagnosticExportSession> items;
+}
+
+class DiagnosticExport {
+  const DiagnosticExport({
+    required this.schemaVersion,
+    required this.generatedAt,
+    required this.productVersion,
+    required this.buildId,
+    required this.operatingSystem,
+    required this.architecture,
+    required this.network,
+    required this.catalog,
+    required this.sessions,
+  });
+  final int schemaVersion;
+  final String generatedAt,
+      productVersion,
+      buildId,
+      operatingSystem,
+      architecture;
+  final DiagnosticExportNetwork network;
+  final DiagnosticExportCatalog catalog;
+  final DiagnosticExportSessions sessions;
+}
+
+String _diagnosticMetadata(Object? raw) {
+  final text = _text(raw);
+  final match = RegExp(r'^[A-Za-z0-9._+-]{1,128}$').firstMatch(text);
+  if (match == null || match.end != text.length) {
+    throw const IpcProtocolException();
+  }
+  return text;
+}
+
+DiagnosticExport decodeDiagnosticExport(String source) {
+  if (utf8.encode(source).length > maximumDiagnosticExportBytes) {
+    throw const IpcProtocolException();
+  }
+  return decodeDiagnosticExportValue(
+    decodeBindingCheckedJson(source, strictUnsignedNumbers: true),
+  );
+}
+
+void decodeDiagnosticExportPayload(String source) {
+  _object(
+    decodeBindingCheckedJson(source, strictUnsignedNumbers: true),
+    const {},
+  );
+}
+
+DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
+  final v = _object(raw, const {
+    'schemaVersion',
+    'generatedAt',
+    'productVersion',
+    'buildId',
+    'operatingSystem',
+    'architecture',
+    'network',
+    'catalog',
+    'sessions',
+  });
+  final schema = _networkUint(v['schemaVersion'], 4294967295);
+  if (schema != 1) {
+    throw const IpcProtocolException();
+  }
+  final generated = _networkTime(v['generatedAt']);
+  final version = _diagnosticMetadata(v['productVersion']);
+  final build = _diagnosticMetadata(v['buildId']);
+  final os = _networkEnum(v['operatingSystem'], diagnosticOperatingSystems);
+  final arch = _networkEnum(v['architecture'], diagnosticArchitectures);
+  if (v['network'] is! Map<String, dynamic>) {
+    throw const IpcProtocolException();
+  }
+  final available = _bool((v['network'] as Map<String, dynamic>)['available']);
+  final n = _object(v['network'], {
+    'available',
+    if (available) 'interfaceCount',
+    if (available) 'ipv4AssignmentCount',
+  });
+  final network = DiagnosticExportNetwork(
+    available: available,
+    interfaceCount: available
+        ? _networkUint(n['interfaceCount'], 4294967295)
+        : null,
+    ipv4AssignmentCount: available
+        ? _networkUint(n['ipv4AssignmentCount'], 4294967295)
+        : null,
+  );
+  final c = _object(v['catalog'], const {
+    'storageProtection',
+    'totalConfigurations',
+    'autoLoginConfigurations',
+    'autoReconnectConfigurations',
+    'automaticBindingConfigurations',
+    'explicitBindingConfigurations',
+  });
+  final total = _networkUint(c['totalConfigurations'], 4294967295);
+  final login = _networkUint(c['autoLoginConfigurations'], 4294967295);
+  final reconnect = _networkUint(c['autoReconnectConfigurations'], 4294967295);
+  final automatic = _networkUint(
+    c['automaticBindingConfigurations'],
+    4294967295,
+  );
+  final explicit = _networkUint(c['explicitBindingConfigurations'], 4294967295);
+  if (login > 1 ||
+      login > total ||
+      reconnect > total ||
+      automatic + explicit != total) {
+    throw const IpcProtocolException();
+  }
+  final catalog = DiagnosticExportCatalog(
+    storageProtection: _protection(c['storageProtection']),
+    totalConfigurations: total,
+    autoLoginConfigurations: login,
+    autoReconnectConfigurations: reconnect,
+    automaticBindingConfigurations: automatic,
+    explicitBindingConfigurations: explicit,
+  );
+  final s = _object(v['sessions'], const {'totalCount', 'truncated', 'items'});
+  final sessionTotal = _networkUint(s['totalCount'], 4294967295);
+  final truncated = _bool(s['truncated']);
+  final items = _list(s['items']).map((raw) {
+    final item = _object(raw, const {
+      'state',
+      'intent',
+      'reasonCode',
+      'selectedBinding',
+      'protocolSocketState',
+    });
+    return DiagnosticExportSession(
+      state: _networkEnum(item['state'], diagnosticSessionStates),
+      intent: _networkEnum(item['intent'], diagnosticSessionIntents),
+      reasonCode: _networkEnum(item['reasonCode'], diagnosticReasonCodes),
+      selectedBinding: _bool(item['selectedBinding']),
+      protocolSocketState: _networkEnum(
+        item['protocolSocketState'],
+        diagnosticSocketStates,
+      ),
+    );
+  }).toList();
+  if (items.length != (sessionTotal > 64 ? 64 : sessionTotal) ||
+      truncated != (sessionTotal > 64)) {
+    throw const IpcProtocolException();
+  }
+  return DiagnosticExport(
+    schemaVersion: schema,
+    generatedAt: generated,
+    productVersion: version,
+    buildId: build,
+    operatingSystem: os,
+    architecture: arch,
+    network: network,
+    catalog: catalog,
+    sessions: DiagnosticExportSessions(
+      totalCount: sessionTotal,
+      truncated: truncated,
+      items: items,
+    ),
   );
 }

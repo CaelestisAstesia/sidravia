@@ -19,6 +19,7 @@ import (
 const fixturePath = "testdata/v1/conformance.json"
 
 type conformanceFixture struct {
+	DiagnosticExportCases  []networkDiagnosticCase `json:"diagnosticExportCases"`
 	SchemaVersion          int                     `json:"schemaVersion"`
 	Enums                  fixtureEnums            `json:"enums"`
 	Cases                  []fixtureCase           `json:"cases"`
@@ -33,11 +34,17 @@ type networkDiagnosticCase struct {
 	ValidResult  *bool  `json:"validResult"`
 }
 type fixtureEnums struct {
-	NetworkSelectionBases     []string `json:"networkSelectionBases"`
-	NetworkDiagnosticStatuses []string `json:"networkDiagnosticStatuses"`
-	NetworkUnsupportedReasons []string `json:"networkUnsupportedReasons"`
-	NetworkProbeStatuses      []string `json:"networkProbeStatuses"`
-	NetworkSocketStates       []string `json:"networkSocketStates"`
+	DiagnosticOperatingSystems []string `json:"diagnosticOperatingSystems"`
+	DiagnosticArchitectures    []string `json:"diagnosticArchitectures"`
+	DiagnosticSessionStates    []string `json:"diagnosticSessionStates"`
+	DiagnosticSessionIntents   []string `json:"diagnosticSessionIntents"`
+	DiagnosticReasonCodes      []string `json:"diagnosticReasonCodes"`
+	DiagnosticSocketStates     []string `json:"diagnosticSocketStates"`
+	NetworkSelectionBases      []string `json:"networkSelectionBases"`
+	NetworkDiagnosticStatuses  []string `json:"networkDiagnosticStatuses"`
+	NetworkUnsupportedReasons  []string `json:"networkUnsupportedReasons"`
+	NetworkProbeStatuses       []string `json:"networkProbeStatuses"`
+	NetworkSocketStates        []string `json:"networkSocketStates"`
 
 	DaemonModes               []string `json:"daemonModes"`
 	SessionStartOutcomes      []string `json:"sessionStartOutcomes"`
@@ -63,6 +70,7 @@ func TestV1ConformanceFixture(t *testing.T) {
 	assertEnums(t, fixture.Enums)
 
 	expectedMethods := map[string]struct{}{
+		contract.MethodDiagnosticsExport:         {},
 		contract.MethodDaemonStatus:              {},
 		contract.MethodNetworkInterfaces:         {},
 		contract.MethodNetworkDiagnose:           {},
@@ -152,6 +160,12 @@ func decodeStrictJSON(t *testing.T, data []byte, target any) {
 }
 
 func assertEnums(t *testing.T, enums fixtureEnums) {
+	assertEnum(t, "diagnosticOperatingSystems", enums.DiagnosticOperatingSystems, []string{"windows", "linux", "darwin", "other"})
+	assertEnum(t, "diagnosticArchitectures", enums.DiagnosticArchitectures, []string{"amd64", "arm64", "386", "other"})
+	assertEnum(t, "diagnosticSessionStates", enums.DiagnosticSessionStates, []string{"suspended", "waiting_for_network", "authenticating", "authenticated", "waiting_before_retry", "blocked_by_error", "stopping", "other"})
+	assertEnum(t, "diagnosticSessionIntents", enums.DiagnosticSessionIntents, []string{"maintain_authentication", "suspend_authentication", "other"})
+	assertEnum(t, "diagnosticReasonCodes", enums.DiagnosticReasonCodes, []string{"network_binding_unavailable", "network_unavailable", "runtime_definition_unavailable", "protocol_run_creation_failed", "protocol_run_failed", "protocol_contract_violated", "automatic_reconnect_disabled", "none", "other"})
+	assertEnum(t, "diagnosticSocketStates", enums.DiagnosticSocketStates, []string{"not_observed", "open", "closed", "close_failed", "close_unconfirmed", "other"})
 	assertEnum(t, "networkSelectionBases", enums.NetworkSelectionBases, []string{"session_binding", "configuration_explicit", "os_route_proposal"})
 	assertEnum(t, "networkDiagnosticStatuses", enums.NetworkDiagnosticStatuses, []string{"available", "unsupported", "binding_unavailable", "route_unavailable"})
 	assertEnum(t, "networkUnsupportedReasons", enums.NetworkUnsupportedReasons, []string{"platform", "protocol", "destination"})
@@ -187,6 +201,8 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 	t.Helper()
 	var err error
 	switch method {
+	case contract.MethodDiagnosticsExport:
+		err = contract.DecodeDiagnosticsExportPayload(payload)
 	case contract.MethodNetworkDiagnose:
 		_, err = contract.DecodeNetworkDiagnosePayload(payload)
 	case contract.MethodNetworkInterfaces, contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList, contract.MethodConfigurationList:
@@ -231,6 +247,10 @@ func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Requ
 	requireObjectKeys(t, []byte(item.SuccessResponse), "kind", "id", "ok", "result")
 
 	switch item.Method {
+	case contract.MethodDiagnosticsExport:
+		if _, err := contract.DecodeDiagnosticsExportResult(response.Result); err != nil {
+			t.Fatal(err)
+		}
 	case contract.MethodNetworkDiagnose:
 		result, err := contract.DecodeNetworkDiagnoseResult(response.Result)
 		if err != nil || result.Status != "available" || result.ProtocolSocket.RunGeneration != ^uint64(0) {
@@ -357,6 +377,8 @@ func assertErrorResponse(t *testing.T, item fixtureCase, requestID string) {
 
 func reachableError(method string) contract.Error {
 	switch method {
+	case contract.MethodDiagnosticsExport:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed diagnostic payload"}
 	case contract.MethodNetworkInterfaces, contract.MethodNetworkDiagnose:
 		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
 	case contract.MethodDaemonStatus, contract.MethodDaemonStop:
@@ -448,6 +470,30 @@ func TestNetworkDiagnosisSharedStrictCases(t *testing.T) {
 				t.Fatalf("payload accept=%t expected=%t", err == nil, *item.ValidPayload)
 			}
 			_, err = contract.DecodeNetworkDiagnoseResult([]byte(item.Result))
+			if (err == nil) != *item.ValidResult {
+				t.Fatalf("result accept=%t expected=%t: %v", err == nil, *item.ValidResult, err)
+			}
+		})
+	}
+}
+
+func TestDiagnosticExportSharedStrictCases(t *testing.T) {
+	fixture := loadFixture(t)
+	if len(fixture.DiagnosticExportCases) == 0 {
+		t.Fatal("missing export cases")
+	}
+	seen := map[string]bool{}
+	for _, item := range fixture.DiagnosticExportCases {
+		if item.Name == "" || seen[item.Name] || item.ValidPayload == nil || item.ValidResult == nil {
+			t.Fatal("invalid export case metadata")
+		}
+		seen[item.Name] = true
+		t.Run(item.Name, func(t *testing.T) {
+			err := contract.DecodeDiagnosticsExportPayload([]byte(item.Payload))
+			if (err == nil) != *item.ValidPayload {
+				t.Fatalf("payload accept=%t expected=%t: %v", err == nil, *item.ValidPayload, err)
+			}
+			_, err = contract.DecodeDiagnosticsExportResult([]byte(item.Result))
 			if (err == nil) != *item.ValidResult {
 				t.Fatalf("result accept=%t expected=%t: %v", err == nil, *item.ValidResult, err)
 			}

@@ -30,9 +30,12 @@ func IPCHandler(
 	profiles := ProfileHandler(application)
 	configurations := ConfigurationHandler(application)
 	network := NetworkHandler(application)
+	diagnostics := DiagnosticsExportHandler(application, productVersion, buildID)
 
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		switch method {
+		case contract.MethodDiagnosticsExport:
+			return diagnostics(ctx, method, payload)
 		case contract.MethodDaemonStatus:
 			return status(ctx, method, payload)
 		case contract.MethodDaemonStop:

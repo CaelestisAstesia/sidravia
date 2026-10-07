@@ -69,3 +69,8 @@ abstract interface class SidraviaNetworkClient {
     bool allowInsecureStorage = false,
   });
 }
+
+/// Optional curated artifact export. Base client implementers need not expose it.
+abstract interface class SidraviaDiagnosticClient {
+  Future<DiagnosticExport> diagnosticsExport();
+}

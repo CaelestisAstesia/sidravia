@@ -374,3 +374,23 @@ func TestFixedIPCDispatchRecognizesOnlyTrustedNetworkDiagnosis(t *testing.T) {
 		t.Fatal("network prefix dispatch broadened")
 	}
 }
+
+func TestIPCHandlerDiagnosticExportMetadataAndSafePayloadErrors(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := IPCHandler(setup.application, "1.2.3", "safe-build", launchcontract.Headless())
+	raw, publicErr := handler(context.Background(), contract.MethodDiagnosticsExport, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	value, err := contract.DecodeDiagnosticsExportResult(raw)
+	if err != nil || value.ProductVersion != "1.2.3" || value.BuildID != "safe-build" {
+		t.Fatal("trusted metadata composition changed")
+	}
+	for _, payload := range []string{`null`, `{"private-password":"marker"}`, `{} {}`, `{"a":1,"a":1}`} {
+		_, publicErr := handler(context.Background(), contract.MethodDiagnosticsExport, []byte(payload))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "malformed diagnostic payload" {
+			t.Fatalf("payload error not safe: %#v", publicErr)
+		}
+	}
+}

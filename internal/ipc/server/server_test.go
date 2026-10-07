@@ -868,3 +868,34 @@ func TestTrustedNetworkDiagnosisMethodIsAllowlistedWithoutLoggingSelector(t *tes
 		t.Fatal("diagnosis selector leaked into log")
 	}
 }
+
+func TestDiagnosticExportMethodAllowlistAndPrivatePayloadLogging(t *testing.T) {
+	if normalizeMethod(contract.MethodDiagnosticsExport) != contract.MethodDiagnosticsExport {
+		t.Fatal("missing fixed export method")
+	}
+	for _, method := range []string{"diagnostics.export.private", "DIAGNOSTICS.EXPORT"} {
+		if normalizeMethod(method) != methodUnknown {
+			t.Fatal("untrusted export method accepted")
+		}
+	}
+	var buf safeBuffer
+	_, url := newTestServer(t, func(_ context.Context, method string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
+		if method != contract.MethodDiagnosticsExport {
+			t.Fatal("wrong method")
+		}
+		return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed diagnostic payload"}
+	}, &buf)
+	conn := dial(t, url)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	writeRequest(t, conn, "private-export-request", contract.MethodDiagnosticsExport, json.RawMessage(`{"password":"private-export-secret"}`))
+	response := readResponse(t, conn)
+	if response.OK || response.ID != "private-export-request" || response.Error.Code != contract.ErrorCodeInvalidArgument {
+		t.Fatal("export response boundary changed")
+	}
+	waitForLogEvent(t, &buf, "method="+contract.MethodDiagnosticsExport)
+	for _, secret := range []string{"private-export-request", "private-export-secret", "password", testToken} {
+		if strings.Contains(buf.String(), secret) {
+			t.Fatal("private export input leaked into log")
+		}
+	}
+}

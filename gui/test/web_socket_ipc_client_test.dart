@@ -5,8 +5,159 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
+import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  test('optional export capability sends empty request and receives typed artifact', () async {
+    final requests = <Map<String, dynamic>>[];
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        requests.add(request);
+        socket.add(
+          jsonEncode({
+            'kind': 'response',
+            'id': request['id'],
+            'ok': true,
+            'result': _fixtureResult('diagnostics.export'),
+          }),
+        );
+      });
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    final SidraviaDiagnosticClient capability = client;
+    final value = await capability.diagnosticsExport();
+    expect(value.schemaVersion, 1);
+    expect(value.sessions.items, isEmpty);
+    expect(value.network.available, isFalse);
+    expect(requests.single['method'], 'diagnostics.export');
+    expect(requests.single['payload'], isEmpty);
+    await client.close();
+  });
+  test('export WebSocket validates original tokens, byte cap, envelope and errors', () async {
+    for (final variant in [
+      '-0',
+      '0.0',
+      '0e0',
+      'duplicate',
+      'unicode',
+      'size',
+      'wrong-id',
+      'error',
+    ]) {
+      var calls = 0;
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          calls++;
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          if (variant == 'error') {
+            socket.add(
+              jsonEncode({
+                'kind': 'response',
+                'id': request['id'],
+                'ok': false,
+                'error': {
+                  'code': 'internal_error',
+                  'message': 'diagnostic export failed',
+                },
+              }),
+            );
+            return;
+          }
+          final baseResult = jsonEncode(_fixtureResult('diagnostics.export'));
+          var result = baseResult;
+          if (['-0', '0.0', '0e0'].contains(variant)) {
+            result = result.replaceFirst(
+              '"totalCount":0',
+              '"totalCount":$variant',
+            );
+          }
+          if (variant == 'duplicate') {
+            result = result.replaceFirst(
+              '"schemaVersion":1',
+              r'"schemaVersion":1,"\u0073chemaVersion":1',
+            );
+          }
+          if (variant == 'unicode') {
+            result = result.replaceFirst('"test-build"', r'"\ud800"');
+          }
+          if (variant == 'size') {
+            result = result.replaceFirst('{', '{${' ' * 32768}');
+            expect(
+              utf8.encode(result).length,
+              greaterThan(maximumDiagnosticExportBytes),
+              reason: variant,
+            );
+            expect(jsonDecode(result), jsonDecode(baseResult), reason: variant);
+          }
+          if (const {
+            '-0',
+            '0.0',
+            '0e0',
+            'duplicate',
+            'unicode',
+            'size',
+          }.contains(variant)) {
+            expect(
+              result,
+              isNot(baseResult),
+              reason: 'fixture mutation $variant',
+            );
+          }
+          socket.add(
+            '{"kind":"response","id":${jsonEncode(variant == 'wrong-id' ? 'wrong' : request['id'])},"ok":true,"result":$result}',
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      await expectLater(
+        client.diagnosticsExport(),
+        throwsA(
+          variant == 'error'
+              ? isA<IpcRequestFailure>()
+              : isA<IpcProtocolException>(),
+        ),
+        reason: variant,
+      );
+      if (variant != 'error') {
+        await expectLater(
+          client.diagnosticsExport(),
+          throwsA(isA<IpcProtocolException>()),
+          reason: 'connection invalidated for $variant',
+        );
+        expect(calls, 1, reason: variant);
+      }
+      await client.close();
+    }
+  });
+
+  test('export envelope whitespace keeps bounded result and connection valid', () async {
+    var calls = 0;
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        calls++;
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        final result = jsonEncode(_fixtureResult('diagnostics.export'));
+        expect(
+          utf8.encode(result).length,
+          lessThan(maximumDiagnosticExportBytes),
+        );
+        final envelope =
+            '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$result${' ' * 32768}}';
+        expect(utf8.encode(envelope).length, lessThan(65536));
+        socket.add(envelope);
+      });
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    expect((await client.diagnosticsExport()).schemaVersion, 1);
+    expect((await client.diagnosticsExport()).schemaVersion, 1);
+    expect(calls, 2);
+    await client.close();
+  });
+
   test('diagnosis optional adapter sends selector and preserves actual Run uint64', () async {
     final requests = <Map<String, dynamic>>[];
     const result =

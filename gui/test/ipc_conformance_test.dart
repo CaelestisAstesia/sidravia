@@ -5,6 +5,56 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
+  test('shared safe export strict grammar and invariants', () {
+    final fixture = _fixture();
+    final enums = fixture['enums'] as Map<String, dynamic>;
+    final expected = {
+      'diagnosticOperatingSystems': diagnosticOperatingSystems,
+      'diagnosticArchitectures': diagnosticArchitectures,
+      'diagnosticSessionStates': diagnosticSessionStates,
+      'diagnosticSessionIntents': diagnosticSessionIntents,
+      'diagnosticReasonCodes': diagnosticReasonCodes,
+      'diagnosticSocketStates': diagnosticSocketStates,
+    };
+    for (final entry in expected.entries) {
+      expect((enums[entry.key] as List).toSet(), entry.value);
+      expect(enums[entry.key], hasLength(entry.value.length));
+    }
+    final seen = <String>{};
+    for (final raw in fixture['diagnosticExportCases'] as List) {
+      final item = raw as Map<String, dynamic>;
+      expect(item.keys.toSet(), {
+        'name',
+        'payload',
+        'result',
+        'validPayload',
+        'validResult',
+      });
+      expect(seen.add(item['name'] as String), isTrue);
+      if (item['validPayload'] == true) {
+        decodeDiagnosticExportPayload(item['payload'] as String);
+      } else {
+        expect(
+          () => decodeDiagnosticExportPayload(item['payload'] as String),
+          throwsA(isA<IpcProtocolException>()),
+          reason: item['name'] as String,
+        );
+      }
+      if (item['validResult'] == true) {
+        expect(
+          decodeDiagnosticExport(item['result'] as String).schemaVersion,
+          1,
+        );
+      } else {
+        expect(
+          () => decodeDiagnosticExport(item['result'] as String),
+          throwsA(isA<IpcProtocolException>()),
+          reason: item['name'] as String,
+        );
+      }
+    }
+  });
+
   test('shared diagnosis metadata, selector and strict result parity', () {
     final fixture = _fixture();
     expect(fixture.keys.toSet(), {
@@ -12,6 +62,7 @@ void main() {
       'enums',
       'cases',
       'networkDiagnosticCases',
+      'diagnosticExportCases',
     });
     final enums = fixture['enums'] as Map<String, dynamic>;
     final expected = {
@@ -87,9 +138,9 @@ void main() {
     );
   });
 
-  test('fixture names exactly all nineteen owned v1 methods', () {
+  test('fixture names exactly all twenty owned v1 methods', () {
     final cases = (_fixture()['cases'] as List).cast<Map<String, dynamic>>();
-    expect(cases, hasLength(19));
+    expect(cases, hasLength(20));
     expect(cases.map((c) => c['method']).toSet(), {
       'daemon.status',
       'daemon.stop',
@@ -110,6 +161,7 @@ void main() {
       'session.startConfiguration',
       'network.interfaces',
       'network.diagnose',
+      'diagnostics.export',
     });
   });
   test(
