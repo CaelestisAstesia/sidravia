@@ -117,6 +117,11 @@ func newTestPresentation(w io.Writer, profile termenv.Profile) *presentation {
 	return &presentation{output: out, profile: profile, restore: func() error { return nil }}
 }
 
+func newPlainPresentation() *presentation {
+	out := termenv.NewOutput(io.Discard, termenv.WithProfile(termenv.Ascii), termenv.WithTTY(false))
+	return &presentation{output: out, profile: termenv.Ascii, restore: func() error { return nil }}
+}
+
 // close restores Windows virtual-terminal state if it was enabled. It must run
 // after command output.
 func (p *presentation) close() {
@@ -300,6 +305,10 @@ func ipcErrorText(code string) string {
 		return "配置已提交，旧会话清理未完成；请移除旧会话后重试连接"
 	}
 	switch code {
+	case contract.ErrorCodeStateSnapshotTooLarge:
+		return "daemon 状态快照过大；请更新 Sidravia 后重试"
+	case contract.ErrorCodeStateSnapshotUnavailable:
+		return "daemon 当前无法提供状态快照；请稍后重试"
 	case "unknown_method":
 		return "daemon 不支持该操作"
 	case "malformed_request":

@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -175,6 +178,7 @@ type commandDependencies struct {
 	authRestart       func(string) error
 	authRemove        func(string) error
 	authList          func() error
+	authWatch         func(context.Context) error
 	profileList       func() error
 	networkInterfaces func() error
 	networkDiagnose   func(contract.NetworkDiagnosePayload) error
@@ -191,17 +195,20 @@ type commandDependencies struct {
 
 func defaultCommandDependencies(identity clientbootstrap.Identity) commandDependencies {
 	return commandDependencies{
-		identity:          identity,
-		daemonStatus:      func() error { return daemonStatus(identity) },
-		daemonStart:       func(logLevel string) error { return daemonStart(identity, logLevel) },
-		daemonStop:        func() error { return daemonStop(identity) },
-		daemonRestart:     func(logLevel string) error { return daemonRestart(identity, logLevel) },
-		authStart:         func(options authStartOptions) error { return authStart(identity, options) },
-		authStatus:        func(sessionID string) error { return authStatus(identity, sessionID) },
-		authStop:          func(sessionID string) error { return authStop(identity, sessionID) },
-		authRestart:       func(sessionID string) error { return authRestart(identity, sessionID) },
-		authRemove:        func(sessionID string) error { return authRemove(identity, sessionID) },
-		authList:          func() error { return authList(identity) },
+		identity:      identity,
+		daemonStatus:  func() error { return daemonStatus(identity) },
+		daemonStart:   func(logLevel string) error { return daemonStart(identity, logLevel) },
+		daemonStop:    func() error { return daemonStop(identity) },
+		daemonRestart: func(logLevel string) error { return daemonRestart(identity, logLevel) },
+		authStart:     func(options authStartOptions) error { return authStart(identity, options) },
+		authStatus:    func(sessionID string) error { return authStatus(identity, sessionID) },
+		authStop:      func(sessionID string) error { return authStop(identity, sessionID) },
+		authRestart:   func(sessionID string) error { return authRestart(identity, sessionID) },
+		authRemove:    func(sessionID string) error { return authRemove(identity, sessionID) },
+		authList:      func() error { return authList(identity) },
+		authWatch: func(ctx context.Context) error {
+			return runAuthWatch(ctx, defaultListDependencies(identity))
+		},
 		profileList:       func() error { return profileList(identity) },
 		networkInterfaces: func() error { return networkInterfaces(identity) },
 		networkDiagnose: func(request contract.NetworkDiagnosePayload) error {
@@ -273,7 +280,7 @@ func usageErrorFor(args []string) error {
 	if len(args) > 1 {
 		valid := map[string]map[string]bool{
 			"daemon":      {"status": true, "start": true, "stop": true, "restart": true},
-			"auth":        {"list": true, "start": true, "status": true, "stop": true, "restart": true, "remove": true},
+			"auth":        {"list": true, "start": true, "status": true, "stop": true, "restart": true, "remove": true, "watch": true},
 			"profile":     {"list": true},
 			"network":     {"interfaces": true, "diagnose": true},
 			"diagnostics": {"export": true},
@@ -376,6 +383,14 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	}
 	auth.AddCommand(
 		newListCommand("list", "列出 Session", deps.authList),
+		newListCommand("watch", "持续查看已有 daemon 的最新 Session 与网络状态", func() error {
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			if deps.authWatch == nil {
+				return errors.New("状态监听不可用")
+			}
+			return deps.authWatch(ctx)
+		}),
 		newAuthStartCommand(deps),
 		newSessionCommand("status", "显示 Session 状态", deps.authStatus),
 		newSessionCommand("stop", "停止 Session", deps.authStop),
@@ -533,6 +548,7 @@ var helpSpecs = map[string]helpNode{
 		usage:       []string{"sidraviactl auth <command>"},
 		children: []helpChild{
 			{"list", "列出 Session"},
+			{"watch", "持续查看最新 Session 与网络状态"},
 			{"start", "启动一次性认证 Session"},
 			{"status", "显示 Session 状态"},
 			{"stop", "停止 Session"},
@@ -546,6 +562,11 @@ var helpSpecs = map[string]helpNode{
 		examples: []string{
 			"sidraviactl auth list",
 		},
+	},
+	"sidraviactl auth watch": {
+		description: "只连接已有 headless daemon，显示初始状态并持续显示最新 Session 与网络状态。daemon 可合并更新；输出不是每次状态转换的历史记录。按 Ctrl+C 停止；连接断开后请重新运行此命令。",
+		usage:       []string{"sidraviactl auth watch"},
+		examples:    []string{"sidraviactl auth watch"},
 	},
 	"sidraviactl auth start": {
 		description: "启动一次性认证 Session、从配置启动，或确保已有 Session 正在运行。命令只返回初始 Snapshot，不等待认证完成。下一步：使用返回的 Session ID 运行 sidraviactl auth status <session-id>；不知道 ID 时先运行 sidraviactl auth list。",
