@@ -48,6 +48,16 @@ void main() {
               '"runGeneration":$token,"updatedAt":"2026-10-07T01:02:03Z"',
             );
         final direct = decodeSession(wire);
+        for (final item in [
+          direct,
+          decodeSessionOperation('{"outcome":"resumed","session":$wire}'),
+          decodeSessions('{"sessions":[$wire],"cleanupRequiredSessionIds":[]}')
+              .single,
+        ]) {
+          expect(item.institutionProfileId, 'i');
+          expect(item.institutionDisplayName, 'Institution');
+          expect(item.authenticationProtocolId, 'p');
+        }
         expect(direct.revision, BigInt.parse(token));
         expect(direct.protocolSocket.runGeneration, BigInt.parse(token));
         expect(direct.cleanupRequired, isFalse);

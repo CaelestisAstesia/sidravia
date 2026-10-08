@@ -411,6 +411,9 @@ class SessionSummary {
     required this.state,
     required this.intent,
     this.configurationId,
+    this.institutionProfileId,
+    this.institutionDisplayName,
+    this.authenticationProtocolId,
     this.stateReason,
     this.selectedNetworkBinding,
     this.authenticationEstablishedAt,
@@ -431,6 +434,9 @@ class SessionSummary {
   final SessionState state;
   final SessionIntent intent;
   final String? configurationId;
+  final String? institutionProfileId,
+      institutionDisplayName,
+      authenticationProtocolId;
   final SessionStateReason? stateReason;
   final SessionNetworkBinding? selectedNetworkBinding;
   final DateTime? authenticationEstablishedAt, nextRetryAt, updatedAt;
@@ -700,6 +706,9 @@ SessionSummary _session(Object? raw, {bool cleanupRequired = false}) {
   }
   return SessionSummary(
     cleanupRequired: cleanupRequired,
+    institutionProfileId: _text(raw['institutionProfileId']),
+    institutionDisplayName: _text(raw['institutionDisplayName']),
+    authenticationProtocolId: _text(raw['authenticationProtocolId']),
     protocolSocket: _decodeProtocolSocket(raw['protocolSocket']),
     id: _text(raw['sessionId']),
     displayName: _optionalText(raw['displayName']),

@@ -1,4 +1,5 @@
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/ipc/state_subscription.dart';
 
 abstract interface class SidraviaIpcClient {
   Future<DaemonStatus> daemonStatus();
@@ -73,4 +74,9 @@ abstract interface class SidraviaNetworkClient {
 /// Optional curated artifact export. Base client implementers need not expose it.
 abstract interface class SidraviaDiagnosticClient {
   Future<DiagnosticExport> diagnosticsExport();
+}
+
+/// Optional owned live state; existing previews need only the base interface.
+abstract interface class SidraviaStateClient {
+  Future<StateSubscription> subscribeStateEvents();
 }

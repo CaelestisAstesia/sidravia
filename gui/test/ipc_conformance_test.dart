@@ -3,8 +3,68 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/ipc/state_models.dart';
 
 void main() {
+  test('shared typed state grammar agrees with Go', () {
+    final seen = <String>{};
+    final cases = _fixture()['stateCases'] as List;
+    expect(cases, isNotEmpty);
+    for (final raw in cases) {
+      final item = raw as Map<String, dynamic>;
+      expect(item.keys.toSet(), {'name', 'type', 'data', 'valid'});
+      expect(item['name'], isA<String>());
+      expect(item['name'], isNotEmpty);
+      expect(seen.add(item['name'] as String), isTrue);
+      expect(item['valid'], isA<bool>());
+      expect(item['data'], isA<String>());
+      final data = item['data'] as String;
+      void decode() {
+        switch (item['type']) {
+          case 'bootstrap':
+            decodeStateBootstrap(data);
+          case 'event':
+            decodeStateEvent(data);
+          case 'unsubscribe':
+            decodeStateUnsubscribe(data);
+          default:
+            fail('invalid state fixture type');
+        }
+      }
+
+      if (item['valid'] == true) {
+        decode();
+      } else {
+        expect(
+          decode,
+          throwsA(isA<IpcProtocolException>()),
+          reason: item['name'] as String,
+        );
+      }
+    }
+    for (final item
+        in (_fixture()['cases'] as List).cast<Map<String, dynamic>>().where(
+          (v) => (v['method'] as String).startsWith('state.'),
+        )) {
+      final response = decodeBindingCheckedJson(
+        item['successResponse'] as String,
+        preserveUnsignedRevision: true,
+        preserveRunGeneration: true,
+      ) as Map<String, dynamic>;
+      if (item['method'] == 'state.subscribe') {
+        expect(
+          decodeStateBootstrapValue(response['result'])
+              .sessions
+              .single
+              .revision,
+          BigInt.parse('18446744073709551615'),
+        );
+      } else {
+        decodeStateUnsubscribeValue(response['result']);
+      }
+    }
+  });
+
   test('shared safe export strict grammar and invariants', () {
     final fixture = _fixture();
     final enums = fixture['enums'] as Map<String, dynamic>;
@@ -69,6 +129,7 @@ void main() {
       'cases',
       'networkDiagnosticCases',
       'diagnosticExportCases',
+      'stateCases',
     });
     final enums = fixture['enums'] as Map<String, dynamic>;
     final expected = {
@@ -144,9 +205,9 @@ void main() {
     );
   });
 
-  test('fixture names exactly all twenty owned v1 methods', () {
+  test('fixture names exactly all twenty-two owned v1 methods', () {
     final cases = (_fixture()['cases'] as List).cast<Map<String, dynamic>>();
-    expect(cases, hasLength(20));
+    expect(cases, hasLength(22));
     expect(cases.map((c) => c['method']).toSet(), {
       'daemon.status',
       'daemon.stop',
@@ -168,6 +229,8 @@ void main() {
       'network.interfaces',
       'network.diagnose',
       'diagnostics.export',
+      'state.subscribe',
+      'state.unsubscribe',
     });
   });
   test(

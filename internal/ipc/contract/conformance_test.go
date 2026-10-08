@@ -19,6 +19,7 @@ import (
 const fixturePath = "testdata/v1/conformance.json"
 
 type conformanceFixture struct {
+	StateCases             []json.RawMessage       `json:"stateCases"`
 	DiagnosticExportCases  []networkDiagnosticCase `json:"diagnosticExportCases"`
 	SchemaVersion          int                     `json:"schemaVersion"`
 	Enums                  fixtureEnums            `json:"enums"`
@@ -73,6 +74,8 @@ func TestV1ConformanceFixture(t *testing.T) {
 	assertEnums(t, fixture.Enums)
 
 	expectedMethods := map[string]struct{}{
+		contract.MethodStateSubscribe:            {},
+		contract.MethodStateUnsubscribe:          {},
 		contract.MethodDiagnosticsExport:         {},
 		contract.MethodDaemonStatus:              {},
 		contract.MethodNetworkInterfaces:         {},
@@ -207,6 +210,8 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 	t.Helper()
 	var err error
 	switch method {
+	case contract.MethodStateSubscribe, contract.MethodStateUnsubscribe:
+		err = contract.DecodeEmptyPayload(payload)
 	case contract.MethodDiagnosticsExport:
 		err = contract.DecodeDiagnosticsExportPayload(payload)
 	case contract.MethodNetworkDiagnose:
@@ -253,6 +258,16 @@ func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Requ
 	requireObjectKeys(t, []byte(item.SuccessResponse), "kind", "id", "ok", "result")
 
 	switch item.Method {
+	case contract.MethodStateSubscribe:
+		value, err := contract.DecodeStateBootstrap(response.Result)
+		if err != nil || len(value.Sessions.Sessions) != 1 || value.Sessions.Sessions[0].Revision != ^uint64(0) || len(value.Sessions.CleanupRequiredSessionIDs) != 1 {
+			t.Fatal("invalid state bootstrap fixture", err)
+		}
+		assertSessionResult(t, value.Sessions.Sessions[0], true, true)
+	case contract.MethodStateUnsubscribe:
+		if _, err := contract.DecodeStateUnsubscribeResult(response.Result); err != nil {
+			t.Fatal(err)
+		}
 	case contract.MethodDiagnosticsExport:
 		if _, err := contract.DecodeDiagnosticsExportResult(response.Result); err != nil {
 			t.Fatal(err)
@@ -383,6 +398,10 @@ func assertErrorResponse(t *testing.T, item fixtureCase, requestID string) {
 
 func reachableError(method string) contract.Error {
 	switch method {
+	case contract.MethodStateSubscribe:
+		return contract.Error{Code: contract.ErrorCodeStateSnapshotUnavailable, Message: "state snapshot unavailable"}
+	case contract.MethodStateUnsubscribe:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid state request"}
 	case contract.MethodDiagnosticsExport:
 		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed diagnostic payload"}
 	case contract.MethodNetworkInterfaces, contract.MethodNetworkDiagnose:
@@ -502,6 +521,44 @@ func TestDiagnosticExportSharedStrictCases(t *testing.T) {
 			_, err = contract.DecodeDiagnosticsExportResult([]byte(item.Result))
 			if (err == nil) != *item.ValidResult {
 				t.Fatalf("result accept=%t expected=%t: %v", err == nil, *item.ValidResult, err)
+			}
+		})
+	}
+}
+
+func TestSharedStateCases(t *testing.T) {
+	fixture := loadFixture(t)
+	if len(fixture.StateCases) == 0 {
+		t.Fatal("missing state cases")
+	}
+	seen := map[string]bool{}
+	for _, raw := range fixture.StateCases {
+		requireObjectKeys(t, raw, "name", "type", "data", "valid")
+		var item struct {
+			Name  string `json:"name"`
+			Type  string `json:"type"`
+			Data  string `json:"data"`
+			Valid *bool  `json:"valid"`
+		}
+		decodeStrictJSON(t, raw, &item)
+		if item.Name == "" || seen[item.Name] || item.Data == "" || item.Valid == nil {
+			t.Fatal("invalid state case metadata")
+		}
+		seen[item.Name] = true
+		t.Run(item.Name, func(t *testing.T) {
+			var err error
+			switch item.Type {
+			case "bootstrap":
+				_, err = contract.DecodeStateBootstrap([]byte(item.Data))
+			case "event":
+				_, err = contract.DecodeStateEvent([]byte(item.Data))
+			case "unsubscribe":
+				_, err = contract.DecodeStateUnsubscribeResult([]byte(item.Data))
+			default:
+				t.Fatal("invalid state case type")
+			}
+			if (err == nil) != *item.Valid {
+				t.Fatalf("state accept=%t expected=%t: %v", err == nil, *item.Valid, err)
 			}
 		})
 	}

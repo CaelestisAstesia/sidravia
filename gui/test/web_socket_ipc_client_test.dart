@@ -44,6 +44,9 @@ void main() {
     ]);
     expect(list.single.cleanupRequired, isTrue);
     for (final item in [list.single, direct, start, ensure]) {
+      expect(item.institutionProfileId, 'i');
+      expect(item.institutionDisplayName, 'Institution');
+      expect(item.authenticationProtocolId, 'p');
       expect(item.revision, BigInt.parse('18446744073709551615'));
       expect(
         item.protocolSocket.runGeneration,
