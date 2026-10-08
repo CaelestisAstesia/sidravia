@@ -332,7 +332,7 @@ func composeObjectGraphWithLaunchOptions(
 		if method == contract.MethodDaemonStop {
 			stopOnce.Do(func() { stopCh <- struct{}{} })
 		}
-	})
+	}, application)
 	if err != nil {
 		return nil, closeAfterCompositionFailure(sup, fmt.Errorf("sidraviad: create ipc server: %w", err))
 	}

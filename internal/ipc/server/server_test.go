@@ -221,7 +221,7 @@ func newTestServerWithLevel(t *testing.T, handler Handler, buf *safeBuffer, leve
 
 func newTestServerWithCallback(t *testing.T, handler Handler, buf *safeBuffer, level slog.Level, callback func(string)) (*Server, string) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLoggerWithLevel(buf, level), callback)
+	srv, err := NewServer(testToken, testBuild, handler, newTestLoggerWithLevel(buf, level), callback, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestNewServerRejectsNilDependencies(t *testing.T) {
 		{"nil logger", testToken, testBuild, handler, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := NewServer(tc.token, tc.buildID, tc.handler, tc.logger, nil); err == nil {
+			if _, err := NewServer(tc.token, tc.buildID, tc.handler, tc.logger, nil, nil); err == nil {
 				t.Fatal("NewServer expected error for nil/empty dependency")
 			}
 		})
@@ -626,7 +626,7 @@ func TestExistingIPCResponsesUnchanged(t *testing.T) {
 
 func newTrackedTestServer(t *testing.T, handler Handler, buf *safeBuffer) (string, <-chan net.Conn) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf), nil)
+	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf), nil, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -643,7 +643,7 @@ func newTrackedTestServer(t *testing.T, handler Handler, buf *safeBuffer) (strin
 // to the websocket URL, for tests that drive the HTTP layer directly.
 func newTestServerWithHTTP(t *testing.T, handler Handler, buf *safeBuffer) (*Server, *httptest.Server, string) {
 	t.Helper()
-	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf), nil)
+	srv, err := NewServer(testToken, testBuild, handler, newTestLogger(buf), nil, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -798,7 +798,7 @@ func TestShutdownClosesAdmissionGateBeforeLateUpgrade(t *testing.T) {
 	srv, err := NewServer(testToken, testBuild, func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
 		handlerCalls.Add(1)
 		return json.RawMessage(`{}`), nil
-	}, newTestLogger(&buf), nil)
+	}, newTestLogger(&buf), nil, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

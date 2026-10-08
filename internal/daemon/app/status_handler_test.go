@@ -23,7 +23,7 @@ const statusTestToken = "test-token-0123456789abcdef0123456789abcdef0123456789ab
 func newStatusTestServer(t *testing.T, token string, handler server.Handler) *server.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv, err := server.NewServer(token, "dev", handler, logger, nil)
+	srv, err := server.NewServer(token, "dev", handler, logger, nil, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

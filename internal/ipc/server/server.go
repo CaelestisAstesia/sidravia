@@ -50,6 +50,8 @@ const (
 // other method supplied by a peer is normalized to methodUnknown so an
 // arbitrary peer string can never reach the log.
 var allowedMethods = map[string]struct{}{
+	contract.MethodStateSubscribe:            {},
+	contract.MethodStateUnsubscribe:          {},
 	contract.MethodDiagnosticsExport:         {},
 	contract.MethodNetworkDiagnose:           {},
 	contract.MethodNetworkInterfaces:         {},
@@ -76,6 +78,8 @@ var allowedMethods = map[string]struct{}{
 // Every other code supplied by a handler is normalized to errorCodeInternal so
 // an arbitrary diagnostic string can never reach the log.
 var allowedErrorCodes = map[string]struct{}{
+	contract.ErrorCodeStateSnapshotTooLarge:                  {},
+	contract.ErrorCodeStateSnapshotUnavailable:               {},
 	contract.ErrorCodeUnknownMethod:                          {},
 	contract.ErrorCodeInternalError:                          {},
 	contract.ErrorCodeMalformed:                              {},
@@ -106,6 +110,7 @@ type Server struct {
 	// receives the raw request method, which the composition maps to lifecycle
 	// semantics; the server itself knows nothing about daemon lifecycle.
 	responseCommitted func(method string)
+	stateSource       contract.StateEventSource
 
 	mu          sync.Mutex
 	closing     bool
@@ -115,7 +120,7 @@ type Server struct {
 
 // NewServer constructs an IPC server. It validates every required dependency
 // and returns an error instead of accepting nil or panicking.
-func NewServer(token string, buildID string, handler Handler, logger *slog.Logger, responseCommitted func(string)) (*Server, error) {
+func NewServer(token string, buildID string, handler Handler, logger *slog.Logger, responseCommitted func(string), stateSource contract.StateEventSource) (*Server, error) {
 	if token == "" {
 		return nil, errors.New("ipc server: token is required")
 	}
@@ -136,6 +141,7 @@ func NewServer(token string, buildID string, handler Handler, logger *slog.Logge
 		handler:           handler,
 		logger:            logger,
 		responseCommitted: responseCommitted,
+		stateSource:       stateSource,
 		connections:       make(map[*websocket.Conn]context.CancelFunc),
 		drained:           drained,
 	}, nil
@@ -192,6 +198,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.unregister(conn)
+	defer cancel()
 
 	s.logger.Debug(msgIPCConnectionOpened, slog.String("event", eventIPCConnectionOpened))
 	s.serveConn(ctx, conn)
@@ -258,95 +265,5 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return closeErr
 	case <-ctx.Done():
 		return errors.Join(closeErr, fmt.Errorf("ipc server: shutdown: %w", ctx.Err()))
-	}
-}
-
-func (s *Server) serveConn(ctx context.Context, conn *websocket.Conn) {
-	defer conn.Close(websocket.StatusNormalClosure, "")
-
-	for {
-		_, data, err := conn.Read(ctx)
-		if err != nil {
-			return
-		}
-
-		req, decodeErr := contract.DecodeRequest(data)
-
-		// A decode failure is a malformed request: it logs ipc_request_rejected
-		// with method unknown and error code malformed_request, then retains the
-		// existing response behavior. The decode error itself never reaches the
-		// log; it only travels in the IPC response message.
-		var resp contract.Response
-		method := methodUnknown
-		rejected := false
-		var rawErrorCode string
-
-		if decodeErr != nil {
-			resp = contract.NewErrorResponse("", contract.ErrorCodeMalformed, decodeErr.Error())
-			rejected = true
-			rawErrorCode = contract.ErrorCodeMalformed
-		} else {
-			method = req.Method
-			result, rpcErr := s.handler(ctx, req.Method, req.Payload)
-			if rpcErr != nil {
-				resp = contract.NewErrorResponse(req.ID, rpcErr.Code, rpcErr.Message)
-				rejected = true
-				rawErrorCode = rpcErr.Code
-			} else {
-				resp = contract.NewSuccessResponse(req.ID, result)
-			}
-		}
-
-		respData, encodeErr := contract.EncodeResponse(resp)
-		if encodeErr != nil {
-			s.logger.Warn(msgIPCResponseFailed,
-				slog.String("event", eventIPCResponseFailed),
-				slog.String("stage", stageEncode),
-			)
-			// A handler result may contain invalid JSON even though the request
-			// was accepted. Return one fixed, known-encodable response carrying
-			// the original request ID, then continue serving the connection.
-			fallback := contract.NewErrorResponse(resp.ID, contract.ErrorCodeInternalError, "internal error")
-			fallbackData, fallbackErr := contract.EncodeResponse(fallback)
-			if fallbackErr != nil {
-				// This is unreachable for the fixed fallback, but preserve the
-				// existing transport policy if that invariant ever changes.
-				return
-			}
-			if err := conn.Write(ctx, websocket.MessageText, fallbackData); err != nil {
-				s.logger.Warn(msgIPCResponseFailed,
-					slog.String("event", eventIPCResponseFailed),
-					slog.String("stage", stageWrite),
-				)
-				return
-			}
-			continue
-		}
-		if err := conn.Write(ctx, websocket.MessageText, respData); err != nil {
-			s.logger.Warn(msgIPCResponseFailed,
-				slog.String("event", eventIPCResponseFailed),
-				slog.String("stage", stageWrite),
-			)
-			return
-		}
-
-		if rejected {
-			s.logger.Warn(msgIPCRequestRejected,
-				slog.String("event", eventIPCRequestRejected),
-				slog.String("method", normalizeMethod(method)),
-				slog.String("error_code", normalizeErrorCode(rawErrorCode)),
-			)
-		} else {
-			s.logger.Debug(msgIPCRequestCompleted,
-				slog.String("event", eventIPCRequestCompleted),
-				slog.String("method", normalizeMethod(method)),
-			)
-			// The success response has been written successfully; notify the
-			// committed hook only now, so a daemon.stop client receives its
-			// response before the daemon begins shutting down.
-			if s.responseCommitted != nil {
-				s.responseCommitted(method)
-			}
-		}
 	}
 }

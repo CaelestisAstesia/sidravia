@@ -19,6 +19,41 @@ const (
 	StateFrameLimit           = 64 * 1024
 )
 
+var (
+	ErrStateFrameLimit       = errors.New("state frame limit exceeded")
+	ErrStateResourceCapacity = errors.New("state resource capacity exceeded")
+)
+
+const (
+	ErrorCodeStateSnapshotTooLarge    = "state_snapshot_too_large"
+	ErrorCodeStateSnapshotUnavailable = "state_snapshot_unavailable"
+)
+
+type StateUnsubscribeResult struct {
+	Status string `json:"status"`
+}
+
+func DecodeStateUnsubscribeResult(data []byte) (StateUnsubscribeResult, error) {
+	if err := networkObject(data, []string{"status"}); err != nil {
+		return StateUnsubscribeResult{}, err
+	}
+	var value StateUnsubscribeResult
+	if err := decodeStrict(data, &value); err != nil {
+		return StateUnsubscribeResult{}, err
+	}
+	if value.Status != "unsubscribed" {
+		return StateUnsubscribeResult{}, errors.New("invalid state unsubscribe status")
+	}
+	return value, nil
+}
+
+func MarshalStateUnsubscribeResult(value StateUnsubscribeResult) (json.RawMessage, error) {
+	if value.Status != "unsubscribed" {
+		return nil, errors.New("invalid state unsubscribe status")
+	}
+	return json.Marshal(value)
+}
+
 // StateEventSource is the Application boundary used by the IPC server.
 // Callers own the returned stream and must Close it, including on disconnect.
 type StateEventSource interface {
@@ -56,7 +91,7 @@ type StateEvent struct {
 
 func DecodeStateBootstrap(data []byte) (StateBootstrap, error) {
 	if len(data) > StateFrameLimit {
-		return StateBootstrap{}, errors.New("state bootstrap exceeds frame limit")
+		return StateBootstrap{}, ErrStateFrameLimit
 	}
 	if err := networkObject(data, []string{"sessions", "network"}); err != nil {
 		return StateBootstrap{}, err
@@ -66,14 +101,14 @@ func DecodeStateBootstrap(data []byte) (StateBootstrap, error) {
 		return StateBootstrap{}, err
 	}
 	if len(value.Sessions.Sessions)+1 > StateResourceCapacity {
-		return StateBootstrap{}, errors.New("state bootstrap exceeds resource capacity")
+		return StateBootstrap{}, ErrStateResourceCapacity
 	}
 	return value, nil
 }
 
 func MarshalStateBootstrap(value StateBootstrap) (json.RawMessage, error) {
 	if len(value.Sessions.Sessions)+1 > StateResourceCapacity {
-		return nil, errors.New("state bootstrap exceeds resource capacity")
+		return nil, ErrStateResourceCapacity
 	}
 	if !stateValidStrings(reflect.ValueOf(value)) {
 		return nil, errors.New("invalid state Unicode")
@@ -144,7 +179,7 @@ func EncodeStateEvent(value StateEvent) (json.RawMessage, error) {
 
 func DecodeStateEvent(data []byte) (StateEvent, error) {
 	if len(data) > StateFrameLimit {
-		return StateEvent{}, errors.New("state event exceeds frame limit")
+		return StateEvent{}, ErrStateFrameLimit
 	}
 	if err := networkObject(data, []string{"kind", "method", "payload"}); err != nil {
 		return StateEvent{}, err

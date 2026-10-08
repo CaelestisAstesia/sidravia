@@ -2,6 +2,7 @@ package contract
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -176,5 +177,35 @@ func TestStateEventTypedUnionAndOriginalRevision(t *testing.T) {
 	removed.SessionRemoved.SessionID = string([]byte{0xff})
 	if _, err := EncodeStateEvent(removed); err == nil {
 		t.Fatal("malformed Go ID Unicode replaced")
+	}
+}
+
+func TestStateTypedBoundsAndUnsubscribeResult(t *testing.T) {
+	if _, err := DecodeStateBootstrap(make([]byte, StateFrameLimit+1)); !errors.Is(err, ErrStateFrameLimit) {
+		t.Fatal(err)
+	}
+	if _, err := DecodeStateEvent(make([]byte, StateFrameLimit+1)); !errors.Is(err, ErrStateFrameLimit) {
+		t.Fatal(err)
+	}
+	value := emptyStateBootstrap()
+	value.Sessions.Sessions = make([]SessionResult, StateResourceCapacity)
+	if _, err := MarshalStateBootstrap(value); !errors.Is(err, ErrStateResourceCapacity) {
+		t.Fatal(err)
+	}
+	raw, err := MarshalStateUnsubscribeResult(StateUnsubscribeResult{Status: "unsubscribed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeStateUnsubscribeResult(raw)
+	if err != nil || got.Status != "unsubscribed" {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{`null`, `[]`, `{}`, `{"status":null}`, `{"status":1}`, `{"Status":"unsubscribed"}`, `{"status":"other"}`, `{"status":"unsubscribed","status":"unsubscribed"}`, `{"status":"unsubscribed","extra":false}`, `{"status":"\ud800"}`, string(raw) + `{}`, string(raw) + `!`} {
+		if _, err := DecodeStateUnsubscribeResult([]byte(bad)); err == nil {
+			t.Fatal("invalid unsubscribe accepted", bad)
+		}
+	}
+	if _, err := MarshalStateUnsubscribeResult(StateUnsubscribeResult{Status: "other"}); err == nil {
+		t.Fatal("invalid status encoded")
 	}
 }
