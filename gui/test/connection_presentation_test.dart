@@ -143,6 +143,47 @@ void main() {
       );
     });
   }
+  test('Home uses operation eligibility for missing runtime, credential and cleanup', () {
+    final unavailable = ConfigurationSummary(
+      id: configuration.id,
+      displayName: '',
+      institutionProfileId: 'jlu',
+      institutionDisplayName: '吉林大学',
+      authenticationProtocolId: 'd',
+      username: 'u',
+      credentialStored: false,
+      storageProtection: 'protected',
+      runtimeAvailability: ConfigurationRuntimeAvailability.profileUnavailable,
+    );
+    final idle = ConnectionPresentation.project(
+      caps(configurations: [unavailable]),
+    );
+    expect(idle.primaryEnabled, false);
+    expect(idle.actionError, contains('不可用'));
+    final active = ConnectionPresentation.project(
+      caps(
+        configurations: [unavailable],
+        sessions: [session(SessionState.authenticated)],
+      ),
+    );
+    expect(active.primaryEnabled, true);
+    expect(active.primaryAction.kind, GuiConnectionActionKind.stop);
+    final cleanup = const SessionSummary(
+      id: 'demo-session',
+      configurationId: 'demo-config',
+      displayName: '',
+      accountName: 'u',
+      state: SessionState.waitingBeforeRetry,
+      intent: SessionIntent.maintainAuthentication,
+      cleanupRequired: true,
+    );
+    final retry = ConnectionPresentation.project(caps(sessions: [cleanup]));
+    expect(retry.primaryEnabled, false);
+    expect(retry.secondaryEnabled, true);
+    expect(retry.secondaryAction.kind, GuiConnectionActionKind.stop);
+    expect(retry.actionError, contains('清理未完成'));
+  });
+
   test('connection lifecycle and topology stay distinct and fail closed', () {
     for (final state in GuiConnectionState.values) {
       final p = ConnectionPresentation.project(caps(state: state));

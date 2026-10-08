@@ -109,6 +109,62 @@ void main() {
     }
   });
 
+  test('runtime dependencies and missing credential block start while management and stop remain available', () {
+    for (final availability in ConfigurationRuntimeAvailability.values) {
+      for (final stored in [false, true]) {
+        final configuration = _configurationWith(
+          availability: availability,
+          credentialStored: stored,
+        );
+        final caps = _caps(
+          snapshot: _snapshot(
+            configurations: [configuration],
+            sessions: [
+              const SessionSummary(
+                id: 's-a',
+                configurationId: 'cfg-a',
+                displayName: '',
+                accountName: 'u',
+                state: SessionState.authenticated,
+                intent: SessionIntent.maintainAuthentication,
+              ),
+            ],
+          ),
+        );
+        expect(
+          caps.canConnect,
+          availability == ConfigurationRuntimeAvailability.available && stored,
+        );
+        expect(caps.canStop, true);
+        expect(caps.canManage, true);
+        expect(caps.canDeleteConfiguration, true);
+      }
+    }
+  });
+
+  test('cleanup blocks reuse but permits explicit stop and removal', () {
+    final caps = _caps(
+      snapshot: _snapshot(
+        sessions: [
+          const SessionSummary(
+            id: 's-a',
+            configurationId: 'cfg-a',
+            displayName: '',
+            accountName: 'u',
+            state: SessionState.authenticated,
+            intent: SessionIntent.maintainAuthentication,
+            cleanupRequired: true,
+          ),
+        ],
+      ),
+    );
+    expect(caps.canConnect, false);
+    expect(caps.canStop, true);
+    expect(caps.canResetSession, true);
+    expect(caps.canEditAutoReconnect, true);
+    expect(caps.connectionDisabledReason, contains('清理未完成'));
+  });
+
   test('in-flight mutation stays read-only even for a manageable target', () {
     final capabilities = _caps(
       snapshot: _snapshot(
@@ -188,4 +244,19 @@ const _other = ConfigurationSummary(
   credentialStored: true,
   storageProtection: 'protected',
   autoReconnect: true,
+);
+
+ConfigurationSummary _configurationWith({
+  required ConfigurationRuntimeAvailability availability,
+  required bool credentialStored,
+}) => ConfigurationSummary(
+  id: _configuration.id,
+  displayName: '',
+  institutionProfileId: 'jlu',
+  institutionDisplayName: '吉林大学',
+  authenticationProtocolId: 'drcom-5.2.0-d',
+  username: 'u',
+  credentialStored: credentialStored,
+  storageProtection: 'protected',
+  runtimeAvailability: availability,
 );

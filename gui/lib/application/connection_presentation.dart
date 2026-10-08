@@ -86,7 +86,7 @@ class ConnectionPresentation {
       GuiConnectionActionKind.editConfiguration,
       c?.id,
     );
-    var enabled = caps.canManage && !sessionNeedsReset;
+    var enabled = caps.canConnect && !sessionNeedsReset;
     var secondaryEnabled = true;
     var kind = HomeButtonKind.primary;
     SessionAuthenticationFailure? issue;
@@ -221,7 +221,7 @@ class ConnectionPresentation {
                 GuiConnectionActionKind.stop,
                 s.id,
               );
-              secondaryEnabled = caps.canManage && !sessionNeedsReset;
+              secondaryEnabled = caps.canStop;
             case SessionState.blockedByError:
               primary = GuiConnectionAction(
                 GuiConnectionActionKind.reconnect,
@@ -231,6 +231,7 @@ class ConnectionPresentation {
                 SessionState.authenticating ||
                 SessionState.waitingForNetwork:
               primary = GuiConnectionAction(GuiConnectionActionKind.stop, s.id);
+              enabled = caps.canStop;
               kind = HomeButtonKind.secondary;
               secondaryLabel = '连接详情';
               secondary = const GuiConnectionAction(
@@ -266,7 +267,7 @@ class ConnectionPresentation {
       } else if (caps.busy) {
         error = '正在处理操作，请稍候。';
       } else if (!enabled && s?.state != SessionState.stopping) {
-        error = caps.settingsDisabledReason;
+        error = caps.connectionDisabledReason;
       }
     }
     final unavailableIdentity = switch (topology) {

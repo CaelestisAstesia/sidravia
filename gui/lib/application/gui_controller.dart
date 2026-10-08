@@ -11,6 +11,8 @@ import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
+import 'package:sidravia_gui/ipc/state_models.dart';
+import 'package:sidravia_gui/ipc/state_subscription.dart';
 
 // Retain the controller entrypoint's public lifecycle type for tool clients.
 export 'gui_connection_state.dart';
@@ -25,12 +27,19 @@ class GuiController extends ChangeNotifier {
     this.connector = WebSocketIpcClient.connect,
     this.pollDelay = const Duration(seconds: 3),
     this.stopTimeout = const Duration(seconds: 4),
+    this.reconnectDelay = const Duration(seconds: 1),
   });
 
   final GuiBootstrapper bootstrapper;
   final IpcConnector connector;
   final Duration pollDelay;
   final Duration stopTimeout;
+  final Duration reconnectDelay;
+  StateSubscription? _subscription;
+  StreamSubscription<StateEvent>? _events;
+  Future<void>? _releasing;
+  Future<void>? _closed;
+  int _retryAttempt = 0;
   bool _exitRequested = false;
   SidraviaIpcClient? _client;
   Timer? _timer;
@@ -44,8 +53,9 @@ class GuiController extends ChangeNotifier {
   String? _notice;
   String? _outdatedSessionId;
   bool get sessionNeedsReset =>
+      _snapshot?.sessions.any((s) => s.cleanupRequired) == true ||
       _outdatedSessionId != null &&
-      _snapshot?.sessions.any((s) => s.id == _outdatedSessionId) == true;
+          _snapshot?.sessions.any((s) => s.id == _outdatedSessionId) == true;
 
   GuiConnectionState get state => _state;
   GuiBootstrapFailure? get failure => _failure;
@@ -101,7 +111,7 @@ class GuiController extends ChangeNotifier {
   }
 
   Future<void> start() {
-    if (_exitRequested) return Future<void>.value();
+    if (_exitRequested || _disposed) return Future<void>.value();
     final current = _transition;
     if (current != null) return current;
     _userBusy = true;
@@ -176,8 +186,7 @@ class GuiController extends ChangeNotifier {
   );
   Future<bool> stopSession(String sessionId) => _mutate(
     (client, allow) => client.sessionStop(sessionId),
-    allowed: (caps) =>
-        caps.canStop && caps.matchesSession(sessionId) && !sessionNeedsReset,
+    allowed: (caps) => caps.canStop && caps.matchesSession(sessionId),
   );
   Future<bool> ensureSessionRunning(String sessionId) => _mutate(
     (client, allow) => client.sessionEnsureRunning(sessionId),
@@ -262,29 +271,41 @@ class GuiController extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     final deadline = DateTime.now().add(stopTimeout);
-    final current = _transition;
-    if (current != null) {
+    try {
+      final current = _transition;
+      if (current != null) {
+        try {
+          final remaining = deadline.difference(DateTime.now());
+          if (remaining <= Duration.zero) return false;
+          await current.timeout(remaining);
+        } on Object {
+          return false;
+        }
+      }
+      _timer?.cancel();
+      _timer = null;
+      if (_disposed) return false;
+      final generation = _generation;
+      final client = _client;
+      if (client is! SidraviaDesktopClient) return false;
       try {
         final remaining = deadline.difference(DateTime.now());
         if (remaining <= Duration.zero) return false;
-        await current.timeout(remaining);
+        await client.daemonStop().timeout(remaining);
+        return !_disposed && generation == _generation;
       } on Object {
         return false;
       }
-    }
-    _timer?.cancel();
-    _timer = null;
-    if (_disposed) return false;
-    final generation = _generation;
-    final client = _client;
-    if (client is! SidraviaDesktopClient) return false;
-    try {
+    } finally {
+      final releasing = _releaseResources();
       final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) return false;
-      await client.daemonStop().timeout(remaining);
-      return !_disposed && generation == _generation;
-    } on Object {
-      return false;
+      if (remaining > Duration.zero) {
+        try {
+          await releasing.timeout(remaining);
+        } on Object {
+          /* Owned by close(). */
+        }
+      }
     }
   }
 
@@ -292,11 +313,12 @@ class GuiController extends ChangeNotifier {
     final generation = ++_generation;
     try {
       _timer?.cancel();
-      final old = _client;
-      _client = null;
-      await _closeQuietly(old);
-      if (!_current(generation)) return;
-      _state = GuiConnectionState.bootstrapping;
+      _timer = null;
+      await _releaseResources();
+      if (!_canContinue(generation)) return;
+      _state = _snapshot == null
+          ? GuiConnectionState.bootstrapping
+          : GuiConnectionState.stale;
       _failure = null;
       _notice = null;
       _notify();
@@ -319,6 +341,7 @@ class GuiController extends ChangeNotifier {
       if (_generation == generation) {
         _transition = null;
         _userBusy = false;
+        _scheduleReconnect();
       }
       _notify();
     }
@@ -332,7 +355,7 @@ class GuiController extends ChangeNotifier {
     bool allowInsecureStorage = false,
     bool Function(GuiCapabilities capabilities)? allowed,
   }) async {
-    if (_exitRequested) return false;
+    if (_exitRequested || _disposed) return false;
     final current = _transition;
     if (current != null) {
       if (_userBusy) return false;
@@ -426,7 +449,27 @@ class GuiController extends ChangeNotifier {
       if (!_canContinue(generation) || !identical(_client, client)) return;
       final configurations = await client.configurationList();
       if (!_canContinue(generation) || !identical(_client, client)) return;
-      final sessions = await client.sessionList();
+      List<SessionSummary> sessions;
+      NetworkInterfacesSnapshot? network;
+      if (client is SidraviaStateClient) {
+        if (_subscription == null) {
+          final subscription = await (client as SidraviaStateClient)
+              .subscribeStateEvents();
+          if (!_canContinue(generation) || !identical(_client, client)) {
+            await _closeQuietly(client);
+            await subscription.close();
+            return;
+          }
+          _subscription = subscription;
+          sessions = subscription.initial.sessions;
+          network = subscription.initial.network;
+        } else {
+          sessions = _snapshot!.sessions;
+          network = _snapshot!.network;
+        }
+      } else {
+        sessions = await client.sessionList();
+      }
       if (!_canContinue(generation) || !identical(_client, client)) return;
       // Session IDs are local to a daemon instance. A stale reconnect to the
       // same PID retains its marker; only a complete new snapshot replaces it.
@@ -438,7 +481,24 @@ class GuiController extends ChangeNotifier {
         profiles: profiles,
         configurations: configurations,
         sessions: sessions,
+        network: network,
       );
+      if (_subscription != null && _events == null) {
+        _events = _subscription!.events.listen(
+          (event) => _applyEvent(generation, client, event),
+          onError: (Object error) =>
+              unawaited(_invalidate(generation, client, error)),
+          onDone: () => unawaited(
+            _invalidate(
+              generation,
+              client,
+              const IpcTransportException('ipc_disconnected'),
+            ),
+          ),
+        );
+      }
+      if (!_canContinue(generation) || !identical(_client, client)) return;
+      _retryAttempt = 0;
       _state = GuiConnectionState.ready;
       _failure = null;
       _notice = null;
@@ -451,6 +511,12 @@ class GuiController extends ChangeNotifier {
   }
 
   void _scheduleRefresh(int generation, SidraviaIpcClient client) {
+    if (client is SidraviaStateClient ||
+        !_canContinue(generation) ||
+        !identical(_client, client) ||
+        _state != GuiConnectionState.ready) {
+      return;
+    }
     _timer?.cancel();
     if (_exitRequested) {
       _timer = null;
@@ -478,22 +544,119 @@ class GuiController extends ChangeNotifier {
     }
   }
 
+  void _applyEvent(int generation, SidraviaIpcClient client, StateEvent event) {
+    if (!_canContinue(generation) || !identical(_client, client)) return;
+    final previous = _snapshot;
+    if (previous == null) return;
+    var sessions = previous.sessions;
+    var network = previous.network;
+    switch (event) {
+      case SessionChanged(:final session):
+        final old = sessions.where((s) => s.id == session.id).firstOrNull;
+        if (old != null && session.revision < old.revision) return;
+        if (old == null && sessions.length + 1 >= stateResourceCapacity) {
+          unawaited(
+            _invalidate(
+              generation,
+              client,
+              const IpcTransportException('ipc_reconnect_needed'),
+            ),
+          );
+          return;
+        }
+        sessions = [
+          for (final s in sessions)
+            if (s.id == session.id) session else s,
+          if (old == null) session,
+        ];
+      case SessionRemoved(:final sessionId, :final revision):
+        final old = sessions.where((s) => s.id == sessionId).firstOrNull;
+        if (old != null && revision < old.revision) return;
+        sessions = sessions.where((s) => s.id != sessionId).toList();
+      case NetworkChanged(network: final changed):
+        if (network != null && changed.revision <= network.revision) return;
+        network = changed;
+    }
+    _snapshot = GuiSnapshot(
+      daemon: previous.daemon,
+      profiles: previous.profiles,
+      configurations: previous.configurations,
+      sessions: List.unmodifiable(sessions),
+      network: network,
+    );
+    _notify();
+  }
+
   Future<void> _invalidate(
     int generation,
     SidraviaIpcClient client,
     Object error,
   ) async {
+    if (!_current(generation) || !identical(_client, client)) return;
     _timer?.cancel();
     _timer = null;
-    _client = null;
-    await _closeQuietly(client);
-    if (!_current(generation)) return;
     _state = _snapshot == null
         ? GuiConnectionState.failed
         : GuiConnectionState.stale;
     _failure = _ipcFailure(error);
     _notice = null;
+    // Detach synchronously before awaiting cancellation: duplicate terminal
+    // callbacks and any completion of an old RPC are now inert.
+    final releasing = _releaseResources();
     _notify();
+    await releasing;
+    if (_canContinue(generation)) _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed ||
+        _exitRequested ||
+        _client != null ||
+        _failure?.code == 'unsupported_platform' ||
+        _timer != null) {
+      return;
+    }
+    final delay = Duration(
+      microseconds:
+          (reconnectDelay.inMicroseconds * (1 << _retryAttempt.clamp(0, 5)))
+              .clamp(1000, 30000000),
+    );
+    _timer = Timer(delay, () {
+      _timer = null;
+      if (_disposed || _exitRequested) return;
+      if (_transition != null) {
+        _scheduleReconnect();
+        return;
+      }
+      _retryAttempt = (_retryAttempt + 1).clamp(0, 5);
+      unawaited(start());
+    });
+  }
+
+  Future<void> _releaseResources() {
+    final client = _client;
+    final events = _events;
+    final subscription = _subscription;
+    _client = null;
+    _events = null;
+    _subscription = null;
+    final previous = _releasing;
+    return _releasing = () async {
+      await previous;
+      // Close the transport first, aborting any pending RPC. Cancellation
+      // cannot then compete with that RPC for the sole request slot.
+      await _closeQuietly(client);
+      try {
+        await events?.cancel();
+      } on Object {
+        /* Closure is final. */
+      }
+      try {
+        await subscription?.close();
+      } on Object {
+        /* Closure is final. */
+      }
+    }();
   }
 
   GuiBootstrapFailure _ipcFailure(Object error) => guiIpcFailure(
@@ -547,14 +710,27 @@ class GuiController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  @override
-  void dispose() {
-    _disposed = true;
+  /// Await owned IPC resources and any late bootstrap/connector completion.
+  Future<void> close() {
+    if (_closed != null) return _closed!;
+    _exitRequested = true;
     ++_generation;
     _timer?.cancel();
-    final client = _client;
-    _client = null;
-    unawaited(_closeQuietly(client));
+    _timer = null;
+    final transition = _transition;
+    final releasing = _releaseResources();
+    return _closed = () async {
+      await releasing;
+      await transition;
+      await _releaseResources();
+    }();
+  }
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    unawaited(close());
     super.dispose();
   }
 }

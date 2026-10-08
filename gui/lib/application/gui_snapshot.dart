@@ -6,7 +6,11 @@ class GuiSnapshot {
     required this.profiles,
     required this.configurations,
     required this.sessions,
+    this.network,
   });
+
+  /// Null only for explicit data-only preview clients.
+  final NetworkInterfacesSnapshot? network;
   final DaemonStatus daemon;
   final List<InstitutionProfile> profiles;
   final List<ConfigurationSummary> configurations;

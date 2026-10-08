@@ -79,11 +79,31 @@ class GuiCapabilities {
   bool matchesConfiguration(String id) => canManage && configuration?.id == id;
   bool matchesSession(String id) => canManage && retainedSession?.id == id;
   bool get canConnect =>
-      canManage && retainedSession?.state != SessionState.stopping;
+      canManage &&
+      configuration!.runtimeAvailability ==
+          ConfigurationRuntimeAvailability.available &&
+      configuration!.credentialStored &&
+      !snapshot!.sessions.any((s) => s.cleanupRequired) &&
+      retainedSession?.state != SessionState.stopping;
+
   bool get canStop =>
-      canConnect &&
+      canManage &&
       retainedSession != null &&
-      retainedSession!.state != SessionState.suspended;
+      retainedSession!.state != SessionState.suspended &&
+      retainedSession!.state != SessionState.stopping;
+
+  String? get connectionDisabledReason {
+    if (!canManage) return settingsDisabledReason;
+    if (snapshot!.sessions.any((s) => s.cleanupRequired)) {
+      return '旧会话清理未完成，请先移除旧会话。';
+    }
+    if (configuration!.runtimeAvailability !=
+        ConfigurationRuntimeAvailability.available) {
+      return '连接所需的学校配置或协议不可用，请检查连接配置。';
+    }
+    if (!configuration!.credentialStored) return '请先保存连接凭据。';
+    return null;
+  }
 
   String? get settingsDisabledReason {
     if (busy) return '正在处理操作，请稍后修改连接设置。';
