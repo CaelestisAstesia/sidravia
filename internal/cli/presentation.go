@@ -525,6 +525,11 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 		b.WriteString(p.label("更新时间："))
 		b.WriteString(sanitizeDynamicText(session.UpdatedAt))
 		b.WriteString("\n")
+		for _, id := range result.CleanupRequiredSessionIDs {
+			if id == session.AuthenticationSessionID {
+				b.WriteString("  需要清理：运行 sidraviactl auth remove 释放此 Session。\n")
+			}
+		}
 		if session.State == "blocked_by_error" || session.State == "waiting_before_retry" {
 			b.WriteString("  查看详情：sidraviactl auth status ")
 			b.WriteString(sanitizeDynamicText(session.AuthenticationSessionID))
@@ -645,6 +650,8 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 	b.WriteString(sanitizeDynamicText(institution))
 	b.WriteString("\n协议：")
 	b.WriteString(sanitizeDynamicText(result.AuthenticationProtocolID))
+	b.WriteString("\n可用状态：")
+	b.WriteString(configurationAvailabilityText(result.RuntimeAvailability))
 	b.WriteString("\n账号：")
 	b.WriteString(sanitizeDynamicText(result.Username))
 	b.WriteString("\n凭据：已保存\n存储保护：")
@@ -685,4 +692,19 @@ func writeConfigurationList(output io.Writer, result contract.ConfigurationListR
 	}
 	p := newPresentation(output)
 	return wrapSafeOperation("写入配置列表", p.complete(block.String()))
+}
+
+func configurationAvailabilityText(value string) string {
+	switch value {
+	case "available":
+		return "可用"
+	case "profile_unavailable":
+		return "机构资料不可用；可删除此配置"
+	case "protocol_unavailable":
+		return "认证协议不可用；可删除此配置"
+	case "override_invalid":
+		return "协议设置无效；请修改设置"
+	default:
+		return "未知"
+	}
 }

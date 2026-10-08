@@ -82,19 +82,7 @@ func callList(connection daemonClient, timeout time.Duration, method string) ([]
 }
 
 func decodeSessionListResult(data []byte) (contract.SessionListResult, error) {
-	var result contract.SessionListResult
-	if err := decodeStrictList(data, &result); err != nil {
-		return contract.SessionListResult{}, err
-	}
-	if result.Sessions == nil {
-		return contract.SessionListResult{}, fmt.Errorf("Session 列表缺少 sessions 字段")
-	}
-	for _, session := range result.Sessions {
-		if err := validateSessionResult(session); err != nil {
-			return contract.SessionListResult{}, err
-		}
-	}
-	return result, nil
+	return contract.DecodeSessionListResult(data)
 }
 
 func decodeProfileListResult(data []byte) (contract.ProfileListResult, error) {

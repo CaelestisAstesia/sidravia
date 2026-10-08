@@ -87,6 +87,7 @@ func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context,
 
 func completeConfigurationResult() ConfigurationResult {
 	return ConfigurationResult{
+		RuntimeAvailability: ConfigurationRuntimeAvailable,
 		Configuration: config.Configuration{
 			ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
 			Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable},
@@ -242,5 +243,51 @@ func TestConfigurationHandlerOverrideTypedMappingAndPrivacy(t *testing.T) {
 	_, publicErr = handler(ctx, contract.MethodConfigurationUpdate, []byte(`{"configurationId":"campus","protocolContextOverride":{}}`))
 	if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "invalid configuration" {
 		t.Fatal("selected Factory error boundary changed")
+	}
+}
+
+func TestConfigurationHandlerRealMissingProfileRemainsManageable(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	value := config.Configuration{ConfigurationID: "unavailable-profile", InstitutionProfileID: "missing-profile", Username: "saved-user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}}
+	if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
+		t.Fatal(err)
+	}
+	handler := ConfigurationHandler(setup.application)
+	raw, publicErr := handler(ctx, contract.MethodConfigurationList, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	list, err := contract.DecodeConfigurationListResult(raw)
+	if err != nil || len(list.Configurations) != 2 {
+		t.Fatalf("list: %v %s", err, raw)
+	}
+	var row contract.ConfigurationResult
+	for _, item := range list.Configurations {
+		if item.ConfigurationID == "unavailable-profile" {
+			row = item
+		}
+	}
+	if row.RuntimeAvailability != "profile_unavailable" || row.InstitutionProfileID != "missing-profile" || row.InstitutionDisplayName != "" || row.AuthenticationProtocolID != "" || !row.CredentialStored {
+		t.Fatalf("missing profile row: %#v", row)
+	}
+	raw, publicErr = handler(ctx, contract.MethodConfigurationGet, []byte(`{"configurationId":"unavailable-profile"}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	fetched, err := contract.DecodeConfigurationResult(raw)
+	if err != nil || fetched != row {
+		t.Fatalf("get disagrees: %#v %v", fetched, err)
+	}
+	if strings.Contains(string(raw), "private-password") || strings.Contains(string(raw), "protocolContextOverride") {
+		t.Fatal("private fields leaked")
+	}
+	_, publicErr = handler(ctx, contract.MethodConfigurationUpdate, []byte(`{"configurationId":"unavailable-profile","displayName":"edited"}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeProfileNotFound {
+		t.Fatalf("strict write changed: %#v", publicErr)
+	}
+	if _, publicErr := handler(ctx, contract.MethodConfigurationRemove, []byte(`{"configurationId":"unavailable-profile"}`)); publicErr != nil {
+		t.Fatal("missing profile row unmanageable", publicErr)
 	}
 }

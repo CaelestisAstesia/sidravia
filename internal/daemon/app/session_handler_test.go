@@ -19,6 +19,7 @@ import (
 type fakeSessionApplication struct {
 	snapshot  session.Snapshot
 	snapshots []session.Snapshot
+	cleanup   []session.AuthenticationSessionID
 	err       error
 
 	lastStartInput OneShotAuthenticationInput
@@ -38,12 +39,12 @@ type fakeSessionApplication struct {
 	removeCalls    int
 }
 
-func (fake *fakeSessionApplication) ListSessions(context.Context) ([]session.Snapshot, error) {
+func (fake *fakeSessionApplication) ListSessionView(context.Context) (SessionListView, error) {
 	fake.listCalls++
 	if fake.err != nil {
-		return nil, fake.err
+		return SessionListView{}, fake.err
 	}
-	return append([]session.Snapshot(nil), fake.snapshots...), nil
+	return SessionListView{Sessions: append([]session.Snapshot{}, fake.snapshots...), CleanupRequiredSessionIDs: append([]session.AuthenticationSessionID{}, fake.cleanup...)}, nil
 }
 
 func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error) {
@@ -108,7 +109,8 @@ func (fake *fakeSessionApplication) StopSession(ctx context.Context, sessionID s
 	fake.stopCalls++
 	fake.lastStopID = sessionID
 	if fake.err != nil {
-		return session.Snapshot{}, fake.err
+		return session.Snapshot{
+			ProtocolSocket: session.ProtocolSocketObservation{State: session.ProtocolSocketNotObserved}}, fake.err
 	}
 	return fake.snapshot, nil
 }
@@ -231,6 +233,7 @@ func fullSnapshot() session.Snapshot {
 	updated := time.Date(2026, 7, 24, 10, 0, 1, 0, time.UTC)
 	addr := netip.MustParseAddr("10.0.0.2")
 	return session.Snapshot{
+		ProtocolSocket:           session.ProtocolSocketObservation{State: session.ProtocolSocketNotObserved, RunGeneration: 0},
 		AuthenticationSessionID:  "sess-1",
 		ConfigurationID:          "cfg-0123456789abcdef0123456789abcdef",
 		DisplayName:              "Library WiFi",
@@ -392,7 +395,7 @@ func TestSessionHandlerListPreservesEmptyArray(t *testing.T) {
 	if cerr != nil {
 		t.Fatalf("unexpected error: %+v", cerr)
 	}
-	if string(result) != `{"sessions":[]}` {
+	if string(result) != `{"cleanupRequiredSessionIds":[],"sessions":[]}` {
 		t.Errorf("empty Session list = %s", result)
 	}
 }
@@ -436,6 +439,9 @@ func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 	}
 	if sr.State != string(snap.State) {
 		t.Errorf("state: got %q, want %q", sr.State, snap.State)
+	}
+	if !reflect.DeepEqual(sr.ProtocolSocket, *networkProtocolSocket(snap.ProtocolSocket)) {
+		t.Error("protocolSocket projection lost")
 	}
 	if sr.Revision != snap.Revision {
 		t.Errorf("revision: got %d, want %d", sr.Revision, snap.Revision)
@@ -570,5 +576,94 @@ func TestSessionHandlerResultDoesNotLeakSecrets(t *testing.T) {
 		if strings.Contains(text, secret) {
 			t.Errorf("result JSON leaked %q: %s", secret, text)
 		}
+	}
+}
+
+func TestSessionHandlerRealInitialOneShotSocketAndCleanupProjection(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	release := make(chan struct{})
+	released := false
+	releaseRun := func() {
+		if !released {
+			close(release)
+			released = true
+		}
+	}
+	defer func() { releaseRun(); setup.cleanup() }()
+	ctx := context.Background()
+	handler := SessionHandler(setup.application)
+	raw, publicErr := handler(ctx, contract.MethodSessionStartOneShot, []byte(`{"institutionProfileId":"profile-1","username":"one-shot-user","password":"private-password","protocolContextOverride":{},"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	one, err := contract.DecodeSessionStartResult(raw)
+	if err != nil || one.Session.Revision == 0 || one.Session.ProtocolSocket.State != "not_observed" || one.Session.ProtocolSocket.RunGeneration != 0 || one.Session.ProtocolSocket.UpdatedAt != nil {
+		t.Fatalf("initial actor result: %#v %v", one, err)
+	}
+	if strings.Contains(string(raw), "private-password") || strings.Contains(string(raw), "protocolContextOverride") {
+		t.Fatal("start leaked private fields")
+	}
+	if err := setup.application.RemoveSession(ctx, session.AuthenticationSessionID(one.Session.AuthenticationSessionID)); err != nil {
+		t.Fatal(err)
+	}
+	canceled := make(chan struct{})
+	registry, err := protocol.NewAuthenticationProtocolRegistry(&cleanupDeadlineFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}, canceled: canceled, release: release})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	if err := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, started.SessionID, session.Authenticated)
+	username := "new-persisted-user"
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username}); !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("genuine cleanup deadline: %v", err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("owned Run not canceled")
+	}
+	raw, publicErr = handler(ctx, contract.MethodSessionList, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	list, err := contract.DecodeSessionListResult(raw)
+	if err != nil || len(list.Sessions) != 1 || len(list.CleanupRequiredSessionIDs) != 1 || list.CleanupRequiredSessionIDs[0] != string(started.SessionID) || list.Sessions[0].State != "stopping" {
+		t.Fatalf("first handler list lost quarantine: %s %v", raw, err)
+	}
+	direct, publicErr := handler(ctx, contract.MethodSessionGet, []byte(`{"sessionId":"`+string(started.SessionID)+`"}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	actor, err := contract.DecodeSessionResult(direct)
+	if err != nil || !reflect.DeepEqual(actor, list.Sessions[0]) {
+		t.Fatal("list/direct invented actor revision or socket", err)
+	}
+	list.CleanupRequiredSessionIDs[0] = "mutated"
+	raw, publicErr = handler(ctx, contract.MethodSessionList, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	fresh, err := contract.DecodeSessionListResult(raw)
+	if err != nil || fresh.CleanupRequiredSessionIDs[0] != string(started.SessionID) {
+		t.Fatal("decoded cleanup aliases owner")
+	}
+	releaseRun()
+	if err := setup.application.RemoveSession(ctx, started.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	raw, publicErr = handler(ctx, contract.MethodSessionList, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	fresh, err = contract.DecodeSessionListResult(raw)
+	if err != nil || fresh.Sessions == nil || fresh.CleanupRequiredSessionIDs == nil || len(fresh.Sessions) != 0 || len(fresh.CleanupRequiredSessionIDs) != 0 {
+		t.Fatal("removed actor remained in wire")
 	}
 }

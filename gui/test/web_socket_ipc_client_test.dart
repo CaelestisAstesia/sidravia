@@ -8,6 +8,138 @@ import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 void main() {
+  test('real Session direct/list/start/ensure keep exact actor tokens and App cleanup', () async {
+    const wire =
+        r'{"sessionId":"s","displayName":"","institutionProfileId":"i","institutionDisplayName":"Institution","authenticationProtocolId":"p","accountName":"a","intent":"suspend_authentication","state":"suspended","revision":18446744073709551615,"updatedAt":"2026-10-07T01:02:03Z","protocolSocket":{"state":"not_observed","runGeneration":9007199254740993,"updatedAt":"2026-10-07T01:02:03Z"}}';
+    final methods = <String>[];
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        final method = request['method'] as String;
+        methods.add(method);
+        final result = method == 'session.list'
+            ? '{"sessions":[$wire],"cleanupRequiredSessionIds":["s"]}'
+            : method == 'session.stop'
+            ? wire
+            : '{"outcome":"resumed","session":$wire}';
+        socket.add(
+          '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$result}',
+        );
+      });
+    });
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    addTearDown(() async {
+      await client.close();
+      await server.close(force: true);
+    });
+    final list = await client.sessionList();
+    final direct = await client.sessionStop('s');
+    final start = await client.sessionStartConfiguration('c');
+    final ensure = await client.sessionEnsureRunning('s');
+    expect(methods, [
+      'session.list',
+      'session.stop',
+      'session.startConfiguration',
+      'session.ensureRunning',
+    ]);
+    expect(list.single.cleanupRequired, isTrue);
+    for (final item in [list.single, direct, start, ensure]) {
+      expect(item.revision, BigInt.parse('18446744073709551615'));
+      expect(
+        item.protocolSocket.runGeneration,
+        BigInt.parse('9007199254740993'),
+      );
+    }
+    expect(direct.cleanupRequired, isFalse);
+    expect(start.cleanupRequired, isFalse);
+  });
+  test('real configuration list and mutation require typed availability', () async {
+    const missing =
+        r'{"configurationId":"c","displayName":"","institutionProfileId":"missing","institutionDisplayName":"","authenticationProtocolId":"","username":"u","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false,"networkBindingPolicy":{"mode":"automatically_select_latest_available"},"runtimeAvailability":"profile_unavailable"}';
+    final available = missing
+        .replaceFirst(
+          '"institutionDisplayName":""',
+          '"institutionDisplayName":"Institution"',
+        )
+        .replaceFirst(
+          '"authenticationProtocolId":""',
+          '"authenticationProtocolId":"p"',
+        )
+        .replaceFirst(
+          '"runtimeAvailability":"profile_unavailable"',
+          '"runtimeAvailability":"available"',
+        );
+    final server = await _server((socket, _) {
+      socket.listen((message) {
+        final request = jsonDecode(message as String) as Map<String, dynamic>;
+        final result = request['method'] == 'configuration.list'
+            ? '{"storageProtection":"protected","configurations":[$missing]}'
+            : available;
+        socket.add(
+          '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$result}',
+        );
+      });
+    });
+    final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+    addTearDown(() async {
+      await client.close();
+      await server.close(force: true);
+    });
+    final list = await client.configurationList();
+    expect(
+      list.single.runtimeAvailability,
+      ConfigurationRuntimeAvailability.profileUnavailable,
+    );
+    expect(list.single.institutionDisplayName, isEmpty);
+    final changed = await client.configurationSetAutoLogin(
+      configurationId: 'c',
+      autoLogin: false,
+    );
+    expect(
+      changed.runtimeAvailability,
+      ConfigurationRuntimeAvailability.available,
+    );
+  });
+  test('malformed complete Session raw response invalidates before next request', () async {
+    const wire =
+        r'{"sessionId":"s","displayName":"","institutionProfileId":"i","institutionDisplayName":"Institution","authenticationProtocolId":"p","accountName":"a","intent":"suspend_authentication","state":"suspended","revision":1,"updatedAt":"2026-10-07T01:02:03Z","protocolSocket":{"state":"not_observed","runGeneration":0}}';
+    for (final malformed in [
+      wire.replaceFirst('"revision":1', '"revision":1e0'),
+      wire.replaceFirst('"revision":1', '"revision":-0'),
+      wire.replaceFirst('"revision":1', '"revision":18446744073709551616'),
+      wire.replaceFirst('"runGeneration":0', '"runGeneration":1.0'),
+      wire.replaceFirst('"protocolSocket":', '"unknown":'),
+      wire.replaceFirst('"accountName":"a"', r'"accountName":"\ud800"'),
+      wire.replaceFirst('"revision":1', r'"revision":1,"\u0072evision":1'),
+    ]) {
+      var requests = 0;
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          requests++;
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          socket.add(
+            '{"kind":"response","id":${jsonEncode(request['id'])},"ok":true,"result":$malformed}',
+          );
+        });
+      });
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      try {
+        await expectLater(
+          client.sessionStop('s'),
+          throwsA(isA<IpcProtocolException>()),
+        );
+        await expectLater(
+          client.sessionList(),
+          throwsA(isA<IpcProtocolException>()),
+        );
+        expect(requests, 1);
+      } finally {
+        await client.close();
+        await server.close(force: true);
+      }
+    }
+  });
+
   test('optional export capability sends empty request and receives typed artifact', () async {
     final requests = <Map<String, dynamic>>[];
     final server = await _server((socket, _) {
@@ -427,6 +559,7 @@ void main() {
 
     final statusResult = jsonEncode(_fixtureResult('daemon.status'));
     final validSessionsEnvelope = {
+      'cleanupRequiredSessionIds': <String>[],
       'sessions': [_fixtureResult('session.ensureRunning')['session']],
     };
     final validSessionsJson = jsonEncode(validSessionsEnvelope);

@@ -51,7 +51,7 @@ func TestConfigurationPasswordCallsClearOwnedWireBytes(t *testing.T) {
 }
 
 func TestConfigurationDecodersAndPresentationHidePassword(t *testing.T) {
-	raw, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+	raw, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
 		ConfigurationID:      "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
 		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
@@ -74,9 +74,9 @@ func TestConfigurationDecodersAndPresentationHidePassword(t *testing.T) {
 }
 
 func TestConfigurationDecodersRejectUnknownTrailingAndIncompleteResults(t *testing.T) {
-	valid := contract.ConfigurationResult{
+	valid := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	}
 	data, err := json.Marshal(valid)
@@ -142,9 +142,9 @@ func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedMethod = method
 		capturedPayload = append(json.RawMessage(nil), payload...)
-		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: false, AutoReconnect: true,
 		})
@@ -176,9 +176,9 @@ func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
-		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -211,9 +211,9 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
-		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -242,13 +242,13 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 			return contract.NewSuccessResponse("1", profileRaw), nil
 		}
 		if method == contract.MethodConfigurationList {
-			listRaw, _ := contract.MarshalConfigurationListResult(contract.ConfigurationListResult{StorageProtection: "protected", Configurations: nil})
+			listRaw, _ := contract.MarshalConfigurationListResult(contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}})
 			return contract.NewSuccessResponse("1", listRaw), nil
 		}
 		capturedPayload = append(json.RawMessage(nil), payload...)
-		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -399,9 +399,9 @@ func TestExplicitBindingAndNoninteractiveCreateSkipNetworkQuery(t *testing.T) {
 				if request.NetworkBindingPolicy.Mode == "" {
 					t.Fatal("create omitted network binding policy")
 				}
-				result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+				result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 					NetworkBindingPolicy: request.NetworkBindingPolicy, ConfigurationID: "campus",
-					InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom", Username: "user",
+					InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom", Username: "user",
 					CredentialStored: true, StorageProtection: "protected",
 				})
 				return contract.NewSuccessResponse("1", result), nil
@@ -459,9 +459,9 @@ func TestInteractiveCreateSubmitsSelectedBindingAndFollowingPassword(t *testing.
 			if err := json.Unmarshal(payload, &create); err != nil {
 				t.Fatal(err)
 			}
-			result, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+			result, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 				NetworkBindingPolicy: create.NetworkBindingPolicy, ConfigurationID: create.ConfigurationID,
-				InstitutionProfileID: create.InstitutionProfileID, AuthenticationProtocolID: "drcom",
+				InstitutionDisplayName: "吉林大学", InstitutionProfileID: create.InstitutionProfileID, AuthenticationProtocolID: "drcom",
 				Username: create.Username, CredentialStored: true, StorageProtection: "protected",
 				AutoLogin: create.AutoLogin, AutoReconnect: create.AutoReconnect,
 			})
@@ -500,9 +500,9 @@ func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
-		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: false, AutoReconnect: true,
 		})
@@ -532,9 +532,9 @@ func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 	var capturedPayload json.RawMessage
 	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
-		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-			ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+			ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 			Username: "user", CredentialStored: true, StorageProtection: "protected",
 			AutoLogin: true, AutoReconnect: false,
 		})
@@ -559,9 +559,9 @@ func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 }
 
 func TestConfigOverrideCreateReplaceAndClearPayloads(t *testing.T) {
-	result, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{
+	result, err := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
-		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+		ConfigurationID:      "campus", InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	})
 	if err != nil {
@@ -666,5 +666,18 @@ func TestUpdateAndRemoveExposeExplicitInsecureStorageConsent(t *testing.T) {
 	}
 	if !removeConsent {
 		t.Fatal("remove consent lost")
+	}
+}
+
+func TestCLIConfigurationMissingProfileAndAvailabilityStrictness(t *testing.T) {
+	raw := []byte(`{"configurationId":"saved","displayName":"","institutionProfileId":"missing","institutionDisplayName":"","authenticationProtocolId":"","username":"u","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false,"networkBindingPolicy":{"mode":"automatically_select_latest_available"},"runtimeAvailability":"profile_unavailable"}`)
+	row, err := decodeConfiguration(raw)
+	if err != nil || row.RuntimeAvailability != "profile_unavailable" || row.InstitutionDisplayName != "" {
+		t.Fatal("CLI rejected manageable row", err)
+	}
+	for _, bad := range []string{strings.Replace(string(raw), `"runtimeAvailability":"profile_unavailable"`, `"runtimeAvailability":"available"`, 1), strings.Replace(string(raw), `"runtimeAvailability":"profile_unavailable"`, `"runtimeAvailability":"future"`, 1), strings.Replace(string(raw), `"runtimeAvailability":`, `"privateAvailability":`, 1), strings.Replace(string(raw), `"username":"u"`, `"username":"u","\u0075sername":"u"`, 1)} {
+		if _, err := decodeConfiguration([]byte(bad)); err == nil {
+			t.Fatal("CLI accepted inconsistent row")
+		}
 	}
 }

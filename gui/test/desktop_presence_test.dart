@@ -13,32 +13,50 @@ void main() {
       () {
         final policy = DesktopNotificationPolicy();
         expect(
-          policy.evaluate(_snapshot([_session('authenticated', 90)], pid: 100)),
+          policy.evaluate(
+            _snapshot([_session('authenticated', BigInt.from(90))], pid: 100),
+          ),
           isNull,
         );
         expect(
           policy
-              .evaluate(_snapshot([_session('blocked_by_error', 91)], pid: 100))
+              .evaluate(
+                _snapshot([
+                  _session('blocked_by_error', BigInt.from(91)),
+                ], pid: 100),
+              )
               ?.title,
           '校园网需要处理',
         );
         expect(
-          policy.evaluate(_snapshot([_session(initialState, 1)], pid: 200)),
+          policy.evaluate(
+            _snapshot([_session(initialState, BigInt.one)], pid: 200),
+          ),
           isNull,
         );
         expect(
-          policy.evaluate(_snapshot([_session('authenticated', 2)], pid: 200)),
+          policy.evaluate(
+            _snapshot([_session('authenticated', BigInt.from(2))], pid: 200),
+          ),
           isNull,
         );
         expect(
           policy
-              .evaluate(_snapshot([_session('blocked_by_error', 3)], pid: 200))
+              .evaluate(
+                _snapshot([
+                  _session('blocked_by_error', BigInt.from(3)),
+                ], pid: 200),
+              )
               ?.title,
           '校园网需要处理',
         );
         expect(
           policy
-              .evaluate(_snapshot([_session('authenticated', 4)], pid: 200))
+              .evaluate(
+                _snapshot([
+                  _session('authenticated', BigInt.from(4)),
+                ], pid: 200),
+              )
               ?.title,
           '校园网状态已恢复',
         );
@@ -132,7 +150,7 @@ void main() {
         return null;
       });
       await presence.considerSnapshot(
-        _snapshot([_session('blocked_by_error', 1)]),
+        _snapshot([_session('blocked_by_error', BigInt.from(1))]),
       );
       expect(notifyCalls, 0);
     },
@@ -141,32 +159,46 @@ void main() {
   test('blocked/recovery reducer emits no initial noise and dedupes', () {
     final policy = DesktopNotificationPolicy();
     expect(
-      policy.evaluate(_snapshot([_session('blocked_by_error', 1)])),
+      policy.evaluate(
+        _snapshot([_session('blocked_by_error', BigInt.from(1))]),
+      ),
       isNull,
     );
     expect(
-      policy.evaluate(_snapshot([_session('blocked_by_error', 1)])),
+      policy.evaluate(
+        _snapshot([_session('blocked_by_error', BigInt.from(1))]),
+      ),
       isNull,
     );
 
-    expect(policy.evaluate(_snapshot([_session('authenticated', 2)])), isNull);
+    expect(
+      policy.evaluate(_snapshot([_session('authenticated', BigInt.from(2))])),
+      isNull,
+    );
 
-    expect(policy.evaluate(_snapshot([_session('authenticated', 3)])), isNull);
+    expect(
+      policy.evaluate(_snapshot([_session('authenticated', BigInt.from(3))])),
+      isNull,
+    );
 
     final blocked = policy.evaluate(
-      _snapshot([_session('blocked_by_error', 4, description: '用户名或密码错误。')]),
+      _snapshot([
+        _session('blocked_by_error', BigInt.from(4), description: '用户名或密码错误。'),
+      ]),
     );
     expect(blocked?.title, '校园网需要处理');
     expect(blocked?.body, '用户名或密码错误。');
 
-    final recovery = policy.evaluate(_snapshot([_session('authenticated', 5)]));
+    final recovery = policy.evaluate(
+      _snapshot([_session('authenticated', BigInt.from(5))]),
+    );
     expect(recovery?.title, '校园网状态已恢复');
     expect(recovery?.body, '连接状态已更新。');
   });
 
   test('non-actionable states never produce notifications', () {
     final policy = DesktopNotificationPolicy();
-    var revision = 0;
+    var revision = BigInt.zero;
     for (final state in const [
       'authenticating',
       'waiting_for_network',
@@ -175,7 +207,7 @@ void main() {
       'suspended',
       'authenticated',
     ]) {
-      revision++;
+      revision += BigInt.one;
       expect(
         policy.evaluate(_snapshot([_session(state, revision)])),
         isNull,
@@ -197,9 +229,13 @@ void main() {
 
     final presence = DesktopPresence(channel: channel);
     addTearDown(presence.dispose);
-    await presence.considerSnapshot(_snapshot([_session('authenticated', 1)]));
     await presence.considerSnapshot(
-      _snapshot([_session('blocked_by_error', 2, description: '错误内容')]),
+      _snapshot([_session('authenticated', BigInt.from(1))]),
+    );
+    await presence.considerSnapshot(
+      _snapshot([
+        _session('blocked_by_error', BigInt.from(2), description: '错误内容'),
+      ]),
     );
 
     expect(calls, hasLength(1));
@@ -232,7 +268,7 @@ void main() {
     expect(presence.enabled, isFalse);
     expect(await presence.initialize(), DesktopPresenceDisposition.primary);
     await presence.considerSnapshot(
-      _snapshot([_session('blocked_by_error', 1)]),
+      _snapshot([_session('blocked_by_error', BigInt.from(1))]),
     );
     await presence.destroy();
   });
@@ -253,7 +289,7 @@ GuiSnapshot _snapshot(List<SessionSummary> sessions, {int pid = 1}) =>
       sessions: sessions,
     );
 
-SessionSummary _session(String state, int revision, {String? description}) =>
+SessionSummary _session(String state, BigInt revision, {String? description}) =>
     SessionSummary(
       id: 'session-a',
       displayName: '',

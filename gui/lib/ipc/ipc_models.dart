@@ -2,6 +2,21 @@ import 'dart:convert';
 
 const daemonModes = {'headless', 'desktop'};
 
+enum ConfigurationRuntimeAvailability {
+  available('available'),
+  profileUnavailable('profile_unavailable'),
+  protocolUnavailable('protocol_unavailable'),
+  overrideInvalid('override_invalid');
+
+  const ConfigurationRuntimeAvailability(this.wireValue);
+  final String wireValue;
+  static ConfigurationRuntimeAvailability decode(String value) =>
+      values.firstWhere(
+        (item) => item.wireValue == value,
+        orElse: () => throw const IpcProtocolException(),
+      );
+}
+
 enum SessionState {
   suspended('suspended'),
   waitingForNetwork('waiting_for_network'),
@@ -174,15 +189,15 @@ class NetworkBindingPolicy {
 // escaped and literal aliases coincide; each object owns its own key set.
 Object? decodeBindingCheckedJson(
   String source, {
-  bool preserveNetworkRevision = false,
-  bool preserveNetworkRunGeneration = false,
+  bool preserveUnsignedRevision = false,
+  bool preserveRunGeneration = false,
   bool strictUnsignedNumbers = false,
 }) {
   try {
     var i = 0;
     final strictUnicode =
-        preserveNetworkRevision ||
-        preserveNetworkRunGeneration ||
+        preserveUnsignedRevision ||
+        preserveRunGeneration ||
         strictUnsignedNumbers;
     void whitespace() {
       while (i < source.length &&
@@ -221,8 +236,8 @@ Object? decodeBindingCheckedJson(
         throw const IpcProtocolException();
       }
       final exact =
-          preserveNetworkRevision && key == 'revision' ||
-          preserveNetworkRunGeneration && key == 'runGeneration';
+          preserveUnsignedRevision && key == 'revision' ||
+          preserveRunGeneration && key == 'runGeneration';
       if (source[i] == '{') {
         if (exact) {
           throw const IpcProtocolException();
@@ -351,6 +366,7 @@ class ConfigurationSummary {
     this.networkBindingPolicy = const NetworkBindingPolicy.automatic(),
     this.autoLogin = false,
     this.autoReconnect = false,
+    this.runtimeAvailability = ConfigurationRuntimeAvailability.available,
   });
   final String id,
       displayName,
@@ -361,6 +377,7 @@ class ConfigurationSummary {
       storageProtection;
   final NetworkBindingPolicy networkBindingPolicy;
   final bool credentialStored, autoLogin, autoReconnect;
+  final ConfigurationRuntimeAvailability runtimeAvailability;
 }
 
 class SessionStateReason {
@@ -399,9 +416,17 @@ class SessionSummary {
     this.authenticationEstablishedAt,
     this.nextRetryAt,
     this.lastAuthenticationFailure,
-    this.revision = 0,
+    BigInt? revision,
+    NetworkProtocolSocket? protocolSocket,
+    this.cleanupRequired = false,
     this.updatedAt,
-  });
+  })
+    // Public names and private nullable storage preserve const previews.
+    // ignore: prefer_initializing_formals
+    : _revision = revision,
+       // Public names and private nullable storage preserve const previews.
+       // ignore: prefer_initializing_formals
+       _protocolSocket = protocolSocket;
   final String id, displayName, accountName;
   final SessionState state;
   final SessionIntent intent;
@@ -410,7 +435,15 @@ class SessionSummary {
   final SessionNetworkBinding? selectedNetworkBinding;
   final DateTime? authenticationEstablishedAt, nextRetryAt, updatedAt;
   final SessionAuthenticationFailure? lastAuthenticationFailure;
-  final int revision;
+  final BigInt? _revision;
+  BigInt get revision => _revision ?? BigInt.zero;
+  final NetworkProtocolSocket? _protocolSocket;
+  static final _previewSocket = NetworkProtocolSocket(
+    state: 'not_observed',
+    runGeneration: BigInt.zero,
+  );
+  NetworkProtocolSocket get protocolSocket => _protocolSocket ?? _previewSocket;
+  final bool cleanupRequired;
 }
 
 class IpcProtocolException implements Exception {
@@ -512,18 +545,19 @@ List<InstitutionProfile> decodeProfiles(String source) =>
         .toList(growable: false);
 
 List<ConfigurationSummary> decodeConfigurations(String source) {
-  final root = decodeObject(source, const {
-    'storageProtection',
-    'configurations',
-  });
+  final root = _object(
+    decodeBindingCheckedJson(source, preserveUnsignedRevision: true),
+    const {'storageProtection', 'configurations'},
+  );
   _protection(root['storageProtection']);
   return _list(root['configurations'])
       .map(_configuration)
       .toList(growable: false);
 }
 
-ConfigurationSummary decodeConfiguration(String source) =>
-    _configuration(decodeBindingCheckedJson(source));
+ConfigurationSummary decodeConfiguration(String source) => _configuration(
+  decodeBindingCheckedJson(source, preserveUnsignedRevision: true),
+);
 
 ConfigurationSummary _configuration(Object? raw) {
   final v = _object(raw, const {
@@ -534,17 +568,29 @@ ConfigurationSummary _configuration(Object? raw) {
     'authenticationProtocolId',
     'username',
     'credentialStored',
+    'runtimeAvailability',
     'storageProtection',
     'autoLogin',
     'autoReconnect',
     'networkBindingPolicy',
   });
+  final availability = ConfigurationRuntimeAvailability.decode(
+    _text(v['runtimeAvailability']),
+  );
+  final institution = _optionalText(v['institutionDisplayName']);
+  final protocol = _optionalText(v['authenticationProtocolId']);
+  if (availability == ConfigurationRuntimeAvailability.profileUnavailable
+      ? institution.isNotEmpty || protocol.isNotEmpty
+      : institution.isEmpty || protocol.isEmpty) {
+    throw const IpcProtocolException();
+  }
   return ConfigurationSummary(
+    runtimeAvailability: availability,
     id: _text(v['configurationId']),
     displayName: _optionalText(v['displayName']),
     institutionProfileId: _text(v['institutionProfileId']),
-    institutionDisplayName: _text(v['institutionDisplayName']),
-    authenticationProtocolId: _text(v['authenticationProtocolId']),
+    institutionDisplayName: institution,
+    authenticationProtocolId: protocol,
     username: _text(v['username']),
     credentialStored: _bool(v['credentialStored']),
     storageProtection: _protection(v['storageProtection']),
@@ -556,19 +602,46 @@ ConfigurationSummary _configuration(Object? raw) {
   );
 }
 
+Object? _sessionJson(String source) => decodeBindingCheckedJson(
+  source,
+  preserveUnsignedRevision: true,
+  preserveRunGeneration: true,
+);
 List<SessionSummary> decodeSessions(String source) =>
-    _list(decodeObject(source, const {'sessions'})['sessions'])
-        .map(_session)
-        .toList(growable: false);
+    decodeSessionsValue(_sessionJson(source));
+List<SessionSummary> decodeSessionsValue(Object? raw) {
+  final root = _object(raw, const {'sessions', 'cleanupRequiredSessionIds'});
+  final rows = _list(root['sessions']);
+  final ids = <String>{};
+  for (final row in rows) {
+    if (row is! Map<String, dynamic> || !ids.add(_text(row['sessionId']))) {
+      throw const IpcProtocolException();
+    }
+  }
+  final cleanup = <String>{};
+  for (final rawId in _list(root['cleanupRequiredSessionIds'])) {
+    final id = _text(rawId);
+    if (!ids.contains(id) || !cleanup.add(id)) {
+      throw const IpcProtocolException();
+    }
+  }
+  return List.unmodifiable(
+    rows.map(
+      (row) => _session(
+        row,
+        cleanupRequired: cleanup.contains((row as Map)['sessionId']),
+      ),
+    ),
+  );
+}
 
 SessionSummary decodeSession(String source) =>
-    _session(decodeBindingCheckedJson(source));
-
-SessionSummary decodeSessionOperation(String source) {
-  final value = _object(decodeBindingCheckedJson(source), const {
-    'outcome',
-    'session',
-  });
+    decodeSessionValue(_sessionJson(source));
+SessionSummary decodeSessionValue(Object? raw) => _session(raw);
+SessionSummary decodeSessionOperation(String source) =>
+    decodeSessionOperationValue(_sessionJson(source));
+SessionSummary decodeSessionOperationValue(Object? raw) {
+  final value = _object(raw, const {'outcome', 'session'});
   if (!const {
     'created',
     'already_running',
@@ -579,7 +652,7 @@ SessionSummary decodeSessionOperation(String source) {
   return _session(value['session']);
 }
 
-SessionSummary _session(Object? raw) {
+SessionSummary _session(Object? raw, {bool cleanupRequired = false}) {
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
   const required = {
     'sessionId',
@@ -591,6 +664,7 @@ SessionSummary _session(Object? raw) {
     'intent',
     'state',
     'revision',
+    'protocolSocket',
     'updatedAt',
   };
   const optional = {
@@ -619,8 +693,14 @@ SessionSummary _session(Object? raw) {
     _text(raw[key]);
   }
   final revision = raw['revision'];
-  if (revision is! int || revision < 0) throw const IpcProtocolException();
+  if (revision is! BigInt ||
+      revision <= BigInt.zero ||
+      revision > BigInt.parse('18446744073709551615')) {
+    throw const IpcProtocolException();
+  }
   return SessionSummary(
+    cleanupRequired: cleanupRequired,
+    protocolSocket: _decodeProtocolSocket(raw['protocolSocket']),
     id: _text(raw['sessionId']),
     displayName: _optionalText(raw['displayName']),
     accountName: _text(raw['accountName']),
@@ -636,16 +716,16 @@ SessionSummary _session(Object? raw) {
         ? _binding(raw['selectedNetworkBinding'])
         : null,
     authenticationEstablishedAt: raw.containsKey('authenticationEstablishedAt')
-        ? _time(raw['authenticationEstablishedAt'])
+        ? _time(_networkTime(raw['authenticationEstablishedAt']))
         : null,
     nextRetryAt: raw.containsKey('nextRetryAt')
-        ? _time(raw['nextRetryAt'])
+        ? _time(_networkTime(raw['nextRetryAt']))
         : null,
     lastAuthenticationFailure: raw.containsKey('lastAuthenticationFailure')
         ? _failure(raw['lastAuthenticationFailure'])
         : null,
     revision: revision,
-    updatedAt: _time(raw['updatedAt']),
+    updatedAt: _time(_networkTime(raw['updatedAt'])),
   );
 }
 
@@ -665,7 +745,7 @@ SessionNetworkBinding _binding(Object? raw) {
   });
   return SessionNetworkBinding(
     interfaceId: _text(v['interfaceId']),
-    displayName: _text(v['displayName']),
+    displayName: _optionalText(v['displayName']),
     localIpv4Address: _text(v['localIpv4Address']),
   );
 }
@@ -816,7 +896,7 @@ class NetworkIPv4Assignment {
 
 NetworkInterfacesSnapshot decodeNetworkInterfaces(String source) =>
     decodeNetworkInterfacesValue(
-      decodeBindingCheckedJson(source, preserveNetworkRevision: true),
+      decodeBindingCheckedJson(source, preserveUnsignedRevision: true),
     );
 
 NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
@@ -1102,7 +1182,7 @@ Map<String, dynamic> _networkObject(
 
 NetworkDiagnosis decodeNetworkDiagnosis(String source) =>
     decodeNetworkDiagnosisValue(
-      decodeBindingCheckedJson(source, preserveNetworkRunGeneration: true),
+      decodeBindingCheckedJson(source, preserveRunGeneration: true),
     );
 NetworkDiagnosis decodeNetworkDiagnosisValue(Object? raw) {
   final v = _networkObject(
@@ -1205,42 +1285,7 @@ NetworkDiagnosis decodeNetworkDiagnosisValue(Object? raw) {
   }
   NetworkProtocolSocket? socket;
   if (v.containsKey('protocolSocket')) {
-    final s = _networkObject(
-      v['protocolSocket'],
-      const {'state', 'runGeneration'},
-      const {'updatedAt', 'localEndpoint', 'remoteEndpoint'},
-    );
-    final state = _networkEnum(s['state'], networkSocketStates);
-    final generation = s['runGeneration'];
-    if (generation is! BigInt ||
-        generation < BigInt.zero ||
-        generation > BigInt.parse('18446744073709551615')) {
-      throw const IpcProtocolException();
-    }
-    final updated = s.containsKey('updatedAt')
-        ? _networkTime(s['updatedAt'])
-        : null;
-    NetworkEndpoint? local, remote;
-    if (state == 'not_observed') {
-      if (s.containsKey('localEndpoint') ||
-          s.containsKey('remoteEndpoint') ||
-          (generation == BigInt.zero) != (updated == null)) {
-        throw const IpcProtocolException();
-      }
-    } else {
-      if (generation == BigInt.zero || updated == null) {
-        throw const IpcProtocolException();
-      }
-      local = _networkEndpoint(s['localEndpoint']);
-      remote = _networkEndpoint(s['remoteEndpoint'], broadcast: true);
-    }
-    socket = NetworkProtocolSocket(
-      state: state,
-      runGeneration: generation,
-      updatedAt: updated,
-      localEndpoint: local,
-      remoteEndpoint: remote,
-    );
+    socket = _decodeProtocolSocket(v['protocolSocket']);
   }
   return NetworkDiagnosis(
     observedAt: observed,
@@ -1276,7 +1321,7 @@ Map<String, Object> networkDiagnosisPayload({
 
 Map<String, Object> decodeNetworkDiagnosisPayload(String source) {
   final v = _networkObject(
-    decodeBindingCheckedJson(source, preserveNetworkRunGeneration: true),
+    decodeBindingCheckedJson(source, preserveRunGeneration: true),
     const {},
     const {'configurationId', 'sessionId', 'probe'},
   );
@@ -1644,5 +1689,44 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
       truncated: truncated,
       items: items,
     ),
+  );
+}
+
+NetworkProtocolSocket _decodeProtocolSocket(Object? raw) {
+  final s = _networkObject(
+    raw,
+    const {'state', 'runGeneration'},
+    const {'updatedAt', 'localEndpoint', 'remoteEndpoint'},
+  );
+  final state = _networkEnum(s['state'], networkSocketStates);
+  final generation = s['runGeneration'];
+  if (generation is! BigInt ||
+      generation < BigInt.zero ||
+      generation > BigInt.parse('18446744073709551615')) {
+    throw const IpcProtocolException();
+  }
+  final updated = s.containsKey('updatedAt')
+      ? _networkTime(s['updatedAt'])
+      : null;
+  NetworkEndpoint? local, remote;
+  if (state == 'not_observed') {
+    if (s.containsKey('localEndpoint') ||
+        s.containsKey('remoteEndpoint') ||
+        (generation == BigInt.zero) != (updated == null)) {
+      throw const IpcProtocolException();
+    }
+  } else {
+    if (generation == BigInt.zero || updated == null) {
+      throw const IpcProtocolException();
+    }
+    local = _networkEndpoint(s['localEndpoint']);
+    remote = _networkEndpoint(s['remoteEndpoint'], broadcast: true);
+  }
+  return NetworkProtocolSocket(
+    state: state,
+    runGeneration: generation,
+    updatedAt: updated,
+    localEndpoint: local,
+    remoteEndpoint: remote,
   );
 }

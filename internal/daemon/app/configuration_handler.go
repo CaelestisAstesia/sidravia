@@ -115,6 +115,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 
 func toConfigurationResult(value ConfigurationResult) contract.ConfigurationResult {
 	return contract.ConfigurationResult{
+		RuntimeAvailability:  string(value.RuntimeAvailability),
 		NetworkBindingPolicy: contract.NetworkBindingPolicyFromDomain(value.Configuration.NetworkBindingPolicy),
 		ConfigurationID:      string(value.Configuration.ConfigurationID), DisplayName: value.Configuration.DisplayName,
 		InstitutionProfileID: string(value.Configuration.InstitutionProfileID), InstitutionDisplayName: value.InstitutionDisplayName,

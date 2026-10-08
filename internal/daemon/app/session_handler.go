@@ -26,7 +26,7 @@ type sessionApplication interface {
 	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	RemoveSession(ctx context.Context, sessionID session.AuthenticationSessionID) error
 	GetSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
-	ListSessions(ctx context.Context) ([]session.Snapshot, error)
+	ListSessionView(ctx context.Context) (SessionListView, error)
 }
 
 var _ sessionApplication = (*Application)(nil)
@@ -120,15 +120,19 @@ func handleSessionList(ctx context.Context, application sessionApplication, payl
 	if err := contract.DecodeEmptyPayload(payload); err != nil {
 		return nil, invalidArgumentError()
 	}
-	snapshots, err := application.ListSessions(ctx)
+	view, err := application.ListSessionView(ctx)
 	if err != nil {
 		return nil, sessionError(err)
 	}
-	results := make([]contract.SessionResult, 0, len(snapshots))
-	for _, snapshot := range snapshots {
+	results := make([]contract.SessionResult, 0, len(view.Sessions))
+	for _, snapshot := range view.Sessions {
 		results = append(results, toSessionResult(snapshot))
 	}
-	result, err := contract.MarshalSessionListResult(contract.SessionListResult{Sessions: results})
+	cleanup := make([]string, 0, len(view.CleanupRequiredSessionIDs))
+	for _, id := range view.CleanupRequiredSessionIDs {
+		cleanup = append(cleanup, string(id))
+	}
+	result, err := contract.MarshalSessionListResult(contract.SessionListResult{Sessions: results, CleanupRequiredSessionIDs: cleanup})
 	if err != nil {
 		return nil, &contract.Error{
 			Code:    contract.ErrorCodeSessionOperationFailed,
@@ -251,6 +255,7 @@ func sessionError(err error) *contract.Error {
 // never appear in a public Snapshot.
 func toSessionResult(snapshot session.Snapshot) contract.SessionResult {
 	result := contract.SessionResult{
+		ProtocolSocket:           *networkProtocolSocket(snapshot.ProtocolSocket),
 		AuthenticationSessionID:  string(snapshot.AuthenticationSessionID),
 		ConfigurationID:          string(snapshot.ConfigurationID),
 		DisplayName:              snapshot.DisplayName,

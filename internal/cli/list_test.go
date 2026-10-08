@@ -25,9 +25,9 @@ func hotListDependencies(t *testing.T, connection daemonClient, output *bytes.Bu
 }
 
 func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
-	result := contract.SessionListResult{Sessions: []contract.SessionResult{
+	result := contract.SessionListResult{CleanupRequiredSessionIDs: []string{}, Sessions: []contract.SessionResult{
 		{
-			AuthenticationSessionID:  "session-1",
+			ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"}, Revision: 1, Intent: "maintain_authentication", AuthenticationSessionID: "session-1",
 			InstitutionProfileID:     "jlu",
 			InstitutionDisplayName:   "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
@@ -36,8 +36,8 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 			UpdatedAt:                "2026-07-27T02:25:38+08:00",
 		},
 		{
-			AuthenticationSessionID:  "session-2",
-			InstitutionProfileID:     "other",
+			ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"}, Revision: 1, Intent: "maintain_authentication", AuthenticationSessionID: "session-2",
+			InstitutionDisplayName: "other", InstitutionProfileID: "other",
 			AuthenticationProtocolID: "test-protocol",
 			AccountName:              "bob",
 			State:                    "suspended",
@@ -63,7 +63,7 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 	}
 	want := "会话（2）：\n" +
 		"- session-1 | 状态：已认证（authenticated） | 机构：吉林大学（JLU） | 账号：alice2024 | 更新时间：2026-07-27T02:25:38+08:00\n" +
-		"- session-2 | 状态：已暂停（suspended） | 机构：other | 账号：bob | 更新时间：2026-07-27T02:27:50+08:00\n"
+		"- session-2 | 状态：已暂停（suspended） | 机构：other（other） | 账号：bob | 更新时间：2026-07-27T02:27:50+08:00\n"
 	if output.String() != want {
 		t.Errorf("output = %q, want %q", output.String(), want)
 	}
@@ -73,9 +73,9 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 }
 
 func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
-	result := contract.SessionListResult{Sessions: []contract.SessionResult{
+	result := contract.SessionListResult{CleanupRequiredSessionIDs: []string{}, Sessions: []contract.SessionResult{
 		{
-			AuthenticationSessionID:  "session-blocked",
+			ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"}, Revision: 1, Intent: "maintain_authentication", AuthenticationSessionID: "session-blocked",
 			InstitutionProfileID:     "jlu",
 			InstitutionDisplayName:   "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
@@ -84,7 +84,7 @@ func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
 			UpdatedAt:                "2026-08-03T10:00:00+08:00",
 		},
 		{
-			AuthenticationSessionID:  "session-retrying",
+			ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"}, Revision: 1, Intent: "maintain_authentication", AuthenticationSessionID: "session-retrying",
 			InstitutionProfileID:     "jlu",
 			InstitutionDisplayName:   "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
@@ -93,7 +93,7 @@ func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
 			UpdatedAt:                "2026-08-03T10:01:00+08:00",
 		},
 		{
-			AuthenticationSessionID:  "session-normal",
+			ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"}, Revision: 1, Intent: "maintain_authentication", AuthenticationSessionID: "session-normal",
 			InstitutionProfileID:     "jlu",
 			InstitutionDisplayName:   "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
@@ -166,7 +166,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 		run    func(listDependencies) error
 		want   string
 	}{
-		{"sessions", contract.MethodSessionList, json.RawMessage(`{"sessions":[]}`), runAuthList, "没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n"},
+		{"sessions", contract.MethodSessionList, json.RawMessage(`{"cleanupRequiredSessionIds":[],"sessions":[]}`), runAuthList, "没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n"},
 		{"profiles", contract.MethodProfileList, json.RawMessage(`{"profiles":[]}`), runProfileList, "没有可用的机构 Profile。请检查完整 portable 包中的 institution-profiles，并重启 daemon。\n"},
 	} {
 		t.Run("empty "+test.name, func(t *testing.T) {
@@ -234,7 +234,7 @@ func TestListErrorsAreSafeAndPreserveWriterCause(t *testing.T) {
 	})
 
 	t.Run("writer cause", func(t *testing.T) {
-		data := json.RawMessage(`{"sessions":[]}`)
+		data := json.RawMessage(`{"cleanupRequiredSessionIds":[],"sessions":[]}`)
 		connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
 			return contract.NewSuccessResponse("1", data), nil
 		}}
@@ -263,7 +263,7 @@ func TestListCommandsDoNotCallDaemonStop(t *testing.T) {
 		if method == contract.MethodDaemonStop {
 			t.Errorf("list command must not call daemon.stop")
 		}
-		data, _ := contract.MarshalSessionListResult(contract.SessionListResult{})
+		data, _ := contract.MarshalSessionListResult(contract.SessionListResult{Sessions: []contract.SessionResult{}, CleanupRequiredSessionIDs: []string{}})
 		return contract.NewSuccessResponse("1", data), nil
 	}}
 	var output bytes.Buffer

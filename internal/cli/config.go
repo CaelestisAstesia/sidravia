@@ -511,34 +511,8 @@ func decodeStrictCLI(data []byte, target any) error {
 	return nil
 }
 func decodeConfiguration(data []byte) (contract.ConfigurationResult, error) {
-	var result contract.ConfigurationResult
-	if err := decodeStrictCLI(data, &result); err != nil {
-		return result, err
-	}
-	if _, err := result.NetworkBindingPolicy.Domain(); err != nil {
-		return contract.ConfigurationResult{}, fmt.Errorf("配置绑定结果无效")
-	}
-	if result.ConfigurationID == "" || result.InstitutionProfileID == "" || result.AuthenticationProtocolID == "" || result.Username == "" || !result.CredentialStored || result.StorageProtection != "protected" && result.StorageProtection != "unprotected" {
-		return contract.ConfigurationResult{}, fmt.Errorf("配置结果无效")
-	}
-	return result, nil
+	return contract.DecodeConfigurationResult(data)
 }
 func decodeConfigurationList(data []byte) (contract.ConfigurationListResult, error) {
-	var result contract.ConfigurationListResult
-	if err := decodeStrictCLI(data, &result); err != nil {
-		return result, err
-	}
-	if result.StorageProtection != "protected" && result.StorageProtection != "unprotected" || result.Configurations == nil {
-		return result, fmt.Errorf("配置列表无效")
-	}
-	for _, value := range result.Configurations {
-		if _, err := decodeConfigurationMust(value); err != nil {
-			return result, err
-		}
-	}
-	return result, nil
-}
-func decodeConfigurationMust(value contract.ConfigurationResult) (contract.ConfigurationResult, error) {
-	data, _ := json.Marshal(value)
-	return decodeConfiguration(data)
+	return contract.DecodeConfigurationListResult(data)
 }

@@ -6,6 +6,280 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('Session binding label may be empty but must be a present string', () {
+    final wire = _completeSessionWire.replaceFirst(
+      '"revision":1',
+      '"selectedNetworkBinding":{"interfaceId":"i","displayName":"","localIpv4Address":"192.0.2.10"},"revision":1',
+    );
+    expect(decodeSession(wire).selectedNetworkBinding!.displayName, isEmpty);
+    for (final replacement in [
+      '"displayName":null',
+      '"displayName":1',
+      '"displayName":true',
+      '"displayName":{}',
+      '"displayName":[]',
+      '"unknown":""',
+    ]) {
+      final bad = wire.replaceFirst(
+        '"selectedNetworkBinding":{"interfaceId":"i","displayName":""',
+        '"selectedNetworkBinding":{"interfaceId":"i",$replacement',
+      );
+      expect(
+        () => decodeSession(bad),
+        throwsA(isA<IpcProtocolException>()),
+        reason: replacement,
+      );
+    }
+    final missing = wire.replaceFirst(
+      '"selectedNetworkBinding":{"interfaceId":"i","displayName":"",',
+      '"selectedNetworkBinding":{"interfaceId":"i",',
+    );
+    expect(() => decodeSession(missing), throwsA(isA<IpcProtocolException>()));
+  });
+
+  test(
+    'complete Session keeps original uint64 and immutable cleanup membership',
+    () {
+      for (final token in ['9007199254740993', '18446744073709551615']) {
+        final wire = _completeSessionWire
+            .replaceFirst('"revision":1', '"revision":$token')
+            .replaceFirst(
+              '"runGeneration":0',
+              '"runGeneration":$token,"updatedAt":"2026-10-07T01:02:03Z"',
+            );
+        final direct = decodeSession(wire);
+        expect(direct.revision, BigInt.parse(token));
+        expect(direct.protocolSocket.runGeneration, BigInt.parse(token));
+        expect(direct.cleanupRequired, isFalse);
+        final operation = decodeSessionOperation(
+          '{"outcome":"resumed","session":$wire}',
+        );
+        expect(operation.revision, direct.revision);
+        final list = decodeSessions(
+          '{"sessions":[$wire],"cleanupRequiredSessionIds":["s"]}',
+        );
+        expect(list.single.cleanupRequired, isTrue);
+        expect(
+          list.single.protocolSocket.runGeneration,
+          direct.protocolSocket.runGeneration,
+        );
+        expect(list.single.revision, direct.revision);
+        expect(() => list.clear(), throwsUnsupportedError);
+        expect(
+          decodeSessions('{"sessions":[$wire],"cleanupRequiredSessionIds":[]}')
+              .single
+              .cleanupRequired,
+          isFalse,
+        );
+      }
+      const preview = SessionSummary(
+        id: 'preview',
+        displayName: '',
+        accountName: 'a',
+        state: SessionState.suspended,
+        intent: SessionIntent.suspendAuthentication,
+      );
+      expect(preview.revision, BigInt.zero);
+      expect(preview.protocolSocket.state, 'not_observed');
+      expect(preview.protocolSocket.runGeneration, BigInt.zero);
+    },
+  );
+  test('Session strict originals reject invalid revision, socket and list IDs', () {
+    for (final token in [
+      '-0',
+      '-1',
+      '0',
+      '1.0',
+      '1e0',
+      '01',
+      '18446744073709551616',
+      'null',
+      '"1"',
+      '{}',
+      '[]',
+    ]) {
+      expect(
+        () => decodeSession(
+          _completeSessionWire.replaceFirst(
+            '"revision":1',
+            '"revision":$token',
+          ),
+        ),
+        throwsA(isA<IpcProtocolException>()),
+        reason: token,
+      );
+    }
+    for (final wire in [
+      _completeSessionWire.replaceFirst('"protocolSocket":', '"unknown":'),
+      _completeSessionWire.replaceFirst(
+        '"revision":1',
+        r'"revision":1,"\u0072evision":1',
+      ),
+      _completeSessionWire.replaceFirst(
+        '"accountName":"a"',
+        r'"accountName":"\ud800"',
+      ),
+      '$_completeSessionWire{}',
+      _completeSessionWire.replaceFirst(
+        '"runGeneration":0',
+        '"runGeneration":-0',
+      ),
+      _completeSessionWire.replaceFirst(
+        '"runGeneration":0',
+        '"runGeneration":1',
+      ),
+      _completeSessionWire.replaceFirst(
+        '"state":"not_observed"',
+        '"state":"open"',
+      ),
+      _completeSessionWire.replaceFirst(
+        '"updatedAt":"2026-10-07T01:02:03Z"',
+        '"updatedAt":"0001-01-01T00:00:00Z"',
+      ),
+    ]) {
+      expect(() => decodeSession(wire), throwsA(isA<IpcProtocolException>()));
+    }
+    for (final ids in ['null', '["missing"]', '[""]', '["s","s"]', '[1]']) {
+      expect(
+        () => decodeSessions(
+          '{"sessions":[$_completeSessionWire],"cleanupRequiredSessionIds":$ids}',
+        ),
+        throwsA(isA<IpcProtocolException>()),
+        reason: ids,
+      );
+    }
+    expect(
+      () => decodeSessions(
+        '{"sessions":[$_completeSessionWire,$_completeSessionWire],"cleanupRequiredSessionIds":[]}',
+      ),
+      throwsA(isA<IpcProtocolException>()),
+    );
+    expect(
+      () => decodeSessions('{"sessions":[$_completeSessionWire]}'),
+      throwsA(isA<IpcProtocolException>()),
+    );
+    for (final field in ['authenticationEstablishedAt', 'nextRetryAt']) {
+      for (final time in [
+        '2026-10-07T01:02:03.1234567890Z',
+        '0001-01-01T00:00:00Z',
+        '2026-10-07T01:02:03+24:00',
+      ]) {
+        final wire = _completeSessionWire.replaceFirst(
+          '"revision":1',
+          '"$field":"$time","revision":1',
+        );
+        expect(
+          () => decodeSession(wire),
+          throwsA(isA<IpcProtocolException>()),
+          reason: '$field $time',
+        );
+      }
+    }
+  });
+  test('Session uses the same state-dependent socket endpoints and times', () {
+    for (final state in [
+      'open',
+      'closed',
+      'close_failed',
+      'close_unconfirmed',
+    ]) {
+      final socket =
+          '{"state":"$state","runGeneration":9007199254740993,"updatedAt":"2026-10-07T01:02:03Z","localEndpoint":{"address":"127.0.0.1","port":1},"remoteEndpoint":{"address":"255.255.255.255","port":61440}}';
+      final wire = _completeSessionWire.replaceFirst(
+        '{"state":"not_observed","runGeneration":0}',
+        socket,
+      );
+      final value = decodeSession(wire);
+      expect(value.protocolSocket.state, state);
+      expect(value.protocolSocket.localEndpoint!.address, '127.0.0.1');
+      expect(value.protocolSocket.remoteEndpoint!.port, 61440);
+      for (final bad in [
+        wire.replaceFirst('"port":1', '"port":0'),
+        wire.replaceFirst(
+          '"address":"127.0.0.1"',
+          '"address":"255.255.255.255"',
+        ),
+        wire.replaceFirst(
+          '"runGeneration":9007199254740993',
+          '"runGeneration":0',
+        ),
+      ]) {
+        expect(() => decodeSession(bad), throwsA(isA<IpcProtocolException>()));
+      }
+    }
+  });
+  test(
+    'configuration availability keeps unknown Profile metadata truthful',
+    () {
+      const wire = _completeConfigurationWire;
+      for (final status in [
+        'available',
+        'protocol_unavailable',
+        'override_invalid',
+        'profile_unavailable',
+      ]) {
+        var source = wire.replaceFirst(
+          '"runtimeAvailability":"available"',
+          '"runtimeAvailability":"$status"',
+        );
+        if (status == 'profile_unavailable') {
+          source = source
+              .replaceFirst(
+                '"institutionDisplayName":"Institution"',
+                '"institutionDisplayName":""',
+              )
+              .replaceFirst(
+                '"authenticationProtocolId":"p"',
+                '"authenticationProtocolId":""',
+              );
+        }
+        final row = decodeConfiguration(source);
+        expect(row.runtimeAvailability.wireValue, status);
+        expect(
+          decodeConfigurations(
+            '{"storageProtection":"protected","configurations":[$source]}',
+          ).single.runtimeAvailability,
+          row.runtimeAvailability,
+        );
+        final bad = status == 'profile_unavailable'
+            ? source.replaceFirst(
+                '"institutionDisplayName":""',
+                '"institutionDisplayName":"invented"',
+              )
+            : source.replaceFirst(
+                '"institutionDisplayName":"Institution"',
+                '"institutionDisplayName":""',
+              );
+        expect(
+          () => decodeConfiguration(bad),
+          throwsA(isA<IpcProtocolException>()),
+        );
+      }
+      for (final source in [
+        wire.replaceFirst('"runtimeAvailability":', '"unknown":'),
+        wire.replaceFirst(
+          '"runtimeAvailability":"available"',
+          '"runtimeAvailability":null',
+        ),
+        wire.replaceFirst(
+          '"runtimeAvailability":"available"',
+          '"runtimeAvailability":"future"',
+        ),
+        wire.replaceFirst('"username":"u"', r'"username":"\ud800"'),
+        wire.replaceFirst(
+          '"username":"u"',
+          r'"username":"u","\u0075sername":"u"',
+        ),
+        '$wire{}',
+      ]) {
+        expect(
+          () => decodeConfiguration(source),
+          throwsA(isA<IpcProtocolException>()),
+        );
+      }
+    },
+  );
+
   test('export useful facts survive typed strict decoding', () {
     final value = decodeDiagnosticExport(
       r'{"schemaVersion":1,"generatedAt":"2026-10-07T01:02:03Z","productVersion":"v","buildId":"b","operatingSystem":"windows","architecture":"amd64","network":{"available":true,"interfaceCount":1,"ipv4AssignmentCount":2,"upInterfaceCount":1,"automaticCandidateCount":2,"explicitBindableCount":0},"catalog":{"storageProtection":"protected","totalConfigurations":2,"autoLoginConfigurations":0,"autoReconnectConfigurations":1,"automaticBindingConfigurations":2,"explicitBindingConfigurations":0,"availableConfigurations":1,"profileUnavailableConfigurations":0,"protocolUnavailableConfigurations":0,"overrideInvalidConfigurations":1},"sessions":{"totalCount":1,"truncated":false,"items":[{"state":"stopping","intent":"suspend_authentication","reasonCode":"protocol_run_failed","selectedBinding":true,"protocolSocketState":"close_unconfirmed","failureCategory":"network_io_failure","recoveryRecommendation":"retry_after_standard_delay","cleanupRequired":true}]}}',
@@ -68,8 +342,8 @@ void main() {
         '{"revision":9007199254740993,"nested":{"runGeneration":18446744073709551615},"other":[{"runGeneration":9007199254740995}]}';
     final tree = decodeBindingCheckedJson(
       wire,
-      preserveNetworkRevision: true,
-      preserveNetworkRunGeneration: true,
+      preserveUnsignedRevision: true,
+      preserveRunGeneration: true,
     ) as Map<String, dynamic>;
     expect(tree['revision'], BigInt.parse('9007199254740993'));
     expect(
@@ -91,7 +365,7 @@ void main() {
       expect(
         () => decodeBindingCheckedJson(
           '{"nested":{"runGeneration":$token}}',
-          preserveNetworkRunGeneration: true,
+          preserveRunGeneration: true,
         ),
         throwsA(isA<IpcProtocolException>()),
       );
@@ -100,10 +374,7 @@ void main() {
     expect((decodeBindingCheckedJson('{"revision":1}') as Map)['revision'], 1);
     expect((decodeBindingCheckedJson('{"value":-0}') as Map)['value'], 0);
     expect(
-      decodeBindingCheckedJson(
-        '{"value":"-0"}',
-        preserveNetworkRunGeneration: true,
-      ),
+      decodeBindingCheckedJson('{"value":"-0"}', preserveRunGeneration: true),
       {'value': '-0'},
     );
   });
@@ -430,11 +701,11 @@ void main() {
     }
 
     const session =
-        r'{"sessions":[{"sessionId":"s","sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z"}]}';
+        r'{"cleanupRequiredSessionIds":[],"sessions":[{"sessionId":"s","sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","protocolSocket":{"state":"not_observed","runGeneration":0},"revision":1,"updatedAt":"2026-08-14T10:00:00Z"}]}';
     expect(() => decodeSessions(session), throwsA(isA<IpcProtocolException>()));
 
     const configuration =
-        r'{"storageProtection":"protected","configurations":[{"configurationId":"cfg-a","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","username":"u","username":"u","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}]}';
+        r'{"storageProtection":"protected","configurations":[{"configurationId":"cfg-a","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","username":"u","username":"u","credentialStored":true,"runtimeAvailability":"available","storageProtection":"protected","autoLogin":false,"autoReconnect":true,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}]}';
     expect(
       () => decodeConfigurations(configuration),
       throwsA(isA<IpcProtocolException>()),
@@ -542,3 +813,8 @@ void main() {
     }
   });
 }
+
+const _completeSessionWire =
+    r'{"sessionId":"s","displayName":"","institutionProfileId":"i","institutionDisplayName":"Institution","authenticationProtocolId":"p","accountName":"a","intent":"suspend_authentication","state":"suspended","revision":1,"updatedAt":"2026-10-07T01:02:03Z","protocolSocket":{"state":"not_observed","runGeneration":0}}';
+const _completeConfigurationWire =
+    r'{"configurationId":"c","displayName":"","institutionProfileId":"i","institutionDisplayName":"Institution","authenticationProtocolId":"p","username":"u","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false,"networkBindingPolicy":{"mode":"automatically_select_latest_available"},"runtimeAvailability":"available"}';

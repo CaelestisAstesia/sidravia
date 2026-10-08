@@ -34,19 +34,20 @@ type networkDiagnosticCase struct {
 	ValidResult  *bool  `json:"validResult"`
 }
 type fixtureEnums struct {
-	DiagnosticFailureCategories       []string `json:"diagnosticFailureCategories"`
-	DiagnosticRecoveryRecommendations []string `json:"diagnosticRecoveryRecommendations"`
-	DiagnosticOperatingSystems        []string `json:"diagnosticOperatingSystems"`
-	DiagnosticArchitectures           []string `json:"diagnosticArchitectures"`
-	DiagnosticSessionStates           []string `json:"diagnosticSessionStates"`
-	DiagnosticSessionIntents          []string `json:"diagnosticSessionIntents"`
-	DiagnosticReasonCodes             []string `json:"diagnosticReasonCodes"`
-	DiagnosticSocketStates            []string `json:"diagnosticSocketStates"`
-	NetworkSelectionBases             []string `json:"networkSelectionBases"`
-	NetworkDiagnosticStatuses         []string `json:"networkDiagnosticStatuses"`
-	NetworkUnsupportedReasons         []string `json:"networkUnsupportedReasons"`
-	NetworkProbeStatuses              []string `json:"networkProbeStatuses"`
-	NetworkSocketStates               []string `json:"networkSocketStates"`
+	ConfigurationRuntimeAvailabilities []string `json:"configurationRuntimeAvailabilities"`
+	DiagnosticFailureCategories        []string `json:"diagnosticFailureCategories"`
+	DiagnosticRecoveryRecommendations  []string `json:"diagnosticRecoveryRecommendations"`
+	DiagnosticOperatingSystems         []string `json:"diagnosticOperatingSystems"`
+	DiagnosticArchitectures            []string `json:"diagnosticArchitectures"`
+	DiagnosticSessionStates            []string `json:"diagnosticSessionStates"`
+	DiagnosticSessionIntents           []string `json:"diagnosticSessionIntents"`
+	DiagnosticReasonCodes              []string `json:"diagnosticReasonCodes"`
+	DiagnosticSocketStates             []string `json:"diagnosticSocketStates"`
+	NetworkSelectionBases              []string `json:"networkSelectionBases"`
+	NetworkDiagnosticStatuses          []string `json:"networkDiagnosticStatuses"`
+	NetworkUnsupportedReasons          []string `json:"networkUnsupportedReasons"`
+	NetworkProbeStatuses               []string `json:"networkProbeStatuses"`
+	NetworkSocketStates                []string `json:"networkSocketStates"`
 
 	DaemonModes               []string `json:"daemonModes"`
 	SessionStartOutcomes      []string `json:"sessionStartOutcomes"`
@@ -162,6 +163,7 @@ func decodeStrictJSON(t *testing.T, data []byte, target any) {
 }
 
 func assertEnums(t *testing.T, enums fixtureEnums) {
+	assertEnum(t, "configurationRuntimeAvailabilities", enums.ConfigurationRuntimeAvailabilities, []string{"available", "profile_unavailable", "protocol_unavailable", "override_invalid"})
 	assertEnum(t, "diagnosticFailureCategories", enums.DiagnosticFailureCategories, []string{"none", "network_timeout", "network_io_failure", "server_busy", "authentication_rejected", "binding_rejected", "protocol_incompatible", "protocol_response_invalid", "protocol_contract_violated", "logout_cleanup_failed", "run_creation_failed", "runtime_definition_unavailable", "other"})
 	assertEnum(t, "diagnosticRecoveryRecommendations", enums.DiagnosticRecoveryRecommendations, []string{"none", "retry_after_standard_delay", "retry_after_extended_delay", "block_until_explicit_restart_or_relevant_input_change", "other"})
 	assertEnum(t, "diagnosticOperatingSystems", enums.DiagnosticOperatingSystems, []string{"windows", "linux", "darwin", "other"})

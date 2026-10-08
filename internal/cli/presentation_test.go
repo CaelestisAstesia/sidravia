@@ -128,9 +128,10 @@ func TestStateReasonMappings(t *testing.T) {
 
 func TestSessionDetailExplainsAutoReconnectDisabled(t *testing.T) {
 	result := minimalSessionResult("blocked_by_error")
-	result.StateReason = &contract.SessionStateReason{Code: "automatic_reconnect_disabled"}
+	result.StateReason = &contract.SessionStateReason{Code: "automatic_reconnect_disabled", Description: "automatic reconnect disabled"}
 	result.LastAuthenticationFailure = &contract.SessionAuthenticationFailure{
 		Code:                   "network_timeout",
+		Description:            "network timeout",
 		HandlingRecommendation: "block_until_explicit_restart_or_relevant_input_change",
 	}
 
@@ -823,7 +824,7 @@ func TestActionableSessionErrorGuidanceAndEmptyStates(t *testing.T) {
 }
 
 func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testing.T) {
-	base := contract.ConfigurationResult{
+	base := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
 		ConfigurationID:      "campus\x1b[2J\ninjected", DisplayName: "校园网",
 		InstitutionProfileID: "jlu", InstitutionDisplayName: "吉林大学",
@@ -850,7 +851,7 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 }
 
 func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
-	withName := contract.ConfigurationResult{
+	withName := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
 		ConfigurationID:      "campus", DisplayName: "校园\x1b[2J\n配置",
 		InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
@@ -865,14 +866,14 @@ func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 	if strings.Contains(got, "名称：") {
 		t.Fatalf("unset optional name rendered an empty row: %q", got)
 	}
-	wantOrder := []string{"配置：campus\n", "机构：JLU\n", "协议：drcom\n", "账号：user\n", "凭据：已保存\n", "存储保护：已保护（protected）\n", "自动登录：未启用\n", "自动重连：未启用\n", "网络绑定：自动选择可用网卡\n"}
+	wantOrder := []string{"配置：campus\n", "机构：JLU\n", "协议：drcom\n", "可用状态：可用\n", "账号：user\n", "凭据：已保存\n", "存储保护：已保护（protected）\n", "自动登录：未启用\n", "自动重连：未启用\n", "网络绑定：自动选择可用网卡\n"}
 	if got != strings.Join(wantOrder, "") {
 		t.Fatalf("configuration rows changed when optional name was omitted: %q", got)
 	}
 }
 
 func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
-	result := contract.ConfigurationResult{
+	result := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
 		ConfigurationID:      "campus", InstitutionProfileID: "jlu",
 		AuthenticationProtocolID: "drcom", Username: "user",
@@ -890,7 +891,7 @@ func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
 }
 
 func TestRenderConfigurationShowsAutoLoginAutoReconnect(t *testing.T) {
-	enabled := contract.ConfigurationResult{
+	enabled := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
 		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -901,7 +902,7 @@ func TestRenderConfigurationShowsAutoLoginAutoReconnect(t *testing.T) {
 		t.Fatalf("enabled output missing lines: %q", got)
 	}
 
-	disabled := contract.ConfigurationResult{
+	disabled := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
 		ConfigurationID:      "campus", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
@@ -910,5 +911,23 @@ func TestRenderConfigurationShowsAutoLoginAutoReconnect(t *testing.T) {
 	got = renderConfiguration(disabled)
 	if !strings.Contains(got, "自动登录：未启用") || !strings.Contains(got, "自动重连：未启用") {
 		t.Fatalf("disabled output missing lines: %q", got)
+	}
+}
+
+func TestCompleteReadHintsStayFixedAndSanitizeIdentifiers(t *testing.T) {
+	for availability, hint := range map[string]string{"available": "可用", "profile_unavailable": "机构资料不可用；可删除此配置", "protocol_unavailable": "认证协议不可用；可删除此配置", "override_invalid": "协议设置无效；请修改设置"} {
+		value := contract.ConfigurationResult{ConfigurationID: "config\x1b[2J\ninjected", InstitutionProfileID: "missing-profile", Username: "user", RuntimeAvailability: availability}
+		output := renderConfiguration(value)
+		if !strings.Contains(output, "可用状态："+hint) || strings.ContainsAny(output, "\x1b") || strings.Contains(output, "\ninjected") {
+			t.Fatalf("unsafe hint: %q", output)
+		}
+	}
+	var output bytes.Buffer
+	id := "session\x1b[2J\ninjected"
+	if err := writeSessionList(&output, contract.SessionListResult{Sessions: []contract.SessionResult{{AuthenticationSessionID: id, State: "suspended"}}, CleanupRequiredSessionIDs: []string{id}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "需要清理：运行 sidraviactl auth remove 释放此 Session。") || strings.ContainsAny(output.String(), "\x1b") || strings.Contains(output.String(), "\ninjected") {
+		t.Fatalf("unsafe cleanup hint: %q", output.String())
 	}
 }

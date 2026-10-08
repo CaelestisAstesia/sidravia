@@ -253,6 +253,8 @@ func (client *fakeDaemonClient) Close() error {
 
 func minimalSessionResult(state string) contract.SessionResult {
 	return contract.SessionResult{
+		ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"},
+		Revision:       1, Intent: "maintain_authentication", InstitutionDisplayName: "Profile",
 		AuthenticationSessionID:  "session-1",
 		InstitutionProfileID:     "profile-1",
 		AuthenticationProtocolID: "protocol-1",
@@ -682,7 +684,7 @@ func TestWriteSessionResultMinimalOutput(t *testing.T) {
 	want := "" +
 		"会话：session-1\n" +
 		"状态：已认证（authenticated）\n" +
-		"机构：profile-1\n" +
+		"机构：Profile（profile-1）\n" +
 		"协议：protocol-1\n" +
 		"账号：account-name\n" +
 		"更新时间：2026-07-26T10:11:12.123456789+08:00\n"
@@ -898,5 +900,34 @@ func TestBindingFlagsRejectBeforeDaemonOrPassword(t *testing.T) {
 	}
 	if policy, err := (bindingFlags{automatic: true}).policy(true); err != nil || policy.Mode != automaticNetworkBindingPolicy {
 		t.Fatal("automatic reset failed")
+	}
+}
+
+func TestSessionCLIDecodersUseExactCompleteContract(t *testing.T) {
+	value := minimalSessionResult("suspended")
+	value.Revision = ^uint64(0)
+	raw, err := contract.MarshalSessionResult(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decodeSessionResult(raw)
+	if err != nil || got.Revision != value.Revision || got.ProtocolSocket.State != "not_observed" {
+		t.Fatal("CLI lost full actor facts", err)
+	}
+	for _, token := range []string{"-0", "0", "1.0", "1e0", "18446744073709551616", "null", `"1"`} {
+		if _, err := decodeSessionResult([]byte(strings.Replace(string(raw), `"revision":18446744073709551615`, `"revision":`+token, 1))); err == nil {
+			t.Fatal("CLI accepted noncanonical revision", token)
+		}
+	}
+	if _, err := decodeSessionResult([]byte(strings.Replace(string(raw), `"protocolSocket":`, `"privateSocket":`, 1))); err == nil {
+		t.Fatal("CLI accepted missing socket")
+	}
+	start, err := contract.MarshalSessionStartResult(contract.SessionStartResult{Outcome: "resumed", Session: value})
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := decodeSessionStartResult(start)
+	if err != nil || operation.Session.Revision != value.Revision {
+		t.Fatal("CLI operation diverged", err)
 	}
 }

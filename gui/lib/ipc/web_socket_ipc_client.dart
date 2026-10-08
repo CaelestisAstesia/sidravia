@@ -267,8 +267,12 @@ class WebSocketIpcClient
       }
       final raw = decodeBindingCheckedJson(
         message,
-        preserveNetworkRevision: method == 'network.interfaces',
-        preserveNetworkRunGeneration: method == 'network.diagnose',
+        preserveUnsignedRevision:
+            method == 'network.interfaces' ||
+            method.startsWith('session.') ||
+            method.startsWith('configuration.'),
+        preserveRunGeneration:
+            method == 'network.diagnose' || method.startsWith('session.'),
         strictUnsignedNumbers: method == 'diagnostics.export',
       );
       if (raw is! Map<String, dynamic> ||
@@ -286,6 +290,23 @@ class WebSocketIpcClient
         });
         if (envelope['result'] is! Map<String, dynamic>) {
           throw const IpcProtocolException();
+        }
+        if (method == 'session.list') {
+          return decodeSessionsValue(raw['result']) as T;
+        }
+        if (const {
+          'session.startOneShot',
+          'session.startConfiguration',
+          'session.ensureRunning',
+        }.contains(method)) {
+          return decodeSessionOperationValue(raw['result']) as T;
+        }
+        if (const {
+          'session.get',
+          'session.stop',
+          'session.restart',
+        }.contains(method)) {
+          return decodeSessionValue(raw['result']) as T;
         }
         return decodeValue != null
             ? decodeValue(raw['result'])

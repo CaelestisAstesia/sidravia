@@ -213,6 +213,7 @@ func TestMarshalSessionResultMapsAllFields(t *testing.T) {
 	established := "2026-07-24T10:00:00Z"
 	retry := "2026-07-24T10:05:00Z"
 	result := SessionResult{
+		ProtocolSocket:              NetworkProtocolSocket{State: "not_observed"},
 		AuthenticationSessionID:     "sess-1",
 		ConfigurationID:             "cfg-0123456789abcdef0123456789abcdef",
 		DisplayName:                 "Library WiFi",
@@ -274,10 +275,11 @@ func TestMarshalSessionResultMapsAllFields(t *testing.T) {
 
 func TestMarshalSessionResultOmitsOptionalFields(t *testing.T) {
 	result := SessionResult{
-		AuthenticationSessionID: "sess-1",
-		State:                   "suspended",
-		Revision:                1,
-		UpdatedAt:               "2026-07-24T10:00:00Z",
+		ProtocolSocket:          NetworkProtocolSocket{State: "not_observed"},
+		AuthenticationSessionID: "sess-1", InstitutionProfileID: "profile", InstitutionDisplayName: "Profile", AuthenticationProtocolID: "protocol", AccountName: "account", Intent: "maintain_authentication",
+		State:     "suspended",
+		Revision:  1,
+		UpdatedAt: "2026-07-24T10:00:00Z",
 	}
 	data, err := MarshalSessionResult(result)
 	if err != nil {
@@ -296,10 +298,11 @@ func TestMarshalSessionResultOmitsOptionalFields(t *testing.T) {
 
 func TestMarshalSessionResultHasNoSecretFields(t *testing.T) {
 	result := SessionResult{
-		AuthenticationSessionID: "sess-1",
-		State:                   "suspended",
-		Revision:                1,
-		UpdatedAt:               "2026-07-24T10:00:00Z",
+		ProtocolSocket:          NetworkProtocolSocket{State: "not_observed"},
+		AuthenticationSessionID: "sess-1", InstitutionProfileID: "profile", InstitutionDisplayName: "Profile", AuthenticationProtocolID: "protocol", AccountName: "account", Intent: "maintain_authentication",
+		State:     "suspended",
+		Revision:  1,
+		UpdatedAt: "2026-07-24T10:00:00Z",
 	}
 	data, err := MarshalSessionResult(result)
 	if err != nil {
@@ -331,11 +334,11 @@ func TestDecodeEmptyPayloadStrict(t *testing.T) {
 }
 
 func TestMarshalListResultsUseNonNullArrays(t *testing.T) {
-	sessionData, err := MarshalSessionListResult(SessionListResult{})
+	sessionData, err := MarshalSessionListResult(SessionListResult{Sessions: []SessionResult{}, CleanupRequiredSessionIDs: []string{}})
 	if err != nil {
 		t.Fatalf("MarshalSessionListResult() error = %v", err)
 	}
-	if string(sessionData) != `{"sessions":[]}` {
+	if string(sessionData) != `{"cleanupRequiredSessionIds":[],"sessions":[]}` {
 		t.Errorf("empty Session list = %s", sessionData)
 	}
 
@@ -542,6 +545,7 @@ func TestConfigurationCreateDistinguishesOptionalIdentityAndDisplayName(t *testi
 
 func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
 	value := ConfigurationResult{
+		RuntimeAvailability:  "available",
 		NetworkBindingPolicy: NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 		ConfigurationID:      "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
 		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
@@ -551,11 +555,11 @@ func TestConfigurationResultEncodersAreExactAndSecretFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = `{"configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`
+	const expected = `{"runtimeAvailability":"available","configurationId":"campus","displayName":"校园网","institutionProfileId":"jlu","institutionDisplayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d","username":"user","credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":false,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`
 	if string(data) != expected {
 		t.Fatalf("configuration result = %s", data)
 	}
-	list, err := MarshalConfigurationListResult(ConfigurationListResult{StorageProtection: "protected"})
+	list, err := MarshalConfigurationListResult(ConfigurationListResult{StorageProtection: "protected", Configurations: []ConfigurationResult{}})
 	if err != nil || string(list) != `{"storageProtection":"protected","configurations":[]}` {
 		t.Fatalf("empty list = %s, %v", list, err)
 	}
@@ -605,10 +609,13 @@ func TestSessionStartResultCodesAndWireShapeAreStable(t *testing.T) {
 			t.Fatal("empty session error code")
 		}
 	}
-	data, err := MarshalSessionStartResult(SessionStartResult{Outcome: "created", Session: SessionResult{AuthenticationSessionID: "session-1"}})
-	if err != nil || string(data) != `{"outcome":"created","session":{"sessionId":"session-1","displayName":"","institutionProfileId":"","institutionDisplayName":"","authenticationProtocolId":"","accountName":"","intent":"","state":"","revision":0,"updatedAt":""}}` {
-		t.Fatalf("start result = %s, %v", data, err)
+	value := validPublicSessionResult()
+	data, err := MarshalSessionStartResult(SessionStartResult{Outcome: "created", Session: value})
+	decoded, decodeErr := DecodeSessionStartResult(data)
+	if err != nil || decodeErr != nil || decoded.Outcome != "created" || decoded.Session.AuthenticationSessionID != value.AuthenticationSessionID {
+		t.Fatalf("start result = %s, %v/%v", data, err, decodeErr)
 	}
+
 }
 
 func TestNetworkBindingPolicyStrictOwnedShape(t *testing.T) {

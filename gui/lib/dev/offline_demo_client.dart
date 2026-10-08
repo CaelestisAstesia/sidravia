@@ -35,7 +35,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     storageProtection: 'protected',
   );
   SessionSummary? _session;
-  int _revision = 0;
+  BigInt _revision = BigInt.zero;
   int _sessionSerial = 0;
   String _feedback = '模拟已连接；没有连接真实校园网';
   final List<String> _operations = [];
@@ -116,7 +116,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
               handlingRecommendation: '请先核对账号或密码，再重新尝试连接。',
             )
           : null,
-      revision: ++_revision,
+      revision: _revision += BigInt.one,
     );
   }
 

@@ -197,6 +197,7 @@ type ConfigurationSetPasswordPayload struct {
 	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
 }
 type ConfigurationResult struct {
+	RuntimeAvailability      string               `json:"runtimeAvailability"`
 	ConfigurationID          string               `json:"configurationId"`
 	DisplayName              string               `json:"displayName"`
 	InstitutionProfileID     string               `json:"institutionProfileId"`
@@ -352,17 +353,6 @@ func DecodeConfigurationSetPasswordPayload(data []byte) (ConfigurationSetPasswor
 		ConfigurationID: *wire.ConfigurationID, Password: *wire.Password,
 		AllowInsecureStorage: *wire.AllowInsecureStorage,
 	}, nil
-}
-func MarshalConfigurationResult(value ConfigurationResult) (json.RawMessage, error) {
-	data, err := json.Marshal(value)
-	return json.RawMessage(data), err
-}
-func MarshalConfigurationListResult(value ConfigurationListResult) (json.RawMessage, error) {
-	if value.Configurations == nil {
-		value.Configurations = []ConfigurationResult{}
-	}
-	data, err := json.Marshal(value)
-	return json.RawMessage(data), err
 }
 func MarshalConfigurationRemoveResult(value ConfigurationRemoveResult) (json.RawMessage, error) {
 	data, err := json.Marshal(value)
@@ -542,6 +532,7 @@ type SessionAuthenticationFailure struct {
 // password, raw protocol configuration, the raw protocol context override or
 // diagnostic causes.
 type SessionResult struct {
+	ProtocolSocket              NetworkProtocolSocket         `json:"protocolSocket"`
 	AuthenticationSessionID     string                        `json:"sessionId"`
 	ConfigurationID             string                        `json:"configurationId,omitempty"`
 	DisplayName                 string                        `json:"displayName"`
@@ -560,23 +551,7 @@ type SessionResult struct {
 	UpdatedAt                   string                        `json:"updatedAt"`
 }
 
-// MarshalSessionResult encodes a SessionResult as JSON.
-func MarshalSessionResult(result SessionResult) (json.RawMessage, error) {
-	data, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(data), nil
-}
-
-func MarshalSessionStartResult(result SessionStartResult) (json.RawMessage, error) {
-	data, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(data), nil
-}
-
+// MarshalSessionRemoveResult encodes the successful removal receipt.
 func MarshalSessionRemoveResult(result SessionRemoveResult) (json.RawMessage, error) {
 	data, err := json.Marshal(result)
 	if err != nil {
@@ -586,18 +561,8 @@ func MarshalSessionRemoveResult(result SessionRemoveResult) (json.RawMessage, er
 }
 
 type SessionListResult struct {
-	Sessions []SessionResult `json:"sessions"`
-}
-
-func MarshalSessionListResult(result SessionListResult) (json.RawMessage, error) {
-	if result.Sessions == nil {
-		result.Sessions = []SessionResult{}
-	}
-	data, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(data), nil
+	CleanupRequiredSessionIDs []string        `json:"cleanupRequiredSessionIds"`
+	Sessions                  []SessionResult `json:"sessions"`
 }
 
 type ProfileSummaryResult struct {

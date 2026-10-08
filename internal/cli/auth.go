@@ -337,57 +337,14 @@ func writeSessionRemoveResult(output io.Writer, result contract.SessionRemoveRes
 }
 
 func decodeSessionResult(data []byte) (contract.SessionResult, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-
-	var result contract.SessionResult
-	if err := decoder.Decode(&result); err != nil {
-		return contract.SessionResult{}, err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return contract.SessionResult{}, fmt.Errorf("Session 结果之后存在多余数据")
-		}
-		return contract.SessionResult{}, fmt.Errorf("Session 结果之后存在多余数据")
-	}
-	if err := validateSessionResult(result); err != nil {
-		return contract.SessionResult{}, err
-	}
-	return result, nil
+	return contract.DecodeSessionResult(data)
 }
-
 func decodeSessionStartResult(data []byte) (contract.SessionStartResult, error) {
-	var result contract.SessionStartResult
-	if err := decodeStrictCLI(data, &result); err != nil {
-		return result, err
-	}
-	if result.Outcome != "created" && result.Outcome != "already_running" && result.Outcome != "resumed" {
-		return result, fmt.Errorf("Session 启动结果无效")
-	}
-	if err := validateSessionResult(result.Session); err != nil {
-		return result, err
-	}
-	return result, nil
+	return contract.DecodeSessionStartResult(data)
 }
-
-func validateSessionResult(result contract.SessionResult) error {
-	switch {
-	case result.AuthenticationSessionID == "":
-		return fmt.Errorf("Session 结果缺少 SessionID")
-	case result.State == "":
-		return fmt.Errorf("Session 结果缺少状态")
-	case result.InstitutionProfileID == "":
-		return fmt.Errorf("Session 结果缺少 Profile ID")
-	case result.AuthenticationProtocolID == "":
-		return fmt.Errorf("Session 结果缺少协议 ID")
-	case result.AccountName == "":
-		return fmt.Errorf("Session 结果缺少账号名称")
-	case result.UpdatedAt == "":
-		return fmt.Errorf("Session 结果缺少更新时间")
-	default:
-		return nil
-	}
+func validateSessionResult(value contract.SessionResult) error {
+	_, err := contract.MarshalSessionResult(value)
+	return err
 }
 
 func writeSessionResult(output io.Writer, result contract.SessionResult) error {

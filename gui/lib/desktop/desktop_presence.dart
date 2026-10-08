@@ -184,7 +184,7 @@ class DesktopNotificationPolicy {
 }
 
 class _SessionDesktopState {
-  int lastRevision = -1;
+  BigInt lastRevision = -BigInt.one;
   bool everSeen = false;
   bool blockedAtLastSeen = false;
   bool notifiedBlockedForEpisode = false;

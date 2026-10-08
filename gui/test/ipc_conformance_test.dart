@@ -8,6 +8,10 @@ void main() {
   test('shared safe export strict grammar and invariants', () {
     final fixture = _fixture();
     final enums = fixture['enums'] as Map<String, dynamic>;
+    expect(
+      enums['configurationRuntimeAvailabilities'],
+      ConfigurationRuntimeAvailability.values.map((v) => v.wireValue).toList(),
+    );
     final expected = {
       'diagnosticOperatingSystems': diagnosticOperatingSystems,
       'diagnosticArchitectures': diagnosticArchitectures,
@@ -130,7 +134,7 @@ void main() {
     });
     final response = decodeBindingCheckedJson(
       mainCase['successResponse'] as String,
-      preserveNetworkRunGeneration: true,
+      preserveRunGeneration: true,
     ) as Map<String, dynamic>;
     expect(
       decodeNetworkDiagnosisValue(response['result'])
@@ -170,7 +174,7 @@ void main() {
     'all legal Session states and intents decode; unknown or missing reject',
     () {
       final source = jsonDecode(
-        '{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z"}',
+        '{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","protocolSocket":{"state":"not_observed","runGeneration":0},"revision":1,"updatedAt":"2026-08-14T10:00:00Z"}',
       ) as Map<String, dynamic>;
       for (final state in SessionState.values) {
         for (final intent in SessionIntent.values) {
@@ -329,13 +333,13 @@ void main() {
       expect(_decodeOneSession(jsonEncode(session)).configurationId, isNull);
       expect(
         () => decodeSessions(
-          '{"sessions":[{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"wrong","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z"}]}',
+          '{"cleanupRequiredSessionIds":[],"sessions":[{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"wrong","state":"authenticated","protocolSocket":{"state":"not_observed","runGeneration":0},"revision":1,"updatedAt":"2026-08-14T10:00:00Z"}]}',
         ),
         throwsA(isA<IpcProtocolException>()),
       );
       expect(
         () => decodeSessions(
-          '{"sessions":[{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"2026-08-14T10:00:00Z","password":"never"}]}',
+          '{"cleanupRequiredSessionIds":[],"sessions":[{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","protocolSocket":{"state":"not_observed","runGeneration":0},"revision":1,"updatedAt":"2026-08-14T10:00:00Z","password":"never"}]}',
         ),
         throwsA(isA<IpcProtocolException>()),
       );
@@ -423,7 +427,7 @@ void main() {
     'empty configuration and session display names use caller fallbacks',
     () {
       final configuration = decodeConfiguration(
-        '{"configurationId":"cfg-a","displayName":"","institutionProfileId":"jlu","institutionDisplayName":"JLU","authenticationProtocolId":"d","username":"account","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true}',
+        '{"configurationId":"cfg-a","displayName":"","runtimeAvailability":"available","institutionProfileId":"jlu","institutionDisplayName":"JLU","authenticationProtocolId":"d","username":"account","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"credentialStored":true,"storageProtection":"protected","autoLogin":false,"autoReconnect":true}',
       );
       final session = _sessionAt('2026-08-14T10:00:00Z');
       expect(configuration.displayName, isEmpty);
@@ -457,10 +461,11 @@ SessionSummary _decodeOneSession(String result) {
   return decodeSessions(
     jsonEncode({
       'sessions': [object],
+      'cleanupRequiredSessionIds': <String>[],
     }),
   ).single;
 }
 
 SessionSummary _sessionAt(String timestamp) => _decodeOneSession(
-  '{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","revision":1,"updatedAt":"$timestamp"}',
+  '{"sessionId":"s","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","accountName":"a","intent":"maintain_authentication","state":"authenticated","protocolSocket":{"state":"not_observed","runGeneration":0},"revision":1,"updatedAt":"$timestamp"}',
 );
