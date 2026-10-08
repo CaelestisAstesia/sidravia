@@ -77,6 +77,11 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
         controller.networkBindingUnavailable == null;
     final current =
         controller.capabilities.retainedSession?.selectedNetworkBinding;
+    final draftInterface = draft?.interfaceId == null
+        ? null
+        : controller.snapshot?.network?.interfaces
+              .where((row) => row.interfaceId == draft!.interfaceId)
+              .firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -129,10 +134,13 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
                 for (final choice in choices)
                   DropdownMenuItem(
                     value: choice.policy,
-                    child: Text(
-                      choice.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Tooltip(
+                      message: choice.label,
+                      child: Text(
+                        choice.label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 if (draft?.interfaceId != null &&
@@ -155,6 +163,26 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
                   : null,
             ),
           ),
+          if (draft?.interfaceId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Semantics(
+                label:
+                    '当前草稿绑定：网卡 ${draftInterface?.displayName.isNotEmpty == true ? draftInterface!.displayName : draft!.interfaceId}，接口 ID ${draft!.interfaceId}，IPv4 ${draft.localIpv4Address}',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('当前草稿绑定'),
+                    Text(
+                      '网卡：${draftInterface?.displayName.isNotEmpty == true ? draftInterface!.displayName : draft.interfaceId}',
+                      softWrap: true,
+                    ),
+                    Text('接口 ID：${draft.interfaceId}', softWrap: true),
+                    Text('IPv4：${draft.localIpv4Address}', softWrap: true),
+                  ],
+                ),
+              ),
+            ),
           if (_targetChanged)
             const DesignHelper('连接配置已变化，请重新打开后编辑网络绑定。')
           else if (controller.networkBindingUnavailable != null)

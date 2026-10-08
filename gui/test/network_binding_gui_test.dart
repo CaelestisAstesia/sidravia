@@ -34,12 +34,12 @@ void main() {
       await tester.tap(menu);
       await tester.pumpAndSettle();
       expect(
-        find.text('Ethernet · if-1 · 192.168.1.2/24').last,
+        find.text('192.168.1.2/24 · Ethernet · if-1').last,
         findsOneWidget,
       );
       expect(find.textContaining('if-down'), findsNothing);
       expect(find.textContaining('192.168.1.3'), findsNothing);
-      await tester.tap(find.text('Ethernet · if-1 · 192.168.1.2/24').last);
+      await tester.tap(find.text('192.168.1.2/24 · Ethernet · if-1').last);
       await tester.pumpAndSettle();
       final save = find.text('保存网络绑定');
       await tester.ensureVisible(save);
@@ -62,6 +62,111 @@ void main() {
         isEmpty,
       );
       expect(find.text('网络绑定已保存；请手动连接以使用新策略。'), findsOneWidget);
+      await _finish(tester, c, client);
+    },
+  );
+
+  testWidgets(
+    'narrow binding choices show address first and complete selected identity',
+    (tester) async {
+      tester.view.physicalSize = const Size(640, 1400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      final firstId =
+          'ethernet-interface-with-a-very-long-stable-identifier-001';
+      final secondId =
+          'ethernet-interface-with-a-very-long-stable-identifier-002';
+      final network = NetworkInterfacesSnapshot(
+        available: true,
+        revision: BigInt.one,
+        interfaces: [
+          for (final (id, address) in [
+            (firstId, '192.168.40.11'),
+            (secondId, '192.168.40.12'),
+          ])
+            NetworkInterfaceRow(
+              interfaceId: id,
+              displayName: 'Campus Ethernet Adapter with a long friendly name',
+              operationalState: 'up',
+              physicalMedium: 'wired',
+              hardwareBacked: true,
+              physicalConnectorPresent: true,
+              filterInterface: false,
+              endpointInterface: false,
+              addressAssignmentMethod: 'dhcp',
+              ipv4Assignments: [
+                NetworkIPv4Assignment(
+                  address: address,
+                  prefixLength: 24,
+                  automaticCandidate: true,
+                  explicitBindable: true,
+                ),
+              ],
+            ),
+        ],
+      );
+      final client = _Client(
+        policy: NetworkBindingPolicy.explicit(firstId, '192.168.40.11'),
+        network: network,
+      );
+      final c = _controller(client);
+      await c.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 700),
+              textScaler: TextScaler.linear(2),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: SizedBox(
+                  width: 320,
+                  child: NetworkBindingSection(controller: c),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final dropdown = find.byType(
+        DropdownButtonFormField<NetworkBindingPolicy>,
+      );
+      await tester.ensureVisible(dropdown);
+      await tester.tap(dropdown);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          '192.168.40.11/24 · Campus Ethernet Adapter with a long friendly name · $firstId',
+        ),
+        findsNWidgets(2),
+      );
+      expect(
+        find.text(
+          '192.168.40.12/24 · Campus Ethernet Adapter with a long friendly name · $secondId',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find
+            .text(
+              '192.168.40.12/24 · Campus Ethernet Adapter with a long friendly name · $secondId',
+            )
+            .last,
+      );
+      await tester.pump();
+      expect(
+        find.text('网卡：Campus Ethernet Adapter with a long friendly name'),
+        findsOneWidget,
+      );
+      expect(find.text('接口 ID：$secondId'), findsOneWidget);
+      expect(find.text('IPv4：192.168.40.12'), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await _finish(tester, c, client);
     },
   );
