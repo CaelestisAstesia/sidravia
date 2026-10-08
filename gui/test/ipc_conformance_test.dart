@@ -268,6 +268,34 @@ void main() {
     },
   );
 
+  test('configuration.get shared success decodes every public field', () {
+    final fixture = (_fixture()['cases'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .singleWhere((value) => value['method'] == 'configuration.get');
+    final response = jsonDecode(
+      fixture['successResponse'] as String,
+    ) as Map<String, dynamic>;
+    final configuration = decodeConfiguration(jsonEncode(response['result']));
+
+    expect(configuration.id, 'fixture-configuration');
+    expect(configuration.displayName, 'Fixture Configuration');
+    expect(configuration.institutionProfileId, 'jlu');
+    expect(configuration.institutionDisplayName, 'Jilin University');
+    expect(configuration.authenticationProtocolId, 'drcom-5.2.0-d');
+    expect(configuration.username, 'fixture-user');
+    expect(configuration.credentialStored, isTrue);
+    expect(configuration.storageProtection, 'protected');
+    expect(configuration.autoLogin, isFalse);
+    expect(configuration.autoReconnect, isTrue);
+    expect(
+      configuration.runtimeAvailability,
+      ConfigurationRuntimeAvailability.available,
+    );
+    expect(configuration.networkBindingPolicy.toJson(), {
+      'mode': 'automatically_select_latest_available',
+    });
+  });
+
   test('consumes all five read-only IPC fixture examples', () {
     final fixture = jsonDecode(
       File('../internal/ipc/contract/testdata/v1/conformance.json')
