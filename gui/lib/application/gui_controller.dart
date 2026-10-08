@@ -3,6 +3,7 @@ import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:sidravia_gui/application/gui_network_diagnosis.dart';
+import 'package:sidravia_gui/application/gui_network_binding.dart';
 
 import 'dart:async';
 
@@ -377,6 +378,65 @@ class GuiController extends ChangeNotifier {
         capabilities.canDeleteConfiguration &&
         capabilities.configuration?.id == configurationId,
   );
+
+  String? _networkBindingErrorCode;
+  String? get networkBindingErrorCode => _networkBindingErrorCode;
+
+  String? get networkBindingUnavailable {
+    if (state != GuiConnectionState.ready) return '通信尚未就绪，网络绑定暂不可编辑。';
+    if (_client is! SidraviaNetworkClient) return '当前客户端不提供网络绑定；离线预览暂不可用。';
+    if (snapshot?.network?.available != true) return '尚无可用网络观察，暂时无法编辑网络绑定。';
+    return null;
+  }
+
+  bool canSaveNetworkBinding(
+    String configurationId,
+    NetworkBindingPolicy policy,
+  ) =>
+      networkBindingUnavailable == null &&
+      capabilities.matchesConfiguration(configurationId) &&
+      networkBindingEligible(snapshot?.network, policy);
+
+  Future<bool> setNetworkBinding({
+    required String configurationId,
+    required NetworkBindingPolicy policy,
+    InsecureStorageConfirmation? onInsecureStorageConfirmation,
+  }) {
+    if (!canSaveNetworkBinding(configurationId, policy)) {
+      return Future.value(false);
+    }
+    _networkBindingErrorCode = null;
+    if (capabilities.configuration!.networkBindingPolicy == policy) {
+      return Future.value(true);
+    }
+    return _mutate(
+      (client, allow) async {
+        // Recheck no-op at dispatch, including after storage confirmation.
+        if (capabilities.configuration?.networkBindingPolicy == policy) {
+          return null;
+        }
+        try {
+          _networkBindingErrorCode = null;
+          return await (client as SidraviaNetworkClient)
+              .configurationSetNetworkBindingPolicy(
+                configurationId: configurationId,
+                policy: policy,
+                allowInsecureStorage: allow,
+              );
+        } on IpcRequestFailure catch (error) {
+          _networkBindingErrorCode = error.code;
+          rethrow;
+        }
+      },
+      operation: GuiOperation.updateConfiguration,
+      fallback: '网络绑定保存失败，请检查当前网卡和 IPv4 后重试。',
+      onInsecureStorageConfirmation: onInsecureStorageConfirmation,
+      allowed: (caps) =>
+          networkBindingUnavailable == null &&
+          caps.matchesConfiguration(configurationId) &&
+          networkBindingEligible(snapshot?.network, policy),
+    );
+  }
 
   Future<bool> setAutoLogin({
     required String configurationId,

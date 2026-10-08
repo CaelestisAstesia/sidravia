@@ -1,4 +1,5 @@
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
+import 'package:sidravia_gui/features/configuration/network_binding_section.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -223,6 +224,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
+        const SizedBox(height: 24),
+        NetworkBindingSection(controller: widget.controller),
         if (!creating) ...[
           const SizedBox(height: 24),
           const DesignSectionTitle('更多操作'),
