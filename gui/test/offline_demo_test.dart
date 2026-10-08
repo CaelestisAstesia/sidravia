@@ -296,6 +296,7 @@ void main() {
       expect(find.textContaining('这是离线演示公告'), findsOneWidget);
       expect(announcements.unreadCount, 0);
       await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(controller.close);
       controller.dispose();
       announcements.dispose();
       client.dispose();
