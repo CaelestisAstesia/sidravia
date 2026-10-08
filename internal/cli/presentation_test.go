@@ -850,6 +850,31 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 	}
 }
 
+func TestConfigurationCredentialPresentationReflectsStorageAndSanitizesDynamicValues(t *testing.T) {
+	base := contract.ConfigurationResult{RuntimeAvailability: "available",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		ConfigurationID:      "config\x1b[2J\ninjected", InstitutionProfileID: "jlu",
+		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom",
+		Username: "user\nmarker", StorageProtection: "protected",
+	}
+	base.CredentialStored = true
+	saved := renderConfiguration(base)
+	base.CredentialStored = false
+	missing := renderConfiguration(base)
+
+	if !strings.Contains(saved, "凭据：已保存\n") || !strings.Contains(missing, "凭据：未保存\n") {
+		t.Fatalf("credential storage state was not presented truthfully: saved=%q missing=%q", saved, missing)
+	}
+	if strings.Replace(saved, "凭据：已保存\n", "凭据：未保存\n", 1) != missing {
+		t.Fatalf("credential state changed unrelated configuration output: saved=%q missing=%q", saved, missing)
+	}
+	for name, output := range map[string]string{"saved": saved, "missing": missing} {
+		if strings.ContainsAny(output, "\x1b") || strings.Contains(output, "\ninjected") || strings.Contains(output, "\nmarker") || strings.Contains(strings.ToLower(output), "password") {
+			t.Errorf("%s configuration output unsafe: %q", name, output)
+		}
+	}
+}
+
 func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 	withName := contract.ConfigurationResult{RuntimeAvailability: "available",
 		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},

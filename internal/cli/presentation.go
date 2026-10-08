@@ -637,6 +637,10 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 	if result.AutoReconnect {
 		autoReconnect = "已启用"
 	}
+	credentialStored := "未保存"
+	if result.CredentialStored {
+		credentialStored = "已保存"
+	}
 	var b strings.Builder
 	b.WriteString("配置：")
 	b.WriteString(sanitizeDynamicText(result.ConfigurationID))
@@ -654,7 +658,9 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 	b.WriteString(configurationAvailabilityText(result.RuntimeAvailability))
 	b.WriteString("\n账号：")
 	b.WriteString(sanitizeDynamicText(result.Username))
-	b.WriteString("\n凭据：已保存\n存储保护：")
+	b.WriteString("\n凭据：")
+	b.WriteString(credentialStored)
+	b.WriteString("\n存储保护：")
 	b.WriteString(protection)
 	b.WriteString("\n自动登录：")
 	b.WriteString(autoLogin)
