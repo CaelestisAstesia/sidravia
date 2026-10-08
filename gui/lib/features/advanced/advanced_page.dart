@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/application/gui_network_diagnosis.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
-class AdvancedPage extends StatelessWidget {
+class AdvancedPage extends StatefulWidget {
   const AdvancedPage({
     super.key,
     required this.controller,
@@ -16,7 +17,50 @@ class AdvancedPage extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback? onDiagnostics;
   @override
-  Widget build(BuildContext context) {
+  State<AdvancedPage> createState() => _AdvancedPageState();
+}
+
+class _AdvancedPageState extends State<AdvancedPage> {
+  GuiController get controller => widget.controller;
+  bool get detailsOnly => widget.detailsOnly;
+  VoidCallback get onBack => widget.onBack;
+  VoidCallback? get onDiagnostics => widget.onDiagnostics;
+
+  void _showDiagnosis() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !detailsOnly) controller.setDiagnosisVisible(true);
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _showDiagnosis();
+  }
+
+  @override
+  void didUpdateWidget(AdvancedPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != controller ||
+        oldWidget.detailsOnly != detailsOnly) {
+      oldWidget.controller.setDiagnosisVisible(false);
+      _showDiagnosis();
+    }
+  }
+
+  @override
+  void dispose() {
+    if (!detailsOnly) controller.setDiagnosisVisible(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) => _build(context),
+  );
+
+  Widget _build(BuildContext context) {
     final p = controller.connectionPresentation;
     final raw = controller.snapshot;
     final c = raw?.configurations.length == 1
@@ -69,6 +113,62 @@ class AdvancedPage extends StatelessWidget {
         if (!detailsOnly) ...[
           const DesignHelper(
             '用于排障和 issue reporting。连续日志与底层控制仍由 sidraviactl / 日志系统承担。',
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (!detailsOnly) ...[
+          DesignGroup(
+            children: [
+              DesignRow(
+                title: '网络诊断',
+                value: controller.diagnosisBusy
+                    ? '正在观察…'
+                    : controller.diagnosisStale
+                    ? '观察已过期，请刷新'
+                    : '最近观察',
+              ),
+              if (controller.diagnosisUnavailable != null)
+                DesignRow(
+                  title: '暂不可用',
+                  value: controller.diagnosisUnavailable,
+                ),
+              if (controller.diagnosisError != null)
+                DesignRow(title: '诊断错误', value: controller.diagnosisError),
+              if (controller.diagnosisTargetLabel != null)
+                DesignRow(
+                  title: controller.diagnosisStale ? '上次诊断对象（已过期）' : '诊断对象',
+                  value: controller.diagnosisTargetLabel,
+                ),
+              if (controller.diagnosis != null)
+                for (final row in diagnosisRows(controller.diagnosis!))
+                  DesignRow(title: row.key, value: row.value, diagnostic: true),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: controller.canDiagnose
+                      ? () => controller.refreshDiagnosis()
+                      : null,
+                  child: const Text('刷新网络诊断'),
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: controller.canDiagnose
+                      ? () => controller.refreshDiagnosis(probe: true)
+                      : null,
+                  child: const Text('执行有限 IP 探测'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          const DesignHelper(
+            '刷新只读路由；探测仅发送一次有界 IP 回显。未收到回复不代表断网；收到回显也不证明认证成功或 Internet 可用。路由、会话与 socket 是不同时间的观察。',
           ),
           const SizedBox(height: 16),
         ],
