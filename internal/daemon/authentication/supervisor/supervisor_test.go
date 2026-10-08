@@ -1026,7 +1026,7 @@ func TestSupervisorRevisionEventsReceivesUpdates(t *testing.T) {
 		supervisor.Wait()
 	}()
 
-	events := supervisor.RevisionEvents()
+	events := subscribeForTest(t, supervisor)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -1034,13 +1034,9 @@ func TestSupervisorRevisionEventsReceivesUpdates(t *testing.T) {
 		t.Fatalf("StartResolved error: %v", err)
 	}
 
-	select {
-	case event := <-events:
-		if event.SessionID != "session-1" {
-			t.Errorf("event SessionID = %q, want %q", event.SessionID, "session-1")
-		}
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for revision event")
+	event := nextForTest(t, ctx, events)
+	if event.SessionID != "session-1" {
+		t.Errorf("event SessionID = %q, want session-1", event.SessionID)
 	}
 }
 
@@ -1051,7 +1047,7 @@ func TestSupervisorSlowSubscriberDoesNotBlock(t *testing.T) {
 		supervisor.Wait()
 	}()
 
-	_ = supervisor.RevisionEvents()
+	_ = subscribeForTest(t, supervisor)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -1168,8 +1164,7 @@ func TestSupervisorStopStartRace(t *testing.T) {
 }
 
 // TestSupervisorCloseRevisionChannelRace verifies that Close does not panic
-// by sending on a closed subscriber channel. The fix ensures Close waits for
-// all forward goroutines before closing subscriber channels.
+// while ending an owned subscription concurrently with actor publications.
 func TestSupervisorCloseRevisionChannelRace(t *testing.T) {
 	for round := 0; round < 50; round++ {
 		supervisor := New(testSupervisorDeps())
@@ -1182,13 +1177,16 @@ func TestSupervisorCloseRevisionChannelRace(t *testing.T) {
 			t.Fatalf("round %d: StartResolved error: %v", round, err)
 		}
 
-		events := supervisor.RevisionEvents()
+		events := subscribeForTest(t, supervisor)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for range events {
+			for {
+				if _, err := events.Next(context.Background()); err != nil {
+					return
+				}
 			}
 		}()
 
@@ -1217,8 +1215,8 @@ func TestSupervisorForwardExitsOnClosedRevisionChannel(t *testing.T) {
 	}
 	waitForSupervisorState(t, supervisor, id, session.Suspended)
 
-	// ForgetStopped shuts down the session and closes stopFwd, which should
-	// cause the forward goroutine to exit.
+	// ForgetStopped shuts down the producer and drains its closed revision
+	// channel before returning.
 	if err := supervisor.ForgetStopped(id); err != nil {
 		t.Fatalf("ForgetStopped error: %v", err)
 	}
@@ -1502,7 +1500,7 @@ func installTestForwarder(sup *Supervisor, id ID, actor *session.AuthenticationS
 func TestSupervisorDelayedForwardUsesPublishedSnapshot(t *testing.T) {
 	sup := New(testSupervisorDeps())
 	defer func() { sup.Close(); sup.Wait() }()
-	events := sup.RevisionEvents()
+	events := subscribeForTest(t, sup)
 	factory := &delayedForwardFactory{stateFactory: newStateFactory(), entered: make(chan struct{}), release: make(chan struct{})}
 	defer factory.releaseCreation()
 	definition := testRuntimeDefinition()
@@ -1542,6 +1540,7 @@ func TestSupervisorDelayedForwardUsesPublishedSnapshot(t *testing.T) {
 			runtime.Gosched()
 		}
 	}
+	first := nextForTest(t, ctx, events)
 	factory.releaseCreation()
 	select {
 	case err := <-apply:
@@ -1551,32 +1550,22 @@ func TestSupervisorDelayedForwardUsesPublishedSnapshot(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	var first RevisionEvent
-	select {
-	case first = <-events:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
 	if first.Revision != initial.Revision+1 || first.Snapshot.State != session.WaitingForNetwork || first.Snapshot.ProtocolSocket.RunGeneration != 0 || first.Snapshot.SelectedNetworkBinding == nil {
 		t.Fatalf("delayed binding event acquired later Run contents: %#v", first)
 	}
 	if first.Revision != first.Snapshot.Revision || first.SessionID != first.Snapshot.AuthenticationSessionID {
 		t.Fatal("delayed event revision/content mismatch")
 	}
-	select {
-	case next := <-events:
-		if next.Revision != first.Revision+1 || next.Revision != next.Snapshot.Revision || next.SessionID != next.Snapshot.AuthenticationSessionID || next.Snapshot.State != session.Authenticating || next.Snapshot.ProtocolSocket.RunGeneration != 1 {
-			t.Fatalf("new Run paired event = %#v", next)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+	next := nextForTest(t, ctx, events)
+	if next.Revision != first.Revision+1 || next.Revision != next.Snapshot.Revision || next.SessionID != next.Snapshot.AuthenticationSessionID || next.Snapshot.State != session.Authenticating || next.Snapshot.ProtocolSocket.RunGeneration != 1 {
+		t.Fatalf("new Run paired event = %#v", next)
 	}
 }
 
 func TestSupervisorForwardsPublishedEventAfterActorQueryCloses(t *testing.T) {
 	sup := New(testSupervisorDeps())
 	defer func() { sup.Close(); sup.Wait() }()
-	events := sup.RevisionEvents()
+	events := subscribeForTest(t, sup)
 	definition := testRuntimeDefinition()
 	definition.Configuration.AuthenticationSessionID = "closed-paired"
 	actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, sup.deps)
@@ -1594,13 +1583,9 @@ func TestSupervisorForwardsPublishedEventAfterActorQueryCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 	managed := installTestForwarder(sup, "closed-paired", actor)
-	select {
-	case event := <-events:
-		if event.Revision != published.Revision || event.SessionID != published.AuthenticationSessionID || !reflect.DeepEqual(event.Snapshot, published) {
-			t.Fatalf("closed actor publication = %#v", event)
-		}
-	case <-ctx.Done():
-		t.Fatal("latest query failure suppressed paired publication")
+	event := nextForTest(t, ctx, events)
+	if event.Revision != published.Revision || event.SessionID != published.AuthenticationSessionID || !reflect.DeepEqual(event.Snapshot, published) {
+		t.Fatalf("closed actor publication = %#v", event)
 	}
 	select {
 	case <-managed.forwardDone:
@@ -1612,12 +1597,14 @@ func TestSupervisorForwardsPublishedEventAfterActorQueryCloses(t *testing.T) {
 func TestSupervisorSubscriberClonesOwnEveryNestedSnapshotField(t *testing.T) {
 	sup := New(testSupervisorDeps())
 	defer func() { sup.Close(); sup.Wait() }()
-	left, right := sup.RevisionEvents(), sup.RevisionEvents()
+	left, right := subscribeForTest(t, sup), subscribeForTest(t, sup)
 	now := time.Unix(100, 0)
 	snapshot := Snapshot{AuthenticationSessionID: "clone", Revision: 9, StateReason: &session.StateReason{Code: "test", Description: "original"}, SelectedNetworkBinding: &session.NetworkBindingSummary{DisplayName: "original"}, AuthenticationEstablishedAt: &now, NextRetryAt: &now, LastAuthenticationFailure: &session.AuthenticationFailure{Code: "original"}, ProtocolSocket: session.ProtocolSocketObservation{RunGeneration: 1, State: session.ProtocolSocketClosed, LocalEndpoint: netip.MustParseAddrPort("127.0.0.1:40001"), RemoteEndpoint: netip.MustParseAddrPort("127.0.0.1:61440")}}
 	original := snapshot.Clone()
-	sup.publishRevision(RevisionEvent{SessionID: snapshot.AuthenticationSessionID, Revision: snapshot.Revision, Snapshot: snapshot})
-	first, second := <-left, <-right
+	sup.publishStateEvent(StateEvent{Kind: StateSessionChanged, SessionID: snapshot.AuthenticationSessionID, Revision: snapshot.Revision, Snapshot: snapshot})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	first, second := nextForTest(t, ctx, left), nextForTest(t, ctx, right)
 	first.Snapshot.StateReason.Description = "changed"
 	first.Snapshot.SelectedNetworkBinding.DisplayName = "changed"
 	*first.Snapshot.AuthenticationEstablishedAt = time.Time{}
@@ -1630,5 +1617,259 @@ func TestSupervisorSubscriberClonesOwnEveryNestedSnapshotField(t *testing.T) {
 	snapshot.StateReason.Description = "source changed"
 	if !reflect.DeepEqual(second.Snapshot, original) {
 		t.Fatal("source mutated published clone")
+	}
+}
+
+type shutdownSignalDiagnostics struct {
+	session.NoopDiagnostics
+	shutdown chan struct{}
+	once     sync.Once
+}
+
+func (diagnostics *shutdownSignalDiagnostics) SessionCommand(command string) {
+	if command == "shutdown" {
+		diagnostics.once.Do(func() { close(diagnostics.shutdown) })
+	}
+}
+
+func TestSupervisorRemovalDrainsQueuedFinalRevisionBeforeTerminal(t *testing.T) {
+	for _, operation := range []string{"remove", "forget", "rollback"} {
+		t.Run(operation, func(t *testing.T) {
+			sup := New(testSupervisorDeps())
+			stream := subscribeForTest(t, sup)
+			diagnostics := &shutdownSignalDiagnostics{shutdown: make(chan struct{})}
+			deps := sup.deps
+			deps.Diagnostics = diagnostics
+			definition := testRuntimeDefinition()
+			definition.Configuration.AuthenticationSessionID = "drain"
+			actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, deps)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actor.Start()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			initial, err := actor.Snapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			latest, err := actor.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshot(1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if latest.Revision <= initial.Revision {
+				t.Fatal("test requires a newer queued actor revision")
+			}
+			managed := &managedSession{actor: actor, intent: session.SuspendAuthentication, state: stateStopped, stateChange: make(chan struct{}), stopFwd: make(chan struct{}), forwardDone: make(chan struct{})}
+			sup.mu.Lock()
+			sup.sessions["drain"] = managed
+			sup.mu.Unlock()
+			sup.wg.Add(1)
+			var once sync.Once
+			startForwarder := func() {
+				once.Do(func() { go func() { defer close(managed.forwardDone); sup.forwardRevisions("drain", managed) }() })
+			}
+			defer func() { startForwarder(); sup.Close(); sup.Wait() }()
+			cause := errors.New("original initial snapshot failure")
+			result := make(chan error, 1)
+			go func() {
+				switch operation {
+				case "remove":
+					result <- sup.Remove(ctx, "drain")
+				case "forget":
+					result <- sup.ForgetStopped("drain")
+				case "rollback":
+					result <- sup.rollbackNewSession("drain", managed, cause)
+				}
+			}()
+			waitForSignal(t, diagnostics.shutdown, "actor shutdown begins with newer revision queued")
+			// The map and forwarder stay owned until the producer queue is drained.
+			sup.mu.Lock()
+			current := sup.sessions["drain"]
+			sup.mu.Unlock()
+			if current != managed {
+				t.Fatal("deleted before forwarder drain")
+			}
+			select {
+			case <-managed.stopFwd:
+				t.Fatal("normal removal stopped forwarder before drain")
+			default:
+			}
+			startForwarder()
+			select {
+			case err := <-result:
+				if operation == "rollback" {
+					if !errors.Is(err, cause) {
+						t.Fatal("start failure classification lost", err)
+					}
+				} else if err != nil {
+					t.Fatal(err)
+				}
+			case <-ctx.Done():
+				t.Fatal("removal did not finish drain")
+			}
+			event := nextForTest(t, ctx, stream)
+			if event.Kind != StateSessionRemoved || event.SessionID != "drain" || event.Revision != latest.Revision || event.Snapshot != (Snapshot{}) {
+				t.Fatalf("final terminal regressed or fabricated: %#v latest=%#v", event, latest)
+			}
+			select {
+			case <-managed.forwardDone:
+			default:
+				t.Fatal("terminal preceded forwarder exit")
+			}
+			if _, err := sup.Get(ctx, "drain"); !errors.Is(err, ErrSessionNotFound) {
+				t.Fatal("successful removal retained actor", err)
+			}
+			quiet, quietCancel := context.WithTimeout(ctx, 20*time.Millisecond)
+			defer quietCancel()
+			if event, err := stream.Next(quiet); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal("publication followed terminal", event, err)
+			}
+		})
+	}
+}
+
+func TestSupervisorFailedStartPublishesTerminalAndPreservesCause(t *testing.T) {
+	sup := New(testSupervisorDeps())
+	defer sup.Close()
+	stream := subscribeForTest(t, sup)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := sup.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); !errors.Is(err, context.Canceled) {
+		t.Fatal("original start cause lost", err)
+	}
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer waitCancel()
+	event := nextForTest(t, waitCtx, stream)
+	if event.Kind != StateSessionRemoved || event.SessionID != "session-1" || event.Revision != 1 {
+		t.Fatal("rollback omitted initial producer drain", event)
+	}
+}
+
+func TestSupervisorFailedShutdownRetainsResourceAndOriginalCause(t *testing.T) {
+	for _, operation := range []string{"remove", "forget", "rollback"} {
+		t.Run(operation, func(t *testing.T) {
+			sup := New(testSupervisorDeps())
+			defer sup.Close()
+			stream := subscribeForTest(t, sup)
+			id, _, err := sup.StartResolved(context.Background(), testRuntimeDefinition(), session.SuspendAuthentication)
+			if err != nil {
+				t.Fatal(err)
+			}
+			managed, err := sup.managed(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := managed.actor.Shutdown(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			cause := errors.New("original start cause")
+			switch operation {
+			case "remove":
+				err = sup.Remove(context.Background(), id)
+			case "forget":
+				err = sup.ForgetStopped(id)
+			case "rollback":
+				err = sup.rollbackNewSession(id, managed, cause)
+			}
+			if !errors.Is(err, session.ErrAuthenticationSessionClosed) {
+				t.Fatal("shutdown cause lost", err)
+			}
+			if operation == "rollback" && !errors.Is(err, cause) {
+				t.Fatal("start cause lost", err)
+			}
+			if retained, err := sup.managed(id); err != nil || retained != managed {
+				t.Fatal("failed shutdown deleted entry", err)
+			}
+			select {
+			case <-managed.stopFwd:
+				t.Fatal("failed shutdown stopped forwarder")
+			default:
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			for {
+				event, err := stream.Next(ctx)
+				if err != nil {
+					if !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatal(err)
+					}
+					break
+				}
+				if event.Kind == StateSessionRemoved {
+					t.Fatal("failed shutdown published false terminal", event)
+				}
+			}
+		})
+	}
+}
+
+func TestSupervisorRollbackFailureRetainsActorDuringRunShutdown(t *testing.T) {
+	run := newHeldCancellationRun()
+	sup := New(testSupervisorDeps())
+	defer func() { releaseHeldCancellationRun(run); sup.Close(); sup.Wait() }()
+	stream := subscribeForTest(t, sup)
+	definition := testRuntimeDefinition()
+	definition.AuthenticationProtocolFactory = heldCancellationFactory{run: run}
+	if err := sup.ApplySystemNetworkSnapshot(context.Background(), testNetworkSnapshot(1)); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := sup.StartResolved(context.Background(), definition, session.MaintainAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForSignal(t, run.started, "Run started")
+	managed, _ := sup.managed(id)
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- managed.actor.Shutdown(context.Background()) }()
+	waitForSignal(t, run.canceled, "actor shutdown still awaits Run cleanup")
+	cause := errors.New("failed start while actor shutdown is pending")
+	err = sup.rollbackNewSession(id, managed, cause)
+	if !errors.Is(err, cause) || !errors.Is(err, session.ErrAuthenticationSessionClosed) {
+		t.Fatal(err)
+	}
+	if retained, err := sup.managed(id); err != nil || retained != managed {
+		t.Fatal("still-running actor deleted", err)
+	}
+	select {
+	case <-managed.stopFwd:
+		t.Fatal("failed shutdown stopped forwarding")
+	default:
+	}
+	select {
+	case <-shutdown:
+		t.Fatal("test actor was already stopped")
+	default:
+	}
+	// Whole-Supervisor Close wakes subscribers before blocked actor cleanup.
+	closed := make(chan error, 1)
+	go func() { closed <- sup.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		_, err := stream.Next(ctx)
+		if errors.Is(err, ErrSubscriptionShutdown) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	releaseHeldCancellationRun(run)
+	select {
+	case err := <-shutdown:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 }

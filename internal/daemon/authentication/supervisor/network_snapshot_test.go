@@ -361,3 +361,96 @@ func TestLatestSystemNetworkSnapshotAuthorityAndIsolation(t *testing.T) {
 		t.Fatal("closed Supervisor returned facts")
 	}
 }
+
+func TestAcceptedNetworkEventsWithoutSessionsAndEmptyInterfaces(t *testing.T) {
+	sup := New(testSupervisorDeps())
+	defer sup.Close()
+	stream := subscribeForTest(t, sup)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for _, snapshot := range []environment.Snapshot{environment.NewSnapshot(0, time.Unix(10, 0), nil), testNetworkSnapshot(2), environment.NewSnapshot(3, time.Unix(30, 0), nil)} {
+		if err := sup.ApplySystemNetworkSnapshot(ctx, snapshot); err != nil {
+			t.Fatal(err)
+		}
+		event := nextForTest(t, ctx, stream)
+		if event.Kind != StateNetworkChanged || event.SessionID != "" || event.Revision != 0 || event.Snapshot != (Snapshot{}) || event.NetworkSnapshot.Revision != snapshot.Revision || event.NetworkSnapshot.ObservedAt != snapshot.ObservedAt || len(event.NetworkSnapshot.Interfaces()) != len(snapshot.Interfaces()) {
+			t.Fatal("accepted network event incomplete", event)
+		}
+	}
+	for _, snapshot := range []environment.Snapshot{testNetworkSnapshot(2), testNetworkSnapshot(3)} {
+		if err := sup.ApplySystemNetworkSnapshot(ctx, snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	quiet, quietCancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer quietCancel()
+	if event, err := stream.Next(quiet); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("old/equal emitted duplicate", event, err)
+	}
+}
+
+func TestEqualNetworkReplayFeedsActorsWithoutDuplicateNetworkEvent(t *testing.T) {
+	sup := New(testSupervisorDeps())
+	defer sup.Close()
+	stream := subscribeForTest(t, sup)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := sup.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshotWithInterface(4, "accepted", "192.0.2.4")); err != nil {
+		t.Fatal(err)
+	}
+	if event := nextForTest(t, ctx, stream); event.Kind != StateNetworkChanged {
+		t.Fatal(event)
+	}
+	definition := testRuntimeDefinition()
+	definition.Configuration.AuthenticationSessionID = "replay"
+	actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, sup.deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor.Start()
+	managed := installTestForwarder(sup, "replay", actor)
+	if err := sup.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshotWithInterface(4, "rejected", "192.0.2.44")); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := actor.Snapshot(ctx)
+	if err != nil || snapshot.SelectedNetworkBinding == nil || snapshot.SelectedNetworkBinding.InterfaceID != "accepted" {
+		t.Fatal("equal replay lost stored facts", snapshot, err)
+	}
+	if err := sup.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshotWithInterface(5, "new", "192.0.2.5")); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = actor.Snapshot(ctx)
+	if err != nil || snapshot.SelectedNetworkBinding == nil || snapshot.SelectedNetworkBinding.InterfaceID != "new" {
+		t.Fatal("new revision did not feed current actor", snapshot, err)
+	}
+	// Shutdown drains all actor events, so this read cannot miss a late duplicate.
+	if err := actor.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-managed.forwardDone:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	networkCount := 0
+	quiet, quietCancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer quietCancel()
+	for {
+		event, err := stream.Next(quiet)
+		if err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal(err)
+			}
+			break
+		}
+		if event.Kind == StateNetworkChanged {
+			networkCount++
+			if event.NetworkSnapshot.Revision != 5 || event.NetworkSnapshot.Interfaces()[0].InterfaceID != "new" {
+				t.Fatal(event)
+			}
+		}
+	}
+	if networkCount != 1 {
+		t.Fatal("equal replay duplicated network event", networkCount)
+	}
+}

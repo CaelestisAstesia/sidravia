@@ -54,13 +54,16 @@ func (s *Supervisor) ApplySystemNetworkSnapshot(
 	}
 
 	var toDeliver environment.Snapshot
+	accepted := false
 	switch {
 	case !s.hasLatestNetwork:
-		s.latestNetwork = snapshot
+		s.latestNetwork = cloneNetworkSnapshot(snapshot)
+		accepted = true
 		s.hasLatestNetwork = true
 		toDeliver = snapshot
 	case snapshot.Revision > s.latestNetwork.Revision:
-		s.latestNetwork = snapshot
+		s.latestNetwork = cloneNetworkSnapshot(snapshot)
+		accepted = true
 		toDeliver = snapshot
 	case snapshot.Revision == s.latestNetwork.Revision:
 		// Replay the stored authoritative snapshot, not the caller's value.
@@ -69,6 +72,10 @@ func (s *Supervisor) ApplySystemNetworkSnapshot(
 		// Older revision: ignore without changing state or delivering.
 		s.mu.Unlock()
 		return nil
+	}
+
+	if accepted {
+		s.publishStateEventLocked(StateEvent{Kind: StateNetworkChanged, NetworkSnapshot: s.latestNetwork})
 	}
 
 	targets := make([]networkSnapshotTarget, 0, len(s.sessions))

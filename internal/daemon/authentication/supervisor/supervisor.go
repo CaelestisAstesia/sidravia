@@ -19,13 +19,6 @@ type ID = session.AuthenticationSessionID
 // Snapshot aliases session.Snapshot.
 type Snapshot = session.Snapshot
 
-// RevisionEvent carries a session revision and its latest complete snapshot.
-type RevisionEvent struct {
-	SessionID ID
-	Revision  uint64
-	Snapshot  Snapshot
-}
-
 // Dependencies provides session-level dependencies that the Supervisor
 // passes to each created session.
 type Dependencies struct {
@@ -53,7 +46,7 @@ type Supervisor struct {
 	sessions         map[ID]*managedSession
 	counter          uint64
 	deps             session.Dependencies
-	subs             []chan RevisionEvent
+	subs             map[*Subscription]struct{}
 	closed           atomic.Bool
 	closeOnce        sync.Once
 	wg               sync.WaitGroup
@@ -62,15 +55,16 @@ type Supervisor struct {
 }
 
 type managedSession struct {
-	actor       *session.AuthenticationSession
-	intent      session.Intent
-	state       sessionState
-	operationMu sync.Mutex
-	reserved    bool
-	stateChange chan struct{}
-	stopFwd     chan struct{}
-	stopFwdOnce sync.Once
-	forwardDone chan struct{} // closed when forward goroutine exits
+	actor                 *session.AuthenticationSession
+	intent                session.Intent
+	state                 sessionState
+	operationMu           sync.Mutex
+	reserved              bool
+	stateChange           chan struct{}
+	stopFwd               chan struct{}
+	stopFwdOnce           sync.Once
+	forwardDone           chan struct{} // closed when forward goroutine exits
+	lastForwardedRevision uint64        // paired delivery metadata, protected by Supervisor.mu
 }
 
 // New creates a Supervisor with the given session-level dependencies.
@@ -91,8 +85,8 @@ func New(deps Dependencies) *Supervisor {
 // creates and starts a session, and begins forwarding its revision events.
 //
 // The caller's context is respected for the initial snapshot. If the
-// snapshot fails, the session is fully rolled back: removed from the
-// supervisor, forward goroutine stopped, and session shut down.
+// snapshot fails, successful shutdown drains and removes the session. A
+// shutdown failure retains the resource and joins its cause with the start error.
 func (s *Supervisor) StartResolved(
 	ctx context.Context,
 	definition session.RuntimeDefinition,
@@ -179,22 +173,29 @@ func (s *Supervisor) StartResolved(
 	return id, snapshot, nil
 }
 
-// rollbackNewSession fully rolls back a newly created Session that failed
-// during start: it removes the Session from the map, stops its revision
-// forwarder, waits for the forward goroutine to exit, and shuts down the
-// actor. The supplied cause is returned; if shutdown itself fails, the cause is
-// joined with the shutdown error. Both the latest-snapshot application failure
-// and the initial Snapshot failure share this identical rollback path.
+// rollbackNewSession preserves the start cause and retains the resource when
+// shutdown fails. A successful shutdown drains publications before removal.
 func (s *Supervisor) rollbackNewSession(id ID, ms *managedSession, cause error) error {
-	s.mu.Lock()
-	delete(s.sessions, id)
-	s.mu.Unlock()
-	ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
-	<-ms.forwardDone
 	if shutdownErr := ms.actor.Shutdown(context.Background()); shutdownErr != nil {
 		return errors.Join(cause, fmt.Errorf("shutdown after failed start: %w", shutdownErr))
 	}
+	s.finishRemoval(id, ms)
 	return cause
+}
+
+// finishRemoval waits without the map lock. Close may stop the forwarder before
+// the producer has drained; in that case it owns stream-wide discontinuity.
+func (s *Supervisor) finishRemoval(id ID, ms *managedSession) {
+	<-ms.forwardDone
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed.Load() {
+		return
+	}
+	if current, ok := s.sessions[id]; ok && current == ms {
+		s.publishStateEventLocked(StateEvent{Kind: StateSessionRemoved, SessionID: id, Revision: ms.lastForwardedRevision})
+		delete(s.sessions, id)
+	}
 }
 
 // Stop suspends a session, keeping its SessionID and Snapshot.
@@ -372,13 +373,7 @@ func (s *Supervisor) Remove(ctx context.Context, id ID) error {
 	if err := ms.actor.Shutdown(context.Background()); err != nil {
 		return fmt.Errorf("shutdown session %q: %w", id, err)
 	}
-	ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
-	<-ms.forwardDone
-	s.mu.Lock()
-	if current, ok := s.sessions[id]; ok && current == ms {
-		delete(s.sessions, id)
-	}
-	s.mu.Unlock()
+	s.finishRemoval(id, ms)
 	return nil
 }
 
@@ -469,11 +464,14 @@ func (s *Supervisor) ForgetStopped(id ID) error {
 		s.mu.Unlock()
 		return fmt.Errorf("%w: %q", ErrSessionStateConflict, id)
 	}
-	delete(s.sessions, id)
-	ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
+	ms.reserved = true
 	s.mu.Unlock()
-
-	return ms.actor.Shutdown(context.Background())
+	defer s.releaseReservation(id, ms)
+	if err := ms.actor.Shutdown(context.Background()); err != nil {
+		return err
+	}
+	s.finishRemoval(id, ms)
+	return nil
 }
 
 // Get returns the latest snapshot for the given session.
@@ -525,23 +523,8 @@ func (s *Supervisor) List(ctx context.Context) ([]Snapshot, error) {
 	return snapshots, nil
 }
 
-// RevisionEvents returns a new channel that receives revision events from
-// all sessions. If the Supervisor is closed, returns a closed channel.
-func (s *Supervisor) RevisionEvents() <-chan RevisionEvent {
-	ch := make(chan RevisionEvent, 16)
-	s.mu.Lock()
-	if s.closed.Load() {
-		s.mu.Unlock()
-		close(ch)
-		return ch
-	}
-	s.subs = append(s.subs, ch)
-	s.mu.Unlock()
-	return ch
-}
-
-// Close shuts down all sessions, stops forwarding, waits for goroutines,
-// then closes all subscriber channels. It is idempotent.
+// Close ends all subscriptions with connection-wide discontinuity before
+// shutting down actors and waiting for owned forwarders. It is idempotent.
 func (s *Supervisor) Close() error {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
@@ -549,22 +532,18 @@ func (s *Supervisor) Close() error {
 		sessions := make([]*managedSession, 0, len(s.sessions))
 		for _, ms := range s.sessions {
 			sessions = append(sessions, ms)
-		}
-		subs := s.subs
-		s.subs = nil
-		s.mu.Unlock()
-
-		for _, ms := range sessions {
-			_ = ms.actor.Shutdown(context.Background())
 			ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
 		}
-
-		// Wait for all forward goroutines to exit before closing subscriber channels.
-		s.wg.Wait()
-
-		for _, sub := range subs {
-			close(sub)
+		for sub := range s.subs {
+			sub.closeWithCause(ErrSubscriptionShutdown)
 		}
+		clear(s.subs)
+		s.mu.Unlock()
+		for _, ms := range sessions {
+			// Preserve the existing whole-Supervisor Close return contract.
+			_ = ms.actor.Shutdown(context.Background())
+		}
+		s.wg.Wait()
 	})
 	return nil
 }
@@ -583,17 +562,18 @@ func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
 			if !ok {
 				return
 			}
-			// Only this latest query updates private stopped admission; the
-			// publication below retains its own revision and Snapshot even on closure.
+			s.mu.Lock()
+			if current, ok := s.sessions[id]; ok && current == managed && !s.closed.Load() {
+				managed.lastForwardedRevision = event.Revision
+				s.publishStateEventLocked(StateEvent{Kind: StateSessionChanged, SessionID: event.AuthenticationSessionID, Revision: event.Revision, Snapshot: event.Snapshot})
+			}
+			s.mu.Unlock()
+			// Latest query updates only private stopped admission, after publishing
+			// the actor's original pair. Its failure cannot suppress that publication.
 			snapshot, err := managed.actor.Snapshot(context.Background())
 			if err == nil {
 				s.observeStoppedRevision(id, managed, snapshot)
 			}
-			s.publishRevision(RevisionEvent{
-				SessionID: event.AuthenticationSessionID,
-				Revision:  event.Revision,
-				Snapshot:  event.Snapshot.Clone(),
-			})
 		case <-managed.stopFwd:
 			return
 		}
@@ -611,27 +591,6 @@ func (s *Supervisor) observeStoppedRevision(id ID, managed *managedSession, snap
 		managed.state = stateStopped
 		close(managed.stateChange)
 		managed.stateChange = make(chan struct{})
-	}
-}
-
-func (s *Supervisor) publishRevision(event RevisionEvent) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sub := range s.subs {
-		subscriberEvent := event
-		subscriberEvent.Snapshot = event.Snapshot.Clone()
-		select {
-		case sub <- subscriberEvent:
-		default:
-			select {
-			case <-sub:
-			default:
-			}
-			select {
-			case sub <- subscriberEvent:
-			default:
-			}
-		}
 	}
 }
 
