@@ -59,6 +59,12 @@ Future<void> main(List<String> args) async {
       GuiSettings(
         appearanceMode: GuiAppearanceMode.values.byName(args[1]),
         diagnosticsExpanded: diagnosticsExpanded,
+        closeBehavior: args.length > 3
+            ? GuiCloseBehavior.values.byName(args[3])
+            : initial?.closeBehavior ?? GuiCloseBehavior.hideToTray,
+        startHidden: args.length > 4
+            ? bool.parse(args[4])
+            : initial?.startHidden ?? false,
       ),
     );
   }
@@ -69,8 +75,12 @@ Future<void> main(List<String> args) async {
       'path': store.path,
       'initial': initial?.appearanceMode.name,
       'initialDiagnosticsExpanded': initial?.diagnosticsExpanded,
+      'initialCloseBehavior': initial?.closeBehavior.name,
+      'initialStartHidden': initial?.startHidden,
       'restored': restored?.appearanceMode.name,
       'restoredDiagnosticsExpanded': restored?.diagnosticsExpanded,
+      'restoredCloseBehavior': restored?.closeBehavior.name,
+      'restoredStartHidden': restored?.startHidden,
       'platform': Platform.operatingSystem,
     }),
   );

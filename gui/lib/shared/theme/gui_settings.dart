@@ -2,14 +2,20 @@ import 'dart:convert';
 
 enum GuiAppearanceMode { system, light, dark }
 
+enum GuiCloseBehavior { hideToTray, exit }
+
 class GuiSettings {
   const GuiSettings({
     this.appearanceMode = GuiAppearanceMode.system,
     this.diagnosticsExpanded = false,
+    this.closeBehavior = GuiCloseBehavior.hideToTray,
+    this.startHidden = false,
   });
 
   final GuiAppearanceMode appearanceMode;
   final bool diagnosticsExpanded;
+  final GuiCloseBehavior closeBehavior;
+  final bool startHidden;
 }
 
 abstract interface class GuiSettingsStore {
@@ -57,8 +63,23 @@ GuiSettings decodeGuiSettings(String source) {
       diagnosticsExpanded: value['diagnosticsExpanded'] as bool,
     );
   }
+  if (version == 3 &&
+      value.length == 5 &&
+      value['diagnosticsExpanded'] is bool &&
+      value['closeBehavior'] is String &&
+      value['startHidden'] is bool) {
+    return GuiSettings(
+      appearanceMode: mode,
+      diagnosticsExpanded: value['diagnosticsExpanded'] as bool,
+      closeBehavior: GuiCloseBehavior.values.firstWhere(
+        (behavior) => behavior.name == value['closeBehavior'],
+        orElse: () => throw const FormatException('Invalid close behavior'),
+      ),
+      startHidden: value['startHidden'] as bool,
+    );
+  }
   throw const FormatException('Unsupported GUI settings');
 }
 
 String encodeGuiSettings(GuiSettings settings) =>
-    '${jsonEncode({'schemaVersion': 2, 'appearanceMode': settings.appearanceMode.name, 'diagnosticsExpanded': settings.diagnosticsExpanded})}\n';
+    '${jsonEncode({'schemaVersion': 3, 'appearanceMode': settings.appearanceMode.name, 'diagnosticsExpanded': settings.diagnosticsExpanded, 'closeBehavior': settings.closeBehavior.name, 'startHidden': settings.startHidden})}\n';

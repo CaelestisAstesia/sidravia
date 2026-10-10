@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
@@ -241,6 +242,12 @@ void main() {
       final migrated = await store.read();
       expect(migrated?.appearanceMode, GuiAppearanceMode.dark);
       expect(migrated?.diagnosticsExpanded, false);
+      expect(migrated?.closeBehavior, GuiCloseBehavior.hideToTray);
+      expect(migrated?.startHidden, false);
+      expect(
+        File(path).readAsStringSync(),
+        '{"schemaVersion":1,"appearanceMode":"dark"}',
+      );
       await store.save(
         const GuiSettings(
           appearanceMode: GuiAppearanceMode.dark,
@@ -250,7 +257,7 @@ void main() {
       final restored = await FileGuiSettingsStore(path).read();
       expect(restored?.appearanceMode, GuiAppearanceMode.dark);
       expect(restored?.diagnosticsExpanded, true);
-      expect(File(path).readAsStringSync(), contains('"schemaVersion":2'));
+      expect(File(path).readAsStringSync(), contains('"schemaVersion":3'));
       expect(
         File(path).readAsStringSync(),
         contains('"diagnosticsExpanded":true'),
@@ -258,9 +265,80 @@ void main() {
     },
   );
 
+  test('v2 keeps theme and fold without rewriting and defaults desktop fields', () async {
+    final path = '${root.path}/gui-settings.json';
+    const source =
+        '{"schemaVersion":2,"appearanceMode":"light","diagnosticsExpanded":true}';
+    File(path).writeAsStringSync(source);
+    final settings = await FileGuiSettingsStore(path).read();
+    expect(settings?.appearanceMode, GuiAppearanceMode.light);
+    expect(settings?.diagnosticsExpanded, true);
+    expect(settings?.closeBehavior, GuiCloseBehavior.hideToTray);
+    expect(settings?.startHidden, false);
+    expect(File(path).readAsStringSync(), source);
+  });
+  test('schema3 roundtrip and missing owner defaults', () async {
+    final owner = Appearance();
+    await owner.initialize();
+    expect(owner.closeBehavior, GuiCloseBehavior.hideToTray);
+    expect(owner.startHidden, false);
+    owner.dispose();
+    const settings = GuiSettings(
+      appearanceMode: GuiAppearanceMode.dark,
+      diagnosticsExpanded: true,
+      closeBehavior: GuiCloseBehavior.exit,
+      startHidden: true,
+    );
+    final restored = decodeGuiSettings(encodeGuiSettings(settings));
+    expect(restored.appearanceMode, settings.appearanceMode);
+    expect(restored.diagnosticsExpanded, true);
+    expect(restored.closeBehavior, GuiCloseBehavior.exit);
+    expect(restored.startHidden, true);
+  });
+  test('separate process reload persists all four preferences', () async {
+    final path = '${root.path}/gui-settings.json';
+    final first = await Process.run('dart', [
+      'run',
+      'test/settings_persistence_process.dart',
+      path,
+      'dark',
+      'true',
+      'exit',
+      'true',
+    ]);
+    expect(first.exitCode, 0, reason: '${first.stderr}');
+    final second = await Process.run('dart', [
+      'run',
+      'test/settings_persistence_process.dart',
+      path,
+    ]);
+    expect(second.exitCode, 0, reason: '${second.stderr}');
+    final result = jsonDecode(second.stdout as String) as Map<String, dynamic>;
+    expect(result['initial'], 'dark');
+    expect(result['initialDiagnosticsExpanded'], true);
+    expect(result['initialCloseBehavior'], 'exit');
+    expect(result['initialStartHidden'], true);
+    expect(result['restoredCloseBehavior'], 'exit');
+    expect(result['restoredStartHidden'], true);
+  });
+
   test('invalid damaged and future data preserved without overwrite', () async {
     for (final text in [
       'broken',
+      '{"schemaVersion":4,"appearanceMode":"dark"}',
+      ...[
+        {'closeBehavior': 'unknown', 'startHidden': false},
+        {'closeBehavior': true, 'startHidden': false},
+        {'closeBehavior': 'exit', 'startHidden': 'true'},
+        {'closeBehavior': 'exit', 'startHidden': true, 'other': false},
+      ].map(
+        (fields) => jsonEncode({
+          'schemaVersion': 3,
+          'appearanceMode': 'dark',
+          'diagnosticsExpanded': true,
+          ...fields,
+        }),
+      ),
       '{}',
       '{"schemaVersion":3,"appearanceMode":"dark","diagnosticsExpanded":false}',
       '{"schemaVersion":1,"appearanceMode":false}',

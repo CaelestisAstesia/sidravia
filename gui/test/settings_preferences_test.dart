@@ -236,6 +236,72 @@ void main() {
     },
   );
 
+  for (final field in ['theme', 'fold', 'close', 'hidden']) {
+    test(
+      'late load preserves edited $field and hydrates other three',
+      () async {
+        final store = ControlledStore();
+        final owner = Appearance(store: store);
+        switch (field) {
+          case 'theme':
+            owner.value = ThemeMode.light;
+          case 'fold':
+            owner.diagnosticsExpanded = false;
+          case 'close':
+            owner.closeBehavior = GuiCloseBehavior.hideToTray;
+          case 'hidden':
+            owner.startHidden = false;
+        }
+        store.readResult.complete(
+          const GuiSettings(
+            appearanceMode: GuiAppearanceMode.dark,
+            diagnosticsExpanded: true,
+            closeBehavior: GuiCloseBehavior.exit,
+            startHidden: true,
+          ),
+        );
+        await owner.settled;
+        expect(
+          owner.value,
+          field == 'theme' ? ThemeMode.light : ThemeMode.dark,
+        );
+        expect(owner.diagnosticsExpanded, field != 'fold');
+        expect(
+          owner.closeBehavior,
+          field == 'close'
+              ? GuiCloseBehavior.hideToTray
+              : GuiCloseBehavior.exit,
+        );
+        expect(owner.startHidden, field != 'hidden');
+        final saved = store.saved.single;
+        expect(saved.appearanceMode.name, owner.value.name);
+        expect(saved.diagnosticsExpanded, owner.diagnosticsExpanded);
+        expect(saved.closeBehavior, owner.closeBehavior);
+        expect(saved.startHidden, owner.startHidden);
+        owner.value = ThemeMode.system;
+        await owner.settled;
+        expect(store.saved.last.closeBehavior, saved.closeBehavior);
+        expect(store.saved.last.startHidden, saved.startHidden);
+        owner.diagnosticsExpanded = !owner.diagnosticsExpanded;
+        await owner.settled;
+        expect(store.saved.last.appearanceMode, GuiAppearanceMode.system);
+        expect(store.saved.last.closeBehavior, saved.closeBehavior);
+        expect(store.saved.last.startHidden, saved.startHidden);
+        owner.closeBehavior = GuiCloseBehavior.exit;
+        await owner.settled;
+        expect(store.saved.last.startHidden, saved.startHidden);
+        expect(store.saved.last.diagnosticsExpanded, owner.diagnosticsExpanded);
+        owner.startHidden = true;
+        await owner.settled;
+        expect(store.saved.last.closeBehavior, GuiCloseBehavior.exit);
+        expect(store.saved.last.appearanceMode, GuiAppearanceMode.system);
+        expect(store.saved.last.diagnosticsExpanded, owner.diagnosticsExpanded);
+        expect(store.maximumActive, 1);
+        owner.dispose();
+      },
+    );
+  }
+
   test('each preference mutation preserves the other field', () async {
     final store = ControlledStore()
       ..readResult.complete(
@@ -267,6 +333,11 @@ void main() {
     await appearance.settled;
     expect(appearance.value, ThemeMode.dark);
     expect(appearance.diagnosticsExpanded, true);
+    appearance.closeBehavior = GuiCloseBehavior.exit;
+    appearance.startHidden = true;
+    await appearance.settled;
+    expect(appearance.closeBehavior, GuiCloseBehavior.exit);
+    expect(appearance.startHidden, true);
     expect(store.saved, isEmpty);
     expect(appearance.feedback, contains('原文件保留'));
     appearance.dispose();
@@ -284,6 +355,11 @@ void main() {
       appearance.diagnosticsExpanded = true;
       await appearance.settled;
       expect(appearance.diagnosticsExpanded, true);
+      appearance.closeBehavior = GuiCloseBehavior.exit;
+      appearance.startHidden = true;
+      await appearance.settled;
+      expect(appearance.closeBehavior, GuiCloseBehavior.exit);
+      expect(appearance.startHidden, true);
       expect(appearance.feedback, contains('未能保存'));
       appearance.dispose();
     },

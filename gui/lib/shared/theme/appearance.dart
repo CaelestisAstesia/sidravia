@@ -12,6 +12,9 @@ class Appearance extends ValueNotifier<ThemeMode> {
   Future<void>? _initialization;
   Future<void> _writes = Future.value();
   int _revision = 0, _appearanceRevision = 0, _diagnosticsRevision = 0;
+  int _closeRevision = 0, _startHiddenRevision = 0;
+  GuiCloseBehavior _closeBehavior = GuiCloseBehavior.hideToTray;
+  bool _startHidden = false;
   bool _disposed = false, _canSave = true;
   bool _diagnosticsExpanded = false;
   String? _feedback;
@@ -31,9 +34,61 @@ class Appearance extends ValueNotifier<ThemeMode> {
       GuiSettings(
         appearanceMode: _appearanceMode(value),
         diagnosticsExpanded: expanded,
+        closeBehavior: _closeBehavior,
+        startHidden: _startHidden,
       ),
       _appearanceRevision,
       _diagnosticsRevision,
+      _closeRevision,
+      _startHiddenRevision,
+    );
+  }
+
+  GuiCloseBehavior get closeBehavior => _closeBehavior;
+  set closeBehavior(GuiCloseBehavior next) {
+    final loading = initialize();
+    _closeRevision++;
+    final revision = ++_revision;
+    final changed = _closeBehavior != next;
+    _closeBehavior = next;
+    if (!_disposed && changed) notifyListeners();
+    _queueSave(
+      loading,
+      revision,
+      GuiSettings(
+        appearanceMode: _appearanceMode(value),
+        diagnosticsExpanded: _diagnosticsExpanded,
+        closeBehavior: _closeBehavior,
+        startHidden: _startHidden,
+      ),
+      _appearanceRevision,
+      _diagnosticsRevision,
+      _closeRevision,
+      _startHiddenRevision,
+    );
+  }
+
+  bool get startHidden => _startHidden;
+  set startHidden(bool next) {
+    final loading = initialize();
+    _startHiddenRevision++;
+    final revision = ++_revision;
+    final changed = _startHidden != next;
+    _startHidden = next;
+    if (!_disposed && changed) notifyListeners();
+    _queueSave(
+      loading,
+      revision,
+      GuiSettings(
+        appearanceMode: _appearanceMode(value),
+        diagnosticsExpanded: _diagnosticsExpanded,
+        closeBehavior: _closeBehavior,
+        startHidden: _startHidden,
+      ),
+      _appearanceRevision,
+      _diagnosticsRevision,
+      _closeRevision,
+      _startHiddenRevision,
     );
   }
 
@@ -41,6 +96,8 @@ class Appearance extends ValueNotifier<ThemeMode> {
   Future<void> _load() async {
     final appearanceRevision = _appearanceRevision;
     final diagnosticsRevision = _diagnosticsRevision;
+    final closeRevision = _closeRevision;
+    final startHiddenRevision = _startHiddenRevision;
     try {
       final stored = await _store.read();
       if (_disposed || stored == null) return;
@@ -53,6 +110,16 @@ class Appearance extends ValueNotifier<ThemeMode> {
       if (diagnosticsRevision == _diagnosticsRevision) {
         diagnosticsChanged = _diagnosticsExpanded != stored.diagnosticsExpanded;
         _diagnosticsExpanded = stored.diagnosticsExpanded;
+      }
+      if (closeRevision == _closeRevision) {
+        diagnosticsChanged =
+            diagnosticsChanged || _closeBehavior != stored.closeBehavior;
+        _closeBehavior = stored.closeBehavior;
+      }
+      if (startHiddenRevision == _startHiddenRevision) {
+        diagnosticsChanged =
+            diagnosticsChanged || _startHidden != stored.startHidden;
+        _startHidden = stored.startHidden;
       }
       if (!_disposed && diagnosticsChanged) notifyListeners();
     } on Object {
@@ -74,9 +141,13 @@ class Appearance extends ValueNotifier<ThemeMode> {
       GuiSettings(
         appearanceMode: _appearanceMode(mode),
         diagnosticsExpanded: _diagnosticsExpanded,
+        closeBehavior: _closeBehavior,
+        startHidden: _startHidden,
       ),
       _appearanceRevision,
       _diagnosticsRevision,
+      _closeRevision,
+      _startHiddenRevision,
     );
   }
 
@@ -86,6 +157,8 @@ class Appearance extends ValueNotifier<ThemeMode> {
     GuiSettings queued,
     int appearanceRevision,
     int diagnosticsRevision,
+    int closeRevision,
+    int startHiddenRevision,
   ) {
     _writes = _writes.then((_) async {
       await loading;
@@ -99,6 +172,12 @@ class Appearance extends ValueNotifier<ThemeMode> {
             diagnosticsExpanded: diagnosticsRevision == 0
                 ? _diagnosticsExpanded
                 : queued.diagnosticsExpanded,
+            closeBehavior: closeRevision == 0
+                ? _closeBehavior
+                : queued.closeBehavior,
+            startHidden: startHiddenRevision == 0
+                ? _startHidden
+                : queued.startHidden,
           ),
         );
         if (revision == _revision) _feedback = null;
