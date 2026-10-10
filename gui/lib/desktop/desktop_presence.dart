@@ -38,8 +38,11 @@ class DesktopPresence extends ChangeNotifier {
   final String _namespace;
   final DesktopNotificationPolicy _policy = DesktopNotificationPolicy();
   bool _operational = true, _initialized = false, _disposed = false;
+  bool? _isMainWindowVisible;
+  int _visibilityCallbackRevision = 0;
   String? _feedback;
   String? get feedback => _feedback;
+  bool? get isMainWindowVisible => _isMainWindowVisible;
   Future<void> Function()? onExitRequested;
 
   bool get enabled => _channel != null && _operational && _initialized;
@@ -50,21 +53,50 @@ class DesktopPresence extends ChangeNotifier {
   /// bootstrap or authentication path.
   Future<DesktopPresenceDisposition> initialize() async {
     final channel = _channel;
-    if (channel == null) return DesktopPresenceDisposition.primary;
-    try {
-      final value = await channel.invokeMethod<String>(
-        'initialize',
-        _namespace,
-      );
-      if (value == 'activatedExisting') {
-        return DesktopPresenceDisposition.activatedExisting;
-      }
-      _initialized = value == 'primary';
-      return DesktopPresenceDisposition.primary;
-    } on Object {
-      _operational = false;
+    if (channel == null || _disposed) {
       return DesktopPresenceDisposition.primary;
     }
+    String? value;
+    try {
+      value = await channel.invokeMethod<String>('initialize', _namespace);
+    } on Object {
+      if (!_disposed) _operational = false;
+      return DesktopPresenceDisposition.primary;
+    }
+    if (_disposed) return DesktopPresenceDisposition.primary;
+    if (value == 'activatedExisting') {
+      _initialized = false;
+      return DesktopPresenceDisposition.activatedExisting;
+    }
+    _initialized = value == 'primary';
+    if (_initialized) await _readMainWindowVisibility(channel);
+    return DesktopPresenceDisposition.primary;
+  }
+
+  Future<void> _readMainWindowVisibility(MethodChannel channel) async {
+    if (_disposed || !enabled) return;
+    final callbackRevision = _visibilityCallbackRevision;
+    Object? result;
+    try {
+      result = await channel.invokeMethod<Object?>('getVisibility');
+    } on Object {
+      // Visibility is observational; query failure must not disable other
+      // desktop commands or change their feedback.
+      return;
+    }
+    if (_disposed ||
+        !_initialized ||
+        callbackRevision != _visibilityCallbackRevision ||
+        result is! bool) {
+      return;
+    }
+    _setMainWindowVisibility(result);
+  }
+
+  void _setMainWindowVisibility(bool visible) {
+    if (_disposed || _isMainWindowVisible == visible) return;
+    _isMainWindowVisible = visible;
+    notifyListeners();
   }
 
   Future<bool> configurePreferences({
@@ -151,6 +183,13 @@ class DesktopPresence extends ChangeNotifier {
   Future<Object?> _onNativeCall(MethodCall call) async {
     if (call.method == 'exitRequested') {
       await onExitRequested?.call();
+    } else if (call.method == 'visibilityChanged') {
+      final visible = call.arguments;
+      if (!_disposed && enabled && visible is bool) {
+        // Even a duplicate callback supersedes an in-flight initial query.
+        _visibilityCallbackRevision++;
+        _setMainWindowVisibility(visible);
+      }
     }
     return null;
   }

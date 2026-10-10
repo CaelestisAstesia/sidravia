@@ -119,6 +119,7 @@ void main() {
       await presence.cancelExit();
       expect(calls.map((c) => c.method), [
         'initialize',
+        'getVisibility',
         'configurePreferences',
         'beginExit',
         'cancelExit',

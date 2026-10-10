@@ -7,6 +7,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "win32_window.h"
@@ -54,6 +55,9 @@ class FlutterWindow : public Win32Window {
   bool close_to_tray_ = true;
   bool start_hidden_ = false;
   bool desktop_presence_initialized_ = false;
+  bool visibility_message_queued_ = false;
+  bool destroying_ = false;
+  std::optional<bool> last_published_visibility_;
   bool exit_request_pending_ = false;
   HANDLE single_instance_mutex_ = nullptr;
   std::wstring single_instance_mutex_name_;
@@ -71,6 +75,8 @@ class FlutterWindow : public Win32Window {
   void NotifyTray(const std::wstring& title, const std::wstring& body);
   void ShowTrayMenu();
   void HandleTrayMessage(LPARAM lparam);
+  void ScheduleVisibilityUpdate();
+  void PublishVisibilityUpdate();
   void RequestExplicitExit();
   bool BeginExplicitExit();
   void CancelExplicitExit();

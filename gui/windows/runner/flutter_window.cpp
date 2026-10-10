@@ -16,6 +16,7 @@
 namespace {
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr UINT kVisibilityChangedMessage = WM_APP + 2;
 constexpr int kTrayOpenCommand = 1001;
 constexpr int kTrayExitCommand = 1002;
 constexpr UINT_PTR kExitFallbackTimerId = 1;
@@ -169,6 +170,22 @@ bool FlutterWindow::OnCreate() {
           }
           return;
         }
+        if (call.method_name() == "getVisibility") {
+          const auto* arguments = call.arguments();
+          HWND window = GetHandle();
+          if ((arguments != nullptr &&
+               std::get_if<std::monostate>(arguments) == nullptr) ||
+              !desktop_presence_initialized_ || window == nullptr ||
+              !::IsWindow(window)) {
+            result->Error("desktop_presence_unavailable",
+                          "Main window visibility is unavailable.");
+            return;
+          }
+          result->Success(flutter::EncodableValue(
+              ::IsWindowVisible(window) != FALSE &&
+              ::IsIconic(window) == FALSE));
+          return;
+        }
         if (call.method_name() == "configurePreferences") {
           const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
           if (!desktop_presence_initialized_ || arguments == nullptr || arguments->size() != 2) {
@@ -246,6 +263,8 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  destroying_ = true;
+  visibility_message_queued_ = false;
   if (exit_fallback_timer_ != 0 && GetHandle() != nullptr) {
     ::KillTimer(GetHandle(), exit_fallback_timer_);
     exit_fallback_timer_ = 0;
@@ -347,6 +366,33 @@ void FlutterWindow::RestoreWindow() {
   ::BringWindowToTop(hwnd);
 }
 
+void FlutterWindow::ScheduleVisibilityUpdate() {
+  HWND hwnd = GetHandle();
+  if (destroying_ || visibility_message_queued_ || hwnd == nullptr ||
+      !desktop_channel_ || !flutter_controller_) {
+    return;
+  }
+  visibility_message_queued_ = true;
+  if (!::PostMessageW(hwnd, kVisibilityChangedMessage, 0, 0)) {
+    visibility_message_queued_ = false;
+  }
+}
+
+void FlutterWindow::PublishVisibilityUpdate() {
+  HWND hwnd = GetHandle();
+  if (destroying_ || hwnd == nullptr || !desktop_channel_ ||
+      !flutter_controller_) {
+    return;
+  }
+  const bool visible = ::IsWindowVisible(hwnd) != FALSE &&
+                       ::IsIconic(hwnd) == FALSE;
+  if (last_published_visibility_ == visible) return;
+  last_published_visibility_ = visible;
+  desktop_channel_->InvokeMethod(
+      "visibilityChanged",
+      std::make_unique<flutter::EncodableValue>(visible));
+}
+
 void FlutterWindow::NotifyTray(const std::wstring& title,
                                const std::wstring& body) {
   HWND hwnd = GetHandle();
@@ -442,6 +488,15 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == kVisibilityChangedMessage) {
+    visibility_message_queued_ = false;
+    PublishVisibilityUpdate();
+    return 0;
+  }
+  if (message == WM_SHOWWINDOW || message == WM_SIZE) {
+    ScheduleVisibilityUpdate();
+  }
+
   // Frame messages must precede Flutter's top-level handling.
   if (custom_frame_enabled()) {
     if (message == WM_NCHITTEST || message == WM_NCCALCSIZE ||
