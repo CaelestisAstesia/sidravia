@@ -3,6 +3,26 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('school webpage carrier channel shares runner ownership', () {
+    final runner = File('windows/runner/flutter_window.cpp').readAsStringSync();
+    final header = File('windows/runner/flutter_window.h').readAsStringSync();
+    final cmake = File('windows/runner/CMakeLists.txt').readAsStringSync();
+    expect(runner, contains('"sidravia/announcements"'));
+    expect(
+      runner,
+      contains('school_announcement_window_->Open(GetHandle(), *arguments)'),
+    );
+    expect(header, contains('std::unique_ptr<SchoolAnnouncementWindow>'));
+    final destruction = runner.split('void FlutterWindow::OnDestroy()').last;
+    expect(
+      destruction.indexOf('school_announcement_window_.reset()'),
+      lessThan(destruction.indexOf('flutter_controller_ = nullptr')),
+    );
+    expect(cmake, contains('"school_announcement_window.cpp"'));
+    expect(cmake, contains('FetchContent_MakeAvailable(sidravia_webview2)'));
+    expect(cmake, contains('WebView2LoaderStatic.lib'));
+  });
+
   test('Windows runner owns a DPI-aware custom resizable frame', () {
     final runner = File('windows/runner/win32_window.cpp').readAsStringSync();
     final main = File('windows/runner/main.cpp').readAsStringSync();

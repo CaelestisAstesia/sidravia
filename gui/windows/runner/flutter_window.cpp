@@ -58,6 +58,34 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  school_announcement_window_ = std::make_unique<SchoolAnnouncementWindow>();
+  announcement_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "sidravia/announcements",
+          &flutter::StandardMethodCodec::GetInstance());
+  announcement_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        if (call.method_name() == "open") {
+          const auto* arguments =
+              std::get_if<flutter::EncodableMap>(call.arguments());
+          if (!arguments || !school_announcement_window_ ||
+              !school_announcement_window_->Open(GetHandle(), *arguments)) {
+            result->Error("announcement_unavailable", "Announcement unavailable.");
+            return;
+          }
+          result->Success(flutter::EncodableValue("opened"));
+          return;
+        }
+        if (call.method_name() == "close") {
+          if (school_announcement_window_ && !school_announcement_window_->Close()) {
+            result->Error("announcement_close_failed", "Announcement close failed.");
+            return;
+          }
+          result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
   window_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(), "sidravia/window",
@@ -224,6 +252,8 @@ void FlutterWindow::OnDestroy() {
   }
   RemoveTrayIcon();
   ReleaseDesktopPresence();
+  announcement_channel_.reset();
+  school_announcement_window_.reset();
   window_channel_.reset();
   desktop_channel_.reset();
   if (flutter_controller_) {
