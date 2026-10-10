@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -128,8 +130,12 @@ Future<void> render(
     await tester.tap(find.text('连接与诊断'));
     await tester.pumpAndSettle();
     if (page == 'diagnostics') {
-      await tester.ensureVisible(find.text('连接与诊断'));
-      await tester.tap(find.text('连接与诊断'));
+      await tester.ensureVisible(find.text('技术信息'));
+      await tester.tap(find.text('技术信息'));
+      await tester.pumpAndSettle();
+      expect(find.text('daemon'), findsOneWidget);
+    } else {
+      expect(find.text('daemon'), findsNothing);
     }
   }
   if (page == 'modal') {
@@ -137,6 +143,9 @@ Future<void> render(
   }
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  if (page == 'home' && scenario == 'blocked_by_error') {
+    expect(find.byType(ConnectionIssueCard), findsOneWidget);
+  }
   if (output.isNotEmpty) {
     final data = <String, Object?>{
       'theme': dark ? 'dark' : 'light',
@@ -166,9 +175,7 @@ Future<void> render(
         elements[key] = rect(tester.getRect(finder));
       }
     }
-    final issueFinder = find.byWidgetPredicate(
-      (w) => w.runtimeType.toString() == '_HomeIssue',
-    );
+    final issueFinder = find.byType(ConnectionIssueCard);
     if (issueFinder.evaluate().isNotEmpty) {
       elements['home-issue'] = rect(tester.getRect(issueFinder));
     }
@@ -212,8 +219,10 @@ Future<void> render(
     });
   }
   await tester.pumpWidget(const SizedBox.shrink());
+  await controller.close();
   controller.dispose();
   notices.dispose();
   client.dispose();
+  await appearance.settled;
   appearance.dispose();
 }
