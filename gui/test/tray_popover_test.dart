@@ -39,6 +39,144 @@ void main() {
     expect(TrayPopoverData.fromMap({'tone': 'impossible'}), isNull);
   });
 
+  test(
+    'all presentation actions preserve navigation kind and edit identity',
+    () {
+      final cases = <(GuiConnectionAction, TrayIntentKind, String?)>[
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.start, 's1'),
+          TrayIntentKind.connection,
+          's1',
+        ),
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.reconnect, 's1'),
+          TrayIntentKind.connection,
+          's1',
+        ),
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.stop, 's1'),
+          TrayIntentKind.connection,
+          's1',
+        ),
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.retryIpc),
+          TrayIntentKind.connection,
+          null,
+        ),
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.addConfiguration),
+          TrayIntentKind.addConfiguration,
+          null,
+        ),
+        (
+          const GuiConnectionAction(
+            GuiConnectionActionKind.editConfiguration,
+            'config-7',
+          ),
+          TrayIntentKind.editConfiguration,
+          'config-7',
+        ),
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.showSettings),
+          TrayIntentKind.showSettings,
+          null,
+        ),
+        (
+          const GuiConnectionAction(GuiConnectionActionKind.showDetails),
+          TrayIntentKind.showDetails,
+          null,
+        ),
+      ];
+      for (final (action, kind, targetId) in cases) {
+        final intent = TrayIntent.fromConnectionAction(action);
+        final decoded = TrayIntent.fromMap(intent.toMap());
+        expect(decoded?.kind, kind);
+        expect(decoded?.targetId, targetId);
+        final projection = data.toMap()..['primaryAction'] = intent.toMap();
+        final roundTrip = TrayPopoverData.fromMap(projection);
+        expect(roundTrip?.primaryAction.kind, kind);
+        expect(roundTrip?.primaryAction.targetId, targetId);
+      }
+      expect(TrayIntent.fromMap({'kind': 'editConfiguration'}), isNull);
+      expect(
+        TrayIntent.fromMap({'kind': 'editConfiguration', 'targetId': ''}),
+        isNull,
+      );
+      expect(
+        TrayIntent.fromMap({'kind': 'showSettings', 'targetId': 'config-7'}),
+        isNull,
+      );
+      expect(
+        TrayIntent.fromMap({
+          'kind': 'addConfiguration',
+          'connectionKind': 'start',
+        }),
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'first-use create and auth-failure edit survive projection round trip',
+    () {
+      ConnectionPresentation presentation({
+        required String title,
+        required GuiConnectionAction primary,
+        required GuiConnectionAction secondary,
+      }) => ConnectionPresentation(
+        institution: '吉林大学',
+        username: 'demo',
+        statusTitle: title,
+        statusDetail: '详情',
+        statusContext: '',
+        glyph: '!',
+        tone: HomeTone.error,
+        primaryLabel: '继续',
+        secondaryLabel: '编辑配置',
+        primaryAction: primary,
+        secondaryAction: secondary,
+        primaryEnabled: true,
+        secondaryEnabled: true,
+        primaryKind: HomeButtonKind.primary,
+      );
+
+      final create = TrayPopoverData.fromPresentation(
+        presentation(
+          title: '未连接',
+          primary: const GuiConnectionAction(
+            GuiConnectionActionKind.addConfiguration,
+          ),
+          secondary: const GuiConnectionAction(
+            GuiConnectionActionKind.showSettings,
+          ),
+        ),
+        dark: false,
+      );
+      expect(
+        TrayPopoverData.fromMap(create.toMap())?.primaryAction.kind,
+        TrayIntentKind.addConfiguration,
+      );
+
+      final authFailure = TrayPopoverData.fromPresentation(
+        presentation(
+          title: '认证失败',
+          primary: const GuiConnectionAction(
+            GuiConnectionActionKind.reconnect,
+            'session-4',
+          ),
+          secondary: const GuiConnectionAction(
+            GuiConnectionActionKind.editConfiguration,
+            'configuration-4',
+          ),
+        ),
+        dark: false,
+      );
+      final restored = TrayPopoverData.fromMap(authFailure.toMap());
+      expect(restored?.secondaryAction?.kind, TrayIntentKind.editConfiguration);
+      expect(restored?.secondaryAction?.targetId, 'configuration-4');
+    },
+  );
+
   testWidgets('popover keeps bounded width, current actions and exit rows', (
     tester,
   ) async {

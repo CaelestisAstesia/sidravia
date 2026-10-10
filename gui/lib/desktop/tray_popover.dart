@@ -47,12 +47,12 @@ class TrayPopoverData {
       glyph: p.glyph,
       tone: p.tone,
       primaryLabel: p.primaryLabel,
-      primaryAction: TrayIntent.connection(p.primaryAction),
+      primaryAction: TrayIntent.fromConnectionAction(p.primaryAction),
       primaryEnabled: p.primaryEnabled,
       disabledReason: p.actionError ?? '当前操作暂不可用。',
       secondaryLabel: canShowSecondary ? p.secondaryLabel : null,
       secondaryAction: canShowSecondary
-          ? TrayIntent.connection(p.secondaryAction)
+          ? TrayIntent.fromConnectionAction(p.secondaryAction)
           : null,
       secondaryEnabled: canShowSecondary && p.secondaryEnabled,
     );
@@ -171,6 +171,27 @@ class TrayIntent {
     targetId: action.targetId,
   );
 
+  factory TrayIntent.fromConnectionAction(GuiConnectionAction action) =>
+      switch (action.kind) {
+        GuiConnectionActionKind.start ||
+        GuiConnectionActionKind.reconnect ||
+        GuiConnectionActionKind.stop ||
+        GuiConnectionActionKind.retryIpc => TrayIntent.connection(action),
+        GuiConnectionActionKind.addConfiguration => const TrayIntent(
+          TrayIntentKind.addConfiguration,
+        ),
+        GuiConnectionActionKind.editConfiguration => TrayIntent(
+          TrayIntentKind.editConfiguration,
+          targetId: action.targetId,
+        ),
+        GuiConnectionActionKind.showSettings => const TrayIntent(
+          TrayIntentKind.showSettings,
+        ),
+        GuiConnectionActionKind.showDetails => const TrayIntent(
+          TrayIntentKind.showDetails,
+        ),
+      };
+
   final TrayIntentKind kind;
   final GuiConnectionActionKind? connectionAction;
   final String? targetId;
@@ -212,6 +233,12 @@ class TrayIntent {
         targetId: id as String?,
       );
     }
+    final targetId = value['targetId'];
+    if (kind == TrayIntentKind.editConfiguration) {
+      if (targetId is! String || targetId.trim().isEmpty) return null;
+      return TrayIntent(kind, targetId: targetId);
+    }
+    if (targetId != null || value.containsKey('connectionKind')) return null;
     return TrayIntent(kind);
   }
 }

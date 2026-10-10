@@ -102,14 +102,16 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   Future<void> _handleTrayAction(TrayIntent intent) async {
     final controller = widget.controller;
     final desktop = widget.desktopPresence;
-    final presentation = controller.connectionPresentation;
-    bool same(GuiConnectionAction action) =>
-        (presentation.primaryEnabled &&
-            action.kind == presentation.primaryAction.kind &&
-            action.targetId == presentation.primaryAction.targetId) ||
-        (presentation.secondaryEnabled &&
-            action.kind == presentation.secondaryAction.kind &&
-            action.targetId == presentation.secondaryAction.targetId);
+    bool same(GuiConnectionAction action) {
+      final presentation = controller.connectionPresentation;
+      return (presentation.primaryEnabled &&
+              action.kind == presentation.primaryAction.kind &&
+              action.targetId == presentation.primaryAction.targetId) ||
+          (presentation.secondaryEnabled &&
+              action.kind == presentation.secondaryAction.kind &&
+              action.targetId == presentation.secondaryAction.targetId);
+    }
+
     if (intent.kind == TrayIntentKind.exit) {
       await _handleExitRequested();
       return;
@@ -172,8 +174,22 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       _ => null,
     };
     if (page == null) return;
+    bool navigationStillAllowed() {
+      if (!same(action)) return false;
+      return switch (action.kind) {
+        GuiConnectionActionKind.addConfiguration =>
+          controller.capabilities.canCreate,
+        GuiConnectionActionKind.editConfiguration =>
+          action.targetId != null &&
+              controller.capabilities.matchesConfiguration(action.targetId!),
+        GuiConnectionActionKind.showSettings ||
+        GuiConnectionActionKind.showDetails => true,
+        _ => false,
+      };
+    }
+
     await desktop?.restoreMain();
-    if (mounted) {
+    if (mounted && navigationStillAllowed()) {
       final moved =
           await _shellKey.currentState?.navigateFromTray(page) ?? false;
       if (!moved) {
@@ -181,6 +197,8 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
           const SnackBar(content: Text('已保留未保存的连接配置。')),
         );
       }
+    } else if (mounted) {
+      _publishTrayPresentation();
     }
   }
 

@@ -9,6 +9,19 @@ constexpr wchar_t kClassName[] = L"Sidravia.TrayPopover";
 constexpr int kLogicalWidth = 210;
 constexpr int kMinimumHeight = 120;
 constexpr int kMaximumHeight = 700;
+
+UINT MonitorDpi(HMONITOR monitor) {
+  using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+  HMODULE shcore = LoadLibraryW(L"shcore.dll");
+  if (shcore == nullptr) return 96;
+  const auto get_dpi = reinterpret_cast<GetDpiForMonitorFn>(
+      GetProcAddress(shcore, "GetDpiForMonitor"));
+  UINT x = 96;
+  UINT y = 96;
+  if (get_dpi != nullptr) get_dpi(monitor, 0, &x, &y);
+  FreeLibrary(shcore);
+  return x > 0 ? x : (y > 0 ? y : 96);
+}
 }
 
 TrayPopoverWindow::TrayPopoverWindow(const flutter::DartProject& project,
@@ -35,7 +48,8 @@ bool TrayPopoverWindow::Create() {
   const DWM_WINDOW_CORNER_PREFERENCE corner = DWMWCP_ROUND;
   DwmSetWindowAttribute(window_, DWMWA_WINDOW_CORNER_PREFERENCE, &corner,
                         sizeof(corner));
-  const UINT dpi = GetDpiForWindow(window_);
+  const UINT dpi = MonitorDpi(
+      MonitorFromRect(&anchor_, MONITOR_DEFAULTTONEAREST));
   const int width = MulDiv(kLogicalWidth, static_cast<int>(dpi), 96);
   const int height = MulDiv(logical_height_, static_cast<int>(dpi), 96);
   controller_ = std::make_unique<flutter::FlutterViewController>(
@@ -127,22 +141,27 @@ void TrayPopoverWindow::Resize(int logical_height) {
   Position(anchor_);
 }
 
-void TrayPopoverWindow::Position(const RECT& anchor) {
+void TrayPopoverWindow::Position(const RECT& anchor, UINT dpi_override) {
   if (window_ == nullptr) return;
-  const UINT dpi = GetDpiForWindow(owner_);
-  const int width = MulDiv(kLogicalWidth, static_cast<int>(dpi), 96);
-  const int height = MulDiv(logical_height_, static_cast<int>(dpi), 96);
   RECT work{};
   MONITORINFO monitor{sizeof(monitor)};
-  GetMonitorInfoW(MonitorFromRect(&anchor, MONITOR_DEFAULTTONEAREST), &monitor);
+  const HMONITOR target = MonitorFromRect(&anchor, MONITOR_DEFAULTTONEAREST);
+  GetMonitorInfoW(target, &monitor);
+  const UINT dpi = dpi_override > 0 ? dpi_override : MonitorDpi(target);
+  const int left = static_cast<int>(monitor.rcWork.left);
+  const int top = static_cast<int>(monitor.rcWork.top);
+  const int right = static_cast<int>(monitor.rcWork.right);
+  const int bottom = static_cast<int>(monitor.rcWork.bottom);
+  const int width = std::clamp(
+      MulDiv(kLogicalWidth, static_cast<int>(dpi), 96), 1,
+      std::max(1, right - left));
+  const int height = std::clamp(
+      MulDiv(logical_height_, static_cast<int>(dpi), 96), 1,
+      std::max(1, bottom - top));
   work = monitor.rcWork;
   int x = anchor.right - width;
   int y = anchor.top - height - 6;
   if (y < work.top) y = anchor.bottom + 6;
-  const int left = static_cast<int>(work.left);
-  const int top = static_cast<int>(work.top);
-  const int right = static_cast<int>(work.right);
-  const int bottom = static_cast<int>(work.bottom);
   x = std::clamp(x, left, std::max(left, right - width));
   y = std::clamp(y, top, std::max(top, bottom - height));
   SetWindowPos(window_, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
@@ -176,44 +195,65 @@ LRESULT CALLBACK TrayPopoverWindow::WindowProc(HWND window, UINT message,
     SetWindowLongPtrW(window, GWLP_USERDATA,
                       reinterpret_cast<LONG_PTR>(self));
   }
-  return self ? self->HandleMessage(message, wparam, lparam)
-              : DefWindowProcW(window, message, wparam, lparam);
+  const LRESULT result = self
+      ? self->HandleMessage(window, message, wparam, lparam)
+      : DefWindowProcW(window, message, wparam, lparam);
+  if (message == WM_NCDESTROY) {
+    SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+    if (self != nullptr && self->window_ == window) self->window_ = nullptr;
+  }
+  return result;
 }
 
-LRESULT TrayPopoverWindow::HandleMessage(UINT message, WPARAM wparam,
-                                         LPARAM lparam) {
+LRESULT TrayPopoverWindow::HandleMessage(HWND window, UINT message,
+                                         WPARAM wparam, LPARAM lparam) {
   std::optional<LRESULT> flutter_result;
   if (controller_) {
     flutter_result = controller_->HandleTopLevelWindowProc(
-        window_, message, wparam, lparam);
+        window, message, wparam, lparam);
   }
   switch (message) {
     case WM_SIZE:
     case WM_DPICHANGED: {
+      if (message == WM_DPICHANGED && !handling_dpi_change_) {
+        handling_dpi_change_ = true;
+        Position(anchor_, HIWORD(wparam));
+        handling_dpi_change_ = false;
+      }
       if (controller_) {
         RECT client{};
-        GetClientRect(window_, &client);
+        GetClientRect(window, &client);
         SetWindowPos(controller_->view()->GetNativeWindow(), nullptr, 0, 0,
                      client.right, client.bottom,
                      SWP_NOZORDER | SWP_NOACTIVATE);
       }
-      if (message == WM_DPICHANGED) Position(anchor_);
       if (flutter_result) return *flutter_result;
       return 0;
     }
-    case WM_KILLFOCUS:
+    case WM_KILLFOCUS: {
+      HWND next_focus = reinterpret_cast<HWND>(wparam);
+      HWND flutter_child = controller_
+          ? controller_->view()->GetNativeWindow() : nullptr;
+      if (next_focus != nullptr &&
+          (next_focus == flutter_child || IsChild(window, next_focus))) {
+        return 0;
+      }
       Hide();
       return 0;
+    }
+    case WM_ACTIVATE:
+      if (LOWORD(wparam) == WA_INACTIVE) {
+        Hide();
+        return 0;
+      }
+      break;
     case WM_KEYDOWN:
       if (wparam == VK_ESCAPE) { Hide(); return 0; }
       break;
     case WM_CLOSE:
       Hide();
       return 0;
-    case WM_DESTROY:
-      window_ = nullptr;
-      return 0;
   }
   if (flutter_result) return *flutter_result;
-  return DefWindowProcW(window_, message, wparam, lparam);
+  return DefWindowProcW(window, message, wparam, lparam);
 }

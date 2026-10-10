@@ -133,10 +133,31 @@ void main() {
     expect(header, contains('std::unique_ptr<TrayPopoverWindow>'));
     final tray = File('windows/runner/tray_popover_window.cpp')
         .readAsStringSync();
+    final trayHeader = File('windows/runner/tray_popover_window.h')
+        .readAsStringSync();
     expect(tray, contains('set_dart_entrypoint("trayMain")'));
     expect(tray, contains('HandleTopLevelWindowProc'));
     expect(tray, contains('resizeToContent'));
     expect(tray, contains('WM_DPICHANGED'));
+    expect(tray, contains('GetDpiForMonitor'));
+    expect(
+      tray,
+      contains('MonitorFromRect(&anchor, MONITOR_DEFAULTTONEAREST)'),
+    );
+    expect(tray, contains('HIWORD(wparam)'));
+    expect(tray, contains('IsChild(window, next_focus)'));
+    expect(tray, contains('case WM_ACTIVATE:'));
+    expect(tray, contains('LOWORD(wparam) == WA_INACTIVE'));
+    expect(tray, contains('right - left'));
+    expect(tray, contains('bottom - top'));
+    expect(tray, contains('message == WM_NCDESTROY'));
+    expect(
+      tray,
+      contains('self->HandleMessage(window, message, wparam, lparam)'),
+    );
+    expect(tray, contains('SetWindowLongPtrW(window, GWLP_USERDATA, 0)'));
+    expect(tray, contains('controller_->HandleTopLevelWindowProc'));
+    expect(trayHeader, contains('bool handling_dpi_change_'));
     expect(flutterWindow, contains('GetDoubleClickTime()'));
     expect(flutterWindow, contains('WM_LBUTTONDBLCLK'));
     expect(flutterWindow, contains('suppress_tray_button_up_'));

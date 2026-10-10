@@ -24,10 +24,10 @@ class TrayPopoverWindow {
 
  private:
   static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
-  LRESULT HandleMessage(UINT, WPARAM, LPARAM);
+  LRESULT HandleMessage(HWND, UINT, WPARAM, LPARAM);
   bool Create();
   void Resize(int logical_height);
-  void Position(const RECT& anchor);
+  void Position(const RECT& anchor, UINT dpi = 0);
 
   flutter::DartProject project_;
   HWND owner_ = nullptr;
@@ -41,6 +41,7 @@ class TrayPopoverWindow {
   bool destroying_ = false;
   bool frame_ready_ = false;
   bool requested_visible_ = false;
+  bool handling_dpi_change_ = false;
 };
 
 #endif

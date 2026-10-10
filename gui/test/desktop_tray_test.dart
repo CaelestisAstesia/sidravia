@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
 
 void main() {
@@ -61,5 +63,51 @@ void main() {
       TrayIntent.fromMap({'kind': 'connection', 'connectionKind': 'stop'}),
       isNull,
     );
+  });
+
+  testWidgets('popover reports native channel failures and disposes cleanly', (
+    tester,
+  ) async {
+    const channel = MethodChannel(trayViewChannelName);
+    final methods = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          methods.add(call.method);
+          throw PlatformException(code: 'unavailable');
+        });
+    await tester.pumpWidget(
+      TrayPopoverApp(
+        initialData: const TrayPopoverData(
+          statusTitle: '等待重试',
+          dark: false,
+          institution: '吉林大学',
+          username: 'demo',
+          statusDetail: '服务暂不可用',
+          statusContext: '请重试',
+          glyph: '!',
+          tone: HomeTone.error,
+          primaryLabel: '立即重试',
+          primaryAction: TrayIntent(
+            TrayIntentKind.connection,
+            connectionAction: GuiConnectionActionKind.retryIpc,
+          ),
+          primaryEnabled: true,
+          disabledReason: '',
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('立即重试'));
+    await tester.pump();
+    expect(find.text('托盘操作暂不可用，请双击图标显示主界面后重试。'), findsOneWidget);
+    expect(
+      methods,
+      containsAll(['getPresentation', 'resizeToContent', 'action']),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
   });
 }

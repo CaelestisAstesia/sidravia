@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'school_announcement_controller_test.dart' as school_dispatch;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/desktop/tray_popover.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
@@ -64,6 +69,62 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();
       controller.dispose();
+    }
+  });
+
+  testWidgets('tray create is revalidated after restoring the main window', (
+    tester,
+  ) async {
+    final restore = Completer<void>();
+    const channel = MethodChannel(desktopPresenceChannelName);
+    Future<Object?> nativeCallHandler(MethodCall call) async {
+      if (call.method == 'initialize') return 'primary';
+      if (call.method == 'getVisibility') return true;
+      if (call.method == 'restoreMain') {
+        await restore.future;
+      }
+      return null;
+    }
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, nativeCallHandler);
+    final client = OfflineDemoClient()..selectScenario('empty');
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+    );
+    final desktop = DesktopPresence();
+    await desktop.initialize();
+    try {
+      await tester.pumpWidget(
+        SidraviaApp(controller: controller, desktopPresence: desktop),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('尚未配置'), findsAtLeastNWidgets(1));
+
+      final pending = desktop.onTrayAction!(
+        const TrayIntent(TrayIntentKind.addConfiguration),
+      );
+      await tester.pump();
+      expect(
+        await controller.createConfiguration(
+          institutionProfileId: 'jlu',
+          username: 'demo',
+          password: 'secret',
+        ),
+        isTrue,
+      );
+      restore.complete();
+      await pending;
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfigurationPage), findsNothing);
+      expect(find.byType(HomePage), findsOneWidget);
+    } finally {
+      if (!restore.isCompleted) restore.complete();
+      await tester.pumpWidget(const SizedBox.shrink());
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      client.dispose();
     }
   });
 

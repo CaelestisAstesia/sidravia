@@ -22,6 +22,7 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
   static const _channel = MethodChannel(trayViewChannelName);
   final _popoverKey = GlobalKey();
   TrayPopoverData? _data;
+  String? _channelError;
   int _lastHeight = 0;
   int _presentationRevision = 0;
 
@@ -42,9 +43,30 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
         setState(() => _data = next);
       }
     } on PlatformException {
-      // Native keeps the popup hidden when its first presentation is absent.
+      _showChannelFailure();
     } on MissingPluginException {
-      // The standalone view is only created by the Windows owner.
+      _showChannelFailure();
+    }
+  }
+
+  void _showChannelFailure() {
+    if (mounted) {
+      setState(() {
+        _channelError = '托盘操作暂不可用，请双击图标显示主界面后重试。';
+      });
+    }
+  }
+
+  Future<void> _invokeNative(String method, [Object? arguments]) async {
+    try {
+      await _channel.invokeMethod<void>(method, arguments);
+      if (mounted && _channelError != null) {
+        setState(() => _channelError = null);
+      }
+    } on PlatformException {
+      _showChannelFailure();
+    } on MissingPluginException {
+      _showChannelFailure();
     }
   }
 
@@ -65,15 +87,16 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
   void _scheduleMeasure() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final height = _popoverKey.currentContext?.size?.height.round();
+      final measured = _popoverKey.currentContext?.size?.height.round();
+      final height = measured?.clamp(120, 700).toInt();
       if (height == null || height <= 0 || height == _lastHeight) return;
       _lastHeight = height;
-      unawaited(_channel.invokeMethod<void>('resizeToContent', height));
+      unawaited(_invokeNative('resizeToContent', height));
     });
   }
 
   void _sendAction(TrayIntent intent) {
-    unawaited(_channel.invokeMethod<void>('action', intent.toMap()));
+    unawaited(_invokeNative('action', intent.toMap()));
   }
 
   @override
@@ -96,16 +119,32 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
         backgroundColor: dark ? AppColors.surfaceDark : AppColors.surfaceLight,
         body: data == null
             ? const SizedBox.shrink()
-            : LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: TrayPopover(
-                    key: _popoverKey,
-                    data: data,
-                    onAction: _sendAction,
-                    onDismiss: () =>
-                        unawaited(_channel.invokeMethod<void>('dismiss')),
-                  ),
+            : SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
+                  key: _popoverKey,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TrayPopover(
+                      data: data,
+                      onAction: _sendAction,
+                      onDismiss: () => unawaited(_invokeNative('dismiss')),
+                    ),
+                    if (_channelError != null)
+                      SizedBox(
+                        width: 210,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                          child: Text(
+                            _channelError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
       ),
