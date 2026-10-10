@@ -181,6 +181,56 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 24),
+          const DesignSectionTitle('公告'),
+          DesignGroup(
+            children: [
+              _AnnouncementSelector<GuiAnnouncementFrequency>(
+                dropdownKey: const ValueKey('announcement-frequency-selector'),
+                label: '自动显示公告',
+                value:
+                    appearance?.announcementFrequency ??
+                    GuiAnnouncementFrequency.dailyFirstConnection,
+                options: const [
+                  (GuiAnnouncementFrequency.everyConnection, '每次连接成功后'),
+                  (GuiAnnouncementFrequency.dailyFirstConnection, '每天首次连接成功后'),
+                  (GuiAnnouncementFrequency.manualOnly, '不自动显示'),
+                ],
+                onChanged: appearance == null
+                    ? null
+                    : (value) => appearance.announcementFrequency = value,
+              ),
+              if ((appearance?.announcementFrequency ??
+                      GuiAnnouncementFrequency.dailyFirstConnection) !=
+                  GuiAnnouncementFrequency.manualOnly)
+                _AnnouncementSelector<GuiHiddenAnnouncementBehavior>(
+                  dropdownKey: const ValueKey(
+                    'hidden-announcement-behavior-selector',
+                  ),
+                  label: '主窗口隐藏时',
+                  value:
+                      appearance?.hiddenAnnouncementBehavior ??
+                      GuiHiddenAnnouncementBehavior.notify,
+                  options: const [
+                    (GuiHiddenAnnouncementBehavior.showImmediately, '直接显示公告'),
+                    (GuiHiddenAnnouncementBehavior.notify, '通知后点击查看'),
+                    (GuiHiddenAnnouncementBehavior.onRestore, '恢复主窗口时显示'),
+                  ],
+                  onChanged: appearance == null
+                      ? null
+                      : (value) =>
+                            appearance.hiddenAnnouncementBehavior = value,
+                ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 7),
+            child: DesignHelper('自动重连成功也计入连接成功。'),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: DesignHelper('选择“不自动显示”后，仍可在主界面手动查看公告。'),
+          ),
           const SizedBox(height: 7),
           if (!desktopEnabled) const DesignHelper('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'),
           if (desktopPresence?.feedback != null)
@@ -193,6 +243,82 @@ class SettingsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AnnouncementSelector<T> extends StatelessWidget {
+  const _AnnouncementSelector({
+    required this.dropdownKey,
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final Key dropdownKey;
+  final String label;
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            height: 16 / 11,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: DropdownButton<T>(
+              key: dropdownKey,
+              value: value,
+              isExpanded: true,
+              itemHeight: null,
+              underline: const SizedBox.shrink(),
+              style: TextStyle(
+                fontFamily: 'HarmonyOS Sans',
+                fontSize: 11,
+                height: 1.35,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              icon: const Icon(Icons.arrow_drop_down, size: 20),
+              items: [
+                for (final (option, title) in options)
+                  DropdownMenuItem<T>(
+                    value: option,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(title),
+                    ),
+                  ),
+              ],
+              onChanged: onChanged == null
+                  ? null
+                  : (next) {
+                      if (next != null) onChanged!(next);
+                    },
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class AppearanceSelector extends StatelessWidget {
