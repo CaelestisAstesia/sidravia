@@ -1,9 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
-import 'package:sidravia_gui/features/announcements/announcement_feed.dart';
-import 'package:sidravia_gui/features/announcements/announcement_model.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
@@ -71,6 +67,11 @@ class OfflineDemoClient extends ChangeNotifier
     id: 'jlu',
     displayName: '吉林大学',
     protocolId: 'drcom-5.2.0-d',
+    announcement: AnnouncementMetadata(
+      url: 'http://login.jlu.edu.cn/notice_win.php',
+      clientWidth: 600,
+      clientHeight: 460,
+    ),
   );
   ConfigurationSummary? _configuration = const ConfigurationSummary(
     id: 'demo-config',
@@ -415,45 +416,4 @@ class OfflineDemoBootstrap implements GuiBootstrapper {
       mode: 'desktop',
     ),
   );
-}
-
-class OfflineAnnouncementFetcher implements AnnouncementFetcher {
-  OfflineAnnouncementFetcher(this.now);
-  final DateTime now;
-  bool active = true;
-  int revision = 1;
-  bool closed = false;
-  static final endpoint = Uri.parse('https://offline.invalid/announcements');
-  @override
-  Future<AnnouncementFetchResult> fetch({
-    String? etag,
-    String? lastModified,
-  }) async {
-    final raw = jsonEncode({
-      'schema': 1,
-      'generatedAt': now.toIso8601String(),
-      'items': [
-        if (active)
-          {
-            'id': 'offline-maintenance',
-            'revision': revision,
-            'level': 'maintenance',
-            'title': revision == 1 ? '校园网维护安排' : '校园网公告更新（模拟）',
-            'body': '这是离线演示公告。配置、导航与连接操作仅使用内存模拟数据，不会访问校园网或真实账号。',
-            'publishedAt': now.toIso8601String(),
-            'startsAt': now.toIso8601String(),
-            'expiresAt': now.add(const Duration(days: 365)).toIso8601String(),
-          },
-      ],
-    });
-    return AnnouncementFetchResult.updated(
-      feed: AnnouncementDocument.decode(raw, endpoint: endpoint),
-      rawBody: raw,
-    );
-  }
-
-  @override
-  void close() {
-    closed = true;
-  }
 }

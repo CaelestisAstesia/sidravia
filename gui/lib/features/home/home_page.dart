@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
@@ -63,7 +62,7 @@ class HomePage extends StatelessWidget {
   });
   final GuiController controller;
   final ValueChanged<AppPage> onNavigate;
-  final AnnouncementController? announcements;
+  final SchoolAnnouncementController? announcements;
 
   @override
   Widget build(BuildContext context) {
@@ -76,18 +75,13 @@ class HomePage extends StatelessWidget {
   Widget _build(BuildContext context) {
     final p = controller.connectionPresentation;
     final configurationId = controller.capabilities.configuration?.id;
-    final item =
-        announcements?.inlineNotice ??
-        (announcements == null || announcements!.announcements.isEmpty
-            ? null
-            : announcements!.announcements.first);
-    final notice = item == null || announcements?.enabled != true
+    final school = announcements?.profile;
+    final notice = school == null
         ? null
         : HomeNotice(
-            title: item.title,
+            title: '查看${school.displayName}公告',
             onOpen: () {
-              announcements!.markCurrentRead();
-              showAnnouncementSheet(context, controller: announcements!);
+              announcements!.openManually();
             },
           );
     return HomeView(
@@ -116,7 +110,7 @@ class HomePage extends StatelessWidget {
             ? () => _perform(p.secondaryAction)
             : null,
         onPrimary: p.primaryEnabled ? () => _perform(p.primaryAction) : null,
-        actionError: p.actionError,
+        actionError: announcements?.feedback ?? p.actionError,
         issue: p.issue,
         notice: notice,
       ),
@@ -381,7 +375,7 @@ class HomeNoticeView extends StatelessWidget {
               ),
               SizedBox(height: 10),
               Text(
-                '点击查看公告页面',
+                '在应用内打开学校公告页面',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,

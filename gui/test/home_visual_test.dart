@@ -1,3 +1,7 @@
+import 'package:sidravia_gui/dev/offline_demo_client.dart';
+
+import 'school_announcement_controller_test.dart' as school_dispatch;
+
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,14 +13,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_feed.dart';
-import 'package:sidravia_gui/features/announcements/announcement_model.dart';
-import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/dev/preview_main.dart';
@@ -110,7 +109,7 @@ void main() {
         'status-detail': '认证成功 · 已连接 2 小时 18 分钟',
         'notice-meta': '校园网公告',
         'notice-title': '校园网维护安排',
-        'notice-description': '点击查看公告页面',
+        'notice-description': '在应用内打开学校公告页面',
       }.entries) {
         final rect = tester.getRect(find.text(entry.value));
         measurements[entry.key] = {
@@ -192,104 +191,51 @@ void main() {
   );
 
   testWidgets(
-    'formal HomePage responds when an announcement arrives and updates',
+    'formal HomePage hides unavailable metadata and shows manual school entry',
     (tester) async {
-      final now = DateTime.utc(2026, 10, 3, 12);
-      final fetcher = _AnnouncementFetcher([
-        _announcementResult(now, 'maintenance-a', '校园网维护安排'),
-        _announcementResult(now, 'maintenance-b', '校园网升级安排'),
-        _emptyAnnouncements(now),
-      ]);
-      final announcements = AnnouncementController(
-        endpoint: Uri.parse('https://notices.example.edu/feed.json'),
-        store: MemoryAnnouncementStore(),
-        fetcher: fetcher,
-        nowUtc: () => now,
-        refreshInterval: Duration.zero,
+      final client = OfflineDemoClient();
+      final controller = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
       );
-      final controller = _HomeController();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(
-            controller: controller,
-            announcements: announcements,
-            onNavigate: (_) {},
+      await controller.start();
+      final announcements = await school_dispatch.manualAnnouncements(
+        tester,
+        controller,
+      );
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomePage(
+              controller: controller,
+              announcements: announcements,
+              onNavigate: (_) {},
+            ),
           ),
-        ),
-      );
-      expect(find.text('校园网维护安排'), findsNothing);
-      await announcements.start();
-      await tester.pump();
-      expect(find.text('校园网维护安排'), findsOneWidget);
-      await announcements.refreshIfDue();
-      await tester.pump();
-      expect(find.text('校园网升级安排'), findsOneWidget);
-      expect(fetcher.calls, 2);
-      expect(find.byType(HomeNoticeView), findsOneWidget);
-      expect(announcements.unreadCount, 1);
-      await tester.tap(find.byType(HomeNoticeView));
-      await tester.pumpAndSettle();
-      expect(announcements.unreadCount, 0);
-      expect(find.text('公告正文'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(
-            controller: controller,
-            announcements: announcements,
-            onNavigate: (_) {},
-          ),
-        ),
-      );
-      await announcements.refreshIfDue();
-      await tester.pump();
-      expect(find.byType(HomeNoticeView), findsNothing);
-      expect(find.byKey(const ValueKey('home-divider')), findsNothing);
-      announcements.dispose();
-      controller.dispose();
+        );
+        expect(find.text('查看吉林大学公告'), findsOneWidget);
+        expect(find.text('在应用内打开学校公告页面'), findsOneWidget);
+        await tester.tap(find.byType(HomeNoticeView));
+        await tester.pumpAndSettle();
+        expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
+        client.selectScenario('empty');
+        await controller.start();
+        announcements.updateCapabilities(controller.capabilities);
+        await tester.pump();
+        expect(find.byType(HomeNoticeView), findsNothing);
+        expect(find.byKey(const ValueKey('home-divider')), findsNothing);
+      } finally {
+        await tester.pump();
+        await school_dispatch.pumpCleanup(tester, () async {
+          await announcements.close();
+          await controller.close();
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+        announcements.dispose();
+        client.dispose();
+      }
     },
-  );
-}
-
-AnnouncementFetchResult _announcementResult(
-  DateTime now,
-  String id,
-  String title,
-) {
-  final raw = jsonEncode({
-    'schema': 1,
-    'generatedAt': now.toIso8601String(),
-    'items': [
-      {
-        'id': id,
-        'revision': 1,
-        'level': 'maintenance',
-        'title': title,
-        'body': '公告正文',
-        'publishedAt': now.subtract(const Duration(hours: 1)).toIso8601String(),
-        'startsAt': now.subtract(const Duration(minutes: 1)).toIso8601String(),
-        'expiresAt': now.add(const Duration(days: 1)).toIso8601String(),
-      },
-    ],
-  });
-  return AnnouncementFetchResult.updated(
-    feed: AnnouncementDocument.decode(
-      raw,
-      endpoint: Uri.parse('https://notices.example.edu/feed.json'),
-    ),
-    rawBody: raw,
-  );
-}
-
-class _HomeController extends GuiController {
-  _HomeController() : super(bootstrapper: const UnsupportedGuiBootstrapper());
-  @override
-  GuiConnectionState get state => GuiConnectionState.ready;
-  @override
-  GuiCapabilities get capabilities => GuiCapabilities(
-    state: GuiConnectionState.ready,
-    snapshot: _homeSnapshot,
-    busy: false,
   );
 }
 
@@ -337,24 +283,6 @@ final _homeSnapshot = GuiSnapshot(
   ],
 );
 
-final class _AnnouncementFetcher implements AnnouncementFetcher {
-  _AnnouncementFetcher(this.outcomes);
-  final List<AnnouncementFetchResult> outcomes;
-  var calls = 0;
-
-  @override
-  Future<AnnouncementFetchResult> fetch({
-    String? etag,
-    String? lastModified,
-  }) async {
-    calls++;
-    return outcomes.removeAt(0);
-  }
-
-  @override
-  void close() {}
-}
-
 class _Bootstrapper implements GuiBootstrapper {
   @override
   Future<GuiBootstrapResult> bootstrap() async => GuiBootstrapResult.success(
@@ -395,19 +323,4 @@ class _Client implements SidraviaIpcClient {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('unexpected client call: ${invocation.memberName}');
-}
-
-AnnouncementFetchResult _emptyAnnouncements(DateTime now) {
-  final raw = jsonEncode({
-    'schema': 1,
-    'generatedAt': now.toIso8601String(),
-    'items': <Object>[],
-  });
-  return AnnouncementFetchResult.updated(
-    feed: AnnouncementDocument.decode(
-      raw,
-      endpoint: Uri.parse('https://notices.example.edu/feed.json'),
-    ),
-    rawBody: raw,
-  );
 }

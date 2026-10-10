@@ -1,3 +1,5 @@
+import 'school_announcement_controller_test.dart' as school_dispatch;
+
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,8 +7,6 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/interactive_demo_main.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -144,48 +144,57 @@ void main() {
   testWidgets(
     'developer controls switch actual state feed and theme outside shell',
     (tester) async {
-      await tester.pumpWidget(const OfflineDemoApp());
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('演示场景'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('等待重试').last);
-      await tester.pumpAndSettle();
-      expect(find.text('停止重试'), findsOneWidget);
-      await tester.tap(find.text('隐藏公告（模拟）'));
-      await tester.pumpAndSettle();
-      expect(find.byType(HomeNoticeView), findsNothing);
-      await tester.tap(find.text('显示公告（模拟）'));
-      await tester.pumpAndSettle();
-      expect(find.byType(HomeNoticeView), findsOneWidget);
-      await tester.tap(find.text('更新公告（模拟）'));
-      await tester.pumpAndSettle();
-      expect(find.text('校园网公告更新（模拟）'), findsOneWidget);
-      await tester.tap(find.byTooltip('演示外观'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('深色').last);
-      await tester.pumpAndSettle();
-      expect(
-        Theme.of(tester.element(find.byType(HomePage))).brightness,
-        Brightness.dark,
-      );
-      await tester.pumpWidget(const SizedBox.shrink());
+      try {
+        await tester.pumpWidget(const OfflineDemoApp());
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('演示场景'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('等待重试').last);
+        await tester.pumpAndSettle();
+        expect(find.text('停止重试'), findsOneWidget);
+        expect(find.byType(HomeNoticeView), findsOneWidget);
+        expect(find.text('查看吉林大学公告'), findsOneWidget);
+        expect(find.text('在应用内打开学校公告页面'), findsOneWidget);
+        await tester.ensureVisible(find.byType(HomeNoticeView));
+        await tester.pump();
+        await tester.tap(find.byType(HomeNoticeView));
+        await tester.pumpAndSettle();
+        expect(find.text('离线公告占位预览'), findsOneWidget);
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('演示外观'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('深色').last);
+        await tester.pumpAndSettle();
+        expect(
+          Theme.of(tester.element(find.byType(HomePage))).brightness,
+          Brightness.dark,
+        );
+      } finally {
+        await school_dispatch.closeShellOwners(tester);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
     },
   );
 
   testWidgets(
     'interactive entry labels offline mode and uses the production shell',
     (tester) async {
-      await tester.pumpWidget(const OfflineDemoApp());
-      await tester.pumpAndSettle();
-      expect(find.text('离线演示 · 勿输入真实账号或密码'), findsOneWidget);
-      expect(find.byType(SidraviaShell), findsOneWidget);
-      expect(find.byType(HomePage), findsOneWidget);
-      expect(find.byType(HomeView), findsOneWidget);
-      await tester.tap(find.text('断开连接'));
-      await tester.pumpAndSettle();
-      expect(find.text('未连接'), findsOneWidget);
-      expect(find.text('已模拟断开连接；没有影响真实网络'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
+      try {
+        await tester.pumpWidget(const OfflineDemoApp());
+        await tester.pumpAndSettle();
+        expect(find.text('离线演示 · 勿输入真实账号或密码'), findsOneWidget);
+        expect(find.byType(SidraviaShell), findsOneWidget);
+        expect(find.byType(HomePage), findsOneWidget);
+        expect(find.byType(HomeView), findsOneWidget);
+        await tester.tap(find.text('断开连接'));
+        await tester.pumpAndSettle();
+        expect(find.text('未连接'), findsOneWidget);
+        expect(find.text('已模拟断开连接；没有影响真实网络'), findsOneWidget);
+      } finally {
+        await school_dispatch.closeShellOwners(tester);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
     },
   );
 
@@ -289,46 +298,47 @@ void main() {
   );
 
   testWidgets(
-    'production home opens the existing announcement modal and marks it read',
+    'production home keeps the manual school entry with explicit Unsupported feedback',
     (tester) async {
       final client = OfflineDemoClient();
       final controller = GuiController(
         bootstrapper: OfflineDemoBootstrap(),
         connector: (_) async => client,
       );
-      final now = DateTime.utc(2026, 10, 4);
-      final fetcher = OfflineAnnouncementFetcher(now);
-      final announcements = AnnouncementController(
-        endpoint: OfflineAnnouncementFetcher.endpoint,
-        store: MemoryAnnouncementStore(),
-        fetcher: fetcher,
-        nowUtc: () => now,
-      );
       await controller.start();
-      await announcements.start();
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
-          home: SidraviaShell(
-            controller: controller,
-            announcements: announcements,
-          ),
-        ),
+      final announcements = await school_dispatch.manualAnnouncements(
+        tester,
+        controller,
       );
-      await tester.pumpAndSettle();
-      expect(announcements.unreadCount, 1);
-      await tester.tap(find.byType(HomeNoticeView));
-      await tester.pumpAndSettle();
-      expect(find.byType(Dialog), findsOneWidget);
-      expect(find.textContaining('这是离线演示公告'), findsOneWidget);
-      expect(announcements.unreadCount, 0);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.runAsync(controller.close);
-      controller.dispose();
-      announcements.dispose();
-      client.dispose();
+      await announcements.start();
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
+            home: SidraviaShell(
+              controller: controller,
+              announcements: announcements,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('查看吉林大学公告'), findsOneWidget);
+        await tester.tap(find.byType(HomeNoticeView));
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsNothing);
+        expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
+      } finally {
+        await tester.pump();
+        await school_dispatch.pumpCleanup(tester, () async {
+          await announcements.close();
+          await controller.close();
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+        announcements.dispose();
+        client.dispose();
+      }
       expect(client.closed, isTrue);
-      expect(fetcher.closed, isTrue);
     },
   );
 }

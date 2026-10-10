@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
+
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
@@ -21,7 +24,7 @@ class SidraviaApp extends StatefulWidget {
   });
   final GuiController controller;
   final Appearance? appearance;
-  final AnnouncementController? announcements;
+  final SchoolAnnouncementController? announcements;
   final DesktopPresence? desktopPresence;
 
   @override
@@ -33,6 +36,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _shellKey = GlobalKey<SidraviaShellState>();
+  late final SchoolAnnouncementController _announcements;
   bool _exiting = false;
   GuiCloseBehavior? _lastCloseBehavior;
   bool? _lastStartHidden;
@@ -44,8 +48,18 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     _appearance.addListener(_syncDesktopPreferences);
     _syncDesktopPreferences();
     widget.controller.addListener(_handleControllerChanged);
+    _announcements =
+        widget.announcements ??
+        SchoolAnnouncementController(
+          preferences: _appearance,
+          desktop: widget.desktopPresence ?? DesktopPresence.disabled(),
+          window: SchoolAnnouncementWindow.disabled(),
+          notifications: SchoolAnnouncementNotifications.disabled(),
+          startedAt: DateTime.now(),
+        );
+    _announcements.updateCapabilities(widget.controller.capabilities);
+    unawaited(_announcements.start());
     unawaited(widget.controller.start());
-    unawaited(widget.announcements?.start() ?? Future<void>.value());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = _handleExitRequested;
@@ -54,6 +68,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   }
 
   void _handleControllerChanged() {
+    _announcements.updateCapabilities(widget.controller.capabilities);
     final snapshot = widget.controller.snapshot;
     final desktop = widget.desktopPresence;
     if (desktop != null && snapshot != null) {
@@ -130,6 +145,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       }
       begun = true;
       await widget.controller.exitAndDisconnect();
+      await _announcements.close();
       await desktop.destroy();
     } finally {
       if (!begun) {
@@ -140,22 +156,15 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(widget.announcements?.refreshIfDue() ?? Future<void>.value());
-    }
-  }
-
-  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_handleControllerChanged);
+    _announcements.dispose();
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = null;
       desktop.dispose();
     }
-    widget.announcements?.dispose();
     widget.controller.dispose();
     _appearance.removeListener(_syncDesktopPreferences);
     _appearance.dispose();
@@ -181,7 +190,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
             key: _shellKey,
             desktopPresence: widget.desktopPresence,
             controller: widget.controller,
-            announcements: widget.announcements,
+            announcements: _announcements,
           ),
         ),
       ),

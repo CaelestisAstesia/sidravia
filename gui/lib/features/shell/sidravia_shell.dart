@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -17,7 +17,7 @@ class SidraviaShell extends StatefulWidget {
     this.desktopPresence,
   });
   final GuiController controller;
-  final AnnouncementController? announcements;
+  final SchoolAnnouncementController? announcements;
   final DesktopPresence? desktopPresence;
 
   @override

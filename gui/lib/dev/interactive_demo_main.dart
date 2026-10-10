@@ -1,9 +1,14 @@
 import 'dart:async';
+
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
+import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
+import 'package:sidravia_gui/ipc/ipc_models.dart';
+
 import 'dart:convert';
 
 import 'package:sidravia_gui/platform/gui_settings_storage.dart';
-
-import 'package:sidravia_gui/features/announcements/announcement_widgets.dart';
 
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
@@ -11,8 +16,6 @@ import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
@@ -40,11 +43,9 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
   final _windowObserver = SidraviaWindowObserver();
   late final OfflineDemoClient _client;
   late final GuiController _controller;
-  late final AnnouncementController _announcements;
-  late final OfflineAnnouncementFetcher _fetcher;
+  late final SchoolAnnouncementController _announcements;
+  final _navigator = GlobalKey<NavigatorState>();
   String _scenario = 'authenticated';
-  AnnouncementPresentation _noticePresentation =
-      AnnouncementPresentation.dialog;
 
   @override
   void initState() {
@@ -54,21 +55,25 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
       bootstrapper: OfflineDemoBootstrap(),
       connector: (_) async => _client,
     );
-    final now = DateTime.now().toUtc();
-    _fetcher = OfflineAnnouncementFetcher(now);
-    _announcements = AnnouncementController(
-      endpoint: OfflineAnnouncementFetcher.endpoint,
-      store: MemoryAnnouncementStore(),
-      fetcher: _fetcher,
-      refreshInterval: Duration.zero,
-      nowUtc: () => now,
+    _announcements = SchoolAnnouncementController(
+      preferences: _appearance,
+      desktop: DesktopPresence.disabled(),
+      window: _OfflineAnnouncementWindow(_navigator),
+      notifications: SchoolAnnouncementNotifications.disabled(),
+      startedAt: DateTime.now(),
     );
-    unawaited(_controller.start());
+    _controller.addListener(_updateAnnouncements);
+    _updateAnnouncements();
     unawaited(_announcements.start());
+    unawaited(_controller.start());
   }
+
+  void _updateAnnouncements() =>
+      _announcements.updateCapabilities(_controller.capabilities);
 
   @override
   void dispose() {
+    _controller.removeListener(_updateAnnouncements);
     _controller.dispose();
     _announcements.dispose();
     _client.dispose();
@@ -83,6 +88,7 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
       valueListenable: _appearance,
       builder: (context, mode, _) => MaterialApp(
         title: 'Sidravia 离线演示',
+        navigatorKey: _navigator,
         navigatorObservers: [_windowObserver],
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
@@ -159,26 +165,6 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                                   child: Row(
                                     spacing: 8,
                                     children: [
-                                      TextButton(
-                                        onPressed: () => setState(() {
-                                          _noticePresentation =
-                                              AnnouncementPresentation
-                                                  .values[(_noticePresentation
-                                                          .index +
-                                                      1) %
-                                                  AnnouncementPresentation
-                                                      .values
-                                                      .length];
-                                        }),
-                                        child: Text(
-                                          '公告预览：${switch (_noticePresentation) {
-                                            AnnouncementPresentation.platform => '跟随平台',
-                                            AnnouncementPresentation.dialog => 'PC 对话框',
-                                            AnnouncementPresentation.bottomSheet => '手机面板',
-                                          }}',
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                      ),
                                       if (Theme.of(context).platform ==
                                           TargetPlatform.windows)
                                         TextButton(
@@ -270,31 +256,6 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                                           ),
                                         ),
                                       ),
-                                      TextButton(
-                                        onPressed: () async {
-                                          _fetcher.active = !_fetcher.active;
-                                          await _announcements.refreshIfDue();
-                                          if (mounted) setState(() {});
-                                        },
-                                        child: Text(
-                                          _fetcher.active
-                                              ? '隐藏公告（模拟）'
-                                              : '显示公告（模拟）',
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () async {
-                                          _fetcher.active = true;
-                                          _fetcher.revision++;
-                                          await _announcements.refreshIfDue();
-                                          if (mounted) setState(() {});
-                                        },
-                                        child: const Text(
-                                          '更新公告（模拟）',
-                                          style: TextStyle(fontSize: 11),
-                                        ),
-                                      ),
                                       PopupMenuButton<ThemeMode>(
                                         tooltip: '演示外观',
                                         onSelected: (value) =>
@@ -334,12 +295,9 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                 ),
               ),
               Expanded(
-                child: AnnouncementPresentationScope(
-                  presentation: _noticePresentation,
-                  child: SidraviaShell(
-                    controller: _controller,
-                    announcements: _announcements,
-                  ),
+                child: SidraviaShell(
+                  controller: _controller,
+                  announcements: _announcements,
                 ),
               ),
             ],
@@ -348,4 +306,33 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
       ),
     ),
   );
+}
+
+class _OfflineAnnouncementWindow extends SchoolAnnouncementWindow {
+  _OfflineAnnouncementWindow(this.navigator) : super.disabled();
+  final GlobalKey<NavigatorState> navigator;
+  @override
+  Future<SchoolAnnouncementOpenResult> open(
+    AnnouncementMetadata metadata, {
+    String namespace = '',
+  }) async {
+    final context = navigator.currentContext;
+    if (context == null) return SchoolAnnouncementOpenResult.failed;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('离线公告占位预览'),
+          content: const Text('这是离线演示占位；真实学校公告将在独立应用内窗口显示。未访问学校网页。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return SchoolAnnouncementOpenResult.opened;
+  }
 }

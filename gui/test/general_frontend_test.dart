@@ -1,3 +1,5 @@
+import 'school_announcement_controller_test.dart' as school_dispatch;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,8 +8,6 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
@@ -347,43 +347,49 @@ void main() {
       );
     }
   }
-  testWidgets('announcement bounded dialog marks read and Escape closes', (
-    tester,
-  ) async {
-    final now = DateTime.utc(2026, 10, 5);
-    final client = OfflineDemoClient();
-    final controller = GuiController(
-      bootstrapper: OfflineDemoBootstrap(),
-      connector: (_) async => client,
-    );
-    final announcements = AnnouncementController(
-      endpoint: OfflineAnnouncementFetcher.endpoint,
-      store: MemoryAnnouncementStore(),
-      fetcher: OfflineAnnouncementFetcher(now),
-      nowUtc: () => now,
-    );
-    await controller.start();
-    await announcements.start();
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
-        home: SidraviaShell(
-          controller: controller,
-          announcements: announcements,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(HomeNoticeView));
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(announcements.unreadCount, 0);
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing);
-    await tester.pumpWidget(const SizedBox.shrink());
-    controller.dispose();
-    announcements.dispose();
-    client.dispose();
-  });
+  testWidgets(
+    'school entry invokes in-app adapter and preserves shell Escape behavior',
+    (tester) async {
+      final client = OfflineDemoClient();
+      final controller = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+      );
+      await controller.start();
+      final announcements = await school_dispatch.manualAnnouncements(
+        tester,
+        controller,
+      );
+      await announcements.start();
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
+            home: SidraviaShell(
+              controller: controller,
+              announcements: announcements,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(HomeNoticeView));
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsNothing);
+        expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsNothing);
+      } finally {
+        await tester.pump();
+        await school_dispatch.pumpCleanup(tester, () async {
+          await announcements.close();
+          await controller.close();
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+        announcements.dispose();
+        client.dispose();
+      }
+    },
+  );
 }

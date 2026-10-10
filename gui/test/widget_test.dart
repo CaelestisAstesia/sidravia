@@ -1,3 +1,5 @@
+import 'school_announcement_controller_test.dart' as school_dispatch;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,8 +7,6 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
-import 'package:sidravia_gui/features/announcements/announcement_controller.dart';
-import 'package:sidravia_gui/features/announcements/announcement_store.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -43,22 +43,17 @@ void main() {
     testWidgets('page navigation and home announcements at $size', (
       tester,
     ) async {
-      final now = DateTime.utc(2026, 10, 10);
-      final client = OfflineDemoClient(now: now);
+      final client = OfflineDemoClient(now: DateTime.utc(2026, 10, 10));
       final controller = GuiController(
         bootstrapper: OfflineDemoBootstrap(),
         connector: (_) async => client,
       );
-      final fetcher = OfflineAnnouncementFetcher(now);
-      final announcements = AnnouncementController(
-        endpoint: OfflineAnnouncementFetcher.endpoint,
-        store: MemoryAnnouncementStore(),
-        fetcher: fetcher,
-        refreshInterval: Duration.zero,
-        nowUtc: () => now,
+      await controller.start();
+      final announcements = await school_dispatch.manualAnnouncements(
+        tester,
+        controller,
       );
       try {
-        await controller.start();
         await announcements.start();
         await tester.binding.setSurfaceSize(size);
         await tester.pumpWidget(
@@ -86,13 +81,9 @@ void main() {
 
         expect(find.byType(HomePage), findsOneWidget);
         expect(tester.takeException(), isNull);
-        await tapVisible(find.text('校园网维护安排'));
-        expect(
-          find.byKey(const ValueKey('announcement-panel')),
-          findsOneWidget,
-        );
-        expect(find.textContaining('这是离线演示公告。'), findsOneWidget);
-        await tapVisible(find.byTooltip('关闭公告'));
+        await tapVisible(find.text('查看吉林大学公告'));
+        expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
+        expect(find.byType(Dialog), findsNothing);
 
         await tapVisible(
           find.byKey(const ValueKey('home-configuration-button')),
@@ -127,8 +118,12 @@ void main() {
         expect(find.byType(HomePage), findsOneWidget);
         expect(tester.takeException(), isNull);
       } finally {
+        await tester.pump();
+        await school_dispatch.pumpCleanup(tester, () async {
+          await announcements.close();
+          await controller.close();
+        });
         await tester.pumpWidget(const SizedBox.shrink());
-        await controller.close();
         controller.dispose();
         announcements.dispose();
         client.dispose();
