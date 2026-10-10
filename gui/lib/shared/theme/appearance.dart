@@ -13,6 +13,14 @@ class Appearance extends ValueNotifier<ThemeMode> {
   Future<void> _writes = Future.value();
   int _revision = 0, _appearanceRevision = 0, _diagnosticsRevision = 0;
   int _closeRevision = 0, _startHiddenRevision = 0;
+  int _frequencyRevision = 0,
+      _hiddenBehaviorRevision = 0,
+      _automaticDateRevision = 0;
+  GuiAnnouncementFrequency _announcementFrequency =
+      GuiAnnouncementFrequency.dailyFirstConnection;
+  GuiHiddenAnnouncementBehavior _hiddenAnnouncementBehavior =
+      GuiHiddenAnnouncementBehavior.notify;
+  String? _lastAutomaticAnnouncementDate;
   GuiCloseBehavior _closeBehavior = GuiCloseBehavior.hideToTray;
   bool _startHidden = false;
   bool _disposed = false, _canSave = true;
@@ -28,20 +36,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
     final changed = _diagnosticsExpanded != expanded;
     _diagnosticsExpanded = expanded;
     if (!_disposed && changed) notifyListeners();
-    _queueSave(
-      loading,
-      revision,
-      GuiSettings(
-        appearanceMode: _appearanceMode(value),
-        diagnosticsExpanded: expanded,
-        closeBehavior: _closeBehavior,
-        startHidden: _startHidden,
-      ),
-      _appearanceRevision,
-      _diagnosticsRevision,
-      _closeRevision,
-      _startHiddenRevision,
-    );
+    _queueCurrent(loading, revision);
   }
 
   GuiCloseBehavior get closeBehavior => _closeBehavior;
@@ -52,20 +47,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
     final changed = _closeBehavior != next;
     _closeBehavior = next;
     if (!_disposed && changed) notifyListeners();
-    _queueSave(
-      loading,
-      revision,
-      GuiSettings(
-        appearanceMode: _appearanceMode(value),
-        diagnosticsExpanded: _diagnosticsExpanded,
-        closeBehavior: _closeBehavior,
-        startHidden: _startHidden,
-      ),
-      _appearanceRevision,
-      _diagnosticsRevision,
-      _closeRevision,
-      _startHiddenRevision,
-    );
+    _queueCurrent(loading, revision);
   }
 
   bool get startHidden => _startHidden;
@@ -76,21 +58,72 @@ class Appearance extends ValueNotifier<ThemeMode> {
     final changed = _startHidden != next;
     _startHidden = next;
     if (!_disposed && changed) notifyListeners();
-    _queueSave(
-      loading,
-      revision,
-      GuiSettings(
-        appearanceMode: _appearanceMode(value),
-        diagnosticsExpanded: _diagnosticsExpanded,
-        closeBehavior: _closeBehavior,
-        startHidden: _startHidden,
-      ),
-      _appearanceRevision,
-      _diagnosticsRevision,
-      _closeRevision,
-      _startHiddenRevision,
-    );
+    _queueCurrent(loading, revision);
   }
+
+  GuiAnnouncementFrequency get announcementFrequency => _announcementFrequency;
+  set announcementFrequency(GuiAnnouncementFrequency next) {
+    final loading = initialize();
+    _frequencyRevision++;
+    final revision = ++_revision;
+    final changed = _announcementFrequency != next;
+    _announcementFrequency = next;
+    if (!_disposed && changed) notifyListeners();
+    _queueCurrent(loading, revision);
+  }
+
+  GuiHiddenAnnouncementBehavior get hiddenAnnouncementBehavior =>
+      _hiddenAnnouncementBehavior;
+  set hiddenAnnouncementBehavior(GuiHiddenAnnouncementBehavior next) {
+    final loading = initialize();
+    _hiddenBehaviorRevision++;
+    final revision = ++_revision;
+    final changed = _hiddenAnnouncementBehavior != next;
+    _hiddenAnnouncementBehavior = next;
+    if (!_disposed && changed) notifyListeners();
+    _queueCurrent(loading, revision);
+  }
+
+  String? get lastAutomaticAnnouncementDate => _lastAutomaticAnnouncementDate;
+  void recordAutomaticAnnouncement(DateTime at) {
+    final local = at.toLocal();
+    if (local.year < 1 || local.year > 9999) {
+      throw const FormatException('Invalid announcement date');
+    }
+    final date =
+        '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+    final loading = initialize();
+    // Claim this field even when an early trigger matches the current value.
+    _automaticDateRevision++;
+    if (_lastAutomaticAnnouncementDate == date) return;
+    final revision = ++_revision;
+    _lastAutomaticAnnouncementDate = date;
+    if (!_disposed) notifyListeners();
+    _queueCurrent(loading, revision);
+  }
+
+  GuiSettings _snapshot() => GuiSettings(
+    appearanceMode: _appearanceMode(value),
+    diagnosticsExpanded: _diagnosticsExpanded,
+    closeBehavior: _closeBehavior,
+    startHidden: _startHidden,
+    announcementFrequency: _announcementFrequency,
+    hiddenAnnouncementBehavior: _hiddenAnnouncementBehavior,
+    lastAutomaticAnnouncementDate: _lastAutomaticAnnouncementDate,
+  );
+
+  void _queueCurrent(Future<void> loading, int revision) => _queueSave(
+    loading,
+    revision,
+    _snapshot(),
+    _appearanceRevision,
+    _diagnosticsRevision,
+    _closeRevision,
+    _startHiddenRevision,
+    _frequencyRevision,
+    _hiddenBehaviorRevision,
+    _automaticDateRevision,
+  );
 
   Future<void> initialize() => _initialization ??= _load();
   Future<void> _load() async {
@@ -98,6 +131,9 @@ class Appearance extends ValueNotifier<ThemeMode> {
     final diagnosticsRevision = _diagnosticsRevision;
     final closeRevision = _closeRevision;
     final startHiddenRevision = _startHiddenRevision;
+    final frequencyRevision = _frequencyRevision;
+    final hiddenBehaviorRevision = _hiddenBehaviorRevision;
+    final automaticDateRevision = _automaticDateRevision;
     try {
       final stored = await _store.read();
       if (_disposed || stored == null) return;
@@ -121,6 +157,25 @@ class Appearance extends ValueNotifier<ThemeMode> {
             diagnosticsChanged || _startHidden != stored.startHidden;
         _startHidden = stored.startHidden;
       }
+      if (frequencyRevision == _frequencyRevision) {
+        diagnosticsChanged =
+            diagnosticsChanged ||
+            _announcementFrequency != stored.announcementFrequency;
+        _announcementFrequency = stored.announcementFrequency;
+      }
+      if (hiddenBehaviorRevision == _hiddenBehaviorRevision) {
+        diagnosticsChanged =
+            diagnosticsChanged ||
+            _hiddenAnnouncementBehavior != stored.hiddenAnnouncementBehavior;
+        _hiddenAnnouncementBehavior = stored.hiddenAnnouncementBehavior;
+      }
+      if (automaticDateRevision == _automaticDateRevision) {
+        diagnosticsChanged =
+            diagnosticsChanged ||
+            _lastAutomaticAnnouncementDate !=
+                stored.lastAutomaticAnnouncementDate;
+        _lastAutomaticAnnouncementDate = stored.lastAutomaticAnnouncementDate;
+      }
       if (!_disposed && diagnosticsChanged) notifyListeners();
     } on Object {
       _canSave = false;
@@ -135,20 +190,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
     _appearanceRevision++;
     final revision = ++_revision;
     super.value = mode;
-    _queueSave(
-      loading,
-      revision,
-      GuiSettings(
-        appearanceMode: _appearanceMode(mode),
-        diagnosticsExpanded: _diagnosticsExpanded,
-        closeBehavior: _closeBehavior,
-        startHidden: _startHidden,
-      ),
-      _appearanceRevision,
-      _diagnosticsRevision,
-      _closeRevision,
-      _startHiddenRevision,
-    );
+    _queueCurrent(loading, revision);
   }
 
   void _queueSave(
@@ -159,6 +201,9 @@ class Appearance extends ValueNotifier<ThemeMode> {
     int diagnosticsRevision,
     int closeRevision,
     int startHiddenRevision,
+    int frequencyRevision,
+    int hiddenBehaviorRevision,
+    int automaticDateRevision,
   ) {
     _writes = _writes.then((_) async {
       await loading;
@@ -178,6 +223,15 @@ class Appearance extends ValueNotifier<ThemeMode> {
             startHidden: startHiddenRevision == 0
                 ? _startHidden
                 : queued.startHidden,
+            announcementFrequency: frequencyRevision == 0
+                ? _announcementFrequency
+                : queued.announcementFrequency,
+            hiddenAnnouncementBehavior: hiddenBehaviorRevision == 0
+                ? _hiddenAnnouncementBehavior
+                : queued.hiddenAnnouncementBehavior,
+            lastAutomaticAnnouncementDate: automaticDateRevision == 0
+                ? _lastAutomaticAnnouncementDate
+                : queued.lastAutomaticAnnouncementDate,
           ),
         );
         if (revision == _revision) _feedback = null;

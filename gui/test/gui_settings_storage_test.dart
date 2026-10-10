@@ -257,7 +257,7 @@ void main() {
       final restored = await FileGuiSettingsStore(path).read();
       expect(restored?.appearanceMode, GuiAppearanceMode.dark);
       expect(restored?.diagnosticsExpanded, true);
-      expect(File(path).readAsStringSync(), contains('"schemaVersion":3'));
+      expect(File(path).readAsStringSync(), contains('"schemaVersion":4'));
       expect(
         File(path).readAsStringSync(),
         contains('"diagnosticsExpanded":true'),
@@ -277,11 +277,20 @@ void main() {
     expect(settings?.startHidden, false);
     expect(File(path).readAsStringSync(), source);
   });
-  test('schema3 roundtrip and missing owner defaults', () async {
+  test('current schema roundtrip and missing owner defaults', () async {
     final owner = Appearance();
     await owner.initialize();
     expect(owner.closeBehavior, GuiCloseBehavior.hideToTray);
     expect(owner.startHidden, false);
+    expect(
+      owner.announcementFrequency,
+      GuiAnnouncementFrequency.dailyFirstConnection,
+    );
+    expect(
+      owner.hiddenAnnouncementBehavior,
+      GuiHiddenAnnouncementBehavior.notify,
+    );
+    expect(owner.lastAutomaticAnnouncementDate, isNull);
     owner.dispose();
     const settings = GuiSettings(
       appearanceMode: GuiAppearanceMode.dark,

@@ -65,6 +65,17 @@ Future<void> main(List<String> args) async {
         startHidden: args.length > 4
             ? bool.parse(args[4])
             : initial?.startHidden ?? false,
+        announcementFrequency: args.length > 5
+            ? GuiAnnouncementFrequency.values.byName(args[5])
+            : initial?.announcementFrequency ??
+                  GuiAnnouncementFrequency.dailyFirstConnection,
+        hiddenAnnouncementBehavior: args.length > 6
+            ? GuiHiddenAnnouncementBehavior.values.byName(args[6])
+            : initial?.hiddenAnnouncementBehavior ??
+                  GuiHiddenAnnouncementBehavior.notify,
+        lastAutomaticAnnouncementDate: args.length > 7
+            ? (args[7] == 'null' ? null : args[7])
+            : initial?.lastAutomaticAnnouncementDate,
       ),
     );
   }
@@ -81,6 +92,16 @@ Future<void> main(List<String> args) async {
       'restoredDiagnosticsExpanded': restored?.diagnosticsExpanded,
       'restoredCloseBehavior': restored?.closeBehavior.name,
       'restoredStartHidden': restored?.startHidden,
+      'initialAnnouncementFrequency': initial?.announcementFrequency.name,
+      'initialHiddenAnnouncementBehavior':
+          initial?.hiddenAnnouncementBehavior.name,
+      'initialLastAutomaticAnnouncementDate':
+          initial?.lastAutomaticAnnouncementDate,
+      'restoredAnnouncementFrequency': restored?.announcementFrequency.name,
+      'restoredHiddenAnnouncementBehavior':
+          restored?.hiddenAnnouncementBehavior.name,
+      'restoredLastAutomaticAnnouncementDate':
+          restored?.lastAutomaticAnnouncementDate,
       'platform': Platform.operatingSystem,
     }),
   );

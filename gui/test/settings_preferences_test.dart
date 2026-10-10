@@ -349,6 +349,9 @@ void main() {
             diagnosticsExpanded: true,
             closeBehavior: GuiCloseBehavior.exit,
             startHidden: true,
+            announcementFrequency: GuiAnnouncementFrequency.manualOnly,
+            hiddenAnnouncementBehavior: GuiHiddenAnnouncementBehavior.onRestore,
+            lastAutomaticAnnouncementDate: '2026-10-09',
           ),
         );
         await owner.settled;
@@ -388,6 +391,24 @@ void main() {
         expect(store.saved.last.appearanceMode, GuiAppearanceMode.system);
         expect(store.saved.last.diagnosticsExpanded, owner.diagnosticsExpanded);
         expect(store.maximumActive, 1);
+        expect(
+          owner.announcementFrequency,
+          GuiAnnouncementFrequency.manualOnly,
+        );
+        expect(
+          owner.hiddenAnnouncementBehavior,
+          GuiHiddenAnnouncementBehavior.onRestore,
+        );
+        expect(owner.lastAutomaticAnnouncementDate, '2026-10-09');
+        expect(
+          store.saved.last.announcementFrequency,
+          GuiAnnouncementFrequency.manualOnly,
+        );
+        expect(
+          store.saved.last.hiddenAnnouncementBehavior,
+          GuiHiddenAnnouncementBehavior.onRestore,
+        );
+        expect(store.saved.last.lastAutomaticAnnouncementDate, '2026-10-09');
         owner.dispose();
       },
     );
