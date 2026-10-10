@@ -3,6 +3,8 @@
 #include <flutter/encodable_value.h>
 #include <shellapi.h>
 #include <dwmapi.h>
+#include <windowsx.h>
+#include "frame_geometry.h"
 
 #include <cwchar>
 #include <optional>
@@ -74,6 +76,19 @@ bool FlutterWindow::OnCreate() {
           SetFrameDarkMode(*dark);
           result->Success(); return;
         }
+        if (call.method_name() == "setModalBlocked") {
+          const auto* blocked = std::get_if<bool>(call.arguments());
+          if (!blocked) { result->Error("invalid_modal", "Expected bool"); return; }
+          SetFrameModalBlocked(*blocked);
+          result->Success(); return;
+        }
+        if (call.method_name() == "configureFrame") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          if (!enabled) { result->Error("invalid_frame", "Expected bool"); return; }
+          EnableCustomFrame(*enabled);
+          result->Success(flutter::EncodableValue(WindowState()));
+          return;
+        }
         if (call.method_name() == "getState" ||
             call.method_name() == "diagnostics") {
           result->Success(flutter::EncodableValue(WindowState()));
@@ -81,6 +96,17 @@ bool FlutterWindow::OnCreate() {
         }
         if (call.method_name() == "minimize") {
           ShowWindow(window, SW_MINIMIZE);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "beginDrag") {
+          ReleaseCapture();
+          SendMessage(window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "toggleMaximize") {
+          ShowWindow(window, IsZoomed(window) ? SW_RESTORE : SW_MAXIMIZE);
           result->Success();
           return;
         }
@@ -386,6 +412,50 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Frame messages must precede Flutter's top-level handling.
+  if (custom_frame_enabled()) {
+    if (message == WM_NCHITTEST || message == WM_NCCALCSIZE ||
+        message == WM_GETMINMAXINFO) {
+      return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+    }
+    if (message == WM_NCMOUSEMOVE) {
+      const bool hovered = wparam == HTMAXBUTTON;
+      if (maximize_hovered_ != hovered) {
+        maximize_hovered_ = hovered;
+        PublishWindowState();
+      }
+      TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT), TME_LEAVE | TME_NONCLIENT,
+                             hwnd, 0};
+      TrackMouseEvent(&track);
+      LRESULT dwm_result = 0;
+      // Preserve the Windows 11 shell's HTMAXBUTTON hover/snap protocol.
+      DwmDefWindowProc(hwnd, message, wparam, lparam, &dwm_result);
+    }
+    if (message == WM_NCMOUSELEAVE) {
+      maximize_hovered_ = false; maximize_pressed_ = false;
+      PublishWindowState();
+    }
+    if (message == WM_NCLBUTTONDOWN && wparam == HTMAXBUTTON) {
+      maximize_pressed_ = true; PublishWindowState();
+      return 0;
+    }
+    if (message == WM_NCLBUTTONUP && wparam == HTMAXBUTTON) {
+      const bool activate = maximize_pressed_;
+      maximize_pressed_ = false; PublishWindowState();
+      if (activate) ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
+      return 0;
+    }
+    if (message == WM_SIZE || message == WM_DPICHANGED || message == WM_MOVE ||
+        message == WM_ACTIVATE) {
+      const auto result = Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+      PublishWindowState();
+      // Flutter also needs the DPI/size event; its result must not skip native state.
+      if (flutter_controller_) {
+        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam, lparam);
+      }
+      return result;
+    }
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -467,11 +537,17 @@ flutter::EncodableMap FlutterWindow::WindowState() {
     {EncodableValue("clientPhysical"), rectangle(client)},
     {EncodableValue("clientLogicalWidth"), EncodableValue(client.right/scale)},
     {EncodableValue("clientLogicalHeight"), EncodableValue(client.bottom/scale)},
-    {EncodableValue("topLogical"), EncodableValue(0.0)},
+    {EncodableValue("topLogical"), EncodableValue(custom_frame_enabled() ? 46.0 : 0.0)},
     {EncodableValue("contentLogicalHeight"), EncodableValue(
-        client.bottom/scale - (0.0))},
-    {EncodableValue("customFrame"), EncodableValue(false)},
+        client.bottom/scale - (custom_frame_enabled() ? 46.0 : 0.0))},
+    {EncodableValue("customFrame"), EncodableValue(custom_frame_enabled())},
     {EncodableValue("darkFrame"), EncodableValue(frame_dark_mode())},
+    {EncodableValue("cornerHRESULT"), EncodableValue(static_cast<int>(corner_result()))},
+    {EncodableValue("borderHRESULT"), EncodableValue(static_cast<int>(border_result()))},
+    {EncodableValue("cornerPreferenceRequested"), EncodableValue(custom_frame_enabled() ? 2 : 0)},
+    {EncodableValue("renderingPolicyHRESULT"), EncodableValue(static_cast<int>(rendering_policy_result()))},
+    {EncodableValue("frameExtensionHRESULT"), EncodableValue(static_cast<int>(frame_extension_result()))},
+    {EncodableValue("frameExtensionPhysicalPixels"), EncodableValue(frame_extension_pixels())},
     {EncodableValue("dwmComposition"), EncodableValue(composition != FALSE)},
     {EncodableValue("compositionHRESULT"), EncodableValue(static_cast<int>(composition_result))},
     {EncodableValue("nonClientRendering"), EncodableValue(non_client_rendering != FALSE)},

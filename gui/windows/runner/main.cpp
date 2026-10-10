@@ -28,7 +28,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  // Logical outer frame, including the native caption and resize borders.
+  // Logical outer frame, including the custom caption and native resize borders.
   Win32Window::Size size(400, 690);
   if (!window.Create(L"Sidravia", origin, size)) {
     return EXIT_FAILURE;

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Windows runner owns a DPI-aware native resizable frame', () {
+  test('Windows runner owns a DPI-aware custom resizable frame', () {
     final runner = File('windows/runner/win32_window.cpp').readAsStringSync();
     final main = File('windows/runner/main.cpp').readAsStringSync();
     final flutterWindow = File('windows/runner/flutter_window.cpp')
@@ -11,11 +11,38 @@ void main() {
 
     expect(runner, contains('WS_OVERLAPPEDWINDOW'));
     expect(runner, isNot(contains('WS_POPUP')));
-    expect(runner, isNot(contains('WM_NCCALCSIZE')));
-    expect(runner, isNot(contains('WM_NCHITTEST')));
+    expect(runner, contains('WM_NCCALCSIZE'));
+    expect(runner, contains('Entire outer rectangle becomes client space'));
+    expect(runner, contains('monitor_info.rcWork'));
+    expect(runner, contains('sidravia_frame::PhysicalMinimum'));
+    expect(runner, contains('SetWindowSubclass(content, ChildFrameProc'));
+    expect(runner, contains('return HTTRANSPARENT'));
+    expect(runner, contains('VK_F4'));
+    expect(runner, contains('SC_CLOSE'));
+    expect(runner, contains('DWMWA_WINDOW_CORNER_PREFERENCE'));
+    expect(runner, contains('DwmExtendFrameIntoClientArea'));
+    expect(runner, isNot(contains('CreateRoundRectRgn')));
+    expect(runner, contains('WM_NCHITTEST'));
     expect(runner, contains('WM_GETMINMAXINFO'));
-    expect(flutterWindow, isNot(contains('configureFrame')));
-    expect(flutterWindow, isNot(contains('WM_NCHITTEST')));
+    expect(flutterWindow, contains('configureFrame'));
+    expect(flutterWindow, contains('setModalBlocked'));
+    expect(flutterWindow, contains('HTMAXBUTTON'));
+    expect(flutterWindow, contains('DwmDefWindowProc'));
+    expect(
+      flutterWindow.indexOf('// Frame messages must precede'),
+      lessThan(flutterWindow.indexOf('// Give Flutter')),
+    );
+    for (final field in [
+      'cornerHRESULT',
+      'borderHRESULT',
+      'cornerPreferenceRequested',
+      'renderingPolicyHRESULT',
+      'frameExtensionHRESULT',
+      'frameExtensionPhysicalPixels',
+    ]) {
+      expect(flutterWindow, contains(field));
+    }
+    expect(flutterWindow, contains('WM_NCHITTEST'));
     expect(flutterWindow, contains('setDarkMode'));
     expect(runner, contains('kMinimumWindowWidth = 360'));
     expect(runner, contains('kMinimumWindowHeight = 640'));
