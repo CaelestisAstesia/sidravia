@@ -106,12 +106,46 @@ func TestAtomicEditPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
 	}
 	setup.store.fail = true
 	setup.store.mu.Unlock()
+	username, password := "new", "new-password"
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username, Password: &password}); err == nil {
+		t.Fatal("write failure succeeded")
+	}
+	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
+	if err != nil || got.Username != "user" || cred.Password != "secret" {
+		t.Fatal("partial edit")
+	}
+	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
+		t.Fatal("failed edit retired Session")
+	}
+	setup.store.mu.Lock()
+	defer setup.store.mu.Unlock()
+	for k, v := range before {
+		if !bytes.Equal(v, setup.store.data[k]) {
+			t.Fatal("disk changed")
+		}
+	}
+}
+func TestReconnectPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.store.mu.Lock()
+	before := make(map[string][]byte)
+	for k, v := range setup.store.data {
+		before[k] = append([]byte(nil), v...)
+	}
+	setup.store.fail = true
+	setup.store.mu.Unlock()
 	reconnect := true
 	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &reconnect}); err == nil {
 		t.Fatal("write failure succeeded")
 	}
-	got, _, err := setup.catalog.Resolve(ctx, "configuration-1")
-	if err != nil || got.Username != "user" || got.AutoReconnect {
+	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
+	if err != nil || got.Username != "user" || cred.Password != "secret" || got.AutoReconnect {
 		t.Fatal("partial edit")
 	}
 	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
