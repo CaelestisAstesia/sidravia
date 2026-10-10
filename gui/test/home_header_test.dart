@@ -26,7 +26,7 @@ void main() {
           context: '',
           glyph: '✓',
           tone: HomeTone.success,
-          secondaryLabel: '连接详情',
+          secondaryLabel: '连接与诊断',
           primaryLabel: '断开连接',
           primaryKind: HomeButtonKind.secondary,
           primaryEnabled: true,

@@ -125,11 +125,11 @@ Future<void> render(
     await tester.tap(find.text('吉林大学'));
   }
   if (page == 'details' || page == 'diagnostics') {
-    await tester.tap(find.text('连接详情'));
+    await tester.tap(find.text('连接与诊断'));
     await tester.pumpAndSettle();
     if (page == 'diagnostics') {
-      await tester.ensureVisible(find.text('诊断'));
-      await tester.tap(find.text('诊断'));
+      await tester.ensureVisible(find.text('连接与诊断'));
+      await tester.tap(find.text('连接与诊断'));
     }
   }
   if (page == 'modal') {

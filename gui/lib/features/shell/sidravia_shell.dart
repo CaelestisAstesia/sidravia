@@ -93,15 +93,8 @@ class _SidraviaShellState extends State<SidraviaShell> {
                   controller: widget.controller,
                   onBack: _back,
                 ),
-                AppPage.details => AdvancedPage(
-                  controller: widget.controller,
-                  detailsOnly: true,
-                  onBack: _back,
-                  onDiagnostics: () => _go(AppPage.diagnostics),
-                ),
                 AppPage.diagnostics => AdvancedPage(
                   controller: widget.controller,
-                  detailsOnly: false,
                   onBack: _back,
                 ),
               },

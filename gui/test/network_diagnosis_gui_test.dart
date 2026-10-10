@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -20,14 +22,13 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: AdvancedPage(
-              controller: c,
-              detailsOnly: false,
-              onBack: () {},
-            ),
+            body: AdvancedPage(controller: c, onBack: () {}),
           ),
         ),
       );
+      await tester.ensureVisible(find.text('技术信息'));
+      await tester.tap(find.text('技术信息'));
+      await tester.pump();
       await _pumpUntil(
         tester,
         () =>
@@ -130,10 +131,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: AdvancedPage(controller: c, detailsOnly: false, onBack: () {}),
+          body: AdvancedPage(controller: c, onBack: () {}),
         ),
       ),
     );
+    await tester.ensureVisible(find.text('技术信息'));
+    await tester.tap(find.text('技术信息'));
+    await tester.pump();
     await _pumpUntil(tester, () => c.diagnosisError != null && !c.busy);
     expect(find.textContaining('当前平台不支持网络诊断'), findsOneWidget);
     expect(c.canDiagnose, isTrue);
@@ -157,20 +161,28 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: AdvancedPage(
-            controller: real,
-            detailsOnly: false,
-            onBack: () {},
-          ),
+          body: AdvancedPage(controller: real, onBack: () {}),
         ),
       ),
     );
+    await tester.ensureVisible(find.text('技术信息'));
+    await tester.tap(find.text('技术信息'));
+    await tester.pump();
     await _pumpUntil(
       tester,
       () => real.diagnosis != null && !real.diagnosisStale,
     );
     expect(find.text('当前平台不支持路由诊断'), findsOneWidget);
-    expect(find.text('尚无协议 socket 观察'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('协议 socket'),
+          matching: find.byType(DesignRow),
+        ),
+        matching: find.text('尚无协议 socket 观察'),
+      ),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(real.close);
     real.dispose();

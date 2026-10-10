@@ -107,12 +107,9 @@ void main() {
         expect(find.byType(ConfigurationPage), findsOneWidget);
         await tapVisible(find.text('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
-        await tapVisible(find.text('诊断'));
+        await tapVisible(find.text('连接与诊断'));
         expect(find.byType(AdvancedPage), findsOneWidget);
-        expect(
-          tester.widget<AdvancedPage>(find.byType(AdvancedPage)).detailsOnly,
-          isFalse,
-        );
+        expect(find.byType(AdvancedPage), findsOneWidget);
         await tapVisible(find.text('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
         await tapVisible(find.text('返回连接'));

@@ -13,13 +13,12 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: AdvancedPage(
-          controller: controller,
-          detailsOnly: false,
-          onBack: () {},
-        ),
+        home: AdvancedPage(controller: controller, onBack: () {}),
       ),
     );
+    await tester.ensureVisible(find.text('技术信息'));
+    await tester.tap(find.text('技术信息'));
+    await tester.pump();
     expect(find.text('暂不可用'), findsAtLeastNWidgets(1));
     expect(find.text('复制诊断信息（暂不可用）'), findsOneWidget);
     controller.dispose();

@@ -63,7 +63,7 @@ void main() {
           '已连接',
           '断开连接',
           GuiConnectionActionKind.stop,
-          '连接详情',
+          '连接与诊断',
           GuiConnectionActionKind.showDetails,
           true,
         ),
@@ -79,7 +79,7 @@ void main() {
           '正在认证',
           '取消连接',
           GuiConnectionActionKind.stop,
-          '连接详情',
+          '连接与诊断',
           GuiConnectionActionKind.showDetails,
           true,
         ),
@@ -87,7 +87,7 @@ void main() {
           '等待网络',
           '取消等待',
           GuiConnectionActionKind.stop,
-          '连接详情',
+          '连接与诊断',
           GuiConnectionActionKind.showDetails,
           true,
         ),
@@ -111,7 +111,7 @@ void main() {
           '正在断开',
           '正在断开',
           GuiConnectionActionKind.stop,
-          '连接详情',
+          '连接与诊断',
           GuiConnectionActionKind.showDetails,
           false,
         ),
@@ -247,7 +247,7 @@ void main() {
     expect(await controller.restartSession('demo-session'), isFalse);
     expect(await controller.startConfiguration('demo-config'), isFalse);
     expect(client.operations.where((op) => op == 'session.stop'), isEmpty);
-    await tester.tap(find.text('连接详情'));
+    await tester.tap(find.text('连接与诊断'));
     await tester.pumpAndSettle();
     expect(find.text('正在断开'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -274,9 +274,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
       expect(find.textContaining('存在多个连接配置'), findsAtLeastNWidgets(1));
-      await tester.tap(find.text('诊断'));
+      await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
       expect(find.byType(AdvancedPage), findsOneWidget);
+      await tester.ensureVisible(find.text('技术信息'));
+      await tester.tap(find.text('技术信息'));
+      await tester.pumpAndSettle();
       expect(find.text('configuration_count'), findsOneWidget);
       expect(find.text('session_count'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);

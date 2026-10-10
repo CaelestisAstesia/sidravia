@@ -200,25 +200,9 @@ void main() {
       expect(controller.snapshot!.sessions, isEmpty);
       await controller.startConfiguration('demo-config');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('连接详情'));
+      await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
-      expect(
-        tester.widget<AdvancedPage>(find.byType(AdvancedPage)).detailsOnly,
-        isTrue,
-      );
-      await tester.ensureVisible(find.text('诊断'));
-      await tester.tap(find.text('诊断'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<AdvancedPage>(find.byType(AdvancedPage)).detailsOnly,
-        isFalse,
-      );
-      await tester.tap(find.text('返回'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<AdvancedPage>(find.byType(AdvancedPage)).detailsOnly,
-        isTrue,
-      );
+      expect(find.byType(AdvancedPage), findsOneWidget);
       await tester.tap(find.text('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);

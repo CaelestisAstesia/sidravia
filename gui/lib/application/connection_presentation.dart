@@ -140,7 +140,7 @@ class ConnectionPresentation {
         tone = HomeTone.warning;
         enabled = false;
         primaryLabel = '开始连接';
-        secondaryLabel = '连接详情';
+        secondaryLabel = '连接与诊断';
         secondary = const GuiConnectionAction(
           GuiConnectionActionKind.showDetails,
         );
@@ -151,7 +151,7 @@ class ConnectionPresentation {
         glyph = '!';
         tone = HomeTone.warning;
         enabled = false;
-        secondaryLabel = '连接详情';
+        secondaryLabel = '连接与诊断';
         secondary = const GuiConnectionAction(
           GuiConnectionActionKind.showDetails,
         );
@@ -192,6 +192,7 @@ class ConnectionPresentation {
               glyph = '↻';
               tone = HomeTone.warning;
               primaryLabel = '立即重试';
+              issue = s.lastAuthenticationFailure;
               secondaryLabel = '停止重试';
             case SessionState.blockedByError:
               title = '认证失败';
@@ -233,14 +234,14 @@ class ConnectionPresentation {
               primary = GuiConnectionAction(GuiConnectionActionKind.stop, s.id);
               enabled = caps.canStop;
               kind = HomeButtonKind.secondary;
-              secondaryLabel = '连接详情';
+              secondaryLabel = '连接与诊断';
               secondary = const GuiConnectionAction(
                 GuiConnectionActionKind.showDetails,
               );
             case SessionState.stopping:
               primary = GuiConnectionAction(GuiConnectionActionKind.stop, s.id);
               kind = HomeButtonKind.secondary;
-              secondaryLabel = '连接详情';
+              secondaryLabel = '连接与诊断';
               secondary = const GuiConnectionAction(
                 GuiConnectionActionKind.showDetails,
               );
@@ -263,7 +264,7 @@ class ConnectionPresentation {
           _ => '连接服务不可用，请重试。',
         };
       } else if (sessionNeedsReset) {
-        error = '请先在连接配置中移除旧会话。';
+        error = '请先在连接与诊断中移除旧会话。';
       } else if (caps.busy) {
         error = '正在处理操作，请稍候。';
       } else if (!enabled && s?.state != SessionState.stopping) {

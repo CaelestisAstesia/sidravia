@@ -317,19 +317,6 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           DesignGroup(
             children: [
               DesignRow(
-                title: '移除当前会话',
-                subtitle:
-                    !_targetChanged &&
-                        widget.controller.capabilities.canResetSession
-                    ? '清理当前 Session 记录'
-                    : '没有可清理的会话或当前不可操作',
-                onTap:
-                    !_targetChanged &&
-                        widget.controller.capabilities.canResetSession
-                    ? () => _confirmMutation(false)
-                    : null,
-              ),
-              DesignRow(
                 title: '删除登录配置',
                 subtitle:
                     !_targetChanged &&
@@ -340,7 +327,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
                 onTap:
                     !_targetChanged &&
                         widget.controller.capabilities.canDeleteConfiguration
-                    ? () => _confirmMutation(true)
+                    ? () => _confirmDelete()
                     : null,
               ),
             ],
@@ -350,13 +337,9 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     );
   }
 
-  Future<void> _confirmMutation(bool delete) async {
+  Future<void> _confirmDelete() async {
     final c = widget.controller.capabilities.configuration;
-    final session = widget.controller.capabilities.retainedSession;
-    final allowed = delete
-        ? widget.controller.capabilities.canDeleteConfiguration
-        : widget.controller.capabilities.canResetSession;
-    if (!allowed ||
+    if (!widget.controller.capabilities.canDeleteConfiguration ||
         c == null ||
         _targetChanged ||
         c.id != _boundConfigurationId) {
@@ -365,8 +348,8 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(delete ? '删除登录配置？' : '移除当前会话？'),
-        content: Text(delete ? '此操作会删除已保存的账号与凭据。' : '此操作会清理当前 Session 记录。'),
+        title: const Text('删除登录配置？'),
+        content: const Text('此操作会删除已保存的账号与凭据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -380,14 +363,12 @@ class ConfigurationPageState extends State<ConfigurationPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final ok = delete
-        ? await widget.controller.deleteConfiguration(
-            c.id,
-            onInsecureStorageConfirmation: (operation) => mounted
-                ? confirmInsecureStorage(context, operation)
-                : Future.value(false),
-          )
-        : session != null && await widget.controller.resetSession(session.id);
+    final ok = await widget.controller.deleteConfiguration(
+      c.id,
+      onInsecureStorageConfirmation: (operation) => mounted
+          ? confirmInsecureStorage(context, operation)
+          : Future.value(false),
+    );
     if (ok && mounted) widget.onBack();
   }
 

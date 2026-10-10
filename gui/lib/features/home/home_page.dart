@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
@@ -134,7 +135,7 @@ class HomePage extends StatelessWidget {
       case GuiConnectionActionKind.showSettings:
         onNavigate(AppPage.settings);
       case GuiConnectionActionKind.showDetails:
-        onNavigate(AppPage.details);
+        onNavigate(AppPage.diagnostics);
       default:
         controller.performConnectionAction(action);
     }
@@ -570,7 +571,7 @@ class _StatusBlock extends StatelessWidget {
               constraints: const BoxConstraints(minHeight: 92),
               child: Center(
                 child: data.issue != null
-                    ? _HomeIssue(failure: data.issue!)
+                    ? ConnectionIssueCard(failure: data.issue!)
                     : Container(
                         constraints: const BoxConstraints(maxWidth: 310),
                         padding: const EdgeInsets.symmetric(
@@ -593,59 +594,6 @@ class _StatusBlock extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _HomeIssue extends StatelessWidget {
-  const _HomeIssue({required this.failure});
-  final SessionAuthenticationFailure failure;
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 320),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: Color.lerp(scheme.surface, scheme.error, .06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: Color.lerp(scheme.outline, scheme.error, .35)!,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            failure.description,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 19 / 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            failure.handlingRecommendation,
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.5,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            failure.code,
-            style: TextStyle(
-              fontSize: 11,
-              height: 14 / 11,
-              fontFamily: 'monospace',
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ],
       ),
     );
   }

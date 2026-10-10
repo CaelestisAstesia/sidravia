@@ -102,7 +102,7 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
             DesignRow(
-              title: '诊断',
+              title: '连接与诊断',
               subtitle: '核心、会话与故障信息',
               onTap: () => onNavigate(AppPage.diagnostics),
             ),

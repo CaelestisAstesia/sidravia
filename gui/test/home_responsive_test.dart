@@ -201,7 +201,7 @@ void main() {
         context: List.filled(16, '以太网适配器及地址的详细说明').join('；'),
         glyph: '✓',
         tone: HomeTone.success,
-        secondaryLabel: '连接详情',
+        secondaryLabel: '连接与诊断',
         primaryLabel: '断开连接',
         primaryKind: HomeButtonKind.secondary,
         primaryEnabled: true,

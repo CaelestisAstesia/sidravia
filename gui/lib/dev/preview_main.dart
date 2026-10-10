@@ -27,7 +27,7 @@ class HomeFixture extends StatelessWidget {
       context: '以太网 · 192.168.1.20',
       glyph: '✓',
       tone: HomeTone.success,
-      secondaryLabel: '连接详情',
+      secondaryLabel: '连接与诊断',
       primaryLabel: '断开连接',
       primaryKind: HomeButtonKind.secondary,
       primaryEnabled: true,

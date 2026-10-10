@@ -12,10 +12,10 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 const states = {
-  'authenticated': ['已连接', '断开连接', '连接详情', 'session.stop'],
+  'authenticated': ['已连接', '断开连接', '连接与诊断', 'session.stop'],
   'suspended': ['未连接', '开始连接', '更改配置', 'session.start_configuration'],
-  'authenticating': ['正在认证', '取消连接', '连接详情', 'session.stop'],
-  'waiting_for_network': ['等待网络', '取消等待', '连接详情', 'session.stop'],
+  'authenticating': ['正在认证', '取消连接', '连接与诊断', 'session.stop'],
+  'waiting_for_network': ['等待网络', '取消等待', '连接与诊断', 'session.stop'],
   'waiting_before_retry': ['等待重试', '立即重试', '停止重试', 'session.restart'],
   'blocked_by_error': ['认证失败', '重新连接', '更改配置', 'session.restart'],
   'empty': ['尚未配置', '添加配置', '连接设置', 'configuration'],
@@ -324,8 +324,12 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(find.byTooltip('设置'));
           await tester.pumpAndSettle();
-          await tester.ensureVisible(find.text('诊断'));
-          await tester.tap(find.text('诊断'));
+          await tester.ensureVisible(find.text('连接与诊断'));
+          await tester.tap(find.text('连接与诊断'));
+          await tester.pumpAndSettle();
+          expect(find.text('daemon'), findsNothing);
+          await tester.ensureVisible(find.text('技术信息'));
+          await tester.tap(find.text('技术信息'));
           await tester.pumpAndSettle();
           expect(find.text('daemon'), findsOneWidget);
           await tester.ensureVisible(find.text('返回'));
