@@ -172,18 +172,78 @@ void main() {
       appearance.value = ThemeMode.dark;
       appearance.value = ThemeMode.light;
       appearance.value = ThemeMode.system;
-      store.readResult.complete(GuiAppearanceMode.light);
+      store.readResult.complete(
+        const GuiSettings(
+          appearanceMode: GuiAppearanceMode.light,
+          diagnosticsExpanded: true,
+        ),
+      );
       await appearance.settled;
       expect(appearance.value, ThemeMode.system);
-      expect(store.saved, [
-        GuiAppearanceMode.dark,
-        GuiAppearanceMode.light,
-        GuiAppearanceMode.system,
-      ]);
+      expect(
+        store.saved
+            .map(
+              (settings) =>
+                  (settings.appearanceMode, settings.diagnosticsExpanded),
+            )
+            .toList(),
+        [
+          (GuiAppearanceMode.dark, true),
+          (GuiAppearanceMode.light, true),
+          (GuiAppearanceMode.system, true),
+        ],
+      );
+      expect(appearance.diagnosticsExpanded, true);
       expect(store.maximumActive, 1);
       appearance.dispose();
     },
   );
+
+  test(
+    'late read hydrates untouched appearance and preserves diagnostic choice',
+    () async {
+      final store = ControlledStore();
+      final appearance = Appearance(store: store);
+      appearance.diagnosticsExpanded = true;
+      store.readResult.complete(
+        const GuiSettings(appearanceMode: GuiAppearanceMode.dark),
+      );
+      await appearance.settled;
+      expect(appearance.value, ThemeMode.dark);
+      expect(appearance.diagnosticsExpanded, true);
+      expect(
+        store.saved
+            .map(
+              (settings) =>
+                  (settings.appearanceMode, settings.diagnosticsExpanded),
+            )
+            .toList(),
+        [(GuiAppearanceMode.dark, true)],
+      );
+      appearance.dispose();
+    },
+  );
+
+  test('each preference mutation preserves the other field', () async {
+    final store = ControlledStore()
+      ..readResult.complete(
+        const GuiSettings(
+          appearanceMode: GuiAppearanceMode.dark,
+          diagnosticsExpanded: true,
+        ),
+      );
+    final appearance = Appearance(store: store);
+    await appearance.initialize();
+    appearance.value = ThemeMode.light;
+    await appearance.settled;
+    expect(store.saved.last.appearanceMode, GuiAppearanceMode.light);
+    expect(store.saved.last.diagnosticsExpanded, true);
+    appearance.diagnosticsExpanded = false;
+    await appearance.settled;
+    expect(store.saved.last.appearanceMode, GuiAppearanceMode.light);
+    expect(store.saved.last.diagnosticsExpanded, false);
+    appearance.dispose();
+  });
   test('failed load blocks overwrite but user theme applies', () async {
     final store = ControlledStore();
     final appearance = Appearance(store: store);
@@ -191,8 +251,10 @@ void main() {
     store.readResult.completeError(const FormatException());
     await loading;
     appearance.value = ThemeMode.dark;
+    appearance.diagnosticsExpanded = true;
     await appearance.settled;
     expect(appearance.value, ThemeMode.dark);
+    expect(appearance.diagnosticsExpanded, true);
     expect(store.saved, isEmpty);
     expect(appearance.feedback, contains('原文件保留'));
     appearance.dispose();
@@ -207,6 +269,9 @@ void main() {
       appearance.value = ThemeMode.dark;
       await appearance.settled;
       expect(appearance.value, ThemeMode.dark);
+      appearance.diagnosticsExpanded = true;
+      await appearance.settled;
+      expect(appearance.diagnosticsExpanded, true);
       expect(appearance.feedback, contains('未能保存'));
       appearance.dispose();
     },
@@ -311,22 +376,22 @@ void main() {
 }
 
 class ControlledStore implements GuiSettingsStore {
-  final readResult = Completer<GuiAppearanceMode?>();
-  final saved = <GuiAppearanceMode>[];
+  final readResult = Completer<GuiSettings?>();
+  final saved = <GuiSettings>[];
   int active = 0, maximumActive = 0;
   bool failSave = false;
   @override
   bool get persistent => true;
   @override
-  Future<GuiAppearanceMode?> read() => readResult.future;
+  Future<GuiSettings?> read() => readResult.future;
   @override
-  Future<void> save(GuiAppearanceMode mode) async {
+  Future<void> save(GuiSettings settings) async {
     active++;
     if (active > maximumActive) maximumActive = active;
     await Future<void>.delayed(Duration.zero);
     active--;
     if (failSave) throw StateError('fixture');
-    saved.add(mode);
+    saved.add(settings);
   }
 }
 

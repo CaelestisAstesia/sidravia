@@ -71,7 +71,8 @@ void main() {
             Brightness.dark,
           );
           expect(
-            await tester.runAsync(() => FileGuiSettingsStore(path).read()),
+            (await tester.runAsync(() => FileGuiSettingsStore(path).read()))
+                ?.appearanceMode,
             GuiAppearanceMode.system,
           );
         } else {
@@ -198,30 +199,85 @@ void main() {
       final path = '${root.path}/config/gui-settings.json';
       final store = FileGuiSettingsStore(path);
       expect(await store.read(), isNull);
-      await store.save(GuiAppearanceMode.dark);
-      expect(await FileGuiSettingsStore(path).read(), GuiAppearanceMode.dark);
-      await store.save(GuiAppearanceMode.system);
-      expect(await FileGuiSettingsStore(path).read(), GuiAppearanceMode.system);
+      await store.save(
+        const GuiSettings(appearanceMode: GuiAppearanceMode.dark),
+      );
+      expect(
+        (await FileGuiSettingsStore(path).read())?.appearanceMode,
+        GuiAppearanceMode.dark,
+      );
+      expect(
+        (await FileGuiSettingsStore(path).read())?.diagnosticsExpanded,
+        false,
+      );
+      await store.save(
+        const GuiSettings(
+          appearanceMode: GuiAppearanceMode.system,
+          diagnosticsExpanded: true,
+        ),
+      );
+      final restored = await FileGuiSettingsStore(path).read();
+      expect(restored?.appearanceMode, GuiAppearanceMode.system);
+      expect(restored?.diagnosticsExpanded, true);
       expect(
         File(path).readAsStringSync(),
-        encodeGuiSettings(GuiAppearanceMode.system),
+        encodeGuiSettings(
+          const GuiSettings(
+            appearanceMode: GuiAppearanceMode.system,
+            diagnosticsExpanded: true,
+          ),
+        ),
       );
     },
   );
+
+  test(
+    'valid schema v1 migrates appearance and defaults diagnostics closed',
+    () async {
+      final path = '${root.path}/gui-settings.json';
+      File(path)
+          .writeAsStringSync('{"schemaVersion":1,"appearanceMode":"dark"}');
+      final store = FileGuiSettingsStore(path);
+      final migrated = await store.read();
+      expect(migrated?.appearanceMode, GuiAppearanceMode.dark);
+      expect(migrated?.diagnosticsExpanded, false);
+      await store.save(
+        const GuiSettings(
+          appearanceMode: GuiAppearanceMode.dark,
+          diagnosticsExpanded: true,
+        ),
+      );
+      final restored = await FileGuiSettingsStore(path).read();
+      expect(restored?.appearanceMode, GuiAppearanceMode.dark);
+      expect(restored?.diagnosticsExpanded, true);
+      expect(File(path).readAsStringSync(), contains('"schemaVersion":2'));
+      expect(
+        File(path).readAsStringSync(),
+        contains('"diagnosticsExpanded":true'),
+      );
+    },
+  );
+
   test('invalid damaged and future data preserved without overwrite', () async {
     for (final text in [
       'broken',
       '{}',
-      '{"schemaVersion":2,"appearanceMode":"dark"}',
+      '{"schemaVersion":3,"appearanceMode":"dark","diagnosticsExpanded":false}',
       '{"schemaVersion":1,"appearanceMode":false}',
       '{"schemaVersion":1,"appearanceMode":"invalid"}',
       '{"schemaVersion":1,"appearanceMode":"light","autoReconnect":true}',
+      '{"schemaVersion":2,"appearanceMode":"dark"}',
+      '{"schemaVersion":2,"appearanceMode":"dark","diagnosticsExpanded":"true"}',
+      '{"schemaVersion":2,"appearanceMode":"dark","diagnosticsExpanded":false,"other":true}',
     ]) {
       final path = '${root.path}/gui-settings.json';
       final file = File(path)..writeAsStringSync(text);
       final store = FileGuiSettingsStore(path);
       await expectLater(store.read(), throwsFormatException);
-      await expectLater(store.save(GuiAppearanceMode.light), throwsStateError);
+      await expectLater(
+        store.save(const GuiSettings(appearanceMode: GuiAppearanceMode.light)),
+        throwsStateError,
+      );
       expect(file.readAsStringSync(), text);
     }
   });
@@ -229,21 +285,26 @@ void main() {
     'replacement failure preserves old bytes and cleans temporary',
     () async {
       final path = '${root.path}/gui-settings.json';
-      final old = encodeGuiSettings(GuiAppearanceMode.light);
+      const oldSettings = GuiSettings(
+        appearanceMode: GuiAppearanceMode.light,
+        diagnosticsExpanded: true,
+      );
+      const newSettings = GuiSettings(
+        appearanceMode: GuiAppearanceMode.dark,
+        diagnosticsExpanded: true,
+      );
+      final old = encodeGuiSettings(oldSettings);
       File(path).writeAsStringSync(old);
       final store = FileGuiSettingsStore(
         path,
         replace: (source, destination) async {
-          expect(
-            await source.readAsString(),
-            encodeGuiSettings(GuiAppearanceMode.dark),
-          );
+          expect(await source.readAsString(), encodeGuiSettings(newSettings));
           throw const FileSystemException('replacement denied');
         },
       );
       await store.read();
       await expectLater(
-        store.save(GuiAppearanceMode.dark),
+        store.save(newSettings),
         throwsA(isA<FileSystemException>()),
       );
       expect(File(path).readAsStringSync(), old);
@@ -255,7 +316,8 @@ void main() {
     () async {
       final dir = Directory('${root.path}/readonly')..createSync();
       final path = '${dir.path}/gui-settings.json';
-      File(path).writeAsStringSync(encodeGuiSettings(GuiAppearanceMode.light));
+      const settings = GuiSettings(appearanceMode: GuiAppearanceMode.light);
+      File(path).writeAsStringSync(encodeGuiSettings(settings));
       if (!Platform.isWindows) {
         Process.runSync('chmod', ['555', dir.path]);
       }
@@ -264,13 +326,12 @@ void main() {
       if (!Platform.isWindows) {
         try {
           await expectLater(
-            store.save(GuiAppearanceMode.dark),
+            store.save(
+              const GuiSettings(appearanceMode: GuiAppearanceMode.dark),
+            ),
             throwsA(isA<FileSystemException>()),
           );
-          expect(
-            File(path).readAsStringSync(),
-            encodeGuiSettings(GuiAppearanceMode.light),
-          );
+          expect(File(path).readAsStringSync(), encodeGuiSettings(settings));
         } finally {
           Process.runSync('chmod', ['755', dir.path]);
         }

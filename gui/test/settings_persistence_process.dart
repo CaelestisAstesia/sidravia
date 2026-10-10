@@ -52,14 +52,25 @@ Future<void> main(List<String> args) async {
   final store = FileGuiSettingsStore(args[0]);
   final initial = await store.read();
   if (args.length > 1) {
-    await store.save(GuiAppearanceMode.values.byName(args[1]));
+    final diagnosticsExpanded = args.length > 2
+        ? bool.parse(args[2])
+        : initial?.diagnosticsExpanded ?? false;
+    await store.save(
+      GuiSettings(
+        appearanceMode: GuiAppearanceMode.values.byName(args[1]),
+        diagnosticsExpanded: diagnosticsExpanded,
+      ),
+    );
   }
+  final restored = await FileGuiSettingsStore(args[0]).read();
   stdout.writeln(
     jsonEncode({
       'pid': pid,
       'path': store.path,
-      'initial': initial?.name,
-      'restored': (await FileGuiSettingsStore(args[0]).read())?.name,
+      'initial': initial?.appearanceMode.name,
+      'initialDiagnosticsExpanded': initial?.diagnosticsExpanded,
+      'restored': restored?.appearanceMode.name,
+      'restoredDiagnosticsExpanded': restored?.diagnosticsExpanded,
       'platform': Platform.operatingSystem,
     }),
   );

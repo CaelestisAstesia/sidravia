@@ -162,14 +162,14 @@ class FileGuiSettingsStore implements GuiSettingsStore {
   }
 
   @override
-  Future<GuiAppearanceMode?> read() async {
+  Future<GuiSettings?> read() async {
     _loaded = true;
     _writable = false;
     _checkType();
     try {
-      final mode = decodeGuiSettings(await File(path).readAsString());
+      final settings = decodeGuiSettings(await File(path).readAsString());
       _writable = true;
-      return mode;
+      return settings;
     } on FileSystemException catch (error) {
       if (!_missing(error)) rethrow;
       _writable = true;
@@ -178,7 +178,7 @@ class FileGuiSettingsStore implements GuiSettingsStore {
   }
 
   @override
-  Future<void> save(GuiAppearanceMode mode) async {
+  Future<void> save(GuiSettings settings) async {
     if (!_loaded || !_writable) {
       throw StateError('GUI settings are read-only after load failure');
     }
@@ -190,7 +190,7 @@ class FileGuiSettingsStore implements GuiSettingsStore {
     );
     await temporary.create(exclusive: true);
     try {
-      await temporary.writeAsString(encodeGuiSettings(mode), flush: true);
+      await temporary.writeAsString(encodeGuiSettings(settings), flush: true);
       _checkType();
       // Dart 3.13 Windows File.rename uses MoveFileExW REPLACE_EXISTING |
       // WRITE_THROUGH. Same-directory replacement never pre-deletes the target.

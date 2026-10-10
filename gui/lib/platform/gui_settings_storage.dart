@@ -20,9 +20,9 @@ class UnavailableGuiSettingsStore implements GuiSettingsStore {
   @override
   bool get persistent => true;
   @override
-  Future<GuiAppearanceMode?> read() async =>
+  Future<GuiSettings?> read() async =>
       throw StateError('GUI settings path unavailable');
   @override
-  Future<void> save(GuiAppearanceMode mode) async =>
+  Future<void> save(GuiSettings settings) async =>
       throw StateError('GUI settings path unavailable');
 }
