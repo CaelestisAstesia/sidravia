@@ -12,6 +12,7 @@
 
 #include "win32_window.h"
 #include "school_announcement_window.h"
+#include "school_announcement_notification.h"
 
 // A window that hosts a Flutter view and owns the desktop presence surface
 // (single-instance activation, tray restore/exit and narrow notifications).
@@ -38,6 +39,10 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<SchoolAnnouncementWindow> school_announcement_window_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       announcement_channel_;
+
+  std::unique_ptr<SchoolAnnouncementNotification> school_announcement_notification_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      announcement_notifications_channel_;
 
   // Application-owned Windows frame commands.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>

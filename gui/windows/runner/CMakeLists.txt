@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "school_announcement_window.cpp"
+  "school_announcement_notification.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -35,7 +36,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
-target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib" "comctl32.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib" "comctl32.lib" "runtimeobject.lib" "advapi32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Official pinned SDK only; the installed WebView2 runtime remains external.

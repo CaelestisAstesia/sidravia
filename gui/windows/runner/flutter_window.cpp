@@ -87,6 +87,38 @@ bool FlutterWindow::OnCreate() {
         }
         result->NotImplemented();
       });
+  school_announcement_notification_ =
+      std::make_unique<SchoolAnnouncementNotification>(GetHandle());
+  announcement_notifications_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "sidravia/announcement-notifications",
+          &flutter::StandardMethodCodec::GetInstance());
+  announcement_notifications_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        if (call.method_name() == "show") {
+          const auto* arguments = call.arguments()
+              ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
+          result->Success(flutter::EncodableValue(
+              arguments && school_announcement_notification_
+                  ? school_announcement_notification_->Show(*arguments) : "failed"));
+          return;
+        }
+        if (call.method_name() == "dismiss" || call.method_name() == "dispose") {
+          if (call.arguments() && !call.arguments()->IsNull()) {
+            result->Error("invalid_arguments", "Null arguments required.");
+            return;
+          }
+          const bool okay = !school_announcement_notification_ ||
+              (call.method_name() == "dismiss"
+                  ? school_announcement_notification_->Dismiss()
+                  : school_announcement_notification_->Dispose());
+          if (okay) result->Success();
+          else result->Error("notification_failed", "Notification operation failed.");
+          return;
+        }
+        result->NotImplemented();
+      });
   window_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(), "sidravia/window",
@@ -271,6 +303,8 @@ void FlutterWindow::OnDestroy() {
   }
   RemoveTrayIcon();
   ReleaseDesktopPresence();
+  school_announcement_notification_.reset();
+  announcement_notifications_channel_.reset();
   announcement_channel_.reset();
   school_announcement_window_.reset();
   window_channel_.reset();
@@ -488,6 +522,19 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == SchoolAnnouncementNotification::kCallbackMessage) {
+    if (school_announcement_notification_) {
+      const auto callback = school_announcement_notification_->TakeCallback(wparam, lparam);
+      if (callback && announcement_notifications_channel_) {
+        try {
+          announcement_notifications_channel_->InvokeMethod(
+              callback->first,
+              std::make_unique<flutter::EncodableValue>(callback->second));
+        } catch (...) { /* Identity stays consumed when delivery fails. */ }
+      }
+    }
+    return 0;
+  }
   if (message == kVisibilityChangedMessage) {
     visibility_message_queued_ = false;
     PublishVisibilityUpdate();
