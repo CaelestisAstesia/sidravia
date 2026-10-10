@@ -23,6 +23,7 @@ class SidraviaShell extends StatefulWidget {
 
 class _SidraviaShellState extends State<SidraviaShell> {
   AppPage _page = AppPage.home;
+  final _configurationKey = GlobalKey<ConfigurationPageState>();
   final _history = <AppPage>[];
 
   void _go(AppPage page) {
@@ -30,6 +31,21 @@ class _SidraviaShellState extends State<SidraviaShell> {
     setState(() {
       _history.add(_page);
       _page = page;
+    });
+  }
+
+  void _requestBack() {
+    if (_page == AppPage.configuration) {
+      _configurationKey.currentState?.requestLeave();
+    } else {
+      _back();
+    }
+  }
+
+  void _saved() {
+    setState(() {
+      _history.clear();
+      _page = AppPage.home;
     });
   }
 
@@ -43,45 +59,53 @@ class _SidraviaShellState extends State<SidraviaShell> {
   Widget build(BuildContext context) => CallbackShortcuts(
     bindings: {
       const SingleActivator(LogicalKeyboardKey.escape): () {
-        if (_page != AppPage.home) _back();
+        if (_page != AppPage.home) _requestBack();
       },
       const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () {
-        if (_page != AppPage.home) _back();
+        if (_page != AppPage.home) _requestBack();
       },
     },
-    child: Focus(
-      autofocus: true,
-      child: Scaffold(
-        body: SafeArea(
-          child: AnimatedBuilder(
-            animation: widget.controller,
-            builder: (context, _) => switch (_page) {
-              AppPage.home => HomePage(
-                controller: widget.controller,
-                announcements: widget.announcements,
-                onNavigate: _go,
-              ),
-              AppPage.settings => SettingsPage(
-                controller: widget.controller,
-                onNavigate: _go,
-                onBack: _back,
-              ),
-              AppPage.configuration => ConfigurationPage(
-                controller: widget.controller,
-                onBack: _back,
-              ),
-              AppPage.details => AdvancedPage(
-                controller: widget.controller,
-                detailsOnly: true,
-                onBack: _back,
-                onDiagnostics: () => _go(AppPage.diagnostics),
-              ),
-              AppPage.diagnostics => AdvancedPage(
-                controller: widget.controller,
-                detailsOnly: false,
-                onBack: _back,
-              ),
-            },
+    child: PopScope(
+      canPop: _page == AppPage.home,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _requestBack();
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: SafeArea(
+            child: AnimatedBuilder(
+              animation: widget.controller,
+              builder: (context, _) => switch (_page) {
+                AppPage.home => HomePage(
+                  controller: widget.controller,
+                  announcements: widget.announcements,
+                  onNavigate: _go,
+                ),
+                AppPage.settings => SettingsPage(
+                  controller: widget.controller,
+                  onNavigate: _go,
+                  onBack: _back,
+                ),
+                AppPage.configuration => ConfigurationPage(
+                  key: _configurationKey,
+                  onSaved: _saved,
+                  controller: widget.controller,
+                  onBack: _back,
+                ),
+                AppPage.details => AdvancedPage(
+                  controller: widget.controller,
+                  detailsOnly: true,
+                  onBack: _back,
+                  onDiagnostics: () => _go(AppPage.diagnostics),
+                ),
+                AppPage.diagnostics => AdvancedPage(
+                  controller: widget.controller,
+                  detailsOnly: false,
+                  onBack: _back,
+                ),
+              },
+            ),
           ),
         ),
       ),

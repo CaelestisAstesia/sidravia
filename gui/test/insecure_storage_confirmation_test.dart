@@ -237,6 +237,17 @@ void main() {
       } else {
         await tester.enterText(find.byType(TextField).first, 'new-user');
         await tester.tap(find.text('保存更改'));
+        await tester.pumpAndSettle();
+        if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+          await tester.tap(
+            find.text('保存并断开').evaluate().isNotEmpty
+                ? find.text('保存并断开')
+                : find.text('保存并停止').evaluate().isNotEmpty
+                ? find.text('保存并停止')
+                : find.text('保存'),
+          );
+          await tester.pump();
+        }
       }
       await tester.pump();
       await tester.tap(find.text('返回'));
@@ -244,7 +255,11 @@ void main() {
       client.gate.complete();
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('允许未受保护的存储？'), findsNothing);
+      expect(find.text('允许未受保护的存储？'), delete ? findsNothing : findsOneWidget);
+      if (!delete) {
+        await tester.tap(find.text('取消').last);
+        await tester.pumpAndSettle();
+      }
       expect(client.attempts.map((a) => a.$2), [false]);
       expect(c.busy, isFalse);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -354,6 +369,10 @@ void main() {
           } else {
             await tester.enterText(find.byType(TextField).first, 'new-user');
             if (op != GuiOperation.updateConfiguration) {
+              if (find.text('更改密码').evaluate().isNotEmpty) {
+                await tester.tap(find.text('更改密码'));
+                await tester.pump();
+              }
               await tester.enterText(
                 find.byType(TextField).last,
                 'fixture-password',
@@ -367,6 +386,16 @@ void main() {
           }
         }
         await tester.pumpAndSettle();
+        if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+          await tester.tap(
+            find.text('保存并断开').evaluate().isNotEmpty
+                ? find.text('保存并断开')
+                : find.text('保存并停止').evaluate().isNotEmpty
+                ? find.text('保存并停止')
+                : find.text('保存'),
+          );
+          await tester.pumpAndSettle();
+        }
         expect(find.text('允许未受保护的存储？'), findsOneWidget);
         expect(find.text(op.securityWarning), findsOneWidget);
         expect(client.attempts.map((a) => a.$2), [false]);

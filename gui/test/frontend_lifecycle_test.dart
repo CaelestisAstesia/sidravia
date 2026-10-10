@@ -216,8 +216,23 @@ void main() {
       expect(_selectedProfile(tester), 'jlu');
       expect(_username(tester), creating ? '' : 'student01');
       await tester.enterText(find.byType(TextField).first, 'edited-account');
+      if (find.text('更改密码').evaluate().isNotEmpty) {
+        await tester.tap(find.text('更改密码'));
+        await tester.pump();
+      }
       await tester.enterText(find.byType(TextField).last, 'fake-password');
       await tester.tap(find.text(creating ? '保存配置' : '保存更改'));
+      await tester.pumpAndSettle();
+      if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+        await tester.tap(
+          find.text('保存并断开').evaluate().isNotEmpty
+              ? find.text('保存并断开')
+              : find.text('保存并停止').evaluate().isNotEmpty
+              ? find.text('保存并停止')
+              : find.text('保存'),
+        );
+        await tester.pump();
+      }
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
       expect(
@@ -241,6 +256,10 @@ void main() {
     await _mount(tester, controller);
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'unsaved-account');
+    if (find.text('更改密码').evaluate().isNotEmpty) {
+      await tester.tap(find.text('更改密码'));
+      await tester.pump();
+    }
     await tester.enterText(find.byType(TextField).last, 'unsaved-password');
     await tester.pump(const Duration(milliseconds: 60));
     await tester.pumpAndSettle();
@@ -255,7 +274,7 @@ void main() {
 
   for (final leaveDuringPassword in [false, true]) {
     testWidgets(
-      'atomic save survives Escape, delayed frame=$leaveDuringPassword',
+      'atomic save blocks Escape until completion, delayed frame=$leaveDuringPassword',
       (tester) async {
         final client = _DelayedSaveClient();
         final controller = GuiController(
@@ -267,8 +286,23 @@ void main() {
         await _mount(tester, controller);
         await _openConfiguration(tester);
         await tester.enterText(find.byType(TextField).first, 'saved-account');
+        if (find.text('更改密码').evaluate().isNotEmpty) {
+          await tester.tap(find.text('更改密码'));
+          await tester.pump();
+        }
         await tester.enterText(find.byType(TextField).last, 'fake-password');
         await tester.tap(find.text('保存更改'));
+        await tester.pumpAndSettle();
+        if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+          await tester.tap(
+            find.text('保存并断开').evaluate().isNotEmpty
+                ? find.text('保存并断开')
+                : find.text('保存并停止').evaluate().isNotEmpty
+                ? find.text('保存并停止')
+                : find.text('保存'),
+          );
+          await tester.pump();
+        }
         await tester.pump();
         if (leaveDuringPassword) {
           await tester.pump(const Duration(milliseconds: 50));
@@ -276,7 +310,7 @@ void main() {
         }
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
-        expect(find.byType(ConfigurationPage), findsNothing);
+        expect(find.byType(ConfigurationPage), findsOneWidget);
         client.updateGate.complete();
         client.passwordGate.complete();
         await tester.pumpAndSettle();
@@ -306,11 +340,31 @@ void main() {
     await _mount(tester, controller);
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'created-account');
+    if (find.text('更改密码').evaluate().isNotEmpty) {
+      await tester.tap(find.text('更改密码'));
+      await tester.pump();
+    }
     await tester.enterText(find.byType(TextField).last, 'fake-password');
     await tester.tap(find.text('保存配置'));
-    await tester.pump();
-    await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
+    if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+      await tester.tap(
+        find.text('保存并断开').evaluate().isNotEmpty
+            ? find.text('保存并断开')
+            : find.text('保存并停止').evaluate().isNotEmpty
+            ? find.text('保存并停止')
+            : find.text('保存'),
+      );
+      await tester.pump();
+    }
+    await tester.pump();
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '取消'))
+          .onPressed,
+      isNull,
+    );
+    expect(find.byType(ConfigurationPage), findsOneWidget);
     client.createGate.complete();
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

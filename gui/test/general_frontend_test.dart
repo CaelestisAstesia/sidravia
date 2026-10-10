@@ -211,45 +211,84 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     client.dispose();
   });
-  testWidgets(
-    'form validates, preserves failure, clears password and saves actual client',
-    (tester) async {
-      final client = FailingClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
+  testWidgets('form validates, retains failure draft and saves actual client', (
+    tester,
+  ) async {
+    final client = FailingClient();
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+    );
+    await controller.start();
+    await tester.pumpWidget(
+      MaterialApp(home: SidraviaShell(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('吉林大学'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '');
+    await tester.ensureVisible(find.text('保存更改'));
+    await tester.tap(find.text('保存更改'));
+    await tester.pumpAndSettle();
+    if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+      await tester.tap(
+        find.text('保存并断开').evaluate().isNotEmpty
+            ? find.text('保存并断开')
+            : find.text('保存并停止').evaluate().isNotEmpty
+            ? find.text('保存并停止')
+            : find.text('保存'),
       );
-      await controller.start();
-      await tester.pumpWidget(
-        MaterialApp(home: SidraviaShell(controller: controller)),
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('请输入校园网账号。'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'demo-new');
+    if (find.text('更改密码').evaluate().isNotEmpty) {
+      await tester.tap(find.text('更改密码'));
+      await tester.pump();
+    }
+    await tester.enterText(find.byType(TextField).last, 'fake-only');
+    await tester.ensureVisible(find.text('保存更改'));
+    await tester.tap(find.text('保存更改'));
+    await tester.pumpAndSettle();
+    if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+      await tester.tap(
+        find.text('保存并断开').evaluate().isNotEmpty
+            ? find.text('保存并断开')
+            : find.text('保存并停止').evaluate().isNotEmpty
+            ? find.text('保存并停止')
+            : find.text('保存'),
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('吉林大学'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).first, '');
-      await tester.tap(find.text('保存更改'));
-      await tester.pumpAndSettle();
-      expect(find.text('请输入校园网账号。'), findsOneWidget);
-      await tester.enterText(find.byType(TextField).first, 'demo-new');
-      await tester.enterText(find.byType(TextField).last, 'fake-only');
-      await tester.tap(find.text('保存更改'));
-      await tester.pumpAndSettle();
-      expect(find.text('当前状态无法执行此操作。'), findsOneWidget);
-      expect(
-        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
-        isEmpty,
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('当前状态无法执行此操作。'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+      'fake-only',
+    );
+    client.fail = false;
+    await tester.ensureVisible(find.text('保存更改'));
+    await tester.tap(find.text('保存更改'));
+    await tester.pumpAndSettle();
+    if (find.text('保存连接配置？').evaluate().isNotEmpty) {
+      await tester.tap(
+        find.text('保存并断开').evaluate().isNotEmpty
+            ? find.text('保存并断开')
+            : find.text('保存并停止').evaluate().isNotEmpty
+            ? find.text('保存并停止')
+            : find.text('保存'),
       );
-      client.fail = false;
-      await tester.tap(find.text('保存更改'));
-      await tester.pumpAndSettle();
-      expect(find.byType(HomePage), findsOneWidget);
-      expect(find.text('demo-new'), findsOneWidget);
-      expect(controller.notice, isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      controller.dispose();
-      client.dispose();
-    },
-  );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(find.byType(HomePage), findsOneWidget);
+    expect(find.text('demo-new'), findsOneWidget);
+    expect(controller.notice, isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+    client.dispose();
+  });
   for (final platform in [
     TargetPlatform.windows,
     TargetPlatform.android,

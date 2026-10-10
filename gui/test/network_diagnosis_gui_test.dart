@@ -134,9 +134,12 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
-    expect(find.textContaining('离线预览没有真实网络观察'), findsOneWidget);
-    expect(c.canDiagnose, false);
+    await _pumpUntil(tester, () => c.diagnosisError != null && !c.busy);
+    expect(find.textContaining('当前平台不支持网络诊断'), findsOneWidget);
+    expect(c.canDiagnose, isTrue);
+    expect(c.diagnosis, isNull);
+    expect(c.snapshot!.network!.available, isTrue);
+    expect(preview.operations.where((op) => op.contains('probe')), isEmpty);
     await tester.pumpWidget(const SizedBox());
     await c.close();
     c.dispose();

@@ -23,7 +23,13 @@ typedef InsecureStorageConfirmation = Future<bool> Function(
 );
 
 class GuiMutationResult {
-  const GuiMutationResult(this.succeeded, [this.errorCode]);
+  const GuiMutationResult(
+    this.succeeded, [
+    this.errorCode,
+    this.committed = false,
+    this.unknown = false,
+  ]);
   final bool succeeded;
   final String? errorCode;
+  final bool committed, unknown;
 }

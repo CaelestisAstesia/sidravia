@@ -94,7 +94,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(policy.summary), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.byType(TextField), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -206,6 +206,10 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).first, 'draft-for-A');
+        if (find.text('更改密码').evaluate().isNotEmpty) {
+          await tester.tap(find.text('更改密码'));
+          await tester.pump();
+        }
         await tester.enterText(find.byType(TextField).last, 'transient-draft');
         client.configurations = [otherConfiguration];
         await tester.pump(const Duration(milliseconds: 60));

@@ -283,6 +283,7 @@ class GuiController extends ChangeNotifier {
     NetworkBindingPolicy networkBindingPolicy =
         const NetworkBindingPolicy.automatic(),
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
+    void Function(GuiMutationResult)? onResult,
   }) => _mutate(
     (client, allow) => client.configurationCreate(
       networkBindingPolicy: networkBindingPolicy,
@@ -294,6 +295,7 @@ class GuiController extends ChangeNotifier {
       autoReconnect: true,
       allowInsecureStorage: allow,
     ),
+    onResult: onResult,
     operation: GuiOperation.createConfiguration,
     onInsecureStorageConfirmation: onInsecureStorageConfirmation,
     allowed: (caps) => caps.canCreate,
@@ -306,6 +308,7 @@ class GuiController extends ChangeNotifier {
     String? password,
     NetworkBindingPolicy? networkBindingPolicy,
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
+    void Function(GuiMutationResult)? onResult,
   }) => _mutate(
     (client, allow) => client.configurationUpdate(
       configurationId: configurationId,
@@ -315,6 +318,7 @@ class GuiController extends ChangeNotifier {
       networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allow,
     ),
+    onResult: onResult,
     operation: password == null
         ? GuiOperation.updateConfiguration
         : GuiOperation.updatePassword,
@@ -569,6 +573,7 @@ class GuiController extends ChangeNotifier {
 
   Future<bool> _mutate(
     Future<Object?> Function(SidraviaIpcClient, bool) action, {
+    void Function(GuiMutationResult)? onResult,
     String fallback = '操作失败，请刷新后重试。',
     GuiOperation operation = GuiOperation.connection,
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
@@ -603,12 +608,14 @@ class GuiController extends ChangeNotifier {
     if (result.errorCode != 'insecure_storage_confirmation_required' ||
         allowInsecureStorage ||
         onInsecureStorageConfirmation == null) {
+      onResult?.call(result);
       return result.succeeded;
     }
     final confirmed = await onInsecureStorageConfirmation(operation);
     if (!confirmed || !_canContinue(generation)) return false;
     return _mutate(
       action,
+      onResult: onResult,
       fallback: fallback,
       operation: operation,
       allowed: allowed,
@@ -636,7 +643,9 @@ class GuiController extends ChangeNotifier {
         return;
       }
       await _refresh(generation, client);
-      completer.complete(GuiMutationResult(_state == GuiConnectionState.ready));
+      completer.complete(
+        GuiMutationResult(_state == GuiConnectionState.ready, null, true),
+      );
     } on IpcRequestFailure catch (error) {
       if (_current(generation) && identical(_client, client)) {
         if (error.code == 'configuration_session_invalidation_failed') {
@@ -647,12 +656,18 @@ class GuiController extends ChangeNotifier {
         _scheduleRefresh(generation, client);
         _notify();
       }
-      completer.complete(GuiMutationResult(false, error.code));
+      completer.complete(
+        GuiMutationResult(
+          false,
+          error.code,
+          error.code == 'configuration_session_invalidation_failed',
+        ),
+      );
     } on Object catch (error) {
       if (_current(generation) && identical(_client, client)) {
         await _invalidate(generation, client, error);
       }
-      completer.complete(const GuiMutationResult(false));
+      completer.complete(const GuiMutationResult(false, null, false, true));
     } finally {
       if (_generation == generation) {
         _transition = null;
@@ -690,6 +705,9 @@ class GuiController extends ChangeNotifier {
         }
       } else {
         sessions = await client.sessionList();
+        if (client is SidraviaNetworkClient) {
+          network = await (client as SidraviaNetworkClient).networkInterfaces();
+        }
       }
       if (!_canContinue(generation) || !identical(_client, client)) return;
       // Session IDs are local to a daemon instance. A stale reconnect to the

@@ -9,7 +9,8 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 /// Memory-only replacement at the existing typed client boundary.
 /// No process, filesystem, socket, HTTP client or credential store is used.
-class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
+class OfflineDemoClient extends ChangeNotifier
+    implements SidraviaIpcClient, SidraviaNetworkClient {
   OfflineDemoClient({DateTime? now}) {
     _session = _newSession(
       'authenticated',
@@ -18,6 +19,52 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       ),
     );
   }
+
+  @override
+  Future<NetworkInterfacesSnapshot> networkInterfaces() async =>
+      NetworkInterfacesSnapshot(
+        available: true,
+        revision: BigInt.one,
+        interfaces: [
+          NetworkInterfaceRow(
+            interfaceId: 'demo-iface',
+            displayName: '模拟以太网',
+            operationalState: 'up',
+            physicalMedium: 'wired',
+            hardwareBacked: true,
+            physicalConnectorPresent: true,
+            filterInterface: false,
+            endpointInterface: false,
+            addressAssignmentMethod: 'dhcp',
+            ipv4Assignments: [
+              NetworkIPv4Assignment(
+                address: '192.0.2.4',
+                prefixLength: 24,
+                automaticCandidate: true,
+                explicitBindable: true,
+              ),
+            ],
+          ),
+        ],
+      );
+  @override
+  Future<NetworkDiagnosis> networkDiagnose({
+    String? configurationId,
+    String? sessionId,
+    bool probe = false,
+  }) async => throw const IpcRequestFailure('unsupported_platform');
+  @override
+  Future<ConfigurationSummary> configurationSetNetworkBindingPolicy({
+    required String configurationId,
+    required NetworkBindingPolicy policy,
+    bool allowInsecureStorage = false,
+  }) => configurationUpdate(
+    configurationId: configurationId,
+    institutionProfileId: _configuration!.institutionProfileId,
+    username: _configuration!.username,
+    networkBindingPolicy: policy,
+    allowInsecureStorage: allowInsecureStorage,
+  );
 
   static const profile = InstitutionProfile(
     id: 'jlu',

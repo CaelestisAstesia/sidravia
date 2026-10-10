@@ -3,239 +3,92 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/application/gui_network_binding.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
-import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 
+/// A controlled editor: the configuration page owns the complete draft.
 class NetworkBindingSection extends StatefulWidget {
-  const NetworkBindingSection({super.key, required this.controller});
+  const NetworkBindingSection({
+    super.key,
+    required this.controller,
+    required this.policy,
+    required this.onChanged,
+  });
   final GuiController controller;
+  final NetworkBindingPolicy policy;
+  final ValueChanged<NetworkBindingPolicy>? onChanged;
   @override
   State<NetworkBindingSection> createState() => _NetworkBindingSectionState();
 }
 
 class _NetworkBindingSectionState extends State<NetworkBindingSection> {
-  String? _configurationId;
-  NetworkBindingPolicy? _draft;
-  bool _targetChanged = false;
-  bool _saving = false;
-  String? _result;
-
-  @override
-  void initState() {
-    super.initState();
-    _sync();
-    widget.controller.addListener(_changed);
-  }
-
-  void _sync() {
-    final c = widget.controller.capabilities.configuration;
-    if (_configurationId == null) {
-      if (c != null) {
-        _configurationId = c.id;
-        _draft = c.networkBindingPolicy;
-      }
-    } else if (widget.controller.capabilities.isReady &&
-        c?.id != _configurationId) {
-      _targetChanged = true;
-    }
-  }
-
-  void _changed() {
-    if (mounted) setState(_sync);
-  }
-
-  @override
-  void didUpdateWidget(NetworkBindingSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_changed);
-      widget.controller.addListener(_changed);
-      _targetChanged = _configurationId != null;
-      _sync();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_changed);
-    super.dispose();
-  }
-
+  bool _expanded = false;
   @override
   Widget build(BuildContext context) {
-    final controller = widget.controller;
-    final configuration = controller.capabilities.configuration;
-    final choices = networkBindingChoices(controller.snapshot?.network);
-    final draft = _draft;
-    final eligible =
-        draft != null &&
-        networkBindingEligible(controller.snapshot?.network, draft);
-    final editable =
-        !_targetChanged &&
-        !_saving &&
-        !controller.busy &&
-        configuration?.id == _configurationId &&
-        controller.networkBindingUnavailable == null;
-    final current =
-        controller.capabilities.retainedSession?.selectedNetworkBinding;
-    final draftInterface = draft?.interfaceId == null
-        ? null
-        : controller.snapshot?.network?.interfaces
-              .where((row) => row.interfaceId == draft!.interfaceId)
-              .firstOrNull;
+    final choices = networkBindingChoices(widget.controller.snapshot?.network);
+    final policy = widget.policy;
+    final available =
+        policy.interfaceId == null || choices.any((c) => c.policy == policy);
+    final selected = choices.where((c) => c.policy == policy).firstOrNull;
+    Widget choice(
+      NetworkBindingPolicy value,
+      String label, {
+      bool enabled = true,
+    }) => Material(
+      color: Colors.transparent,
+      child: ListTile(
+        title: Text(label, softWrap: true),
+        subtitle: Text(
+          value.interfaceId == null
+              ? '自动选择'
+              : enabled
+              ? '可用'
+              : '已不可用，不会自动回退',
+        ),
+        trailing: value == policy ? const Icon(Icons.check) : null,
+        enabled: enabled && widget.onChanged != null,
+        onTap: enabled && widget.onChanged != null
+            ? () {
+                widget.onChanged!(value);
+                setState(() => _expanded = false);
+              }
+            : null,
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const DesignSectionTitle('网络绑定'),
-        const DesignHelper('独立保存网络绑定，不提交账号或密码编辑。更改会结束旧会话；下次手动连接才使用新策略。'),
-        const SizedBox(height: 7),
-        if (_configurationId == null)
-          const DesignHelper('请先保存连接配置，再选择网络绑定。')
-        else ...[
+        DesignGroup(
+          children: [
+            DesignRow(
+              title: '下次连接的网络策略',
+              subtitle: selected?.label ?? policy.summary,
+              trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              onTap: widget.onChanged == null
+                  ? null
+                  : () => setState(() => _expanded = !_expanded),
+            ),
+          ],
+        ),
+        if (_expanded)
           DesignGroup(
             children: [
-              DesignRow(
-                title: '已保存策略',
-                value: configuration == null
-                    ? '暂不可用'
-                    : configuration.networkBindingPolicy.interfaceId == null
-                    ? '自动选择可用网卡'
-                    : '${configuration.networkBindingPolicy.interfaceId} · ${configuration.networkBindingPolicy.localIpv4Address}',
-              ),
-              DesignRow(
-                title: '当前会话绑定',
-                value: current == null
-                    ? '尚无会话绑定观察'
-                    : '${current.displayName} · ${current.interfaceId} · ${current.localIpv4Address}',
-              ),
+              choice(const NetworkBindingPolicy.automatic(), '自动选择可用网卡'),
+              for (final c in choices) choice(c.policy, c.label),
+              if (!available)
+                choice(
+                  policy,
+                  '指定绑定已不可用：${policy.interfaceId} · ${policy.localIpv4Address}',
+                  enabled: false,
+                ),
             ],
           ),
-          const SizedBox(height: 14),
-          DesignField(
-            label: '下次连接的网络策略',
-            child: DropdownButtonFormField<NetworkBindingPolicy>(
-              key: ValueKey((
-                draft,
-                choices.map((c) => c.policy).toList().join('|'),
-              )),
-              initialValue: draft,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 9,
-                ),
-              ),
-              items: [
-                const DropdownMenuItem(
-                  value: NetworkBindingPolicy.automatic(),
-                  child: Text('自动选择可用网卡'),
-                ),
-                for (final choice in choices)
-                  DropdownMenuItem(
-                    value: choice.policy,
-                    child: Tooltip(
-                      message: choice.label,
-                      child: Text(
-                        choice.label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                if (draft?.interfaceId != null &&
-                    !choices.any((c) => c.policy == draft))
-                  DropdownMenuItem(
-                    value: draft,
-                    enabled: false,
-                    child: Text(
-                      '指定绑定已不可用：${draft!.interfaceId} · ${draft.localIpv4Address}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-              onChanged: editable
-                  ? (value) => setState(() {
-                      _draft = value;
-                      _result = null;
-                    })
-                  : null,
-            ),
-          ),
-          if (draft?.interfaceId != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Semantics(
-                label:
-                    '当前草稿绑定：网卡 ${draftInterface?.displayName.isNotEmpty == true ? draftInterface!.displayName : draft!.interfaceId}，接口 ID ${draft!.interfaceId}，IPv4 ${draft.localIpv4Address}',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('当前草稿绑定'),
-                    Text(
-                      '网卡：${draftInterface?.displayName.isNotEmpty == true ? draftInterface!.displayName : draft.interfaceId}',
-                      softWrap: true,
-                    ),
-                    Text('接口 ID：${draft.interfaceId}', softWrap: true),
-                    Text('IPv4：${draft.localIpv4Address}', softWrap: true),
-                  ],
-                ),
-              ),
-            ),
-          if (_targetChanged)
-            const DesignHelper('连接配置已变化，请重新打开后编辑网络绑定。')
-          else if (controller.networkBindingUnavailable != null)
-            DesignHelper(controller.networkBindingUnavailable!)
-          else if (!eligible)
-            const DesignHelper('所选网卡或 IPv4 已不可用。请选择当前可用的绑定；不会自动回退。'),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(
-              onPressed:
-                  editable &&
-                      eligible &&
-                      draft != configuration?.networkBindingPolicy
-                  ? _save
-                  : null,
-              child: Text(_saving ? '正在保存网络绑定…' : '保存网络绑定'),
-            ),
-          ),
-          if (_result != null) DesignHelper(_result!),
+        if (!available)
+          const DesignHelper('所选网卡或 IPv4 已不可用。请选择当前可用的绑定；不会自动回退。'),
+        if (policy.interfaceId != null) ...[
+          Text('接口 ID：${policy.interfaceId}', softWrap: true),
+          Text('IPv4：${policy.localIpv4Address}', softWrap: true),
         ],
       ],
     );
-  }
-
-  Future<void> _save() async {
-    final controller = widget.controller;
-    final id = _configurationId;
-    final policy = _draft;
-    if (_targetChanged ||
-        id == null ||
-        policy == null ||
-        !controller.canSaveNetworkBinding(id, policy)) {
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _result = null;
-    });
-    final ok = await controller.setNetworkBinding(
-      configurationId: id,
-      policy: policy,
-      onInsecureStorageConfirmation: (operation) =>
-          mounted && !_targetChanged && widget.controller == controller
-          ? confirmInsecureStorage(context, operation)
-          : Future.value(false),
-    );
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _result = ok
-          ? '网络绑定已保存；请手动连接以使用新策略。'
-          : '${controller.notice ?? '网络绑定未保存，请检查当前状态。'}${controller.networkBindingErrorCode == null ? '' : ' (${controller.networkBindingErrorCode})'}';
-    });
   }
 }

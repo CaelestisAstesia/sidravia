@@ -170,7 +170,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ConfigurationPage), findsOneWidget);
       await tester.enterText(find.byType(TextField).first, 'demo-student02');
+      await tester.ensureVisible(find.text('保存更改'));
       await tester.tap(find.text('保存更改'));
+      await tester.pumpAndSettle();
+      expect(find.text('保存连接配置？'), findsOneWidget);
+      await tester.tap(find.text('保存并断开'));
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
       expect(find.text('demo-student02'), findsOneWidget);
