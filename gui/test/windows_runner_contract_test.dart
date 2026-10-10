@@ -119,22 +119,28 @@ void main() {
     expect(flutterWindow, contains('WM_LBUTTONUP'));
     expect(flutterWindow, contains('WM_RBUTTONUP'));
     expect(flutterWindow, contains('NIN_BALLOONUSERCLICK'));
+    final destruction = flutterWindow
+        .split('void FlutterWindow::OnDestroy()')
+        .last;
+    expect(
+      destruction.indexOf('tray_popover_window_.reset()'),
+      lessThan(destruction.indexOf('flutter_controller_ = nullptr')),
+    );
 
-    // Tray menu contract: no fabricated connection status.
-    final menu = flutterWindow
-        .split('void FlutterWindow::ShowTrayMenu()')
-        .last
-        .split('void FlutterWindow::')
-        .first;
-    expect(RegExp(r'::AppendMenuW\(').allMatches(menu), hasLength(2));
-    expect(menu, isNot(contains('MF_GRAYED')));
-    expect(menu, isNot(contains('\\u5DF2\\u8FDE\\u63A5')));
-    // Tray menu contract.
-    expect(flutterWindow, contains('kTrayOpenCommand'));
-    expect(flutterWindow, contains('kTrayExitCommand'));
-    expect(flutterWindow, contains('\\u663E\\u793A\\u4E3B\\u754C\\u9762'));
-    expect(flutterWindow, contains('\\u9000\\u51FA Sidravia'));
-    expect(flutterWindow, contains('TPM_RETURNCMD'));
+    expect(flutterWindow, contains('ShowTrayPopover'));
+    expect(flutterWindow, contains('"publishTray"'));
+    expect(flutterWindow, contains('"restoreMain"'));
+    expect(header, contains('std::unique_ptr<TrayPopoverWindow>'));
+    final tray = File('windows/runner/tray_popover_window.cpp')
+        .readAsStringSync();
+    expect(tray, contains('set_dart_entrypoint("trayMain")'));
+    expect(tray, contains('HandleTopLevelWindowProc'));
+    expect(tray, contains('resizeToContent'));
+    expect(tray, contains('WM_DPICHANGED'));
+    expect(flutterWindow, contains('GetDoubleClickTime()'));
+    expect(flutterWindow, contains('WM_LBUTTONDBLCLK'));
+    expect(flutterWindow, contains('suppress_tray_button_up_'));
+    expect(flutterWindow, isNot(contains('TrackPopupMenu')));
 
     // Explicit exit flows through Dart before native destruction.
     expect(flutterWindow, contains('"sidravia/desktop"'));

@@ -13,6 +13,7 @@
 #include "win32_window.h"
 #include "school_announcement_window.h"
 #include "school_announcement_notification.h"
+#include "tray_popover_window.h"
 
 // A window that hosts a Flutter view and owns the desktop presence surface
 // (single-instance activation, tray restore/exit and narrow notifications).
@@ -51,6 +52,8 @@ class FlutterWindow : public Win32Window {
   // Desktop presence commands and native-to-Dart exit requests.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       desktop_channel_;
+  std::unique_ptr<TrayPopoverWindow> tray_popover_window_;
+  flutter::EncodableMap tray_presentation_;
 
   flutter::EncodableMap WindowState();
   void PublishWindowState();
@@ -62,12 +65,14 @@ class FlutterWindow : public Win32Window {
   bool desktop_presence_initialized_ = false;
   bool visibility_message_queued_ = false;
   bool destroying_ = false;
+  bool suppress_tray_button_up_ = false;
   std::optional<bool> last_published_visibility_;
   bool exit_request_pending_ = false;
   HANDLE single_instance_mutex_ = nullptr;
   std::wstring single_instance_mutex_name_;
   std::wstring activation_message_name_;
   UINT_PTR exit_fallback_timer_ = 0;
+  UINT_PTR tray_single_click_timer_ = 0;
   UINT activation_message_ = 0;
   UINT taskbar_created_message_ = 0;
 
@@ -78,7 +83,8 @@ class FlutterWindow : public Win32Window {
   void RemoveTrayIcon();
   void RestoreWindow();
   void NotifyTray(const std::wstring& title, const std::wstring& body);
-  void ShowTrayMenu();
+  void ShowTrayPopover();
+  void HandleTrayAction(const flutter::EncodableMap& action);
   void HandleTrayMessage(LPARAM lparam);
   void ScheduleVisibilityUpdate();
   void PublishVisibilityUpdate();

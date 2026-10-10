@@ -13,6 +13,10 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
 import 'package:sidravia_gui/platform/sidravia_platform.dart';
+import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
+
+@pragma('vm:entry-point')
+void trayMain() => runTrayPopover();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

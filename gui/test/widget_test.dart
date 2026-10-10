@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
@@ -27,6 +28,38 @@ void main() {
       expect(find.text('尚未配置'), findsNothing);
       expect(find.byTooltip('设置'), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('wide-sidebar')), findsNothing);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.close();
+      controller.dispose();
+    }
+  });
+
+  testWidgets('tray navigation uses the existing destination stack', (
+    tester,
+  ) async {
+    final controller = GuiController(
+      bootstrapper: const UnsupportedGuiBootstrapper(),
+    );
+    final shellKey = GlobalKey<SidraviaShellState>();
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SidraviaShell(key: shellKey, controller: controller),
+        ),
+      );
+      expect(
+        await shellKey.currentState!.navigateFromTray(AppPage.settings),
+        isTrue,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(
+        await shellKey.currentState!.navigateFromTray(AppPage.home),
+        isTrue,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(HomePage), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();

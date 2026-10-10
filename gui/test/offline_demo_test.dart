@@ -152,6 +152,13 @@ void main() {
         await tester.tap(find.text('等待重试').last);
         await tester.pumpAndSettle();
         expect(find.text('停止重试'), findsOneWidget);
+        await tester.tap(find.text('离线托盘预览'));
+        await tester.pumpAndSettle();
+        expect(find.text('等待重试'), findsNWidgets(2));
+        expect(find.text('显示主界面'), findsOneWidget);
+        expect(find.text('退出 Sidravia'), findsOneWidget);
+        await tester.tap(find.text('显示主界面'));
+        await tester.pumpAndSettle();
         expect(find.byType(HomeNoticeView), findsOneWidget);
         expect(find.text('查看吉林大学公告'), findsOneWidget);
         expect(find.text('在应用内打开学校公告页面'), findsOneWidget);

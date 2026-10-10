@@ -17,9 +17,8 @@ namespace {
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
 constexpr UINT kVisibilityChangedMessage = WM_APP + 2;
-constexpr int kTrayOpenCommand = 1001;
-constexpr int kTrayExitCommand = 1002;
 constexpr UINT_PTR kExitFallbackTimerId = 1;
+constexpr UINT_PTR kTraySingleClickTimerId = 2;
 constexpr UINT kExitFallbackMilliseconds = 6000;
 constexpr const wchar_t kSingleInstanceMutexName[] =
     L"Local\\Sidravia.Gui.DesktopPresence";
@@ -218,6 +217,23 @@ bool FlutterWindow::OnCreate() {
               ::IsIconic(window) == FALSE));
           return;
         }
+        if (call.method_name() == "publishTray") {
+          const auto* presentation = call.arguments()
+              ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
+          if (!presentation || !desktop_presence_initialized_) {
+            result->Error("invalid_tray_presentation", "Tray presentation unavailable.");
+            return;
+          }
+          tray_presentation_ = *presentation;
+          if (tray_popover_window_) tray_popover_window_->Publish(tray_presentation_);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "restoreMain") {
+          RestoreWindow();
+          result->Success();
+          return;
+        }
         if (call.method_name() == "configurePreferences") {
           const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
           if (!desktop_presence_initialized_ || arguments == nullptr || arguments->size() != 2) {
@@ -301,6 +317,12 @@ void FlutterWindow::OnDestroy() {
     ::KillTimer(GetHandle(), exit_fallback_timer_);
     exit_fallback_timer_ = 0;
   }
+  if (tray_single_click_timer_ != 0 && GetHandle() != nullptr) {
+    ::KillTimer(GetHandle(), tray_single_click_timer_);
+    tray_single_click_timer_ = 0;
+  }
+  if (tray_popover_window_) tray_popover_window_->Destroy();
+  tray_popover_window_.reset();
   RemoveTrayIcon();
   ReleaseDesktopPresence();
   school_announcement_notification_.reset();
@@ -442,26 +464,46 @@ void FlutterWindow::NotifyTray(const std::wstring& title,
   ::Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 
-void FlutterWindow::ShowTrayMenu() {
+void FlutterWindow::ShowTrayPopover() {
   HWND hwnd = GetHandle();
-  HMENU menu = ::CreatePopupMenu();
-  // Native tray exposes lifecycle actions; connection state belongs to Dart.
-  ::AppendMenuW(menu, MF_STRING, kTrayOpenCommand,
-                L"\u663E\u793A\u4E3B\u754C\u9762");
-  ::AppendMenuW(menu, MF_STRING, kTrayExitCommand,
-                L"\u9000\u51FA Sidravia");
-  ::SetMenuDefaultItem(menu, kTrayOpenCommand, FALSE);
-  POINT pt{};
-  ::GetCursorPos(&pt);
-  ::SetForegroundWindow(hwnd);
-  const int command =
-      ::TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
-                       pt.x, pt.y, 0, hwnd, nullptr);
-  ::DestroyMenu(menu);
-  if (command == kTrayOpenCommand) {
+  if (hwnd == nullptr || tray_presentation_.empty()) return;
+  NOTIFYICONIDENTIFIER identity{};
+  identity.cbSize = sizeof(identity);
+  identity.hWnd = hwnd;
+  identity.uID = kTrayIconId;
+  RECT anchor{};
+  if (FAILED(::Shell_NotifyIconGetRect(&identity, &anchor))) {
+    POINT cursor{};
+    ::GetCursorPos(&cursor);
+    anchor = {cursor.x, cursor.y, cursor.x + 1, cursor.y + 1};
+  }
+  if (!tray_popover_window_) {
+    tray_popover_window_ = std::make_unique<TrayPopoverWindow>(
+        project_, hwnd, [this](const auto& action) { HandleTrayAction(action); });
+  }
+  if (!tray_popover_window_->Open(anchor, tray_presentation_)) {
+    NotifyTray(L"Sidravia",
+               L"\u6258\u76d8\u754c\u9762\u6682\u4e0d\u53ef\u7528\uff0c"
+               L"\u8bf7\u518d\u6b21\u70b9\u51fb\u6216\u53cc\u51fb\u56fe"
+               L"\u6807\u663e\u793a\u4e3b\u754c\u9762\u3002");
+    tray_popover_window_->Destroy();
+    tray_popover_window_.reset();
+  }
+}
+
+void FlutterWindow::HandleTrayAction(const flutter::EncodableMap& action) {
+  if (tray_popover_window_) tray_popover_window_->Hide();
+  const auto kind = action.find(flutter::EncodableValue("kind"));
+  const auto* value = kind == action.end()
+      ? nullptr : std::get_if<std::string>(&kind->second);
+  if (value == nullptr) return;
+  if (*value == "restoreMain") {
     RestoreWindow();
-  } else if (command == kTrayExitCommand) {
+  } else if (*value == "exit") {
     RequestExplicitExit();
+  } else if (desktop_channel_ && flutter_controller_) {
+    desktop_channel_->InvokeMethod(
+        "trayAction", std::make_unique<flutter::EncodableValue>(action));
   }
 }
 
@@ -469,18 +511,40 @@ void FlutterWindow::HandleTrayMessage(LPARAM lparam) {
   const UINT event = LOWORD(static_cast<DWORD>(lparam));
   switch (event) {
     case WM_LBUTTONUP:
+      if (suppress_tray_button_up_) {
+        suppress_tray_button_up_ = false;
+        return;
+      }
+      if (tray_single_click_timer_ != 0) ::KillTimer(GetHandle(), tray_single_click_timer_);
+      tray_single_click_timer_ = ::SetTimer(GetHandle(), kTraySingleClickTimerId,
+                                            GetDoubleClickTime(), nullptr);
+      break;
     case WM_LBUTTONDBLCLK:
+      suppress_tray_button_up_ = true;
+      if (tray_single_click_timer_ != 0) {
+        ::KillTimer(GetHandle(), tray_single_click_timer_);
+        tray_single_click_timer_ = 0;
+      }
+      if (tray_popover_window_) tray_popover_window_->Hide();
+      RestoreWindow();
+      break;
     case NIN_BALLOONUSERCLICK:
       RestoreWindow();
       break;
     case WM_RBUTTONUP:
     case WM_CONTEXTMENU:
-      ShowTrayMenu();
+    case NIN_KEYSELECT:
+      ShowTrayPopover();
       break;
     default:
       break;
   }
 }
+
+/*
+  The classic context menu is intentionally replaced by the shared Flutter
+  popover; keep lifecycle and notification handling in this owner.
+*/
 
 void FlutterWindow::RequestExplicitExit() {
   if (exit_request_pending_) return;
@@ -619,6 +683,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       }
       break;
     case WM_TIMER:
+      if (wparam == kTraySingleClickTimerId && tray_single_click_timer_ != 0) {
+        ::KillTimer(hwnd, tray_single_click_timer_);
+        tray_single_click_timer_ = 0;
+        ShowTrayPopover();
+        return 0;
+      }
       if (wparam == kExitFallbackTimerId && exit_fallback_timer_ != 0 && exit_request_pending_) {
         CompleteExplicitExit();
         return 0;

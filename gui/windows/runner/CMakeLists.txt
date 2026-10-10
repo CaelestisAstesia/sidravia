@@ -10,6 +10,7 @@ add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "school_announcement_window.cpp"
   "school_announcement_notification.cpp"
+  "tray_popover_window.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"

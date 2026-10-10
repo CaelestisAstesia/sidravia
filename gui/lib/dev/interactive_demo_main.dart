@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/desktop/tray_popover.dart';
+import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
@@ -70,6 +72,41 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
 
   void _updateAnnouncements() =>
       _announcements.updateCapabilities(_controller.capabilities);
+
+  Future<void> _showTrayPreview(BuildContext context) async {
+    final presentation = TrayPopoverData.fromPresentation(
+      _controller.connectionPresentation,
+      dark: Theme.of(context).brightness == Brightness.dark,
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(10),
+          child: TrayPopover(
+            data: presentation,
+            onAction: (intent) {
+              if (intent.kind == TrayIntentKind.connection &&
+                  intent.connectionAction != null) {
+                unawaited(
+                  _controller.performConnectionAction(
+                    GuiConnectionAction(
+                      intent.connectionAction!,
+                      intent.targetId,
+                    ),
+                  ),
+                );
+              } else if (intent.kind == TrayIntentKind.restoreMain ||
+                  intent.kind == TrayIntentKind.exit) {
+                Navigator.pop(dialogContext);
+              }
+            },
+            onDismiss: () => Navigator.pop(dialogContext),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -165,6 +202,11 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                                   child: Row(
                                     spacing: 8,
                                     children: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            _showTrayPreview(context),
+                                        child: const Text('离线托盘预览'),
+                                      ),
                                       if (Theme.of(context).platform ==
                                           TargetPlatform.windows)
                                         TextButton(

@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/desktop/tray_popover.dart';
 
 const desktopPresenceChannelName = 'sidravia/desktop';
 
@@ -44,6 +47,8 @@ class DesktopPresence extends ChangeNotifier {
   String? get feedback => _feedback;
   bool? get isMainWindowVisible => _isMainWindowVisible;
   Future<void> Function()? onExitRequested;
+  Future<void> Function(TrayIntent intent)? onTrayAction;
+  TrayPopoverData? _trayPresentation;
 
   bool get enabled => _channel != null && _operational && _initialized;
 
@@ -131,6 +136,32 @@ class DesktopPresence extends ChangeNotifier {
     }
   }
 
+  Future<void> publishTray(TrayPopoverData data) async {
+    if (_disposed ||
+        !enabled ||
+        (_trayPresentation != null &&
+            jsonEncode(_trayPresentation!.toMap()) ==
+                jsonEncode(data.toMap()))) {
+      return;
+    }
+    _trayPresentation = data;
+    try {
+      await _channel!.invokeMethod<void>('publishTray', data.toMap());
+    } on Object {
+      // Tray rendering is observational and cannot block the main window.
+    }
+  }
+
+  Future<void> restoreMain() async {
+    if (!enabled || _disposed) return;
+    try {
+      await _channel!.invokeMethod<void>('restoreMain');
+    } on Object {
+      _feedback = '无法显示主界面，请再次点击托盘图标。';
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   Future<void> cancelExit() async {
     try {
       await _channel?.invokeMethod<void>('cancelExit');
@@ -164,6 +195,7 @@ class DesktopPresence extends ChangeNotifier {
     _disposed = true;
     _channel?.setMethodCallHandler(null);
     onExitRequested = null;
+    onTrayAction = null;
     super.dispose();
   }
 
@@ -183,6 +215,9 @@ class DesktopPresence extends ChangeNotifier {
   Future<Object?> _onNativeCall(MethodCall call) async {
     if (call.method == 'exitRequested') {
       await onExitRequested?.call();
+    } else if (call.method == 'trayAction') {
+      final intent = TrayIntent.fromMap(call.arguments);
+      if (!_disposed && intent != null) await onTrayAction?.call(intent);
     } else if (call.method == 'visibilityChanged') {
       final visible = call.arguments;
       if (!_disposed && enabled && visible is bool) {
