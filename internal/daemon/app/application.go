@@ -46,7 +46,9 @@ type Application struct {
 	mu                     sync.Mutex
 	opMu                   sync.Mutex // serializes configuration and Session operations
 	sessionsByConfig       map[config.ConfigurationID]session.AuthenticationSessionID
-	invalidSessions        map[session.AuthenticationSessionID]bool // owned by opMu; never reuse a retired runtime
+	// reconnectByConfig records the immutable policy captured by the tracked Session.
+	reconnectByConfig map[config.ConfigurationID]bool          // owned by opMu
+	invalidSessions   map[session.AuthenticationSessionID]bool // owned by opMu; never reuse a retired runtime
 }
 
 func NewApplication(
@@ -73,6 +75,7 @@ func NewApplication(
 		authenticationResolver: authenticationResolver,
 		sup:                    sup,
 		sessionsByConfig:       make(map[config.ConfigurationID]session.AuthenticationSessionID),
+		reconnectByConfig:      make(map[config.ConfigurationID]bool),
 		invalidSessions:        make(map[session.AuthenticationSessionID]bool),
 	}, nil
 }
@@ -94,6 +97,15 @@ func (application *Application) StartConfigurationAuthentication(ctx context.Con
 		before, err := application.sup.Get(ctx, existing)
 		if err != nil {
 			return SessionStartResult{}, err
+		}
+		if before.State == session.Suspended || before.State == session.Stopping {
+			definition, changed, err := application.changedReconnectDefinition(ctx, configurationID, existing)
+			if err != nil {
+				return SessionStartResult{}, err
+			}
+			if changed {
+				return application.replaceConfigurationSession(ctx, configurationID, definition)
+			}
 		}
 		snapshot, err := application.sup.EnsureRunning(ctx, existing)
 		if err != nil {
@@ -118,6 +130,7 @@ func (application *Application) StartConfigurationAuthentication(ctx context.Con
 	application.mu.Lock()
 	application.sessionsByConfig[configurationID] = sessionID
 	application.mu.Unlock()
+	application.reconnectByConfig[configurationID] = definition.AutoReconnect
 
 	return SessionStartResult{SessionID: sessionID, Snapshot: snapshot, Outcome: SessionStartCreated}, nil
 }
@@ -196,6 +209,17 @@ func (application *Application) EnsureSessionRunning(ctx context.Context, sessio
 	if err != nil {
 		return SessionStartResult{}, err
 	}
+	if before.State == session.Suspended || before.State == session.Stopping {
+		if configurationID, ok := application.configurationForSession(sessionID); ok {
+			definition, changed, err := application.changedReconnectDefinition(ctx, configurationID, sessionID)
+			if err != nil {
+				return SessionStartResult{}, err
+			}
+			if changed {
+				return application.replaceConfigurationSession(ctx, configurationID, definition)
+			}
+		}
+	}
 	snapshot, err := application.sup.EnsureRunning(ctx, sessionID)
 	if err != nil {
 		return SessionStartResult{}, err
@@ -213,7 +237,69 @@ func (application *Application) RestartSession(ctx context.Context, sessionID se
 	if application.invalidSessions[sessionID] {
 		return session.Snapshot{}, supervisor.ErrSessionStateConflict
 	}
+	if configurationID, ok := application.configurationForSession(sessionID); ok {
+		definition, changed, err := application.changedReconnectDefinition(ctx, configurationID, sessionID)
+		if err != nil {
+			return session.Snapshot{}, err
+		}
+		if changed {
+			result, err := application.replaceConfigurationSession(ctx, configurationID, definition)
+			return result.Snapshot, err
+		}
+	}
 	return application.sup.Restart(ctx, sessionID)
+}
+
+// configurationForSession resolves the persisted owner while opMu is held.
+func (application *Application) configurationForSession(sessionID session.AuthenticationSessionID) (config.ConfigurationID, bool) {
+	application.mu.Lock()
+	defer application.mu.Unlock()
+	for configurationID, associated := range application.sessionsByConfig {
+		if associated == sessionID {
+			return configurationID, true
+		}
+	}
+	return "", false
+}
+
+// changedReconnectDefinition resolves the replacement before cleanup so a
+// catalog or resolver failure leaves the existing Session intact.
+// opMu must be held by the caller.
+func (application *Application) changedReconnectDefinition(ctx context.Context, configurationID config.ConfigurationID, currentSessionID session.AuthenticationSessionID) (session.RuntimeDefinition, bool, error) {
+	configuration, err := application.catalog.Get(ctx, configurationID)
+	if err != nil {
+		return session.RuntimeDefinition{}, false, err
+	}
+	application.mu.Lock()
+	associated := application.sessionsByConfig[configurationID]
+	application.mu.Unlock()
+	if associated != currentSessionID || application.reconnectByConfig[configurationID] == configuration.AutoReconnect {
+		return session.RuntimeDefinition{}, false, nil
+	}
+	definition, err := application.authenticationResolver.Resolve(ctx, configurationID, "pending")
+	if err != nil {
+		return session.RuntimeDefinition{}, false, err
+	}
+	return definition, true, nil
+}
+
+// replaceConfigurationSession retires the previous immutable runtime only
+// after the replacement definition resolves. A failed start leaves no Session
+// association, so a later manual start can retry honestly.
+// opMu must be held by the caller.
+func (application *Application) replaceConfigurationSession(ctx context.Context, configurationID config.ConfigurationID, definition session.RuntimeDefinition) (SessionStartResult, error) {
+	if err := application.retireConfigurationSession(ctx, configurationID); err != nil {
+		return SessionStartResult{}, err
+	}
+	sessionID, snapshot, err := application.sup.StartResolved(ctx, definition, session.MaintainAuthentication)
+	if err != nil {
+		return SessionStartResult{}, err
+	}
+	application.mu.Lock()
+	application.sessionsByConfig[configurationID] = sessionID
+	application.mu.Unlock()
+	application.reconnectByConfig[configurationID] = definition.AutoReconnect
+	return SessionStartResult{SessionID: sessionID, Snapshot: snapshot, Outcome: SessionStartCreated}, nil
 }
 
 func (application *Application) RemoveSession(ctx context.Context, sessionID session.AuthenticationSessionID) error {
@@ -227,6 +313,7 @@ func (application *Application) RemoveSession(ctx context.Context, sessionID ses
 	for configurationID, associated := range application.sessionsByConfig {
 		if associated == sessionID {
 			delete(application.sessionsByConfig, configurationID)
+			delete(application.reconnectByConfig, configurationID)
 		}
 	}
 	application.mu.Unlock()
@@ -366,9 +453,12 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if err != nil {
 		return ConfigurationResult{}, err
 	}
-	// Display labels and logon policy do not affect the immutable authentication runtime.
+	// Display labels, logon and reconnect policy do not affect the current
+	// immutable runtime. Reconnect policy is captured at the next manual
+	// resume or restart instead.
 	current.DisplayName, candidate.DisplayName = "", ""
 	current.AutoLogin, candidate.AutoLogin = false, false
+	current.AutoReconnect, candidate.AutoReconnect = false, false
 	if update.Password != nil || !reflect.DeepEqual(current, candidate) {
 		if err := application.retireConfigurationSession(ctx, id); err != nil {
 			return ConfigurationResult{}, err
@@ -402,6 +492,7 @@ func (application *Application) retireConfigurationSession(ctx context.Context, 
 	application.mu.Lock()
 	delete(application.sessionsByConfig, id)
 	application.mu.Unlock()
+	delete(application.reconnectByConfig, id)
 	return nil
 }
 

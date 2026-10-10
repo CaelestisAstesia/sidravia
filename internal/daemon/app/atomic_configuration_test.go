@@ -106,12 +106,12 @@ func TestAtomicEditPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
 	}
 	setup.store.fail = true
 	setup.store.mu.Unlock()
-	username, password := "new", "new-password"
-	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username, Password: &password}); err == nil {
+	reconnect := true
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &reconnect}); err == nil {
 		t.Fatal("write failure succeeded")
 	}
-	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
-	if err != nil || got.Username != "user" || cred.Password != "secret" {
+	got, _, err := setup.catalog.Resolve(ctx, "configuration-1")
+	if err != nil || got.Username != "user" || got.AutoReconnect {
 		t.Fatal("partial edit")
 	}
 	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
@@ -183,8 +183,8 @@ func TestCleanupFailureQuarantinesOldRuntime(t *testing.T) {
 	}
 }
 
-func TestRuntimeMetadataChangesRetireButAutoLoginDoesNot(t *testing.T) {
-	for _, field := range []string{"profile", "autoReconnect", "autoLogin", "binding"} {
+func TestRuntimeMetadataChangesRetireButAutoLoginAndReconnectDoNot(t *testing.T) {
+	for _, field := range []string{"profile", "autoLogin", "binding", "autoReconnect"} {
 		t.Run(field, func(t *testing.T) {
 			setup := newApplicationTestSetup(t)
 			defer setup.cleanup()
@@ -219,9 +219,15 @@ func TestRuntimeMetadataChangesRetireButAutoLoginDoesNot(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err = setup.application.GetSession(ctx, started.SessionID)
-			if field == "autoLogin" {
+			if field == "autoLogin" || field == "autoReconnect" {
 				if err != nil {
-					t.Fatal("logon policy retired runtime")
+					t.Fatalf("%s preference retired runtime", field)
+				}
+				if field == "autoReconnect" {
+					snapshot, err := setup.application.RestartSession(ctx, started.SessionID)
+					if err != nil || snapshot.AuthenticationSessionID == started.SessionID {
+						t.Fatalf("manual restart did not apply reconnect policy: %#v, %v", snapshot, err)
+					}
 				}
 				return
 			}

@@ -12,6 +12,7 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 class OfflineDemoClient extends ChangeNotifier
     implements SidraviaIpcClient, SidraviaNetworkClient {
   OfflineDemoClient({DateTime? now}) {
+    _sessionAutoReconnect = _configuration?.autoReconnect ?? false;
     _session = _newSession(
       'authenticated',
       establishedAt: (now ?? DateTime.now()).subtract(
@@ -82,6 +83,7 @@ class OfflineDemoClient extends ChangeNotifier
     storageProtection: 'protected',
   );
   SessionSummary? _session;
+  bool? _sessionAutoReconnect;
   BigInt _revision = BigInt.zero;
   int _sessionSerial = 0;
   String _feedback = '模拟已连接；没有连接真实校园网';
@@ -113,6 +115,7 @@ class OfflineDemoClient extends ChangeNotifier
             ? DateTime.now().subtract(const Duration(hours: 2, minutes: 18))
             : null,
       );
+      _sessionAutoReconnect = _configuration!.autoReconnect;
     }
     _record('demo.scenario', '已切换模拟场景：$scenario；无真实网络操作');
   }
@@ -306,10 +309,9 @@ class OfflineDemoClient extends ChangeNotifier
     required bool autoReconnect,
     bool allowInsecureStorage = false,
   }) async {
-    final previous = _requireConfiguration(configurationId);
+    _requireConfiguration(configurationId);
     final c = _replaceConfiguration(autoReconnect: autoReconnect);
-    if (previous.autoReconnect != autoReconnect) _session = null;
-    _record('configuration.set_auto_reconnect', '已模拟保存自动重连设置；模拟会话按设置变更处理');
+    _record('configuration.set_auto_reconnect', '已模拟保存自动重连设置；当前模拟会话保持不变');
     return c;
   }
 
@@ -333,7 +335,16 @@ class OfflineDemoClient extends ChangeNotifier
     String configurationId,
   ) async {
     _requireConfiguration(configurationId);
-    if (_session == null) _sessionSerial++;
+    if (_session == null) {
+      _sessionSerial++;
+      _sessionAutoReconnect = _configuration!.autoReconnect;
+    } else if (_session!.state == SessionState.suspended ||
+        _session!.state == SessionState.stopping) {
+      _applyPendingReconnectPolicy();
+    } else {
+      _record('session.start_configuration', '已保留当前模拟连接；没有进行真实认证');
+      return _session!;
+    }
     _session = _newSession('authenticated', establishedAt: DateTime.now());
     _record('session.start_configuration', '已模拟连接成功；没有进行真实认证');
     return _session!;
@@ -350,6 +361,12 @@ class OfflineDemoClient extends ChangeNotifier
   @override
   Future<SessionSummary> sessionEnsureRunning(String sessionId) async {
     _requireSession(sessionId);
+    if (_session!.state != SessionState.suspended &&
+        _session!.state != SessionState.stopping) {
+      _record('session.ensure_running', '已保留当前模拟连接；没有进行真实认证');
+      return _session!;
+    }
+    _applyPendingReconnectPolicy();
     _session = _newSession('authenticated', establishedAt: DateTime.now());
     _record('session.ensure_running', '已模拟恢复连接；没有进行真实认证');
     return _session!;
@@ -358,6 +375,7 @@ class OfflineDemoClient extends ChangeNotifier
   @override
   Future<SessionSummary> sessionRestart(String sessionId) async {
     _requireSession(sessionId);
+    _applyPendingReconnectPolicy();
     _session = _newSession('authenticated', establishedAt: DateTime.now());
     _record('session.restart', '已模拟重新连接；没有进行真实认证');
     return _session!;
@@ -374,6 +392,14 @@ class OfflineDemoClient extends ChangeNotifier
   @override
   Future<void> close() async {
     _closed = true;
+  }
+
+  void _applyPendingReconnectPolicy() {
+    final latest = _configuration!.autoReconnect;
+    if (_sessionAutoReconnect != latest) {
+      _sessionSerial++;
+      _sessionAutoReconnect = latest;
+    }
   }
 }
 

@@ -15,6 +15,45 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
   test(
+    'offline reconnect preference waits for manual resume or restart',
+    () async {
+      final client = OfflineDemoClient();
+      final before = (await client.sessionList()).single;
+      await client.configurationSetAutoReconnect(
+        configurationId: 'demo-config',
+        autoReconnect: true,
+      );
+
+      final activeEnsure = await client.sessionEnsureRunning(before.id);
+      expect(activeEnsure.id, before.id);
+      expect(activeEnsure.revision, before.revision);
+      expect(
+        activeEnsure.authenticationEstablishedAt,
+        before.authenticationEstablishedAt,
+      );
+      final activeStart = await client.sessionStartConfiguration('demo-config');
+      expect(activeStart.id, before.id);
+      expect(activeStart.revision, before.revision);
+
+      await client.sessionStop(before.id);
+      final resumed = await client.sessionEnsureRunning(before.id);
+      expect(resumed.id, isNot(before.id));
+      expect(resumed.state, SessionState.authenticated);
+
+      client.selectScenario('stopping');
+      final stopping = (await client.sessionList()).single;
+      await client.configurationSetAutoReconnect(
+        configurationId: 'demo-config',
+        autoReconnect: false,
+      );
+      final stoppedResume = await client.sessionEnsureRunning(stopping.id);
+      expect(stoppedResume.id, isNot(stopping.id));
+      expect(stoppedResume.state, SessionState.authenticated);
+      client.dispose();
+    },
+  );
+
+  test(
     'offline metadata password and preferences preserve explicit binding',
     () async {
       final client = OfflineDemoClient()..selectScenario('empty');

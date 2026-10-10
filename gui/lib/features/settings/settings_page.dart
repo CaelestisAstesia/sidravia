@@ -78,7 +78,7 @@ class SettingsPage extends StatelessWidget {
         if (c != null)
           const Padding(
             padding: EdgeInsets.only(top: 7),
-            child: DesignHelper('修改自动重连会清理当前会话；下次连接使用新的策略。'),
+            child: DesignHelper('已立即保存；下次手动连接或重新连接时生效，当前连接不受影响。'),
           ),
         if (controller.notice != null)
           Padding(
