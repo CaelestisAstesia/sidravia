@@ -73,6 +73,6 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 	bootstrapCommand.Flags().StringVar(&ownerPID, "owner-pid", "", "")
 	bootstrapCommand.MarkFlagRequired("owner-pid")
 	gui := &cobra.Command{Use: "gui", Hidden: true, Args: cobra.NoArgs}
-	gui.AddCommand(bootstrapCommand)
+	gui.AddCommand(bootstrapCommand, newGUILogDirectoryCommand())
 	return gui
 }

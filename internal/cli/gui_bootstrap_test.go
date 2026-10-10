@@ -159,3 +159,15 @@ func mustTestIdentity(t *testing.T) clientbootstrap.Identity {
 	}
 	return identity
 }
+
+func TestGUILogDirectoryCommandDoesNotAcceptPathOrUnknownFlag(t *testing.T) {
+	for _, args := range [][]string{{"gui", "open-log-directory", "elsewhere"}, {"gui", "open-log-directory", "--path", "elsewhere"}} {
+		var output bytes.Buffer
+		if err := runCommand(args, commandDependencies{identity: mustTestIdentity(t), output: &output}); err == nil {
+			t.Fatal("invalid hidden arguments accepted")
+		}
+		if output.Len() != 0 {
+			t.Fatal("invalid arguments wrote success")
+		}
+	}
+}

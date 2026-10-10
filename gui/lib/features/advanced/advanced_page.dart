@@ -11,9 +11,11 @@ class AdvancedPage extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onBack,
+    this.onOpenLogDirectory,
   });
   final GuiController controller;
   final VoidCallback onBack;
+  final Future<bool> Function()? onOpenLogDirectory;
   @override
   State<AdvancedPage> createState() => _AdvancedPageState();
 }
@@ -23,6 +25,26 @@ class _AdvancedPageState extends State<AdvancedPage> {
   VoidCallback get onBack => widget.onBack;
 
   bool _expanded = false;
+  bool _openingLogs = false;
+
+  Future<void> _openLogs() async {
+    final open = widget.onOpenLogDirectory;
+    if (open == null || _openingLogs) return;
+    setState(() => _openingLogs = true);
+    var success = false;
+    try {
+      success = await open();
+    } on Object {
+      /* fixed safe feedback below */
+    }
+    if (!mounted) return;
+    setState(() => _openingLogs = false);
+    if (!success) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('打开日志目录失败，请确认日志目录存在后重试。')));
+    }
+  }
 
   void _showDiagnosis() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -238,18 +260,24 @@ class _AdvancedPageState extends State<AdvancedPage> {
                 ),
               ),
               const SizedBox(width: 9),
-              const Expanded(
+              Expanded(
                 child: OutlinedButton(
-                  onPressed: null,
-                  child: Text('打开日志目录（暂不可用）'),
+                  onPressed: widget.onOpenLogDirectory == null || _openingLogs
+                      ? null
+                      : _openLogs,
+                  child: Text(
+                    _openingLogs
+                        ? '正在打开日志目录…'
+                        : widget.onOpenLogDirectory == null
+                        ? '打开日志目录（暂不可用）'
+                        : '打开日志目录',
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 7),
-          const DesignHelper(
-            '更深层操作：sidraviactl status、日志查询、原始 IPC / Session 管理。日志目录缺少现有平台封装。',
-          ),
+          const DesignHelper('查看本实例的运行日志，便于排查连接问题。'),
         ],
         const SizedBox(height: 18),
         const DesignSectionTitle('高级排障'),

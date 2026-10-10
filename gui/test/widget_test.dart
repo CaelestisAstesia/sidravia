@@ -72,6 +72,40 @@ void main() {
     }
   });
 
+  testWidgets('shell forwards log opener to diagnostics', (tester) async {
+    final controller = GuiController(
+      bootstrapper: const UnsupportedGuiBootstrapper(),
+    );
+    final key = GlobalKey<SidraviaShellState>();
+    var calls = 0;
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SidraviaShell(
+            key: key,
+            controller: controller,
+            onOpenLogDirectory: () async {
+              calls++;
+              return true;
+            },
+          ),
+        ),
+      );
+      await key.currentState!.navigateFromTray(AppPage.diagnostics);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('技术信息'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('打开日志目录'));
+      await tester.tap(find.text('打开日志目录'));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.close();
+      controller.dispose();
+    }
+  });
+
   testWidgets('tray create is revalidated after restoring the main window', (
     tester,
   ) async {

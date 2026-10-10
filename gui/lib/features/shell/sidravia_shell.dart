@@ -15,10 +15,12 @@ class SidraviaShell extends StatefulWidget {
     required this.controller,
     this.announcements,
     this.desktopPresence,
+    this.onOpenLogDirectory,
   });
   final GuiController controller;
   final SchoolAnnouncementController? announcements;
   final DesktopPresence? desktopPresence;
+  final Future<bool> Function()? onOpenLogDirectory;
 
   @override
   State<SidraviaShell> createState() => SidraviaShellState();
@@ -115,6 +117,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                   onBack: _back,
                 ),
                 AppPage.diagnostics => AdvancedPage(
+                  onOpenLogDirectory: widget.onOpenLogDirectory,
                   controller: widget.controller,
                   onBack: _back,
                 ),

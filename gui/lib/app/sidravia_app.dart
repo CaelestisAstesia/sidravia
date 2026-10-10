@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:sidravia_gui/desktop/log_directory.dart';
+
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 
@@ -39,6 +41,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _shellKey = GlobalKey<SidraviaShellState>();
+  final _logDirectory = DesktopLogDirectory();
   late final SchoolAnnouncementController _announcements;
   bool _exiting = false;
   GuiCloseBehavior? _lastCloseBehavior;
@@ -286,6 +289,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_handleControllerChanged);
     _announcements.dispose();
+    unawaited(_logDirectory.close());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = null;
@@ -324,6 +328,9 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
             desktopPresence: widget.desktopPresence,
             controller: widget.controller,
             announcements: _announcements,
+            onOpenLogDirectory: _logDirectory.supported
+                ? _logDirectory.open
+                : null,
           ),
         ),
       ),
