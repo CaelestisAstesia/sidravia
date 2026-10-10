@@ -121,7 +121,7 @@ const flutter::EncodableValue* Field(const flutter::EncodableMap& map,
 bool Dimension(const flutter::EncodableValue* value, int* result) {
   if (!value) return false;
   int64_t number = 0;
-  if (const auto* small = std::get_if<int32_t>(value)) number = *small;
+  if (const auto* value32 = std::get_if<int32_t>(value)) number = *value32;
   else if (const auto* large = std::get_if<int64_t>(value)) number = *large;
   else return false;
   if (number < 1 || number > 4096) return false;
