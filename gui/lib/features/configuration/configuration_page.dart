@@ -39,11 +39,12 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           _binding != _originalBinding);
 
   Future<void> requestLeave() async {
-    if (_saving || _prompting) return;
-    if (!_dirty) {
-      widget.onBack();
-      return;
-    }
+    if (await mayLeave() && mounted) widget.onBack();
+  }
+
+  Future<bool> mayLeave() async {
+    if (_saving || _prompting) return false;
+    if (!_dirty) return true;
     _prompting = true;
     final discard = await showDialog<bool>(
       context: context,
@@ -62,7 +63,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
       ),
     );
     _prompting = false;
-    if (discard == true && mounted) widget.onBack();
+    return discard == true && mounted;
   }
 
   bool _saving = false;

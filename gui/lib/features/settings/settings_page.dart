@@ -1,5 +1,7 @@
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
@@ -11,8 +13,10 @@ class SettingsPage extends StatelessWidget {
     required this.controller,
     required this.onNavigate,
     required this.onBack,
+    this.desktopPresence,
   });
   final GuiController controller;
+  final DesktopPresence? desktopPresence;
   final ValueChanged<AppPage> onNavigate;
   final VoidCallback onBack;
   @override
@@ -20,113 +24,173 @@ class SettingsPage extends StatelessWidget {
     final c = controller.capabilities.configuration;
     final appearance = AppearanceScope.maybeOf(context);
     final mode = appearance?.value ?? ThemeMode.system;
-    return DesignPage(
-      children: [
-        DesignHeader(title: '设置', onBack: onBack, backLabel: '返回连接'),
-        const DesignSectionTitle('连接'),
-        DesignGroup(
-          children: [
-            DesignRow(
-              title: '连接配置',
-              subtitle: controller.capabilities.configurationDescription,
-              onTap: () => onNavigate(AppPage.configuration),
-            ),
-            DesignRow(
-              title: '启动时自动登录',
-              subtitle: '启动Sidravia后自动开始认证',
-              trailing: DesignSwitch(
-                key: const ValueKey('auto-login-switch'),
-                label: '启动时自动登录',
-                value: c?.autoLogin ?? false,
-                onChanged: c != null && controller.capabilities.canEditAutoLogin
-                    ? (value) => controller.setAutoLogin(
-                        configurationId: c.id,
-                        autoLogin: value,
-                        onInsecureStorageConfirmation: (operation) =>
-                            confirmInsecureStorage(context, operation),
-                      )
-                    : null,
+    final desktopEnabled =
+        appearance != null && (desktopPresence?.enabled ?? false);
+    return ListenableBuilder(
+      listenable: desktopPresence ?? const AlwaysStoppedAnimation(false),
+      builder: (context, _) => DesignPage(
+        children: [
+          DesignHeader(title: '设置', onBack: onBack, backLabel: '返回连接'),
+          const DesignSectionTitle('连接'),
+          DesignGroup(
+            children: [
+              DesignRow(
+                title: '连接配置',
+                subtitle: controller.capabilities.configurationDescription,
+                onTap: () => onNavigate(AppPage.configuration),
               ),
-            ),
-            DesignRow(
-              title: '自动重连',
-              subtitle: '连接中断后自动尝试重新认证',
-              trailing: DesignSwitch(
-                key: const ValueKey('auto-reconnect-switch'),
-                label: '自动重连',
-                value: c?.autoReconnect ?? false,
-                onChanged:
-                    c != null && controller.capabilities.canEditAutoReconnect
-                    ? (value) => controller.setAutoReconnect(
-                        configurationId: c.id,
-                        autoReconnect: value,
-                        onInsecureStorageConfirmation: (operation) =>
-                            confirmInsecureStorage(context, operation),
-                      )
-                    : null,
+              DesignRow(
+                title: '启动时自动登录',
+                subtitle: '启动Sidravia后自动开始认证',
+                trailing: DesignSwitch(
+                  key: const ValueKey('auto-login-switch'),
+                  label: '启动时自动登录',
+                  value: c?.autoLogin ?? false,
+                  onChanged:
+                      c != null && controller.capabilities.canEditAutoLogin
+                      ? (value) => controller.setAutoLogin(
+                          configurationId: c.id,
+                          autoLogin: value,
+                          onInsecureStorageConfirmation: (operation) =>
+                              confirmInsecureStorage(context, operation),
+                        )
+                      : null,
+                ),
               ),
-            ),
-          ],
-        ),
-        if (!controller.capabilities.canEditAutoLogin)
-          Padding(
-            padding: const EdgeInsets.only(top: 7),
-            child: DesignHelper(
-              controller.capabilities.settingsDisabledReason ?? '',
-            ),
+              DesignRow(
+                title: '自动重连',
+                subtitle: '连接中断后自动尝试重新认证',
+                trailing: DesignSwitch(
+                  key: const ValueKey('auto-reconnect-switch'),
+                  label: '自动重连',
+                  value: c?.autoReconnect ?? false,
+                  onChanged:
+                      c != null && controller.capabilities.canEditAutoReconnect
+                      ? (value) => controller.setAutoReconnect(
+                          configurationId: c.id,
+                          autoReconnect: value,
+                          onInsecureStorageConfirmation: (operation) =>
+                              confirmInsecureStorage(context, operation),
+                        )
+                      : null,
+                ),
+              ),
+            ],
           ),
-        if (c != null)
-          const Padding(
-            padding: EdgeInsets.only(top: 7),
-            child: DesignHelper('已立即保存；下次手动连接或重新连接时生效，当前连接不受影响。'),
-          ),
-        if (controller.notice != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              controller.notice!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
-        const SizedBox(height: 24),
-        const DesignSectionTitle('应用'),
-        DesignGroup(
-          children: [
-            DesignRow(
-              title: '外观模式',
-              trailing: AppearanceSelector(
-                value: mode,
-                onChanged: appearance == null
-                    ? null
-                    : (value) => appearance.value = value,
+          if (!controller.capabilities.canEditAutoLogin)
+            Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: DesignHelper(
+                controller.capabilities.settingsDisabledReason ?? '',
               ),
             ),
-            DesignRow(
-              title: '连接与诊断',
-              subtitle: '核心、会话与故障信息',
-              onTap: () => onNavigate(AppPage.diagnostics),
+          if (c != null)
+            const Padding(
+              padding: EdgeInsets.only(top: 7),
+              child: DesignHelper('已立即保存；下次手动连接或重新连接时生效，当前连接不受影响。'),
             ),
-            DesignRow(
-              title: '关于 Sidravia',
-              subtitle: '版本、许可与项目链接',
-              onTap: () => showAboutDialog(
-                context: context,
-                applicationName: 'Sidravia',
-                applicationVersion:
-                    controller.snapshot?.daemon.productVersion ?? '暂不可用',
-                children: [
-                  const Text('https://github.com/CaelestisAstesia/sidravia'),
-                ],
+          if (controller.notice != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                controller.notice!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 7),
-        if (appearance?.feedback != null)
-          DesignHelper(appearance!.feedback!)
-        else if (appearance != null && !appearance.persistent)
-          const DesignHelper('离线演示：外观只保存在演示内存中。'),
-      ],
+          const SizedBox(height: 24),
+          const DesignSectionTitle('应用'),
+          DesignGroup(
+            children: [
+              DesignRow(
+                title: '外观模式',
+                trailing: AppearanceSelector(
+                  value: mode,
+                  onChanged: appearance == null
+                      ? null
+                      : (value) => appearance.value = value,
+                ),
+              ),
+              DesignRow(
+                title: '关闭主窗口',
+                trailing: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: DropdownButton<GuiCloseBehavior>(
+                    key: const ValueKey('close-behavior-selector'),
+                    value:
+                        appearance?.closeBehavior ??
+                        GuiCloseBehavior.hideToTray,
+                    underline: const SizedBox.shrink(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: GuiCloseBehavior.hideToTray,
+                        child: Text('隐藏到托盘'),
+                      ),
+                      DropdownMenuItem(
+                        value: GuiCloseBehavior.exit,
+                        child: Text('退出程序'),
+                      ),
+                    ],
+                    onChanged: desktopEnabled
+                        ? (v) {
+                            if (v != null) appearance.closeBehavior = v;
+                          }
+                        : null,
+                  ),
+                ),
+              ),
+              DesignRow(
+                title: '启动时隐藏到托盘',
+                subtitle: '下次启动生效；不改变自动登录或当前窗口。',
+                trailing: DesignSwitch(
+                  key: const ValueKey('start-hidden-switch'),
+                  label: '启动时隐藏到托盘',
+                  value: appearance?.startHidden ?? false,
+                  onChanged: desktopEnabled
+                      ? (v) => appearance.startHidden = v
+                      : null,
+                ),
+              ),
+              DesignRow(
+                title: '连接与诊断',
+                subtitle: '核心、会话与故障信息',
+                onTap: () => onNavigate(AppPage.diagnostics),
+              ),
+              DesignRow(
+                title: '关于 Sidravia',
+                subtitle: '版本、许可与项目链接',
+                onTap: () => showAboutDialog(
+                  context: context,
+                  applicationName: 'Sidravia',
+                  applicationVersion:
+                      controller.snapshot?.daemon.productVersion ?? '暂不可用',
+                  children: [
+                    const Text('https://github.com/CaelestisAstesia/sidravia'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          if (!desktopEnabled) const DesignHelper('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'),
+          if (desktopPresence?.feedback != null)
+            DesignHelper(desktopPresence!.feedback!),
+          if (appearance?.feedback != null)
+            DesignHelper(appearance!.feedback!)
+          else if (appearance != null && !appearance.persistent)
+            const DesignHelper('离线演示：外观只保存在演示内存中。'),
+        ],
+      ),
     );
   }
 }

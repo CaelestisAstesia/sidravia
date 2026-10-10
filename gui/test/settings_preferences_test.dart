@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
@@ -17,6 +18,96 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'home_responsive_test.dart' as fonts;
 
 void main() {
+  for (final enabled in [true, false]) {
+    testWidgets(
+      'desktop settings enabled=$enabled preserve backend and fit narrow text',
+      (tester) async {
+        const channel = MethodChannel(desktopPresenceChannelName);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(channel, (_) async => 'primary');
+        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        final desktop = enabled
+            ? DesktopPresence(channel: channel)
+            : DesktopPresence.disabled();
+        await desktop.initialize();
+        final appearance = Appearance();
+        await appearance.initialize();
+        appearance.closeBehavior = GuiCloseBehavior.exit;
+        appearance.startHidden = true;
+        await appearance.settled;
+        final client = OfflineDemoClient();
+        final controller = GuiController(
+          bootstrapper: OfflineDemoBootstrap(),
+          connector: (_) async => client,
+          pollDelay: const Duration(days: 1),
+        );
+        await controller.start();
+        final before = controller.capabilities.configuration!;
+        await tester.binding.setSurfaceSize(const Size(360, 640));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          AppearanceScope(
+            appearance: appearance,
+            child: MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+                child: SettingsPage(
+                  controller: controller,
+                  desktopPresence: desktop,
+                  onNavigate: (_) {},
+                  onBack: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final selector = find.byKey(const ValueKey('close-behavior-selector'));
+        expect(
+          tester.widget<DropdownButton<GuiCloseBehavior>>(selector).value,
+          GuiCloseBehavior.exit,
+        );
+        expect(
+          tester.widget<DropdownButton<GuiCloseBehavior>>(selector).onChanged ==
+              null,
+          !enabled,
+        );
+        final toggle = find.byKey(const ValueKey('start-hidden-switch'));
+        expect(tester.widget<DesignSwitch>(toggle).value, true);
+        expect(tester.widget<DesignSwitch>(toggle).onChanged == null, !enabled);
+        if (enabled) {
+          await tester.ensureVisible(toggle);
+          await tester.tap(toggle);
+          await tester.pump();
+          await appearance.settled;
+          expect(appearance.startHidden, false);
+        } else {
+          expect(find.text('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'), findsOneWidget);
+        }
+        expect(
+          controller.capabilities.configuration!.autoLogin,
+          before.autoLogin,
+        );
+        expect(
+          controller.capabilities.configuration!.autoReconnect,
+          before.autoReconnect,
+        );
+        expect(
+          client.operations.where((e) => e.startsWith('configuration.')),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        await controller.close();
+        controller.dispose();
+        client.dispose();
+        desktop.dispose();
+        appearance.dispose();
+      },
+    );
+  }
+
   testWidgets(
     'formal settings reconnect saves true false, failures, guards, no session mutation',
     (tester) async {

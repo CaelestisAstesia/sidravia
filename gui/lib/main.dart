@@ -37,6 +37,10 @@ Future<void> main() async {
     desktop.dispose();
     exit(0);
   }
+  await desktop.configurePreferences(
+    closeBehavior: appearance.closeBehavior,
+    startHidden: appearance.startHidden,
+  );
   registerHarmonyOSFontLicense();
   runApp(
     SidraviaApp(

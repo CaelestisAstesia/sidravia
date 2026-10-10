@@ -1,5 +1,6 @@
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
+import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
@@ -86,6 +87,56 @@ void main() {
 
       messenger.setMockMethodCallHandler(channel, (call) async => 'primary');
       expect(await presence.initialize(), DesktopPresenceDisposition.primary);
+    },
+  );
+
+  test(
+    'desktop preference map, begin and cancel use existing channel',
+    () async {
+      const channel = MethodChannel(desktopPresenceChannelName);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return call.method == 'initialize' ? 'primary' : null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final presence = DesktopPresence(channel: channel);
+      addTearDown(presence.dispose);
+      expect(presence.enabled, false);
+      await presence.initialize();
+      expect(presence.enabled, true);
+      expect(
+        await presence.configurePreferences(
+          closeBehavior: GuiCloseBehavior.exit,
+          startHidden: true,
+        ),
+        true,
+      );
+      expect(calls.last.arguments, {'closeToTray': false, 'startHidden': true});
+      expect(await presence.beginExit(), true);
+      await presence.cancelExit();
+      expect(calls.map((c) => c.method), [
+        'initialize',
+        'configurePreferences',
+        'beginExit',
+        'cancelExit',
+      ]);
+      messenger.setMockMethodCallHandler(
+        channel,
+        (_) async => throw PlatformException(code: 'failed'),
+      );
+      expect(
+        await presence.configurePreferences(
+          closeBehavior: GuiCloseBehavior.hideToTray,
+          startHidden: false,
+        ),
+        false,
+      );
+      expect(presence.feedback, contains('未能应用'));
+      expect(presence.feedback, isNot(contains('已保存')));
+      expect(await presence.beginExit(), false);
     },
   );
 

@@ -274,6 +274,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
       expect(find.textContaining('存在多个连接配置'), findsAtLeastNWidgets(1));
+      await tester.ensureVisible(find.text('连接与诊断'));
       await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
       expect(find.byType(AdvancedPage), findsOneWidget);

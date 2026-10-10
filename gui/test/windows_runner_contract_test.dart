@@ -97,6 +97,37 @@ void main() {
     expect(flutterWindow, contains('SetTimer'));
     expect(flutterWindow, contains('WM_TIMER'));
 
+    final request = flutterWindow
+        .split('void FlutterWindow::RequestExplicitExit()')
+        .last
+        .split('bool FlutterWindow::BeginExplicitExit()')
+        .first;
+    expect(request, isNot(contains('SetTimer')));
+    expect(request, isNot(contains('CompleteExplicitExit')));
+    expect(request, contains('RestoreWindow()'));
+    final begin = flutterWindow
+        .split('bool FlutterWindow::BeginExplicitExit()')
+        .last
+        .split('void FlutterWindow::CancelExplicitExit()')
+        .first;
+    expect(begin, contains('if (!exit_request_pending_) return false'));
+    expect(begin, contains('::SetTimer'));
+    expect(flutterWindow, contains('call.method_name() == "beginExit"'));
+    expect(flutterWindow, contains('call.method_name() == "cancelExit"'));
+    expect(
+      flutterWindow,
+      contains('call.method_name() == "configurePreferences"'),
+    );
+    expect(flutterWindow, contains('arguments->size() != 2'));
+    expect(flutterWindow, contains('if (!close_value || !hidden_value)'));
+    expect(flutterWindow, contains('if (close_to_tray_)'));
+    expect(
+      flutterWindow,
+      contains(
+        'if (!(desktop_presence_initialized_ && start_hidden_)) this->Show()',
+      ),
+    );
+
     // Native channel is declared on the window.
     expect(header, contains('desktop_channel_'));
     expect(header, contains('CreateTrayIcon'));

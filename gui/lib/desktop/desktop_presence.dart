@@ -1,5 +1,7 @@
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 const desktopPresenceChannelName = 'sidravia/desktop';
@@ -24,7 +26,7 @@ String? validateDesktopNamespace(String? value) {
   return value;
 }
 
-class DesktopPresence {
+class DesktopPresence extends ChangeNotifier {
   DesktopPresence({MethodChannel? channel, this._namespace = ''})
     : _channel = channel ?? const MethodChannel(desktopPresenceChannelName) {
     _channel!.setMethodCallHandler(_onNativeCall);
@@ -35,10 +37,12 @@ class DesktopPresence {
   final MethodChannel? _channel;
   final String _namespace;
   final DesktopNotificationPolicy _policy = DesktopNotificationPolicy();
-  bool _operational = true;
+  bool _operational = true, _initialized = false, _disposed = false;
+  String? _feedback;
+  String? get feedback => _feedback;
   Future<void> Function()? onExitRequested;
 
-  bool get enabled => _channel != null && _operational;
+  bool get enabled => _channel != null && _operational && _initialized;
 
   /// Asks the native runner whether this process is the primary desktop
   /// presence or an already-activating second instance. Any channel failure is
@@ -55,10 +59,52 @@ class DesktopPresence {
       if (value == 'activatedExisting') {
         return DesktopPresenceDisposition.activatedExisting;
       }
+      _initialized = value == 'primary';
       return DesktopPresenceDisposition.primary;
     } on Object {
       _operational = false;
       return DesktopPresenceDisposition.primary;
+    }
+  }
+
+  Future<bool> configurePreferences({
+    required GuiCloseBehavior closeBehavior,
+    required bool startHidden,
+  }) async {
+    if (!enabled) return false;
+    try {
+      await _channel!.invokeMethod<void>('configurePreferences', {
+        'closeToTray': closeBehavior == GuiCloseBehavior.hideToTray,
+        'startHidden': startHidden,
+      });
+      _feedback = null;
+      if (!_disposed) notifyListeners();
+      return true;
+    } on Object {
+      _feedback = '桌面行为未能应用；当前关闭行为保持之前的设置。';
+      if (!_disposed) notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> beginExit() async {
+    if (!enabled) return false;
+    try {
+      await _channel!.invokeMethod<void>('beginExit');
+      return true;
+    } on Object {
+      _feedback = '无法开始退出，连接保持不变，请重试。';
+      if (!_disposed) notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> cancelExit() async {
+    try {
+      await _channel?.invokeMethod<void>('cancelExit');
+    } on Object {
+      _feedback = '无法取消原生退出请求，请重试。';
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -81,9 +127,12 @@ class DesktopPresence {
     }
   }
 
+  @override
   void dispose() {
+    _disposed = true;
     _channel?.setMethodCallHandler(null);
     onExitRequested = null;
+    super.dispose();
   }
 
   Future<void> _notify({required String title, required String body}) async {

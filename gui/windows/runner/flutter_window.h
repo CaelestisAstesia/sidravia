@@ -46,6 +46,8 @@ class FlutterWindow : public Win32Window {
   bool maximize_hovered_ = false;
   bool maximize_pressed_ = false;
   bool exit_armed_ = false;
+  bool close_to_tray_ = true;
+  bool start_hidden_ = false;
   bool desktop_presence_initialized_ = false;
   bool exit_request_pending_ = false;
   HANDLE single_instance_mutex_ = nullptr;
@@ -65,6 +67,8 @@ class FlutterWindow : public Win32Window {
   void ShowTrayMenu();
   void HandleTrayMessage(LPARAM lparam);
   void RequestExplicitExit();
+  bool BeginExplicitExit();
+  void CancelExplicitExit();
   static std::wstring Utf8ToUtf16(const std::string& utf8);
 };
 

@@ -115,6 +115,35 @@ bool FlutterWindow::OnCreate() {
           }
           return;
         }
+        if (call.method_name() == "configurePreferences") {
+          const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
+          if (!desktop_presence_initialized_ || arguments == nullptr || arguments->size() != 2) {
+            result->Error("invalid_preferences", "Desktop preferences unavailable."); return;
+          }
+          const auto close = arguments->find(flutter::EncodableValue("closeToTray"));
+          const auto hidden = arguments->find(flutter::EncodableValue("startHidden"));
+          if (close == arguments->end() || hidden == arguments->end()) {
+            result->Error("invalid_preferences", "Expected desktop preference keys."); return;
+          }
+          const auto* close_value = std::get_if<bool>(&close->second);
+          const auto* hidden_value = std::get_if<bool>(&hidden->second);
+          if (!close_value || !hidden_value) {
+            result->Error("invalid_preferences", "Expected bool preferences."); return;
+          }
+          close_to_tray_ = *close_value;
+          start_hidden_ = *hidden_value;
+          result->Success(); return;
+        }
+        if (call.method_name() == "beginExit") {
+          if (!BeginExplicitExit()) {
+            result->Error("exit_unavailable", "Exit request unavailable."); return;
+          }
+          result->Success(); return;
+        }
+        if (call.method_name() == "cancelExit") {
+          CancelExplicitExit();
+          result->Success(); return;
+        }
         if (call.method_name() == "notify") {
           std::wstring title = L"Sidravia";
           std::wstring body;
@@ -137,6 +166,9 @@ bool FlutterWindow::OnCreate() {
           return;
         }
         if (call.method_name() == "destroy") {
+          if (!exit_request_pending_ || exit_fallback_timer_ == 0) {
+            result->Error("exit_unconfirmed", "Exit has not been confirmed."); return;
+          }
           result->Success();
           CompleteExplicitExit();
           return;
@@ -148,7 +180,7 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    if (!(desktop_presence_initialized_ && start_hidden_)) this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -317,18 +349,25 @@ void FlutterWindow::HandleTrayMessage(LPARAM lparam) {
 void FlutterWindow::RequestExplicitExit() {
   if (exit_request_pending_) return;
   exit_request_pending_ = true;
-  exit_fallback_timer_ =
-      ::SetTimer(GetHandle(), kExitFallbackTimerId,
-                 kExitFallbackMilliseconds, nullptr);
-  if (exit_fallback_timer_ == 0) {
-    CompleteExplicitExit();
-    return;
-  }
+  RestoreWindow();
   if (desktop_channel_ && flutter_controller_) {
     desktop_channel_->InvokeMethod("exitRequested", nullptr);
     return;
   }
-  CompleteExplicitExit();
+  CancelExplicitExit();
+}
+
+bool FlutterWindow::BeginExplicitExit() {
+  if (!exit_request_pending_) return false;
+  if (exit_fallback_timer_ != 0) return true;
+  exit_fallback_timer_ = ::SetTimer(GetHandle(), kExitFallbackTimerId,
+                                   kExitFallbackMilliseconds, nullptr);
+  return exit_fallback_timer_ != 0;
+}
+
+void FlutterWindow::CancelExplicitExit() {
+  if (exit_fallback_timer_ != 0) return;
+  exit_request_pending_ = false;
 }
 
 std::wstring FlutterWindow::Utf8ToUtf16(const std::string& utf8) {
@@ -369,12 +408,16 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   switch (message) {
     case WM_CLOSE:
       if (desktop_presence_initialized_ && !exit_armed_) {
-        ShowWindow(hwnd, SW_HIDE);
+        if (close_to_tray_) {
+          ShowWindow(hwnd, SW_HIDE);
+        } else {
+          RequestExplicitExit();
+        }
         return 0;
       }
       break;
     case WM_TIMER:
-      if (wparam == kExitFallbackTimerId && exit_request_pending_) {
+      if (wparam == kExitFallbackTimerId && exit_fallback_timer_ != 0 && exit_request_pending_) {
         CompleteExplicitExit();
         return 0;
       }

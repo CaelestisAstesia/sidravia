@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -13,18 +14,24 @@ class SidraviaShell extends StatefulWidget {
     super.key,
     required this.controller,
     this.announcements,
+    this.desktopPresence,
   });
   final GuiController controller;
   final AnnouncementController? announcements;
+  final DesktopPresence? desktopPresence;
 
   @override
-  State<SidraviaShell> createState() => _SidraviaShellState();
+  State<SidraviaShell> createState() => SidraviaShellState();
 }
 
-class _SidraviaShellState extends State<SidraviaShell> {
+class SidraviaShellState extends State<SidraviaShell> {
   AppPage _page = AppPage.home;
   final _configurationKey = GlobalKey<ConfigurationPageState>();
   final _history = <AppPage>[];
+
+  Future<bool> mayExit() async =>
+      _page != AppPage.configuration ||
+      await (_configurationKey.currentState?.mayLeave() ?? Future.value(false));
 
   void _go(AppPage page) {
     if (_page == page) return;
@@ -83,6 +90,7 @@ class _SidraviaShellState extends State<SidraviaShell> {
                   onNavigate: _go,
                 ),
                 AppPage.settings => SettingsPage(
+                  desktopPresence: widget.desktopPresence,
                   controller: widget.controller,
                   onNavigate: _go,
                   onBack: _back,
