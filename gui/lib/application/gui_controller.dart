@@ -280,10 +280,12 @@ class GuiController extends ChangeNotifier {
     required String institutionProfileId,
     required String username,
     required String password,
+    NetworkBindingPolicy networkBindingPolicy =
+        const NetworkBindingPolicy.automatic(),
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
     (client, allow) => client.configurationCreate(
-      networkBindingPolicy: const NetworkBindingPolicy.automatic(),
+      networkBindingPolicy: networkBindingPolicy,
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
@@ -302,6 +304,7 @@ class GuiController extends ChangeNotifier {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
     (client, allow) => client.configurationUpdate(
@@ -309,6 +312,7 @@ class GuiController extends ChangeNotifier {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allow,
     ),
     operation: password == null

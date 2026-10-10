@@ -59,6 +59,7 @@ class ConsentClient extends OfflineDemoClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     reject(
@@ -73,6 +74,7 @@ class ConsentClient extends OfflineDemoClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allowInsecureStorage,
     );
   }
@@ -183,6 +185,7 @@ class DelayedConsentClient extends ConsentClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     await gate.future;
@@ -191,6 +194,7 @@ class DelayedConsentClient extends ConsentClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allowInsecureStorage,
     );
   }

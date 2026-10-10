@@ -126,6 +126,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     bool? credentialStored,
     bool? autoLogin,
     bool? autoReconnect,
+    NetworkBindingPolicy? networkBindingPolicy,
   }) {
     final c = _configuration!;
     return _configuration = ConfigurationSummary(
@@ -137,7 +138,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
       username: username ?? c.username,
       credentialStored: credentialStored ?? c.credentialStored,
       storageProtection: c.storageProtection,
-      networkBindingPolicy: c.networkBindingPolicy,
+      networkBindingPolicy: networkBindingPolicy ?? c.networkBindingPolicy,
       autoLogin: autoLogin ?? c.autoLogin,
       autoReconnect: autoReconnect ?? c.autoReconnect,
     );
@@ -200,6 +201,7 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     final previous = _requireConfiguration(configurationId);
@@ -209,11 +211,14 @@ class OfflineDemoClient extends ChangeNotifier implements SidraviaIpcClient {
     final c = _replaceConfiguration(
       username: username,
       institutionProfileId: institutionProfileId,
+      networkBindingPolicy: networkBindingPolicy,
       credentialStored: password == null ? previous.credentialStored : true,
     );
     if (username != previous.username ||
         institutionProfileId != previous.institutionProfileId ||
-        password != null) {
+        password != null ||
+        (networkBindingPolicy != null &&
+            networkBindingPolicy != previous.networkBindingPolicy)) {
       _session = null;
     }
     _record('configuration.update', '已模拟保存配置；仅保留在本次演示内存中');

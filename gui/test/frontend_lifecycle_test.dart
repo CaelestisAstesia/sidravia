@@ -23,6 +23,7 @@ class _DelayedSaveClient extends OfflineDemoClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     submittedPassword = password;
@@ -32,6 +33,7 @@ class _DelayedSaveClient extends OfflineDemoClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allowInsecureStorage,
     );
   }

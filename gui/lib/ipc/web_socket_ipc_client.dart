@@ -165,12 +165,15 @@ class WebSocketIpcClient
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async => _call('configuration.update', {
     'configurationId': configurationId,
     'institutionProfileId': institutionProfileId,
     'username': username,
     'password': ?password,
+    if (networkBindingPolicy != null)
+      'networkBindingPolicy': networkBindingPolicy.toJson(),
     if (allowInsecureStorage) 'allowInsecureStorage': true,
   }, decodeConfiguration);
 

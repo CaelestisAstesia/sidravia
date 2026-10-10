@@ -479,6 +479,7 @@ class _LiveClient extends OfflineDemoClient implements SidraviaStateClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     final saved = await super.configurationUpdate(
@@ -486,6 +487,7 @@ class _LiveClient extends OfflineDemoClient implements SidraviaStateClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allowInsecureStorage,
     );
     if (committedFailure) {

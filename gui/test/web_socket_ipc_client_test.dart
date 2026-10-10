@@ -834,6 +834,81 @@ void main() {
   });
 
   test(
+    'atomic update omits or encodes automatic and explicit binding',
+    () async {
+      final received = <Map<String, dynamic>>[];
+      final server = await _server((socket, _) {
+        socket.listen((message) {
+          final request = jsonDecode(message as String) as Map<String, dynamic>;
+          received.add(request);
+          socket.add(
+            jsonEncode({
+              'kind': 'response',
+              'id': request['id'],
+              'ok': true,
+              'result': _fixtureResult('configuration.update'),
+            }),
+          );
+        });
+      });
+      addTearDown(() => server.close(force: true));
+      final client = await WebSocketIpcClient.connect(_bootstrap(server.port));
+      const common = {
+        'configurationId': 'fixture-configuration',
+        'institutionProfileId': 'jlu',
+        'username': 'updated-user',
+        'password': 'updated-secret',
+      };
+      await client.configurationUpdate(
+        configurationId: 'fixture-configuration',
+        institutionProfileId: 'jlu',
+        username: 'updated-user',
+        password: 'updated-secret',
+      );
+      await client.configurationUpdate(
+        configurationId: 'fixture-configuration',
+        institutionProfileId: 'jlu',
+        username: 'updated-user',
+        password: 'updated-secret',
+        networkBindingPolicy: const NetworkBindingPolicy.automatic(),
+      );
+      final explicit = NetworkBindingPolicy.explicit(
+        'fixture-iface',
+        '192.0.2.8',
+      );
+      await client.configurationUpdate(
+        configurationId: 'fixture-configuration',
+        institutionProfileId: 'jlu',
+        username: 'updated-user',
+        password: 'updated-secret',
+        networkBindingPolicy: explicit,
+      );
+
+      expect(received.map((request) => request['method']), [
+        'configuration.update',
+        'configuration.update',
+        'configuration.update',
+      ]);
+      expect(received[0]['payload'], common);
+      expect(received[1]['payload'], {
+        ...common,
+        'networkBindingPolicy': {
+          'mode': 'automatically_select_latest_available',
+        },
+      });
+      expect(received[2]['payload'], {
+        ...common,
+        'networkBindingPolicy': {
+          'mode': 'explicit_interface_and_local_ipv4',
+          'interfaceId': 'fixture-iface',
+          'localIpv4Address': '192.0.2.8',
+        },
+      });
+      await client.close();
+    },
+  );
+
+  test(
     'network binding policy update preserves typed policy and consent payload',
     () async {
       final received = <Map<String, dynamic>>[];

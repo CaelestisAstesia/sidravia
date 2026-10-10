@@ -37,6 +37,7 @@ class ReplacementClient extends OfflineDemoClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     updatedIds.add(configurationId);
@@ -45,6 +46,7 @@ class ReplacementClient extends OfflineDemoClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allowInsecureStorage,
     );
   }

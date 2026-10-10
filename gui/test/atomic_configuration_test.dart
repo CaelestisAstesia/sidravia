@@ -68,6 +68,72 @@ void main() {
       );
     });
   }
+
+  test('atomic edit stores changed binding and retires its session', () async {
+    final client = OfflineDemoClient()..selectScenario('authenticated');
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    addTearDown(controller.dispose);
+    await controller.start();
+    final policy = NetworkBindingPolicy.explicit('demo-iface', '192.0.2.4');
+
+    expect(
+      await controller.updateConfiguration(
+        configurationId: 'demo-config',
+        institutionProfileId: 'jlu',
+        username: controller.snapshot!.configurations.single.username,
+        networkBindingPolicy: policy,
+      ),
+      isTrue,
+    );
+    expect(client.operations, contains('configuration.update'));
+    expect(
+      client.operations.where((op) => op == 'configuration.update'),
+      hasLength(1),
+    );
+    expect(
+      controller.snapshot!.configurations.single.networkBindingPolicy,
+      policy,
+    );
+    expect(controller.snapshot!.sessions, isEmpty);
+  });
+
+  test('omitted or unchanged binding preserves the demo session', () async {
+    final client = OfflineDemoClient()..selectScenario('authenticated');
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    addTearDown(controller.dispose);
+    await controller.start();
+    final policy =
+        controller.snapshot!.configurations.single.networkBindingPolicy;
+    final oldSessionId = controller.snapshot!.sessions.single.id;
+
+    expect(
+      await controller.updateConfiguration(
+        configurationId: 'demo-config',
+        institutionProfileId: 'jlu',
+        username: controller.snapshot!.configurations.single.username,
+        networkBindingPolicy: policy,
+      ),
+      isTrue,
+    );
+    expect(controller.snapshot!.sessions.single.id, oldSessionId);
+    expect(
+      await controller.updateConfiguration(
+        configurationId: 'demo-config',
+        institutionProfileId: 'jlu',
+        username: controller.snapshot!.configurations.single.username,
+      ),
+      isTrue,
+    );
+    expect(controller.snapshot!.sessions.single.id, oldSessionId);
+  });
 }
 
 class _CleanupFailureClient extends OfflineDemoClient {
@@ -78,6 +144,7 @@ class _CleanupFailureClient extends OfflineDemoClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     if (fail) {
@@ -90,6 +157,7 @@ class _CleanupFailureClient extends OfflineDemoClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
     );
   }
 }

@@ -134,6 +134,66 @@ void main() {
     controller.dispose();
   });
 
+  test('create forwards binding with credentials in one mutation', () async {
+    final client = _Client()
+      ..configurations = []
+      ..sessions = [];
+    final controller = _controller(client);
+    await controller.start();
+    final createPolicy = NetworkBindingPolicy.explicit(
+      'create-iface',
+      '192.0.2.5',
+    );
+    expect(
+      await controller.createConfiguration(
+        institutionProfileId: 'jlu',
+        username: 'new-user',
+        password: 'secret',
+        networkBindingPolicy: createPolicy,
+      ),
+      isTrue,
+    );
+    expect(client.createNetworkBindingPolicy, createPolicy);
+    expect(
+      client.calls.where((call) => call == 'configuration.create'),
+      hasLength(1),
+    );
+    controller.dispose();
+    await client.close();
+  });
+
+  test('update forwards binding with credentials in one mutation', () async {
+    final client = _Client();
+    final controller = _controller(client);
+    await controller.start();
+    client.calls.clear();
+    final updatePolicy = NetworkBindingPolicy.explicit(
+      'update-iface',
+      '192.0.2.6',
+    );
+    expect(
+      await controller.updateConfiguration(
+        configurationId: 'cfg-a',
+        institutionProfileId: 'jlu',
+        username: 'updated-user',
+        password: 'replacement-secret',
+        networkBindingPolicy: updatePolicy,
+      ),
+      isTrue,
+    );
+    expect(client.updateNetworkBindingPolicy, updatePolicy);
+    expect(
+      client.calls.where((call) => call == 'configuration.update'),
+      hasLength(1),
+    );
+    expect(
+      client.calls,
+      isNot(contains('configuration.setNetworkBindingPolicy')),
+    );
+    controller.dispose();
+    await client.close();
+  });
+
   test(
     'business failures preserve the connection and publish fixed guidance',
     () async {
@@ -584,6 +644,8 @@ class _PendingBootstrapper implements GuiBootstrapper {
 class _Client implements SidraviaDesktopClient {
   final calls = <String>[];
   (bool, bool, bool)? createPolicy;
+  NetworkBindingPolicy? createNetworkBindingPolicy;
+  NetworkBindingPolicy? updateNetworkBindingPolicy;
   List<ConfigurationSummary> configurations = const [_configuration];
   List<SessionSummary> sessions = const [_session];
   DaemonStatus daemon = _daemon;
@@ -642,6 +704,7 @@ class _Client implements SidraviaDesktopClient {
     required bool allowInsecureStorage,
   }) async {
     createPolicy = (autoLogin, autoReconnect, allowInsecureStorage);
+    createNetworkBindingPolicy = networkBindingPolicy;
     _call('configuration.create');
     return _configuration;
   }
@@ -652,8 +715,10 @@ class _Client implements SidraviaDesktopClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
+    updateNetworkBindingPolicy = networkBindingPolicy;
     _call('configuration.update');
     return _configuration;
   }

@@ -29,6 +29,7 @@ class FailingClient extends OfflineDemoClient {
     required String institutionProfileId,
     required String username,
     String? password,
+    NetworkBindingPolicy? networkBindingPolicy,
     bool allowInsecureStorage = false,
   }) async {
     if (fail) throw const IpcRequestFailure('session_state_conflict');
@@ -37,6 +38,7 @@ class FailingClient extends OfflineDemoClient {
       institutionProfileId: institutionProfileId,
       username: username,
       password: password,
+      networkBindingPolicy: networkBindingPolicy,
       allowInsecureStorage: allowInsecureStorage,
     );
   }
