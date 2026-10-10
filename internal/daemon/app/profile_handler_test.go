@@ -111,3 +111,34 @@ func TestProfileHandlerRejectsUnknownMethodWithoutCall(t *testing.T) {
 		t.Errorf("ListInstitutionProfiles calls = %d, want 0", fake.calls)
 	}
 }
+
+func TestProfileHandlerAnnouncementSafeSummary(t *testing.T) {
+	fake := &fakeProfileApplication{summaries: []config.InstitutionProfileSummary{{
+		InstitutionProfileID: "jlu", DisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
+		Announcement: &config.AnnouncementMetadata{URL: "http://login.jlu.edu.cn/notice_win.php", ClientWidth: 600, ClientHeight: 460},
+	}}}
+	result, cerr := ProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
+	if cerr != nil {
+		t.Fatal(cerr)
+	}
+	var decoded map[string][]map[string]json.RawMessage
+	if err := json.Unmarshal(result, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	profile := decoded["profiles"][0]
+	if len(profile) != 4 {
+		t.Fatalf("unexpected summary: %s", result)
+	}
+	var announcement contract.ProfileAnnouncementResult
+	if err := json.Unmarshal(profile["announcement"], &announcement); err != nil {
+		t.Fatal(err)
+	}
+	if announcement.URL != "http://login.jlu.edu.cn/notice_win.php" || announcement.ClientWidth != 600 || announcement.ClientHeight != 460 {
+		t.Fatalf("metadata = %#v", announcement)
+	}
+	for _, secret := range []string{"password", "credentialId", "institutionProtocolConfiguration"} {
+		if strings.Contains(string(result), secret) {
+			t.Fatalf("unsafe field %q", secret)
+		}
+	}
+}

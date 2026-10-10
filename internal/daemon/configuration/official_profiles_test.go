@@ -38,4 +38,7 @@ func TestOfficialProfilesLoad(t *testing.T) {
 	if summaries[0].InstitutionProfileID != "jlu" {
 		t.Fatalf("official profile ID = %q, want jlu", summaries[0].InstitutionProfileID)
 	}
+	if a := summaries[0].Announcement; a == nil || a.URL != "http://login.jlu.edu.cn/notice_win.php" || a.ClientWidth != 600 || a.ClientHeight != 460 {
+		t.Fatalf("official announcement = %#v", a)
+	}
 }

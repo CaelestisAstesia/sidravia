@@ -37,8 +37,13 @@ func ProfileHandler(application profileApplication) func(context.Context, string
 		}
 		results := make([]contract.ProfileSummaryResult, 0, len(summaries))
 		for _, summary := range summaries {
+			var announcement *contract.ProfileAnnouncementResult
+			if summary.Announcement != nil {
+				announcement = &contract.ProfileAnnouncementResult{URL: summary.Announcement.URL, ClientWidth: summary.Announcement.ClientWidth, ClientHeight: summary.Announcement.ClientHeight}
+			}
 			results = append(results, contract.ProfileSummaryResult{
 				InstitutionProfileID:     string(summary.InstitutionProfileID),
+				Announcement:             announcement,
 				DisplayName:              summary.DisplayName,
 				AuthenticationProtocolID: string(summary.AuthenticationProtocolID),
 			})

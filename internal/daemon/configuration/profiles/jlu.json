@@ -3,6 +3,11 @@
   "institutionProfileId": "jlu",
   "displayName": "吉林大学",
   "authenticationProtocolId": "drcom-5.2.0-d",
+  "announcement": {
+    "url": "http://login.jlu.edu.cn/notice_win.php",
+    "clientWidth": 600,
+    "clientHeight": 460
+  },
   "institutionProtocolConfiguration": {
     "serverAddress": "10.100.61.3",
     "serverPort": 61440,

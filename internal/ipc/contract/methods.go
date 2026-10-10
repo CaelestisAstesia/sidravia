@@ -565,10 +565,17 @@ type SessionListResult struct {
 	Sessions                  []SessionResult `json:"sessions"`
 }
 
+type ProfileAnnouncementResult struct {
+	URL          string `json:"url"`
+	ClientWidth  int    `json:"clientWidth"`
+	ClientHeight int    `json:"clientHeight"`
+}
+
 type ProfileSummaryResult struct {
-	InstitutionProfileID     string `json:"institutionProfileId"`
-	DisplayName              string `json:"displayName"`
-	AuthenticationProtocolID string `json:"authenticationProtocolId"`
+	Announcement             *ProfileAnnouncementResult `json:"announcement,omitempty"`
+	InstitutionProfileID     string                     `json:"institutionProfileId"`
+	DisplayName              string                     `json:"displayName"`
+	AuthenticationProtocolID string                     `json:"authenticationProtocolId"`
 }
 
 type ProfileListResult struct {

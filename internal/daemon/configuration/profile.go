@@ -1,6 +1,12 @@
 package configuration
 
-import "sidravia/internal/daemon/authentication/protocol"
+import (
+	"errors"
+	"net/url"
+	"sidravia/internal/daemon/authentication/protocol"
+	"strings"
+	"unicode"
+)
 
 type InstitutionProfileID string
 
@@ -39,10 +45,43 @@ func isProfileIDBorder(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 }
 
+// AnnouncementMetadata describes a school-owned webpage without fetching it.
+type AnnouncementMetadata struct {
+	URL          string
+	ClientWidth  int
+	ClientHeight int
+}
+
+func (announcement *AnnouncementMetadata) Clone() *AnnouncementMetadata {
+	if announcement == nil {
+		return nil
+	}
+	copy := *announcement
+	return &copy
+}
+
+func validateAnnouncement(announcement *AnnouncementMetadata) error {
+	if announcement == nil {
+		return nil
+	}
+	invalid := func() error { return errors.New("invalid announcement metadata") }
+	if announcement.ClientWidth <= 0 || announcement.ClientWidth > 4096 || announcement.ClientHeight <= 0 || announcement.ClientHeight > 4096 ||
+		announcement.URL == "" || strings.Contains(announcement.URL, "#") || strings.ContainsFunc(announcement.URL, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return invalid()
+	}
+	parsed, err := url.Parse(announcement.URL)
+	if err != nil || !parsed.IsAbs() || parsed.Opaque != "" || parsed.Hostname() == "" || parsed.User != nil ||
+		!(strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https")) {
+		return invalid()
+	}
+	return nil
+}
+
 type InstitutionProfile struct {
 	InstitutionProfileID             InstitutionProfileID
 	DisplayName                      string
 	AuthenticationProtocolID         protocol.AuthenticationProtocolID
+	Announcement                     *AnnouncementMetadata
 	InstitutionProtocolConfiguration protocol.InstitutionProtocolConfiguration
 }
 
@@ -50,9 +89,11 @@ type InstitutionProfileSummary struct {
 	InstitutionProfileID     InstitutionProfileID
 	DisplayName              string
 	AuthenticationProtocolID protocol.AuthenticationProtocolID
+	Announcement             *AnnouncementMetadata
 }
 
 func (profile InstitutionProfile) Clone() InstitutionProfile {
+	profile.Announcement = profile.Announcement.Clone()
 	profile.InstitutionProtocolConfiguration = append(
 		protocol.InstitutionProtocolConfiguration(nil),
 		profile.InstitutionProtocolConfiguration...,

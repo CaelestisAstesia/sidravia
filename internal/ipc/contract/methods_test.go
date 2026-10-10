@@ -710,3 +710,19 @@ func TestConfigurationOverridePresenceReplacementClearAndOneShotObject(t *testin
 		t.Fatal("password-containing envelope incorrectly capped")
 	}
 }
+
+func TestMarshalProfileAnnouncementOptionalSafeFields(t *testing.T) {
+	data, err := MarshalProfileListResult(ProfileListResult{Profiles: []ProfileSummaryResult{{InstitutionProfileID: "jlu", DisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d", Announcement: &ProfileAnnouncementResult{URL: "http://login.jlu.edu.cn/notice_win.php", ClientWidth: 600, ClientHeight: 460}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expected = `{"profiles":[{"announcement":{"url":"http://login.jlu.edu.cn/notice_win.php","clientWidth":600,"clientHeight":460},"institutionProfileId":"jlu","displayName":"吉林大学","authenticationProtocolId":"drcom-5.2.0-d"}]}`
+	if string(data) != expected {
+		t.Fatalf("profile metadata = %s", data)
+	}
+	for _, secret := range []string{"password", "credentialId", "institutionProtocolConfiguration"} {
+		if bytes.Contains(data, []byte(secret)) {
+			t.Fatalf("unsafe field %q", secret)
+		}
+	}
+}

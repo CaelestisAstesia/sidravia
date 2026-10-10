@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,12 +25,26 @@ const profileLoaderOperation = "load institution profiles"
 // protocol-specific fields. DecodeStrict scans the whole document, so duplicate
 // keys inside the protocol configuration are rejected before the protocol
 // factory sees it.
+type announcementDocument struct {
+	URL          string `json:"url"`
+	ClientWidth  int    `json:"clientWidth"`
+	ClientHeight int    `json:"clientHeight"`
+}
+
+func (document *announcementDocument) metadata() *AnnouncementMetadata {
+	if document == nil {
+		return nil
+	}
+	return &AnnouncementMetadata{URL: document.URL, ClientWidth: document.ClientWidth, ClientHeight: document.ClientHeight}
+}
+
 type profileDocument struct {
-	SchemaVersion                    uint64          `json:"schemaVersion"`
-	InstitutionProfileID             string          `json:"institutionProfileId"`
-	DisplayName                      string          `json:"displayName"`
-	AuthenticationProtocolID         string          `json:"authenticationProtocolId"`
-	InstitutionProtocolConfiguration json.RawMessage `json:"institutionProtocolConfiguration"`
+	Announcement                     *announcementDocument `json:"announcement"`
+	SchemaVersion                    uint64                `json:"schemaVersion"`
+	InstitutionProfileID             string                `json:"institutionProfileId"`
+	DisplayName                      string                `json:"displayName"`
+	AuthenticationProtocolID         string                `json:"authenticationProtocolId"`
+	InstitutionProtocolConfiguration json.RawMessage       `json:"institutionProtocolConfiguration"`
 }
 
 // LoadProfileCatalogFromDirectory performs a one-shot startup load of the
@@ -160,6 +175,7 @@ func loadInstitutionProfileFile(
 		DisplayName:                      document.DisplayName,
 		AuthenticationProtocolID:         protocol.AuthenticationProtocolID(document.AuthenticationProtocolID),
 		InstitutionProtocolConfiguration: configuration,
+		Announcement:                     document.Announcement.metadata(),
 	}, nil
 }
 
@@ -183,6 +199,25 @@ func decodeInstitutionProfileDocument(data []byte) (profileDocument, error) {
 	var document profileDocument
 	if err := jsonfile.DecodeStrict(data, &document); err != nil {
 		return profileDocument{}, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, err)
+	}
+	if len(fields) > 5 && (len(fields) != 6 || fields["announcement"] == nil) {
+		return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+	}
+	if raw := fields["announcement"]; len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		if err := jsonfile.RequireObjectFields(raw, "url", "clientWidth", "clientHeight"); err != nil {
+			return profileDocument{}, err
+		}
+		var announcementFields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &announcementFields); err != nil || len(announcementFields) != 3 {
+			return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, err)
+		}
+	}
+	if err := validateAnnouncement(document.Announcement.metadata()); err != nil {
+		return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 	}
 	return document, nil
 }

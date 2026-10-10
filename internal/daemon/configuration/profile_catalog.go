@@ -61,6 +61,7 @@ func (catalog *ProfileCatalog) ListSummaries(ctx context.Context) ([]Institution
 			InstitutionProfileID:     profile.InstitutionProfileID,
 			DisplayName:              profile.DisplayName,
 			AuthenticationProtocolID: profile.AuthenticationProtocolID,
+			Announcement:             profile.Announcement.Clone(),
 		})
 	}
 	return summaries, nil
@@ -69,6 +70,9 @@ func (catalog *ProfileCatalog) ListSummaries(ctx context.Context) ([]Institution
 func validateProfile(profile InstitutionProfile) error {
 	if err := validateInstitutionProfileID(profile.InstitutionProfileID); err != nil {
 		return err
+	}
+	if err := validateAnnouncement(profile.Announcement); err != nil {
+		return profileCatalogInvalidArgument(err)
 	}
 	switch {
 	case profile.DisplayName == "":
