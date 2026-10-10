@@ -3,6 +3,7 @@
 #include <notificationactivationcallback.h>
 #include <roapi.h>
 #include <wrl.h>
+#include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
 #include <winrt/Windows.UI.Notifications.h>
 
@@ -117,12 +118,12 @@ class ActivationFactory final : public Microsoft::WRL::RuntimeClass<
   explicit ActivationFactory(std::weak_ptr<CallbackState> state)
       : state_(std::move(state)) {}
   HRESULT STDMETHODCALLTYPE CreateInstance(IUnknown* outer, REFIID iid,
-                                            void** value) override {
-    if (!value) return E_POINTER;
-    *value = nullptr;
+                                            void** object) override {
+    if (!object) return E_POINTER;
+    *object = nullptr;
     if (outer) return CLASS_E_NOAGGREGATION;
     auto callback = Microsoft::WRL::Make<ActivationCallback>(state_);
-    return callback ? callback.CopyTo(iid, value) : E_OUTOFMEMORY;
+    return callback ? callback.CopyTo(iid, object) : E_OUTOFMEMORY;
   }
   HRESULT STDMETHODCALLTYPE LockServer(BOOL) override { return S_OK; }
  private:
@@ -368,7 +369,11 @@ SchoolAnnouncementNotification::TakeCallback(WPARAM action, LPARAM generation) n
     if (!state->active || state->token.empty() || generation <= 0 ||
         static_cast<uint64_t>(generation) != state->generation ||
         (action != kClicked && action != kFailed)) return std::nullopt;
-    std::string token(state->token.begin(), state->token.end());
+    std::string token;
+    token.reserve(state->token.size());
+    for (const wchar_t ch : state->token) {
+      token.push_back(static_cast<char>(ch));
+    }
     state->token.clear();
     return std::make_pair(action == kClicked ? "clicked" : "failed", token);
   } catch (...) { return std::nullopt; }
