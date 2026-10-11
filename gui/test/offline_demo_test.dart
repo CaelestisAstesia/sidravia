@@ -161,7 +161,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(HomeNoticeView), findsOneWidget);
         expect(find.byKey(const ValueKey('home-notice')), findsOneWidget);
-        expect(find.text('公告'), findsOneWidget);
+        expect(find.text('吉林大学公告'), findsOneWidget);
         await tester.ensureVisible(find.byType(HomeNoticeView));
         await tester.pump();
         await tester.tap(find.byType(HomeNoticeView));

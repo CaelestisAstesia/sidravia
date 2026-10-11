@@ -236,7 +236,7 @@ void main() {
         await tester.tap(find.text('确认'));
       } else {
         await tester.enterText(find.byType(TextField).first, 'new-user');
-        await tester.tap(find.text('保存更改'));
+        await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         if (find.text('保存连接配置？').evaluate().isNotEmpty) {
           await tester.tap(
@@ -369,20 +369,12 @@ void main() {
           } else {
             await tester.enterText(find.byType(TextField).first, 'new-user');
             if (op != GuiOperation.updateConfiguration) {
-              if (find.text('更改密码').evaluate().isNotEmpty) {
-                await tester.tap(find.text('更改密码'));
-                await tester.pump();
-              }
               await tester.enterText(
                 find.byType(TextField).last,
                 'fixture-password',
               );
             }
-            await tester.tap(
-              find.text(
-                op == GuiOperation.createConfiguration ? '保存配置' : '保存更改',
-              ),
-            );
+            await tester.tap(find.text('保存修改'));
           }
         }
         await tester.pumpAndSettle();

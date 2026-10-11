@@ -159,16 +159,13 @@ void main() {
               previousWidth != null &&
               w == previousWidth + 1) {
             expect((r.top - previous.top).abs(), lessThan(.04));
-            expect(
-              (r.width - previous.width).abs(),
-              lessThan(w <= 620 ? 1.001 : .18),
-            );
+            expect((r.width - previous.width).abs(), lessThan(1.001));
             expect((r.left - previous.left).abs(), lessThan(.60));
           }
           if (page == 'home') {
             expect(
               tester.getSize(find.byKey(const ValueKey('home-page'))).width,
-              lessThanOrEqualTo(620),
+              w.toDouble(),
             );
             expect(
               tester.getSize(find.byKey(const ValueKey('home-actions'))).width,
@@ -229,8 +226,8 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          await tester.ensureVisible(find.text('查看吉林大学公告'));
-          await tester.tap(find.text('查看吉林大学公告'));
+          await tester.ensureVisible(find.text('吉林大学公告'));
+          await tester.tap(find.text('吉林大学公告'));
           await tester.pumpAndSettle();
           expect(find.text('离线公告占位预览'), findsOneWidget);
           expect(tester.takeException(), isNull);

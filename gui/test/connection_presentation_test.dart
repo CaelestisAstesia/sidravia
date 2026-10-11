@@ -281,8 +281,8 @@ void main() {
       await tester.ensureVisible(find.text('技术信息'));
       await tester.tap(find.text('技术信息'));
       await tester.pumpAndSettle();
-      expect(find.text('configuration_count'), findsOneWidget);
-      expect(find.text('session_count'), findsOneWidget);
+      expect(find.text('配置数量'), findsOneWidget);
+      expect(find.text('会话数量'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
       expect(find.text('orphan'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());

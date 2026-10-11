@@ -107,9 +107,7 @@ void main() {
         'username': 'student01',
         'status-title': '已连接',
         'status-detail': '认证成功 · 已连接 2 小时 18 分钟',
-        'notice-meta': '校园网公告',
         'notice-title': '校园网维护安排',
-        'notice-description': '在应用内打开学校公告页面',
       }.entries) {
         final rect = tester.getRect(find.text(entry.value));
         measurements[entry.key] = {
@@ -213,8 +211,8 @@ void main() {
             ),
           ),
         );
-        expect(find.text('查看吉林大学公告'), findsOneWidget);
-        expect(find.text('在应用内打开学校公告页面'), findsOneWidget);
+        expect(find.text('吉林大学公告'), findsOneWidget);
+        expect(find.text('在应用内打开学校公告页面'), findsNothing);
         await tester.tap(find.byType(HomeNoticeView));
         await tester.pumpAndSettle();
         expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);

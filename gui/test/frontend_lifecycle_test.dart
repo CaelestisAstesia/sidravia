@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -107,7 +108,9 @@ String _username(WidgetTester tester) =>
     tester.widget<TextField>(find.byType(TextField).first).controller!.text;
 
 String? _selectedProfile(WidgetTester tester) => tester
-    .state<FormFieldState<String>>(find.byType(DropdownButtonFormField<String>))
+    .widget<DesignChoiceRow>(
+      find.byWidgetPredicate((w) => w is DesignChoiceRow && w.title == '机构'),
+    )
     .value;
 
 void main() {
@@ -216,12 +219,8 @@ void main() {
       expect(_selectedProfile(tester), 'jlu');
       expect(_username(tester), creating ? '' : 'student01');
       await tester.enterText(find.byType(TextField).first, 'edited-account');
-      if (find.text('更改密码').evaluate().isNotEmpty) {
-        await tester.tap(find.text('更改密码'));
-        await tester.pump();
-      }
       await tester.enterText(find.byType(TextField).last, 'fake-password');
-      await tester.tap(find.text(creating ? '保存配置' : '保存更改'));
+      await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       if (find.text('保存连接配置？').evaluate().isNotEmpty) {
         await tester.tap(
@@ -256,10 +255,6 @@ void main() {
     await _mount(tester, controller);
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'unsaved-account');
-    if (find.text('更改密码').evaluate().isNotEmpty) {
-      await tester.tap(find.text('更改密码'));
-      await tester.pump();
-    }
     await tester.enterText(find.byType(TextField).last, 'unsaved-password');
     await tester.pump(const Duration(milliseconds: 60));
     await tester.pumpAndSettle();
@@ -286,12 +281,8 @@ void main() {
         await _mount(tester, controller);
         await _openConfiguration(tester);
         await tester.enterText(find.byType(TextField).first, 'saved-account');
-        if (find.text('更改密码').evaluate().isNotEmpty) {
-          await tester.tap(find.text('更改密码'));
-          await tester.pump();
-        }
         await tester.enterText(find.byType(TextField).last, 'fake-password');
-        await tester.tap(find.text('保存更改'));
+        await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         if (find.text('保存连接配置？').evaluate().isNotEmpty) {
           await tester.tap(
@@ -340,12 +331,8 @@ void main() {
     await _mount(tester, controller);
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'created-account');
-    if (find.text('更改密码').evaluate().isNotEmpty) {
-      await tester.tap(find.text('更改密码'));
-      await tester.pump();
-    }
     await tester.enterText(find.byType(TextField).last, 'fake-password');
-    await tester.tap(find.text('保存配置'));
+    await tester.tap(find.text('保存修改'));
     await tester.pumpAndSettle();
     if (find.text('保存连接配置？').evaluate().isNotEmpty) {
       await tester.tap(
@@ -360,7 +347,7 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '取消'))
+          .widget<TextButton>(find.widgetWithText(TextButton, '放弃修改'))
           .onPressed,
       isNull,
     );

@@ -186,7 +186,12 @@ void main() {
       expect(events, ['cancelExit']);
       unawaited(requestExit());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('放弃修改'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('放弃修改'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('断开连接并退出？'), findsOneWidget);
       await tester.tap(

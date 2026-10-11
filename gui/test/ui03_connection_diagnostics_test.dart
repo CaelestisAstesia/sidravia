@@ -42,7 +42,7 @@ void main() {
         await tester.pumpAndSettle();
         await tap(tester, '连接与诊断');
         expect(find.byType(AdvancedPage), findsOneWidget);
-        expect(find.text('daemon'), findsNothing);
+        expect(find.text('核心服务状态'), findsNothing);
         expect(find.text('10.0.0.1:61440'), findsOneWidget);
         expect(find.text('198.51.100.5:61440'), findsNothing);
         expect(client.probes, [false]);
@@ -59,7 +59,7 @@ void main() {
         await tester.tap(find.byTooltip('设置'));
         await tester.pumpAndSettle();
         await tap(tester, '连接与诊断');
-        expect(find.text('daemon'), findsOneWidget);
+        expect(find.text('核心服务状态'), findsOneWidget);
         await tap(tester, '返回');
         expect(find.byType(SettingsPage), findsOneWidget);
         final restored = Appearance(store: store);

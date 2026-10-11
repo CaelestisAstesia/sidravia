@@ -128,9 +128,9 @@ Future<void> render(
         await tester.ensureVisible(find.text('技术信息'));
         await tester.tap(find.text('技术信息'));
         await tester.pumpAndSettle();
-        expect(find.text('daemon'), findsOneWidget);
+        expect(find.text('核心服务状态'), findsOneWidget);
       } else {
-        expect(find.text('daemon'), findsNothing);
+        expect(find.text('核心服务状态'), findsNothing);
       }
     }
     if (page == 'announcement-feedback') {

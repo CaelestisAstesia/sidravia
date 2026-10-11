@@ -64,57 +64,87 @@ void main() {
   );
 
   test(
-    'schema4 exact fields roundtrip all choices, canonical leap days and null',
+    'schema4 adds info level without rewriting and upgrades on save',
     () async {
-      for (final frequency in GuiAnnouncementFrequency.values) {
-        for (final hidden in GuiHiddenAnnouncementBehavior.values) {
-          for (final date in [
-            null,
-            '2000-02-29',
-            '2024-02-29',
-            '0001-01-01',
-            '9999-12-31',
-          ]) {
-            final store = FileGuiSettingsStore(path);
-            await store.read();
-            await store.save(
-              GuiSettings(
-                appearanceMode: stored.appearanceMode,
-                diagnosticsExpanded: stored.diagnosticsExpanded,
-                closeBehavior: stored.closeBehavior,
-                startHidden: stored.startHidden,
-                announcementFrequency: frequency,
-                hiddenAnnouncementBehavior: hidden,
-                lastAutomaticAnnouncementDate: date,
-              ),
-            );
-            final raw = jsonDecode(
-              File(path).readAsStringSync(),
-            ) as Map<String, dynamic>;
-            expect(raw.keys.toSet(), {
-              'schemaVersion',
-              'appearanceMode',
-              'diagnosticsExpanded',
-              'closeBehavior',
-              'startHidden',
-              'announcementFrequency',
-              'hiddenAnnouncementBehavior',
-              'lastAutomaticAnnouncementDate',
-            });
-            expect(raw['schemaVersion'], 4);
-            final restored = (await FileGuiSettingsStore(path).read())!;
-            expect(restored.announcementFrequency, frequency);
-            expect(restored.hiddenAnnouncementBehavior, hidden);
-            expect(restored.lastAutomaticAnnouncementDate, date);
-            expect(restored.appearanceMode, GuiAppearanceMode.dark);
-            expect(restored.diagnosticsExpanded, true);
-            expect(restored.closeBehavior, GuiCloseBehavior.exit);
-            expect(restored.startHidden, true);
-          }
-        }
-      }
+      final legacy =
+          jsonDecode(encodeGuiSettings(stored)) as Map<String, dynamic>
+            ..remove('logLevel');
+      legacy['schemaVersion'] = 4;
+      final source = jsonEncode(legacy);
+      File(path).writeAsStringSync(source);
+      final store = FileGuiSettingsStore(path);
+      final restored = (await store.read())!;
+      expect(restored.logLevel, 'info');
+      expect(restored.announcementFrequency, stored.announcementFrequency);
+      expect(
+        restored.hiddenAnnouncementBehavior,
+        stored.hiddenAnnouncementBehavior,
+      );
+      expect(
+        restored.lastAutomaticAnnouncementDate,
+        stored.lastAutomaticAnnouncementDate,
+      );
+      expect(File(path).readAsStringSync(), source);
+      await store.save(restored);
+      final upgraded =
+          jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
+      expect(upgraded['schemaVersion'], 5);
+      expect(upgraded['logLevel'], 'info');
     },
   );
+
+  test('schema5 exact fields roundtrip announcements and log level, canonical dates', () async {
+    for (final frequency in GuiAnnouncementFrequency.values) {
+      for (final hidden in GuiHiddenAnnouncementBehavior.values) {
+        for (final date in [
+          null,
+          '2000-02-29',
+          '2024-02-29',
+          '0001-01-01',
+          '9999-12-31',
+        ]) {
+          final store = FileGuiSettingsStore(path);
+          await store.read();
+          await store.save(
+            GuiSettings(
+              appearanceMode: stored.appearanceMode,
+              logLevel: 'debug',
+              diagnosticsExpanded: stored.diagnosticsExpanded,
+              closeBehavior: stored.closeBehavior,
+              startHidden: stored.startHidden,
+              announcementFrequency: frequency,
+              hiddenAnnouncementBehavior: hidden,
+              lastAutomaticAnnouncementDate: date,
+            ),
+          );
+          final raw =
+              jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
+          expect(raw.keys.toSet(), {
+            'schemaVersion',
+            'logLevel',
+            'appearanceMode',
+            'diagnosticsExpanded',
+            'closeBehavior',
+            'startHidden',
+            'announcementFrequency',
+            'hiddenAnnouncementBehavior',
+            'lastAutomaticAnnouncementDate',
+          });
+          expect(raw['schemaVersion'], 5);
+          expect(raw['logLevel'], 'debug');
+          final restored = (await FileGuiSettingsStore(path).read())!;
+          expect(restored.logLevel, 'debug');
+          expect(restored.announcementFrequency, frequency);
+          expect(restored.hiddenAnnouncementBehavior, hidden);
+          expect(restored.lastAutomaticAnnouncementDate, date);
+          expect(restored.appearanceMode, GuiAppearanceMode.dark);
+          expect(restored.diagnosticsExpanded, true);
+          expect(restored.closeBehavior, GuiCloseBehavior.exit);
+          expect(restored.startHidden, true);
+        }
+      }
+    }
+  });
 
   test(
     'invalid dates enum types fields and future versions preserve damaged file',
@@ -122,7 +152,9 @@ void main() {
       final base =
           jsonDecode(encodeGuiSettings(stored)) as Map<String, dynamic>;
       final invalid = <Map<String, dynamic>>[
-        {...base, 'schemaVersion': 5},
+        {...base, 'schemaVersion': 6},
+        for (final level in ['unknown', null, true, 1])
+          {...base, 'logLevel': level},
         {...base, 'announcementFrequency': 'unknown'},
         {...base, 'announcementFrequency': true},
         {...base, 'hiddenAnnouncementBehavior': 'unknown'},

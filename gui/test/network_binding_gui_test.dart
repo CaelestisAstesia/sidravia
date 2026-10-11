@@ -37,13 +37,13 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.text('下次连接的网络策略'));
+        await tester.tap(find.text('网卡'));
         await tester.pumpAndSettle();
         expect(find.text('192.168.1.2/24 · Ethernet · if-1'), findsNWidgets(2));
         expect(find.textContaining('if-down'), findsNothing);
         expect(find.textContaining('192.168.1.3'), findsNothing);
         await tester.tap(find.text('自动选择可用网卡'));
-        await tester.pump();
+        await tester.pumpAndSettle();
         expect(draft, const NetworkBindingPolicy.automatic());
         expect(client.operations, isNot(contains('configuration.update')));
         draft = _explicit;
@@ -64,7 +64,7 @@ void main() {
           ),
         );
         expect(find.textContaining('不会自动回退'), findsOneWidget);
-        expect(find.text('接口 ID：if-1'), findsOneWidget);
+        expect(find.textContaining('if-1'), findsOneWidget);
         expect(draft, _explicit);
       } finally {
         await tester.pumpWidget(const SizedBox());
