@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
@@ -7,6 +9,156 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  Future<void> visibilityCallback(bool value) =>
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+            desktopPresenceChannelName,
+            const StandardMethodCodec().encodeMethodCall(
+              MethodCall('visibilityChanged', value),
+            ),
+            (_) {},
+          );
+
+  test(
+    'current query updates owner and callback including duplicate wins',
+    () async {
+      const channel = MethodChannel(desktopPresenceChannelName);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Object? reply = true;
+      messenger.setMockMethodCallHandler(
+        channel,
+        (call) async => call.method == 'initialize' ? 'primary' : reply,
+      );
+      final presence = DesktopPresence(channel: channel);
+      addTearDown(() {
+        presence.dispose();
+        messenger.setMockMethodCallHandler(channel, null);
+      });
+      await presence.initialize();
+      reply = false;
+      expect(await presence.refreshMainWindowVisibility(), isFalse);
+      expect(presence.isMainWindowVisible, isFalse);
+      final pending = Completer<Object?>();
+      reply = pending.future;
+      final query = presence.refreshMainWindowVisibility();
+      await visibilityCallback(false);
+      pending.complete(true);
+      expect(await query, isFalse);
+      expect(presence.isMainWindowVisible, isFalse);
+      expect(presence.enabled, isTrue);
+    },
+  );
+  test(
+    'invalid queries preserve availability and unrelated feedback',
+    () async {
+      const channel = MethodChannel(desktopPresenceChannelName);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Object? reply = true;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'initialize') return 'primary';
+        if (call.method == 'configurePreferences') {
+          throw PlatformException(code: 'failed');
+        }
+        if (reply is Exception) throw reply;
+        return reply;
+      });
+      final presence = DesktopPresence(channel: channel);
+      addTearDown(() {
+        presence.dispose();
+        messenger.setMockMethodCallHandler(channel, null);
+      });
+      await presence.initialize();
+      await presence.configurePreferences(
+        closeBehavior: GuiCloseBehavior.exit,
+        startHidden: false,
+      );
+      final feedback = presence.feedback;
+      for (final value in [null, 'false', PlatformException(code: 'failed')]) {
+        reply = value;
+        expect(await presence.refreshMainWindowVisibility(), isNull);
+        expect(presence.enabled, isTrue);
+        expect(presence.feedback, feedback);
+        expect(presence.isMainWindowVisible, isTrue);
+      }
+      final pending = Completer<Object?>();
+      reply = pending.future;
+      final query = presence.refreshMainWindowVisibility();
+      await visibilityCallback(false);
+      pending.completeError(PlatformException(code: 'failed'));
+      expect(await query, isFalse);
+      expect(presence.feedback, feedback);
+    },
+  );
+  test(
+    'visibility query timeout and disposed query do not guess cached state',
+    () async {
+      const channel = MethodChannel(desktopPresenceChannelName);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Object? reply = true;
+      messenger.setMockMethodCallHandler(
+        channel,
+        (call) async => call.method == 'initialize' ? 'primary' : reply,
+      );
+      final presence = DesktopPresence(channel: channel);
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      var disposed = false;
+      try {
+        await presence.initialize();
+        final pending = Completer<Object?>();
+        reply = pending.future;
+        expect(await presence.refreshMainWindowVisibility(), isNull);
+        expect(presence.enabled, isTrue);
+        pending.complete(false);
+        await Future<void>.delayed(Duration.zero);
+        expect(presence.isMainWindowVisible, isTrue);
+        final late = Completer<Object?>();
+        reply = late.future;
+        final query = presence.refreshMainWindowVisibility();
+        presence.dispose();
+        disposed = true;
+        late.complete(false);
+        expect(await query, isNull);
+        expect(
+          await DesktopPresence.disabled().refreshMainWindowVisibility(),
+          isNull,
+        );
+      } finally {
+        if (!disposed) presence.dispose();
+      }
+    },
+  );
+  test(
+    'newer query supersedes old reply without changing callback authority',
+    () async {
+      const channel = MethodChannel(desktopPresenceChannelName);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Object? reply = true;
+      messenger.setMockMethodCallHandler(
+        channel,
+        (call) async => call.method == 'initialize' ? 'primary' : reply,
+      );
+      final presence = DesktopPresence(channel: channel);
+      addTearDown(() {
+        presence.dispose();
+        messenger.setMockMethodCallHandler(channel, null);
+      });
+      await presence.initialize();
+      final old = Completer<Object?>();
+      reply = old.future;
+      final first = presence.refreshMainWindowVisibility();
+      await Future<void>.delayed(Duration.zero);
+      reply = false;
+      expect(await presence.refreshMainWindowVisibility(), isFalse);
+      old.complete(true);
+      expect(await first, isNull);
+      expect(presence.isMainWindowVisible, isFalse);
+    },
+  );
 
   for (final initialState in ['authenticated', 'blocked_by_error']) {
     test(

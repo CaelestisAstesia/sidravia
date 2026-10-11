@@ -41,6 +41,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
   String? _token, _feedback;
   bool _queued = false, _ready = false, _closed = false, _disposed = false;
   int _generation = 0;
+  bool _dispatchPending = false;
   Future<void>? _starting, _closing;
 
   InstitutionProfile? get profile => _closed || _latest == null
@@ -85,14 +86,34 @@ class SchoolAnnouncementController extends ChangeNotifier {
     _invalidate();
     _active = intent;
     final generation = _generation;
-    if (desktop.isMainWindowVisible == true ||
+    _setFeedback(null);
+    _dispatchPending = true;
+    _track(_dispatch(intent, generation));
+  }
+
+  Future<void> _dispatch(_Intent intent, int generation) async {
+    if (preferences.hiddenAnnouncementBehavior ==
+        GuiHiddenAnnouncementBehavior.showImmediately) {
+      _dispatchPending = false;
+      await _manual(intent, generation);
+      return;
+    }
+    final visible = await desktop.refreshMainWindowVisibility();
+    if (!_current(generation)) return;
+    _dispatchPending = false;
+    if (!_matches(intent)) return;
+    if (visible == true ||
         preferences.hiddenAnnouncementBehavior ==
             GuiHiddenAnnouncementBehavior.showImmediately) {
-      _track(_manual(intent, generation));
+      await _manual(intent, generation);
+    } else if (visible == null) {
+      _setFeedback('公告暂未显示，无法确认窗口状态，可在首页查看');
+      await notifications.dismiss();
     } else if (preferences.hiddenAnnouncementBehavior ==
         GuiHiddenAnnouncementBehavior.onRestore) {
       _queued = true;
-      _track(notifications.dismiss());
+      await notifications.dismiss();
+      if (_current(generation)) _visibilityChanged();
     } else {
       final random = Random.secure();
       final token = List.generate(
@@ -100,7 +121,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
         (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
       ).join();
       _token = token;
-      _track(_send(token, generation));
+      await _send(token, generation);
     }
   }
 
@@ -187,7 +208,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
 
   void _preferencesChanged() {
     if (_closed) return;
-    if (_queued &&
+    if ((_queued || _dispatchPending) &&
         preferences.announcementFrequency ==
             GuiAnnouncementFrequency.manualOnly) {
       _invalidate();
@@ -212,6 +233,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
     ++_generation;
     _active = null;
     _queued = false;
+    _dispatchPending = false;
     _token = null;
   }
 

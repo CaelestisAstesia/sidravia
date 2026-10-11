@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:sidravia_gui/application/gui_snapshot.dart';
@@ -42,7 +43,7 @@ class DesktopPresence extends ChangeNotifier {
   final DesktopNotificationPolicy _policy = DesktopNotificationPolicy();
   bool _operational = true, _initialized = false, _disposed = false;
   bool? _isMainWindowVisible;
-  int _visibilityCallbackRevision = 0;
+  int _visibilityCallbackRevision = 0, _visibilityQueryRevision = 0;
   String? _feedback;
   String? get feedback => _feedback;
   bool? get isMainWindowVisible => _isMainWindowVisible;
@@ -74,28 +75,34 @@ class DesktopPresence extends ChangeNotifier {
       return DesktopPresenceDisposition.activatedExisting;
     }
     _initialized = value == 'primary';
-    if (_initialized) await _readMainWindowVisibility(channel);
+    if (_initialized) await refreshMainWindowVisibility();
     return DesktopPresenceDisposition.primary;
   }
 
-  Future<void> _readMainWindowVisibility(MethodChannel channel) async {
-    if (_disposed || !enabled) return;
+  /// Refreshes the native observation without changing desktop availability.
+  /// A newer callback (including a duplicate) wins over the requested sample.
+  Future<bool?> refreshMainWindowVisibility() async {
+    final channel = _channel;
+    if (_disposed || !enabled || channel == null) return null;
+    final queryRevision = ++_visibilityQueryRevision;
     final callbackRevision = _visibilityCallbackRevision;
     Object? result;
     try {
-      result = await channel.invokeMethod<Object?>('getVisibility');
+      result = await channel
+          .invokeMethod<Object?>('getVisibility')
+          .timeout(const Duration(seconds: 2));
     } on Object {
-      // Visibility is observational; query failure must not disable other
-      // desktop commands or change their feedback.
-      return;
+      // Query errors are observational and never replace command feedback.
     }
-    if (_disposed ||
-        !_initialized ||
-        callbackRevision != _visibilityCallbackRevision ||
-        result is! bool) {
-      return;
+    if (_disposed || !enabled) return null;
+    if (callbackRevision != _visibilityCallbackRevision) {
+      return _isMainWindowVisible;
+    }
+    if (queryRevision != _visibilityQueryRevision || result is! bool) {
+      return null;
     }
     _setMainWindowVisibility(result);
+    return _isMainWindowVisible;
   }
 
   void _setMainWindowVisibility(bool visible) {

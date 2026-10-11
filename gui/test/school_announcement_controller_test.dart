@@ -196,8 +196,188 @@ void main() {
     await settleWork();
   }
 
-  Future<void> visibility(bool value) =>
-      callback(desktopChannel, 'visibilityChanged', value);
+  Future<void> visibility(bool value) {
+    visible = value;
+    return callback(desktopChannel, 'visibilityChanged', value);
+  }
+
+  void queryReply(Object? reply) {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          desktopChannel,
+          (call) async => call.method == 'initialize'
+              ? 'primary'
+              : call.method == 'getVisibility'
+              ? reply
+              : null,
+        );
+  }
+
+  test(
+    'stale hidden cache queries visible and opens once without toast',
+    () async {
+      await visibility(false);
+      queryReply(true);
+      await owner.start();
+      await success();
+      expect(opens, hasLength(1));
+      expect(notices.where((c) => c.method == 'show'), isEmpty);
+      await success(revision: 2);
+      expect(opens, hasLength(1));
+    },
+  );
+  for (final behavior in [
+    GuiHiddenAnnouncementBehavior.notify,
+    GuiHiddenAnnouncementBehavior.onRestore,
+  ]) {
+    test('stale visible cache uses current hidden policy $behavior', () async {
+      preferences.hiddenAnnouncementBehavior = behavior;
+      queryReply(false);
+      await owner.start();
+      await success();
+      expect(opens, isEmpty);
+      expect(
+        notices.where((c) => c.method == 'show'),
+        behavior == GuiHiddenAnnouncementBehavior.notify
+            ? hasLength(1)
+            : isEmpty,
+      );
+      if (behavior == GuiHiddenAnnouncementBehavior.onRestore) {
+        await visibility(true);
+        await settleWork();
+        expect(opens, hasLength(1));
+        await visibility(true);
+        expect(opens, hasLength(1));
+      }
+    });
+  }
+  test(
+    'new callback including duplicate wins over pending query at dispatch',
+    () async {
+      await visibility(false);
+      final reply = Completer<Object?>();
+      queryReply(reply.future);
+      await owner.start();
+      await success();
+      expect(opens, isEmpty);
+      expect(notices.where((c) => c.method == 'show'), isEmpty);
+      await visibility(false);
+      reply.complete(true);
+      await settleWork();
+      expect(opens, isEmpty);
+      expect(notices.where((c) => c.method == 'show'), hasLength(1));
+    },
+  );
+  for (final mode in ['malformed', 'error', 'timeout']) {
+    test(
+      'unknown visibility $mode consumes success without guessed dispatch or replay',
+      () async {
+        preferences.announcementFrequency =
+            GuiAnnouncementFrequency.dailyFirstConnection;
+        final reply = Completer<Object?>();
+        if (mode == 'error') {
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(
+                desktopChannel,
+                (_) async => throw PlatformException(code: 'failed'),
+              );
+        } else {
+          queryReply(mode == 'timeout' ? reply.future : 'invalid');
+        }
+        await owner.start();
+        await success();
+        if (mode == 'timeout') {
+          await Future<void>.delayed(const Duration(milliseconds: 2100));
+        }
+        await settleWork();
+        expect(owner.feedback, '公告暂未显示，无法确认窗口状态，可在首页查看');
+        expect(opens, isEmpty);
+        expect(notices.where((c) => c.method == 'show'), isEmpty);
+        expect(preferences.lastAutomaticAnnouncementDate, '2026-10-10');
+        if (mode == 'timeout') reply.complete(true);
+        queryReply(true);
+        await success(revision: 2);
+        expect(opens, isEmpty);
+        expect(notices.where((c) => c.method == 'show'), isEmpty);
+        await owner.openManually();
+        expect(opens, hasLength(1));
+        expect(owner.feedback, isNull);
+      },
+    );
+  }
+  for (final cancellation in [
+    'manual',
+    'configuration',
+    'profile',
+    'manualOnly',
+    'close',
+    'newSuccess',
+  ]) {
+    test(
+      'pending query cancelled by $cancellation cannot dispatch late',
+      () async {
+        final reply = Completer<Object?>();
+        queryReply(reply.future);
+        await owner.start();
+        await success();
+        expect(opens, isEmpty);
+        Future<void>? closing;
+        if (cancellation == 'manual') await owner.openManually();
+        if (cancellation == 'configuration') {
+          owner.updateCapabilities(data.capabilities(configurations: []));
+        }
+        if (cancellation == 'profile') {
+          owner.updateCapabilities(
+            data.capabilities(profiles: [data.noMetadata]),
+          );
+        }
+        if (cancellation == 'manualOnly') {
+          preferences.announcementFrequency =
+              GuiAnnouncementFrequency.manualOnly;
+        }
+        if (cancellation == 'close') closing = owner.close();
+        if (cancellation == 'newSuccess') {
+          queryReply(false);
+          await success(revision: 2, minutes: 1);
+        }
+        reply.complete(true);
+        await settleWork();
+        if (closing != null) await closing;
+        expect(opens, hasLength(cancellation == 'manual' ? 1 : 0));
+        expect(
+          notices.where((c) => c.method == 'show'),
+          hasLength(cancellation == 'newSuccess' ? 1 : 0),
+        );
+      },
+    );
+  }
+  test(
+    'close waits for bounded unresolved query then prevents dispatch',
+    () async {
+      final reply = Completer<Object?>();
+      queryReply(reply.future);
+      await owner.start();
+      await success();
+      var completed = false;
+      final closing = owner.close().then((_) => completed = true);
+      await settleWork();
+      expect(completed, isFalse);
+      await closing;
+      expect(completed, isTrue);
+      expect(opens, isEmpty);
+      expect(notices.where((c) => c.method == 'show'), isEmpty);
+      reply.complete(true);
+    },
+  );
+  test('hidden showImmediately does not wait for visibility query', () async {
+    queryReply(Completer<Object?>().future);
+    preferences.hiddenAnnouncementBehavior =
+        GuiHiddenAnnouncementBehavior.showImmediately;
+    await owner.start();
+    await success();
+    expect(opens, hasLength(1));
+    expect(notices.where((c) => c.method == 'show'), isEmpty);
+  });
 
   test(
     'restored preferences gate buffered startup without replacing startedAt',
