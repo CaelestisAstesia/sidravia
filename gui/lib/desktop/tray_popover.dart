@@ -401,8 +401,9 @@ class _StatusCard extends StatelessWidget {
               ),
               if (data.statusDetail.isNotEmpty) ...[
                 const SizedBox(height: 3),
-                _EllipsisText(
+                Text(
                   data.statusDetail,
+                  softWrap: true,
                   style: TextStyle(
                     fontSize: 9,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,

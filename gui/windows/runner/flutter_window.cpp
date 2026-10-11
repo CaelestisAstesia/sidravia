@@ -18,7 +18,6 @@ constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
 constexpr UINT kVisibilityChangedMessage = WM_APP + 2;
 constexpr UINT_PTR kExitFallbackTimerId = 1;
-constexpr UINT_PTR kTraySingleClickTimerId = 2;
 constexpr UINT kExitFallbackMilliseconds = 6000;
 constexpr const wchar_t kSingleInstanceMutexName[] =
     L"Local\\Sidravia.Gui.DesktopPresence";
@@ -317,10 +316,6 @@ void FlutterWindow::OnDestroy() {
     ::KillTimer(GetHandle(), exit_fallback_timer_);
     exit_fallback_timer_ = 0;
   }
-  if (tray_single_click_timer_ != 0 && GetHandle() != nullptr) {
-    ::KillTimer(GetHandle(), tray_single_click_timer_);
-    tray_single_click_timer_ = 0;
-  }
   if (tray_popover_window_) tray_popover_window_->Destroy();
   tray_popover_window_.reset();
   RemoveTrayIcon();
@@ -515,16 +510,10 @@ void FlutterWindow::HandleTrayMessage(LPARAM lparam) {
         suppress_tray_button_up_ = false;
         return;
       }
-      if (tray_single_click_timer_ != 0) ::KillTimer(GetHandle(), tray_single_click_timer_);
-      tray_single_click_timer_ = ::SetTimer(GetHandle(), kTraySingleClickTimerId,
-                                            GetDoubleClickTime(), nullptr);
+      ShowTrayPopover();
       break;
     case WM_LBUTTONDBLCLK:
       suppress_tray_button_up_ = true;
-      if (tray_single_click_timer_ != 0) {
-        ::KillTimer(GetHandle(), tray_single_click_timer_);
-        tray_single_click_timer_ = 0;
-      }
       if (tray_popover_window_) tray_popover_window_->Hide();
       RestoreWindow();
       break;
@@ -683,12 +672,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       }
       break;
     case WM_TIMER:
-      if (wparam == kTraySingleClickTimerId && tray_single_click_timer_ != 0) {
-        ::KillTimer(hwnd, tray_single_click_timer_);
-        tray_single_click_timer_ = 0;
-        ShowTrayPopover();
-        return 0;
-      }
       if (wparam == kExitFallbackTimerId && exit_fallback_timer_ != 0 && exit_request_pending_) {
         CompleteExplicitExit();
         return 0;

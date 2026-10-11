@@ -158,7 +158,30 @@ void main() {
     expect(tray, contains('SetWindowLongPtrW(window, GWLP_USERDATA, 0)'));
     expect(tray, contains('controller_->HandleTopLevelWindowProc'));
     expect(trayHeader, contains('bool handling_dpi_change_'));
-    expect(flutterWindow, contains('GetDoubleClickTime()'));
+    final singleClick = flutterWindow
+        .split('case WM_LBUTTONUP:')
+        .last
+        .split('case WM_LBUTTONDBLCLK:')
+        .first;
+    expect(singleClick, contains('ShowTrayPopover();'));
+    expect(singleClick, contains('suppress_tray_button_up_ = false;'));
+    expect(
+      singleClick.indexOf('return;'),
+      lessThan(singleClick.indexOf('ShowTrayPopover();')),
+    );
+    expect(singleClick, isNot(contains('SetTimer')));
+    expect(flutterWindow, isNot(contains('GetDoubleClickTime')));
+    expect(flutterWindow, isNot(contains('tray_single_click_timer_')));
+    expect(header, isNot(contains('tray_single_click_timer_')));
+    final doubleClick = flutterWindow
+        .split('case WM_LBUTTONDBLCLK:')
+        .last
+        .split('case NIN_BALLOONUSERCLICK:')
+        .first;
+    expect(doubleClick, contains('suppress_tray_button_up_ = true;'));
+    expect(doubleClick, contains('tray_popover_window_->Hide();'));
+    expect(doubleClick, contains('RestoreWindow();'));
+    expect(doubleClick, isNot(contains('ShowTrayPopover')));
     expect(flutterWindow, contains('WM_LBUTTONDBLCLK'));
     expect(flutterWindow, contains('suppress_tray_button_up_'));
     expect(flutterWindow, isNot(contains('TrackPopupMenu')));

@@ -72,7 +72,6 @@ class FlutterWindow : public Win32Window {
   std::wstring single_instance_mutex_name_;
   std::wstring activation_message_name_;
   UINT_PTR exit_fallback_timer_ = 0;
-  UINT_PTR tray_single_click_timer_ = 0;
   UINT activation_message_ = 0;
   UINT taskbar_created_message_ = 0;
 

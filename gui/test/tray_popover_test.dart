@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
@@ -201,6 +202,61 @@ void main() {
     expect(actions.single.targetId, 'session-1');
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('complete duration wraps at frozen width with large text', (
+    tester,
+  ) async {
+    const duration = '已连接 123456 天 23 小时 59 分钟 59 秒';
+    final actions = <TrayIntent>[];
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: Scaffold(
+              body: Center(
+                child: TrayPopover(
+                  data: TrayPopoverData(
+                    statusTitle: '已连接',
+                    dark: false,
+                    institution: data.institution,
+                    username: data.username,
+                    statusDetail: duration,
+                    statusContext: data.statusContext,
+                    glyph: '✓',
+                    tone: HomeTone.success,
+                    primaryLabel: data.primaryLabel,
+                    primaryAction: data.primaryAction,
+                    primaryEnabled: true,
+                    disabledReason: '',
+                  ),
+                  onAction: actions.add,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.getSize(find.byType(TrayPopover)).width, 210);
+      final detail = tester.widget<Text>(find.text(duration));
+      expect(detail.softWrap, isTrue);
+      expect(detail.maxLines, isNull);
+      expect(detail.overflow, isNot(TextOverflow.ellipsis));
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.text(duration),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.size.height, greaterThan(9 * 2 * 1.15));
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text(data.primaryLabel));
+      await tester.pump();
+      expect(actions.single.targetId, 'session-1');
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.binding.setSurfaceSize(null);
+    }
   });
 
   testWidgets('large text remains scrollable and disabled reason is visible', (
