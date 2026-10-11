@@ -61,6 +61,7 @@ void main() {
       expect(find.text('通知可点击查看公告。'), findsNothing);
       for (final key in [
         'close-behavior-frame',
+        'log-level-frame',
         'announcement-自动显示公告-frame',
         'announcement-主窗口隐藏时-frame',
       ]) {

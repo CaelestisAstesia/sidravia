@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
@@ -175,6 +176,95 @@ class SettingsPage extends StatelessWidget {
                       ? null
                       : (value) => appearance.value = value,
                 ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DesignRow(
+                    title: '日志等级',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (appearance != null &&
+                            controller.runningLogLevel != null &&
+                            appearance.logLevel !=
+                                controller.runningLogLevel) ...[
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .error,
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'HarmonyOS Sans',
+                                fontSize: 11,
+                              ),
+                            ),
+                            onPressed: controller.canRestartCore
+                                ? () => confirmCoreRestart(
+                                    context,
+                                    controller,
+                                    appearance.logLevel,
+                                  )
+                                : null,
+                            child: const Text('重启核心'),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        _SettingsDropdown<String>(
+                          frameKey: const ValueKey('log-level-frame'),
+                          dropdownKey: const ValueKey('log-level-selector'),
+                          value: appearance?.logLevel ?? 'info',
+                          labels: const {
+                            'info': '普通（info）',
+                            'debug': '调试（debug）',
+                            'trace': '详细（trace）',
+                          },
+                          onChanged: appearance == null || controller.busy
+                              ? null
+                              : (value) async {
+                                  if (value == 'trace') {
+                                    final accepted = await showDialog<bool>(
+                                      context: context,
+                                      builder: (c) => AlertDialog(
+                                        title: const Text('开启详细日志？'),
+                                        content: const Text(
+                                          '详细日志包含协议数据报，可能含有账号和认证信息。仅建议排障时开启，请谨慎分享日志。',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(c, false),
+                                            child: const Text('取消'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(c, true),
+                                            child: const Text('开启'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (accepted != true) return;
+                                  }
+                                  if (context.mounted) {
+                                    appearance.logLevel = value;
+                                  }
+                                },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: DesignHelper('新日志等级将在核心重启后生效。'),
+                  ),
+                ],
               ),
               DesignRow(
                 title: '关闭主窗口',

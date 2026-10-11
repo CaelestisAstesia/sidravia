@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -87,7 +87,11 @@ void main() {
           appearance: preferences,
           child: MaterialApp(
             home: Scaffold(
-              body: AdvancedPage(controller: controller, onBack: () {}),
+              body: SettingsPage(
+                controller: controller,
+                onBack: () {},
+                onNavigate: (_) {},
+              ),
             ),
           ),
         ),
@@ -101,7 +105,7 @@ void main() {
       expect(
         tester.getRect(restart).right,
         lessThanOrEqualTo(
-          tester.getRect(find.byType(DropdownButtonFormField<String>)).left,
+          tester.getRect(find.byKey(const ValueKey('log-level-frame'))).left,
         ),
       );
       await tester.ensureVisible(restart);
