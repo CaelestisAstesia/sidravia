@@ -27,6 +27,8 @@ class SchoolAnnouncementNotifications {
   int _generation = 0;
   String? _pendingToken;
   bool _disposed = false;
+  String? _lastFailureCode;
+  String? get lastFailureCode => _lastFailureCode;
   void Function(String token)? onClicked;
   void Function(String token)? onFailed;
 
@@ -35,6 +37,7 @@ class SchoolAnnouncementNotifications {
     String namespace = '',
   }) async {
     if (_disposed) return SchoolAnnouncementNotificationResult.failed;
+    _lastFailureCode = null;
     final channel = _channel;
     if (channel == null) {
       return SchoolAnnouncementNotificationResult.unsupported;
@@ -65,6 +68,12 @@ class SchoolAnnouncementNotifications {
       }
       _pendingToken = null;
       return SchoolAnnouncementNotificationResult.unsupported;
+    } on PlatformException catch (error) {
+      if (!_disposed && generation == _generation && _pendingToken == token) {
+        _lastFailureCode = _failureDetails(error.details);
+        _pendingToken = null;
+      }
+      return SchoolAnnouncementNotificationResult.failed;
     } on Object {
       if (!_disposed && generation == _generation) _pendingToken = null;
       return SchoolAnnouncementNotificationResult.failed;
@@ -75,6 +84,7 @@ class SchoolAnnouncementNotifications {
     if (_disposed) return true;
     ++_generation;
     _pendingToken = null;
+    _lastFailureCode = null;
     if (_channel == null) return true;
     try {
       await _channel.invokeMethod<void>('dismiss');
@@ -89,6 +99,7 @@ class SchoolAnnouncementNotifications {
     _disposed = true;
     ++_generation;
     _pendingToken = null;
+    _lastFailureCode = null;
     _channel?.setMethodCallHandler(null);
     onClicked = null;
     onFailed = null;
@@ -100,7 +111,18 @@ class SchoolAnnouncementNotifications {
   }
 
   Future<Object?> _onNativeCall(MethodCall call) async {
-    final token = call.arguments;
+    Object? token = call.arguments;
+    String? errorCode;
+    if (call.method == 'failed') {
+      final payload = call.arguments;
+      if (payload is! Map ||
+          !payload.containsKey('token') ||
+          payload.keys.any((key) => key != 'token' && key != 'error_code')) {
+        return null;
+      }
+      token = payload['token'];
+      errorCode = _failureCode(payload['error_code']);
+    }
     if (_disposed ||
         !const {'clicked', 'failed'}.contains(call.method) ||
         token is! String ||
@@ -108,6 +130,7 @@ class SchoolAnnouncementNotifications {
         token != _pendingToken) {
       return null;
     }
+    if (call.method == 'failed') _lastFailureCode = errorCode;
     _pendingToken = null;
     try {
       (call.method == 'clicked' ? onClicked : onFailed)?.call(token);
@@ -116,6 +139,18 @@ class SchoolAnnouncementNotifications {
     }
     return null;
   }
+
+  static String? _failureDetails(Object? details) {
+    if (details is! Map || details.keys.any((key) => key != 'error_code')) {
+      return null;
+    }
+    return _failureCode(details['error_code']);
+  }
+
+  static String? _failureCode(Object? value) =>
+      value is int && value >= -0x80000000 && value < 0
+      ? '0x${(value & 0xffffffff).toRadixString(16).toUpperCase().padLeft(8, '0')}'
+      : null;
 
   static bool _validToken(String token) =>
       token.length == 32 && RegExp(r'^[0-9a-f]{32}$').hasMatch(token);

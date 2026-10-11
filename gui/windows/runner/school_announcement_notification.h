@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <flutter/encodable_value.h>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -14,10 +15,18 @@ class SchoolAnnouncementNotification {
   static constexpr UINT kCallbackMessage = WM_APP + 20;
   explicit SchoolAnnouncementNotification(HWND window);
   ~SchoolAnnouncementNotification();
-  std::string Show(const flutter::EncodableMap& arguments);
+  struct Result {
+    std::string status;
+    std::optional<int32_t> error_code;
+  };
+  struct Callback {
+    std::string method, token;
+    std::optional<int32_t> error_code;
+  };
+  Result Show(const flutter::EncodableMap& arguments);
   bool Dismiss() noexcept;
   bool Dispose() noexcept;
-  std::optional<std::pair<std::string, std::string>> TakeCallback(
+  std::optional<Callback> TakeCallback(
       WPARAM action, LPARAM generation) noexcept;
 
  private:

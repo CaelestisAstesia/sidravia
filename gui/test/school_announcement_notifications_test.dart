@@ -123,6 +123,86 @@ void main() {
     }
   });
 
+  test(
+    'platform failures expose only validated signed HRESULT details',
+    () async {
+      for (final (details, expected) in <(Object?, String?)>[
+        ({'error_code': -2147024891}, '0x80070005'),
+        ({'error_code': -2147483648}, '0x80000000'),
+        ({'error_code': -1}, '0xFFFFFFFF'),
+        ({}, null),
+        ({'error_code': 0}, null),
+        ({'error_code': 2147942405}, null),
+        ({'error_code': -2147483649}, null),
+        ({'error_code': '-2147024891'}, null),
+        ({'error_code': -1.5}, null),
+        ({'error_code': -2147024891, 'message': 'private'}, null),
+        ('private raw detail', null),
+      ]) {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method != 'show') return null;
+              throw PlatformException(
+                code: 'notification_failed',
+                message: 'private raw native message',
+                details: details,
+              );
+            });
+        expect(await adapter.show(token: first), failed);
+        expect(adapter.lastFailureCode, expected);
+        await adapter.dismiss();
+        expect(adapter.lastFailureCode, isNull);
+      }
+    },
+  );
+
+  test('failed callback requires current map identity and safe code', () async {
+    final errors = <String>[];
+    adapter.onFailed = errors.add;
+    await adapter.show(token: first);
+    await native('failed', first);
+    await native('failed', {'token': second, 'error_code': -2147024891});
+    await native('failed', {
+      'token': first,
+      'error_code': -1,
+      'extra': 'private',
+    });
+    expect(errors, isEmpty);
+    expect(adapter.lastFailureCode, isNull);
+    await native('failed', {'token': first, 'error_code': -2147024891});
+    expect(errors, [first]);
+    expect(adapter.lastFailureCode, '0x80070005');
+    await native('failed', {'token': first, 'error_code': -1});
+    expect(adapter.lastFailureCode, '0x80070005');
+    await adapter.show(token: second);
+    expect(adapter.lastFailureCode, isNull);
+    await native('failed', {'token': second, 'error_code': 2147942405});
+    expect(errors, [first, second]);
+    expect(adapter.lastFailureCode, isNull);
+    await adapter.show(token: first);
+    await native('failed', {'token': first});
+    expect(errors.last, first);
+    expect(adapter.lastFailureCode, isNull);
+  });
+
+  test('early failed callback retains code across acknowledgement and clears on dispose', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method != 'show') return null;
+          await native('failed', {'token': first, 'error_code': -2147024891});
+          return 'submitted';
+        });
+    final errors = <String>[];
+    adapter.onFailed = errors.add;
+    expect(await adapter.show(token: first), submitted);
+    expect(errors, [first]);
+    expect(adapter.lastFailureCode, '0x80070005');
+    await adapter.dispose();
+    expect(adapter.lastFailureCode, isNull);
+    await native('failed', {'token': first, 'error_code': -1});
+    expect(adapter.lastFailureCode, isNull);
+  });
+
   test('click identity is current and terminal exactly once', () async {
     final clicked = <String>[];
     final errors = <String>[];
@@ -136,31 +216,40 @@ void main() {
     expect(clicked, isEmpty);
     await native('clicked', first);
     await native('clicked', first);
-    await native('failed', first);
+    await native('failed', {'token': first});
     expect(clicked, [first]);
     expect(errors, isEmpty);
     await adapter.show(token: second);
-    await native('failed', first);
-    await native('failed', second);
+    await native('failed', {'token': first});
+    await native('failed', {'token': second});
     await native('clicked', second);
     expect(errors, [second]);
   });
 
   test('newer show survives older asynchronous error', () async {
     final old = Completer<Object?>();
+    final started = Completer<void>();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          channel,
-          (call) async => (call.arguments as Map)['token'] == first
-              ? old.future
-              : 'submitted',
-        );
+        .setMockMethodCallHandler(channel, (call) async {
+          if ((call.arguments as Map)['token'] == first) {
+            started.complete();
+            return await old.future;
+          }
+          return 'submitted';
+        });
     final clicked = <String>[];
     adapter.onClicked = clicked.add;
     final pending = adapter.show(token: first);
+    await started.future;
     expect(await adapter.show(token: second), submitted);
-    old.complete('failed');
+    old.completeError(
+      PlatformException(
+        code: 'notification_failed',
+        details: {'error_code': -2147024891},
+      ),
+    );
     expect(await pending, failed);
+    expect(adapter.lastFailureCode, isNull);
     await native('clicked', first);
     await native('clicked', second);
     expect(clicked, [second]);

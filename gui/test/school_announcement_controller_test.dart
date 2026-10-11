@@ -464,7 +464,7 @@ void main() {
       expect(opens, isEmpty);
       await callback(notificationChannel, 'clicked', token);
       await settleWork();
-      await callback(notificationChannel, 'failed', token);
+      await callback(notificationChannel, 'failed', {'token': token});
       expect(opens, hasLength(1));
       expect(owner.feedback, isNull);
       expect(desktop.isMainWindowVisible, isFalse);
@@ -633,6 +633,62 @@ void main() {
       expect(owner.feedback, '当前环境暂不支持应用内公告');
     },
   );
+  test(
+    'actual platform failure code is shown without raw details or retry',
+    () async {
+      await visibility(false);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(notificationChannel, (call) async {
+            notices.add(call);
+            if (call.method == 'show') {
+              throw PlatformException(
+                code: 'notification_failed',
+                message: 'private path and identity',
+                details: {'error_code': -2147024891},
+              );
+            }
+            return null;
+          });
+      await owner.start();
+      await success();
+      expect(owner.feedback, '公告通知发送失败，可在首页查看（错误码 0x80070005）');
+      await success(revision: 2);
+      expect(notices.where((call) => call.method == 'show'), hasLength(1));
+      expect(preferences.lastAutomaticAnnouncementDate, '2026-10-10');
+    },
+  );
+
+  test('early failure code survives show reply but obsolete callback cannot restore feedback', () async {
+    await visibility(false);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(notificationChannel, (call) async {
+          notices.add(call);
+          if (call.method == 'show') {
+            final token = (call.arguments as Map)['token'];
+            await callback(notificationChannel, 'failed', {
+              'token': token,
+              'error_code': -2147024891,
+            });
+            return 'submitted';
+          }
+          return null;
+        });
+    await owner.start();
+    await success();
+    expect(owner.feedback, '公告通知发送失败，可在首页查看（错误码 0x80070005）');
+    final token =
+        (notices.firstWhere((call) => call.method == 'show').arguments
+            as Map)['token'];
+    await owner.openManually();
+    expect(owner.feedback, isNull);
+    await callback(notificationChannel, 'failed', {
+      'token': token,
+      'error_code': -1,
+    });
+    expect(owner.feedback, isNull);
+    expect(opens, hasLength(1));
+  });
+
   test(
     'notification failure has no replay; preference changes do not dispatch',
     () async {

@@ -130,7 +130,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
     if (!_current(generation) || _token != token) return;
     if (result != SchoolAnnouncementNotificationResult.submitted) {
       _token = null;
-      _setFeedback('公告通知发送失败，可在首页查看');
+      _setFeedback(_notificationFailureMessage);
     }
   }
 
@@ -200,10 +200,16 @@ class SchoolAnnouncementController extends ChangeNotifier {
     _track(_open(intent, _generation));
   }
 
+  String get _notificationFailureMessage {
+    const message = '公告通知发送失败，可在首页查看';
+    final code = notifications.lastFailureCode;
+    return code == null ? message : '$message（错误码 $code）';
+  }
+
   void _failed(String token) {
     if (_closed || _token != token) return;
     _token = null;
-    _setFeedback('公告通知发送失败，可在首页查看');
+    _setFeedback(_notificationFailureMessage);
   }
 
   void _preferencesChanged() {

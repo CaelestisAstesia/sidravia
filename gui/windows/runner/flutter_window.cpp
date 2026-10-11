@@ -97,9 +97,20 @@ bool FlutterWindow::OnCreate() {
         if (call.method_name() == "show") {
           const auto* arguments = call.arguments()
               ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
-          result->Success(flutter::EncodableValue(
-              arguments && school_announcement_notification_
-                  ? school_announcement_notification_->Show(*arguments) : "failed"));
+          const auto submission = arguments && school_announcement_notification_
+              ? school_announcement_notification_->Show(*arguments)
+              : SchoolAnnouncementNotification::Result{"failed", std::nullopt};
+          if (submission.status == "submitted") {
+            result->Success(flutter::EncodableValue(submission.status));
+          } else {
+            flutter::EncodableMap details;
+            if (submission.error_code) {
+              details[flutter::EncodableValue("error_code")] =
+                  flutter::EncodableValue(*submission.error_code);
+            }
+            result->Error("notification_failed", "Notification operation failed.",
+                          flutter::EncodableValue(details));
+          }
           return;
         }
         if (call.method_name() == "dismiss" || call.method_name() == "dispose") {
@@ -580,9 +591,19 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       const auto callback = school_announcement_notification_->TakeCallback(wparam, lparam);
       if (callback && announcement_notifications_channel_) {
         try {
+          flutter::EncodableValue payload(callback->token);
+          if (callback->method == "failed") {
+            flutter::EncodableMap failure;
+            failure[flutter::EncodableValue("token")] = flutter::EncodableValue(callback->token);
+            if (callback->error_code) {
+              failure[flutter::EncodableValue("error_code")] =
+                  flutter::EncodableValue(*callback->error_code);
+            }
+            payload = flutter::EncodableValue(failure);
+          }
           announcement_notifications_channel_->InvokeMethod(
-              callback->first,
-              std::make_unique<flutter::EncodableValue>(callback->second));
+              callback->method,
+              std::make_unique<flutter::EncodableValue>(payload));
         } catch (...) { /* Identity stays consumed when delivery fails. */ }
       }
     }

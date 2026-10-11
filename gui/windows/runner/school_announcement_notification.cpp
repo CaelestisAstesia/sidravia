@@ -30,6 +30,7 @@ struct CallbackState {
   uint32_t generation = 0;
   std::wstring token, aumid;
   uint32_t post_failed_generation = 0;
+  std::optional<int32_t> error_code;
 };
 
 bool ValidToken(const std::string& token) {
@@ -63,6 +64,7 @@ bool Advance(CallbackState& state) {
   }
   ++state.generation;
   state.token.clear();
+  state.error_code.reset();
   return true;
 }
 
@@ -70,7 +72,8 @@ bool Advance(CallbackState& state) {
 // holding the identity lock, so shutdown cannot release/reuse the HWND midway.
 bool PostTerminal(const std::weak_ptr<CallbackState>& weak,
                   const std::wstring& token, const std::wstring& aumid,
-                  uint32_t expected_generation, WPARAM action) noexcept {
+                  uint32_t expected_generation, WPARAM action,
+                  std::optional<int32_t> error_code = std::nullopt) noexcept {
   try {
     auto state = weak.lock();
     if (!state) return false;
@@ -79,6 +82,7 @@ bool PostTerminal(const std::weak_ptr<CallbackState>& weak,
         state->aumid != aumid || token.empty() ||
         (expected_generation != 0 && state->generation != expected_generation))
       return false;
+    if (action == kFailed) state->error_code = error_code;
     if (!PostMessageW(state->window, SchoolAnnouncementNotification::kCallbackMessage,
         action, static_cast<LPARAM>(state->generation))) {
       state->post_failed_generation = state->generation;
@@ -266,18 +270,18 @@ SchoolAnnouncementNotification::SchoolAnnouncementNotification(HWND window)
 
 SchoolAnnouncementNotification::~SchoolAnnouncementNotification() { Dispose(); }
 
-std::string SchoolAnnouncementNotification::Show(const flutter::EncodableMap& arguments) {
+SchoolAnnouncementNotification::Result SchoolAnnouncementNotification::Show(const flutter::EncodableMap& arguments) {
   auto& owner = *impl_;
   try {
-  if (owner.disposed || arguments.size() != 2) return "failed";
+  if (owner.disposed || arguments.size() != 2) return {"failed", std::nullopt};
   const auto token_it = arguments.find(flutter::EncodableValue("token"));
   const auto ns_it = arguments.find(flutter::EncodableValue("namespace"));
-  if (token_it == arguments.end() || ns_it == arguments.end()) return "failed";
+  if (token_it == arguments.end() || ns_it == arguments.end()) return {"failed", std::nullopt};
   const auto* token = std::get_if<std::string>(&token_it->second);
   const auto* name = std::get_if<std::string>(&ns_it->second);
   std::wstring folded;
   if (!token || !name || !ValidToken(*token) || !FoldNamespace(*name, &folded) ||
-      (owner.initialized && folded != owner.namespace_name)) return "failed";
+      (owner.initialized && folded != owner.namespace_name)) return {"failed", std::nullopt};
     if (!owner.initialized) {
       try { owner.Initialize(folded); }
       catch (...) {
@@ -288,12 +292,12 @@ std::string SchoolAnnouncementNotification::Show(const flutter::EncodableMap& ar
     uint32_t generation = 0;
     {
       std::lock_guard<std::mutex> lock(owner.state->mutex);
-      if (!owner.state->active || !Advance(*owner.state)) return "failed";
+      if (!owner.state->active || !Advance(*owner.state)) return {"failed", std::nullopt};
       generation = owner.state->generation;
     }
-    if (!owner.ClearToast()) return "failed";
+    if (!owner.ClearToast()) return {"failed", std::nullopt};
     // Re-check enablement on each submission; never override user policy.
-    if (owner.notifier.Setting() != toast_api::NotificationSetting::Enabled) return "failed";
+    if (owner.notifier.Setting() != toast_api::NotificationSetting::Enabled) return {"failed", std::nullopt};
     const std::wstring wide_token(token->begin(), token->end());
     xml_api::XmlDocument document;
     document.LoadXml(L"<toast launch=\"" + wide_token +
@@ -306,8 +310,11 @@ std::string SchoolAnnouncementNotification::Show(const flutter::EncodableMap& ar
     const std::wstring app_id = owner.aumid;
     owner.failed_event = owner.toast.Failed(
       [weak, wide_token, app_id, generation](toast_api::ToastNotification const&,
-                                            toast_api::ToastFailedEventArgs const&) {
-        PostTerminal(weak, wide_token, app_id, generation, kFailed);
+                                            toast_api::ToastFailedEventArgs const& args) {
+        std::optional<int32_t> error_code;
+        try { error_code = static_cast<int32_t>(args.ErrorCode()); }
+        catch (...) { /* Unknown failure remains generic. */ }
+        PostTerminal(weak, wide_token, app_id, generation, kFailed, error_code);
       });
     owner.failed_event_registered = true;
     {
@@ -320,15 +327,24 @@ std::string SchoolAnnouncementNotification::Show(const flutter::EncodableMap& ar
       std::lock_guard<std::mutex> lock(owner.state->mutex);
       post_failed = owner.state->post_failed_generation == generation;
     }
-    if (post_failed) { owner.ClearToast(); return "failed"; }
-    return "submitted";
+    if (post_failed) { owner.ClearToast(); return {"failed", std::nullopt}; }
+    return {"submitted", std::nullopt};
+  } catch (winrt::hresult_error const& error) {
+    {
+      std::lock_guard<std::mutex> lock(owner.state->mutex);
+      owner.state->token.clear();
+      owner.state->error_code.reset();
+    }
+    owner.ClearToast();
+    return {"failed", static_cast<int32_t>(error.code())};
   } catch (...) {
     {
       std::lock_guard<std::mutex> lock(owner.state->mutex);
       owner.state->token.clear();
+      owner.state->error_code.reset();
     }
     owner.ClearToast();
-    return "failed";
+    return {"failed", std::nullopt};
   }
 }
 
@@ -361,7 +377,7 @@ bool SchoolAnnouncementNotification::Dispose() noexcept {
   } catch (...) { return false; }
 }
 
-std::optional<std::pair<std::string, std::string>>
+std::optional<SchoolAnnouncementNotification::Callback>
 SchoolAnnouncementNotification::TakeCallback(WPARAM action, LPARAM generation) noexcept {
   try {
     auto state = impl_->state;
@@ -374,7 +390,9 @@ SchoolAnnouncementNotification::TakeCallback(WPARAM action, LPARAM generation) n
     for (const wchar_t ch : state->token) {
       token.push_back(static_cast<char>(ch));
     }
+    const auto error_code = action == kFailed ? state->error_code : std::nullopt;
     state->token.clear();
-    return std::make_pair(action == kClicked ? "clicked" : "failed", token);
+    state->error_code.reset();
+    return Callback{action == kClicked ? "clicked" : "failed", token, error_code};
   } catch (...) { return std::nullopt; }
 }
