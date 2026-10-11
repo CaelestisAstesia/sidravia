@@ -4,7 +4,6 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
@@ -69,7 +68,7 @@ void main() {
       expect(find.text('恢复主窗口时显示公告。'), findsOneWidget);
       expect(
         tester
-            .widget<DesignChoiceRow<GuiAnnouncementFrequency>>(
+            .widget<DropdownButton<GuiAnnouncementFrequency>>(
               find.byKey(frequencyKey),
             )
             .value,
@@ -77,7 +76,7 @@ void main() {
       );
       expect(
         tester
-            .widget<DesignChoiceRow<GuiHiddenAnnouncementBehavior>>(
+            .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
               find.byKey(hiddenKey),
             )
             .value,
@@ -118,7 +117,7 @@ void main() {
       expect(find.byKey(hiddenKey), findsOneWidget);
       expect(
         tester
-            .widget<DesignChoiceRow<GuiHiddenAnnouncementBehavior>>(
+            .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
               find.byKey(hiddenKey),
             )
             .value,
@@ -268,13 +267,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final frequency = tester.widget<DesignChoiceRow<GuiAnnouncementFrequency>>(
+    final frequency = tester.widget<DropdownButton<GuiAnnouncementFrequency>>(
       find.byKey(const ValueKey('announcement-frequency-selector')),
     );
-    final hidden = tester
-        .widget<DesignChoiceRow<GuiHiddenAnnouncementBehavior>>(
-          find.byKey(const ValueKey('hidden-announcement-behavior-selector')),
-        );
+    final hidden = tester.widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
+      find.byKey(const ValueKey('hidden-announcement-behavior-selector')),
+    );
     expect(frequency.onChanged, isNull);
     expect(hidden.onChanged, isNull);
     final frequencyFinder = find.byKey(

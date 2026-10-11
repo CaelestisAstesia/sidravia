@@ -50,11 +50,15 @@ void main() {
       expect(closeBox.height, appearanceBox.height);
       expect(closeBox.right, appearanceBox.right);
       expect(find.text('每天只显示一次。'), findsNothing);
-      for (final label in ['每天首次连接成功后', '发送系统通知点击查看']) {
-        expect(
-          tester.getRect(find.text(label).first).right,
-          closeTo(width - 24 - 1 - 12 - 18, .01),
-        );
+      for (final key in [
+        'close-behavior-frame',
+        'announcement-自动显示公告-frame',
+        'announcement-主窗口隐藏时-frame',
+      ]) {
+        final frame = tester.getRect(find.byKey(ValueKey(key)));
+        expect(frame.width, appearanceBox.width);
+        expect(frame.height, appearanceBox.height);
+        expect(frame.right, appearanceBox.right);
       }
       await tester.drag(
         find.byType(SingleChildScrollView).first,

@@ -254,13 +254,25 @@ class _AnnouncementSelector<T> extends StatelessWidget {
   final List<(T, String)> options;
   final ValueChanged<T>? onChanged;
   @override
-  Widget build(BuildContext context) => DesignChoiceRow<T>(
-    key: dropdownKey,
-    title: label,
-    value: value,
-    options: options,
-    onChanged: onChanged,
-    helper: helper,
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      DesignRow(
+        title: label,
+        trailing: _SettingsDropdown<T>(
+          frameKey: ValueKey('announcement-$label-frame'),
+          dropdownKey: dropdownKey,
+          value: value,
+          labels: {for (final option in options) option.$1: option.$2},
+          onChanged: onChanged,
+        ),
+      ),
+      if (helper != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: DesignHelper(helper!),
+        ),
+    ],
   );
 }
 
@@ -311,14 +323,13 @@ class _SettingsDropdown<T> extends StatelessWidget {
       height: 1.35,
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
-    double textWidth = 0, textHeight = 0;
+    double textHeight = 0;
     for (final label in labels.values) {
       final painter = TextPainter(
         text: TextSpan(text: label, style: style),
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
       )..layout();
-      if (painter.width > textWidth) textWidth = painter.width;
       if (painter.height > textHeight) textHeight = painter.height;
       painter.dispose();
     }
@@ -327,7 +338,7 @@ class _SettingsDropdown<T> extends StatelessWidget {
         platform == TargetPlatform.android || platform == TargetPlatform.iOS;
     return Container(
       key: frameKey,
-      width: (textWidth + 46).clamp(92, double.infinity),
+      width: ((MediaQuery.sizeOf(context).width - 74) * .55).clamp(92, 180),
       height: (textHeight + 12).clamp(touch ? 48 : 30, double.infinity),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 7),
@@ -356,6 +367,8 @@ class _SettingsDropdown<T> extends StatelessWidget {
                   entry.value,
                   style: style,
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             )
