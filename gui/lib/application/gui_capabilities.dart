@@ -114,7 +114,7 @@ class GuiCapabilities {
       GuiCapabilityState.stale ||
       GuiCapabilityState.failed => '通信尚未就绪，暂时无法修改连接设置。',
       GuiCapabilityState.daemonUnavailable => '核心服务未运行，暂时无法修改连接设置。',
-      GuiCapabilityState.createOnly => '请先添加连接配置。',
+      GuiCapabilityState.createOnly => '请先添加连接配置',
       GuiCapabilityState.multipleConfigurations =>
         '存在多个连接配置 · 请使用 sidraviactl 管理',
       GuiCapabilityState.ambiguousSessions => '配置或会话关系不明确，暂时无法修改连接设置。',

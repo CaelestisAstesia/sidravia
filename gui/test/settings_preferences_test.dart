@@ -220,7 +220,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('请先添加连接配置。'), findsOneWidget);
+      expect(find.text('请先添加连接配置'), findsOneWidget);
       expect(find.textContaining('连接中断后自动尝试重新认证'), findsOneWidget);
       expect(
         tester
