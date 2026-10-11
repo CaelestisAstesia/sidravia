@@ -54,10 +54,12 @@ class DaemonStatus {
     required this.status,
     required this.mode,
     this.desktopOwnerPid,
+    this.logLevel,
   });
   final String productVersion, buildId, status, mode;
   final int pid;
   final int? desktopOwnerPid;
+  final String? logLevel;
 }
 
 class DaemonStopResult {
@@ -538,9 +540,18 @@ DaemonStatus decodeDaemonStatus(String source) {
           'desktopOwnerPid',
         }
       : const {'productVersion', 'buildId', 'pid', 'status', 'mode'};
-  final value = _object(raw, expected);
+  final value = _object(raw, {
+    ...expected,
+    if (raw.containsKey("logLevel")) "logLevel",
+  });
+  final logLevel = raw["logLevel"];
+  if (logLevel != null &&
+      !const {"info", "debug", "trace"}.contains(logLevel)) {
+    throw const IpcProtocolException();
+  }
   if (!daemonModes.contains(mode)) throw const IpcProtocolException();
   return DaemonStatus(
+    logLevel: logLevel as String?,
     productVersion: _text(value['productVersion']),
     buildId: _text(value['buildId']),
     pid: _positive(value['pid']),

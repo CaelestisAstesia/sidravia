@@ -40,6 +40,7 @@ func StatusHandler(productVersion string, buildID string, options launchcontract
 			Status:          "running",
 			Mode:            string(options.Mode),
 			DesktopOwnerPID: ownerPID,
+			LogLevel:        options.LogLevel,
 		})
 		if err != nil {
 			return nil, &contract.Error{

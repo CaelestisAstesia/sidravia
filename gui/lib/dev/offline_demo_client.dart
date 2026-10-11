@@ -202,6 +202,8 @@ class OfflineDemoClient extends ChangeNotifier
     pid: 1,
     status: 'running',
     mode: 'desktop',
+    logLevel: 'info', // Mocked offline status; no real core is running.
+
     desktopOwnerPid: 1,
   );
   @override

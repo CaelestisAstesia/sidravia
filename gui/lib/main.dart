@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
+
 import 'dart:io';
 
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
@@ -48,7 +50,11 @@ Future<void> main() async {
   final startedAt = DateTime.now();
   runApp(
     SidraviaApp(
-      controller: GuiController(bootstrapper: platform.bootstrapper),
+      controller: GuiController(
+        bootstrapper: platform.supportsLocalBootstrap
+            ? ProcessGuiBootstrap(logLevel: () => appearance.logLevel)
+            : platform.bootstrapper,
+      ),
       announcements: SchoolAnnouncementController(
         preferences: appearance,
         desktop: desktop,

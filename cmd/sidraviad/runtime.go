@@ -145,6 +145,11 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: parse launch options: %w", err)
 	}
+	launchOptions.SkipAutoLogin = os.Getenv(launchcontract.EnvSkipAutoLogin) == "1"
+	launchOptions.LogLevel = os.Getenv(launchcontract.EnvLogLevel)
+	if launchOptions.LogLevel == "" {
+		launchOptions.LogLevel = "info"
+	}
 	var owner desktopowner.Watcher
 	if launchOptions.Mode == launchcontract.ModeDesktop {
 		owner, err = desktopowner.Open(launchOptions.DesktopOwnerPID)
@@ -564,7 +569,7 @@ func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-ch
 				slog.Uint64("revision", snapshot.Revision),
 				slog.Int("interface_count", len(snapshot.Interfaces())),
 			)
-			if !automaticLoginPerformed {
+			if !automaticLoginPerformed && !rt.launchOptions.SkipAutoLogin {
 				automaticLoginPerformed = true
 				if err := rt.automaticLogin.PerformAutomaticLogin(ctx); err != nil {
 					rt.logger.Warn(msgAutomaticLoginFailed,

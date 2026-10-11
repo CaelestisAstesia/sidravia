@@ -437,7 +437,7 @@ func bootstrapDesktop(identity Identity, options launchcontract.Options, deps de
 	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
-	if _, err := ensureWithNamespace(identity, options, "", ns, deps); err != nil {
+	if _, err := ensureWithNamespace(identity, options, options.LogLevel, ns, deps); err != nil {
 		return DesktopBootstrapResult{}, err
 	}
 	result, err := probeWithNamespace(identity, ns, deps)
@@ -546,4 +546,27 @@ func waitForReadiness(total, interval time.Duration, exited <-chan error, attemp
 			}
 		}
 	}
+}
+
+// BootstrapDesktopWithLogLevel starts a desktop generation with explicit launch policy.
+// Hot generations are retained; the returned status owns the actual log level.
+func BootstrapDesktopWithLogLevel(identity Identity, ownerPID int, level string, skipAutoLogin bool) (DesktopBootstrapResult, error) {
+	if level != "info" && level != "debug" && level != "trace" {
+		return DesktopBootstrapResult{}, launchcontract.ErrInvalidOptions
+	}
+	deps := defaultDependencies()
+	ns, err := deps.namespace()
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	options, err := desktopOptions(ownerPID, ns)
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	if !desktopBootstrapSupported() {
+		return DesktopBootstrapResult{}, ErrDesktopUnsupported
+	}
+	options.LogLevel = level
+	options.SkipAutoLogin = skipAutoLogin
+	return bootstrapDesktop(identity, options, deps)
 }

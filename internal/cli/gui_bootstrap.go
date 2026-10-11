@@ -13,6 +13,7 @@ import (
 )
 
 type guiBootstrapSuccess struct {
+	LogLevel       string `json:"logLevel,omitempty"`
 	SchemaVersion  int    `json:"schemaVersion"`
 	Endpoint       string `json:"endpoint"`
 	Token          string `json:"token"`
@@ -41,7 +42,7 @@ func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Wri
 		result.Status.PID <= 0 || result.Info.PID <= 0 || result.Status.PID != result.Info.PID {
 		return unconfirmedGUIBootstrap(errors.New("GUI bootstrap authoritative confirmation failed"))
 	}
-	value := guiBootstrapSuccess{SchemaVersion: 1, Endpoint: result.Info.Endpoint, Token: result.Info.Token, ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, DaemonPID: result.Status.PID, Mode: string(launchcontract.ModeDesktop)}
+	value := guiBootstrapSuccess{LogLevel: result.Status.LogLevel, SchemaVersion: 1, Endpoint: result.Info.Endpoint, Token: result.Info.Token, ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, DaemonPID: result.Status.PID, Mode: string(launchcontract.ModeDesktop)}
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return outputGUIBootstrapFailure(err)
@@ -58,6 +59,7 @@ func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Wri
 
 func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer, bootstrap guiBootstrapper) *cobra.Command {
 	var ownerPID string
+	var logLevel string
 	bootstrapCommand := &cobra.Command{
 		Use:    "bootstrap",
 		Hidden: true,
@@ -67,12 +69,22 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 			if err != nil || pid <= 0 {
 				return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 			}
-			return wrapCommandOperation(guiBootstrap(identity, pid, output, bootstrap))
+			selected := bootstrap
+			if logLevel != "" {
+				if logLevel != "info" && logLevel != "debug" && logLevel != "trace" {
+					return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
+				}
+				selected = func(id clientbootstrap.Identity, owner int) (clientbootstrap.DesktopBootstrapResult, error) {
+					return clientbootstrap.BootstrapDesktopWithLogLevel(id, owner, logLevel, false)
+				}
+			}
+			return wrapCommandOperation(guiBootstrap(identity, pid, output, selected))
 		},
 	}
 	bootstrapCommand.Flags().StringVar(&ownerPID, "owner-pid", "", "")
 	bootstrapCommand.MarkFlagRequired("owner-pid")
+	bootstrapCommand.Flags().StringVar(&logLevel, "log-level", "", "")
 	gui := &cobra.Command{Use: "gui", Hidden: true, Args: cobra.NoArgs}
-	gui.AddCommand(bootstrapCommand, newGUILogDirectoryCommand())
+	gui.AddCommand(bootstrapCommand, newGUILogDirectoryCommand(), newGUIRestartCommand(identity, output))
 	return gui
 }

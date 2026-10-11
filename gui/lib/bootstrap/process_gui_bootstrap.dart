@@ -16,8 +16,9 @@ typedef GuiBootstrapLauncher = Future<GuiBootstrapProcess> Function(
   List<String> arguments,
 );
 
-class ProcessGuiBootstrap implements GuiBootstrapper {
+class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   ProcessGuiBootstrap({
+    this.logLevel,
     this.timeout = const Duration(seconds: 10),
     this.maximumOutputBytes = 64 * 1024,
     bool Function()? isWindows,
@@ -29,6 +30,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper {
            resolvedExecutable ?? (() => Platform.resolvedExecutable),
        _ownerPid = ownerPid ?? (() => pid),
        _launch = launch ?? _defaultLaunch;
+  final String Function()? logLevel;
   final Duration timeout;
   final int maximumOutputBytes;
   final bool Function() _isWindows;
@@ -42,7 +44,11 @@ class ProcessGuiBootstrap implements GuiBootstrapper {
   ) async => _SystemProcess(await Process.start(executable, arguments));
 
   @override
-  Future<GuiBootstrapResult> bootstrap() async {
+  Future<GuiBootstrapResult> bootstrap() => _run('bootstrap', logLevel?.call());
+  @override
+  Future<GuiBootstrapResult> restartCore(String level) =>
+      _run('restart', level);
+  Future<GuiBootstrapResult> _run(String operation, String? level) async {
     if (!_isWindows()) {
       return const GuiBootstrapResult.failure(
         GuiBootstrapFailure.unsupportedPlatform,
@@ -57,13 +63,16 @@ class ProcessGuiBootstrap implements GuiBootstrapper {
           '${File(_resolvedExecutable()).parent.path}${Platform.pathSeparator}sidraviactl.exe';
       child = await _launch(executable, [
         'gui',
-        'bootstrap',
+        operation,
+        if (level != null) ...['--log-level', level],
         '--owner-pid',
         '${_ownerPid()}',
       ]);
       out = _readBounded(child.stdout);
       err = _readBounded(child.stderr);
-      final exit = await child.exitCode.timeout(timeout);
+      final exit = await child.exitCode.timeout(
+        operation == 'restart' ? const Duration(seconds: 30) : timeout,
+      );
       exited = true;
       final stdout = await out;
       final stderr = await err;

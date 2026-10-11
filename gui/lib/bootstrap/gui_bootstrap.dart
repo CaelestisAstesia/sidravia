@@ -12,6 +12,7 @@ class GuiBootstrap {
     required this.buildId,
     required this.daemonPid,
     required this.mode,
+    this.logLevel,
   });
 
   final Uri endpoint;
@@ -20,6 +21,7 @@ class GuiBootstrap {
   final String buildId;
   final int daemonPid;
   final String mode;
+  final String? logLevel;
 }
 
 class GuiBootstrapFailure {
@@ -102,6 +104,10 @@ abstract interface class GuiBootstrapper {
   Future<GuiBootstrapResult> bootstrap();
 }
 
+abstract interface class GuiCoreRestarter {
+  Future<GuiBootstrapResult> restartCore(String logLevel);
+}
+
 /// Explicit platform boundary for targets that do not yet have a local
 /// daemon-launch adapter. Keeping this as a typed bootstrapper lets the
 /// application and feature layers remain platform-neutral while a future
@@ -118,7 +124,7 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
   try {
     final decoded = jsonDecode(source);
     if (decoded is! Map<String, dynamic> ||
-        !_hasExactKeys(decoded, const {
+        !_hasExactKeys(decoded, {
           'schemaVersion',
           'endpoint',
           'token',
@@ -126,6 +132,7 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
           'buildId',
           'daemonPid',
           'mode',
+          if (decoded.containsKey('logLevel')) 'logLevel',
         })) {
       return const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
     }
@@ -136,6 +143,11 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
     final buildId = decoded['buildId'];
     final daemonPid = decoded['daemonPid'];
     final mode = decoded['mode'];
+    final logLevel = decoded['logLevel'];
+    if (logLevel != null &&
+        !const {'info', 'debug', 'trace'}.contains(logLevel)) {
+      return const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
+    }
     if (schemaVersion != _bootstrapSchemaVersion ||
         endpointValue is! String ||
         token is! String ||
@@ -170,6 +182,7 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
         buildId: buildId,
         daemonPid: daemonPid,
         mode: mode,
+        logLevel: logLevel as String?,
       ),
     );
   } on FormatException {

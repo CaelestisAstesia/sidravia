@@ -88,3 +88,37 @@ func TestChildEnvironmentProductionDropsNamespaceKey(t *testing.T) {
 		t.Fatalf("production child retained namespace key: %v", got)
 	}
 }
+
+func TestRestartChildSuppressesAutomaticLoginAndDropsInheritedFlag(t *testing.T) {
+	options, err := Desktop(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.SkipAutoLogin = true
+	env, err := ChildEnvironment([]string{"SIDRAVIA_SKIP_AUTO_LOGIN=bad"}, options, "debug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, v := range env {
+		if v == "SIDRAVIA_SKIP_AUTO_LOGIN=1" {
+			found++
+		}
+		if v == "SIDRAVIA_SKIP_AUTO_LOGIN=bad" {
+			t.Fatal("inherited flag leaked")
+		}
+	}
+	if found != 1 {
+		t.Fatal(env)
+	}
+	options.SkipAutoLogin = false
+	env, err = ChildEnvironment([]string{"SIDRAVIA_SKIP_AUTO_LOGIN=1"}, options, "info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range env {
+		if v == "SIDRAVIA_SKIP_AUTO_LOGIN=1" {
+			t.Fatal("normal start suppresses login")
+		}
+	}
+}

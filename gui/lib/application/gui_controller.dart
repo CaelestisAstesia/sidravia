@@ -267,6 +267,9 @@ class GuiController extends ChangeNotifier {
   }
 
   Future<void> start() {
+    if (_coreRestartFailed && !_disposed && !_exitRequested) {
+      return restartCore(_restartLevel).then((_) {});
+    }
     if (_exitRequested || _disposed) return Future<void>.value();
     final current = _transition;
     if (current != null) return current;
@@ -275,6 +278,108 @@ class GuiController extends ChangeNotifier {
   }
 
   Future<void> retry() => start();
+  bool _coreRestartFailed = false;
+  String _restartLevel = "info";
+  String? _restoreConfiguration;
+  String? get runningLogLevel => snapshot?.daemon.logLevel;
+  bool get supportsCoreRestart => bootstrapper is GuiCoreRestarter;
+  bool get canRestartCore =>
+      supportsCoreRestart &&
+      !busy &&
+      !_disposed &&
+      !_exitRequested &&
+      (state == GuiConnectionState.ready || _coreRestartFailed) &&
+      (snapshot?.sessions.length ?? 0) <= 1;
+
+  Future<bool> restartCore(String level) async {
+    if (!canRestartCore || !const {'info', 'debug', 'trace'}.contains(level)) {
+      return false;
+    }
+    final current = _transition;
+    if (current != null) await current;
+    if (!canRestartCore || _transition != null) return false;
+    if (!_coreRestartFailed) {
+      final sessions = snapshot?.sessions ?? [];
+      final session = sessions.isEmpty ? null : sessions.single;
+      final maintain =
+          session?.intent == SessionIntent.maintainAuthentication &&
+          session?.state != SessionState.stopping &&
+          session?.state != SessionState.suspended;
+      _restoreConfiguration = maintain ? session?.configurationId : null;
+      if (maintain &&
+          (_restoreConfiguration == null ||
+              !snapshot!.configurations.any(
+                (c) => c.id == _restoreConfiguration,
+              ))) {
+        _notice = '无法确认原连接配置，核心尚未重启。';
+        _notify();
+        return false;
+      }
+    }
+    _restartLevel = level;
+    _userBusy = true;
+    _transition = _restartCore(level);
+    _notify();
+    await _transition;
+    return !_coreRestartFailed;
+  }
+
+  Future<void> _restartCore(String level) async {
+    final generation = ++_generation;
+    _timer?.cancel();
+    _timer = null;
+    _coreRestartFailed = true;
+    _notice = null;
+    _invalidateDiagnosis();
+    try {
+      await _releaseResources();
+      if (!_canContinue(generation)) return;
+      _state = GuiConnectionState.stale;
+      final boot = await (bootstrapper as GuiCoreRestarter).restartCore(level);
+      if (!_canContinue(generation)) return;
+      if (!boot.isSuccess) {
+        _setFailure(boot.failure!);
+        _notice = '核心重启失败，请检查状态后手动重试。';
+        return;
+      }
+      final client = await connector(boot.value!);
+      if (!_canContinue(generation)) {
+        await _closeQuietly(client);
+        return;
+      }
+      _client = client;
+      await _refresh(generation, client);
+      if (!_canContinue(generation) || _state != GuiConnectionState.ready) {
+        return;
+      }
+      if (_restoreConfiguration != null) {
+        await client.sessionStartConfiguration(_restoreConfiguration!);
+        if (!_canContinue(generation)) return;
+        await _refresh(generation, client);
+      }
+      if (_state != GuiConnectionState.ready) return;
+      _coreRestartFailed = false;
+      _restoreConfiguration = null;
+      _notice = '核心已重启。';
+    } on Object catch (error) {
+      if (_current(generation)) {
+        _failure = _ipcFailure(error);
+        _notice = '核心重启或恢复连接失败：${_failure!.message}';
+        _state = GuiConnectionState.failed;
+      }
+    } finally {
+      if (_generation == generation) {
+        _transition = null;
+        _userBusy = false;
+        if (_coreRestartFailed) {
+          _timer?.cancel();
+          _timer = null;
+          await _releaseResources();
+        }
+      }
+      _notify();
+    }
+  }
 
   Future<bool> createConfiguration({
     required String institutionProfileId,
@@ -855,6 +960,7 @@ class GuiController extends ChangeNotifier {
         _exitRequested ||
         _client != null ||
         _failure?.code == 'unsupported_platform' ||
+        _coreRestartFailed ||
         _timer != null) {
       return;
     }

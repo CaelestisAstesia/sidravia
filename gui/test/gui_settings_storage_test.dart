@@ -257,7 +257,7 @@ void main() {
       final restored = await FileGuiSettingsStore(path).read();
       expect(restored?.appearanceMode, GuiAppearanceMode.dark);
       expect(restored?.diagnosticsExpanded, true);
-      expect(File(path).readAsStringSync(), contains('"schemaVersion":4'));
+      expect(File(path).readAsStringSync(), contains('"schemaVersion":5'));
       expect(
         File(path).readAsStringSync(),
         contains('"diagnosticsExpanded":true'),

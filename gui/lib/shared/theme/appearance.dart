@@ -12,6 +12,22 @@ class Appearance extends ValueNotifier<ThemeMode> {
   Future<void>? _initialization;
   Future<void> _writes = Future.value();
   int _revision = 0, _appearanceRevision = 0, _diagnosticsRevision = 0;
+  int _logRevision = 0;
+  String _logLevel = "info";
+  String get logLevel => _logLevel;
+  set logLevel(String value) {
+    if (!const {"info", "debug", "trace"}.contains(value)) {
+      throw const FormatException("Invalid log level");
+    }
+    final loading = initialize();
+    _logRevision++;
+    final revision = ++_revision;
+    final changed = _logLevel != value;
+    _logLevel = value;
+    if (!_disposed && changed) notifyListeners();
+    _queueCurrent(loading, revision);
+  }
+
   int _closeRevision = 0, _startHiddenRevision = 0;
   int _frequencyRevision = 0,
       _hiddenBehaviorRevision = 0,
@@ -103,6 +119,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
   }
 
   GuiSettings _snapshot() => GuiSettings(
+    logLevel: _logLevel,
     appearanceMode: _appearanceMode(value),
     diagnosticsExpanded: _diagnosticsExpanded,
     closeBehavior: _closeBehavior,
@@ -127,6 +144,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
 
   Future<void> initialize() => _initialization ??= _load();
   Future<void> _load() async {
+    final logRevision = _logRevision;
     final appearanceRevision = _appearanceRevision;
     final diagnosticsRevision = _diagnosticsRevision;
     final closeRevision = _closeRevision;
@@ -138,6 +156,10 @@ class Appearance extends ValueNotifier<ThemeMode> {
       final stored = await _store.read();
       if (_disposed || stored == null) return;
       var diagnosticsChanged = false;
+      if (logRevision == _logRevision) {
+        diagnosticsChanged = _logLevel != stored.logLevel;
+        _logLevel = stored.logLevel;
+      }
       if (appearanceRevision == _appearanceRevision) {
         super.value = ThemeMode.values.firstWhere(
           (mode) => mode.name == stored.appearanceMode.name,
@@ -211,6 +233,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
       try {
         await _store.save(
           GuiSettings(
+            logLevel: _logRevision == 0 ? _logLevel : queued.logLevel,
             appearanceMode: appearanceRevision == 0
                 ? _appearanceMode(value)
                 : queued.appearanceMode,

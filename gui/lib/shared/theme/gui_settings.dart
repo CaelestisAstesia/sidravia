@@ -21,6 +21,7 @@ class GuiSettings {
     this.announcementFrequency = GuiAnnouncementFrequency.dailyFirstConnection,
     this.hiddenAnnouncementBehavior = GuiHiddenAnnouncementBehavior.notify,
     this.lastAutomaticAnnouncementDate,
+    this.logLevel = "info",
   });
 
   final GuiAppearanceMode appearanceMode;
@@ -30,6 +31,7 @@ class GuiSettings {
   final GuiAnnouncementFrequency announcementFrequency;
   final GuiHiddenAnnouncementBehavior hiddenAnnouncementBehavior;
   final String? lastAutomaticAnnouncementDate;
+  final String logLevel;
 }
 
 abstract interface class GuiSettingsStore {
@@ -78,8 +80,8 @@ GuiSettings decodeGuiSettings(String source) {
     );
   }
   if ((version == 3 && value.length == 5 ||
-          version == 4 &&
-              value.length == 8 &&
+          (version == 4 || version == 5) &&
+              value.length == (version == 5 ? 9 : 8) &&
               value.containsKey('lastAutomaticAnnouncementDate')) &&
       value['diagnosticsExpanded'] is bool &&
       value['closeBehavior'] is String &&
@@ -87,6 +89,7 @@ GuiSettings decodeGuiSettings(String source) {
     return GuiSettings(
       appearanceMode: mode,
       diagnosticsExpanded: value['diagnosticsExpanded'] as bool,
+      logLevel: version == 5 ? _logLevel(value['logLevel']) : 'info',
       closeBehavior: GuiCloseBehavior.values.firstWhere(
         (behavior) => behavior.name == value['closeBehavior'],
         orElse: () => throw const FormatException('Invalid close behavior'),
@@ -138,4 +141,11 @@ String? _announcementDate(Object? date) {
 }
 
 String encodeGuiSettings(GuiSettings settings) =>
-    '${jsonEncode({'schemaVersion': 4, 'appearanceMode': settings.appearanceMode.name, 'diagnosticsExpanded': settings.diagnosticsExpanded, 'closeBehavior': settings.closeBehavior.name, 'startHidden': settings.startHidden, 'announcementFrequency': settings.announcementFrequency.name, 'hiddenAnnouncementBehavior': settings.hiddenAnnouncementBehavior.name, 'lastAutomaticAnnouncementDate': _announcementDate(settings.lastAutomaticAnnouncementDate)})}\n';
+    '${jsonEncode({'schemaVersion': 5, 'logLevel': _logLevel(settings.logLevel), 'appearanceMode': settings.appearanceMode.name, 'diagnosticsExpanded': settings.diagnosticsExpanded, 'closeBehavior': settings.closeBehavior.name, 'startHidden': settings.startHidden, 'announcementFrequency': settings.announcementFrequency.name, 'hiddenAnnouncementBehavior': settings.hiddenAnnouncementBehavior.name, 'lastAutomaticAnnouncementDate': _announcementDate(settings.lastAutomaticAnnouncementDate)})}\n';
+
+String _logLevel(Object? value) {
+  if (!const {'info', 'debug', 'trace'}.contains(value)) {
+    throw const FormatException('Invalid log level');
+  }
+  return value as String;
+}
