@@ -65,6 +65,8 @@ void main() {
       expect(closeBox.right, appearanceBox.right);
       expect(find.text('每天只显示一次。'), findsNothing);
       expect(find.text('通知可点击查看公告。'), findsNothing);
+      expect(find.text('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'), findsNothing);
+      expect(find.text('离线演示：外观只保存在演示内存中。'), findsNothing);
       for (final key in [
         'close-behavior-frame',
         'log-level-frame',

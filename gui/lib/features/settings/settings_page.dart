@@ -304,13 +304,9 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 7),
-          if (!desktopEnabled) const DesignHelper('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'),
           if (desktopPresence?.feedback != null)
             DesignHelper(desktopPresence!.feedback!),
-          if (appearance?.feedback != null)
-            DesignHelper(appearance!.feedback!)
-          else if (appearance != null && !appearance.persistent)
-            const DesignHelper('离线演示：外观只保存在演示内存中。'),
+          if (appearance?.feedback != null) DesignHelper(appearance!.feedback!),
         ],
       ),
     );

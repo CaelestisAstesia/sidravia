@@ -48,8 +48,9 @@ class HomeViewData {
 
 @immutable
 class HomeNotice {
-  const HomeNotice({required this.title, required this.onOpen});
+  const HomeNotice({required this.title, required this.onOpen, this.feedback});
   final String title;
+  final String? feedback;
   final VoidCallback onOpen;
 }
 
@@ -80,6 +81,7 @@ class HomePage extends StatelessWidget {
         ? null
         : HomeNotice(
             title: '查看${school.displayName}公告',
+            feedback: announcements?.feedback,
             onOpen: () {
               announcements!.openManually();
             },
@@ -110,7 +112,7 @@ class HomePage extends StatelessWidget {
             ? () => _perform(p.secondaryAction)
             : null,
         onPrimary: p.primaryEnabled ? () => _perform(p.primaryAction) : null,
-        actionError: announcements?.feedback ?? p.actionError,
+        actionError: p.actionError,
         issue: p.issue,
         notice: notice,
       ),
@@ -332,6 +334,11 @@ class _HomeActions extends StatelessWidget {
           ),
           SizedBox(height: 20),
           HomeNoticeView(notice: data.notice!),
+          if (data.notice!.feedback != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, right: 12, top: 3),
+              child: DesignHelper(data.notice!.feedback!),
+            ),
         ],
       ],
     );
