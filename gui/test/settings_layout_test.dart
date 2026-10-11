@@ -58,7 +58,7 @@ void main() {
       expect(closeBox.height, appearanceBox.height);
       expect(
         tester.getSize(find.byKey(const ValueKey('log-level-row'))).height,
-        tester.getSize(find.byKey(const ValueKey('appearance-row'))).height,
+        tester.getSize(find.byKey(const ValueKey('start-hidden-row'))).height,
       );
       expect(find.text('INFO'), findsOneWidget);
       expect(find.text('普通（info）'), findsNothing);

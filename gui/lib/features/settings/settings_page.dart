@@ -181,6 +181,7 @@ class SettingsPage extends StatelessWidget {
               DesignRow(
                 key: const ValueKey('log-level-row'),
                 title: '日志等级',
+                subtitle: '重启核心后生效。',
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -270,6 +271,7 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               DesignRow(
+                key: const ValueKey('start-hidden-row'),
                 title: '启动时隐藏到托盘',
                 subtitle: '下次启动生效；不改变自动登录或当前窗口。',
                 trailing: DesignSwitch(
@@ -300,10 +302,6 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 7),
-            child: DesignHelper('新日志等级将在核心重启后生效。'),
           ),
           const SizedBox(height: 7),
           if (!desktopEnabled) const DesignHelper('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'),
