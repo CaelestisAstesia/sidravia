@@ -145,6 +145,8 @@ class HomeView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DesignPage(
     pageKey: const ValueKey('home-page'),
+    maxWidth: double.infinity,
+    horizontalPadding: 24,
     children: [
       _HomeHeader(data: data),
       _StatusBlock(data: data),
@@ -172,8 +174,8 @@ class _HomeHeader extends StatelessWidget {
         key: const ValueKey('home-header'),
         children: [
           Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: double.infinity,
               child: SizedBox(
                 height: height,
                 child: TextButton(
@@ -194,12 +196,10 @@ class _HomeHeader extends StatelessWidget {
                     ),
                   ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
@@ -342,59 +342,51 @@ class HomeNoticeView extends StatelessWidget {
   const HomeNoticeView({super.key, required this.notice});
   final HomeNotice notice;
   @override
-  Widget build(BuildContext context) => TextButton(
-    key: const ValueKey('home-notice'),
-    onPressed: notice.onOpen,
-    style: TextButton.styleFrom(
-      alignment: Alignment.centerLeft,
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      foregroundColor: Theme.of(context).colorScheme.onSurface,
-      shape: const RoundedRectangleBorder(),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                '公告',
-                style: TextStyle(
+  Widget build(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    final touch =
+        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+    return SizedBox(
+      height: touch ? 48 : 42,
+      width: double.infinity,
+      child: TextButton(
+        key: const ValueKey('home-notice'),
+        onPressed: notice.onOpen,
+        style: TextButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: Theme.of(context).colorScheme.onSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                notice.title.replaceFirst(RegExp(r'^查看'), ''),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
                   fontSize: 13,
                   height: 19 / 13,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-            ],
-          ),
-        ),
-        Flexible(
-          child: Text(
-            notice.title
-                .replaceFirst('查看', '')
-                .replaceFirst(RegExp(r'公告$'), ''),
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          ),
-        ),
-        SizedBox(width: 12),
-        SizedBox(
-          width: 6,
-          child: Text(
-            '›',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 20,
-              height: 1.4,
             ),
-          ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class _HomeButton extends StatelessWidget {

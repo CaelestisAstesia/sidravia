@@ -117,9 +117,9 @@ void main() {
         await tester.pumpWidget(surface(const HomeFixture()));
         await tester.pumpAndSettle();
         final width = entry.value.width;
-        final pageWidth = width.clamp(0, 620).toDouble();
+        final pageWidth = width;
         final t = ((width - 620) / 138).clamp(0.0, 1.0);
-        final pad = 24.0 + 12.0 * t;
+        const pad = 24.0;
         final header = tester.getRect(
           find.byKey(const ValueKey('home-header')),
         );
@@ -161,7 +161,7 @@ void main() {
   }
 
   testWidgets(
-    'continuous widths preserve element scale and constrain the page',
+    'continuous widths preserve element scale and fixed window margins',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -174,7 +174,7 @@ void main() {
         await tester.pump();
         expect(
           tester.getSize(find.byKey(const ValueKey('home-page'))).width,
-          width.clamp(0, 620),
+          width,
         );
         expect(
           tester.getSize(find.byKey(const ValueKey('home-mark'))),

@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 
 class DesignPage extends StatelessWidget {
-  const DesignPage({super.key, required this.children, this.pageKey});
+  const DesignPage({
+    super.key,
+    required this.children,
+    this.pageKey,
+    this.maxWidth = 620,
+    this.horizontalPadding,
+  });
   final Key? pageKey;
+  final double maxWidth;
+  final double? horizontalPadding;
 
   /// Preserve reference spacing through 620px, then reach the wide endpoint
   /// continuously over the available parent width (not the capped page width).
@@ -20,18 +28,25 @@ class DesignPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final basePadding = paddingForWidth(constraints.maxWidth);
+      final pagePadding = horizontalPadding == null
+          ? basePadding
+          : basePadding.copyWith(
+              left: horizontalPadding,
+              right: horizontalPadding,
+            );
       final header = children.firstOrNull is DesignHeader
           ? children.first
           : null;
       if (header != null) {
-        final padding = paddingForWidth(constraints.maxWidth);
+        final padding = pagePadding;
         return Column(
           children: [
             Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 key: pageKey,
-                constraints: const BoxConstraints(maxWidth: 620),
+                constraints: BoxConstraints(maxWidth: maxWidth),
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     padding.left,
@@ -51,7 +66,7 @@ class DesignPage extends StatelessWidget {
                   child: Align(
                     alignment: Alignment.topCenter,
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 620),
+                      constraints: BoxConstraints(maxWidth: maxWidth),
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
                           padding.left,
@@ -80,11 +95,11 @@ class DesignPage extends StatelessWidget {
             child: ConstrainedBox(
               key: pageKey,
               constraints: BoxConstraints(
-                maxWidth: 620,
+                maxWidth: maxWidth,
                 minHeight: constraints.maxHeight,
               ),
               child: Padding(
-                padding: paddingForWidth(constraints.maxWidth),
+                padding: pagePadding,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: children,
