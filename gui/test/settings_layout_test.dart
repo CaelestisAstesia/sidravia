@@ -50,6 +50,7 @@ void main() {
       expect(closeBox.height, appearanceBox.height);
       expect(closeBox.right, appearanceBox.right);
       expect(find.text('每天只显示一次。'), findsNothing);
+      expect(find.text('通知可点击查看公告。'), findsNothing);
       for (final key in [
         'close-behavior-frame',
         'announcement-自动显示公告-frame',

@@ -199,7 +199,7 @@ class SettingsPage extends StatelessWidget {
                   label: '主窗口隐藏时',
                   helper: switch (appearance?.hiddenAnnouncementBehavior ??
                       GuiHiddenAnnouncementBehavior.notify) {
-                    GuiHiddenAnnouncementBehavior.notify => '通知可点击查看公告。',
+                    GuiHiddenAnnouncementBehavior.notify => null,
                     GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告。',
                     GuiHiddenAnnouncementBehavior.showImmediately =>
                       '可在主窗口隐藏时直接查看公告。',
