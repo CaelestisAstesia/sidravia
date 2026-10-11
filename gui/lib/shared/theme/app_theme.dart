@@ -33,6 +33,7 @@ abstract final class AppButtonStyles {
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
     textStyle: const TextStyle(
+      fontFamily: 'HarmonyOS Sans',
       fontSize: 13,
       fontWeight: FontWeight.w600,
       height: 20 / 13,
@@ -48,6 +49,7 @@ abstract final class AppButtonStyles {
     backgroundColor: AppColors.surfaceLight,
     foregroundColor: AppColors.inkLight,
     textStyle: const TextStyle(
+      fontFamily: 'HarmonyOS Sans',
       fontSize: 13,
       fontWeight: FontWeight.w600,
       height: 20 / 13,

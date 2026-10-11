@@ -38,6 +38,41 @@ Map<String, double> rect(Rect r) => {
 };
 void main() {
   for (final dark in [false, true]) {
+    for (final enabled in [false, true]) {
+      testWidgets(
+        'common buttons retain ordinary font dark=$dark enabled=$enabled',
+        (tester) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: dark ? AppTheme.dark() : AppTheme.light(),
+              home: Scaffold(
+                body: Column(
+                  children: [
+                    FilledButton(
+                      onPressed: enabled ? () {} : null,
+                      child: const Text('保存修改'),
+                    ),
+                    OutlinedButton(
+                      onPressed: enabled ? () {} : null,
+                      child: const Text('连接与诊断'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+          for (final label in ['保存修改', '连接与诊断']) {
+            final span =
+                tester.renderObject<RenderParagraph>(find.text(label)).text
+                    as TextSpan;
+            expect(span.style?.fontFamily, 'HarmonyOS Sans');
+          }
+        },
+      );
+    }
+  }
+
+  for (final dark in [false, true]) {
     for (final scenario in scenarios) {
       testWidgets(
         'candidate home $scenario dark=$dark',
