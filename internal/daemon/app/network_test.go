@@ -34,7 +34,7 @@ func TestNetworkQueryProjectsAllFactsAndCurrentEligibility(t *testing.T) {
 		for _, address := range test.addresses {
 			assignments = append(assignments, environment.IPv4AddressAssignment{Address: netip.MustParseAddr(address), PrefixLength: 24})
 		}
-		iface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{InterfaceID: environment.InterfaceID(test.id), DisplayName: "name", OperationalState: test.state, PhysicalMedium: environment.PhysicalMediumUnknown, HardwareBacked: test.hardware, PhysicalConnectorPresent: test.hardware, AddressAssignmentMethod: environment.AddressAssignmentUnknown, IPv4AddressAssignments: assignments, HardwareAddress: []byte{1, 2, 3, 4, 5, 6}, DNSServerAddresses: []netip.Addr{netip.MustParseAddr("198.51.100.9")}})
+		iface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{InterfaceID: environment.InterfaceID(test.id), DisplayName: "name", Description: "Intel Ethernet Adapter", OperationalState: test.state, PhysicalMedium: environment.PhysicalMediumUnknown, HardwareBacked: test.hardware, PhysicalConnectorPresent: test.hardware, AddressAssignmentMethod: environment.AddressAssignmentUnknown, IPv4AddressAssignments: assignments, HardwareAddress: []byte{1, 2, 3, 4, 5, 6}, DNSServerAddresses: []netip.Addr{netip.MustParseAddr("198.51.100.9")}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,6 +58,9 @@ func TestNetworkQueryProjectsAllFactsAndCurrentEligibility(t *testing.T) {
 		t.Fatal("query lost observation facts")
 	}
 	for i, row := range result.Interfaces {
+		if row.Description != "Intel Ethernet Adapter" {
+			t.Fatal("device description lost in IPC projection")
+		}
 		if i > 0 && result.Interfaces[i-1].InterfaceID > row.InterfaceID {
 			t.Fatal("interface order")
 		}

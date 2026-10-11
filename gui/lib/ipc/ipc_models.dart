@@ -938,6 +938,7 @@ class NetworkInterfaceRow {
   NetworkInterfaceRow({
     required this.interfaceId,
     required this.displayName,
+    this.description = '',
     required this.operationalState,
     required this.physicalMedium,
     required this.hardwareBacked,
@@ -949,6 +950,7 @@ class NetworkInterfaceRow {
   }) : ipv4Assignments = List.unmodifiable(ipv4Assignments);
   final String interfaceId,
       displayName,
+      description,
       operationalState,
       physicalMedium,
       addressAssignmentMethod;
@@ -993,9 +995,11 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
     throw const IpcProtocolException();
   }
   final rows = _list(root['interfaces']).map((raw) {
-    final row = _object(raw, const {
+    final row = _object(raw, {
       'interfaceId',
       'displayName',
+      if (raw is Map<String, dynamic> && raw.containsKey('description'))
+        'description',
       'operationalState',
       'physicalMedium',
       'hardwareBacked',
@@ -1013,15 +1017,20 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
 
     final id = _text(row['interfaceId']);
     final name = _optionalText(row['displayName']);
+    final description = row.containsKey('description')
+        ? _optionalText(row['description'])
+        : '';
     if ([
       id,
       name,
+      description,
     ].any((text) => text.runes.any((r) => r >= 0xd800 && r <= 0xdfff))) {
       throw const IpcProtocolException();
     }
     return NetworkInterfaceRow(
       interfaceId: id,
       displayName: name,
+      description: description,
       operationalState: enumValue('operationalState', const {'up', 'down'}),
       physicalMedium: enumValue('physicalMedium', const {
         'wired',

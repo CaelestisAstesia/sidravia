@@ -30,7 +30,7 @@ func networkInterfacesResult(snapshot environment.Snapshot, available bool) cont
 	interfaces := snapshot.Interfaces()
 	slices.SortFunc(interfaces, func(a, b environment.NetworkInterface) int { return cmp.Compare(a.InterfaceID, b.InterfaceID) })
 	for _, iface := range interfaces {
-		row := contract.NetworkInterfaceResult{InterfaceID: string(iface.InterfaceID), DisplayName: iface.DisplayName, OperationalState: string(iface.OperationalState), PhysicalMedium: string(iface.PhysicalMedium), HardwareBacked: iface.HardwareBacked, PhysicalConnectorPresent: iface.PhysicalConnectorPresent, FilterInterface: iface.FilterInterface, EndpointInterface: iface.EndpointInterface, AddressAssignmentMethod: string(iface.AddressAssignmentMethod), IPv4Assignments: []contract.NetworkIPv4Assignment{}}
+		row := contract.NetworkInterfaceResult{InterfaceID: string(iface.InterfaceID), DisplayName: iface.DisplayName, Description: iface.Description, OperationalState: string(iface.OperationalState), PhysicalMedium: string(iface.PhysicalMedium), HardwareBacked: iface.HardwareBacked, PhysicalConnectorPresent: iface.PhysicalConnectorPresent, FilterInterface: iface.FilterInterface, EndpointInterface: iface.EndpointInterface, AddressAssignmentMethod: string(iface.AddressAssignmentMethod), IPv4Assignments: []contract.NetworkIPv4Assignment{}}
 		addresses := iface.IPv4AddressAssignments()
 		slices.SortFunc(addresses, func(a, b environment.IPv4AddressAssignment) int {
 			if order := a.Address.Compare(b.Address); order != 0 {

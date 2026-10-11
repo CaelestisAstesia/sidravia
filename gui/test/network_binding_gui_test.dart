@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/application/gui_network_binding.dart';
 import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/configuration/network_binding_section.dart';
@@ -12,6 +13,34 @@ import 'package:sidravia_gui/ipc/state_models.dart';
 import 'package:sidravia_gui/ipc/state_subscription.dart';
 
 void main() {
+  test('adapter presentation never uses identity as hardware name', () {
+    final network = _network(1);
+    final known = networkBindingChoices(network).single;
+    expect(known.label, 'Ethernet · 192.168.1.2/24 · Intel Ethernet Adapter');
+    final original = network.interfaces.first;
+    final unknown = NetworkInterfaceRow(
+      interfaceId: original.interfaceId,
+      displayName: '',
+      operationalState: original.operationalState,
+      physicalMedium: original.physicalMedium,
+      hardwareBacked: original.hardwareBacked,
+      physicalConnectorPresent: original.physicalConnectorPresent,
+      filterInterface: original.filterInterface,
+      endpointInterface: original.endpointInterface,
+      addressAssignmentMethod: original.addressAssignmentMethod,
+      ipv4Assignments: original.ipv4Assignments,
+    );
+    final choice = networkBindingChoices(
+      NetworkInterfacesSnapshot(
+        available: true,
+        revision: network.revision,
+        observedAt: network.observedAt,
+        interfaces: [unknown],
+      ),
+    ).single;
+    expect(choice.label, '未命名网卡 · 192.168.1.2/24');
+    expect(choice.policy, known.policy);
+  });
   testWidgets(
     'controlled binding preserves unavailable selection and filters choices',
     (tester) async {
@@ -39,7 +68,10 @@ void main() {
         );
         await tester.tap(find.text('网卡'));
         await tester.pumpAndSettle();
-        expect(find.text('192.168.1.2/24 · Ethernet · if-1'), findsNWidgets(2));
+        expect(
+          find.text('Ethernet · 192.168.1.2/24 · Intel Ethernet Adapter'),
+          findsNWidgets(2),
+        );
         expect(find.textContaining('if-down'), findsNothing);
         expect(find.textContaining('192.168.1.3'), findsNothing);
         await tester.tap(find.text('自动选择可用网卡'));
@@ -354,6 +386,7 @@ NetworkInterfacesSnapshot _network(int revision, {bool up = true}) =>
           NetworkInterfaceRow(
             interfaceId: id,
             displayName: name,
+            description: 'Intel Ethernet Adapter',
             operationalState: state,
             physicalMedium: 'wired',
             hardwareBacked: true,

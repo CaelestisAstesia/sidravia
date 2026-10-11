@@ -336,3 +336,36 @@ func receiveSnapshot(t *testing.T, output <-chan Snapshot) Snapshot {
 		return Snapshot{}
 	}
 }
+
+func TestSystemObserverPublishesDescriptionChange(t *testing.T) {
+	base, err := NewNetworkInterface(NetworkInterfaceFacts{InterfaceID: "eth0", DisplayName: "Ethernet", Description: "Device A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := base
+	changed.Description = "Device B"
+	calls := 0
+	observer := &systemObserver{collect: func() ([]NetworkInterface, error) {
+		calls++
+		if calls < 3 {
+			return []NetworkInterface{base}, nil
+		}
+		return []NetworkInterface{changed}, nil
+	}, now: stepClock(time.Unix(100, 0)), interval: 5 * time.Millisecond}
+	output := make(chan Snapshot, 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- observer.Observe(ctx, output) }()
+	first := receiveSnapshot(t, output)
+	second := receiveSnapshot(t, output)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if first.Revision != 1 || second.Revision != 2 || second.Interfaces()[0].Description != "Device B" {
+		t.Fatal("description-only change not published")
+	}
+	if first.Interfaces()[0].Description != "Device A" {
+		t.Fatal("old immutable snapshot changed")
+	}
+}

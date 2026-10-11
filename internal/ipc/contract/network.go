@@ -23,6 +23,7 @@ type NetworkInterfacesResult struct {
 type NetworkInterfaceResult struct {
 	InterfaceID              string                  `json:"interfaceId"`
 	DisplayName              string                  `json:"displayName"`
+	Description              string                  `json:"description,omitempty"`
 	OperationalState         string                  `json:"operationalState"`
 	PhysicalMedium           string                  `json:"physicalMedium"`
 	HardwareBacked           bool                    `json:"hardwareBacked"`
@@ -105,7 +106,7 @@ func (value *NetworkInterfacesResult) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (value *NetworkInterfaceResult) UnmarshalJSON(data []byte) error {
-	if err := networkObject(data, []string{"interfaceId", "displayName", "operationalState", "physicalMedium", "hardwareBacked", "physicalConnectorPresent", "filterInterface", "endpointInterface", "addressAssignmentMethod", "ipv4Assignments"}); err != nil {
+	if err := networkObject(data, []string{"interfaceId", "displayName", "operationalState", "physicalMedium", "hardwareBacked", "physicalConnectorPresent", "filterInterface", "endpointInterface", "addressAssignmentMethod", "ipv4Assignments"}, "description"); err != nil {
 		return err
 	}
 	type plain NetworkInterfaceResult
@@ -113,7 +114,7 @@ func (value *NetworkInterfaceResult) UnmarshalJSON(data []byte) error {
 	if err := decodeStrict(data, &wire); err != nil {
 		return err
 	}
-	if wire.InterfaceID == "" || !utf8.ValidString(wire.InterfaceID) || !utf8.ValidString(wire.DisplayName) || wire.IPv4Assignments == nil {
+	if wire.InterfaceID == "" || !utf8.ValidString(wire.InterfaceID) || !utf8.ValidString(wire.DisplayName) || !utf8.ValidString(wire.Description) || wire.IPv4Assignments == nil {
 		return errors.New("invalid network interface")
 	}
 	if wire.OperationalState != "up" && wire.OperationalState != "down" {

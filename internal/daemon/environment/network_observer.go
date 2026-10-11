@@ -126,6 +126,7 @@ func networkFactsEqual(a, b []NetworkInterface) bool {
 func interfaceFactsEqual(a, b NetworkInterface) bool {
 	if a.InterfaceID != b.InterfaceID ||
 		a.DisplayName != b.DisplayName ||
+		a.Description != b.Description ||
 		a.OperationalState != b.OperationalState ||
 		a.PhysicalMedium != b.PhysicalMedium ||
 		a.HardwareBacked != b.HardwareBacked ||

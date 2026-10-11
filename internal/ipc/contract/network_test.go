@@ -150,3 +150,20 @@ func TestNetworkResultRetainsValidUnicodeSpellings(t *testing.T) {
 		t.Fatal("legal escaped key or empty name rejected")
 	}
 }
+
+func TestNetworkDescriptionOptionalStrictText(t *testing.T) {
+	wire := strings.Replace(testNetworkResult, `"displayName":""`, `"displayName":"","description":"Intel Ethernet Adapter"`, 1)
+	result, err := DecodeNetworkInterfacesResult([]byte(wire))
+	if err != nil || result.Interfaces[0].Description != "Intel Ethernet Adapter" {
+		t.Fatalf("description lost: %v", err)
+	}
+	for _, bad := range []string{`null`, `true`, `3`, `{}`, `[]`, `"\ud800"`} {
+		if _, err := DecodeNetworkInterfacesResult([]byte(strings.Replace(wire, `"Intel Ethernet Adapter"`, bad, 1))); err == nil {
+			t.Fatalf("accepted description %s", bad)
+		}
+	}
+	encoded, err := MarshalNetworkInterfacesResult(result)
+	if err != nil || !strings.Contains(string(encoded), `"description":"Intel Ethernet Adapter"`) {
+		t.Fatal("description not projected")
+	}
+}

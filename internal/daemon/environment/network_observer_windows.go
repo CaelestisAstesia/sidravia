@@ -88,6 +88,7 @@ func readWindowsNetworkInterfaces() ([]NetworkInterface, error) {
 		networkInterface, err := NewNetworkInterface(NetworkInterfaceFacts{
 			InterfaceID:                 InterfaceID(interfaceID),
 			DisplayName:                 windows.UTF16PtrToString(aa.FriendlyName),
+			Description:                 windows.UTF16PtrToString(aa.Description),
 			OperationalState:            mapOperationalState(aa.OperStatus),
 			PhysicalMedium:              mapPhysicalMedium(aa.IfType),
 			HardwareBacked:              classification.hardwareBacked,

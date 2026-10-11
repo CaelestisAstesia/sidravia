@@ -108,7 +108,7 @@ void main() {
       await tester.ensureVisible(find.text('网卡'));
       await tester.tap(find.text('网卡'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('192.0.2.4/24 · 模拟以太网 · demo-iface'));
+      await tester.tap(find.text('模拟以太网 · 192.0.2.4/24'));
       await tester.pumpAndSettle();
       expect(c.snapshot!.configurations, isEmpty);
       await tester.ensureVisible(find.text('保存修改'));

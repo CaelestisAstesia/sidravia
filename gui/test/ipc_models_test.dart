@@ -6,6 +6,28 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('optional adapter description preserves device facts and rejects wrong types', () {
+    expect(
+      decodeNetworkInterfaces(networkResult).interfaces.single.description,
+      isEmpty,
+    );
+    final wire = networkResult.replaceFirst(
+      '"displayName":""',
+      '"displayName":"","description":"Intel Ethernet Adapter"',
+    );
+    expect(
+      decodeNetworkInterfaces(wire).interfaces.single.description,
+      'Intel Ethernet Adapter',
+    );
+    for (final bad in ['null', 'true', '3', '{}', '[]', r'"\ud800"']) {
+      expect(
+        () => decodeNetworkInterfaces(
+          wire.replaceFirst('"Intel Ethernet Adapter"', bad),
+        ),
+        throwsA(isA<IpcProtocolException>()),
+      );
+    }
+  });
   test('school announcement optional metadata and strict payload', () {
     const base = {
       'institutionProfileId': 'jlu',

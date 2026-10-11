@@ -32,6 +32,7 @@ type IPv4AddressAssignment struct {
 type NetworkInterfaceFacts struct {
 	InterfaceID                 InterfaceID
 	DisplayName                 string
+	Description                 string
 	OperationalState            OperationalState
 	PhysicalMedium              PhysicalMedium
 	HardwareBacked              bool
@@ -49,6 +50,7 @@ type NetworkInterfaceFacts struct {
 type NetworkInterface struct {
 	InterfaceID              InterfaceID
 	DisplayName              string
+	Description              string
 	OperationalState         OperationalState
 	PhysicalMedium           PhysicalMedium
 	HardwareBacked           bool
@@ -98,6 +100,7 @@ func NewNetworkInterface(facts NetworkInterfaceFacts) (NetworkInterface, error) 
 	return NetworkInterface{
 		InterfaceID:                 facts.InterfaceID,
 		DisplayName:                 facts.DisplayName,
+		Description:                 facts.Description,
 		OperationalState:            facts.OperationalState,
 		PhysicalMedium:              facts.PhysicalMedium,
 		HardwareBacked:              facts.HardwareBacked,

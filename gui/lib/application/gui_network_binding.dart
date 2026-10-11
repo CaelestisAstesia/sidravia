@@ -15,7 +15,7 @@ List<({NetworkBindingPolicy policy, String label})> networkBindingChoices(
                 address.address,
               ),
               label:
-                  '${address.address}/${address.prefixLength} · ${interface.displayName.isEmpty ? interface.interfaceId : interface.displayName} · ${interface.interfaceId}',
+                  '${interface.displayName.isEmpty ? '未命名网卡' : interface.displayName} · ${address.address}/${address.prefixLength}${interface.description.isEmpty ? '' : ' · ${interface.description}'}',
             ),
 ];
 
