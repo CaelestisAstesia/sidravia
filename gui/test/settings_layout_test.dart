@@ -8,6 +8,31 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 void main() {
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    for (final label in ['返回', '返回仪表盘']) {
+      testWidgets('back button equal horizontal gutters $platform $label', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light().copyWith(platform: platform),
+            home: Scaffold(
+              body: DesignHeader(title: '设置', backLabel: label, onBack: () {}),
+            ),
+          ),
+        );
+        final back = find.byKey(const ValueKey('design-back-button'));
+        final button = tester.getRect(back);
+        final row = tester.getRect(
+          find.descendant(of: back, matching: find.byType(Row)),
+        );
+        expect(row.left - button.left, 12);
+        expect(button.right - row.right, 12);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets(
     'choice dialog centered title, left back and rounded choice group',
     (tester) async {

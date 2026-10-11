@@ -136,7 +136,7 @@ class DesignHeader extends StatelessWidget {
           key: const ValueKey('design-back-button'),
           onPressed: onBack,
           style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             minimumSize:
                 (Theme.of(context).platform == TargetPlatform.android ||
                     Theme.of(context).platform == TargetPlatform.iOS)
