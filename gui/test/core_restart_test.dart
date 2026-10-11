@@ -125,6 +125,68 @@ void main() {
     },
   );
 
+  for (final width in [298.0, 360.0, 960.0]) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('pending log controls remain readable $width scale=$scale', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(Size(width, 1600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final client = LevelClient('info');
+        final controller = GuiController(
+          bootstrapper: RestartBootstrap(),
+          connector: (_) async => client,
+        );
+        await controller.start();
+        final preferences = Appearance();
+        await preferences.initialize();
+        preferences.logLevel = 'debug';
+        await tester.pumpWidget(
+          AppearanceScope(
+            appearance: preferences,
+            child: MaterialApp(
+              home: MediaQuery(
+                data: MediaQueryData(
+                  size: Size(width, 1600),
+                  textScaler: TextScaler.linear(scale),
+                ),
+                child: Scaffold(
+                  body: SettingsPage(
+                    controller: controller,
+                    onBack: () {},
+                    onNavigate: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const ValueKey('log-level-row')));
+        await tester.pumpAndSettle();
+        final label = tester.getRect(find.text('日志等级'));
+        expect(label.height, lessThanOrEqualTo(20 * scale));
+        final frame = tester.getRect(
+          find.byKey(const ValueKey('log-level-frame')),
+        );
+        final restart = tester.getRect(
+          find.widgetWithText(OutlinedButton, '重启核心'),
+        );
+        final row = tester.getRect(find.byKey(const ValueKey('log-level-row')));
+        expect(frame.right, closeTo(row.right - 12, 1));
+        expect(restart.left, greaterThanOrEqualTo(row.left + 12));
+        expect(frame.bottom, lessThanOrEqualTo(row.bottom));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        await controller.close();
+        controller.dispose();
+        client.dispose();
+        await preferences.settled;
+        preferences.dispose();
+      });
+    }
+  }
+
   for (final connected in [true, false]) {
     test('restart restores previous maintain intent $connected', () async {
       final old = LevelClient('info');

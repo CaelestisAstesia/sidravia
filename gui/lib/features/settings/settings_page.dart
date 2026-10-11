@@ -175,11 +175,9 @@ class SettingsPage extends StatelessWidget {
                       : (value) => appearance.value = value,
                 ),
               ),
-              DesignRow(
+              _LogLevelSettingRow(
                 key: const ValueKey('log-level-row'),
-                title: '日志等级',
-                subtitle: '重启核心后生效',
-                trailing: Row(
+                controls: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (appearance != null &&
@@ -344,6 +342,65 @@ class _AnnouncementSelector<T> extends StatelessWidget {
           child: DesignHelper(helper!),
         ),
     ],
+  );
+}
+
+class _LogLevelSettingRow extends StatelessWidget {
+  const _LogLevelSettingRow({super.key, required this.controls});
+  final Row controls;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final scaler = MediaQuery.textScalerOf(context);
+      final title = TextPainter(
+        text: const TextSpan(
+          text: '日志等级',
+          style: TextStyle(fontFamily: 'HarmonyOS Sans', fontSize: 13),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+      )..layout();
+      final titleWidth = title.width;
+      title.dispose();
+      final restart = TextPainter(
+        text: const TextSpan(
+          text: '重启核心',
+          style: TextStyle(fontFamily: 'HarmonyOS Sans', fontSize: 11),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+      )..layout();
+      final restartWidth = (restart.width + 32).clamp(64, double.infinity);
+      restart.dispose();
+      final dropdownWidth = ((MediaQuery.sizeOf(context).width - 74) * .55)
+          .clamp(92, 180);
+      final controlsWidth =
+          dropdownWidth + (controls.children.length > 1 ? restartWidth + 8 : 0);
+      if (constraints.maxWidth >= titleWidth + controlsWidth + 48) {
+        return DesignRow(
+          title: '日志等级',
+          subtitle: '重启核心后生效',
+          trailing: controls,
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const DesignRow(title: '日志等级', subtitle: '重启核心后生效'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: controls.children.where((w) => w is! SizedBox).toList(),
+            ),
+          ),
+        ],
+      );
+    },
   );
 }
 
