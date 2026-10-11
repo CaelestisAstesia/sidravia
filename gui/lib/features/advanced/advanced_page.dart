@@ -277,7 +277,6 @@ class _AdvancedPageState extends State<AdvancedPage> {
             ],
           ),
           const SizedBox(height: 7),
-          const DesignHelper('查看本实例的运行日志，便于排查连接问题。'),
         ],
         const SizedBox(height: 18),
         const DesignSectionTitle('高级排障'),

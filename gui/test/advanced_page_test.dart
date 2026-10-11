@@ -56,7 +56,7 @@ void main() {
         find.widgetWithText(OutlinedButton, '打开日志目录（暂不可用）'),
       );
       expect(button.onPressed, isNull);
-      expect(find.text('查看本实例的运行日志，便于排查连接问题。'), findsOneWidget);
+      expect(find.text('查看本实例的运行日志，便于排查连接问题。'), findsNothing);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();

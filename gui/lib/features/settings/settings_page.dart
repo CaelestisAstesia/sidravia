@@ -68,7 +68,7 @@ class SettingsPage extends StatelessWidget {
               DesignRow(
                 key: const ValueKey('auto-reconnect-row'),
                 title: '自动重连',
-                subtitle: '连接中断后自动尝试重新认证\n修改后从下次连接生效',
+                subtitle: '连接中断后自动尝试重新认证',
                 trailing: DesignSwitch(
                   key: const ValueKey('auto-reconnect-switch'),
                   label: '自动重连',

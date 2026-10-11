@@ -471,6 +471,7 @@ Future<T?> showDesignChoice<T>(
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
@@ -608,7 +609,6 @@ class DesignInputRow extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 18),
             ],
           ),
         ),

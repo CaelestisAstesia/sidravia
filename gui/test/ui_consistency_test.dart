@@ -168,7 +168,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('自动重连成功也计入连接成功。'), findsNothing);
-        expect(find.textContaining('修改后从下次连接生效'), findsOneWidget);
+        expect(find.textContaining('修改后从下次连接生效'), findsNothing);
         final context = tester.element(find.text('自动显示公告'));
         expect(
           Theme.of(context).textTheme.bodyMedium!.fontFamily,
