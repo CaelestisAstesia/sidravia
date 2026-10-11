@@ -54,7 +54,7 @@ class DesignPage extends StatelessWidget {
                     padding.right,
                     0,
                   ),
-                  child: header,
+                  child: SizedBox(width: double.infinity, child: header),
                 ),
               ),
             ),
@@ -131,6 +131,7 @@ class DesignHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextButton(
+          key: const ValueKey('design-back-button'),
           onPressed: onBack,
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 4),
@@ -286,6 +287,7 @@ class DesignRow extends StatelessWidget {
               const SizedBox(width: 16),
               if (value != null)
                 Flexible(
+                  fit: FlexFit.tight,
                   child: Text(
                     value!,
                     textAlign: TextAlign.right,

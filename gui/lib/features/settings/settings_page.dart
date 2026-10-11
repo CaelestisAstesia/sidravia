@@ -33,6 +33,8 @@ class SettingsPage extends StatelessWidget {
     return ListenableBuilder(
       listenable: desktopPresence ?? const AlwaysStoppedAnimation(false),
       builder: (context, _) => DesignPage(
+        maxWidth: double.infinity,
+        horizontalPadding: 24,
         children: [
           DesignHeader(title: '设置', onBack: onBack, backLabel: backLabel),
           const DesignSectionTitle('连接'),
@@ -116,41 +118,18 @@ class SettingsPage extends StatelessWidget {
               ),
               DesignRow(
                 title: '关闭主窗口',
-                trailing: Container(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  padding: const EdgeInsets.symmetric(horizontal: 7),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: DropdownButton<GuiCloseBehavior>(
-                    key: const ValueKey('close-behavior-selector'),
-                    value:
-                        appearance?.closeBehavior ??
-                        GuiCloseBehavior.hideToTray,
-                    underline: const SizedBox.shrink(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: GuiCloseBehavior.hideToTray,
-                        child: Text('隐藏到托盘'),
-                      ),
-                      DropdownMenuItem(
-                        value: GuiCloseBehavior.exit,
-                        child: Text('退出程序'),
-                      ),
-                    ],
-                    onChanged: desktopEnabled
-                        ? (v) {
-                            if (v != null) appearance.closeBehavior = v;
-                          }
-                        : null,
-                  ),
+                trailing: _SettingsDropdown<GuiCloseBehavior>(
+                  frameKey: const ValueKey('close-behavior-frame'),
+                  dropdownKey: const ValueKey('close-behavior-selector'),
+                  value:
+                      appearance?.closeBehavior ?? GuiCloseBehavior.hideToTray,
+                  labels: const {
+                    GuiCloseBehavior.hideToTray: '隐藏到托盘',
+                    GuiCloseBehavior.exit: '退出程序',
+                  },
+                  onChanged: desktopEnabled
+                      ? (v) => appearance.closeBehavior = v
+                      : null,
                 ),
               ),
               DesignRow(
@@ -195,7 +174,7 @@ class SettingsPage extends StatelessWidget {
                 helper: switch (appearance?.announcementFrequency ??
                     GuiAnnouncementFrequency.dailyFirstConnection) {
                   GuiAnnouncementFrequency.everyConnection => '连接成功后显示公告。',
-                  GuiAnnouncementFrequency.dailyFirstConnection => '每天只显示一次。',
+                  GuiAnnouncementFrequency.dailyFirstConnection => null,
                   GuiAnnouncementFrequency.manualOnly => '需要时手动查看。',
                 },
                 value:
@@ -269,7 +248,8 @@ class _AnnouncementSelector<T> extends StatelessWidget {
     required this.helper,
   });
   final Key dropdownKey;
-  final String label, helper;
+  final String label;
+  final String? helper;
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T>? onChanged;
@@ -298,37 +278,66 @@ class AppearanceSelector extends StatelessWidget {
     ThemeMode.dark: '深色',
   };
   @override
+  Widget build(BuildContext context) => _SettingsDropdown<ThemeMode>(
+    frameKey: const ValueKey('appearance-selector'),
+    value: value,
+    labels: labels,
+    regionKey: (mode) => ValueKey('appearance-text-region-${mode.name}'),
+    onChanged: onChanged,
+  );
+}
+
+class _SettingsDropdown<T> extends StatelessWidget {
+  const _SettingsDropdown({
+    required this.frameKey,
+    required this.value,
+    required this.labels,
+    required this.onChanged,
+    this.dropdownKey,
+    this.regionKey,
+  });
+  final Key frameKey;
+  final Key? dropdownKey;
+  final T value;
+  final Map<T, String> labels;
+  final ValueChanged<T>? onChanged;
+  final Key Function(T)? regionKey;
+  @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final style = TextStyle(
       fontFamily: 'HarmonyOS Sans',
       fontSize: 11,
       height: 1.35,
-      color: Theme.of(context).colorScheme.onSurface,
+      color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
-    final scaler = MediaQuery.textScalerOf(context);
-    final painter = TextPainter(
-      text: TextSpan(text: '跟随系统', style: style),
-      textDirection: Directionality.of(context),
-      textScaler: scaler,
-    )..layout();
-    final textWidth = painter.width;
-    painter.dispose();
-    final touch = [
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-    ].contains(Theme.of(context).platform);
+    double textWidth = 0, textHeight = 0;
+    for (final label in labels.values) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      if (painter.width > textWidth) textWidth = painter.width;
+      if (painter.height > textHeight) textHeight = painter.height;
+      painter.dispose();
+    }
+    final platform = Theme.of(context).platform;
+    final touch =
+        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
     return Container(
-      key: const ValueKey('appearance-selector'),
+      key: frameKey,
       width: (textWidth + 46).clamp(92, double.infinity),
-      constraints: BoxConstraints(minHeight: touch ? 48 : 30),
+      height: (textHeight + 12).clamp(touch ? 48 : 30, double.infinity),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 7),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
+        color: scheme.surfaceContainerHighest,
+        border: Border.all(color: scheme.outline),
         borderRadius: BorderRadius.circular(7),
       ),
-      child: DropdownButton<ThemeMode>(
+      child: DropdownButton<T>(
+        key: dropdownKey,
         value: value,
         isDense: true,
         isExpanded: true,
@@ -342,24 +351,32 @@ class AppearanceSelector extends StatelessWidget {
         selectedItemBuilder: (context) => labels.entries
             .map(
               (entry) => Center(
-                key: ValueKey('appearance-text-region-${entry.key.name}'),
-                child: Text(entry.value, textAlign: TextAlign.center),
+                key: regionKey?.call(entry.key),
+                child: Text(
+                  entry.value,
+                  style: style,
+                  textAlign: TextAlign.center,
+                ),
               ),
             )
             .toList(),
         items: labels.entries
             .map(
-              (entry) => DropdownMenuItem(
+              (entry) => DropdownMenuItem<T>(
                 value: entry.key,
                 alignment: Alignment.center,
-                child: Text(entry.value, textAlign: TextAlign.center),
+                child: Text(
+                  entry.value,
+                  style: style,
+                  textAlign: TextAlign.center,
+                ),
               ),
             )
             .toList(),
         onChanged: onChanged == null
             ? null
-            : (mode) {
-                if (mode != null) onChanged!(mode);
+            : (selected) {
+                if (selected != null) onChanged!(selected);
               },
       ),
     );
