@@ -343,18 +343,15 @@ class HomeNoticeView extends StatelessWidget {
   final HomeNotice notice;
   @override
   Widget build(BuildContext context) {
-    final platform = Theme.of(context).platform;
-    final touch =
-        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
     return SizedBox(
-      height: touch ? 48 : 42,
+      height: 48,
       width: double.infinity,
       child: TextButton(
         key: const ValueKey('home-notice'),
         onPressed: notice.onOpen,
         style: TextButton.styleFrom(
           alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           minimumSize: Size.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           foregroundColor: Theme.of(context).colorScheme.onSurface,
@@ -370,8 +367,8 @@ class HomeNoticeView extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 13,
-                  height: 19 / 13,
+                  fontSize: 14,
+                  height: 20 / 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),

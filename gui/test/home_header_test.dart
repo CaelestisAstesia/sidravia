@@ -119,10 +119,7 @@ void main() {
           final announcement = tester.getRect(notice);
           expect(announcement.left, 24);
           expect(announcement.right, width - 24);
-          expect(
-            announcement.height,
-            platform == TargetPlatform.windows ? 42 : 48,
-          );
+          expect(announcement.height, 48);
           expect(find.text('吉林大学公告'), findsOneWidget);
           expect(find.text('公告'), findsNothing);
           await tester.tap(notice);
