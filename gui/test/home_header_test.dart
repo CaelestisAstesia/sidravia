@@ -11,7 +11,7 @@ void main() {
     TargetPlatform.iOS,
   ]) {
     for (final scale in [1.0, 2.0]) {
-      testWidgets('header full target $platform text scale $scale', (
+      testWidgets('header compact target $platform text scale $scale', (
         tester,
       ) async {
         await tester.binding.setSurfaceSize(const Size(398, 642));
@@ -73,6 +73,18 @@ void main() {
         final right = tester.getRect(settings);
         expect(left.top, right.top);
         expect(left.bottom, right.bottom);
+        if (scale == 1 && platform == TargetPlatform.windows) {
+          final header = tester.getRect(
+            find.byKey(const ValueKey('home-header')),
+          );
+          final school = tester.getRect(find.text('吉林大学'));
+          expect(left.width, lessThan(header.width / 2));
+          expect(school.left - left.left, 8);
+          await tester.tapAt(
+            Offset((left.right + right.left) / 2, left.center.dy),
+          );
+          expect(configurationClicks, 0);
+        }
         final minimum = platform == TargetPlatform.windows ? 42.0 : 48.0;
         expect(left.height, greaterThanOrEqualTo(minimum));
         if (scale == 1) expect(left.height, minimum);

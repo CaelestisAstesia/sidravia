@@ -172,8 +172,8 @@ class _HomeHeader extends StatelessWidget {
         key: const ValueKey('home-header'),
         children: [
           Expanded(
-            child: Transform.translate(
-              offset: Offset.zero,
+            child: Align(
+              alignment: Alignment.centerLeft,
               child: SizedBox(
                 height: height,
                 child: TextButton(
@@ -184,15 +184,19 @@ class _HomeHeader extends StatelessWidget {
                     visualDensity: VisualDensity.standard,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.fromLTRB(0, 3, 14, 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     minimumSize: const Size(0, 42),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
+                      Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -224,6 +228,7 @@ class _HomeHeader extends StatelessWidget {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 6),
                       Icon(
                         Icons.chevron_right,
                         size: 16,
