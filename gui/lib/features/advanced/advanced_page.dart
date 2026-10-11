@@ -98,10 +98,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
       MapEntry('版本', d?.productVersion ?? '暂无数据'),
       MapEntry('构建标识', d?.buildId ?? '暂无数据'),
       MapEntry('运行模式', d?.mode ?? '暂无数据'),
-      MapEntry(
-        'configuration_count',
-        raw?.configurations.length.toString() ?? '暂无数据',
-      ),
+      MapEntry('配置数量', raw?.configurations.length.toString() ?? '暂无数据'),
       MapEntry('会话数量', raw?.sessions.length.toString() ?? '暂无数据'),
       MapEntry('会话状态', s?.state.wireValue ?? '暂无数据'),
       MapEntry('会话标识', s?.id ?? '暂无数据'),
@@ -213,9 +210,6 @@ class _AdvancedPageState extends State<AdvancedPage> {
             ],
           ),
           const SizedBox(height: 7),
-          const DesignHelper(
-            '探测仅检查指定网络路径。没有回复不一定断网；收到回复也不证明认证成功或 Internet 可用。',
-          ),
           const SizedBox(height: 16),
           DesignGroup(
             children: [

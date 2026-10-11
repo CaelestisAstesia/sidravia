@@ -57,6 +57,9 @@ void main() {
       );
       expect(button.onPressed, isNull);
       expect(find.text('查看本实例的运行日志，便于排查连接问题。'), findsNothing);
+      expect(find.text('配置数量'), findsOneWidget);
+      expect(find.text('configuration_count'), findsNothing);
+      expect(find.textContaining('探测仅检查指定网络路径'), findsNothing);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();

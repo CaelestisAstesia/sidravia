@@ -120,8 +120,10 @@ class DesignHeader extends StatelessWidget {
     required this.onBack,
     this.backLabel = '返回',
     this.bottomSpacing = 24,
+    this.centerTitle = false,
   });
   final String title, backLabel;
+  final bool centerTitle;
   final double bottomSpacing;
   final VoidCallback onBack;
   @override
@@ -157,13 +159,16 @@ class DesignHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            height: 1.4,
-            fontWeight: FontWeight.w500,
-            letterSpacing: -.2,
+        Align(
+          alignment: centerTitle ? Alignment.center : Alignment.centerLeft,
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+              letterSpacing: -.2,
+            ),
           ),
         ),
       ],
@@ -477,23 +482,27 @@ Future<T?> showDesignChoice<T>(
               padding: const EdgeInsets.all(16),
               child: DesignHeader(
                 title: title,
+                centerTitle: true,
                 onBack: () => Navigator.pop(context),
                 bottomSpacing: 0,
               ),
             ),
             Flexible(
               child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    for (final (option, label) in options)
-                      ListTile(
-                        title: Text(label),
-                        trailing: option == value
-                            ? const Icon(Icons.check)
-                            : null,
-                        onTap: () => Navigator.pop(context, option),
-                      ),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: DesignGroup(
+                    children: [
+                      for (final (option, label) in options)
+                        DesignRow(
+                          title: label,
+                          trailing: option == value
+                              ? const Icon(Icons.check, size: 18)
+                              : const SizedBox(width: 18),
+                          onTap: () => Navigator.pop(context, option),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

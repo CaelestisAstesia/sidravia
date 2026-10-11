@@ -8,44 +8,57 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 void main() {
-  testWidgets('choice dialog back and title share left gutter', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => showDesignChoice<String>(
-                context,
-                title: '机构',
-                value: 'jlu',
-                options: [('jlu', '吉林大学')],
+  testWidgets(
+    'choice dialog centered title, left back and rounded choice group',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showDesignChoice<String>(
+                  context,
+                  title: '机构',
+                  value: 'jlu',
+                  options: [('jlu', '吉林大学')],
+                ),
+                child: const Text('选择机构'),
               ),
-              child: const Text('选择机构'),
             ),
           ),
         ),
-      ),
-    );
-    await tester.tap(find.text('选择机构'));
-    await tester.pumpAndSettle();
-    final dialog = tester.getRect(
-      find
-          .descendant(of: find.byType(Dialog), matching: find.byType(Material))
-          .first,
-    );
-    final back = tester.getRect(
-      find.byKey(const ValueKey('design-back-button')),
-    );
-    final title = tester.getRect(find.text('机构'));
-    final option = tester.getRect(find.text('吉林大学'));
-    expect(back.left, dialog.left + 16);
-    expect(title.left, back.left);
-    expect(option.left, back.left);
-    expect(back.bottom, lessThan(title.top));
-    await tester.tap(find.byKey(const ValueKey('design-back-button')));
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing);
-  });
+      );
+      await tester.tap(find.text('选择机构'));
+      await tester.pumpAndSettle();
+      final dialog = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(Dialog),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      final back = tester.getRect(
+        find.byKey(const ValueKey('design-back-button')),
+      );
+      final title = tester.getRect(find.text('机构'));
+      final option = tester.getRect(find.text('吉林大学'));
+      expect(back.left, dialog.left + 16);
+      expect(title.center.dx, dialog.center.dx);
+      expect(option.left, dialog.left + 29);
+      expect(
+        find.ancestor(
+          of: find.text('吉林大学'),
+          matching: find.byType(DesignGroup),
+        ),
+        findsOneWidget,
+      );
+      expect(back.bottom, lessThan(title.top));
+      await tester.tap(find.byKey(const ValueKey('design-back-button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+    },
+  );
   for (final width in [360.0, 960.0]) {
     testWidgets('settings pinned back and aligned controls at $width', (
       tester,
