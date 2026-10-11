@@ -182,6 +182,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           children: [
             DesignChoiceRow<String>(
               title: '机构',
+              centerValue: true,
               value: _profile ?? '',
               options: [for (final p in profiles) (p.id, p.displayName)],
               onChanged: _saving || widget.controller.busy || !_canSave
@@ -192,7 +193,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
               label: '账号',
               controller: _username,
               enabled: !_saving && !widget.controller.busy && _canSave,
-              hint: '输入校园网账号',
+              hint: '输入账号',
               error: _usernameError,
             ),
             DesignInputRow(
@@ -200,7 +201,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
               controller: _password,
               enabled: !_saving && !widget.controller.busy && _canSave,
               obscureText: true,
-              hint: _credentialStored ? '••••••••' : '输入校园网密码',
+              hint: _credentialStored ? '••••••••' : '输入密码',
               error: _passwordError,
             ),
             NetworkBindingSection(
@@ -322,7 +323,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         _username.text.trim().isEmpty ||
         (_password.text.isEmpty && !_credentialStored)) {
       setState(() {
-        _usernameError = _username.text.trim().isEmpty ? '请输入校园网账号。' : null;
+        _usernameError = _username.text.trim().isEmpty ? '请输入账号。' : null;
         _passwordError = _password.text.isEmpty && !_credentialStored
             ? '首次配置需要填写密码。'
             : null;
