@@ -20,6 +20,58 @@ class DesignPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final header = children.firstOrNull is DesignHeader
+          ? children.first
+          : null;
+      if (header != null) {
+        final padding = paddingForWidth(constraints.maxWidth);
+        return Column(
+          children: [
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                key: pageKey,
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    padding.left,
+                    padding.top,
+                    padding.right,
+                    0,
+                  ),
+                  child: header,
+                ),
+              ),
+            ),
+            Expanded(
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context)
+                    .copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 620),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          padding.left,
+                          0,
+                          padding.right,
+                          padding.bottom,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: children.skip(1).toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      }
       return ScrollConfiguration(
         behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
         child: SingleChildScrollView(
@@ -94,7 +146,7 @@ class DesignHeader extends StatelessWidget {
           style: const TextStyle(
             fontSize: 20,
             height: 1.4,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             letterSpacing: -.2,
           ),
         ),
@@ -130,7 +182,7 @@ class DesignGroup extends StatelessWidget {
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(11),
+      borderRadius: BorderRadius.circular(12),
       border: Border.all(color: Theme.of(context).colorScheme.outline),
     ),
     child: Column(
@@ -180,9 +232,9 @@ class DesignRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final content = ConstrainedBox(
-      constraints: BoxConstraints(minHeight: diagnostic ? 45 : 52),
+      constraints: BoxConstraints(minHeight: 56),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
             Expanded(
@@ -196,8 +248,8 @@ class DesignRow extends StatelessWidget {
                       height: diagnostic ? 1.5 : 19 / 13,
                       fontWeight: diagnostic
                           ? FontWeight.w400
-                          : FontWeight.w600,
-                      fontFamily: diagnostic ? 'monospace' : null,
+                          : FontWeight.w500,
+                      fontFamily: 'HarmonyOS Sans',
                       color: danger ? scheme.error : scheme.onSurface,
                     ),
                   ),
@@ -224,12 +276,18 @@ class DesignRow extends StatelessWidget {
                     textAlign: TextAlign.right,
                     style: TextStyle(
                       fontSize: diagnostic ? 11 : 12,
-                      fontFamily: diagnostic ? 'monospace' : null,
+                      fontFamily: 'HarmonyOS Sans',
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
-                )
-              else
+                ),
+              if (value != null && onTap != null)
+                Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+              if (value == null)
                 trailing ??
                     Icon(
                       Icons.chevron_right,
@@ -377,5 +435,166 @@ class DesignField extends StatelessWidget {
         ),
       ],
     ],
+  );
+}
+
+Future<T?> showDesignChoice<T>(
+  BuildContext context, {
+  required String title,
+  required T value,
+  required List<(T, String)> options,
+}) => showDialog<T>(
+  context: context,
+  builder: (context) => Dialog(
+    child: SizedBox(
+      width: 360,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: DesignHeader(
+                title: title,
+                onBack: () => Navigator.pop(context),
+                bottomSpacing: 0,
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (final (option, label) in options)
+                      ListTile(
+                        title: Text(label),
+                        trailing: option == value
+                            ? const Icon(Icons.check)
+                            : null,
+                        onTap: () => Navigator.pop(context, option),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  ),
+);
+
+class DesignChoiceRow<T> extends StatelessWidget {
+  const DesignChoiceRow({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.helper,
+  });
+  final String title;
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T>? onChanged;
+  final String? helper;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      DesignRow(
+        title: title,
+        value: options.where((e) => e.$1 == value).firstOrNull?.$2 ?? '暂无数据',
+        onTap: onChanged == null
+            ? null
+            : () async {
+                final selected = await showDesignChoice<T>(
+                  context,
+                  title: title,
+                  value: value,
+                  options: options,
+                );
+                if (selected != null && context.mounted) {
+                  onChanged?.call(selected);
+                }
+              },
+      ),
+      if (helper != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: DesignHelper(helper!),
+        ),
+    ],
+  );
+}
+
+class DesignInputRow extends StatelessWidget {
+  const DesignInputRow({
+    super.key,
+    required this.label,
+    required this.controller,
+    required this.enabled,
+    this.obscureText = false,
+    this.hint,
+    this.error,
+  });
+  final String label;
+  final TextEditingController controller;
+  final bool enabled, obscureText;
+  final String? hint, error;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: enabled,
+                  obscureText: obscureText,
+                  textAlign: TextAlign.right,
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    isDense: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+          ),
+      ],
+    ),
   );
 }

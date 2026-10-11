@@ -21,7 +21,7 @@ void main() {
     await tester.ensureVisible(find.text('技术信息'));
     await tester.tap(find.text('技术信息'));
     await tester.pump();
-    expect(find.text('暂不可用'), findsAtLeastNWidgets(1));
+    expect(find.text('暂无数据'), findsAtLeastNWidgets(1));
     expect(find.text('复制诊断信息（暂不可用）'), findsOneWidget);
     controller.dispose();
   });

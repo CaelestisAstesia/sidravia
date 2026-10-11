@@ -106,11 +106,38 @@ abstract final class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: dark ? AppColors.bgDark : AppColors.bgLight,
       dividerColor: dark ? AppColors.lineSoftDark : AppColors.lineSoftLight,
-      textTheme: const TextTheme(
-        bodyLarge: TextStyle(fontSize: 16, height: 1.2),
-        bodyMedium: TextStyle(fontSize: 13, height: 1.55),
-        bodySmall: TextStyle(fontSize: 12, height: 1.45),
-      ).apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface),
+      textTheme:
+          const TextTheme(
+            bodyLarge: TextStyle(fontSize: 16, height: 1.2),
+            bodyMedium: TextStyle(fontSize: 13, height: 1.55),
+            bodySmall: TextStyle(fontSize: 12, height: 1.45),
+          ).apply(
+            fontFamily: 'HarmonyOS Sans',
+            bodyColor: scheme.onSurface,
+            displayColor: scheme.onSurface,
+          ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 3,
+        shadowColor: const Color(0x1F172432),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: scheme.outline),
+        ),
+        titleTextStyle: TextStyle(
+          fontFamily: 'HarmonyOS Sans',
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: scheme.onSurface,
+        ),
+        contentTextStyle: TextStyle(
+          fontFamily: 'HarmonyOS Sans',
+          fontSize: 13,
+          height: 1.55,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: dark ? AppColors.surfaceDark : AppColors.surfaceLight,

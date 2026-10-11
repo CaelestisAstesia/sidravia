@@ -97,7 +97,10 @@ class SidraviaShellState extends State<SidraviaShell> {
         child: Scaffold(
           body: SafeArea(
             child: AnimatedBuilder(
-              animation: widget.controller,
+              animation: Listenable.merge([
+                widget.controller,
+                if (widget.announcements != null) widget.announcements!,
+              ]),
               builder: (context, _) => switch (_page) {
                 AppPage.home => HomePage(
                   controller: widget.controller,
@@ -105,6 +108,10 @@ class SidraviaShellState extends State<SidraviaShell> {
                   onNavigate: _go,
                 ),
                 AppPage.settings => SettingsPage(
+                  backLabel: _history.isEmpty || _history.last == AppPage.home
+                      ? '返回仪表盘'
+                      : '返回',
+                  announcementFeedback: widget.announcements?.feedback,
                   desktopPresence: widget.desktopPresence,
                   controller: widget.controller,
                   onNavigate: _go,

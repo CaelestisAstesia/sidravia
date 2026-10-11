@@ -33,19 +33,17 @@ void main() {
       await c.start();
       try {
         await open(tester, c);
-        await tester.tap(find.text('保存更改'));
+        await tester.tap(find.text('保存修改'));
         await tester.pump();
         expect(find.byType(AlertDialog), findsNothing);
         expect(client.operations, isNot(contains('configuration.update')));
-        expect(find.text('更改密码'), findsOneWidget);
-        await tester.tap(find.text('更改密码'));
-        await tester.pump();
+        expect(find.byType(TextField), findsNWidgets(2));
         await tester.enterText(find.byType(TextField).last, 'temporary');
-        await tester.tap(find.text('取消更改'));
+        await tester.tap(find.text('放弃修改'));
         await tester.pump();
-        expect(find.byType(TextField), findsOneWidget);
+        expect(find.byType(TextField), findsNWidgets(2));
         await tester.enterText(find.byType(TextField).first, 'changed');
-        await tester.tap(find.text('保存更改'));
+        await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         final active = scenario != 'suspended';
         expect(
@@ -66,10 +64,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(client.operations, isNot(contains('configuration.update')));
         expect(
-          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          tester
+              .widget<TextField>(find.byType(TextField).first)
+              .controller!
+              .text,
           'changed',
         );
-        await tester.tap(find.text('保存更改'));
+        await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         await tester.tap(find.text(active ? '保存并重新连接' : '保存并连接'));
         await tester.pumpAndSettle();
@@ -104,14 +105,14 @@ void main() {
       await open(tester, c);
       await tester.enterText(find.byType(TextField).first, 'first');
       await tester.enterText(find.byType(TextField).last, 'secret');
-      await tester.ensureVisible(find.text('下次连接的网络策略'));
-      await tester.tap(find.text('下次连接的网络策略'));
+      await tester.ensureVisible(find.text('网卡'));
+      await tester.tap(find.text('网卡'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('192.0.2.4/24 · 模拟以太网 · demo-iface'));
       await tester.pumpAndSettle();
       expect(c.snapshot!.configurations, isEmpty);
-      await tester.ensureVisible(find.text('保存配置'));
-      await tester.tap(find.text('保存配置'));
+      await tester.ensureVisible(find.text('保存修改'));
+      await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
@@ -144,7 +145,7 @@ void main() {
     await c.start();
     try {
       await open(tester, c);
-      await tester.enterText(find.byType(TextField), 'draft');
+      await tester.enterText(find.byType(TextField).first, 'draft');
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(find.widgetWithText(FilledButton, '继续编辑'), findsOneWidget);
@@ -153,7 +154,7 @@ void main() {
       expect(find.byType(ConfigurationPage), findsOneWidget);
       await tester.tap(find.text('返回'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('放弃修改'));
+      await tester.tap(find.text('放弃修改').last);
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
       expect(client.operations, isNot(contains('configuration.update')));
@@ -178,14 +179,12 @@ void main() {
       await c.start();
       try {
         await open(tester, c);
-        await tester.enterText(find.byType(TextField), 'retained-draft');
-        await tester.tap(find.text('更改密码'));
-        await tester.pump();
+        await tester.enterText(find.byType(TextField).first, 'retained-draft');
         await tester.enterText(
           find.byType(TextField).last,
           'retained-password',
         );
-        await tester.tap(find.text('保存更改'));
+        await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('保存并重新连接'));
         await tester.pumpAndSettle();
@@ -262,15 +261,15 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.textContaining('密码已保存'), findsNothing);
           expect(find.byType(TextField), findsNWidgets(2));
-          await tester.ensureVisible(find.text('下次连接的网络策略'));
-          await tester.tap(find.text('下次连接的网络策略'));
+          await tester.ensureVisible(find.text('网卡'));
+          await tester.tap(find.text('网卡'));
           await tester.pumpAndSettle();
           expect(find.textContaining('指定绑定已不可用'), findsOneWidget);
           expect(
             c.snapshot!.configurations.single.networkBindingPolicy.interfaceId,
             _longId,
           );
-          await tester.ensureVisible(find.text('保存更改'));
+          await tester.ensureVisible(find.text('保存修改'));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
         } finally {

@@ -128,7 +128,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('启动Sidravia后自动开始认证'), findsOneWidget);
       expect(find.text('连接中断后自动尝试重新认证'), findsOneWidget);
-      expect(find.text('已立即保存；下次手动连接或重新连接时生效，当前连接不受影响。'), findsOneWidget);
+      expect(find.text('修改后从下次连接生效。'), findsOneWidget);
       expect(find.text('核心、会话与故障信息'), findsOneWidget);
       expect(find.text('技术诊断'), findsNothing);
       final toggle = find.byKey(const ValueKey('auto-reconnect-switch'));

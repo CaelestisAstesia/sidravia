@@ -29,7 +29,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
   NetworkBindingPolicy _binding = const NetworkBindingPolicy.automatic();
   NetworkBindingPolicy _originalBinding =
       const NetworkBindingPolicy.automatic();
-  bool _passwordEditing = false, _credentialStored = false, _prompting = false;
+  bool _credentialStored = false, _prompting = false;
   String? _saveResult;
   bool get _dirty =>
       _hydrated &&
@@ -125,7 +125,6 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         c?.networkBindingPolicy ?? const NetworkBindingPolicy.automatic();
     _originalBinding = _binding;
     _credentialStored = c?.credentialStored ?? false;
-    _passwordEditing = !_credentialStored;
     _hydrated = true;
   }
 
@@ -179,130 +178,54 @@ class ConfigurationPageState extends State<ConfigurationPage> {
       children: [
         DesignHeader(title: '连接配置', onBack: requestLeave),
         if (unavailable) const DesignHelper('通信或配置状态暂不可用；草稿已保留，请恢复后再保存。'),
-        DesignField(
-          label: '机构',
-          child: DropdownButtonFormField<String>(
-            initialValue: _profile,
-            decoration: const InputDecoration(
-              isDense: true,
-              constraints: BoxConstraints(minHeight: 40),
-              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            ),
-            isExpanded: true,
-            items: [
-              for (final profile in profiles)
-                DropdownMenuItem(
-                  value: profile.id,
-                  child: Text(profile.displayName),
-                ),
-            ],
-            onChanged: _saving || widget.controller.busy || !_canSave
-                ? null
-                : (value) => setState(() => _profile = value),
-          ),
-        ),
-        const SizedBox(height: 14),
-        DesignField(
-          label: '认证账号',
-          error: _usernameError,
-          child: TextField(
-            controller: _username,
-            enabled: !_saving && !widget.controller.busy && _canSave,
-            decoration: InputDecoration(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 9,
-              ),
-              isDense: true,
-              constraints: const BoxConstraints(minHeight: 40),
-              hintText: '输入校园网账号',
-            ),
-          ),
-        ),
-        const SizedBox(height: 21),
-        Text(
-          creating
-              ? '首次连接需要机构、账号和密码。'
-              : _credentialStored
-              ? '密码已保存。出于安全原因，Sidravia 不会回显现有密码。'
-              : '尚未保存密码，请填写认证密码。',
-          style: TextStyle(
-            fontSize: 11,
-            height: 1.5,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 7),
-        if (!_passwordEditing)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: _saving
-                  ? null
-                  : () => setState(() => _passwordEditing = true),
-              child: const Text('更改密码'),
-            ),
-          ),
-        if (_passwordEditing)
-          DesignField(
-            label: creating ? '认证密码' : '设置新密码',
-            error: _passwordError,
-            child: TextField(
-              controller: _password,
-              obscureText: true,
-              enabled: !_saving && !widget.controller.busy && _canSave,
-              decoration: InputDecoration(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 9,
-                ),
-                isDense: true,
-                constraints: const BoxConstraints(minHeight: 40),
-                hintText: creating ? '输入校园网密码' : '仅在需要修改时填写',
-              ),
-            ),
-          ),
-        if (_passwordEditing && _credentialStored)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: _saving
-                  ? null
-                  : () => setState(() {
-                      _password.clear();
-                      _passwordEditing = false;
-                    }),
-              child: const Text('取消更改'),
-            ),
-          ),
-        const SizedBox(height: 18),
-        NetworkBindingSection(
-          controller: widget.controller,
-          policy: _binding,
-          onChanged: _saving || !_canSave
-              ? null
-              : (value) => setState(() => _binding = value),
-        ),
-        const SizedBox(height: 18),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        DesignGroup(
           children: [
-            OutlinedButton(
-              onPressed: _saving ? null : requestLeave,
-              child: const Text('取消'),
+            DesignChoiceRow<String>(
+              title: '机构',
+              value: _profile ?? '',
+              options: [for (final p in profiles) (p.id, p.displayName)],
+              onChanged: _saving || widget.controller.busy || !_canSave
+                  ? null
+                  : (v) => setState(() => _profile = v),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _saving || !_canSave ? null : _save,
-              child: Text(
-                _saving
-                    ? '正在保存…'
-                    : creating
-                    ? '保存配置'
-                    : '保存更改',
-              ),
+            DesignInputRow(
+              label: '账号',
+              controller: _username,
+              enabled: !_saving && !widget.controller.busy && _canSave,
+              hint: '输入校园网账号',
+              error: _usernameError,
+            ),
+            DesignInputRow(
+              label: '密码',
+              controller: _password,
+              enabled: !_saving && !widget.controller.busy && _canSave,
+              obscureText: true,
+              hint: _credentialStored ? '••••••••' : '输入校园网密码',
+              error: _passwordError,
+            ),
+            NetworkBindingSection(
+              controller: widget.controller,
+              policy: _binding,
+              onChanged: _saving || widget.controller.busy || !_canSave
+                  ? null
+                  : (value) => setState(() => _binding = value),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        DesignHelper(
+          _credentialStored ? '密码已保存；留空保留原密码，输入则替换。' : '首次连接请填写账号和密码。',
+        ),
+        const SizedBox(height: 18),
+        FilledButton(
+          onPressed: _saving || !_canSave ? null : _save,
+          child: Text(_saving ? '正在保存…' : '保存修改'),
+        ),
+        TextButton(
+          onPressed: _saving || widget.controller.busy || !_canSave
+              ? null
+              : _discard,
+          child: const Text('放弃修改'),
         ),
         if (_targetChanged)
           const Padding(
@@ -314,7 +237,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           DesignHelper(message),
         if (!creating) ...[
           const SizedBox(height: 24),
-          const DesignSectionTitle('更多操作'),
+          const DesignSectionTitle('删除'),
           DesignGroup(
             children: [
               DesignRow(
@@ -336,6 +259,26 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         ],
       ],
     );
+  }
+
+  void _discard() {
+    _sync();
+    if (_saving ||
+        _prompting ||
+        widget.controller.busy ||
+        !_canSave ||
+        _targetChanged) {
+      return;
+    }
+    setState(() {
+      _profile = _originalProfile;
+      _username.text = _originalUsername ?? '';
+      _password.clear();
+      _binding = _originalBinding;
+      _usernameError = null;
+      _passwordError = null;
+      _saveResult = '已放弃修改。';
+    });
   }
 
   Future<void> _confirmDelete() async {

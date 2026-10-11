@@ -20,74 +20,93 @@ class NetworkBindingSection extends StatefulWidget {
 }
 
 class _NetworkBindingSectionState extends State<NetworkBindingSection> {
-  bool _expanded = false;
   @override
   Widget build(BuildContext context) {
     final choices = networkBindingChoices(widget.controller.snapshot?.network);
     final policy = widget.policy;
-    final available =
-        policy.interfaceId == null || choices.any((c) => c.policy == policy);
     final selected = choices.where((c) => c.policy == policy).firstOrNull;
-    Widget choice(
-      NetworkBindingPolicy value,
-      String label, {
-      bool enabled = true,
-    }) => Material(
-      color: Colors.transparent,
-      child: ListTile(
-        title: Text(label, softWrap: true),
-        subtitle: Text(
-          value.interfaceId == null
-              ? '自动选择'
-              : enabled
-              ? '可用'
-              : '已不可用，不会自动回退',
-        ),
-        trailing: value == policy ? const Icon(Icons.check) : null,
-        enabled: enabled && widget.onChanged != null,
-        onTap: enabled && widget.onChanged != null
-            ? () {
-                widget.onChanged!(value);
-                setState(() => _expanded = false);
-              }
-            : null,
-      ),
-    );
+    final available = policy.interfaceId == null || selected != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const DesignSectionTitle('网络绑定'),
-        DesignGroup(
-          children: [
-            DesignRow(
-              title: '下次连接的网络策略',
-              subtitle: selected?.label ?? policy.summary,
-              trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-              onTap: widget.onChanged == null
-                  ? null
-                  : () => setState(() => _expanded = !_expanded),
-            ),
-          ],
+        DesignRow(
+          title: '网卡',
+          value: selected?.label ?? policy.summary,
+          onTap: widget.onChanged == null
+              ? null
+              : () async {
+                  final next = await showDialog<NetworkBindingPolicy>(
+                    context: context,
+                    builder: (context) => Dialog(
+                      child: SizedBox(
+                        width: 360,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.sizeOf(context).height * .8,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: DesignHeader(
+                                  title: '选择网卡',
+                                  onBack: () => Navigator.pop(context),
+                                  bottomSpacing: 0,
+                                ),
+                              ),
+                              Flexible(
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    children: [
+                                      ListTile(
+                                        title: const Text('自动选择可用网卡'),
+                                        subtitle: const Text('自动选择'),
+                                        trailing: policy.interfaceId == null
+                                            ? const Icon(Icons.check)
+                                            : null,
+                                        onTap: () => Navigator.pop(
+                                          context,
+                                          const NetworkBindingPolicy.automatic(),
+                                        ),
+                                      ),
+                                      for (final c in choices)
+                                        ListTile(
+                                          title: Text(c.label),
+                                          subtitle: const Text('可用'),
+                                          trailing: c.policy == policy
+                                              ? const Icon(Icons.check)
+                                              : null,
+                                          onTap: () =>
+                                              Navigator.pop(context, c.policy),
+                                        ),
+                                      if (!available)
+                                        ListTile(
+                                          enabled: false,
+                                          title: Text(
+                                            '指定绑定已不可用：${policy.interfaceId} · ${policy.localIpv4Address}',
+                                          ),
+                                          subtitle: const Text('已不可用，不会自动回退'),
+                                          trailing: const Icon(Icons.check),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                  if (next != null && mounted) widget.onChanged?.call(next);
+                },
         ),
-        if (_expanded)
-          DesignGroup(
-            children: [
-              choice(const NetworkBindingPolicy.automatic(), '自动选择可用网卡'),
-              for (final c in choices) choice(c.policy, c.label),
-              if (!available)
-                choice(
-                  policy,
-                  '指定绑定已不可用：${policy.interfaceId} · ${policy.localIpv4Address}',
-                  enabled: false,
-                ),
-            ],
-          ),
         if (!available)
-          const DesignHelper('所选网卡或 IPv4 已不可用。请选择当前可用的绑定；不会自动回退。'),
-        if (policy.interfaceId != null) ...[
-          Text('接口 ID：${policy.interfaceId}', softWrap: true),
-          Text('IPv4：${policy.localIpv4Address}', softWrap: true),
-        ],
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: DesignHelper('所选网卡或 IPv4 已不可用。请选择当前可用的绑定；不会自动回退。'),
+          ),
       ],
     );
   }

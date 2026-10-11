@@ -173,7 +173,7 @@ class _HomeHeader extends StatelessWidget {
         children: [
           Expanded(
             child: Transform.translate(
-              offset: const Offset(-10, 0),
+              offset: Offset.zero,
               child: SizedBox(
                 height: height,
                 child: TextButton(
@@ -184,7 +184,7 @@ class _HomeHeader extends StatelessWidget {
                     visualDensity: VisualDensity.standard,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.fromLTRB(10, 3, 14, 3),
+                    padding: const EdgeInsets.fromLTRB(0, 3, 14, 3),
                     minimumSize: const Size(0, 42),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -355,34 +355,24 @@ class HomeNoticeView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '校园网公告',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontSize: 11,
-                  height: 16 / 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                notice.title,
+              const Text(
+                '公告',
                 style: TextStyle(
                   fontSize: 13,
                   height: 19 / 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                '在应用内打开学校公告页面',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                  height: 1.5,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
+          ),
+        ),
+        Flexible(
+          child: Text(
+            notice.title
+                .replaceFirst('查看', '')
+                .replaceFirst(RegExp(r'公告$'), ''),
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ),
         SizedBox(width: 12),

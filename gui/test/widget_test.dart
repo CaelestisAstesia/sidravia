@@ -59,12 +59,22 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
+      expect(find.text('返回仪表盘'), findsOneWidget);
       expect(
         await shellKey.currentState!.navigateFromTray(AppPage.home),
         isTrue,
       );
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
+      await shellKey.currentState!.navigateFromTray(AppPage.diagnostics);
+      await tester.pumpAndSettle();
+      await shellKey.currentState!.navigateFromTray(AppPage.settings);
+      await tester.pumpAndSettle();
+      expect(find.text('返回'), findsOneWidget);
+      expect(find.text('返回仪表盘'), findsNothing);
+      await tester.tap(find.text('返回'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AdvancedPage), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();
@@ -209,7 +219,7 @@ void main() {
 
         expect(find.byType(HomePage), findsOneWidget);
         expect(tester.takeException(), isNull);
-        await tapVisible(find.text('查看吉林大学公告'));
+        await tapVisible(find.byKey(const ValueKey('home-notice')));
         expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
         expect(find.byType(Dialog), findsNothing);
 
@@ -231,7 +241,7 @@ void main() {
         expect(find.byType(AdvancedPage), findsOneWidget);
         await tapVisible(find.text('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
-        await tapVisible(find.text('返回连接'));
+        await tapVisible(find.text('返回仪表盘'));
         expect(find.byType(HomePage), findsOneWidget);
 
         await tapVisible(find.byTooltip('设置'));

@@ -14,9 +14,13 @@ class SettingsPage extends StatelessWidget {
     required this.onNavigate,
     required this.onBack,
     this.desktopPresence,
+    this.announcementFeedback,
+    this.backLabel = '返回仪表盘',
   });
   final GuiController controller;
   final DesktopPresence? desktopPresence;
+  final String? announcementFeedback;
+  final String backLabel;
   final ValueChanged<AppPage> onNavigate;
   final VoidCallback onBack;
   @override
@@ -30,7 +34,7 @@ class SettingsPage extends StatelessWidget {
       listenable: desktopPresence ?? const AlwaysStoppedAnimation(false),
       builder: (context, _) => DesignPage(
         children: [
-          DesignHeader(title: '设置', onBack: onBack, backLabel: '返回连接'),
+          DesignHeader(title: '设置', onBack: onBack, backLabel: backLabel),
           const DesignSectionTitle('连接'),
           DesignGroup(
             children: [
@@ -87,7 +91,7 @@ class SettingsPage extends StatelessWidget {
           if (c != null)
             const Padding(
               padding: EdgeInsets.only(top: 7),
-              child: DesignHelper('已立即保存；下次手动连接或重新连接时生效，当前连接不受影响。'),
+              child: DesignHelper('修改后从下次连接生效。'),
             ),
           if (controller.notice != null)
             Padding(
@@ -188,13 +192,19 @@ class SettingsPage extends StatelessWidget {
               _AnnouncementSelector<GuiAnnouncementFrequency>(
                 dropdownKey: const ValueKey('announcement-frequency-selector'),
                 label: '自动显示公告',
+                helper: switch (appearance?.announcementFrequency ??
+                    GuiAnnouncementFrequency.dailyFirstConnection) {
+                  GuiAnnouncementFrequency.everyConnection => '连接成功后显示公告。',
+                  GuiAnnouncementFrequency.dailyFirstConnection => '每天只显示一次。',
+                  GuiAnnouncementFrequency.manualOnly => '需要时手动查看。',
+                },
                 value:
                     appearance?.announcementFrequency ??
                     GuiAnnouncementFrequency.dailyFirstConnection,
                 options: const [
                   (GuiAnnouncementFrequency.everyConnection, '每次连接成功后'),
                   (GuiAnnouncementFrequency.dailyFirstConnection, '每天首次连接成功后'),
-                  (GuiAnnouncementFrequency.manualOnly, '不自动显示'),
+                  (GuiAnnouncementFrequency.manualOnly, '仅手动查看'),
                 ],
                 onChanged: appearance == null
                     ? null
@@ -208,12 +218,19 @@ class SettingsPage extends StatelessWidget {
                     'hidden-announcement-behavior-selector',
                   ),
                   label: '主窗口隐藏时',
+                  helper: switch (appearance?.hiddenAnnouncementBehavior ??
+                      GuiHiddenAnnouncementBehavior.notify) {
+                    GuiHiddenAnnouncementBehavior.notify => '通知可点击查看公告。',
+                    GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告。',
+                    GuiHiddenAnnouncementBehavior.showImmediately =>
+                      '可在主窗口隐藏时直接查看公告。',
+                  },
                   value:
                       appearance?.hiddenAnnouncementBehavior ??
                       GuiHiddenAnnouncementBehavior.notify,
                   options: const [
                     (GuiHiddenAnnouncementBehavior.showImmediately, '直接显示公告'),
-                    (GuiHiddenAnnouncementBehavior.notify, '通知后点击查看'),
+                    (GuiHiddenAnnouncementBehavior.notify, '发送系统通知点击查看'),
                     (GuiHiddenAnnouncementBehavior.onRestore, '恢复主窗口时显示'),
                   ],
                   onChanged: appearance == null
@@ -221,15 +238,12 @@ class SettingsPage extends StatelessWidget {
                       : (value) =>
                             appearance.hiddenAnnouncementBehavior = value,
                 ),
+              if (announcementFeedback != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: DesignHelper(announcementFeedback!),
+                ),
             ],
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 7),
-            child: DesignHelper('自动重连成功也计入连接成功。'),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: DesignHelper('选择“不自动显示”后，仍可在主界面手动查看公告。'),
           ),
           const SizedBox(height: 7),
           if (!desktopEnabled) const DesignHelper('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'),
@@ -252,72 +266,21 @@ class _AnnouncementSelector<T> extends StatelessWidget {
     required this.value,
     required this.options,
     required this.onChanged,
+    required this.helper,
   });
-
   final Key dropdownKey;
-  final String label;
+  final String label, helper;
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T>? onChanged;
-
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            height: 16 / 11,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 7),
-        Container(
-          constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            border: Border.all(color: Theme.of(context).colorScheme.outline),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Material(
-            type: MaterialType.transparency,
-            child: DropdownButton<T>(
-              key: dropdownKey,
-              value: value,
-              isExpanded: true,
-              itemHeight: null,
-              underline: const SizedBox.shrink(),
-              style: TextStyle(
-                fontFamily: 'HarmonyOS Sans',
-                fontSize: 11,
-                height: 1.35,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-              icon: const Icon(Icons.arrow_drop_down, size: 20),
-              items: [
-                for (final (option, title) in options)
-                  DropdownMenuItem<T>(
-                    value: option,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(title),
-                    ),
-                  ),
-              ],
-              onChanged: onChanged == null
-                  ? null
-                  : (next) {
-                      if (next != null) onChanged!(next);
-                    },
-            ),
-          ),
-        ),
-      ],
-    ),
+  Widget build(BuildContext context) => DesignChoiceRow<T>(
+    key: dropdownKey,
+    title: label,
+    value: value,
+    options: options,
+    onChanged: onChanged,
+    helper: helper,
   );
 }
 

@@ -44,7 +44,7 @@ class ConnectionIssueCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               height: 14 / 11,
-              fontFamily: 'monospace',
+              fontFamily: 'HarmonyOS Sans',
               color: scheme.onSurfaceVariant,
             ),
           ),

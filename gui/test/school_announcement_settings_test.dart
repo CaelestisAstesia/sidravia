@@ -4,6 +4,7 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
@@ -64,11 +65,11 @@ void main() {
       final frequencyKey = const ValueKey('announcement-frequency-selector');
       final hiddenKey = const ValueKey('hidden-announcement-behavior-selector');
       expect(find.text('自动显示公告'), findsOneWidget);
-      expect(find.text('自动重连成功也计入连接成功。'), findsOneWidget);
-      expect(find.text('选择“不自动显示”后，仍可在主界面手动查看公告。'), findsOneWidget);
+      expect(find.text('连接成功后显示公告。'), findsOneWidget);
+      expect(find.text('恢复主窗口时显示公告。'), findsOneWidget);
       expect(
         tester
-            .widget<DropdownButton<GuiAnnouncementFrequency>>(
+            .widget<DesignChoiceRow<GuiAnnouncementFrequency>>(
               find.byKey(frequencyKey),
             )
             .value,
@@ -76,7 +77,7 @@ void main() {
       );
       expect(
         tester
-            .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
+            .widget<DesignChoiceRow<GuiHiddenAnnouncementBehavior>>(
               find.byKey(hiddenKey),
             )
             .value,
@@ -86,7 +87,7 @@ void main() {
       await tester.ensureVisible(find.byKey(frequencyKey));
       await tester.tap(find.byKey(frequencyKey));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('不自动显示').last);
+      await tester.tap(find.text('仅手动查看').last);
       await tester.pumpAndSettle();
       await appearance.settled;
       expect(
@@ -117,7 +118,7 @@ void main() {
       expect(find.byKey(hiddenKey), findsOneWidget);
       expect(
         tester
-            .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
+            .widget<DesignChoiceRow<GuiHiddenAnnouncementBehavior>>(
               find.byKey(hiddenKey),
             )
             .value,
@@ -220,7 +221,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text('每次连接成功后'), findsWidgets);
           expect(find.text('每天首次连接成功后'), findsWidgets);
-          expect(find.text('不自动显示'), findsWidgets);
+          expect(find.text('仅手动查看'), findsWidgets);
           expect(tester.takeException(), isNull);
           await tester.tapAt(const Offset(10, 10));
           await tester.pumpAndSettle();
@@ -229,7 +230,7 @@ void main() {
           await tester.tap(hidden);
           await tester.pumpAndSettle();
           expect(find.text('直接显示公告'), findsWidgets);
-          expect(find.text('通知后点击查看'), findsWidgets);
+          expect(find.text('发送系统通知点击查看'), findsWidgets);
           expect(find.text('恢复主窗口时显示'), findsWidgets);
           expect(tester.takeException(), isNull);
           await tester.tapAt(const Offset(10, 10));
@@ -267,12 +268,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final frequency = tester.widget<DropdownButton<GuiAnnouncementFrequency>>(
+    final frequency = tester.widget<DesignChoiceRow<GuiAnnouncementFrequency>>(
       find.byKey(const ValueKey('announcement-frequency-selector')),
     );
-    final hidden = tester.widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
-      find.byKey(const ValueKey('hidden-announcement-behavior-selector')),
-    );
+    final hidden = tester
+        .widget<DesignChoiceRow<GuiHiddenAnnouncementBehavior>>(
+          find.byKey(const ValueKey('hidden-announcement-behavior-selector')),
+        );
     expect(frequency.onChanged, isNull);
     expect(hidden.onChanged, isNull);
     final frequencyFinder = find.byKey(

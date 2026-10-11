@@ -94,7 +94,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(policy.summary), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -131,7 +131,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('首次连接需要机构、账号和密码。'), findsNothing);
       expect(find.byType(TextField), findsNothing);
-      expect(find.text('保存配置'), findsNothing);
+      expect(find.text('保存修改'), findsNothing);
       expect(
         find.textContaining(
           lifecycle == 'daemonUnavailable' ? '核心服务未运行' : '通信尚未就绪',
@@ -172,7 +172,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('首次连接需要机构、账号和密码。'), findsNothing);
         expect(find.byType(TextField), findsNothing);
-        expect(find.text('保存配置'), findsNothing);
+        expect(find.text('保存修改'), findsNothing);
         expect(
           find.textContaining(multiple ? '检测到多个连接配置' : '配置或会话关系不明确'),
           findsOneWidget,
@@ -206,10 +206,6 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).first, 'draft-for-A');
-        if (find.text('更改密码').evaluate().isNotEmpty) {
-          await tester.tap(find.text('更改密码'));
-          await tester.pump();
-        }
         await tester.enterText(find.byType(TextField).last, 'transient-draft');
         client.configurations = [otherConfiguration];
         await tester.pump(const Duration(milliseconds: 60));
@@ -231,7 +227,7 @@ void main() {
         expect(find.textContaining('请重新打开后继续编辑'), findsOneWidget);
         final button = find.widgetWithText(
           FilledButton,
-          creating ? '保存配置' : '保存更改',
+          creating ? '保存修改' : '保存修改',
         );
         expect(tester.widget<FilledButton>(button).onPressed, isNull);
         await tester.tap(button);

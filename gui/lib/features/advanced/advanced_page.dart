@@ -88,25 +88,24 @@ class _AdvancedPageState extends State<AdvancedPage> {
     final s = raw?.sessions.length == 1 ? raw!.sessions.single : null;
     final d = controller.snapshot?.daemon;
     final rows = <MapEntry<String, String>>[
-      MapEntry('daemon', d?.status ?? '暂不可用'),
-      MapEntry('ipc_state', controller.state.name),
+      MapEntry('核心服务状态', d?.status ?? '暂无数据'),
+      MapEntry('通信状态', controller.state.name),
       if (controller.failure != null) ...[
-        MapEntry('ipc_error', controller.failure!.code),
-        MapEntry('ipc_message', controller.failure!.message),
+        MapEntry('通信错误', controller.failure!.code),
+        MapEntry('错误说明', controller.failure!.message),
       ],
-      MapEntry('version', d?.productVersion ?? '暂不可用'),
-      MapEntry('build_id', d?.buildId ?? '暂不可用'),
-      MapEntry('mode', d?.mode ?? '暂不可用'),
+      MapEntry('版本', d?.productVersion ?? '暂无数据'),
+      MapEntry('构建标识', d?.buildId ?? '暂无数据'),
+      MapEntry('运行模式', d?.mode ?? '暂无数据'),
       MapEntry(
         'configuration_count',
-        raw?.configurations.length.toString() ?? '暂不可用',
+        raw?.configurations.length.toString() ?? '暂无数据',
       ),
-      MapEntry('session_count', raw?.sessions.length.toString() ?? '暂不可用'),
-      MapEntry('session_state', s?.state.wireValue ?? '暂不可用'),
-      MapEntry('session_id', s?.id ?? '暂不可用'),
-      MapEntry('configuration_id', c?.id ?? '暂不可用'),
-      if (p.issue != null)
-        MapEntry('last_error', s!.lastAuthenticationFailure!.code),
+      MapEntry('会话数量', raw?.sessions.length.toString() ?? '暂无数据'),
+      MapEntry('会话状态', s?.state.wireValue ?? '暂无数据'),
+      MapEntry('会话标识', s?.id ?? '暂无数据'),
+      MapEntry('配置标识', c?.id ?? '暂无数据'),
+      if (p.issue != null) MapEntry('最近错误', s!.lastAuthenticationFailure!.code),
     ];
     final appearance = AppearanceScope.maybeOf(context);
     final expanded = appearance?.diagnosticsExpanded ?? _expanded;
@@ -123,22 +122,22 @@ class _AdvancedPageState extends State<AdvancedPage> {
           children: [
             DesignRow(title: '状态', value: p.statusTitle),
             DesignRow(
-              title: '网络适配器',
-              value: p.networkBinding?.displayName ?? '尚无会话绑定观察',
+              title: '网卡',
+              value: p.networkBinding?.displayName ?? '暂无数据',
             ),
             DesignRow(
-              title: '本机 IPv4',
-              value: p.networkBinding?.localIpv4Address ?? '暂不可用',
+              title: 'IP',
+              value: p.networkBinding?.localIpv4Address ?? '暂无数据',
             ),
             DesignRow(
-              title: '实际远端端点',
+              title: '认证服务器',
               value: remote == null
-                  ? '尚无协议 socket 观察'
+                  ? '暂无数据'
                   : '${remote.address}:${remote.port}',
             ),
             DesignRow(
-              title: '认证建立',
-              value: p.establishedAt?.toLocal().toString() ?? '暂不可用',
+              title: '连接建立时间',
+              value: p.establishedAt?.toLocal().toString() ?? '暂无数据',
             ),
             if (p.establishedAt != null)
               DesignRow(title: '连接时长', value: p.statusDetail),
@@ -175,7 +174,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
               ),
               if (controller.diagnosisUnavailable != null)
                 DesignRow(
-                  title: '暂不可用',
+                  title: '暂无数据',
                   value: controller.diagnosisUnavailable,
                 ),
               if (controller.diagnosisError != null)
@@ -214,7 +213,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
           ),
           const SizedBox(height: 7),
           const DesignHelper(
-            '刷新只读路由；探测仅发送一次有界 IP 回显。未收到回复不代表断网；收到回显也不证明认证成功或 Internet 可用。路由、会话与 socket 是不同时间的观察。',
+            '探测仅检查指定网络路径。没有回复不一定断网；收到回复也不证明认证成功或 Internet 可用。',
           ),
           const SizedBox(height: 16),
           DesignGroup(
