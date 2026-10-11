@@ -104,6 +104,66 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 24),
+          const DesignSectionTitle('公告'),
+          DesignGroup(
+            children: [
+              _AnnouncementSelector<GuiAnnouncementFrequency>(
+                dropdownKey: const ValueKey('announcement-frequency-selector'),
+                label: '自动显示公告',
+                helper: switch (appearance?.announcementFrequency ??
+                    GuiAnnouncementFrequency.dailyFirstConnection) {
+                  GuiAnnouncementFrequency.everyConnection => '连接成功后显示公告。',
+                  GuiAnnouncementFrequency.dailyFirstConnection => null,
+                  GuiAnnouncementFrequency.manualOnly => '需要时手动查看。',
+                },
+                value:
+                    appearance?.announcementFrequency ??
+                    GuiAnnouncementFrequency.dailyFirstConnection,
+                options: const [
+                  (GuiAnnouncementFrequency.everyConnection, '每次连接成功后'),
+                  (GuiAnnouncementFrequency.dailyFirstConnection, '每天首次连接成功后'),
+                  (GuiAnnouncementFrequency.manualOnly, '仅手动查看'),
+                ],
+                onChanged: appearance == null
+                    ? null
+                    : (value) => appearance.announcementFrequency = value,
+              ),
+              if ((appearance?.announcementFrequency ??
+                      GuiAnnouncementFrequency.dailyFirstConnection) !=
+                  GuiAnnouncementFrequency.manualOnly)
+                _AnnouncementSelector<GuiHiddenAnnouncementBehavior>(
+                  dropdownKey: const ValueKey(
+                    'hidden-announcement-behavior-selector',
+                  ),
+                  label: '主窗口隐藏时',
+                  helper: switch (appearance?.hiddenAnnouncementBehavior ??
+                      GuiHiddenAnnouncementBehavior.notify) {
+                    GuiHiddenAnnouncementBehavior.notify => null,
+                    GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告。',
+                    GuiHiddenAnnouncementBehavior.showImmediately =>
+                      '可在主窗口隐藏时直接查看公告。',
+                  },
+                  value:
+                      appearance?.hiddenAnnouncementBehavior ??
+                      GuiHiddenAnnouncementBehavior.notify,
+                  options: const [
+                    (GuiHiddenAnnouncementBehavior.showImmediately, '直接显示公告'),
+                    (GuiHiddenAnnouncementBehavior.notify, '发送系统通知点击查看'),
+                    (GuiHiddenAnnouncementBehavior.onRestore, '恢复主窗口时显示'),
+                  ],
+                  onChanged: appearance == null
+                      ? null
+                      : (value) =>
+                            appearance.hiddenAnnouncementBehavior = value,
+                ),
+              if (announcementFeedback != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: DesignHelper(announcementFeedback!),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
           const DesignSectionTitle('应用'),
           DesignGroup(
             children: [
@@ -162,66 +222,6 @@ class SettingsPage extends StatelessWidget {
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const DesignSectionTitle('公告'),
-          DesignGroup(
-            children: [
-              _AnnouncementSelector<GuiAnnouncementFrequency>(
-                dropdownKey: const ValueKey('announcement-frequency-selector'),
-                label: '自动显示公告',
-                helper: switch (appearance?.announcementFrequency ??
-                    GuiAnnouncementFrequency.dailyFirstConnection) {
-                  GuiAnnouncementFrequency.everyConnection => '连接成功后显示公告。',
-                  GuiAnnouncementFrequency.dailyFirstConnection => null,
-                  GuiAnnouncementFrequency.manualOnly => '需要时手动查看。',
-                },
-                value:
-                    appearance?.announcementFrequency ??
-                    GuiAnnouncementFrequency.dailyFirstConnection,
-                options: const [
-                  (GuiAnnouncementFrequency.everyConnection, '每次连接成功后'),
-                  (GuiAnnouncementFrequency.dailyFirstConnection, '每天首次连接成功后'),
-                  (GuiAnnouncementFrequency.manualOnly, '仅手动查看'),
-                ],
-                onChanged: appearance == null
-                    ? null
-                    : (value) => appearance.announcementFrequency = value,
-              ),
-              if ((appearance?.announcementFrequency ??
-                      GuiAnnouncementFrequency.dailyFirstConnection) !=
-                  GuiAnnouncementFrequency.manualOnly)
-                _AnnouncementSelector<GuiHiddenAnnouncementBehavior>(
-                  dropdownKey: const ValueKey(
-                    'hidden-announcement-behavior-selector',
-                  ),
-                  label: '主窗口隐藏时',
-                  helper: switch (appearance?.hiddenAnnouncementBehavior ??
-                      GuiHiddenAnnouncementBehavior.notify) {
-                    GuiHiddenAnnouncementBehavior.notify => null,
-                    GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告。',
-                    GuiHiddenAnnouncementBehavior.showImmediately =>
-                      '可在主窗口隐藏时直接查看公告。',
-                  },
-                  value:
-                      appearance?.hiddenAnnouncementBehavior ??
-                      GuiHiddenAnnouncementBehavior.notify,
-                  options: const [
-                    (GuiHiddenAnnouncementBehavior.showImmediately, '直接显示公告'),
-                    (GuiHiddenAnnouncementBehavior.notify, '发送系统通知点击查看'),
-                    (GuiHiddenAnnouncementBehavior.onRestore, '恢复主窗口时显示'),
-                  ],
-                  onChanged: appearance == null
-                      ? null
-                      : (value) =>
-                            appearance.hiddenAnnouncementBehavior = value,
-                ),
-              if (announcementFeedback != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: DesignHelper(announcementFeedback!),
-                ),
             ],
           ),
           const SizedBox(height: 7),

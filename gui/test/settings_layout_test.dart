@@ -38,6 +38,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('连接')).dy,
+        lessThan(tester.getTopLeft(find.text('公告')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('公告')).dy,
+        lessThan(tester.getTopLeft(find.text('应用')).dy),
+      );
       final back = find.byKey(const ValueKey('design-back-button'));
       final before = tester.getRect(back);
       expect(before.left, 24);
