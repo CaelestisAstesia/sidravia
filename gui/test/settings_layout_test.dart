@@ -56,6 +56,12 @@ void main() {
         find.byKey(const ValueKey('close-behavior-frame')),
       );
       expect(closeBox.height, appearanceBox.height);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('log-level-row'))).height,
+        tester.getSize(find.byKey(const ValueKey('appearance-row'))).height,
+      );
+      expect(find.text('INFO'), findsOneWidget);
+      expect(find.text('普通（info）'), findsNothing);
       expect(closeBox.right, appearanceBox.right);
       expect(find.text('每天只显示一次。'), findsNothing);
       expect(find.text('通知可点击查看公告。'), findsNothing);
