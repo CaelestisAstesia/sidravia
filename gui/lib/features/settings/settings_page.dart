@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/features/settings/about_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
@@ -15,13 +16,9 @@ class SettingsPage extends StatelessWidget {
     required this.onNavigate,
     required this.onBack,
     this.desktopPresence,
-    this.announcementFeedback,
-    this.backLabel = '返回仪表盘',
   });
   final GuiController controller;
   final DesktopPresence? desktopPresence;
-  final String? announcementFeedback;
-  final String backLabel;
   final ValueChanged<AppPage> onNavigate;
   final VoidCallback onBack;
   @override
@@ -37,7 +34,7 @@ class SettingsPage extends StatelessWidget {
         maxWidth: double.infinity,
         horizontalPadding: 24,
         children: [
-          DesignHeader(title: '设置', onBack: onBack, backLabel: backLabel),
+          DesignHeader(title: '设置', onBack: onBack),
           const DesignSectionTitle('连接'),
           DesignGroup(
             children: [
@@ -93,14 +90,6 @@ class SettingsPage extends StatelessWidget {
                 controller.capabilities.settingsDisabledReason ?? '',
               ),
             ),
-          if (controller.notice != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                controller.notice!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ),
           const SizedBox(height: 24),
           const DesignSectionTitle('公告'),
           DesignGroup(
@@ -110,9 +99,9 @@ class SettingsPage extends StatelessWidget {
                 label: '自动显示公告',
                 helper: switch (appearance?.announcementFrequency ??
                     GuiAnnouncementFrequency.dailyFirstConnection) {
-                  GuiAnnouncementFrequency.everyConnection => '连接成功后显示公告。',
+                  GuiAnnouncementFrequency.everyConnection => '连接成功后显示公告',
                   GuiAnnouncementFrequency.dailyFirstConnection => null,
-                  GuiAnnouncementFrequency.manualOnly => '需要时手动查看。',
+                  GuiAnnouncementFrequency.manualOnly => '需要时手动查看',
                 },
                 value:
                     appearance?.announcementFrequency ??
@@ -137,9 +126,9 @@ class SettingsPage extends StatelessWidget {
                   helper: switch (appearance?.hiddenAnnouncementBehavior ??
                       GuiHiddenAnnouncementBehavior.notify) {
                     GuiHiddenAnnouncementBehavior.notify => null,
-                    GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告。',
+                    GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告',
                     GuiHiddenAnnouncementBehavior.showImmediately =>
-                      '可在主窗口隐藏时直接查看公告。',
+                      '可在主窗口隐藏时直接查看公告',
                   },
                   value:
                       appearance?.hiddenAnnouncementBehavior ??
@@ -153,11 +142,6 @@ class SettingsPage extends StatelessWidget {
                       ? null
                       : (value) =>
                             appearance.hiddenAnnouncementBehavior = value,
-                ),
-              if (announcementFeedback != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: DesignHelper(announcementFeedback!),
                 ),
             ],
           ),
@@ -285,22 +269,13 @@ class SettingsPage extends StatelessWidget {
               DesignRow(
                 title: '关于 Sidravia',
                 subtitle: '版本、许可与项目链接',
-                onTap: () => showAboutDialog(
-                  context: context,
-                  applicationName: 'Sidravia',
-                  applicationVersion:
-                      controller.snapshot?.daemon.productVersion ?? '暂不可用',
-                  children: [
-                    const Text('https://github.com/CaelestisAstesia/sidravia'),
-                  ],
+                onTap: () => showSidraviaAbout(
+                  context,
+                  version: controller.snapshot?.daemon.productVersion ?? '暂不可用',
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 7),
-          if (desktopPresence?.feedback != null)
-            DesignHelper(desktopPresence!.feedback!),
-          if (appearance?.feedback != null) DesignHelper(appearance!.feedback!),
         ],
       ),
     );

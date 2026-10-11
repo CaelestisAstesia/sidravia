@@ -1,3 +1,6 @@
+import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
+import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:flutter/material.dart';
@@ -60,15 +63,21 @@ class HomePage extends StatelessWidget {
     required this.controller,
     required this.onNavigate,
     this.announcements,
+    this.desktopPresence,
   });
   final GuiController controller;
   final ValueChanged<AppPage> onNavigate;
   final SchoolAnnouncementController? announcements;
+  final DesktopPresence? desktopPresence;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([controller, ?announcements]),
+      animation: Listenable.merge([
+        controller,
+        ?announcements,
+        ?desktopPresence,
+      ]),
       builder: (context, _) => _build(context),
     );
   }
@@ -112,7 +121,10 @@ class HomePage extends StatelessWidget {
             ? () => _perform(p.secondaryAction)
             : null,
         onPrimary: p.primaryEnabled ? () => _perform(p.primaryAction) : null,
-        actionError: p.actionError,
+        actionError:
+            p.actionError ??
+            desktopPresence?.feedback ??
+            AppearanceScope.maybeOf(context)?.feedback,
         issue: p.issue,
         notice: notice,
       ),
@@ -314,13 +326,9 @@ class _HomeActions extends StatelessWidget {
         ),
         if (data.actionError != null) ...[
           SizedBox(height: 12),
-          Text(
-            data.actionError!,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.error,
-              fontSize: 12,
-            ),
+          FeedbackPill(
+            key: const ValueKey('home-action-feedback'),
+            message: data.actionError!,
           ),
         ],
         if (data.notice != null) ...[
@@ -337,7 +345,10 @@ class _HomeActions extends StatelessWidget {
           if (data.notice!.feedback != null)
             Padding(
               padding: const EdgeInsets.only(left: 12, right: 12, top: 3),
-              child: DesignHelper(data.notice!.feedback!),
+              child: FeedbackPill(
+                key: const ValueKey('home-announcement-feedback'),
+                message: data.notice!.feedback!,
+              ),
             ),
         ],
       ],

@@ -9,7 +9,7 @@ import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 void main() {
   for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
-    for (final label in ['返回', '返回仪表盘']) {
+    for (final label in ['返回']) {
       testWidgets('back button equal horizontal gutters $platform $label', (
         tester,
       ) async {
@@ -17,7 +17,7 @@ void main() {
           MaterialApp(
             theme: AppTheme.light().copyWith(platform: platform),
             home: Scaffold(
-              body: DesignHeader(title: '设置', backLabel: label, onBack: () {}),
+              body: DesignHeader(title: '设置', onBack: () {}),
             ),
           ),
         );
@@ -78,7 +78,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(back.bottom, lessThan(title.top));
+      expect(back.center.dy, closeTo(title.center.dy, 1));
       await tester.tap(find.byKey(const ValueKey('design-back-button')));
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsNothing);

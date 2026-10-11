@@ -126,7 +126,7 @@ void main() {
     );
   }
   testWidgets(
-    'announcement meaning and native feedback remain in announcement card',
+    'announcement meaning remains without duplicate settings feedback',
     (tester) async {
       final client = OfflineDemoClient();
       final c = GuiController(
@@ -147,7 +147,6 @@ void main() {
                   controller: c,
                   onBack: () {},
                   onNavigate: (_) {},
-                  announcementFeedback: '公告加载失败',
                 ),
               ),
             ),
@@ -165,7 +164,7 @@ void main() {
         );
         expect(
           find.descendant(of: card, matching: find.text('公告加载失败')),
-          findsOneWidget,
+          findsNothing,
         );
         expect(find.text('自动重连成功也计入连接成功。'), findsNothing);
         expect(find.textContaining('修改后从下次连接生效'), findsNothing);

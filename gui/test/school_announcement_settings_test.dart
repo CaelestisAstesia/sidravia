@@ -64,8 +64,8 @@ void main() {
       final frequencyKey = const ValueKey('announcement-frequency-selector');
       final hiddenKey = const ValueKey('hidden-announcement-behavior-selector');
       expect(find.text('自动显示公告'), findsOneWidget);
-      expect(find.text('连接成功后显示公告。'), findsOneWidget);
-      expect(find.text('恢复主窗口时显示公告。'), findsOneWidget);
+      expect(find.text('连接成功后显示公告'), findsOneWidget);
+      expect(find.text('恢复主窗口时显示公告'), findsOneWidget);
       expect(
         tester
             .widget<DropdownButton<GuiAnnouncementFrequency>>(

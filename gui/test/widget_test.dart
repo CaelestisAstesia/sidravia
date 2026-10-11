@@ -59,7 +59,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
-      expect(find.text('返回仪表盘'), findsOneWidget);
+      expect(find.text('返回'), findsOneWidget);
       expect(
         await shellKey.currentState!.navigateFromTray(AppPage.home),
         isTrue,
@@ -241,7 +241,7 @@ void main() {
         expect(find.byType(AdvancedPage), findsOneWidget);
         await tapVisible(find.text('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
-        await tapVisible(find.text('返回仪表盘'));
+        await tapVisible(find.text('返回'));
         expect(find.byType(HomePage), findsOneWidget);
 
         await tapVisible(find.byTooltip('设置'));

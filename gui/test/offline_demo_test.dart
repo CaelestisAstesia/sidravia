@@ -248,7 +248,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.capabilities.configuration!.autoLogin, isTrue);
       expect(client.operations, contains('configuration.set_auto_login'));
-      await tester.tap(find.text('返回仪表盘'));
+      await tester.tap(find.text('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
 

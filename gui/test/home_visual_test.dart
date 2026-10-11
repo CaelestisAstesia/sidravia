@@ -159,16 +159,20 @@ void main() {
         home: HomePage(controller: controller, onNavigate: (_) {}),
       ),
     );
-    expect(find.text('当前状态无法执行此操作。'), findsNothing);
+    expect(find.text('当前状态无法执行此操作'), findsNothing);
     await tester.tap(find.text('断开连接'));
     await tester.pump();
-    expect(find.text('当前状态无法执行此操作。'), findsOneWidget);
+    expect(find.text('当前状态无法执行此操作'), findsOneWidget);
+    expect(client.stopCalls, 1);
+    await tester.tap(find.byTooltip('关闭提示'));
+    await tester.pump();
+    expect(find.text('当前状态无法执行此操作'), findsNothing);
     expect(client.stopCalls, 1);
     client.failStop = false;
     await tester.tap(find.text('断开连接'));
     await tester.pump();
     expect(client.stopCalls, 2);
-    expect(find.text('当前状态无法执行此操作。'), findsNothing);
+    expect(find.text('当前状态无法执行此操作'), findsNothing);
     controller.dispose();
   });
 

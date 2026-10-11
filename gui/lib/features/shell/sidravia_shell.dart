@@ -105,13 +105,10 @@ class SidraviaShellState extends State<SidraviaShell> {
                 AppPage.home => HomePage(
                   controller: widget.controller,
                   announcements: widget.announcements,
+                  desktopPresence: widget.desktopPresence,
                   onNavigate: _go,
                 ),
                 AppPage.settings => SettingsPage(
-                  backLabel: _history.isEmpty || _history.last == AppPage.home
-                      ? '返回仪表盘'
-                      : '返回',
-                  announcementFeedback: widget.announcements?.feedback,
                   desktopPresence: widget.desktopPresence,
                   controller: widget.controller,
                   onNavigate: _go,

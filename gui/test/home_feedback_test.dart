@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
 void main() {
   testWidgets(
@@ -48,14 +48,22 @@ void main() {
       final notice = tester.getRect(find.byKey(const ValueKey('home-notice')));
       expect(tester.getRect(actionError).bottom, lessThan(notice.top));
       expect(tester.getRect(feedback).top, greaterThanOrEqualTo(notice.bottom));
-      expect(tester.getRect(feedback).left, notice.left + 12);
+      final pill = find.byKey(const ValueKey('home-announcement-feedback'));
+      expect(tester.getRect(pill).center.dx, notice.center.dx);
       expect(
-        find.ancestor(of: feedback, matching: find.byType(DesignHelper)),
+        find.ancestor(of: feedback, matching: find.byType(FeedbackPill)),
         findsOneWidget,
       );
       final text = tester.widget<Text>(feedback);
       final context = tester.element(feedback);
       expect(text.style!.color, Theme.of(context).colorScheme.onSurfaceVariant);
+      await tester.tap(
+        find.descendant(of: pill, matching: find.byTooltip('关闭提示')),
+      );
+      await tester.pump();
+      expect(feedback, findsNothing);
+      expect(actionError, findsOneWidget);
+      expect(find.byKey(const ValueKey('home-notice')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

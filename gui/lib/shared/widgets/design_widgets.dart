@@ -118,62 +118,83 @@ class DesignHeader extends StatelessWidget {
     super.key,
     required this.title,
     required this.onBack,
-    this.backLabel = '返回',
     this.bottomSpacing = 24,
-    this.centerTitle = false,
+    this.actions = const [],
   });
-  final String title, backLabel;
-  final bool centerTitle;
+  final String title;
   final double bottomSpacing;
   final VoidCallback onBack;
+  final List<Widget> actions;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: bottomSpacing),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextButton(
-          key: const ValueKey('design-back-button'),
-          onPressed: onBack,
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            minimumSize:
-                (Theme.of(context).platform == TargetPlatform.android ||
-                    Theme.of(context).platform == TargetPlatform.iOS)
-                ? const Size(48, 48)
-                : Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.standard,
-            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.chevron_left, size: 16),
-              const SizedBox(width: 7),
-              Text(
-                backLabel,
-                style: const TextStyle(fontSize: 13, height: 20 / 13),
+  Widget build(BuildContext context) {
+    final touch =
+        Theme.of(context).platform == TargetPlatform.android ||
+        Theme.of(context).platform == TargetPlatform.iOS;
+    Widget backButton({bool placeholder = false}) => TextButton(
+      key: placeholder ? null : const ValueKey('design-back-button'),
+      onPressed: onBack,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        minimumSize: Size(0, touch ? 48 : 42),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.standard,
+        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.chevron_left, size: 16),
+          const SizedBox(width: 7),
+          if (placeholder)
+            Builder(
+              builder: (context) => RichText(
+                textScaler: MediaQuery.textScalerOf(context),
+                text: TextSpan(
+                  text: '返回',
+                  style: DefaultTextStyle.of(context).style
+                      .merge(const TextStyle(fontSize: 13, height: 20 / 13)),
+                ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: centerTitle ? Alignment.center : Alignment.centerLeft,
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 20,
-              height: 1.4,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -.2,
+            )
+          else
+            const Text('返回', style: TextStyle(fontSize: 13, height: 20 / 13)),
+        ],
+      ),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomSpacing),
+      child: Row(
+        children: [
+          backButton(),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 20,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+                letterSpacing: -.2,
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(width: 12),
+          if (actions.isEmpty)
+            ExcludeSemantics(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0,
+                  child: backButton(placeholder: true),
+                ),
+              ),
+            )
+          else
+            Row(mainAxisSize: MainAxisSize.min, children: actions),
+        ],
+      ),
+    );
+  }
 }
 
 class DesignSectionTitle extends StatelessWidget {
@@ -482,7 +503,6 @@ Future<T?> showDesignChoice<T>(
               padding: const EdgeInsets.all(16),
               child: DesignHeader(
                 title: title,
-                centerTitle: true,
                 onBack: () => Navigator.pop(context),
                 bottomSpacing: 0,
               ),
