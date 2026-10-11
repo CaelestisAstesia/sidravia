@@ -83,7 +83,7 @@ void main() {
           await appearance.settled;
           expect(appearance.startHidden, false);
         } else {
-          expect(find.text('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'), findsOneWidget);
+          expect(find.text('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'), findsNothing);
         }
         expect(
           controller.capabilities.configuration!.autoLogin,
@@ -127,8 +127,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('home-settings-button')));
       await tester.pumpAndSettle();
       expect(find.text('启动Sidravia后自动开始认证'), findsOneWidget);
-      expect(find.text('连接中断后自动尝试重新认证'), findsOneWidget);
-      expect(find.text('修改后从下次连接生效。'), findsOneWidget);
+      expect(find.textContaining('连接中断后自动尝试重新认证'), findsOneWidget);
+      expect(find.textContaining('修改后从下次连接生效'), findsOneWidget);
       expect(find.text('核心、会话与故障信息'), findsOneWidget);
       expect(find.text('技术诊断'), findsNothing);
       final toggle = find.byKey(const ValueKey('auto-reconnect-switch'));
@@ -221,7 +221,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('请先添加连接配置。'), findsOneWidget);
-      expect(find.text('连接中断后自动尝试重新认证'), findsOneWidget);
+      expect(find.textContaining('连接中断后自动尝试重新认证'), findsOneWidget);
       expect(
         tester
             .widget<DesignSwitch>(

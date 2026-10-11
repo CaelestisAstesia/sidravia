@@ -182,7 +182,6 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           children: [
             DesignChoiceRow<String>(
               title: '机构',
-              centerValue: true,
               value: _profile ?? '',
               options: [for (final p in profiles) (p.id, p.displayName)],
               onChanged: _saving || widget.controller.busy || !_canSave
@@ -213,10 +212,10 @@ class ConfigurationPageState extends State<ConfigurationPage> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        DesignHelper(
-          _credentialStored ? '密码已保存；留空保留原密码，输入则替换。' : '首次连接请填写账号和密码。',
-        ),
+        if (!_credentialStored) ...[
+          const SizedBox(height: 8),
+          const DesignHelper('首次连接请填写账号和密码。'),
+        ],
         const SizedBox(height: 18),
         FilledButton(
           onPressed: _saving || !_canSave ? null : _save,

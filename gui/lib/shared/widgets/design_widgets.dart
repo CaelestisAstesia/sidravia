@@ -238,13 +238,12 @@ class DesignRow extends StatelessWidget {
     this.onTap,
     this.danger = false,
     this.diagnostic = false,
-    this.centerValue = false,
   });
   final String title;
   final String? subtitle, value;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final bool danger, diagnostic, centerValue;
+  final bool danger, diagnostic;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -291,7 +290,7 @@ class DesignRow extends StatelessWidget {
                   fit: FlexFit.tight,
                   child: Text(
                     value!,
-                    textAlign: centerValue ? TextAlign.center : TextAlign.right,
+                    textAlign: TextAlign.right,
                     style: TextStyle(
                       fontSize: diagnostic ? 11 : 12,
                       fontFamily: 'HarmonyOS Sans',
@@ -512,21 +511,18 @@ class DesignChoiceRow<T> extends StatelessWidget {
     required this.options,
     required this.onChanged,
     this.helper,
-    this.centerValue = false,
   });
   final String title;
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T>? onChanged;
   final String? helper;
-  final bool centerValue;
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       DesignRow(
         title: title,
-        centerValue: centerValue,
         value: options.where((e) => e.$1 == value).firstOrNull?.$2 ?? '暂无数据',
         onTap: onChanged == null
             ? null
@@ -590,7 +586,7 @@ class DesignInputRow extends StatelessWidget {
                   controller: controller,
                   enabled: enabled,
                   obscureText: obscureText,
-                  textAlign: TextAlign.center,
+                  textAlign: TextAlign.right,
                   style: const TextStyle(
                     fontSize: 12,
                     fontFamily: 'HarmonyOS Sans',

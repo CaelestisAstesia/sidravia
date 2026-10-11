@@ -31,7 +31,6 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
       children: [
         DesignRow(
           title: '网卡',
-          centerValue: true,
           value: selected?.label ?? policy.summary,
           onTap: widget.onChanged == null
               ? null

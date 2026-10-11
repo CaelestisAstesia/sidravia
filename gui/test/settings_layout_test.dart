@@ -58,8 +58,18 @@ void main() {
       expect(closeBox.height, appearanceBox.height);
       expect(
         tester.getSize(find.byKey(const ValueKey('log-level-row'))).height,
-        tester.getSize(find.byKey(const ValueKey('start-hidden-row'))).height,
+        tester.getSize(find.byKey(const ValueKey('auto-login-row'))).height,
       );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('auto-reconnect-row')),
+          matching: find.textContaining('修改后从下次连接生效'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('修改后从下次连接生效。'), findsNothing);
+      expect(find.text('重启核心后生效'), findsOneWidget);
+      expect(find.text('下次启动生效；不改变自动登录或当前窗口。'), findsNothing);
       expect(find.text('INFO'), findsOneWidget);
       expect(find.text('普通（info）'), findsNothing);
       expect(closeBox.right, appearanceBox.right);

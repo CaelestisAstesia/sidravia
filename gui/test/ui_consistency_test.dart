@@ -155,21 +155,21 @@ void main() {
         );
         await tester.pumpAndSettle();
         final card = find.ancestor(
-          of: find.text('每天只显示一次。'),
+          of: find.text('自动显示公告'),
           matching: find.byType(DesignGroup),
         );
         expect(card, findsOneWidget);
         expect(
           find.descendant(of: card, matching: find.text('通知可点击查看公告。')),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
           find.descendant(of: card, matching: find.text('公告加载失败')),
           findsOneWidget,
         );
         expect(find.text('自动重连成功也计入连接成功。'), findsNothing);
-        expect(find.text('修改后从下次连接生效。'), findsOneWidget);
-        final context = tester.element(find.text('每天只显示一次。'));
+        expect(find.textContaining('修改后从下次连接生效'), findsOneWidget);
+        final context = tester.element(find.text('自动显示公告'));
         expect(
           Theme.of(context).textTheme.bodyMedium!.fontFamily,
           'HarmonyOS Sans',

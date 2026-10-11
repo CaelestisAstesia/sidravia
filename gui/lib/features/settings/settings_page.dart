@@ -47,6 +47,7 @@ class SettingsPage extends StatelessWidget {
                 onTap: () => onNavigate(AppPage.configuration),
               ),
               DesignRow(
+                key: const ValueKey('auto-login-row'),
                 title: '启动时自动登录',
                 subtitle: '启动Sidravia后自动开始认证',
                 trailing: DesignSwitch(
@@ -65,8 +66,9 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               DesignRow(
+                key: const ValueKey('auto-reconnect-row'),
                 title: '自动重连',
-                subtitle: '连接中断后自动尝试重新认证',
+                subtitle: '连接中断后自动尝试重新认证\n修改后从下次连接生效',
                 trailing: DesignSwitch(
                   key: const ValueKey('auto-reconnect-switch'),
                   label: '自动重连',
@@ -90,11 +92,6 @@ class SettingsPage extends StatelessWidget {
               child: DesignHelper(
                 controller.capabilities.settingsDisabledReason ?? '',
               ),
-            ),
-          if (c != null)
-            const Padding(
-              padding: EdgeInsets.only(top: 7),
-              child: DesignHelper('修改后从下次连接生效。'),
             ),
           if (controller.notice != null)
             Padding(
@@ -181,7 +178,7 @@ class SettingsPage extends StatelessWidget {
               DesignRow(
                 key: const ValueKey('log-level-row'),
                 title: '日志等级',
-                subtitle: '重启核心后生效。',
+                subtitle: '重启核心后生效',
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -273,7 +270,6 @@ class SettingsPage extends StatelessWidget {
               DesignRow(
                 key: const ValueKey('start-hidden-row'),
                 title: '启动时隐藏到托盘',
-                subtitle: '下次启动生效；不改变自动登录或当前窗口。',
                 trailing: DesignSwitch(
                   key: const ValueKey('start-hidden-switch'),
                   label: '启动时隐藏到托盘',
