@@ -12,6 +12,19 @@ class Appearance extends ValueNotifier<ThemeMode> {
   Future<void>? _initialization;
   Future<void> _writes = Future.value();
   int _revision = 0, _appearanceRevision = 0, _diagnosticsRevision = 0;
+  int _notificationRevision = 0;
+  GuiNotificationMode _notificationMode = GuiNotificationMode.abnormal;
+  GuiNotificationMode get notificationMode => _notificationMode;
+  set notificationMode(GuiNotificationMode next) {
+    final loading = initialize();
+    _notificationRevision++;
+    final revision = ++_revision;
+    final changed = _notificationMode != next;
+    _notificationMode = next;
+    if (!_disposed && changed) notifyListeners();
+    _queueCurrent(loading, revision);
+  }
+
   int _logRevision = 0;
   String _logLevel = "info";
   String get logLevel => _logLevel;
@@ -120,6 +133,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
 
   GuiSettings _snapshot() => GuiSettings(
     logLevel: _logLevel,
+    notificationMode: _notificationMode,
     appearanceMode: _appearanceMode(value),
     diagnosticsExpanded: _diagnosticsExpanded,
     closeBehavior: _closeBehavior,
@@ -140,10 +154,12 @@ class Appearance extends ValueNotifier<ThemeMode> {
     _frequencyRevision,
     _hiddenBehaviorRevision,
     _automaticDateRevision,
+    _notificationRevision,
   );
 
   Future<void> initialize() => _initialization ??= _load();
   Future<void> _load() async {
+    final notificationRevision = _notificationRevision;
     final logRevision = _logRevision;
     final appearanceRevision = _appearanceRevision;
     final diagnosticsRevision = _diagnosticsRevision;
@@ -156,8 +172,12 @@ class Appearance extends ValueNotifier<ThemeMode> {
       final stored = await _store.read();
       if (_disposed || stored == null) return;
       var diagnosticsChanged = false;
+      if (notificationRevision == _notificationRevision) {
+        diagnosticsChanged = _notificationMode != stored.notificationMode;
+        _notificationMode = stored.notificationMode;
+      }
       if (logRevision == _logRevision) {
-        diagnosticsChanged = _logLevel != stored.logLevel;
+        diagnosticsChanged = diagnosticsChanged || _logLevel != stored.logLevel;
         _logLevel = stored.logLevel;
       }
       if (appearanceRevision == _appearanceRevision) {
@@ -166,7 +186,9 @@ class Appearance extends ValueNotifier<ThemeMode> {
         );
       }
       if (diagnosticsRevision == _diagnosticsRevision) {
-        diagnosticsChanged = _diagnosticsExpanded != stored.diagnosticsExpanded;
+        diagnosticsChanged =
+            diagnosticsChanged ||
+            _diagnosticsExpanded != stored.diagnosticsExpanded;
         _diagnosticsExpanded = stored.diagnosticsExpanded;
       }
       if (closeRevision == _closeRevision) {
@@ -226,6 +248,7 @@ class Appearance extends ValueNotifier<ThemeMode> {
     int frequencyRevision,
     int hiddenBehaviorRevision,
     int automaticDateRevision,
+    int notificationRevision,
   ) {
     _writes = _writes.then((_) async {
       await loading;
@@ -234,6 +257,9 @@ class Appearance extends ValueNotifier<ThemeMode> {
         await _store.save(
           GuiSettings(
             logLevel: _logRevision == 0 ? _logLevel : queued.logLevel,
+            notificationMode: notificationRevision == 0
+                ? _notificationMode
+                : queued.notificationMode,
             appearanceMode: appearanceRevision == 0
                 ? _appearanceMode(value)
                 : queued.appearanceMode,

@@ -4,6 +4,8 @@ enum GuiAppearanceMode { system, light, dark }
 
 enum GuiCloseBehavior { hideToTray, exit }
 
+enum GuiNotificationMode { silent, abnormal, all }
+
 enum GuiAnnouncementFrequency {
   everyConnection,
   dailyFirstConnection,
@@ -22,6 +24,7 @@ class GuiSettings {
     this.hiddenAnnouncementBehavior = GuiHiddenAnnouncementBehavior.notify,
     this.lastAutomaticAnnouncementDate,
     this.logLevel = "info",
+    this.notificationMode = GuiNotificationMode.abnormal,
   });
 
   final GuiAppearanceMode appearanceMode;
@@ -32,6 +35,7 @@ class GuiSettings {
   final GuiHiddenAnnouncementBehavior hiddenAnnouncementBehavior;
   final String? lastAutomaticAnnouncementDate;
   final String logLevel;
+  final GuiNotificationMode notificationMode;
 }
 
 abstract interface class GuiSettingsStore {
@@ -80,8 +84,13 @@ GuiSettings decodeGuiSettings(String source) {
     );
   }
   if ((version == 3 && value.length == 5 ||
-          (version == 4 || version == 5) &&
-              value.length == (version == 5 ? 9 : 8) &&
+          (version == 4 || version == 5 || version == 6) &&
+              value.length ==
+                  (version == 6
+                      ? 10
+                      : version == 5
+                      ? 9
+                      : 8) &&
               value.containsKey('lastAutomaticAnnouncementDate')) &&
       value['diagnosticsExpanded'] is bool &&
       value['closeBehavior'] is String &&
@@ -89,7 +98,14 @@ GuiSettings decodeGuiSettings(String source) {
     return GuiSettings(
       appearanceMode: mode,
       diagnosticsExpanded: value['diagnosticsExpanded'] as bool,
-      logLevel: version == 5 ? _logLevel(value['logLevel']) : 'info',
+      logLevel: version >= 5 ? _logLevel(value['logLevel']) : 'info',
+      notificationMode: version == 6
+          ? GuiNotificationMode.values.firstWhere(
+              (mode) => mode.name == value['notificationMode'],
+              orElse: () =>
+                  throw const FormatException('Invalid notification mode'),
+            )
+          : GuiNotificationMode.abnormal,
       closeBehavior: GuiCloseBehavior.values.firstWhere(
         (behavior) => behavior.name == value['closeBehavior'],
         orElse: () => throw const FormatException('Invalid close behavior'),
@@ -141,7 +157,7 @@ String? _announcementDate(Object? date) {
 }
 
 String encodeGuiSettings(GuiSettings settings) =>
-    '${jsonEncode({'schemaVersion': 5, 'logLevel': _logLevel(settings.logLevel), 'appearanceMode': settings.appearanceMode.name, 'diagnosticsExpanded': settings.diagnosticsExpanded, 'closeBehavior': settings.closeBehavior.name, 'startHidden': settings.startHidden, 'announcementFrequency': settings.announcementFrequency.name, 'hiddenAnnouncementBehavior': settings.hiddenAnnouncementBehavior.name, 'lastAutomaticAnnouncementDate': _announcementDate(settings.lastAutomaticAnnouncementDate)})}\n';
+    '${jsonEncode({'schemaVersion': 6, 'notificationMode': settings.notificationMode.name, 'logLevel': _logLevel(settings.logLevel), 'appearanceMode': settings.appearanceMode.name, 'diagnosticsExpanded': settings.diagnosticsExpanded, 'closeBehavior': settings.closeBehavior.name, 'startHidden': settings.startHidden, 'announcementFrequency': settings.announcementFrequency.name, 'hiddenAnnouncementBehavior': settings.hiddenAnnouncementBehavior.name, 'lastAutomaticAnnouncementDate': _announcementDate(settings.lastAutomaticAnnouncementDate)})}\n';
 
 String _logLevel(Object? value) {
   if (!const {'info', 'debug', 'trace'}.contains(value)) {

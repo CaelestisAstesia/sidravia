@@ -121,7 +121,10 @@ class SettingsPage extends StatelessWidget {
                   label: '主窗口隐藏时',
                   helper: switch (appearance?.hiddenAnnouncementBehavior ??
                       GuiHiddenAnnouncementBehavior.notify) {
-                    GuiHiddenAnnouncementBehavior.notify => null,
+                    GuiHiddenAnnouncementBehavior.notify =>
+                      appearance?.notificationMode == GuiNotificationMode.silent
+                          ? '系统通知已关闭，可在首页查看公告'
+                          : null,
                     GuiHiddenAnnouncementBehavior.onRestore => '恢复主窗口时显示公告',
                     GuiHiddenAnnouncementBehavior.showImmediately =>
                       '可在主窗口隐藏时直接查看公告',
@@ -153,6 +156,24 @@ class SettingsPage extends StatelessWidget {
                   onChanged: appearance == null
                       ? null
                       : (value) => appearance.value = value,
+                ),
+              ),
+              DesignRow(
+                title: '通知提醒',
+                trailing: _SettingsDropdown<GuiNotificationMode>(
+                  frameKey: const ValueKey('notification-mode-frame'),
+                  dropdownKey: const ValueKey('notification-mode-selector'),
+                  value:
+                      appearance?.notificationMode ??
+                      GuiNotificationMode.abnormal,
+                  labels: const {
+                    GuiNotificationMode.silent: '不提醒',
+                    GuiNotificationMode.abnormal: '仅异常',
+                    GuiNotificationMode.all: '全部提醒',
+                  },
+                  onChanged: appearance == null
+                      ? null
+                      : (value) => appearance.notificationMode = value,
                 ),
               ),
               _LogLevelSettingRow(

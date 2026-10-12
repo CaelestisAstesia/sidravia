@@ -68,7 +68,8 @@ void main() {
     () async {
       final legacy =
           jsonDecode(encodeGuiSettings(stored)) as Map<String, dynamic>
-            ..remove('logLevel');
+            ..remove('logLevel')
+            ..remove('notificationMode');
       legacy['schemaVersion'] = 4;
       final source = jsonEncode(legacy);
       File(path).writeAsStringSync(source);
@@ -88,12 +89,12 @@ void main() {
       await store.save(restored);
       final upgraded =
           jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
-      expect(upgraded['schemaVersion'], 5);
+      expect(upgraded['schemaVersion'], 6);
       expect(upgraded['logLevel'], 'info');
     },
   );
 
-  test('schema5 exact fields roundtrip announcements and log level, canonical dates', () async {
+  test('schema6 exact fields roundtrip announcements and log level, canonical dates', () async {
     for (final frequency in GuiAnnouncementFrequency.values) {
       for (final hidden in GuiHiddenAnnouncementBehavior.values) {
         for (final date in [
@@ -122,6 +123,7 @@ void main() {
           expect(raw.keys.toSet(), {
             'schemaVersion',
             'logLevel',
+            'notificationMode',
             'appearanceMode',
             'diagnosticsExpanded',
             'closeBehavior',
@@ -130,7 +132,7 @@ void main() {
             'hiddenAnnouncementBehavior',
             'lastAutomaticAnnouncementDate',
           });
-          expect(raw['schemaVersion'], 5);
+          expect(raw['schemaVersion'], 6);
           expect(raw['logLevel'], 'debug');
           final restored = (await FileGuiSettingsStore(path).read())!;
           expect(restored.logLevel, 'debug');
@@ -152,7 +154,7 @@ void main() {
       final base =
           jsonDecode(encodeGuiSettings(stored)) as Map<String, dynamic>;
       final invalid = <Map<String, dynamic>>[
-        {...base, 'schemaVersion': 6},
+        {...base, 'schemaVersion': 7},
         for (final level in ['unknown', null, true, 1])
           {...base, 'logLevel': level},
         {...base, 'announcementFrequency': 'unknown'},
