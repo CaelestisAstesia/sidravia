@@ -21,7 +21,7 @@ func checkedPath(path string) error {
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if err == nil && unsafeDataPath(info) {
 			return fmt.Errorf("refuse linked data path")
 		}
 		parent := filepath.Dir(current)

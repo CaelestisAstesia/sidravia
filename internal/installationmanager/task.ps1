@@ -46,6 +46,17 @@ function Read-Task {
     }
 }
 
+function Task-Enabled($Task) {
+    return $null -ne $Task -and $Task.Settings.Enabled -and $Task.Triggers[0].Enabled
+}
+
+function Startup-SettingsMatch($Task) {
+    return (Task-Enabled $Task) -and
+        -not $Task.Settings.DisallowStartIfOnBatteries -and
+        -not $Task.Settings.StopIfGoingOnBatteries -and
+        [string]$Task.Settings.ExecutionTimeLimit -eq 'PT0S'
+}
+
 # command handler
 $response = @{ ok = $false; code = 'scheduled_task_operation_failed'; mode = ''; changed = $false }
 try {
@@ -58,7 +69,7 @@ try {
     $mode = Classify-Task $task $dir $sid
     $response.mode = $mode
     if ($op -eq 'status') {
-        if ($mode -ne 'conflict' -and $null -ne $task -and -not $task.Settings.Enabled) { $response.mode = 'disabled' }
+        if ($mode -ne 'conflict' -and -not (Task-Enabled $task)) { $response.mode = 'disabled' }
     } else {
         if ($mode -eq 'conflict') { throw 'scheduled_task_conflict' }
         if ($op -eq 'autostart disable') {
@@ -73,16 +84,17 @@ try {
             elseif ($op -eq 'autostart set daemon') { $desired = 'daemon'; $exe = Join-Path $dir 'sidraviactl.exe'; $arguments = 'daemon start --log-level debug' }
             else { throw 'invalid_arguments' }
             if (-not [IO.File]::Exists($exe)) { throw 'autostart_target_missing' }
-            if ($mode -ne $desired -or -not $task.Settings.Enabled -or [string]$task.Actions[0].Arguments -ne $arguments) {
+            if ($mode -ne $desired -or -not (Startup-SettingsMatch $task) -or [string]$task.Actions[0].Arguments -ne $arguments) {
                 $action = New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $dir
                 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $sid
                 $principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
-                $definition = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Description 'Sidravia user startup'
+                $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+                $definition = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Sidravia user startup'
                 Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -InputObject $definition -Force -ErrorAction Stop | Out-Null
                 $response.changed = $true
             }
             $after = Read-Task
-            if ((Classify-Task $after $dir $sid) -ne $desired -or -not $after.Settings.Enabled -or [string]$after.Actions[0].Arguments -ne $arguments) { throw 'scheduled_task_verify_failed' }
+            if ((Classify-Task $after $dir $sid) -ne $desired -or -not (Startup-SettingsMatch $after) -or [string]$after.Actions[0].Arguments -ne $arguments) { throw 'scheduled_task_verify_failed' }
             $response.mode = $desired
         }
     }
