@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 /// The single frontend preference owner; storage never contains backend state.
-class Appearance extends ValueNotifier<ThemeMode> {
-  Appearance({GuiSettingsStore? store})
+class GuiPreferences extends ValueNotifier<ThemeMode> {
+  GuiPreferences({GuiSettingsStore? store})
     : _store = store ?? MemoryGuiSettingsStore(),
       super(ThemeMode.system);
   final GuiSettingsStore _store;
@@ -308,12 +308,13 @@ class Appearance extends ValueNotifier<ThemeMode> {
   }
 }
 
-class AppearanceScope extends InheritedNotifier<Appearance> {
-  const AppearanceScope({
+class GuiPreferencesScope extends InheritedNotifier<GuiPreferences> {
+  const GuiPreferencesScope({
     super.key,
-    required Appearance appearance,
+    required GuiPreferences appearance,
     required super.child,
   }) : super(notifier: appearance);
-  static Appearance? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<AppearanceScope>()?.notifier;
+  static GuiPreferences? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<GuiPreferencesScope>()
+      ?.notifier;
 }

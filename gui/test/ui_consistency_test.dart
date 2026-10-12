@@ -6,7 +6,7 @@ import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class RecordingClient extends OfflineDemoClient {
@@ -135,10 +135,10 @@ void main() {
         pollDelay: const Duration(days: 1),
       );
       await c.start();
-      final appearance = Appearance();
+      final appearance = GuiPreferences();
       try {
         await tester.pumpWidget(
-          AppearanceScope(
+          GuiPreferencesScope(
             appearance: appearance,
             child: MaterialApp(
               theme: AppTheme.light(),

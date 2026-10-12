@@ -1,5 +1,5 @@
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
@@ -129,7 +129,7 @@ class HomePage extends StatelessWidget {
             p.actionError ??
             connectionNotifications?.feedback ??
             desktopPresence?.feedback ??
-            AppearanceScope.maybeOf(context)?.feedback,
+            GuiPreferencesScope.maybeOf(context)?.feedback,
         issue: p.issue,
         notice: notice,
       ),

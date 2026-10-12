@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 
 void main() {
   test(
@@ -25,7 +25,7 @@ void main() {
       expect(migrated.startHidden, isTrue);
       expect(migrated.diagnosticsExpanded, isTrue);
       final store = MemoryGuiSettingsStore()..settings = migrated;
-      final preferences = Appearance(store: store);
+      final preferences = GuiPreferences(store: store);
       await preferences.initialize();
       preferences.logLevel = 'trace';
       await preferences.settled;

@@ -18,7 +18,7 @@ import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 class SidraviaApp extends StatefulWidget {
@@ -32,7 +32,7 @@ class SidraviaApp extends StatefulWidget {
     this.namespace = '',
   });
   final GuiController controller;
-  final Appearance? appearance;
+  final GuiPreferences? appearance;
   final SystemNotifications? systemNotifications;
   final String namespace;
   final SchoolAnnouncementController? announcements;
@@ -43,7 +43,7 @@ class SidraviaApp extends StatefulWidget {
 }
 
 class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
-  late final _appearance = widget.appearance ?? Appearance();
+  late final _appearance = widget.appearance ?? GuiPreferences();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _shellKey = GlobalKey<SidraviaShellState>();
@@ -338,7 +338,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => AppearanceScope(
+  Widget build(BuildContext context) => GuiPreferencesScope(
     appearance: _appearance,
     child: ValueListenableBuilder<ThemeMode>(
       valueListenable: _appearance,

@@ -5,7 +5,7 @@ import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_policy.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 const school = InstitutionProfile(
@@ -560,7 +560,7 @@ void main() {
       same(school),
     );
     await first.settled;
-    final second = Appearance(store: store);
+    final second = GuiPreferences(store: store);
     await second.initialize();
     addTearDown(second.dispose);
     final fresh = SchoolAnnouncementPolicy(startedAt: started);
@@ -619,7 +619,7 @@ void main() {
   });
 }
 
-Future<Appearance> owner({
+Future<GuiPreferences> owner({
   GuiAnnouncementFrequency frequency = GuiAnnouncementFrequency.everyConnection,
   MemoryGuiSettingsStore? store,
 }) async {
@@ -634,7 +634,7 @@ Future<Appearance> owner({
           announcementFrequency: frequency,
           hiddenAnnouncementBehavior: GuiHiddenAnnouncementBehavior.onRestore,
         ));
-  final preferences = Appearance(store: backing);
+  final preferences = GuiPreferences(store: backing);
   await preferences.initialize();
   addTearDown(() async {
     await preferences.settled;

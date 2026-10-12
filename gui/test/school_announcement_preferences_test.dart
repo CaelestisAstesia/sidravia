@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 const stored = GuiSettings(
@@ -39,7 +39,7 @@ void main() {
           if (version >= 3) 'startHidden': true,
         });
         File(path).writeAsStringSync(source);
-        final owner = Appearance(store: FileGuiSettingsStore(path));
+        final owner = GuiPreferences(store: FileGuiSettingsStore(path));
         await owner.settled;
         expect(owner.value, ThemeMode.dark);
         expect(owner.diagnosticsExpanded, version >= 2);
@@ -203,7 +203,7 @@ void main() {
   );
 
   test('fresh owner and separate process preserve all seven values and old helper invocation', () async {
-    final owner = Appearance(store: FileGuiSettingsStore(path));
+    final owner = GuiPreferences(store: FileGuiSettingsStore(path));
     await owner.initialize();
     owner.value = ThemeMode.dark;
     owner.diagnosticsExpanded = true;
@@ -215,7 +215,7 @@ void main() {
     owner.recordAutomaticAnnouncement(DateTime(2026, 10, 10, 23, 59));
     await owner.settled;
     owner.dispose();
-    final fresh = Appearance(store: FileGuiSettingsStore(path));
+    final fresh = GuiPreferences(store: FileGuiSettingsStore(path));
     await fresh.initialize();
     expect(fresh.announcementFrequency, GuiAnnouncementFrequency.manualOnly);
     expect(
@@ -278,7 +278,7 @@ void main() {
       () async {
         File(path).writeAsStringSync(encodeGuiSettings(stored));
         final store = DelayedFileStore(FileGuiSettingsStore(path));
-        final owner = Appearance(store: store);
+        final owner = GuiPreferences(store: store);
         switch (edited) {
           case 'frequency':
             owner.announcementFrequency = GuiAnnouncementFrequency.manualOnly;
@@ -336,7 +336,7 @@ void main() {
         pauseFirstWrite: true,
       );
       store.readGate.complete();
-      final owner = Appearance(store: store);
+      final owner = GuiPreferences(store: store);
       await owner.initialize();
       owner.announcementFrequency = GuiAnnouncementFrequency.manualOnly;
       await store.writeStarted.future;
@@ -374,7 +374,7 @@ void main() {
   );
 
   test('UTC trigger uses local civil date and choices never clear marker', () async {
-    final owner = Appearance(store: FileGuiSettingsStore(path));
+    final owner = GuiPreferences(store: FileGuiSettingsStore(path));
     await owner.initialize();
     final at = DateTime.utc(2026, 10, 10, 23, 30);
     final local = at.toLocal();
@@ -397,7 +397,7 @@ void main() {
     () async {
       const damaged = '{"schemaVersion":99}';
       File(path).writeAsStringSync(damaged);
-      final owner = Appearance(store: FileGuiSettingsStore(path));
+      final owner = GuiPreferences(store: FileGuiSettingsStore(path));
       await owner.initialize();
       owner.announcementFrequency = GuiAnnouncementFrequency.manualOnly;
       owner.hiddenAnnouncementBehavior =
@@ -425,7 +425,7 @@ void main() {
         path,
         replace: (_, _) async => throw const FileSystemException('denied'),
       );
-      final owner = Appearance(store: store);
+      final owner = GuiPreferences(store: store);
       await owner.initialize();
       owner.announcementFrequency = GuiAnnouncementFrequency.manualOnly;
       owner.hiddenAnnouncementBehavior =
@@ -448,7 +448,7 @@ void main() {
   test('disposal suppresses late load/write listener notifications', () async {
     File(path).writeAsStringSync(encodeGuiSettings(stored));
     final store = DelayedFileStore(FileGuiSettingsStore(path));
-    final owner = Appearance(store: store);
+    final owner = GuiPreferences(store: store);
     var notifications = 0;
     owner.addListener(() => notifications++);
     owner.announcementFrequency = GuiAnnouncementFrequency.manualOnly;

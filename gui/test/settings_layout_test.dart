@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
@@ -96,11 +96,11 @@ void main() {
         connector: (_) async => client,
       );
       await controller.start();
-      final appearance = Appearance();
+      final appearance = GuiPreferences();
       await appearance.initialize();
       var backs = 0;
       await tester.pumpWidget(
-        AppearanceScope(
+        GuiPreferencesScope(
           appearance: appearance,
           child: MaterialApp(
             theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),

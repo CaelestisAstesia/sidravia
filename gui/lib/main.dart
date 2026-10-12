@@ -7,7 +7,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_window.d
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 
 import 'package:sidravia_gui/platform/gui_settings_storage.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 
 import 'package:flutter/widgets.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
@@ -26,14 +26,14 @@ Future<void> main() async {
   final rawNamespace = Platform.environment['SIDRAVIA_NAMESPACE'];
   final namespace = validateDesktopNamespace(rawNamespace);
   if (namespace == null) exit(2);
-  // Appearance restoration is independent of bootstrap/IPC readiness.
-  late final Appearance appearance;
+  // GuiPreferences restoration is independent of bootstrap/IPC readiness.
+  late final GuiPreferences appearance;
   try {
-    appearance = Appearance(
+    appearance = GuiPreferences(
       store: await productionGuiSettingsStore(namespace: namespace),
     );
   } on Object {
-    appearance = Appearance(store: UnavailableGuiSettingsStore());
+    appearance = GuiPreferences(store: UnavailableGuiSettingsStore());
   }
   await appearance.initialize();
   final platform = SidraviaPlatform.detect(namespace: namespace);

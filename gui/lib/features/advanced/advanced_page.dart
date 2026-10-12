@@ -1,5 +1,5 @@
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -76,7 +76,10 @@ class _AdvancedPageState extends State<AdvancedPage> {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([controller, AppearanceScope.maybeOf(context)]),
+    animation: Listenable.merge([
+      controller,
+      GuiPreferencesScope.maybeOf(context),
+    ]),
     builder: (context, _) => _build(context),
   );
 
@@ -105,7 +108,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
       MapEntry('配置标识', c?.id ?? '暂无数据'),
       if (p.issue != null) MapEntry('最近错误', s!.lastAuthenticationFailure!.code),
     ];
-    final appearance = AppearanceScope.maybeOf(context);
+    final appearance = GuiPreferencesScope.maybeOf(context);
     final expanded = appearance?.diagnosticsExpanded ?? _expanded;
     final remote = s?.protocolSocket.remoteEndpoint;
     return DesignPage(
@@ -290,7 +293,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
                   ? () => confirmCoreRestart(
                       context,
                       controller,
-                      AppearanceScope.maybeOf(context)?.logLevel ??
+                      GuiPreferencesScope.maybeOf(context)?.logLevel ??
                           controller.runningLogLevel ??
                           'info',
                     )

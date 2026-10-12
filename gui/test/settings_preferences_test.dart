@@ -9,7 +9,7 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -31,7 +31,7 @@ void main() {
             ? DesktopPresence(channel: channel)
             : DesktopPresence.disabled();
         await desktop.initialize();
-        final appearance = Appearance();
+        final appearance = GuiPreferences();
         await appearance.initialize();
         appearance.closeBehavior = GuiCloseBehavior.exit;
         appearance.startHidden = true;
@@ -47,7 +47,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(360, 640));
         addTearDown(() => tester.binding.setSurfaceSize(null));
         await tester.pumpWidget(
-          AppearanceScope(
+          GuiPreferencesScope(
             appearance: appearance,
             child: MaterialApp(
               home: MediaQuery(
@@ -271,7 +271,7 @@ void main() {
     'late startup read never overwrites user selection; saves serialize',
     () async {
       final store = ControlledStore();
-      final appearance = Appearance(store: store);
+      final appearance = GuiPreferences(store: store);
       appearance.value = ThemeMode.dark;
       appearance.value = ThemeMode.light;
       appearance.value = ThemeMode.system;
@@ -306,7 +306,7 @@ void main() {
     'late read hydrates untouched appearance and preserves diagnostic choice',
     () async {
       final store = ControlledStore();
-      final appearance = Appearance(store: store);
+      final appearance = GuiPreferences(store: store);
       appearance.diagnosticsExpanded = true;
       store.readResult.complete(
         const GuiSettings(appearanceMode: GuiAppearanceMode.dark),
@@ -332,7 +332,7 @@ void main() {
       'late load preserves edited $field and hydrates other three',
       () async {
         final store = ControlledStore();
-        final owner = Appearance(store: store);
+        final owner = GuiPreferences(store: store);
         switch (field) {
           case 'theme':
             owner.value = ThemeMode.light;
@@ -422,7 +422,7 @@ void main() {
           diagnosticsExpanded: true,
         ),
       );
-    final appearance = Appearance(store: store);
+    final appearance = GuiPreferences(store: store);
     await appearance.initialize();
     appearance.value = ThemeMode.light;
     await appearance.settled;
@@ -436,7 +436,7 @@ void main() {
   });
   test('failed load blocks overwrite but user theme applies', () async {
     final store = ControlledStore();
-    final appearance = Appearance(store: store);
+    final appearance = GuiPreferences(store: store);
     final loading = appearance.initialize();
     store.readResult.completeError(const FormatException());
     await loading;
@@ -459,7 +459,7 @@ void main() {
     () async {
       final store = ControlledStore()..failSave = true;
       store.readResult.complete(null);
-      final appearance = Appearance(store: store);
+      final appearance = GuiPreferences(store: store);
       await appearance.initialize();
       appearance.value = ThemeMode.dark;
       await appearance.settled;

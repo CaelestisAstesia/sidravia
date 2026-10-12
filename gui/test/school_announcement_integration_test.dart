@@ -11,7 +11,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_controll
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 void main() {
@@ -40,7 +40,7 @@ void main() {
             _ => null,
           },
         );
-        final preferences = Appearance();
+        final preferences = GuiPreferences();
         await preferences.initialize();
         preferences.announcementFrequency = frequency;
         final desktop = DesktopPresence(channel: desktopChannel);

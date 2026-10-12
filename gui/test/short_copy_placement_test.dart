@@ -5,7 +5,7 @@ import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
@@ -134,7 +134,7 @@ void main() {
       connector: (_) async => client,
       pollDelay: const Duration(days: 1),
     );
-    final appearance = Appearance(
+    final appearance = GuiPreferences(
       store: MemoryGuiSettingsStore()
         ..settings = const GuiSettings(
           appearanceMode: GuiAppearanceMode.system,
@@ -145,7 +145,7 @@ void main() {
     await c.start();
     try {
       await tester.pumpWidget(
-        AppearanceScope(
+        GuiPreferencesScope(
           appearance: appearance,
           child: MaterialApp(
             theme: AppTheme.light(),

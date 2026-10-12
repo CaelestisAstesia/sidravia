@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 class DelayedPreferences implements GuiSettingsStore {
@@ -90,7 +90,7 @@ void main() {
     'mode changed during load wins and queued writes preserve other prefs',
     () async {
       final store = DelayedPreferences();
-      final prefs = Appearance(store: store);
+      final prefs = GuiPreferences(store: store);
       prefs.notificationMode = GuiNotificationMode.silent;
       store.readResult.complete(
         const GuiSettings(
@@ -135,12 +135,12 @@ void main() {
         pollDelay: const Duration(days: 1),
       );
       final store = MemoryGuiSettingsStore();
-      final prefs = Appearance(store: store);
+      final prefs = GuiPreferences(store: store);
       await prefs.initialize();
       await c.start();
       try {
         await tester.pumpWidget(
-          AppearanceScope(
+          GuiPreferencesScope(
             appearance: prefs,
             child: MaterialApp(
               home: ValueListenableBuilder<ThemeMode>(

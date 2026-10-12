@@ -8,7 +8,7 @@ import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 
@@ -23,7 +23,7 @@ void main() {
     'one page routes from home/settings and restores technical preference',
     (tester) async {
       final store = MemoryGuiSettingsStore();
-      final appearance = Appearance(store: store);
+      final appearance = GuiPreferences(store: store);
       await appearance.initialize();
       final client = _Client(SessionState.authenticated);
       final c = GuiController(
@@ -34,7 +34,7 @@ void main() {
       await c.start();
       try {
         await tester.pumpWidget(
-          AppearanceScope(
+          GuiPreferencesScope(
             appearance: appearance,
             child: MaterialApp(home: SidraviaShell(controller: c)),
           ),
@@ -62,7 +62,7 @@ void main() {
         expect(find.text('核心服务状态'), findsOneWidget);
         await tap(tester, '返回');
         expect(find.byType(SettingsPage), findsOneWidget);
-        final restored = Appearance(store: store);
+        final restored = GuiPreferences(store: store);
         await restored.initialize();
         expect(restored.diagnosticsExpanded, isTrue);
         restored.dispose();

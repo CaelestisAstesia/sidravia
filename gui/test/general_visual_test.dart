@@ -15,7 +15,7 @@ import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'home_responsive_test.dart' as fonts;
@@ -131,13 +131,13 @@ Future<void> render(
   await controller.start();
   final notices = await school_dispatch.manualAnnouncements(tester, controller);
   await notices.start();
-  final appearance = Appearance()
+  final appearance = GuiPreferences()
     ..value = dark ? ThemeMode.dark : ThemeMode.light;
   try {
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('general-capture'),
-        child: AppearanceScope(
+        child: GuiPreferencesScope(
           appearance: appearance,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,

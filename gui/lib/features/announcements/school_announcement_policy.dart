@@ -1,6 +1,6 @@
 import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 /// Resolves the configured school's metadata without connection-action guards.
@@ -16,7 +16,7 @@ InstitutionProfile? schoolAnnouncementProfileFor(GuiCapabilities capabilities) {
 }
 
 /// Owns only current-session observations. Preferences own the durable day.
-/// Callers initialize [Appearance] before considering complete snapshots.
+/// Callers initialize [GuiPreferences] before considering complete snapshots.
 class SchoolAnnouncementPolicy {
   SchoolAnnouncementPolicy({required this.startedAt});
 
@@ -27,7 +27,7 @@ class SchoolAnnouncementPolicy {
 
   InstitutionProfile? consider(
     GuiCapabilities capabilities,
-    Appearance preferences,
+    GuiPreferences preferences,
     DateTime now,
   ) {
     if (!capabilities.isReady ||

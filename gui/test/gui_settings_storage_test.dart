@@ -6,7 +6,7 @@ import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
@@ -25,7 +25,7 @@ void main() {
       final path = '${root.path}/gui-settings.json';
       for (final mode in [ThemeMode.dark, ThemeMode.system]) {
         final first = (await tester.runAsync(() async {
-          final owner = Appearance(store: FileGuiSettingsStore(path));
+          final owner = GuiPreferences(store: FileGuiSettingsStore(path));
           await owner.initialize();
           owner.value = mode;
           await owner.settled;
@@ -43,7 +43,7 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
         client.dispose();
         final second = (await tester.runAsync(() async {
-          final owner = Appearance(store: FileGuiSettingsStore(path));
+          final owner = GuiPreferences(store: FileGuiSettingsStore(path));
           await owner.initialize();
           return owner;
         }))!;
@@ -278,7 +278,7 @@ void main() {
     expect(File(path).readAsStringSync(), source);
   });
   test('current schema roundtrip and missing owner defaults', () async {
-    final owner = Appearance();
+    final owner = GuiPreferences();
     await owner.initialize();
     expect(owner.closeBehavior, GuiCloseBehavior.hideToTray);
     expect(owner.startHidden, false);

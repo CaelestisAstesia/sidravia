@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
@@ -80,10 +80,10 @@ void main() {
         connector: (_) async => client,
       );
       await controller.start();
-      final preferences = Appearance();
+      final preferences = GuiPreferences();
       await preferences.initialize();
       await tester.pumpWidget(
-        AppearanceScope(
+        GuiPreferencesScope(
           appearance: preferences,
           child: MaterialApp(
             home: Scaffold(
@@ -138,11 +138,11 @@ void main() {
           connector: (_) async => client,
         );
         await controller.start();
-        final preferences = Appearance();
+        final preferences = GuiPreferences();
         await preferences.initialize();
         preferences.logLevel = 'debug';
         await tester.pumpWidget(
-          AppearanceScope(
+          GuiPreferencesScope(
             appearance: preferences,
             child: MaterialApp(
               home: MediaQuery(

@@ -7,7 +7,7 @@ import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -25,7 +25,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller.capabilities.configuration;
-    final appearance = AppearanceScope.maybeOf(context);
+    final appearance = GuiPreferencesScope.maybeOf(context);
     final mode = appearance?.value ?? ThemeMode.system;
     final desktopEnabled =
         appearance != null && (desktopPresence?.enabled ?? false);

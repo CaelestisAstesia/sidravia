@@ -8,7 +8,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_notifica
 import 'package:sidravia_gui/features/announcements/school_announcement_policy.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 /// Dispatches frontend announcement intents; daemon and preferences retain authority.
@@ -28,7 +28,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
     }
   }
 
-  final Appearance preferences;
+  final GuiPreferences preferences;
   final DesktopPresence desktop;
   final SchoolAnnouncementWindow window;
   final SchoolAnnouncementNotifications notifications;

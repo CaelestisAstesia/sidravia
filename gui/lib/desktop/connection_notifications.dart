@@ -6,7 +6,7 @@ import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/system_notifications.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 enum ConnectionNoticeKind { success, recovery, error, progress, delayed }
@@ -193,7 +193,7 @@ class ConnectionNotificationController extends ChangeNotifier {
     DateTime Function()? clock,
   }) : policy = ConnectionNotificationPolicy(startedAt: startedAt),
        _clock = clock ?? DateTime.now;
-  final Appearance preferences;
+  final GuiPreferences preferences;
   final DesktopPresence desktop;
   final SystemNotificationSlot notifications;
   final ConnectionNotificationPolicy policy;

@@ -7,7 +7,7 @@ import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
-import 'package:sidravia_gui/shared/theme/appearance.dart';
+import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 
@@ -17,7 +17,7 @@ Future<SchoolAnnouncementController> manualAnnouncements(
   WidgetTester tester,
   GuiController gui,
 ) async {
-  final preferences = Appearance();
+  final preferences = GuiPreferences();
   await preferences.initialize();
   final desktop = DesktopPresence.disabled();
   final owner = SchoolAnnouncementController(
@@ -115,7 +115,7 @@ Future<void> settleWork() async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  late Appearance preferences;
+  late GuiPreferences preferences;
   late DesktopPresence desktop;
   late SchoolAnnouncementController owner;
   final opens = <MethodCall>[];
@@ -150,7 +150,7 @@ void main() {
         _ => null,
       },
     );
-    preferences = Appearance();
+    preferences = GuiPreferences();
     await preferences.initialize();
     preferences.announcementFrequency =
         GuiAnnouncementFrequency.everyConnection;
@@ -391,7 +391,7 @@ void main() {
       await owner.close();
       owner.dispose();
       final storage = _DelayedSettings();
-      final restored = Appearance(store: storage);
+      final restored = GuiPreferences(store: storage);
       owner = SchoolAnnouncementController(
         preferences: restored,
         desktop: desktop,
