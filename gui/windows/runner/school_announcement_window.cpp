@@ -1,12 +1,15 @@
 #include "school_announcement_window.h"
+#include "announcement_link_policy.h"
 
 #include <WebView2.h>
 #include <shlobj.h>
 #include <shlwapi.h>
+#include <shellapi.h>
 #include <urlmon.h>
 #include <wrl.h>
 #include <algorithm>
 #include <climits>
+#include <deque>
 #include <new>
 #include <string>
 
@@ -22,6 +25,8 @@ constexpr DWORD kStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
                          WS_MINIMIZEBOX;
 constexpr UINT_PTR kLoadTimer = 1;
 constexpr UINT kLoadTimeout = 30000;
+constexpr UINT kOpenExternalLink = WM_APP + 42;
+constexpr wchar_t kLinkFailed[] = L"\u65e0\u6cd5\u6253\u5f00\u94fe\u63a5\uff0c\u8bf7\u68c0\u67e5\u9ed8\u8ba4\u6d4f\u89c8\u5668\u8bbe\u7f6e";
 
 bool ConvertUtf8(const std::string& source, std::wstring* target) {
   if (source.empty() || source.size() > INT_MAX) return false;
@@ -137,11 +142,46 @@ struct SchoolAnnouncementWindow::State {
   UINT_PTR timer = 0;
   UINT64 navigation_id = 0;
   std::wstring url, cache;
+  std::wstring document_url;
+  std::deque<std::wstring> external_links;
+  bool external_message_pending = false;
   ComPtr<ICoreWebView2Controller> controller;
   ComPtr<ICoreWebView2> browser;
   HRESULT teardown_result = S_OK;
 
   bool Live() const { return active && !failed && window != nullptr; }
+
+  bool QueueLink(const std::wstring& link) {
+    if (!Live()) return false;
+    external_links.push_back(link);
+    if (external_message_pending) return true;
+    if (!PostMessageW(window, kOpenExternalLink, 0, 0)) {
+      external_links.pop_back();
+      SetWindowTextW(window, kLinkFailed);
+      return false;
+    }
+    external_message_pending = true;
+    return true;
+  }
+
+  // Dispatched outside WebView callbacks; no nested modal message pump in those callbacks.
+  void OpenQueuedLinks() {
+    external_message_pending = false;
+    while (Live() && !external_links.empty()) {
+      const auto link = std::move(external_links.front());
+      external_links.pop_front();
+      SHELLEXECUTEINFOW info{};
+      info.cbSize = sizeof(info);
+      info.fMask = SEE_MASK_FLAG_NO_UI | SEE_MASK_ASYNCOK;
+      info.hwnd = window;
+      info.lpVerb = L"open";
+      info.lpFile = link.c_str();
+      info.nShow = SW_SHOWNORMAL;
+      if (!ShellExecuteExW(&info) && Live()) {
+        MessageBoxW(window, kLinkFailed, kTitle, MB_OK | MB_ICONWARNING);
+      }
+    }
+  }
 
   void CancelTimer() {
     if (timer && window) KillTimer(window, timer);
@@ -167,6 +207,8 @@ struct SchoolAnnouncementWindow::State {
   void Fail() {
     if (!active || failed) return;
     failed = true;
+    external_links.clear();
+    external_message_pending = false;
     loading = false;
     CancelTimer();
     ReleaseBrowser();
@@ -175,6 +217,8 @@ struct SchoolAnnouncementWindow::State {
 
   void Deactivate() {
     active = false;
+    external_links.clear();
+    external_message_pending = false;
     CancelTimer();
     ReleaseBrowser();
   }
@@ -243,8 +287,21 @@ struct SchoolAnnouncementWindow::State {
         Callback<ICoreWebView2NewWindowRequestedEventHandler>(
           [weak](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) {
             const HRESULT hr = args->put_Handled(TRUE);
-            if (FAILED(hr)) { if (auto state = weak.lock()) state->Fail(); }
-            return hr;
+            auto state = weak.lock();
+            if (FAILED(hr)) { if (state) state->Fail(); return hr; }
+            if (!state || !state->Live()) return S_OK;
+            BOOL user = FALSE;
+            LPWSTR uri = nullptr;
+            const HRESULT read = args->get_Uri(&uri);
+            const HRESULT gesture = args->get_IsUserInitiated(&user);
+            const std::wstring target = SUCCEEDED(read) && uri ? uri : L"";
+            CoTaskMemFree(uri);
+            if (FAILED(read) || FAILED(gesture)) { state->Fail(); return E_FAIL; }
+            if (DecideAnnouncementLink(state->document_url, target, user != FALSE,
+                false, true, !state->loading) == AnnouncementLinkAction::external_browser) {
+              return state->QueueLink(target) ? S_OK : E_FAIL;
+            }
+            return S_OK;
           }).Get(), &token))) return false;
     if (FAILED(external->add_LaunchingExternalUriScheme(
         Callback<ICoreWebView2LaunchingExternalUriSchemeEventHandler>(
@@ -278,6 +335,23 @@ struct SchoolAnnouncementWindow::State {
             if (FAILED(hr) || !state || !state->Live()) return hr;
             if (FAILED(args->get_Cancel(&canceled))) { state->Fail(); return E_FAIL; }
             if (canceled) return S_OK;
+            BOOL user = FALSE, redirected = FALSE;
+            LPWSTR uri = nullptr;
+            const HRESULT read = args->get_Uri(&uri);
+            const HRESULT gesture = args->get_IsUserInitiated(&user);
+            const HRESULT redirect = args->get_IsRedirected(&redirected);
+            const std::wstring target = SUCCEEDED(read) && uri ? uri : L"";
+            CoTaskMemFree(uri);
+            if (FAILED(read) || FAILED(gesture) || FAILED(redirect)) { state->Fail(); return E_FAIL; }
+            const auto action = DecideAnnouncementLink(state->document_url, target,
+                user != FALSE, redirected != FALSE, false, !state->loading);
+            if (action != AnnouncementLinkAction::in_window) {
+              const HRESULT cancel = args->put_Cancel(TRUE);
+              if (FAILED(cancel)) { state->Fail(); return cancel; }
+              if (action == AnnouncementLinkAction::external_browser && !state->QueueLink(target)) return E_FAIL;
+              // A canceled link never changes the current navigation ID/load deadline.
+              return S_OK;
+            }
             if (FAILED(args->get_NavigationId(&state->navigation_id))) {
               state->Fail(); return E_FAIL;
             }
@@ -291,7 +365,7 @@ struct SchoolAnnouncementWindow::State {
           }).Get(), &token))) return false;
     if (FAILED(browser->add_NavigationCompleted(
         Callback<ICoreWebView2NavigationCompletedEventHandler>(
-          [weak](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) {
+          [weak](ICoreWebView2* sender, ICoreWebView2NavigationCompletedEventArgs* args) {
             auto state = weak.lock();
             if (!state || !state->Live()) return S_OK;
             UINT64 id = 0;
@@ -300,6 +374,11 @@ struct SchoolAnnouncementWindow::State {
                 FAILED(args->get_IsSuccess(&success))) { state->Fail(); return E_FAIL; }
             if (id != state->navigation_id) return S_OK;
             if (!success) { state->Fail(); return S_OK; }
+            LPWSTR source = nullptr;
+            const HRESULT read = sender->get_Source(&source);
+            if (SUCCEEDED(read) && source) state->document_url = source;
+            CoTaskMemFree(source);
+            if (FAILED(read) || state->document_url.empty()) { state->Fail(); return E_FAIL; }
             state->loading = false;
             state->CancelTimer();
             if (FAILED(state->controller->put_IsVisible(TRUE))) {
@@ -415,6 +494,9 @@ LRESULT CALLBACK SchoolAnnouncementWindow::WindowProc(HWND window, UINT message,
   auto state = holder ? *holder : nullptr;
   if (!state) return DefWindowProcW(window, message, wparam, lparam);
   switch (message) {
+    case kOpenExternalLink:
+      state->OpenQueuedLinks();
+      return 0;
     case WM_CLOSE:
       state->Deactivate();
       DestroyWindow(window);
