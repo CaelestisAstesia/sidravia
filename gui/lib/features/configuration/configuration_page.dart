@@ -214,7 +214,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         ),
         if (!_credentialStored) ...[
           const SizedBox(height: 8),
-          const DesignHelper('首次连接请填写账号和密码。'),
+          const DesignHelper('首次连接请填写账号和密码'),
         ],
         const SizedBox(height: 18),
         FilledButton(
