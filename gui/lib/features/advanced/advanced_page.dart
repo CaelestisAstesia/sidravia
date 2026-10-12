@@ -297,7 +297,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
                       controller,
                       GuiPreferencesScope.maybeOf(context)?.logLevel ??
                           controller.runningLogLevel ??
-                          'info',
+                          'debug',
                     )
                   : null,
             ),

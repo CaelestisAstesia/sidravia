@@ -82,6 +82,7 @@ void main() {
       await controller.start();
       final preferences = GuiPreferences();
       await preferences.initialize();
+      preferences.logLevel = 'info';
       await tester.pumpWidget(
         GuiPreferencesScope(
           appearance: preferences,

@@ -92,7 +92,7 @@ func ChildEnvironment(parent []string, options Options, logLevel string) ([]stri
 		return nil, err
 	}
 	if logLevel == "" {
-		logLevel = "info"
+		logLevel = "debug"
 	}
 	result := make([]string, 0, len(parent)+4)
 	for _, entry := range parent {

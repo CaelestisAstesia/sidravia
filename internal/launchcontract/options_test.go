@@ -122,3 +122,13 @@ func TestRestartChildSuppressesAutomaticLoginAndDropsInheritedFlag(t *testing.T)
 		}
 	}
 }
+
+func TestOmittedLogLevelDefaultsToDebugWithoutInheritingTrace(t *testing.T) {
+	env, err := ChildEnvironment([]string{"SIDRAVIA_LOG_LEVEL=trace"}, Headless(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(env, "SIDRAVIA_LOG_LEVEL=debug") || slices.Contains(env, "SIDRAVIA_LOG_LEVEL=trace") {
+		t.Fatalf("default child environment = %v", env)
+	}
+}

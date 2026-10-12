@@ -19,7 +19,7 @@ func TestResolveLogLevelAcceptsExactValues(t *testing.T) {
 		value string
 		want  slog.Level
 	}{
-		{"", slog.LevelInfo},
+		{"", slog.LevelDebug},
 		{"info", slog.LevelInfo},
 		{"debug", slog.LevelDebug},
 		{"trace", LevelTrace},

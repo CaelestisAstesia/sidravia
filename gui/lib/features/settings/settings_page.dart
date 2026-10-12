@@ -211,7 +211,7 @@ class SettingsPage extends StatelessWidget {
                     _SettingsDropdown<String>(
                       frameKey: const ValueKey('log-level-frame'),
                       dropdownKey: const ValueKey('log-level-selector'),
-                      value: appearance?.logLevel ?? 'info',
+                      value: appearance?.logLevel ?? 'debug',
                       labels: const {
                         'info': 'INFO',
                         'debug': 'DEBUG',

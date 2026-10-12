@@ -148,7 +148,7 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 	launchOptions.SkipAutoLogin = os.Getenv(launchcontract.EnvSkipAutoLogin) == "1"
 	launchOptions.LogLevel = os.Getenv(launchcontract.EnvLogLevel)
 	if launchOptions.LogLevel == "" {
-		launchOptions.LogLevel = "info"
+		launchOptions.LogLevel = "debug"
 	}
 	var owner desktopowner.Watcher
 	if launchOptions.Mode == launchcontract.ModeDesktop {

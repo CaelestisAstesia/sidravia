@@ -64,7 +64,7 @@ void main() {
   );
 
   test(
-    'schema4 adds info level without rewriting and upgrades on save',
+    'schema4 adds debug level without rewriting and upgrades on save',
     () async {
       final legacy =
           jsonDecode(encodeGuiSettings(stored)) as Map<String, dynamic>
@@ -75,7 +75,7 @@ void main() {
       File(path).writeAsStringSync(source);
       final store = FileGuiSettingsStore(path);
       final restored = (await store.read())!;
-      expect(restored.logLevel, 'info');
+      expect(restored.logLevel, 'debug');
       expect(restored.announcementFrequency, stored.announcementFrequency);
       expect(
         restored.hiddenAnnouncementBehavior,
@@ -90,7 +90,7 @@ void main() {
       final upgraded =
           jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
       expect(upgraded['schemaVersion'], 6);
-      expect(upgraded['logLevel'], 'info');
+      expect(upgraded['logLevel'], 'debug');
     },
   );
 

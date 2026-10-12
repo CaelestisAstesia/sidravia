@@ -26,7 +26,7 @@ class GuiPreferences extends ValueNotifier<ThemeMode> {
   }
 
   int _logRevision = 0;
-  String _logLevel = "info";
+  String _logLevel = "debug";
   String get logLevel => _logLevel;
   set logLevel(String value) {
     if (!const {"info", "debug", "trace"}.contains(value)) {

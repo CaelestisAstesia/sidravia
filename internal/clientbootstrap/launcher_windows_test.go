@@ -140,8 +140,8 @@ func TestDaemonProcessCommandOwnsBackgroundOutput(t *testing.T) {
 	}
 }
 
-// TestDaemonEnvForLevelEmptyLeavesDefault proves an empty log level does not
-// append a SIDRAVIA_LOG_LEVEL entry, leaving the child at the daemon default.
+// TestDaemonEnvForLevelEmptyLeavesDefault proves an empty log level resolves
+// to Debug without inheriting a sensitive parent level.
 func TestDaemonEnvForLevelEmptyLeavesDefault(t *testing.T) {
 	env, err := launchcontract.ChildEnvironment(os.Environ(), launchcontract.Headless(), "")
 	if err != nil {
@@ -150,8 +150,8 @@ func TestDaemonEnvForLevelEmptyLeavesDefault(t *testing.T) {
 	if got := countLogLevel(env); got != 1 {
 		t.Errorf("empty logLevel SIDRAVIA_LOG_LEVEL count = %d, want 1", got)
 	}
-	if !containsEnvironmentEntry(env, "SIDRAVIA_LOG_LEVEL=info") {
-		t.Errorf("empty logLevel did not resolve to info: %v", env)
+	if !containsEnvironmentEntry(env, "SIDRAVIA_LOG_LEVEL=debug") {
+		t.Errorf("empty logLevel did not resolve to debug: %v", env)
 	}
 }
 

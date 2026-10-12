@@ -23,7 +23,7 @@ class GuiSettings {
     this.announcementFrequency = GuiAnnouncementFrequency.dailyFirstConnection,
     this.hiddenAnnouncementBehavior = GuiHiddenAnnouncementBehavior.notify,
     this.lastAutomaticAnnouncementDate,
-    this.logLevel = "info",
+    this.logLevel = "debug",
     this.notificationMode = GuiNotificationMode.abnormal,
   });
 
@@ -98,7 +98,7 @@ GuiSettings decodeGuiSettings(String source) {
     return GuiSettings(
       appearanceMode: mode,
       diagnosticsExpanded: value['diagnosticsExpanded'] as bool,
-      logLevel: version >= 5 ? _logLevel(value['logLevel']) : 'info',
+      logLevel: version >= 5 ? _logLevel(value['logLevel']) : 'debug',
       notificationMode: version == 6
           ? GuiNotificationMode.values.firstWhere(
               (mode) => mode.name == value['notificationMode'],

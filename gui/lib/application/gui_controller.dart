@@ -197,7 +197,7 @@ class GuiController extends ChangeNotifier {
 
   Future<void> retry() => start();
   bool _coreRestartFailed = false;
-  String _restartLevel = "info";
+  String _restartLevel = "debug";
   String? _restoreConfiguration;
   String? get runningLogLevel => snapshot?.daemon.logLevel;
   bool get supportsCoreRestart => bootstrapper is GuiCoreRestarter;

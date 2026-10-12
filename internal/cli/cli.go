@@ -518,7 +518,7 @@ var helpSpecs = map[string]helpNode{
 		description: "启动本地 daemon 进程。",
 		usage:       []string{"sidraviactl daemon start [--log-level info|debug|trace]"},
 		options: []string{
-			"--log-level info|debug|trace：子进程日志级别，默认 info",
+			"--log-level info|debug|trace：子进程日志级别，默认 debug",
 		},
 		examples: []string{
 			"sidraviactl daemon start",
@@ -536,7 +536,7 @@ var helpSpecs = map[string]helpNode{
 		description: "重启本地 daemon 进程。",
 		usage:       []string{"sidraviactl daemon restart [--log-level info|debug|trace]"},
 		options: []string{
-			"--log-level info|debug|trace：子进程日志级别，默认 info",
+			"--log-level info|debug|trace：子进程日志级别，默认 debug",
 		},
 		examples: []string{
 			"sidraviactl daemon restart",

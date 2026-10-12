@@ -18,7 +18,7 @@ import (
 var LevelTrace = slog.Level(-8)
 
 // Exact lowercase values accepted by SIDRAVIA_LOG_LEVEL. The empty value means
-// Info. Invalid values cause safe daemon construction failure without echoing
+// Debug. Invalid values cause safe daemon construction failure without echoing
 // the supplied value.
 const (
 	logLevelInfo  = "info"
@@ -51,12 +51,12 @@ const (
 )
 
 // resolveLogLevel maps SIDRAVIA_LOG_LEVEL to a slog level. The empty value
-// means Info. An invalid value returns an error without echoing the value.
+// means Debug. An invalid value returns an error without echoing the value.
 func resolveLogLevel(value string) (slog.Level, error) {
 	switch value {
-	case "", logLevelInfo:
+	case logLevelInfo:
 		return slog.LevelInfo, nil
-	case logLevelDebug:
+	case "", logLevelDebug:
 		return slog.LevelDebug, nil
 	case logLevelTrace:
 		return LevelTrace, nil

@@ -33,6 +33,7 @@ void main() {
         await desktop.initialize();
         final appearance = GuiPreferences();
         await appearance.initialize();
+        appearance.logLevel = 'info';
         appearance.closeBehavior = GuiCloseBehavior.exit;
         appearance.startHidden = true;
         await appearance.settled;

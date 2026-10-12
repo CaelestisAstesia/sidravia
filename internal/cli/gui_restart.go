@@ -41,6 +41,6 @@ func newGUIRestartCommand(identity clientbootstrap.Identity, output io.Writer) *
 	}}
 	c.Flags().StringVar(&ownerText, "owner-pid", "", "")
 	c.MarkFlagRequired("owner-pid")
-	c.Flags().StringVar(&level, "log-level", "info", "")
+	c.Flags().StringVar(&level, "log-level", "debug", "")
 	return c
 }
