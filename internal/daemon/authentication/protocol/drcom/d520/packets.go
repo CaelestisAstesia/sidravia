@@ -3,6 +3,7 @@ package d520
 import (
 	"encoding/binary"
 	"fmt"
+	protocol "sidravia/internal/daemon/authentication/protocol"
 )
 
 // Fixed packet lengths used by the D520 wire codec.
@@ -136,7 +137,7 @@ func parseChallengeResponse(resp []byte) (challengeResponse, error) {
 		return challengeResponse{}, err
 	}
 	if resp[0] != 0x02 {
-		return challengeResponse{}, fmt.Errorf("challenge response opcode 0x%02x, expected 0x02", resp[0])
+		return challengeResponse{}, invalidResponse(protocol.ExchangeInvalidOpcode, "challenge response opcode 0x%02x, expected 0x02", resp[0])
 	}
 	var salt [4]byte
 	copy(salt[:], resp[4:8])
@@ -281,7 +282,7 @@ func parseLoginResponse(resp []byte) (loginResponse, error) {
 		}
 		return loginResponse{kind: loginResponseRejection, code: resp[4]}, nil
 	default:
-		return loginResponse{}, fmt.Errorf("login response opcode 0x%02x, expected 0x04 or 0x05", resp[0])
+		return loginResponse{}, invalidResponse(protocol.ExchangeInvalidOpcode, "login response opcode 0x%02x, expected 0x04 or 0x05", resp[0])
 	}
 }
 
@@ -307,7 +308,7 @@ func parseKA1Response(resp []byte) error {
 		return err
 	}
 	if resp[0] != 0x07 {
-		return fmt.Errorf("ka1 response opcode 0x%02x, expected 0x07", resp[0])
+		return invalidResponse(protocol.ExchangeInvalidOpcode, "ka1 response opcode 0x%02x, expected 0x07", resp[0])
 	}
 	return nil
 }
@@ -392,17 +393,17 @@ func parseKA2Response(resp []byte, expectedSerial, requestType byte, firstBootst
 		return ka2Response{}, err
 	}
 	if resp[0] != 0x07 {
-		return ka2Response{}, fmt.Errorf("ka2 response opcode 0x%02x, expected 0x07", resp[0])
+		return ka2Response{}, invalidResponse(protocol.ExchangeInvalidOpcode, "ka2 response opcode 0x%02x, expected 0x07", resp[0])
 	}
 	if resp[1] != expectedSerial {
-		return ka2Response{}, fmt.Errorf("ka2 response serial %d, expected %d", resp[1], expectedSerial)
+		return ka2Response{}, invalidResponse(protocol.ExchangeInvalidSequence, "ka2 response serial %d, expected %d", resp[1], expectedSerial)
 	}
 	_, responseType, frame, framed := inspectKA2Response(resp)
 	if !framed {
-		return ka2Response{}, fmt.Errorf("ka2 response fixed bytes 0x%02x 0x%02x 0x%02x are not a supported frame", resp[2], resp[3], resp[4])
+		return ka2Response{}, invalidResponse(protocol.ExchangeInvalidStructure, "ka2 response fixed bytes 0x%02x 0x%02x 0x%02x are not a supported frame", resp[2], resp[3], resp[4])
 	}
 	if !ka2ResponseCompatible(requestType, firstBootstrapType1, responseType, frame) {
-		return ka2Response{}, fmt.Errorf("ka2 response type %d frame %d is incompatible with request type %d", responseType, frame, requestType)
+		return ka2Response{}, invalidResponse(protocol.ExchangeInvalidType, "ka2 response type %d frame %d is incompatible with request type %d", responseType, frame, requestType)
 	}
 	if frame == ka2ResponseFrameSpecial {
 		return ka2Response{}, nil
@@ -465,17 +466,17 @@ func parseLogoutACK(resp []byte) error {
 		return err
 	}
 	if resp[0] != 0x04 {
-		return fmt.Errorf("logout response opcode 0x%02x, expected 0x04", resp[0])
+		return invalidResponse(protocol.ExchangeInvalidOpcode, "logout response opcode 0x%02x, expected 0x04", resp[0])
 	}
 	return nil
 }
 
 func validateResponseLength(label string, resp []byte, minimum int) error {
 	if len(resp) < minimum {
-		return fmt.Errorf("%s is %d bytes, need at least %d", label, len(resp), minimum)
+		return invalidResponse(protocol.ExchangeInvalidLength, "%s is %d bytes, need at least %d", label, len(resp), minimum)
 	}
 	if len(resp) > maxResponseDatagramLength {
-		return fmt.Errorf("%s is %d bytes, maximum is %d", label, len(resp), maxResponseDatagramLength)
+		return invalidResponse(protocol.ExchangeInvalidLength, "%s is %d bytes, maximum is %d", label, len(resp), maxResponseDatagramLength)
 	}
 	return nil
 }

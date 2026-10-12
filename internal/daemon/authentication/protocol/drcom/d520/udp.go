@@ -104,27 +104,41 @@ func (ex *udpExchange) roundTrip(
 	defer diagnostics.PhaseEvent(phase, phaseBoundaryEnd)
 	diagnostics.DatagramEvent(phase, protocol.DatagramDirectionTx, request)
 	if _, err := ex.conn.Write(request); err != nil {
-		return nil, udpReadFailure(ctx, "udp exchange write", err)
+		failure := udpReadFailure(ctx, "udp exchange write", err)
+		recordExchange(diagnostics, phase, networkOutcome(failure), 0)
+		return nil, failure
 	}
 
 	for {
 		n, err := ex.conn.Read(ex.buf[:])
 		if err != nil {
-			return nil, udpReadFailure(ctx, "udp exchange read", err)
+			failure := udpReadFailure(ctx, "udp exchange read", err)
+			recordExchange(diagnostics, phase, networkOutcome(failure), 0)
+			return nil, failure
 		}
 		datagram := make([]byte, n)
 		copy(datagram, ex.buf[:n])
 		diagnostics.DatagramEvent(phase, protocol.DatagramDirectionRx, datagram)
 		class, classifyErr := classify(datagram)
 		if classifyErr != nil {
+			recordExchange(diagnostics, phase, responseOutcome(classifyErr), n)
 			return nil, responseInvalidError("udp exchange response", classifyErr)
 		}
 		if class == responseAccept {
+			recordExchange(diagnostics, phase, protocol.ExchangeAccepted, n)
 			return datagram, nil
 		}
+		recordExchange(diagnostics, phase, protocol.ExchangeStaleIgnored, n)
 		// responseIgnore: discard the stale datagram and keep reading against
 		// the same absolute deadline without extending it.
 	}
+}
+
+func networkOutcome(failure *runError) protocol.AuthenticationProtocolExchangeOutcome {
+	if failure.kind == kindNetworkTimeout {
+		return protocol.ExchangeNetworkTimeout
+	}
+	return protocol.ExchangeNetworkIOFailed
 }
 
 // udpReadFailure maps a write/read error to a network failure, distinguishing

@@ -35,6 +35,31 @@ func TestResolveLogLevelAcceptsExactValues(t *testing.T) {
 	}
 }
 
+func TestSafeExchangeOutcomeDebugHasOnlyClassificationMetadata(t *testing.T) {
+	for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
+		var buf bytes.Buffer
+		d := &protocolDiagnosticsAdapter{logger: newDaemonLogger(&buf, level), sessionID: "session-test"}
+		d.ExchangeOutcome("login", protocol.ExchangeInvalidOpcode, 12)
+		out := buf.String()
+		if level == slog.LevelInfo {
+			if out != "" {
+				t.Fatalf("Info emitted Debug outcome: %s", out)
+			}
+			continue
+		}
+		for _, want := range []string{"event=protocol_exchange_outcome", "phase=login", "outcome=invalid_opcode", "length=12"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %s in %s", want, out)
+			}
+		}
+		for _, unsafe := range []string{"datagram_hex", "password", "serial=", "error=", "opcode="} {
+			if strings.Contains(out, unsafe) {
+				t.Fatalf("unsafe diagnostic: %s", out)
+			}
+		}
+	}
+}
+
 func TestResolveLogLevelRejectsInvalidWithoutEchoingValue(t *testing.T) {
 	const marker = "SUPER-SECRET-LEVEL-MARKER-9F3A"
 	_, err := resolveLogLevel(marker)

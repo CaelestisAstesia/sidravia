@@ -45,6 +45,99 @@ func TestDiagnosticPhaseConstantsAreStable(t *testing.T) {
 type captureDiagnostics struct {
 	phases    []string
 	datagrams []captureDatagram
+	outcomes  []captureOutcome
+}
+
+type captureOutcome struct {
+	phase   string
+	outcome protocol.AuthenticationProtocolExchangeOutcome
+	length  int
+}
+
+func (d *captureDiagnostics) ExchangeOutcome(phase string, outcome protocol.AuthenticationProtocolExchangeOutcome, length int) {
+	d.outcomes = append(d.outcomes, captureOutcome{phase, outcome, length})
+}
+
+func TestSafeResponseCategoriesPreserveParserAndClassifierFailures(t *testing.T) {
+	wrongSequence := peerKA2Response(7, ka2Type1, [4]byte{})
+	wrongType := peerKA2Response(0, ka2Type3, [4]byte{})
+	cases := []struct {
+		name  string
+		parse func() error
+		want  protocol.AuthenticationProtocolExchangeOutcome
+	}{
+		{"length", func() error { _, err := parseChallengeResponse([]byte{2}); return err }, protocol.ExchangeInvalidLength},
+		{"opcode", func() error { _, err := parseChallengeResponse(make([]byte, 8)); return err }, protocol.ExchangeInvalidOpcode},
+		{"sequence", func() error { _, err := parseKA2Response(wrongSequence, 0, ka2Type1, false); return err }, protocol.ExchangeInvalidSequence},
+		{"type", func() error { _, err := parseKA2Response(wrongType, 0, ka2Type1, false); return err }, protocol.ExchangeInvalidType},
+		{"classifier", func() error {
+			e := newExecution(runDefinition{}, nil, protocol.NoopAuthenticationProtocolDiagnostics{})
+			_, err := e.classifyKA2Response(0, ka2Type1, false)(wrongType)
+			return err
+		}, protocol.ExchangeInvalidType},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.parse()
+			if err == nil || responseOutcome(err) != c.want {
+				t.Fatalf("classification=%s err=%v", responseOutcome(err), err)
+			}
+		})
+	}
+}
+
+func TestExchangeOutcomesDistinguishStaleInvalidAndTimeout(t *testing.T) {
+	for _, kind := range []string{"stale", "invalid", "timeout"} {
+		t.Run(kind, func(t *testing.T) {
+			peer := newTestPeer(t, func([]byte) [][]byte {
+				switch kind {
+				case "stale":
+					return [][]byte{{9}, peerChallengeResponse([4]byte{})}
+				case "invalid":
+					return [][]byte{{2}}
+				}
+				return nil
+			})
+			ex, err := openUDPExchange([4]byte{127, 0, 0, 1}, localPort{mode: localPortSystemAssigned}, netip.MustParseAddr("127.0.0.1"), uint16(peer.addr.Port))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ex.close()
+			sink := &captureDiagnostics{}
+			classify := func(b []byte) (exchangeResponse, error) {
+				if len(b) == 1 && b[0] == 9 {
+					return responseIgnore, nil
+				}
+				_, err := parseChallengeResponse(b)
+				if err != nil {
+					return 0, err
+				}
+				return responseAccept, nil
+			}
+			_, failure := ex.roundTrip(context.Background(), 50*time.Millisecond, []byte{1}, classify, phaseChallenge, sink)
+			want := protocol.ExchangeAccepted
+			switch kind {
+			case "invalid":
+				want = protocol.ExchangeInvalidLength
+			case "timeout":
+				want = protocol.ExchangeNetworkTimeout
+			}
+			if len(sink.outcomes) == 0 {
+				t.Fatal("missing outcome")
+			}
+			last := sink.outcomes[len(sink.outcomes)-1]
+			if last.phase != phaseChallenge || last.outcome != want {
+				t.Fatalf("outcomes=%v", sink.outcomes)
+			}
+			if kind == "stale" {
+				if failure != nil || len(sink.outcomes) != 2 || sink.outcomes[0].outcome != protocol.ExchangeStaleIgnored {
+					t.Fatalf("stale outcomes=%v failure=%v", sink.outcomes, failure)
+				}
+			} else if failure == nil {
+				t.Fatal("failed exchange accepted")
+			}
+		})
+	}
 }
 
 type captureDatagram struct {

@@ -77,6 +77,28 @@ type AuthenticationProtocolDiagnostics interface {
 	DatagramEvent(phase string, direction AuthenticationProtocolDatagramDirection, datagram []byte)
 }
 
+// AuthenticationProtocolExchangeOutcome is a safe, fixed diagnostic category.
+// It contains no packet contents or peer-provided error text.
+type AuthenticationProtocolExchangeOutcome string
+
+const (
+	ExchangeAccepted         AuthenticationProtocolExchangeOutcome = "accepted"
+	ExchangeStaleIgnored     AuthenticationProtocolExchangeOutcome = "stale_ignored"
+	ExchangeInvalidLength    AuthenticationProtocolExchangeOutcome = "invalid_length"
+	ExchangeInvalidOpcode    AuthenticationProtocolExchangeOutcome = "invalid_opcode"
+	ExchangeInvalidSequence  AuthenticationProtocolExchangeOutcome = "invalid_sequence"
+	ExchangeInvalidType      AuthenticationProtocolExchangeOutcome = "invalid_type"
+	ExchangeInvalidStructure AuthenticationProtocolExchangeOutcome = "invalid_structure"
+	ExchangeNetworkTimeout   AuthenticationProtocolExchangeOutcome = "network_timeout"
+	ExchangeNetworkIOFailed  AuthenticationProtocolExchangeOutcome = "network_io_failed"
+)
+
+// AuthenticationProtocolExchangeDiagnostics optionally observes classified
+// exchange outcomes. Existing phase/Trace sinks need not implement this hook.
+type AuthenticationProtocolExchangeDiagnostics interface {
+	ExchangeOutcome(phase string, outcome AuthenticationProtocolExchangeOutcome, length int)
+}
+
 // NoopAuthenticationProtocolDiagnostics is the explicit no-op implementation
 // used when diagnostics are disabled. It replaces scattered nil checks in the
 // protocol run.

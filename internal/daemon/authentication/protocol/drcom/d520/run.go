@@ -276,12 +276,13 @@ func (exec *execution) classifyKA1Response() responseClassifier {
 			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseCompatible(sent.requestType, sent.firstBootstrapType1, typ, frame) {
 				return responseIgnore, nil
 			}
-			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for ka1", serial, typ)
+			return 0, invalidResponse(protocol.ExchangeInvalidSequence, "unexpected ka2 response serial %d type %d while waiting for ka1", serial, typ)
 		}
-		if parseKA1Response(datagram) == nil {
+		if err := parseKA1Response(datagram); err == nil {
 			return responseAccept, nil
+		} else {
+			return 0, fmt.Errorf("unexpected response while waiting for ka1: %w", err)
 		}
-		return 0, fmt.Errorf("unexpected response while waiting for ka1")
 	}
 }
 
@@ -291,19 +292,20 @@ func (exec *execution) classifyKA1Response() responseClassifier {
 // stale-response rules.
 func (exec *execution) classifyKA2Response(expectedSerial, expectedType byte, firstBootstrapType1 bool) responseClassifier {
 	return func(datagram []byte) (exchangeResponse, error) {
-		if _, err := parseKA2Response(datagram, expectedSerial, expectedType, firstBootstrapType1); err == nil {
+		_, parseErr := parseKA2Response(datagram, expectedSerial, expectedType, firstBootstrapType1)
+		if parseErr == nil {
 			return responseAccept, nil
 		}
 		if serial, typ, frame, ok := inspectKA2Response(datagram); ok {
 			if sent, found := exec.ka2Sent[serial]; found && ka2ResponseCompatible(sent.requestType, sent.firstBootstrapType1, typ, frame) {
 				return responseIgnore, nil
 			}
-			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for serial %d type %d", serial, typ, expectedSerial, expectedType)
+			return 0, fmt.Errorf("unexpected ka2 response serial %d type %d while waiting for serial %d type %d: %w", serial, typ, expectedSerial, expectedType, parseErr)
 		}
 		if isCompleteKA1Response(datagram) && exec.ka1Sent {
 			return responseIgnore, nil
 		}
-		return 0, fmt.Errorf("unexpected response while waiting for ka2")
+		return 0, fmt.Errorf("unexpected response while waiting for ka2: %w", parseErr)
 	}
 }
 

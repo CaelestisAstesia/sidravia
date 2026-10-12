@@ -37,6 +37,7 @@ const (
 	eventRetryScheduled               = "retry_scheduled"
 	eventProtocolPhase                = "protocol_phase"
 	eventProtocolDatagram             = "protocol_datagram"
+	eventProtocolExchangeOutcome      = "protocol_exchange_outcome"
 	eventTraceLoggingSensitive        = "trace_logging_sensitive"
 	eventStorageProtectionUnavailable = "storage_protection_unavailable"
 
@@ -46,6 +47,7 @@ const (
 	msgRetryScheduled               = "认证重试已调度"
 	msgProtocolPhase                = "协议阶段边界"
 	msgProtocolDatagram             = "协议数据报"
+	msgProtocolExchangeOutcome      = "协议交换结果"
 	msgTraceLoggingSensitive        = "Trace 日志含敏感信息"
 	msgStorageProtectionUnavailable = "便携存储无法使用当前用户权限保护"
 )
@@ -151,6 +153,16 @@ func (d *protocolDiagnosticsAdapter) PhaseEvent(phase, boundary string) {
 		slog.String("session_id", d.sessionID),
 		slog.String("phase", phase),
 		slog.String("boundary", boundary),
+	)
+}
+
+func (d *protocolDiagnosticsAdapter) ExchangeOutcome(phase string, outcome protocol.AuthenticationProtocolExchangeOutcome, length int) {
+	d.logger.Debug(msgProtocolExchangeOutcome,
+		slog.String("event", eventProtocolExchangeOutcome),
+		slog.String("session_id", d.sessionID),
+		slog.String("phase", phase),
+		slog.String("outcome", string(outcome)),
+		slog.Int("length", length),
 	)
 }
 
