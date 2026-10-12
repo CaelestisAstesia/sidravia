@@ -9,6 +9,7 @@ import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+import 'integration_settings.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
@@ -36,6 +37,7 @@ class SettingsPage extends StatelessWidget {
         horizontalPadding: 24,
         children: [
           DesignHeader(title: '设置', onBack: onBack),
+          if (desktopEnabled) const IntegrationSettings(),
           const DesignSectionTitle('连接'),
           DesignGroup(
             children: [

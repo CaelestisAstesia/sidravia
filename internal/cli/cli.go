@@ -417,7 +417,7 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	if bootstrap == nil {
 		bootstrap = defaultGUIBootstrap
 	}
-	root.AddCommand(daemon, auth, profile, network, diagnostics, configCommand, retiredStatus, newGUIBootstrapCommand(deps.identity, output, bootstrap))
+	root.AddCommand(daemon, auth, profile, network, diagnostics, configCommand, retiredStatus, newGUIBootstrapCommand(deps.identity, output, bootstrap), newIntegrationCommand(output, invokeInstallationManager))
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := newPresentation(c.OutOrStdout())
