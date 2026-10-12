@@ -5,6 +5,8 @@ package installationmanager
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"unsafe"
 
@@ -60,7 +62,7 @@ func (registryPath) notify() error {
 	return nil
 }
 
-// Run serializes manager PATH reads and writes within the current user session.
+// Run serializes manager integration reads and writes for the current user.
 // Other applications do not participate in this lock; a verification mismatch
 // reports failure rather than overwriting their later edits with a rollback.
 func Run(directory string, operation Operation) (Result, error) {
@@ -91,5 +93,24 @@ func Run(directory string, operation Operation) (Result, error) {
 		return fail(errors.New("integration lock timed out"))
 	}
 	defer windows.ReleaseMutex(mutex)
-	return operate(registryPath{}, directory, operation)
+	gui, guiErr := os.Stat(filepath.Join(directory, "Sidravia.exe"))
+	guiAvailable := guiErr == nil && gui.Mode().IsRegular()
+	var result Result
+	if operation == Status || operation == EnablePath || operation == DisablePath {
+		result, err = operate(registryPath{}, directory, operation)
+		if err == nil && operation == Status {
+			state, taskErr := taskOperation(directory, Status)
+			result.Autostart = state.Autostart
+			if taskErr != nil {
+				result.OK = false
+				result.Code = Code(taskErr)
+				err = taskErr
+			}
+		}
+	} else {
+		result, err = taskOperation(directory, operation)
+	}
+	result.Capabilities = []string{"user_path", "user_autostart"}
+	result.GUIAvailable = guiAvailable
+	return result, err
 }

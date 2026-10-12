@@ -20,6 +20,9 @@ func TestArgumentsAndJSON(t *testing.T) {
 		{[]string{"status"}, installationmanager.Status, 0},
 		{[]string{"path", "enable"}, installationmanager.EnablePath, 0},
 		{[]string{"path", "disable"}, installationmanager.DisablePath, 0},
+		{[]string{"autostart", "set", "gui"}, installationmanager.StartGUI, 0},
+		{[]string{"autostart", "set", "daemon"}, installationmanager.StartDaemon, 0},
+		{[]string{"autostart", "disable"}, installationmanager.DisableAutostart, 0},
 		{[]string{"autostart"}, "", 2},
 		{[]string{"status", "extra"}, "", 2},
 	} {

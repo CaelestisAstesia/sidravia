@@ -17,15 +17,20 @@ type Result struct {
 	PathEnabled  bool     `json:"pathEnabled"`
 	Changed      bool     `json:"changed"`
 	Warning      string   `json:"warning,omitempty"`
+	Autostart    string   `json:"autostart,omitempty"`
+	GUIAvailable bool     `json:"guiAvailable"`
 }
 
 // Operation selects the only integration capability currently implemented.
 type Operation string
 
 const (
-	Status      Operation = "status"
-	EnablePath  Operation = "path enable"
-	DisablePath Operation = "path disable"
+	Status           Operation = "status"
+	EnablePath       Operation = "path enable"
+	DisablePath      Operation = "path disable"
+	StartGUI         Operation = "autostart set gui"
+	StartDaemon      Operation = "autostart set daemon"
+	DisableAutostart Operation = "autostart disable"
 )
 
 type pathValue struct {

@@ -21,7 +21,11 @@ import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
 @pragma('vm:entry-point')
 void trayMain() => runTrayPopover();
 
-Future<void> main() async {
+Future<void> main([List<String> args = const []]) async {
+  if (args.any((argument) => argument != '--start-hidden') ||
+      args.length > 1) {
+    exit(2);
+  }
   WidgetsFlutterBinding.ensureInitialized();
   final rawNamespace = Platform.environment['SIDRAVIA_NAMESPACE'];
   final namespace = validateDesktopNamespace(rawNamespace);
@@ -45,7 +49,7 @@ Future<void> main() async {
   }
   await desktop.configurePreferences(
     closeBehavior: appearance.closeBehavior,
-    startHidden: appearance.startHidden,
+    startHidden: args.contains('--start-hidden') || appearance.startHidden,
   );
   registerHarmonyOSFontLicense();
   final startedAt = DateTime.now();
