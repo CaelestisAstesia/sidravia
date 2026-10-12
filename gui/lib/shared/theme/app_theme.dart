@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
@@ -29,12 +30,12 @@ abstract final class AppColors {
 
 abstract final class AppButtonStyles {
   static final primary = FilledButton.styleFrom(
-    minimumSize: const Size(0, 42),
+    minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
     textStyle: const TextStyle(
       fontFamily: 'HarmonyOS Sans',
-      fontSize: 13,
+      fontSize: DesignMetrics.bodyFont,
       fontWeight: FontWeight.w600,
       height: 20 / 13,
     ),
@@ -42,7 +43,7 @@ abstract final class AppButtonStyles {
     foregroundColor: Colors.white,
   );
   static final secondary = OutlinedButton.styleFrom(
-    minimumSize: const Size(0, 42),
+    minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
     side: const BorderSide(color: AppColors.lineLight),
@@ -50,7 +51,7 @@ abstract final class AppButtonStyles {
     foregroundColor: AppColors.inkLight,
     textStyle: const TextStyle(
       fontFamily: 'HarmonyOS Sans',
-      fontSize: 13,
+      fontSize: DesignMetrics.bodyFont,
       fontWeight: FontWeight.w600,
       height: 20 / 13,
     ),
@@ -111,8 +112,14 @@ abstract final class AppTheme {
       textTheme:
           const TextTheme(
             bodyLarge: TextStyle(fontSize: 16, height: 1.2),
-            bodyMedium: TextStyle(fontSize: 13, height: 1.55),
-            bodySmall: TextStyle(fontSize: 12, height: 1.45),
+            bodyMedium: TextStyle(
+              fontSize: DesignMetrics.bodyFont,
+              height: 1.55,
+            ),
+            bodySmall: TextStyle(
+              fontSize: DesignMetrics.valueFont,
+              height: 1.45,
+            ),
           ).apply(
             fontFamily: 'HarmonyOS Sans',
             bodyColor: scheme.onSurface,
@@ -129,13 +136,13 @@ abstract final class AppTheme {
         ),
         titleTextStyle: TextStyle(
           fontFamily: 'HarmonyOS Sans',
-          fontSize: 18,
+          fontSize: DesignMetrics.dialogTitleFont,
           fontWeight: FontWeight.w700,
           color: scheme.onSurface,
         ),
         contentTextStyle: TextStyle(
           fontFamily: 'HarmonyOS Sans',
-          fontSize: 13,
+          fontSize: DesignMetrics.bodyFont,
           height: 1.55,
           color: scheme.onSurfaceVariant,
         ),

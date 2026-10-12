@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:flutter/material.dart';
 
 /// Short display hints omit terminal full stops; paragraphs and values keep
@@ -156,13 +157,23 @@ class DesignHeader extends StatelessWidget {
                 textScaler: MediaQuery.textScalerOf(context),
                 text: TextSpan(
                   text: '返回',
-                  style: DefaultTextStyle.of(context).style
-                      .merge(const TextStyle(fontSize: 13, height: 20 / 13)),
+                  style: DefaultTextStyle.of(context).style.merge(
+                    const TextStyle(
+                      fontSize: DesignMetrics.bodyFont,
+                      height: 20 / 13,
+                    ),
+                  ),
                 ),
               ),
             )
           else
-            const Text('返回', style: TextStyle(fontSize: 13, height: 20 / 13)),
+            const Text(
+              '返回',
+              style: TextStyle(
+                fontSize: DesignMetrics.bodyFont,
+                height: 20 / 13,
+              ),
+            ),
         ],
       ),
     );
@@ -177,7 +188,7 @@ class DesignHeader extends StatelessWidget {
               title,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 20,
+                fontSize: DesignMetrics.titleFont,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
                 letterSpacing: -.2,
@@ -211,7 +222,7 @@ class DesignSectionTitle extends StatelessWidget {
     child: Text(
       title,
       style: TextStyle(
-        fontSize: 11,
+        fontSize: DesignMetrics.captionFont,
         height: 16 / 11,
         letterSpacing: .66,
         fontWeight: FontWeight.w700,
@@ -229,7 +240,7 @@ class DesignGroup extends StatelessWidget {
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(DesignMetrics.groupRadius),
       border: Border.all(color: Theme.of(context).colorScheme.outline),
     ),
     child: Column(
@@ -279,9 +290,12 @@ class DesignRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final content = ConstrainedBox(
-      constraints: BoxConstraints(minHeight: 56),
+      constraints: BoxConstraints(minHeight: DesignMetrics.rowMinHeight),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(
+          horizontal: DesignMetrics.rowPadding,
+          vertical: DesignMetrics.rowPadding,
+        ),
         child: Row(
           children: [
             Expanded(
@@ -291,7 +305,9 @@ class DesignRow extends StatelessWidget {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: diagnostic ? 12 : 13,
+                      fontSize: diagnostic
+                          ? DesignMetrics.valueFont
+                          : DesignMetrics.bodyFont,
                       height: diagnostic ? 1.5 : 19 / 13,
                       fontWeight: diagnostic
                           ? FontWeight.w400
@@ -301,11 +317,11 @@ class DesignRow extends StatelessWidget {
                     ),
                   ),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 3),
+                    const SizedBox(height: DesignMetrics.subtitleGap),
                     Text(
                       shortUiText(subtitle!),
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: DesignMetrics.captionFont,
                         height: 1.35,
                         color: scheme.onSurfaceVariant,
                       ),
@@ -323,7 +339,9 @@ class DesignRow extends StatelessWidget {
                     value!,
                     textAlign: TextAlign.right,
                     style: TextStyle(
-                      fontSize: diagnostic ? 11 : 12,
+                      fontSize: diagnostic
+                          ? DesignMetrics.captionFont
+                          : DesignMetrics.valueFont,
                       fontFamily: 'HarmonyOS Sans',
                       color: scheme.onSurfaceVariant,
                     ),
@@ -370,7 +388,7 @@ class DesignHelper extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     shortUiText(text),
     style: TextStyle(
-      fontSize: 11,
+      fontSize: DesignMetrics.captionFont,
       height: 1.5,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
     ),
@@ -455,7 +473,7 @@ class DesignField extends StatelessWidget {
       Text(
         label,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: DesignMetrics.valueFont,
           height: 1.5,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
@@ -476,7 +494,7 @@ class DesignField extends StatelessWidget {
         Text(
           error!,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: DesignMetrics.captionFont,
             height: 1.5,
             color: Theme.of(context).colorScheme.error,
           ),
@@ -495,10 +513,12 @@ Future<T?> showDesignChoice<T>(
   context: context,
   builder: (context) => Dialog(
     child: SizedBox(
-      width: 360,
+      width: DesignMetrics.dialogWidth,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .8,
+          maxHeight:
+              MediaQuery.sizeOf(context).height *
+              DesignMetrics.dialogMaxHeightRatio,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -575,7 +595,12 @@ class DesignChoiceRow<T> extends StatelessWidget {
       ),
       if (helper != null)
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.fromLTRB(
+            DesignMetrics.rowPadding,
+            0,
+            DesignMetrics.rowPadding,
+            DesignMetrics.rowPadding,
+          ),
           child: DesignHelper(helper!),
         ),
     ],
@@ -599,12 +624,14 @@ class DesignInputRow extends StatelessWidget {
   final String? hint, error, helper;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12),
+    padding: const EdgeInsets.symmetric(horizontal: DesignMetrics.rowPadding),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
+          constraints: const BoxConstraints(
+            minHeight: DesignMetrics.rowMinHeight,
+          ),
           child: Row(
             children: [
               Expanded(
@@ -615,16 +642,16 @@ class DesignInputRow extends StatelessWidget {
                     Text(
                       label,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: DesignMetrics.bodyFont,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     if (helper != null && error == null) ...[
-                      const SizedBox(height: 3),
+                      const SizedBox(height: DesignMetrics.subtitleGap),
                       Text(
                         shortUiText(helper!),
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: DesignMetrics.captionFont,
                           height: 1.35,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -641,14 +668,14 @@ class DesignInputRow extends StatelessWidget {
                   obscureText: obscureText,
                   textAlign: TextAlign.right,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: DesignMetrics.valueFont,
                     fontFamily: 'HarmonyOS Sans',
                   ),
                   textAlignVertical: TextAlignVertical.center,
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: TextStyle(
-                      fontSize: 12,
+                      fontSize: DesignMetrics.valueFont,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     isDense: true,
@@ -671,7 +698,7 @@ class DesignInputRow extends StatelessWidget {
               shortUiText(error!),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
-                fontSize: 12,
+                fontSize: DesignMetrics.valueFont,
               ),
             ),
           ),

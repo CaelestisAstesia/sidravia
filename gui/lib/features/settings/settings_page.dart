@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:sidravia_gui/features/settings/about_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
@@ -193,7 +194,7 @@ class SettingsPage extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           textStyle: const TextStyle(
                             fontFamily: 'HarmonyOS Sans',
-                            fontSize: 11,
+                            fontSize: DesignMetrics.captionFont,
                           ),
                         ),
                         onPressed: controller.canRestartCore
@@ -339,7 +340,10 @@ class _LogLevelSettingRow extends StatelessWidget {
       final title = TextPainter(
         text: const TextSpan(
           text: '日志等级',
-          style: TextStyle(fontFamily: 'HarmonyOS Sans', fontSize: 13),
+          style: TextStyle(
+            fontFamily: 'HarmonyOS Sans',
+            fontSize: DesignMetrics.bodyFont,
+          ),
         ),
         textDirection: Directionality.of(context),
         textScaler: scaler,
@@ -349,15 +353,19 @@ class _LogLevelSettingRow extends StatelessWidget {
       final restart = TextPainter(
         text: const TextSpan(
           text: '重启核心',
-          style: TextStyle(fontFamily: 'HarmonyOS Sans', fontSize: 11),
+          style: TextStyle(
+            fontFamily: 'HarmonyOS Sans',
+            fontSize: DesignMetrics.captionFont,
+          ),
         ),
         textDirection: Directionality.of(context),
         textScaler: scaler,
       )..layout();
       final restartWidth = (restart.width + 32).clamp(64, double.infinity);
       restart.dispose();
-      final dropdownWidth = ((MediaQuery.sizeOf(context).width - 74) * .55)
-          .clamp(92, 180);
+      final dropdownWidth = DesignMetrics.choiceWidth(
+        MediaQuery.sizeOf(context).width,
+      );
       final controlsWidth =
           dropdownWidth + (controls.children.length > 1 ? restartWidth + 8 : 0);
       if (constraints.maxWidth >= titleWidth + controlsWidth + 48) {
@@ -430,7 +438,7 @@ class _SettingsDropdown<T> extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final style = TextStyle(
       fontFamily: 'HarmonyOS Sans',
-      fontSize: 11,
+      fontSize: DesignMetrics.captionFont,
       height: 1.35,
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
@@ -449,14 +457,17 @@ class _SettingsDropdown<T> extends StatelessWidget {
         platform == TargetPlatform.android || platform == TargetPlatform.iOS;
     return Container(
       key: frameKey,
-      width: ((MediaQuery.sizeOf(context).width - 74) * .55).clamp(92, 180),
-      height: (textHeight + 12).clamp(touch ? 48 : 30, double.infinity),
+      width: DesignMetrics.choiceWidth(MediaQuery.sizeOf(context).width),
+      height: (textHeight + DesignMetrics.rowPadding).clamp(
+        touch ? DesignMetrics.touchTarget : DesignMetrics.choiceMinHeight,
+        double.infinity,
+      ),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 7),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
         border: Border.all(color: scheme.outline),
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
       ),
       child: DropdownButton<T>(
         key: dropdownKey,
