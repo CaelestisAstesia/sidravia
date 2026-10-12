@@ -67,6 +67,9 @@ func (registryPath) notify() error {
 // Other applications do not participate in this lock; a verification mismatch
 // reports failure rather than overwriting their later edits with a rollback.
 func Run(directory string, operation Operation) (Result, error) {
+	if err := ensureManagerJob(); err != nil {
+		return Result{Version: 1, Code: "integration_process_boundary_failed", Capabilities: []string{}}, &Failure{Code: "integration_process_boundary_failed", Cause: err}
+	}
 	// Windows mutex ownership belongs to an OS thread, not a goroutine.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
