@@ -31,6 +31,13 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	entries := append([]zipEntry{{"LICENSE", license, 0644}}, profiles...)
 	entries = append(entries, zipEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
+	if t.cfg.target == "windows-amd64" {
+		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
+		if err != nil {
+			return fmt.Errorf("read application icon: %w", err)
+		}
+		entries = append(entries, zipEntry{"app_icon.ico", icon, 0644})
+	}
 	gui, err := readGUI(t.cfg.guiDirectory, entries)
 	if err != nil {
 		return err

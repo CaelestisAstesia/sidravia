@@ -28,6 +28,7 @@ func TestDistributionContents(t *testing.T) {
 	for _, target := range []string{"windows-amd64", "linux-amd64"} {
 		t.Run(target, func(t *testing.T) {
 			root := setupRepoRoot(t)
+			writeTestFile(t, filepath.Join(root, "gui", "windows", "runner", "resources", "app_icon.ico"), "icon-fixture")
 			fb := &fakeBuilder{}
 			out := filepath.Join(t.TempDir(), "dist")
 			cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: target, output: out}
@@ -56,7 +57,7 @@ func TestDistributionContents(t *testing.T) {
 				for _, f := range z.File {
 					contents[f.Name] = true
 				}
-				if !contents["sidraviamgr.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] {
+				if !contents["sidraviamgr.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || !contents["app_icon.ico"] {
 					t.Fatal("missing manager or core")
 				}
 			} else {

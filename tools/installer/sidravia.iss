@@ -21,6 +21,8 @@ WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName=Sidravia
+SetupIconFile=payload\app_icon.ico
+UninstallDisplayIcon={app}\app_icon.ico
 DisableProgramGroupPage=yes
 LicenseFile=payload\LICENSE
 
