@@ -19,6 +19,17 @@ import (
 
 type managerOutput struct{ bytes.Buffer }
 
+type integrationOperationError struct {
+	message string
+	cause   error
+}
+
+func (e *integrationOperationError) Error() string { return e.message }
+func (e *integrationOperationError) Unwrap() error { return e.cause }
+func integrationFailure(message string, cause error) error {
+	return &integrationOperationError{message: message, cause: cause}
+}
+
 func (b *managerOutput) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > 65536 {
 		return 0, errors.New("manager output too large")
@@ -32,7 +43,7 @@ func invokeInstallationManager(ctx context.Context, args []string) ([]byte, erro
 	}
 	path, err := os.Executable()
 	if err != nil {
-		return nil, errors.New("无法确定维护工具的位置。")
+		return nil, integrationFailure("无法确定维护工具的位置。", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
@@ -46,7 +57,7 @@ func invokeInstallationManager(ctx context.Context, args []string) ([]byte, erro
 		return nil, fmt.Errorf("维护操作已取消或超时：%w", ctx.Err())
 	}
 	if err != nil && output.Len() == 0 {
-		return nil, errors.New("维护工具无法运行，请检查安装是否完整。")
+		return nil, integrationFailure("维护工具无法运行，请检查安装是否完整。", err)
 	}
 	return output.Bytes(), err
 }
@@ -64,14 +75,14 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 			}
 			var r installationmanager.Result
 			if err := json.Unmarshal(data, &r); err != nil || r.Version != 1 || r.Code == "" {
-				return errors.New("维护工具返回了无效结果。")
+				return integrationFailure("维护工具返回了无效结果。", err)
 			}
 			// Encode only our public result fields, never arbitrary child output.
 			if err := json.NewEncoder(out).Encode(r); err != nil {
 				return err
 			}
 			if processErr != nil || !r.OK {
-				return fmt.Errorf("安装管理操作失败（%s）。", safeManagerCode(r.Code))
+				return integrationFailure(fmt.Sprintf("安装管理操作失败（%s）。", safeManagerCode(r.Code)), processErr)
 			}
 			return nil
 		}

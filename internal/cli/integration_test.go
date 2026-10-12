@@ -36,12 +36,16 @@ func TestIntegrationInvalidAndFailure(t *testing.T) {
 		_ = cmd.Execute()
 	}
 	var out bytes.Buffer
+	var cause = errors.New("private native error")
 	cmd := newIntegrationCommand(&out, func(context.Context, []string) ([]byte, error) {
-		return []byte(`{"version":1,"ok":false,"code":"scheduled_task_conflict","capabilities":[]}`), errors.New("private native error")
+		return []byte(`{"version":1,"ok":false,"code":"scheduled_task_conflict","capabilities":[]}`), cause
 	})
 	cmd.SetArgs([]string{"status"})
 	err := cmd.Execute()
 	if err == nil || strings.Contains(err.Error(), "private") || !strings.Contains(err.Error(), "scheduled_task_conflict") {
 		t.Fatal(err)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatal("lost underlying native cause")
 	}
 }

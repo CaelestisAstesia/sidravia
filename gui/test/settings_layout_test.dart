@@ -4,6 +4,7 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
@@ -96,7 +97,10 @@ void main() {
         connector: (_) async => client,
       );
       await controller.start();
-      final appearance = GuiPreferences();
+      final appearance = GuiPreferences(
+        store: MemoryGuiSettingsStore()
+          ..settings = const GuiSettings(logLevel: 'info'),
+      );
       await appearance.initialize();
       var backs = 0;
       await tester.pumpWidget(

@@ -78,17 +78,19 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
             DesignRow(
               title: '加入用户 PATH',
               subtitle: '使新打开的终端可以直接使用命令',
-              trailing: DesignSwitch(
-                label: '加入用户 PATH',
-                value: status?.pathEnabled ?? false,
-                onChanged: _busy || status == null
-                    ? null
-                    : (enabled) => _perform(
-                        enabled
-                            ? IntegrationChange.pathEnable
-                            : IntegrationChange.pathDisable,
-                      ),
-              ),
+              trailing: status == null
+                  ? const Text('状态未知')
+                  : DesignSwitch(
+                      label: '加入用户 PATH',
+                      value: status.pathEnabled,
+                      onChanged: _busy
+                          ? null
+                          : (enabled) => _perform(
+                              enabled
+                                  ? IntegrationChange.pathEnable
+                                  : IntegrationChange.pathDisable,
+                            ),
+                    ),
             ),
             DesignRow(
               title: '开机自启',

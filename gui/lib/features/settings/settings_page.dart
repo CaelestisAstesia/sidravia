@@ -9,6 +9,7 @@ import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+
 import 'integration_settings.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -377,21 +378,26 @@ class _LogLevelSettingRow extends StatelessWidget {
           trailing: controls,
         );
       }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const DesignRow(title: '日志等级', subtitle: '重启核心后生效'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: controls.children.where((w) => w is! SizedBox).toList(),
+      return Material(
+        color: Colors.transparent,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const DesignRow(title: '日志等级', subtitle: '重启核心后生效'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: controls.children
+                    .where((w) => w is! SizedBox)
+                    .toList(),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     },
   );

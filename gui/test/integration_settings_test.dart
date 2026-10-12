@@ -68,10 +68,8 @@ void main() {
     await tester.tap(find.text('刷新'));
     await tester.pumpAndSettle();
     expect(find.text('读取失败'), findsOneWidget);
-    expect(
-      tester.widget<DesignSwitch>(find.byType(DesignSwitch)).onChanged,
-      isNull,
-    );
+    expect(find.byType(DesignSwitch), findsNothing);
+    expect(find.text('状态未知'), findsWidgets);
     await tester.pumpWidget(const SizedBox());
     expect(manager.closed, true);
   });
@@ -82,10 +80,8 @@ void main() {
         home: Scaffold(body: IntegrationSettings(manager: manager)),
       ),
     );
-    expect(
-      tester.widget<DesignSwitch>(find.byType(DesignSwitch)).onChanged,
-      isNull,
-    );
+    expect(find.byType(DesignSwitch), findsNothing);
+    expect(find.text('状态未知'), findsWidgets);
     await tester.pumpWidget(const SizedBox());
     manager.pending!.complete(
       const IntegrationStatus(
