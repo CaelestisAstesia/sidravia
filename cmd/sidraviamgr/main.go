@@ -37,6 +37,8 @@ func run(args []string, out io.Writer, executable func() (string, error), execut
 		operation = installationmanager.StartGUI
 	} else if len(args) == 3 && args[0] == "autostart" && args[1] == "set" && args[2] == "daemon" {
 		operation = installationmanager.StartDaemon
+	} else if len(args) == 1 && args[0] == "uninstall-check" {
+		operation = installationmanager.CheckUninstall
 	} else if len(args) == 1 && args[0] == "uninstall-prepare" {
 		operation = installationmanager.PrepareUninstall
 	} else if len(args) == 2 && args[0] == "data" && args[1] == "delete" {

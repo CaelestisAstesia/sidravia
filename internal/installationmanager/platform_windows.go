@@ -97,13 +97,18 @@ func Run(directory string, operation Operation) (Result, error) {
 	gui, guiErr := os.Stat(filepath.Join(directory, "Sidravia.exe"))
 	guiAvailable := guiErr == nil && gui.Mode().IsRegular()
 	var result Result
-	if operation == PrepareUninstall || operation == DeleteData {
+	if operation == PrepareUninstall || operation == CheckUninstall || operation == DeleteData {
 		result = Result{Version: 1, Directory: directory}
 		blocked, guardErr := productRunning(directory, operation == DeleteData)
 		if guardErr != nil {
 			err = &Failure{Code: "process_query_failed", Cause: guardErr}
 		} else if blocked {
 			err = &Failure{Code: "application_running", Cause: errors.New("product must exit before cleanup")}
+		} else if operation == CheckUninstall {
+			result, err = taskOperation(directory, Status)
+			if err == nil && result.Autostart == "conflict" {
+				err = &Failure{Code: "scheduled_task_conflict", Cause: errors.New("foreign startup task")}
+			}
 		} else if operation == PrepareUninstall {
 			result, err = taskOperation(directory, DisableAutostart)
 			if err == nil {

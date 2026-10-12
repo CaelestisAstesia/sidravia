@@ -24,6 +24,7 @@ func TestArgumentsAndJSON(t *testing.T) {
 		{[]string{"autostart", "set", "daemon"}, installationmanager.StartDaemon, 0},
 		{[]string{"autostart", "disable"}, installationmanager.DisableAutostart, 0},
 		{[]string{"uninstall-prepare"}, installationmanager.PrepareUninstall, 0},
+		{[]string{"uninstall-check"}, installationmanager.CheckUninstall, 0},
 		{[]string{"data", "delete"}, installationmanager.DeleteData, 0},
 		{[]string{"autostart"}, "", 2},
 		{[]string{"status", "extra"}, "", 2},

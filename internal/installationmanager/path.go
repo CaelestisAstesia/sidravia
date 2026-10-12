@@ -32,6 +32,7 @@ const (
 	StartDaemon      Operation = "autostart set daemon"
 	DisableAutostart Operation = "autostart disable"
 	PrepareUninstall Operation = "uninstall-prepare"
+	CheckUninstall   Operation = "uninstall-check"
 	DeleteData       Operation = "data delete"
 )
 

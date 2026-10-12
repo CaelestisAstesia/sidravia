@@ -62,20 +62,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // config holds parsed command-line flags.
 type config struct {
-	version  string
-	buildID  string
-	output   string
-	goBin    string
-	artifact string
-	help     bool
+	version      string
+	buildID      string
+	output       string
+	goBin        string
+	artifact     string
+	target       string
+	guiDirectory string
+	iscc         string
+	help         bool
 }
 
 var knownValueFlags = map[string]bool{
-	"--version":  true,
-	"--build-id": true,
-	"--output":   true,
-	"--go":       true,
-	"--artifact": true,
+	"--version":       true,
+	"--build-id":      true,
+	"--output":        true,
+	"--go":            true,
+	"--artifact":      true,
+	"--target":        true,
+	"--gui-directory": true,
+	"--iscc":          true,
 }
 
 // parseFlags parses the strict flag grammar. It rejects positional arguments,
@@ -134,10 +140,16 @@ func parseFlags(args []string) (config, error) {
 		case "--go":
 			c.goBin = val
 		case "--artifact":
-			if val != "release" && val != "field-validation" {
-				return c, fmt.Errorf("flag %q must be release or field-validation", name)
+			if val != "release" && val != "field-validation" && val != "distribution" {
+				return c, fmt.Errorf("flag %q must be release, field-validation or distribution", name)
 			}
 			c.artifact = val
+		case "--target":
+			c.target = val
+		case "--gui-directory":
+			c.guiDirectory = val
+		case "--iscc":
+			c.iscc = val
 		}
 	}
 	if c.help {
@@ -151,6 +163,16 @@ func parseFlags(args []string) (config, error) {
 	}
 	if c.output == "" {
 		return c, errors.New("missing required flag --output")
+	}
+	if c.artifact == "distribution" {
+		if c.target != "windows-amd64" && c.target != "linux-amd64" {
+			return c, errors.New("distribution requires --target windows-amd64 or linux-amd64")
+		}
+		if c.target == "linux-amd64" && (c.guiDirectory != "" || c.iscc != "") {
+			return c, errors.New("Linux distribution contains only backend and CTL")
+		}
+	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" {
+		return c, errors.New("target, GUI and installer flags require --artifact distribution")
 	}
 	return c, nil
 }
@@ -169,6 +191,10 @@ Required flags:
 Optional flags:
   --go         go executable to use (default: go); must report go1.26.4
   --artifact   release (default) or field-validation
+               distribution: Windows archive/optional installer or Linux archive
+  --target     distribution only: windows-amd64 or linux-amd64
+  --gui-directory  optional fresh Windows Flutter Release directory
+  --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --help       show this help and exit without building
 
 The tool requires Go 1.26.4, builds one pair of binaries once, and produces one
@@ -445,6 +471,9 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	}
 	if reported != requiredGoVersion {
 		return fmt.Errorf("go toolchain reported %q, need %q", reported, requiredGoVersion)
+	}
+	if t.cfg.artifact == "distribution" {
+		return t.executeDistribution(stdout, stderr)
 	}
 	if err := verifyRepoInputs(t.repoRoot, t.cfg.artifact); err != nil {
 		return err

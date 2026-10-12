@@ -1,0 +1,130 @@
+package main
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestDistributionFlags(t *testing.T) {
+	base := []string{"--version", "0.3.0-alpha.1", "--build-id", "test", "--output", "out"}
+	for _, tail := range [][]string{{"--artifact", "distribution", "--target", "windows-amd64"}, {"--artifact", "distribution", "--target", "linux-amd64"}} {
+		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-amd64", "--gui-directory", "x"}} {
+		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err == nil {
+			t.Fatal("accepted invalid target combination")
+		}
+	}
+}
+func TestDistributionContents(t *testing.T) {
+	for _, target := range []string{"windows-amd64", "linux-amd64"} {
+		t.Run(target, func(t *testing.T) {
+			root := setupRepoRoot(t)
+			fb := &fakeBuilder{}
+			out := filepath.Join(t.TempDir(), "dist")
+			cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: target, output: out}
+			if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			want := 2
+			if target == "windows-amd64" {
+				want = 3
+			}
+			if len(fb.calls) != want {
+				t.Fatalf("builds=%d", len(fb.calls))
+			}
+			for _, env := range fb.envs {
+				if !strings.Contains(strings.Join(env, "\n"), "GOOS="+strings.Split(target, "-")[0]) {
+					t.Fatal("wrong target env")
+				}
+			}
+			contents := map[string]bool{}
+			if target == "windows-amd64" {
+				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-windows-amd64-portable.zip"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer z.Close()
+				for _, f := range z.File {
+					contents[f.Name] = true
+				}
+				if !contents["sidraviamgr.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] {
+					t.Fatal("missing manager or core")
+				}
+			} else {
+				f, err := os.Open(filepath.Join(out, "sidravia-v0.3.0-alpha.1-linux-amd64-portable.tar.gz"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
+				gz, err := gzip.NewReader(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer gz.Close()
+				tr := tar.NewReader(gz)
+				for {
+					h, err := tr.Next()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					name := strings.TrimPrefix(h.Name, "sidravia-v0.3.0-alpha.1-linux-amd64/")
+					contents[name] = true
+					if name == "sidraviactl" || name == "sidraviad" {
+						if h.Mode != 0755 {
+							t.Fatal("lost executable mode")
+						}
+					}
+				}
+				if !contents["sidraviactl"] || !contents["sidraviad"] || contents["sidraviamgr"] || contents["Sidravia.exe"] {
+					t.Fatal("Linux program set")
+				}
+			}
+			if !contents["sidravia.portable"] || !contents["institution-profiles/jlu.json"] || contents["scripts/install.ps1"] {
+				t.Fatal("distribution content boundary")
+			}
+			if _, err := os.Stat(filepath.Join(out, "SHA256SUMS.txt")); err != nil {
+				t.Fatal(err)
+			}
+			if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err == nil {
+				t.Fatal("overwrote output")
+			}
+		})
+	}
+}
+func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), "gui")
+	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), "dll")
+	gui, err := readGUI(root, nil)
+	if err != nil || len(gui) != 2 {
+		t.Fatal(err)
+	}
+	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]zipEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
+	if !strings.Contains(manifest, "Components: core") || !strings.Contains(manifest, "Components: gui") || !strings.Contains(manifest, "Check: RemoveGUIComponent") {
+		t.Fatal("component ownership missing")
+	}
+	writeTestFile(t, filepath.Join(root, "sidraviactl.exe"), "collision")
+	if _, err := readGUI(root, nil); err == nil {
+		t.Fatal("accepted collision")
+	}
+	if err := os.Remove(filepath.Join(root, "sidraviactl.exe")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "Sidravia.exe"), filepath.Join(root, "link.exe")); err == nil {
+		if _, err := readGUI(root, nil); err == nil {
+			t.Fatal("accepted link")
+		}
+	}
+}
