@@ -7,6 +7,7 @@
 #include <winrt/Windows.Data.Xml.Dom.h>
 #include <winrt/Windows.UI.Notifications.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cwchar>
 #include <limits>
@@ -229,6 +230,29 @@ struct SchoolAnnouncementNotification::Impl {
     return okay;
   }
 
+  toast_api::NotificationSetting ReadInitialSetting() {
+    try {
+      return notifier.Setting();
+    } catch (winrt::hresult_error const& error) {
+      if (error.code() != HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) throw;
+      // A new identityless AUMID has no notification record until its first
+      // submission. Materialize it silently, then query the user's policy.
+      xml_api::XmlDocument document;
+      document.LoadXml(
+          L"<toast><visual><binding template=\"ToastGeneric\">"
+          L"<text>Sidravia</text></binding></visual></toast>");
+      toast_api::ToastNotification bootstrap(document);
+      bootstrap.SuppressPopup(true);
+      bootstrap.Tag(L"identity-bootstrap");
+      bootstrap.Group(L"sidravia");
+      bootstrap.ExpirationTime(winrt::clock::now() + std::chrono::seconds(15));
+      notifier.Show(bootstrap);
+      toast_api::ToastNotificationManager::History().Remove(
+          L"identity-bootstrap", L"sidravia", aumid);
+      return notifier.Setting();
+    }
+  }
+
   void Initialize(const std::wstring& name) {
     const HRESULT ro = RoInitialize(RO_INIT_SINGLETHREADED);
     winrt::check_hresult(ro);
@@ -254,7 +278,7 @@ struct SchoolAnnouncementNotification::Impl {
     winrt::check_hresult(CoRegisterClassObject(clsid, factory.Get(),
         CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE, &cookie));
     notifier = toast_api::ToastNotificationManager::CreateToastNotifier(aumid);
-    if (notifier.Setting() != toast_api::NotificationSetting::Enabled)
+    if (ReadInitialSetting() != toast_api::NotificationSetting::Enabled)
       winrt::throw_hresult(E_ACCESSDENIED);
     namespace_name = name;
     {
