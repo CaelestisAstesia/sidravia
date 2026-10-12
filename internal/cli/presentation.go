@@ -226,6 +226,8 @@ func sessionStateReasonText(code string) string {
 		return "认证协议违反内部契约"
 	case "automatic_reconnect_disabled":
 		return "自动重连已关闭"
+	case "protocol_recovery_exhausted":
+		return "已尝试 3 次自动恢复，请手动重新连接"
 	default:
 		return "未知原因"
 	}
@@ -282,6 +284,8 @@ func recommendationText(code string) string {
 		return "将自动稍后重试"
 	case "retry_after_extended_delay":
 		return "服务器繁忙，将延长等待后重试"
+	case "retry_after_bounded_recovery":
+		return "将有限次数重新认证，连续失败后停止自动恢复"
 	case "block_until_explicit_restart_or_relevant_input_change":
 		return "请检查账号、机构配置和网络后停止并重新启动该 Session"
 	default:

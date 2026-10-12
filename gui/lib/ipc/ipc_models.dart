@@ -1449,6 +1449,7 @@ const diagnosticReasonCodes = {
   'protocol_run_failed',
   'protocol_contract_violated',
   'automatic_reconnect_disabled',
+  'protocol_recovery_exhausted',
   'none',
   'other',
 };
@@ -1480,6 +1481,7 @@ const diagnosticRecoveryRecommendations = {
   'none',
   'retry_after_standard_delay',
   'retry_after_extended_delay',
+  'retry_after_bounded_recovery',
   'block_until_explicit_restart_or_relevant_input_change',
   'other',
 };

@@ -956,3 +956,12 @@ func TestCompleteReadHintsStayFixedAndSanitizeIdentifiers(t *testing.T) {
 		t.Fatalf("unsafe cleanup hint: %q", output.String())
 	}
 }
+
+func TestProtocolRecoveryPresentation(t *testing.T) {
+	if got := sessionStateReasonText("protocol_recovery_exhausted"); got != "已尝试 3 次自动恢复，请手动重新连接" {
+		t.Fatalf("reason=%q", got)
+	}
+	if got := recommendationText("retry_after_bounded_recovery"); got != "将有限次数重新认证，连续失败后停止自动恢复" {
+		t.Fatalf("recommendation=%q", got)
+	}
+}

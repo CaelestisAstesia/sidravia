@@ -188,12 +188,12 @@ func diagnosticSession(paired session.NetworkDiagnosticsSnapshot, cleanupRequire
 	snapshot := paired.Snapshot
 	reason := "none"
 	if snapshot.StateReason != nil {
-		reason = diagnosticCategory(snapshot.StateReason.Code, session.StateReasonCodeNetworkBindingUnavailable, session.StateReasonCodeNetworkUnavailable, session.StateReasonCodeRuntimeDefinitionUnavailable, session.StateReasonCodeProtocolRunCreationFailed, session.StateReasonCodeProtocolRunFailed, session.StateReasonCodeProtocolContractViolated, session.StateReasonCodeAutomaticReconnectDisabled)
+		reason = diagnosticCategory(snapshot.StateReason.Code, session.StateReasonCodeNetworkBindingUnavailable, session.StateReasonCodeNetworkUnavailable, session.StateReasonCodeRuntimeDefinitionUnavailable, session.StateReasonCodeProtocolRunCreationFailed, session.StateReasonCodeProtocolRunFailed, session.StateReasonCodeProtocolContractViolated, session.StateReasonCodeAutomaticReconnectDisabled, session.StateReasonCodeProtocolRecoveryExhausted)
 	}
 	failure, recovery := "none", "none"
 	if snapshot.LastAuthenticationFailure != nil {
 		failure = diagnosticFailureCategory(string(snapshot.LastAuthenticationFailure.Code))
-		recovery = diagnosticCategory(string(snapshot.LastAuthenticationFailure.HandlingRecommendation), string(protocol.RetryAfterStandardDelay), string(protocol.RetryAfterExtendedDelay), string(protocol.BlockUntilExplicitRestartOrRelevantInputChange))
+		recovery = diagnosticCategory(string(snapshot.LastAuthenticationFailure.HandlingRecommendation), string(protocol.RetryAfterStandardDelay), string(protocol.RetryAfterExtendedDelay), string(protocol.RetryAfterBoundedRecovery), string(protocol.BlockUntilExplicitRestartOrRelevantInputChange))
 	}
 	return contract.DiagnosticExportSession{FailureCategory: failure, RecoveryRecommendation: recovery, CleanupRequired: cleanupRequired, State: diagnosticCategory(string(snapshot.State), string(session.Suspended), string(session.WaitingForNetwork), string(session.Authenticating), string(session.Authenticated), string(session.WaitingBeforeRetry), string(session.BlockedByError), string(session.Stopping)), Intent: diagnosticCategory(string(snapshot.Intent), string(session.MaintainAuthentication), string(session.SuspendAuthentication)), ReasonCode: reason, SelectedBinding: snapshot.SelectedNetworkBinding != nil, ProtocolSocketState: diagnosticCategory(string(paired.ProtocolSocket.State), string(session.ProtocolSocketNotObserved), string(session.ProtocolSocketOpen), string(session.ProtocolSocketClosed), string(session.ProtocolSocketCloseFailed), string(session.ProtocolSocketCloseUnconfirmed))}
 }

@@ -198,6 +198,9 @@ class ConnectionPresentation {
               title = '认证失败';
               detail = '本次认证没有完成';
               context = s.lastAuthenticationFailure?.description ?? '';
+              if (s.stateReason?.code == 'protocol_recovery_exhausted') {
+                context = '已尝试 3 次自动恢复，请手动重新连接';
+              }
               glyph = '×';
               tone = HomeTone.error;
               primaryLabel = '重新连接';

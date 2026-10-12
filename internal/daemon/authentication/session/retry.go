@@ -27,13 +27,18 @@ func NewDefaultRetryPolicy() RetryPolicy {
 
 func (defaultRetryPolicy) Delay(
 	recommendation protocol.AuthenticationProtocolFailureHandlingRecommendation,
-	_ uint32,
+	consecutiveFailures uint32,
 ) (time.Duration, bool) {
 	switch recommendation {
 	case protocol.RetryAfterStandardDelay:
 		return 5 * time.Second, true
 	case protocol.RetryAfterExtendedDelay:
 		return 30 * time.Second, true
+	case protocol.RetryAfterBoundedRecovery:
+		if consecutiveFailures >= 1 && consecutiveFailures <= 3 {
+			return (5 * time.Second) << (consecutiveFailures - 1), true
+		}
+		return 0, false
 	default:
 		return 0, false
 	}

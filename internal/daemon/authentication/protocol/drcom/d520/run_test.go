@@ -33,6 +33,51 @@ func defaultTestDurations() testDurations {
 	}
 }
 
+func TestFreshFixedPortRunRejectsLateKAAtChallengeThenCleanRunRecovers(t *testing.T) {
+	reserved, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := reserved.LocalAddr().(*net.UDPAddr).Port
+	if err := reserved.Close(); err != nil {
+		t.Fatal(err)
+	}
+	base := defaultPeerResponder()
+	challenges := 0
+	peer := newTestPeer(t, func(req []byte) [][]byte {
+		if isChallengeReq(req) {
+			challenges++
+			if challenges == 1 {
+				return nil
+			}
+			if challenges == 2 {
+				return [][]byte{peerKA2Response(7, ka2Type1, [4]byte{})}
+			}
+		}
+		return base(req)
+	})
+	newRun := func() protocol.AuthenticationProtocolRun {
+		r := buildTestRun(t, peer, defaultTestDurations(), testCredential()).(*d520Run)
+		r.definition.cfg.localPort = localPort{mode: localPortFixed, value: uint16(port)}
+		return r
+	}
+	for i, want := range []protocol.AuthenticationProtocolFailureHandlingRecommendation{protocol.RetryAfterStandardDelay, protocol.RetryAfterBoundedRecovery} {
+		observer := newRecordingObserver(peer)
+		_, cancel, done := startRun(t, newRun(), observer)
+		failure := assertRunReturns(t, done, false, 2*time.Second)
+		cancel(context.Canceled)
+		if failure.HandlingRecommendation != want || observer.establishedCallCount() != 0 {
+			t.Fatalf("run%d failure=%#v established=%d", i, failure, observer.establishedCallCount())
+		}
+	}
+	observer := newRecordingObserver(peer)
+	_, cancel, done := startRun(t, newRun(), observer)
+	defer cancel(context.Canceled)
+	observer.waitForEstablished(t, time.Second)
+	cancel(context.Canceled)
+	assertRunReturns(t, done, true, time.Second)
+}
+
 func testConfigJSON(port int, d testDurations) protocol.InstitutionProtocolConfiguration {
 	jsonStr := fmt.Sprintf(`{
         "serverAddress": "127.0.0.1",
@@ -405,8 +450,8 @@ func TestRunHeartbeatTimeoutMapsToStandardDelay(t *testing.T) {
 	}
 }
 
-// 4. malformed response blocks.
-func TestRunMalformedResponseBlocks(t *testing.T) {
+// Malformed responses fail strictly and recommend bounded full recovery.
+func TestRunMalformedResponseRecommendsBoundedRecovery(t *testing.T) {
 	respond := func(req []byte) [][]byte {
 		switch {
 		case isChallengeReq(req):
@@ -424,8 +469,8 @@ func TestRunMalformedResponseBlocks(t *testing.T) {
 	defer cancel(context.Canceled)
 
 	failure := assertRunReturns(t, done, false, 2*time.Second)
-	if failure.Code != "protocol_response_invalid" || failure.HandlingRecommendation != protocol.BlockUntilExplicitRestartOrRelevantInputChange {
-		t.Fatalf("malformed failure = code=%q recommendation=%q, want protocol_response_invalid/block", failure.Code, failure.HandlingRecommendation)
+	if failure.Code != "protocol_response_invalid" || failure.HandlingRecommendation != protocol.RetryAfterBoundedRecovery {
+		t.Fatalf("malformed failure = code=%q recommendation=%q, want protocol_response_invalid/bounded", failure.Code, failure.HandlingRecommendation)
 	}
 	if observer.establishedCallCount() != 0 {
 		t.Fatalf("observer called %d times, want 0", observer.establishedCallCount())
@@ -722,8 +767,8 @@ func TestRunPostLoginHeartbeatFailureAttemptsLogout(t *testing.T) {
 
 	observer.waitForEstablished(t, time.Second)
 	failure := assertRunReturns(t, done, false, 2*time.Second)
-	if failure.Code != "protocol_response_invalid" || failure.HandlingRecommendation != protocol.BlockUntilExplicitRestartOrRelevantInputChange {
-		t.Fatalf("post-login failure = code=%q recommendation=%q, want protocol_response_invalid/block", failure.Code, failure.HandlingRecommendation)
+	if failure.Code != "protocol_response_invalid" || failure.HandlingRecommendation != protocol.RetryAfterBoundedRecovery {
+		t.Fatalf("post-login failure = code=%q recommendation=%q, want protocol_response_invalid/bounded", failure.Code, failure.HandlingRecommendation)
 	}
 	if failure.DiagnosticCause == nil {
 		t.Fatal("expected a diagnostic cause on the original failure")

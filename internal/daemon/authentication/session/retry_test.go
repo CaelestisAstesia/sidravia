@@ -2,12 +2,130 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"sidravia/internal/daemon/authentication/protocol"
 )
+
+func recoveryTestSession(t *testing.T, auto bool) (*AuthenticationSession, *controlledFactory, *manualRetryScheduler) {
+	t.Helper()
+	factory := &controlledFactory{}
+	scheduler := &manualRetryScheduler{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AutoReconnect = auto
+	s, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{RetryPolicy: NewDefaultRetryPolicy(), RetryScheduler: scheduler, Now: func() time.Time { return time.Unix(100, 0) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Start()
+	t.Cleanup(func() { shutdownTestSession(t, s) })
+	ctx := testContext(t)
+	if _, err := s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet")); err != nil {
+		t.Fatal(err)
+	}
+	return s, factory, scheduler
+}
+
+func protocolResponseFailure() *protocol.AuthenticationProtocolRunFailure {
+	return &protocol.AuthenticationProtocolRunFailure{Code: "protocol_response_invalid", Description: "Invalid server response.", HandlingRecommendation: protocol.RetryAfterBoundedRecovery}
+}
+
+func TestProtocolRecoveryBudgetIsIndependentOfNetworkRetriesAndStopsAtThree(t *testing.T) {
+	s, factory, scheduler := recoveryTestSession(t, true)
+	ctx := testContext(t)
+	failures := []*protocol.AuthenticationProtocolRunFailure{protocolResponseFailure(), {Code: "network_timeout", HandlingRecommendation: protocol.RetryAfterStandardDelay}, protocolResponseFailure(), {Code: "network_timeout", HandlingRecommendation: protocol.RetryAfterStandardDelay}, protocolResponseFailure()}
+	for i, failure := range failures {
+		waitForFactoryRun(t, ctx, factory, i).unblock(failure)
+		snap := waitForState(t, ctx, s, WaitingBeforeRetry)
+		want := []time.Duration{5 * time.Second, 5 * time.Second, 10 * time.Second, 5 * time.Second, 20 * time.Second}[i]
+		if scheduler.delay(i) != want || snap.NextRetryAt == nil {
+			t.Fatalf("retry%d delay=%v snapshot=%#v", i, scheduler.delay(i), snap)
+		}
+		scheduler.callback(i)()
+	}
+	waitForFactoryRun(t, ctx, factory, 5).unblock(protocolResponseFailure())
+	blocked := waitForState(t, ctx, s, BlockedByError)
+	if blocked.StateReason.Code != StateReasonCodeProtocolRecoveryExhausted || blocked.NextRetryAt != nil || scheduler.count() != 5 || blocked.LastAuthenticationFailure.HandlingRecommendation != protocol.BlockUntilExplicitRestartOrRelevantInputChange {
+		t.Fatalf("exhausted=%#v schedules=%d", blocked, scheduler.count())
+	}
+	if _, err := s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "ethernet", "Ethernet")); err != nil {
+		t.Fatal(err)
+	}
+	if snap := sessionSnapshot(t, ctx, s); snap.State != BlockedByError || len(factory.creationInputs()) != 6 {
+		t.Fatal("unchanged binding reset budget")
+	}
+	if _, err := s.Restart(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitForFactoryRun(t, ctx, factory, 6).unblock(protocolResponseFailure())
+	_ = waitForState(t, ctx, s, WaitingBeforeRetry)
+	if scheduler.delay(5) != 5*time.Second {
+		t.Fatal("manual restart did not reset protocol budget")
+	}
+	scheduler.callback(0)()
+	_ = sessionSnapshot(t, ctx, s)
+	if len(factory.creationInputs()) != 7 {
+		t.Fatal("stale timer started a run")
+	}
+	if _, err := s.Suspend(ctx); err != nil {
+		t.Fatal(err)
+	}
+	scheduler.callback(5)()
+	_ = sessionSnapshot(t, ctx, s)
+	if len(factory.creationInputs()) != 7 {
+		t.Fatal("suspended recovery restarted")
+	}
+}
+
+func TestProtocolRecoveryResetsOnSuccessAndRelevantBindingChange(t *testing.T) {
+	for _, reset := range []string{"success", "binding"} {
+		t.Run(reset, func(t *testing.T) {
+			s, factory, scheduler := recoveryTestSession(t, true)
+			ctx := testContext(t)
+			factory.run(0).unblock(protocolResponseFailure())
+			_ = waitForState(t, ctx, s, WaitingBeforeRetry)
+			if reset == "success" {
+				scheduler.callback(0)()
+				r := waitForFactoryRun(t, ctx, factory, 1)
+				if err := r.establish(ctx); err != nil {
+					t.Fatal(err)
+				}
+				_ = waitForState(t, ctx, s, Authenticated)
+			} else {
+				if _, err := s.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "wifi", "Wi-Fi")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			waitForFactoryRun(t, ctx, factory, 1).unblock(protocolResponseFailure())
+			_ = waitForState(t, ctx, s, WaitingBeforeRetry)
+			if scheduler.delay(1) != 5*time.Second {
+				t.Fatalf("%s reset retry=%v", reset, scheduler.delay(1))
+			}
+		})
+	}
+}
+
+func TestProtocolRecoveryHonorsDisabledReconnectAndCredentialRejection(t *testing.T) {
+	for _, auto := range []bool{true, false} {
+		t.Run(fmt.Sprintf("auto=%v", auto), func(t *testing.T) {
+			s, factory, scheduler := recoveryTestSession(t, auto)
+			ctx := testContext(t)
+			failure := protocolResponseFailure()
+			if auto {
+				failure = &protocol.AuthenticationProtocolRunFailure{Code: "credential_invalid", HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange}
+			}
+			factory.run(0).unblock(failure)
+			_ = waitForState(t, ctx, s, BlockedByError)
+			if scheduler.count() != 0 {
+				t.Fatal("blocked case scheduled recovery")
+			}
+		})
+	}
+}
 
 func TestSessionSchedulesStandardAndExtendedRetry(t *testing.T) {
 	now := time.Unix(100, 0)

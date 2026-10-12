@@ -93,6 +93,7 @@ type AuthenticationSession struct {
 	active                    *activeProtocolRun
 	nextGeneration            uint64
 	consecutiveFailures       uint32
+	protocolRecoveryFailures  uint32
 	retryScheduleID           uint64
 	retryCancellation         RetryCancellation
 	lastStopCleanupFailure    *protocol.AuthenticationProtocolRunFailure
@@ -598,6 +599,28 @@ func (session *AuthenticationSession) handleRunFailure(code string, failure *pro
 		return
 	}
 	switch failure.HandlingRecommendation {
+	case protocol.RetryAfterBoundedRecovery:
+		if session.protocolRecoveryFailures < ^uint32(0) {
+			session.protocolRecoveryFailures++
+		}
+		var delay time.Duration
+		var ok bool
+		if session.protocolRecoveryFailures <= 3 {
+			delay, ok = session.retryPolicy.Delay(failure.HandlingRecommendation, session.protocolRecoveryFailures)
+		}
+		if !ok || delay <= 0 {
+			// Session owns the exhausted budget. Preserve the original failure
+			// code/cause, but publish the actual terminal handling recommendation.
+			terminal := *failure
+			terminal.HandlingRecommendation = protocol.BlockUntilExplicitRestartOrRelevantInputChange
+			reason := code
+			if session.protocolRecoveryFailures > 3 {
+				reason = StateReasonCodeProtocolRecoveryExhausted
+			}
+			session.blockForFailure(reason, &terminal)
+			return
+		}
+		session.scheduleRetry(delay, code, failure)
 	case protocol.RetryAfterStandardDelay, protocol.RetryAfterExtendedDelay:
 		delay, ok := session.retryPolicy.Delay(failure.HandlingRecommendation, session.consecutiveFailures)
 		if !ok || delay <= 0 {
@@ -803,11 +826,13 @@ func safePublicFailureRecommendation(
 func validPublicFailureRecommendation(value protocol.AuthenticationProtocolFailureHandlingRecommendation) bool {
 	return value == protocol.RetryAfterStandardDelay ||
 		value == protocol.RetryAfterExtendedDelay ||
+		value == protocol.RetryAfterBoundedRecovery ||
 		value == protocol.BlockUntilExplicitRestartOrRelevantInputChange
 }
 
 func (session *AuthenticationSession) resetRetryState() {
 	session.consecutiveFailures = 0
+	session.protocolRecoveryFailures = 0
 	session.invalidateRetrySchedule()
 }
 

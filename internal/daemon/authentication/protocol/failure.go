@@ -5,6 +5,7 @@ type AuthenticationProtocolFailureHandlingRecommendation string
 const (
 	RetryAfterStandardDelay                        AuthenticationProtocolFailureHandlingRecommendation = "retry_after_standard_delay"
 	RetryAfterExtendedDelay                        AuthenticationProtocolFailureHandlingRecommendation = "retry_after_extended_delay"
+	RetryAfterBoundedRecovery                      AuthenticationProtocolFailureHandlingRecommendation = "retry_after_bounded_recovery"
 	BlockUntilExplicitRestartOrRelevantInputChange AuthenticationProtocolFailureHandlingRecommendation = "block_until_explicit_restart_or_relevant_input_change"
 )
 

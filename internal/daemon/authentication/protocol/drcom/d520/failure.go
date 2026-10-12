@@ -86,7 +86,7 @@ func (e *runError) toFailure() *protocol.AuthenticationProtocolRunFailure {
 	case kindUnknownRejection:
 		code, description, recommendation = "authentication_rejected", "Authentication was rejected by the server.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
 	case kindResponseInvalid:
-		code, description, recommendation = "protocol_response_invalid", "The server response was malformed or incompatible.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
+		code, description, recommendation = "protocol_response_invalid", "The server response was malformed or incompatible.", protocol.RetryAfterBoundedRecovery
 	case kindContractViolated:
 		code, description, recommendation = "protocol_contract_violated", "An impossible local or contract failure occurred.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
 	case kindCleanupFailed:

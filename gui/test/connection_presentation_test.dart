@@ -13,6 +13,29 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 void main() {
+  test('exhausted protocol recovery explains manual reconnection', () {
+    final p = ConnectionPresentation.project(
+      caps(
+        sessions: [
+          const SessionSummary(
+            id: 'demo-session',
+            displayName: '',
+            accountName: 'u',
+            state: SessionState.blockedByError,
+            intent: SessionIntent.maintainAuthentication,
+            configurationId: 'demo-config',
+            stateReason: SessionStateReason(
+              code: 'protocol_recovery_exhausted',
+              description: 'Protocol recovery exhausted.',
+            ),
+          ),
+        ],
+      ),
+    );
+    expect(p.statusContext, '已尝试 3 次自动恢复，请手动重新连接');
+    expect(p.primaryLabel, '重新连接');
+    expect(p.primaryAction.kind, GuiConnectionActionKind.reconnect);
+  });
   testWidgets('captured edit and header intents cannot navigate from A to B', (
     tester,
   ) async {
