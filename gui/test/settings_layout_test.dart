@@ -165,10 +165,7 @@ void main() {
         expect(frame.height, appearanceBox.height);
         expect(frame.right, appearanceBox.right);
       }
-      await tester.drag(
-        find.byType(SingleChildScrollView).first,
-        const Offset(0, -900),
-      );
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
       await tester.pumpAndSettle();
       expect(tester.getRect(back), before);
       await tester.tap(back);

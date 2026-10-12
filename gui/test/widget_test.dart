@@ -106,6 +106,7 @@ void main() {
       await tester.tap(find.text('技术信息'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('打开日志目录'));
+      await tester.pump();
       await tester.tap(find.text('打开日志目录'));
       await tester.pumpAndSettle();
       expect(calls, 1);
@@ -207,6 +208,7 @@ void main() {
 
         Future<void> tapVisible(Finder target) async {
           await tester.ensureVisible(target);
+          await tester.pump();
           await tester.tap(target);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);

@@ -178,6 +178,7 @@ void main() {
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byType(DropdownButton<ThemeMode>));
+    await tester.pump();
     await tester.tap(find.byType(DropdownButton<ThemeMode>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('深色').last);
@@ -191,6 +192,7 @@ void main() {
       Brightness.dark,
     );
     await tester.ensureVisible(find.byType(DropdownButton<ThemeMode>));
+    await tester.pump();
     await tester.tap(find.byType(DropdownButton<ThemeMode>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('浅色').last);
@@ -200,6 +202,7 @@ void main() {
       Brightness.light,
     );
     await tester.ensureVisible(find.byType(DropdownButton<ThemeMode>));
+    await tester.pump();
     await tester.tap(find.byType(DropdownButton<ThemeMode>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('跟随系统').last);
@@ -231,6 +234,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '');
     await tester.ensureVisible(find.text('保存修改'));
+    await tester.pump();
     await tester.tap(find.text('保存修改'));
     await tester.pumpAndSettle();
     if (find.text('保存连接配置？').evaluate().isNotEmpty) {
@@ -248,6 +252,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'demo-new');
     await tester.enterText(find.byType(TextField).last, 'fake-only');
     await tester.ensureVisible(find.text('保存修改'));
+    await tester.pump();
     await tester.tap(find.text('保存修改'));
     await tester.pumpAndSettle();
     if (find.text('保存连接配置？').evaluate().isNotEmpty) {
@@ -268,6 +273,7 @@ void main() {
     );
     client.fail = false;
     await tester.ensureVisible(find.text('保存修改'));
+    await tester.pump();
     await tester.tap(find.text('保存修改'));
     await tester.pumpAndSettle();
     if (find.text('保存连接配置？').evaluate().isNotEmpty) {
@@ -324,20 +330,25 @@ void main() {
           await tester.tap(find.byTooltip('设置'));
           await tester.pumpAndSettle();
           await tester.ensureVisible(find.text('连接与诊断'));
+          await tester.pump();
           await tester.tap(find.text('连接与诊断'));
           await tester.pumpAndSettle();
           expect(find.text('核心服务状态'), findsNothing);
           await tester.ensureVisible(find.text('技术信息'));
+          await tester.pump();
           await tester.tap(find.text('技术信息'));
           await tester.pumpAndSettle();
           expect(find.text('核心服务状态'), findsOneWidget);
           await tester.ensureVisible(find.text('返回'));
+          await tester.pump();
           await tester.tap(find.text('返回'));
           await tester.pumpAndSettle();
           await tester.ensureVisible(find.text('连接配置'));
+          await tester.pump();
           await tester.tap(find.text('连接配置'));
           await tester.pumpAndSettle();
           await tester.ensureVisible(find.text('保存修改'));
+          await tester.pump();
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
           controller.dispose();
