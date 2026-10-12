@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -14,11 +15,13 @@ class SidraviaShell extends StatefulWidget {
     super.key,
     required this.controller,
     this.announcements,
+    this.connectionNotifications,
     this.desktopPresence,
     this.onOpenLogDirectory,
   });
   final GuiController controller;
   final SchoolAnnouncementController? announcements;
+  final ConnectionNotificationController? connectionNotifications;
   final DesktopPresence? desktopPresence;
   final Future<bool> Function()? onOpenLogDirectory;
 
@@ -105,6 +108,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                 AppPage.home => HomePage(
                   controller: widget.controller,
                   announcements: widget.announcements,
+                  connectionNotifications: widget.connectionNotifications,
                   desktopPresence: widget.desktopPresence,
                   onNavigate: _go,
                 ),

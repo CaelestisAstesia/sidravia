@@ -85,21 +85,21 @@ bool FlutterWindow::OnCreate() {
         }
         result->NotImplemented();
       });
-  school_announcement_notification_ =
-      std::make_unique<SchoolAnnouncementNotification>(GetHandle());
-  announcement_notifications_channel_ =
+  system_notification_ =
+      std::make_unique<SystemNotification>(GetHandle());
+  system_notifications_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(),
-          "sidravia/announcement-notifications",
+          "sidravia/system-notifications",
           &flutter::StandardMethodCodec::GetInstance());
-  announcement_notifications_channel_->SetMethodCallHandler(
+  system_notifications_channel_->SetMethodCallHandler(
       [this](const auto& call, auto result) {
         if (call.method_name() == "show") {
           const auto* arguments = call.arguments()
               ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
-          const auto submission = arguments && school_announcement_notification_
-              ? school_announcement_notification_->Show(*arguments)
-              : SchoolAnnouncementNotification::Result{"failed", std::nullopt};
+          const auto submission = arguments && system_notification_
+              ? system_notification_->Show(*arguments)
+              : SystemNotification::Result{"failed", std::nullopt};
           if (submission.status == "submitted") {
             result->Success(flutter::EncodableValue(submission.status));
           } else {
@@ -113,16 +113,19 @@ bool FlutterWindow::OnCreate() {
           }
           return;
         }
-        if (call.method_name() == "dismiss" || call.method_name() == "dispose") {
-          if (call.arguments() && !call.arguments()->IsNull()) {
-            result->Error("invalid_arguments", "Null arguments required.");
-            return;
+        if (call.method_name() == "dismiss") {
+          const auto* args = call.arguments() ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
+          const std::string* category = nullptr;
+          if (args && args->size() == 1) {
+            auto it = args->find(flutter::EncodableValue("category"));
+            if (it != args->end()) category = std::get_if<std::string>(&it->second);
           }
-          const bool okay = !school_announcement_notification_ ||
-              (call.method_name() == "dismiss"
-                  ? school_announcement_notification_->Dismiss()
-                  : school_announcement_notification_->Dispose());
-          if (okay) result->Success();
+          if (category && system_notification_ && system_notification_->Dismiss(*category)) result->Success();
+          else result->Error("notification_failed", "Notification operation failed.");
+          return;
+        }
+        if (call.method_name() == "dispose") {
+          if (!system_notification_ || system_notification_->Dispose()) result->Success();
           else result->Error("notification_failed", "Notification operation failed.");
           return;
         }
@@ -273,27 +276,6 @@ bool FlutterWindow::OnCreate() {
           CancelExplicitExit();
           result->Success(); return;
         }
-        if (call.method_name() == "notify") {
-          std::wstring title = L"Sidravia";
-          std::wstring body;
-          const auto* arguments =
-              std::get_if<flutter::EncodableMap>(call.arguments());
-          if (arguments != nullptr) {
-            for (const auto& entry : *arguments) {
-              const auto key = std::get_if<std::string>(&entry.first);
-              const auto value = std::get_if<std::string>(&entry.second);
-              if (key == nullptr || value == nullptr) continue;
-              if (*key == "title") {
-                title = Utf8ToUtf16(*value);
-              } else if (*key == "body") {
-                body = Utf8ToUtf16(*value);
-              }
-            }
-          }
-          NotifyTray(title, body);
-          result->Success();
-          return;
-        }
         if (call.method_name() == "destroy") {
           if (!exit_request_pending_ || exit_fallback_timer_ == 0) {
             result->Error("exit_unconfirmed", "Exit has not been confirmed."); return;
@@ -331,8 +313,8 @@ void FlutterWindow::OnDestroy() {
   tray_popover_window_.reset();
   RemoveTrayIcon();
   ReleaseDesktopPresence();
-  school_announcement_notification_.reset();
-  announcement_notifications_channel_.reset();
+  system_notification_.reset();
+  system_notifications_channel_.reset();
   announcement_channel_.reset();
   school_announcement_window_.reset();
   window_channel_.reset();
@@ -455,21 +437,6 @@ void FlutterWindow::PublishVisibilityUpdate() {
       std::make_unique<flutter::EncodableValue>(visible));
 }
 
-void FlutterWindow::NotifyTray(const std::wstring& title,
-                               const std::wstring& body) {
-  HWND hwnd = GetHandle();
-  if (hwnd == nullptr) return;
-  NOTIFYICONDATAW nid{};
-  nid.cbSize = sizeof(NOTIFYICONDATAW);
-  nid.hWnd = hwnd;
-  nid.uID = kTrayIconId;
-  nid.uFlags = NIF_INFO;
-  nid.dwInfoFlags = NIIF_INFO;
-  wcsncpy_s(nid.szInfoTitle, title.c_str(), _TRUNCATE);
-  wcsncpy_s(nid.szInfo, body.c_str(), _TRUNCATE);
-  ::Shell_NotifyIconW(NIM_MODIFY, &nid);
-}
-
 void FlutterWindow::ShowTrayPopover() {
   HWND hwnd = GetHandle();
   if (hwnd == nullptr || tray_presentation_.empty()) return;
@@ -488,10 +455,7 @@ void FlutterWindow::ShowTrayPopover() {
         project_, hwnd, [this](const auto& action) { HandleTrayAction(action); });
   }
   if (!tray_popover_window_->Open(anchor, tray_presentation_)) {
-    NotifyTray(L"Sidravia",
-               L"\u6258\u76d8\u754c\u9762\u6682\u4e0d\u53ef\u7528\uff0c"
-               L"\u8bf7\u518d\u6b21\u70b9\u51fb\u6216\u53cc\u51fb\u56fe"
-               L"\u6807\u663e\u793a\u4e3b\u754c\u9762\u3002");
+    if (desktop_channel_) desktop_channel_->InvokeMethod("trayUnavailable", nullptr);
     tray_popover_window_->Destroy();
     tray_popover_window_.reset();
   }
@@ -586,22 +550,18 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
-  if (message == SchoolAnnouncementNotification::kCallbackMessage) {
-    if (school_announcement_notification_) {
-      const auto callback = school_announcement_notification_->TakeCallback(wparam, lparam);
-      if (callback && announcement_notifications_channel_) {
+  if (message == SystemNotification::kCallbackMessage) {
+    if (system_notification_) {
+      const auto callback = system_notification_->TakeCallback(wparam, lparam);
+      if (callback && system_notifications_channel_) {
         try {
-          flutter::EncodableValue payload(callback->token);
-          if (callback->method == "failed") {
-            flutter::EncodableMap failure;
-            failure[flutter::EncodableValue("token")] = flutter::EncodableValue(callback->token);
-            if (callback->error_code) {
-              failure[flutter::EncodableValue("error_code")] =
-                  flutter::EncodableValue(*callback->error_code);
-            }
-            payload = flutter::EncodableValue(failure);
-          }
-          announcement_notifications_channel_->InvokeMethod(
+          flutter::EncodableMap event;
+          event[flutter::EncodableValue("token")] = flutter::EncodableValue(callback->token);
+          event[flutter::EncodableValue("category")] = flutter::EncodableValue(callback->category);
+          if (callback->method == "failed" && callback->error_code)
+            event[flutter::EncodableValue("error_code")] = flutter::EncodableValue(*callback->error_code);
+          flutter::EncodableValue payload(event);
+          system_notifications_channel_->InvokeMethod(
               callback->method,
               std::make_unique<flutter::EncodableValue>(payload));
         } catch (...) { /* Identity stays consumed when delivery fails. */ }

@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
-import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
 
 const desktopPresenceChannelName = 'sidravia/desktop';
@@ -40,7 +38,9 @@ class DesktopPresence extends ChangeNotifier {
 
   final MethodChannel? _channel;
   final String _namespace;
-  final DesktopNotificationPolicy _policy = DesktopNotificationPolicy();
+  Future<bool?>? _notificationVisibility;
+  Object? _notificationVisibilityContext;
+  VoidCallback? onTrayUnavailable;
   bool _operational = true, _initialized = false, _disposed = false;
   bool? _isMainWindowVisible;
   int _visibilityCallbackRevision = 0, _visibilityQueryRevision = 0;
@@ -103,6 +103,25 @@ class DesktopPresence extends ChangeNotifier {
     }
     _setMainWindowVisibility(result);
     return _isMainWindowVisible;
+  }
+
+  /// Notification consumers share one fresh observation, so their queries do not invalidate each other.
+  Future<bool?> refreshNotificationVisibility({Object? context}) {
+    final current = _notificationVisibility;
+    if (current != null && identical(_notificationVisibilityContext, context)) {
+      return current;
+    }
+    final future = refreshMainWindowVisibility();
+    _notificationVisibility = future;
+    _notificationVisibilityContext = context;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_notificationVisibility, future)) {
+          _notificationVisibility = null;
+        }
+      }),
+    );
+    return future;
   }
 
   void _setMainWindowVisibility(bool visible) {
@@ -178,13 +197,6 @@ class DesktopPresence extends ChangeNotifier {
     }
   }
 
-  /// Evaluate one complete snapshot against the blocked/recovered policy.
-  Future<void> considerSnapshot(GuiSnapshot snapshot) async {
-    final decision = _policy.evaluate(snapshot);
-    if (decision == null) return;
-    await _notify(title: decision.title, body: decision.body);
-  }
-
   /// Tell native code to remove the tray icon and permit window destruction.
   Future<void> destroy() async {
     final channel = _channel;
@@ -203,24 +215,16 @@ class DesktopPresence extends ChangeNotifier {
     _channel?.setMethodCallHandler(null);
     onExitRequested = null;
     onTrayAction = null;
+    onTrayUnavailable = null;
     super.dispose();
   }
 
-  Future<void> _notify({required String title, required String body}) async {
-    final channel = _channel;
-    if (channel == null || !_operational) return;
-    try {
-      await channel.invokeMethod<void>('notify', {
-        'title': title,
-        'body': body,
-      });
-    } on Object {
-      // Notification failure is non-fatal and isolated from the app flow.
-    }
-  }
-
   Future<Object?> _onNativeCall(MethodCall call) async {
-    if (call.method == 'exitRequested') {
+    if (call.method == 'trayUnavailable' && !_disposed) {
+      _feedback = '托盘界面暂不可用，可双击图标打开主界面';
+      notifyListeners();
+      onTrayUnavailable?.call();
+    } else if (call.method == 'exitRequested') {
       await onExitRequested?.call();
     } else if (call.method == 'trayAction') {
       final intent = TrayIntent.fromMap(call.arguments);
@@ -235,87 +239,4 @@ class DesktopPresence extends ChangeNotifier {
     }
     return null;
   }
-}
-
-class DesktopNotificationDecision {
-  const DesktopNotificationDecision({required this.title, required this.body});
-  final String title;
-  final String body;
-}
-
-const _blockedTitle = '校园网需要处理';
-const _blockedFallbackBody = '请打开 Sidravia 查看。';
-const _recoveryTitle = '校园网状态已恢复';
-const _recoveryBody = '连接状态已更新。';
-
-/// Derives at most one blocked/recovered notification per complete snapshot.
-///
-/// A session is identified by daemon PID and SessionID; only revisions newer than the
-/// last considered revision can trigger a transition. Starting already blocked
-/// never emits a startup notification.
-class DesktopNotificationPolicy {
-  final Map<String, _SessionDesktopState> _sessions = {};
-  int? _daemonPid;
-
-  DesktopNotificationDecision? evaluate(GuiSnapshot snapshot) {
-    if (_daemonPid != snapshot.daemon.pid) {
-      _sessions.clear();
-      _daemonPid = snapshot.daemon.pid;
-    }
-    for (final session in snapshot.sessions) {
-      final decision = _evaluateSession(session);
-      if (decision != null) return decision;
-    }
-    return null;
-  }
-
-  DesktopNotificationDecision? _evaluateSession(SessionSummary session) {
-    final state = _sessions.putIfAbsent(session.id, _SessionDesktopState.new);
-    if (session.revision <= state.lastRevision) return null;
-    state.lastRevision = session.revision;
-    final wasBlockedAtPrevious = state.blockedAtLastSeen;
-    final nowBlocked = session.state == SessionState.blockedByError;
-    state.blockedAtLastSeen = nowBlocked;
-
-    if (!state.everSeen) {
-      state.everSeen = true;
-      return null;
-    }
-
-    if (nowBlocked) {
-      if (state.notifiedBlockedForEpisode) return null;
-      if (wasBlockedAtPrevious) return null;
-      state.notifiedBlockedForEpisode = true;
-      return DesktopNotificationDecision(
-        title: _blockedTitle,
-        body: _blockedBody(session),
-      );
-    }
-
-    if (state.notifiedBlockedForEpisode) {
-      state.notifiedBlockedForEpisode = false;
-      return const DesktopNotificationDecision(
-        title: _recoveryTitle,
-        body: _recoveryBody,
-      );
-    }
-    return null;
-  }
-
-  String _blockedBody(SessionSummary session) {
-    final description =
-        session.stateReason?.description ??
-        session.lastAuthenticationFailure?.description;
-    if (description == null || description.isEmpty) {
-      return _blockedFallbackBody;
-    }
-    return description;
-  }
-}
-
-class _SessionDesktopState {
-  BigInt lastRevision = -BigInt.one;
-  bool everSeen = false;
-  bool blockedAtLastSeen = false;
-  bool notifiedBlockedForEpisode = false;
 }

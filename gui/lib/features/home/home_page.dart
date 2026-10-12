@@ -1,6 +1,7 @@
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 import 'package:sidravia_gui/shared/theme/appearance.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:flutter/material.dart';
@@ -63,11 +64,13 @@ class HomePage extends StatelessWidget {
     required this.controller,
     required this.onNavigate,
     this.announcements,
+    this.connectionNotifications,
     this.desktopPresence,
   });
   final GuiController controller;
   final ValueChanged<AppPage> onNavigate;
   final SchoolAnnouncementController? announcements;
+  final ConnectionNotificationController? connectionNotifications;
   final DesktopPresence? desktopPresence;
 
   @override
@@ -77,6 +80,7 @@ class HomePage extends StatelessWidget {
         controller,
         ?announcements,
         ?desktopPresence,
+        ?connectionNotifications,
       ]),
       builder: (context, _) => _build(context),
     );
@@ -123,6 +127,7 @@ class HomePage extends StatelessWidget {
         onPrimary: p.primaryEnabled ? () => _perform(p.primaryAction) : null,
         actionError:
             p.actionError ??
+            connectionNotifications?.feedback ??
             desktopPresence?.feedback ??
             AppearanceScope.maybeOf(context)?.feedback,
         issue: p.issue,

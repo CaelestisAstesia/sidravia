@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 
-const channel = MethodChannel(schoolAnnouncementNotificationsChannelName);
+const channel = MethodChannel(systemNotificationsChannelName);
 const first = '0123456789abcdef0123456789abcdef';
 const second = 'abcdef0123456789abcdef0123456789';
 const submitted = SchoolAnnouncementNotificationResult.submitted;
@@ -12,6 +12,12 @@ const failed = SchoolAnnouncementNotificationResult.failed;
 const unsupported = SchoolAnnouncementNotificationResult.unsupported;
 
 Future<void> native(String method, Object? arguments) async {
+  if (method == 'clicked') {
+    arguments = {'category': 'announcement', 'token': arguments};
+  }
+  if (method == 'failed' && arguments is Map) {
+    arguments = {...arguments, 'category': 'announcement'};
+  }
   await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .handlePlatformMessage(
         channel.name,
@@ -47,12 +53,19 @@ void main() {
   test('exact payload and null teardown arguments', () async {
     expect(await adapter.show(token: first, namespace: 'Test-1'), submitted);
     expect(calls.single.method, 'show');
-    expect(calls.single.arguments, {'token': first, 'namespace': 'Test-1'});
+    expect(calls.single.arguments, {
+      'category': 'announcement',
+      'token': first,
+      'namespace': 'Test-1',
+      'title': '校园网公告',
+      'body': '点击查看学校公告',
+    });
     expect(await adapter.dismiss(), isTrue);
     await adapter.dispose();
     await adapter.dispose();
     expect(calls.map((call) => call.method), ['show', 'dismiss', 'dispose']);
-    expect(calls.skip(1).every((call) => call.arguments == null), isTrue);
+    expect(calls[1].arguments, {'category': 'announcement'});
+    expect(calls[2].arguments, isNull);
     expect(await adapter.show(token: second), failed);
   });
 

@@ -19,6 +19,7 @@ void main() {
       final old = jsonDecode(encoded) as Map<String, dynamic>;
       old['schemaVersion'] = 4;
       old.remove('logLevel');
+      old.remove('notificationMode');
       final migrated = decodeGuiSettings(jsonEncode(old));
       expect(migrated.logLevel, 'info');
       expect(migrated.startHidden, isTrue);

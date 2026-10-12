@@ -110,7 +110,8 @@ void main() {
     expect(flutterWindow, contains('Shell_NotifyIconW'));
     expect(flutterWindow, contains('NIM_ADD'));
     expect(flutterWindow, contains('NIM_DELETE'));
-    expect(flutterWindow, contains('NIF_INFO'));
+    expect(flutterWindow, isNot(contains('NIF_INFO')));
+    expect(flutterWindow, contains('sidravia/system-notifications'));
     expect(flutterWindow, contains('TaskbarCreated'));
     expect(
       flutterWindow,

@@ -1,5 +1,5 @@
-#ifndef RUNNER_SCHOOL_ANNOUNCEMENT_NOTIFICATION_H_
-#define RUNNER_SCHOOL_ANNOUNCEMENT_NOTIFICATION_H_
+#ifndef RUNNER_SYSTEM_NOTIFICATION_H_
+#define RUNNER_SYSTEM_NOTIFICATION_H_
 
 #include <windows.h>
 #include <flutter/encodable_value.h>
@@ -10,21 +10,21 @@
 #include <utility>
 
 // Platform-thread owner; worker activation callbacks only post scalar messages.
-class SchoolAnnouncementNotification {
+class SystemNotification {
  public:
   static constexpr UINT kCallbackMessage = WM_APP + 20;
-  explicit SchoolAnnouncementNotification(HWND window);
-  ~SchoolAnnouncementNotification();
+  explicit SystemNotification(HWND window);
+  ~SystemNotification();
   struct Result {
     std::string status;
     std::optional<int32_t> error_code;
   };
   struct Callback {
-    std::string method, token;
+    std::string method, token, category;
     std::optional<int32_t> error_code;
   };
   Result Show(const flutter::EncodableMap& arguments);
-  bool Dismiss() noexcept;
+  bool Dismiss(const std::string& category) noexcept;
   bool Dispose() noexcept;
   std::optional<Callback> TakeCallback(
       WPARAM action, LPARAM generation) noexcept;
@@ -34,4 +34,4 @@ class SchoolAnnouncementNotification {
   std::unique_ptr<Impl> impl_;
 };
 
-#endif  // RUNNER_SCHOOL_ANNOUNCEMENT_NOTIFICATION_H_
+#endif  // RUNNER_SYSTEM_NOTIFICATION_H_

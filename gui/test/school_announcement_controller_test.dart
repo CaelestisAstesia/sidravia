@@ -84,15 +84,21 @@ Future<void> closeShellOwners(WidgetTester tester) async {
 }
 
 const windowChannel = MethodChannel(schoolAnnouncementChannelName);
-const notificationChannel = MethodChannel(
-  schoolAnnouncementNotificationsChannelName,
-);
+const notificationChannel = MethodChannel(systemNotificationsChannelName);
 const desktopChannel = MethodChannel(desktopPresenceChannelName);
 Future<void> callback(
   MethodChannel channel,
   String method,
   Object? value,
 ) async {
+  if (channel.name == systemNotificationsChannelName) {
+    if (method == 'clicked') {
+      value = {'category': 'announcement', 'token': value};
+    }
+    if (method == 'failed' && value is Map) {
+      value = {...value, 'category': 'announcement'};
+    }
+  }
   await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .handlePlatformMessage(
         channel.name,
@@ -726,6 +732,37 @@ void main() {
     );
     expect(owner.feedback, isNull);
   });
+  test(
+    'mute suppresses system announcement but preserves manual access',
+    () async {
+      visible = false;
+      preferences.notificationMode = GuiNotificationMode.silent;
+      await owner.start();
+      await success();
+      expect(notices.where((call) => call.method == 'show'), isEmpty);
+      expect(owner.feedback, '系统通知已关闭，可在首页查看公告');
+      expect(await owner.openManually(), SchoolAnnouncementOpenResult.opened);
+      expect(opens, hasLength(1));
+    },
+  );
+  test(
+    'mute preserves on-restore announcement display and consumes no replay',
+    () async {
+      visible = false;
+      preferences.notificationMode = GuiNotificationMode.silent;
+      preferences.hiddenAnnouncementBehavior =
+          GuiHiddenAnnouncementBehavior.onRestore;
+      await owner.start();
+      await success();
+      expect(opens, isEmpty);
+      await callback(desktopChannel, 'visibilityChanged', true);
+      await settleWork();
+      expect(opens, hasLength(1));
+      preferences.notificationMode = GuiNotificationMode.all;
+      await settleWork();
+      expect(notices.where((call) => call.method == 'show'), isEmpty);
+    },
+  );
 }
 
 class _DelayedSettings implements GuiSettingsStore {

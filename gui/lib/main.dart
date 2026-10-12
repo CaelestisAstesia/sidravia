@@ -13,6 +13,7 @@ import 'package:flutter/widgets.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/desktop/system_notifications.dart';
 import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
 import 'package:sidravia_gui/platform/sidravia_platform.dart';
 import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
@@ -48,6 +49,7 @@ Future<void> main() async {
   );
   registerHarmonyOSFontLicense();
   final startedAt = DateTime.now();
+  final notifications = SystemNotifications();
   runApp(
     SidraviaApp(
       controller: GuiController(
@@ -59,10 +61,12 @@ Future<void> main() async {
         preferences: appearance,
         desktop: desktop,
         window: SchoolAnnouncementWindow(),
-        notifications: SchoolAnnouncementNotifications(),
+        notifications: SchoolAnnouncementNotifications.shared(notifications),
         namespace: namespace,
         startedAt: startedAt,
       ),
+      systemNotifications: notifications,
+      namespace: namespace,
       desktopPresence: desktop,
       appearance: appearance,
     ),

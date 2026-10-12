@@ -98,7 +98,9 @@ class SchoolAnnouncementController extends ChangeNotifier {
       await _manual(intent, generation);
       return;
     }
-    final visible = await desktop.refreshMainWindowVisibility();
+    final visible = await desktop.refreshNotificationVisibility(
+      context: _latest?.snapshot,
+    );
     if (!_current(generation)) return;
     _dispatchPending = false;
     if (!_matches(intent)) return;
@@ -126,6 +128,12 @@ class SchoolAnnouncementController extends ChangeNotifier {
   }
 
   Future<void> _send(String token, int generation) async {
+    if (preferences.notificationMode == GuiNotificationMode.silent) {
+      _token = null;
+      await notifications.dismiss();
+      if (_current(generation)) _setFeedback('系统通知已关闭，可在首页查看公告');
+      return;
+    }
     final result = await notifications.show(token: token, namespace: namespace);
     if (!_current(generation) || _token != token) return;
     if (result != SchoolAnnouncementNotificationResult.submitted) {
@@ -214,6 +222,13 @@ class SchoolAnnouncementController extends ChangeNotifier {
 
   void _preferencesChanged() {
     if (_closed) return;
+    if (preferences.notificationMode == GuiNotificationMode.silent &&
+        _token != null) {
+      ++_generation;
+      _token = null;
+      _dispatchPending = false;
+      _track(notifications.dismiss());
+    }
     if ((_queued || _dispatchPending) &&
         preferences.announcementFrequency ==
             GuiAnnouncementFrequency.manualOnly) {

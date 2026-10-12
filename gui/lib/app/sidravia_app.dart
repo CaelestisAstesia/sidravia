@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:sidravia_gui/desktop/log_directory.dart';
+import 'package:sidravia_gui/desktop/system_notifications.dart';
+import 'package:sidravia_gui/desktop/connection_notifications.dart';
 
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
@@ -26,9 +28,13 @@ class SidraviaApp extends StatefulWidget {
     this.announcements,
     this.desktopPresence,
     this.appearance,
+    this.systemNotifications,
+    this.namespace = '',
   });
   final GuiController controller;
   final Appearance? appearance;
+  final SystemNotifications? systemNotifications;
+  final String namespace;
   final SchoolAnnouncementController? announcements;
   final DesktopPresence? desktopPresence;
 
@@ -43,6 +49,9 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   final _shellKey = GlobalKey<SidraviaShellState>();
   final _logDirectory = DesktopLogDirectory();
   late final SchoolAnnouncementController _announcements;
+  late final _systemNotifications =
+      widget.systemNotifications ?? SystemNotifications.disabled();
+  late final ConnectionNotificationController _connectionNotifications;
   bool _exiting = false;
   GuiCloseBehavior? _lastCloseBehavior;
   bool? _lastStartHidden;
@@ -63,6 +72,23 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
           notifications: SchoolAnnouncementNotifications.disabled(),
           startedAt: DateTime.now(),
         );
+    _connectionNotifications = ConnectionNotificationController(
+      preferences: _appearance,
+      desktop: widget.desktopPresence ?? DesktopPresence.disabled(),
+      notifications: _systemNotifications.slot(
+        SystemNotificationCategory.connection,
+      ),
+      namespace: widget.namespace,
+      startedAt: DateTime.now(),
+      onOpenDetails: () async {
+        await widget.desktopPresence?.restoreMain();
+        if (mounted) {
+          await _shellKey.currentState?.navigateFromTray(AppPage.diagnostics);
+        }
+      },
+    );
+    unawaited(_connectionNotifications.start());
+    _connectionNotifications.updateCapabilities(widget.controller.capabilities);
     _announcements.updateCapabilities(widget.controller.capabilities);
     unawaited(_announcements.start());
     unawaited(widget.controller.start());
@@ -70,17 +96,15 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     if (desktop != null) {
       desktop.onExitRequested = _handleExitRequested;
       desktop.onTrayAction = _handleTrayAction;
+      desktop.onTrayUnavailable =
+          _connectionNotifications.reportTrayUnavailable;
       _handleControllerChanged();
     }
   }
 
   void _handleControllerChanged() {
     _announcements.updateCapabilities(widget.controller.capabilities);
-    final snapshot = widget.controller.snapshot;
-    final desktop = widget.desktopPresence;
-    if (desktop != null && snapshot != null) {
-      unawaited(desktop.considerSnapshot(snapshot));
-    }
+    _connectionNotifications.updateCapabilities(widget.controller.capabilities);
     _publishTrayPresentation();
   }
 
@@ -273,8 +297,10 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
         return;
       }
       begun = true;
+      await _connectionNotifications.close();
       await widget.controller.exitAndDisconnect();
       await _announcements.close();
+      await _systemNotifications.dispose();
       await desktop.destroy();
     } finally {
       if (!begun) {
@@ -289,17 +315,26 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_handleControllerChanged);
     _announcements.dispose();
+    _connectionNotifications.dispose();
+    unawaited(_closeNotifications());
     unawaited(_logDirectory.close());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = null;
       desktop.onTrayAction = null;
+      desktop.onTrayUnavailable = null;
       desktop.dispose();
     }
     widget.controller.dispose();
     _appearance.removeListener(_syncDesktopPreferences);
     _appearance.dispose();
     super.dispose();
+  }
+
+  Future<void> _closeNotifications() async {
+    await _announcements.close();
+    await _connectionNotifications.close();
+    await _systemNotifications.dispose();
   }
 
   @override
@@ -328,6 +363,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
             desktopPresence: widget.desktopPresence,
             controller: widget.controller,
             announcements: _announcements,
+            connectionNotifications: _connectionNotifications,
             onOpenLogDirectory: _logDirectory.supported
                 ? _logDirectory.open
                 : null,

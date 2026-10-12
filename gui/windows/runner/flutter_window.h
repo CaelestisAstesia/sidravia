@@ -12,7 +12,7 @@
 
 #include "win32_window.h"
 #include "school_announcement_window.h"
-#include "school_announcement_notification.h"
+#include "system_notification.h"
 #include "tray_popover_window.h"
 
 // A window that hosts a Flutter view and owns the desktop presence surface
@@ -41,9 +41,9 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       announcement_channel_;
 
-  std::unique_ptr<SchoolAnnouncementNotification> school_announcement_notification_;
+  std::unique_ptr<SystemNotification> system_notification_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
-      announcement_notifications_channel_;
+      system_notifications_channel_;
 
   // Application-owned Windows frame commands.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
@@ -81,7 +81,6 @@ class FlutterWindow : public Win32Window {
   void CompleteExplicitExit();
   void RemoveTrayIcon();
   void RestoreWindow();
-  void NotifyTray(const std::wstring& title, const std::wstring& body);
   void ShowTrayPopover();
   void HandleTrayAction(const flutter::EncodableMap& action);
   void HandleTrayMessage(LPARAM lparam);
