@@ -1,6 +1,6 @@
 //go:build windows
 
-package clientbootstrap
+package daemonlog
 
 import (
 	"os"
@@ -26,7 +26,7 @@ func TestWindowsDaemonLogsUseProtectedOwnerAndSystemDACL(t *testing.T) {
 	}
 
 	logPath := filepath.Join(t.TempDir(), "logs", "sidraviad.log")
-	file, err := prepareDaemonLog(logPath)
+	file, err := PrepareBootstrap(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestWindowsDaemonLogsUseProtectedOwnerAndSystemDACL(t *testing.T) {
 	if err := os.Truncate(logPath, daemonLogRotateThreshold); err != nil {
 		t.Fatal(err)
 	}
-	file, err = prepareDaemonLog(logPath)
+	file, err = PrepareBootstrap(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +47,18 @@ func TestWindowsDaemonLogsUseProtectedOwnerAndSystemDACL(t *testing.T) {
 	assertWindowsDaemonLogDACL(t, filepath.Dir(logPath), user.User.Sid.String(), true)
 	assertWindowsDaemonLogDACL(t, logPath, user.User.Sid.String(), false)
 	assertWindowsDaemonLogDACL(t, logPath+".1", user.User.Sid.String(), false)
+	w, err := NewWriter(filepath.Dir(logPath), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("protected diagnostic\n")); err != nil {
+		t.Fatal(err)
+	}
+	path := w.path
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertWindowsDaemonLogDACL(t, path, user.User.Sid.String(), false)
 }
 
 func assertWindowsDaemonLogDACL(t *testing.T, path, owner string, directory bool) {

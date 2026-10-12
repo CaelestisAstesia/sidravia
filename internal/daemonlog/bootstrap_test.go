@@ -1,4 +1,4 @@
-package clientbootstrap
+package daemonlog
 
 import (
 	"errors"
@@ -23,7 +23,7 @@ func (protection daemonLogProtectionFunc) protectFile(path string) error {
 func TestPrepareDaemonLogCreatesAndAppends(t *testing.T) {
 	root := t.TempDir()
 	logPath := filepath.Join(root, "logs", "sidraviad.log")
-	file, err := prepareDaemonLog(logPath)
+	file, err := PrepareBootstrap(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestPrepareDaemonLogCreatesAndAppends(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file, err = prepareDaemonLog(logPath)
+	file, err = PrepareBootstrap(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestPrepareDaemonLogRotatesAtThresholdAndReplacesBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file, err := prepareDaemonLog(logPath)
+	file, err := PrepareBootstrap(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestPrepareDaemonLogRotatesAtThresholdAndReplacesBackup(t *testing.T) {
 	if err := os.Truncate(logPath, daemonLogRotateThreshold); err != nil {
 		t.Fatal(err)
 	}
-	file, err = prepareDaemonLog(logPath)
+	file, err = PrepareBootstrap(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestPrepareDaemonLogPreservesFilesystemCause(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := prepareDaemonLog(filepath.Join(blocker, "sidraviad.log"))
+	_, err := PrepareBootstrap(filepath.Join(blocker, "sidraviad.log"))
 	if err == nil {
 		t.Fatal("expected filesystem error")
 	}

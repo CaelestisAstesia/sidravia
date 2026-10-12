@@ -49,7 +49,7 @@ func TestChildEnvironmentIsExactAndDoesNotMutateParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"PATH=x", "SIDRAVIA_DAEMON_MODE=desktop", "SIDRAVIA_LOG_LEVEL=debug", "SIDRAVIA_DESKTOP_OWNER_PID=42"}
+	want := []string{"PATH=x", "SIDRAVIA_DAEMON_MODE=desktop", "SIDRAVIA_LOG_LEVEL=debug", "SIDRAVIA_MANAGED_LOG=1", "SIDRAVIA_DESKTOP_OWNER_PID=42"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("env=%v want %v", got, want)
 	}
@@ -69,7 +69,7 @@ func TestChildEnvironmentPropagatesNamespaceAndStripsInherited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"PATH=x", "SIDRAVIA_DAEMON_MODE=headless", "SIDRAVIA_LOG_LEVEL=debug", "SIDRAVIA_NAMESPACE=isolated-1"}
+	want := []string{"PATH=x", "SIDRAVIA_DAEMON_MODE=headless", "SIDRAVIA_LOG_LEVEL=debug", "SIDRAVIA_MANAGED_LOG=1", "SIDRAVIA_NAMESPACE=isolated-1"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("env=%v want %v", got, want)
 	}

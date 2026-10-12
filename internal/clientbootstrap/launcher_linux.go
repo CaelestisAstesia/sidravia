@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sidravia/internal/daemonlog"
 	"syscall"
 
 	"sidravia/internal/launchcontract"
@@ -33,7 +34,7 @@ type daemonLauncherDeps struct {
 func defaultDaemonLauncherDeps() daemonLauncherDeps {
 	return daemonLauncherDeps{
 		resolveLayout: productlayout.ResolveNamespace,
-		prepareLog:    prepareDaemonLog,
+		prepareLog:    daemonlog.PrepareBootstrap,
 		parentEnv:     os.Environ,
 		start:         func(cmd *exec.Cmd) error { return cmd.Start() },
 		release: func(cmd *exec.Cmd) error {

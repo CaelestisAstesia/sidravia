@@ -6,6 +6,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+
+	"sidravia/internal/daemonlog"
+	"sidravia/internal/launchcontract"
+	"sidravia/internal/productlayout"
 )
 
 // Set via ldflags.
@@ -15,7 +20,7 @@ var (
 )
 
 func main() {
-	logger, level, err := newProductionLogger()
+	logger, level, output, err := newProductionLogger()
 	if err != nil {
 		// Cannot log via slog yet; write the fixed safe line to stderr without
 		// echoing the invalid value.
@@ -25,7 +30,13 @@ func main() {
 	if traceLoggingEnabled(level) {
 		logger.Warn(msgTraceLoggingSensitive, slog.String("event", eventTraceLoggingSensitive))
 	}
-	os.Exit(runMain(logger))
+	code := runMain(logger)
+	if output != nil {
+		if err := output.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "诊断日志关闭失败")
+		}
+	}
+	os.Exit(code)
 }
 
 // runtimeLike is the subset of *composedRuntime that the process boundary
@@ -71,12 +82,27 @@ func runMainWith(logger *slog.Logger, construct systemConstructor) int {
 // SIDRAVIA_LOG_LEVEL. It returns the resolved level so callers can emit the
 // Trace-sensitive startup warning. It must not mutate the package-global
 // default logger.
-func newProductionLogger() (*slog.Logger, slog.Level, error) {
+func newProductionLogger() (*slog.Logger, slog.Level, io.Closer, error) {
 	level, err := resolveLogLevel(os.Getenv("SIDRAVIA_LOG_LEVEL"))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
-	return newDaemonLogger(os.Stderr, level), level, nil
+	if os.Getenv(launchcontract.EnvManagedLog) != "1" {
+		return newDaemonLogger(os.Stderr, level), level, nil, nil
+	}
+	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	layout, err := productlayout.ResolveNamespace(ns)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	output, err := daemonlog.NewWriter(filepath.Dir(layout.DaemonLogPath), os.Stderr)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	return newDaemonLogger(output, level), level, output, nil
 }
 
 // newDaemonLogger builds a TextHandler logger at the given level over w. It is

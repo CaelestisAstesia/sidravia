@@ -1,4 +1,4 @@
-package clientbootstrap
+package daemonlog
 
 import (
 	"errors"
@@ -9,7 +9,9 @@ import (
 
 const daemonLogRotateThreshold int64 = 10 * 1024 * 1024
 
-func prepareDaemonLog(logPath string) (*os.File, error) {
+// PrepareBootstrap retains startup and raw stderr output with the existing
+// startup-only backup policy. Structured diagnostics use Writer instead.
+func PrepareBootstrap(logPath string) (*os.File, error) {
 	protection, err := newDaemonLogProtection()
 	if err != nil {
 		return nil, fmt.Errorf("准备 sidraviad 日志保护: %w", err)

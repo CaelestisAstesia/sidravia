@@ -1,6 +1,6 @@
 //go:build !windows
 
-package clientbootstrap
+package daemonlog
 
 type unprotectedDaemonLogProtection struct{}
 

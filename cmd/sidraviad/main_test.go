@@ -5,9 +5,24 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sidravia/internal/launchcontract"
 	"strings"
 	"testing"
 )
+
+func TestProductionLoggerKeepsDirectStderrAndRejectsInvalidManagedNamespace(t *testing.T) {
+	t.Setenv(launchcontract.EnvLogLevel, "debug")
+	t.Setenv(launchcontract.EnvManagedLog, "")
+	t.Setenv(launchcontract.EnvNamespace, "../invalid")
+	logger, level, output, err := newProductionLogger()
+	if err != nil || logger == nil || level != slog.LevelDebug || output != nil {
+		t.Fatalf("direct logger level=%v output=%v err=%v", level, output, err)
+	}
+	t.Setenv(launchcontract.EnvManagedLog, "1")
+	if _, _, output, err := newProductionLogger(); err == nil || output != nil {
+		t.Fatal("managed logging accepted invalid namespace")
+	}
+}
 
 // fakeRuntime is a test double for runtimeLike. It returns a preset error (or
 // nil) from run so the process boundary can be exercised without constructing
