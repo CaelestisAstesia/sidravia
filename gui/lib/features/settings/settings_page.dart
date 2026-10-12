@@ -471,6 +471,9 @@ class _SettingsDropdown<T> extends StatelessWidget {
       ),
       child: DropdownButton<T>(
         key: dropdownKey,
+        dropdownColor: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(DesignMetrics.groupRadius),
+        elevation: 3,
         value: value,
         isDense: true,
         isExpanded: true,
