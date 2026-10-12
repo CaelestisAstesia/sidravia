@@ -10,7 +10,10 @@ import (
 	"sidravia/internal/installationmanager"
 )
 
-const usage = "sidraviamgr: status | path enable | path disable | autostart set gui | autostart set daemon | autostart disable\nResults: UTF-8 JSON version 1. Exit codes: 0 success, 1 operation failed, 2 invalid arguments.\nWindows user PATH and autostart are implemented; repair and uninstall are not yet available.\n"
+var ProductVersion = "0.3.0-alpha.1"
+var BuildID = "dev"
+
+const usage = "sidraviamgr: status | path enable | path disable | autostart set gui | autostart set daemon | autostart disable | uninstall-prepare | data delete\nResults: UTF-8 JSON version 1. Exit codes: 0 success, 1 operation failed, 2 invalid arguments.\nWindows user integration cleanup and explicit production data removal are supported. Binary uninstall and repair are performed by the installer; not yet available as manager commands.\n"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Executable, installationmanager.Run)) }
 
@@ -34,6 +37,10 @@ func run(args []string, out io.Writer, executable func() (string, error), execut
 		operation = installationmanager.StartGUI
 	} else if len(args) == 3 && args[0] == "autostart" && args[1] == "set" && args[2] == "daemon" {
 		operation = installationmanager.StartDaemon
+	} else if len(args) == 1 && args[0] == "uninstall-prepare" {
+		operation = installationmanager.PrepareUninstall
+	} else if len(args) == 2 && args[0] == "data" && args[1] == "delete" {
+		operation = installationmanager.DeleteData
 	}
 	write := func(r installationmanager.Result, code int) int {
 		if err := json.NewEncoder(out).Encode(r); err != nil {

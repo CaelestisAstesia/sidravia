@@ -31,6 +31,8 @@ const (
 	StartGUI         Operation = "autostart set gui"
 	StartDaemon      Operation = "autostart set daemon"
 	DisableAutostart Operation = "autostart disable"
+	PrepareUninstall Operation = "uninstall-prepare"
+	DeleteData       Operation = "data delete"
 )
 
 type pathValue struct {
