@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 
@@ -9,7 +10,7 @@ Future<void> confirmCoreRestart(
   if (!controller.canRestartCore) return;
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => DesignConfirmationDialog(
       title: const Text('重启核心？'),
       content: const Text('重启会中断当前网络连接。完成后将恢复重启前的连接状态。'),
       actions: [

@@ -321,7 +321,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
     if (session == null || !controller.capabilities.canResetSession) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => DesignConfirmationDialog(
         title: const Text('移除当前会话？'),
         content: const Text('此操作会清理当前 Session 记录。'),
         actions: [

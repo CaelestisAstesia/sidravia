@@ -223,7 +223,7 @@ class SettingsPage extends StatelessWidget {
                               if (value == 'trace') {
                                 final accepted = await showDialog<bool>(
                                   context: context,
-                                  builder: (c) => AlertDialog(
+                                  builder: (c) => DesignConfirmationDialog(
                                     title: const Text('开启详细日志？'),
                                     content: const Text(
                                       '详细日志包含协议数据报，可能含有账号和认证信息。仅建议排障时开启，请谨慎分享日志。',

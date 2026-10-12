@@ -7,7 +7,7 @@ Future<void> showSidraviaAbout(
   required String version,
 }) => showDialog<void>(
   context: context,
-  builder: (context) => _InfoDialog(
+  builder: (context) => DesignDialog.information(
     title: '关于 Sidravia',
     actions: [
       TextButton(
@@ -35,7 +35,7 @@ Future<void> showSidraviaAbout(
 
 Future<void> _showLicenses(BuildContext context) => showDialog<void>(
   context: context,
-  builder: (context) => _InfoDialog(
+  builder: (context) => DesignDialog.information(
     title: '开源许可',
     body: FutureBuilder<List<LicenseEntry>>(
       future: LicenseRegistry.licenses.toList(),
@@ -58,7 +58,7 @@ Future<void> _showLicenses(BuildContext context) => showDialog<void>(
               trailing: const Icon(Icons.chevron_right, size: 18),
               onTap: () => showDialog<void>(
                 context: context,
-                builder: (context) => _InfoDialog(
+                builder: (context) => DesignDialog.information(
                   title: entry.packages.join(', '),
                   body: SingleChildScrollView(
                     child: SelectableText(
@@ -75,41 +75,3 @@ Future<void> _showLicenses(BuildContext context) => showDialog<void>(
     ),
   ),
 );
-
-class _InfoDialog extends StatelessWidget {
-  const _InfoDialog({
-    required this.title,
-    required this.body,
-    this.actions = const [],
-  });
-  final String title;
-  final Widget body;
-  final List<Widget> actions;
-  @override
-  Widget build(BuildContext context) => Dialog(
-    child: SizedBox(
-      width: 520,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .8,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DesignHeader(
-                title: title,
-                actions: actions,
-                onBack: () => Navigator.pop(context),
-                bottomSpacing: 16,
-              ),
-              Flexible(child: body),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}

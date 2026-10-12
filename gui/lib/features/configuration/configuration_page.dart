@@ -49,7 +49,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     _prompting = true;
     final discard = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => DesignConfirmationDialog(
         title: const Text('放弃未保存的修改？'),
         actions: [
           TextButton(
@@ -291,7 +291,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => DesignConfirmationDialog(
         title: const Text('删除登录配置？'),
         content: const Text('此操作会删除已保存的账号与凭据。'),
         actions: [
@@ -347,7 +347,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     _prompting = true;
     final reconnect = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => DesignConfirmationDialog(
         title: const Text('保存连接配置？'),
         actions: [
           TextButton(

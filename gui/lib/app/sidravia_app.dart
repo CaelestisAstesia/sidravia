@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+
 import 'dart:async';
 
 import 'package:sidravia_gui/desktop/log_directory.dart';
@@ -274,7 +276,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       if (active) {
         final approved = await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => DesignConfirmationDialog(
             title: const Text('断开连接并退出？'),
             actions: [
               TextButton(

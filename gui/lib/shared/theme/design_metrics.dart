@@ -10,6 +10,8 @@ abstract final class DesignMetrics {
   static const subtitleGap = 3.0;
   static const groupRadius = 12.0;
   static const buttonMinHeight = 42.0;
+  static const dialogPadding = 16.0;
+  static const informationDialogWidth = 520.0;
   static const dialogWidth = 360.0;
   static const dialogMaxHeightRatio = .8;
   static const choiceMinWidth = 92.0;

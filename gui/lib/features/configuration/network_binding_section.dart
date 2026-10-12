@@ -37,64 +37,41 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
               : () async {
                   final next = await showDialog<NetworkBindingPolicy>(
                     context: context,
-                    builder: (context) => Dialog(
-                      child: SizedBox(
-                        width: 360,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.sizeOf(context).height * .8,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: DesignHeader(
-                                  title: '选择网卡',
-                                  onBack: () => Navigator.pop(context),
-                                  bottomSpacing: 0,
-                                ),
+                    builder: (context) => DesignDialog.selection(
+                      title: '选择网卡',
+                      body: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            ListTile(
+                              title: const Text('自动选择可用网卡'),
+                              subtitle: const Text('自动选择'),
+                              trailing: policy.interfaceId == null
+                                  ? const Icon(Icons.check)
+                                  : null,
+                              onTap: () => Navigator.pop(
+                                context,
+                                const NetworkBindingPolicy.automatic(),
                               ),
-                              Flexible(
-                                child: SingleChildScrollView(
-                                  child: Column(
-                                    children: [
-                                      ListTile(
-                                        title: const Text('自动选择可用网卡'),
-                                        subtitle: const Text('自动选择'),
-                                        trailing: policy.interfaceId == null
-                                            ? const Icon(Icons.check)
-                                            : null,
-                                        onTap: () => Navigator.pop(
-                                          context,
-                                          const NetworkBindingPolicy.automatic(),
-                                        ),
-                                      ),
-                                      for (final c in choices)
-                                        ListTile(
-                                          title: Text(c.label),
-                                          subtitle: const Text('可用'),
-                                          trailing: c.policy == policy
-                                              ? const Icon(Icons.check)
-                                              : null,
-                                          onTap: () =>
-                                              Navigator.pop(context, c.policy),
-                                        ),
-                                      if (!available)
-                                        ListTile(
-                                          enabled: false,
-                                          title: Text(
-                                            '指定绑定已不可用：${policy.interfaceId} · ${policy.localIpv4Address}',
-                                          ),
-                                          subtitle: const Text('已不可用，不会自动回退'),
-                                          trailing: const Icon(Icons.check),
-                                        ),
-                                    ],
-                                  ),
-                                ),
+                            ),
+                            for (final c in choices)
+                              ListTile(
+                                title: Text(c.label),
+                                subtitle: const Text('可用'),
+                                trailing: c.policy == policy
+                                    ? const Icon(Icons.check)
+                                    : null,
+                                onTap: () => Navigator.pop(context, c.policy),
                               ),
-                            ],
-                          ),
+                            if (!available)
+                              ListTile(
+                                enabled: false,
+                                title: Text(
+                                  '指定绑定已不可用：${policy.interfaceId} · ${policy.localIpv4Address}',
+                                ),
+                                subtitle: const Text('已不可用，不会自动回退'),
+                                trailing: const Icon(Icons.check),
+                              ),
+                          ],
                         ),
                       ),
                     ),

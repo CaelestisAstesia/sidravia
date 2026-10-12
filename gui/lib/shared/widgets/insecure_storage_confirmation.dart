@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_operation.dart';
 
@@ -8,7 +9,7 @@ Future<bool> confirmInsecureStorage(
   if (!context.mounted) return false;
   return await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => DesignConfirmationDialog(
           title: Text('允许未受保护的存储？'),
           content: Text(operation.securityWarning),
           actions: [
