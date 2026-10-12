@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/application/gui_network_diagnosis.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
 class AdvancedPage extends StatefulWidget {
   const AdvancedPage({
@@ -41,9 +42,8 @@ class _AdvancedPageState extends State<AdvancedPage> {
     if (!mounted) return;
     setState(() => _openingLogs = false);
     if (!success) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('打开日志目录失败，请确认日志目录存在后重试。')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('打开日志目录失败，请确认日志目录存在后重试')));
     }
   }
 
@@ -115,7 +115,11 @@ class _AdvancedPageState extends State<AdvancedPage> {
           ConnectionIssueCard(failure: p.issue!),
           const SizedBox(height: 14),
         ],
-        if (p.actionError != null) DesignHelper(p.actionError!),
+        if (p.actionError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: FeedbackPill(message: p.actionError!),
+          ),
         DesignGroup(
           children: [
             DesignRow(title: '状态', value: p.statusTitle),
@@ -157,7 +161,11 @@ class _AdvancedPageState extends State<AdvancedPage> {
             ),
           ],
         ),
-        if (appearance?.feedback != null) DesignHelper(appearance!.feedback!),
+        if (appearance?.feedback != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: FeedbackPill(message: appearance!.feedback!),
+          ),
         if (expanded) ...[
           const SizedBox(height: 14),
           DesignGroup(
@@ -209,7 +217,6 @@ class _AdvancedPageState extends State<AdvancedPage> {
               ),
             ],
           ),
-          const SizedBox(height: 7),
           const SizedBox(height: 16),
           DesignGroup(
             children: [
@@ -235,13 +242,13 @@ class _AdvancedPageState extends State<AdvancedPage> {
                             );
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('诊断信息已复制。')),
+                                const SnackBar(content: Text('诊断信息已复制')),
                               );
                             }
                           } on Object {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('复制失败，请重试。')),
+                                const SnackBar(content: Text('复制失败，请重试')),
                               );
                             }
                           }

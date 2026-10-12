@@ -172,7 +172,7 @@ void main() {
         await tap(tester, '移除当前会话');
         await tap(tester, '确认');
         expect(client.removals, ['captured-session']);
-        expect(find.text('当前状态无法执行此操作。'), findsOneWidget);
+        expect(find.text('当前状态无法执行此操作'), findsOneWidget);
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox());

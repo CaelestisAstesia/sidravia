@@ -170,7 +170,7 @@ void main() {
       await tester.pump();
       expect(controller.busy, true);
       expect(tester.widget<DesignSwitch>(toggle).onChanged, isNull);
-      expect(find.text('正在处理操作，请稍后修改连接设置。'), findsOneWidget);
+      expect(find.text('正在处理操作，请稍后修改连接设置'), findsOneWidget);
       expect(
         await controller.setAutoReconnect(
           configurationId: old.id,

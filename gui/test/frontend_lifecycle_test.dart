@@ -212,7 +212,7 @@ void main() {
       await _openConfiguration(tester);
       expect(find.byType(TextField), findsNothing);
       expect(find.text('首次连接需要机构、账号和密码。'), findsNothing);
-      expect(find.text('通信尚未就绪，暂时无法读取连接配置。'), findsOneWidget);
+      expect(find.text('通信尚未就绪，暂时无法读取连接配置'), findsOneWidget);
       connected.complete(client);
       await started;
       await tester.pumpAndSettle();

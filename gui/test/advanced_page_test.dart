@@ -90,7 +90,7 @@ void main() {
       );
       result.complete(false);
       await tester.pumpAndSettle();
-      expect(find.text('打开日志目录失败，请确认日志目录存在后重试。'), findsOneWidget);
+      expect(find.text('打开日志目录失败，请确认日志目录存在后重试'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(
@@ -119,7 +119,7 @@ void main() {
           await tester.tap(find.text('打开日志目录'));
           await tester.pumpAndSettle();
           expect(
-            find.text('打开日志目录失败，请确认日志目录存在后重试。'),
+            find.text('打开日志目录失败，请确认日志目录存在后重试'),
             throws ? findsOneWidget : findsNothing,
           );
           expect(find.textContaining('secret path'), findsNothing);

@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+/// Short display hints omit terminal full stops; paragraphs and values keep
+/// their original punctuation at their own presentation boundary.
+String shortUiText(String text) =>
+    text.trimRight().replaceFirst(RegExp(r'[。.]+$'), '');
+
 class DesignPage extends StatelessWidget {
   const DesignPage({
     super.key,
@@ -298,7 +303,7 @@ class DesignRow extends StatelessWidget {
                   if (subtitle != null) ...[
                     const SizedBox(height: 3),
                     Text(
-                      subtitle!,
+                      shortUiText(subtitle!),
                       style: TextStyle(
                         fontSize: 11,
                         height: 1.35,
@@ -363,7 +368,7 @@ class DesignHelper extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Text(
-    text,
+    shortUiText(text),
     style: TextStyle(
       fontSize: 11,
       height: 1.5,
@@ -586,11 +591,12 @@ class DesignInputRow extends StatelessWidget {
     this.obscureText = false,
     this.hint,
     this.error,
+    this.helper,
   });
   final String label;
   final TextEditingController controller;
   final bool enabled, obscureText;
-  final String? hint, error;
+  final String? hint, error, helper;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -602,12 +608,29 @@ class DesignInputRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (helper != null && error == null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        shortUiText(helper!),
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.35,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 16),
@@ -645,7 +668,7 @@ class DesignInputRow extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              error!,
+              shortUiText(error!),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
                 fontSize: 12,

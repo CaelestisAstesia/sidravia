@@ -7,6 +7,7 @@ import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
 class ConfigurationPage extends StatefulWidget {
   const ConfigurationPage({
@@ -177,6 +178,11 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     return DesignPage(
       children: [
         DesignHeader(title: '连接配置', onBack: requestLeave),
+        if (_targetChanged)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: DesignHelper(_changedTargetGuidance),
+          ),
         if (unavailable) const DesignHelper('通信或配置状态暂不可用；草稿已保留，请恢复后再保存。'),
         DesignGroup(
           children: [
@@ -202,6 +208,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
               obscureText: true,
               hint: _credentialStored ? '••••••••' : '输入密码',
               error: _passwordError,
+              helper: _credentialStored ? null : '首次连接请填写账号和密码',
             ),
             NetworkBindingSection(
               controller: widget.controller,
@@ -212,10 +219,6 @@ class ConfigurationPageState extends State<ConfigurationPage> {
             ),
           ],
         ),
-        if (!_credentialStored) ...[
-          const SizedBox(height: 8),
-          const DesignHelper('首次连接请填写账号和密码'),
-        ],
         const SizedBox(height: 18),
         FilledButton(
           onPressed: _saving || !_canSave ? null : _save,
@@ -227,14 +230,11 @@ class ConfigurationPageState extends State<ConfigurationPage> {
               : _discard,
           child: const Text('放弃修改'),
         ),
-        if (_targetChanged)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(_changedTargetGuidance),
-          ),
-        const SizedBox(height: 24),
         if (_saveResult ?? widget.controller.notice case final String message)
-          DesignHelper(message),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: FeedbackPill(message: message),
+          ),
         if (!creating) ...[
           const SizedBox(height: 24),
           const DesignSectionTitle('删除'),

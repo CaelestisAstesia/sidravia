@@ -244,7 +244,7 @@ void main() {
       await tester.pump();
     }
     await tester.pumpAndSettle();
-    expect(find.text('请输入账号。'), findsOneWidget);
+    expect(find.text('请输入账号'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, 'demo-new');
     await tester.enterText(find.byType(TextField).last, 'fake-only');
     await tester.ensureVisible(find.text('保存修改'));
@@ -261,7 +261,7 @@ void main() {
       await tester.pump();
     }
     await tester.pumpAndSettle();
-    expect(find.text('当前状态无法执行此操作。'), findsOneWidget);
+    expect(find.text('当前状态无法执行此操作'), findsOneWidget);
     expect(
       tester.widget<TextField>(find.byType(TextField).last).controller!.text,
       'fake-only',

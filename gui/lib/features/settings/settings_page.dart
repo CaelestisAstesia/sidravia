@@ -40,7 +40,10 @@ class SettingsPage extends StatelessWidget {
             children: [
               DesignRow(
                 title: '连接配置',
-                subtitle: controller.capabilities.configurationDescription,
+                subtitle: controller.capabilities.canEditAutoLogin
+                    ? controller.capabilities.configurationDescription
+                    : controller.capabilities.settingsDisabledReason ??
+                          controller.capabilities.configurationDescription,
                 onTap: () => onNavigate(AppPage.configuration),
               ),
               DesignRow(
@@ -83,13 +86,6 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
-          if (!controller.capabilities.canEditAutoLogin)
-            Padding(
-              padding: const EdgeInsets.only(top: 7),
-              child: DesignHelper(
-                controller.capabilities.settingsDisabledReason ?? '',
-              ),
-            ),
           const SizedBox(height: 24),
           const DesignSectionTitle('公告'),
           DesignGroup(
@@ -298,25 +294,16 @@ class _AnnouncementSelector<T> extends StatelessWidget {
   final List<(T, String)> options;
   final ValueChanged<T>? onChanged;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      DesignRow(
-        title: label,
-        trailing: _SettingsDropdown<T>(
-          frameKey: ValueKey('announcement-$label-frame'),
-          dropdownKey: dropdownKey,
-          value: value,
-          labels: {for (final option in options) option.$1: option.$2},
-          onChanged: onChanged,
-        ),
-      ),
-      if (helper != null)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: DesignHelper(helper!),
-        ),
-    ],
+  Widget build(BuildContext context) => DesignRow(
+    title: label,
+    subtitle: helper,
+    trailing: _SettingsDropdown<T>(
+      frameKey: ValueKey('announcement-$label-frame'),
+      dropdownKey: dropdownKey,
+      value: value,
+      labels: {for (final option in options) option.$1: option.$2},
+      onChanged: onChanged,
+    ),
   );
 }
 

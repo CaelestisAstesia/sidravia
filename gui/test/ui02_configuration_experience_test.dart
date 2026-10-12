@@ -211,10 +211,10 @@ void main() {
             'retained-password',
           );
           final message = mode == 'cleanup'
-              ? '配置已提交，但旧会话清理失败；请清理会话后再连接。'
+              ? '配置已提交，但旧会话清理失败；请清理会话后再连接'
               : mode == 'unknown'
-              ? '保存结果未知，请恢复通信后确认配置；未自动连接。'
-              : '配置已保存，但刷新失败；请恢复通信后确认，未自动连接。';
+              ? '保存结果未知，请恢复通信后确认配置；未自动连接'
+              : '配置已保存，但刷新失败；请恢复通信后确认，未自动连接';
           await tester.ensureVisible(find.text(message));
           expect(find.text(message), findsOneWidget);
           if (mode != 'cleanup') {
