@@ -15,7 +15,11 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: AdvancedPage(controller: controller, onBack: () {}),
+        home: AdvancedPage(
+          controller: controller,
+          diagnostics: controller.diagnostics,
+          onBack: () {},
+        ),
       ),
     );
     await tester.ensureVisible(find.text('技术信息'));
@@ -38,6 +42,7 @@ void main() {
         home: Scaffold(
           body: AdvancedPage(
             controller: controller,
+            diagnostics: controller.diagnostics,
             onBack: () {},
             onOpenLogDirectory: open,
           ),

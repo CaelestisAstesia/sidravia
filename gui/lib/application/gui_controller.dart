@@ -2,7 +2,7 @@ import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
-import 'package:sidravia_gui/application/gui_network_diagnosis.dart';
+import 'package:sidravia_gui/features/diagnostics/network_diagnosis_controller.dart';
 import 'package:sidravia_gui/application/gui_network_binding.dart';
 
 import 'dart:async';
@@ -54,152 +54,70 @@ class GuiController extends ChangeNotifier {
   GuiSnapshot? _snapshot;
   String? _notice;
   String? _outdatedSessionId;
-  NetworkDiagnosis? _diagnosis;
-  String? _diagnosisTargetLabel;
-  String? _diagnosisError;
-  bool _diagnosisVisible = false;
-  bool _diagnosisBusy = false;
-  bool _diagnosisStale = true;
-  bool _diagnosisPending = false;
-  bool _diagnosisProbe = false;
-  bool _diagnosisScheduled = false;
-  int _diagnosisRevision = 0;
 
-  NetworkDiagnosis? get diagnosis => _diagnosis;
-  bool get diagnosisBusy => _diagnosisBusy;
-  bool get diagnosisStale =>
-      _diagnosisStale || state != GuiConnectionState.ready;
-  String? get diagnosisError => _diagnosisError;
-  String? get diagnosisTargetLabel => _diagnosisTargetLabel;
+  /// Owns the module lifetime; diagnostic facts are owned by this separate controller.
+  late final diagnostics = NetworkDiagnosisController(
+    request: _requestDiagnosis,
+  );
 
-  (String?, String?)? get _diagnosisTarget {
-    // Selection does not require runtime dependencies or saved credentials.
-    final caps = GuiCapabilities(state: state, snapshot: snapshot, busy: false);
-    if (caps.capability != GuiCapabilityState.manageable) return null;
-    final session = caps.retainedSession;
-    return session != null
-        ? (null, session.id)
-        : (caps.configuration!.id, null);
-  }
+  NetworkDiagnosisContext get _diagnosisContext => NetworkDiagnosisContext(
+    generation: _generation,
+    capabilities: capabilities,
+    supported: _client is SidraviaNetworkClient,
+    active: !_exitRequested && !_disposed,
+    canDispatch:
+        _transition == null && !_userBusy && !_exitRequested && !_disposed,
+  );
 
-  String? get diagnosisUnavailable {
-    if (state != GuiConnectionState.ready || _exitRequested) {
-      return '通信尚未就绪，网络诊断暂不可用。';
-    }
-    if (_client is! SidraviaNetworkClient) {
-      return '当前客户端不提供网络诊断；离线预览没有真实网络观察。';
-    }
-    if (_diagnosisTarget == null) {
-      return '需要一份连接配置及明确的会话关系；请先检查连接配置。';
-    }
-    return null;
-  }
-
-  bool get canDiagnose =>
-      _diagnosisVisible &&
-      diagnosisUnavailable == null &&
-      !busy &&
-      !_diagnosisBusy;
-
-  void setDiagnosisVisible(bool visible) {
-    if (_disposed || _diagnosisVisible == visible) return;
-    _diagnosisVisible = visible;
-    ++_diagnosisRevision;
-    _diagnosisStale = true;
-    _diagnosisPending = visible;
-    _diagnosisProbe = false;
-    if (visible) _notify();
-  }
-
-  void refreshDiagnosis({bool probe = false}) {
-    if (!canDiagnose) return;
-    _diagnosisPending = true;
-    _diagnosisProbe = probe;
-    _diagnosisStale = true;
-    ++_diagnosisRevision;
-    _notify();
-  }
-
-  void _invalidateDiagnosis() {
-    ++_diagnosisRevision;
-    _diagnosisStale = true;
-    _diagnosisPending = _diagnosisVisible;
-    // Network events and recovery never repeat an explicit probe.
-    _diagnosisProbe = false;
-  }
-
-  void _scheduleDiagnosis() {
-    if (!_diagnosisPending ||
-        !_diagnosisVisible ||
-        _diagnosisScheduled ||
-        _transition != null ||
-        diagnosisUnavailable != null ||
-        _disposed ||
-        _exitRequested) {
-      return;
-    }
-    _diagnosisScheduled = true;
-    scheduleMicrotask(() {
-      _diagnosisScheduled = false;
-      if (!_diagnosisPending ||
-          !_diagnosisVisible ||
-          _transition != null ||
-          diagnosisUnavailable != null ||
-          _disposed ||
-          _exitRequested) {
-        return;
-      }
-      final target = _diagnosisTarget!;
-      final probe = _diagnosisProbe;
-      _diagnosisPending = false;
-      _diagnosisProbe = false;
-      _transition = _runDiagnosis(_generation, _client!, target, probe);
-    });
-  }
-
-  Future<void> _runDiagnosis(
-    int generation,
-    SidraviaIpcClient client,
-    (String?, String?) target,
+  Future<NetworkDiagnosis?>? _requestDiagnosis(
+    NetworkDiagnosisContext context,
     bool probe,
-  ) async {
-    final revision = _diagnosisRevision;
-    _diagnosisBusy = true;
-    _diagnosisError = null;
+  ) {
+    final current = _diagnosisContext;
+    final client = _client;
+    if (!current.canDispatch ||
+        current.unavailable != null ||
+        client == null ||
+        context.generation != current.generation ||
+        context.target != current.target ||
+        !identical(
+          context.capabilities.snapshot,
+          current.capabilities.snapshot,
+        )) {
+      return null;
+    }
     _timer?.cancel();
     _timer = null;
+    final work = _runDiagnosisTransport(context, client, probe);
+    // Diagnosis shares the existing serial gate, including mutation/restart/exit waits.
+    _transition = work.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     _notify();
+    return work;
+  }
+
+  Future<NetworkDiagnosis?> _runDiagnosisTransport(
+    NetworkDiagnosisContext context,
+    SidraviaIpcClient client,
+    bool probe,
+  ) async {
+    final generation = context.generation;
     try {
       final result = await (client as SidraviaNetworkClient).networkDiagnose(
-        configurationId: target.$1,
-        sessionId: target.$2,
+        configurationId: context.target!.$1,
+        sessionId: context.target!.$2,
         probe: probe,
       );
-      if (_canContinue(generation) &&
-          identical(_client, client) &&
-          _diagnosisVisible &&
-          revision == _diagnosisRevision &&
-          target == _diagnosisTarget) {
-        _diagnosis = result;
-        _diagnosisTargetLabel = target.$2 != null
-            ? '会话 ${target.$2}'
-            : '配置 ${target.$1}';
-        _diagnosisStale = false;
-      }
-    } on IpcRequestFailure catch (error) {
-      if (_canContinue(generation) &&
-          identical(_client, client) &&
-          _diagnosisVisible &&
-          revision == _diagnosisRevision) {
-        _diagnosisError =
-            '网络诊断失败：${diagnosisErrorMessage(error.code)} (${error.code})';
-      }
+      return _canContinue(generation) && identical(_client, client)
+          ? result
+          : null;
+    } on IpcRequestFailure {
+      rethrow; // Curated business feedback belongs to the diagnosis controller.
     } on Object catch (error) {
       if (_current(generation) && identical(_client, client)) {
         await _invalidate(generation, client, error);
       }
+      return null;
     } finally {
-      _diagnosisBusy = false;
       if (_generation == generation) {
         _transition = null;
         _scheduleRefresh(generation, client);
@@ -330,7 +248,6 @@ class GuiController extends ChangeNotifier {
     _timer = null;
     _coreRestartFailed = true;
     _notice = null;
-    _invalidateDiagnosis();
     try {
       await _releaseResources();
       if (!_canContinue(generation)) return;
@@ -639,7 +556,6 @@ class GuiController extends ChangeNotifier {
 
   Future<void> _start() async {
     final generation = ++_generation;
-    _invalidateDiagnosis();
     try {
       _timer?.cancel();
       _timer = null;
@@ -740,7 +656,6 @@ class GuiController extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     _notice = null;
-    _invalidateDiagnosis();
     try {
       await action(client, allowInsecureStorage);
       if (!_canContinue(generation) || !identical(_client, client)) {
@@ -820,7 +735,6 @@ class GuiController extends ChangeNotifier {
       if (_snapshot?.daemon.pid != daemon.pid) {
         _outdatedSessionId = null;
       }
-      _invalidateDiagnosis();
       _snapshot = GuiSnapshot(
         daemon: daemon,
         profiles: profiles,
@@ -922,7 +836,6 @@ class GuiController extends ChangeNotifier {
         if (network != null && changed.revision <= network.revision) return;
         network = changed;
     }
-    _invalidateDiagnosis();
     _snapshot = GuiSnapshot(
       daemon: previous.daemon,
       profiles: previous.profiles,
@@ -944,7 +857,6 @@ class GuiController extends ChangeNotifier {
     _state = _snapshot == null
         ? GuiConnectionState.failed
         : GuiConnectionState.stale;
-    _invalidateDiagnosis();
     _failure = _ipcFailure(error);
     _notice = null;
     // Detach synchronously before awaiting cancellation: duplicate terminal
@@ -1056,7 +968,7 @@ class GuiController extends ChangeNotifier {
 
   void _notify() {
     if (!_disposed) {
-      _scheduleDiagnosis();
+      diagnostics.updateContext(_diagnosisContext);
       notifyListeners();
     }
   }
@@ -1069,10 +981,12 @@ class GuiController extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     final transition = _transition;
+    final diagnosisClosing = diagnostics.close();
     final releasing = _releaseResources();
     return _closed = () async {
       await releasing;
       await transition;
+      await diagnosisClosing;
       await _releaseResources();
     }();
   }
@@ -1082,6 +996,7 @@ class GuiController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     unawaited(close());
+    diagnostics.dispose();
     super.dispose();
   }
 }

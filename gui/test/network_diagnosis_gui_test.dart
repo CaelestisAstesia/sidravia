@@ -22,7 +22,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: AdvancedPage(controller: c, onBack: () {}),
+            body: AdvancedPage(
+              controller: c,
+              diagnostics: c.diagnostics,
+              onBack: () {},
+            ),
           ),
         ),
       );
@@ -33,9 +37,9 @@ void main() {
         tester,
         () =>
             client.requests.length == 1 &&
-            c.diagnosis != null &&
-            !c.diagnosisBusy &&
-            !c.diagnosisStale,
+            c.diagnostics.result != null &&
+            !c.diagnostics.busy &&
+            !c.diagnostics.stale,
       );
       expect(client.requests, [(null, 's', false)]);
       expect(find.text('2026-10-08T01:02:03Z'), findsOneWidget);
@@ -51,8 +55,8 @@ void main() {
         () =>
             client.requests.isNotEmpty &&
             client.requests.last.$3 &&
-            !c.diagnosisBusy &&
-            !c.diagnosisStale,
+            !c.diagnostics.busy &&
+            !c.diagnostics.stale,
       );
       expect(client.requests.last, (null, 's', true));
       expect(find.text('未收到回显，结果不确定'), findsOneWidget);
@@ -61,8 +65,8 @@ void main() {
         tester,
         () =>
             client.requests.length == 3 &&
-            !c.diagnosisBusy &&
-            !c.diagnosisStale,
+            !c.diagnostics.busy &&
+            !c.diagnostics.stale,
       );
       expect(client.requests.last, (null, 's', false));
       await tester.pumpWidget(const SizedBox());
@@ -94,10 +98,10 @@ void main() {
     ];
     final c = _controller(client);
     await c.start();
-    c.setDiagnosisVisible(true);
+    c.diagnostics.setVisible(true);
     await _settle(c);
     expect(client.requests.single, ('demo-config', null, false));
-    expect(c.diagnosisStale, false);
+    expect(c.diagnostics.stale, false);
     await c.close();
     c.dispose();
     client.dispose();
@@ -108,9 +112,9 @@ void main() {
       final empty = _Client(sessions: sessions)..configs = [];
       final controller = _controller(empty);
       await controller.start();
-      controller.setDiagnosisVisible(true);
+      controller.diagnostics.setVisible(true);
       await pumpEventQueue();
-      expect(controller.diagnosisUnavailable, contains('连接配置'));
+      expect(controller.diagnostics.unavailable, contains('连接配置'));
       expect(empty.requests, isEmpty);
       await controller.close();
       controller.dispose();
@@ -131,17 +135,21 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: AdvancedPage(controller: c, onBack: () {}),
+          body: AdvancedPage(
+            controller: c,
+            diagnostics: c.diagnostics,
+            onBack: () {},
+          ),
         ),
       ),
     );
     await tester.ensureVisible(find.text('技术信息'));
     await tester.tap(find.text('技术信息'));
     await tester.pump();
-    await _pumpUntil(tester, () => c.diagnosisError != null && !c.busy);
+    await _pumpUntil(tester, () => c.diagnostics.error != null && !c.busy);
     expect(find.textContaining('当前平台不支持网络诊断'), findsOneWidget);
-    expect(c.canDiagnose, isTrue);
-    expect(c.diagnosis, isNull);
+    expect(c.diagnostics.canRequest, isTrue);
+    expect(c.diagnostics.result, isNull);
     expect(c.snapshot!.network!.available, isTrue);
     expect(preview.operations.where((op) => op.contains('probe')), isEmpty);
     await tester.pumpWidget(const SizedBox());
@@ -161,7 +169,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: AdvancedPage(controller: real, onBack: () {}),
+          body: AdvancedPage(
+            controller: real,
+            diagnostics: real.diagnostics,
+            onBack: () {},
+          ),
         ),
       ),
     );
@@ -170,7 +182,7 @@ void main() {
     await tester.pump();
     await _pumpUntil(
       tester,
-      () => real.diagnosis != null && !real.diagnosisStale,
+      () => real.diagnostics.result != null && !real.diagnostics.stale,
     );
     expect(find.text('当前平台不支持路由诊断'), findsOneWidget);
     expect(
@@ -193,11 +205,11 @@ void main() {
     final client = _Client();
     final c = _controller(client);
     await c.start();
-    c.setDiagnosisVisible(true);
+    c.diagnostics.setVisible(true);
     await _settle(c);
-    final old = c.diagnosis;
+    final old = c.diagnostics.result;
     client.gate = Completer<NetworkDiagnosis>();
-    c.refreshDiagnosis(probe: true);
+    c.diagnostics.refresh(probe: true);
     await pumpEventQueue();
     client.owner.stream.add(NetworkChanged(_network(2)));
     client.owner.stream.add(NetworkChanged(_network(3)));
@@ -205,14 +217,14 @@ void main() {
       SessionRemoved(sessionId: 's', revision: BigInt.from(2)),
     );
     client.owner.stream.add(SessionChanged(_session('new', revision: 2)));
-    expect(c.diagnosisStale, true);
-    expect(identical(c.diagnosis, old), true);
+    expect(c.diagnostics.stale, true);
+    expect(identical(c.diagnostics.result, old), true);
     expect(client.requests.length, 2);
     client.gate!.complete(_result);
     await _settle(c);
     expect(client.requests.length, 3);
     expect(client.requests.last, (null, 'new', false));
-    expect(c.diagnosisTargetLabel, '会话 new');
+    expect(c.diagnostics.targetLabel, '会话 new');
     expect(client.maxConcurrent, 1);
     await c.close();
     c.dispose();
@@ -223,10 +235,10 @@ void main() {
     final client = _Client();
     final c = _controller(client);
     await c.start();
-    c.setDiagnosisVisible(true);
+    c.diagnostics.setVisible(true);
     await _settle(c);
     client.gate = Completer<NetworkDiagnosis>();
-    c.refreshDiagnosis();
+    c.diagnostics.refresh();
     await pumpEventQueue();
     final mutation = c.setAutoReconnect(
       configurationId: 'demo-config',
@@ -240,12 +252,12 @@ void main() {
     expect(client.maxConcurrent, 1);
     expect(client.operations, contains('configuration.set_auto_reconnect'));
     client.gate = Completer<NetworkDiagnosis>();
-    c.refreshDiagnosis();
+    c.diagnostics.refresh();
     await pumpEventQueue();
-    c.setDiagnosisVisible(false);
+    c.diagnostics.setVisible(false);
     client.gate!.complete(_result);
     await pumpEventQueue();
-    expect(c.diagnosisStale, true);
+    expect(c.diagnostics.stale, true);
     expect(client.closed, false);
     await c.close();
     c.dispose();
@@ -256,25 +268,59 @@ void main() {
     final client = _Client();
     final c = _controller(client);
     await c.start();
-    c.setDiagnosisVisible(true);
+    c.diagnostics.setVisible(true);
     await _settle(c);
     client.error = const IpcRequestFailure('session_not_found');
-    c.refreshDiagnosis();
+    c.diagnostics.refresh();
     await _settle(c);
-    expect(c.diagnosisError, contains('session_not_found'));
-    expect(c.diagnosisStale, true);
+    expect(c.diagnostics.error, contains('session_not_found'));
+    expect(c.diagnostics.stale, true);
     expect(client.closed, false);
     client.error = const IpcTransportException('ipc_disconnected');
-    c.refreshDiagnosis();
+    c.diagnostics.refresh();
     await pumpEventQueue();
     expect(c.state, GuiConnectionState.stale);
-    expect(c.canDiagnose, false);
-    expect(c.diagnosisStale, true);
+    expect(c.diagnostics.canRequest, false);
+    expect(c.diagnostics.stale, true);
     expect(client.closed, true);
     await c.close();
     c.dispose();
     client.dispose();
   });
+
+  test(
+    'reconnect refreshes diagnosis without replaying an interrupted probe',
+    () async {
+      final first = _Client();
+      final second = _Client();
+      var connects = 0;
+      final c = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => connects++ == 0 ? first : second,
+        pollDelay: const Duration(days: 1),
+        reconnectDelay: const Duration(milliseconds: 1),
+      );
+      await c.start();
+      c.diagnostics.setVisible(true);
+      await _settle(c);
+      first.error = const IpcTransportException('ipc_disconnected');
+      c.diagnostics.refresh(probe: true);
+      for (var n = 0; n < 100; n++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+        if (second.requests.isNotEmpty && !c.diagnostics.busy) break;
+      }
+      expect(first.requests.last.$3, isTrue);
+      expect(second.requests, [(null, 's', false)]);
+      expect(c.state, GuiConnectionState.ready);
+      expect(c.diagnostics.stale, isFalse);
+      expect(first.maxConcurrent, 1);
+      expect(second.maxConcurrent, 1);
+      await c.close();
+      c.dispose();
+      first.dispose();
+      second.dispose();
+    },
+  );
 
   test(
     'close owns an outstanding diagnosis and ignores its late response',
@@ -283,12 +329,12 @@ void main() {
       final c = _controller(client);
       await c.start();
       client.gate = Completer<NetworkDiagnosis>();
-      c.setDiagnosisVisible(true);
+      c.diagnostics.setVisible(true);
       await pumpEventQueue();
       final closing = c.close();
       client.gate!.complete(_result);
       await closing;
-      expect(c.diagnosis, null);
+      expect(c.diagnostics.result, null);
       expect(client.closed, true);
       c.dispose();
       client.dispose();
@@ -299,7 +345,7 @@ void main() {
 Future<void> _settle(GuiController c) async {
   for (var i = 0; i < 30; i++) {
     await pumpEventQueue(times: 2);
-    if (!c.diagnosisBusy) return;
+    if (!c.diagnostics.busy) return;
   }
   fail('Diagnosis did not settle');
 }

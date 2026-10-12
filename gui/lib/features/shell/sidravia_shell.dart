@@ -127,6 +127,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                 AppPage.diagnostics => AdvancedPage(
                   onOpenLogDirectory: widget.onOpenLogDirectory,
                   controller: widget.controller,
+                  diagnostics: widget.controller.diagnostics,
                   onBack: _back,
                 ),
               },

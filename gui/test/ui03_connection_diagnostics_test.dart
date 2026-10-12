@@ -111,7 +111,11 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
-              body: AdvancedPage(controller: c, onBack: () {}),
+              body: AdvancedPage(
+                controller: c,
+                diagnostics: c.diagnostics,
+                onBack: () {},
+              ),
             ),
           ),
         );
@@ -162,7 +166,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('移除当前会话'), findsNothing);
         await tester.pumpWidget(
-          mount(AdvancedPage(controller: c, onBack: () {})),
+          mount(
+            AdvancedPage(
+              controller: c,
+              diagnostics: c.diagnostics,
+              onBack: () {},
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         await tap(tester, '技术信息');

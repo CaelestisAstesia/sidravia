@@ -214,7 +214,7 @@ void main() {
       final c = _controller(client);
       await c.start();
       client.diagnosisGate = Completer<NetworkDiagnosis>();
-      c.setDiagnosisVisible(true);
+      c.diagnostics.setVisible(true);
       await pumpEventQueue();
       final saving = c.setNetworkBinding(
         configurationId: 'demo-config',
@@ -222,7 +222,7 @@ void main() {
       );
       await pumpEventQueue();
       expect(client.requests, isEmpty);
-      c.setDiagnosisVisible(false);
+      c.diagnostics.setVisible(false);
       client.owner.stream.add(NetworkChanged(_network(2, up: false)));
       client.diagnosisGate!.complete(_diagnosis);
       expect(await saving, false);
