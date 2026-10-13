@@ -48,6 +48,7 @@ func TestDistributionContents(t *testing.T) {
 				}
 			}
 			contents := map[string]bool{}
+			bytesByName := map[string][]byte{}
 			if target == "windows-amd64" {
 				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-windows-amd64-portable.zip"))
 				if err != nil {
@@ -56,6 +57,16 @@ func TestDistributionContents(t *testing.T) {
 				defer z.Close()
 				for _, f := range z.File {
 					contents[f.Name] = true
+					stream, err := f.Open()
+					if err != nil {
+						t.Fatal(err)
+					}
+					data, err := io.ReadAll(stream)
+					closeErr := stream.Close()
+					if err != nil || closeErr != nil {
+						t.Fatalf("archive read: %v / %v", err, closeErr)
+					}
+					bytesByName[f.Name] = data
 				}
 				if !contents["sidraviamgr.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || !contents["app_icon.ico"] {
 					t.Fatal("missing manager or core")
@@ -82,6 +93,11 @@ func TestDistributionContents(t *testing.T) {
 					}
 					name := strings.TrimPrefix(h.Name, "sidravia-v0.3.0-alpha.1-linux-amd64/")
 					contents[name] = true
+					data, err := io.ReadAll(tr)
+					if err != nil {
+						t.Fatal(err)
+					}
+					bytesByName[name] = data
 					if name == "sidraviactl" || name == "sidraviad" {
 						if h.Mode != 0755 {
 							t.Fatal("lost executable mode")
@@ -94,6 +110,17 @@ func TestDistributionContents(t *testing.T) {
 			}
 			if !contents["sidravia.portable"] || !contents["institution-profiles/jlu.json"] || contents["scripts/install.ps1"] {
 				t.Fatal("distribution content boundary")
+			}
+			info := "ProductVersion: " + cfg.version + "\nBuildID: " + cfg.buildID + "\nTarget: " + target + "\nArtifactKind: distribution\n"
+			names := []string{"sidraviactl", "sidraviad"}
+			if target == "windows-amd64" {
+				names = []string{"sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe"}
+			}
+			for _, name := range names {
+				info += "BinarySHA256: " + sha256Hex(bytesByName[name]) + "  " + name + "\n"
+			}
+			if string(bytesByName["BUILD-INFO.txt"]) != info {
+				t.Fatal("binary provenance does not match actual archive bytes")
 			}
 			if _, err := os.Stat(filepath.Join(out, "SHA256SUMS.txt")); err != nil {
 				t.Fatal(err)

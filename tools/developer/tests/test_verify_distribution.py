@@ -48,6 +48,8 @@ class DistributionContract(unittest.TestCase):
             contents['sidraviamgr.exe'] = b'manager'
             contents['app_icon.ico'] = b'gui/windows/runner/resources/app_icon.ico'
             contents.update({p.relative_to(self.gui).as_posix(): p.read_bytes() for p in self.gui.rglob('*') if p.is_file()})
+        names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe'] if target == 'windows-amd64' else ['sidraviactl', 'sidraviad']
+        contents['BUILD-INFO.txt'] += ''.join(f'BinarySHA256: {module.digest(contents[name])}  {name}\n' for name in names).encode()
         return contents
 
     def package(self, target, contents):
@@ -100,6 +102,17 @@ class DistributionContract(unittest.TestCase):
         self.package('windows-amd64', self.payload('windows-amd64'))
         (self.gui / 'Sidravia.exe').write_bytes(b'different candidate')
         with self.assertRaisesRegex(module.VerificationError, 'archive_source_mismatch'): self.verify('windows-amd64')
+
+    def test_replaced_binary_rejected_by_producer_manifest(self):
+        payload = self.payload('linux-amd64')
+        payload['sidraviactl'] = b'stale binary from another candidate'
+        self.package('linux-amd64', payload)
+        with self.assertRaisesRegex(module.VerificationError, 'BUILD-INFO'): self.verify()
+
+    def test_trimpath_metadata_does_not_claim_embedded_identity(self):
+        info = {'Path': 'sidravia/cmd/sidravia', 'Settings': [{'Key': k, 'Value': v} for k, v in {'GOOS': 'linux', 'GOARCH': 'amd64', 'CGO_ENABLED': '0'}.items()]}
+        with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
+            self.assertFalse(module.binary_identity(Path('inert'), 'sidraviactl', 'linux-amd64', VERSION, SHA, 'go'))
 
     def test_checksum_duplicate_missing_malformed_and_tampered(self):
         for change in ('duplicate', 'missing', 'malformed', 'tampered'):

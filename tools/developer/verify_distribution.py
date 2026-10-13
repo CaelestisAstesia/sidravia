@@ -53,7 +53,7 @@ def read_archive(path: Path, target: str, base: str) -> dict[str, bytes]:
     return contents
 
 
-def binary_identity(path: Path, role: str, target: str, version: str, build_id: str, go: str) -> None:
+def binary_identity(path: Path, role: str, target: str, version: str, build_id: str, go: str) -> bool:
     result = subprocess.run([go, 'version', '-m', '-json', str(path)], capture_output=True, text=True, check=True, timeout=30)
     info = json.loads(result.stdout)
     settings = {row['Key']: row['Value'] for row in info.get('Settings', [])}
@@ -61,10 +61,15 @@ def binary_identity(path: Path, role: str, target: str, version: str, build_id: 
     require(info.get('Path') == package, 'binary_package_mismatch')
     require(settings.get('GOOS') == target.split('-')[0] and settings.get('GOARCH') == 'amd64', 'binary_target_mismatch')
     require(settings.get('CGO_ENABLED') == '0', 'binary_cgo_mismatch')
+    # Go deliberately omits linker settings with -trimpath. Do not infer a
+    # runtime identity from their absence; BUILD-INFO binds compiler output bytes.
+    if '-ldflags' not in settings:
+        return False
     flags = shlex.split(settings.get('-ldflags', ''))
     assignments = [flags[i + 1] for i, value in enumerate(flags[:-1]) if value == '-X']
     for key, value in (('main.ProductVersion', version), ('main.BuildID', build_id)):
         require([entry for entry in assignments if entry.startswith(key + '=')] == [key + '=' + value], 'binary_identity_mismatch')
+    return True
 
 
 def verify(directory: Path, repo: Path, target: str, version: str, build_id: str,
@@ -113,24 +118,29 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     binaries = {role + suffix: role for role in roles}
     require(not any(name.casefold() in {key.casefold() for key in expected} for name in binaries), 'gui_binary_collision')
     require(set(contents) == set(expected) | set(binaries), 'archive_file_set_mismatch')
+    expected['BUILD-INFO.txt'] += ''.join(
+        f'BinarySHA256: {digest(contents[name])}  {name}\n' for name in binaries).encode()
     for name, data in expected.items():
         require(contents[name] == data, 'archive_source_mismatch: ' + name)
     if smoke:
         host = {'Windows': 'windows', 'Linux': 'linux'}.get(platform.system())
         require(host == target.split('-')[0] and platform.machine().lower() in ('amd64', 'x86_64'), 'smoke_requires_matching_native_host')
+    embedded_identities = []
     with tempfile.TemporaryDirectory(prefix='sidravia-distribution-check-') as temporary:
         root = Path(temporary)
         for name, role in binaries.items():
             path = root / name
             path.write_bytes(contents[name])
-            binary_identity(path, role, target, version, build_id, go)
+            embedded_identities.append(binary_identity(path, role, target, version, build_id, go))
             if smoke and role != 'sidraviad':
                 path.chmod(0o700)
                 result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True, check=True, timeout=30)
                 require(bool(result.stdout.strip()), 'empty_help_smoke')
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
-            'goIdentity': 'passed', 'helpSmoke': 'passed' if smoke else 'not_run',
+            'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
+            'embeddedGoIdentity': 'passed' if all(embedded_identities) else 'not_recorded',
+            'helpSmoke': 'passed' if smoke else 'not_run',
             'daemonLaunch': 'not_run', 'guiInteraction': 'not_run', 'installation': 'not_run', 'campus': 'not_run'}
 
 

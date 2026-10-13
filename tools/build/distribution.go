@@ -30,6 +30,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return err
 	}
 	entries := append([]zipEntry{{"LICENSE", license, 0644}}, profiles...)
+	buildInfoIndex := len(entries)
 	entries = append(entries, zipEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
 	if t.cfg.target == "windows-amd64" {
 		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
@@ -74,6 +75,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if t.cfg.target == "windows-amd64" {
 		programs = append(programs, struct{ name, pkg string }{"sidraviamgr", "./cmd/sidraviamgr"})
 	}
+	var binarySums strings.Builder
 	for _, program := range programs {
 		fmt.Fprintln(stderr, "building", program.name+suffix)
 		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program.name+suffix), program.pkg, t.cfg.version, t.cfg.buildID))
@@ -81,7 +83,9 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			return err
 		}
 		entries = append(entries, zipEntry{program.name + suffix, data, 0755})
+		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program.name+suffix)
 	}
+	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
 	// All installation files have explicit ownership; payload contains no
 	// portable marker, generated user data or legacy integration scripts.
 	payload := filepath.Join(stage, "payload")
