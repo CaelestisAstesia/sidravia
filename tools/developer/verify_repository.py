@@ -10,6 +10,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Iterator, Sequence
 
@@ -22,12 +23,15 @@ def main() -> int:
 
     results: list[CheckResult] = []
 
-    # Handle GOCACHE - preserve if provided, otherwise create temp only for go/all
+    # Leave Go's standard or caller-configured cache intact by default.
     with contextlib.ExitStack() as gocache_stack:
-        if "GOCACHE" not in base_env and args.scope in ("go", "all"):
+        if args.cold_cache and args.scope in ("go", "all"):
             temp_gocache = tempfile.TemporaryDirectory(prefix="sidravia-gocache-")
             gocache_stack.enter_context(temp_gocache)
             base_env["GOCACHE"] = temp_gocache.name
+        if args.scope in ("go", "all"):
+            cache_mode = "cold" if args.cold_cache else ("configured" if "GOCACHE" in base_env else "standard")
+            print(f"Go compile cache: {cache_mode}")
 
         if args.scope in ("go", "all"):
             go_executable = args.go or "go"
@@ -70,6 +74,11 @@ def parse_args() -> argparse.Namespace:
         "--go",
         help="Path to Go executable (default: go from PATH)",
     )
+    parser.add_argument(
+        "--cold-cache",
+        action="store_true",
+        help="Use and clean a temporary Go compile cache for this run (Go scopes only)",
+    )
     return parser.parse_args()
 
 
@@ -105,11 +114,13 @@ class CheckResult:
         exit_code: int,
         stdout: str,
         stderr: str,
+        duration_seconds: float = 0.0,
     ):
         self.argv = list(argv)
         self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
+        self.duration_seconds = duration_seconds
 
 
 def create_fake_check_result(argv: Sequence[str], stderr: str) -> CheckResult:
@@ -130,6 +141,7 @@ def run_check(check: Check, repo_root: Path, base_env: dict[str, str]) -> CheckR
 
     cwd = check.cwd if check.cwd is not None else repo_root
 
+    started = time.monotonic()
     try:
         proc = subprocess.run(
             check.argv,
@@ -144,6 +156,7 @@ def run_check(check: Check, repo_root: Path, base_env: dict[str, str]) -> CheckR
             exit_code=proc.returncode,
             stdout=proc.stdout,
             stderr=proc.stderr,
+            duration_seconds=time.monotonic() - started,
         )
     except Exception as e:
         return CheckResult(
@@ -151,6 +164,7 @@ def run_check(check: Check, repo_root: Path, base_env: dict[str, str]) -> CheckR
             exit_code=1,
             stdout="",
             stderr=f"Exception: {e}",
+            duration_seconds=time.monotonic() - started,
         )
 
 
@@ -159,6 +173,7 @@ def run_and_print(check: Check, repo_root: Path, base_env: dict[str, str]) -> Ch
     print(f"Running: {safe_argv(check.argv)}")
     result = run_check(check, repo_root, base_env)
     print(f"Exit code: {result.exit_code}")
+    print(f"Duration: {result.duration_seconds:.3f}s")
     if result.stdout:
         print(result.stdout.rstrip())
     if result.stderr:
@@ -216,6 +231,7 @@ def run_go_checks(
                 exit_code=1,
                 stdout=gofmt_result.stdout,
                 stderr=gofmt_result.stderr + "\nFormatting issues found",
+                duration_seconds=gofmt_result.duration_seconds,
             )
             # Reprint with corrected status
             print(f"Exit code: {gofmt_result.exit_code} (corrected)")
@@ -378,7 +394,7 @@ def print_summary(results: list[CheckResult]) -> None:
     print(f"Summary: {passed} passed, {failed} failed")
     for result in results:
         status = "PASS" if result.exit_code == 0 else "FAIL"
-        print(f"  {status}: {safe_argv(result.argv)}")
+        print(f"  {status}: {safe_argv(result.argv)} ({result.duration_seconds:.3f}s)")
     print("=" * 60)
 
 

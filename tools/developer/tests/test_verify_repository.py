@@ -34,6 +34,11 @@ class TestParseArgs(unittest.TestCase):
         args = verifier.parse_args()
         self.assertEqual(args.scope, "all")
         self.assertIsNone(args.go)
+        self.assertFalse(args.cold_cache)
+
+    def test_explicit_cold_cache(self) -> None:
+        sys.argv = ["verify_repository.py", "--scope", "go", "--cold-cache"]
+        self.assertTrue(verifier.parse_args().cold_cache)
 
     def test_scope_go(self) -> None:
         sys.argv = ["verify_repository.py", "--scope", "go"]
@@ -105,6 +110,21 @@ class TestRunCheck(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Exception: Test exception", result.stderr)
+
+    def test_duration_recorded_for_success_and_failure(self) -> None:
+        for outcome, code in ((mock.Mock(returncode=0, stdout="ok", stderr=""), 0),
+                              (mock.Mock(returncode=7, stdout="", stderr="failed"), 7),
+                              (OSError("cannot start"), 1)):
+            with self.subTest(code=code):
+                with mock.patch.object(verifier.time, "monotonic", side_effect=[10.0, 10.25]):
+                    with mock.patch.object(verifier.subprocess, "run") as run:
+                        if isinstance(outcome, Exception):
+                            run.side_effect = outcome
+                        else:
+                            run.return_value = outcome
+                        result = verifier.run_check(verifier.Check(["fictional"]), Path("/repo"), {})
+                self.assertEqual(result.exit_code, code)
+                self.assertEqual(result.duration_seconds, 0.25)
 
 
 class TestBuildPythonChecks(unittest.TestCase):
@@ -264,7 +284,8 @@ class TestRunGoChecks(unittest.TestCase):
             )
             # Second result: gofmt exits 0 but has stdout
             gofmt_result = verifier.CheckResult(
-                argv=["gofmt", "-l", "file1.go"], exit_code=0, stdout="file1.go", stderr=""
+                argv=["gofmt", "-l", "file1.go"], exit_code=0, stdout="file1.go", stderr="",
+                duration_seconds=0.25,
             )
             # Rest results: pass
             mock_results = [git_ls_result, gofmt_result]
@@ -289,6 +310,7 @@ class TestRunGoChecks(unittest.TestCase):
             # Check that gofmt result was corrected
             self.assertEqual(results[1].exit_code, 1)
             self.assertIn("Formatting issues found", results[1].stderr)
+            self.assertEqual(results[1].duration_seconds, 0.25)
 
     @mock.patch.object(verifier, "run_and_print")
     def test_gofmt_omits_absent_tracked_files(self, mock_run_and_print: mock.Mock) -> None:
@@ -430,7 +452,7 @@ class TestVerifyWorkflowTopology(unittest.TestCase):
 class TestPrintSummary(unittest.TestCase):
     def test_summary(self) -> None:
         results = [
-            verifier.CheckResult(argv=["check1"], exit_code=0, stdout="", stderr=""),
+            verifier.CheckResult(argv=["check1"], exit_code=0, stdout="", stderr="", duration_seconds=0.25),
             verifier.CheckResult(argv=["check2"], exit_code=1, stdout="", stderr=""),
             verifier.CheckResult(argv=["check3"], exit_code=0, stdout="", stderr=""),
         ]
@@ -442,6 +464,7 @@ class TestPrintSummary(unittest.TestCase):
         stdout = stdout_buf.getvalue()
         self.assertIn("Summary: 2 passed, 1 failed", stdout)
         self.assertIn("PASS: check1", stdout)
+        self.assertIn("PASS: check1 (0.250s)", stdout)
         self.assertIn("FAIL: check2", stdout)
         self.assertIn("PASS: check3", stdout)
 
@@ -559,7 +582,7 @@ class TestMain(unittest.TestCase):
     @mock.patch.object(verifier, "run_go_checks")
     @mock.patch.object(verifier, "run_python_checks")
     @mock.patch.object(verifier, "print_summary")
-    def test_gocache_created_when_not_provided(
+    def test_standard_gocache_used_when_not_provided(
         self,
         mock_print_summary: mock.Mock,
         mock_run_python: mock.Mock,
@@ -583,9 +606,9 @@ class TestMain(unittest.TestCase):
             with mock.patch("sys.stderr", new=stderr_buf):
                 verifier.main()
 
-        # GOCACHE should be set
+        # Let Go resolve its standard persistent cache.
         self.assertIsNotNone(captured_base_env)
-        self.assertIn("sidravia-gocache-", captured_base_env["GOCACHE"])
+        self.assertNotIn("GOCACHE", captured_base_env)
 
     @mock.patch.object(verifier, "run_go_checks")
     @mock.patch.object(verifier, "run_python_checks")
@@ -617,6 +640,39 @@ class TestMain(unittest.TestCase):
 
         # No temp GOCACHE should be created for Python scope
         self.assertEqual(len(temp_dirs_created), 0)
+
+    def test_cold_cache_overrides_configured_cache_and_cleans_up(self) -> None:
+        os.environ["GOCACHE"] = "/existing/gocache"
+        sys.argv = ["verify_repository.py", "--scope", "go", "--cold-cache"]
+        observed = []
+        def inspect_cache(**kwargs):
+            cache = Path(kwargs["base_env"]["GOCACHE"])
+            self.assertTrue(cache.is_dir())
+            self.assertNotEqual(str(cache), "/existing/gocache")
+            observed.append(cache)
+            return []
+        with mock.patch.object(verifier, "run_go_checks", side_effect=inspect_cache):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(verifier.main(), 0)
+        self.assertEqual(len(observed), 1)
+        self.assertFalse(observed[0].exists())
+        self.assertEqual(os.environ["GOCACHE"], "/existing/gocache")
+
+    def test_default_cleans_build_output_only(self) -> None:
+        os.environ.pop("GOCACHE", None)
+        sys.argv = ["verify_repository.py", "--scope", "go"]
+        observed = []
+        def inspect_build(**kwargs):
+            self.assertNotIn("GOCACHE", kwargs["base_env"])
+            build_dir = kwargs["build_dir"]
+            self.assertTrue(build_dir.is_dir())
+            observed.append(build_dir)
+            return []
+        with mock.patch.object(verifier, "run_go_checks", side_effect=inspect_build):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(verifier.main(), 0)
+        self.assertEqual(len(observed), 1)
+        self.assertFalse(observed[0].exists())
 
     @mock.patch.object(verifier, "run_go_checks")
     @mock.patch.object(verifier, "run_python_checks")
@@ -668,7 +724,7 @@ class TestTempCleanup(unittest.TestCase):
         mock_run_go: mock.Mock,
     ) -> None:
         os.environ.pop("GOCACHE", None)
-        sys.argv = ["verify_repository.py", "--scope", "go"]
+        sys.argv = ["verify_repository.py", "--scope", "go", "--cold-cache"]
         mock_run_go.return_value = []
         mock_print_summary.return_value = None
 
@@ -713,6 +769,7 @@ class TestCodeQuality(unittest.TestCase):
             "subprocess",
             "sys",
             "tempfile",
+            "time",
             "pathlib",
             "__future__",
             "typing",
