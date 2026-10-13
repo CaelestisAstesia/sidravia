@@ -173,3 +173,25 @@ func containsEnvironmentEntry(env []string, want string) bool {
 	}
 	return false
 }
+
+func TestSingletonOwnedExitHelper(t *testing.T) {
+	if os.Getenv("SIDRAVIA_OWNED_TEST_EXIT") == "singleton" {
+		os.Exit(launchcontract.ExitSingletonContention)
+	}
+}
+func TestWindowsSingletonExitClassification(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSingletonOwnedExitHelper$")
+	cmd.Env = append(os.Environ(), "SIDRAVIA_OWNED_TEST_EXIT=singleton")
+	cause := cmd.Run()
+	if cause == nil {
+		t.Fatal("owned helper did not exit")
+	}
+	classified := classifyDaemonExit(cause)
+	if !errors.Is(classified, errDaemonSingletonContention) || !errors.Is(classified, cause) {
+		t.Fatalf("singleton classification=%v", classified)
+	}
+	ordinary := errors.New("private failure")
+	if classifyDaemonExit(ordinary) != ordinary {
+		t.Fatal("ordinary failure reclassified")
+	}
+}

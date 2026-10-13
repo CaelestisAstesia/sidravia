@@ -3,6 +3,7 @@
 package clientbootstrap
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -63,7 +64,7 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 		return daemonLaunch{}, fmt.Errorf("启动 sidraviad 子进程: %w", err)
 	}
 	exited := make(chan error, 1)
-	go func() { exited <- deps.wait(cmd) }()
+	go func() { exited <- classifyDaemonExit(deps.wait(cmd)) }()
 	return daemonLaunch{exited: exited}, nil
 }
 
@@ -79,4 +80,14 @@ func daemonProcessCommand(daemonPath string, logFile *os.File, parentEnv []strin
 	}
 	cmd.SysProcAttr = &windows.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	return cmd, nil
+}
+
+// Only the reserved process result denotes singleton contention. Wait causes
+// remain private and wrapped; arbitrary failure text never drives recovery.
+func classifyDaemonExit(err error) error {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == launchcontract.ExitSingletonContention {
+		return errors.Join(errDaemonSingletonContention, err)
+	}
+	return err
 }

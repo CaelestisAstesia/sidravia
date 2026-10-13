@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sidravia/internal/daemon/host"
 
 	"sidravia/internal/daemonlog"
 	"sidravia/internal/launchcontract"
@@ -72,6 +74,9 @@ func runMainWith(logger *slog.Logger, construct systemConstructor) int {
 		return 1
 	}
 	if err := rt.run(context.Background()); err != nil {
+		if errors.Is(err, host.ErrAlreadyRunning) {
+			return launchcontract.ExitSingletonContention
+		}
 		reportFatal(logger, eventDaemonRuntimeFailed, msgDaemonRuntimeFailed)
 		return 1
 	}

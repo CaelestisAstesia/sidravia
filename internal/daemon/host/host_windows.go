@@ -4,6 +4,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -35,12 +36,17 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("host: mutex name: %w", err)
 	}
 	mutex, err := windows.CreateMutex(nil, false, mutexNameUTF16)
-	if err != nil {
-		return fmt.Errorf("host: create mutex: %w", err)
+	if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+		if mutex != 0 {
+			windows.CloseHandle(mutex)
+		}
+		return ErrAlreadyRunning
 	}
-	if windows.GetLastError() == windows.ERROR_ALREADY_EXISTS {
-		windows.CloseHandle(mutex)
-		return fmt.Errorf("sidraviad is already running in this user session")
+	if err != nil {
+		if mutex != 0 {
+			windows.CloseHandle(mutex)
+		}
+		return fmt.Errorf("host: create mutex: %w", err)
 	}
 	defer windows.CloseHandle(mutex)
 

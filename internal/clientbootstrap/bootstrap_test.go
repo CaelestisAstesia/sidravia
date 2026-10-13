@@ -588,3 +588,86 @@ func TestAcquireFreezesNamespaceForFinalConnection(t *testing.T) {
 		t.Fatalf("namespace calls = %d, reads = %d, connects = %d", namespaceCalls, reads, connects)
 	}
 }
+
+func TestContendedReadinessWaitsForMatchingPeer(t *testing.T) {
+	for _, wantErr := range []error{nil, ErrModeConflict, ErrIncompatibleGeneration} {
+		cause := errors.New("owned-child-exit")
+		exited := make(chan error, 1)
+		exited <- errors.Join(errDaemonSingletonContention, cause)
+		close(exited)
+		attempts := 0
+		e := waitForReadiness(100*time.Millisecond, time.Millisecond, exited, func() (bool, error) {
+			attempts++
+			if attempts == 1 {
+				return false, nil
+			}
+			return wantErr == nil, wantErr
+		})
+		if wantErr == nil && e != nil || wantErr != nil && !errors.Is(e, wantErr) || attempts < 2 {
+			t.Fatalf("contention probes=%d error=%v", attempts, e)
+		}
+	}
+}
+func TestContendedReadinessTimeoutRetainsCause(t *testing.T) {
+	cause := errors.New("owned-child-exit")
+	exited := make(chan error, 1)
+	exited <- errors.Join(errDaemonSingletonContention, cause)
+	close(exited)
+	e := waitForReadiness(10*time.Millisecond, time.Millisecond, exited, func() (bool, error) { return false, nil })
+	if !errors.Is(e, context.DeadlineExceeded) || !errors.Is(e, cause) {
+		t.Fatalf("contention timeout=%v", e)
+	}
+	if strings.Contains(e.Error(), "owned-child-exit") {
+		t.Fatal("private exit cause leaked")
+	}
+}
+func TestContendedReadinessEnsureDelayedPublication(t *testing.T) {
+	for _, mode := range []string{"headless", "desktop", "incompatible"} {
+		reads, launches := 0, 0
+		deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+			reads++
+			if reads <= 2 {
+				return contract.RuntimeInfo{}, os.ErrNotExist
+			}
+			info := runtime(1)
+			if mode == "incompatible" {
+				info.BuildID = "other"
+			}
+			return info, nil
+		}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+			return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+				if mode == "desktop" {
+					owner := 42
+					return statusResponseFor(t, "desktop", &owner), nil
+				}
+				return statusResponse(t), nil
+			}}, nil
+		})
+		deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) {
+			launches++
+			c := make(chan error, 1)
+			c <- errors.Join(errDaemonSingletonContention, errors.New("owned-child-exit"))
+			return daemonLaunch{exited: c}, nil
+		}
+		deps.totalWait = 50 * time.Millisecond
+		deps.pollInterval = time.Millisecond
+		outcome, e := ensure(testIdentity(t), launchcontract.Headless(), "", deps)
+		if launches != 1 {
+			t.Fatal("contention spawned another child")
+		}
+		switch mode {
+		case "headless":
+			if e != nil || outcome != Started {
+				t.Fatalf("matching delayed peer=%s %v", outcome, e)
+			}
+		case "desktop":
+			if !errors.Is(e, ErrModeConflict) {
+				t.Fatalf("mode/owner conflict=%v", e)
+			}
+		default:
+			if !errors.Is(e, ErrIncompatibleGeneration) {
+				t.Fatalf("build conflict=%v", e)
+			}
+		}
+	}
+}

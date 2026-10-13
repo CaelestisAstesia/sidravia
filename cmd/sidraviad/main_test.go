@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sidravia/internal/daemon/host"
 	"sidravia/internal/launchcontract"
 	"strings"
 	"testing"
@@ -162,5 +163,18 @@ func TestRunMainNormalReturnsZero(t *testing.T) {
 		if strings.Contains(output, "event="+event) {
 			t.Fatalf("normal completion must not emit %s, got:\n%s", event, output)
 		}
+	}
+}
+
+func TestSingletonProcessExitContract(t *testing.T) {
+	var out bytes.Buffer
+	code := runMainWith(newDaemonLogger(&out, slog.LevelInfo), func(context.Context, *slog.Logger) (runtimeLike, error) {
+		return &fakeRuntime{runErr: fmt.Errorf("private-marker: %w", host.ErrAlreadyRunning)}, nil
+	})
+	if code != launchcontract.ExitSingletonContention {
+		t.Fatalf("singleton exit=%d", code)
+	}
+	if strings.Contains(out.String(), "private-marker") {
+		t.Fatal("private singleton cause logged")
 	}
 }

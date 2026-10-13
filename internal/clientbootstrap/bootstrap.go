@@ -360,6 +360,9 @@ func ensureWithNamespace(identity Identity, options launchcontract.Options, logL
 		if err != nil {
 			return false, err
 		}
+		if result.State == ProbeIncompatible {
+			return false, ErrIncompatibleGeneration
+		}
 		if result.State == ProbeReachable && !matchesOptions(result.Status, options) {
 			return false, ErrModeConflict
 		}
@@ -492,6 +495,8 @@ func matchesOptions(status *contract.StatusResult, options launchcontract.Option
 	return status.DesktopOwnerPID == nil
 }
 
+var errDaemonSingletonContention = errors.New("sidraviad singleton contention")
+
 var errDaemonExitedBeforeReadiness = errors.New("sidraviad exited before readiness")
 
 type daemonEarlyExitError struct{ cause error }
@@ -501,18 +506,21 @@ func (e *daemonEarlyExitError) Error() string {
 }
 func (e *daemonEarlyExitError) Unwrap() error { return e.cause }
 
-type daemonReadinessTimeoutError struct{}
+type daemonReadinessTimeoutError struct{ cause error }
 
 func (*daemonReadinessTimeoutError) Error() string {
 	return "守护进程：启动结果尚未确认；sidraviad 可能仍在启动。请运行 sidraviactl daemon status 确认状态后再重试"
 }
-func (*daemonReadinessTimeoutError) Unwrap() error { return context.DeadlineExceeded }
+func (e *daemonReadinessTimeoutError) Unwrap() error {
+	return errors.Join(context.DeadlineExceeded, e.cause)
+}
 
 func waitForReadiness(total, interval time.Duration, exited <-chan error, attempt func() (bool, error)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), total)
 	defer cancel()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	var contentionCause error
 	for {
 		select {
 		case waitErr := <-exited:
@@ -522,6 +530,11 @@ func waitForReadiness(total, interval time.Duration, exited <-chan error, attemp
 			}
 			if ready {
 				return nil
+			}
+			if errors.Is(waitErr, errDaemonSingletonContention) {
+				contentionCause = waitErr
+				exited = nil // one observed exit must not become a closed-channel busy loop
+				continue
 			}
 			if waitErr == nil {
 				waitErr = errDaemonExitedBeforeReadiness
@@ -535,7 +548,7 @@ func waitForReadiness(total, interval time.Duration, exited <-chan error, attemp
 			if ready {
 				return nil
 			}
-			return &daemonReadinessTimeoutError{}
+			return &daemonReadinessTimeoutError{cause: contentionCause}
 		case <-ticker.C:
 			ready, err := attempt()
 			if err != nil {

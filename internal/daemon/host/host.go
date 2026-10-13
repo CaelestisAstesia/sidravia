@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,6 +12,9 @@ import (
 
 	"sidravia/internal/productlayout"
 )
+
+// ErrAlreadyRunning reports singleton contention, never typed readiness.
+var ErrAlreadyRunning = errors.New("sidraviad is already running in this user session")
 
 // Config holds the parameters needed to start the daemon host.
 type Config struct {

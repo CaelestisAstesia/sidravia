@@ -11,6 +11,9 @@ import (
 	"sidravia/internal/productlayout"
 )
 
+// ExitSingletonContention is reserved for an observed existing daemon host.
+const ExitSingletonContention = 2
+
 const (
 	EnvMode            = "SIDRAVIA_DAEMON_MODE"
 	EnvDesktopOwnerPID = "SIDRAVIA_DESKTOP_OWNER_PID"
