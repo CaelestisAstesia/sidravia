@@ -1694,3 +1694,24 @@ func TestSessionRevisionEventRetainsInitialPublicationAndOwnsClone(t *testing.T)
 		t.Fatal("older event acquired later actor contents")
 	}
 }
+
+func TestShortCredentialFailureFields(t *testing.T) {
+	for _, password := range []string{"a", "e", "retry", "network_timeout", "Authentication protocol failure."} {
+		s := &AuthenticationSession{definition: validRuntimeDefinition(t)}
+		s.definition.AuthenticationCredential.Password = password
+		for _, rec := range []protocol.AuthenticationProtocolFailureHandlingRecommendation{protocol.RetryAfterStandardDelay, protocol.RetryAfterExtendedDelay, protocol.RetryAfterBoundedRecovery, protocol.BlockUntilExplicitRestartOrRelevantInputChange} {
+			input := &protocol.AuthenticationProtocolRunFailure{Code: "network_timeout", Description: "untrusted-content:" + password, DiagnosticCause: fmt.Errorf("private-cause:%s", password)}
+			got := s.publicFailureWithRecommendation(input, rec)
+			if got.Code != "network_timeout" || got.Description == "" || got.HandlingRecommendation != rec {
+				t.Errorf("fixed public fields corrupted for credential %q: %#v", password, got)
+			}
+			if strings.Contains(got.Description, "untrusted-content:") || strings.Contains(got.Description, "private-cause:") {
+				t.Fatal("untrusted failure text leaked")
+			}
+			input.Code = protocol.AuthenticationProtocolFailureCode("untrusted_" + password)
+			if got := s.publicFailureWithRecommendation(input, rec); got.Code == input.Code || got.Code == "" {
+				t.Fatal("arbitrary credential-bearing code was retained/emptied")
+			}
+		}
+	}
+}

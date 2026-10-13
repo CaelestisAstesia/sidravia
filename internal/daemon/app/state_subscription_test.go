@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -407,5 +408,83 @@ func TestApplicationStateRealCleanupFailureMetadata(t *testing.T) {
 	terminal := nextApplicationState(t, stream)
 	if terminal.SessionRemoved == nil || terminal.SessionRemoved.SessionID != string(started.SessionID) {
 		t.Fatal("cleanup completion lost terminal")
+	}
+}
+
+type shortPasswordFailureFactory struct{ appTestProtocolFactory }
+
+func (*shortPasswordFailureFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	return shortPasswordFailureRun{}, nil
+}
+
+type shortPasswordFailureRun struct{}
+
+func (shortPasswordFailureRun) Execute(context.Context, protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	return &protocol.AuthenticationProtocolRunFailure{Code: "network_timeout", Description: "untrusted-password:a", HandlingRecommendation: protocol.RetryAfterStandardDelay}
+}
+func TestShortPasswordStateWire(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, e := setup.application.SetConfigurationPassword(ctx, "configuration-1", "a", false); e != nil {
+		t.Fatal(e)
+	}
+	registry, e := protocol.NewAuthenticationProtocolRegistry(&shortPasswordFailureFactory{appTestProtocolFactory{id: "drcom"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	_, stream, e := setup.application.SubscribeStateEvents(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer stream.Close()
+	started, e := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); e != nil {
+		t.Fatal(e)
+	}
+	waitForApplicationSessionState(t, setup.application, started.SessionID, session.BlockedByError)
+	handler := SessionHandler(setup.application)
+	get, e := json.Marshal(contract.SessionGetPayload{SessionID: string(started.SessionID)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, publicErr := handler(ctx, contract.MethodSessionGet, get)
+	if publicErr != nil {
+		t.Fatalf("short password broke Get: %#v", publicErr)
+	}
+	dto, e := contract.DecodeSessionResult(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if dto.LastAuthenticationFailure == nil || dto.LastAuthenticationFailure.Code != "network_timeout" || dto.LastAuthenticationFailure.HandlingRecommendation != string(protocol.BlockUntilExplicitRestartOrRelevantInputChange) {
+		t.Fatal("wire failure changed effective policy")
+	}
+	if _, publicErr := handler(ctx, contract.MethodSessionList, json.RawMessage(`{}`)); publicErr != nil {
+		t.Fatal("short password broke List")
+	}
+	boot, other, e := setup.application.SubscribeStateEvents(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer other.Close()
+	if _, e := contract.MarshalStateBootstrap(boot); e != nil {
+		t.Fatal("short password broke bootstrap")
+	}
+	for {
+		event, e := stream.Next(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e := contract.EncodeStateEvent(event); e != nil {
+			t.Fatal("short password broke state event")
+		}
+		if event.SessionChanged != nil && event.SessionChanged.Session.LastAuthenticationFailure != nil {
+			break
+		}
 	}
 }

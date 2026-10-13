@@ -706,7 +706,7 @@ func (session *AuthenticationSession) publicFailureWithRecommendation(
 	return &AuthenticationFailure{
 		Code:                   protocol.AuthenticationProtocolFailureCode(safePublicFailureCode(string(failure.Code), forbidden)),
 		Description:            safePublicFailureDescription(failure.Description, forbidden),
-		HandlingRecommendation: safePublicFailureRecommendation(recommendation, forbidden),
+		HandlingRecommendation: safePublicFailureRecommendation(recommendation),
 	}
 }
 
@@ -740,7 +740,7 @@ func diagnosticCauseText(cause error) (text string) {
 }
 
 func safePublicFailureCode(value string, forbidden []string) string {
-	if validPublicFailureCode(value) && !containsForbiddenPublicFailureMaterial(value, forbidden) {
+	if validPublicFailureCode(value) && (knownPublicFailureCode(value) || !containsForbiddenPublicFailureMaterial(value, forbidden)) {
 		return value
 	}
 	return firstSafePublicFailureFallback(forbidden,
@@ -748,6 +748,21 @@ func safePublicFailureCode(value string, forbidden []string) string {
 		"protocol_failure",
 		"failure",
 	)
+}
+
+// These producer-independent machine constants disclose no credential even
+// when a credential happens to equal part or all of one of their names.
+func knownPublicFailureCode(value string) bool {
+	switch value {
+	case "network_timeout", "network_io_failed", "server_busy", "session_in_use",
+		"credential_invalid", "insufficient_funds", "account_frozen", "binding_ip_mismatch",
+		"binding_mac_mismatch", "too_many_sessions", "incompatible_version", "binding_pair_mismatch",
+		"dhcp_required", "authentication_rejected", "protocol_response_invalid", "protocol_contract_violated",
+		"logout_cleanup_failed", "protocol_run_creation_failed", "authentication_protocol_failure", "protocol_failure", "failure":
+		return true
+	default:
+		return false
+	}
 }
 
 func validPublicFailureCode(value string) bool {
@@ -792,7 +807,12 @@ func firstSafePublicFailureFallback(forbidden []string, fallbacks ...string) str
 			return fallback
 		}
 	}
-	return ""
+	// Fixed text must remain nonempty; substring collisions with short secrets
+	// are not disclosures of secret-derived text.
+	if len(fallbacks) > 0 {
+		return fallbacks[0]
+	}
+	return "failure"
 }
 
 func containsForbiddenPublicFailureMaterial(value string, forbidden []string) bool {
@@ -804,23 +824,13 @@ func containsForbiddenPublicFailureMaterial(value string, forbidden []string) bo
 	return false
 }
 
-func safePublicFailureRecommendation(
-	value protocol.AuthenticationProtocolFailureHandlingRecommendation,
-	forbidden []string,
-) protocol.AuthenticationProtocolFailureHandlingRecommendation {
-	if validPublicFailureRecommendation(value) && !containsForbiddenPublicFailureMaterial(string(value), forbidden) {
+// Recommendations are a finite trusted enum selected by Session policy, not
+// diagnostic strings; credential text must not change that policy projection.
+func safePublicFailureRecommendation(value protocol.AuthenticationProtocolFailureHandlingRecommendation) protocol.AuthenticationProtocolFailureHandlingRecommendation {
+	if validPublicFailureRecommendation(value) {
 		return value
 	}
-	for _, fallback := range []protocol.AuthenticationProtocolFailureHandlingRecommendation{
-		protocol.BlockUntilExplicitRestartOrRelevantInputChange,
-		protocol.RetryAfterExtendedDelay,
-		protocol.RetryAfterStandardDelay,
-	} {
-		if !containsForbiddenPublicFailureMaterial(string(fallback), forbidden) {
-			return fallback
-		}
-	}
-	return ""
+	return protocol.BlockUntilExplicitRestartOrRelevantInputChange
 }
 
 func validPublicFailureRecommendation(value protocol.AuthenticationProtocolFailureHandlingRecommendation) bool {
