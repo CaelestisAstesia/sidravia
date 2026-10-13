@@ -35,7 +35,7 @@ type daemonLogOperations struct {
 
 func defaultDaemonLogOperations(protection daemonLogProtection) daemonLogOperations {
 	return daemonLogOperations{
-		mkdirAll: os.MkdirAll, stat: os.Stat, remove: os.Remove, rename: os.Rename,
+		mkdirAll: os.MkdirAll, stat: os.Lstat, remove: os.Remove, rename: os.Rename,
 		openFile: os.OpenFile, protection: protection,
 	}
 }
@@ -56,10 +56,16 @@ func prepareDaemonLogWith(logPath string, operations daemonLogOperations) (*os.F
 	case err != nil && !errors.Is(err, os.ErrNotExist):
 		return nil, fmt.Errorf("检查 sidraviad 日志: %w", err)
 	}
-	_, backupErr := operations.stat(backupPath)
+	if currentExists && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("sidraviad 当前日志不是普通文件")
+	}
+	backupInfo, backupErr := operations.stat(backupPath)
 	backupExists := backupErr == nil
 	if backupErr != nil && !errors.Is(backupErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("检查 sidraviad 日志备份: %w", backupErr)
+	}
+	if backupExists && !backupInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("sidraviad 日志备份不是普通文件")
 	}
 	if currentExists {
 		if err := operations.protection.protectFile(logPath); err != nil {
