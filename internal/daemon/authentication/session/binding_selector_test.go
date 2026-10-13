@@ -665,3 +665,23 @@ func TestSharedAutomaticCandidateMatchesActualSelector(t *testing.T) {
 		})
 	}
 }
+
+func TestBindingSwitchesAfterWiredCarrierLoss(t *testing.T) {
+	selector := newAutomaticBindingSelector()
+	wired := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
+	wireless := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "192.0.2.20", 24)
+	first, ok := selector.Select(snapshot(t, 1, wired, wireless))
+	if !ok {
+		t.Fatal("no initial binding")
+	}
+	assertBinding(t, first, "wired", "192.0.2.10", 24)
+	wired.OperationalState = environment.OperationalStateDown
+	next, ok := selector.Select(snapshot(t, 2, wired, wireless))
+	if !ok {
+		t.Fatal("no fallback binding")
+	}
+	assertBinding(t, next, "wireless", "192.0.2.20", 24)
+	if len(wired.IPv4AddressAssignments()) != 1 {
+		t.Fatal("test lost static IPv4")
+	}
+}

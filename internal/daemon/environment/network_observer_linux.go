@@ -114,7 +114,9 @@ func buildLinuxInterface(entry linuxInterfaceEntry, stat statFunc) (NetworkInter
 	}
 
 	state := OperationalStateDown
-	if entry.Flags&net.FlagUp != 0 {
+	// Linux IFF_RUNNING (net.FlagRunning) represents operational UP or UNKNOWN.
+	// Administrative UP alone does not establish carrier or usable link state.
+	if entry.Flags&net.FlagUp != 0 && entry.Flags&net.FlagRunning != 0 {
 		state = OperationalStateUp
 	}
 

@@ -121,7 +121,7 @@ func TestCollectLinuxInterfacesRetainsDistinctPrefixes(t *testing.T) {
 func TestCollectLinuxInterfacesUpAndDownState(t *testing.T) {
 	entries := []linuxInterfaceEntry{
 		{Name: "down0", Flags: 0},
-		{Name: "up0", Flags: net.FlagUp},
+		{Name: "up0", Flags: net.FlagUp | net.FlagRunning},
 	}
 	ifaces, err := collectLinuxInterfaces(staticSource(entries), missingStat)
 	if err != nil {
@@ -299,4 +299,67 @@ func TestLinuxSystemObserverAdvancesRevisionOnChange(t *testing.T) {
 		t.Fatalf("second revision = %d, want 2", snap2.Revision)
 	}
 	cancel()
+}
+
+func TestLinuxOperationalFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		flags net.Flags
+		want  OperationalState
+	}{
+		{"admin-up-carrier-down", net.FlagUp, OperationalStateDown},
+		{"admin-down", net.FlagRunning, OperationalStateDown},
+		{"kernel-up-or-unknown", net.FlagUp | net.FlagRunning, OperationalStateUp},
+		{"loopback-unknown", net.FlagUp | net.FlagRunning | net.FlagLoopback, OperationalStateUp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			iface, e := buildLinuxInterface(linuxInterfaceEntry{Name: "eth0", Flags: tc.flags}, missingStat)
+			if e != nil || iface.OperationalState != tc.want {
+				t.Fatalf("operational state=%s error=%v", iface.OperationalState, e)
+			}
+		})
+	}
+}
+func TestLinuxCarrierLossPublishesRevision(t *testing.T) {
+	stat := func(path string) (os.FileInfo, error) {
+		switch path {
+		case "/sys/class/net/eth0/device", "/sys/class/net/wlan0/device", "/sys/class/net/wlan0/wireless":
+			return dummyFileInfo{}, nil
+		}
+		return nil, os.ErrNotExist
+	}
+	calls := 0
+	observer := &systemObserver{now: time.Now, interval: time.Millisecond, collect: func() ([]NetworkInterface, error) {
+		calls++
+		wiredFlags := net.FlagUp | net.FlagRunning
+		if calls > 1 {
+			wiredFlags = net.FlagUp
+		}
+		return collectLinuxInterfaces(staticSource([]linuxInterfaceEntry{
+			{Name: "eth0", Flags: wiredFlags, HardwareAddr: []byte{1, 2, 3, 4, 5, 6}, Addresses: []net.Addr{linuxAddr("192.0.2.10", 24)}},
+			{Name: "wlan0", Flags: net.FlagUp | net.FlagRunning, HardwareAddr: []byte{6, 5, 4, 3, 2, 1}, Addresses: []net.Addr{linuxAddr("192.0.2.20", 24)}},
+		}), stat)
+	}}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	output := make(chan Snapshot)
+	done := make(chan error, 1)
+	go func() { done <- observer.Observe(ctx, output) }()
+	first := receiveSnapshot(t, output)
+	second := receiveSnapshot(t, output)
+	cancel()
+	if e := <-done; e != nil {
+		t.Fatal(e)
+	}
+	before := findInterface(first.Interfaces(), "eth0")
+	after := findInterface(second.Interfaces(), "eth0")
+	if first.Revision != 1 || second.Revision != 2 || before.OperationalState != OperationalStateUp || after.OperationalState != OperationalStateDown {
+		t.Fatal("carrier loss did not update revision/state")
+	}
+	if !slices.Equal(before.IPv4AddressAssignments(), after.IPv4AddressAssignments()) || len(after.IPv4AddressAssignments()) != 1 {
+		t.Fatal("test lost static IPv4")
+	}
+	if findInterface(second.Interfaces(), "wlan0").OperationalState != OperationalStateUp {
+		t.Fatal("available wireless was lost")
+	}
 }
