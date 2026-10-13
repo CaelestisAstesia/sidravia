@@ -33,7 +33,11 @@ func TestWindowsSingletonContentionIsTyped(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer windows.CloseHandle(held)
-	e = Run(context.Background(), Config{Namespace: ns, RuntimeInfoPath: t.TempDir() + "/unused-runtime.json"})
+	ready := false
+	e = Run(context.Background(), Config{Namespace: ns, RuntimeInfoPath: t.TempDir() + "/unused-runtime.json", OnReady: func() { ready = true }})
+	if ready {
+		t.Fatal("nonowner signaled readiness")
+	}
 	if !errors.Is(e, ErrAlreadyRunning) {
 		t.Fatalf("singleton contention=%v", e)
 	}

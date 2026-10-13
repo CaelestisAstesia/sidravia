@@ -400,6 +400,10 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	hostReady := make(chan struct{})
+	var readyOnce sync.Once
+	hostCfg := rt.hostCfg
+	hostCfg.OnReady = func() { readyOnce.Do(func() { close(hostReady) }) }
 	snapshotCh := make(chan environment.Snapshot, 1)
 	activityCount := 3
 	if rt.desktopOwner != nil {
@@ -410,7 +414,7 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	go func() {
 		results <- runtimeActivityResult{
 			activity: runtimeActivityHost,
-			err:      rt.hostRunner(childCtx, rt.hostCfg),
+			err:      rt.hostRunner(childCtx, hostCfg),
 		}
 	}()
 
@@ -430,7 +434,7 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	go func() {
 		results <- runtimeActivityResult{
 			activity: runtimeActivityDelivery,
-			err:      rt.deliverSnapshots(childCtx, snapshotCh),
+			err:      rt.deliverSnapshots(childCtx, snapshotCh, hostReady),
 		}
 	}()
 
@@ -548,7 +552,7 @@ func (rt *composedRuntime) closeAndWait(initiator error) error {
 	return wrapped
 }
 
-func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-chan environment.Snapshot) error {
+func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-chan environment.Snapshot, hostReady <-chan struct{}) error {
 	automaticLoginPerformed := false
 	for {
 		select {
@@ -570,6 +574,14 @@ func (rt *composedRuntime) deliverSnapshots(ctx context.Context, snapshotCh <-ch
 				slog.Int("interface_count", len(snapshot.Interfaces())),
 			)
 			if !automaticLoginPerformed && !rt.launchOptions.SkipAutoLogin {
+				select {
+				case <-hostReady:
+				case <-ctx.Done():
+					return nil
+				}
+				if ctx.Err() != nil {
+					return nil
+				}
 				automaticLoginPerformed = true
 				if err := rt.automaticLogin.PerformAutomaticLogin(ctx); err != nil {
 					rt.logger.Warn(msgAutomaticLoginFailed,

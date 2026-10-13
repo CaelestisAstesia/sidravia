@@ -26,6 +26,8 @@ type Config struct {
 	Handler                            http.Handler
 	AllowUnsupportedProtectionFallback bool
 	OnUnprotected                      func()
+	// OnReady signals owned singleton admission and successful runtime publication.
+	OnReady func()
 }
 
 // daemonMutexName returns the Windows singleton name for one user and one

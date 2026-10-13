@@ -100,6 +100,10 @@ func runLinuxHost(ctx context.Context, cfg Config, deps linuxHostDeps) error {
 
 	defer cleanupRuntimeInfo(cfg.RuntimeInfoPath, info, store, os.Remove)
 
+	if cfg.OnReady != nil {
+		cfg.OnReady()
+	}
+
 	server := &http.Server{Handler: cfg.Handler}
 	serverErr := make(chan error, 1)
 	go func() {

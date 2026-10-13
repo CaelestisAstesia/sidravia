@@ -90,6 +90,10 @@ func Run(ctx context.Context, cfg Config) error {
 	// Ensure runtime info cleanup on all exit paths.
 	defer cleanupRuntimeInfo(cfg.RuntimeInfoPath, info, store, os.Remove)
 
+	if cfg.OnReady != nil {
+		cfg.OnReady()
+	}
+
 	// Start HTTP server.
 	server := &http.Server{
 		Handler: cfg.Handler,

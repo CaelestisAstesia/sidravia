@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -183,6 +184,9 @@ func (r *fakeHostRunner) run(ctx context.Context, cfg host.Config) error {
 	r.called = true
 	r.cfg = &cfg
 	r.mu.Unlock()
+	if cfg.OnReady != nil {
+		cfg.OnReady()
+	}
 	close(r.started)
 	select {
 	case err := <-r.release:
@@ -1478,5 +1482,68 @@ func TestComposeObjectGraphRejectsInvalidPathsInOrder(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAutomaticLoginRequiresHostAdmission(t *testing.T) {
+	for _, success := range []bool{false, true} {
+		t.Run(fmt.Sprintf("admitted-%v", success), func(t *testing.T) {
+			observer := newFakeObserver()
+			observer.addSnapshot(environment.NewSnapshot(1, time.Now(), nil))
+			hostRunner := newFakeHostRunner()
+			sink := newFakeSnapshotSink()
+			performer := &countingAutomaticLoginPerformer{}
+			shutdown := &fakeShutdown{activityDone: []<-chan struct{}{observer.done, hostRunner.finished}}
+			rt := newLifecycleRuntimeWithAutomaticLogin(observer, hostRunner, sink, shutdown, discardLogger(), performer)
+			release := make(chan struct{})
+			rt.hostRunner = func(ctx context.Context, cfg host.Config) error {
+				defer close(hostRunner.finished)
+				close(hostRunner.started)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				if !success {
+					return host.ErrAlreadyRunning
+				}
+				if cfg.OnReady != nil {
+					cfg.OnReady()
+				}
+				<-ctx.Done()
+				return nil
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := runRuntime(rt, ctx)
+			<-hostRunner.started
+			waitForSinkSnapshots(t, sink, 1)
+			// Selection cannot run between observing a network and owning the host.
+			time.Sleep(10 * time.Millisecond)
+			if performer.Count() != 0 {
+				t.Error("automatic login occurred before host admission")
+			}
+			close(release)
+			if success {
+				deadline := time.Now().Add(time.Second)
+				for performer.Count() == 0 && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				if performer.Count() != 1 {
+					t.Error("admitted host did not perform automatic login once")
+				}
+				cancel()
+				if e := waitForRuntimeResult(t, done); e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				if e := waitForRuntimeResult(t, done); !errors.Is(e, host.ErrAlreadyRunning) {
+					t.Fatal("lost host rejection cause")
+				}
+				if performer.Count() != 0 {
+					t.Fatal("rejected host performed automatic login")
+				}
+			}
+		})
 	}
 }
