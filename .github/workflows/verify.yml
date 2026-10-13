@@ -57,6 +57,10 @@ jobs:
         working-directory: gui
     steps:
       - uses: actions/checkout@v6
+      - name: Test native window and announcement policies
+        working-directory: .
+        shell: powershell
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_gui_native.ps1
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.0'

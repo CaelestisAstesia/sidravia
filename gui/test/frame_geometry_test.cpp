@@ -1,6 +1,9 @@
 #include "../windows/runner/frame_geometry.h"
 #include <cassert>
 #include <iostream>
+#ifdef NDEBUG
+#error Native policy tests require active assertions
+#endif
 int main() {
   using namespace sidravia_frame;
   for (double dpi : {96., 120., 144., 192.}) {

@@ -2,6 +2,9 @@
 
 #include <cassert>
 #include <iostream>
+#ifdef NDEBUG
+#error Native policy tests require active assertions
+#endif
 
 int main() {
   using sidravia_frame::DecorationFor;
