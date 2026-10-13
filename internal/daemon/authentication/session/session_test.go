@@ -813,6 +813,8 @@ func sessionSnapshot(t *testing.T, ctx context.Context, session *AuthenticationS
 
 func waitForState(t *testing.T, ctx context.Context, session *AuthenticationSession, want State) Snapshot {
 	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
 	for {
 		got := sessionSnapshot(t, ctx, session)
 		if got.State == want {
@@ -821,13 +823,15 @@ func waitForState(t *testing.T, ctx context.Context, session *AuthenticationSess
 		select {
 		case <-ctx.Done():
 			t.Fatalf("state = %q, want %q: %v", got.State, want, ctx.Err())
-		default:
+		case <-tick.C:
 		}
 	}
 }
 
 func waitForFactoryRun(t *testing.T, ctx context.Context, factory *controlledFactory, index int) *controlledRun {
 	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
 	for {
 		inputs := factory.creationInputs()
 		if len(inputs) > index {
@@ -836,18 +840,20 @@ func waitForFactoryRun(t *testing.T, ctx context.Context, factory *controlledFac
 		select {
 		case <-ctx.Done():
 			t.Fatalf("factory did not create run %d: %v", index, ctx.Err())
-		default:
+		case <-tick.C:
 		}
 	}
 }
 
 func waitForInboxMessage(t *testing.T, ctx context.Context, session *AuthenticationSession) {
 	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
 	for len(session.inbox) == 0 {
 		select {
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
-		default:
+		case <-tick.C:
 		}
 	}
 }
@@ -1182,12 +1188,6 @@ func (d *captureDiagnostics) RetryScheduled(nextRetryAt time.Time) {
 	d.retryScheduled = append(d.retryScheduled, nextRetryAt)
 }
 
-func (d *captureDiagnostics) snapshotCount() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return len(d.snapshots)
-}
-
 func newDiagnosticsSession(t *testing.T, factory *controlledFactory, capture Diagnostics) *AuthenticationSession {
 	t.Helper()
 	definition := validRuntimeDefinition(t)
@@ -1217,18 +1217,38 @@ func TestSessionDiagnosticsObservesEveryCommittedRevision(t *testing.T) {
 
 	ctx := testContext(t)
 	// Wait for the run goroutine to start and publish the initial revision.
-	if _, err := authSession.Snapshot(ctx); err != nil {
+	initial, err := authSession.Snapshot(ctx)
+	if err != nil {
 		t.Fatalf("initial Snapshot: %v", err)
 	}
-	initialCount := capture.snapshotCount()
-	if initialCount < 1 {
-		t.Fatalf("expected initial revision observed, got %d", initialCount)
+	if _, err := authSession.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet")); err != nil {
+		t.Fatal(err)
 	}
-	_, _ = authSession.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "ethernet", "Ethernet"))
 	_ = waitForState(t, ctx, authSession, Authenticating)
-
-	if capture.snapshotCount() < 2 {
-		t.Fatalf("expected at least 2 observed snapshots (initial + network), got %d", capture.snapshotCount())
+	if err := waitForFactoryRun(t, ctx, factory, 0).establish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_ = waitForState(t, ctx, authSession, Authenticated)
+	if _, err := authSession.Suspend(ctx); err != nil {
+		t.Fatal(err)
+	}
+	final := waitForState(t, ctx, authSession, Suspended)
+	capture.mu.Lock()
+	observed := append([]Snapshot(nil), capture.snapshots...)
+	capture.mu.Unlock()
+	if final.Revision-initial.Revision < 3 {
+		t.Fatalf("insufficient committed transitions: %d -> %d", initial.Revision, final.Revision)
+	}
+	if uint64(len(observed)) != final.Revision-initial.Revision+1 {
+		t.Fatalf("observed %d snapshots for revisions %d..%d", len(observed), initial.Revision, final.Revision)
+	}
+	for i, snapshot := range observed {
+		if snapshot.Revision != initial.Revision+uint64(i) || snapshot.AuthenticationSessionID != final.AuthenticationSessionID {
+			t.Fatalf("snapshot %d: identity/revision = %s/%d, want %s/%d", i, snapshot.AuthenticationSessionID, snapshot.Revision, final.AuthenticationSessionID, initial.Revision+uint64(i))
+		}
+	}
+	if !publicSnapshotsEqual(observed[len(observed)-1], final) {
+		t.Fatal("last diagnostic snapshot differs from final public state")
 	}
 }
 

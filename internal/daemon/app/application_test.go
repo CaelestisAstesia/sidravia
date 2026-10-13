@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/netip"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -467,13 +469,13 @@ func TestConfigurationOperationsSerializeWithSessionRemove(t *testing.T) {
 			}
 
 			operationStarted = true
-			go func() { operationDone <- operation.call(ctx, setup.application, started.SessionID) }()
-			select {
-			case err := <-operationDone:
-				operationStarted = false
-				t.Fatalf("%s crossed opMu while Configuration persistence was blocked: %v", operation.name, err)
-			case <-time.After(20 * time.Millisecond):
-			}
+			callStarted := make(chan struct{})
+			go func() {
+				close(callStarted)
+				operationDone <- operation.call(ctx, setup.application, started.SessionID)
+			}()
+			<-callStarted
+			waitForApplicationOperationLock(t, operation.name, operationDone)
 
 			releasePersistence()
 			select {
@@ -495,6 +497,43 @@ func TestConfigurationOperationsSerializeWithSessionRemove(t *testing.T) {
 				t.Fatalf("timed out waiting for %s", operation.name)
 			}
 		})
+	}
+}
+
+// Observing the public call directly parked in Mutex.Lock distinguishes actual
+// serialization from a goroutine that simply has not been scheduled. This is a
+// test-only observation of the pinned Go runtime, with no production hook.
+func waitForApplicationOperationLock(t *testing.T, name string, done <-chan error) {
+	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	method := "sidravia/internal/daemon/app.(*Application)." + name + "("
+	buffer := make([]byte, 1<<20)
+	for {
+		select {
+		case err := <-done:
+			t.Fatalf("%s crossed the closed persistence gate: %v", name, err)
+		default:
+		}
+		stacks := string(buffer[:runtime.Stack(buffer, true)])
+		for _, stack := range strings.Split(stacks, "\n\n") {
+			methodAt := strings.Index(stack, method)
+			if methodAt < 0 {
+				continue
+			}
+			prefix := stack[:methodAt]
+			lockAt := strings.LastIndex(prefix, "sync.(*Mutex).Lock(")
+			if lockAt >= 0 && strings.Count(prefix[lockAt:], "\n") == 2 {
+				return
+			}
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("%s never entered the operation mutex", name)
+		case <-tick.C:
+		}
 	}
 }
 
