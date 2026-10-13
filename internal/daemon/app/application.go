@@ -83,7 +83,11 @@ func NewApplication(
 func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (SessionStartResult, error) {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
+	return application.startConfigurationAuthentication(ctx, configurationID)
+}
 
+// startConfigurationAuthentication requires opMu through selection and start.
+func (application *Application) startConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (SessionStartResult, error) {
 	application.mu.Lock()
 	existing := application.sessionsByConfig[configurationID]
 	application.mu.Unlock()
@@ -165,13 +169,15 @@ func (application *Application) StartOneShotAuthentication(ctx context.Context, 
 }
 
 // PerformAutomaticLogin finds the sole AutoLogin=true Configuration, if any,
-// and starts authentication through the existing StartConfigurationAuthentication
-// path. It is evaluated once per daemon generation after the first accepted
+// and starts authentication within the same serialized application operation.
+// It is evaluated once per daemon generation after the first accepted
 // Environment Snapshot. A failure returns a fixed safe error that carries no
 // configuration ID, username, error text or diagnostic cause; the caller is
 // responsible for emitting the fixed Warn event. The daemon, IPC and snapshot
 // delivery remain running regardless.
 func (application *Application) PerformAutomaticLogin(ctx context.Context) error {
+	application.opMu.Lock()
+	defer application.opMu.Unlock()
 	configurations, err := application.catalog.List(ctx)
 	if err != nil {
 		return fmt.Errorf("automatic_login_failed")
@@ -186,7 +192,7 @@ func (application *Application) PerformAutomaticLogin(ctx context.Context) error
 	if autoLoginID == "" {
 		return nil
 	}
-	if _, err := application.StartConfigurationAuthentication(ctx, autoLoginID); err != nil {
+	if _, err := application.startConfigurationAuthentication(ctx, autoLoginID); err != nil {
 		return fmt.Errorf("automatic_login_failed")
 	}
 	return nil

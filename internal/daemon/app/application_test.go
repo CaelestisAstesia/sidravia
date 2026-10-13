@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -579,5 +580,120 @@ func TestPerformAutomaticLoginFailureReturnsSafeError(t *testing.T) {
 	}
 	if err.Error() != "automatic_login_failed" {
 		t.Fatalf("error = %q, want %q", err.Error(), "automatic_login_failed")
+	}
+}
+
+// automaticSelectionContext pauses catalog selection without a production hook.
+// The edit's validation callback reports whether it passed the app operation gate.
+type automaticSelectionContext struct {
+	context.Context
+	calls   atomic.Int32
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (c *automaticSelectionContext) Err() error {
+	if c.calls.Add(1) == 2 {
+		close(c.entered)
+		select {
+		case <-c.release:
+		case <-c.Context.Done():
+		}
+	}
+	return c.Context.Err()
+}
+
+type editAdmissionContext struct {
+	context.Context
+	once    sync.Once
+	entered chan struct{}
+}
+
+func (c *editAdmissionContext) Err() error {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Err()
+}
+func TestAutomaticLoginSerializesSelection(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	enable := true
+	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &enable}); e != nil {
+		t.Fatal(e)
+	}
+	autoctx := &automaticSelectionContext{Context: ctx, entered: make(chan struct{}), release: make(chan struct{})}
+	autodone := make(chan error, 1)
+	go func() { autodone <- setup.application.PerformAutomaticLogin(autoctx) }()
+	select {
+	case <-autoctx.entered:
+	case <-ctx.Done():
+		t.Fatal("automatic selection did not begin")
+	}
+	editctx := &editAdmissionContext{Context: ctx, entered: make(chan struct{})}
+	editdone := make(chan error, 1)
+	disable, user, password := false, "new-user", "new-password"
+	go func() {
+		_, e := setup.application.UpdateConfiguration(editctx, "configuration-1", config.Update{AutoLogin: &disable, Username: &user, Password: &password})
+		editdone <- e
+	}()
+	crossed := false
+	select {
+	case <-editctx.entered:
+		crossed = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(autoctx.release)
+	if e := <-autodone; e != nil {
+		t.Fatal(e)
+	}
+	if e := <-editdone; e != nil {
+		t.Fatal(e)
+	}
+	sessions, e := setup.application.ListSessions(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if crossed {
+		t.Error("edit entered while automatic selection was in progress")
+	}
+	if len(sessions) != 0 {
+		t.Fatal("disabled configuration retained automatic Session after credential edit")
+	}
+	_, cred, e := setup.catalog.Resolve(ctx, "configuration-1")
+	if e != nil || cred.Username != user || cred.Password != password {
+		t.Fatal("edit did not commit current credentials")
+	}
+}
+func TestAutomaticLoginUsesCommittedChoice(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	on, off := true, false
+	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &on}); e != nil {
+		t.Fatal(e)
+	}
+	user, password := "new-user", "new-password"
+	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &off, Username: &user, Password: &password}); e != nil {
+		t.Fatal(e)
+	}
+	if e := setup.application.PerformAutomaticLogin(ctx); e != nil {
+		t.Fatal(e)
+	}
+	sessions, e := setup.application.ListSessions(ctx)
+	if e != nil || len(sessions) != 0 {
+		t.Fatal("committed disable started a Session")
+	}
+	b := appTestConfiguration("configuration-b")
+	b.AutoLogin = true
+	if _, e := setup.application.CreateConfiguration(ctx, b, "b-password", false); e != nil {
+		t.Fatal(e)
+	}
+	if e := setup.application.PerformAutomaticLogin(ctx); e != nil {
+		t.Fatal(e)
+	}
+	sessions, e = setup.application.ListSessions(ctx)
+	if e != nil || len(sessions) != 1 || sessions[0].ConfigurationID != "configuration-b" {
+		t.Fatal("automatic login did not follow committed choice")
 	}
 }
