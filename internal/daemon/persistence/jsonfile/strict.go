@@ -90,7 +90,7 @@ func RequireSchemaVersion(data []byte, wanted uint64) error {
 }
 
 func ValidateOpaqueObjectOrNull(data json.RawMessage) error {
-	if err := validateUTF8(data); err != nil {
+	if err := validateJSONUnicode(data); err != nil {
 		return invalidDocument(err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -131,7 +131,7 @@ func invalidDocument(cause error) error {
 }
 
 func validateOneValue(data []byte) error {
-	if err := validateUTF8(data); err != nil {
+	if err := validateJSONUnicode(data); err != nil {
 		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -149,7 +149,7 @@ func validateOneValue(data []byte) error {
 }
 
 func scanExactlyOne(data []byte, opaqueJSONPointers []string) error {
-	if err := validateUTF8(data); err != nil {
+	if err := validateJSONUnicode(data); err != nil {
 		return err
 	}
 	skipped := make(map[string]struct{}, len(opaqueJSONPointers))
@@ -288,9 +288,55 @@ func escapeJSONPointerToken(token string) string {
 	return strings.ReplaceAll(token, "/", "~1")
 }
 
-func validateUTF8(data []byte) error {
+// validateJSONUnicode rejects replacement of malformed source strings. The JSON
+// decoder still owns syntax; opaque objects keep their original field semantics.
+func validateJSONUnicode(data []byte) error {
 	if !utf8.Valid(data) {
 		return fmt.Errorf("invalid UTF-8")
+	}
+	invalid := fmt.Errorf("invalid Unicode escape")
+	unit := func(offset int) (uint16, bool) {
+		if offset+4 > len(data) {
+			return 0, false
+		}
+		v, e := strconv.ParseUint(string(data[offset:offset+4]), 16, 16)
+		return uint16(v), e == nil
+	}
+	inString := false
+	for i := 0; i < len(data); i++ {
+		if data[i] == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString || data[i] != '\\' {
+			continue
+		}
+		if i+1 >= len(data) {
+			continue
+		}
+		if data[i+1] != 'u' {
+			i++
+			continue
+		}
+		high, ok := unit(i + 2)
+		if !ok {
+			return invalid
+		}
+		switch {
+		case high >= 0xd800 && high <= 0xdbff:
+			if i+12 > len(data) || data[i+6] != '\\' || data[i+7] != 'u' {
+				return invalid
+			}
+			low, ok := unit(i + 8)
+			if !ok || low < 0xdc00 || low > 0xdfff {
+				return invalid
+			}
+			i += 11
+		case high >= 0xdc00 && high <= 0xdfff:
+			return invalid
+		default:
+			i += 5
+		}
 	}
 	return nil
 }

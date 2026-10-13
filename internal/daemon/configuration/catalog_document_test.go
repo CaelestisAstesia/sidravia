@@ -1,7 +1,11 @@
 package configuration
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -189,5 +193,65 @@ func TestCatalogStrictPolicyMigrationAndSchema4(t *testing.T) {
 		if _, err = decodeCatalogDocument([]byte(nullTarget)); err == nil {
 			t.Fatal("mixed old policy accepted")
 		}
+	}
+}
+
+func catalogIntegrityJSON(version int, password string) string {
+	optional, binding := ``, `{"mode":"automatically_select_latest_available"}`
+	if version >= 3 {
+		optional = `,"autoLogin":false,"autoReconnect":true`
+	}
+	return fmt.Sprintf(`{"schemaVersion":%d,"configurations":[{"configurationId":"configuration-1","displayName":"校园","institutionProfileId":"profile-1","username":"user","password":"%s","networkBindingPolicy":%s,"protocolContextOverride":{"x":1,"X":2}%s}]}`, version, password, binding, optional)
+}
+func TestCatalogRejectsCaseAliases(t *testing.T) {
+	base := catalogIntegrityJSON(4, "secret")
+	for _, data := range []string{
+		strings.Replace(base, `"schemaVersion":`, `"SchemaVersion":`, 1),
+		strings.Replace(base, `"configurations":`, `"Configurations":`, 1),
+		strings.Replace(base, `"configurationId":`, `"ConfigurationId":`, 1),
+		strings.Replace(base, `"configurationId":`, `"\u0043onfigurationId":`, 1),
+		strings.Replace(base, `"configurationId":"configuration-1"`, `"configurationId":"configuration-1","ConfigurationId":"configuration-2"`, 1),
+		strings.Replace(base, `"autoLogin":false`, `"autoLogin":false,"AutoLogin":true`, 1),
+		strings.Replace(base, `"mode":`, `"Mode":`, 1),
+		strings.Replace(base, `"mode":"automatically_select_latest_available"`, `"mode":"automatically_select_latest_available","Mode":"automatically_select_latest_available"`, 1),
+		catalogIntegrityJSON(4, `PRIVATE-SECRET-\ud800`), catalogIntegrityJSON(3, `\udc00`),
+		strings.Replace(base, `"displayName":"校园"`, `"displayName":"\ud800"`, 1),
+	} {
+		store := &catalogMemoryStore{exists: true, data: []byte(data)}
+		before := append([]byte(nil), store.data...)
+		c, e := OpenCatalog(context.Background(), store, filepath.Join(t.TempDir(), "config.json"))
+		if e == nil || c != nil {
+			t.Error("accepted corrupt/ambiguous persisted catalog")
+			continue
+		}
+		if configurationPersistenceFailureCode(t, e) != persistence.FailureInvalidDocument || strings.Contains(e.Error(), "PRIVATE-SECRET") {
+			t.Fatal("unsafe/wrong persistence failure")
+		}
+		if store.replaceCalls != 0 || !bytes.Equal(before, store.data) {
+			t.Fatal("invalid catalog was rewritten")
+		}
+	}
+}
+func TestCatalogValidUnicodeAndSchema(t *testing.T) {
+	for _, version := range []int{2, 3, 4} {
+		for _, tc := range []struct{ wire, want string }{{"中文", "中文"}, {`\ud83d\ude00`, "😀"}, {"�", "�"}, {`\ufffd`, "�"}, {`\\ud800`, `\ud800`}} {
+			raw := []byte(catalogIntegrityJSON(version, tc.wire))
+			store := &catalogMemoryStore{exists: true, data: raw}
+			c, e := OpenCatalog(context.Background(), store, filepath.Join(t.TempDir(), "config.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			_, cred, e := c.Resolve(context.Background(), "configuration-1")
+			if e != nil || cred.Password != tc.want {
+				t.Fatal("valid password changed")
+			}
+			if store.replaceCalls != 0 || !bytes.Equal(raw, store.data) {
+				t.Fatal("valid old schema rewritten")
+			}
+		}
+	}
+	raw := []byte(strings.Replace(catalogIntegrityJSON(4, "secret"), `"configurationId":`, `"\u0063onfigurationId":`, 1))
+	if _, e := decodeCatalogDocument(raw); e != nil {
+		t.Fatal("escaped canonical key rejected")
 	}
 }

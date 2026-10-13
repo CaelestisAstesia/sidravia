@@ -197,3 +197,35 @@ func failureCode(t *testing.T, err error) persistence.FailureCode {
 	}
 	return failure.Code()
 }
+
+func TestPersistentUnicode(t *testing.T) {
+	for _, bad := range []string{`\ud800`, `\udc00`, `\ud800\u0041`, string([]byte{0xff})} {
+		var v struct {
+			Password string `json:"password"`
+		}
+		for _, b := range [][]byte{[]byte(`{"password":"PRIVATE-SECRET-` + bad + `"}`), []byte(`{"` + bad + `":"x"}`)} {
+			if e := DecodeStrict(b, &v); e == nil {
+				t.Error("accepted corrupt Unicode")
+			} else if strings.Contains(e.Error(), "PRIVATE-SECRET") {
+				t.Fatal("secret leaked")
+			}
+		}
+		if e := ValidateOpaqueObjectOrNull([]byte(`{"x":"` + bad + `"}`)); e == nil {
+			t.Error("accepted corrupt opaque Unicode")
+		}
+	}
+	for _, tc := range []struct{ wire, want string }{{"中文", "中文"}, {`\ud83d\ude00`, "😀"}, {"�", "�"}, {`\ufffd`, "�"}, {`\\ud800`, `\ud800`}} {
+		var v struct {
+			Password string `json:"password"`
+		}
+		if e := DecodeStrict([]byte(`{"password":"`+tc.wire+`"}`), &v); e != nil || v.Password != tc.want {
+			t.Fatalf("valid Unicode altered: %v", e)
+		}
+	}
+	var v struct {
+		Raw json.RawMessage `json:"raw"`
+	}
+	if e := DecodeStrict([]byte(`{"raw":{"x":1,"x":2,"X":999999999999999999999999}}`), &v, "/raw"); e != nil || string(v.Raw) != `{"x":1,"x":2,"X":999999999999999999999999}` {
+		t.Fatal("opaque contract changed")
+	}
+}

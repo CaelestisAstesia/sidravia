@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 
 	"sidravia/internal/daemon/authentication/protocol"
@@ -69,7 +70,7 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 		pointers[i] = fmt.Sprintf("/configurations/%d/protocolContextOverride", i)
 	}
 	var document catalogDocumentEnvelope
-	if err := jsonfile.DecodeStrict(data, &document, pointers...); err != nil {
+	if err := decodeCatalogObject(data, &document, []string{"schemaVersion", "configurations"}, pointers...); err != nil {
 		return nil, err
 	}
 	if document.SchemaVersion == nil || document.Configurations == nil {
@@ -84,7 +85,7 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 	result := make(map[ConfigurationID]catalogRecord, len(*document.Configurations))
 	for _, raw := range *document.Configurations {
 		var in persistentConfiguration
-		if err := jsonfile.DecodeStrict(raw, &in, "/protocolContextOverride"); err != nil {
+		if err := decodeCatalogObject(raw, &in, []string{"configurationId", "displayName", "institutionProfileId", "username", "password", "networkBindingPolicy", "protocolContextOverride", "autoLogin", "autoReconnect"}, "/protocolContextOverride"); err != nil {
 			return nil, err
 		}
 		if in.ConfigurationID == nil || in.DisplayName == nil || in.InstitutionProfileID == nil || in.Username == nil || in.Password == nil || len(in.NetworkBindingPolicy) == 0 || len(in.ProtocolContextOverride) == 0 {
@@ -102,7 +103,7 @@ func decodeCatalogDocument(data []byte) (map[ConfigurationID]catalogRecord, erro
 			autoReconnect = *in.AutoReconnect
 		}
 		var binding persistentNetworkBindingPolicy
-		if err := jsonfile.DecodeStrict(in.NetworkBindingPolicy, &binding); err != nil || binding.Mode == nil {
+		if err := decodeCatalogObject(in.NetworkBindingPolicy, &binding, []string{"mode", "interfaceId", "localIpv4Address"}); err != nil || binding.Mode == nil {
 			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 		}
 		policy := NetworkBindingPolicy{Mode: *binding.Mode}
@@ -189,4 +190,22 @@ func persistentPolicyOutput(policy NetworkBindingPolicy) persistentNetworkBindin
 		out.LocalIPv4Address = policy.LocalIPv4Address.String()
 	}
 	return out
+}
+
+// decodeCatalogObject owns exact catalog wire names. Opaque protocol fields are
+// not interpreted here; their existing duplicate/value policy remains separate.
+func decodeCatalogObject(data []byte, destination any, allowed []string, opaque ...string) error {
+	if e := jsonfile.DecodeStrict(data, destination, opaque...); e != nil {
+		return e
+	}
+	var fields map[string]json.RawMessage
+	if e := json.Unmarshal(data, &fields); e != nil || fields == nil {
+		return persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+	}
+	for name := range fields {
+		if !slices.Contains(allowed, name) {
+			return persistence.NewFailure(persistence.FailureInvalidDocument, nil)
+		}
+	}
+	return nil
 }
