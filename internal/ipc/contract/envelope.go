@@ -35,6 +35,9 @@ type Error struct {
 }
 
 func DecodeRequest(data []byte) (Request, error) {
+	if validateNetworkUnicode(data) != nil {
+		return Request{}, fmt.Errorf("decode request: invalid Unicode")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
@@ -49,6 +52,9 @@ func DecodeRequest(data []byte) (Request, error) {
 		return Request{}, fmt.Errorf("decode request: trailing garbage")
 	}
 	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return Request{}, fmt.Errorf("decode request: %w", err)
+	}
+	if err := requestFields(data, "kind", "id", "method", "payload"); err != nil {
 		return Request{}, fmt.Errorf("decode request: %w", err)
 	}
 	if req.Kind != string(KindRequest) {

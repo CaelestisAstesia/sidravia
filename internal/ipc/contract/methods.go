@@ -222,7 +222,7 @@ type ConfigurationRemoveResult struct {
 
 func DecodeConfigurationIDPayload(data []byte) (ConfigurationIDPayload, error) {
 	var value ConfigurationIDPayload
-	if err := decodeStrict(data, &value); err != nil {
+	if err := decodeRequestPayload(data, &value, "configurationId"); err != nil {
 		return ConfigurationIDPayload{}, err
 	}
 	if value.ConfigurationID == "" {
@@ -243,7 +243,7 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 		AutoLogin               *bool                 `json:"autoLogin"`
 		AutoReconnect           *bool                 `json:"autoReconnect"`
 	}
-	if err := decodeStrict(data, &wire); err != nil {
+	if err := decodeRequestPayload(data, &wire, "protocolContextOverride", "networkBindingPolicy", "configurationId", "displayName", "institutionProfileId", "username", "password", "allowInsecureStorage", "autoLogin", "autoReconnect"); err != nil {
 		return ConfigurationCreatePayload{}, err
 	}
 	var fields map[string]json.RawMessage
@@ -291,7 +291,7 @@ type ConfigurationRemovePayload struct {
 
 func DecodeConfigurationRemovePayload(data []byte) (ConfigurationRemovePayload, error) {
 	var value ConfigurationRemovePayload
-	if err := decodeStrict(data, &value); err != nil {
+	if err := decodeRequestPayload(data, &value, "configurationId", "allowInsecureStorage"); err != nil {
 		return value, err
 	}
 	if value.ConfigurationID == "" {
@@ -316,7 +316,7 @@ func rejectNullFields(data []byte, names ...string) error {
 }
 func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, error) {
 	var value ConfigurationUpdatePayload
-	if err := decodeStrict(data, &value); err != nil {
+	if err := decodeRequestPayload(data, &value, "protocolContextOverride", "networkBindingPolicy", "password", "allowInsecureStorage", "configurationId", "displayName", "institutionProfileId", "username", "autoLogin", "autoReconnect"); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
 	if err := rejectNullFields(data, "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage", "networkBindingPolicy"); err != nil {
@@ -343,7 +343,7 @@ func DecodeConfigurationSetPasswordPayload(data []byte) (ConfigurationSetPasswor
 		Password             *string `json:"password"`
 		AllowInsecureStorage *bool   `json:"allowInsecureStorage"`
 	}
-	if err := decodeStrict(data, &wire); err != nil {
+	if err := decodeRequestPayload(data, &wire, "configurationId", "password", "allowInsecureStorage"); err != nil {
 		return ConfigurationSetPasswordPayload{}, err
 	}
 	if wire.ConfigurationID == nil || wire.Password == nil || wire.AllowInsecureStorage == nil ||
@@ -363,7 +363,7 @@ func MarshalConfigurationRemoveResult(value ConfigurationRemoveResult) (json.Raw
 // DecodeEmptyPayload accepts exactly one empty JSON object.
 func DecodeEmptyPayload(data []byte) error {
 	var payload struct{}
-	if err := decodeStrict(data, &payload); err != nil {
+	if err := decodeRequestPayload(data, &payload); err != nil {
 		return err
 	}
 	return nil
@@ -425,7 +425,7 @@ type SessionStartResult struct {
 // password.
 func DecodeSessionStartOneShotPayload(data []byte) (SessionStartOneShotPayload, error) {
 	var payload SessionStartOneShotPayload
-	if err := decodeStrict(data, &payload); err != nil {
+	if err := decodeRequestPayload(data, &payload, "displayName", "institutionProfileId", "username", "password", "networkBindingPolicy", "protocolContextOverride"); err != nil {
 		return SessionStartOneShotPayload{}, err
 	}
 	if payload.InstitutionProfileID == "" {
@@ -451,7 +451,7 @@ func DecodeSessionStartOneShotPayload(data []byte) (SessionStartOneShotPayload, 
 // DecodeSessionStopPayload strictly decodes a session.stop payload.
 func DecodeSessionStopPayload(data []byte) (SessionStopPayload, error) {
 	var payload SessionStopPayload
-	if err := decodeStrict(data, &payload); err != nil {
+	if err := decodeRequestPayload(data, &payload, "sessionId"); err != nil {
 		return SessionStopPayload{}, err
 	}
 	if payload.SessionID == "" {
@@ -463,7 +463,7 @@ func DecodeSessionStopPayload(data []byte) (SessionStopPayload, error) {
 // DecodeSessionGetPayload strictly decodes a session.get payload.
 func DecodeSessionGetPayload(data []byte) (SessionGetPayload, error) {
 	var payload SessionGetPayload
-	if err := decodeStrict(data, &payload); err != nil {
+	if err := decodeRequestPayload(data, &payload, "sessionId"); err != nil {
 		return SessionGetPayload{}, err
 	}
 	if payload.SessionID == "" {
@@ -497,7 +497,7 @@ func DecodeSessionRemovePayload(data []byte) (SessionRemovePayload, error) {
 }
 
 func decodeSessionIDPayload(data []byte, payload any, sessionID *string) error {
-	if err := decodeStrict(data, payload); err != nil {
+	if err := decodeRequestPayload(data, payload, "sessionId"); err != nil {
 		return err
 	}
 	if *sessionID == "" {

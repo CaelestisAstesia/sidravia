@@ -899,3 +899,35 @@ func TestDiagnosticExportMethodAllowlistAndPrivatePayloadLogging(t *testing.T) {
 		}
 	}
 }
+
+func TestIPCRejectsAmbiguous(t *testing.T) {
+	for _, data := range []string{
+		`{"kind":"request","id":"1","method":"daemon.status","Method":"daemon.stop","payload":{}}`,
+		`{"kind":"request","id":"1","method":"daemon.status","payload":{"password":"PRIVATE-SECRET-\ud800"}}`,
+	} {
+		t.Run("malformed", func(t *testing.T) {
+			var buf safeBuffer
+			var calls atomic.Int32
+			handler := func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
+				calls.Add(1)
+				return json.RawMessage(`{}`), nil
+			}
+			_, url := newTestServer(t, handler, &buf)
+			conn := dial(t, url)
+			defer conn.Close(websocket.StatusNormalClosure, "")
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if e := conn.Write(ctx, websocket.MessageText, []byte(data)); e != nil {
+				t.Fatal(e)
+			}
+			resp := readResponse(t, conn)
+			if resp.OK || resp.Error == nil || resp.Error.Code != contract.ErrorCodeMalformed || calls.Load() != 0 {
+				t.Fatalf("malformed dispatched: calls=%d error=%#v", calls.Load(), resp.Error)
+			}
+			waitForLogEvent(t, &buf, "event=ipc_request_rejected")
+			if strings.Contains(buf.String(), "PRIVATE-SECRET") {
+				t.Fatal("secret leaked to log")
+			}
+		})
+	}
+}

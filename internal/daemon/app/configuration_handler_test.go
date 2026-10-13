@@ -291,3 +291,23 @@ func TestConfigurationHandlerRealMissingProfileRemainsManageable(t *testing.T) {
 		t.Fatal("missing profile row unmanageable", publicErr)
 	}
 }
+
+func TestConfigurationHandlerRejectsAmbiguous(t *testing.T) {
+	for _, tc := range []struct{ method, payload string }{
+		{contract.MethodConfigurationUpdate, `{"configurationId":"a","ConfigurationId":"b","displayName":"new"}`},
+		{contract.MethodConfigurationSetPassword, `{"configurationId":"a","password":"PRIVATE-SECRET-\ud800","allowInsecureStorage":false}`},
+		{contract.MethodConfigurationUpdate, `{"configurationId":"a","password":"PRIVATE-SECRET-\udc00"}`},
+	} {
+		fake := &fakeConfigurationApplication{password: "unchanged"}
+		result, e := ConfigurationHandler(fake)(context.Background(), tc.method, json.RawMessage(tc.payload))
+		if e == nil || e.Code != contract.ErrorCodeInvalidArgument || result != nil {
+			t.Fatalf("invalid request result=%s error=%#v", result, e)
+		}
+		if fake.method != "" || fake.id != "" || fake.password != "unchanged" {
+			t.Fatal("invalid request reached application")
+		}
+		if strings.Contains(e.Message, "PRIVATE-SECRET") {
+			t.Fatal("public error leaked secret")
+		}
+	}
+}

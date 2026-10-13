@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 )
 
 // rejectDuplicateJSONKeys scans one complete JSON value and rejects repeated
@@ -89,4 +90,32 @@ func decodeStrict(data []byte, target any) error {
 		return fmt.Errorf("decode payload: %w", err)
 	}
 	return nil
+}
+
+// requestFields checks decoded member names exactly. encoding/json otherwise
+// accepts case-insensitive aliases for struct fields. Nested owned objects have
+// their own decoders; opaque protocol overrides keep their case-sensitive keys.
+func requestFields(data []byte, allowed ...string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return fmt.Errorf("invalid request object")
+	}
+	for name := range fields {
+		if !slices.Contains(allowed, name) {
+			return fmt.Errorf("unknown request field")
+		}
+	}
+	return nil
+}
+
+// decodeRequestPayload rejects Unicode replacement before decoding strings and
+// only returns payloads whose member names match the owned wire contract.
+func decodeRequestPayload(data []byte, target any, allowed ...string) error {
+	if validateNetworkUnicode(data) != nil {
+		return fmt.Errorf("invalid request Unicode")
+	}
+	if err := decodeStrict(data, target); err != nil {
+		return err
+	}
+	return requestFields(data, allowed...)
 }
