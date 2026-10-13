@@ -652,9 +652,9 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidraviactl config update": {
 		description: "更新认证配置。",
-		usage:       []string{"sidraviactl config update <configuration-id>", "sidraviactl config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false] [--protocol-override-file PATH | --clear-protocol-override]"},
+		usage:       []string{"sidraviactl config update <configuration-id>", "sidraviactl config update <configuration-id> [--name <display-name>] [--profile <profile-id>] [--username <username>] [--auto-login true|false] [--auto-reconnect true|false] [--protocol-override-file PATH | --clear-protocol-override] [--allow-insecure-storage]"},
 		args:        []string{"<configuration-id>：配置 ID"},
-		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--automatic-binding：恢复自动选择，与显式绑定互斥", "--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连", "--protocol-override-file PATH：替换为严格 JSON 对象；保存后结束旧 Session，不自动连接", "--clear-protocol-override：清除 Override；与文件选项互斥；保存后结束旧 Session，不自动连接"},
+		options:     []string{"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定", "--automatic-binding：恢复自动选择，与显式绑定互斥", "--name <display-name>：显示名称", "--profile <profile-id>：机构 Profile ID", "--username <username>：认证账号", "--auto-login true|false：设置自动登录", "--auto-reconnect true|false：设置自动重连", "--protocol-override-file PATH：替换为严格 JSON 对象；保存后结束旧 Session，不自动连接", "--clear-protocol-override：清除 Override；与文件选项互斥；保存后结束旧 Session，不自动连接", "--allow-insecure-storage：确认未保护存储风险"},
 		examples:    []string{"sidraviactl config update campus --auto-login true", "sidraviactl config update campus --auto-reconnect false"},
 	},
 	"sidraviactl config set-password": {
@@ -666,9 +666,9 @@ var helpSpecs = map[string]helpNode{
 	},
 	"sidraviactl config remove": {
 		description: "停止关联 Session 并删除认证配置。",
-		usage:       []string{"sidraviactl config remove <configuration-id> [--yes]"},
+		usage:       []string{"sidraviactl config remove <configuration-id> [--yes] [--allow-insecure-storage]"},
 		args:        []string{"<configuration-id>：配置 ID"},
-		options:     []string{"--yes：非交互方式确认删除"},
+		options:     []string{"--yes：非交互方式确认删除", "--allow-insecure-storage：确认未保护存储风险"},
 		examples:    []string{"sidraviactl config remove campus", "sidraviactl config remove campus --yes"},
 	},
 }

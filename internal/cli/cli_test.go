@@ -120,6 +120,7 @@ func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
 	for _, args := range [][]string{
 		{"config", "--help"}, {"config", "create", "--help"}, {"config", "update", "--help"},
 		{"config", "set-password", "--help"}, {"config", "remove", "--help"},
+		{"help", "config", "update"}, {"help", "config", "remove"},
 	} {
 		var output bytes.Buffer
 		deps.output = &output
@@ -128,6 +129,11 @@ func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
 		}
 		if !strings.Contains(output.String(), "用法：") {
 			t.Fatalf("help %q missing usage:\n%s", args, output.String())
+		}
+		if strings.Contains(strings.Join(args, " "), "config update") || strings.Contains(strings.Join(args, " "), "config remove") {
+			if strings.Count(output.String(), "--allow-insecure-storage") < 2 || !strings.Contains(output.String(), "确认未保护存储风险") {
+				t.Fatalf("configuration mutation help omitted usage or consent: %s", output.String())
+			}
 		}
 		if strings.Join(args, " ") == "config create --help" {
 			for _, expected := range []string{"自动绑定", "--interface-id", "--local-ipv4"} {
