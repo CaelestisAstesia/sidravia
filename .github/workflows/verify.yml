@@ -2,7 +2,9 @@ name: Verify
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -35,7 +37,7 @@ jobs:
         with:
           python-version: '3.14.4'
       - name: Run public repository verifier
-        run: python tools/developer/verify_repository.py --scope ${{ matrix.scope }} --go go
+        run: python tools/developer/verify_repository.py --scope ${{ matrix.scope }} --go go --go-checks native
       - name: Verify release scheduled-task ownership
         if: runner.os == 'Windows'
         shell: powershell
@@ -48,6 +50,21 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_field_validation_contract.ps1
+
+  cross-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache-dependency-path: go.sum
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.4'
+      - name: Compile platform contracts once
+        run: python tools/developer/verify_repository.py --scope go --go-checks cross --go go
 
   gui-windows:
     runs-on: windows-latest

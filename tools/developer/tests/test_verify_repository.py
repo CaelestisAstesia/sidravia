@@ -35,6 +35,7 @@ class TestParseArgs(unittest.TestCase):
         self.assertEqual(args.scope, "all")
         self.assertIsNone(args.go)
         self.assertFalse(args.cold_cache)
+        self.assertEqual(args.go_checks, "full")
 
     def test_explicit_cold_cache(self) -> None:
         sys.argv = ["verify_repository.py", "--scope", "go", "--cold-cache"]
@@ -162,7 +163,7 @@ class TestRunGoChecks(unittest.TestCase):
         os.environ.update(self.original_env)
 
     @mock.patch.object(verifier, "run_and_print")
-    def test_thirteen_results(self, mock_run_and_print: mock.Mock) -> None:
+    def test_complete_target_coverage(self, mock_run_and_print: mock.Mock) -> None:
         repo_root = Path("/repo")
         go_exec = "go"
         gofmt = "gofmt"
@@ -171,7 +172,7 @@ class TestRunGoChecks(unittest.TestCase):
 
         # Set up mock results
         mock_results = []
-        for i in range(13):
+        for i in range(14):
             mock_results.append(verifier.CheckResult(
                 argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
             ))
@@ -186,7 +187,7 @@ class TestRunGoChecks(unittest.TestCase):
             base_env=base_env
         )
 
-        self.assertEqual(len(results), 13)
+        self.assertEqual(len(results), 14)
         expected_existing_checks = [
             (["git", "ls-files", "*.go"], None),
             ([gofmt, "-l"], None),
@@ -199,6 +200,10 @@ class TestRunGoChecks(unittest.TestCase):
             ),
             (
                 [go_exec, "build", "-o", str(build_dir / "sidraviad.exe"), "./cmd/sidraviad"],
+                {"GOOS": "windows", "GOARCH": "amd64", "CGO_ENABLED": "0"},
+            ),
+            (
+                [go_exec, "build", "-o", str(build_dir / "sidraviamgr.exe"), "./cmd/sidraviamgr"],
                 {"GOOS": "windows", "GOARCH": "amd64", "CGO_ENABLED": "0"},
             ),
         ]
@@ -215,7 +220,7 @@ class TestRunGoChecks(unittest.TestCase):
             ("darwin", "darwin-amd64-internal-daemon-environment.test", "./internal/daemon/environment"),
             ("darwin", "darwin-amd64-internal-daemon-host.test", "./internal/daemon/host"),
         ]
-        for index, (goos, binary_name, package) in enumerate(expected_platform_checks, start=7):
+        for index, (goos, binary_name, package) in enumerate(expected_platform_checks, start=8):
             check = mock_run_and_print.call_args_list[index][0][0]
             self.assertEqual(
                 check.argv,
@@ -245,7 +250,7 @@ class TestRunGoChecks(unittest.TestCase):
             )
             # Rest results: pass
             mock_results = [git_ls_result]
-            for i in range(12):
+            for i in range(13):
                 mock_results.append(verifier.CheckResult(
                     argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
                 ))
@@ -289,7 +294,7 @@ class TestRunGoChecks(unittest.TestCase):
             )
             # Rest results: pass
             mock_results = [git_ls_result, gofmt_result]
-            for i in range(11):
+            for i in range(12):
                 mock_results.append(verifier.CheckResult(
                     argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
                 ))
@@ -335,7 +340,7 @@ class TestRunGoChecks(unittest.TestCase):
                 stderr="",
             )
             mock_results = [git_ls_result]
-            for i in range(12):
+            for i in range(13):
                 mock_results.append(verifier.CheckResult(
                     argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
                 ))
@@ -370,7 +375,7 @@ class TestRunGoChecks(unittest.TestCase):
         )
         # Rest results: pass
         mock_results = [git_ls_result]
-        for i in range(11):
+        for i in range(12):
             mock_results.append(verifier.CheckResult(
                 argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
             ))
@@ -389,9 +394,9 @@ class TestRunGoChecks(unittest.TestCase):
                 )
 
         # Check that gofmt was not run (git ls + 11 other checks = 12).
-        self.assertEqual(mock_run_and_print.call_count, 12)
+        self.assertEqual(mock_run_and_print.call_count, 13)
         # But still have 13 results total.
-        self.assertEqual(len(results), 13)
+        self.assertEqual(len(results), 14)
         # Check that gofmt result is fake
         self.assertIn("Skipped: git ls-files failed", results[1].stderr)
         # Check that test/vet/diff/builds were still run.
@@ -400,6 +405,24 @@ class TestRunGoChecks(unittest.TestCase):
         self.assertEqual(mock_run_and_print.call_args_list[2][0][0].argv[1], "vet")
         self.assertEqual(mock_run_and_print.call_args_list[3][0][0].argv[0], "git")
         self.assertEqual(mock_run_and_print.call_args_list[3][0][0].argv[1], "diff")
+
+
+    def test_native_and_cross_partition_full_checks(self) -> None:
+        commands = {}
+        for mode in ("full", "native", "cross"):
+            calls = []
+            def capture(check, *_args):
+                calls.append((check.argv, check.env))
+                return verifier.CheckResult(check.argv, 0, "", "")
+            with mock.patch.object(verifier, "run_and_print", side_effect=capture):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    verifier.run_go_checks(Path("/repo"), "go", "gofmt", Path("/build"), {}, mode=mode)
+            commands[mode] = calls
+        self.assertEqual(commands["full"], commands["native"] + commands["cross"])
+        self.assertEqual(len(commands["native"]), 5)
+        self.assertEqual(len(commands["cross"]), 9)
+        self.assertIn((["go", "test", "-count=1", "./..."], None), commands["native"])
+        self.assertTrue(all(env and env["CGO_ENABLED"] == "0" for _, env in commands["cross"]))
 
 
 class TestRunPythonChecks(unittest.TestCase):
@@ -444,9 +467,12 @@ class TestVerifyWorkflowTopology(unittest.TestCase):
         self.assertRegex(workflow, r"python-version:\s*['\"]?3\.14\.4")
         self.assertRegex(
             workflow,
-            r"python tools/developer/verify_repository\.py --scope \$\{\{ matrix\.scope \}\} --go go",
+            r"python tools/developer/verify_repository\.py --scope \$\{\{ matrix\.scope \}\} --go go --go-checks native",
         )
         self.assertNotIn("continue-on-error", workflow)
+        self.assertEqual(workflow.count("--scope go --go-checks cross --go go"), 1)
+        self.assertIn("branches: [main]", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
 
 
 class TestPrintSummary(unittest.TestCase):
