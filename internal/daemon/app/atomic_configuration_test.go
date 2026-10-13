@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"path/filepath"
 	"reflect"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
+	"sidravia/internal/daemon/persistence/jsonfile"
 	"strings"
 	"sync"
 	"testing"
@@ -588,5 +590,69 @@ func TestRealCleanupDeadlineIsQueryableOnFirstFullSessionView(t *testing.T) {
 	fresh, err := setup.application.ListSessionView(ctx)
 	if err != nil || fresh.Sessions == nil || fresh.CleanupRequiredSessionIDs == nil || len(fresh.Sessions) != 0 || len(fresh.CleanupRequiredSessionIDs) != 0 {
 		t.Fatal("explicit Remove did not clear owner projections")
+	}
+}
+
+type unprotectedApplicationStore struct{ *controlledAppStore }
+
+func (*unprotectedApplicationStore) ProtectionStatus() jsonfile.ProtectionStatus {
+	return jsonfile.ProtectionUnprotected
+}
+func (s *unprotectedApplicationStore) ReplaceSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
+	if !allow {
+		return jsonfile.ErrInsecureStorageConfirmationRequired
+	}
+	return s.controlledAppStore.ReplaceSensitive(ctx, path, data, maximum, allow)
+}
+func TestRemoveWithoutCurrentConsentKeepsSession(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	store := &unprotectedApplicationStore{setup.store}
+	path := filepath.Join(t.TempDir(), "unprotected.json")
+	catalog, e := config.OpenCatalog(ctx, store, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	setup.catalog = catalog
+	setup.application.catalog = catalog
+	setup.application.authenticationResolver.configurations = catalog
+	for _, id := range []config.ConfigurationID{"configuration-1", "configuration-b"} {
+		if _, e := setup.application.CreateConfiguration(ctx, appTestConfiguration(id), "test-password", true); e != nil {
+			t.Fatal(e)
+		}
+	}
+	started, e := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if e != nil {
+		t.Fatal(e)
+	}
+	beforeSession, e := setup.application.GetSession(ctx, started.SessionID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	store.mu.Lock()
+	before := append([]byte(nil), store.data[path]...)
+	store.mu.Unlock()
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", false); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
+		t.Errorf("unexpected unconsented removal: %v", e)
+	}
+	afterSession, e := setup.application.GetSession(ctx, started.SessionID)
+	if e != nil || afterSession.AuthenticationSessionID != beforeSession.AuthenticationSessionID || afterSession.State != beforeSession.State {
+		t.Error("rejected deletion retired Session")
+	}
+	store.mu.Lock()
+	same := bytes.Equal(before, store.data[path])
+	store.mu.Unlock()
+	if !same {
+		t.Error("rejected deletion changed store")
+	}
+	if _, cred, e := catalog.Resolve(ctx, "configuration-1"); e != nil || cred.Password != "test-password" {
+		t.Error("rejected deletion changed credentials")
+	}
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", true); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := setup.application.GetSession(ctx, started.SessionID); !errors.Is(e, supervisor.ErrSessionNotFound) {
+		t.Fatal("consented removal did not retire Session")
 	}
 }

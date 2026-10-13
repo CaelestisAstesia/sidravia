@@ -287,7 +287,7 @@ func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, allow ..
 	}
 	candidate := cloneRecords(catalog.records)
 	delete(candidate, id)
-	return catalog.commit(ctx, candidate, len(allow) > 0 && allow[0] || catalog.unprotectedConsent)
+	return catalog.commit(ctx, candidate, len(allow) > 0 && allow[0])
 }
 
 func (catalog *Catalog) Resolve(ctx context.Context, id ConfigurationID) (Configuration, credentials.AuthenticationCredential, error) {

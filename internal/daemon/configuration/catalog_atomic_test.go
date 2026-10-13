@@ -168,3 +168,43 @@ func TestProtectionRecoveryRevokesEarlierDowngradeConsent(t *testing.T) {
 		t.Fatal("denial removed config")
 	}
 }
+
+func TestDeleteRequiresCurrentConsent(t *testing.T) {
+	ctx := context.Background()
+	store := &consentCatalogStore{unsupported: true, status: jsonfile.ProtectionUnprotected}
+	catalog, e := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "config.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, id := range []ConfigurationID{"a", "b"} {
+		if _, e := catalog.Create(ctx, catalogTestConfiguration(id, string(id)), "original-password", true); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// Previously accepted consent reuse for metadata is intentionally retained.
+	name := "updated-label"
+	if _, e := catalog.Update(ctx, "b", Update{DisplayName: &name}); e != nil {
+		t.Fatal(e)
+	}
+	before := append([]byte(nil), store.data...)
+	for _, allow := range [][]bool{nil, {false}} {
+		if e := catalog.Delete(ctx, "a", allow...); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
+			t.Errorf("missing current consent: %v", e)
+		}
+		if !bytes.Equal(before, store.data) {
+			t.Error("rejected delete changed disk")
+		}
+		if _, cred, e := catalog.Resolve(ctx, "a"); e != nil || cred.Password != "original-password" {
+			t.Error("rejected delete changed record/credential")
+		}
+	}
+	if e := catalog.Delete(ctx, "a", true); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := catalog.Get(ctx, "a"); e == nil {
+		t.Fatal("consented delete retained record")
+	}
+	if _, cred, e := catalog.Resolve(ctx, "b"); e != nil || cred.Password != "original-password" {
+		t.Fatal("delete altered remaining credential")
+	}
+}
