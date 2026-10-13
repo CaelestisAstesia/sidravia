@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Canonical product version (e.g. 0.1.0-alpha.2), no leading v'
+        description: 'Canonical product version, no leading v'
         required: true
+        default: '0.3.0-alpha.1'
         type: string
 
 permissions:
@@ -13,28 +14,88 @@ permissions:
 
 jobs:
   package:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-amd64
+          - os: ubuntu-latest
+            target: linux-amd64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      BUILD_VERSION: ${{ inputs.version }}
+      BUILD_ID: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26.4'
           cache-dependency-path: go.sum
-      - name: Build packages
-        env:
-          BUILD_VERSION: ${{ inputs.version }}
-          BUILD_ID: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.4'
+      - name: Test artifact producer and consumer contracts
+        shell: bash
         run: |
-          go run -mod=readonly ./tools/build \
-            --version "$BUILD_VERSION" \
-            --build-id "$BUILD_ID" \
-            --output dist \
-            --go go
+          go test -count=1 ./tools/build
+          python -m unittest discover -s tools/developer/tests -v
+      - uses: subosito/flutter-action@v2
+        if: runner.os == 'Windows'
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+      - name: Build fresh Windows GUI Release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: gui
+        run: |
+          flutter pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'flutter_dependencies_failed' }
+          flutter build windows --release --no-pub --target lib/main.dart --build-name $env:BUILD_VERSION --build-number 1
+          if ($LASTEXITCODE -ne 0) { throw 'flutter_release_failed' }
+          $actual = (Get-Item build/windows/x64/runner/Release/Sidravia.exe).VersionInfo.ProductVersion
+          if ($actual -cne ($env:BUILD_VERSION + '+1')) { throw 'gui_version_mismatch' }
+      - name: Prepare pinned Inno compiler on disposable runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compilerRoot = Join-Path $env:RUNNER_TEMP 'sidravia-inno-7.1.0'
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw 'inno_checksum_mismatch' }
+          $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $compilerRoot + '"')) -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or -not (Test-Path (Join-Path $compilerRoot 'ISCC.exe'))) { throw 'inno_compiler_setup_failed' }
+          "SIDRAVIA_ISCC=$(Join-Path $compilerRoot 'ISCC.exe')" >> $env:GITHUB_ENV
+      - name: Build and consume Windows distribution
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gui = (Resolve-Path gui/build/windows/x64/runner/Release).Path
+          go run -mod=readonly ./tools/build --version $env:BUILD_VERSION --build-id $env:BUILD_ID --artifact distribution --target windows-amd64 --output dist --go go --gui-directory $gui --iscc $env:SIDRAVIA_ISCC
+          if ($LASTEXITCODE -ne 0) { throw 'windows_distribution_failed' }
+          $setup = Get-Item (Join-Path dist ('sidravia-v' + $env:BUILD_VERSION + '-windows-amd64-setup.exe'))
+          if ($setup.VersionInfo.ProductVersion -cne $env:BUILD_VERSION) { throw 'installer_version_mismatch' }
+          python tools/developer/verify_distribution.py --directory dist --target windows-amd64 --version $env:BUILD_VERSION --build-id $env:BUILD_ID --gui-directory $gui --go go --smoke > verification.json
+          if ($LASTEXITCODE -ne 0) { throw 'windows_artifact_verification_failed' }
+      - name: Build and consume Linux core distribution
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go run -mod=readonly ./tools/build --version "$BUILD_VERSION" --build-id "$BUILD_ID" --artifact distribution --target linux-amd64 --output dist --go go
+          python tools/developer/verify_distribution.py --directory dist --target linux-amd64 --version "$BUILD_VERSION" --build-id "$BUILD_ID" --go go --smoke > verification.json
+      - name: Summarize verified candidate
+        shell: bash
+        run: |
+          printf '\n```json\n' >> "$GITHUB_STEP_SUMMARY"
+          cat verification.json >> "$GITHUB_STEP_SUMMARY"
+          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
-          name: sidravia-v${{ inputs.version }}-windows-amd64-portable
+          name: sidravia-v${{ inputs.version }}-${{ matrix.target }}
           path: |
-            dist/*.zip
-            dist/SHA256SUMS.txt
+            dist/*
+            verification.json
           if-no-files-found: error
