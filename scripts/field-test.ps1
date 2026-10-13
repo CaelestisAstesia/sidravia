@@ -84,6 +84,8 @@ function Get-SanitizedHarnessError {
         'powershell_host_not_found',
         'package_input_missing',
         'package_checksum_missing',
+        'package_checksum_invalid',
+        'package_checksum_duplicate',
         'package_checksum_mismatch',
         'temporary_parent_is_reparse_point',
         'sandbox_path_escape',
@@ -528,9 +530,12 @@ function Test-PackagePreflight {
 
     $expected = @{}
     foreach ($line in [IO.File]::ReadAllLines((Join-Path $PackageRoot 'SHA256SUMS'))) {
-        if ($line -match '^([0-9a-fA-F]{64})  (sidravia(?:d)?\.exe)$') {
-            $expected[$Matches[2]] = $Matches[1].ToLowerInvariant()
+        if ($line -cnotmatch '^([0-9a-fA-F]{64})  (sidravia(?:ctl|d)\.exe)$') {
+            throw 'package_checksum_invalid'
         }
+        $name = $Matches[2]
+        if ($expected.ContainsKey($name)) { throw 'package_checksum_duplicate' }
+        $expected[$name] = $Matches[1].ToLowerInvariant()
     }
     foreach ($name in @('sidraviactl.exe', 'sidraviad.exe')) {
         if (-not $expected.ContainsKey($name)) { throw 'package_checksum_missing' }
@@ -1404,6 +1409,8 @@ $script:ReasonLabels = @{
     'powershell_host_not_found' = '未找到当前 PowerShell 7 子进程宿主'
     'package_input_missing' = '测试包缺少必需文件'
     'package_checksum_missing' = '测试包缺少二进制校验和'
+    'package_checksum_invalid' = '测试包校验和条目不符合格式'
+    'package_checksum_duplicate' = '测试包校验和条目重复'
     'package_checksum_mismatch' = '测试包二进制校验和不匹配'
     'temporary_parent_is_reparse_point' = '临时目录父路径是重解析点，已拒绝使用'
     'sandbox_path_escape' = '沙箱路径超出拥有边界'

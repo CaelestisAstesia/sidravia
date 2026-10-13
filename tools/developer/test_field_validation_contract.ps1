@@ -78,3 +78,52 @@ try {
     Assert-Equal (Get-SanitizedHarnessError -ErrorRecord $_).ReasonCode 'sanitized_internal_error' 'unknown reason sanitizer'
     Assert-True (-not $serialized.Contains($otherSensitiveText)) 'sanitized internal result leaked text'
 }
+
+# Execute the actual consumer against inert files, never the field runner body.
+. ([scriptblock]::Create((Get-ExtractedFunction -Name 'Resolve-ChildPowerShell')))
+. ([scriptblock]::Create((Get-ExtractedFunction -Name 'Test-PackagePreflight')))
+$PackageRoot = Join-Path ([IO.Path]::GetTempPath()) ('SidraviaChecksumContract-' + [guid]::NewGuid().ToString('N'))
+$Profile = 'jlu'
+try {
+    $null = New-Item -ItemType Directory -Path $PackageRoot
+    foreach ($relative in @('sidraviactl.exe', 'sidraviad.exe', 'BUILD-INFO.txt',
+        'institution-profiles/jlu.json', 'scripts/cli-smoke.ps1', 'scripts/install.ps1', 'scripts/uninstall.ps1')) {
+        $path = Join-Path $PackageRoot $relative
+        $null = New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force
+        [IO.File]::WriteAllBytes($path, [Text.Encoding]::UTF8.GetBytes('inert fixture: ' + $relative))
+    }
+    $ctlHash = (Get-FileHash -LiteralPath (Join-Path $PackageRoot 'sidraviactl.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+    $daemonHash = (Get-FileHash -LiteralPath (Join-Path $PackageRoot 'sidraviad.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+    # tools/build writeArtifacts and its Go tests protect this exact wire format.
+    $ctlLine = $ctlHash + '  sidraviactl.exe'
+    $daemonLine = $daemonHash + '  sidraviad.exe'
+    function Invoke-ChecksumCase {
+        param([string]$Text, [AllowNull()][object]$ExpectedReason)
+        [IO.File]::WriteAllText((Join-Path $PackageRoot 'SHA256SUMS'), $Text)
+        $script:PackageHashes = [ordered]@{}
+        $reason = $null
+        try { Test-PackagePreflight } catch { $reason = $_.Exception.Message }
+        Assert-Equal $reason $ExpectedReason 'checksum consumer result'
+        if ($ExpectedReason) {
+            try { throw $ExpectedReason } catch {
+                Assert-Equal (Get-SanitizedHarnessError -ErrorRecord $_).ReasonCode $ExpectedReason 'checksum sanitizer reason'
+            }
+        } else {
+            Assert-Equal $script:PackageHashes.Count 2 'verified binary count'
+            Assert-Equal $script:PackageHashes['sidraviactl.exe'] $ctlHash 'verified CTL hash'
+            Assert-Equal $script:PackageHashes['sidraviad.exe'] $daemonHash 'verified daemon hash'
+        }
+    }
+    Invoke-ChecksumCase ($ctlLine + "`n" + $daemonLine + "`n") $null
+    Invoke-ChecksumCase ($daemonLine + "`r`n" + $ctlLine + "`r`n") $null
+    Invoke-ChecksumCase ($ctlLine + "`n") 'package_checksum_missing'
+    Invoke-ChecksumCase '' 'package_checksum_missing'
+    Invoke-ChecksumCase ($ctlLine + "`n" + $daemonLine + "`n" + $ctlLine + "`n") 'package_checksum_duplicate'
+    Invoke-ChecksumCase ($ctlHash + "  sidravia.exe`n" + $daemonLine + "`n") 'package_checksum_invalid'
+    Invoke-ChecksumCase ($ctlHash + " sidraviactl.exe`n" + $daemonLine + "`n") 'package_checksum_invalid'
+    Invoke-ChecksumCase ($ctlLine + "`n" + $daemonLine + "`ninvalid`n") 'package_checksum_invalid'
+    Invoke-ChecksumCase ((('0' * 64) + '  sidraviactl.exe') + "`n" + $daemonLine + "`n") 'package_checksum_mismatch'
+    Write-Output 'PASS field package checksum consumer contract'
+} finally {
+    if (Test-Path -LiteralPath $PackageRoot) { Remove-Item -LiteralPath $PackageRoot -Recurse -Force }
+}

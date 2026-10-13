@@ -869,7 +869,10 @@ func TestExternalSums(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("sums lines = %d, want 1", len(lines))
 	}
-	portableBytes, _ := os.ReadFile(filepath.Join(out, portableName(version)))
+	portableBytes, err := os.ReadFile(filepath.Join(out, portableName(version)))
+	if err != nil {
+		t.Fatalf("read portable archive: %v", err)
+	}
 	wantLines := []string{
 		sha256Hex(portableBytes) + "  " + portableName(version),
 	}
@@ -879,9 +882,18 @@ func TestExternalSums(t *testing.T) {
 		}
 	}
 	// Output directory has exactly the selected zip and sums file.
-	listing, _ := os.ReadDir(out)
+	listing, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatalf("read output directory: %v", err)
+	}
 	if len(listing) != 2 {
 		t.Errorf("output entries = %d, want 2", len(listing))
+	}
+	wantNames := map[string]bool{portableName(version): true, "SHA256SUMS.txt": true}
+	for _, entry := range listing {
+		if entry.IsDir() || !wantNames[entry.Name()] {
+			t.Errorf("unexpected output entry: %s", entry.Name())
+		}
 	}
 }
 
