@@ -1384,9 +1384,13 @@ func TestDeliverSnapshotsAutomaticLoginFailureDoesNotTerminateDaemon(t *testing.
 	observer := newFakeObserver()
 	hostRunner := newFakeHostRunner()
 	sink := newFakeSnapshotSink()
-	performer := &countingAutomaticLoginPerformer{err: errors.New("simulated failure")}
+	performer := &countingAutomaticLoginPerformer{err: errors.New("account-marker password-marker /private/path cause-marker")}
 	shutdown := &fakeShutdown{activityDone: []<-chan struct{}{hostRunner.finished, observer.done, sink.done}}
-	rt := newLifecycleRuntimeWithAutomaticLogin(observer, hostRunner, sink, shutdown, discardLogger(), performer)
+	var logs bytes.Buffer
+	rt := newLifecycleRuntimeWithAutomaticLogin(observer, hostRunner, sink, shutdown, bufferLogger(&logs), performer)
+
+	ipc := &fakeIPCShutdown{called: make(chan struct{}), started: make(chan struct{})}
+	rt.ipcShutdown = ipc
 
 	observer.addSnapshot(environment.NewSnapshot(1, time.Unix(100, 0), nil))
 	observer.addSnapshot(environment.NewSnapshot(2, time.Unix(101, 0), nil))
@@ -1406,10 +1410,31 @@ func TestDeliverSnapshotsAutomaticLoginFailureDoesNotTerminateDaemon(t *testing.
 	if got := performer.Count(); got != 1 {
 		t.Fatalf("automatic login count = %d, want 1", got)
 	}
+	select {
+	case <-hostRunner.finished:
+		t.Fatal("automatic login failure shut down Host")
+	default:
+	}
+	select {
+	case <-ipc.started:
+		t.Fatal("automatic login failure shut down IPC")
+	default:
+	}
 	cancel()
 	if err := waitForRuntimeResult(t, result); err != nil {
 		t.Fatalf("runtime error = %v", err)
 	}
+	waitForSignal(t, ipc.called, "IPC shutdown after explicit cancellation")
+	output := logs.String()
+	if strings.Count(output, "event="+eventAutomaticLoginFailed) != 1 || !strings.Contains(output, "msg="+msgAutomaticLoginFailed) {
+		t.Fatal("automatic failure warning missing or repeated")
+	}
+	for _, secret := range []string{"account-marker", "password-marker", "/private/path", "cause-marker", "error="} {
+		if strings.Contains(output, secret) {
+			t.Fatal("automatic failure warning leaked cause")
+		}
+	}
+
 }
 
 func TestDeriveDefaultPathsIsolatesNamespace(t *testing.T) {
@@ -1545,5 +1570,27 @@ func TestAutomaticLoginRequiresHostAdmission(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCompositionConnectsSafePostCommitDiagnosticObserver(t *testing.T) {
+	var logs bytes.Buffer
+	rt, err := composeObjectGraph(context.Background(), newInMemoryStore(), testPaths(t), testHostInfo(), newFakeObserver(), newFakeHostRunner().run, "token", "v", "b", bufferLogger(&logs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rt.shutdown.Close(); rt.shutdown.Wait() }()
+	if rt.hostCfg.OnPostCommitDiagnostic == nil {
+		t.Fatal("production Host observer missing")
+	}
+	rt.hostCfg.OnPostCommitDiagnostic(errors.New("password-marker /private/path cause-marker"))
+	out := logs.String()
+	if strings.Count(out, "event="+eventStoragePostCommitDiagnostic) != 1 {
+		t.Fatal("production warning missing or repeated")
+	}
+	for _, secret := range []string{"password-marker", "/private/path", "cause-marker", "error="} {
+		if strings.Contains(out, secret) {
+			t.Fatal("production Host warning leaked cause")
+		}
 	}
 }

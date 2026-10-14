@@ -66,6 +66,7 @@ func runLinuxHost(ctx context.Context, cfg Config, deps linuxHostDeps) error {
 		IntendedOwnerSID:                   "",
 		AllowUnsupportedProtectionFallback: cfg.AllowUnsupportedProtectionFallback,
 		OnUnprotected:                      cfg.OnUnprotected,
+		OnPostCommitDiagnostic:             cfg.OnPostCommitDiagnostic,
 	})
 	if err != nil {
 		return fmt.Errorf("host: secure store: %w", err)

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -297,5 +299,27 @@ func TestStorageProtectionWarningIsFixedOnceAndSafe(t *testing.T) {
 		if strings.Contains(output, forbidden) {
 			t.Fatalf("warning contains unsafe material %q: %q", forbidden, output)
 		}
+	}
+}
+
+func TestPostCommitDiagnosticWarningIsFixedPerWriteAndSafe(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	warn := newPostCommitDiagnosticWarning(logger)
+	cause := errors.New("account-marker password-marker /private/path cause-marker")
+	warn(cause)
+	warn(cause)
+	decoder := json.NewDecoder(&buf)
+	for i := 0; i < 2; i++ {
+		var record map[string]any
+		if err := decoder.Decode(&record); err != nil {
+			t.Fatal(err)
+		}
+		if len(record) != 4 || record["level"] != "WARN" || record["msg"] != msgStoragePostCommitDiagnostic || record["event"] != eventStoragePostCommitDiagnostic || record["time"] == nil {
+			t.Fatalf("unexpected diagnostic fields: %#v", record)
+		}
+	}
+	if decoder.More() {
+		t.Fatal("extra warning")
 	}
 }

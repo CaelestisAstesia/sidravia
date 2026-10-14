@@ -55,6 +55,7 @@ func Run(ctx context.Context, cfg Config) error {
 		IntendedOwnerSID:                   sid,
 		AllowUnsupportedProtectionFallback: cfg.AllowUnsupportedProtectionFallback,
 		OnUnprotected:                      cfg.OnUnprotected,
+		OnPostCommitDiagnostic:             cfg.OnPostCommitDiagnostic,
 	})
 	if err != nil {
 		return fmt.Errorf("host: secure store: %w", err)

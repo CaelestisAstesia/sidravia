@@ -26,6 +26,8 @@ type Config struct {
 	Handler                            http.Handler
 	AllowUnsupportedProtectionFallback bool
 	OnUnprotected                      func()
+	// OnPostCommitDiagnostic follows the synchronous SecureStore observer contract.
+	OnPostCommitDiagnostic func(error)
 	// OnReady signals owned singleton admission and successful runtime publication.
 	OnReady func()
 }

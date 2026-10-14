@@ -17,12 +17,14 @@ import (
 )
 
 type catalogMemoryStore struct {
-	data         []byte
-	exists       bool
-	readErr      error
-	replaceErr   error
-	readMaximum  int64
-	replaceCalls int
+	data                   []byte
+	exists                 bool
+	readErr                error
+	replaceErr             error
+	readMaximum            int64
+	replaceCalls           int
+	postCommitCause        error
+	onPostCommitDiagnostic func(error)
 }
 
 func (store *catalogMemoryStore) Read(_ context.Context, _ string, maximum int64) ([]byte, bool, error) {
@@ -46,6 +48,9 @@ func (store *catalogMemoryStore) ReplaceSensitive(_ context.Context, _ string, d
 	}
 	store.data = append([]byte(nil), data...)
 	store.exists = true
+	if store.postCommitCause != nil && store.onPostCommitDiagnostic != nil {
+		store.onPostCommitDiagnostic(store.postCommitCause)
+	}
 	return nil
 }
 
@@ -494,5 +499,92 @@ func TestCatalogOverrideReplaceOmitClearCloneAndFailedCommit(t *testing.T) {
 	}
 	if err := json.Unmarshal(store.data, &doc); err != nil || doc.SchemaVersion != 4 || len(doc.Configurations) != 1 || string(doc.Configurations[0].Override) != "null" {
 		t.Fatal("existing schema/null persistence changed")
+	}
+}
+
+// This fake models the Store's known-commit contract, not an OS flush failure.
+func TestCatalogFollowsCommittedWritesWithDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	cause := errors.New("password-marker /private/path post-commit-marker")
+	var received []error
+	store := &catalogMemoryStore{postCommitCause: cause, onPostCommitDiagnostic: func(err error) { received = append(received, err) }}
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := catalogTestConfiguration("configuration-a", "First")
+	if _, err := catalog.Create(ctx, value, "old-password", false); err != nil {
+		t.Fatal(err)
+	}
+	assertState := func(wantPassword string, exists bool, count int) {
+		t.Helper()
+		if store.replaceCalls != count || len(received) != count {
+			t.Fatal("repeated/missing writes or diagnostics")
+		}
+		for _, err := range received {
+			if err != cause {
+				t.Fatal("cause lost")
+			}
+		}
+		reopened, err := OpenCatalog(ctx, store, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, current := range []*Catalog{catalog, reopened} {
+			rows, err := current.List(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !exists {
+				if len(rows) != 0 {
+					t.Fatal("removal not committed")
+				}
+				continue
+			}
+			_, credential, err := current.Resolve(ctx, value.ConfigurationID)
+			if err != nil || len(rows) != 1 || credential.Password != wantPassword {
+				t.Fatal("memory differs from committed state")
+			}
+		}
+	}
+	assertState("old-password", true, 1)
+	password := "new-password"
+	if _, err := catalog.Update(ctx, value.ConfigurationID, Update{Password: &password}); err != nil {
+		t.Fatal(err)
+	}
+	assertState(password, true, 2)
+	before := bytes.Clone(store.data)
+	store.replaceErr = persistence.NewFailure(persistence.FailureAtomicWrite, cause)
+	rejected := "rejected-password"
+	if _, err := catalog.Update(ctx, value.ConfigurationID, Update{Password: &rejected}); err != store.replaceErr {
+		t.Fatal("uncommitted error changed")
+	}
+	if store.replaceCalls != 3 || len(received) != 2 || !bytes.Equal(before, store.data) {
+		t.Fatal("failed write changed data or emitted post-commit diagnostic")
+	}
+	_, credential, err := catalog.Resolve(ctx, value.ConfigurationID)
+	if err != nil || credential.Password != password {
+		t.Fatal("failed write changed memory")
+	}
+	store.replaceErr = nil
+	if err := catalog.Delete(ctx, value.ConfigurationID); err != nil {
+		t.Fatal(err)
+	}
+	// Failed attempt increased the call counter, but emitted no diagnostic.
+	if store.replaceCalls != 4 || len(received) != 3 {
+		t.Fatal("removal repeated or diagnostic missing")
+	}
+	rows, err := catalog.List(ctx)
+	if err != nil || len(rows) != 0 {
+		t.Fatal("diagnostic prevented in-memory removal")
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err = reopened.List(ctx)
+	if err != nil || len(rows) != 0 {
+		t.Fatal("durable removal missing")
 	}
 }

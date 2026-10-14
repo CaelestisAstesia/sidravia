@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -405,9 +406,18 @@ func TestSecureStoreCancellationAfterKnownCommitStillReturnsSuccess(t *testing.T
 
 func TestSecureStoreKnownCommitWithDirectorySyncErrorStillReturnsSuccess(t *testing.T) {
 	operations := &fakeSecureFileOperations{commitResult: true, commitErr: errors.New("directory sync failed")}
-	if err := newFakeStore(t, operations).Replace(context.Background(), testDestination(t), []byte(`{}`)); err != nil {
+	var received []error
+	store, err := newSecureStoreWithOperations(SecureStoreOptions{OnPostCommitDiagnostic: func(cause error) { received = append(received, cause) }}, operations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Replace(context.Background(), testDestination(t), []byte(`{}`)); err != nil {
 		t.Fatalf("Replace() committed with diagnostic = %v", err)
 	}
+	if len(received) != 1 || received[0] != operations.commitErr {
+		t.Fatal("post-commit cause not delivered exactly once")
+	}
+
 }
 
 func TestSecureStoreInitialCreationFailureLeavesNoDestination(t *testing.T) {
@@ -443,10 +453,106 @@ func TestSecureStoreExhaustedTempNameCollisionsFailBeforePayloadWrite(t *testing
 
 func TestSecureStoreCommittedPostCommitFlushDiagnosticStillReturnsSuccess(t *testing.T) {
 	operations := &fakeSecureFileOperations{inspectExists: true, destination: []byte("old"), commitResult: true, commitErr: errors.New("post-commit flush")}
-	if err := newFakeStore(t, operations).Replace(context.Background(), testDestination(t), []byte(`{"new":true}`)); err != nil {
+	var received []error
+	store, err := newSecureStoreWithOperations(SecureStoreOptions{OnPostCommitDiagnostic: func(cause error) { received = append(received, cause) }}, operations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Replace(context.Background(), testDestination(t), []byte(`{"new":true}`)); err != nil {
 		t.Fatal(err)
 	}
 	if string(operations.destination) != "{\"new\":true}\n" || operations.liveTemp {
 		t.Fatalf("destination = %q, liveTemp = %v", operations.destination, operations.liveTemp)
+	}
+	if len(received) != 1 || received[0] != operations.commitErr {
+		t.Fatal("post-commit cause not delivered exactly once")
+	}
+
+}
+
+func TestSecureStoreCommitOutcomeDiagnosticContract(t *testing.T) {
+	for _, exists := range []bool{false, true} {
+		for _, sensitive := range []bool{false, true} {
+			for _, tc := range []struct {
+				name                                   string
+				committed, diagnostic, cancel, observe bool
+			}{
+				{"not committed", false, true, false, true},
+				{"committed", true, false, false, true},
+				{"committed with diagnostic", true, true, false, true},
+				{"committed without observer", true, true, false, false},
+				{"canceled after commit", true, false, true, true},
+				{"canceled after diagnostic commit", true, true, true, true},
+			} {
+				t.Run(fmt.Sprintf("exists=%t/sensitive=%t/%s", exists, sensitive, tc.name), func(t *testing.T) {
+					cause := errors.New("password-marker /private/path flush-marker")
+					operations := &fakeSecureFileOperations{inspectExists: exists, commitResult: tc.committed}
+					var old []byte
+					if exists {
+						old = []byte("old")
+						operations.destination = bytes.Clone(old)
+					}
+					if tc.diagnostic {
+						operations.commitErr = cause
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					if tc.cancel {
+						operations.cancelAfterCommit = cancel
+					}
+					var received []error
+					options := SecureStoreOptions{}
+					if tc.observe {
+						options.OnPostCommitDiagnostic = func(err error) { received = append(received, err) }
+					}
+					store, err := newSecureStoreWithOperations(options, operations)
+					if err != nil {
+						t.Fatal(err)
+					}
+					path := testDestination(t)
+					if sensitive {
+						err = store.ReplaceSensitive(ctx, path, []byte(`{"new":true}`), 1024, false)
+					} else {
+						err = store.Replace(ctx, path, []byte(`{"new":true}`))
+					}
+					if tc.committed {
+						if err != nil || string(operations.destination) != "{\"new\":true}\n" {
+							t.Fatal("known commit did not succeed with new bytes")
+						}
+					} else {
+						requireFailureCode(t, err, persistence.FailureAtomicWrite)
+						var failure *persistence.Failure
+						if !errors.As(err, &failure) || failure.DiagnosticCause() != cause || !bytes.Equal(old, operations.destination) {
+							t.Fatal("failed commit lost cause or changed destination")
+						}
+					}
+					want := 0
+					if tc.committed && tc.diagnostic && tc.observe {
+						want = 1
+					}
+					if len(received) != want || (want == 1 && received[0] != cause) {
+						t.Fatal("unexpected diagnostic count/identity")
+					}
+					commits, closes, removals := 0, 0, 0
+					for _, call := range operations.calls {
+						switch call {
+						case "commit":
+							commits++
+						case "close":
+							closes++
+						case "remove-temp":
+							removals++
+						}
+					}
+					wantRemovals := 1
+					if tc.committed {
+						wantRemovals = 0
+					}
+					if operations.liveTemp || commits != 1 || closes != 1 || removals != wantRemovals {
+						t.Fatalf("resource or repeated commit: %v", operations.calls)
+					}
+				})
+			}
+		}
 	}
 }

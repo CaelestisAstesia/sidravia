@@ -170,6 +170,7 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		IntendedOwnerSID:                   "",
 		AllowUnsupportedProtectionFallback: paths.portable,
 		OnUnprotected:                      onUnprotected,
+		OnPostCommitDiagnostic:             newPostCommitDiagnosticWarning(logger),
 	})
 	if err != nil {
 		if owner != nil {
@@ -351,6 +352,7 @@ func composeObjectGraphWithLaunchOptions(
 		Handler:                            http.HandlerFunc(srv.ServeHTTP),
 		AllowUnsupportedProtectionFallback: paths.portable,
 		OnUnprotected:                      onUnprotected,
+		OnPostCommitDiagnostic:             newPostCommitDiagnosticWarning(logger),
 	}
 
 	return &composedRuntime{

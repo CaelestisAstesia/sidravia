@@ -17,6 +17,7 @@ import (
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
+	"sidravia/internal/daemon/persistence"
 	"sidravia/internal/daemon/persistence/jsonfile"
 )
 
@@ -581,6 +582,9 @@ func TestPerformAutomaticLoginNoConfigurationReturnsNil(t *testing.T) {
 	if err := setup.application.PerformAutomaticLogin(ctx); err != nil {
 		t.Fatalf("PerformAutomaticLogin() error = %v", err)
 	}
+	if sessions, err := setup.application.ListSessions(ctx); err != nil || len(sessions) != 0 {
+		t.Fatal("no automatic configuration must not create a Session")
+	}
 }
 
 func TestPerformAutomaticLoginStartsAutoLoginConfiguration(t *testing.T) {
@@ -619,6 +623,10 @@ func TestPerformAutomaticLoginFailureReturnsSafeError(t *testing.T) {
 	}
 	if err.Error() != "automatic_login_failed" {
 		t.Fatalf("error = %q, want %q", err.Error(), "automatic_login_failed")
+	}
+	var failure *automaticLoginFailure
+	if !errors.As(err, &failure) || failure.Unwrap() == nil || failure.Unwrap().Error() != "supervisor is closed" {
+		t.Fatal("automatic login lost closed supervisor cause")
 	}
 }
 
@@ -734,5 +742,71 @@ func TestAutomaticLoginUsesCommittedChoice(t *testing.T) {
 	sessions, e = setup.application.ListSessions(ctx)
 	if e != nil || len(sessions) != 1 || sessions[0].ConfigurationID != "configuration-b" {
 		t.Fatal("automatic login did not follow committed choice")
+	}
+}
+
+// Err fails at an existing context boundary, without a production injection hook.
+type automaticFailureContext struct {
+	context.Context
+	calls, failAt int
+	cause         error
+}
+
+func (ctx *automaticFailureContext) Err() error {
+	ctx.calls++
+	if ctx.calls >= ctx.failAt {
+		return ctx.cause
+	}
+	return nil
+}
+
+func TestAutomaticLoginRetainsListAndStartCausesWithSafeText(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		failAt int
+		start  bool
+	}{
+		{"list", 1, false}, {"start resolution", 4, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			defer setup.cleanup()
+			if tc.start {
+				enable := true
+				if _, err := setup.application.UpdateConfiguration(context.Background(), "configuration-1", config.Update{AutoLogin: &enable}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cause := errors.New("account-marker password-marker /private/path cause-marker")
+			ctx := &automaticFailureContext{Context: context.Background(), failAt: tc.failAt, cause: cause}
+			err := setup.application.PerformAutomaticLogin(ctx)
+			if err == nil || err.Error() != "automatic_login_failed" {
+				t.Fatalf("unsafe failure: %v", err)
+			}
+			var safe *automaticLoginFailure
+			var original *persistence.Failure
+			if !errors.As(err, &safe) || !errors.As(err, &original) || original.DiagnosticCause() != cause {
+				t.Fatal("original persistence failure/cause lost")
+			}
+			if tc.start {
+				var resolution *ResolutionFailure
+				if !errors.As(err, &resolution) || safe.Unwrap() != resolution || resolution.Unwrap() != original {
+					t.Fatal("start return object was replaced")
+				}
+			} else if safe.Unwrap() != original {
+				t.Fatal("list return object was replaced")
+			}
+			if sessions, err := setup.application.ListSessions(context.Background()); err != nil || len(sessions) != 0 {
+				t.Fatal("failure created a Session")
+			}
+		})
+	}
+}
+
+func TestAutomaticLoginFailureUnwrapPreservesSentinelIdentity(t *testing.T) {
+	cause := errors.New("account-marker password-marker /private/path cause-marker")
+	err := &automaticLoginFailure{cause: cause}
+	if err.Unwrap() != cause || !errors.Is(err, cause) || err.Error() != "automatic_login_failed" {
+		t.Fatal("safe wrapper lost identity or echoed cause")
 	}
 }

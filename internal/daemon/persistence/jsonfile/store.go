@@ -20,6 +20,11 @@ type SecureStoreOptions struct {
 	IntendedOwnerSID                   string
 	AllowUnsupportedProtectionFallback bool
 	OnUnprotected                      func()
+	// OnPostCommitDiagnostic observes an original error after known commit, without
+	// changing successful writes. It runs synchronously, possibly under a caller's
+	// Catalog lock. It must return promptly, must not panic, reenter Store/Catalog,
+	// perform product operations or wait for external work. Nil disables observation.
+	OnPostCommitDiagnostic func(error)
 }
 
 type writableTemp interface {
@@ -47,12 +52,13 @@ type secureFileOperations interface {
 }
 
 type SecureStore struct {
-	operations    secureFileOperations
-	owner         resolvedOwner
-	mu            sync.Mutex
-	protection    ProtectionStatus
-	allowFallback bool
-	onUnprotected func()
+	operations             secureFileOperations
+	owner                  resolvedOwner
+	mu                     sync.Mutex
+	protection             ProtectionStatus
+	allowFallback          bool
+	onUnprotected          func()
+	onPostCommitDiagnostic func(error)
 }
 
 func NewSecureStore(options SecureStoreOptions) (*SecureStore, error) {
@@ -70,11 +76,12 @@ func newSecureStoreWithOperations(options SecureStoreOptions, operations secureF
 		return nil, persistence.NewFailure(persistence.FailurePermissionDenied, diagnosticCause(err))
 	}
 	return &SecureStore{
-		operations:    operations,
-		owner:         owner,
-		protection:    ProtectionProtected,
-		allowFallback: options.AllowUnsupportedProtectionFallback,
-		onUnprotected: options.OnUnprotected,
+		operations:             operations,
+		owner:                  owner,
+		protection:             ProtectionProtected,
+		allowFallback:          options.AllowUnsupportedProtectionFallback,
+		onUnprotected:          options.OnUnprotected,
+		onPostCommitDiagnostic: options.OnPostCommitDiagnostic,
 	}, nil
 }
 
@@ -264,6 +271,9 @@ func (store *SecureStore) replace(ctx context.Context, destination string, data 
 		return persistence.NewFailure(persistence.FailureAtomicWrite, diagnosticCause(commitErr))
 	}
 	cleanup = false
+	if commitErr != nil && store.onPostCommitDiagnostic != nil {
+		store.onPostCommitDiagnostic(commitErr)
+	}
 	return nil
 }
 

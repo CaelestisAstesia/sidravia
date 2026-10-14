@@ -286,3 +286,25 @@ func TestLinuxHostShutdownCauseReachable(t *testing.T) {
 		t.Errorf("error = %v, want shutdown cause", err)
 	}
 }
+
+func TestLinuxHostForwardsPostCommitDiagnosticObserver(t *testing.T) {
+	cfg := validLinuxHostConfig(t)
+	cause := errors.New("password-marker /private/path cause-marker")
+	var received []error
+	cfg.OnPostCommitDiagnostic = func(err error) { received = append(received, err) }
+	deps := defaultLinuxHostDeps()
+	stop := errors.New("stop after checking options")
+	deps.newStore = func(options jsonfile.SecureStoreOptions) (*jsonfile.SecureStore, error) {
+		if options.OnPostCommitDiagnostic == nil {
+			t.Fatal("Host dropped observer")
+		}
+		options.OnPostCommitDiagnostic(cause)
+		return nil, stop
+	}
+	if err := runLinuxHost(context.Background(), cfg, deps); !errors.Is(err, stop) {
+		t.Fatal("controlled constructor failure changed")
+	}
+	if len(received) != 1 || received[0] != cause {
+		t.Fatal("Host altered diagnostic identity")
+	}
+}

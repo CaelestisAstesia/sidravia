@@ -40,6 +40,7 @@ const (
 	eventProtocolExchangeOutcome      = "protocol_exchange_outcome"
 	eventTraceLoggingSensitive        = "trace_logging_sensitive"
 	eventStorageProtectionUnavailable = "storage_protection_unavailable"
+	eventStoragePostCommitDiagnostic  = "storage_post_commit_diagnostic"
 
 	msgSessionSnapshot              = "Session 状态已更新"
 	msgSessionCommand               = "Session 命令已接收"
@@ -50,6 +51,7 @@ const (
 	msgProtocolExchangeOutcome      = "协议交换结果"
 	msgTraceLoggingSensitive        = "Trace 日志含敏感信息"
 	msgStorageProtectionUnavailable = "便携存储无法使用当前用户权限保护"
+	msgStoragePostCommitDiagnostic  = "持久写入已提交，后续同步或关闭出现诊断"
 )
 
 // resolveLogLevel maps SIDRAVIA_LOG_LEVEL to a slog level. The empty value
@@ -201,5 +203,13 @@ func newStorageProtectionWarning(logger *slog.Logger) func() {
 		once.Do(func() {
 			logger.Warn(msgStorageProtectionUnavailable, slog.String("event", eventStorageProtectionUnavailable))
 		})
+	}
+}
+
+// newPostCommitDiagnosticWarning records each committed-write diagnostic once.
+// The original cause is available at the boundary but never formatted or logged.
+func newPostCommitDiagnosticWarning(logger *slog.Logger) func(error) {
+	return func(error) {
+		logger.Warn(msgStoragePostCommitDiagnostic, slog.String("event", eventStoragePostCommitDiagnostic))
 	}
 }
