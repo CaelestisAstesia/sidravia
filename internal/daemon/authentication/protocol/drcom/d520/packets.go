@@ -69,16 +69,25 @@ type loginInput struct {
 	loginAuthExtensionPadding [2]byte
 }
 
+// encodeUsername owns the shared save, Login and Logout wire representation.
+func encodeUsername(value string) ([]byte, error) {
+	encoded, err := encodeProtocolText(value)
+	if err != nil {
+		return nil, fmt.Errorf("username cannot be encoded as protocol text: %w", err)
+	}
+	if len(encoded) > usernameFieldLength {
+		return nil, fmt.Errorf("encoded username is %d bytes, exceeds %d", len(encoded), usernameFieldLength)
+	}
+	return encoded, nil
+}
+
 // encodeCredentialFields encodes the username, password, host name and host OS
 // as protocol text and enforces the documented field bounds. It returns the
 // encoded slices in packet order. Errors carry field names and lengths but
 // never the input text.
 func encodeCredentialFields(in loginInput) (username, password, hostName, hostOS []byte, err error) {
-	if username, err = encodeProtocolText(in.username); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("username cannot be encoded as protocol text: %w", err)
-	}
-	if len(username) > usernameFieldLength {
-		return nil, nil, nil, nil, fmt.Errorf("encoded username is %d bytes, exceeds %d", len(username), usernameFieldLength)
+	if username, err = encodeUsername(in.username); err != nil {
+		return nil, nil, nil, nil, err
 	}
 	if password, err = encodeProtocolText(in.password); err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("password cannot be encoded as protocol text: %w", err)
@@ -102,11 +111,8 @@ func encodeCredentialFields(in loginInput) (username, password, hostName, hostOS
 // by the Logout request. Host name and host OS are not part of Logout, so an
 // unusable host field must not prevent best-effort cleanup.
 func encodeLogoutCredentialFields(in loginInput) (username, password []byte, err error) {
-	if username, err = encodeProtocolText(in.username); err != nil {
-		return nil, nil, fmt.Errorf("username cannot be encoded as protocol text: %w", err)
-	}
-	if len(username) > usernameFieldLength {
-		return nil, nil, fmt.Errorf("encoded username is %d bytes, exceeds %d", len(username), usernameFieldLength)
+	if username, err = encodeUsername(in.username); err != nil {
+		return nil, nil, err
 	}
 	if password, err = encodeProtocolText(in.password); err != nil {
 		return nil, nil, fmt.Errorf("password cannot be encoded as protocol text: %w", err)

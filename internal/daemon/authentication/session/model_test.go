@@ -403,3 +403,5 @@ func TestStateReasonCodeAutomaticReconnectDisabledIsStable(t *testing.T) {
 		t.Fatalf("StateReasonCodeAutomaticReconnectDisabled = %q", StateReasonCodeAutomaticReconnectDisabled)
 	}
 }
+
+func (stubFactory) ValidateUsername(string) error { return nil }

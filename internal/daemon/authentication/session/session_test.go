@@ -1735,3 +1735,5 @@ func TestShortCredentialFailureFields(t *testing.T) {
 		}
 	}
 }
+
+func (nilRunFactory) ValidateUsername(string) error { return nil }

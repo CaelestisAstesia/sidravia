@@ -356,3 +356,5 @@ func TestDiagnosticResolverUsesPublicAggregateAndClonedProfile(t *testing.T) {
 		t.Fatal("missing protocol not classified")
 	}
 }
+
+func (*appTestProtocolFactory) ValidateUsername(string) error { return nil }

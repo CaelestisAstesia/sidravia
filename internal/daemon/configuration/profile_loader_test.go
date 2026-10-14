@@ -544,3 +544,5 @@ func TestLoadProfileCatalogFromDirectoryPublicErrorSecrecy(t *testing.T) {
 		}
 	})
 }
+
+func (profileLoaderTestFactory) ValidateUsername(string) error { return nil }

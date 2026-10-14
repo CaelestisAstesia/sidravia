@@ -407,7 +407,7 @@ func (application *Application) CreateConfiguration(ctx context.Context, value c
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
 	value = value.Clone()
-	if err := application.validateConfigurationOverride(ctx, value); err != nil {
+	if err := application.validateConfigurationCandidate(ctx, value); err != nil {
 		return ConfigurationResult{}, err
 	}
 	if _, err := application.enrich(ctx, value); err != nil {
@@ -449,7 +449,7 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if update.AutoReconnect != nil {
 		candidate.AutoReconnect = *update.AutoReconnect
 	}
-	if err := application.validateConfigurationOverride(ctx, candidate); err != nil {
+	if err := application.validateConfigurationCandidate(ctx, candidate); err != nil {
 		return ConfigurationResult{}, err
 	}
 	if _, err := application.enrich(ctx, candidate); err != nil {
@@ -538,10 +538,10 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 	}, nil
 }
 
-// validateConfigurationOverride is write-only validation of public candidate
+// validateConfigurationCandidate is write-only validation of public candidate
 // data. It never resolves stored credentials or creates a protocol Run, and
 // leaves legacy read-only enrichment unchanged.
-func (application *Application) validateConfigurationOverride(ctx context.Context, value config.Configuration) error {
+func (application *Application) validateConfigurationCandidate(ctx context.Context, value config.Configuration) error {
 	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
 	if err != nil {
 		var failure *persistence.Failure
@@ -553,6 +553,9 @@ func (application *Application) validateConfigurationOverride(ctx context.Contex
 	factory, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID)
 	if err != nil {
 		return NewResolutionFailure(ProtocolNotFound, err)
+	}
+	if err := factory.ValidateUsername(value.Username); err != nil {
+		return NewResolutionFailure(InvalidConfiguration, err)
 	}
 	if err := factory.ValidateProtocolContextOverride(append(protocol.AuthenticationProtocolContextOverride(nil), value.ProtocolContextOverride...)); err != nil {
 		return NewResolutionFailure(InvalidConfiguration, err)

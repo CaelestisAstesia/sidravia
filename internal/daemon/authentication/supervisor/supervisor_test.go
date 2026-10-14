@@ -1873,3 +1873,8 @@ func TestSupervisorRollbackFailureRetainsActorDuringRunShutdown(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 }
+
+func (stubFactory) ValidateUsername(string) error             { return nil }
+func (*sequentialHeldFactory) ValidateUsername(string) error  { return nil }
+func (heldCancellationFactory) ValidateUsername(string) error { return nil }
+func (*stateFactory) ValidateUsername(string) error           { return nil }

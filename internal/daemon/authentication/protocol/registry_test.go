@@ -106,3 +106,6 @@ func TestAuthenticationProtocolRegistryRejectsUnknownProtocolID(t *testing.T) {
 		t.Fatal("expected unknown protocol ID error")
 	}
 }
+
+func (*pointerRegistryTestFactory) ValidateUsername(string) error { return nil }
+func (registryTestFactory) ValidateUsername(string) error         { return nil }

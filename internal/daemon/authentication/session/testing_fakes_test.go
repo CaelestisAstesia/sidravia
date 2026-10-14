@@ -158,3 +158,5 @@ func (noOpRetryCancellation) Cancel() {}
 func testDependencies(now func() time.Time) Dependencies {
 	return Dependencies{Now: now, RetryPolicy: unavailableRetryPolicy{}, RetryScheduler: noOpRetryScheduler{}}
 }
+
+func (*controlledFactory) ValidateUsername(string) error { return nil }

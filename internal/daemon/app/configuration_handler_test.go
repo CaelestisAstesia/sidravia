@@ -311,3 +311,33 @@ func TestConfigurationHandlerRejectsAmbiguous(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigurationHandlerRejectsUnrepresentableUsernameSafely(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	usernameTestFactory(t, setup)
+	username, password := strings.Repeat("a", 37), "private-password"
+	for _, method := range []string{contract.MethodConfigurationCreate, contract.MethodConfigurationUpdate} {
+		payload := map[string]any{"configurationId": "configuration-1", "username": username, "password": password}
+		if method == contract.MethodConfigurationCreate {
+			payload["configurationId"] = "new-configuration"
+			payload["displayName"] = ""
+			payload["institutionProfileId"] = "profile-1"
+			payload["networkBindingPolicy"] = map[string]string{"mode": "automatically_select_latest_available"}
+			payload["autoLogin"] = false
+			payload["autoReconnect"] = false
+			payload["allowInsecureStorage"] = false
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, publicErr := ConfigurationHandler(setup.application)(context.Background(), method, raw)
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "invalid configuration" || len(result) != 0 {
+			t.Fatalf("public rejection=%#v", publicErr)
+		}
+		if strings.Contains(publicErr.Message, username) || strings.Contains(publicErr.Message, password) || strings.Contains(publicErr.Message, "encoded username") {
+			t.Fatal("private validation data leaked")
+		}
+	}
+}

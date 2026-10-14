@@ -39,6 +39,14 @@ func (factory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtoc
 	return validateProtocolContextOverride(raw)
 }
 
+func (factory) ValidateUsername(username string) error {
+	if username == "" {
+		return errors.New("username is required")
+	}
+	_, err := encodeUsername(username)
+	return err
+}
+
 func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
 	cfg, err := decodeInstitutionProtocolConfiguration(inputs.InstitutionProtocolConfiguration)
 	if err != nil {

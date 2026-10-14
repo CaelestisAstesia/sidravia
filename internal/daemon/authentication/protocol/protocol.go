@@ -27,6 +27,8 @@ type AuthenticationProtocolFactory interface {
 	ProtocolID() AuthenticationProtocolID
 	ValidateInstitutionProtocolConfiguration(InstitutionProtocolConfiguration) error
 	ValidateProtocolContextOverride(AuthenticationProtocolContextOverride) error
+	// ValidateUsername checks public candidate data without credentials, a Run or I/O.
+	ValidateUsername(string) error
 	CreateAuthenticationProtocolRun(AuthenticationProtocolRunCreationInputs) (AuthenticationProtocolRun, error)
 }
 
