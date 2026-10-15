@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
@@ -34,11 +35,16 @@ void main() {
     'fixed sibling CLI arguments, bounded discarded streams, success',
     () async {
       final child = Child();
+      final directory = Directory('app with spaces').absolute;
+      final gui = File.fromUri(directory.uri.resolve('Sidravia.exe'));
+      final cli = File.fromUri(directory.uri.resolve('sidraviactl.exe'));
+      var launches = 0;
       final adapter = DesktopLogDirectory(
         isWindows: () => true,
-        resolvedExecutable: () => '/app/Sidravia.exe',
+        resolvedExecutable: () => gui.path,
         launch: (exe, args) async {
-          expect(exe, '/app/sidraviactl.exe');
+          launches++;
+          expect(exe, cli.path);
           expect(args, ['gui', 'open-log-directory']);
           return child;
         },
@@ -48,6 +54,7 @@ void main() {
       child.err.add([66]);
       child.finish(0);
       expect(await pending, isTrue);
+      expect(launches, 1);
       expect(child.kills, 0);
       await adapter.close();
     },

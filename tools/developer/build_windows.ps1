@@ -98,7 +98,9 @@ function Invoke-Stage([string]$Name, [string]$Command, [string[]]$Arguments) {
         foreach ($key in @($info.EnvironmentVariables.Keys)) {
             if ($key -imatch '^(PATH|PATHEXT|GOROOT|GOCACHE|GOOS|GOARCH|GOFLAGS|GOWORK|GOENV|GOTOOLCHAIN|TMPDIR|PUB_CACHE)$') { $info.EnvironmentVariables.Remove($key) }
         }
-        $info.EnvironmentVariables['PATH'] = (Split-Path -Parent $Go) + ';C:\Windows\System32;C:\Windows;' + [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+        $flutterBin = Split-Path -Parent $Flutter
+        $dartBin = Join-Path $flutterBin 'cache\dart-sdk\bin'
+        $info.EnvironmentVariables['PATH'] = (Split-Path -Parent $Go) + ';' + $dartBin + ';' + $flutterBin + ';C:\Windows\System32;C:\Windows;' + [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
         $info.EnvironmentVariables['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
         $info.EnvironmentVariables['GOCACHE'] = $env:GOCACHE
         $info.EnvironmentVariables['PUB_CACHE'] = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Pub\Cache'
