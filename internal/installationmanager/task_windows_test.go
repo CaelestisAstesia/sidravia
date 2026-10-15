@@ -68,9 +68,36 @@ func TestNativeStartupStatusAndRepair(t *testing.T) {
 	fixture := `
 $ProgressPreference = 'SilentlyContinue'
 $PSModuleAutoLoadingPreference = 'None'
-# Load the in-memory constructors before installing test replacements. An
-# implicit first import would replace our functions with the module exports.
-Import-Module Microsoft.PowerShell.Utility,Microsoft.PowerShell.Management,CimCmdlets,ScheduledTasks -ErrorAction Stop
+# This is a handler contract test, not a Task Scheduler integration test.
+# Never initialize CIM/providers or import exports that could replace the fakes.
+Import-Module Microsoft.PowerShell.Utility,Microsoft.PowerShell.Management -ErrorAction Stop
+function Get-ScheduledTask { throw 'unexpected task query' }
+function New-ScheduledTaskAction {
+    param([string]$Execute,[string]$Argument,[string]$WorkingDirectory)
+    return [pscustomobject]@{Execute=$Execute;Arguments=$Argument;WorkingDirectory=$WorkingDirectory}
+}
+function New-ScheduledTaskTrigger {
+    param([switch]$AtLogOn,[string]$User)
+    if(-not $AtLogOn){throw 'expected logon trigger'}
+    return [pscustomobject]@{UserId=$User;Enabled=$true;CimClass=[pscustomobject]@{CimClassName='MSFT_TaskLogonTrigger'}}
+}
+function New-ScheduledTaskPrincipal {
+    param([string]$UserId,[string]$LogonType,[string]$RunLevel)
+    return [pscustomobject]@{UserId=$UserId;LogonType=$LogonType;RunLevel=$RunLevel}
+}
+function New-ScheduledTaskSettingsSet {
+    param([switch]$AllowStartIfOnBatteries,[switch]$DontStopIfGoingOnBatteries,[TimeSpan]$ExecutionTimeLimit)
+    if(-not $PSBoundParameters.ContainsKey('ExecutionTimeLimit')){throw 'missing execution limit'}
+    return [pscustomobject]@{
+        Enabled=$true;DisallowStartIfOnBatteries=(-not $AllowStartIfOnBatteries);
+        StopIfGoingOnBatteries=(-not $DontStopIfGoingOnBatteries);
+        ExecutionTimeLimit=[Xml.XmlConvert]::ToString($ExecutionTimeLimit)
+    }
+}
+function New-ScheduledTask {
+    param($Action,$Trigger,$Principal,$Settings,[string]$Description)
+    return [pscustomobject]@{Actions=@($Action);Triggers=@($Trigger);Principal=$Principal;Settings=$Settings}
+}
 $scenario = '%SCENARIO%'
 $fixtureDir = %DIRECTORY%
 $fixtureSID = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -103,7 +130,8 @@ function Register-ScheduledTask {
     if($scenario -eq 'verify-disabled'){$global:current.Triggers[0].Enabled=$false}
 }
 function Unregister-ScheduledTask { throw 'unexpected task removal' }
-foreach($name in @('Register-ScheduledTask','Unregister-ScheduledTask','Read-Task')) {
+foreach($name in @('Get-ScheduledTask','Register-ScheduledTask','Unregister-ScheduledTask','Read-Task',
+    'New-ScheduledTaskAction','New-ScheduledTaskTrigger','New-ScheduledTaskPrincipal','New-ScheduledTaskSettingsSet','New-ScheduledTask')) {
     if((Get-Command $name).ModuleName -ne ''){throw 'task fixture is not isolated'}
 }
 `
@@ -132,7 +160,13 @@ foreach($name in @('Register-ScheduledTask','Unregister-ScheduledTask','Read-Tas
 			if err != nil {
 				t.Fatal(err)
 			}
-			output, err := invokePowerShell(functions+setup+handler, input)
+			wantWrites := "0"
+			if tc.changed {
+				wantWrites = "1"
+			}
+			check := "\nif($global:writes -ne " + wantWrites + ") { throw 'unexpected task writes' }\n" +
+				"if(Get-Module ScheduledTasks,CimCmdlets) { throw 'system task module loaded' }\n"
+			output, err := invokePowerShell(functions+setup+handler+check, input)
 			if err != nil {
 				t.Fatal(err)
 			}
