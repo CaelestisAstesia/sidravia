@@ -5,7 +5,7 @@ $scriptPath = Join-Path $PSScriptRoot 'offline_acceptance.ps1'
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Parse failed.' }
-foreach ($name in @('Assert-SafePath','Inventory','Equal-Json','Same-Inventory','Payload-Mismatches')) {
+foreach ($name in @('Assert-SafePath','Inventory','Equal-Json','Same-Inventory','Payload-Mismatches','Existing-FilesMatch')) {
     $node=$ast.Find({param($a) $a -is [Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq $name},$true)
     . ([scriptblock]::Create($node.Extent.Text))
 }
@@ -17,6 +17,11 @@ $snapshotNode=$ast.Find({param($a) $a -is [Management.Automation.Language.Hashta
 $resultEntry=@($snapshotNode.KeyValuePairs | Where-Object { $_.Item1.Value -eq 'Results' })[0]
 $savedResults=. ([scriptblock]::Create($resultEntry.Item2.Extent.Text))
 if (@($savedResults).Count -ne 1 -or $savedResults.Status -ne 'BLOCK') { throw 'Evidence result serialization failed.' }
+$deleteGuard=$ast.Find({param($a) $a -is [Management.Automation.Language.IfStatementAst] -and $a.Extent.Text.Contains("throw 'This baseline permits keep-data acceptance only;")},$true)
+$keepOnly=$true; $Stage='AfterDelete'; $refused=$false
+try { . ([scriptblock]::Create($deleteGuard.Extent.Text)) } catch { $refused=$true }
+if (!$refused) { throw 'Keep-only baseline accepted deletion stage.' }
+$Stage='AfterKeep'; . ([scriptblock]::Create($deleteGuard.Extent.Text))
 $root=Join-Path ([IO.Path]::GetTempPath()) ('sidravia-offline-test-'+[guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $root | Out-Null
@@ -41,9 +46,12 @@ try {
     $other=Join-Path $root 'unknown.txt'; Set-Content -LiteralPath $other -Value 'keep'
     if (@(Payload-Mismatches $manifest @(Inventory $root)).Count) { throw 'Unknown file rejected.' }
     $unknownBefore=@(Inventory $other)
+    if (!(Existing-FilesMatch $unknownBefore @(Inventory $root))) { throw 'New test data incorrectly changes existing-file baseline.' }
     Remove-Item -LiteralPath $other
+    if (Existing-FilesMatch $unknownBefore @(Inventory $root)) { throw 'Preexisting file deletion accepted.' }
     if (Same-Inventory $unknownBefore @(Inventory $other)) { throw 'Unknown deletion undetected.' }
     Set-Content -LiteralPath $file -Value '{"fake":"changed"}' -Encoding UTF8
+    if (Existing-FilesMatch $first @(Inventory $root)) { throw 'Preexisting user data modification accepted.' }
     if (Same-Inventory $first @(Inventory $root)) { throw 'Changed file went undetected.' }
     if (@(Inventory (Join-Path $root 'absent')).Count -ne 0) { throw 'Absent path mismatch.' }
     $link=Join-Path $root 'junction'

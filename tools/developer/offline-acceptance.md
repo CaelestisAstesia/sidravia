@@ -2,7 +2,7 @@
 
 仅由验收者在 Windows x64 桌面运行。工具不联网，不安装、不卸载、不修改 PATH/任务/注册表，也不删除系统数据。检查器只写新证据目录；启动辅助会创建全新隔离 namespace、复制包内官方 institution-profiles，然后启动 GUI。不要填写真实账号、密码或点击认证。所有安装器操作由你手动完成。
 
-这次检查的版本、SHA、文件哈希见交付包来源说明。先核对 SHA256。安装目录与运行 namespace **不能隔离**固定 AppId、SidraviaDaemon 计划任务、快捷方式、用户 PATH 和默认数据删除。旧便携版（例如 D:\Software）自包含数据不自动构成冲突，工具不会扫描或修改它；旧用户 PATH 请由你手动撤销并在新终端确认。旧便携版留下的同名任务/快捷方式等仍是共享冲突。推荐一个专用干净 Windows 用户；Before 报 BLOCK 就停止，保留结果，换干净账户。不要手动清除既有 Sidravia 状态来绕过 BLOCK。
+这次检查的版本、SHA、文件哈希见交付包来源说明。先核对 SHA256。安装目录与运行 namespace **不能隔离**固定 AppId、SidraviaDaemon 计划任务、快捷方式、用户 PATH 和默认数据删除。旧便携版（例如 D:\Software）自包含数据不自动构成冲突，工具不会扫描或修改它；旧用户 PATH 请由你手动撤销并在新终端确认。旧便携版留下的同名任务/快捷方式等仍是共享冲突。用户可直接在当前账户验收：用下文 KeepDataOnly 模式保留已有默认数据，先正常退出旧GUI/后台并自行撤销冲突集成。其他 BLOCK 仍要停止并核对，不能为通过检查清掉真实数据。需要测试“删除默认数据”时再单独安排，不作为本轮前置。
 
 ## 离线准备
 
@@ -41,9 +41,23 @@ $evDelete = Join-Path $PWD 'evidence-delete'
 
 便携预期只产生自身 namespace 内配置/GUI 设置/runtime/logs；不应新增安装注册项、共享任务、快捷方式或 PATH。可在便携运行前后用独立 Before 证据记录，再人工比较 JSON；安装 Before 要在退出便携之后另开全新证据轮次，不能复用。
 
+## 当前账户：只验收保留数据（本轮默认）
+
+不需要另建用户、虚拟机或删除现有数据。先从托盘明确退出旧版及其后台，用户自己撤销旧PATH/自启（若有）；脚本不会代替你停止进程或修改集成。首个Before命令增加 `-KeepDataOnly`，后续Installed/AfterKeep自动继承该基线模式。
+
+```powershell
+.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest -KeepDataOnly
+```
+
+此模式允许已有默认数据，保存原文件路径/hash；安装后允许新增测试namespace，但原有文件不得改变。卸载后再次核对原有数据和整个卸载前数据清单。记录hash不等于备份，脚本也无法替你控制卸载器选项：卸载时必须选“不删除数据/否”。该基线拒绝AfterDelete；误选删除即使后续清理检查通过也会报告数据变化。
+
+当前桌面属于OneDrive重解析路径，首轮不要勾“桌面快捷方式”，先验证安装、开始菜单、PATH及保留数据卸载。实际桌面图标检查另记未验，不能因此声称已通过；不会放宽链接保护。安装时自启也可先不勾，不在本轮验证实际登录自启。
+
+然后按下面第一轮从手动安装步骤继续，**不要再执行其中不带KeepDataOnly的Before模板**。已有阶段结果不覆盖；每次新验收另用新证据目录和未用namespace。
+
 ## 第一轮：安装 → 保留数据卸载
 
-先退出所有 Sidravia 进程，再执行：
+以下是无默认数据账户的严格模板；当前账户本轮已执行上面的KeepDataOnly Before，跳过此重复步骤。严格模板先退出所有 Sidravia 进程，再执行：
 
 ```powershell
 .\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest
@@ -71,7 +85,7 @@ Installed 自动核对 BUILD-INFO BuildID。手工确认任务动作指向本安
 
 预期程序 payload、注册项、任务和快捷方式移除；自动 Installed 按交付 candidate-manifest.json 核对完整 payload/hash，卸载后按同清单及实际观测的 uninsNNN 文件检查消失；清单 SHA256 固定在 Before，后续阶段不允许换清单；用户 PATH 与 Before 原文及注册值类型一致；namespace 文件与 Installed 相同。未知 keep-me.txt/未知目录和 namespace 数据应保留；安装目录非空不自动等于卸载失败。无观测数据时 KeepData 为 SKIP，不能说保留已证明。卸载后不要删除保留现场。
 
-## 第二轮：安装 → 删除默认白名单数据
+## 第二轮：安装 → 删除默认白名单数据（本轮暂缓）
 
 **仅在干净测试用户做**。namespace 数据从来不属于删除对象。为本轮使用不同目标目录、namespace 和全新证据 root：
 

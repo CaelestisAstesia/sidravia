@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Namespace,
     [Parameter(Mandatory=$true)][string]$EvidenceRoot,
     [Parameter(Mandatory=$true)][ValidatePattern('^[a-fA-F0-9]{40}$')][string]$ExpectedBuildID,
-    [Parameter(Mandatory=$true)][string]$CandidateManifest
+    [Parameter(Mandatory=$true)][string]$CandidateManifest,
+    [switch]$KeepDataOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
@@ -55,6 +56,11 @@ function Equal-Json($A,$B) { (ConvertTo-Json -Depth 20 -Compress -InputObject $A
 function Same-Inventory($A,$B) {
     Equal-Json @($A | Sort-Object Path | Select-Object Path,Kind,Hash,Length) @($B | Sort-Object Path | Select-Object Path,Kind,Hash,Length)
 }
+function Existing-FilesMatch($Before,$After) {
+    $priorFiles = @($Before | Where-Object Kind -eq 'File')
+    $priorPaths = @($priorFiles | ForEach-Object Path)
+    Same-Inventory $priorFiles @($After | Where-Object { $_.Kind -eq 'File' -and $_.Path -in $priorPaths })
+}
 if ($env:OS -ne 'Windows_NT') { throw 'Windows only.' }
 if ($Namespace.Length -gt 64 -or $Namespace -notmatch '^[A-Za-z0-9_-][A-Za-z0-9._-]*$' -or $Namespace.EndsWith('.') -or $Namespace.Contains('..') -or $Namespace -in @('prod','production','default')) { throw 'Invalid isolated namespace.' }
 $Directory = [IO.Path]::GetFullPath($Directory).TrimEnd('\')
@@ -81,6 +87,7 @@ foreach ($entry in $manifest.Payload) {
     $payload += [pscustomobject]@{Path=$full;SHA256=$entry.SHA256}
 }
 $baseline = $null
+$keepOnly = [bool]$KeepDataOnly
 if ($Stage -eq 'Before') {
     if (Test-Path -LiteralPath $EvidenceRoot) { throw 'Before requires a new evidence directory.' }
     New-Item -ItemType Directory -Path $EvidenceRoot | Out-Null
@@ -88,7 +95,10 @@ if ($Stage -eq 'Before') {
     $baseline = Get-Content -Raw -LiteralPath (Join-Path $EvidenceRoot 'Before.json') | ConvertFrom-Json
     if ($baseline.Directory -ine $Directory -or $baseline.Namespace -cne $Namespace -or $baseline.ExpectedBuildID -cne $ExpectedBuildID -or $baseline.ManifestHash -cne $manifestHash -or $baseline.User -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Baseline directory/namespace/user mismatch.' }
     if (@($baseline.Results | Where-Object Status -eq 'BLOCK').Count) { throw 'Baseline was blocked; use a clean Windows account and a new evidence root.' }
+    $keepOnly = $null -ne $baseline.PSObject.Properties['KeepDataOnly'] -and [bool]$baseline.KeepDataOnly
+    if ($KeepDataOnly -and !$keepOnly) { throw 'Keep-only mode must be selected in a new Before checkpoint.' }
 }
+if ($keepOnly -and $Stage -eq 'AfterDelete') { throw 'This baseline permits keep-data acceptance only; do not delete existing user data.' }
 $out = Join-Path $EvidenceRoot ($Stage + '.json')
 if (Test-Path -LiteralPath $out) { throw 'Stage evidence already exists; do not overwrite.' }
 $results = New-Object 'Collections.Generic.List[object]'
@@ -121,7 +131,8 @@ $default = @($data | Where-Object {
 })
 if ($Stage -eq 'Before') {
     foreach ($pair in @(@('AppId',$registration.Count),@('SharedTask',$tasks.Count),@('Shortcuts',$shortcuts.Count),@('Target',$target.Count),@('DefaultData',@($default | Where-Object Kind -eq 'File').Count),@('Namespace',$ns.Count),@('ProductProcesses',$processes.Count))) {
-        if ($pair[1] -gt 0) { Result $pair[0] 'BLOCK' 'Existing state: stop; use a clean Windows account. Do not migrate or delete automatically.' } else { Result $pair[0] 'PASS' 'Absent.' }
+        if ($pair[0] -eq 'DefaultData' -and $keepOnly) { Result 'DefaultData' 'PASS' 'Existing data recorded as protected baseline. Uninstall must keep data; deletion stage is prohibited.' }
+        elseif ($pair[1] -gt 0) { Result $pair[0] 'BLOCK' 'Existing state: stop and resolve the conflict; never migrate or delete automatically.' } else { Result $pair[0] 'PASS' 'Absent.' }
     }
 } elseif ($Stage -eq 'Installed') {
     $buildFile = Join-Path $Directory 'BUILD-INFO.txt'
@@ -132,6 +143,11 @@ if ($Stage -eq 'Before') {
     if (!(Test-Path -LiteralPath (Join-Path $Directory 'sidraviamgr.exe')) -or $registration.Count -ne 1 -or $registration[0].InstallLocation.TrimEnd('\') -ine $Directory) { Result 'Installation' 'FAIL' 'Expected manager and matching AppId installation location.' } else { Result 'Installation' 'PASS' 'Files and registration observed.' }
     $payloadBad = @(Payload-Mismatches $payload $target)
     if ($payloadBad.Count) { Result 'CandidatePayload' 'FAIL' 'Manifest payload missing or hash mismatch.' } else { Result 'CandidatePayload' 'PASS' 'All manifest payload files and hashes match.' }
+    if ($keepOnly) {
+        if (!(Existing-FilesMatch @($baseline.Data) $data)) { Result 'PreexistingDataPreserved' 'FAIL' 'Existing user data changed since Before; stop and preserve evidence.' }
+        elseif (@($baseline.Data | Where-Object Kind -eq 'File').Count -eq 0) { Result 'PreexistingDataPreserved' 'SKIP' 'No existing user files to protect.' }
+        else { Result 'PreexistingDataPreserved' 'PASS' 'All files observed before installation retained their bytes; new test namespace files are allowed.' }
+    }
     Result 'IntegrationChoices' 'MANUAL' 'Compare task action, PATH delta and shortcuts with selected installer options. Actual login/startup remains manual.'
 } else {
     foreach ($pair in @(@('AppId',$registration.Count),@('SharedTask',$tasks.Count),@('Shortcuts',$shortcuts.Count),@('ProductProcesses',$processes.Count))) {
@@ -143,6 +159,9 @@ if ($Stage -eq 'Before') {
     $installed = Get-Content -Raw -LiteralPath $installedPath | ConvertFrom-Json
     if ($installed.Schema -ne 1 -or $installed.Stage -cne 'Installed' -or $installed.Directory -ine $Directory -or $installed.Namespace -cne $Namespace -or $installed.ExpectedBuildID -cne $ExpectedBuildID -or $installed.ManifestHash -cne $manifestHash -or $installed.User -cne $baseline.User) {
         throw 'Installed checkpoint identity/manifest mismatch.'
+    }
+    if ($keepOnly -and (!(Existing-FilesMatch @($baseline.Data) @($installed.Data)) -or !(Existing-FilesMatch @($baseline.Data) $data))) {
+        Result 'PreexistingDataPreserved' 'FAIL' 'Existing user data changed since Before; cleanup success cannot override this failure.'
     }
     if (@($installed.Results | Where-Object { $_.Status -in @('FAIL','BLOCK') }).Count) {
         Result 'InstallationWasVerified' 'FAIL' 'Installed checkpoint failed; cleanup checks do not prove a complete installation cycle.'
@@ -174,7 +193,7 @@ if ($Stage -eq 'Before') {
 # Exact token sequence delta, retaining duplicates and empty PATH elements.
 $beforeTokens = @(); if ($null -ne $baseline -and $baseline.PathExists) { $beforeTokens = @(([string]$baseline.UserPath).Split(';')) }
 $tokens = @(); if ($pathExists) { $tokens = @($path.Split(';')) }
-$snapshot = [ordered]@{Schema=1;ExpectedBuildID=$ExpectedBuildID;ManifestHash=$manifestHash;Stage=$Stage;Time=(Get-Date).ToString('o');User=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Directory=$Directory;Namespace=$Namespace;PathExists=$pathExists;UserPath=$path;PathKind=$pathKind;BeforePathTokens=$beforeTokens;CurrentPathTokens=$tokens;Registration=$registration;Tasks=$tasks;Shortcuts=$shortcuts;Processes=$processes;Target=$target;Data=$data;NamespaceData=$ns;Results=$results.ToArray()}
+$snapshot = [ordered]@{Schema=1;ExpectedBuildID=$ExpectedBuildID;ManifestHash=$manifestHash;Stage=$Stage;KeepDataOnly=$keepOnly;Time=(Get-Date).ToString('o');User=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Directory=$Directory;Namespace=$Namespace;PathExists=$pathExists;UserPath=$path;PathKind=$pathKind;BeforePathTokens=$beforeTokens;CurrentPathTokens=$tokens;Registration=$registration;Tasks=$tasks;Shortcuts=$shortcuts;Processes=$processes;Target=$target;Data=$data;NamespaceData=$ns;Results=$results.ToArray()}
 $snapshot | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $out -Encoding UTF8
 $results | Format-Table -AutoSize
 Write-Host "Evidence: $out (contains file names/hashes and user PATH; review before sharing)"
