@@ -22,8 +22,10 @@ function Assert-SafePath([string]$Path) {
     }
 }
 function Inventory([string]$Root) {
-    Assert-SafePath $Root
+    # An absent shortcut has no content to inventory. Its shell-owned parent
+    # may be a OneDrive reparse directory; never enumerate that parent.
     if (!(Test-Path -LiteralPath $Root)) { return }
+    Assert-SafePath $Root
     $stack = New-Object 'Collections.Generic.Stack[string]'
     $stack.Push($Root)
     $count = 0

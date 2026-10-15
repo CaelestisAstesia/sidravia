@@ -43,6 +43,7 @@ try {
     $refused=$false
     try { @(Inventory $link) | Out-Null } catch { $refused=$true }
     if (!$refused) { throw 'Junction not refused.' }
+    if (@(Inventory (Join-Path $link 'absent-shortcut.lnk')).Count) { throw 'Absent linked-parent path has content.' }
     # Remove only the exact junction created by this test; never recursively follow it.
     [IO.Directory]::Delete($link)
     Write-Output 'PASS: PS5.1 inventory stability/change/absent/reparse, missing payload and unknown-file contracts.'
