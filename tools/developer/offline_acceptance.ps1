@@ -174,7 +174,7 @@ if ($Stage -eq 'Before') {
 # Exact token sequence delta, retaining duplicates and empty PATH elements.
 $beforeTokens = @(); if ($null -ne $baseline -and $baseline.PathExists) { $beforeTokens = @(([string]$baseline.UserPath).Split(';')) }
 $tokens = @(); if ($pathExists) { $tokens = @($path.Split(';')) }
-$snapshot = [ordered]@{Schema=1;ExpectedBuildID=$ExpectedBuildID;ManifestHash=$manifestHash;Stage=$Stage;Time=(Get-Date).ToString('o');User=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Directory=$Directory;Namespace=$Namespace;PathExists=$pathExists;UserPath=$path;PathKind=$pathKind;BeforePathTokens=$beforeTokens;CurrentPathTokens=$tokens;Registration=$registration;Tasks=$tasks;Shortcuts=$shortcuts;Processes=$processes;Target=$target;Data=$data;NamespaceData=$ns;Results=@($results)}
+$snapshot = [ordered]@{Schema=1;ExpectedBuildID=$ExpectedBuildID;ManifestHash=$manifestHash;Stage=$Stage;Time=(Get-Date).ToString('o');User=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Directory=$Directory;Namespace=$Namespace;PathExists=$pathExists;UserPath=$path;PathKind=$pathKind;BeforePathTokens=$beforeTokens;CurrentPathTokens=$tokens;Registration=$registration;Tasks=$tasks;Shortcuts=$shortcuts;Processes=$processes;Target=$target;Data=$data;NamespaceData=$ns;Results=$results.ToArray()}
 $snapshot | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $out -Encoding UTF8
 $results | Format-Table -AutoSize
 Write-Host "Evidence: $out (contains file names/hashes and user PATH; review before sharing)"

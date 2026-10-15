@@ -9,6 +9,14 @@ foreach ($name in @('Assert-SafePath','Inventory','Equal-Json','Same-Inventory',
     $node=$ast.Find({param($a) $a -is [Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq $name},$true)
     . ([scriptblock]::Create($node.Extent.Text))
 }
+# Evaluate the production Results expression on PS5.1: @($genericList)
+# can throw before evidence is saved, even when all inventory checks succeeded.
+$results=New-Object 'Collections.Generic.List[object]'
+$results.Add([pscustomobject]@{Check='fixture';Status='BLOCK';Detail='fixture'})
+$snapshotNode=$ast.Find({param($a) $a -is [Management.Automation.Language.HashtableAst] -and $a.Extent.Text.StartsWith('@{Schema=1;ExpectedBuildID=')},$true)
+$resultEntry=@($snapshotNode.KeyValuePairs | Where-Object { $_.Item1.Value -eq 'Results' })[0]
+$savedResults=. ([scriptblock]::Create($resultEntry.Item2.Extent.Text))
+if (@($savedResults).Count -ne 1 -or $savedResults.Status -ne 'BLOCK') { throw 'Evidence result serialization failed.' }
 $root=Join-Path ([IO.Path]::GetTempPath()) ('sidravia-offline-test-'+[guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $root | Out-Null
