@@ -36,3 +36,46 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local development reports and generated visual comparisons
+/gui/test/candidates/capture-environment.json
+/gui/test/candidates/difference.png
+/gui/test/candidates/geometry-comparison.md
+/gui/test/candidates/overlay.png
+/gui/test/candidates/reference-window.png
+/gui/test/candidates/verification-report.md
+/gui/test/goldens/capture-environment.json
+/gui/test/goldens/visual-differences.md
+/gui/tool/demo_evidence.md
+/gui/tool/evidence/general-frontend-20261005/comparison.json
+/gui/tool/evidence/general-frontend-20261005/dark-blocked_by_error-flutter.png
+/gui/tool/evidence/general-frontend-20261005/light-authenticated-difference.png
+/gui/tool/evidence/general-frontend-20261005/light-authenticated-flutter.png
+/gui/tool/evidence/general-frontend-20261005/light-authenticated-overlay.png
+/gui/tool/evidence/general-frontend-20261005/light-authenticated-reference.png
+/gui/tool/evidence/general-frontend-20261005/light-settings-flutter.png
+/gui/tool/evidence/general-frontend-20261005/measurements.md
+/gui/tool/general-frontend-report.md
+/gui/tool/r5-evidence/comparison.json
+/gui/tool/r5-evidence/content-candidate.png
+/gui/tool/r5-evidence/frame-candidate.png
+/gui/tool/r5-evidence/r4-r5-difference.png
+/gui/tool/r5-evidence/r4-r5-overlay.png
+/gui/tool/r5-window-report.md
+/gui/tool/r51-evidence/android.png
+/gui/tool/r51-evidence/baseline-geometry.json
+/gui/tool/r51-evidence/default-pixel-comparison.json
+/gui/tool/r51-evidence/ios.png
+/gui/tool/r51-evidence/keyboard.png
+/gui/tool/r51-evidence/landscape.png
+/gui/tool/r51-evidence/pc.png
+/gui/tool/r51-evidence/updated-geometry.json
+/gui/tool/r51-report.md
+/gui/tool/r6-report.md
+/gui/tool/selector-centering-report.md
+/gui/tool/settings-evidence/persistence.json
+/gui/tool/settings-evidence/settings-dark.png
+/gui/tool/settings-evidence/settings-light.png
+/gui/tool/settings-report.md
+/gui/tool/window-edge-report.md
+/gui/tool/window-round-report.md
