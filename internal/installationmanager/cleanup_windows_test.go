@@ -14,7 +14,7 @@ import (
 func TestDataDeletionRejectsJunctionAncestry(t *testing.T) {
 	for _, redirected := range []string{"config", "cache", "logs"} {
 		t.Run(redirected, func(t *testing.T) {
-			root := t.TempDir()
+			root := dataTempDir(t)
 			config, cache := filepath.Join(root, "config"), filepath.Join(root, "cache")
 			outside := filepath.Join(root, "outside")
 			junction := map[string]string{"config": config, "cache": cache, "logs": filepath.Join(cache, "logs")}[redirected]
