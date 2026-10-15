@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shlex
 import subprocess
@@ -49,6 +50,7 @@ def main() -> int:
                     build_dir=build_dir,
                     base_env=base_env,
                     mode=args.go_checks,
+                    jobs=args.jobs,
                 )
                 results.extend(go_results)
 
@@ -84,6 +86,8 @@ def parse_args() -> argparse.Namespace:
         "--go-checks", choices=["full", "native", "cross"], default="full",
         help="Go stages to run (default: full; cross checks compile but do not execute)",
     )
+    parser.add_argument("--jobs", type=int, choices=range(1, 5), default=1,
+                        help="Concurrent cross builds (1-4; default: 1)")
     return parser.parse_args()
 
 
@@ -194,10 +198,11 @@ def run_go_checks(
     build_dir: Path,
     base_env: dict[str, str],
     mode: str = "full",
+    jobs: int = 1,
 ) -> list[CheckResult]:
     """Run all Go checks and return their results."""
     if mode == "cross":
-        return run_cross_checks(repo_root, go_executable, build_dir, base_env)
+        return run_cross_checks(repo_root, go_executable, build_dir, base_env, jobs)
     results: list[CheckResult] = []
 
     # 1. git ls-files *.go
@@ -262,15 +267,16 @@ def run_go_checks(
     results.append(run_and_print(diff_check, repo_root, base_env))
 
     if mode == "full":
-        results.extend(run_cross_checks(repo_root, go_executable, build_dir, base_env))
+        results.extend(run_cross_checks(repo_root, go_executable, build_dir, base_env, jobs))
     return results
 
 
 def run_cross_checks(
     repo_root: Path, go_executable: str, build_dir: Path, base_env: dict[str, str],
+    jobs: int = 1,
 ) -> list[CheckResult]:
     """Compile target-specific code once; these binaries are not executed."""
-    results: list[CheckResult] = []
+    checks: list[Check] = []
     # Three Windows amd64 production cross-builds
     for binary_name, cmd_path in [
         ("sidraviactl.exe", "./cmd/sidravia"),
@@ -285,7 +291,7 @@ def run_cross_checks(
                 "CGO_ENABLED": "0",
             },
         )
-        results.append(run_and_print(build_check, repo_root, base_env))
+        checks.append(build_check)
 
     # Cross-compile platform-specific test packages. The resulting
     # binaries are only compiler evidence; native execution stays in hosted CI.
@@ -329,9 +335,12 @@ def run_cross_checks(
                 "CGO_ENABLED": "0",
             },
         )
-        results.append(run_and_print(test_compile_check, repo_root, base_env))
+        checks.append(test_compile_check)
 
-    return results
+    if jobs == 1:
+        return [run_and_print(check, repo_root, base_env) for check in checks]
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        return list(pool.map(lambda check: run_and_print(check, repo_root, base_env), checks))
 
 
 def build_python_checks(

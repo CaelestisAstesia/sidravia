@@ -790,6 +790,7 @@ class TestCodeQuality(unittest.TestCase):
         allowed_imports = {
             "argparse",
             "contextlib",
+            "concurrent",
             "os",
             "shlex",
             "subprocess",
