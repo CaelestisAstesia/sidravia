@@ -1,8 +1,8 @@
 # 开发指南
 
-本文面向修改代码、验证和构建发行包的开发者。日常 GUI 使用见[使用指南](guide.md)，ctl 操作见[高级使用](advance.md)。
+本文面向修改代码、验证和构建发行包的开发者。日常 GUI 使用见[使用指南](guide.md)，CTL 操作见[命令行高级使用](advance.md)。
 
-后台、ctl 和 Windows 维护工具使用 Go，GUI 使用 Flutter。Windows 是主要交付平台，Linux 提供共享核心的命令行与便携归档。先理解[架构中的状态归属](architecture.md)，再按改动范围选择验证。
+后台、CTL 和 Windows 维护工具使用 Go，GUI 使用 Flutter。Windows 是主要交付平台，Linux 提供共享核心的命令行与便携归档。先理解[架构中的状态归属](architecture.md)，再按改动范围选择验证。
 
 ## 工具与验证入口
 
@@ -41,8 +41,10 @@ python3 tools/developer/dev.py windows --package --windows-python 'C:\Python314\
 该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包：
 
 ```bash
-python3 tools/developer/dev.py package --version 0.3.0-alpha.1 --output dist
+python3 tools/developer/dev.py package --version 0.3.0-alpha.1 --output dist/linux-amd64
 ```
+
+同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。ARM64 仅提供核心便携包，Windows 核心包包含 MGR；GUI 和安装程序仅提供 Windows AMD64。交叉编译和包检查不代表已通过 ARM64 实机验证。
 
 输出目录的父目录需存在。以上入口不会安装程序、启动 GUI、真实认证、签名或发布。包内容、哈希与 help smoke 检查也不能代替实际安装和网络验证。
 

@@ -1,18 +1,36 @@
 # Windows 维护工具（MGR）
 
-`sidraviamgr.exe`（下文简称 MGR）负责 Windows 当前用户的 PATH、登录自启及安装卸载维护。它每次执行一项操作后退出，不拥有认证会话。日常认证使用 [CTL](advance.md)；普通卸载通过 Windows 应用列表启动安装器的卸载程序。
+`sidraviamgr.exe`（下文简称 **MGR**）负责 Windows 当前用户范围的 PATH、登录自启及卸载准备，也提供显式删除已保存数据的操作。它每次执行一项操作后退出，不管理认证会话。
 
-本文对应 `v0.3.0-alpha.1` 的全部九项 MGR 操作。MGR 仅实现 Windows 能力，Linux Core 包不提供它；在非 Windows 编译运行时，实际操作返回 `unsupported`。帮助查看不依赖 Windows 系统集成。
+日常连接与配置使用 GUI 或 [CTL](advance.md)；普通安装版卸载从 Windows 应用列表进行。仅在需要命令行维护、排查系统集成或执行特定清理时，使用本页命令。
+
+本文对应 `v0.3.0-alpha.1` 的九项 MGR 操作。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 核心包不提供 MGR；非 Windows 构建的实际维护操作返回 `unsupported`，帮助查看不依赖 Windows 系统集成。
 
 ## 调用范围与参数规则
 
-在完整程序目录打开 PowerShell，运行 `./` 的 Windows 写法 `.\sidraviamgr.exe`。操作目标由 **MGR 自身所在目录**确定，不由终端当前目录决定；没有 `--directory`、`--all-users`、`--force` 或自定义账号参数。应使用目标安装或便携目录中的配套 MGR，不要把它单独复制到其他目录执行维护。
+在目标安装或便携目录打开 PowerShell，使用配套的 MGR：
 
-PATH 与计划任务作用于当前 Windows 用户，不需要为正常操作提升权限。MGR 使用当前用户的串行锁协调维护；无法取得锁、无法确认运行进程或系统状态时会返回失败。它不负责启动、强制终止或接管认证后台。系统集成也不等于保存配置中的自动登录开关。
+```powershell
+.\sidraviamgr.exe status
+```
+
+**维护目标由 MGR 自身所在目录确定，不由终端当前目录决定。** 不要将 MGR 单独复制到其他目录执行维护。
+
+PATH 与自启任务作用于运行命令的当前 Windows 用户。正常维护无需提升权限，也没有 `--directory`、`--all-users`、`--force` 或指定其他账号的参数。
+
+MGR 使用当前用户的串行锁协调维护。无法取得锁、确认相关进程身份或核实系统状态时，会返回失败；它不会强制终止或接管认证后台。
+
+设置开机自启不等于开启自动登录。需要程序启动后自动认证，还应在保存配置中开启自动登录。
 
 ## 完整命令表
 
-表内操作均不接受额外选项或位置参数。没有参数、`help`、`-h`、`--help` 显示纯文本帮助并成功退出；不支持通用的 `命令 --help` 形式。
+下表列出完整命令路径，各操作不接受额外选项或位置参数。查看帮助可单独运行：
+
+```powershell
+.\sidraviamgr.exe --help
+```
+
+无参数、`help` 和 `-h` 也可显示帮助。**MGR 不支持在具体操作后追加 `--help`**，例如 `path enable --help` 会被视为参数无效。
 
 | 命令 | 作用 | 写入或限制 |
 | --- | --- | --- |
@@ -20,13 +38,15 @@ PATH 与计划任务作用于当前 Windows 用户，不需要为正常操作提
 | `path enable` | 将 MGR 所在目录加入当前用户 PATH | 已存在时不重复添加，写后重新核对 |
 | `path disable` | 从当前用户 PATH 移除匹配本目录的条目 | 保留其他目录，不卸载程序 |
 | `autostart set gui` | 下次登录 Windows 时启动本目录 GUI 到托盘 | 需要同目录 `Sidravia.exe`；不立即启动 GUI |
-| `autostart set daemon` | 下次登录时启动本目录 headless 后台 | 需要同目录 `sidraviactl.exe`；不立即认证 |
+| `autostart set daemon` | 下次登录 Windows 时启动本目录独立后台 | 需要同目录 `sidraviactl.exe`；设置时不立即启动，后台启动后是否认证取决于自动登录配置 |
 | `autostart disable` | 删除已确认归属于本目录和当前用户的自启任务 | 不停止当前程序；不存在任务也可成功 |
-| `uninstall-check` | 检查本目录产品进程及自启任务冲突 | 不移除系统集成或数据；当前帮助文本漏列此已实现命令 |
+| `uninstall-check` | 检查本目录产品进程及自启任务冲突 | 不移除系统集成或数据 |
 | `uninstall-prepare` | 为卸载移除自启，再移除本目录用户 PATH | 要求本目录产品进程退出；不删除程序或账号数据 |
 | `data delete` | 删除当前用户正式布局中的指定产品数据 | **无二次确认，不可自动恢复**；仅支持安装布局，详见下文 |
 
-MGR 没有安装、升级、修复或删除程序二进制的命令，这些工作由安装器承担。CTL 的 `integration` 仅转发上表前六项系统集成操作，不提供后三项卸载与数据操作。
+当前版本的帮助文本漏列了已实现的 `uninstall-check`，本表包含该操作。
+
+MGR 不提供安装、升级、修复或删除程序文件的命令，这些工作由安装器承担。CTL 的 `integration` 仅转发状态查询、PATH 和自启六项操作；卸载检查、卸载准备及数据删除需直接调用 MGR。
 
 ## 查询、PATH 与自启
 
@@ -64,13 +84,13 @@ MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录�
 
 ## 卸载检查与准备
 
-先正常退出本目录的 GUI、daemon 及正在运行的 CTL，再按需调用：
+普通安装版卸载由 Windows 卸载程序调用相应维护步骤，无需先手动运行以下命令。自行排障或准备卸载时，先正常退出本目录的 GUI、独立后台及正在运行的 CTL，再按需检查：
 
 ```powershell
 .\sidraviamgr.exe uninstall-check
 ```
 
-检查成功只说明此刻未检测到阻止条件，不预留卸载资格，也不能证明完整安装卸载已经验收。准备卸载时：
+检查成功只说明此刻未检测到阻止条件，不保证后续不会出现新进程或状态变化。确实准备撤销本目录的自启与 PATH 时，再运行：
 
 ```powershell
 .\sidraviamgr.exe uninstall-prepare
@@ -121,16 +141,22 @@ MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录�
 
 每个结果只反映该操作实际检查的内容，并非完整状态快照。例如自启操作中的 `pathEnabled: false` 不代表 PATH 已禁用。需要综合状态时另调用 `status`。`capabilities` 也不表示每项操作在当前布局和进程状态下都可成功。
 
-PowerShell 脚本应先保存退出码，再解析 JSON：
+PowerShell 脚本应先保存退出码，再解析并核对 JSON；缺失、格式错误或不支持的结构版本均应报错：
 
 ```powershell
 $managerOutput = & .\sidraviamgr.exe status
 $managerExit = $LASTEXITCODE
-$managerResult = $managerOutput | ConvertFrom-Json
-if ($managerExit -ne 0 -or $managerResult.version -ne 1 -or -not $managerResult.ok) {
+try {
+    $managerResult = $managerOutput | ConvertFrom-Json -ErrorAction Stop
+} catch {
+    throw '维护工具未返回有效 JSON，操作结果无法确认'
+}
+if ($null -eq $managerResult -or $managerExit -ne 0 -or $managerResult.version -ne 1 -or -not $managerResult.ok) {
     throw '无法确认 Sidravia 系统集成状态'
 }
-# 另行检查 autostart 是否为 conflict；ok 本身不排除任务冲突。
+if ($managerResult.autostart -eq 'conflict') {
+    throw '存在自启任务冲突，请先核对任务归属'
+}
 $managerResult
 ```
 

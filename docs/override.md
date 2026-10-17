@@ -1,6 +1,6 @@
 # 协议上报覆写（Override）
 
-Sidravia 的 D520 协议实现允许通过 `sidraviactl` 指定部分**认证报文上报字段**与兼容参数。这是面向已知网络环境的高级功能，通常连接网络无需调整这些设置。**GUI 目前没有覆写编辑入口**；如需使用 ctl，请先阅读[命令行与高级使用](advance.md#与-gui-配合使用)。
+Sidravia 的 D520 协议实现允许通过 `sidraviactl` 指定部分**认证报文上报字段**与兼容参数。这是面向已知网络环境的高级功能，通常连接网络无需调整这些设置。**GUI 目前没有覆写编辑入口**；如需使用 CTL，请先阅读[命令行高级使用](advance.md#与-gui-配合使用)。
 
 ## 适用范围与边界
 
@@ -65,7 +65,7 @@ DNS 和 DHCP 字段还拒绝组播及 `255.255.255.255`，但允许 `0.0.0.0`。
 
 ## 一次性使用覆写
 
-在 headless 后台中发起一次认证，并读取指定文件：
+先按[独立后台说明](advance.md#独立后台)启动 `headless` 后台并核对现有会话，再发起一次认证，读取指定文件：
 
 ```powershell
 .\sidraviactl.exe auth start --profile jlu --username '<账号>' --protocol-override-file .\d520-override.json
@@ -87,7 +87,7 @@ DNS 和 DHCP 字段还拒绝组播及 `255.255.255.255`，但允许 `0.0.0.0`。
 
 `config create` 也支持 `--protocol-override-file`。程序保存的是**提交时的文件内容**，不是文件路径的动态引用；之后修改本地文件不会自动更新配置。再次提交会**整体替换**旧覆写，需要保留的字段必须全部包含在新文件里。
 
-清除该配置上的持久覆写，使未覆盖的字段重新采用默认 Profile 或实际主机信息：
+清除该配置上的全部持久覆写，使相关字段重新采用机构 Profile 或实际主机信息：
 
 ```powershell
 .\sidraviactl.exe config update daily --clear-protocol-override
@@ -102,7 +102,7 @@ DNS 和 DHCP 字段还拒绝组播及 `255.255.255.255`，但允许 `0.0.0.0`。
 
 ## 如果更新报错或结果未知
 
-先检查 JSON 编码、字段拼写、长度与大小写。ctl 会检查输入文件格式，后台会校验具体协议字段；**输入校验失败不会替换原配置**。
+先检查 JSON 编码、字段拼写、长度与大小写。CTL 会检查输入文件格式，后台会校验具体协议字段；**输入校验失败不会替换原配置**。
 
 对其他失败，要区分以下情况：
 
@@ -112,4 +112,4 @@ DNS 和 DHCP 字段还拒绝组播及 `255.255.255.255`，但允许 `0.0.0.0`。
 
 实现与校验规则可参阅 [D520 override 源码](../internal/daemon/authentication/protocol/drcom/d520/override.go)。
 
-返回：[命令行与高级使用](advance.md) · [协议支持与适配](protocols.md) · [数据与隐私](privacy.md)
+返回：[命令行高级使用](advance.md) · [协议支持与适配](protocols.md) · [数据与隐私](privacy.md)

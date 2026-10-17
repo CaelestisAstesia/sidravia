@@ -1,10 +1,12 @@
-# 命令行与高级使用
+# 命令行高级使用
 
-Sidravia 除图形界面外，还提供 `sidraviactl` 命令行工具（下文简称 **ctl**），适合一次性认证、多配置、脚本、独立后台及网络诊断。**如果只想通过图形界面连接网络，不需要使用本页命令**；请先阅读[快速开始](quick-start.md)。
+`sidraviactl`（下文简称 **CTL**）提供一次性认证、保存配置、多配置管理、独立后台和网络诊断等功能。日常使用 GUI 连接网络，可直接阅读[快速开始](quick-start.md)和[使用指南](guide.md)。
 
-本页示例基于 `v0.3.0-alpha.1`。Windows 示例假定已在程序目录打开 PowerShell，并使用 `./` 的 Windows 写法 `.\sidraviactl.exe`；如果已加入用户 PATH，可以直接输入 `sidraviactl`。Linux 核心包使用 `./sidraviactl`，不支持 Windows 自启和 PATH 集成命令。
+本页示例基于 `v0.3.0-alpha.1`。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
 
-命令中的 `<configuration-id>`、`<session-id>` 和 `<账号>` 均为占位符，**实际使用时替换内容，不保留尖括号**。交互式输入密码时终端不会回显；不要把密码直接放进命令行参数。
+Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 核心包使用 `./sidraviactl`，不支持 Windows 专用的自启和 PATH 集成功能。
+
+`<configuration-id>`、`<session-id>` 和 `<账号>` 等表示需要替换的内容，实际输入时不保留尖括号。交互式输入密码时不会回显；不要把密码直接写进命令行参数。
 
 [后台与命令副作用](#后台与命令副作用) · [认证参数](#认证启动参数) · [配置参数](#更新密码与删除参数) · [MGR 完整参考](manager.md) · [协议覆写](override.md)
 
@@ -12,55 +14,84 @@ Sidravia 除图形界面外，还提供 `sidraviactl` 命令行工具（下文�
 
 Sidravia 有两种互斥的认证后台模式：
 
-| 模式 | 谁使用 | 运行方式 |
+| 模式 | 使用方 | 生命周期 |
 | --- | --- | --- |
-| **desktop** | Windows GUI | 由图形界面启动、管理；隐藏到托盘时继续运行，真正退出后结束 |
-| **headless** | ctl | 独立运行；一条 ctl 命令结束，并不代表后台及认证立即停止 |
+| `desktop` | GUI | 由 GUI 启动和管理；隐藏到托盘后继续运行，真正退出 GUI 后结束 |
+| `headless` | CTL | 独立运行；单条 CTL 命令执行结束后，后台及认证可以继续运行 |
 
-**不能让 GUI 和 ctl 同时控制同一认证后台。** 从 GUI 改用 ctl 时，先在托盘菜单选择「退出 Sidravia」；从 ctl 改回 GUI 时先执行 `sidraviactl daemon stop`。切换会断开当前连接，先前的 Session ID 也会失效。GUI 正在运行时，ctl 仅允许以 `daemon status` 跨模式检查后台状态，不应尝试跨模式修改认证配置。
+**GUI 和 CTL 不能同时控制同一认证后台。**
 
-GUI 目前只能管理**一份**保存的连接配置。使用 ctl 保存多份配置后，如要返回 GUI，应先确认需要保留哪份；**删除配置同时会删除其中保存的账号和密码**。ctl 保存的协议覆写也会影响以后通过 GUI 使用该配置的连接，但 GUI 不提供覆写编辑界面。
+- **GUI → CTL**：从托盘菜单选择「退出 Sidravia」，再执行 `.\sidraviactl.exe daemon start`。
+- **CTL → GUI**：执行 `.\sidraviactl.exe daemon stop`，再打开 GUI。
+
+切换会断开当前连接，原 Session ID 也会失效。GUI 运行期间，CTL 仅允许通过 `daemon status` 跨模式查询后台状态，其他认证和配置操作应先切换模式。
+
+GUI 目前只管理一份保存的连接配置。使用 CTL 保存多份配置后，如需返回 GUI，请先备份并确认要保留哪份，再决定是否删除其他配置；删除配置会同时删除其中保存的账号与密码。
+
+CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的连接，但 GUI 不提供覆写编辑入口。修改或清除方式见[协议上报覆写](override.md)。
 
 ## 独立后台
+
+启动并查询后台：
 
 ```powershell
 .\sidraviactl.exe daemon start
 .\sidraviactl.exe daemon status
 ```
 
-停止后台（会结束相关认证会话）：
+`daemon status` 用于确认后台状态；命令执行成功不代表已经认证成功。已有保存配置开启自动登录时，启动后台可能自动发起认证。手动连接前，先查看当前会话：
+
+```powershell
+.\sidraviactl.exe auth list
+```
+
+停止后台会结束相关认证会话：
 
 ```powershell
 .\sidraviactl.exe daemon stop
 ```
 
-已有保存配置启用自动登录时，启动后台后可能自动发起认证。建议先执行 `auth list`，确认当前会话，再决定是否手动连接。需要重启后台可以使用 `daemon restart`，但它会中断原连接。
+需要重启时执行：
+
+```powershell
+.\sidraviactl.exe daemon restart
+```
+
+重启会中断当前连接，使旧 Session ID 失效；开启自动登录的配置可能随后重新发起认证。单条 CTL 命令执行结束或关闭终端，不等于停止独立后台。
 
 ## 后台与命令副作用
 
-| 命令 | 后台不存在时 | 对当前认证的影响 |
+| 命令 | 后台不存在时 | 主要行为与影响 |
 | --- | --- | --- |
-| `daemon status` | 查询，不启动 | 只读；可跨 desktop/headless 模式查询 |
-| `daemon start [--log-level LEVEL]` | 启动 headless 后台 | 已有兼容 headless 后台时复用，不强制重启；指定等级不等于热更新已有后台 |
-| `daemon stop` | 已停止也可成功 | 停止 headless 后台及其所有会话 |
-| `daemon restart [--log-level LEVEL]` | 启动 headless 后台 | 已运行时先停止再启动，旧会话失效；配置自动登录可能重新发起认证 |
-| `profile list`、`auth list/status/watch`、`config list/show`、`network interfaces/diagnose`、`diagnostics export` | 报告无法连接，不启动 | 连接已有 headless 后台；导出另会创建本地文件，`--probe` 会主动探测 |
-| `auth start/stop/restart/remove`、`config create/update/set-password/remove` | 可按需启动 headless 后台 | 按具体操作改变会话或配置；即使操作失败，已启动后台及自动登录也可能已生效 |
-| `integration ...` | 不依赖认证后台 | 调用同目录 MGR；读取或修改 Windows 当前用户系统集成 |
-| `help`、公开命令的 `--help` / `-h` | 不启动 | 仅显示帮助 |
+| `daemon status` | 查询，不启动 | 可跨模式查询；执行成功不表示后台在线或认证成功 |
+| `daemon start [--log-level LEVEL]` | 启动独立后台 | 复用已有兼容后台；不会热更新其日志等级；可能触发配置的自动登录 |
+| `daemon stop` | 已停止也可成功 | 停止独立后台及其认证会话 |
+| `daemon restart [--log-level LEVEL]` | 启动独立后台 | 中断已有连接，旧 Session ID 失效；可能重新触发自动登录 |
+| `profile list`、`auth list/status/watch`、`config list/show`、`network interfaces` | 报告无法连接，不启动 | 查询已有独立后台 |
+| `network diagnose` | 报告无法连接，不启动 | 获取诊断结果；使用 `--probe` 时额外发送探测请求 |
+| `diagnostics export` | 报告无法连接，不启动 | 导出诊断到新文件，不覆盖已有文件；不支持 `--probe` |
+| `auth start/stop/restart/remove`、`config create/update/set-password/remove` | 可按需启动独立后台 | 改变会话或配置；操作失败时，后台启动或自动登录仍可能已经发生 |
+| `integration ...` | 不依赖认证后台 | 调用同目录 MGR，读取或修改 Windows 当前用户系统集成 |
+| `help`、公开命令的 `--help` / `-h` | 不启动 | 显示帮助 |
 
-以上操作不会接管 desktop 后台。只读命令也要求相同构建的配套程序。`daemon status` 的退出成功仅表示状态查询完成，不能用退出码 `0` 推断后台一定在线或认证成功。
+除 `daemon status` 外，表中需要连接认证后台的命令均要求 `headless` 模式，不会接管 GUI 使用的 `desktop` 后台。CTL 与后台必须来自同一构建的配套程序。
+
+命令失败不一定意味着没有发生任何操作。遇到启动或执行结果未确认的提示时，请先查询后台、会话或配置状态，再决定是否重试。
 
 ## 一次性认证
 
-在已经启动的 headless 后台中，先列出机构 Profile，然后发起一次认证：
+确认独立后台已启动，并通过 `auth list` 检查是否已有自动登录或其他认证会话，再列出机构配置并发起认证：
 
 ```powershell
 .\sidraviactl.exe profile list
 .\sidraviactl.exe auth start --profile jlu --username '<账号>'
 ```
 
-程序会交互式读取密码。本次会话的账号设置**不会成为一份持久保存的配置**。`auth start` 返回不表示认证已经成功；它可能仍在进行中。使用命令返回的 Session ID 查看结果：
+将 `<账号>` 替换为实际账号，不保留尖括号。程序随后交互式读取密码，输入不会回显。`jlu` 是吉林大学的机构 Profile ID，其他机构应使用 `profile list` 中实际提供的 ID。
+
+本次认证不会创建持久保存的账号配置，但会在当前后台保留会话记录。示例未指定网卡与 IPv4，采用自动选择，通常建议保留此方式。
+
+`auth start` 返回不代表认证已成功。使用返回的 Session ID 查询状态，或持续观察：
 
 ```powershell
 .\sidraviactl.exe auth list
@@ -68,9 +99,9 @@ GUI 目前只能管理**一份**保存的连接配置。使用 ctl 保存多份�
 .\sidraviactl.exe auth watch
 ```
 
-`auth watch` 持续显示最新状态；按 **Ctrl+C** 退出观察，**不会因为退出观察而断开连接**。它也不是完整、持久的事件历史。
+`auth watch` 显示当前状态并持续观察更新；按 Ctrl+C 退出观察不会断开认证。它不提供完整的历史事件记录，通信断开后需要重新运行。
 
-对已有 Session，可以按需使用：
+按需管理已有会话：
 
 ```powershell
 .\sidraviactl.exe auth stop <session-id>
@@ -78,11 +109,15 @@ GUI 目前只能管理**一份**保存的连接配置。使用 ctl 保存多份�
 .\sidraviactl.exe auth remove <session-id>
 ```
 
-`stop` 结束认证但保留会话记录；`remove` 停止并移除该运行记录。两者都**不会删除保存的 Configuration**。
+- `stop`：停止认证，保留会话记录。
+- `restart`：重新发起认证，可能中断当前连接。
+- `remove`：停止认证并移除会话记录。
+
+上述操作不会删除持久保存的账号配置；后台结束后，一次性会话的 Session ID 不再有效。
 
 ## 认证启动参数
 
-`auth start` 有三种互斥形式：
+`auth start` 支持三种互斥形式，每次只能选择一种：
 
 ```text
 sidraviactl auth start --profile PROFILE --username USER [--password-stdin] [--interface-id ID --local-ipv4 IPv4] [--protocol-override-file PATH]
@@ -92,37 +127,49 @@ sidraviactl auth start --session SESSION_ID
 
 | 参数 | 作用与限制 |
 | --- | --- |
-| `--profile PROFILE`、`--username USER` | 一次性认证必填；密码由隐藏提示或 stdin 读取 |
-| `--password-stdin` | 从标准输入读取一行密码；仅用于一次性认证 |
-| `--interface-id ID`、`--local-ipv4 IPv4` | 必须成对使用；省略则自动绑定；仅用于一次性认证 |
-| `--protocol-override-file PATH` | 为一次性会话提供覆写；不保存配置，格式见[覆写参考](override.md) |
-| `--config CONFIGURATION_ID` | 使用已保存配置，启动或确保其会话运行 |
-| `--session SESSION_ID` | 确保当前后台保留的指定会话运行；已处于认证、连接、等待或错误状态时不强制重启 |
+| `--profile PROFILE`、`--username USER` | 使用指定机构和账号发起一次性认证，不创建保存配置 |
+| `--password-stdin` | 从标准输入读取一行密码；仅用于一次性认证，省略时交互式读取 |
+| `--interface-id ID`、`--local-ipv4 IPv4` | 一次性认证的实际网卡绑定，必须成对提供；省略时自动选择 |
+| `--protocol-override-file PATH` | 为一次性会话提供协议上报覆写，不保存为配置；格式见[覆写参考](override.md) |
+| `--config CONFIGURATION_ID` | 使用保存的账号、绑定和覆写，启动或确保对应会话运行 |
+| `--session SESSION_ID` | 确保当前后台保留的会话运行；不会强制重启正在认证、已连接、等待或错误状态的会话 |
 
-`--config` 与 `--session` 不能混用，也不能与一次性认证的账号、密码、网卡或覆写参数混用。一次性认证没有单独的 `--auto-login`、`--auto-reconnect` 或 `--automatic-binding` 参数。`--profile`、`--username`、`--config`、`--session` 使用空格分隔值；不要套用创建配置的布尔开关写法。
+`--config` 与 `--session` 不能混用，也不能附加一次性认证的账号、密码、网卡或覆写参数。需要修改保存配置时，应使用 `config` 命令。
 
-`auth list` 列出当前后台保留的全部会话；`auth status ID` 查询一条公开快照；`auth watch` 显示初始状态并持续观察会话和网络，通信断开后需重新运行。它可能合并更新，不保证逐条事件历史。
+一次性认证不提供 `--auto-login`、`--auto-reconnect` 或 `--automatic-binding` 参数。通常省略网卡绑定参数，使用自动选择；手动绑定的限制见[指定网卡](#指定网卡)。
 
-`auth stop ID` 停止并保留记录；`auth start --session ID` 可恢复已停止会话；`auth restart ID` 则明确发起一次重启，包括对失败或等待中的会话重新尝试。`auth remove ID` 停止并删除运行记录。这些操作不删除持久配置；它们成功返回也不代表认证已经完成。
+参数名后的 `PROFILE`、`USER`、`CONFIGURATION_ID`、`SESSION_ID` 等都是待替换值，使用空格与参数名分隔。
+
+`auth start --session ID` 可恢复已停止且仍被后台保留的会话；需要明确重新尝试失败或等待中的认证时，使用 `auth restart ID`。命令返回成功不等于认证完成，仍需通过 `auth status ID` 或 `auth watch` 确认结果。
 
 ## 保存配置
 
-交互式创建配置：
+交互式创建配置，按提示填写机构、账号、密码和连接偏好：
 
 ```powershell
 .\sidraviactl.exe config create
+```
+
+查看已保存配置：
+
+```powershell
 .\sidraviactl.exe config list
 .\sidraviactl.exe config show <configuration-id>
+```
+
+`config list` 和 `config show` 显示公开配置信息，不回显密码。需要认证时，使用配置 ID 启动：
+
+```powershell
 .\sidraviactl.exe auth start --config <configuration-id>
 ```
 
-创建配置本身不会立即认证；`auth start --config` 才会启动或确保该配置对应的会话运行。
+创建配置本身不会立即发起该配置的认证。不过，配置命令可能按需启动后台，已有配置的自动登录仍可能发生，详见[后台与命令副作用](#后台与命令副作用)。
 
-- **Configuration ID** 是持久配置标识，程序重启后仍存在，不能通过 `config update` 修改。
-- **Session ID** 是当前后台中的运行标识，后台结束后不再有效。
-- ctl 可以保存多份配置，但**同一后台同时最多有一个活动认证会话**；只有一份配置可开启自动登录。
+- **Configuration ID**：持久保存的配置标识，程序重启后仍存在，不能通过 `config update` 修改。
+- **Session ID**：当前后台中的认证会话标识，后台结束后失效，不能替代 Configuration ID。
+- CTL 可保存多份配置，但同一后台同时最多只有一个活动认证会话，且最多只有一份配置开启自动登录。
 
-修改现有配置：
+按需修改自动连接偏好或密码：
 
 ```powershell
 .\sidraviactl.exe config update <configuration-id> --auto-login true
@@ -130,13 +177,15 @@ sidraviactl auth start --session SESSION_ID
 .\sidraviactl.exe config set-password <configuration-id>
 ```
 
-注意 `config update` 的 `--auto-login` 和 `--auto-reconnect` 要明确给出 `true` 或 `false`；自动登录不会因为刚打开开关就立即认证。更改自动重连设置要到下一次连接才生效。
+`config update` 的 `--auto-login` 和 `--auto-reconnect` 必须明确提供 `true` 或 `false`。开启自动登录不会立即认证；自动重连修改在下次连接时生效。
 
-**变更认证输入可能终止旧会话。** 账号、机构、网卡绑定或协议覆写实际变化后，旧的认证 Session 会退役，需按需重新连接；即使输入相同的新密码，调用 `set-password` 也会清理旧会话。单独调整显示名称或自动连接偏好，不会因此立即替换当前认证会话。
+**修改认证输入可能结束旧会话。** 账号、机构、网卡绑定或协议覆写实际变化后，旧会话会退役，需要重新连接；调用 `set-password` 即使输入相同密码，也会清理旧会话。仅修改显示名称或自动连接偏好，不会立即替换当前会话。
+
+配置含明文密码，保存与备份前请了解[数据与隐私](privacy.md#账号与密码)。
 
 ## 创建参数、脚本与多配置
 
-可以指定 ID、机构、账号和显示名称，仍以交互方式输入密码：
+以下示例创建 ID 为 `daily` 的配置，指定机构、账号、显示名称和自动连接偏好；密码仍通过隐藏提示输入。`daily` 是示例配置 ID，后续命令应替换为实际 ID。
 
 ```powershell
 .\sidraviactl.exe config create --id daily --profile jlu --username '<账号>' --name '日常连接' --auto-login=false --auto-reconnect=true
@@ -149,19 +198,23 @@ sidraviactl auth start --session SESSION_ID
 | `--username USER` | 认证账号；非交互创建必填 |
 | `--name NAME` | 可选显示名称 |
 | `--password-stdin` | 从标准输入读取密码，供非交互调用 |
-| `--auto-login[=true\|false]` | 创建时默认 `false` |
-| `--auto-reconnect[=true\|false]` | 创建时默认 `true` |
+| `--auto-login[=true\|false]` | 非交互创建省略时为 `false`；交互创建未指定时会询问 |
+| `--auto-reconnect[=true\|false]` | 非交互创建省略时为 `true`；交互创建未指定时会询问 |
 | `--interface-id ID` 与 `--local-ipv4 IPv4` | 必须成对使用，指定实际网络绑定；未提供时可自动选择 |
 | `--protocol-override-file PATH` | 保存[协议上报覆写](override.md) |
 | `--allow-insecure-storage` | 明确允许在存储保护不足时继续；**不会加密或修复文件权限** |
 
-交互创建时，未显式提供的自动登录、自动重连偏好会询问用户；未提供绑定参数时会进入网卡选择，允许自动绑定或选择已观察的接口与 IPv4。非交互创建省略绑定参数则自动选择。创建没有 `--automatic-binding` 或 `--clear-protocol-override` 参数。
+**交互创建**：未提供的配置 ID、机构、账号和自动连接偏好会通过提示补充；未提供绑定参数时，会询问网卡选择，通常建议选择自动绑定。创建命令不提供 `--automatic-binding` 或 `--clear-protocol-override`。
 
-完全非交互式创建必须显式提供 `--id`、`--profile`、`--username` 和 `--password-stdin`。自动化程序应直接启动 ctl，并向其标准输入传入**一行 UTF-8 密码**；不要使用会把密码记录在终端历史中的命令，也不要把凭据提交到仓库。尤其要注意 Windows PowerShell 5.1 的默认管道编码可能改写非 ASCII 输入。
+**脚本创建**：完全非交互调用必须提供 `--id`、`--profile`、`--username` 和 `--password-stdin`。省略绑定参数时自动选择网卡；建议显式指定自动登录和自动重连偏好，让脚本行为清楚可见。
 
-从 stdin 读取的密码上限是 **4096 字节**，结尾 LF 或 CRLF 会被移除。D520 账号严格按 GBK 编码后最多 **36 字节**；账号、密码及主机文本不接受 NUL 或 GBK 无法表示的字符。字节上限不等于字符数上限。
+自动化程序应通过标准输入传入一行 UTF-8 密码，不要将密码直接写入命令行参数、终端历史或公开脚本。Windows PowerShell 5.1 的默认管道编码可能改变非 ASCII 字符，使用时应确认传入编码。
 
-更新公开字段示例：
+**输入限制**：标准输入密码上限为 4096 字节，末尾的 LF 或 CRLF 会被移除。这是输入通道限制，不代表协议支持任意同等长度的密码。D520 账号按严格 GBK 编码后最多 36 字节；账号、密码及主机文本不接受 NUL 或 GBK 无法表示的字符。字节数不等于字符数。
+
+## 更新密码与删除参数
+
+常用更新示例：
 
 ```powershell
 .\sidraviactl.exe config update daily --name '宿舍连接' --username '<新账号>'
@@ -169,15 +222,7 @@ sidraviactl auth start --session SESSION_ID
 .\sidraviactl.exe config set-password daily
 ```
 
-删除配置时会要求确认，且会结束关联的会话：
-
-```powershell
-.\sidraviactl.exe config remove daily
-```
-
-在明确知道目标及后果的脚本中可以加 `--yes` 跳过确认。**`config remove` 删除持久配置及凭据，`auth remove` 只移除运行会话**，两者不可混淆。
-
-## 更新密码与删除参数
+完整语法：
 
 ```text
 sidraviactl config update ID [--name NAME] [--profile PROFILE] [--username USER] [--auto-login true|false] [--auto-reconnect true|false] [--interface-id ID --local-ipv4 IPv4 | --automatic-binding] [--protocol-override-file PATH | --clear-protocol-override] [--allow-insecure-storage]
@@ -198,79 +243,143 @@ sidraviactl config remove ID [--yes] [--allow-insecure-storage]
 | `--clear-protocol-override` | 清除覆写，不接受 `=false` |
 | `--allow-insecure-storage` | 在存储保护不足时明确同意操作，不修复权限、不启用加密 |
 
-不提供待更新字段的 `config update ID` 会进入交互式**显示名称**修改：空输入表示保留，`-` 表示清除。它不是所有字段的逐项向导；没有实际更新项会报错。省略的字段和密码保持原值，配置 ID 不可更改。
+**省略字段**：未指定的字段保持原值，密码通过 `set-password` 单独修改，配置 ID 不可更改。单独运行 `config update ID` 只会进入显示名称修改，不是所有字段的逐项向导；空输入表示保留，`-` 表示清除，没有实际更新项时会报错。脚本更新必须明确提供至少一个更新项。
 
-`config set-password ID --password-stdin` 从 stdin 读取新密码；非交互调用必需。`config remove ID --yes` 跳过删除确认；非交互调用需显式确认。两者也支持 `--allow-insecure-storage`，`--yes` 不替代存储保护同意。创建、更新、改密码和删除均可使用存储保护选项；不要因为遇到错误就自动加上它。
+**修改密码**：`config set-password ID` 交互式读取新密码；非交互调用必须使用 `--password-stdin`。改密码会清理关联旧会话，即使输入与原来相同的密码，也需要按需重新连接。
 
-`config list` / `show ID` 返回公开配置信息，不回显密码或原始覆写。输入校验失败不会替换配置；但保存后旧会话清理失败、通信中断、输出失败可能发生在操作已生效之后。先核对配置和会话，不能把所有非零退出都当作“未保存”。
+**删除配置**：`config remove ID` 会要求确认，删除持久配置及其中的账号密码，并结束关联会话。脚本使用 `--yes` 明确确认删除；它与只移除运行会话的 `auth remove ID` 不同。
+
+```powershell
+.\sidraviactl.exe config remove daily
+```
+
+**存储保护与操作结果**：创建、更新、改密码和删除均支持 `--allow-insecure-storage`，该选项不会加密密码或修复权限，删除确认的 `--yes` 也不能替代存储保护同意。不要遇到错误就自动追加这些选项。
+
+输入校验失败不会替换配置，但保存后的会话清理失败、通信中断或输出失败，可能发生在修改已生效之后。遇到结果未确认时，先用 `config show ID` 和 `auth list` 核对，再决定是否重试；不要仅凭非零退出码判断「未保存」。
 
 ## 指定网卡
 
-先获取当前后台观察到的网卡与 IPv4：
+**通常建议保留自动选择网卡。** 网络自持机制依赖自动选择来处理接口变化；仅在自动选择未选中认证网络，或明确需要固定接口时，使用手动绑定。
+
+在已有独立后台中，查询当前观察到的网卡与 IPv4：
 
 ```powershell
 .\sidraviactl.exe network interfaces
 ```
 
-明确选择同一接口上的接口 ID 和 IPv4：
+从输出中选择同一接口下当前可绑定的接口 ID 和 IPv4；也可以参考输出提供的 PowerShell 绑定参数。列表是已观察到的状态，实际使用时仍会重新检查绑定是否可用。
 
 ```powershell
 .\sidraviactl.exe config update <configuration-id> --interface-id '<接口ID>' --local-ipv4 '<IPv4>'
 ```
 
-恢复自动选择：
+绑定实际发生变化后，关联旧会话会退役，需要按需重新连接。恢复自动选择：
 
 ```powershell
 .\sidraviactl.exe config update <configuration-id> --automatic-binding
 ```
 
-一次性认证也支持同时提供 `--interface-id` 与 `--local-ipv4`。**手动绑定不可用时程序会等待该绑定，不会悄悄回退到其他网卡。** 请勿把协议上报的 IPv4 覆写误认为真实 socket 绑定。
+一次性认证也支持成对提供 `--interface-id` 与 `--local-ipv4`；省略时自动选择。
+
+**手动绑定不可用时，程序会等待其恢复，不会自动切换到其他网卡或地址。** 更换网络或 IPv4 后，请更新绑定或恢复自动选择。
+
+协议上报 IPv4 覆写只改变认证报文中的字段，不改变实际网卡或 socket 源地址。
 
 ## 诊断与日志
 
+以下查询和导出要求已有独立后台，不会自动启动后台。
+
+**网络诊断**：选择一份保存配置或当前后台保留的会话，检查认证目标及本机路由：
+
 ```powershell
 .\sidraviactl.exe network diagnose --config <configuration-id>
+.\sidraviactl.exe network diagnose --session <session-id>
+```
+
+`--config` 与 `--session` 必须且只能提供一个。需要额外发送有限 IP 探测请求时，加上 `--probe`：
+
+```powershell
 .\sidraviactl.exe network diagnose --config <configuration-id> --probe
+```
+
+诊断命令成功或探测收到回复，都不代表认证及互联网访问已经成功，仍需结合会话状态和实际网页访问判断。
+
+**诊断导出**：将诊断摘要写入新文件：
+
+```powershell
 .\sidraviactl.exe diagnostics export --output .\sidravia-diagnostics.json
 ```
 
-`network diagnose` 也支持 `--session <session-id>`，但 `--config` 与 `--session` 必须二选一。`--probe` 发起有限的 IP 探测；即使返回成功，也**不代表认证或互联网访问已成功**。
+`--output PATH` 必填，父目录必须已存在，目标文件必须尚不存在。导出不覆盖已有文件，也不支持 `--probe`。
 
-`diagnostics export` 的 `--output PATH` 必填，父目录需要已存在，目标文件必须**尚不存在**，不会覆盖现有文件。它生成的是有意限制字段的诊断摘要，不包含密码与原始认证报文；分享前仍应检查其中的网络及环境信息。写入失败可能留下不完整文件，提示输出失败也可能发生在文件已完整写入之后；先检查文件再决定重试，并为新导出选用尚不存在的路径。此类只读检查要求已有 headless 后台，不会代你启动新的后台。
+导出摘要不含密码或原始认证报文，分享前仍应检查网络和环境信息。写入失败可能留下不完整文件；完成提示输出失败时，文件也可能已经完整写入。请先检查实际文件，重新导出时使用尚不存在的路径。
 
-调整独立后台日志等级：
+**日志等级**：独立后台支持 `info`、`debug`、`trace`，默认使用 `debug`。启动时可指定：
 
 ```powershell
 .\sidraviactl.exe daemon start --log-level debug
+```
+
+已有兼容后台时，`daemon start` 会复用它，不会热更新日志等级。需要更改运行中后台的等级时，显式重启：
+
+```powershell
 .\sidraviactl.exe daemon restart --log-level info
 ```
 
-可用等级为 `info`、`debug`、`trace`，默认是 `debug`。重启会中断现有会话；`trace` 可能记录完整认证报文，只应短时间用于受控排障，**不要直接公开日志**。详见[数据与隐私](privacy.md)。
+重启会中断当前连接，使旧 Session ID 失效。`trace` 可能记录完整认证报文，仅在排障需要时开启；结束后恢复原日志等级并重启后台。降低等级不会删除已有 TRACE 日志，分享前请阅读[数据与隐私](privacy.md#日志与诊断)。
 
 ## Windows 自启与 PATH
 
-现代 Windows 包通过配套的 `sidraviamgr.exe` 维护**当前 Windows 用户**范围的系统集成。用 ctl 查询、配置：
+Windows 包通过同目录的 `sidraviamgr.exe`（MGR）维护当前 Windows 用户的系统集成。CTL 的 `integration` 命令转交 MGR 执行，不要求认证后台已启动。请使用完整程序包中的配套工具。
+
+**查询状态：**
 
 ```powershell
 .\sidraviactl.exe integration status
+```
+
+**用户 PATH**：按需选择启用或撤销，不必依次执行：
+
+```powershell
 .\sidraviactl.exe integration path enable
 .\sidraviactl.exe integration path disable
+```
+
+启用后，新打开的终端可以直接使用命令；已有终端不会自动更新环境，请重新打开。
+
+**开机自启**：按需选择一种模式，或关闭自启：
+
+```powershell
 .\sidraviactl.exe integration autostart set gui
 .\sidraviactl.exe integration autostart set daemon
 .\sidraviactl.exe integration autostart disable
 ```
 
-`set gui` 对应「启动到托盘」，`set daemon` 对应「仅后台」，二者只能选一个；自启在**下一次登录 Windows**时生效。PATH 变更后需要重新打开终端。只有具备图形界面组件时才能使用 GUI 自启模式。
+- `set gui`：下次登录 Windows 时启动到托盘，需要同目录包含 GUI 组件。
+- `set daemon`：下次登录 Windows 时仅启动独立后台。
+- `disable`：关闭自启，不代表立即停止当前程序。
 
-系统集成命令以 JSON 返回结果，错误时退出码非零。遇到自启任务冲突，不应覆盖或删除未知的系统任务；先确认原因。Linux 不支持这些 Windows 命令。`integration --help` 在该版本可能不列出所有子命令，以上为实际命令路径。完整的参数、JSON 字段、错误码以及仅 MGR 提供的卸载与数据清理命令，见 [Windows 维护工具（MGR）](manager.md)。
+两种自启模式互斥，设置不会立即启动程序；需要自动认证时，还应在保存配置中开启自动登录。
+
+系统集成操作返回 JSON，失败时退出码非零。发生超时或结果未确认时，先重新查询状态。遇到自启任务冲突，请核实任务归属，不要覆盖或删除未知任务。
+
+Linux 不支持这些 Windows 专用命令。完整参数、返回字段、错误码及 MGR 独有的卸载和数据清理命令，见 [Windows 维护工具](manager.md)。
 
 ## 协议上报覆写
 
-对于明确支持的 D520 上报字段，可以通过 `--protocol-override-file PATH` 传入严格的 JSON 文件。此功能可用于 `auth start` 的一次性认证，或 `config create` / `config update` 的持久配置。
+D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认证报文上报字段及兼容参数。通常连接网络无需修改这些设置；GUI 目前没有覆写编辑入口。
 
-它**不会更改真实网卡、socket 源地址、认证服务器或认证策略**。完整字段、边界和清除操作请阅读[协议上报覆写](override.md)。
+- **一次性认证**：在 `auth start --profile ... --username ...` 中传入覆写文件，仅用于该次会话，不保存为配置。
+- **保存配置**：在 `config create` 或 `config update` 中传入覆写文件，后续使用该配置认证时继续生效，包括通过 GUI 建立的连接。
+- **修改与清除**：`config update <configuration-id> --protocol-override-file PATH` 整体替换原覆写；清除时使用 `config update <configuration-id> --clear-protocol-override`，不会与文件内容逐字段合并。
+
+保存配置中的覆写实际变化后，关联旧会话会退役，需要按需重新连接。
+
+覆写不改变真实网卡、IP、MAC、DNS、路由、socket 源地址、认证服务器或认证策略，也不意味着已支持其他学校或协议变体。文件格式、字段限制和完整操作示例见[协议上报覆写](override.md)。
 
 ## 命令速查
+
+下表按命令组列出常用入口。`ID`、`PROFILE`、`USER`、`PATH` 均需替换为实际值；同一行用 `/` 分隔的项目表示不同命令，不应原样输入。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -278,26 +387,31 @@ sidraviactl config remove ID [--yes] [--allow-insecure-storage]
 | `profile list` | 查看内置机构 Profile |
 | `config list` / `show ID` | 查询已保存配置的公开字段 |
 | `config create` / `update ID` / `set-password ID` / `remove ID` | 配置和凭据管理 |
-| `auth list` / `status ID` / `watch` | 观察认证 Session |
+| `auth list` / `status ID` / `watch` | 查询或持续观察认证会话 |
+| `auth start --profile PROFILE --username USER` | 交互式读取密码，发起不保存账号配置的一次性认证 |
 | `auth start --config ID` / `--session ID` | 从保存配置或已有会话启动认证 |
 | `auth stop ID` / `restart ID` / `remove ID` | 控制、清理会话 |
 | `network interfaces` / `diagnose ...` | 网络观察及诊断 |
-| `diagnostics export --output PATH` | 导出有限的诊断摘要 |
+| `diagnostics export --output PATH` | 将诊断摘要写入新文件 |
 | `integration ...` | Windows 当前用户自启、PATH 管理 |
 | `help [命令路径]` | 查看帮助，不启动后台；也支持公开命令的 `--help`、`-h` |
 
 ## 内部桥接与兼容入口
 
-下列命令存在于 CTL 中，但由同包 GUI 调用，不是通用脚本接口。这里列出边界，避免把它们误认成另一套公开认证命令：
+以下入口用于同包 GUI 与核心之间的内部协作，供开发和排障参考，不作为通用脚本接口。日常认证和自动化请使用前文公开命令；预发布版本可能调整内部契约。
 
 | 内部命令 | 参数与职责 |
 | --- | --- |
 | `gui bootstrap --owner-pid PID [--log-level LEVEL]` | 正整数 PID 必填，绑定 GUI 进程身份，启动或确认 desktop 后台；日志等级省略则采用启动默认行为，显式值仅允许 `info`、`debug`、`trace` |
 | `gui restart --owner-pid PID [--log-level LEVEL]` | 同一 GUI 所有者才能重启 desktop 后台；日志等级默认 `debug`，允许值同上 |
 | `gui open-log-directory` | 无业务参数；Windows 打开当前实例已存在的日志目录，不创建目录、不启动后台 |
-| 旧顶层 `status` | 已退役，只提示改用 `daemon status`，返回失败；不作为兼容查询使用 |
+| 旧顶层 `status` | 已退役，仅提示改用 `daemon status` 并返回失败；旧脚本应更新命令 |
 
-bootstrap/restart 成功向 stdout 输出带 `schemaVersion: 1` 的连接文档，包括 endpoint、**运行 token**、构建、PID、模式和日志等级；这些内容不得公开。bootstrap 系列错误通过 stderr 输出带 `schemaVersion` 与 `error.code/message` 的 JSON，退出码为：`2` 参数无效、`10` 客户端身份无效、`11` 平台不支持、`12` 模式冲突、`13` 构建不兼容、`14` 启动未确认、`15` 启动失败、`16` 输出失败。普通参数解析或打开日志目录失败仍可能走普通 CTL 错误路径。不要依赖隐藏命令帮助发现这些能力。
+`gui bootstrap` 和 `gui restart` 成功时向 stdout 输出 `schemaVersion: 1` 的 JSON 连接文档，包含连接端点、运行 token、产品版本、构建标识、后台 PID、模式和日志等级。**运行 token 属于敏感信息，不要公开输出文档或将其附在问题反馈中。**
+
+进入内部错误契约的失败会向 stderr 输出 JSON，包含 `schemaVersion` 和 `error.code/message`。对应退出码为：`2` 参数无效、`10` 客户端身份无效、`11` 平台不支持、`12` 模式冲突、`13` 构建不兼容、`14` 启动未确认、`15` 启动失败、`16` 输出失败。
+
+并非所有失败都使用该 JSON 契约。命令行解析错误、打开日志目录失败等情况仍可能走普通 CTL 错误路径，不能仅凭调用了内部命令就假定 stderr 一定是 JSON。这些命令在帮助中隐藏，不应依赖帮助枚举发现它们。
 
 ## 帮助与退出结果
 
@@ -309,8 +423,15 @@ bootstrap/restart 成功向 stdout 输出带 `schemaVersion: 1` 的连接文档�
 .\sidraviactl.exe help config update
 .\sidraviactl.exe help auth start
 .\sidraviactl.exe help network diagnose
+.\sidraviactl.exe help integration
 ```
 
-公开命令成功退出码为 `0`，失败（包括用法错误）为 `1`。**通信超时或中断可能导致“结果未知”，不代表后台一定未执行操作。** 先查询配置和会话状态，再决定是否重试。脚本不应依赖普通查询的固定排版；只有明确声明为 JSON 的结果才适合按其结构消费。系统集成的 JSON 在 stdout，失败还可能在 stderr 给出安全错误文本；诊断导出的 JSON 在目标文件中，终端输出是完成提示。当前没有通用 `--json`、`--password`、`--version` 或 shell completion 命令。
+**退出码**：公开命令成功返回 `0`，失败（包括用法错误）返回 `1`。成功仅表示该命令完成，不保证认证成功、网络可用或后台处于某个特定状态；应结合返回内容判断。内部桥接命令的特殊退出码见上一节。
+
+**结果未知**：通信超时或中断不代表后台未执行操作。修改配置、控制会话或调整系统集成后遇到结果未确认，应先查询实际状态，再决定是否重试。
+
+**脚本读取**：普通查询输出用于终端阅读，不保证固定排版。仅对明确声明为 JSON 的结果按结构读取：系统集成 JSON 输出到 stdout，失败时还可能向 stderr 输出错误文本；诊断导出 JSON 写入目标文件，终端只显示完成提示。
+
+**参数边界**：当前版本没有通用 `--json`、`--password`、`--version` 或 shell completion 命令。密码通过隐藏提示或受支持的 `--password-stdin` 传入，具体参数以本机版本帮助为准。
 
 返回：[项目首页](../README.md) · [使用指南](guide.md) · [协议上报覆写](override.md) · [数据与隐私](privacy.md)
