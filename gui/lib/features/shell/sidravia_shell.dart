@@ -9,6 +9,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_controll
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
+import 'package:sidravia_gui/platform/installation_manager.dart';
 
 class SidraviaShell extends StatefulWidget {
   const SidraviaShell({
@@ -18,12 +19,14 @@ class SidraviaShell extends StatefulWidget {
     this.connectionNotifications,
     this.desktopPresence,
     this.onOpenLogDirectory,
+    this.createIntegrationManager,
   });
   final GuiController controller;
   final SchoolAnnouncementController? announcements;
   final ConnectionNotificationController? connectionNotifications;
   final DesktopPresence? desktopPresence;
   final Future<bool> Function()? onOpenLogDirectory;
+  final InstallationManager Function()? createIntegrationManager;
 
   @override
   State<SidraviaShell> createState() => SidraviaShellState();
@@ -113,6 +116,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                   onNavigate: _go,
                 ),
                 AppPage.settings => SettingsPage(
+                  createIntegrationManager: widget.createIntegrationManager,
                   desktopPresence: widget.desktopPresence,
                   controller: widget.controller,
                   onNavigate: _go,

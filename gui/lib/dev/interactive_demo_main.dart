@@ -18,6 +18,7 @@ import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
+import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
@@ -340,6 +341,7 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                 child: SidraviaShell(
                   controller: _controller,
                   announcements: _announcements,
+                  createIntegrationManager: _OfflineInstallationManager.new,
                 ),
               ),
             ],
@@ -348,6 +350,38 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
       ),
     ),
   );
+}
+
+/// In-memory visual preview; never invokes system integration tools.
+class _OfflineInstallationManager implements InstallationManager {
+  bool _pathEnabled = false;
+  String _autostart = 'disabled';
+
+  @override
+  Future<IntegrationStatus> status() async => IntegrationStatus(
+    pathEnabled: _pathEnabled,
+    autostart: _autostart,
+    guiAvailable: true,
+  );
+
+  @override
+  Future<void> change(IntegrationChange change) async {
+    switch (change) {
+      case IntegrationChange.pathEnable:
+        _pathEnabled = true;
+      case IntegrationChange.pathDisable:
+        _pathEnabled = false;
+      case IntegrationChange.startGui:
+        _autostart = 'gui';
+      case IntegrationChange.startDaemon:
+        _autostart = 'daemon';
+      case IntegrationChange.startDisable:
+        _autostart = 'disabled';
+    }
+  }
+
+  @override
+  Future<void> close() async {}
 }
 
 class _OfflineAnnouncementWindow extends SchoolAnnouncementWindow {

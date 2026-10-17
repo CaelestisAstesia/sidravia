@@ -125,7 +125,15 @@ void main() {
       );
       expect(
         tester.getTopLeft(find.text('公告')).dy,
-        lessThan(tester.getTopLeft(find.text('应用')).dy),
+        lessThan(tester.getTopLeft(find.text('常规')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('常规')).dy,
+        lessThan(tester.getTopLeft(find.text('启动与窗口行为')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('启动与窗口行为')).dy,
+        lessThan(tester.getTopLeft(find.text('诊断与更多信息')).dy),
       );
       final back = find.byKey(const ValueKey('design-back-button'));
       final before = tester.getRect(back);
