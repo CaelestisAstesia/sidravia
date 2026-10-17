@@ -1,119 +1,36 @@
 # Sidravia GUI
 
-Sidravia `0.2.0` test-line Flutter visual MVP.
+Sidravia 的 Flutter 桌面界面，当前开发版本为 `0.3.0-alpha.1`，Windows 是主要交付平台。日常操作见[快速开始](../docs/quick-start.md)和[使用指南](../docs/guide.md)。本文只介绍 GUI 开发；统一验证与构建入口见[开发指南](../docs/development.md)。
 
-Windows is the current delivery target. The MVP presents Home, Configuration
-and Settings with a shared responsive navigation model. It bootstraps a
-desktop-owned daemon through the sibling `sidraviactl.exe`, uses typed local
-WebSocket IPC, and exposes one unambiguous Configuration/Session flow. Tray
-presence and explicit exit are implemented; startup and PATH integration are
-not part of this slice.
+GUI 面向单份保存配置的日常连接。协议覆写、一次性认证、多配置和脚本操作保留在 [ctl 高级使用](../docs/advance.md)，本目录不为这些能力提供界面入口。
 
-The application bundles and uses HarmonyOS Sans. Its license is included at
-`assets/fonts/LICENSE.txt` and is available in Settings from Flutter's standard
-license page.
+GUI 通过同包的 `sidraviactl.exe` 启动 desktop 后台，并使用本机 typed WebSocket IPC。账号、凭据、配置和认证状态由后台拥有；窗口、托盘、外观和公告呈现由前端负责。desktop 与独立 headless 模式互斥。
 
-## Desktop presence
+## 原生开发
 
-The Windows runner keeps one per-user GUI presence. A second launch restores
-and foregrounds the existing window instead of starting a second Flutter
-engine or desktop daemon. Title-bar close, Alt+F4 and system-menu Close hide
-the window to the tray; the tray `打开 Sidravia` restores it and the tray
-`退出并断开` performs the only ordinary full exit. That exit submits the
-existing typed `daemon.stop` with a bounded wait before destroying the window,
-and falls back to the desktop owner watcher if the stop or transport fails.
-The tray icon is recreated after an Explorer restart. Only the first entry into
-an actionable blocked state and the first recovery from it produce short
-process-local notifications; all other states, polling revisions and dismissed
-notifications stay silent. Desktop UI, tray or notification failure never
-changes or blocks authentication, polling or announcements.
+使用仓库固定的 Flutter 3.47.0，在 Windows 的本目录运行：
 
-Notifications use `Shell_NotifyIcon` balloon presentation for this unpackaged
-prototype; final identity, toasts and packaging remain GP-03 decisions.
-
-The generated Android runner preserves a future shared-client path; it is not
-an Android build or support claim.
-
-## Announcement feed
-
-The GUI can read versioned announcements from a fixed static HTTPS JSON feed.
-The request goes directly from the Flutter process over HTTPS; it never passes
-through the daemon or local IPC, and it carries no account, token, cookie or
-network state. The endpoint is compile-time only:
-
-```sh
-flutter run -d windows --dart-define=SIDRAVIA_ANNOUNCEMENT_FEED_URL=https://notices.example.edu/feed.json
-```
-
-An empty or invalid value (anything but an absolute `https` URL without
-user-info or fragment) disables the feature entirely: no request is made and
-no announcement surface is shown. Without a configured endpoint the GUI simply
-does not enable announcements. No production endpoint is hosted yet; the
-domain, hosting and content publication are a separate external delivery gate.
-
-The feed is a strict schema-1 document (at most 20 items, at most 65536
-uncompressed response bytes):
-
-```json
-{
-  "schema": 1,
-  "generatedAt": "2026-08-18T08:00:00Z",
-  "items": [
-    {
-      "id": "maintenance-2026-08",
-      "revision": 1,
-      "level": "maintenance",
-      "title": "校园网维护",
-      "body": "8 月 20 日 00:00 至 02:00 期间认证可能中断。",
-      "publishedAt": "2026-08-18T08:00:00Z",
-      "startsAt": "2026-08-18T08:00:00Z",
-      "expiresAt": "2026-08-20T18:00:00Z",
-      "actionLabel": "查看详情",
-      "actionUrl": "https://notices.example.edu/maintenance-2026-08"
-    }
-  ]
-}
-```
-
-`level` is one of `info`, `maintenance` or `critical`. Items are shown only
-while `startsAt <= now < expiresAt`. An `actionUrl`, when present, must be an
-HTTPS URL on the exact same origin as the feed endpoint and opens only in the
-system external browser.
-
-The last successful feed, its validators, and the most recent 128 read and
-dismissed keys are kept as non-critical local preferences. Fetch, decode,
-cache or link failures never change, block or degrade authentication: the GUI
-keeps showing the unexpired cache or simply no announcements.
-
-```sh
-flutter analyze
-flutter test
-```
-
-## Visual development
-
-Run the production GUI in debug mode for real-window hot reload:
-
-```sh
+```powershell
+flutter pub get --enforce-lockfile
 flutter run -d windows
 ```
 
-Run the isolated visual catalog when no daemon or packaged sibling executables
-should be involved:
+生产 GUI 会启动后台并使用实际数据。Windows 编译、验证和发行请使用仓库统一入口，见 [developer 工具说明](../tools/developer/README.md)。
 
-```sh
+## 隔离视觉预览
+
+只调整布局时，可运行使用虚构内存快照的预览入口：
+
+```powershell
 flutter run -d windows -t lib/dev/preview_main.dart
 ```
 
-The catalog uses fictional in-memory snapshots and lets a developer switch
-page and state while editing. Saving a Dart file hot reloads the running
-window. It never launches `sidraviactl`, opens IPC or changes user data.
+该入口不启动 CTL、连接 IPC 或更改认证配置。预览与热重载有助于调整布局，不能代替发行包的原生交互验收。可配合 Flutter Inspector 查看组件约束与间距。
 
-Flutter 3.47 also provides the experimental browser Widget Previewer:
+## 桌面行为与公告
 
-```sh
-flutter widget-preview start
-```
+默认关闭窗口隐藏到托盘，可以在设置中改为退出；显式退出会结束桌面后台和连接。通知、启动隐藏和公告行为可配置，具体使用语义见[使用指南](../docs/guide.md)。
 
-Use Flutter Inspector from DevTools while either debug app is running to select
-widgets, inspect constraints and padding, and visualize Row/Column layout.
+当前学校公告由 Profile 提供网页地址，在独立窗口中加载学校原网页。旧版静态 JSON feed 与 `SIDRAVIA_ANNOUNCEMENT_FEED_URL` 不是当前公告实现。
+
+GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。界面使用 HarmonyOS Sans，许可证位于 [assets/fonts/LICENSE.txt](assets/fonts/LICENSE.txt)。仓库中的其他平台 runner 不构成相应平台的发行支持声明。

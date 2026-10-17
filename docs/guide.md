@@ -1,21 +1,78 @@
-# Sidravia 使用说明
+# 使用指南
 
-Sidravia 以 Windows amd64 portable ZIP 提供。当前版本自带 JLU Profile。
+本文介绍 GUI 的日常操作。首次安装见[快速开始](quick-start.md)；协议覆写、一次性认证和脚本等操作见[高级使用](advance.md)。
 
-## 下载和解压
+## 连接配置
 
-同时下载 ZIP 和 `SHA256SUMS.txt`，在 PowerShell 中核对文件哈希：
+进入「设置 → 连接配置」，选择机构，填写账号、密码和网卡绑定。密码框的占位符表示已有保存的凭据，不是实际密码；编辑时留空可保留原密码。
 
-```powershell
-Get-FileHash .\sidravia-v0.1.0-alpha.2-windows-amd64-portable.zip -Algorithm SHA256
-Get-Content .\SHA256SUMS.txt
-```
+点击「保存修改」后，确认框允许只保存，或保存后连接。正在连接时修改认证输入，旧连接会结束；选择「保存并重新连接」会在保存成功后发起新连接。保存结果未知或提示旧会话清理失败时，先按提示核实状态，不要直接当作未保存。
 
-确认两者一致后，将 ZIP 完整解压到固定、当前用户可写的目录。不要直接在 ZIP 内运行。
+删除登录配置会删除保存的账号与凭据，并处理关联会话。需要暂时停止连接时使用首页断开，不必删除配置。
 
-## 首次认证
+GUI 当前管理一份连接配置。后台存在多份配置，或会话关系不明确时，GUI 会限制操作并提示使用 ctl。普通用户无需为日常使用创建多份配置；高级操作对 GUI 的影响见[高级使用](advance.md#与-gui-配合使用)。
 
-先退出其他 Dr.COM 客户端，然后在解压目录打开 PowerShell：
+## 网卡选择
+
+自动模式从当前可用的物理网卡中选择。存在有线、无线等多个接口时，可明确选择认证网络对应的网卡与 IPv4。
+
+显式绑定不可用时，程序等待该绑定，不会自动换到其他网卡。可重新选择可用地址，或改回自动选择。VPN、代理和 TUN 可能改变路由；网卡可用并不保证认证目标可达。
+
+## 连接与断开
+
+首页根据状态提供连接、断开或重试。发起连接只表示开始处理，需要等待后续认证结果；同一后台同时最多一个活动认证会话。
+
+认证成功后，如果网页仍打不开，应检查 DNS、代理和网络访问，不要仅凭网页失败判断认证失败。常见处理方法见[常见问题](troubleshooting.md)。
+
+## 自动连接与开机自启
+
+| 设置 | 作用 | 生效时机 |
+| --- | --- | --- |
+| 启动时自动登录 | 使用保存的配置尝试认证 | 后台启动、取得初始网络状态并准备就绪后；开启开关本身不立即连接 |
+| 自动重连 | 对可恢复失败继续尝试 | 修改偏好在下次连接生效；需立即应用时，断开后重新连接 |
+| 开机自启 | 当前用户登录 Windows 时启动程序 | 下次登录；不会切换本次运行模式 |
+
+开机自启可选「启动到托盘」或「仅后台」。日常 GUI 使用选择「启动到托盘」；仅后台适合命令行使用。自启是否发起认证仍取决于自动登录设置。
+
+自动重连不能处理所有故障。密码错误、服务器拒绝或需要人工处理的状态，应先按提示处理，再连接。
+
+## 窗口与托盘
+
+默认关闭主窗口后隐藏到托盘，后台继续维持连接。从托盘菜单可重新打开主窗口，或选择「退出 Sidravia」结束程序和连接。
+
+设置中可调整「启动时隐藏到托盘」与「关闭主窗口」行为。若将关闭行为设为退出，点击窗口关闭按钮也会结束连接。
+
+## 外观、通知与学校公告
+
+设置中可选择外观模式、通知提醒方式和公告显示策略。系统通知是否实际显示，还受 Windows 通知设置影响。
+
+吉林大学配置提供学校公告入口，显示学校原网页。可从首页手动打开，也可按设置在连接成功后显示。公告需要学校网站可达与可用的 WebView2 Runtime；公告失败不等于认证失败。
+
+## 连接与诊断
+
+从设置进入「连接与诊断」，查看网卡、IP、认证服务器、连接时间和技术信息，也可刷新网络诊断、复制诊断信息或打开日志目录。
+
+「执行有限 IP 探测」会额外发送一次有界探测。普通诊断和探测均不能代替认证结果或互联网访问验证。
+
+「重启核心」会中断当前核心，随后由 GUI 尝试恢复原连接状态。按排障需要使用，不保证解决所有错误。「移除当前会话」清理运行记录，不删除保存的账号配置。
+
+日志等级在设置中选择，重启核心后生效。TRACE 会记录原始协议数据报，可能包含账号和认证信息。日常使用无需开启，反馈优先使用诊断摘要，详见[数据与隐私](privacy.md#日志与诊断)。
+
+## 更新、移动与卸载
+
+更新前先正常退出 GUI 和后台，备份需要保留的配置，并阅读对应版本的升级说明。保持 GUI、ctl、后台和配套文件来自同一个发行包。
+
+安装版使用新安装器更新。便携版更新时保留数据目录和 `sidravia.portable`，不要混入其他版本的运行文件。安装版与便携版不自动互相迁移数据。
+
+移动便携目录前，先撤销已启用的自启与 PATH，再退出程序；在新位置按需重新设置。
+
+安装版使用 Windows 应用卸载入口。卸载时会询问是否删除账号配置、GUI 设置和日志，选择「否」保留数据。便携版移除前先撤销自启与 PATH，再退出程序；删除目录也会删除其中的数据。公告缓存的例外见[数据与隐私](privacy.md#数据位置)。
+
+## 附录：旧版仅含核心的包
+
+早期包可能只含 ctl、后台及旧安装脚本。本节保留最小首次使用流程；现代 GUI 包按正文操作，高级命令详见[高级使用](advance.md)。如果正在阅读包内的 `GETTING-STARTED.md`，相对链接指向的其他文件可能未随旧包附带，完整说明可从[在线文档](https://github.com/CaelestisAstesia/sidravia/tree/main/docs)查阅，并核对所用版本。
+
+在包目录打开 PowerShell，依次运行：
 
 ```powershell
 .\sidraviactl.exe daemon start
@@ -24,62 +81,16 @@ Get-Content .\SHA256SUMS.txt
 .\sidraviactl.exe auth start --profile jlu --username '<账号>'
 ```
 
-密码由隐藏提示读取，请勿写入命令行。命令返回 Session ID 后查询认证状态：
+密码由隐藏提示读取。使用命令返回的实际 Session ID 查询认证结果：
 
 ```powershell
 .\sidraviactl.exe auth status <session-id>
 ```
 
-不知道 Session ID 时，运行：
-
-```powershell
-.\sidraviactl.exe auth list
-```
-
-## 保存认证配置
-
-交互式创建配置，然后使用配置发起认证：
-
-```powershell
-.\sidraviactl.exe config create
-.\sidraviactl.exe auth start --config <configuration-id>
-```
-
-`AutoLogin` 控制 daemon 启动后的自动登录，`AutoReconnect` 控制断线后的自动重连。
-可随时运行 `sidraviactl.exe help config` 查看相关命令。
-
-## 可选的 Windows 集成
-
-使用系统自带的 Windows PowerShell 5.1，将包目录加入当前用户 PATH，并创建登录启动任务：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
-```
-
-移动包目录或不再使用该集成前，先撤销：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
-```
-
-卸载脚本只撤销 PATH 和登录任务，不删除认证配置或日志。
-
-## 基本排障
-
-- 认证前退出其他 Dr.COM 客户端。
-- 使用 Mihomo、Clash 等 TUN 时，停止 TUN，或让校园网私有地址绕过 TUN。
-- 端口错误时检查 UDP `61440` 是否被其他程序占用。
-- daemon 异常时先运行 `sidraviactl.exe daemon status`，再查看 `logs\sidraviad.log`。
-
-`trace` 日志可能包含敏感认证信息，请勿公开分享。
-
-不再需要后台认证时，可以正常停止 daemon：
+结束使用时停止后台：
 
 ```powershell
 .\sidraviactl.exe daemon stop
 ```
 
-## 当前版本
-
-这是面向 Windows amd64、内置 JLU Profile 的未签名 portable Alpha。目前没有 GUI、
-Installer 或自动更新。
+尖括号是需要替换的占位符，不保留在实际命令中。旧包的 `scripts\install.ps1` 与 `scripts\uninstall.ps1` 仅用于旧版 PATH 和登录任务；移动或移除旧包前，使用同一旧包的卸载脚本撤销其集成。现代包通过内置维护工具管理。
