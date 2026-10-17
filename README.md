@@ -23,6 +23,7 @@ Sidravia 提供图形界面和命令行工具，支持保存账号、自动登�
 - [常见问题](docs/troubleshooting.md)：连不上、断线与问题反馈。
 - [数据与隐私](docs/privacy.md)：密码保存位置、日志和卸载数据。
 - [高级使用](docs/advance.md)：ctl 命令、配置管理、诊断与脚本。
+- [Windows 维护工具](docs/manager.md)：MGR 完整命令、系统集成、卸载准备与数据清理。
 - [协议上报覆写](docs/override.md)：字段格式、保存和清除覆写。
 
 开发相关：[构建与测试](docs/development.md) · [架构](docs/architecture.md) · [协议适配](docs/protocols.md)
