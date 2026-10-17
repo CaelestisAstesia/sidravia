@@ -64,7 +64,7 @@ func TestSessionIgnoresEstablishedEventFromStaleGeneration(t *testing.T) {
 	ctx := testContext(t)
 	defer shutdownTestSession(t, session)
 
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second"))
 	first := factory.run(0)
 	if err := first.waitForStart(ctx); err != nil {
 		t.Fatalf("first run did not start: %v", err)
@@ -114,7 +114,7 @@ func TestSessionPublishesReauthenticationBeforeChangedBindingCleanup(t *testing.
 	ctx := testContext(t)
 	defer shutdownTestSession(t, session)
 
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second"))
 	first := factory.run(0)
 	defer first.unblock(nil)
 	if err := first.establish(ctx); err != nil {
@@ -152,7 +152,7 @@ func TestSessionWaitsForCanceledRunBeforeStartingReplacement(t *testing.T) {
 	ctx := testContext(t)
 	defer shutdownTestSession(t, session)
 
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second"))
 	first := factory.run(0)
 	if err := first.waitForStart(ctx); err != nil {
 		t.Fatalf("first run did not start: %v", err)
@@ -223,7 +223,7 @@ func TestSessionRetryFactoryFailureDoesNotPublishAuthenticating(t *testing.T) {
 	definition.AuthenticationProtocolFactory = factory
 	scheduler := &manualRetryScheduler{}
 	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-		Now:            func() time.Time { return time.Unix(100, 0) },
+		Now:            scheduler.bindClock(func() time.Time { return time.Unix(100, 0) }),
 		RetryPolicy:    standardRetryPolicy(),
 		RetryScheduler: scheduler,
 	})
@@ -267,7 +267,7 @@ func TestSessionCancellationCauseWinsOverReturnedFailure(t *testing.T) {
 	ctx := testContext(t)
 	defer shutdownTestSession(t, session)
 
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second"))
 	first := factory.run(0)
 	if err := first.waitForStart(ctx); err != nil {
 		t.Fatalf("first run did not start: %v", err)
@@ -542,7 +542,7 @@ func TestStoppingCannotBeOverwrittenByInputsOrCallbacks(t *testing.T) {
 	ctx := testContext(t)
 	defer shutdownTestSession(t, session)
 
-	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First"))
+	_, _ = session.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second"))
 	run := factory.run(0)
 	defer run.unblock(nil)
 	if err := run.waitForStart(ctx); err != nil {
@@ -779,7 +779,10 @@ func newTestSession(t *testing.T, factory *controlledFactory, intent Intent) *Au
 	t.Helper()
 	definition := validRuntimeDefinition(t)
 	definition.AuthenticationProtocolFactory = factory
-	session, err := NewAuthenticationSession(definition, intent, testDependencies(func() time.Time { return time.Unix(100, 0) }))
+	scheduler := &manualRetryScheduler{}
+	dependencies := testDependencies(scheduler.bindClock(func() time.Time { return time.Unix(100, 0) }))
+	dependencies.RetryScheduler = scheduler
+	session, err := NewAuthenticationSession(definition, intent, dependencies)
 	if err != nil {
 		t.Fatalf("NewAuthenticationSession() error = %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"time"
 
 	environment "sidravia/internal/daemon/environment"
 )
@@ -17,26 +18,32 @@ type bindingKey struct {
 
 type automaticBindingSelector struct {
 	policy             NetworkBindingPolicy
-	firstAvailableAt   map[bindingKey]uint64
 	lastRevision       uint64
 	hasSnapshot        bool
+	candidates         []bindingCandidate
 	selectedBinding    environment.SelectedSystemNetworkBinding
 	hasSelectedBinding bool
 }
 
 func newAutomaticBindingSelector() *automaticBindingSelector {
-	return &automaticBindingSelector{
-		firstAvailableAt: make(map[bindingKey]uint64),
-	}
+	return &automaticBindingSelector{}
 }
 
-func (selector *automaticBindingSelector) Select(
-	snapshot environment.Snapshot,
-) (environment.SelectedSystemNetworkBinding, bool) {
-	if selector.hasSnapshot && snapshot.Revision <= selector.lastRevision {
-		return selector.selectedBinding, selector.hasSelectedBinding
+// Select is used for explicit bindings and deterministic selection tests.
+// Session supplies its own monotonic clock to observe and choose for automation.
+func (selector *automaticBindingSelector) Select(snapshot environment.Snapshot) (environment.SelectedSystemNetworkBinding, bool) {
+	selector.observe(snapshot, snapshot.ObservedAt)
+	candidate, _ := selector.choose(snapshot.ObservedAt, nil, nil, false)
+	if candidate == nil {
+		return environment.SelectedSystemNetworkBinding{}, false
 	}
+	return selector.commit(*candidate), true
+}
 
+func (selector *automaticBindingSelector) observe(snapshot environment.Snapshot, now time.Time) {
+	if selector.hasSnapshot && snapshot.Revision <= selector.lastRevision {
+		return
+	}
 	candidates := availableBindingCandidates(snapshot)
 	if selector.policy.Mode == ExplicitInterfaceAndLocalIPv4 {
 		candidates = nil
@@ -46,55 +53,132 @@ func (selector *automaticBindingSelector) Select(
 			}
 			for _, assignment := range iface.IPv4AddressAssignments() {
 				if assignment.Address == selector.policy.LocalIPv4Address {
-					candidates = append(candidates, bindingCandidate{networkInterface: iface, localAddress: assignment, key: bindingKey{interfaceID: iface.InterfaceID, address: assignment.Address, prefixLength: assignment.PrefixLength}})
+					candidates = append(candidates, bindingCandidate{networkInterface: iface, localAddress: assignment, key: bindingKey{iface.InterfaceID, assignment.Address, assignment.PrefixLength}})
 				}
 			}
 		}
 	}
-	if selector.policy.Mode == ExplicitInterfaceAndLocalIPv4 {
-		for index := range candidates {
-			candidates[index].firstAvailableAt = 0
-		}
-	} else {
-		availableKeys := make(map[bindingKey]struct{}, len(candidates))
-		for _, candidate := range candidates {
-			availableKeys[candidate.key] = struct{}{}
-		}
-		for key := range selector.firstAvailableAt {
-			if _, available := availableKeys[key]; !available {
-				delete(selector.firstAvailableAt, key)
+	previous := make(map[bindingKey]bindingCandidate, len(selector.candidates))
+	for _, candidate := range selector.candidates {
+		previous[candidate.key] = candidate
+	}
+	for i := range candidates {
+		if selector.hasSnapshot && selector.policy.Mode != ExplicitInterfaceAndLocalIPv4 {
+			candidates[i].eligibleAt = now.Add(bindingStabilityDelay)
+			if old, ok := previous[candidates[i].key]; ok {
+				candidates[i].eligibleAt = old.eligibleAt
+				candidates[i].preferred = old.preferred
 			}
-		}
-		for index := range candidates {
-			if _, known := selector.firstAvailableAt[candidates[index].key]; !known {
-				selector.firstAvailableAt[candidates[index].key] = snapshot.Revision
-			}
-			candidates[index].firstAvailableAt = selector.firstAvailableAt[candidates[index].key]
 		}
 	}
-
-	selector.lastRevision = snapshot.Revision
+	slices.SortFunc(candidates, func(a, b bindingCandidate) int {
+		if bindingCandidatePrecedes(a, b) {
+			return -1
+		}
+		if bindingCandidatePrecedes(b, a) {
+			return 1
+		}
+		return 0
+	})
+	selector.candidates = candidates
 	selector.hasSnapshot = true
-	if len(candidates) == 0 {
-		selector.selectedBinding = environment.SelectedSystemNetworkBinding{}
-		selector.hasSelectedBinding = false
-		return environment.SelectedSystemNetworkBinding{}, false
-	}
-
-	selected, err := selectBinding(candidates)
-	if err != nil {
-		panic(err)
-	}
-	selector.selectedBinding = selected
-	selector.hasSelectedBinding = true
-	return selected, true
+	selector.lastRevision = snapshot.Revision
 }
 
 type bindingCandidate struct {
 	networkInterface environment.NetworkInterface
 	localAddress     environment.IPv4AddressAssignment
 	key              bindingKey
-	firstAvailableAt uint64
+	eligibleAt       time.Time
+	preferred        bool
+}
+
+// choose reevaluates time against saved facts; it never manufactures a revision.
+// The cursor is one previous candidate, not a history of disappeared interfaces.
+func (selector *automaticBindingSelector) choose(now time.Time, failures map[environment.InterfaceID]uint8, cursor *bindingCandidate, rotate bool) (*bindingCandidate, time.Time) {
+	var retained *bindingCandidate
+	if selector.hasSelectedBinding && !rotate {
+		for i := range selector.candidates {
+			c := &selector.candidates[i]
+			if c.key == keyForBinding(selector.selectedBinding) && failures[c.key.interfaceID] < bindingFailureLimit {
+				retained = c
+				break
+			}
+		}
+	}
+	if retained != nil && !retained.eligibleAt.After(now) {
+		return retained, retained.eligibleAt
+	}
+	start := 0
+	if cursor != nil {
+		found := false
+		for i, c := range selector.candidates {
+			if c.key.interfaceID == cursor.key.interfaceID {
+				start = i + 1
+				found = true
+			}
+		}
+		if !found {
+			start = len(selector.candidates)
+			for i, c := range selector.candidates {
+				if bindingInterfacePrecedes(*cursor, c) {
+					start = i
+					break
+				}
+			}
+		}
+		start %= max(1, len(selector.candidates))
+	}
+	var earliest time.Time
+	var pending *bindingCandidate
+	for offset := 0; offset < len(selector.candidates); offset++ {
+		c := &selector.candidates[(start+offset)%len(selector.candidates)]
+		if failures[c.key.interfaceID] >= bindingFailureLimit {
+			continue
+		}
+		// Prefer the address last chosen on this still-present interface. This
+		// marker lives only in the current candidate table, not a history cache.
+		for i := range selector.candidates {
+			preferred := &selector.candidates[i]
+			if preferred.key.interfaceID == c.key.interfaceID && preferred.preferred && !preferred.eligibleAt.After(now) {
+				return preferred, preferred.eligibleAt
+			}
+		}
+		if !c.eligibleAt.After(now) {
+			return c, c.eligibleAt
+		}
+		if earliest.IsZero() || c.eligibleAt.Before(earliest) {
+			earliest = c.eligibleAt
+			pending = c
+		}
+	}
+	return pending, earliest
+}
+
+func bindingInterfacePrecedes(left, right bindingCandidate) bool {
+	if l, r := physicalMediumPriority(left.networkInterface.PhysicalMedium), physicalMediumPriority(right.networkInterface.PhysicalMedium); l != r {
+		return l < r
+	}
+	return left.key.interfaceID < right.key.interfaceID
+}
+
+func (selector *automaticBindingSelector) commit(candidate bindingCandidate) environment.SelectedSystemNetworkBinding {
+	binding, err := selectBinding([]bindingCandidate{candidate})
+	if err != nil {
+		panic(err)
+	} // Candidate validation is an internal invariant.
+	for i := range selector.candidates {
+		if selector.candidates[i].key.interfaceID == candidate.key.interfaceID {
+			selector.candidates[i].preferred = selector.candidates[i].key == candidate.key
+		}
+	}
+	selector.selectedBinding, selector.hasSelectedBinding = binding, true
+	return binding
+}
+
+func keyForBinding(binding environment.SelectedSystemNetworkBinding) bindingKey {
+	address := binding.LocalIPv4AddressAssignment()
+	return bindingKey{binding.NetworkInterface().InterfaceID, address.Address, address.PrefixLength}
 }
 
 func availableBindingCandidates(snapshot environment.Snapshot) []bindingCandidate {
@@ -136,9 +220,6 @@ func selectBinding(candidates []bindingCandidate) (environment.SelectedSystemNet
 }
 
 func bindingCandidatePrecedes(left, right bindingCandidate) bool {
-	if left.firstAvailableAt != right.firstAvailableAt {
-		return left.firstAvailableAt > right.firstAvailableAt
-	}
 	if leftMedium, rightMedium := physicalMediumPriority(left.networkInterface.PhysicalMedium), physicalMediumPriority(right.networkInterface.PhysicalMedium); leftMedium != rightMedium {
 		return leftMedium < rightMedium
 	}

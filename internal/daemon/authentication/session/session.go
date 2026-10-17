@@ -86,6 +86,7 @@ type AuthenticationSession struct {
 	// The fields below are owned exclusively by run.
 	currentSnapshot           Snapshot
 	selector                  *automaticBindingSelector
+	automatic                 *bindingRecovery
 	lastNetworkRevision       uint64
 	hasNetworkRevision        bool
 	desiredBinding            environment.SelectedSystemNetworkBinding
@@ -104,11 +105,15 @@ type AuthenticationSession struct {
 }
 
 type activeProtocolRun struct {
-	generation  uint64
-	run         protocol.AuthenticationProtocolRun
-	context     context.Context
-	cancel      context.CancelCauseFunc
-	established bool
+	generation     uint64
+	run            protocol.AuthenticationProtocolRun
+	context        context.Context
+	cancel         context.CancelCauseFunc
+	established    bool
+	binding        bindingCandidate
+	recoveryEpoch  uint64
+	establishedAt  time.Time
+	effectiveEndAt time.Time
 }
 
 func NewAuthenticationSession(
@@ -204,6 +209,10 @@ func initializeAuthenticationSession(
 			Revision:                 initialRevision,
 			UpdatedAt:                now(),
 		},
+	}
+	if configuration.NetworkBindingPolicy.Mode == AutomaticallySelectLatestAvailable {
+		session.automatic = &bindingRecovery{permitted: true}
+		session.automatic.resetRound()
 	}
 	return session, nil
 }
@@ -357,6 +366,10 @@ func (session *AuthenticationSession) run() {
 }
 
 func (session *AuthenticationSession) handleNetworkSnapshot(network environment.Snapshot) {
+	if session.automatic != nil {
+		session.handleAutomaticNetwork(network)
+		return
+	}
 	if session.hasNetworkRevision && network.Revision <= session.lastNetworkRevision {
 		return
 	}
@@ -424,6 +437,17 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 }
 
 func (session *AuthenticationSession) handleActivate() {
+	if session.automatic != nil {
+		if session.currentSnapshot.State == Stopping {
+			return
+		}
+		if session.currentSnapshot.Intent == SuspendAuthentication {
+			session.resetAutomaticIntent(true)
+		}
+		session.updateSnapshot(func(snapshot *Snapshot) { snapshot.Intent = MaintainAuthentication })
+		session.reconcileAutomatic()
+		return
+	}
 	if session.currentSnapshot.State == Stopping {
 		return
 	}
@@ -446,6 +470,9 @@ func (session *AuthenticationSession) handleSuspend() {
 		return
 	}
 	session.explicitRestartPending = false
+	if session.automatic != nil {
+		session.resetAutomaticIntent(false)
+	}
 	session.invalidateRetryScheduleState()
 	session.lastStopCleanupFailure = nil
 	hadActiveRun := session.active != nil
@@ -463,6 +490,31 @@ func (session *AuthenticationSession) handleSuspend() {
 }
 
 func (session *AuthenticationSession) handleRestart() {
+	if session.automatic != nil {
+		if session.currentSnapshot.State == Stopping {
+			return
+		}
+		session.resetAutomaticIntent(true)
+		session.consecutiveFailures, session.protocolRecoveryFailures = 0, 0
+		session.automaticReconnectBlocked = false
+		session.explicitRestartPending = true
+		session.updateSnapshot(func(snapshot *Snapshot) {
+			snapshot.Intent = MaintainAuthentication
+			if session.hasDesiredBinding {
+				snapshot.State, snapshot.StateReason = Authenticating, nil
+			} else {
+				snapshot.State = WaitingForNetwork
+				snapshot.StateReason = initialStateReason(MaintainAuthentication, session.definition.Configuration.NetworkBindingPolicy)
+			}
+			snapshot.AuthenticationEstablishedAt = nil
+		})
+		if session.active != nil {
+			session.cancelActive(protocol.TerminateWithBestEffortLogout)
+		} else {
+			session.reconcileAutomatic()
+		}
+		return
+	}
 	if session.currentSnapshot.State == Stopping {
 		return
 	}
@@ -498,6 +550,9 @@ func (session *AuthenticationSession) handleShutdown(reply chan error) {
 	}
 	session.explicitRestartPending = false
 	session.shuttingDown = true
+	if session.automatic != nil {
+		session.resetAutomaticIntent(false)
+	}
 	session.invalidateRetrySchedule()
 	session.shutdownReplies = append(session.shutdownReplies, reply)
 	session.cancelActive(protocol.TerminateWithBestEffortLogout)
@@ -508,6 +563,10 @@ func (session *AuthenticationSession) handleAuthenticationEstablished(event auth
 		return
 	}
 	session.active.established = true
+	session.active.establishedAt = session.now()
+	if session.automatic != nil {
+		session.automatic.retryAt = time.Time{}
+	}
 	session.resetRetryState()
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		now := session.now()
@@ -532,7 +591,11 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 	if cancellationCause := context.Cause(session.active.context); cancellationCause != nil {
 		event.cancellationCause = cancellationCause
 	}
+	finished := session.active
 	session.active = nil
+	if session.automatic != nil && session.finishAutomaticRun(finished, event) {
+		return
+	}
 	if event.cancellationCause != nil {
 		var cancellation protocol.AuthenticationProtocolRunCancellationCause
 		if errors.As(event.cancellationCause, &cancellation) &&
@@ -636,6 +699,10 @@ func (session *AuthenticationSession) handleRunFailure(code string, failure *pro
 }
 
 func (session *AuthenticationSession) scheduleRetry(delay time.Duration, code string, failure *protocol.AuthenticationProtocolRunFailure) {
+	if session.automatic != nil {
+		session.scheduleAutomaticRetry(delay, code, failure)
+		return
+	}
 	session.invalidateRetrySchedule()
 	scheduleID := session.retryScheduleID
 	nextRetryAt := session.now().Add(delay)
@@ -653,6 +720,14 @@ func (session *AuthenticationSession) scheduleRetry(delay time.Duration, code st
 }
 
 func (session *AuthenticationSession) handleRetryDelayElapsed(event authenticationRetryDelayElapsedEvent) {
+	if session.automatic != nil {
+		if event.scheduleID != session.retryScheduleID || session.retryCancellation == nil {
+			return
+		}
+		session.clearAutomaticWake()
+		session.reconcileAutomatic()
+		return
+	}
 	if event.scheduleID != session.retryScheduleID || session.currentSnapshot.State != WaitingBeforeRetry {
 		return
 	}
@@ -664,6 +739,11 @@ func (session *AuthenticationSession) handleRetryDelayElapsed(event authenticati
 }
 
 func (session *AuthenticationSession) blockForFailure(code string, failure *protocol.AuthenticationProtocolRunFailure) {
+	if session.automatic != nil {
+		session.automatic.permitted = false
+		session.automatic.retryAt = time.Time{}
+		session.clearAutomaticWake()
+	}
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.State = BlockedByError
 		snapshot.StateReason = &StateReason{Code: code, Description: "Authentication protocol run failed."}
@@ -674,6 +754,10 @@ func (session *AuthenticationSession) blockForFailure(code string, failure *prot
 }
 
 func (session *AuthenticationSession) blockForAutomaticReconnectDisabled(failure *protocol.AuthenticationProtocolRunFailure) {
+	if session.automatic != nil {
+		session.automatic.permitted = false
+		session.clearAutomaticWake()
+	}
 	session.automaticReconnectBlocked = true
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.State = BlockedByError
@@ -874,6 +958,16 @@ func (session *AuthenticationSession) startRunAfterRetryDelayIfNeeded() {
 }
 
 func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
+	if session.automatic != nil {
+		session.reconcileAutomatic()
+		return
+	}
+	session.createRun(allowRecoveryState)
+}
+
+// createRun is called only after automatic policy admission, or directly for
+// the unchanged explicit-binding path.
+func (session *AuthenticationSession) createRun(allowRecoveryState bool) {
 	if session.shuttingDown || session.active != nil || session.currentSnapshot.Intent != MaintainAuthentication || !session.hasDesiredBinding || session.automaticReconnectBlocked {
 		return
 	}
@@ -910,6 +1004,17 @@ func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel}
+	if session.automatic != nil {
+		r := session.automatic
+		active.binding = bindingCandidate{networkInterface: session.desiredBinding.NetworkInterface(), localAddress: session.desiredBinding.LocalIPv4AddressAssignment(), key: keyForBinding(session.desiredBinding)}
+		active.recoveryEpoch = r.epoch
+		r.starts++
+		cursor := active.binding
+		r.cursor = &cursor
+		r.permitted = false
+		r.retryAt = time.Time{}
+		session.explicitRestartPending = false
+	}
 	session.active = active
 	session.diagnostics.ProtocolRunGeneration(generation)
 	session.updateSnapshot(func(snapshot *Snapshot) {
@@ -925,6 +1030,7 @@ func (session *AuthenticationSession) cancelActive(requirement protocol.Authenti
 	if session.active == nil || context.Cause(session.active.context) != nil {
 		return
 	}
+	session.active.effectiveEndAt = session.now()
 	session.active.cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: requirement})
 }
 

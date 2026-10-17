@@ -17,7 +17,7 @@ func recoveryTestSession(t *testing.T, auto bool) (*AuthenticationSession, *cont
 	definition := validRuntimeDefinition(t)
 	definition.AuthenticationProtocolFactory = factory
 	definition.AutoReconnect = auto
-	s, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{RetryPolicy: NewDefaultRetryPolicy(), RetryScheduler: scheduler, Now: func() time.Time { return time.Unix(100, 0) }})
+	s, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{RetryPolicy: NewDefaultRetryPolicy(), RetryScheduler: scheduler, Now: scheduler.bindClock(func() time.Time { return time.Unix(100, 0) })})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestProtocolRecoveryBudgetIsIndependentOfNetworkRetriesAndStopsAtThree(t *t
 	for i, failure := range failures {
 		waitForFactoryRun(t, ctx, factory, i).unblock(failure)
 		snap := waitForState(t, ctx, s, WaitingBeforeRetry)
-		want := []time.Duration{5 * time.Second, 5 * time.Second, 10 * time.Second, 5 * time.Second, 20 * time.Second}[i]
+		want := []time.Duration{5 * time.Second, 5 * time.Second, 10 * time.Second, 30 * time.Second, 20 * time.Second}[i]
 		if scheduler.delay(i) != want || snap.NextRetryAt == nil {
 			t.Fatalf("retry%d delay=%v snapshot=%#v", i, scheduler.delay(i), snap)
 		}
@@ -100,6 +100,9 @@ func TestProtocolRecoveryResetsOnSuccessAndRelevantBindingChange(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if reset == "binding" {
+				fireAutomaticWake(t, s)
+			}
 			waitForFactoryRun(t, ctx, factory, 1).unblock(protocolResponseFailure())
 			_ = waitForState(t, ctx, s, WaitingBeforeRetry)
 			if scheduler.delay(1) != 5*time.Second {
@@ -155,8 +158,8 @@ func TestSessionSchedulesStandardAndExtendedRetry(t *testing.T) {
 	scheduler.callback(0)()
 	waitForFactoryRun(t, ctx, factory, 1).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterExtendedDelay})
 	second := waitForState(t, ctx, session, WaitingBeforeRetry)
-	if second.NextRetryAt == nil || !second.NextRetryAt.Equal(now.Add(30*time.Second)) {
-		t.Fatalf("extended retry deadline = %v, want %v", second.NextRetryAt, now.Add(30*time.Second))
+	if second.NextRetryAt == nil || !second.NextRetryAt.Equal(now.Add(35*time.Second)) {
+		t.Fatalf("extended retry deadline = %v, want %v", second.NextRetryAt, now.Add(35*time.Second))
 	}
 	if got := scheduler.delay(1); got != 30*time.Second {
 		t.Fatalf("extended scheduler delay = %v, want %v", got, 30*time.Second)
@@ -230,6 +233,7 @@ func TestSessionIgnoresStaleRetryTimer(t *testing.T) {
 	_ = waitForState(t, ctx, session, WaitingBeforeRetry)
 	staleCallback := scheduler.callback(0)
 	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "wifi", "Wi-Fi"))
+	fireAutomaticWake(t, session)
 	waitForFactoryRun(t, ctx, factory, 1)
 
 	staleCallback()
@@ -265,7 +269,7 @@ func TestSessionResetsFailureCountAfterAuthenticationEstablished(t *testing.T) {
 	}
 }
 
-func TestSessionClearsRetryOnRelevantNetworkChange(t *testing.T) {
+func TestSessionPreservesDelayAcrossRelevantNetworkChange(t *testing.T) {
 	policy := &recordingRetryPolicy{delays: map[protocol.AuthenticationProtocolFailureHandlingRecommendation]time.Duration{
 		protocol.RetryAfterStandardDelay: time.Second,
 	}}
@@ -280,6 +284,7 @@ func TestSessionClearsRetryOnRelevantNetworkChange(t *testing.T) {
 	_ = waitForState(t, ctx, session, WaitingBeforeRetry)
 	cancellation := scheduler.cancellation(0)
 	_, _ = session.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 2, "wifi", "Wi-Fi"))
+	fireAutomaticWake(t, session)
 	got := waitForState(t, ctx, session, Authenticating)
 	if !cancellation.cancelled() || got.NextRetryAt != nil {
 		t.Fatalf("relevant network change did not clear retry: cancelled=%v snapshot=%#v", cancellation.cancelled(), got)
@@ -431,6 +436,9 @@ func TestSessionResetsFailureCountAfterRestartAndBindingChange(t *testing.T) {
 			if err := test.apply(ctx, session, factory); err != nil {
 				t.Fatalf("%s error = %v", test.name, err)
 			}
+			if test.name == "binding change" {
+				fireAutomaticWake(t, session)
+			}
 			waitForFactoryRun(t, ctx, factory, 1).unblock(&protocol.AuthenticationProtocolRunFailure{HandlingRecommendation: protocol.RetryAfterStandardDelay})
 			_ = waitForState(t, ctx, session, WaitingBeforeRetry)
 			calls := policy.calls()
@@ -503,7 +511,7 @@ func newRetryTestSession(t *testing.T, factory *controlledFactory, policy *recor
 	definition := validRuntimeDefinition(t)
 	definition.AuthenticationProtocolFactory = factory
 	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-		Now:            now,
+		Now:            scheduler.bindClock(now),
 		RetryPolicy:    policy,
 		RetryScheduler: scheduler,
 	})
@@ -540,16 +548,33 @@ func (policy *recordingRetryPolicy) calls() []retryPolicyCall {
 }
 
 type manualRetryScheduler struct {
-	mu        sync.Mutex
-	deadlines []time.Duration
-	callbacks []func()
-	cancels   []*manualRetryCancellation
+	mu          sync.Mutex
+	clock       func() time.Time
+	floor       time.Time
+	scheduledAt []time.Time
+	deadlines   []time.Duration
+	callbacks   []func()
+	cancels     []*manualRetryCancellation
+}
+
+func (scheduler *manualRetryScheduler) bindClock(base func() time.Time) func() time.Time {
+	scheduler.clock = func() time.Time {
+		scheduler.mu.Lock()
+		defer scheduler.mu.Unlock()
+		return latestTime(base(), scheduler.floor)
+	}
+	return scheduler.clock
 }
 
 func (scheduler *manualRetryScheduler) Schedule(delay time.Duration, callback func()) RetryCancellation {
+	var at time.Time
+	if scheduler.clock != nil {
+		at = scheduler.clock().Add(delay)
+	}
 	scheduler.mu.Lock()
 	defer scheduler.mu.Unlock()
 	cancellation := &manualRetryCancellation{}
+	scheduler.scheduledAt = append(scheduler.scheduledAt, at)
 	scheduler.deadlines = append(scheduler.deadlines, delay)
 	scheduler.callbacks = append(scheduler.callbacks, callback)
 	scheduler.cancels = append(scheduler.cancels, cancellation)
@@ -565,7 +590,14 @@ func (scheduler *manualRetryScheduler) count() int {
 func (scheduler *manualRetryScheduler) callback(index int) func() {
 	scheduler.mu.Lock()
 	defer scheduler.mu.Unlock()
-	return scheduler.callbacks[index]
+	callback := scheduler.callbacks[index]
+	at := scheduler.scheduledAt[index]
+	return func() {
+		scheduler.mu.Lock()
+		scheduler.floor = latestTime(scheduler.floor, at)
+		scheduler.mu.Unlock()
+		callback()
+	}
 }
 
 func (scheduler *manualRetryScheduler) delay(index int) time.Duration {

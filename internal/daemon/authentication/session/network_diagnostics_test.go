@@ -142,7 +142,7 @@ func TestNetworkDiagnosticsGenerationIgnoresStaleAndRetainsFailedClose(t *testin
 	actor := newTestSession(t, factory, MaintainAuthentication)
 	defer shutdownTestSession(t, actor)
 	ctx := testContext(t)
-	if _, err := actor.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First")); err != nil {
+	if _, err := actor.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second")); err != nil {
 		t.Fatal(err)
 	}
 	first := factory.run(0)
@@ -209,7 +209,7 @@ func TestNetworkDiagnosticsFailedFactoryRetainsPreviousGeneration(t *testing.T) 
 	actor := newTestSession(t, factory, MaintainAuthentication)
 	defer shutdownTestSession(t, actor)
 	ctx := testContext(t)
-	if _, err := actor.ApplySystemNetworkSnapshot(ctx, usableSystemNetworkSnapshot(t, 1, "first", "First")); err != nil {
+	if _, err := actor.ApplySystemNetworkSnapshot(ctx, withStandby(t, usableSystemNetworkSnapshot(t, 1, "first", "First"), "second")); err != nil {
 		t.Fatal(err)
 	}
 	run := factory.run(0)

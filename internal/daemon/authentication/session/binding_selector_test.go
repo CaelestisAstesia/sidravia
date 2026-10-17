@@ -35,8 +35,8 @@ func TestAutomaticBindingSelectorPrefersWiredAtStartup(t *testing.T) {
 	assertBinding(t, binding, "wired-a", "192.0.2.10", 24)
 }
 
-func TestAutomaticBindingSelectorSwitchesToNewestAvailableNetwork(t *testing.T) {
-	t.Run("newer eligible physical candidate wins regardless of physical medium", func(t *testing.T) {
+func TestAutomaticBindingSelectorRetainsCurrentNetwork(t *testing.T) {
+	t.Run("newer candidate does not preempt an existing binding", func(t *testing.T) {
 		selector := newAutomaticBindingSelector()
 		initial := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 		newer := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 24)
@@ -51,7 +51,7 @@ func TestAutomaticBindingSelectorSwitchesToNewestAvailableNetwork(t *testing.T) 
 		if !ok {
 			t.Fatal("newer Select() reported no binding")
 		}
-		assertBinding(t, binding, "wireless", "198.51.100.10", 24)
+		assertBinding(t, binding, "wired", "192.0.2.10", 24)
 	})
 
 	t.Run("equal revision does not add availability history", func(t *testing.T) {
@@ -68,13 +68,13 @@ func TestAutomaticBindingSelectorSwitchesToNewestAvailableNetwork(t *testing.T) 
 		if !ok {
 			t.Fatal("stale Select() reported no retained binding")
 		}
-		assertBinding(t, binding, "current", "198.51.100.10", 24)
+		assertBinding(t, binding, "initial", "192.0.2.10", 24)
 
 		binding, ok = selector.Select(snapshot(t, 12, initial, current, stale, fresh))
 		if !ok {
 			t.Fatal("fresh Select() reported no binding")
 		}
-		assertBinding(t, binding, "stale", "203.0.113.10", 24)
+		assertBinding(t, binding, "initial", "192.0.2.10", 24)
 	})
 
 	t.Run("lower revision does not add availability history", func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestAutomaticBindingSelectorSwitchesToNewestAvailableNetwork(t *testing.T) 
 		if !ok {
 			t.Fatal("fresh Select() reported no binding")
 		}
-		assertBinding(t, binding, "stale", "203.0.113.10", 24)
+		assertBinding(t, binding, "initial", "192.0.2.10", 24)
 	})
 }
 
@@ -233,7 +233,7 @@ func TestAutomaticBindingSelectorFallsBackWhenCurrentBindingDisappears(t *testin
 	assertBinding(t, binding, "wireless", "198.51.100.10", 24)
 }
 
-func TestAutomaticBindingSelectorTreatsReappearingBindingAsNewest(t *testing.T) {
+func TestAutomaticBindingSelectorRetainsCurrentWhenBindingReappears(t *testing.T) {
 	selector := newAutomaticBindingSelector()
 	stable := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 	reappearing := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 24)
@@ -245,7 +245,7 @@ func TestAutomaticBindingSelectorTreatsReappearingBindingAsNewest(t *testing.T) 
 	if !ok {
 		t.Fatal("Select() reported no reappearing binding")
 	}
-	assertBinding(t, binding, "wireless", "198.51.100.10", 24)
+	assertBinding(t, binding, "wired", "192.0.2.10", 24)
 
 	t.Run("prefix is part of a binding identity", func(t *testing.T) {
 		selector := newAutomaticBindingSelector()
@@ -257,7 +257,7 @@ func TestAutomaticBindingSelectorTreatsReappearingBindingAsNewest(t *testing.T) 
 		if !ok {
 			t.Fatal("Select() reported no reappearing binding with a new prefix")
 		}
-		assertBinding(t, binding, "wireless", "198.51.100.10", 25)
+		assertBinding(t, binding, "wired", "192.0.2.10", 24)
 	})
 }
 

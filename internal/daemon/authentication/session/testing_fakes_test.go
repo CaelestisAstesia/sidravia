@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"sidravia/internal/daemon/authentication/protocol"
+	environment "sidravia/internal/daemon/environment"
+	"testing"
 )
 
 type controlledFactory struct {
@@ -160,3 +162,34 @@ func testDependencies(now func() time.Time) Dependencies {
 }
 
 func (*controlledFactory) ValidateUsername(string) error { return nil }
+
+// Existing lifecycle tests use an already observed standby to isolate cleanup
+// ordering from candidate stabilization. Stabilization has dedicated clock tests.
+func withStandby(t *testing.T, network environment.Snapshot, id string) environment.Snapshot {
+	t.Helper()
+	interfaces := network.Interfaces()
+	interfaces = append(interfaces, usableSystemNetworkSnapshot(t, network.Revision, id, id).Interfaces()...)
+	return environment.NewSnapshot(network.Revision, network.ObservedAt, interfaces)
+}
+
+func fireAutomaticWake(t *testing.T, session *AuthenticationSession) {
+	t.Helper()
+	scheduler, ok := session.retryScheduler.(*manualRetryScheduler)
+	if !ok {
+		t.Fatal("test requires manual scheduler")
+	}
+	ctx := testContext(t)
+	for {
+		_ = sessionSnapshot(t, ctx, session)
+		if n := scheduler.count(); n > 0 && !scheduler.cancellation(n-1).cancelled() {
+			scheduler.callback(n - 1)()
+			_ = sessionSnapshot(t, ctx, session)
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("no pending automatic wake")
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
