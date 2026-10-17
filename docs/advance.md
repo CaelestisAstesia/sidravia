@@ -1,31 +1,27 @@
 # 高级使用
 
-本文面向需要命令行控制、一次性认证、多配置或脚本操作的用户。日常 GUI 连接见[使用指南](guide.md)，不需要先学习本文。
+命令行工具为 `sidraviactl`，下文简称 ctl。示例在 Windows PowerShell 的程序目录运行；已加入 PATH 时可省略 `.\` 和 `.exe`。Linux 使用 `./sidraviactl`。
 
-命令行工具名为 `sidraviactl`，下文简称 ctl。示例在 Windows PowerShell 的程序目录中运行；已加入 PATH 时可省略 `.\` 和 `.exe`。Linux 核心包改用 `./sidraviactl`，Windows 系统集成命令不适用。
+`<configuration-id>`、`<session-id>` 等需替换为实际值，不保留尖括号。密码通过隐藏提示或 `--password-stdin` 输入。
 
-`<configuration-id>`、`<session-id>`、`<账号>` 等是占位符，执行前替换为实际值，不保留尖括号。命令示例按需要选择，不必从头全部执行。密码通过隐藏提示或 `--password-stdin` 输入，没有明文密码参数。
-
-可按需要直接查看：[配置与脚本](#创建参数脚本与多配置)、[命令速查](#命令速查)、[指定网卡](#指定网卡)、[诊断与日志](#诊断与日志)、[自启与 PATH](#windows-自启与-path)、[协议覆写](override.md)。
+[配置与脚本](#创建参数脚本与多配置) · [命令速查](#命令速查) · [网卡](#指定网卡) · [诊断](#诊断与日志) · [自启与 PATH](#windows-自启与-path) · [协议覆写](override.md)
 
 ## 与 GUI 配合使用
 
-GUI 与 ctl 共用同一数据布局下保存的认证配置，但使用互斥的运行模式：
+GUI 与 ctl 使用相同数据目录中的配置，但不能同时运行认证后台：
 
-- GUI 使用 desktop 后台，退出 GUI 会结束其后台和连接；隐藏到托盘不算退出。
-- ctl 使用独立的 headless 后台，命令退出后后台与连接可以继续运行。
+- GUI 使用 desktop 后台，随 GUI 退出。隐藏到托盘时继续运行。
+- ctl 使用独立的 headless 后台，命令结束后仍可保持连接。
 
-从 GUI 切换到 ctl，先在托盘选择「退出 Sidravia」；从 ctl 切回 GUI，先执行 `sidraviactl daemon stop`。切换会结束原连接。除只读的 `daemon status` 外，不把 ctl 当作已打开 GUI 的控制台，也不会自动接管另一模式。
+从 GUI 切到 ctl，先在托盘选择「退出 Sidravia」；切回 GUI 前执行 `sidraviactl daemon stop`。切换会断开连接，原 Session ID 随后台结束失效。`daemon status` 可以跨模式查询，其他认证和配置命令不能控制已打开的 GUI。
 
-GUI 当前只管理一份保存的配置。ctl 创建的多份配置会持久保留，使下次 GUI 启动后限制管理操作。若要回到日常 GUI 使用，先通过 ctl 核对并保留需要的一份配置，再正常停止独立后台；删除配置会删除其中保存的账号与凭据，不要直接编辑或删除配置文件。
+GUI 目前只管理一份配置。用 ctl 创建多份后，需先核对、保留所需的一份，再回到 GUI；删除配置也会删除其中的账号与密码。
 
-会话记录只属于本次后台，模式切换结束后台后，不会带着原 Session ID 转入 GUI。
-
-协议覆写没有 GUI 编辑入口。通过 ctl 保存后，后续 GUI 在同一数据布局中连接该配置也会使用它；需要恢复默认时，在 ctl 中清除，见[协议上报覆写](override.md)。安装版与便携版不自动共享或迁移数据。
+ctl 保存的覆写也会用于后续 GUI 连接。GUI 没有覆写编辑入口，清除方法见[协议上报覆写](override.md)。安装版与便携版的数据目录不同，不自动共享配置。
 
 ## 独立后台
 
-建议先显式启动后台并查询状态，确认工作模式：
+启动并查看后台：
 
 ```powershell
 .\sidraviactl.exe daemon start
@@ -38,7 +34,7 @@ GUI 当前只管理一份保存的配置。ctl 创建的多份配置会持久保
 
 ## 一次性认证
 
-下面的方式直接创建会话，不保存账号配置。后台停止后该会话消失；希望跨后台重启保留设置时，使用下一节的持久配置。
+直接创建会话，不保存账号配置。希望下次还能使用这些设置，见[保存配置](#保存配置)。
 
 ```powershell
 .\sidraviactl.exe daemon start
@@ -47,14 +43,14 @@ GUI 当前只管理一份保存的配置。ctl 创建的多份配置会持久保
 .\sidraviactl.exe auth list
 ```
 
-`auth start` 返回初始状态，不等待认证完成。用返回的 Session ID 查看后续状态，或持续观察：
+`auth start` 返回后认证可能还在进行。用返回的 Session ID 查询，或持续观察：
 
 ```powershell
 .\sidraviactl.exe auth status <session-id>
 .\sidraviactl.exe auth watch
 ```
 
-`auth watch` 按 Ctrl+C 停止观察，不停止连接；输出是最新状态，不保证记录每次状态变化。
+`auth watch` 显示最新状态，按 Ctrl+C 停止观察，连接仍然保留。它不记录完整状态历史。
 
 ## 保存配置
 
@@ -67,7 +63,7 @@ GUI 当前只管理一份保存的配置。ctl 创建的多份配置会持久保
 .\sidraviactl.exe auth start --config <configuration-id>
 ```
 
-配置保存后不会因 `config create` 命令本身立即连接。自动登录在后台下次启动时评估；自动重连在下次连接生效。
+创建配置后需另行连接。自动登录和重连的生效时机见[使用指南](guide.md#自动连接与开机自启)。
 
 ```powershell
 .\sidraviactl.exe config update <configuration-id> --auto-login true
@@ -75,11 +71,11 @@ GUI 当前只管理一份保存的配置。ctl 创建的多份配置会持久保
 .\sidraviactl.exe config set-password <configuration-id>
 ```
 
-`Configuration ID` 是保存的配置身份，跨后台重启保留；`Session ID` 是本次后台中的运行记录，后台重启后失效。不要互相替换。
+`Configuration ID` 标识保存的配置，重启后保留；`Session ID` 标识当前后台的运行记录，重启后失效。
 
 ## 创建参数、脚本与多配置
 
-配置使用独立且不可更改的 ID，显示名称可以修改。ctl 可以保存多份配置，但同一后台最多一个活动会话，GUI 当前也不提供多配置选择。同一时刻只能有一份配置开启自动登录。
+配置 ID 不可修改，显示名称可以修改。可以保存多份配置，但同时最多一个活动会话，且只有一份配置可开启自动登录。
 
 带部分参数交互创建，密码仍由隐藏提示读取，未指定的网卡由交互流程选择：
 
@@ -102,7 +98,7 @@ GUI 当前只管理一份保存的配置。ctl 创建的多份配置会持久保
 
 完全非交互创建时，必须显式提供 `--id`、`--profile`、`--username` 和 `--password-stdin`。自动化调用方应直接启动 ctl，并向进程的标准输入写入一行 UTF-8 密码。若经由 shell 管道提供输入，还需确认管道编码不会改写非 ASCII 字符，尤其不要依赖 Windows PowerShell 5.1 的默认输出编码。
 
-密码读取上限为 4096 字节，结尾的 LF 或 CRLF 会被移除，不读取后续行。该上限是输入限制，不代表协议一定接受任意内容；D520 文本还需满足严格 GBK 编码等协议约束。不要通过 `echo 密码`、命令行字面量或提交到仓库的密码文件提供凭据。
+密码读取上限为 4096 字节，结尾的 LF 或 CRLF 会被移除，不读取后续行。D520 文本还需满足下面的编码限制。不要通过 `echo 密码`、命令行字面量或提交到仓库的密码文件提供凭据。
 
 D520 账号按 GBK 编码后最多 36 字节；账号、密码和主机文本不接受 NUL 或 GBK 无法表示的字符。字节数不等于字符数，不能把输入读取上限当作协议字段长度。
 
@@ -120,7 +116,7 @@ D520 账号按 GBK 编码后最多 36 字节；账号、密码和主机文本不
 
 删除配置需要确认。脚本中可使用 `config remove ID --yes` 跳过询问；该操作会停止关联会话并删除保存的账号与密码。`auth remove ID` 只移除会话，不删除持久配置。
 
-`--allow-insecure-storage` 适用于配置创建、更新、密码更新和删除，不会加密密码或修复文件权限。只有了解当前保存位置与保护缺失的影响时才使用，详见[数据与隐私](privacy.md)。
+`--allow-insecure-storage` 允许在存储保护缺失时创建、更新、改密码或删除配置，不会修复权限。使用前请阅读[数据与隐私](privacy.md)。
 
 ## 命令速查
 
@@ -142,7 +138,7 @@ D520 账号按 GBK 编码后最多 36 字节；账号、密码和主机文本不
 | `network diagnose --session ID` | 诊断会话对应的受信认证目标 |
 | `diagnostics export --output PATH` | 将诊断摘要写入一个尚不存在的文件 |
 
-只读列表、配置详情、网络查询和诊断只连接已有 headless 后台，不会为查询自动启动后台。普通认证和配置变更操作可按需启动它；显式 `daemon start` 便于确认工作模式。同一后台最多一个活动会话。
+只读查询和诊断需要已有 headless 后台；认证和配置变更命令可按需启动它。
 
 ## 指定网卡
 
@@ -174,7 +170,7 @@ D520 账号按 GBK 编码后最多 36 字节；账号、密码和主机文本不
 .\sidraviactl.exe diagnostics export --output .\sidravia-diagnostics.json
 ```
 
-`--probe` 额外发起有限 IP 探测。诊断或探测成功不等于认证或互联网访问成功。
+`--probe` 额外发起有限 IP 探测，用于检查网络路径。认证和网页访问结果需另行确认。
 
 后台默认日志级别为 `debug`，可在启动或重启时指定：
 
@@ -197,13 +193,13 @@ D520 账号按 GBK 编码后最多 36 字节；账号、密码和主机文本不
 .\sidraviactl.exe integration autostart disable
 ```
 
-以上为可选操作，不必逐条执行。`set gui` 与 `set daemon` 二选一，影响下次用户登录。加入 PATH 后使用新终端；Linux 不支持这些 Windows 集成操作。维护结果以 JSON 返回，失败时同时返回非零退出码。
+按需执行，`set gui` 与 `set daemon` 二选一，下次登录时生效。修改 PATH 后打开新终端。Linux 不支持本节命令。结果以 JSON 返回，失败时退出码非零。
 
-该组的子命令用法以本节列出的形式为准；当前 `integration --help` 仅显示简要用法，不列出完整子命令。
+`integration --help` 暂不列出子命令，具体用法见上面的示例。
 
 ## 协议上报覆写
 
-一次性认证和持久配置均支持 `--protocol-override-file PATH`。覆写修改认证报文中的允许字段，不改变真实网卡和系统网络配置。完整格式、字段表、整体替换与清除流程见[协议上报覆写](override.md)。
+`auth start`、`config create` 和 `config update` 支持 `--protocol-override-file PATH`。字段和清除方法见[协议上报覆写](override.md)。
 
 ## 帮助与退出结果
 
@@ -217,6 +213,4 @@ D520 账号按 GBK 编码后最多 36 字节；账号、密码和主机文本不
 
 普通命令成功返回 0，失败返回非零；帮助命令不发起认证。遇到超时或通信中断时，先查询配置和会话确认结果，不要假定所有失败都表示操作未生效。
 
-除诊断导出和安装集成结果等明确的 JSON 输出外，普通查询输出供人阅读，不是稳定的 JSON 自动化接口。不要依赖显示文本的列顺序、颜色或措辞解析状态。
-
-继续阅读[常见问题](troubleshooting.md)、[数据与隐私](privacy.md)和[协议支持](protocols.md)。
+诊断导出和系统集成结果为 JSON；普通查询的文本格式可能变化，不适合脚本解析。
