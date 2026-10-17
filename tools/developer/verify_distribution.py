@@ -78,11 +78,11 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     require(re.fullmatch(r'[0-9a-f]{40}', build_id) is not None, 'invalid_build_id')
     require(target in ('windows-amd64', 'linux-amd64'), 'invalid_target')
     windows = target == 'windows-amd64'
-    require((gui is not None) == windows, 'gui_target_mismatch')
+    require(gui is None or windows, 'gui_target_mismatch')
     base = f'sidravia-v{version}-{target}'
     archive_name = base + ('-portable.zip' if windows else '-portable.tar.gz')
     outputs = {archive_name}
-    if windows:
+    if windows and gui is not None:
         outputs.add(base + '-setup.exe')
     require({p.name for p in directory.iterdir()} == outputs | {'SHA256SUMS.txt'}, 'output_file_set_mismatch')
     checksums = {}
@@ -95,7 +95,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(digest((directory / name).read_bytes()) == hash_value, 'output_checksum_mismatch')
         checksums[name] = hash_value
     require(set(checksums) == outputs, 'missing_checksum')
-    if windows:
+    if windows and gui is not None:
         require((directory / (base + '-setup.exe')).read_bytes().startswith(b'MZ'), 'installer_not_pe')
     contents = read_archive(directory / archive_name, target, base)
     expected = {'LICENSE': (repo / 'LICENSE').read_bytes(), 'sidravia.portable': b'',
@@ -107,6 +107,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     if windows:
         roles.append('sidraviamgr')
         expected['app_icon.ico'] = (repo / 'gui/windows/runner/resources/app_icon.ico').read_bytes()
+    if gui is not None:
         for path in gui.rglob('*'):
             require(not path.is_symlink(), 'gui_source_link')
             if path.is_file():

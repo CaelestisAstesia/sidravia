@@ -56,7 +56,9 @@ compilation; there is no routine `flutter clean`, fresh source copy, or skip bas
 on EXE existence. `--check-gui` additionally runs analyze and GUI tests, stopping
 on failure. Plain build-only success is not test acceptance. The package path
 requires a clean commit, rechecks staged source bytes after compilation, invokes
-`tools/build`, then `verify_distribution.py --smoke`. Smoke invokes only allowed
+`tools/build`, then `verify_distribution.py --smoke`. It also produces and verifies
+a separate Windows core portable archive without GUI or an installer. The
+report records `distribution` (GUI portable + setup) and `core_distribution`. Smoke invokes only allowed
 help commands, never the installer or GUI. Reports/logs/artifacts are in the
 workspace's unique `runs/` directory. Each stage streams stdout and stderr to
 separate files. The helper bounds stage execution to 900 seconds and output

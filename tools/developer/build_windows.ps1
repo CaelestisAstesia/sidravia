@@ -272,12 +272,16 @@ public static class SidraviaBuildJob {
             if (!(Test-Path -LiteralPath $target -PathType Leaf) -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -cne $item.sha256) { throw ('Staged source changed during build: ' + $item.path) }
         }
         $out = Join-Path $runRoot 'distribution'
+        $coreOut = Join-Path $runRoot 'core-distribution'
         Push-Location $repo
         try {
             Invoke-Stage 'package' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target','windows-amd64','--output',$out,'--go',$Go,'--gui-directory',$gui,'--iscc',$ISCC)
             Invoke-Stage 'consume' $Python @('tools/developer/verify_distribution.py','--directory',$out,'--target','windows-amd64','--version',$Version,'--build-id',$manifest.source_commit,'--gui-directory',$gui,'--go',$Go,'--smoke')
+            Invoke-Stage 'package-core' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target','windows-amd64','--output',$coreOut,'--go',$Go)
+            Invoke-Stage 'consume-core' $Python @('tools/developer/verify_distribution.py','--directory',$coreOut,'--target','windows-amd64','--version',$Version,'--build-id',$manifest.source_commit,'--go',$Go,'--smoke')
         } finally { Pop-Location }
         $report.distribution = $out
+        $report.core_distribution = $coreOut
     }
     $report.status = 'passed'
 } catch {
