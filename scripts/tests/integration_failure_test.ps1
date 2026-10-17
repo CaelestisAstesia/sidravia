@@ -171,6 +171,10 @@ try {
     $productRoot = Join-Path $caseRoot 'product'
     $scriptsDir = Join-Path $productRoot 'scripts'
     New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
+    # PowerShell resolves script paths to long names; TEMP may use an 8.3 alias.
+    # Resolve the fixture too, retaining exact PATH and ownership assertions.
+    $productRoot = (Get-Item -LiteralPath $productRoot).FullName
+    $scriptsDir = Join-Path $productRoot 'scripts'
     foreach ($exe in @('sidraviactl.exe', 'sidraviad.exe')) { [IO.File]::WriteAllBytes((Join-Path $productRoot $exe), [byte[]]@()) }
     $installCopy = $installSource -replace "(?ms)function Get-SidraviaUserPath \{.*?\n\}", "function Get-SidraviaUserPath { return `$global:Harness.Path }"
     $installCopy = $installCopy -replace "(?ms)function Set-SidraviaUserPath \{.*?\n\}", "function Set-SidraviaUserPath { param([AllowNull()][object]`$Value) `$global:Harness.PathWrites++; `$global:Harness.LastPathSetNull = (`$null -eq `$Value); if (`$null -eq `$Value) { `$global:Harness.NullPathWrites++ }; if (`$global:Harness.PathBehavior -eq 'before') { throw 'simulated_path_before_mutation' }; `$global:Harness.Path = `$Value; if (`$global:Harness.PathBehavior -eq 'after') { throw 'simulated_path_after_mutation' }; if (`$global:Harness.PathBehavior -eq 'after_then_block_restore') { `$global:Harness.PathBehavior = 'before'; throw 'simulated_path_after_mutation' }; if (`$global:Harness.PathBehavior -eq 'succeed_then_block_restore') { `$global:Harness.PathBehavior = 'before'; return }; if (`$global:Harness.PathBehavior -eq 'external_after') { `$global:Harness.Path = `$global:Harness.ExternalPath; throw 'simulated_path_external_interference' } }"
