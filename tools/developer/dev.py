@@ -83,12 +83,16 @@ def package_commands(args, env):
         raise ValueError("package requires a clean tracked and untracked source tree")
     if platform.system() != "Linux" or platform.machine().lower() not in ("amd64", "x86_64"):
         raise ValueError("package requires native Linux amd64; use windows --package for Windows GUI provenance")
-    target = "linux-amd64"
+    target = getattr(args, "target", "linux-amd64")
+    if target not in ("linux-amd64", "linux-arm64", "windows-arm64"):
+        raise ValueError("unsupported core target; use windows --package for Windows AMD64 GUI provenance")
     output = Path(args.output).resolve()
     if output.exists() or not output.parent.is_dir():
         raise ValueError("output must not exist and its parent must exist")
     producer = [args.go, "run", "-mod=readonly", "./tools/build", "--version", args.version, "--build-id", info["commit"], "--artifact", "distribution", "--target", target, "--output", str(output), "--go", args.go]
-    consumer = [sys.executable, "tools/developer/verify_distribution.py", "--directory", str(output), "--target", target, "--version", args.version, "--build-id", info["commit"], "--go", args.go, "--smoke"]
+    consumer = [sys.executable, "tools/developer/verify_distribution.py", "--directory", str(output), "--target", target, "--version", args.version, "--build-id", info["commit"], "--go", args.go]
+    if target == "linux-amd64":
+        consumer.append("--smoke")
     return info, [producer, consumer]
 
 
@@ -172,6 +176,7 @@ def parse_args(argv=None):
             sub.add_argument("--package", action="store_true")
             sub.add_argument("--check-gui", action="store_true")
         if command == "package":
+            sub.add_argument("--target", choices=("linux-amd64", "linux-arm64", "windows-arm64"), default="linux-amd64")
             sub.add_argument("--version", required=True)
             sub.add_argument("--output", required=True)
     return parser.parse_args(argv)

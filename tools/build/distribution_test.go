@@ -13,19 +13,21 @@ import (
 
 func TestDistributionFlags(t *testing.T) {
 	base := []string{"--version", "0.3.0-alpha.1", "--build-id", "test", "--output", "out"}
-	for _, tail := range [][]string{{"--artifact", "distribution", "--target", "windows-amd64"}, {"--artifact", "distribution", "--target", "linux-amd64"}} {
+	for _, target := range []string{"windows-amd64", "linux-amd64", "windows-arm64", "linux-arm64"} {
+		tail := []string{"--artifact", "distribution", "--target", target}
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-amd64", "--gui-directory", "x"}} {
+	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-amd64", "--gui-directory", "x"}, {"--artifact", "distribution", "--target", "windows-arm64", "--gui-directory", "x"}, {"--artifact", "distribution", "--target", "windows-arm64", "--iscc", "x"}, {"--artifact", "distribution", "--target", "linux-arm64", "--iscc", "x"}} {
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err == nil {
 			t.Fatal("accepted invalid target combination")
 		}
 	}
 }
 func TestDistributionContents(t *testing.T) {
-	for _, target := range []string{"windows-amd64", "linux-amd64"} {
+	t.Setenv("GOARM64", "v9.0,lse,crypto")
+	for _, target := range []string{"windows-amd64", "linux-amd64", "windows-arm64", "linux-arm64"} {
 		t.Run(target, func(t *testing.T) {
 			root := setupRepoRoot(t)
 			writeTestFile(t, filepath.Join(root, "gui", "windows", "runner", "resources", "app_icon.ico"), "icon-fixture")
@@ -36,21 +38,24 @@ func TestDistributionContents(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := 2
-			if target == "windows-amd64" {
+			if strings.HasPrefix(target, "windows-") {
 				want = 3
 			}
 			if len(fb.calls) != want {
 				t.Fatalf("builds=%d", len(fb.calls))
 			}
 			for _, env := range fb.envs {
-				if !strings.Contains(strings.Join(env, "\n"), "GOOS="+strings.Split(target, "-")[0]) {
+				if strings.HasSuffix(target, "-arm64") && !strings.Contains(strings.Join(env, "\n"), "GOARM64=v8.0") {
+					t.Fatal("ARM baseline was not fixed")
+				}
+				if !strings.Contains(strings.Join(env, "\n"), "GOOS="+strings.Split(target, "-")[0]) || !strings.Contains(strings.Join(env, "\n"), "GOARCH="+strings.Split(target, "-")[1]) {
 					t.Fatal("wrong target env")
 				}
 			}
 			contents := map[string]bool{}
 			bytesByName := map[string][]byte{}
-			if target == "windows-amd64" {
-				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-windows-amd64-portable.zip"))
+			if strings.HasPrefix(target, "windows-") {
+				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-portable.zip"))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -72,7 +77,7 @@ func TestDistributionContents(t *testing.T) {
 					t.Fatal("missing manager or core")
 				}
 			} else {
-				f, err := os.Open(filepath.Join(out, "sidravia-v0.3.0-alpha.1-linux-amd64-portable.tar.gz"))
+				f, err := os.Open(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-portable.tar.gz"))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -91,7 +96,7 @@ func TestDistributionContents(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					name := strings.TrimPrefix(h.Name, "sidravia-v0.3.0-alpha.1-linux-amd64/")
+					name := strings.TrimPrefix(h.Name, "sidravia-v0.3.0-alpha.1-"+target+"/")
 					contents[name] = true
 					data, err := io.ReadAll(tr)
 					if err != nil {
@@ -113,7 +118,7 @@ func TestDistributionContents(t *testing.T) {
 			}
 			info := "ProductVersion: " + cfg.version + "\nBuildID: " + cfg.buildID + "\nTarget: " + target + "\nArtifactKind: distribution\n"
 			names := []string{"sidraviactl", "sidraviad"}
-			if target == "windows-amd64" {
+			if strings.HasPrefix(target, "windows-") {
 				names = []string{"sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe"}
 			}
 			for _, name := range names {

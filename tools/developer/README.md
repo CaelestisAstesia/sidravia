@@ -70,17 +70,26 @@ Invoke the helper as a separate process (`-File`), never dot-source it.
 Successful native compilation does not prove
 GUI interaction, installation, notification delivery or campus behavior.
 
-## Linux core distribution
+## Core distributions
 
 From a clean Linux amd64 checkout, choose an absent output directory whose parent
 exists (the repository's ignored `dist/` path is suitable):
 
 ```bash
-python3 tools/developer/dev.py package --version 0.3.0-alpha.1 --output dist
+python3 tools/developer/dev.py package --version 0.3.0-alpha.1 --output dist/linux-amd64
+python3 tools/developer/dev.py package --target linux-arm64 --version 0.3.0-alpha.1 --output dist/linux-arm64
+python3 tools/developer/dev.py package --target windows-arm64 --version 0.3.0-alpha.1 --output dist/windows-arm64
 ```
 
+ARM64 packages contain core tools only (Windows includes the manager). They are
+cross-compiled with CGO disabled and ARMv8.0 baseline. The consumer inspects
+archive content, checksums and Go OS/architecture metadata without executing
+foreign binaries; help smoke is recorded as `not_run`. Cross-compilation does
+not establish ARM hardware compatibility. GUI and installers remain Windows
+AMD64 only. The default Linux AMD64 package also runs native help smoke.
+
 The full commit is passed as build-id; producer and consumer remain the existing
-implementations. Windows distribution must use `windows --package`, which builds
+implementations. Windows AMD64 distribution must use `windows --package`, which builds
 the GUI from synchronized source. A generic existing GUI directory is not accepted
 as proof of current source. Go `trimpath`'s `embedded_identity=not_recorded`
 limitation remains; source/build receipts and byte hashes are not independent

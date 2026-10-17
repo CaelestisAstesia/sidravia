@@ -42,25 +42,25 @@ class DistributionContract(unittest.TestCase):
                     'institution-profiles/jlu.json': b'internal/daemon/configuration/profiles/jlu.json',
                     'BUILD-INFO.txt': f'ProductVersion: {VERSION}\nBuildID: {SHA}\nTarget: {target}\nArtifactKind: distribution\n'.encode(),
                     'sidraviactl': b'ctl', 'sidraviad': b'daemon'}
-        if target == 'windows-amd64':
+        if target.startswith('windows-'):
             contents['sidraviactl.exe'] = contents.pop('sidraviactl')
             contents['sidraviad.exe'] = contents.pop('sidraviad')
             contents['sidraviamgr.exe'] = b'manager'
             contents['app_icon.ico'] = b'gui/windows/runner/resources/app_icon.ico'
-            if gui:
+            if gui and target == 'windows-amd64':
                 contents.update({p.relative_to(self.gui).as_posix(): p.read_bytes() for p in self.gui.rglob('*') if p.is_file()})
-        names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe'] if target == 'windows-amd64' else ['sidraviactl', 'sidraviad']
+        names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe'] if target.startswith('windows-') else ['sidraviactl', 'sidraviad']
         contents['BUILD-INFO.txt'] += ''.join(f'BinarySHA256: {module.digest(contents[name])}  {name}\n' for name in names).encode()
         return contents
 
     def package(self, target, contents, gui=True):
         base = f'sidravia-v{VERSION}-{target}'
-        archive = self.out / (base + ('-portable.zip' if target == 'windows-amd64' else '-portable.tar.gz'))
-        if target == 'windows-amd64':
+        archive = self.out / (base + ('-portable.zip' if target.startswith('windows-') else '-portable.tar.gz'))
+        if target.startswith('windows-'):
             with zipfile.ZipFile(archive, 'w') as z:
                 for name, data in contents.items():
                     z.writestr(name, data)
-            if gui:
+            if gui and target == 'windows-amd64':
                 (self.out / (base + '-setup.exe')).write_bytes(b'MZinert installer')
         else:
             with tarfile.open(archive, 'w:gz') as tar:
@@ -75,7 +75,7 @@ class DistributionContract(unittest.TestCase):
         return module.verify(self.out, self.repo, target, VERSION, SHA, self.gui if target == 'windows-amd64' and gui else None, smoke=smoke)
 
     def test_exact_windows_and_linux_contract(self):
-        for target in ('windows-amd64', 'linux-amd64'):
+        for target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'):
             with self.subTest(target=target):
                 for p in self.out.iterdir():
                     p.unlink()
@@ -161,3 +161,32 @@ class DistributionContract(unittest.TestCase):
             self.assertEqual(self.verify('windows-amd64', True)['helpSmoke'], 'passed')
         self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviamgr.exe'])
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
+
+    def test_arm_metadata_rejects_amd64_binary(self):
+        for target in ('windows-arm64', 'linux-arm64'):
+            for arch in ('amd64', 'arm64'):
+                with self.subTest(target=target, arch=arch):
+                    settings = {'GOOS': target.split('-')[0], 'GOARCH': arch, 'CGO_ENABLED': '0'}
+                    info = {'Path': 'sidravia/cmd/sidravia', 'Settings': [{'Key': k, 'Value': v} for k, v in settings.items()]}
+                    with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
+                        if arch == 'amd64':
+                            with self.assertRaisesRegex(module.VerificationError, 'binary_target_mismatch'):
+                                module.binary_identity(Path('inert'), 'sidraviactl', target, VERSION, SHA, 'go')
+                        else:
+                            self.assertFalse(module.binary_identity(Path('inert'), 'sidraviactl', target, VERSION, SHA, 'go'))
+
+    def test_windows_arm_gui_rejected(self):
+        with self.assertRaisesRegex(module.VerificationError, 'gui_target_mismatch'):
+            module.verify(self.out, self.repo, 'windows-arm64', VERSION, SHA, self.gui)
+
+    def test_arm_smoke_rejects_amd64_host_before_execution(self):
+        for target in ('windows-arm64', 'linux-arm64'):
+            with self.subTest(target=target):
+                for path in self.out.iterdir():
+                    path.unlink()
+                self.package(target, self.payload(target, gui=False), gui=False)
+                host = 'Windows' if target.startswith('windows-') else 'Linux'
+                with mock.patch.object(module.platform, 'system', return_value=host), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run') as run:
+                    with self.assertRaisesRegex(module.VerificationError, 'smoke_requires_matching_native_host'):
+                        self.verify(target, smoke=True, gui=False)
+                run.assert_not_called()

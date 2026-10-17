@@ -31,6 +31,17 @@ class DeveloperCommands(unittest.TestCase):
                 self.assertEqual(command[command.index("--target") + 1], "linux-amd64")
             self.assertIn("--smoke", commands[1])
 
+    def test_arm_package_uses_selected_target_without_execution(self):
+        for target in ("windows-arm64", "linux-arm64"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                args = argparse.Namespace(go="go", output=str(Path(directory) / "dist"), version="0.3.0-alpha.1", target=target)
+                with mock.patch.object(dev, "metadata", return_value={"dirty": False, "commit": "a" * 40}), mock.patch.object(dev.platform, "system", return_value="Linux"), mock.patch.object(dev.platform, "machine", return_value="x86_64"):
+                    _, commands = dev.package_commands(args, {})
+                for command in commands:
+                    self.assertEqual(command[command.index("--target") + 1], target)
+                    self.assertEqual(command[command.index("--build-id") + 1], "a" * 40)
+                self.assertNotIn("--smoke", commands[1])
+
     def test_parallel_cross_preserves_checks_and_failure(self):
         def run(check, *_):
             return dev.verify.CheckResult(check.argv, int("./internal/cli" in check.argv), "", "")

@@ -32,7 +32,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	entries := append([]zipEntry{{"LICENSE", license, 0644}}, profiles...)
 	buildInfoIndex := len(entries)
 	entries = append(entries, zipEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
-	if t.cfg.target == "windows-amd64" {
+	if strings.HasPrefix(t.cfg.target, "windows-") {
 		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
 		if err != nil {
 			return fmt.Errorf("read application icon: %w", err)
@@ -61,18 +61,25 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			_ = os.RemoveAll(stage)
 		}
 	}()
+	target := strings.Split(t.cfg.target, "-")
 	env := buildEnv(os.Environ())
-	suffix := ".exe"
-	if t.cfg.target == "linux-amd64" {
-		suffix = ""
-		for i, v := range env {
-			if v == "GOOS=windows" {
-				env[i] = "GOOS=linux"
-			}
+	for i, value := range env {
+		if strings.HasPrefix(value, "GOOS=") {
+			env[i] = "GOOS=" + target[0]
+		}
+		if strings.HasPrefix(value, "GOARCH=") {
+			env[i] = "GOARCH=" + target[1]
 		}
 	}
+	if target[1] == "arm64" {
+		env = append(env, "GOARM64=v8.0")
+	}
+	suffix := ".exe"
+	if target[0] == "linux" {
+		suffix = ""
+	}
 	programs := []struct{ name, pkg string }{{"sidraviactl", "./cmd/sidravia"}, {"sidraviad", "./cmd/sidraviad"}}
-	if t.cfg.target == "windows-amd64" {
+	if strings.HasPrefix(t.cfg.target, "windows-") {
 		programs = append(programs, struct{ name, pkg string }{"sidraviamgr", "./cmd/sidraviamgr"})
 	}
 	var binarySums strings.Builder
@@ -104,7 +111,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	portable := append(append([]zipEntry(nil), entries...), zipEntry{"sidravia.portable", nil, 0644})
 	base := "sidravia-v" + t.cfg.version + "-" + t.cfg.target
 	archive := base + "-portable.zip"
-	if t.cfg.target == "linux-amd64" {
+	if strings.HasPrefix(t.cfg.target, "linux-") {
 		archive = base + "-portable.tar.gz"
 		if err := writeTar(filepath.Join(stage, archive), base, portable); err != nil {
 			return err

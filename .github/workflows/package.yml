@@ -22,6 +22,10 @@ jobs:
             target: windows-amd64
           - os: ubuntu-latest
             target: linux-amd64
+          - os: ubuntu-latest
+            target: linux-arm64
+          - os: ubuntu-latest
+            target: windows-arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
@@ -85,11 +89,19 @@ jobs:
           python tools/developer/verify_distribution.py --directory dist-core --target windows-amd64 --version $env:BUILD_VERSION --build-id $env:BUILD_ID --go go --smoke > core-verification.json
           if ($LASTEXITCODE -ne 0) { throw 'windows_core_verification_failed' }
       - name: Build and consume Linux core distribution
-        if: runner.os == 'Linux'
+        if: matrix.target == 'linux-amd64'
         shell: bash
         run: |
           go run -mod=readonly ./tools/build --version "$BUILD_VERSION" --build-id "$BUILD_ID" --artifact distribution --target linux-amd64 --output dist --go go
           python tools/developer/verify_distribution.py --directory dist --target linux-amd64 --version "$BUILD_VERSION" --build-id "$BUILD_ID" --go go --smoke > verification.json
+      - name: Cross-build and inspect ARM64 core (no runtime smoke)
+        if: matrix.target == 'linux-arm64' || matrix.target == 'windows-arm64'
+        shell: bash
+        env:
+          CORE_TARGET: ${{ matrix.target }}
+        run: |
+          python tools/developer/dev.py package --target "$CORE_TARGET" --version "$BUILD_VERSION" --output dist
+          python tools/developer/verify_distribution.py --directory dist --target "$CORE_TARGET" --version "$BUILD_VERSION" --build-id "$BUILD_ID" --go go > verification.json
       - name: Summarize verified candidate
         shell: bash
         run: |

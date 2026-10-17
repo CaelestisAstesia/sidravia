@@ -30,6 +30,11 @@ def require(condition: bool, reason: str) -> None:
         raise VerificationError(reason)
 
 
+def native_arch() -> str | None:
+    return {'amd64': 'amd64', 'x86_64': 'amd64', 'arm64': 'arm64',
+            'aarch64': 'arm64'}.get(platform.machine().lower())
+
+
 def read_archive(path: Path, target: str, base: str) -> dict[str, bytes]:
     contents: dict[str, bytes] = {}
     aliases: set[str] = set()
@@ -37,7 +42,7 @@ def read_archive(path: Path, target: str, base: str) -> dict[str, bytes]:
         require(name.casefold() not in aliases, 'duplicate_archive_member')
         aliases.add(name.casefold())
         contents[name] = data
-    if target == 'windows-amd64':
+    if target.startswith('windows-'):
         with zipfile.ZipFile(path) as archive:
             for member in archive.infolist():
                 require(not member.is_dir() and not stat.S_ISLNK(member.external_attr >> 16), 'non_file_archive_member')
@@ -59,7 +64,7 @@ def binary_identity(path: Path, role: str, target: str, version: str, build_id: 
     settings = {row['Key']: row['Value'] for row in info.get('Settings', [])}
     package = 'sidravia/cmd/' + ('sidravia' if role == 'sidraviactl' else role)
     require(info.get('Path') == package, 'binary_package_mismatch')
-    require(settings.get('GOOS') == target.split('-')[0] and settings.get('GOARCH') == 'amd64', 'binary_target_mismatch')
+    require(settings.get('GOOS') == target.split('-')[0] and settings.get('GOARCH') == target.split('-')[1], 'binary_target_mismatch')
     require(settings.get('CGO_ENABLED') == '0', 'binary_cgo_mismatch')
     # Go deliberately omits linker settings with -trimpath. Do not infer a
     # runtime identity from their absence; BUILD-INFO binds compiler output bytes.
@@ -76,9 +81,9 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
            gui: Path | None = None, go: str = 'go', smoke: bool = False) -> dict:
     require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?', version) is not None, 'invalid_version')
     require(re.fullmatch(r'[0-9a-f]{40}', build_id) is not None, 'invalid_build_id')
-    require(target in ('windows-amd64', 'linux-amd64'), 'invalid_target')
-    windows = target == 'windows-amd64'
-    require(gui is None or windows, 'gui_target_mismatch')
+    require(target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'), 'invalid_target')
+    windows = target.startswith('windows-')
+    require(gui is None or target == 'windows-amd64', 'gui_target_mismatch')
     base = f'sidravia-v{version}-{target}'
     archive_name = base + ('-portable.zip' if windows else '-portable.tar.gz')
     outputs = {archive_name}
@@ -125,7 +130,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(contents[name] == data, 'archive_source_mismatch: ' + name)
     if smoke:
         host = {'Windows': 'windows', 'Linux': 'linux'}.get(platform.system())
-        require(host == target.split('-')[0] and platform.machine().lower() in ('amd64', 'x86_64'), 'smoke_requires_matching_native_host')
+        require(host == target.split('-')[0] and native_arch() == target.split('-')[1], 'smoke_requires_matching_native_host')
     embedded_identities = []
     with tempfile.TemporaryDirectory(prefix='sidravia-distribution-check-') as temporary:
         root = Path(temporary)
@@ -149,7 +154,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', required=True, type=Path)
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
-    parser.add_argument('--target', required=True, choices=['windows-amd64', 'linux-amd64'])
+    parser.add_argument('--target', required=True, choices=['windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'])
     parser.add_argument('--version', required=True)
     parser.add_argument('--build-id', required=True)
     parser.add_argument('--gui-directory', type=Path)

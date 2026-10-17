@@ -165,11 +165,11 @@ func parseFlags(args []string) (config, error) {
 		return c, errors.New("missing required flag --output")
 	}
 	if c.artifact == "distribution" {
-		if c.target != "windows-amd64" && c.target != "linux-amd64" {
-			return c, errors.New("distribution requires --target windows-amd64 or linux-amd64")
+		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
+			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
 		}
-		if c.target == "linux-amd64" && (c.guiDirectory != "" || c.iscc != "") {
-			return c, errors.New("Linux distribution contains only backend and CTL")
+		if c.target != "windows-amd64" && (c.guiDirectory != "" || c.iscc != "") {
+			return c, errors.New("GUI and installer require windows-amd64")
 		}
 	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
@@ -192,7 +192,7 @@ Optional flags:
   --go         go executable to use (default: go); must report go1.26.4
   --artifact   release (default) or field-validation
                distribution: Windows archive/optional installer or Linux archive
-  --target     distribution only: windows-amd64 or linux-amd64
+  --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
   --gui-directory  optional fresh Windows Flutter Release directory
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --help       show this help and exit without building
@@ -304,7 +304,7 @@ func isASCIIAlnum(r rune) bool { return isASCIILetter(r) || isASCIIDigit(r) }
 var conflictGoVars = map[string]bool{
 	"GOOS": true, "GOARCH": true, "CGO_ENABLED": true, "GOAMD64": true,
 	"GOEXPERIMENT": true, "GOFIPS140": true, "GOFLAGS": true, "GOWORK": true,
-	"GOENV": true, "GOTOOLCHAIN": true,
+	"GOENV": true, "GOTOOLCHAIN": true, "GOARM64": true,
 }
 
 // buildEnv returns a new environment derived from parent with the conflicting
