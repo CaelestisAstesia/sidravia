@@ -423,3 +423,67 @@ func TestAutomaticRecoveryRotationRetainsAddressOnPresentInterfaces(t *testing.T
 		t.Fatalf("rotation scanned another address: %v", got)
 	}
 }
+
+func TestAutomaticRecoveryRestoresRetryReasonAfterNetworkStabilizes(t *testing.T) {
+	for _, recommendation := range []protocol.AuthenticationProtocolFailureHandlingRecommendation{
+		protocol.RetryAfterStandardDelay, protocol.RetryAfterExtendedDelay, protocol.RetryAfterBoundedRecovery,
+	} {
+		t.Run(string(recommendation), func(t *testing.T) {
+			f := newRecoveryFixture(t, true, false, false)
+			a := recoveryInterface(t, "a")
+			f.apply(t, 1, a)
+			before := f.fail(t, 0, recommendation)
+			if before.StateReason == nil || before.NextRetryAt == nil || before.LastAuthenticationFailure == nil {
+				t.Fatalf("missing original retry facts: %#v", before)
+			}
+			absent := f.apply(t, 2)
+			if absent.State != WaitingForNetwork || absent.StateReason == nil || absent.StateReason.Code != StateReasonCodeNetworkUnavailable || absent.NextRetryAt != nil {
+				t.Fatalf("incorrect absent-network projection: %#v", absent)
+			}
+			stabilizing := f.apply(t, 3, a)
+			if stabilizing.State != WaitingForNetwork || stabilizing.NextRetryAt != nil {
+				t.Fatalf("stabilization published retry time: %#v", stabilizing)
+			}
+			f.advance(bindingStabilityDelay)
+			retry := f.apply(t, 4, a)
+			if retry.State != WaitingBeforeRetry || retry.StateReason == nil || *retry.StateReason != *before.StateReason {
+				t.Fatalf("retry did not restore failure reason: before=%#v after=%#v", before.StateReason, retry.StateReason)
+			}
+			if retry.NextRetryAt == nil || !retry.NextRetryAt.Equal(*before.NextRetryAt) || retry.LastAuthenticationFailure == nil || *retry.LastAuthenticationFailure != *before.LastAuthenticationFailure {
+				t.Fatalf("retry changed deadline or failure: before=%#v after=%#v", before, retry)
+			}
+			if retry.SelectedNetworkBinding == nil || retry.SelectedNetworkBinding.InterfaceID != "a" || len(f.factory.creationInputs()) != 1 {
+				t.Fatal("restoring reason started an early run or lost binding")
+			}
+			repeated := f.apply(t, 5, a)
+			if repeated.StateReason == nil || *repeated.StateReason != *before.StateReason || repeated.NextRetryAt == nil || !repeated.NextRetryAt.Equal(*before.NextRetryAt) {
+				t.Fatal("repeat facts changed retry projection")
+			}
+			f.fire(t)
+			f.run(t, 1, "a")
+		})
+	}
+}
+
+func TestAutomaticRecoveryNetworkChurnBackoffDoesNotInventFailureReason(t *testing.T) {
+	f := newRecoveryFixture(t, true, true, false)
+	iface := fillRoundWithInputChanges(t, f)
+	run := f.run(t, 3, "a")
+	f.apply(t, 5)
+	if run.waitForCancellation(testContext(t)) == nil {
+		t.Fatal("missing network cancellation")
+	}
+	run.unblock(nil)
+	f.apply(t, 6, iface)
+	f.advance(bindingStabilityDelay)
+	f.apply(t, 7, iface)
+	retry := waitForState(t, testContext(t), f.session, WaitingBeforeRetry)
+	if retry.StateReason != nil || retry.LastAuthenticationFailure != nil || retry.NextRetryAt == nil {
+		t.Fatalf("network churn invented failure: %#v", retry)
+	}
+	if len(f.factory.creationInputs()) != 4 {
+		t.Fatal("network churn bypassed backoff")
+	}
+	f.fire(t)
+	f.run(t, 4, "a")
+}

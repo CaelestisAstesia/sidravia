@@ -138,8 +138,9 @@ func (s *AuthenticationSession) reconcileAutomatic() {
 				snapshot.SelectedNetworkBinding = bindingSummary(binding)
 				snapshot.State = WaitingBeforeRetry
 				snapshot.AuthenticationEstablishedAt = nil
-				if snapshot.LastAuthenticationFailure == nil {
-					snapshot.StateReason = nil
+				snapshot.StateReason = nil
+				if snapshot.LastAuthenticationFailure != nil {
+					snapshot.StateReason = &StateReason{Code: StateReasonCodeProtocolRunFailed, Description: "Authentication protocol run failed; retry is scheduled."}
 				}
 			})
 		}
