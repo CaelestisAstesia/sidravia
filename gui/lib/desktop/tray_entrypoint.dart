@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/application/connection_clock.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,25 +24,37 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
   static const _channel = MethodChannel(trayViewChannelName);
   final _popoverKey = GlobalKey();
   TrayPopoverData? _data;
+  final _clock = ConnectionClock();
+  bool _visible = false;
   String? _channelError;
   int _lastHeight = 0;
   int _presentationRevision = 0;
+  int _visibilityRevision = 0;
 
   @override
   void initState() {
     super.initState();
     _data = widget.initialData;
+    _clock.addListener(_tick);
+    _syncClock();
     _channel.setMethodCallHandler(_handleNativeCall);
     unawaited(_loadInitialData());
   }
 
   Future<void> _loadInitialData() async {
     final revision = _presentationRevision;
+    final visibilityRevision = _visibilityRevision;
     try {
       final value = await _channel.invokeMethod<Object?>('getPresentation');
       final next = TrayPopoverData.fromMap(value);
       if (mounted && next != null && revision == _presentationRevision) {
-        setState(() => _data = next);
+        setState(() {
+          _data = next;
+          if (visibilityRevision == _visibilityRevision) {
+            _visible = value is Map && value['visible'] == true;
+          }
+        });
+        _syncClock();
       }
     } on PlatformException {
       _showChannelFailure();
@@ -71,10 +85,20 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
   }
 
   Future<Object?> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'visibilityChanged' && call.arguments is bool) {
+      _visibilityRevision++;
+      _visible = call.arguments as bool;
+      _syncClock();
+      if (mounted) setState(() {});
+      return null;
+    }
     if (call.method == 'presentationChanged') {
       _presentationRevision++;
       final next = TrayPopoverData.fromMap(call.arguments);
-      if (mounted && next != null) setState(() => _data = next);
+      if (mounted && next != null) {
+        setState(() => _data = next);
+        _syncClock();
+      }
       return null;
     }
     if (call.method == 'dismiss') {
@@ -83,6 +107,12 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
     }
     return null;
   }
+
+  void _tick() {
+    if (mounted) setState(() {});
+  }
+
+  void _syncClock() => _clock.update(_data?.establishedAt, active: _visible);
 
   void _scheduleMeasure() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -102,6 +132,7 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
   @override
   void dispose() {
     _channel.setMethodCallHandler(null);
+    _clock.dispose();
     super.dispose();
   }
 
@@ -127,6 +158,7 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
                   children: [
                     TrayPopover(
                       data: data,
+                      now: _clock.now,
                       onAction: _sendAction,
                       onDismiss: () => unawaited(_invokeNative('dismiss')),
                     ),

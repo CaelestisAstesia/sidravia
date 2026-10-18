@@ -34,6 +34,7 @@ class HomeViewData {
     required this.onSecondary,
     required this.onPrimary,
     this.actionError,
+    this.onDismissActionError,
     this.issue,
     this.notice,
   });
@@ -46,6 +47,7 @@ class HomeViewData {
   final VoidCallback? onSecondary;
   final VoidCallback? onPrimary;
   final String? actionError;
+  final VoidCallback? onDismissActionError;
   final SessionAuthenticationFailure? issue;
   final HomeNotice? notice;
 }
@@ -130,6 +132,9 @@ class HomePage extends StatelessWidget {
             connectionNotifications?.feedback ??
             desktopPresence?.feedback ??
             GuiPreferencesScope.maybeOf(context)?.feedback,
+        onDismissActionError: p.actionError == null
+            ? null
+            : () => controller.dismissNotice(p.actionError!),
         issue: p.issue,
         notice: notice,
       ),
@@ -334,6 +339,7 @@ class _HomeActions extends StatelessWidget {
           FeedbackPill(
             key: const ValueKey('home-action-feedback'),
             message: data.actionError!,
+            onDismiss: data.onDismissActionError,
           ),
         ],
         if (data.notice != null) ...[

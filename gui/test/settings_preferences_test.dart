@@ -66,14 +66,10 @@ void main() {
         await tester.pumpAndSettle();
         final selector = find.byKey(const ValueKey('close-behavior-selector'));
         expect(
-          tester.widget<DropdownButton<GuiCloseBehavior>>(selector).value,
-          GuiCloseBehavior.exit,
+          find.descendant(of: selector, matching: find.text('退出程序')),
+          findsOneWidget,
         );
-        expect(
-          tester.widget<DropdownButton<GuiCloseBehavior>>(selector).onChanged ==
-              null,
-          !enabled,
-        );
+        expect(tester.widget<TextButton>(selector).onPressed == null, !enabled);
         final toggle = find.byKey(const ValueKey('start-hidden-switch'));
         expect(tester.widget<DesignSwitch>(toggle).value, true);
         expect(tester.widget<DesignSwitch>(toggle).onChanged == null, !enabled);
@@ -261,7 +257,7 @@ void main() {
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.byType(DropdownMenuItem<ThemeMode>), findsWidgets);
+    expect(find.byType(MenuItemButton), findsWidgets);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
@@ -485,92 +481,88 @@ void main() {
   ]) {
     for (final scale in [1.0, 2.0]) {
       for (final dark in [false, true]) {
-        testWidgets('appearance centered $platform scale=$scale dark=$dark', (
-          tester,
-        ) async {
-          await tester.runAsync(fonts.loadCaptureFonts);
-          await tester.binding.setSurfaceSize(const Size(360, 640));
-          addTearDown(() => tester.binding.setSurfaceSize(null));
-          final mode = ValueNotifier(ThemeMode.system);
-          addTearDown(mode.dispose);
-          await tester.pumpWidget(
-            MaterialApp(
-              theme: (dark ? AppTheme.dark() : AppTheme.light()).copyWith(
-                platform: platform,
-              ),
-              home: MediaQuery(
-                data: MediaQueryData(
-                  size: const Size(360, 640),
-                  textScaler: TextScaler.linear(scale),
+        testWidgets(
+          'appearance left aligned $platform scale=$scale dark=$dark',
+          (tester) async {
+            await tester.runAsync(fonts.loadCaptureFonts);
+            await tester.binding.setSurfaceSize(const Size(360, 640));
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            final mode = ValueNotifier(ThemeMode.system);
+            addTearDown(mode.dispose);
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: (dark ? AppTheme.dark() : AppTheme.light()).copyWith(
+                  platform: platform,
                 ),
-                child: Scaffold(
-                  body: Center(
-                    child: ValueListenableBuilder<ThemeMode>(
-                      valueListenable: mode,
-                      builder: (_, value, _) => AppearanceSelector(
-                        value: value,
-                        onChanged: (v) => mode.value = v,
+                home: MediaQuery(
+                  data: MediaQueryData(
+                    size: const Size(360, 640),
+                    textScaler: TextScaler.linear(scale),
+                  ),
+                  child: Scaffold(
+                    body: Center(
+                      child: ValueListenableBuilder<ThemeMode>(
+                        valueListenable: mode,
+                        builder: (_, value, _) => AppearanceSelector(
+                          value: value,
+                          onChanged: (v) => mode.value = v,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-          await tester.pumpAndSettle();
-          final start = tester.getSize(
-            find.byKey(const ValueKey('appearance-selector')),
-          );
-          for (final value in ThemeMode.values) {
-            mode.value = value;
-            await tester.pumpAndSettle();
-            final region = find.byKey(
-              ValueKey('appearance-text-region-${value.name}'),
             );
-            final frame = tester.getRect(
+            await tester.pumpAndSettle();
+            final start = tester.getSize(
               find.byKey(const ValueKey('appearance-selector')),
             );
+            for (final value in ThemeMode.values) {
+              mode.value = value;
+              await tester.pumpAndSettle();
+              final region = find.byKey(
+                ValueKey('appearance-text-region-${value.name}'),
+              );
+              final frame = tester.getRect(
+                find.byKey(const ValueKey('appearance-selector')),
+              );
+              expect(
+                tester.getRect(region).center.dy,
+                closeTo(frame.center.dy, .01),
+                reason:
+                    'selected region must center within the full outer frame',
+              );
+              final arrow = find.descendant(
+                of: find.byKey(const ValueKey('appearance-selector')),
+                matching: find.byIcon(Icons.arrow_drop_down),
+              );
+              expect(
+                tester.getRect(arrow).center.dy,
+                closeTo(frame.center.dy, .01),
+              );
+              expect(tester.widget<Text>(region).textAlign, TextAlign.start);
+              expect(tester.getRect(region).left, closeTo(frame.left + 7, .01));
+              expect(
+                tester.getSize(
+                  find.byKey(const ValueKey('appearance-selector')),
+                ),
+                start,
+              );
+              expect(tester.takeException(), isNull);
+            }
             expect(
-              tester.getRect(region).center.dy,
-              closeTo(frame.center.dy, .01),
-              reason: 'selected region must center within the full outer frame',
+              start.height,
+              greaterThanOrEqualTo(
+                platform == TargetPlatform.windows ? 30 : 48,
+              ),
             );
-            final arrow = find.descendant(
-              of: find.byKey(const ValueKey('appearance-selector')),
-              matching: find.byIcon(Icons.arrow_drop_down),
-            );
-            expect(
-              tester.getRect(arrow).center.dy,
-              closeTo(frame.center.dy, .01),
-            );
-            final text = find.descendant(
-              of: region,
-              matching: find.byType(Text),
-            );
-            expect(
-              tester.getRect(text).center.dx,
-              closeTo(tester.getRect(region).center.dx, .01),
-            );
-            expect(
-              tester.getRect(text).center.dy,
-              closeTo(tester.getRect(region).center.dy, .01),
-            );
-            expect(
-              tester.getSize(find.byKey(const ValueKey('appearance-selector'))),
-              start,
-            );
-            expect(tester.takeException(), isNull);
-          }
-          expect(
-            start.height,
-            greaterThanOrEqualTo(platform == TargetPlatform.windows ? 30 : 48),
-          );
-          await tester.tap(find.byType(DropdownButton<ThemeMode>));
-          await tester.pumpAndSettle();
-          await tester.tap(find.text('浅色').last);
-          await tester.pumpAndSettle();
-          expect(mode.value, ThemeMode.light);
-        });
+            await tester.tap(find.byKey(const ValueKey('appearance-selector')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('浅色').last);
+            await tester.pumpAndSettle();
+            expect(mode.value, ThemeMode.light);
+          },
+        );
       }
     }
   }

@@ -70,7 +70,11 @@ bool TrayPopoverWindow::Create() {
     if (destroying_) {
       result->Error("tray_unavailable", "Tray popover is closing.");
     } else if (call.method_name() == "getPresentation") {
-      if (presentation_) result->Success(flutter::EncodableValue(*presentation_));
+      if (presentation_) {
+        auto value = *presentation_;
+        value[flutter::EncodableValue("visible")] = flutter::EncodableValue(requested_visible_);
+        result->Success(flutter::EncodableValue(value));
+      }
       else result->Error("presentation_unavailable", "No tray presentation.");
     } else if (call.method_name() == "resizeToContent") {
       const auto* height = std::get_if<int32_t>(call.arguments());
@@ -116,6 +120,7 @@ bool TrayPopoverWindow::Open(const RECT& anchor,
   if (!Create()) return false;
   Position(anchor_);
   if (channel_) {
+    channel_->InvokeMethod("visibilityChanged", std::make_unique<flutter::EncodableValue>(true));
     channel_->InvokeMethod("presentationChanged",
                            std::make_unique<flutter::EncodableValue>(presentation));
   }
@@ -169,6 +174,7 @@ void TrayPopoverWindow::Position(const RECT& anchor, UINT dpi_override) {
 
 void TrayPopoverWindow::Hide() {
   requested_visible_ = false;
+  if (channel_) channel_->InvokeMethod("visibilityChanged", std::make_unique<flutter::EncodableValue>(false));
   if (window_ != nullptr) ShowWindow(window_, SW_HIDE);
 }
 

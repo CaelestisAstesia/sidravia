@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/features/settings/settings_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -68,16 +69,16 @@ void main() {
       expect(find.text('恢复主窗口时显示公告'), findsOneWidget);
       expect(
         tester
-            .widget<DropdownButton<GuiAnnouncementFrequency>>(
-              find.byKey(frequencyKey),
+            .widget<SettingsDropdown<GuiAnnouncementFrequency>>(
+              find.byType(SettingsDropdown<GuiAnnouncementFrequency>),
             )
             .value,
         GuiAnnouncementFrequency.everyConnection,
       );
       expect(
         tester
-            .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
-              find.byKey(hiddenKey),
+            .widget<SettingsDropdown<GuiHiddenAnnouncementBehavior>>(
+              find.byType(SettingsDropdown<GuiHiddenAnnouncementBehavior>),
             )
             .value,
         GuiHiddenAnnouncementBehavior.onRestore,
@@ -117,8 +118,8 @@ void main() {
       expect(find.byKey(hiddenKey), findsOneWidget);
       expect(
         tester
-            .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
-              find.byKey(hiddenKey),
+            .widget<SettingsDropdown<GuiHiddenAnnouncementBehavior>>(
+              find.byType(SettingsDropdown<GuiHiddenAnnouncementBehavior>),
             )
             .value,
         GuiHiddenAnnouncementBehavior.onRestore,
@@ -216,6 +217,7 @@ void main() {
             const ValueKey('hidden-announcement-behavior-selector'),
           );
           await tester.ensureVisible(frequency);
+          await tester.pumpAndSettle();
           await tester.tap(frequency);
           await tester.pumpAndSettle();
           expect(find.text('每次连接成功后'), findsWidgets);
@@ -226,6 +228,7 @@ void main() {
           await tester.pumpAndSettle();
 
           await tester.ensureVisible(hidden);
+          await tester.pumpAndSettle();
           await tester.tap(hidden);
           await tester.pumpAndSettle();
           expect(find.text('直接显示公告'), findsWidgets);
@@ -267,12 +270,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final frequency = tester.widget<DropdownButton<GuiAnnouncementFrequency>>(
-        find.byKey(const ValueKey('announcement-frequency-selector')),
-      );
+      final frequency = tester
+          .widget<SettingsDropdown<GuiAnnouncementFrequency>>(
+            find.byType(SettingsDropdown<GuiAnnouncementFrequency>),
+          );
       final hidden = tester
-          .widget<DropdownButton<GuiHiddenAnnouncementBehavior>>(
-            find.byKey(const ValueKey('hidden-announcement-behavior-selector')),
+          .widget<SettingsDropdown<GuiHiddenAnnouncementBehavior>>(
+            find.byType(SettingsDropdown<GuiHiddenAnnouncementBehavior>),
           );
       expect(frequency.onChanged, isNull);
       expect(hidden.onChanged, isNull);

@@ -12,8 +12,10 @@ class SchoolAnnouncementWindow {
   ~SchoolAnnouncementWindow();
   bool Open(HWND main_window, const flutter::EncodableMap& arguments);
   bool Close();
+  void SetDarkMode(bool dark);
 
  private:
+  bool dark_ = false;
   struct State;
   std::shared_ptr<State> state_;
   static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);

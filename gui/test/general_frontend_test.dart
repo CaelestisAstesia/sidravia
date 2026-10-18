@@ -177,9 +177,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(DropdownButton<ThemeMode>));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('appearance-selector')),
+    );
     await tester.pump();
-    await tester.tap(find.byType(DropdownButton<ThemeMode>));
+    await tester.tap(find.byKey(const ValueKey('appearance-selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('深色').last);
     await tester.pumpAndSettle();
@@ -191,9 +193,11 @@ void main() {
       Theme.of(tester.element(find.text('连接配置'))).brightness,
       Brightness.dark,
     );
-    await tester.ensureVisible(find.byType(DropdownButton<ThemeMode>));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('appearance-selector')),
+    );
     await tester.pump();
-    await tester.tap(find.byType(DropdownButton<ThemeMode>));
+    await tester.tap(find.byKey(const ValueKey('appearance-selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('浅色').last);
     await tester.pumpAndSettle();
@@ -201,9 +205,11 @@ void main() {
       Theme.of(tester.element(find.text('连接配置'))).brightness,
       Brightness.light,
     );
-    await tester.ensureVisible(find.byType(DropdownButton<ThemeMode>));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('appearance-selector')),
+    );
     await tester.pump();
-    await tester.tap(find.byType(DropdownButton<ThemeMode>));
+    await tester.tap(find.byKey(const ValueKey('appearance-selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('跟随系统').last);
     await tester.pumpAndSettle();

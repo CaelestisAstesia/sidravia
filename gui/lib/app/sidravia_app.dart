@@ -62,6 +62,9 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    didChangeAppLifecycleState(
+      WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
+    );
     _appearance.addListener(_syncDesktopPreferences);
     _syncDesktopPreferences();
     widget.controller.addListener(_handleControllerChanged);
@@ -102,6 +105,15 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
           _connectionNotifications.reportTrayUnavailable;
       _handleControllerChanged();
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    widget.controller.setPresentationVisible(
+      state != AppLifecycleState.hidden &&
+          state != AppLifecycleState.paused &&
+          state != AppLifecycleState.detached,
+    );
   }
 
   void _handleControllerChanged() {

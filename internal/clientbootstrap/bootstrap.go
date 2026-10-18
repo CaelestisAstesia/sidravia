@@ -355,7 +355,14 @@ func ensureWithNamespace(identity Identity, options launchcontract.Options, logL
 	if err != nil {
 		return "", wrapSafeOperation("启动 sidraviad", err)
 	}
-	if err := waitForReadiness(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
+	// A GUI restart can see the old IPC endpoint disappear before its host
+	// releases the singleton. Only that policy may relaunch an observed
+	// contended child, at most twice inside the original readiness deadline.
+	var relaunch func() (daemonLaunch, error)
+	if options.Mode == launchcontract.ModeDesktop && options.SkipAutoLogin {
+		relaunch = func() (daemonLaunch, error) { return deps.launch(options, logLevel) }
+	}
+	if err := waitForReadinessWithRelaunch(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
 		result, err := probeWithNamespace(identity, ns, deps)
 		if err != nil {
 			return false, err
@@ -367,7 +374,7 @@ func ensureWithNamespace(identity Identity, options launchcontract.Options, logL
 			return false, ErrModeConflict
 		}
 		return result.State == ProbeReachable && matchesOptions(result.Status, options), nil
-	}); err != nil {
+	}, relaunch); err != nil {
 		return "", err
 	}
 	return Started, nil
@@ -516,11 +523,16 @@ func (e *daemonReadinessTimeoutError) Unwrap() error {
 }
 
 func waitForReadiness(total, interval time.Duration, exited <-chan error, attempt func() (bool, error)) error {
+	return waitForReadinessWithRelaunch(total, interval, exited, attempt, nil)
+}
+
+func waitForReadinessWithRelaunch(total, interval time.Duration, exited <-chan error, attempt func() (bool, error), relaunch func() (daemonLaunch, error)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), total)
 	defer cancel()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	var contentionCause error
+	relaunches := 0
 	for {
 		select {
 		case waitErr := <-exited:
@@ -556,6 +568,14 @@ func waitForReadiness(total, interval time.Duration, exited <-chan error, attemp
 			}
 			if ready {
 				return nil
+			}
+			if exited == nil && contentionCause != nil && relaunch != nil && relaunches < 2 && ctx.Err() == nil {
+				child, err := relaunch()
+				if err != nil {
+					return wrapSafeOperation("启动 sidraviad", err)
+				}
+				relaunches++
+				exited = child.exited
 			}
 		}
 	}

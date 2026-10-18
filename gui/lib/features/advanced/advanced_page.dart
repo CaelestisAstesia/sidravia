@@ -82,6 +82,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: Listenable.merge([
       controller,
+      controller.presentationClock,
       diagnostics,
       GuiPreferencesScope.maybeOf(context),
     ]),
@@ -126,7 +127,10 @@ class _AdvancedPageState extends State<AdvancedPage> {
         if (p.actionError != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: FeedbackPill(message: p.actionError!),
+            child: FeedbackPill(
+              message: p.actionError!,
+              onDismiss: () => controller.dismissNotice(p.actionError!),
+            ),
           ),
         DesignGroup(
           children: [

@@ -30,7 +30,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   Win32Window::Point origin(10, 10);
   // Logical outer frame, including the custom caption and native resize borders.
   Win32Window::Size size(400, 690);
-  if (!window.Create(L"Sidravia", origin, size)) {
+  if (!window.Create(L"Sidravia", origin, size, true)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

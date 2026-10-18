@@ -30,82 +30,114 @@ class SettingsDropdown<T> extends StatelessWidget {
       height: 1.35,
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
+    final width = DesignMetrics.choiceWidth(MediaQuery.sizeOf(context).width);
+    // Both surfaces use a common height, measured with the trigger's narrower
+    // text area (padding and trailing arrow excluded).
+    final textWidth = width - 14 - 24;
     double textHeight = 0;
-    for (final label in labels.values) {
+    for (final label in [...labels.values, ?hint]) {
       final painter = TextPainter(
         text: TextSpan(text: label, style: style),
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
-      )..layout();
+      )..layout(maxWidth: textWidth);
       if (painter.height > textHeight) textHeight = painter.height;
       painter.dispose();
     }
     final platform = Theme.of(context).platform;
     final touch =
         platform == TargetPlatform.android || platform == TargetPlatform.iOS;
-    return Container(
-      key: frameKey,
-      width: DesignMetrics.choiceWidth(MediaQuery.sizeOf(context).width),
-      height: (textHeight + DesignMetrics.rowPadding).clamp(
-        touch ? DesignMetrics.touchTarget : DesignMetrics.choiceMinHeight,
-        double.infinity,
-      ),
-      alignment: Alignment.center,
+    final height = (textHeight + DesignMetrics.rowPadding)
+        .clamp(
+          touch ? DesignMetrics.touchTarget : DesignMetrics.choiceMinHeight,
+          double.infinity,
+        )
+        .toDouble();
+    final buttonStyle = TextButton.styleFrom(
+      fixedSize: Size(width, height),
+      minimumSize: Size.zero,
+      maximumSize: Size(width, height),
       padding: const EdgeInsets.symmetric(horizontal: 7),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        border: Border.all(color: scheme.outline),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.standard,
+      alignment: AlignmentDirectional.centerStart,
+      textStyle: style,
+      foregroundColor: scheme.onSurface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
       ),
-      child: DropdownButton<T>(
-        key: dropdownKey,
-        dropdownColor: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(DesignMetrics.groupRadius),
-        elevation: 3,
-        value: value,
-        hint: hint == null ? null : Center(child: Text(hint!, style: style)),
-        isDense: true,
-        isExpanded: true,
-        alignment: Alignment.center,
-        underline: const SizedBox.shrink(),
-        style: style,
-        icon: const SizedBox(
-          width: 24,
-          child: Icon(Icons.arrow_drop_down, size: 20),
+    );
+    return SizedBox(
+      key: frameKey,
+      width: width,
+      height: height,
+      child: MenuAnchor(
+        crossAxisUnconstrained: false,
+        style: MenuStyle(
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          minimumSize: WidgetStatePropertyAll(Size(width, 0)),
+          maximumSize: WidgetStatePropertyAll(Size(width, double.infinity)),
+          backgroundColor: WidgetStatePropertyAll(
+            scheme.surfaceContainerHighest,
+          ),
+          elevation: const WidgetStatePropertyAll(3),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(DesignMetrics.groupRadius),
+            ),
+          ),
         ),
-        selectedItemBuilder: (context) => labels.entries
-            .map(
-              (entry) => Center(
-                key: regionKey?.call(entry.key),
-                child: Text(
-                  entry.value,
-                  style: style,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+        menuChildren: [
+          for (final entry in labels.entries)
+            MenuItemButton(
+              autofocus: entry.key == value,
+              style: buttonStyle,
+              onPressed: onChanged == null || disabledValues.contains(entry.key)
+                  ? null
+                  : () => onChanged!(entry.key),
+              child: Text(
+                entry.value,
+                style: style,
+                textAlign: TextAlign.start,
               ),
-            )
-            .toList(),
-        items: labels.entries
-            .map(
-              (entry) => DropdownMenuItem<T>(
-                value: entry.key,
-                enabled: !disabledValues.contains(entry.key),
-                alignment: Alignment.center,
-                child: Text(
-                  entry.value,
-                  style: style,
-                  textAlign: TextAlign.center,
+            ),
+        ],
+        builder: (context, menu, _) => DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            border: Border.all(color: scheme.outline),
+            borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
+          ),
+          child: TextButton(
+            key: dropdownKey,
+            style: buttonStyle,
+            onPressed: onChanged == null
+                ? null
+                : () {
+                    if (menu.isOpen) {
+                      menu.close();
+                    } else {
+                      menu.open();
+                    }
+                  },
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    labels[value] ?? hint ?? '',
+                    key: value == null ? null : regionKey?.call(value as T),
+                    style: style,
+                    textAlign: TextAlign.start,
+                  ),
                 ),
-              ),
-            )
-            .toList(),
-        onChanged: onChanged == null
-            ? null
-            : (selected) {
-                if (selected != null) onChanged!(selected);
-              },
+                const SizedBox(
+                  width: 24,
+                  child: Icon(Icons.arrow_drop_down, size: 20),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

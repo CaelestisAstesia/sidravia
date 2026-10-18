@@ -105,6 +105,7 @@ class SidraviaShellState extends State<SidraviaShell> {
             child: AnimatedBuilder(
               animation: Listenable.merge([
                 widget.controller,
+                widget.controller.presentationClock,
                 if (widget.announcements != null) widget.announcements!,
               ]),
               builder: (context, _) => switch (_page) {

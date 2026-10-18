@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/features/settings/settings_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -9,6 +10,102 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 void main() {
+  for (final scale in [1.0, 2.0]) {
+    testWidgets('expanded menu item rectangles fit trigger at scale $scale', (
+      tester,
+    ) async {
+      String selected = 'one';
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark().copyWith(platform: TargetPlatform.windows),
+          home: Scaffold(
+            body: MediaQuery(
+              data: MediaQueryData(
+                size: const Size(400, 800),
+                textScaler: TextScaler.linear(scale),
+              ),
+              child: Center(
+                child: SettingsDropdown<String>(
+                  frameKey: const ValueKey('frame'),
+                  dropdownKey: const ValueKey('trigger'),
+                  value: selected,
+                  labels: const {'one': '隐藏到托盘', 'two': '退出程序'},
+                  onChanged: (v) => selected = v,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final frame = tester.getRect(find.byKey(const ValueKey('frame')));
+      await tester.tap(find.byKey(const ValueKey('trigger')));
+      await tester.pumpAndSettle();
+      for (final item in find.byType(MenuItemButton).evaluate()) {
+        final rect = tester.getRect(find.byWidget(item.widget));
+        expect(rect.width, lessThanOrEqualTo(frame.width + .01));
+        expect(rect.height, lessThanOrEqualTo(frame.height + .01));
+      }
+      await tester.tap(find.text('退出程序'));
+      await tester.pumpAndSettle();
+      expect(selected, 'two');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final width in [360.0, 400.0]) {
+    testWidgets(
+      'long announcement labels fit common menu and trigger at $width with 2x text',
+      (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        const labels = {'notice': '发送系统通知点击查看', 'daily': '每天首次连接成功后'};
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
+            home: Scaffold(
+              body: MediaQuery(
+                data: MediaQueryData(
+                  size: Size(width, 800),
+                  textScaler: const TextScaler.linear(2),
+                ),
+                child: Center(
+                  child: SettingsDropdown<String>(
+                    frameKey: const ValueKey('frame'),
+                    dropdownKey: const ValueKey('trigger'),
+                    value: 'notice',
+                    labels: labels,
+                    onChanged: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        final frame = tester.getRect(find.byKey(const ValueKey('frame')));
+        final selected = tester.getRect(find.text(labels['notice']!));
+        expect(selected.top, greaterThanOrEqualTo(frame.top));
+        expect(selected.bottom, lessThanOrEqualTo(frame.bottom));
+        await tester.tap(find.byKey(const ValueKey('trigger')));
+        await tester.pumpAndSettle();
+        expect(find.byType(MenuItemButton), findsNWidgets(labels.length));
+        for (final item in find.byType(MenuItemButton).evaluate()) {
+          final finder = find.byWidget(item.widget);
+          final rect = tester.getRect(finder);
+          expect(rect.width, lessThanOrEqualTo(frame.width + .01));
+          expect(rect.height, lessThanOrEqualTo(frame.height + .01));
+          final text = tester.getRect(
+            find.descendant(of: finder, matching: find.byType(Text)),
+          );
+          expect(text.top, greaterThanOrEqualTo(rect.top));
+          expect(text.bottom, lessThanOrEqualTo(rect.bottom));
+          expect(text.left, greaterThanOrEqualTo(rect.left));
+          expect(text.right, lessThanOrEqualTo(rect.right));
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
     for (final label in ['返回']) {
       testWidgets('back button equal horizontal gutters $platform $label', (

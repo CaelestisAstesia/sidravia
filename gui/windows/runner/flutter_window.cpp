@@ -147,6 +147,7 @@ bool FlutterWindow::OnCreate() {
           if (!dark) { result->Error("invalid_theme", "Expected bool"); return; }
           // Preserve the Dart-owned appearance through DWM color changes.
           SetFrameDarkMode(*dark);
+          if (school_announcement_window_) school_announcement_window_->SetDarkMode(*dark);
           result->Success(); return;
         }
         if (call.method_name() == "setModalBlocked") {

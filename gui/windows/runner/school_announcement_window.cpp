@@ -1,5 +1,7 @@
 #include "school_announcement_window.h"
 #include "announcement_link_policy.h"
+#include "resource.h"
+#include <dwmapi.h>
 
 #include <WebView2.h>
 #include <shlobj.h>
@@ -139,6 +141,7 @@ struct SchoolAnnouncementWindow::State {
   HWND window = nullptr;
   int width = 0, height = 0;
   bool active = true, failed = false, loading = true;
+  bool dark = false;
   UINT_PTR timer = 0;
   UINT64 navigation_id = 0;
   std::wstring url, cache;
@@ -150,6 +153,35 @@ struct SchoolAnnouncementWindow::State {
   HRESULT teardown_result = S_OK;
 
   bool Live() const { return active && !failed && window != nullptr; }
+
+  void ApplyTheme(bool value) {
+    dark = value;
+    if (window) {
+      const BOOL enabled = dark ? TRUE : FALSE;
+      DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                            &enabled, sizeof(enabled));
+      InvalidateRect(window, nullptr, TRUE);
+    }
+    // Older WebView runtimes may not expose these optional interfaces.
+    ComPtr<ICoreWebView2Controller2> controller2;
+    if (controller && SUCCEEDED(controller.As(&controller2))) {
+      const COREWEBVIEW2_COLOR background = dark
+          ? COREWEBVIEW2_COLOR{255, 23, 27, 32}
+          : COREWEBVIEW2_COLOR{255, 247, 249, 251};
+      controller2->put_DefaultBackgroundColor(background);
+    }
+    ComPtr<ICoreWebView2_13> browser13;
+    ComPtr<ICoreWebView2Profile> profile;
+    ComPtr<ICoreWebView2Profile2> profile2;
+    if (browser && SUCCEEDED(browser.As(&browser13)) &&
+        SUCCEEDED(browser13->get_Profile(&profile)) && profile &&
+        SUCCEEDED(profile.As(&profile2))) {
+      profile2->put_PreferredColorScheme(dark
+          ? COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK
+          : COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT);
+    }
+  }
+
 
   bool QueueLink(const std::wstring& link) {
     if (!Live()) return false;
@@ -412,10 +444,12 @@ struct SchoolAnnouncementWindow::State {
                 if (FAILED(controller->put_IsVisible(FALSE)) ||
                     FAILED(controller->get_CoreWebView2(&current->browser)) ||
                     !current->browser || !current->Secure(weak) ||
-                    !current->Bounds() ||
-                    FAILED(current->browser->Navigate(current->url.c_str()))) {
+                    !current->Bounds()) {
                   current->Fail();
+                  return S_OK;
                 }
+                current->ApplyTheme(current->dark);
+                if (FAILED(current->browser->Navigate(current->url.c_str()))) current->Fail();
                 return S_OK;
               }).Get());
           if (FAILED(requested)) state->Fail();
@@ -435,6 +469,7 @@ bool SchoolAnnouncementWindow::Open(HWND main_window,
   const auto* url = raw_url ? std::get_if<std::string>(raw_url) : nullptr;
   const auto* name = raw_namespace ? std::get_if<std::string>(raw_namespace) : nullptr;
   auto next = std::make_shared<State>();
+  next->dark = dark_;
   std::wstring leaf;
   if (!url || !name || !ConvertUtf8(*url, &next->url) ||
       !HttpUri(next->url, true) || !ValidNamespace(*name, &leaf) ||
@@ -447,7 +482,8 @@ bool SchoolAnnouncementWindow::Open(HWND main_window,
   wc.lpfnWndProc = WindowProc;
   wc.lpszClassName = kWindowClass;
   wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+  wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON));
+  wc.hbrBackground = nullptr;
   if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
     return false;
   state_ = next;
@@ -459,10 +495,18 @@ bool SchoolAnnouncementWindow::Open(HWND main_window,
   UINT dpi = GetDpiForWindow(main_window);
   if (!dpi) dpi = 96;
   if (!next->Place(dpi, monitor, true, 0, 0)) { Close(); return false; }
+  SendMessageW(window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(wc.hIcon));
+  SendMessageW(window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(wc.hIcon));
+  next->ApplyTheme(dark_);
   ShowWindow(window, SW_SHOWNORMAL);
   if (!SetForegroundWindow(window)) FlashWindow(window, TRUE);
   next->Begin(next);
   return true;
+}
+
+void SchoolAnnouncementWindow::SetDarkMode(bool dark) {
+  dark_ = dark;
+  if (state_) state_->ApplyTheme(dark);
 }
 
 bool SchoolAnnouncementWindow::Close() {
@@ -525,6 +569,10 @@ LRESULT CALLBACK SchoolAnnouncementWindow::WindowProc(HWND window, UINT message,
       HDC dc = BeginPaint(window, &paint);
       RECT client{};
       GetClientRect(window, &client);
+      HBRUSH background = CreateSolidBrush(state->dark ? RGB(23, 27, 32) : RGB(247, 249, 251));
+      FillRect(dc, &client, background);
+      DeleteObject(background);
+      SetTextColor(dc, state->dark ? RGB(242, 245, 247) : RGB(24, 33, 43));
       if (state->failed || state->loading) {
         SetBkMode(dc, TRANSPARENT);
         DrawTextW(dc, state->failed ? kFailed : kLoading, -1, &client,

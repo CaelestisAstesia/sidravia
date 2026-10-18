@@ -4,11 +4,13 @@ package clientbootstrap
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows"
 
@@ -175,12 +177,33 @@ func containsEnvironmentEntry(env []string, want string) bool {
 }
 
 func TestSingletonOwnedExitHelper(t *testing.T) {
+	if name := os.Getenv("SIDRAVIA_OWNED_TEST_MUTEX"); name != "" {
+		ptr, err := windows.UTF16PtrFromString(name)
+		if err != nil {
+			os.Exit(3)
+		}
+		handle, err := windows.CreateMutex(nil, false, ptr)
+		if handle != 0 {
+			windows.CloseHandle(handle)
+		}
+		if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			os.Exit(launchcontract.ExitSingletonContention)
+		}
+		if err != nil {
+			os.Exit(3)
+		}
+		os.Exit(0)
+	}
 	if os.Getenv("SIDRAVIA_OWNED_TEST_EXIT") == "singleton" {
 		os.Exit(launchcontract.ExitSingletonContention)
 	}
 }
 func TestWindowsSingletonExitClassification(t *testing.T) {
-	cmd := exec.Command(os.Args[0], "-test.run=^TestSingletonOwnedExitHelper$")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestSingletonOwnedExitHelper$")
 	cmd.Env = append(os.Environ(), "SIDRAVIA_OWNED_TEST_EXIT=singleton")
 	cause := cmd.Run()
 	if cause == nil {
@@ -193,5 +216,55 @@ func TestWindowsSingletonExitClassification(t *testing.T) {
 	ordinary := errors.New("private failure")
 	if classifyDaemonExit(ordinary) != ordinary {
 		t.Fatal("ordinary failure reclassified")
+	}
+}
+
+// A real Windows child observes an owned shutting-down singleton. Its reserved
+// exit is retried after release without probing or touching a production host.
+func TestWindowsRestartHandoffAfterSingletonRelease(t *testing.T) {
+	name := fmt.Sprintf(`Local\Sidravia-debug-handoff-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	ptr, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := windows.CreateMutex(nil, false, ptr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if held != 0 {
+			windows.CloseHandle(held)
+		}
+	}()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func() error {
+		cmd := exec.Command(executable, "-test.run=^TestSingletonOwnedExitHelper$")
+		cmd.Env = append(os.Environ(), "SIDRAVIA_OWNED_TEST_MUTEX="+name)
+		return classifyDaemonExit(cmd.Run())
+	}
+	first := run()
+	if !errors.Is(first, errDaemonSingletonContention) {
+		t.Fatalf("first exit=%v", first)
+	}
+	exited := make(chan error, 1)
+	exited <- first
+	ready, attempts := false, 0
+	err = waitForReadinessWithRelaunch(5*time.Second, 10*time.Millisecond, exited, func() (bool, error) { return ready, nil }, func() (daemonLaunch, error) {
+		attempts++
+		if e := windows.CloseHandle(held); e != nil {
+			return daemonLaunch{}, e
+		}
+		held = 0
+		if e := run(); e != nil {
+			return daemonLaunch{}, e
+		}
+		ready = true
+		return daemonLaunch{}, nil
+	})
+	if err != nil || !ready || attempts != 1 {
+		t.Fatalf("handoff ready=%v attempts=%d error=%v", ready, attempts, err)
 	}
 }

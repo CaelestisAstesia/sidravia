@@ -224,16 +224,25 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           onPressed: _saving || !_canSave ? null : _save,
           child: Text(_saving ? '正在保存…' : '保存修改'),
         ),
-        TextButton(
-          onPressed: _saving || widget.controller.busy || !_canSave
-              ? null
-              : _discard,
-          child: const Text('放弃修改'),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton(
+            onPressed: _saving || widget.controller.busy || !_canSave
+                ? null
+                : _discard,
+            child: const Text('放弃修改'),
+          ),
         ),
         if (_saveResult ?? widget.controller.notice case final String message)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: FeedbackPill(message: message),
+            child: FeedbackPill(
+              message: message,
+              onDismiss: () {
+                if (_saveResult == message) setState(() => _saveResult = null);
+                widget.controller.dismissNotice(message);
+              },
+            ),
           ),
         if (!creating) ...[
           const SizedBox(height: 24),

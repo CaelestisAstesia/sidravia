@@ -31,6 +31,43 @@ void main() {
     secondaryEnabled: true,
   );
 
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'connected elapsed time is fresh and fits one line at scale $scale',
+      (tester) async {
+        final at = DateTime.utc(2026, 10, 17, 8, 0, 37);
+        final now = at.add(const Duration(hours: 48, minutes: 18));
+        final current = TrayPopoverData.fromMap({
+          ...data.toMap(),
+          'establishedAt': at.toIso8601String(),
+          'statusTitle': '已连接',
+          'tone': 'success',
+        });
+        expect(current, isNotNull);
+        expect(current!.detailAt(now), '48时18分');
+        final roundTrip = TrayPopoverData.fromMap(current.toMap());
+        expect(roundTrip!.establishedAt, at);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: Scaffold(
+                body: Center(
+                  child: TrayPopover(data: current, now: now, onAction: (_) {}),
+                ),
+              ),
+            ),
+          ),
+        );
+        final text = find.text('48时18分');
+        final paragraph = tester.renderObject<RenderParagraph>(text);
+        expect(paragraph.didExceedMaxLines, isFalse);
+        expect(tester.widget<Text>(text).maxLines, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   test('typed intent rejects malformed payload and round trips identity', () {
     final intent = TrayIntent.fromMap(data.primaryAction.toMap());
     expect(intent?.connectionAction, GuiConnectionActionKind.reconnect);

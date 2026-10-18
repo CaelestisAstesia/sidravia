@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/connection_clock.dart';
 import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_connection_state.dart';
@@ -135,6 +136,17 @@ class GuiController extends ChangeNotifier {
   GuiBootstrapFailure? get failure => _failure;
   GuiSnapshot? get snapshot => _snapshot;
   String? get notice => _notice;
+  final presentationClock = ConnectionClock();
+  void setPresentationVisible(bool visible) => presentationClock.update(
+    connectionPresentation.establishedAt,
+    active: visible,
+  );
+  void dismissNotice(String message) {
+    if (_disposed || _notice != message) return;
+    _notice = null;
+    _notify();
+  }
+
   bool get busy => _userBusy;
   GuiCapabilities get capabilities =>
       GuiCapabilities(state: _state, snapshot: _snapshot, busy: _userBusy);
@@ -144,6 +156,7 @@ class GuiController extends ChangeNotifier {
         capabilities,
         sessionNeedsReset: sessionNeedsReset,
         notice: notice,
+        now: presentationClock.now,
       );
 
   Future<bool> performConnectionAction(GuiConnectionAction action) {
@@ -968,6 +981,7 @@ class GuiController extends ChangeNotifier {
 
   void _notify() {
     if (!_disposed) {
+      presentationClock.update(connectionPresentation.establishedAt);
       diagnostics.updateContext(_diagnosisContext);
       notifyListeners();
     }
@@ -977,6 +991,7 @@ class GuiController extends ChangeNotifier {
   Future<void> close() {
     if (_closed != null) return _closed!;
     _exitRequested = true;
+    presentationClock.update(null, active: false);
     ++_generation;
     _timer?.cancel();
     _timer = null;
@@ -997,6 +1012,7 @@ class GuiController extends ChangeNotifier {
     _disposed = true;
     unawaited(close());
     diagnostics.dispose();
+    presentationClock.dispose();
     super.dispose();
   }
 }

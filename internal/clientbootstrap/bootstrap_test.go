@@ -671,3 +671,56 @@ func TestContendedReadinessEnsureDelayedPublication(t *testing.T) {
 		}
 	}
 }
+
+// A restart's first replacement can lose to a shutting-down singleton after
+// its IPC endpoint has gone. The reserved child result, not error text, is the
+// only permission to retry; all attempts share the original deadline/budget.
+func TestRestartReadinessRelaunch(t *testing.T) {
+	for _, scenario := range []string{"released", "peer", "foreign", "ordinary", "contended"} {
+		t.Run(scenario, func(t *testing.T) {
+			exited := make(chan error, 1)
+			if scenario == "ordinary" {
+				exited <- errors.New("not singleton")
+			} else {
+				exited <- errDaemonSingletonContention
+			}
+			calls, probes := 0, 0
+			err := waitForReadinessWithRelaunch(15*time.Millisecond, time.Millisecond, exited, func() (bool, error) {
+				probes++
+				if scenario == "foreign" {
+					return false, ErrModeConflict
+				}
+				return scenario == "peer" || scenario == "released" && calls == 1, nil
+			}, func() (daemonLaunch, error) {
+				calls++
+				next := make(chan error, 1)
+				if scenario == "contended" {
+					next <- errDaemonSingletonContention
+				}
+				return daemonLaunch{exited: next}, nil
+			})
+			switch scenario {
+			case "released":
+				if err != nil || calls != 1 {
+					t.Fatalf("retry=%d err=%v", calls, err)
+				}
+			case "peer":
+				if err != nil || calls != 0 {
+					t.Fatalf("peer retried=%d err=%v", calls, err)
+				}
+			case "foreign":
+				if !errors.Is(err, ErrModeConflict) || calls != 0 {
+					t.Fatalf("foreign retried=%d err=%v", calls, err)
+				}
+			case "ordinary":
+				if err == nil || calls != 0 {
+					t.Fatalf("ordinary retried=%d err=%v", calls, err)
+				}
+			case "contended":
+				if !errors.Is(err, context.DeadlineExceeded) || calls != 2 {
+					t.Fatalf("unbounded retry=%d probes=%d err=%v", calls, probes, err)
+				}
+			}
+		})
+	}
+}

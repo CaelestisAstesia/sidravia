@@ -22,10 +22,19 @@ class TrayPopoverData {
     required this.primaryAction,
     required this.primaryEnabled,
     required this.disabledReason,
+    this.establishedAt,
     this.secondaryLabel,
     this.secondaryAction,
     this.secondaryEnabled = false,
   });
+
+  final DateTime? establishedAt;
+  String detailAt(DateTime now) {
+    final at = establishedAt;
+    if (at == null) return statusDetail;
+    final minutes = now.difference(at).inMinutes.clamp(0, 999999999);
+    return minutes < 1 ? '刚刚连接' : '${minutes ~/ 60}时${minutes % 60}分';
+  }
 
   factory TrayPopoverData.fromPresentation(
     ConnectionPresentation p, {
@@ -42,7 +51,10 @@ class TrayPopoverData {
       dark: dark,
       institution: p.institution,
       username: p.username,
-      statusDetail: p.statusDetail,
+      establishedAt: p.tone == HomeTone.success ? p.establishedAt : null,
+      statusDetail: p.tone == HomeTone.success
+          ? p.statusDetail.replaceFirst('认证成功 · ', '')
+          : p.statusDetail,
       statusContext: p.statusContext,
       glyph: p.glyph,
       tone: p.tone,
@@ -80,6 +92,8 @@ class TrayPopoverData {
     'institution': institution,
     'username': username,
     'statusDetail': statusDetail,
+    if (establishedAt != null)
+      'establishedAt': establishedAt!.toUtc().toIso8601String(),
     'statusContext': statusContext,
     'glyph': glyph,
     'tone': tone.name,
@@ -121,6 +135,9 @@ class TrayPopoverData {
         primaryAction == null) {
       return null;
     }
+    final rawAt = value['establishedAt'];
+    final at = rawAt is String ? DateTime.tryParse(rawAt) : null;
+    if (rawAt != null && at == null) return null;
     final secondaryLabel = value['secondaryLabel'];
     final secondaryEnabled = value['secondaryEnabled'];
     final secondaryAction = value['secondaryAction'] == null
@@ -132,6 +149,7 @@ class TrayPopoverData {
       return null;
     }
     return TrayPopoverData(
+      establishedAt: at,
       statusTitle: title,
       dark: dark,
       institution: institution,
@@ -249,11 +267,13 @@ class TrayPopover extends StatelessWidget {
     required this.data,
     required this.onAction,
     this.onDismiss,
+    this.now,
   });
 
   final TrayPopoverData data;
   final ValueChanged<TrayIntent> onAction;
   final VoidCallback? onDismiss;
+  final DateTime? now;
 
   @override
   Widget build(BuildContext context) {
@@ -294,7 +314,7 @@ class TrayPopover extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _StatusCard(data: data, tone: tone),
+                _StatusCard(data: data, tone: tone, now: now ?? DateTime.now()),
                 const _Separator(),
                 _MenuButton(
                   label: data.primaryLabel,
@@ -333,8 +353,13 @@ class TrayPopover extends StatelessWidget {
 }
 
 class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.data, required this.tone});
+  const _StatusCard({
+    required this.data,
+    required this.tone,
+    required this.now,
+  });
   final TrayPopoverData data;
+  final DateTime now;
   final Color tone;
 
   @override
@@ -402,8 +427,12 @@ class _StatusCard extends StatelessWidget {
               if (data.statusDetail.isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(
-                  data.statusDetail,
-                  softWrap: true,
+                  data.detailAt(now),
+                  maxLines: data.establishedAt == null ? null : 1,
+                  softWrap: data.establishedAt == null,
+                  overflow: data.establishedAt == null
+                      ? TextOverflow.clip
+                      : TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 9,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,

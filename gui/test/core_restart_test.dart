@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/features/home/home_page.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -42,6 +44,40 @@ class LevelClient extends OfflineDemoClient {
 }
 
 void main() {
+  testWidgets(
+    'dismissed restart notice survives page recreation and next restart is new',
+    (tester) async {
+      final c = GuiController(
+        bootstrapper: RestartBootstrap(),
+        connector: (_) async => LevelClient('debug'),
+      );
+      await c.start();
+      await c.restartCore('debug');
+      Widget page() => MaterialApp(
+        home: AnimatedBuilder(
+          animation: c,
+          builder: (_, _) => HomePage(controller: c, onNavigate: (_) {}),
+        ),
+      );
+      await tester.pumpWidget(page());
+      await tester.pumpAndSettle();
+      expect(find.text('核心已重启'), findsOneWidget);
+      await tester.tap(find.byTooltip('关闭提示').first);
+      await tester.pump();
+      expect(c.notice, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(page());
+      await tester.pumpAndSettle();
+      expect(find.text('核心已重启'), findsNothing);
+      await c.restartCore('debug');
+      await tester.pumpAndSettle();
+      expect(find.text('核心已重启'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await c.close();
+      c.dispose();
+    },
+  );
+
   test(
     'close during restart awaits operation and prevents late restore',
     () async {

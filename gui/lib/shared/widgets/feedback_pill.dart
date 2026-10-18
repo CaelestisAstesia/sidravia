@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 /// Dismisses only this presentation; session failures retain their own state.
 class FeedbackPill extends StatefulWidget {
-  const FeedbackPill({super.key, required this.message});
+  const FeedbackPill({super.key, required this.message, this.onDismiss});
   final String message;
+  final VoidCallback? onDismiss;
   @override
   State<FeedbackPill> createState() => _FeedbackPillState();
 }
@@ -48,7 +49,10 @@ class _FeedbackPillState extends State<FeedbackPill> {
               ),
               IconButton(
                 tooltip: '关闭提示',
-                onPressed: () => setState(() => _dismissed = true),
+                onPressed: () {
+                  setState(() => _dismissed = true);
+                  widget.onDismiss?.call();
+                },
                 icon: const Icon(Icons.close, size: 14),
                 visualDensity: VisualDensity.compact,
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
