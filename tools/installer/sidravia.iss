@@ -1150,8 +1150,19 @@ begin
   Result := True;
 end;
 
+procedure SetChoiceListPadding(List: TNewCheckListBox);
+begin
+  { Inno 7.1.0 reserves the legacy 13px checkbox bitmap width but draws
+    DPI-scaled theme glyphs. Allow for that growth plus 4 logical pixels
+    inside the list, so a level-zero checkbox/radio cannot start offscreen. }
+  List.Offset := ScaleX(4) + ScaleX(13) - 13;
+end;
+
 procedure InitializeWizard;
 begin
+  SetChoiceListPadding(WizardForm.ComponentsList);
+  SetChoiceListPadding(WizardForm.TasksList);
+  SetChoiceListPadding(WizardForm.RunList);
   StartupPage := CreateInputOptionPage(wpSelectTasks, '开机自启方式',
     '登录 Windows 后，如何启动 Sidravia？',
     '选择适合你的启动方式。', True, False);
@@ -1161,6 +1172,7 @@ begin
 #endif
   StartupPage.Add('仅启动后台' + #13#10 +
     '不显示窗口和托盘图标，通过命令行管理连接');
+  SetChoiceListPadding(StartupPage.CheckListBox);
   StartupPage.SelectedValueIndex := 0;
 #if IncludeGUI
   if GetPreviousData('StartupMode', 'gui') = 'daemon' then
