@@ -1,10 +1,10 @@
 # Windows 维护工具（MGR）
 
-`sidraviamgr.exe`（下文简称 **MGR**）负责 Windows 当前用户范围的 PATH、登录自启及卸载准备，也提供显式删除已保存数据的操作。它每次执行一项操作后退出，不管理认证会话。
+`sidraviamgr.exe`（下文简称 **MGR**）负责 Windows 当前用户范围的 PATH 和登录自启。它每次执行一项操作后退出，不管理认证会话。
 
-日常连接与配置使用 GUI 或 [CTL](advance.md)；普通安装版卸载从 Windows 应用列表进行。仅在需要命令行维护、排查系统集成或执行特定清理时，使用本页命令。
+日常连接与配置使用 GUI 或 [CTL](advance.md)；普通安装版卸载从 Windows 应用列表进行。仅在需要命令行维护、排查系统集成时，使用本页命令。
 
-本文对应 `v0.3.0-alpha.1` 的九项 MGR 操作。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 核心包不提供 MGR；非 Windows 构建的实际维护操作返回 `unsupported`，帮助查看不依赖 Windows 系统集成。
+本文描述下一版本源码的六项 MGR 操作。已发布 `v0.3.0-alpha.1` 仍有旧卸载/清理命令；本轮将其退役，相关职责由 Inno 安装器承担。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 核心包不提供 MGR；非 Windows 构建的实际维护操作返回 `unsupported`，帮助查看不依赖 Windows 系统集成。
 
 ## 调用范围与参数规则
 
@@ -16,7 +16,7 @@
 
 **维护目标由 MGR 自身所在目录确定，不由终端当前目录决定。** 不要将 MGR 单独复制到其他目录执行维护。
 
-PATH 与自启任务作用于运行命令的当前 Windows 用户。正常维护无需提升权限，也没有 `--directory`、`--all-users`、`--force` 或指定其他账号的参数。
+PATH 与自启任务作用于运行命令的当前 Windows 用户。正常维护无需提升权限，不支持 `--all-users`、`--force` 或指定其他账号。安装器可用 `status --directory <绝对目录>` 只读查询目标目录的集成状态，输出仍是同一 JSON 契约；写入操作始终只作用于 MGR 自身目录。
 
 MGR 使用当前用户的串行锁协调维护。无法取得锁、确认相关进程身份或核实系统状态时，会返回失败；它不会强制终止或接管认证后台。
 
@@ -24,7 +24,7 @@ MGR 使用当前用户的串行锁协调维护。无法取得锁、确认相关�
 
 ## 完整命令表
 
-下表列出完整命令路径，各操作不接受额外选项或位置参数。查看帮助可单独运行：
+下表列出完整命令路径，除上述只读查询目录外，各操作不接受额外选项或位置参数。查看帮助可单独运行：
 
 ```powershell
 .\sidraviamgr.exe --help
@@ -40,13 +40,9 @@ MGR 使用当前用户的串行锁协调维护。无法取得锁、确认相关�
 | `autostart set gui` | 下次登录 Windows 时启动本目录 GUI 到托盘 | 需要同目录 `Sidravia.exe`；不立即启动 GUI |
 | `autostart set daemon` | 下次登录 Windows 时启动本目录独立后台 | 需要同目录 `sidraviactl.exe`；设置时不立即启动，后台启动后是否认证取决于自动登录配置 |
 | `autostart disable` | 删除已确认归属于本目录和当前用户的自启任务 | 不停止当前程序；不存在任务也可成功 |
-| `uninstall-check` | 检查本目录产品进程及自启任务冲突 | 不移除系统集成或数据 |
-| `uninstall-prepare` | 为卸载移除自启，再移除本目录用户 PATH | 要求本目录产品进程退出；不删除程序或账号数据 |
-| `data delete` | 删除当前用户正式布局中的指定产品数据 | **无二次确认，不可自动恢复**；仅支持安装布局，详见下文 |
 
-当前版本的帮助文本漏列了已实现的 `uninstall-check`，本表包含该操作。
 
-MGR 不提供安装、升级、修复或删除程序文件的命令，这些工作由安装器承担。CTL 的 `integration` 仅转发状态查询、PATH 和自启六项操作；卸载检查、卸载准备及数据删除需直接调用 MGR。
+MGR 不提供安装、升级、修复或删除程序文件的命令，这些工作由安装器承担。CTL 的 `integration` 仅转发状态查询、PATH 和自启六项操作；MGR 不再提供卸载检查、卸载准备或数据删除命令。
 
 ## 查询、PATH 与自启
 
@@ -80,47 +76,15 @@ PATH 写入保留其他条目和原有字符串类型，目录匹配忽略大小
 
 MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录触发、使用普通用户权限。GUI 模式执行 `Sidravia.exe --start-hidden`；后台模式执行 `sidraviactl.exe daemon start --log-level debug`，没有自定义自启日志等级参数。只有保存配置启用了自动登录，后台启动后才会按该配置自动认证。
 
-已有同名任务若无法确认属于当前用户、本目录及预期动作，会显示 `conflict`。查询 `status` 可以成功返回这一冲突状态；设置、禁用和卸载检查会拒绝冲突。不要靠覆盖或删除未知任务来消除提示。移动便携目录前，应从旧目录正常撤销自启和 PATH，移动后再从新目录设置。
+已有同名任务若无法确认属于当前用户、本目录及预期动作，会显示 `conflict`。查询 `status` 可以成功返回这一冲突状态；设置、禁用和安装器卸载检查会拒绝冲突。不要靠覆盖或删除未知任务来消除提示。移动便携目录前，应从旧目录正常撤销自启和 PATH，移动后再从新目录设置。
 
-## 卸载检查与准备
+## 安装、恢复与卸载
 
-普通安装版卸载由 Windows 卸载程序调用相应维护步骤，无需先手动运行以下命令。自行排障或准备卸载时，先正常退出本目录的 GUI、独立后台及正在运行的 CTL，再按需检查：
+这些流程由 Inno 安装器负责，详见[使用指南](guide.md#更新移动与卸载)。MGR 只按安装器要求逐项处理自启和 PATH，不能把两个独立操作当成事务；任何一步失败后，先查询实际状态。
 
-```powershell
-.\sidraviamgr.exe uninstall-check
-```
+安装后系统集成失败不会撤销已安装程序。错误页说明已完成及未完成项；重跑后请在安装选项页重新确认本次目标，默认值按当前实际状态显示，不自动重试旧选择，也不保存操作日志。静默运行必须通过 `/TASKS` 或含 Tasks 的 INF 明确自启和 PATH 目标。
 
-检查成功只说明此刻未检测到阻止条件，不保证后续不会出现新进程或状态变化。确实准备撤销本目录的自启与 PATH 时，再运行：
-
-```powershell
-.\sidraviamgr.exe uninstall-prepare
-```
-
-准备步骤依次移除自启和本目录用户 PATH；之后仍需运行安装器的卸载程序删除程序文件。准备失败可能已移除其中一项，并非事务回滚；先用 `status` 核对实际状态。本目录的 `Sidravia.exe`、`sidraviad.exe` 或 `sidraviactl.exe` 仍在运行时，检查和准备会拒绝操作；进程身份无法查询时也会失败，而不是猜测安全。
-
-## 显式删除正式数据
-
-**`data delete` 会直接删除文件，没有交互确认，也不接受 `--yes`。** 仅在确实要删除本机已保存账号与设置时使用；先备份需要保留的数据，再正常退出当前用户的全部 Sidravia GUI、daemon 和 CTL 实例，包括其他安装目录和测试实例。
-
-以下命令是单独的破坏性维护操作，不是日常卸载的必做步骤：
-
-```powershell
-.\sidraviamgr.exe data delete
-```
-
-它只支持安装布局，删除当前用户下列正式数据：
-
-| 位置 | 删除内容 |
-| --- | --- |
-| `%APPDATA%\Sidravia\` | `configurations.json`、`gui-settings.json` |
-| `%LOCALAPPDATA%\Sidravia\` | `runtime.json` |
-| `%LOCALAPPDATA%\Sidravia\logs\` | `sidraviad.log`、`sidraviad.log.1`、符合 `sidraviad-YYYY-MM-DD-HHMMSS.log` 命名规则的文件 |
-
-这会移除保存的配置、账号密码和 GUI 偏好。它不递归删除目录，不清理命名空间数据、无关文件、公告 WebView2 缓存、程序文件或用户另存的覆写/诊断文件；也不负责撤销 PATH 和自启。文件不存在时可跳过。
-
-便携目录包含 `sidravia.portable` 时拒绝此操作，返回 `portable_data_removal_unsupported`，不会借此清理便携配置。路径或文件保护检查失败时也会拒绝；**不要通过删除便携标记绕过限制**，那会改为定位正式用户数据。
-
-删除中途发生错误可能已有部分文件被删除，不保证回滚。退出码非零时，应保留现场并核对文件，不能断言数据完整保留。数据路径的详细含义见[数据与隐私](privacy.md)。
+完整清除需要正常退出当前用户全部产品实例。自启/PATH 撤销或额外清理失败会保留程序和卸载入口，部分数据可能已删除；请按提示重试。不得通过手工清空整个安装目录、AppData 父目录或删除未知计划任务来绕过失败。
 
 ## JSON 输出与退出码
 
@@ -131,7 +95,7 @@ MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录�
 | `version` | 整数 | 结果结构版本，当前 `1` |
 | `ok` | 布尔值 | 本次操作是否确认成功 |
 | `code` | 字符串 | 稳定结果码，成功通常为 `ok` |
-| `capabilities` | 字符串数组 | 当前平台公布的能力，如 `user_path`、`user_autostart`、`production_data_removal` |
+| `capabilities` | 字符串数组 | 当前平台公布的能力，如 `user_path`、`user_autostart` |
 | `directory` | 字符串，可省略 | 本次维护目录 |
 | `pathEnabled` | 布尔值 | 本次 PATH 查询或操作观察的结果 |
 | `changed` | 布尔值 | 成功时本次操作是否发生修改；失败时不能据此判定未修改 |
@@ -183,17 +147,12 @@ CTL `integration ...` 也输出相同的公开结果字段，但其失败退出�
 | `scheduled_task_response_invalid` | 平台任务返回值无效，不能确认成功 |
 | `unsupported_release_script_host` | 任务管理要求系统 Windows PowerShell 5.1 Desktop；安装 PowerShell 7 不替代此依赖 |
 | `autostart_target_missing` | 同目录缺少选定自启目标程序 |
-| `process_query_failed` | 无法确认相关产品进程；暂停清理 |
-| `application_running` | 相关产品进程仍运行；正常退出后再处理 |
-| `data_location_failed` | 无法确认数据布局或位置 |
-| `portable_data_removal_unsupported` | 当前为便携布局，不支持通过此命令删除数据 |
-| `data_deletion_failed` | 数据文件检查或删除失败；可能已部分删除 |
 | `integration_failed` | 其他维护失败的兜底分类，不泄露原始内部原因 |
 
 `warning: environment_notification_failed` 表示 PATH 写入及校验已成功，但环境变更广播失败；先打开新终端核对，不必把它当成写入失败重复修改。超时、输出中断或其他失败均不保证没有副作用，先读取实际状态再决定是否重试。
 
 ## 实现与验收边界
 
-入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installationmanager/path.go)、[Windows 操作分派](../internal/installationmanager/platform_windows.go)、[计划任务规则](../internal/installationmanager/task.ps1)、[数据清理清单](../internal/installationmanager/cleanup.go)。本文说明代码契约，不代表已在当前设备执行自启、卸载或数据删除验收。
+入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installationmanager/path.go)、[Windows 操作分派](../internal/installationmanager/platform_windows.go)、[计划任务规则](../internal/installationmanager/task.ps1)、[Inno 安装与清理](../tools/installer/sidravia.iss)。本文说明代码契约，不代表已在当前设备执行自启、卸载或数据删除验收。
 
 返回：[CTL 高级使用](advance.md) · [使用指南](guide.md) · [数据与隐私](privacy.md)

@@ -54,6 +54,10 @@ func (store *catalogMemoryStore) ReplaceSensitive(_ context.Context, _ string, d
 	return nil
 }
 
+func (store *catalogMemoryStore) PreserveSensitive(_ context.Context, _ string, _ []byte, _ int64, _ bool) error {
+	return store.replaceErr
+}
+
 func (store *catalogMemoryStore) ProtectionStatus() jsonfile.ProtectionStatus {
 	return jsonfile.ProtectionProtected
 }

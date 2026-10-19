@@ -27,7 +27,7 @@ Sidravia 的核心采用跨平台设计，注重运行效率；图形界面以 W
 - [常见问题](docs/troubleshooting.md)：连不上、断线与问题反馈。
 - [数据与隐私](docs/privacy.md)：密码保存位置、日志和卸载数据。
 - [命令行高级使用](docs/advance.md)：配置管理、认证操作、诊断与脚本。
-- [Windows 维护工具](docs/manager.md)：用户 PATH、开机自启、卸载准备与数据清理。
+- [Windows 维护工具](docs/manager.md)：用户 PATH、开机自启及安装器职责边界。
 - [协议上报覆写](docs/override.md)：字段格式、保存和清除覆写。
 
 开发相关：[构建与测试](docs/development.md) · [架构](docs/architecture.md) · [协议适配](docs/protocols.md)

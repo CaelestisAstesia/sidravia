@@ -12,7 +12,6 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
-	"sidravia/internal/productlayout"
 )
 
 type registryPath struct{}
@@ -100,47 +99,7 @@ func Run(directory string, operation Operation) (Result, error) {
 	gui, guiErr := os.Stat(filepath.Join(directory, "Sidravia.exe"))
 	guiAvailable := guiErr == nil && gui.Mode().IsRegular()
 	var result Result
-	if operation == PrepareUninstall || operation == CheckUninstall || operation == DeleteData {
-		result = Result{Version: 1, Directory: directory}
-		blocked, guardErr := productRunning(directory, operation == DeleteData)
-		if guardErr != nil {
-			err = &Failure{Code: "process_query_failed", Cause: guardErr}
-		} else if blocked {
-			err = &Failure{Code: "application_running", Cause: errors.New("product must exit before cleanup")}
-		} else if operation == CheckUninstall {
-			result, err = taskOperation(directory, Status)
-			if err == nil && result.Autostart == "conflict" {
-				err = &Failure{Code: "scheduled_task_conflict", Cause: errors.New("foreign startup task")}
-			}
-		} else if operation == PrepareUninstall {
-			result, err = taskOperation(directory, DisableAutostart)
-			if err == nil {
-				taskChanged := result.Changed
-				result, err = operate(registryPath{}, directory, DisablePath)
-				result.Changed = result.Changed || taskChanged
-				result.Autostart = "disabled"
-			}
-		} else {
-			layout, layoutErr := productlayout.Resolve()
-			if layoutErr != nil {
-				err = &Failure{Code: "data_location_failed", Cause: layoutErr}
-			} else if layout.Mode != productlayout.ModeInstalled {
-				err = &Failure{Code: "portable_data_removal_unsupported", Cause: errors.New("portable data is preserved")}
-			} else {
-				result.Changed, layoutErr = removeData(filepath.Dir(layout.ConfigurationsPath), filepath.Dir(layout.RuntimeInfoPath))
-				if layoutErr != nil {
-					err = &Failure{Code: "data_deletion_failed", Cause: layoutErr}
-				} else {
-					result.OK = true
-					result.Code = "ok"
-				}
-			}
-		}
-		if err != nil {
-			result.OK = false
-			result.Code = Code(err)
-		}
-	} else if operation == Status || operation == EnablePath || operation == DisablePath {
+	if operation == Status || operation == EnablePath || operation == DisablePath {
 		result, err = operate(registryPath{}, directory, operation)
 		if err == nil && operation == Status {
 			state, taskErr := taskOperation(directory, Status)
@@ -154,7 +113,7 @@ func Run(directory string, operation Operation) (Result, error) {
 	} else {
 		result, err = taskOperation(directory, operation)
 	}
-	result.Capabilities = []string{"user_path", "user_autostart", "production_data_removal"}
+	result.Capabilities = []string{"user_path", "user_autostart"}
 	result.GUIAvailable = guiAvailable
 	return result, err
 }

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"sidravia/internal/credentialinput"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -28,6 +29,21 @@ func readConfirmation(input io.Reader, output io.Writer, prompt string) (bool, e
 	default:
 		return false, errors.New("确认输入无效")
 	}
+}
+
+// Credential prompts preserve every character except the input line delimiter.
+func readCredentialPrompt(input io.Reader, output io.Writer, prompt string) (string, error) {
+	if err := writeAll(output, prompt); err != nil {
+		return "", wrapSafeOperation("写入交互提示", err)
+	}
+	value, err := readPasswordLine(input)
+	if err != nil {
+		return "", wrapSafeOperation("读取交互输入", err)
+	}
+	if err := credentialinput.Validate(value); err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 func readPromptLine(input io.Reader, output io.Writer, prompt string) (string, error) {

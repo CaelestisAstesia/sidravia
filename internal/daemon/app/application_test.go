@@ -810,3 +810,7 @@ func TestAutomaticLoginFailureUnwrapPreservesSentinelIdentity(t *testing.T) {
 		t.Fatal("safe wrapper lost identity or echoed cause")
 	}
 }
+
+func (store *controlledAppStore) PreserveSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
+	return store.ReplaceSensitive(ctx, path, data, maximum, allow)
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/credentialinput"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -270,6 +271,11 @@ func runConfigShow(id string, deps authDependencies) error {
 	})
 }
 func runConfigCreate(options configCreateOptions, deps authDependencies) error {
+	if options.username != "" {
+		if err := credentialinput.Validate(options.username); err != nil {
+			return err
+		}
+	}
 	protocolOverride, err := loadProtocolContextOverride(options.protocolOverrideFile, options.protocolOverrideFileSet)
 	if err != nil {
 		return err
@@ -297,7 +303,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 				options.profile, err = selectProfile(deps, connection)
 			}
 			if err == nil && options.username == "" {
-				options.username, err = readPromptLine(deps.stdin, deps.stderr, "账号：")
+				options.username, err = readCredentialPrompt(deps.stdin, deps.stderr, "账号：")
 			}
 			if err == nil && !options.autoLoginExplicit {
 				options.autoLogin, err = readConfirmation(deps.stdin, deps.stderr, "自动登录？[y/N] ")
@@ -311,6 +317,9 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		}
 		if options.id == "" || options.profile == "" || options.username == "" {
 			return errors.New("配置输入不能为空")
+		}
+		if err := credentialinput.Validate(options.username); err != nil {
+			return err
 		}
 		if interactive && !options.binding.supplied() {
 			selected, err := selectNetworkBinding(deps, connection)
@@ -326,6 +335,9 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 			password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
 		}
 		if err != nil {
+			return err
+		}
+		if err := credentialinput.Validate(password); err != nil {
 			return err
 		}
 		if interactive && !options.allowInsecure {
@@ -367,6 +379,11 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 	})
 }
 func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
+	if options.username != nil {
+		if err := credentialinput.Validate(*options.username); err != nil {
+			return err
+		}
+	}
 	if options.clearProtocolOverride && options.protocolOverrideFileSet {
 		return errors.New("协议上下文 Override 文件与清除选项不能同时使用")
 	}
@@ -448,6 +465,9 @@ func runConfigSetPassword(options configPasswordOptions, deps authDependencies) 
 		password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
 	}
 	if err != nil {
+		return err
+	}
+	if err := credentialinput.Validate(password); err != nil {
 		return err
 	}
 	return withAuthClient(deps, func(connection daemonClient) error {

@@ -35,7 +35,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
   bool get _dirty =>
       _hydrated &&
       (_profile != _originalProfile ||
-          _username.text.trim() != _originalUsername ||
+          _username.text != _originalUsername ||
           _password.text.isNotEmpty ||
           _binding != _originalBinding);
 
@@ -318,14 +318,26 @@ class ConfigurationPageState extends State<ConfigurationPage> {
 
   Future<void> _save() async {
     if (_saving || _prompting || !_canSave || !_dirty) return;
-    if (_profile == null ||
-        _username.text.trim().isEmpty ||
-        (_password.text.isEmpty && !_credentialStored)) {
+    String? usernameError;
+    String? passwordError;
+    const inputRule = '仅允许英文字母、数字和半角符号，不允许空格或其他字符。';
+    bool allowed(String value) =>
+        value.codeUnits.every((c) => c >= 0x21 && c <= 0x7e);
+    if (_username.text.isEmpty) {
+      usernameError = '请输入账号。';
+    } else if ((_creating || _username.text != _originalUsername) &&
+        !allowed(_username.text)) {
+      usernameError = inputRule;
+    }
+    if (_password.text.isEmpty && !_credentialStored) {
+      passwordError = '首次配置需要填写密码。';
+    } else if (_password.text.isNotEmpty && !allowed(_password.text)) {
+      passwordError = inputRule;
+    }
+    if (_profile == null || usernameError != null || passwordError != null) {
       setState(() {
-        _usernameError = _username.text.trim().isEmpty ? '请输入账号。' : null;
-        _passwordError = _password.text.isEmpty && !_credentialStored
-            ? '首次配置需要填写密码。'
-            : null;
+        _usernameError = usernameError;
+        _passwordError = passwordError;
       });
       return;
     }
@@ -381,7 +393,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     final boundId = _boundConfigurationId;
     final controller = widget.controller;
     final profile = _profile!;
-    final username = _username.text.trim();
+    final username = _username.text;
     final password = _password.text;
     var ok = false;
     GuiMutationResult? result;

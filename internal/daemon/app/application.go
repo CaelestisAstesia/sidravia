@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"sidravia/internal/credentialinput"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
@@ -414,6 +415,12 @@ func (application *Application) CreateConfiguration(ctx context.Context, value c
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
 	value = value.Clone()
+	if err := credentialinput.Validate(value.Username); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	if err := credentialinput.Validate(password); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
 	if err := application.validateConfigurationCandidate(ctx, value); err != nil {
 		return ConfigurationResult{}, err
 	}
@@ -433,6 +440,18 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	current, err := application.catalog.Get(ctx, id)
 	if err != nil {
 		return ConfigurationResult{}, err
+	}
+	// Only newly changed credentials are validated; unrelated edits retain a
+	// legacy username verbatim, including an unchanged value sent by older GUIs.
+	if update.Username != nil && *update.Username != current.Username {
+		if err := credentialinput.Validate(*update.Username); err != nil {
+			return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+		}
+	}
+	if update.Password != nil {
+		if err := credentialinput.Validate(*update.Password); err != nil {
+			return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+		}
 	}
 	candidate := current.Clone()
 	if update.ProtocolContextOverride != nil {

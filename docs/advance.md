@@ -435,3 +435,5 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 **参数边界**：当前版本没有通用 `--json`、`--password`、`--version` 或 shell completion 命令。密码通过隐藏提示或受支持的 `--password-stdin` 传入，具体参数以本机版本帮助为准。
 
 返回：[项目首页](../README.md) · [使用指南](guide.md) · [协议上报覆写](override.md) · [数据与隐私](privacy.md)
+
+新提交的账号、密码只接受 ASCII `!` 到 `~`，不允许空格、中文、全角字符或控制字符。CTL 会明确拒绝，不自动 trim；stdin 密码以一行输入，行结束符不属于密码。旧配置读取/认证不因该输入规则改写凭据，显示名称不受此字符范围限制。

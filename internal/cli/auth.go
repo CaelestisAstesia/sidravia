@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/credentialinput"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -86,6 +87,11 @@ func authRemove(identity clientbootstrap.Identity, sessionID string) error {
 }
 
 func runAuthStart(options authStartOptions, deps authDependencies) error {
+	if options.configurationID == "" && options.sessionID == "" {
+		if err := credentialinput.Validate(options.username); err != nil {
+			return err
+		}
+	}
 	if options.protocolOverrideFileSet && (options.sessionID != "" || options.configurationID != "") {
 		return errors.New("一次性协议上下文 Override 文件不能与 --session 或 --config 同时使用")
 	}
@@ -126,6 +132,9 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			return err
 		}
 
+		if err := credentialinput.Validate(password); err != nil {
+			return err
+		}
 		payload := contract.SessionStartOneShotPayload{
 			DisplayName:             options.profileID,
 			InstitutionProfileID:    options.profileID,

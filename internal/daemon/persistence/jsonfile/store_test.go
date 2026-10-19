@@ -556,3 +556,25 @@ func TestSecureStoreCommitOutcomeDiagnosticContract(t *testing.T) {
 		}
 	}
 }
+
+func TestPreserveSensitiveKeepsOriginalBytesAndRefusesReplacement(t *testing.T) {
+	store, err := NewSecureStore(SecureStoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "migration.json")
+	original := []byte(" \n{\"schemaVersion\":2}\r\n\n")
+	if err := store.PreserveSensitive(context.Background(), path, original, int64(len(original)), false); err != nil {
+		t.Fatal(err)
+	}
+	got, exists, err := store.Read(context.Background(), path, int64(len(original)))
+	if err != nil || !exists || !bytes.Equal(got, original) {
+		t.Fatal("raw recovery copy changed")
+	}
+	if err := store.PreserveSensitive(context.Background(), path, []byte("{}"), 10, false); failureCode(t, err) != persistence.FailureConflict {
+		t.Fatal("recovery copy overwritten")
+	}
+	if err := store.PreserveSensitive(context.Background(), filepath.Join(t.TempDir(), "too-large.json"), original, int64(len(original)-1), false); failureCode(t, err) != persistence.FailureSizeLimitExceeded {
+		t.Fatal("size boundary bypassed")
+	}
+}

@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +18,194 @@ Future<void> open(WidgetTester tester, GuiController c) async {
 }
 
 void main() {
+  testWidgets('keyboard and toolbar reject multiline credential paste intact', (
+    tester,
+  ) async {
+    final semanticsHandle = tester.ensureSemantics();
+    var pasted = '';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') return {'text': pasted};
+        if (call.method == 'Clipboard.hasStrings') return {'value': true};
+        return null;
+      },
+    );
+    final client = OfflineDemoClient();
+    final c = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await c.start();
+    try {
+      await open(tester, c);
+      for (final field in [
+        find.byType(TextField).first,
+        find.byType(TextField).last,
+      ]) {
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        final before = tester.widget<TextField>(field).controller!.text;
+        for (final raw in ['ab\ncd', 'ab\r\ncd']) {
+          pasted = raw;
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+          await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+          await tester.pumpAndSettle();
+          expect(tester.widget<TextField>(field).controller!.text, before);
+          expect(find.textContaining('输入内容包含换行'), findsOneWidget);
+        }
+        final semanticField = find
+            .ancestor(of: field, matching: find.byType(MergeSemantics))
+            .first;
+        final node = tester.getSemantics(semanticField);
+        expect(
+          node.getSemanticsData().flagsCollection.isTextField,
+          isTrue,
+        );
+        expect(
+          node.getSemanticsData().hasAction(SemanticsAction.setText),
+          isTrue,
+        );
+        for (final raw in ['ab\ncd', 'ab\r\ncd']) {
+          pasted = raw;
+          node.owner!.performAction(node.id, SemanticsAction.paste);
+          await tester.pumpAndSettle();
+          expect(tester.widget<TextField>(field).controller!.text, before);
+          node.owner!.performAction(node.id, SemanticsAction.setText, raw);
+          await tester.pumpAndSettle();
+          expect(tester.widget<TextField>(field).controller!.text, before);
+        }
+        final editable = find.descendant(
+          of: field,
+          matching: find.byType(EditableText),
+        );
+        final state = tester.state<EditableTextState>(editable);
+        state.showToolbar();
+        await tester.pumpAndSettle();
+        final toolbar = tester.widget<AdaptiveTextSelectionToolbar>(
+          find.byType(AdaptiveTextSelectionToolbar).first,
+        );
+        toolbar.buttonItems!
+            .singleWhere((item) => item.type == ContextMenuButtonType.paste)
+            .onPressed!();
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(field).controller!.text, before);
+      }
+      await tester.tap(find.text('保存修改'));
+      await tester.pumpAndSettle();
+      expect(client.operations, isNot(contains('configuration.update')));
+      expect(find.byType(AlertDialog), findsNothing);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await c.close();
+      c.dispose();
+      client.dispose();
+      semanticsHandle.dispose();
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    }
+  });
+
+  testWidgets('invalid new credentials stay verbatim and send no mutation', (
+    tester,
+  ) async {
+    final client = OfflineDemoClient();
+    final c = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await c.start();
+    try {
+      await open(tester, c);
+      for (final invalid in [' user', 'user ', 'a b', '中文', 'ａｂ１２！', 'a\tb']) {
+        for (final password in [false, true]) {
+          final username = password ? 'valid-user' : invalid;
+          final secret = password ? invalid : 'valid-password!';
+          await tester.enterText(find.byType(TextField).first, username);
+          await tester.enterText(find.byType(TextField).last, secret);
+          await tester.tap(find.text('保存修改'));
+          await tester.pumpAndSettle();
+          expect(find.textContaining('仅允许英文字母、数字和半角符号'), findsOneWidget);
+          expect(find.byType(AlertDialog), findsNothing);
+          expect(client.operations, isNot(contains('configuration.update')));
+          expect(
+            tester
+                .widget<TextField>(find.byType(TextField).first)
+                .controller!
+                .text,
+            username,
+          );
+          expect(
+            tester
+                .widget<TextField>(find.byType(TextField).last)
+                .controller!
+                .text,
+            secret,
+          );
+        }
+      }
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await c.close();
+      c.dispose();
+      client.dispose();
+    }
+  });
+
+  testWidgets('unchanged legacy username is not normalized on password edit', (
+    tester,
+  ) async {
+    final client = OfflineDemoClient()..selectScenario('suspended');
+    final old = (await client.configurationList()).single;
+    const legacy = '旧账号 ';
+    await client.configurationUpdate(
+      configurationId: old.id,
+      institutionProfileId: old.institutionProfileId,
+      username: legacy,
+    );
+    final initialUpdates = client.operations
+        .where((v) => v == 'configuration.update')
+        .length;
+    final c = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await c.start();
+    try {
+      await open(tester, c);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+        legacy,
+      );
+      expect(
+        client.operations.where((v) => v == 'configuration.update'),
+        hasLength(initialUpdates),
+      );
+      await tester.enterText(find.byType(TextField).last, 'new-password!');
+      await tester.tap(find.text('保存修改'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('仅允许英文字母、数字和半角符号'), findsNothing);
+      await tester.tap(find.widgetWithText(TextButton, '保存').last);
+      await tester.pumpAndSettle();
+      expect(c.snapshot!.configurations.single.username, legacy);
+      expect(
+        client.operations.where((v) => v == 'configuration.update'),
+        hasLength(initialUpdates + 1),
+      );
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await c.close();
+      c.dispose();
+      client.dispose();
+    }
+  });
+
   for (final scenario in [
     'authenticated',
     'authenticating',

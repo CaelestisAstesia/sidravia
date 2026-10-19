@@ -19,6 +19,128 @@ void main() {
   });
   tearDown(() => root.deleteSync(recursive: true));
 
+  test(
+    'Windows migration backup keeps stricter original access rules',
+    () async {
+      final source = File('${root.path}/gui-settings.json');
+      const old = '{"schemaVersion":1,"appearanceMode":"dark"}';
+      await source.writeAsString(old);
+      final script = File('${root.path}/permissions.ps1');
+      await script.writeAsString(r'''
+param([string]$Target,[string]$Mode)
+$ErrorActionPreference = 'Stop'
+$userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+if ($Mode -eq 'set') {
+  $acl = New-Object Security.AccessControl.FileSecurity
+  $acl.SetOwner($userSid)
+  $acl.SetAccessRuleProtection($true,$false)
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($userSid,'FullControl','Allow')))
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('S-1-5-18')),'FullControl','Allow')))
+  Set-Acl -LiteralPath $Target -AclObject $acl
+} elseif ($Mode -eq 'block' -or $Mode -eq 'unblock') {
+  $acl = Get-Acl -LiteralPath $Target
+  $rule = New-Object Security.AccessControl.FileSystemAccessRule($userSid,'CreateFiles','Deny')
+  if ($Mode -eq 'block') { $acl.AddAccessRule($rule) } else { $acl.RemoveAccessRuleSpecific($rule) }
+  Set-Acl -LiteralPath $Target -AclObject $acl
+} else {
+  $acl = Get-Acl -LiteralPath $Target
+  if (-not $acl.AreAccessRulesProtected) { throw 'backup inheritance enabled' }
+  $rules = @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+  if ($rules.Count -ne 2) { throw 'unexpected backup readers' }
+  foreach ($rule in $rules) {
+    if ($rule.IdentityReference.Value -ne $userSid.Value -and $rule.IdentityReference.Value -ne 'S-1-5-18') { throw 'unexpected backup reader' }
+    if ($rule.AccessControlType -ne 'Allow' -or $rule.FileSystemRights -ne 'FullControl') { throw 'backup rights changed' }
+  }
+}
+''');
+      Future<void> permissions(String target, String mode) async {
+        final result = await Process.run('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-File',
+          script.path,
+          target,
+          mode,
+        ]);
+        expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      }
+
+      await permissions(source.path, 'set');
+      final store = FileGuiSettingsStore(source.path);
+      await store.read();
+      await store.save(
+        const GuiSettings(appearanceMode: GuiAppearanceMode.light),
+      );
+      final backup = root.listSync().whereType<File>().singleWhere(
+        (file) => file.path.contains('.sidravia-gui-migration-'),
+      );
+      expect(await backup.readAsString(), old);
+      await permissions(backup.path, 'check');
+      final denied = Directory('${root.path}/denied')..createSync();
+      final deniedSource = File('${denied.path}/gui-settings.json');
+      await deniedSource.writeAsString(old);
+      final deniedStore = FileGuiSettingsStore(deniedSource.path);
+      await deniedStore.read();
+      await permissions(denied.path, 'block');
+      try {
+        await expectLater(
+          deniedStore.save(const GuiSettings()),
+          throwsA(isA<FileSystemException>()),
+        );
+        expect(await deniedSource.readAsString(), old);
+      } finally {
+        await permissions(denied.path, 'unblock');
+      }
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
+    'old preference bytes are preserved before first schema6 save',
+    () async {
+      final path = '${root.path}/gui-settings.json';
+      const original = ' {"schemaVersion":1,"appearanceMode":"dark"}\n';
+      await File(path).writeAsString(original);
+      final store = FileGuiSettingsStore(path);
+      final settings = await store.read();
+      expect(settings!.appearanceMode, GuiAppearanceMode.dark);
+      expect(root.listSync().length, 1, reason: 'read must not write a backup');
+      await store.save(settings);
+      final backups = root
+          .listSync()
+          .where((entry) => entry.path.contains('.sidravia-gui-migration-'))
+          .toList();
+      expect(backups.length, 1);
+      expect(await File(backups.single.path).readAsString(), original);
+      expect(jsonDecode(await File(path).readAsString())['schemaVersion'], 6);
+      await store.save(settings);
+      expect(
+        root
+            .listSync()
+            .where((entry) => entry.path.contains('.sidravia-gui-migration-'))
+            .length,
+        1,
+        reason: 'normal saves must not create migration copies',
+      );
+    },
+  );
+
+  test(
+    'external old preference changes abort migration without overwriting',
+    () async {
+      final path = '${root.path}/gui-settings.json';
+      await File(path)
+          .writeAsString('{"schemaVersion":1,"appearanceMode":"dark"}');
+      final store = FileGuiSettingsStore(path);
+      final settings = await store.read();
+      const external = '{"schemaVersion":1,"appearanceMode":"light"}';
+      await File(path).writeAsString(external);
+      await expectLater(store.save(settings!), throwsStateError);
+      expect(await File(path).readAsString(), external);
+      expect(root.listSync().length, 1);
+    },
+  );
+
   testWidgets(
     'new formal application restores disk theme; system still follows brightness',
     (tester) async {

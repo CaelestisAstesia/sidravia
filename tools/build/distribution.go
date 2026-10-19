@@ -240,6 +240,7 @@ func installerManifest(root string, entries, gui []zipEntry) string {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	var out strings.Builder
 	out.WriteString("[Files]\n")
+	fmt.Fprintf(&out, "Source: \"%s\"; Flags: dontcopy\n", filepath.Join(root, "sidraviamgr.exe"))
 	for _, entry := range entries {
 		component := "core"
 		if guiNames[entry.name] {

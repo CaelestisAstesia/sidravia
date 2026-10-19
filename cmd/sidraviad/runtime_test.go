@@ -1594,3 +1594,7 @@ func TestCompositionConnectsSafePostCommitDiagnosticObserver(t *testing.T) {
 		}
 	}
 }
+
+func (s *inMemoryStore) PreserveSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
+	return s.ReplaceSensitive(ctx, path, data, maximum, allow)
+}

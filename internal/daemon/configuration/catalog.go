@@ -1,8 +1,11 @@
 package configuration
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -19,6 +22,7 @@ const catalogFileSizeLimit int64 = 1 * 1024 * 1024
 type SensitiveStore interface {
 	jsonfile.Store
 	ReplaceSensitive(context.Context, string, []byte, int64, bool) error
+	PreserveSensitive(context.Context, string, []byte, int64, bool) error
 	ProtectionStatus() jsonfile.ProtectionStatus
 }
 
@@ -42,6 +46,7 @@ type Catalog struct {
 	path               string
 	records            map[ConfigurationID]catalogRecord
 	unprotectedConsent bool
+	migrationOriginal  []byte
 }
 
 func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catalog, error) {
@@ -62,7 +67,18 @@ func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catal
 			return nil, err
 		}
 	}
-	return &Catalog{store: store, path: path, records: records}, nil
+	catalog := &Catalog{store: store, path: path, records: records}
+	if exists {
+		// decodeCatalogDocument already validated this envelope and version.
+		var envelope catalogDocumentEnvelope
+		if err := json.Unmarshal(data, &envelope); err != nil {
+			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
+		}
+		if *envelope.SchemaVersion != catalogSchemaVersion {
+			catalog.migrationOriginal = append([]byte(nil), data...)
+		}
+	}
+	return catalog, nil
 }
 
 func (catalog *Catalog) Get(ctx context.Context, id ConfigurationID) (Configuration, error) {
@@ -318,14 +334,56 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 	if err != nil {
 		return err
 	}
+	// Reject an oversized candidate before creating even a recovery file.
+	if int64(len(data))+1 > catalogFileSizeLimit {
+		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
+	}
+	if len(catalog.migrationOriginal) > 0 {
+		if err := catalog.preserveBeforeMigration(ctx, allow); err != nil {
+			return err
+		}
+	}
 	// The store applies catalogFileSizeLimit to the exact bytes it persists and
 	// re-reads, so a candidate that could not be read back is rejected before any
 	// replacement and before the in-memory authority is committed.
 	if err := catalog.store.ReplaceSensitive(ctx, catalog.path, data, catalogFileSizeLimit, allow); err != nil {
 		return err
 	}
+	catalog.migrationOriginal = nil
 	catalog.records = candidate
 	catalog.unprotectedConsent = allow && catalog.store.ProtectionStatus() == jsonfile.ProtectionUnprotected
+	return nil
+}
+
+// preserveBeforeMigration uses the same sensitive storage authority and ACL
+// policy as the catalog. A directly restorable recovery copy retains the exact source
+// bytes (including whitespace) rather than silently normalizing an old file.
+// The random private filename is never reused or included in diagnostics.
+func (catalog *Catalog) preserveBeforeMigration(ctx context.Context, allow bool) error {
+	unchanged := func() error {
+		current, exists, err := catalog.store.Read(ctx, catalog.path, catalogFileSizeLimit)
+		if err != nil {
+			return err
+		}
+		if !exists || !bytes.Equal(current, catalog.migrationOriginal) {
+			return persistence.NewFailure(persistence.FailureConflict, nil)
+		}
+		return nil
+	}
+	if err := unchanged(); err != nil {
+		return err
+	}
+	var entropy [16]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
+		return persistence.NewFailure(persistence.FailureAtomicWrite, err)
+	}
+	name := ".sidravia-migration-" + hex.EncodeToString(entropy[:]) + ".json"
+	if err := catalog.store.PreserveSensitive(ctx, filepath.Join(filepath.Dir(catalog.path), name), catalog.migrationOriginal, catalogFileSizeLimit, allow); err != nil {
+		return err
+	}
+	if err := unchanged(); err != nil {
+		return err
+	}
 	return nil
 }
 

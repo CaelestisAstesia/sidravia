@@ -23,9 +23,9 @@ func TestArgumentsAndJSON(t *testing.T) {
 		{[]string{"autostart", "set", "gui"}, installationmanager.StartGUI, 0},
 		{[]string{"autostart", "set", "daemon"}, installationmanager.StartDaemon, 0},
 		{[]string{"autostart", "disable"}, installationmanager.DisableAutostart, 0},
-		{[]string{"uninstall-prepare"}, installationmanager.PrepareUninstall, 0},
-		{[]string{"uninstall-check"}, installationmanager.CheckUninstall, 0},
-		{[]string{"data", "delete"}, installationmanager.DeleteData, 0},
+		{[]string{"uninstall-prepare"}, "", 2},
+		{[]string{"uninstall-check"}, "", 2},
+		{[]string{"data", "delete"}, "", 2},
 		{[]string{"autostart"}, "", 2},
 		{[]string{"status", "extra"}, "", 2},
 	} {
@@ -57,7 +57,7 @@ func TestArgumentsAndJSON(t *testing.T) {
 func TestHelpAndSafeFailure(t *testing.T) {
 	for _, args := range [][]string{nil, {"help"}, {"-h"}, {"--help"}} {
 		var out bytes.Buffer
-		if run(args, &out, func() (string, error) { t.Fatal("help resolves executable"); return "", nil }, nil) != 0 || !strings.Contains(out.String(), "not yet available") {
+		if run(args, &out, func() (string, error) { t.Fatal("help resolves executable"); return "", nil }, nil) != 0 || !strings.Contains(out.String(), "belong to the installer") {
 			t.Fatal("help")
 		}
 	}
@@ -67,5 +67,29 @@ func TestHelpAndSafeFailure(t *testing.T) {
 	})
 	if code != 1 || strings.Contains(out.String(), "SECRET") || !strings.Contains(out.String(), "path_read_failed") {
 		t.Fatalf("%d %s", code, out.String())
+	}
+}
+
+func TestStatusDirectoryIsReadOnlyAndUsesSameJSON(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	code := run([]string{"status", "--directory", dir}, &out, func() (string, error) { t.Fatal("must use query context"); return "", nil }, func(got string, op installationmanager.Operation) (installationmanager.Result, error) {
+		if got != dir || op != installationmanager.Status {
+			t.Fatal("wrong query")
+		}
+		return installationmanager.Result{Version: 1, OK: true, Code: "ok", Capabilities: []string{"user_path", "user_autostart"}, Autostart: "daemon"}, nil
+	})
+	var result installationmanager.Result
+	if code != 0 || json.Unmarshal(out.Bytes(), &result) != nil || result.Autostart != "daemon" {
+		t.Fatal("status contract changed")
+	}
+	for _, args := range [][]string{{"status", "--directory", "relative"}, {"path", "enable", "--directory", dir}, {"--setup-state", dir}} {
+		out.Reset()
+		if run(args, &out, nil, func(string, installationmanager.Operation) (installationmanager.Result, error) {
+			t.Fatal("invalid query/write ran")
+			return installationmanager.Result{}, nil
+		}) != 2 {
+			t.Fatal("invalid arguments accepted")
+		}
 	}
 }

@@ -358,3 +358,7 @@ func TestDiagnosticResolverUsesPublicAggregateAndClonedProfile(t *testing.T) {
 }
 
 func (*appTestProtocolFactory) ValidateUsername(string) error { return nil }
+
+func (s *appMemoryStore) PreserveSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
+	return s.ReplaceSensitive(ctx, path, data, maximum, allow)
+}

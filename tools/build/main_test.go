@@ -23,18 +23,30 @@ var errZip = errors.New("simulated zip failure")
 var errPublish = errors.New("simulated publish failure")
 
 func TestShippedGuideHasOrderedFirstUseJourney(t *testing.T) {
-	guide, err := os.ReadFile(filepath.Join("..", "..", "docs", "guide.md"))
+	guide, err := os.ReadFile(filepath.Join("..", "..", "docs", "advance.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(guide)
-	previous := -1
-	for _, token := range []string{"daemon start", "daemon status", "profile list", "auth start", "auth status", "daemon stop"} {
-		position := strings.Index(text, token)
-		if position < 0 || position < previous {
-			t.Fatalf("guide order invalid at %q", token)
+	// The reviewed documentation separates daemon lifecycle from one-shot
+	// authentication. Check each executable journey in its actual section,
+	// rather than requiring the retired mixed sequence in the GUI guide.
+	for heading, commands := range map[string][]string{
+		"## 独立后台":  {"daemon start", "daemon status", "daemon stop"},
+		"## 一次性认证": {"profile list", "auth start", "auth status"},
+	} {
+		_, section, exists := strings.Cut(string(guide), heading+"\n")
+		if !exists {
+			t.Fatalf("missing command journey: %s", heading)
 		}
-		previous = position
+		section, _, _ = strings.Cut(section, "\n## ")
+		previous := -1
+		for _, token := range commands {
+			position := strings.Index(section, `.\sidraviactl.exe `+token)
+			if position < 0 || position < previous {
+				t.Fatalf("guide order invalid in %s at %q", heading, token)
+			}
+			previous = position
+		}
 	}
 }
 

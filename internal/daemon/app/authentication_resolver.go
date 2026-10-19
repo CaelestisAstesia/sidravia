@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"sidravia/internal/credentialinput"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
@@ -160,6 +161,13 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 	}
 	if sessionID == "" {
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("authentication session ID is required"))
+	}
+	// This is fresh user input; Resolve for saved configurations is unchanged.
+	if err := credentialinput.Validate(input.AuthenticationCredential.Username); err != nil {
+		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	if err := credentialinput.Validate(input.AuthenticationCredential.Password); err != nil {
+		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
 	if input.AuthenticationCredential.Username == "" {
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("username is required"))

@@ -110,7 +110,16 @@ func (store *SecureStore) ReplaceSensitive(ctx context.Context, destination stri
 	if maximum > 0 && persistedSize(data) > maximum {
 		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
 	}
-	return store.replace(ctx, destination, data, true, allowUnprotected)
+	return store.replace(ctx, destination, data, true, allowUnprotected, false)
+}
+
+// PreserveSensitive creates a directly restorable migration copy using the same
+// protection and atomic-write policy, without normalizing the original bytes.
+func (store *SecureStore) PreserveSensitive(ctx context.Context, destination string, data []byte, maximum int64, allowUnprotected bool) error {
+	if maximum <= 0 || int64(len(data)) > maximum {
+		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
+	}
+	return store.replace(ctx, destination, data, true, allowUnprotected, true)
 }
 
 func (store *SecureStore) Read(ctx context.Context, destination string, maximum int64) ([]byte, bool, error) {
@@ -159,14 +168,14 @@ func (store *SecureStore) Read(ctx context.Context, destination string, maximum 
 }
 
 func (store *SecureStore) Replace(ctx context.Context, destination string, data []byte) error {
-	return store.replace(ctx, destination, data, false, true)
+	return store.replace(ctx, destination, data, false, true, false)
 }
 
-func (store *SecureStore) replace(ctx context.Context, destination string, data []byte, sensitive, allowUnprotected bool) error {
+func (store *SecureStore) replace(ctx context.Context, destination string, data []byte, sensitive, allowUnprotected, exactCopy bool) error {
 	if !validDestination(destination) {
 		return persistence.NewFailure(persistence.FailureInvalidArgument, nil)
 	}
-	if bytes.HasSuffix(data, []byte("\n")) {
+	if !exactCopy && bytes.HasSuffix(data, []byte("\n")) {
 		return persistence.NewFailure(persistence.FailureInvalidDocument, nil)
 	}
 	if err := validateOneValue(data); err != nil {
@@ -189,6 +198,9 @@ func (store *SecureStore) replace(ctx context.Context, destination string, data 
 	destinationExists, err := store.operations.inspectDestination(destination)
 	if err != nil {
 		return operationFailure(persistence.FailurePermissionDenied, err)
+	}
+	if exactCopy && destinationExists {
+		return persistence.NewFailure(persistence.FailureConflict, nil)
 	}
 	if destinationExists && store.ProtectionStatus() == ProtectionProtected {
 		if err := store.operations.hardenDestination(destination, store.owner); err != nil {
@@ -238,9 +250,10 @@ func (store *SecureStore) replace(ctx context.Context, destination string, data 
 		}
 	}()
 
-	payload := make([]byte, persistedSize(data))
-	copy(payload, data)
-	payload[len(data)] = '\n'
+	payload := append([]byte(nil), data...)
+	if !exactCopy {
+		payload = append(payload, '\n')
+	}
 	for len(payload) > 0 {
 		written, writeErr := temp.Write(payload)
 		if written < 0 || written > len(payload) {

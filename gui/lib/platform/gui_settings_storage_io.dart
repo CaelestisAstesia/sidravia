@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
 
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+
+import 'gui_settings_backup_io.dart';
 
 bool get needsPrivateGuiDirectory => Platform.isAndroid || Platform.isIOS;
 
@@ -151,6 +154,8 @@ class FileGuiSettingsStore implements GuiSettingsStore {
   final String path;
   final Future<void> Function(File, String) _replace;
   bool _loaded = false, _writable = false;
+  List<int>? _migrationOriginal;
+  bool _migrationBackupCreated = false;
   @override
   bool get persistent => true;
   void _checkType() {
@@ -165,9 +170,16 @@ class FileGuiSettingsStore implements GuiSettingsStore {
   Future<GuiSettings?> read() async {
     _loaded = true;
     _writable = false;
+    _migrationOriginal = null;
+    _migrationBackupCreated = false;
     _checkType();
     try {
-      final settings = decodeGuiSettings(await File(path).readAsString());
+      final original = await File(path).readAsBytes();
+      final source = utf8.decode(original);
+      final settings = decodeGuiSettings(source);
+      if ((jsonDecode(source) as Map<String, dynamic>)['schemaVersion'] != 6) {
+        _migrationOriginal = original;
+      }
       _writable = true;
       return settings;
     } on FileSystemException catch (error) {
@@ -184,6 +196,32 @@ class FileGuiSettingsStore implements GuiSettingsStore {
     }
     _checkType();
     final file = File(path);
+    final original = _migrationOriginal;
+    if (original != null) {
+      if (base64Encode(await file.readAsBytes()) != base64Encode(original)) {
+        _writable = false;
+        throw StateError('GUI settings changed before migration');
+      }
+      if (!_migrationBackupCreated) {
+        final random = Random.secure();
+        final id = List.generate(
+          16,
+          (_) => random.nextInt(256),
+        ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+        final backup = File(
+          '${file.parent.path}${Platform.pathSeparator}.sidravia-gui-migration-$id.json',
+        );
+        // The GUI owns only non-secret preferences. Keep the exact old bytes so
+        // an old GUI can restore them; never convert a failed load to defaults.
+        await preserveGuiSettingsFile(file, backup);
+        if (base64Encode(await backup.readAsBytes()) !=
+            base64Encode(original)) {
+          _writable = false;
+          throw StateError('GUI settings changed while making backup');
+        }
+        _migrationBackupCreated = true;
+      }
+    }
     await file.parent.create(recursive: true);
     final temporary = File(
       '$path.$pid.${Random.secure().nextInt(1 << 32)}.tmp',
@@ -192,9 +230,15 @@ class FileGuiSettingsStore implements GuiSettingsStore {
     try {
       await temporary.writeAsString(encodeGuiSettings(settings), flush: true);
       _checkType();
+      if (original != null &&
+          base64Encode(await file.readAsBytes()) != base64Encode(original)) {
+        _writable = false;
+        throw StateError('GUI settings changed during migration');
+      }
       // Dart 3.13 Windows File.rename uses MoveFileExW REPLACE_EXISTING |
       // WRITE_THROUGH. Same-directory replacement never pre-deletes the target.
       await _replace(temporary, path);
+      _migrationOriginal = null;
     } finally {
       if (await temporary.exists()) await temporary.delete();
     }
