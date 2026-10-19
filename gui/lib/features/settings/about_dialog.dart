@@ -1,6 +1,25 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+
+const _projectAddress = 'https://github.com/CaelestisAstesia/sidravia';
+const _windowChannel = MethodChannel('sidravia/window');
+
+Future<void> _openProjectPage(BuildContext context) async {
+  try {
+    await _windowChannel.invokeMethod<void>('openProjectPage');
+  } on PlatformException {
+    if (context.mounted) _showProjectOpenFailure(context);
+  } on MissingPluginException {
+    if (context.mounted) _showProjectOpenFailure(context);
+  }
+}
+
+void _showProjectOpenFailure(BuildContext context) {
+  ScaffoldMessenger.of(context)
+      .showSnackBar(const SnackBar(content: Text('无法打开浏览器，请选择并复制项目地址后访问。')));
+}
 
 Future<void> showSidraviaAbout(
   BuildContext context, {
@@ -19,12 +38,23 @@ Future<void> showSidraviaAbout(
       child: DesignGroup(
         children: [
           DesignRow(title: '版本', value: version),
-          const DesignRow(title: '项目', subtitle: 'Sidravia 校园网客户端'),
-          const Padding(
-            padding: EdgeInsets.all(12),
-            child: SelectableText(
-              'https://github.com/CaelestisAstesia/sidravia',
-              style: TextStyle(fontSize: 12),
+          const DesignRow(title: '项目', subtitle: 'Sidravia 网络认证客户端'),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Semantics(
+                link: true,
+                child: SelectableText(
+                  _projectAddress,
+                  onTap: () => _openProjectPage(context),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
             ),
           ),
         ],

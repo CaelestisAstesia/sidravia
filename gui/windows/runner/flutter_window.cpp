@@ -142,6 +142,21 @@ bool FlutterWindow::OnCreate() {
           result->Error("window_unavailable", "Window is unavailable.");
           return;
         }
+        if (call.method_name() == "openProjectPage") {
+          SHELLEXECUTEINFOW info{};
+          info.cbSize = sizeof(info);
+          info.fMask = SEE_MASK_FLAG_NO_UI | SEE_MASK_ASYNCOK;
+          info.hwnd = window;
+          info.lpVerb = L"open";
+          info.lpFile = L"https://github.com/CaelestisAstesia/sidravia";
+          info.nShow = SW_SHOWNORMAL;
+          if (!ShellExecuteExW(&info)) {
+            result->Error("project_page_open_failed", "Cannot open project page.");
+          } else {
+            result->Success();
+          }
+          return;
+        }
         if (call.method_name() == "setDarkMode") {
           const auto* dark = std::get_if<bool>(call.arguments());
           if (!dark) { result->Error("invalid_theme", "Expected bool"); return; }
