@@ -151,3 +151,8 @@ fresh namespace and no credentials, checks bounded startup refusal under the
 installer mutex, and exercises prepare/cancel, normal exit and cold recovery.
 This may briefly show an empty test GUI. A failure preserves the fixture and
 logs; success waits for its owned processes to exit before removing files.
+
+After producer/consumer verification, `SIDRAVIA_CANDIDATE_ARCHIVE` may name the
+exact GUI/core portable ZIP to repeat the real lifecycle on its unmodified
+binaries. The fixture reads the package BUILD-INFO identity and reports it in
+the receipt; it never executes the setup package or changes an existing install.

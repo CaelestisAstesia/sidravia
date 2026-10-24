@@ -491,7 +491,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 		if err = stage("stop", third); err != nil {
 			return err
 		}
-		return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "desktop": true, "namespace": ns})
+		return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "desktop": true, "namespace": ns, "productVersion": version, "buildId": buildID})
 	}
 	conn, err = clientbootstrap.Connect(ctx, identity, restored)
 	if err != nil {
@@ -505,7 +505,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 	if err = restoredProcess.Wait(ctx); err != nil {
 		return err
 	}
-	return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "namespace": ns})
+	return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "namespace": ns, "productVersion": version, "buildId": buildID})
 }
 func mustNamespace(value string) productlayout.Namespace {
 	ns, _ := productlayout.NewNamespace(value)

@@ -13,6 +13,7 @@ import tempfile
 import time
 import unittest
 import uuid
+import zipfile
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -109,6 +110,32 @@ class UpdateHandoff(unittest.TestCase):
                                  (gui_case / 'daemon.log').read_text(errors='replace')[-3000:] if (gui_case / 'daemon.log').exists() else checked.stdout.decode(errors='replace'))
                 self.assertEqual(json.loads((gui_case / 'real-lifecycle.json').read_text())['desktop'], True)
                 print('update-native-real-GUI-lifecycle: admission/prepare/abort/exit/cold-resume PASS')
+            archive = os.environ.get('SIDRAVIA_CANDIDATE_ARCHIVE')
+            if archive:
+                candidate = root / 'exact-candidate'
+                candidate_target = candidate / 'target'
+                candidate_target.mkdir(parents=True)
+                operation = uuid.uuid4().hex
+                (candidate / 'fixture-owner').write_text(operation)
+                with zipfile.ZipFile(archive) as package:
+                    for item in package.infolist():
+                        parts = item.filename.replace('\\', '/').split('/')
+                        self.assertFalse(item.filename.startswith(('/', '\\')) or '..' in parts or ':' in item.filename)
+                        self.assertNotEqual((item.external_attr >> 16) & 0o170000, 0o120000)
+                    package.extractall(candidate_target)
+                self.assertTrue((candidate_target / 'sidravia.portable').is_file())
+                gui = (candidate_target / 'Sidravia.exe').is_file()
+                arguments = [str(host), 'real-lifecycle', windows_path(candidate), operation]
+                if gui:
+                    arguments.append('gui')
+                checked = subprocess.run(arguments, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=100)
+                self.assertEqual(checked.returncode, 0, checked.stdout.decode(errors='replace') +
+                                 (candidate / 'daemon.log').read_text(errors='replace')[-3000:] if (candidate / 'daemon.log').exists() else checked.stdout.decode(errors='replace'))
+                info = dict(line.split(': ', 1) for line in (candidate_target / 'BUILD-INFO.txt').read_text().splitlines() if ': ' in line)
+                receipt = json.loads((candidate / 'real-lifecycle.json').read_text())
+                self.assertEqual(receipt['productVersion'], info['ProductVersion'])
+                self.assertEqual(receipt['buildId'], info['BuildID'])
+                print('update-native-exact-candidate:', info['ProductVersion'], info['BuildID'], 'PASS')
             payload = root / 'new-product.bin'
             payload.write_bytes(b'new synthetic product; never execute this payload\n')
             compiler = os.environ['SIDRAVIA_ISCC']
