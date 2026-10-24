@@ -23,6 +23,8 @@ type networkTraceRequest struct {
 type networkTraceSection struct {
 	Status     string          `json:"status"`
 	SystemCode int64           `json:"systemCode"`
+	HResult    int64           `json:"hresult,omitempty"`
+	ErrorKind  string          `json:"errorKind,omitempty"`
 	Limit      int             `json:"limit,omitempty"`
 	Truncated  bool            `json:"truncated,omitempty"`
 	Data       json.RawMessage `json:"data,omitempty"`
@@ -33,6 +35,7 @@ type networkTraceFacts struct {
 	ExcludedPorts networkTraceSection `json:"excludedPorts"`
 	Addresses     networkTraceSection `json:"addresses"`
 	Route         networkTraceSection `json:"route"`
+	DefaultRoute  networkTraceSection `json:"defaultRoute"`
 	Events        networkTraceSection `json:"events"`
 }
 

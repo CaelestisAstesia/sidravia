@@ -28,7 +28,7 @@ func TestWindowsTraceReadOnlyLoopbackSnapshot(t *testing.T) {
 	if result.Status != "collected" {
 		t.Fatalf("snapshot status=%s", result.Status)
 	}
-	for name, section := range map[string]networkTraceSection{"udp": result.Facts.UDP, "addresses": result.Facts.Addresses, "route": result.Facts.Route, "excludedPorts": result.Facts.ExcludedPorts} {
+	for name, section := range map[string]networkTraceSection{"udp": result.Facts.UDP, "addresses": result.Facts.Addresses, "route": result.Facts.Route, "defaultRoute": result.Facts.DefaultRoute, "excludedPorts": result.Facts.ExcludedPorts} {
 		if section.Status != "collected" || !json.Valid(section.Data) {
 			t.Errorf("%s status=%s data=%s", name, section.Status, section.Data)
 		}
@@ -68,7 +68,7 @@ func TestWindowsTraceReadOnlyLoopbackSnapshot(t *testing.T) {
 	partialCtx, partialCancel := context.WithTimeout(context.Background(), networkTraceTimeout)
 	defer partialCancel()
 	partial := collectNetworkTrace(partialCtx, networkTraceRequest{TriggeredAt: time.Now(), Failure: protocol.AuthenticationProtocolNetworkFailure{Operation: "set_deadline", LocalEndpoint: local}})
-	if partial.Status != "collected" || partial.Facts.Route.Status != "not_applicable" || partial.Facts.UDP.Status != "collected" || partial.Facts.Addresses.Status != "collected" {
+	if partial.Status != "collected" || partial.Facts.Route.Status != "not_applicable" || partial.Facts.DefaultRoute.Status != "not_applicable" || partial.Facts.UDP.Status != "collected" || partial.Facts.Addresses.Status != "collected" {
 		t.Fatalf("partial endpoint snapshot was dropped: %+v", partial)
 	}
 
@@ -87,5 +87,17 @@ func TestWindowsTraceCancellationIsBounded(t *testing.T) {
 	}
 	if time.Since(start) > 2*time.Second {
 		t.Fatal("query outlived cancellation bound")
+	}
+}
+
+func TestWindowsTraceSourceQueryFailureIsStructured(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), networkTraceTimeout)
+	defer cancel()
+	// The wildcard bind address is not an assigned interface IPv4. Query it
+	// without opening a socket to exercise the actual CIM error projection.
+	result := collectNetworkTrace(ctx, networkTraceRequest{TriggeredAt: time.Now(), Failure: protocol.AuthenticationProtocolNetworkFailure{LocalEndpoint: netip.MustParseAddrPort("0.0.0.0:0")}})
+	section := result.Facts.Addresses
+	if result.Status != "collected" || section.Status != "no_data" || section.ErrorKind != "object_not_found" || section.HResult == 0 || len(section.Data) != 0 {
+		t.Fatalf("query failure was not projected as bounded numeric metadata: status=%s section=%+v", result.Status, section)
 	}
 }

@@ -29,7 +29,7 @@ $ErrorActionPreference='Stop'
 $q=ConvertFrom-Json ([Console]::In.ReadLine())
 function Observe($body,$limit=0) {
  try { $value=@(& $body); $truncated=$limit -gt 0 -and $value.Count -gt $limit; if($truncated){$value=@($value | Select-Object -First $limit)}; return @{status='collected';systemCode=0;limit=$limit;truncated=$truncated;data=$value} }
- catch { $cause=$_.Exception; while($cause.InnerException) {$cause=$cause.InnerException}; $code=0; if($cause -is [System.ComponentModel.Win32Exception]) {$code=$cause.NativeErrorCode}; $status='unavailable'; if($_.CategoryInfo.Category -eq 'ObjectNotFound'){$status='no_data'}; return @{status=$status;systemCode=$code} }
+ catch { $cause=$_.Exception; while($cause.InnerException) {$cause=$cause.InnerException}; $code=0; if($cause -is [System.ComponentModel.Win32Exception]) {$code=$cause.NativeErrorCode}; $status='unavailable'; $kind='other'; if($_.CategoryInfo.Category -eq 'ObjectNotFound'){$status='no_data';$kind='object_not_found'}; if($_.CategoryInfo.Category -in @('PermissionDenied','SecurityError')){$kind='permission_denied'}; if($_.CategoryInfo.Category -eq 'InvalidArgument'){$kind='invalid_argument'}; return @{status=$status;systemCode=$code;hresult=$cause.HResult;errorKind=$kind} }
 }
 $result=@{}
 $result.udp=@{status='not_applicable';systemCode=0}
@@ -59,10 +59,14 @@ $result.addresses=@{status='not_applicable';systemCode=0}
 if($q.source){$result.addresses=Observe {
  Get-NetIPAddress -AddressFamily IPv4 -IPAddress $q.source -ErrorAction Stop | Select-Object IPAddress,InterfaceIndex,InterfaceAlias,PrefixLength,AddressState | Select-Object -First 17
 } 16 }
+$result.defaultRoute=@{status='not_applicable';systemCode=0}
+if($q.destination){$result.defaultRoute=Observe {
+ Find-NetRoute -RemoteIPAddress $q.destination -ErrorAction Stop | Select-Object IPAddress,InterfaceIndex,InterfaceAlias,DestinationPrefix,NextHop,RouteMetric | Select-Object -First 9
+} 8 }
 $result.route=@{status='not_applicable';systemCode=0}
 if($q.destination){$result.route=Observe {
  $routeQuery=@{RemoteIPAddress=$q.destination;ErrorAction='Stop'}; if($q.source){$routeQuery.LocalIPAddress=$q.source}
- Find-NetRoute @routeQuery | Select-Object IPAddress,InterfaceIndex,DestinationPrefix,NextHop,RouteMetric | Select-Object -First 9
+ Find-NetRoute @routeQuery | Select-Object IPAddress,InterfaceIndex,InterfaceAlias,DestinationPrefix,NextHop,RouteMetric | Select-Object -First 9
 } 8 }
 $result.events=Observe {
  $start=[datetime]::Parse($q.triggeredAt).AddMinutes(-2)
