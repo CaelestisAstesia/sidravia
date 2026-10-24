@@ -41,15 +41,16 @@ class DistributionContract(unittest.TestCase):
         contents = {'LICENSE': b'LICENSE', 'sidravia.portable': b'',
                     'institution-profiles/jlu.json': b'internal/daemon/configuration/profiles/jlu.json',
                     'BUILD-INFO.txt': f'ProductVersion: {VERSION}\nBuildID: {SHA}\nTarget: {target}\nArtifactKind: distribution\n'.encode(),
-                    'sidraviactl': b'ctl', 'sidraviad': b'daemon'}
+                    'sidraviactl': b'ctl', 'sidraviad': b'daemon', 'sidraviaupdater': b'updater'}
         if target.startswith('windows-'):
             contents['sidraviactl.exe'] = contents.pop('sidraviactl')
             contents['sidraviad.exe'] = contents.pop('sidraviad')
+            contents['sidraviaupdater.exe'] = contents.pop('sidraviaupdater')
             contents['sidraviamgr.exe'] = b'manager'
             contents['app_icon.ico'] = b'gui/windows/runner/resources/app_icon.ico'
             if gui and target == 'windows-amd64':
                 contents.update({p.relative_to(self.gui).as_posix(): p.read_bytes() for p in self.gui.rglob('*') if p.is_file()})
-        names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe'] if target.startswith('windows-') else ['sidraviactl', 'sidraviad']
+        names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'] if target.startswith('windows-') else ['sidraviactl', 'sidraviad', 'sidraviaupdater']
         contents['BUILD-INFO.txt'] += ''.join(f'BinarySHA256: {module.digest(contents[name])}  {name}\n' for name in names).encode()
         return contents
 
@@ -82,7 +83,7 @@ class DistributionContract(unittest.TestCase):
                 self.package(target, self.payload(target))
                 with mock.patch.object(module, 'binary_identity') as identity:
                     result = self.verify(target)
-                self.assertEqual(identity.call_count, 3 if target.startswith('windows') else 2)
+                self.assertEqual(identity.call_count, 4 if target.startswith('windows') else 3)
                 self.assertEqual(result['helpSmoke'], 'not_run')
                 self.assertEqual(result['installation'], 'not_run')
 
@@ -91,7 +92,7 @@ class DistributionContract(unittest.TestCase):
         with mock.patch.object(module, 'binary_identity'), mock.patch.object(module.platform, 'system', return_value='Windows'), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=b'help')) as run:
             result = self.verify('windows-amd64', smoke=True, gui=False)
         self.assertEqual(result['helpSmoke'], 'passed')
-        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviamgr.exe'])
+        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'])
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
 
     def test_windows_core_rejects_gui_missing_manager_and_installer(self):
@@ -159,7 +160,7 @@ class DistributionContract(unittest.TestCase):
         self.package('windows-amd64', self.payload('windows-amd64'))
         with mock.patch.object(module, 'binary_identity'), mock.patch.object(module.platform, 'system', return_value='Windows'), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=b'help')) as run:
             self.assertEqual(self.verify('windows-amd64', True)['helpSmoke'], 'passed')
-        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviamgr.exe'])
+        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'])
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
 
     def test_arm_metadata_rejects_amd64_binary(self):

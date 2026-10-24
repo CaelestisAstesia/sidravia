@@ -172,7 +172,7 @@ class TestRunGoChecks(unittest.TestCase):
 
         # Set up mock results
         mock_results = []
-        for i in range(14):
+        for i in range(15):
             mock_results.append(verifier.CheckResult(
                 argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
             ))
@@ -187,7 +187,7 @@ class TestRunGoChecks(unittest.TestCase):
             base_env=base_env
         )
 
-        self.assertEqual(len(results), 14)
+        self.assertEqual(len(results), 15)
         expected_existing_checks = [
             (["git", "ls-files", "*.go"], None),
             ([gofmt, "-l"], None),
@@ -206,6 +206,10 @@ class TestRunGoChecks(unittest.TestCase):
                 [go_exec, "build", "-o", str(build_dir / "sidraviamgr.exe"), "./cmd/sidraviamgr"],
                 {"GOOS": "windows", "GOARCH": "amd64", "CGO_ENABLED": "0"},
             ),
+            (
+                [go_exec, "build", "-o", str(build_dir / "sidraviaupdater.exe"), "./cmd/sidraviaupdater"],
+                {"GOOS": "windows", "GOARCH": "amd64", "CGO_ENABLED": "0"},
+            ),
         ]
         for index, (argv, env) in enumerate(expected_existing_checks):
             check = mock_run_and_print.call_args_list[index][0][0]
@@ -220,7 +224,7 @@ class TestRunGoChecks(unittest.TestCase):
             ("darwin", "darwin-amd64-internal-daemon-environment.test", "./internal/daemon/environment"),
             ("darwin", "darwin-amd64-internal-daemon-host.test", "./internal/daemon/host"),
         ]
-        for index, (goos, binary_name, package) in enumerate(expected_platform_checks, start=8):
+        for index, (goos, binary_name, package) in enumerate(expected_platform_checks, start=9):
             check = mock_run_and_print.call_args_list[index][0][0]
             self.assertEqual(
                 check.argv,
@@ -250,7 +254,7 @@ class TestRunGoChecks(unittest.TestCase):
             )
             # Rest results: pass
             mock_results = [git_ls_result]
-            for i in range(13):
+            for i in range(14):
                 mock_results.append(verifier.CheckResult(
                     argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
                 ))
@@ -294,7 +298,7 @@ class TestRunGoChecks(unittest.TestCase):
             )
             # Rest results: pass
             mock_results = [git_ls_result, gofmt_result]
-            for i in range(12):
+            for i in range(13):
                 mock_results.append(verifier.CheckResult(
                     argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
                 ))
@@ -340,7 +344,7 @@ class TestRunGoChecks(unittest.TestCase):
                 stderr="",
             )
             mock_results = [git_ls_result]
-            for i in range(13):
+            for i in range(14):
                 mock_results.append(verifier.CheckResult(
                     argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
                 ))
@@ -375,7 +379,7 @@ class TestRunGoChecks(unittest.TestCase):
         )
         # Rest results: pass
         mock_results = [git_ls_result]
-        for i in range(12):
+        for i in range(13):
             mock_results.append(verifier.CheckResult(
                 argv=[f"check{i}"], exit_code=0, stdout="", stderr=""
             ))
@@ -393,10 +397,10 @@ class TestRunGoChecks(unittest.TestCase):
                     base_env=base_env
                 )
 
-        # Check that gofmt was not run (git ls + 11 other checks = 12).
-        self.assertEqual(mock_run_and_print.call_count, 13)
-        # But still have 13 results total.
-        self.assertEqual(len(results), 14)
+        # gofmt is represented by a failed result but was not invoked.
+        self.assertEqual(mock_run_and_print.call_count, 14)
+        # Retain a result for every required check.
+        self.assertEqual(len(results), 15)
         # Check that gofmt result is fake
         self.assertIn("Skipped: git ls-files failed", results[1].stderr)
         # Check that test/vet/diff/builds were still run.
@@ -420,7 +424,7 @@ class TestRunGoChecks(unittest.TestCase):
             commands[mode] = calls
         self.assertEqual(commands["full"], commands["native"] + commands["cross"])
         self.assertEqual(len(commands["native"]), 5)
-        self.assertEqual(len(commands["cross"]), 9)
+        self.assertEqual(len(commands["cross"]), 10)
         self.assertIn((["go", "test", "-count=1", "./..."], None), commands["native"])
         self.assertTrue(all(env and env["CGO_ENABLED"] == "0" for _, env in commands["cross"]))
 

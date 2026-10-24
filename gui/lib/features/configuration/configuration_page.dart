@@ -39,6 +39,8 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           _password.text.isNotEmpty ||
           _binding != _originalBinding);
 
+  bool get canExitWithoutPrompt => !_dirty && !_saving && !_prompting;
+
   Future<void> requestLeave() async {
     if (await mayLeave() && mounted) widget.onBack();
   }

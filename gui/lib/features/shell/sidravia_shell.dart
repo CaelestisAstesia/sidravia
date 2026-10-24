@@ -37,6 +37,9 @@ class SidraviaShellState extends State<SidraviaShell> {
   final _configurationKey = GlobalKey<ConfigurationPageState>();
   final _history = <AppPage>[];
 
+  bool get canExitWithoutPrompt =>
+      _configurationKey.currentState?.canExitWithoutPrompt ?? true;
+
   Future<bool> mayExit() async =>
       _page != AppPage.configuration ||
       await (_configurationKey.currentState?.mayLeave() ?? Future.value(false));

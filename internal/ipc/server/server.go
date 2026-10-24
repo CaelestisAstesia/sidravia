@@ -50,6 +50,8 @@ const (
 // other method supplied by a peer is normalized to methodUnknown so an
 // arbitrary peer string can never reach the log.
 var allowedMethods = map[string]struct{}{
+	contract.MethodUpdateResume:  {},
+	contract.MethodUpdatePrepare: {}, contract.MethodUpdateStatus: {}, contract.MethodUpdateAcknowledge: {}, contract.MethodUpdateCommit: {}, contract.MethodUpdateAbort: {},
 	contract.MethodStateSubscribe:            {},
 	contract.MethodStateUnsubscribe:          {},
 	contract.MethodDiagnosticsExport:         {},
@@ -78,6 +80,7 @@ var allowedMethods = map[string]struct{}{
 // Every other code supplied by a handler is normalized to errorCodeInternal so
 // an arbitrary diagnostic string can never reach the log.
 var allowedErrorCodes = map[string]struct{}{
+	contract.ErrorCodeMaintenance:                            {},
 	contract.ErrorCodeStateSnapshotTooLarge:                  {},
 	contract.ErrorCodeStateSnapshotUnavailable:               {},
 	contract.ErrorCodeUnknownMethod:                          {},

@@ -100,6 +100,8 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = _handleExitRequested;
+      widget.controller.onMaintenancePrepare = _prepareMaintenance;
+      widget.controller.onMaintenanceCommit = _commitMaintenance;
       desktop.onTrayAction = _handleTrayAction;
       desktop.onTrayUnavailable =
           _connectionNotifications.reportTrayUnavailable;
@@ -261,9 +263,44 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     );
   }
 
+  Future<({bool accepted, bool visible})> _prepareMaintenance(
+    bool interactive,
+  ) async {
+    final desktop = widget.desktopPresence;
+    final shell = _shellKey.currentState;
+    if (!mounted || _exiting || desktop == null || shell == null) {
+      return (accepted: false, visible: false);
+    }
+    final visible = await desktop.refreshMainWindowVisibility();
+    if (visible == null || !mounted) return (accepted: false, visible: false);
+    final approved =
+        shell.canExitWithoutPrompt ||
+        (interactive && visible && await shell.mayExit());
+    return (accepted: approved && mounted, visible: visible);
+  }
+
+  Future<void> _commitMaintenance() async {
+    final desktop = widget.desktopPresence;
+    if (!mounted || _exiting || desktop == null) return;
+    _exiting = true;
+    if (!await desktop.beginUpdateExit()) {
+      _exiting = false;
+      return;
+    }
+    await _connectionNotifications.close();
+    await widget.controller.exitAndDisconnect();
+    await _announcements.close();
+    await _systemNotifications.dispose();
+    await desktop.destroy();
+  }
+
   Future<void> _handleExitRequested() async {
     final desktop = widget.desktopPresence;
     if (desktop == null || _exiting) return;
+    if (widget.controller.maintenanceFrozen) {
+      await desktop.cancelExit();
+      return;
+    }
     _exiting = true;
     var begun = false;
     try {
@@ -335,6 +372,8 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.onExitRequested = null;
+      widget.controller.onMaintenancePrepare = null;
+      widget.controller.onMaintenanceCommit = null;
       desktop.onTrayAction = null;
       desktop.onTrayUnavailable = null;
       desktop.dispose();
@@ -372,15 +411,24 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
           return child ?? const SizedBox.shrink();
         },
         home: SidraviaWindowFrame(
-          child: SidraviaShell(
-            key: _shellKey,
-            desktopPresence: widget.desktopPresence,
-            controller: widget.controller,
-            announcements: _announcements,
-            connectionNotifications: _connectionNotifications,
-            onOpenLogDirectory: _logDirectory.supported
-                ? _logDirectory.open
-                : null,
+          child: AnimatedBuilder(
+            animation: widget.controller,
+            builder: (context, _) => ExcludeFocus(
+              excluding: widget.controller.maintenanceFrozen,
+              child: AbsorbPointer(
+                absorbing: widget.controller.maintenanceFrozen,
+                child: SidraviaShell(
+                  key: _shellKey,
+                  desktopPresence: widget.desktopPresence,
+                  controller: widget.controller,
+                  announcements: _announcements,
+                  connectionNotifications: _connectionNotifications,
+                  onOpenLogDirectory: _logDirectory.supported
+                      ? _logDirectory.open
+                      : null,
+                ),
+              ),
+            ),
           ),
         ),
       ),

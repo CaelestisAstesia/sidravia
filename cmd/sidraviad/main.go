@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sidravia/internal/daemon/host"
+	"sidravia/internal/installationgate"
 
 	"sidravia/internal/daemonlog"
 	"sidravia/internal/launchcontract"
@@ -22,6 +23,14 @@ var (
 )
 
 func main() {
+	releaseStart, startErr := installationgate.AcquireStart()
+	if startErr != nil {
+		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
+		os.Exit(1)
+	}
+	// The live process is now observable by the installer's final exit check.
+	// Release before starting a desktop-owned child/IPC; no persistent helper.
+	releaseStart()
 	logger, level, output, err := newProductionLogger()
 	if err != nil {
 		// Cannot log via slog yet; write the fixed safe line to stderr without

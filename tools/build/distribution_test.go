@@ -37,9 +37,9 @@ func TestDistributionContents(t *testing.T) {
 			if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			want := 2
+			want := 3
 			if strings.HasPrefix(target, "windows-") {
-				want = 3
+				want = 4
 			}
 			if len(fb.calls) != want {
 				t.Fatalf("builds=%d", len(fb.calls))
@@ -73,7 +73,7 @@ func TestDistributionContents(t *testing.T) {
 					}
 					bytesByName[f.Name] = data
 				}
-				if !contents["sidraviamgr.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || !contents["app_icon.ico"] {
+				if !contents["sidraviamgr.exe"] || !contents["sidraviaupdater.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || !contents["app_icon.ico"] {
 					t.Fatal("missing manager or core")
 				}
 			} else {
@@ -109,7 +109,7 @@ func TestDistributionContents(t *testing.T) {
 						}
 					}
 				}
-				if !contents["sidraviactl"] || !contents["sidraviad"] || contents["sidraviamgr"] || contents["Sidravia.exe"] {
+				if !contents["sidraviactl"] || !contents["sidraviad"] || !contents["sidraviaupdater"] || contents["sidraviamgr"] || contents["Sidravia.exe"] {
 					t.Fatal("Linux program set")
 				}
 			}
@@ -117,9 +117,9 @@ func TestDistributionContents(t *testing.T) {
 				t.Fatal("distribution content boundary")
 			}
 			info := "ProductVersion: " + cfg.version + "\nBuildID: " + cfg.buildID + "\nTarget: " + target + "\nArtifactKind: distribution\n"
-			names := []string{"sidraviactl", "sidraviad"}
+			names := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}
 			if strings.HasPrefix(target, "windows-") {
-				names = []string{"sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe"}
+				names = []string{"sidraviactl.exe", "sidraviad.exe", "sidraviaupdater.exe", "sidraviamgr.exe"}
 			}
 			for _, name := range names {
 				info += "BinarySHA256: " + sha256Hex(bytesByName[name]) + "  " + name + "\n"

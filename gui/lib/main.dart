@@ -22,8 +22,15 @@ import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
 void trayMain() => runTrayPopover();
 
 Future<void> main([List<String> args = const []]) async {
-  if (args.any((argument) => argument != '--start-hidden') ||
-      args.length > 1) {
+  if (args.any(
+        (argument) => !const {
+          '--start-hidden',
+          '--start-visible',
+          '--skip-auto-login',
+        }.contains(argument),
+      ) ||
+      args.toSet().length != args.length ||
+      (args.contains('--start-hidden') && args.contains('--start-visible'))) {
     exit(2);
   }
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,7 +56,9 @@ Future<void> main([List<String> args = const []]) async {
   }
   await desktop.configurePreferences(
     closeBehavior: appearance.closeBehavior,
-    startHidden: args.contains('--start-hidden') || appearance.startHidden,
+    startHidden:
+        !args.contains('--start-visible') &&
+        (args.contains('--start-hidden') || appearance.startHidden),
   );
   registerHarmonyOSFontLicense();
   final startedAt = DateTime.now();
@@ -58,7 +67,10 @@ Future<void> main([List<String> args = const []]) async {
     SidraviaApp(
       controller: GuiController(
         bootstrapper: platform.supportsLocalBootstrap
-            ? ProcessGuiBootstrap(logLevel: () => appearance.logLevel)
+            ? ProcessGuiBootstrap(
+                logLevel: () => appearance.logLevel,
+                skipAutoLogin: args.contains('--skip-auto-login'),
+              )
             : platform.bootstrapper,
       ),
       announcements: SchoolAnnouncementController(

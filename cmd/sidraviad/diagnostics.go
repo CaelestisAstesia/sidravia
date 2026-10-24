@@ -145,8 +145,9 @@ func (d *sessionDiagnostics) RetryScheduled(nextRetryAt time.Time) {
 // run passes only a stable phase and raw bytes, never fields derived from
 // packet contents.
 type protocolDiagnosticsAdapter struct {
-	logger    *slog.Logger
-	sessionID string
+	logger       *slog.Logger
+	sessionID    string
+	networkTrace *networkTraceRecorder
 }
 
 func (d *protocolDiagnosticsAdapter) PhaseEvent(phase, boundary string) {
@@ -156,6 +157,25 @@ func (d *protocolDiagnosticsAdapter) PhaseEvent(phase, boundary string) {
 		slog.String("phase", phase),
 		slog.String("boundary", boundary),
 	)
+}
+
+func (d *protocolDiagnosticsAdapter) NetworkFailure(failure protocol.AuthenticationProtocolNetworkFailure) {
+	if !d.logger.Enabled(context.Background(), LevelTrace) {
+		return
+	}
+	d.logger.Log(context.Background(), LevelTrace, "协议网络操作失败",
+		slog.String("event", "protocol_network_failure"),
+		slog.String("session_id", d.sessionID),
+		slog.String("operation", failure.Operation),
+		slog.String("system_call", failure.SystemCall),
+		slog.Uint64("system_code", failure.SystemCode),
+		slog.Bool("timed_out", failure.TimedOut),
+		slog.String("local_endpoint", failure.LocalEndpoint.String()),
+		slog.String("remote_endpoint", failure.RemoteEndpoint.String()),
+	)
+	if d.networkTrace != nil {
+		d.networkTrace.submit(networkTraceRequest{SessionID: d.sessionID, Failure: failure, TriggeredAt: time.Now()})
+	}
 }
 
 func (d *protocolDiagnosticsAdapter) ExchangeOutcome(phase string, outcome protocol.AuthenticationProtocolExchangeOutcome, length int) {
@@ -192,8 +212,12 @@ func newSessionDiagnostics(logger *slog.Logger) session.Diagnostics {
 // protocol run, so Trace datagram records include the SessionID without the
 // protocol run ever knowing it.
 func newProtocolDiagnosticsFactory(logger *slog.Logger) session.ProtocolDiagnosticsFactory {
+	return protocolDiagnosticsFactoryWithTrace(logger, nil)
+}
+
+func protocolDiagnosticsFactoryWithTrace(logger *slog.Logger, recorder *networkTraceRecorder) session.ProtocolDiagnosticsFactory {
 	return func(sessionID session.AuthenticationSessionID) protocol.AuthenticationProtocolDiagnostics {
-		return &protocolDiagnosticsAdapter{logger: logger, sessionID: string(sessionID)}
+		return &protocolDiagnosticsAdapter{logger: logger, sessionID: string(sessionID), networkTrace: recorder}
 	}
 }
 

@@ -108,7 +108,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     for profile in (repo / 'internal/daemon/configuration/profiles').glob('*.json'):
         expected['institution-profiles/' + profile.name] = profile.read_bytes()
     require(any(name.startswith('institution-profiles/') for name in expected), 'official_profiles_missing')
-    roles = ['sidraviactl', 'sidraviad']
+    roles = ['sidraviactl', 'sidraviad', 'sidraviaupdater']
     if windows:
         roles.append('sidraviamgr')
         expected['app_icon.ico'] = (repo / 'gui/windows/runner/resources/app_icon.ico').read_bytes()

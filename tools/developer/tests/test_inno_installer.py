@@ -83,7 +83,7 @@ if ($Mode -eq 'create') {
             # Fixed real AUMIDs/process names never reach test calls.
             identity = 'io.github.astesia.Sidravia.InnoTest.' + uuid.uuid4().hex
             source = source.replace('io.github.astesia.Sidravia.Announcements', identity)
-            for name in ('Sidravia.exe', 'sidraviad.exe', 'sidraviactl.exe'):
+            for name in ('Sidravia.exe', 'sidraviad.exe', 'sidraviactl.exe', 'sidraviaupdater.exe'):
                 source = source.replace('Name="' + name + '"', 'Name="inno-fixture-unused-' + name + '"')
             cases = (REPO / 'tools/installer/contracts.iss').read_text().replace('@ROOT@', native).replace('io.github.astesia.Sidravia.InnoTest.FIXTURE', identity)
             script = root / 'contracts.iss'

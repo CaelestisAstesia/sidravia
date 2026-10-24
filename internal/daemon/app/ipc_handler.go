@@ -32,7 +32,7 @@ func IPCHandler(
 	network := NetworkHandler(application)
 	diagnostics := DiagnosticsExportHandler(application, productVersion, buildID)
 
-	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	return withMaintenance(application, options, func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		switch method {
 		case contract.MethodDiagnosticsExport:
 			return diagnostics(ctx, method, payload)
@@ -67,5 +67,5 @@ func IPCHandler(
 				Message: "unsupported method",
 			}
 		}
-	}
+	})
 }

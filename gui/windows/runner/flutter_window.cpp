@@ -46,6 +46,17 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
 
+  // Win32Window::Create calls virtual OnDestroy even before the first HWND.
+  // A new native window owns fresh exit/visibility state after that teardown.
+  destroying_ = false;
+  exit_armed_ = false;
+  exit_request_pending_ = false;
+  visibility_message_queued_ = false;
+  last_published_visibility_.reset();
+  maximize_hovered_ = false;
+  maximize_pressed_ = false;
+  tray_presentation_.clear();
+
   RECT frame = GetClientArea();
 
   // The size here must match the window dimensions to avoid unnecessary surface
@@ -280,6 +291,21 @@ bool FlutterWindow::OnCreate() {
           }
           close_to_tray_ = *close_value;
           start_hidden_ = *hidden_value;
+          result->Success(); return;
+        }
+        if (call.method_name() == "beginUpdateExit") {
+          if (destroying_ || exit_armed_ || !desktop_presence_initialized_) {
+            flutter::EncodableMap details;
+            details[flutter::EncodableValue("destroying")] = flutter::EncodableValue(destroying_);
+            details[flutter::EncodableValue("exitArmed")] = flutter::EncodableValue(exit_armed_);
+            details[flutter::EncodableValue("presenceInitialized")] = flutter::EncodableValue(desktop_presence_initialized_);
+            result->Error("update_exit_state_unavailable", "Update exit unavailable.", flutter::EncodableValue(details)); return;
+          }
+          exit_request_pending_ = true;
+          if (!BeginExplicitExit()) {
+            exit_request_pending_ = false;
+            result->Error("update_exit_timer_unavailable", "Update exit unavailable.", flutter::EncodableValue(static_cast<int64_t>(GetLastError()))); return;
+          }
           result->Success(); return;
         }
         if (call.method_name() == "beginExit") {

@@ -13,6 +13,7 @@ add_executable(${BINARY_NAME} WIN32
   "system_notification.cpp"
   "tray_popover_window.cpp"
   "main.cpp"
+  "installation_gate.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"

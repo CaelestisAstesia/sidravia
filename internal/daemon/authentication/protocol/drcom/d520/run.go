@@ -67,12 +67,16 @@ func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationP
 	exec := newExecution(r.definition, observer, r.diagnostics)
 	ex, err := openUDPExchange(r.definition.socketSourceIPv4, r.definition.cfg.localPort, r.definition.cfg.serverAddress, r.definition.cfg.serverPort)
 	if err != nil {
+		recordNetworkFailure(r.diagnostics, "open_socket", err)
 		return networkIOError("open socket", err).toFailure()
 	}
 	networkObserver, observesNetwork := observer.(protocol.AuthenticationProtocolRunNetworkObserver)
 	openingAccepted := false
 	defer func() {
 		closeErr := ex.close()
+		if closeErr != nil {
+			recordNetworkFailure(r.diagnostics, "close_socket", closeErr)
+		}
 		if openingAccepted {
 			networkObserver.ProtocolSocketClosed(closeErr == nil)
 		}

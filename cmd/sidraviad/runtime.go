@@ -87,6 +87,7 @@ type composedRuntime struct {
 	launchOptions  launchcontract.Options
 	desktopOwner   desktopowner.Watcher
 	stopCh         chan struct{}
+	networkTrace   *networkTraceRecorder
 }
 
 type runtimeActivity uint8
@@ -309,11 +310,12 @@ func composeObjectGraphWithLaunchOptions(
 		return nil, fmt.Errorf("sidraviad: load profiles: %w", err)
 	}
 
+	networkTrace := newNetworkTraceRecorder(logger)
 	sup := supervisor.New(supervisor.Dependencies{
 		RetryPolicy:                session.NewDefaultRetryPolicy(),
 		RetryScheduler:             session.NewTimerRetryScheduler(),
 		Diagnostics:                newSessionDiagnostics(logger),
-		ProtocolDiagnosticsFactory: newProtocolDiagnosticsFactory(logger),
+		ProtocolDiagnosticsFactory: protocolDiagnosticsFactoryWithTrace(logger, networkTrace),
 	})
 
 	resolver, err := app.NewAuthenticationResolver(catalog, profiles, registry, hostInfo)
@@ -335,7 +337,7 @@ func composeObjectGraphWithLaunchOptions(
 		// non-blockingly; the runtime then cancels its child context and runs
 		// the existing graceful shutdown path. The server knows nothing about
 		// daemon lifecycle semantics.
-		if method == contract.MethodDaemonStop {
+		if method == contract.MethodDaemonStop || (method == contract.MethodUpdateCommit && launchOptions.Mode == launchcontract.ModeHeadless) {
 			stopOnce.Do(func() { stopCh <- struct{}{} })
 		}
 	}, application)
@@ -369,6 +371,7 @@ func composeObjectGraphWithLaunchOptions(
 		launchOptions:  launchOptions,
 		desktopOwner:   desktopOwner,
 		stopCh:         stopCh,
+		networkTrace:   networkTrace,
 	}, nil
 }
 
@@ -400,7 +403,12 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 	)
 
 	childCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var traceWorker sync.WaitGroup
+	if rt.networkTrace != nil {
+		traceWorker.Add(1)
+		go func() { defer traceWorker.Done(); rt.networkTrace.run(childCtx) }()
+	}
+	defer func() { cancel(); traceWorker.Wait() }()
 
 	hostReady := make(chan struct{})
 	var readyOnce sync.Once
@@ -479,6 +487,7 @@ func (rt *composedRuntime) run(ctx context.Context) error {
 		}
 	}
 
+	traceWorker.Wait()
 	finalErr := rt.closeAndWait(initiator)
 	if rt.desktopOwner != nil {
 		if closeErr := rt.desktopOwner.Close(); closeErr != nil {

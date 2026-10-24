@@ -1165,6 +1165,8 @@ func TestRunSocketOpenFailureHasNoObservations(t *testing.T) {
 	defer occupied.Close()
 	inputs := factoryInputs(testConfigJSON(peer.port(), defaultTestDurations()), testCredential(), testBinding(t))
 	inputs.InstitutionProtocolConfiguration = protocol.InstitutionProtocolConfiguration(bytes.Replace(inputs.InstitutionProtocolConfiguration, []byte(`{"mode": "system_assigned"}`), []byte(fmt.Sprintf(`{"mode":"fixed","value":%d}`, occupied.LocalAddr().(*net.UDPAddr).Port)), 1))
+	diagnostics := &captureDiagnostics{}
+	inputs.Diagnostics = diagnostics
 	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
 	if err != nil {
 		t.Fatal(err)
@@ -1173,6 +1175,9 @@ func TestRunSocketOpenFailureHasNoObservations(t *testing.T) {
 	failure := run.Execute(context.Background(), observer)
 	if failure == nil || failure.Code != "network_io_failed" {
 		t.Fatalf("failure = %#v", failure)
+	}
+	if len(diagnostics.networkFailures) != 1 || diagnostics.networkFailures[0].Operation != "open_socket" || diagnostics.networkFailures[0].SystemCode == 0 {
+		t.Fatalf("missing native socket error: %+v", diagnostics.networkFailures)
 	}
 	if len(observer.opened) != 0 || len(observer.closed) != 0 || len(peer.requests()) != 0 {
 		t.Fatal("failed open invented an observation or exchanged data")

@@ -101,6 +101,23 @@ type AuthenticationProtocolExchangeDiagnostics interface {
 	ExchangeOutcome(phase string, outcome AuthenticationProtocolExchangeOutcome, length int)
 }
 
+// AuthenticationProtocolNetworkFailure contains only socket facts, fixed
+// operation names and numeric native status. It never contains raw error text.
+type AuthenticationProtocolNetworkFailure struct {
+	Operation      string
+	SystemCall     string
+	SystemCode     uint64
+	TimedOut       bool
+	LocalEndpoint  netip.AddrPort
+	RemoteEndpoint netip.AddrPort
+}
+
+// AuthenticationProtocolNetworkDiagnostics optionally observes network failures.
+// Consumers decide whether to enable expensive diagnostic collection.
+type AuthenticationProtocolNetworkDiagnostics interface {
+	NetworkFailure(AuthenticationProtocolNetworkFailure)
+}
+
 // NoopAuthenticationProtocolDiagnostics is the explicit no-op implementation
 // used when diagnostics are disabled. It replaces scattered nil checks in the
 // protocol run.

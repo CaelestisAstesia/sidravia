@@ -3,8 +3,12 @@ package d520
 import (
 	"context"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -43,9 +47,10 @@ func TestDiagnosticPhaseConstantsAreStable(t *testing.T) {
 // captureDiagnostics records every diagnostic event in order for assertion. It
 // never alters protocol behavior.
 type captureDiagnostics struct {
-	phases    []string
-	datagrams []captureDatagram
-	outcomes  []captureOutcome
+	phases          []string
+	datagrams       []captureDatagram
+	outcomes        []captureOutcome
+	networkFailures []captureNetworkFailure
 }
 
 type captureOutcome struct {
@@ -262,5 +267,73 @@ func TestRoundTripEndsPhaseOnReadTimeout(t *testing.T) {
 	want := []string{"challenge:begin", "challenge:end"}
 	if len(sink.phases) != len(want) || sink.phases[0] != want[0] || sink.phases[1] != want[1] {
 		t.Errorf("phase boundaries = %v, want %v", sink.phases, want)
+	}
+}
+
+type captureNetworkFailure = protocol.AuthenticationProtocolNetworkFailure
+
+func (d *captureDiagnostics) NetworkFailure(failure protocol.AuthenticationProtocolNetworkFailure) {
+	d.networkFailures = append(d.networkFailures, failure)
+}
+
+func TestNetworkFailureExtractsWrappedErrnoWithoutErrorText(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want uint64
+	}{
+		{&net.OpError{Op: "dial", Err: &os.SyscallError{Syscall: "bind", Err: syscall.Errno(10013)}}, 10013},
+		{fmt.Errorf("private-address: %w", syscall.Errno(10048)), 10048},
+		{errors.New("private error text"), 0},
+	} {
+		d := &captureDiagnostics{}
+		recordNetworkFailure(d, "open_socket", tc.err)
+		if len(d.networkFailures) != 1 || (d.networkFailures[0].Operation != "open_socket" || d.networkFailures[0].SystemCode != tc.want) {
+			t.Fatalf("diagnostics = %+v", d.networkFailures)
+		}
+	}
+}
+
+func TestNetworkFailureIncludesSafeCallAndSocketEndpoints(t *testing.T) {
+	for _, call := range []string{"bind", "connect", "wsaioctl", "private-secret-call"} {
+		d := &captureDiagnostics{}
+		cause := &net.OpError{Op: "dial", Source: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 61440}, Addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 61440}, Err: &os.SyscallError{Syscall: call, Err: syscall.Errno(10013)}}
+		recordNetworkFailure(d, "open_socket", cause)
+		got := d.networkFailures[0]
+		wantCall := call
+		if call == "private-secret-call" {
+			wantCall = "unknown"
+		}
+		if got.SystemCall != wantCall || got.LocalEndpoint.String() != "127.0.0.1:61440" || got.RemoteEndpoint.String() != "127.0.0.2:61440" {
+			t.Fatalf("failure=%+v", got)
+		}
+	}
+}
+
+func TestNetworkFailureCloseAndDeadlineEndpointShapes(t *testing.T) {
+	local := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+	remote := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 61440}
+	for _, operation := range []string{"close_socket", "set_deadline"} {
+		cause := &net.OpError{Op: "close", Source: local, Addr: remote, Err: syscall.Errno(10038)}
+		if operation == "set_deadline" {
+			cause.Source = nil
+			cause.Addr = local
+		}
+		d := &captureDiagnostics{}
+		recordNetworkFailure(d, operation, cause)
+		failure := d.networkFailures[0]
+		if failure.LocalEndpoint.String() != "127.0.0.1:12345" {
+			t.Fatalf("wrong local endpoint: %+v", failure)
+		}
+		if operation == "close_socket" && failure.RemoteEndpoint.String() != "127.0.0.2:61440" {
+			t.Fatalf("wrong remote endpoint: %+v", failure)
+		}
+	}
+}
+
+func TestNetworkFailureMarksDeadlineWithoutRawText(t *testing.T) {
+	d := &captureDiagnostics{}
+	recordNetworkFailure(d, "read", &net.OpError{Op: "read", Err: os.ErrDeadlineExceeded})
+	if len(d.networkFailures) != 1 || !d.networkFailures[0].TimedOut || d.networkFailures[0].SystemCode != 0 {
+		t.Fatalf("deadline=%+v", d.networkFailures)
 	}
 }

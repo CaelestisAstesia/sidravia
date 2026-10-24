@@ -596,6 +596,82 @@ void main() {
       controller.dispose();
     },
   );
+  testWidgets(
+    'maintenance freezes mutations, abort thaws without replay and commit dispatches',
+    (tester) async {
+      final client = _MaintenanceClient();
+      final controller = _controller(client);
+      addTearDown(controller.dispose);
+      var prepared = 0, committed = 0;
+      controller.onMaintenancePrepare = (interactive) async {
+        prepared++;
+        return (accepted: true, visible: false);
+      };
+      controller.onMaintenanceCommit = () async {
+        committed++;
+      };
+      await controller.start();
+      client.phase = 'requested';
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(prepared, 1);
+      expect(controller.maintenanceFrozen, isTrue);
+      final calls = client.calls.length;
+      expect(await controller.startConfiguration('cfg-a'), isFalse);
+      expect(client.calls.length, calls);
+      client.phase = 'idle';
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(
+        controller.maintenanceFrozen,
+        isFalse,
+        reason: client.updates.toString(),
+      );
+      expect(client.autoLoginCalls, 0);
+      expect(client.daemonStopCalls, 0);
+      client.phase = 'requested';
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      client.phase = 'committed';
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(committed, 1);
+      final closing = controller.close();
+      await tester.pumpAndSettle();
+      await closing;
+      controller.dispose();
+    },
+  );
+  testWidgets('rejected maintenance consent never dispatches exit', (
+    tester,
+  ) async {
+    final client = _MaintenanceClient();
+    final controller = _controller(client);
+    addTearDown(controller.dispose);
+    controller.onMaintenancePrepare = (_) async =>
+        (accepted: false, visible: false);
+    controller.onMaintenanceCommit = () async {
+      fail('rejected preparation committed');
+    };
+    await controller.start();
+    client.phase = 'requested';
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(client.phase, 'rejected', reason: client.updates.toString());
+    expect(controller.maintenanceFrozen, isTrue);
+    client.phase = 'idle';
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(
+      controller.maintenanceFrozen,
+      isFalse,
+      reason: client.updates.toString(),
+    );
+    final closing = controller.close();
+    await tester.pumpAndSettle();
+    await closing;
+    controller.dispose();
+  });
 }
 
 GuiController _controller(_Client client) => GuiController(
@@ -901,3 +977,28 @@ const _otherSession = SessionSummary(
 );
 const _token =
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+class _MaintenanceClient extends _Client implements SidraviaMaintenanceClient {
+  String phase = 'idle';
+  final updates = <String>[];
+  final operation = '0123456789abcdef0123456789abcdef';
+  @override
+  Future<MaintenanceStatus> updateStatus() async {
+    updates.add('status $phase');
+    return MaintenanceStatus(phase == 'idle' ? null : operation, phase, false);
+  }
+
+  @override
+  Future<MaintenanceStatus> updateAcknowledge(
+    String id,
+    bool accepted,
+    bool visible,
+  ) async {
+    updates.add('ack $accepted $id');
+    if (id != operation) {
+      throw StateError('wrong maintenance operation');
+    }
+    phase = accepted ? 'prepared' : 'rejected';
+    return updateStatus();
+  }
+}

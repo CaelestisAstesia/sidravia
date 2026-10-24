@@ -44,6 +44,15 @@ class GuiController extends ChangeNotifier {
   Future<void>? _closed;
   int _retryAttempt = 0;
   bool _exitRequested = false;
+  Timer? _maintenanceTimer;
+  bool _maintenanceFrozen = false;
+  String? _maintenanceOperation;
+  String? _maintenanceCommitDispatched;
+  Future<({bool accepted, bool visible})> Function(bool interactive)?
+  onMaintenancePrepare;
+  Future<void> Function()? onMaintenanceCommit;
+  bool get maintenanceFrozen => _maintenanceFrozen;
+
   SidraviaIpcClient? _client;
   Timer? _timer;
   Future<void>? _transition;
@@ -65,9 +74,8 @@ class GuiController extends ChangeNotifier {
     generation: _generation,
     capabilities: capabilities,
     supported: _client is SidraviaNetworkClient,
-    active: !_exitRequested && !_disposed,
-    canDispatch:
-        _transition == null && !_userBusy && !_exitRequested && !_disposed,
+    active: !_exitRequested && !_disposed && !_maintenanceFrozen,
+    canDispatch: _transition == null && !busy && !_exitRequested && !_disposed,
   );
 
   Future<NetworkDiagnosis?>? _requestDiagnosis(
@@ -147,9 +155,9 @@ class GuiController extends ChangeNotifier {
     _notify();
   }
 
-  bool get busy => _userBusy;
+  bool get busy => _userBusy || _maintenanceFrozen;
   GuiCapabilities get capabilities =>
-      GuiCapabilities(state: _state, snapshot: _snapshot, busy: _userBusy);
+      GuiCapabilities(state: _state, snapshot: _snapshot, busy: busy);
 
   ConnectionPresentation get connectionPresentation =>
       ConnectionPresentation.project(
@@ -614,7 +622,7 @@ class GuiController extends ChangeNotifier {
     bool allowInsecureStorage = false,
     bool Function(GuiCapabilities capabilities)? allowed,
   }) async {
-    if (_exitRequested || _disposed) return false;
+    if (_exitRequested || _disposed || _maintenanceFrozen) return false;
     final current = _transition;
     if (current != null) {
       if (_userBusy) return false;
@@ -622,6 +630,7 @@ class GuiController extends ChangeNotifier {
     }
     if (_transition != null ||
         _exitRequested ||
+        _maintenanceFrozen ||
         _state != GuiConnectionState.ready ||
         _client == null) {
       return false;
@@ -775,10 +784,75 @@ class GuiController extends ChangeNotifier {
       _failure = null;
       _notice = null;
       _scheduleRefresh(generation, client);
+      _scheduleMaintenance(generation, client);
       _notify();
     } on Object catch (error) {
       if (!_current(generation) || !identical(_client, client)) return;
       await _invalidate(generation, client, error);
+    }
+  }
+
+  void _scheduleMaintenance(int generation, SidraviaIpcClient client) {
+    if (client is! SidraviaMaintenanceClient ||
+        _maintenanceTimer != null ||
+        !_canContinue(generation)) {
+      return;
+    }
+    _maintenanceTimer = Timer(const Duration(seconds: 1), () {
+      _maintenanceTimer = null;
+      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (_transition != null || _userBusy) {
+        _scheduleMaintenance(generation, client);
+        return;
+      }
+      _transition = _pollMaintenance(generation, client);
+    });
+  }
+
+  Future<void> _pollMaintenance(
+    int generation,
+    SidraviaIpcClient client,
+  ) async {
+    var commit = false;
+    try {
+      final maintenance = client as SidraviaMaintenanceClient;
+      final view = await maintenance.updateStatus();
+      if (!_canContinue(generation) || !identical(_client, client)) return;
+      _maintenanceFrozen = view.phase != 'idle';
+      _notify();
+      if (view.phase == 'idle') {
+        _maintenanceOperation = null;
+        _maintenanceCommitDispatched = null;
+      }
+      if (view.phase == 'requested' &&
+          _maintenanceOperation != view.operationId) {
+        _maintenanceOperation = view.operationId;
+        final consent =
+            await onMaintenancePrepare?.call(view.interactive) ??
+            (accepted: false, visible: false);
+        if (!_canContinue(generation) || !identical(_client, client)) return;
+        await maintenance.updateAcknowledge(
+          view.operationId!,
+          consent.accepted,
+          consent.visible,
+        );
+      }
+      commit =
+          view.phase == 'committed' &&
+          _maintenanceOperation == view.operationId;
+    } on Object catch (error) {
+      if (_current(generation) && identical(_client, client)) {
+        await _invalidate(generation, client, error);
+      }
+    } finally {
+      if (_generation == generation) _transition = null;
+      _scheduleMaintenance(generation, client);
+    }
+    if (commit &&
+        _canContinue(generation) &&
+        _maintenanceCommitDispatched != _maintenanceOperation) {
+      _maintenanceCommitDispatched = _maintenanceOperation;
+      await onMaintenanceCommit?.call();
     }
   }
 
@@ -907,6 +981,8 @@ class GuiController extends ChangeNotifier {
   }
 
   Future<void> _releaseResources() {
+    _maintenanceTimer?.cancel();
+    _maintenanceTimer = null;
     final client = _client;
     final events = _events;
     final subscription = _subscription;

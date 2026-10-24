@@ -60,6 +60,7 @@ func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Wri
 func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer, bootstrap guiBootstrapper) *cobra.Command {
 	var ownerPID string
 	var logLevel string
+	var skipAutoLogin bool
 	bootstrapCommand := &cobra.Command{
 		Use:    "bootstrap",
 		Hidden: true,
@@ -70,12 +71,15 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 				return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 			}
 			selected := bootstrap
-			if logLevel != "" {
+			if logLevel != "" || skipAutoLogin {
+				if logLevel == "" {
+					logLevel = "debug"
+				}
 				if logLevel != "info" && logLevel != "debug" && logLevel != "trace" {
 					return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 				}
 				selected = func(id clientbootstrap.Identity, owner int) (clientbootstrap.DesktopBootstrapResult, error) {
-					return clientbootstrap.BootstrapDesktopWithLogLevel(id, owner, logLevel, false)
+					return clientbootstrap.BootstrapDesktopWithLogLevel(id, owner, logLevel, skipAutoLogin)
 				}
 			}
 			return wrapCommandOperation(guiBootstrap(identity, pid, output, selected))
@@ -84,6 +88,7 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 	bootstrapCommand.Flags().StringVar(&ownerPID, "owner-pid", "", "")
 	bootstrapCommand.MarkFlagRequired("owner-pid")
 	bootstrapCommand.Flags().StringVar(&logLevel, "log-level", "", "")
+	bootstrapCommand.Flags().BoolVar(&skipAutoLogin, "skip-auto-login", false, "")
 	gui := &cobra.Command{Use: "gui", Hidden: true, Args: cobra.NoArgs}
 	gui.AddCommand(bootstrapCommand, newGUILogDirectoryCommand(), newGUIRestartCommand(identity, output))
 	return gui

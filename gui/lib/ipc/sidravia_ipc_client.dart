@@ -81,3 +81,13 @@ abstract interface class SidraviaDiagnosticClient {
 abstract interface class SidraviaStateClient {
   Future<StateSubscription> subscribeStateEvents();
 }
+
+/// Application-owned reversible preparation; previews omit this capability.
+abstract interface class SidraviaMaintenanceClient {
+  Future<MaintenanceStatus> updateStatus();
+  Future<MaintenanceStatus> updateAcknowledge(
+    String operationId,
+    bool accepted,
+    bool visible,
+  );
+}

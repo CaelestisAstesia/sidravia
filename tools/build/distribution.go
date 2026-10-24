@@ -78,7 +78,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if target[0] == "linux" {
 		suffix = ""
 	}
-	programs := []struct{ name, pkg string }{{"sidraviactl", "./cmd/sidravia"}, {"sidraviad", "./cmd/sidraviad"}}
+	programs := []struct{ name, pkg string }{{"sidraviactl", "./cmd/sidravia"}, {"sidraviad", "./cmd/sidraviad"}, {"sidraviaupdater", "./cmd/sidraviaupdater"}}
 	if strings.HasPrefix(t.cfg.target, "windows-") {
 		programs = append(programs, struct{ name, pkg string }{"sidraviamgr", "./cmd/sidraviamgr"})
 	}
@@ -182,7 +182,7 @@ func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	if !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("GUI directory must be absolute")
 	}
-	reserved := map[string]bool{"sidravia.portable": true, "sidraviactl.exe": true, "sidraviad.exe": true, "sidraviamgr.exe": true}
+	reserved := map[string]bool{"sidravia.portable": true, "sidraviactl.exe": true, "sidraviad.exe": true, "sidraviamgr.exe": true, "sidraviaupdater.exe": true}
 	for _, entry := range existing {
 		reserved[strings.ToLower(entry.name)] = true
 	}

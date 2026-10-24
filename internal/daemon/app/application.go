@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"sidravia/internal/credentialinput"
@@ -40,6 +41,7 @@ const (
 )
 
 type Application struct {
+	maintenanceActive      atomic.Bool
 	catalog                *config.Catalog
 	profiles               *config.ProfileCatalog
 	authenticationResolver *AuthenticationResolver
@@ -186,6 +188,9 @@ func (failure *automaticLoginFailure) Unwrap() error { return failure.cause }
 func (application *Application) PerformAutomaticLogin(ctx context.Context) error {
 	application.opMu.Lock()
 	defer application.opMu.Unlock()
+	if application.maintenanceActive.Load() {
+		return nil
+	}
 	configurations, err := application.catalog.List(ctx)
 	if err != nil {
 		return &automaticLoginFailure{cause: err}

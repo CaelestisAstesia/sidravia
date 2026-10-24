@@ -277,11 +277,12 @@ def run_cross_checks(
 ) -> list[CheckResult]:
     """Compile target-specific code once; these binaries are not executed."""
     checks: list[Check] = []
-    # Three Windows amd64 production cross-builds
+    # Windows amd64 production cross-builds
     for binary_name, cmd_path in [
         ("sidraviactl.exe", "./cmd/sidravia"),
         ("sidraviad.exe", "./cmd/sidraviad"),
         ("sidraviamgr.exe", "./cmd/sidraviamgr"),
+        ("sidraviaupdater.exe", "./cmd/sidraviaupdater"),
     ]:
         build_check = Check(
             argv=[go_executable, "build", "-o", str(build_dir / binary_name), cmd_path],

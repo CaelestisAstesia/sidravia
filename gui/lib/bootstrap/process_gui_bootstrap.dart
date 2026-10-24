@@ -19,6 +19,7 @@ typedef GuiBootstrapLauncher = Future<GuiBootstrapProcess> Function(
 class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   ProcessGuiBootstrap({
     this.logLevel,
+    this.skipAutoLogin = false,
     this.timeout = const Duration(seconds: 10),
     this.maximumOutputBytes = 64 * 1024,
     bool Function()? isWindows,
@@ -32,6 +33,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
        _launch = launch ?? _defaultLaunch;
   final String Function()? logLevel;
   final Duration timeout;
+  final bool skipAutoLogin;
   final int maximumOutputBytes;
   final bool Function() _isWindows;
   final String Function() _resolvedExecutable;
@@ -64,6 +66,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
       child = await _launch(executable, [
         'gui',
         operation,
+        if (skipAutoLogin && operation == 'bootstrap') '--skip-auto-login',
         if (level != null) ...['--log-level', level],
         '--owner-pid',
         '${_ownerPid()}',

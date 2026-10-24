@@ -49,7 +49,7 @@ class DeveloperCommands(unittest.TestCase):
             serial = dev.verify.run_cross_checks(Path("/repo"), "go", Path("/build"), {}, 1)
             parallel = dev.verify.run_cross_checks(Path("/repo"), "go", Path("/build"), {}, 2)
         self.assertEqual([(r.argv, r.exit_code) for r in serial], [(r.argv, r.exit_code) for r in parallel])
-        self.assertEqual(len(parallel), 9)
+        self.assertEqual(len(parallel), 10)
         self.assertTrue(any(r.exit_code for r in parallel))
 
     def test_manifest_hashes_tracked_bytes_and_refuses_untracked(self):

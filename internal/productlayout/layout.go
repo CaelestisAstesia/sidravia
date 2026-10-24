@@ -173,3 +173,15 @@ func userRoot(dirFunc func() (string, error), label string) (string, error) {
 	}
 	return root, nil
 }
+
+// ResolveTarget resolves the original product directory for a short-lived
+// package host running elsewhere. Like ResolveNamespace it is read-only; the
+// caller must separately verify directory ownership before operating on files.
+func ResolveTarget(directory string, ns Namespace) (Layout, error) {
+	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
+		return Layout{}, errors.New("productlayout: target must be an absolute clean directory")
+	}
+	r := defaultResolver()
+	r.executable = func() (string, error) { return filepath.Join(directory, "sidraviactl"), nil }
+	return resolveWithNamespace(r, ns)
+}

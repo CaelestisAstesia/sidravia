@@ -3,8 +3,46 @@ package d520
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
+	"os"
 	protocol "sidravia/internal/daemon/authentication/protocol"
+	"syscall"
 )
+
+func recordNetworkFailure(d protocol.AuthenticationProtocolDiagnostics, operation string, err error) {
+	if sink, ok := d.(protocol.AuthenticationProtocolNetworkDiagnostics); ok {
+		failure := protocol.AuthenticationProtocolNetworkFailure{Operation: operation, SystemCall: "unknown", TimedOut: isTimeout(err)}
+		var code syscall.Errno
+		if errors.As(err, &code) {
+			failure.SystemCode = uint64(code)
+		}
+		var call *os.SyscallError
+		if errors.As(err, &call) {
+			switch call.Syscall {
+			case "wsaioctl", "wsarecv", "wsarecvfrom", "wsasend", "wsasendto", "socket", "WSASocket", "WSASocketW", "setsockopt", "bind", "connect", "connectex", "ConnectEx", "getsockname", "getpeername", "WSARecv", "WSARecvFrom", "WSASend", "WSASendTo", "closesocket", "CreateIoCompletionPort":
+				failure.SystemCall = call.Syscall
+			}
+		}
+		var op *net.OpError
+		if errors.As(err, &op) {
+			if source, ok := op.Source.(*net.UDPAddr); ok {
+				endpoint := source.AddrPort()
+				failure.LocalEndpoint = netip.AddrPortFrom(endpoint.Addr().Unmap(), endpoint.Port())
+			}
+			if addr, ok := op.Addr.(*net.UDPAddr); ok {
+				endpoint := addr.AddrPort()
+				endpoint = netip.AddrPortFrom(endpoint.Addr().Unmap(), endpoint.Port())
+				if operation == "set_deadline" {
+					failure.LocalEndpoint = endpoint
+				} else {
+					failure.RemoteEndpoint = endpoint
+				}
+			}
+		}
+		sink.NetworkFailure(failure)
+	}
+}
 
 type responseValidationError struct {
 	outcome protocol.AuthenticationProtocolExchangeOutcome

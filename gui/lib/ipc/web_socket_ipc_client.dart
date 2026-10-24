@@ -13,7 +13,8 @@ class WebSocketIpcClient
         SidraviaDesktopClient,
         SidraviaNetworkClient,
         SidraviaDiagnosticClient,
-        SidraviaStateClient {
+        SidraviaStateClient,
+        SidraviaMaintenanceClient {
   WebSocketIpcClient._(
     this._socket, {
     Duration requestTimeout = _requestTimeout,
@@ -131,6 +132,20 @@ class WebSocketIpcClient
   @override
   Future<List<ConfigurationSummary>> configurationList() async =>
       _call('configuration.list', const {}, decodeConfigurations);
+
+  @override
+  Future<MaintenanceStatus> updateStatus() =>
+      _call('update.status', const {}, decodeMaintenanceStatus);
+  @override
+  Future<MaintenanceStatus> updateAcknowledge(
+    String operationId,
+    bool accepted,
+    bool visible,
+  ) => _call('update.acknowledge', {
+    'operationId': operationId,
+    'accepted': accepted,
+    'visible': visible,
+  }, decodeMaintenanceStatus);
 
   @override
   Future<DaemonStopResult> daemonStop() async =>

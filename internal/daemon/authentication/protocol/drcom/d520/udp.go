@@ -85,6 +85,7 @@ func (ex *udpExchange) roundTrip(
 ) ([]byte, *runError) {
 	deadline := time.Now().Add(timeout)
 	if err := ex.conn.SetDeadline(deadline); err != nil {
+		recordNetworkFailure(diagnostics, "set_deadline", err)
 		return nil, networkIOError("udp exchange", err)
 	}
 
@@ -104,6 +105,9 @@ func (ex *udpExchange) roundTrip(
 	defer diagnostics.PhaseEvent(phase, phaseBoundaryEnd)
 	diagnostics.DatagramEvent(phase, protocol.DatagramDirectionTx, request)
 	if _, err := ex.conn.Write(request); err != nil {
+		if ctx.Err() == nil {
+			recordNetworkFailure(diagnostics, "write", err)
+		}
 		failure := udpReadFailure(ctx, "udp exchange write", err)
 		recordExchange(diagnostics, phase, networkOutcome(failure), 0)
 		return nil, failure
@@ -112,6 +116,9 @@ func (ex *udpExchange) roundTrip(
 	for {
 		n, err := ex.conn.Read(ex.buf[:])
 		if err != nil {
+			if ctx.Err() == nil {
+				recordNetworkFailure(diagnostics, "read", err)
+			}
 			failure := udpReadFailure(ctx, "udp exchange read", err)
 			recordExchange(diagnostics, phase, networkOutcome(failure), 0)
 			return nil, failure

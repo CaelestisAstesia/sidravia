@@ -150,10 +150,12 @@ class DesktopPresence extends ChangeNotifier {
     }
   }
 
-  Future<bool> beginExit() async {
+  Future<bool> beginExit() => _beginExit('beginExit');
+  Future<bool> beginUpdateExit() => _beginExit('beginUpdateExit');
+  Future<bool> _beginExit(String method) async {
     if (!enabled) return false;
     try {
-      await _channel!.invokeMethod<void>('beginExit');
+      await _channel!.invokeMethod<void>(method);
       return true;
     } on Object {
       _feedback = '无法开始退出，连接保持不变，请重试。';

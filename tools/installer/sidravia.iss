@@ -94,7 +94,7 @@ Name: "{group}\卸载 Sidravia"; Filename: "{uninstallexe}"
 
 [Run]
 #if IncludeGUI
-Filename: "{app}\Sidravia.exe"; Description: "启动 Sidravia"; Components: gui; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Sidravia.exe"; Description: "启动 Sidravia"; Components: gui; Flags: nowait postinstall skipifsilent; BeforeInstall: ReleaseInstaller
 #endif
 
 [Code]
@@ -138,6 +138,8 @@ var
   ManagerMode: String;
   ManagerPath: Boolean;
   InstallerMutex: NativeUInt;
+  UpdateOperation: String;
+  UpdatePrepared, UpdateFilesStarted: Boolean;
 
 { Fixed Windows API bindings used by this installer, not a file executor. }
 function FileAttributes(Name: String): LongWord;
@@ -440,9 +442,12 @@ begin
   if not Result then MsgBox('另一个安装/卸载操作正在进行，或无法核实当前账户。请稍后重试。', mbError, MB_OK);
 end;
 
+procedure AbortApplicationUpdate; forward;
+
 procedure DeinitializeSetup;
 begin
   ReleaseInstaller;
+  if UpdatePrepared and not UpdateFilesStarted then AbortApplicationUpdate;
 end;
 
 procedure DeinitializeUninstall;
@@ -465,7 +470,7 @@ begin
     if Processes.Count <> 1 then Exit;
     Process := Processes.ItemIndex(0);
     if Process.GetOwnerSid(SID) <> 0 then Exit;
-    Processes := WMI.ExecQuery('SELECT * FROM Win32_Process WHERE Name="Sidravia.exe" OR Name="sidraviad.exe" OR Name="sidraviactl.exe"');
+    Processes := WMI.ExecQuery('SELECT * FROM Win32_Process WHERE Name="Sidravia.exe" OR Name="sidraviad.exe" OR Name="sidraviactl.exe" OR Name="sidraviaupdater.exe"');
     for I := 0 to Processes.Count - 1 do begin
       Process := Processes.ItemIndex(I);
       if Process.GetOwnerSid(Owner) <> 0 then Exit;
@@ -1204,6 +1209,11 @@ procedure CurPageChanged(PageID: Integer);
 var
   I: Integer;
 begin
+  if (PageID = wpReady) and FileExists(ExpandConstant('{app}\BUILD-INFO.txt')) then begin
+    WizardForm.ReadyLabel.Caption := '将覆盖更新此目录的 Sidravia：' +
+      InfoValue(ExpandConstant('{app}\BUILD-INFO.txt'), 'ProductVersion') + ' → {#ProductVersion}' + #13#10 +
+      '连接将暂时断开，已保存配置会保留。支持的旧版会正常退出；其他版本请手动退出。';
+  end;
   if PageID = wpSelectComponents then begin
     for I := 0 to WizardForm.ComponentsList.Items.Count - 1 do begin
       if WizardForm.ComponentsList.ItemCaption[I] = '核心与命令行工具（必需）' then
@@ -1276,6 +1286,54 @@ begin
 #endif
 end;
 
+{ The application owns drafts, connection intent and normal exit. Pascal
+  invokes fixed short CTL stages and still checks all target processes itself. }
+function RunUpdateStage(Stage: String): Boolean;
+var Code: Integer; Args: String;
+begin
+  Args := 'update-internal ' + Stage + ' --operation ' + UpdateOperation +
+    ' --coordinator ' + IntToStr(CurrentPID);
+  if not WizardSilent then Args := Args + ' --interactive';
+  Result := Exec(ExpandConstant('{app}\sidraviactl.exe'), Args, '', SW_HIDE,
+    ewWaitUntilTerminated, Code) and (Code = 0);
+end;
+
+procedure AbortApplicationUpdate;
+begin
+  if not RunUpdateStage('abort') then begin
+    Log('Application recovery was not confirmed; program files were not changed.');
+    if not WizardSilent then MsgBox('程序文件尚未修改，但未能确认恢复原运行状态。请手动启动 Sidravia；未恢复的连接请手动连接。', mbError, MB_OK);
+  end;
+end;
+
+function PrepareApplicationUpdate: String;
+var Code: Integer; ID: String; GUID: TGUID;
+begin
+  Result := '';
+  if UpdatePrepared then begin
+    Result := '上次更新准备尚未结束，请取消安装以恢复原程序后重试。'; Exit;
+  end;
+  if not FileExists(ExpandConstant('{app}\sidraviactl.exe')) or
+    not Exec(ExpandConstant('{app}\sidraviactl.exe'), 'update-internal capabilities',
+      '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then begin
+    Result := '此版本不支持自动正常退出，请手动退出此目录的 GUI、后台和命令行后重试。'; Exit;
+  end;
+  if NewGUID(GUID) <> 0 then begin Result := '无法创建更新操作。'; Exit; end;
+  ID := StringOfChar(' ', 39);
+  if GUIDText(GUID, ID, 39) <> 39 then begin Result := '无法创建更新操作。'; Exit; end;
+  UpdateOperation := Lowercase(Copy(ID, 1, 38));
+  StringChangeEx(UpdateOperation, '{', '', True);
+  StringChangeEx(UpdateOperation, '}', '', True);
+  StringChangeEx(UpdateOperation, '-', '', True);
+  if not HexToken(UpdateOperation) then begin Result := '更新操作无效。'; Exit; end;
+  UpdatePrepared := True;
+  if not RunUpdateStage('prepare') then begin
+    Result := '程序未同意更新准备，或仍有未保存修改。请取消安装以恢复操作后重试。'; Exit;
+  end;
+  if not RunUpdateStage('stop') then
+    Result := '未能确认程序正常退出。程序文件尚未修改，请取消安装并核实运行状态。';
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := InstallationConflict(
@@ -1288,9 +1346,10 @@ begin
     Result := '静默运行必须通过 /TASKS 或含 Tasks 的 INF 明确本次自启和 PATH 目标；请交互运行以确认。';
   if (Result = '') and not WizardSilent and not IntegrationConfirmed then
     Result := '请返回安装选项页，确认本次开机自启和 PATH 选择。';
-  if (Result = '') and not ProductExited(False) then
-    Result := '请正常退出此目录的 Sidravia GUI、后台和命令行后重试；无法核实进程时不会继续。';
   if Result = '' then Result := CheckUpgrade;
+  if (Result = '') and not ProductExited(False) then Result := PrepareApplicationUpdate;
+  if (Result = '') and not ProductExited(False) then
+    Result := '仍有此目录的程序占用，请取消安装后核实；无法确认退出时不会覆盖文件。';
 end;
 
 procedure CurStepChanged(Step: TSetupStep);
@@ -1302,6 +1361,7 @@ begin
       RaiseException('安装前检查失败，请退出产品并重试。程序文件尚未修改。');
     if not PreserveUpgradeData then
       RaiseException('无法保存升级前的恢复副本，程序文件尚未修改。');
+    UpdateFilesStarted := True;
   end;
   if Step = ssPostInstall then begin
     WizardForm.StatusLabel.Caption := '正在设置开机自启…';

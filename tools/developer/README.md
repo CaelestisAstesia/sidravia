@@ -98,3 +98,56 @@ runtime identity proof.
 Keep the latest useful build and evidence; do not automatically retain every log
 or create new task caches. Remove only a helper-owned inactive run directory when
 its result is no longer needed. Preserve the shared cache and active candidate.
+
+## Isolated Windows update handoff contracts
+
+The Python verification scope includes an opt-in native Inno/Go fixture. Set
+`SIDRAVIA_ISCC` to the pinned Inno 7.1.0 compiler and `SIDRAVIA_INNO_TEST_ROOT`
+to an existing dedicated native Windows scratch directory (WSL uses `/mnt/...`
+paths). Run `python3 tools/developer/dev.py verify --scope python`. Without both
+variables the native cases are reported as skipped, not as Windows evidence.
+
+The fixture starts only synthetic executables, gives its synthetic updater a
+kill-on-close job, and replaces a dummy file after the updater exits. It checks
+short-host target resolution, one-time recovery plans, refusal on exit timeout,
+and refusal when the parent job cannot release the installer. It does not start
+Sidravia, access credentials, authenticate, register an installation, change PATH
+or autostart, or establish production GUI/CTL lifecycle compatibility. Temporary
+files belong to the fixture; the verifier report remains under `.project/`.
+
+## Updater foundation
+
+The distribution now includes `sidraviaupdater`; CTL delegates `update check`,
+`update download --candidate ID`, `update status` and `update version` to the
+sibling executable. Optional `--channel stable|preview` and
+`--package setup|gui-portable|core-portable` select the GitHub candidate. Check
+uses the Releases list and SemVer ordering; download requires the exact freshly
+selected candidate and verifies size/SHA256. JSON responses use schema version 1.
+A protected user cache retains one verified package per target/type/channel;
+repeated checks preserve it and repeated downloads reuse it. Unexpected cache
+paths or changed bytes fail closed and require cache inspection.
+
+This is foundation work: `update apply` returns `apply_unavailable`, and candidates
+report `canApply=false`. The signature verifier is tested using synthetic keys;
+no publisher key is configured. GUI scheduling, unattended apply, portable replacement and signed release
+integration remain pending. The Windows application now exposes fixed internal
+prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
+Inno path uses these stages when the target CTL advertises protocol 1. Older
+targets require manual exit. Normal process entry points share Inno's current-user
+maintenance gate. Preparation cancellation thaws the existing application;
+cancellation after a confirmed stop only restarts unchanged source binaries,
+using a cold skip-auto-login generation and an at-most-once intent dispatch.
+A new user mutation revokes recovery admission. Once file replacement starts,
+the installer never automatically restarts the old program on failure.
+The native fixture also runs the release/command tests, real CTL-to-updater
+version/disabled-apply smoke and isolated real CTL/daemon lifecycle tests. GUI
+unit/widget checks and compilation are separate from actual Windows GUI and
+installation/upgrade acceptance. Tests never authenticate with real credentials.
+
+To additionally run the real Windows GUI lifecycle, set
+`SIDRAVIA_GUI_TEST_DIRECTORY` to the fixed builder's current Release directory.
+The fixture copies only GUI runtime files into its owned portable target, uses a
+fresh namespace and no credentials, checks bounded startup refusal under the
+installer mutex, and exercises prepare/cancel, normal exit and cold recovery.
+This may briefly show an empty test GUI. A failure preserves the fixture and
+logs; success waits for its owned processes to exit before removing files.

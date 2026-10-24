@@ -63,9 +63,29 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 	if err := deps.start(cmd); err != nil {
 		return daemonLaunch{}, fmt.Errorf("启动 sidraviad 子进程: %w", err)
 	}
+	launch := daemonLaunch{}
+	var observeErr error
+	if cmd.Process != nil {
+		launch.pid = cmd.Process.Pid
+		if options.Mode == launchcontract.ModeHeadless && options.SkipAutoLogin {
+			var h windows.Handle
+			h, observeErr = windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(cmd.Process.Pid))
+			if observeErr == nil {
+				launch.alive = func() bool {
+					result, e := windows.WaitForSingleObject(h, 0)
+					return e == nil && result == uint32(windows.WAIT_TIMEOUT)
+				}
+				launch.release = func() { windows.CloseHandle(h) }
+			}
+		}
+	}
 	exited := make(chan error, 1)
 	go func() { exited <- classifyDaemonExit(deps.wait(cmd)) }()
-	return daemonLaunch{exited: exited}, nil
+	if observeErr != nil {
+		return daemonLaunch{}, observeErr
+	}
+	launch.exited = exited
+	return launch, nil
 }
 
 func daemonProcessCommand(daemonPath string, logFile *os.File, parentEnv []string, options launchcontract.Options, logLevel string) (*exec.Cmd, error) {

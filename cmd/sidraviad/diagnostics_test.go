@@ -323,3 +323,28 @@ func TestPostCommitDiagnosticWarningIsFixedPerWriteAndSafe(t *testing.T) {
 		t.Fatal("extra warning")
 	}
 }
+
+func TestNetworkFailureOnlyAtTrace(t *testing.T) {
+	for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug, LevelTrace} {
+		var buf bytes.Buffer
+		d := &protocolDiagnosticsAdapter{logger: newDaemonLogger(&buf, level), sessionID: "session-test"}
+		d.NetworkFailure(protocol.AuthenticationProtocolNetworkFailure{Operation: "open_socket", SystemCall: "bind", SystemCode: 10013})
+		out := buf.String()
+		if level != LevelTrace {
+			if out != "" {
+				t.Fatalf("network detail outside Trace: %s", out)
+			}
+			continue
+		}
+		for _, want := range []string{"event=protocol_network_failure", "session_id=session-test", "operation=open_socket", "system_call=bind", "system_code=10013"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %s: %s", want, out)
+			}
+		}
+		for _, unsafe := range []string{"error=", "cause=", "datagram_hex", "password"} {
+			if strings.Contains(out, unsafe) {
+				t.Fatalf("unsafe diagnostic: %s", out)
+			}
+		}
+	}
+}
