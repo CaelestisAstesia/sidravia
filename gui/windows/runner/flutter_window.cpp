@@ -4,7 +4,7 @@
 #include <shellapi.h>
 #include <dwmapi.h>
 #include <windowsx.h>
-#include "frame_geometry.h"
+#include "../../native/frame_geometry.h"
 
 #include <cwchar>
 #include <optional>

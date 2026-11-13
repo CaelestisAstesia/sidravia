@@ -156,3 +156,35 @@ After producer/consumer verification, `SIDRAVIA_CANDIDATE_ARCHIVE` may name the
 exact GUI/core portable ZIP to repeat the real lifecycle on its unmodified
 binaries. The fixture reads the package BUILD-INFO identity and reports it in
 the receipt; it never executes the setup package or changes an existing install.
+
+## Native Linux desktop development
+
+Use the pinned Go and Flutter SDKs. On Fedora install native RPM build/runtime
+headers: `clang gtk3-devel libayatana-appindicator-gtk3-devel webkit2gtk4.1-devel wayland-devel`
+(CMake, Ninja, pkg-config and C++ standard-library development files are also
+required). The integration fixture also uses system Python GObject bindings
+(Fedora `python3-gobject-base`) and the current Wayland/session D-Bus. Ayatana supplies the StatusNotifier tray menu; WebKitGTK supplies an
+in-app, ephemeral announcement view. No custom window positioning is promised
+under Wayland: the compositor controls placement and focus.
+
+```
+.local/bin/dev linux --check-gui
+.local/bin/dev linux --integration
+```
+
+The first command checks shared native frame geometry and builds a development bundle with exact sibling CTL/daemon
+binaries; it does not start or install it. The second runs the isolated synthetic
+fixture under the current desktop session, with its own namespace and XDG roots;
+it never loads production accounts or sends campus authentication traffic. Tests
+may briefly show windows. Neither command registers user autostart. They do not
+produce RPM/DEB/Flatpak packages or establish Windows native acceptance.
+
+Set `SIDRAVIA_GUI_TEST_OPEN_DESKTOP=1` for the additional native browser/folder
+dispatch checks; regular frame/lifecycle regression does not repeatedly open
+external desktop windows.
+
+The GTK3 runner explicitly announces client-side decoration on Wayland. Where
+`xdg_toplevel_icon_manager_v1` is advertised it submits immutable icon pixels;
+this does not install a desktop entry. The owned Release fixture retains a short
+Wayland trace and checks the KWin client-decoration acknowledgement and icon
+submission/commit; client-area screenshots alone cannot prove those boundaries.

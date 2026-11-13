@@ -13,7 +13,10 @@ class SystemNotifications {
   SystemNotifications({MethodChannel? channel, TargetPlatform? platform})
     : _channel =
           !kIsWeb &&
-              (platform ?? defaultTargetPlatform) == TargetPlatform.windows
+              {
+                TargetPlatform.windows,
+                TargetPlatform.linux,
+              }.contains(platform ?? defaultTargetPlatform)
           ? channel ?? const MethodChannel(systemNotificationsChannelName)
           : null {
     _channel?.setMethodCallHandler(_onNativeCall);

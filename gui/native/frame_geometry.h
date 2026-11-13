@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-// Pure physical hit geometry shared by top-level and Flutter child HWNDs.
+// Pure hit geometry shared by native desktop hosts and the Flutter shell.
 // Values deliberately match the Flutter shell, never business-page constraints.
 namespace sidravia_frame {
 constexpr double kTop = 46;

@@ -162,7 +162,7 @@ void main() {
   test('unsupported platforms never invoke channel', () async {
     final unsupported = SystemNotifications(
       channel: channel,
-      platform: TargetPlatform.linux,
+      platform: TargetPlatform.android,
     );
     expect(
       await unsupported

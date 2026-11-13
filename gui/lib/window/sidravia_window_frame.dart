@@ -19,7 +19,11 @@ abstract final class SidraviaWindowCommands {
 /// Native hit testing must respect the same modal barrier as Flutter.
 class SidraviaWindowObserver extends NavigatorObserver {
   void _sync(Route<dynamic>? route) {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    if (!kIsWeb &&
+        {
+          TargetPlatform.windows,
+          TargetPlatform.linux,
+        }.contains(defaultTargetPlatform)) {
       unawaited(
         SidraviaWindowCommands.channel
             .invokeMethod<void>('setModalBlocked', route is PopupRoute)
@@ -53,13 +57,16 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
   bool _configured = false;
   final _maximizeTooltip = GlobalKey<TooltipState>();
   Brightness? _brightness;
-  bool get _windows =>
+  bool get _desktop =>
       !kIsWeb &&
-      (widget.platform ?? defaultTargetPlatform) == TargetPlatform.windows;
+      const {
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+      }.contains(widget.platform ?? defaultTargetPlatform);
   @override
   void initState() {
     super.initState();
-    if (_windows) {
+    if (_desktop) {
       SidraviaWindowCommands.channel.setMethodCallHandler((call) async {
         if (call.method == 'stateChanged') _update(call.arguments);
       });
@@ -84,8 +91,11 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
       // An explicit platform override is a preview, not operational native success.
       if (mounted) {
         setState(() {
-          _configured = widget.platform == TargetPlatform.windows;
-          _error = '当前环境没有 Windows 窗口控制';
+          _configured = const {
+            TargetPlatform.windows,
+            TargetPlatform.linux,
+          }.contains(widget.platform);
+          _error = '当前环境没有桌面窗口控制';
         });
       }
     } on PlatformException catch (e) {
@@ -97,7 +107,7 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final brightness = Theme.of(context).brightness;
-    if (_windows && _brightness != brightness) {
+    if (_desktop && _brightness != brightness) {
       _brightness = brightness;
       unawaited(
         SidraviaWindowCommands.channel
@@ -139,19 +149,19 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = '窗口操作失败：${e.message ?? e.code}');
     } on MissingPluginException {
-      if (mounted) setState(() => _error = '当前环境没有 Windows 窗口控制');
+      if (mounted) setState(() => _error = '当前环境没有桌面窗口控制');
     }
   }
 
   @override
   void dispose() {
-    if (_windows) SidraviaWindowCommands.channel.setMethodCallHandler(null);
+    if (_desktop) SidraviaWindowCommands.channel.setMethodCallHandler(null);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_windows) return widget.child;
+    if (!_desktop) return widget.child;
     if (!_configured) {
       if (_error == null) return widget.child;
       return Column(
@@ -165,8 +175,8 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
       );
     }
     final scheme = Theme.of(context).colorScheme;
-    // Native DWM owns the outer border and corner shape.
-    return Material(
+    // Each native host owns compositor interaction; controls share this layout.
+    final frame = Material(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         children: [
@@ -175,7 +185,7 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
             height: 46,
             child: Stack(
               children: [
-                // Native HTCAPTION owns this blank area, including double-click.
+                // Native hit testing owns drag/resize/double-click in this blank area.
                 Positioned(
                   top: 10,
                   right: 10,
@@ -223,7 +233,105 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
         ],
       ),
     );
+    if ((widget.platform ?? defaultTargetPlatform) != TargetPlatform.linux ||
+        _maximized) {
+      return frame;
+    }
+    // Flutter owns edge cursors; GTK capture owns the actual resize grab.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        frame,
+        _resizeCursor(
+          'resize-top',
+          SystemMouseCursors.resizeUpDown,
+          top: 0,
+          left: 5,
+          right: 5,
+          height: 5,
+        ),
+        _resizeCursor(
+          'resize-bottom',
+          SystemMouseCursors.resizeUpDown,
+          bottom: 0,
+          left: 5,
+          right: 5,
+          height: 5,
+        ),
+        _resizeCursor(
+          'resize-left',
+          SystemMouseCursors.resizeLeftRight,
+          top: 5,
+          bottom: 5,
+          left: 0,
+          width: 5,
+        ),
+        _resizeCursor(
+          'resize-right',
+          SystemMouseCursors.resizeLeftRight,
+          top: 5,
+          bottom: 5,
+          right: 0,
+          width: 5,
+        ),
+        _resizeCursor(
+          'resize-top-left',
+          SystemMouseCursors.resizeUpLeftDownRight,
+          top: 0,
+          left: 0,
+          width: 5,
+          height: 5,
+        ),
+        _resizeCursor(
+          'resize-top-right',
+          SystemMouseCursors.resizeUpRightDownLeft,
+          top: 0,
+          right: 0,
+          width: 5,
+          height: 5,
+        ),
+        _resizeCursor(
+          'resize-bottom-left',
+          SystemMouseCursors.resizeUpRightDownLeft,
+          bottom: 0,
+          left: 0,
+          width: 5,
+          height: 5,
+        ),
+        _resizeCursor(
+          'resize-bottom-right',
+          SystemMouseCursors.resizeUpLeftDownRight,
+          bottom: 0,
+          right: 0,
+          width: 5,
+          height: 5,
+        ),
+      ],
+    );
   }
+
+  Widget _resizeCursor(
+    String name,
+    MouseCursor cursor, {
+    double? top,
+    double? bottom,
+    double? left,
+    double? right,
+    double? width,
+    double? height,
+  }) => Positioned(
+    top: top,
+    bottom: bottom,
+    left: left,
+    right: right,
+    width: width,
+    height: height,
+    child: MouseRegion(
+      key: ValueKey(name),
+      cursor: cursor,
+      child: const SizedBox.expand(),
+    ),
+  );
 
   Widget _control(
     String label,

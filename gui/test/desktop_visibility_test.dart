@@ -133,6 +133,32 @@ void main() {
     },
   );
 
+  test(
+    'explicit unknown clears a known observation and supersedes older queries',
+    () async {
+      final oldQuery = Completer<Object?>();
+      var querying = false;
+      _messenger().setMockMethodCallHandler(_channel, (call) async {
+        if (call.method == 'initialize') return 'primary';
+        if (call.method == 'getVisibility') {
+          return querying ? oldQuery.future : true;
+        }
+        return null;
+      });
+      final presence = DesktopPresence(channel: _channel);
+      await presence.initialize();
+      expect(presence.isMainWindowVisible, isTrue);
+      querying = true;
+      final result = presence.refreshMainWindowVisibility();
+      await _sendNative('visibilityChanged', null);
+      oldQuery.complete(true);
+      expect(await result, isNull);
+      expect(presence.isMainWindowVisible, isNull);
+      presence.dispose();
+      _resetHandler();
+    },
+  );
+
   test('malformed query and callback leave visibility unknown', () async {
     _messenger().setMockMethodCallHandler(_channel, (call) async {
       if (call.method == 'initialize') return 'primary';

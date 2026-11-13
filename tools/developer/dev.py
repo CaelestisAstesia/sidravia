@@ -149,10 +149,45 @@ def windows_command(args, env):
     return subprocess.run(command, cwd=ROOT, env=env, check=False).returncode
 
 
+def linux_command(args, env):
+    """Build/run only the explicit development target; never installs a product."""
+    if platform.system() != "Linux":
+        raise ValueError("linux desktop development requires native Linux")
+    flutter = str(Path(args.flutter).resolve())
+    sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
+    if sdk["frameworkVersion"] != (ROOT / "gui" / ".flutter-version").read_text().strip():
+        raise ValueError("Flutter SDK does not match .flutter-version")
+    env = dict(env, PATH=str(Path(sdk["flutterRoot"]) / "bin") + os.pathsep + env.get("PATH", ""))
+    source_before = metadata(args.go, env)
+    core = ROOT / ".local" / "linux-desktop-core"
+    core.mkdir(parents=True, exist_ok=True)
+    env = dict(env, SIDRAVIA_CORE_DIRECTORY=str(core))
+    for name, package in (("sidraviactl", "sidravia"), ("sidraviad", "sidraviad")):
+        subprocess.run([args.go, "build", "-mod=readonly", "-trimpath", "-o", str(core / name), "./cmd/" + package], cwd=ROOT, env=env, check=True)
+    def flutter_run(argv):
+        subprocess.run([flutter, *argv], cwd=ROOT / "gui", env=env, check=True)
+    flutter_run(["pub", "get", "--enforce-lockfile"])
+    if args.check_gui:
+        native = ROOT / ".local" / "linux-native-policies"
+        for argv in (["cmake", "-S", str(ROOT / "gui/test/native"), "-B", str(native), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"],
+                     ["cmake", "--build", str(native)], ["ctest", "--test-dir", str(native), "--output-on-failure"]):
+            subprocess.run(argv, cwd=ROOT, env=env, check=True)
+        flutter_run(["analyze", "--no-pub"])
+        flutter_run(["test", "--no-pub"])
+    if args.integration:
+        # Fixture setup and real-chain ownership checks live in the dedicated
+        # helper; no production start command is part of this entry point.
+        import linux_desktop_fixture
+        return linux_desktop_fixture.run(ROOT, flutter, env, source_before, lambda: metadata(args.go, env))
+    flutter_run(["build", "linux", "--release", "--no-pub"])
+    print("Development bundle: gui/build/linux/x64/release/bundle (not installed or started)")
+    return 0
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux"):
         sub = subs.add_parser(command)
         sub.add_argument("--go", default="go")
         sub.add_argument("--reports", default=str(ROOT / ".project" / "evidence" / "build-efficiency"))
@@ -166,6 +201,10 @@ def parse_args(argv=None):
         if command == "manifest":
             sub.add_argument("--output", required=True)
             sub.add_argument("--require-clean", action="store_true")
+        if command == "linux":
+            sub.add_argument("--flutter", default=".local/bin/flutter")
+            sub.add_argument("--check-gui", action="store_true")
+            sub.add_argument("--integration", action="store_true")
         if command == "windows":
             sub.add_argument("--workspace", default=r"D:\Tools\Sidravia\build-workspace")
             sub.add_argument("--flutter", default=r"D:\Tools\Flutter\3.47.0\flutter\bin\flutter.bat")
@@ -194,6 +233,8 @@ def main(argv=None):
             return 0
         if args.command == "windows":
             return windows_command(args, env)
+        if args.command == "linux":
+            return linux_command(args, env)
         # Validate package source before creating any output, including reports.
         info, commands = package_commands(args, env) if args.command == "package" else (metadata(args.go, env), [])
         reports = Path(args.reports).resolve()

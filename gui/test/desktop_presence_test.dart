@@ -74,13 +74,17 @@ void main() {
         startHidden: false,
       );
       final feedback = presence.feedback;
-      for (final value in [null, 'false', PlatformException(code: 'failed')]) {
+      for (final value in ['false', PlatformException(code: 'failed')]) {
         reply = value;
         expect(await presence.refreshMainWindowVisibility(), isNull);
         expect(presence.enabled, isTrue);
         expect(presence.feedback, feedback);
         expect(presence.isMainWindowVisible, isTrue);
       }
+      reply = null; // A valid native unknown clears the previous observation.
+      expect(await presence.refreshMainWindowVisibility(), isNull);
+      expect(presence.isMainWindowVisible, isNull);
+      expect(presence.feedback, feedback);
       final pending = Completer<Object?>();
       reply = pending.future;
       final query = presence.refreshMainWindowVisibility();

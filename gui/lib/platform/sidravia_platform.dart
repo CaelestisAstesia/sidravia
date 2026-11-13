@@ -23,10 +23,13 @@ class SidraviaPlatform {
   final GuiBootstrapper bootstrapper;
   final DesktopPresence desktopPresence;
 
-  bool get supportsDesktopPresence => kind == SidraviaPlatformKind.windows;
+  bool get supportsDesktopPresence =>
+      kind == SidraviaPlatformKind.windows ||
+      kind == SidraviaPlatformKind.linux;
 
   bool get supportsLocalBootstrap =>
-      kind == SidraviaPlatformKind.windows &&
+      (kind == SidraviaPlatformKind.windows ||
+          kind == SidraviaPlatformKind.linux) &&
       bootstrapper is ProcessGuiBootstrap;
 
   factory SidraviaPlatform.detect({String namespace = ''}) {
@@ -40,8 +43,8 @@ class SidraviaPlatform {
     if (Platform.isLinux) {
       return SidraviaPlatform(
         kind: SidraviaPlatformKind.linux,
-        bootstrapper: const UnsupportedGuiBootstrapper(),
-        desktopPresence: DesktopPresence.disabled(),
+        bootstrapper: ProcessGuiBootstrap(),
+        desktopPresence: DesktopPresence(namespace: namespace),
       );
     }
     if (Platform.isAndroid) {

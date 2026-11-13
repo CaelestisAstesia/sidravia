@@ -32,7 +32,7 @@ type guiLogDirectoryDependencies struct {
 }
 
 func openGUILogDirectory() error {
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		return logDirectoryFailure("当前平台不支持打开日志目录。", errLogDirectoryUnsupported)
 	}
 	return openGUILogDirectoryWith(guiLogDirectoryDependencies{

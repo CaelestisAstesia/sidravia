@@ -6,7 +6,7 @@ Sidravia 旨在提供一个开源的第三方网络认证客户端，追求比�
 
 目前支持 **吉林大学 Dr.Com 5.2.0 D 协议认证**，欢迎更多开发者贡献其他学校和认证协议的适配。
 
-Sidravia 的核心采用跨平台设计，注重运行效率；图形界面以 Windows 为主要平台，其他平台的可用组件见发行说明。
+Sidravia 的核心采用跨平台设计，注重运行效率。已发布的图形界面资产以 Windows 为主；当前源码还支持 Linux 原生 GUI 开发，见 [GUI 开发说明](gui/README.md)。各发行资产的支持范围仍以对应发行说明为准。
 
 [下载](https://github.com/CaelestisAstesia/sidravia/releases) · [快速开始](docs/quick-start.md) · [使用指南](docs/guide.md)
 

@@ -17,10 +17,13 @@ class IntegrationStatus {
     required this.pathEnabled,
     required this.autostart,
     required this.guiAvailable,
+    this.userPathSupported = true,
+    this.daemonAutostartSupported = true,
   });
   final bool pathEnabled;
   final String autostart;
   final bool guiAvailable;
+  final bool userPathSupported, daemonAutostartSupported;
 
   factory IntegrationStatus.decode(String text) {
     final result = decodeManagerResponse(text);

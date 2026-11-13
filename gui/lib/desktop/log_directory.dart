@@ -7,14 +7,17 @@ import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 class DesktopLogDirectory {
   DesktopLogDirectory({
     bool Function()? isWindows,
+    bool Function()? isLinux,
     String Function()? resolvedExecutable,
     GuiBootstrapLauncher? launch,
     this.timeout = const Duration(seconds: 10),
   }) : _isWindows = isWindows ?? (() => Platform.isWindows),
+       _isLinux = isLinux ?? (() => isWindows == null && Platform.isLinux),
        _executable = resolvedExecutable ?? (() => Platform.resolvedExecutable),
        _launch = launch ?? _start;
 
   final bool Function() _isWindows;
+  final bool Function() _isLinux;
   final String Function() _executable;
   final GuiBootstrapLauncher _launch;
   final Duration timeout;
@@ -22,7 +25,7 @@ class DesktopLogDirectory {
   Completer<void>? _cancel;
   bool _closed = false;
 
-  bool get supported => !_closed && _isWindows();
+  bool get supported => !_closed && (_isWindows() || _isLinux());
 
   static Future<GuiBootstrapProcess> _start(
     String executable,
@@ -67,7 +70,7 @@ class DesktopLogDirectory {
 
     try {
       final executable =
-          '${File(_executable()).parent.path}${Platform.pathSeparator}sidraviactl.exe';
+          '${File(_executable()).parent.path}${Platform.pathSeparator}sidraviactl${_isWindows() ? '.exe' : ''}';
       child = await _launch(executable, const ['gui', 'open-log-directory']);
       exit = child.exitCode;
       output = drain(child.stdout);

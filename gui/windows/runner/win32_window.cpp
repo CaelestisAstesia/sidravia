@@ -5,7 +5,7 @@
 #include <flutter_windows.h>
 #include <windowsx.h>
 #include <commctrl.h>
-#include "frame_geometry.h"
+#include "../../native/frame_geometry.h"
 #include "frame_decoration.h"
 
 #include "resource.h"

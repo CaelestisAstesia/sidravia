@@ -107,7 +107,7 @@ func TestGUILogDirectoryRejectsArgumentsBeforeNativeOperation(t *testing.T) {
 	if err := c.Args(c, []string{"C:\\other"}); err == nil {
 		t.Fatal("path accepted")
 	}
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		if err := openGUILogDirectory(); !errors.Is(err, errLogDirectoryUnsupported) {
 			t.Fatalf("unsupported=%v", err)
 		}

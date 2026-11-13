@@ -23,10 +23,12 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
     this.timeout = const Duration(seconds: 10),
     this.maximumOutputBytes = 64 * 1024,
     bool Function()? isWindows,
+    bool Function()? isLinux,
     String Function()? resolvedExecutable,
     int Function()? ownerPid,
     GuiBootstrapLauncher? launch,
   }) : _isWindows = isWindows ?? (() => Platform.isWindows),
+       _isLinux = isLinux ?? (() => isWindows == null && Platform.isLinux),
        _resolvedExecutable =
            resolvedExecutable ?? (() => Platform.resolvedExecutable),
        _ownerPid = ownerPid ?? (() => pid),
@@ -36,6 +38,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   final bool skipAutoLogin;
   final int maximumOutputBytes;
   final bool Function() _isWindows;
+  final bool Function() _isLinux;
   final String Function() _resolvedExecutable;
   final int Function() _ownerPid;
   final GuiBootstrapLauncher _launch;
@@ -43,7 +46,17 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   static Future<GuiBootstrapProcess> _defaultLaunch(
     String executable,
     List<String> arguments,
-  ) async => _SystemProcess(await Process.start(executable, arguments));
+  ) async {
+    final environment = Map<String, String>.of(Platform.environment);
+    if (Platform.isLinux) {
+      final stat = await File('/proc/self/stat').readAsString();
+      final fields = stat.substring(stat.lastIndexOf(')') + 2).split(' ');
+      environment['SIDRAVIA_DESKTOP_OWNER_START'] = fields[19];
+    }
+    return _SystemProcess(
+      await Process.start(executable, arguments, environment: environment),
+    );
+  }
 
   @override
   Future<GuiBootstrapResult> bootstrap() => _run('bootstrap', logLevel?.call());
@@ -51,7 +64,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   Future<GuiBootstrapResult> restartCore(String level) =>
       _run('restart', level);
   Future<GuiBootstrapResult> _run(String operation, String? level) async {
-    if (!_isWindows()) {
+    if (!_isWindows() && !_isLinux()) {
       return const GuiBootstrapResult.failure(
         GuiBootstrapFailure.unsupportedPlatform,
       );
@@ -62,7 +75,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
     var exited = false;
     try {
       final executable =
-          '${File(_resolvedExecutable()).parent.path}${Platform.pathSeparator}sidraviactl.exe';
+          '${File(_resolvedExecutable()).parent.path}${Platform.pathSeparator}sidraviactl${_isWindows() ? '.exe' : ''}';
       child = await _launch(executable, [
         'gui',
         operation,
