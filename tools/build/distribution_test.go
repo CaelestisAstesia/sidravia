@@ -19,7 +19,7 @@ func TestDistributionFlags(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-amd64", "--gui-directory", "x"}, {"--artifact", "distribution", "--target", "windows-arm64", "--gui-directory", "x"}, {"--artifact", "distribution", "--target", "windows-arm64", "--iscc", "x"}, {"--artifact", "distribution", "--target", "linux-arm64", "--iscc", "x"}} {
+	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "windows-arm64", "--gui-directory", "x"}, {"--artifact", "distribution", "--target", "windows-arm64", "--iscc", "x"}, {"--artifact", "distribution", "--target", "linux-arm64", "--iscc", "x"}} {
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err == nil {
 			t.Fatal("accepted invalid target combination")
 		}
@@ -159,5 +159,34 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 		if _, err := readGUI(root, nil); err == nil {
 			t.Fatal("accepted link")
 		}
+	}
+}
+
+func TestLinuxGUIBoundary(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"sidravia_gui", "lib/libflutter_linux_gtk.so", "lib/libapp.so", "data/icudtl.dat", "data/flutter_assets/NOTICES.Z", "data/icons/sidravia.png", "FLUTTER-LICENSE"} {
+		writeTestFile(t, filepath.Join(root, name), name)
+	}
+	entries, err := readLinuxGUI(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.name == "sidravia_gui" && e.mode != 0755 {
+			t.Fatal("GUI not executable")
+		}
+	}
+	writeTestFile(t, filepath.Join(root, "config/configurations.json"), "private")
+	if _, err := readLinuxGUI(root, nil); err == nil {
+		t.Fatal("accepted user state")
+	}
+	if err := os.RemoveAll(filepath.Join(root, "config")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "lib/libapp.so")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readLinuxGUI(root, nil); err == nil {
+		t.Fatal("accepted incomplete release")
 	}
 }

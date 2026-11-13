@@ -188,3 +188,33 @@ The GTK3 runner explicitly announces client-side decoration on Wayland. Where
 this does not install a desktop entry. The owned Release fixture retains a short
 Wayland trace and checks the KWin client-decoration acknowledgement and icon
 submission/commit; client-area screenshots alone cannot prove those boundaries.
+
+### Linux GUI portable candidate
+
+From a clean isolated candidate on Fedora 45 x86_64:
+
+```sh
+.local/bin/dev linux --check-gui
+.local/bin/dev linux --package --version 0.4.0-dev.linux.1 --output .local/linux-portable-output
+```
+
+The fixed Flutter SDK builds the GUI with the requested build name. The existing
+Go distribution producer rebuilds version-bound sibling tools and owns public
+profiles/portable marker; the consumer verifies exact bytes and executable modes.
+Source identity is checked across compilation and consumption. The local receipt
+is `.local/linux-portable-package-result.json`. No installation, account autostart,
+release upload or signing is performed. Runtime requirements and movement rules
+are shipped in `data/linux-portable.md` from `docs/linux-portable.md`.
+
+After producing the archive, accept that exact clean-source package on the
+current KDE/Wayland desktop with:
+
+```sh
+.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-dev.linux.1-linux-amd64-portable.tar.gz
+```
+
+This checks the local producer receipt before extracting into an owned directory
+with spaces. It launches only a synthetic namespace, exercises configuration and
+three core restarts through packaged CTL, exits through the real tray, moves the
+entire directory, then checks crashed-owner cleanup. It does not perform campus
+authentication or register the current account for autostart.

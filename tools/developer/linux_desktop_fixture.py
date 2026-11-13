@@ -9,6 +9,7 @@ import signal
 import subprocess
 import tempfile
 import threading
+import tarfile
 import time
 import uuid
 
@@ -21,7 +22,7 @@ def wait_for(condition, label, timeout=20):
         time.sleep(.05)
 
 
-def run(root, flutter, environment, source_before, source_metadata):
+def run(root, flutter, environment, source_before, source_metadata, portable_archive=None):
     from gi.repository import Gio, GLib
     owned = Path(tempfile.mkdtemp(prefix="linux-desktop-fixture-", dir=root / ".local"))
     namespace = "linux-gui-test-" + uuid.uuid4().hex[:12]
@@ -33,6 +34,18 @@ def run(root, flutter, environment, source_before, source_metadata):
         env[key] = str(owned / folder)
         (owned / folder).mkdir()
     state = Path(env["XDG_CONFIG_HOME"]) / "Sidravia" / "namespaces" / namespace
+    package_root = None
+    if portable_archive is not None:
+        # Input has already passed the distribution consumer; still reject links
+        # and traversal at extraction. Keep this fixture under the project.
+        extracted = owned / 'extracted with spaces'
+        extracted.mkdir()
+        with tarfile.open(portable_archive, 'r:gz') as archive:
+            archive.extractall(extracted, filter='data')
+        package_root, = extracted.iterdir()
+        if not (package_root / 'sidravia.portable').is_file():
+            raise RuntimeError('missing portable marker')
+        state = package_root / 'namespaces' / namespace
     profiles = state / "institution-profiles"
     profiles.mkdir(parents=True)
     # Use the public protocol shape, replace every network endpoint before use.
@@ -130,16 +143,19 @@ def run(root, flutter, environment, source_before, source_metadata):
         call(service, menu, "com.canonical.dbusmenu", "Event", GLib.Variant("(isvu)", (item, "clicked", GLib.Variant("i", 0), 0)))
 
     try:
-        command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_desktop_test.dart"], "production-main-integration")
-        wait_for(lambda: not runtime.exists(), "integration daemon cleanup")
-        env["SIDRAVIA_GUI_RESTORED"] = "1"
-        command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_desktop_test.dart"], "production-main-restart-preferences-hidden-window")
-        wait_for(lambda: not runtime.exists(), "second integration daemon cleanup")
-        preferences = json.loads((state / "gui-settings.json").read_text())
-        if preferences["appearanceMode"] != "dark":
-            raise RuntimeError("persisted appearance mismatch")
-        command([flutter, "build", "linux", "--release", "--no-pub"], "release-build")
-        binary = root / "gui/build/linux/x64/release/bundle/sidravia_gui"
+        if portable_archive is None:
+            command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_desktop_test.dart"], "production-main-integration")
+            wait_for(lambda: not runtime.exists(), "integration daemon cleanup")
+            env["SIDRAVIA_GUI_RESTORED"] = "1"
+            command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_desktop_test.dart"], "production-main-restart-preferences-hidden-window")
+            wait_for(lambda: not runtime.exists(), "second integration daemon cleanup")
+            preferences = json.loads((state / "gui-settings.json").read_text())
+            if preferences["appearanceMode"] != "dark":
+                raise RuntimeError("persisted appearance mismatch")
+            command([flutter, "build", "linux", "--release", "--no-pub"], "release-build")
+            binary = root / "gui/build/linux/x64/release/bundle/sidravia_gui"
+        else:
+            binary = package_root / 'sidravia_gui'
         def start_gui():
             log = (owned / f"gui-{len(events)}.log").open("w")
             process = subprocess.Popen([str(binary), "--skip-auto-login", "--start-visible"], env=dict(env, WAYLAND_DEBUG="client"), stdout=log, stderr=subprocess.STDOUT)
@@ -152,12 +168,37 @@ def run(root, flutter, environment, source_before, source_metadata):
         command([str(binary), "--start-visible"], "single-instance-activation", timeout=15)
         if json.loads(runtime.read_text())["pid"] != daemon:
             raise RuntimeError("second instance changed daemon generation")
+        if portable_archive is not None:
+            def ctl(*args, password=None):
+                result = subprocess.run([str(binary.parent / 'sidraviactl'), *args], env=env, input=password, text=True, capture_output=True, timeout=30)
+                if result.returncode:
+                    raise RuntimeError('packaged CTL failed: ' + ' '.join(args) + ': ' + result.stderr)
+                return result.stdout
+            ctl('config','create','--id','portable-fixture','--profile','linux-loopback','--username','fictional-portable','--password-stdin','--auto-reconnect=false','--allow-insecure-storage', password='fictional-only\n')
+            ctl('config','update','portable-fixture','--username','fictional-updated','--allow-insecure-storage')
+            for _ in range(3):
+                ctl('daemon','restart')
+                wait_for(runtime.exists, 'packaged core restart')
+            if 'fictional-updated' not in ctl('config','list'):
+                raise RuntimeError('portable configuration did not survive restart')
+            if 'desktop' not in ctl('daemon','status'):
+                raise RuntimeError('packaged core lost desktop ownership')
+            events.append('packaged-config-and-three-core-restarts')
+            ctl('config','remove','portable-fixture','--yes','--allow-insecure-storage')
         # Real shell menu -> Dart exit coordinator -> daemon.stop -> process exit.
         menu_action("打开主界面")
         menu_action("退出")
         gui.wait(timeout=20)
         wait_for(lambda: not runtime.exists(), "normal exit daemon cleanup")
         events.append("release-tray-normal-exit")
+        if portable_archive is not None:
+            moved = package_root.parent / 'moved portable with spaces'
+            package_root.rename(moved)
+            package_root = moved
+            binary = moved / 'sidravia_gui'
+            state = moved / 'namespaces' / namespace
+            runtime = state / 'runtime.json'
+            events.append('whole-portable-directory-relocated')
         gui = start_gui()
         wait_for(runtime.exists, "crash GUI daemon ready")
         start = time.monotonic()
@@ -184,7 +225,7 @@ def run(root, flutter, environment, source_before, source_metadata):
         unchanged = all(source_before[key] == source_after[key] for key in ("commit", "status", "source_fingerprint"))
         if not unchanged:
             raise RuntimeError("source changed during native verification; rerun with stable source")
-        receipt = {"waylandProtocolEvidence": protocol_evidence, "source": source_before, "source_unchanged": unchanged, "passed": True, "namespace": namespace, "events": events, "wayland": env.get("WAYLAND_DISPLAY"), "campusAuthentication": False, "realAccountAutostart": False}
+        receipt = {"waylandProtocolEvidence": protocol_evidence, "source": source_before, "source_unchanged": unchanged, "passed": True, "namespace": namespace, "events": events, "wayland": env.get("WAYLAND_DISPLAY"), "campusAuthentication": False, "realAccountAutostart": False, "portableArchive": str(portable_archive) if portable_archive else None}
         (owned / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(f"Linux native fixture PASS: {owned / 'result.json'}")
         return 0

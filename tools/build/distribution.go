@@ -39,7 +39,12 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		}
 		entries = append(entries, zipEntry{"app_icon.ico", icon, 0644})
 	}
-	gui, err := readGUI(t.cfg.guiDirectory, entries)
+	var gui []zipEntry
+	if t.cfg.target == "linux-amd64" {
+		gui, err = readLinuxGUI(t.cfg.guiDirectory, entries)
+	} else {
+		gui, err = readGUI(t.cfg.guiDirectory, entries)
+	}
 	if err != nil {
 		return err
 	}

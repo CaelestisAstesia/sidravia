@@ -68,6 +68,7 @@ class DistributionContract(unittest.TestCase):
                 for name, data in contents.items():
                     entry = tarfile.TarInfo(base + '/' + name)
                     entry.size = len(data)
+                    entry.mode = 0o755 if name in ('sidravia_gui', 'sidraviactl', 'sidraviad', 'sidraviaupdater') else 0o644
                     tar.addfile(entry, io.BytesIO(data))
         sums = '\n'.join(module.digest(p.read_bytes()) + '  ' + p.name for p in sorted(self.out.iterdir()) if p.name != 'SHA256SUMS.txt')
         (self.out / 'SHA256SUMS.txt').write_text(sums + '\n')
@@ -191,3 +192,21 @@ class DistributionContract(unittest.TestCase):
                     with self.assertRaisesRegex(module.VerificationError, 'smoke_requires_matching_native_host'):
                         self.verify(target, smoke=True, gui=False)
                 run.assert_not_called()
+
+    def test_linux_gui_exact_release_and_stale_bytes(self):
+        for p in list(self.gui.rglob('*')):
+            if p.is_file(): p.unlink()
+        names = ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        payload = self.payload('linux-amd64')
+        for name in names:
+            path = self.gui / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(name.encode())
+            payload[name] = path.read_bytes()
+        self.package('linux-amd64', payload)
+        with mock.patch.object(module, 'binary_identity'):
+            result = module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
+        self.assertEqual(result['sourceContents'], 'passed')
+        (self.gui / 'lib/libapp.so').write_bytes(b'stale')
+        with self.assertRaisesRegex(module.VerificationError, 'archive_source_mismatch'):
+            module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
