@@ -201,7 +201,9 @@ From a clean isolated candidate on Fedora 45 x86_64:
 The fixed Flutter SDK builds the GUI with the requested build name. The existing
 Go distribution producer rebuilds version-bound sibling tools and owns public
 profiles/portable marker; the consumer verifies exact bytes and executable modes.
-Source identity is checked across compilation and consumption. The local receipt
+Source identity is checked across compilation and consumption. Flutter 3.47 Linux
+forwards the compiled Dart build name but omits it from asset assembly; packaging
+stamps version.json and both producer/consumer check its actual version. The local receipt
 is `.local/linux-portable-package-result.json`. No installation, account autostart,
 release upload or signing is performed. Runtime requirements and movement rules
 are shipped in `data/linux-portable.md` from `docs/linux-portable.md`.
@@ -215,6 +217,6 @@ current KDE/Wayland desktop with:
 
 This checks the local producer receipt before extracting into an owned directory
 with spaces. It launches only a synthetic namespace, exercises configuration and
-three core restarts through packaged CTL, exits through the real tray, moves the
+three core restarts through production typed desktop IPC; packaged CTL uses its GUI restart contract, exits through the real tray, moves the
 entire directory, then checks crashed-owner cleanup. It does not perform campus
 authentication or register the current account for autostart.

@@ -215,6 +215,13 @@ def linux_command(args, env):
                     shutil.copytree(origin, stage / name, symlinks=True)
                 else:
                     shutil.copy2(origin, stage / name)
+            # Flutter 3.47's Linux tool_backend omits BuildName when invoking
+            # assemble; Dart's FLUTTER_BUILD_NAME is correct but version.json
+            # falls back to pubspec. Stamp this packaging-owned data resource.
+            version_file = stage / "data/flutter_assets/version.json"
+            gui_version = json.loads(version_file.read_text())
+            gui_version.update(version=args.version, build_number="1")
+            version_file.write_text(json.dumps(gui_version, separators=(",", ":")))
             shutil.copy2(Path(sdk["flutterRoot"]) / "LICENSE", stage / "FLUTTER-LICENSE")
             shutil.copy2(ROOT / "docs/linux-portable.md", stage / "data/linux-portable.md")
             licenses = stage / "data/licenses"

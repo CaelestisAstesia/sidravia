@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -47,6 +48,20 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	if err != nil {
 		return err
+	}
+	if t.cfg.target == "linux-amd64" && len(gui) > 0 {
+		var version map[string]interface{}
+		for _, entry := range gui {
+			if entry.name == "data/flutter_assets/version.json" {
+				err = json.Unmarshal(entry.data, &version)
+				if err != nil {
+					return fmt.Errorf("invalid Linux GUI version: %w", err)
+				}
+			}
+		}
+		if version["version"] != t.cfg.version || version["app_name"] != "sidravia_gui" {
+			return fmt.Errorf("Linux GUI version does not match distribution")
+		}
 	}
 	entries = append(entries, gui...)
 	out, err := filepath.Abs(t.cfg.output)

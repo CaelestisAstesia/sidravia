@@ -122,9 +122,11 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                 name = path.relative_to(gui).as_posix()
                 require(name.casefold() not in {key.casefold() for key in expected}, 'gui_source_collision')
                 expected[name] = path.read_bytes()
-        required_gui = ('Sidravia.exe', 'flutter_windows.dll') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        required_gui = ('Sidravia.exe', 'flutter_windows.dll') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')
         if not windows:
+            gui_version = json.loads(expected['data/flutter_assets/version.json'])
+            require(gui_version.get('version') == version and gui_version.get('app_name') == 'sidravia_gui', 'gui_version_mismatch')
             require(all(p.relative_to(gui).as_posix() == 'sidravia_gui' or p.relative_to(gui).as_posix() == 'FLUTTER-LICENSE' or p.relative_to(gui).parts[0] in ('lib', 'data') for p in gui.rglob('*') if p.is_file()), 'unexpected_linux_gui_source')
     suffix = '.exe' if windows else ''
     binaries = {role + suffix: role for role in roles}

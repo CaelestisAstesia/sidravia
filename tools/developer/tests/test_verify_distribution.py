@@ -196,12 +196,12 @@ class DistributionContract(unittest.TestCase):
     def test_linux_gui_exact_release_and_stale_bytes(self):
         for p in list(self.gui.rglob('*')):
             if p.is_file(): p.unlink()
-        names = ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        names = ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/icons/sidravia.png', 'data/flutter_assets/version.json', 'FLUTTER-LICENSE')
         payload = self.payload('linux-amd64')
         for name in names:
             path = self.gui / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(name.encode())
+            path.write_bytes(json.dumps({'version': VERSION, 'app_name': 'sidravia_gui'}).encode() if name.endswith('version.json') else name.encode())
             payload[name] = path.read_bytes()
         self.package('linux-amd64', payload)
         with mock.patch.object(module, 'binary_identity'):

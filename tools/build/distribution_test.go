@@ -164,7 +164,7 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 
 func TestLinuxGUIBoundary(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"sidravia_gui", "lib/libflutter_linux_gtk.so", "lib/libapp.so", "data/icudtl.dat", "data/flutter_assets/NOTICES.Z", "data/icons/sidravia.png", "FLUTTER-LICENSE"} {
+	for _, name := range []string{"sidravia_gui", "lib/libflutter_linux_gtk.so", "lib/libapp.so", "data/icudtl.dat", "data/flutter_assets/NOTICES.Z", "data/flutter_assets/version.json", "data/icons/sidravia.png", "FLUTTER-LICENSE"} {
 		writeTestFile(t, filepath.Join(root, name), name)
 	}
 	entries, err := readLinuxGUI(root, nil)

@@ -123,7 +123,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         def get_layout():
             return call(service, menu, "com.canonical.dbusmenu", "GetLayout", GLib.Variant("(iias)", (0, -1, [])))[1]
         def ready():
-            return any(node[1].get("label", "").startswith("尚未配置") for node in get_layout()[2])
+            return any(node[1].get("label", "").startswith("尚未配置") or (portable_archive is not None and "未连接" in node[1].get("label", "")) for node in get_layout()[2])
         # runtime.json precedes completion of GUI bootstrap. Wait for the actual
         # shared read model, otherwise exit correctly asks to cancel startup.
         wait_for(ready, "GUI snapshot reflected in real tray")
@@ -169,22 +169,17 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         if json.loads(runtime.read_text())["pid"] != daemon:
             raise RuntimeError("second instance changed daemon generation")
         if portable_archive is not None:
-            def ctl(*args, password=None):
-                result = subprocess.run([str(binary.parent / 'sidraviactl'), *args], env=env, input=password, text=True, capture_output=True, timeout=30)
-                if result.returncode:
-                    raise RuntimeError('packaged CTL failed: ' + ' '.join(args) + ': ' + result.stderr)
-                return result.stdout
-            ctl('config','create','--id','portable-fixture','--profile','linux-loopback','--username','fictional-portable','--password-stdin','--auto-reconnect=false','--allow-insecure-storage', password='fictional-only\n')
-            ctl('config','update','portable-fixture','--username','fictional-updated','--allow-insecure-storage')
-            for _ in range(3):
-                ctl('daemon','restart')
-                wait_for(runtime.exists, 'packaged core restart')
-            if 'fictional-updated' not in ctl('config','list'):
-                raise RuntimeError('portable configuration did not survive restart')
-            if 'desktop' not in ctl('daemon','status'):
-                raise RuntimeError('packaged core lost desktop ownership')
+            dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
+            def driver(operation):
+                command([dart, 'run', 'tool/linux_portable_fixture.dart', operation, str(runtime)], 'portable-' + operation)
+            driver('prepare')
+            stat = Path(f'/proc/{gui.pid}/stat').read_text()
+            owner_start = stat[stat.rfind(')') + 2:].split()[19]
+            for index in range(3):
+                with (owned / f'core-restart-{index}.log').open('w') as log:
+                    subprocess.run([str(binary.parent / 'sidraviactl'), 'gui', 'restart', '--owner-pid', str(gui.pid)], env=dict(env, SIDRAVIA_DESKTOP_OWNER_START=owner_start), stdout=log, stderr=subprocess.STDOUT, check=True, timeout=35)
+                driver('verify')
             events.append('packaged-config-and-three-core-restarts')
-            ctl('config','remove','portable-fixture','--yes','--allow-insecure-storage')
         # Real shell menu -> Dart exit coordinator -> daemon.stop -> process exit.
         menu_action("打开主界面")
         menu_action("退出")
@@ -201,6 +196,11 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             events.append('whole-portable-directory-relocated')
         gui = start_gui()
         wait_for(runtime.exists, "crash GUI daemon ready")
+        if portable_archive is not None:
+            driver('verify')
+            driver('cleanup')
+            events.append('portable-config-preferences-restored-after-relocation-and-session-cancelled')
+
         start = time.monotonic()
         gui.kill()
         gui.wait(timeout=5)
