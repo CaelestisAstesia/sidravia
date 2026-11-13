@@ -236,6 +236,8 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         wait_for(runtime.exists, "crash GUI daemon ready")
         if portable_archive is not None:
             driver('verify')
+            menu_action('打开主界面')
+            events.append('relocated-autostart-owned-tray-ready-and-restored')
             driver('cleanup')
             driver('autostart-disable')
             events.append('portable-config-preferences-restored-after-relocation-and-session-cancelled')

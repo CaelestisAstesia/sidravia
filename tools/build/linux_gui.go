@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io/fs"
 	"os"
@@ -51,6 +53,11 @@ func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		if name == "sidravia_gui" || strings.HasSuffix(name, ".so") {
+			if len(data) < 20 || !bytes.Equal(data[:4], []byte{0x7f, 'E', 'L', 'F'}) || data[4] != 2 || data[5] != 1 || binary.LittleEndian.Uint16(data[18:20]) != 62 {
+				return fmt.Errorf("Linux GUI is not ELF AMD64: %s", name)
+			}
 		}
 		mode := os.FileMode(0644)
 		if name == "sidravia_gui" {

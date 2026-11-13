@@ -202,11 +202,13 @@ class DistributionContract(unittest.TestCase):
             path = self.gui / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(json.dumps({'version': VERSION, 'app_name': 'sidravia_gui'}).encode() if name.endswith('version.json') else name.encode())
+            if name == 'sidravia_gui' or name.endswith('.so'):
+                path.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\0')
             payload[name] = path.read_bytes()
         self.package('linux-amd64', payload)
         with mock.patch.object(module, 'binary_identity'):
             result = module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
         self.assertEqual(result['sourceContents'], 'passed')
-        (self.gui / 'lib/libapp.so').write_bytes(b'stale')
+        (self.gui / 'lib/libapp.so').write_bytes(payload['lib/libapp.so'] + b'stale')
         with self.assertRaisesRegex(module.VerificationError, 'archive_source_mismatch'):
             module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
