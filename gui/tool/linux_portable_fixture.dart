@@ -7,6 +7,8 @@ import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
+import 'package:sidravia_gui/platform/linux_installation_manager.dart';
+import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 
 Future<void> main(List<String> args) async {
@@ -22,6 +24,20 @@ Future<void> main(List<String> args) async {
   final runtime = File(args[1]);
   if (!runtime.absolute.path.startsWith('$owner/')) {
     throw StateError('outside fixture');
+  }
+  if (args[0] == 'autostart-enable' || args[0] == 'autostart-disable') {
+    final executable = '${runtime.parent.parent.parent.path}/sidravia_gui';
+    final manager = LinuxInstallationManager(
+      executable: executable,
+      environment: Platform.environment,
+    );
+    await manager.change(
+      args[0] == 'autostart-enable'
+          ? IntegrationChange.startGui
+          : IntegrationChange.startDisable,
+    );
+    await manager.close();
+    return;
   }
   final info = jsonDecode(runtime.readAsStringSync()) as Map<String, dynamic>;
   final client = await WebSocketIpcClient.connect(

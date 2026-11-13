@@ -22,6 +22,26 @@ def wait_for(condition, label, timeout=20):
         time.sleep(.05)
 
 
+class DesktopEntryChild:
+    """Owned Gio-spawned child with explicit wait/reap, like Popen's subset."""
+    def __init__(self, pid):
+        self.pid = pid
+        self.returncode = None
+    def poll(self):
+        if self.returncode is None:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid:
+                self.returncode = os.waitstatus_to_exitcode(status)
+        return self.returncode
+    def wait(self, timeout):
+        wait_for(lambda: self.poll() is not None, 'owned desktop child exit', timeout)
+        return self.returncode
+    def terminate(self):
+        os.kill(self.pid, signal.SIGTERM)
+    def kill(self):
+        os.kill(self.pid, signal.SIGKILL)
+
+
 def run(root, flutter, environment, source_before, source_metadata, portable_archive=None):
     from gi.repository import Gio, GLib
     owned = Path(tempfile.mkdtemp(prefix="linux-desktop-fixture-", dir=root / ".local"))
@@ -187,6 +207,8 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         wait_for(lambda: not runtime.exists(), "normal exit daemon cleanup")
         events.append("release-tray-normal-exit")
         if portable_archive is not None:
+            driver('autostart-enable')
+            driver('autostart-disable')
             moved = package_root.parent / 'moved portable with spaces'
             package_root.rename(moved)
             package_root = moved
@@ -194,11 +216,28 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             state = moved / 'namespaces' / namespace
             runtime = state / 'runtime.json'
             events.append('whole-portable-directory-relocated')
-        gui = start_gui()
+        if portable_archive is not None:
+            driver('autostart-enable')
+            entry, = (Path(env['XDG_CONFIG_HOME']) / 'autostart').glob('*.desktop')
+            application = Gio.DesktopAppInfo.new_from_filename(str(entry))
+            launch_context = Gio.AppLaunchContext()
+            for key, value in env.items():
+                launch_context.setenv(key, value)
+            children = []
+            launched = application.launch_uris_as_manager([], launch_context,
+                GLib.SpawnFlags.DO_NOT_REAP_CHILD | GLib.SpawnFlags.STDOUT_TO_DEV_NULL | GLib.SpawnFlags.STDERR_TO_DEV_NULL,
+                None, None, lambda app, child, data: children.append(child), None)
+            if not launched or len(children) != 1:
+                raise RuntimeError('owned XDG desktop launch failed')
+            gui = DesktopEntryChild(children[0])
+            events.append('actual-packaged-xdg-autostart-entry-launch')
+        else:
+            gui = start_gui()
         wait_for(runtime.exists, "crash GUI daemon ready")
         if portable_archive is not None:
             driver('verify')
             driver('cleanup')
+            driver('autostart-disable')
             events.append('portable-config-preferences-restored-after-relocation-and-session-cancelled')
 
         start = time.monotonic()
@@ -234,7 +273,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             gui.terminate()
             try:
                 gui.wait(timeout=5)
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, RuntimeError):
                 gui.kill()
                 gui.wait(timeout=5)
         wait_for(lambda: not runtime.exists(), "fixture owner cleanup", timeout=10)
