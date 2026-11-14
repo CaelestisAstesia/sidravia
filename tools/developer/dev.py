@@ -153,7 +153,7 @@ def linux_command(args, env):
     """Build/run only the explicit development target; never installs a product."""
     if platform.system() != "Linux":
         raise ValueError("linux desktop development requires native Linux")
-    if args.check_gui and (args.verify_package or args.announcement_integration):
+    if args.check_gui and (args.verify_package or args.announcement_integration or args.rpm or args.verify_rpm_upgrade):
         raise ValueError("--check-gui must run separately from package or announcement native acceptance")
     flutter = str(Path(args.flutter).resolve())
     sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
@@ -161,6 +161,14 @@ def linux_command(args, env):
         raise ValueError("Flutter SDK does not match .flutter-version")
     env = dict(env, PATH=str(Path(sdk["flutterRoot"]) / "bin") + os.pathsep + env.get("PATH", ""))
     source_before = metadata(args.go, env)
+    if args.rpm or args.verify_rpm_upgrade:
+        if source_before['dirty']:
+            raise ValueError('RPM candidates require clean source')
+        import linux_rpm
+        current_source = lambda: metadata(args.go, env)
+        if args.rpm:
+            return linux_rpm.build(ROOT, Path(args.rpm).resolve(), args.output, args.rpm_release, env, source_before, current_source)
+        return linux_rpm.accept(ROOT, [Path(p).resolve() for p in args.verify_rpm_upgrade], env, source_before, current_source)
     if args.package:
         if source_before["dirty"]:
             raise ValueError("package requires a clean tracked and untracked source tree")
@@ -272,6 +280,9 @@ def parse_args(argv=None):
             mode = sub.add_mutually_exclusive_group()
             mode.add_argument("--package", action="store_true")
             mode.add_argument("--verify-package", help="owned native acceptance of a verified portable tar.gz")
+            mode.add_argument("--rpm", metavar="PORTABLE", help="build RPM from the exact clean-source verified GUI portable")
+            mode.add_argument("--verify-rpm-upgrade", nargs=2, metavar=("OLD_RPM", "NEW_RPM"), help="isolated RPM install/upgrade/erase and installed GUI acceptance")
+            sub.add_argument("--rpm-release", default="1", help="positive RPM packaging revision")
             sub.add_argument("--version")
             sub.add_argument("--output")
             sub.add_argument("--flutter", default=".local/bin/flutter")

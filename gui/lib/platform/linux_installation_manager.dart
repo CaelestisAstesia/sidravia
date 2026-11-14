@@ -20,6 +20,10 @@ class LinuxInstallationManager implements InstallationManager {
     Directory(path).absolute.uri.normalizePath().resolve('__path_anchor__'),
   ).parent.path;
   String get _directory => _normalRoot(File(executable).parent.path);
+  bool get _rpmManaged =>
+      File('$_directory/sidravia.rpm').existsSync() &&
+      File('$_directory/sidravia.rpm').readAsStringSync() ==
+          'sidravia-rpm-v1\n';
   String get _configRoot {
     final xdg = environment['XDG_CONFIG_HOME'];
     if (xdg != null && xdg.isNotEmpty && Directory(xdg).isAbsolute) {
@@ -263,9 +267,15 @@ class LinuxInstallationManager implements InstallationManager {
       var pathEnabled = false;
       String pathNotice;
       try {
-        final state = _pathState();
-        pathEnabled = state.enabled;
-        pathNotice = state.notice;
+        if (_rpmManaged) {
+          pathSupported = false;
+          pathEnabled = true;
+          pathNotice = '命令由 RPM 安装到 /usr/bin；请使用系统包管理器维护。';
+        } else {
+          final state = _pathState();
+          pathEnabled = state.enabled;
+          pathNotice = state.notice;
+        }
       } on IntegrationFailure catch (error) {
         pathSupported = false;
         pathNotice = error.message;
@@ -294,6 +304,9 @@ class LinuxInstallationManager implements InstallationManager {
     try {
       if (change == IntegrationChange.pathEnable ||
           change == IntegrationChange.pathDisable) {
+        if (_rpmManaged) {
+          throw const IntegrationFailure('RPM 安装的命令由系统包管理器维护。');
+        }
         _changePath(change == IntegrationChange.pathEnable);
         return;
       }

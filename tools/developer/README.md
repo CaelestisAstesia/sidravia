@@ -241,3 +241,36 @@ running owner. No real account autostart/PATH/shell profile is modified. Unit
 boundary tests also cover old GUI entry migration, conflicts, quoting, missing
 PATH/shadowed commands, Fedora public skeleton shell lookup, namespace isolation
 and nonblocking interprocess maintenance locking.
+
+### Local unsigned Fedora RPM (x86_64)
+
+RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
+project-downloaded replacements. Build the verified clean-source GUI portable
+first, then wrap that exact payload. The RPM excludes the portable marker and
+uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
+and icon. No process/account/autostart scriptlets are shipped. Initial support
+and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
+
+```
+.local/bin/dev linux --package --version 0.4.0-dev.linux.5 --output .local/rpm-portable-input
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-dev.linux.5-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-dev.linux.5-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
+.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.4.0~dev.linux.5-1.x86_64.rpm .local/rpm-r2/sidravia-0.4.0~dev.linux.5-2.x86_64.rpm
+```
+
+Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
+input SHA256, output SHA256, exact file digests/modes/links and dependencies.
+Prereleases map to RPM `~`, sorting before the final version. No signing or
+repository upload is performed. The candidate is an upstream binary package;
+private Flutter runtime and font licensing prevent assuming Fedora repository
+eligibility. Full bundled notices remain in the payload.
+
+Acceptance requires user namespaces and a KDE/Wayland session. It snapshots the
+host RPM SQLite inventory read-only, installs/updates/erases in a newly owned
+private root, with dependency checks enabled. Installed binaries run through
+Bubblewrap over read-only host libraries and private HOME/XDG/namespace. It
+checks installed IPC/configuration/preferences/core restart/tray exit, update
+ownership refusal, and persistence across upgrade/removal. No host RPM install,
+real autostart registration or campus request is involved. This is not a clean
+Fedora dependency-solving/install-image test. Receipts/logs stay in the owned
+`.local/linux-rpm-fixture-*` until reviewed and explicitly cleaned.

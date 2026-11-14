@@ -72,6 +72,34 @@ open(${jsonEncode('${root.path}/observed')},"w").write(json.dumps([os.environ.ge
 
 void main() {
   test(
+    'RPM commands are package managed while autostart remains explicit',
+    () async {
+      final f = _Fixture();
+      File('${f.product.path}/sidravia.rpm')
+          .writeAsStringSync('sidravia-rpm-v1\n');
+      final manager = f.manager;
+      final status = await manager.status();
+      expect(status.userPathSupported, isFalse);
+      expect(status.pathEnabled, isTrue);
+      expect(status.pathNotice, contains('RPM'));
+      for (final action in [
+        IntegrationChange.pathEnable,
+        IntegrationChange.pathDisable,
+      ]) {
+        await expectLater(
+          manager.change(action),
+          throwsA(isA<IntegrationFailure>()),
+        );
+      }
+      expect(Directory('${f.home.path}/.local/bin').existsSync(), isFalse);
+      await manager.change(IntegrationChange.startDaemon);
+      expect((await manager.status()).autostart, 'daemon');
+      await manager.change(IntegrationChange.startDisable);
+      expect((await manager.status()).autostart, 'disabled');
+      await manager.close();
+    },
+  );
+  test(
     'session GUI/daemon switching is isolated, idempotent and reversible',
     () async {
       final f = _Fixture();

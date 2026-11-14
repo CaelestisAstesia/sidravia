@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sidravia
+Comment=Campus network authentication client
+Comment[zh_CN]=校园网络认证客户端
+Exec=/usr/bin/sidravia_gui
+Icon=io.github.CaelestisAstesia.Sidravia
+Terminal=false
+Categories=Network;
+StartupNotify=true
+StartupWMClass=io.github.CaelestisAstesia.Sidravia

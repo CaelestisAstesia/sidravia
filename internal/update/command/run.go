@@ -89,6 +89,9 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 	if err != nil {
 		return emit(false, "invalid_target", "无法确认当前程序布局。", nil)
 	}
+	if runtime.GOOS == "linux" && rpmManaged(layout) {
+		return emit(false, "system_package_managed", "此安装由 RPM 管理，请使用系统包管理器更新。", nil)
+	}
 	if *kind == "" {
 		*kind = defaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
 	}
@@ -260,6 +263,19 @@ func safeMessage(err error) string {
 
 // Package identity follows the current layout, never a release fallback: a GUI
 // installation must not silently lose its GUI by selecting a core-only asset.
+func rpmManaged(layout productlayout.Layout) bool {
+	if layout.Mode != productlayout.ModeInstalled {
+		return false
+	}
+	path := filepath.Join(layout.ExecutableDirectory, "sidravia.rpm")
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() != int64(len("sidravia-rpm-v1\n")) {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	return err == nil && string(data) == "sidravia-rpm-v1\n"
+}
+
 func defaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	if goos == "windows" && arch == "amd64" {
 		if layout.Mode == productlayout.ModeInstalled {
