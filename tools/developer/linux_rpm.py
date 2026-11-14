@@ -65,7 +65,8 @@ def verify(package, receipt):
     if actual != receipt['files']:
         raise ValueError('RPM payload paths/modes/digests/links differ from the verified stage')
     requirements = query(package, '--requires').splitlines()
-    for required in ('gtk3', 'webkit2gtk4.1', 'libayatana-appindicator-gtk3'):
+    for required in ('gtk3', 'webkit2gtk4.1', 'libayatana-appindicator-gtk3',
+                     '/usr/bin/env', '/usr/bin/xdg-open', 'desktop-file-utils', 'hicolor-icon-theme'):
         if required not in requirements:
             raise ValueError('missing RPM runtime dependency: ' + required)
     if any('libflutter_linux_gtk.so' in x for x in requirements):
