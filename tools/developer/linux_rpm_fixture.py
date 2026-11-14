@@ -104,6 +104,7 @@ def run(root, packages, receipts, environment, source, current_source):
     (sysroot / host_alias.relative_to('/')).mkdir(parents=True)
     rpm = ['bwrap', '--unshare-user', '--die-with-parent', '--uid', '0', '--gid', '0', '--unshare-net',
            '--cap-add', 'CAP_SYS_CHROOT', '--ro-bind', '/', '/', '--bind', str(sysroot), str(sysroot),
+           '--bind', str(sysroot / 'tmp'), '/tmp', '--setenv', 'TMPDIR', '/tmp',
            '--ro-bind', '/usr', str(sysroot / host_alias.relative_to('/')), '--chdir', str(owned),
            '--dev', str(sysroot / 'dev'), '--proc', str(sysroot / 'proc'),
            'rpm', '--root', str(sysroot), '--dbpath', dbpath, '--nosignature', '--noplugins']
@@ -178,7 +179,8 @@ def run(root, packages, receipts, environment, source, current_source):
         wait_for(ready, 'installed real tray snapshot')
         service, menu, item = found[0]
         call(service, menu, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (item, 'clicked', GLib.Variant('i', 0), 0)))
-        gui.wait(timeout=20)
+        if gui.wait(timeout=20) != 0:
+            raise RuntimeError('installed GUI failed during normal tray exit')
         wait_for(lambda: not runtime.exists(), 'installed GUI normal owner cleanup')
         events.append('installed-tray-exit')
 
@@ -191,7 +193,7 @@ def run(root, packages, receipts, environment, source, current_source):
                 'children=[]; assert app; '
                 'assert app.launch_uris_as_manager([],Gio.AppLaunchContext(),GLib.SpawnFlags.DO_NOT_REAP_CHILD,None,None,lambda app,pid,data:children.append(pid),None); '
                 'assert len(children)==1; Path(' + repr(str(pidfile)) + ').write_text(str(children[0])); '
-                'os.waitpid(children[0],0)')
+                'result=os.waitpid(children[0],0); raise SystemExit(os.waitstatus_to_exitcode(result[1]))')
         with (owned / f'gui-{len(events)}.log').open('w') as log:
             gui = subprocess.Popen(sandbox + ['/usr/bin/python3', '-c', code], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         wait_for(lambda: pidfile.exists() or gui.poll() is not None, 'installed GUI exec')
@@ -221,6 +223,10 @@ def run(root, packages, receipts, environment, source, current_source):
             raise RuntimeError('installed updater selected a portable asset')
         events.append('updater-system-package-managed-without-network')
         launch()
+        first_daemon = json.loads(runtime.read_text())['pid']
+        command(sandbox + ['/usr/bin/sidravia_gui', '--start-visible'], 'installed-single-instance')
+        if json.loads(runtime.read_text())['pid'] != first_daemon:
+            raise RuntimeError('installed activation changed daemon generation')
         driver('prepare')
         driver('verify')
         owner_start = Path(f'/proc/{gui_pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
@@ -239,6 +245,9 @@ def run(root, packages, receipts, environment, source, current_source):
         tray_exit()
         command(rpm + ['-e', 'sidravia'], 'rpm-erase')
         installed = False
+        icon_cache = sysroot / 'usr/share/icons/hicolor/icon-theme.cache'
+        if icon_cache.exists() and DESKTOP.encode() in icon_cache.read_bytes():
+            raise RuntimeError('RPM uninstall retained stale application icon cache')
         if (sysroot / APP.relative_to('/')).exists() or any((sysroot / 'usr/bin' / n).is_symlink() for n in COMMANDS):
             raise RuntimeError('RPM uninstall retained package-owned programs')
         for name, attributes in receipts[1]['files'].items():
@@ -259,6 +268,8 @@ def run(root, packages, receipts, environment, source, current_source):
         result = {'passed': True, 'source': source, 'source_unchanged': True, 'events': events,
                   'rpmSHA256': [r['sha256'] for r in receipts], 'dependencyChecks': 'enabled against read-only host inventory snapshot',
                   'hostInstallation': False, 'realAccountIntegration': False, 'campusTraffic': False,
+                  'rpmPlugins': 'disabled in user namespace; host SELinux/inhibit plugins not accepted',
+                  'signatures': 'unsigned local candidate; all digest checks enabled',
                   'isolation': 'private root/RPM DB, user+mount namespace, host libraries read-only'}
         (owned / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         print('RPM isolated install/upgrade/erase PASS: ' + str(owned / 'result.json'))

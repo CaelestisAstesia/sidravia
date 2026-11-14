@@ -36,3 +36,9 @@ then mounts the installed payload over read-only host runtime libraries in an
 unprivileged sandbox. Dependency checks remain enabled. This tests transactions
 and installed behavior on this host; it is not a clean Fedora dependency solve,
 fresh login, campus authentication, other distribution or public release test.
+The initial upgrade test is RPM Release 1 to 2 of the same product/source,
+not a cross-version user-data migration test. Unsigned-candidate verification
+disables signature acceptance explicitly while retaining all digest checks.
+Host RPM plugins (including SELinux labeling and shutdown inhibition) are
+disabled inside the user namespace; ordinary desktop/icon file triggers run
+and their cache outputs are checked. Host SELinux installation is not accepted.
