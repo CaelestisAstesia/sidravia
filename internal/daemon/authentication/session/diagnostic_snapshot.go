@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"sidravia/internal/daemon/authentication/protocol"
+
 	"time"
 )
 
@@ -29,34 +29,34 @@ type ProtocolSocketObservation struct {
 	UpdatedAt      time.Time
 }
 
-// NetworkDiagnosticsSnapshot reads current desired binding and observed socket
+// DiagnosticSnapshot reads current desired binding and observed socket
 // in one actor turn; a retained socket may belong to an earlier Run generation.
-type NetworkDiagnosticsSnapshot struct {
+type DiagnosticSnapshot struct {
 	Snapshot       Snapshot
 	ProtocolSocket ProtocolSocketObservation
 }
 
-func (session *AuthenticationSession) QueryNetworkDiagnostics(ctx context.Context) (NetworkDiagnosticsSnapshot, error) {
+func (session *AuthenticationSession) QueryDiagnosticSnapshot(ctx context.Context) (DiagnosticSnapshot, error) {
 	if ctx == nil {
-		return NetworkDiagnosticsSnapshot{}, errors.New("network diagnostics context is required")
+		return DiagnosticSnapshot{}, errors.New("diagnostic snapshot context is required")
 	}
 	if ctx.Err() != nil {
-		return NetworkDiagnosticsSnapshot{}, errors.Join(ctx.Err(), context.Cause(ctx))
+		return DiagnosticSnapshot{}, errors.Join(ctx.Err(), context.Cause(ctx))
 	}
-	reply := make(chan networkDiagnosticsReply, 1)
-	if err := session.send(ctx, networkDiagnosticsQuery{reply: reply}); err != nil {
+	reply := make(chan diagnosticSnapshotReply, 1)
+	if err := session.send(ctx, diagnosticSnapshotQuery{reply: reply}); err != nil {
 		if ctx.Err() != nil {
 			err = errors.Join(err, ctx.Err(), context.Cause(ctx))
 		}
-		return NetworkDiagnosticsSnapshot{}, err
+		return DiagnosticSnapshot{}, err
 	}
 	select {
 	case result := <-reply:
 		return result.snapshot, nil
 	case <-ctx.Done():
-		return NetworkDiagnosticsSnapshot{}, errors.Join(ctx.Err(), context.Cause(ctx))
+		return DiagnosticSnapshot{}, errors.Join(ctx.Err(), context.Cause(ctx))
 	case <-session.done:
-		return NetworkDiagnosticsSnapshot{}, ErrAuthenticationSessionClosed
+		return DiagnosticSnapshot{}, ErrAuthenticationSessionClosed
 	}
 }
 
@@ -80,41 +80,4 @@ func (session *AuthenticationSession) handleProtocolSocketClosed(event protocolS
 		}
 		snapshot.ProtocolSocket.UpdatedAt = session.now()
 	})
-}
-
-// NetworkDiagnosticTarget is immutable trusted Profile and policy input. It
-// contains neither credentials nor reported protocol-context overrides.
-type NetworkDiagnosticTarget struct {
-	Endpoint  netip.AddrPort
-	Policy    NetworkBindingPolicy
-	Supported bool
-}
-
-func (session *AuthenticationSession) NetworkDiagnosticTarget(ctx context.Context) (NetworkDiagnosticTarget, error) {
-	if ctx == nil {
-		return NetworkDiagnosticTarget{}, errors.New("network diagnostics context is required")
-	}
-	if ctx.Err() != nil {
-		return NetworkDiagnosticTarget{}, errors.Join(ctx.Err(), context.Cause(ctx))
-	}
-	if session.closed.Load() {
-		return NetworkDiagnosticTarget{}, ErrAuthenticationSessionClosed
-	}
-	target := NetworkDiagnosticTarget{Policy: session.definition.Configuration.NetworkBindingPolicy}
-	provider, ok := session.definition.AuthenticationProtocolFactory.(protocol.AuthenticationProtocolNetworkTargetProvider)
-	if !ok {
-		return target, nil
-	}
-	endpoint, err := provider.NetworkDiagnosticEndpoint(append(protocol.InstitutionProtocolConfiguration(nil), session.definition.InstitutionProfile.InstitutionProtocolConfiguration...))
-	if err != nil {
-		return NetworkDiagnosticTarget{}, err
-	}
-	if ctx.Err() != nil {
-		return NetworkDiagnosticTarget{}, errors.Join(ctx.Err(), context.Cause(ctx))
-	}
-	if session.closed.Load() {
-		return NetworkDiagnosticTarget{}, ErrAuthenticationSessionClosed
-	}
-	target.Endpoint, target.Supported = endpoint, true
-	return target, nil
 }

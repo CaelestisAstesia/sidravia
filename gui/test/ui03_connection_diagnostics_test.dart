@@ -45,15 +45,13 @@ void main() {
         expect(find.text('核心服务状态'), findsNothing);
         expect(find.text('10.0.0.1:61440'), findsOneWidget);
         expect(find.text('198.51.100.5:61440'), findsNothing);
-        expect(client.probes, [false]);
         await tap(tester, '技术信息');
         await appearance.settled;
         expect(appearance.value, ThemeMode.system);
         expect(store.settings!.diagnosticsExpanded, isTrue);
-        expect(client.probes, [false]);
-        expect(find.text('198.51.100.5:61440'), findsOneWidget);
-        await tap(tester, '执行有限 IP 探测');
-        expect(client.probes.last, isTrue);
+        expect(find.text('198.51.100.5:61440'), findsNothing);
+        expect(find.text('执行有限 IP 探测'), findsNothing);
+        expect(find.text('刷新网络诊断'), findsNothing);
         await tap(tester, '返回');
         expect(find.byType(HomePage), findsOneWidget);
         await tester.tap(find.byTooltip('设置'));
@@ -111,11 +109,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
-              body: AdvancedPage(
-                controller: c,
-                diagnostics: c.diagnostics,
-                onBack: () {},
-              ),
+              body: AdvancedPage(controller: c, onBack: () {}),
             ),
           ),
         );
@@ -166,13 +160,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('移除当前会话'), findsNothing);
         await tester.pumpWidget(
-          mount(
-            AdvancedPage(
-              controller: c,
-              diagnostics: c.diagnostics,
-              onBack: () {},
-            ),
-          ),
+          mount(AdvancedPage(controller: c, onBack: () {})),
         );
         await tester.pumpAndSettle();
         await tap(tester, '技术信息');
@@ -197,7 +185,6 @@ void main() {
 class _Client extends OfflineDemoClient {
   _Client(this.state);
   final SessionState state;
-  final probes = <bool>[];
   final removals = <String>[];
   @override
   Future<List<SessionSummary>> sessionList() async => [
@@ -226,21 +213,6 @@ class _Client extends OfflineDemoClient {
       ),
     ),
   ];
-  @override
-  Future<NetworkDiagnosis> networkDiagnose({
-    String? configurationId,
-    String? sessionId,
-    bool probe = false,
-  }) async {
-    probes.add(probe);
-    return const NetworkDiagnosis(
-      observedAt: '2026-10-10T00:00:00Z',
-      selectionBasis: 'os_route_proposal',
-      status: 'available',
-      target: NetworkEndpoint('198.51.100.5', 61440),
-    );
-  }
-
   @override
   Future<SessionRemoveResult> sessionRemove(String sessionId) async {
     removals.add(sessionId);

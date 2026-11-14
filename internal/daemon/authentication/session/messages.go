@@ -30,8 +30,8 @@ type shutdownCommand struct {
 
 type snapshotQuery struct{ reply chan snapshotReply }
 
-type networkDiagnosticsReply struct{ snapshot NetworkDiagnosticsSnapshot }
-type networkDiagnosticsQuery struct{ reply chan networkDiagnosticsReply }
+type diagnosticSnapshotReply struct{ snapshot DiagnosticSnapshot }
+type diagnosticSnapshotQuery struct{ reply chan diagnosticSnapshotReply }
 type protocolSocketOpenedEvent struct {
 	generation    uint64
 	local, remote netip.AddrPort
@@ -41,7 +41,7 @@ type protocolSocketClosedEvent struct {
 	closed     bool
 }
 
-func (networkDiagnosticsQuery) isSessionMessage()   {}
+func (diagnosticSnapshotQuery) isSessionMessage()   {}
 func (protocolSocketOpenedEvent) isSessionMessage() {}
 func (protocolSocketClosedEvent) isSessionMessage() {}
 

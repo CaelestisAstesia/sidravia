@@ -32,12 +32,6 @@ type AuthenticationProtocolFactory interface {
 	CreateAuthenticationProtocolRun(AuthenticationProtocolRunCreationInputs) (AuthenticationProtocolRun, error)
 }
 
-// AuthenticationProtocolNetworkTargetProvider exposes a compiled Profile target
-// without creating a Run or resolving credentials or reported-context overrides.
-type AuthenticationProtocolNetworkTargetProvider interface {
-	NetworkDiagnosticEndpoint(InstitutionProtocolConfiguration) (netip.AddrPort, error)
-}
-
 // AuthenticationProtocolRunNetworkObserver receives actual owned socket facts.
 // It is optional and separate from the logging diagnostics sink.
 type AuthenticationProtocolRunNetworkObserver interface {
@@ -112,7 +106,8 @@ type AuthenticationProtocolNetworkFailure struct {
 	RemoteEndpoint netip.AddrPort
 }
 
-// AuthenticationProtocolNetworkDiagnostics optionally observes network failures.
+// AuthenticationProtocolNetworkDiagnostics passively records socket failures for logs.
+// It does not initiate independent network checks or probes.
 // Consumers decide whether to enable expensive diagnostic collection.
 type AuthenticationProtocolNetworkDiagnostics interface {
 	NetworkFailure(AuthenticationProtocolNetworkFailure)

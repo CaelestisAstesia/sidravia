@@ -53,6 +53,39 @@ Future<void> main(List<String> args) async {
   try {
     final status = await client.daemonStatus();
     if (status.mode != 'desktop') throw StateError('lost desktop owner');
+    // Retained read-only APIs use accepted facts, not active route/IP probes.
+    await client.networkInterfaces();
+    final exported = await client.diagnosticsExport();
+    if (exported.schemaVersion != 1 ||
+        exported.productVersion != info['productVersion']) {
+      throw StateError('diagnostic export contract lost');
+    }
+    final removed = await WebSocket.connect(
+      info['endpoint'] as String,
+      headers: {
+        'Authorization': 'Bearer ${info['token']}',
+        'Sidravia-Build-ID': info['buildId'],
+      },
+    );
+    try {
+      removed.add(
+        jsonEncode({
+          'kind': 'request',
+          'id': 'removed-feature',
+          'method': 'network.diagnose',
+          'payload': {'configurationId': 'fixture-only'},
+        }),
+      );
+      final response = jsonDecode(
+        await removed.first.timeout(const Duration(seconds: 5)) as String,
+      ) as Map;
+      if (response['ok'] != false ||
+          (response['error'] as Map)['code'] != 'unknown_method') {
+        throw StateError('removed network diagnosis is still reachable');
+      }
+    } finally {
+      await removed.close();
+    }
     if (args[0] == 'prepare') {
       final config = await client.configurationCreate(
         networkBindingPolicy: const NetworkBindingPolicy.automatic(),

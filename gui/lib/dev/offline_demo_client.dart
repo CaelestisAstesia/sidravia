@@ -45,12 +45,6 @@ class OfflineDemoClient extends ChangeNotifier
         ],
       );
   @override
-  Future<NetworkDiagnosis> networkDiagnose({
-    String? configurationId,
-    String? sessionId,
-    bool probe = false,
-  }) async => throw const IpcRequestFailure('unsupported_platform');
-  @override
   Future<ConfigurationSummary> configurationSetNetworkBindingPolicy({
     required String configurationId,
     required NetworkBindingPolicy policy,

@@ -55,7 +55,6 @@ var allowedMethods = map[string]struct{}{
 	contract.MethodStateSubscribe:            {},
 	contract.MethodStateUnsubscribe:          {},
 	contract.MethodDiagnosticsExport:         {},
-	contract.MethodNetworkDiagnose:           {},
 	contract.MethodNetworkInterfaces:         {},
 	contract.MethodDaemonStatus:              {},
 	contract.MethodDaemonStop:                {},

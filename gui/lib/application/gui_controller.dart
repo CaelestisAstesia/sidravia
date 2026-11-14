@@ -3,7 +3,6 @@ import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
-import 'package:sidravia_gui/features/diagnostics/network_diagnosis_controller.dart';
 import 'package:sidravia_gui/application/gui_network_binding.dart';
 
 import 'dart:async';
@@ -64,76 +63,6 @@ class GuiController extends ChangeNotifier {
   GuiSnapshot? _snapshot;
   String? _notice;
   String? _outdatedSessionId;
-
-  /// Owns the module lifetime; diagnostic facts are owned by this separate controller.
-  late final diagnostics = NetworkDiagnosisController(
-    request: _requestDiagnosis,
-  );
-
-  NetworkDiagnosisContext get _diagnosisContext => NetworkDiagnosisContext(
-    generation: _generation,
-    capabilities: capabilities,
-    supported: _client is SidraviaNetworkClient,
-    active: !_exitRequested && !_disposed && !_maintenanceFrozen,
-    canDispatch: _transition == null && !busy && !_exitRequested && !_disposed,
-  );
-
-  Future<NetworkDiagnosis?>? _requestDiagnosis(
-    NetworkDiagnosisContext context,
-    bool probe,
-  ) {
-    final current = _diagnosisContext;
-    final client = _client;
-    if (!current.canDispatch ||
-        current.unavailable != null ||
-        client == null ||
-        context.generation != current.generation ||
-        context.target != current.target ||
-        !identical(
-          context.capabilities.snapshot,
-          current.capabilities.snapshot,
-        )) {
-      return null;
-    }
-    _timer?.cancel();
-    _timer = null;
-    final work = _runDiagnosisTransport(context, client, probe);
-    // Diagnosis shares the existing serial gate, including mutation/restart/exit waits.
-    _transition = work.then<void>((_) {}, onError: (Object _, StackTrace _) {});
-    _notify();
-    return work;
-  }
-
-  Future<NetworkDiagnosis?> _runDiagnosisTransport(
-    NetworkDiagnosisContext context,
-    SidraviaIpcClient client,
-    bool probe,
-  ) async {
-    final generation = context.generation;
-    try {
-      final result = await (client as SidraviaNetworkClient).networkDiagnose(
-        configurationId: context.target!.$1,
-        sessionId: context.target!.$2,
-        probe: probe,
-      );
-      return _canContinue(generation) && identical(_client, client)
-          ? result
-          : null;
-    } on IpcRequestFailure {
-      rethrow; // Curated business feedback belongs to the diagnosis controller.
-    } on Object catch (error) {
-      if (_current(generation) && identical(_client, client)) {
-        await _invalidate(generation, client, error);
-      }
-      return null;
-    } finally {
-      if (_generation == generation) {
-        _transition = null;
-        _scheduleRefresh(generation, client);
-      }
-      _notify();
-    }
-  }
 
   bool get sessionNeedsReset =>
       _snapshot?.sessions.any((s) => s.cleanupRequired) == true ||
@@ -1058,7 +987,6 @@ class GuiController extends ChangeNotifier {
   void _notify() {
     if (!_disposed) {
       presentationClock.update(connectionPresentation.establishedAt);
-      diagnostics.updateContext(_diagnosisContext);
       notifyListeners();
     }
   }
@@ -1072,12 +1000,10 @@ class GuiController extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     final transition = _transition;
-    final diagnosisClosing = diagnostics.close();
     final releasing = _releaseResources();
     return _closed = () async {
       await releasing;
       await transition;
-      await diagnosisClosing;
       await _releaseResources();
     }();
   }
@@ -1087,7 +1013,6 @@ class GuiController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     unawaited(close());
-    diagnostics.dispose();
     presentationClock.dispose();
     super.dispose();
   }

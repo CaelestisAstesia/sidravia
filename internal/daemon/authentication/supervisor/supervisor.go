@@ -490,14 +490,14 @@ func (s *Supervisor) Get(ctx context.Context, id ID) (Snapshot, error) {
 	return snapshot, nil
 }
 
-// GetNetworkDiagnostics reads one managed actor without starting a Run or
+// GetDiagnosticSnapshot reads one managed actor without starting a Run or
 // holding the Supervisor map mutex while waiting for its reply.
-func (s *Supervisor) GetNetworkDiagnostics(ctx context.Context, id ID) (session.NetworkDiagnosticsSnapshot, error) {
+func (s *Supervisor) GetDiagnosticSnapshot(ctx context.Context, id ID) (session.DiagnosticSnapshot, error) {
 	ms, err := s.managed(id)
 	if err != nil {
-		return session.NetworkDiagnosticsSnapshot{}, err
+		return session.DiagnosticSnapshot{}, err
 	}
-	return ms.actor.QueryNetworkDiagnostics(ctx)
+	return ms.actor.QueryDiagnosticSnapshot(ctx)
 }
 
 // List returns snapshots for all known sessions.
@@ -592,13 +592,4 @@ func (s *Supervisor) observeStoppedRevision(id ID, managed *managedSession, snap
 		close(managed.stateChange)
 		managed.stateChange = make(chan struct{})
 	}
-}
-
-// GetNetworkDiagnosticTarget releases the managed map lock before delegating.
-func (s *Supervisor) GetNetworkDiagnosticTarget(ctx context.Context, id ID) (session.NetworkDiagnosticTarget, error) {
-	ms, err := s.managed(id)
-	if err != nil {
-		return session.NetworkDiagnosticTarget{}, err
-	}
-	return ms.actor.NetworkDiagnosticTarget(ctx)
 }

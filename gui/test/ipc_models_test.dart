@@ -6,6 +6,15 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 const networkResult =
     r'{"available":true,"revision":1,"interfaces":[{"interfaceId":"loopback","displayName":"","operationalState":"up","physicalMedium":"unknown","hardwareBacked":false,"physicalConnectorPresent":false,"filterInterface":false,"endpointInterface":false,"addressAssignmentMethod":"unknown","ipv4Assignments":[{"address":"127.0.0.1","prefixLength":8,"automaticCandidate":false,"explicitBindable":true}]}],"observedAt":"2026-10-07T01:02:03.123456789Z"}';
 void main() {
+  test('network interfaces reject a raw negative-zero prefix length', () {
+    expect(
+      () => decodeNetworkInterfaces(
+        networkResult.replaceFirst('"prefixLength":8', '"prefixLength":-0'),
+      ),
+      throwsA(isA<IpcProtocolException>()),
+    );
+  });
+
   test('optional adapter description preserves device facts and rejects wrong types', () {
     expect(
       decodeNetworkInterfaces(networkResult).interfaces.single.description,
@@ -530,54 +539,6 @@ void main() {
       {'value': '-0'},
     );
   });
-  test('network result unsigned fields reject raw negative zero only', () {
-    const diagnosis =
-        r'{"observedAt":"2026-10-07T01:02:03Z","selectionBasis":"os_route_proposal","status":"available","target":{"address":"192.0.2.1","port":61440},"route":{"interfaceId":"test","interfaceIndex":1,"sourceIPv4":"127.0.0.1","destinationPrefix":"192.0.2.0/24","nextHopIPv4":"0.0.0.0","routeMetric":0,"interfaceMetric":0,"effectiveMetric":0},"probe":{"status":"reachable","roundTripTimeMs":0}}';
-    expect(decodeNetworkDiagnosis(diagnosis).probe!.roundTripTimeMs, 0);
-    for (final field in [
-      'routeMetric',
-      'interfaceMetric',
-      'effectiveMetric',
-      'roundTripTimeMs',
-    ]) {
-      final negativeZero = diagnosis.replaceFirst('"$field":0', '"$field":-0');
-      expect(
-        () => decodeNetworkDiagnosis(negativeZero),
-        throwsA(isA<IpcProtocolException>()),
-        reason: field,
-      );
-    }
-    expect(
-      () => decodeNetworkInterfaces(
-        networkResult.replaceFirst('"prefixLength":8', '"prefixLength":-0'),
-      ),
-      throwsA(isA<IpcProtocolException>()),
-    );
-  });
-  test('diagnosis request selectors are exclusive and reject raw Unicode', () {
-    expect(networkDiagnosisPayload(sessionId: 'retained', probe: true), {
-      'sessionId': 'retained',
-      'probe': true,
-    });
-    for (final raw in [
-      r'{"sessionId":"\ud800"}',
-      r'{"configurationId":"c","\u0063onfigurationId":"c"}',
-      '{"sessionId":"s","probe":null}',
-    ]) {
-      expect(
-        () => decodeNetworkDiagnosisPayload(raw),
-        throwsA(isA<IpcProtocolException>()),
-      );
-    }
-  });
-  test('accepts a multicast route prefix containing a unicast target', () {
-    const result =
-        r'{"observedAt":"2026-10-07T01:02:03Z","selectionBasis":"os_route_proposal","status":"available","target":{"address":"240.0.0.1","port":61440},"route":{"interfaceId":"test","interfaceIndex":1,"sourceIPv4":"127.0.0.1","destinationPrefix":"224.0.0.0/3","nextHopIPv4":"0.0.0.0","routeMetric":0,"interfaceMetric":0,"effectiveMetric":0},"probe":{"status":"not_requested"}}';
-    final diagnosis = decodeNetworkDiagnosis(result);
-    expect(diagnosis.target!.address, '240.0.0.1');
-    expect(diagnosis.route!.destinationPrefix, '224.0.0.0/3');
-  });
-
   test('network rejects isolated surrogate originals consistently with Go', () {
     for (final field in ['interfaceId', 'displayName']) {
       final old = field == 'interfaceId'

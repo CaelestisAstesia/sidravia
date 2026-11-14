@@ -78,41 +78,22 @@ type failingOutputWriter struct{}
 
 func (failingOutputWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
-func TestNetworkDiagnoseUsesExistingConnectionStrictResponseAndSafeLabels(t *testing.T) {
-	reason := "protocol"
-	wire, err := contract.MarshalNetworkDiagnoseResult(contract.NetworkDiagnoseResult{ObservedAt: "2026-10-07T01:02:03Z", SelectionBasis: "os_route_proposal", Status: "unsupported", UnsupportedReason: &reason, ProtocolSocket: &contract.NetworkProtocolSocket{State: "not_observed", RunGeneration: 0}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
-		value, err := contract.DecodeNetworkDiagnosePayload(payload)
-		if method != contract.MethodNetworkDiagnose || err != nil || value.ConfigurationID != "configuration-1" || !value.Probe {
-			t.Fatal("unexpected readonly request")
-		}
-		return contract.NewSuccessResponse("1", wire), nil
-	}}
-	var output bytes.Buffer
-	deps := hotListDependencies(t, client, &output)
-	deps.connection.callTimeout = time.Second
-	if err := runNetworkDiagnose(deps, contract.NetworkDiagnosePayload{ConfigurationID: "configuration-1", Probe: true}); err != nil {
-		t.Fatal(err)
-	}
-	if client.callCount != 1 || client.closeCount != 1 {
-		t.Fatal("readonly connection not finalized")
-	}
-	for _, text := range []string{"完成时间", "OS 路由提案", "最近实际协议 socket", "Run generation 0", "不证明认证成功或 Internet 可用"} {
-		if !strings.Contains(output.String(), text) {
-			t.Fatal("diagnosis attribution omitted")
+func TestRemovedNetworkDiagnosisCommandDoesNotDispatch(t *testing.T) {
+	calls := 0
+	var help bytes.Buffer
+	deps := commandDependencies{output: &help, networkInterfaces: func() error { calls++; return nil }}
+	for _, args := range [][]string{{"network", "diagnose", "--config", "missing"}, {"network", "diagnose", "--session", "missing", "--probe"}} {
+		if err := runCommand(args, deps); err == nil {
+			t.Fatal("removed command accepted")
 		}
 	}
-	before := client.callCount
-	if err := runNetworkDiagnose(deps, contract.NetworkDiagnosePayload{}); err == nil || client.callCount != before {
-		t.Fatal("invalid selector acquired connection")
+	if err := runCommand([]string{"network", "--help"}, deps); err != nil {
+		t.Fatal(err)
 	}
-	client.call = func(string, json.RawMessage) (contract.Response, error) {
-		return contract.NewSuccessResponse("1", json.RawMessage(`{"status":"available"}`)), nil
+	if strings.Contains(help.String(), "diagnose") || strings.Contains(help.String(), "探测") {
+		t.Fatal("help advertises removed diagnosis")
 	}
-	if err := runNetworkDiagnose(deps, contract.NetworkDiagnosePayload{SessionID: "s"}); err == nil {
-		t.Fatal("unvalidated response rendered")
+	if calls != 0 {
+		t.Fatal("removed command performed network operation")
 	}
 }

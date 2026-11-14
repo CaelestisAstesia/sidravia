@@ -207,32 +207,6 @@ void main() {
     },
   );
 
-  test(
-    'dispatch rechecks network after a serialized diagnosis request',
-    () async {
-      final client = _Client();
-      final c = _controller(client);
-      await c.start();
-      client.diagnosisGate = Completer<NetworkDiagnosis>();
-      c.diagnostics.setVisible(true);
-      await pumpEventQueue();
-      final saving = c.setNetworkBinding(
-        configurationId: 'demo-config',
-        policy: _explicit,
-      );
-      await pumpEventQueue();
-      expect(client.requests, isEmpty);
-      c.diagnostics.setVisible(false);
-      client.owner.stream.add(NetworkChanged(_network(2, up: false)));
-      client.diagnosisGate!.complete(_diagnosis);
-      expect(await saving, false);
-      expect(client.requests, isEmpty);
-      await c.close();
-      c.dispose();
-      client.dispose();
-    },
-  );
-
   test('storage confirmation is operation-scoped and eligibility rechecked after consent', () async {
     for (final invalidate in [false, true]) {
       final client = _Client()..requireConsent = true;
@@ -333,12 +307,6 @@ GuiController _controller(_Client client) => GuiController(
   reconnectDelay: const Duration(days: 1),
 );
 final _explicit = NetworkBindingPolicy.explicit('if-1', '192.168.1.2');
-const _diagnosis = NetworkDiagnosis(
-  observedAt: '2026-10-08T01:02:03Z',
-  selectionBasis: 'session_binding',
-  status: 'route_unavailable',
-  target: NetworkEndpoint('10.0.0.1', 61440),
-);
 ConfigurationSummary _configuration({
   String id = 'demo-config',
   NetworkBindingPolicy? policy,
@@ -431,7 +399,6 @@ class _Client extends OfflineDemoClient
   String? errorCode;
   bool requireConsent = false;
   int configReads = 0;
-  Completer<NetworkDiagnosis>? diagnosisGate;
   @override
   Future<List<ConfigurationSummary>> configurationList() async {
     configReads++;
@@ -466,12 +433,6 @@ class _Client extends OfflineDemoClient
   @override
   Future<NetworkInterfacesSnapshot> networkInterfaces() =>
       throw StateError('GUI must use existing state snapshot');
-  @override
-  Future<NetworkDiagnosis> networkDiagnose({
-    String? configurationId,
-    String? sessionId,
-    bool probe = false,
-  }) => diagnosisGate?.future ?? Future.value(_diagnosis);
 }
 
 class _Preview extends OfflineDemoClient {

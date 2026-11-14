@@ -15,17 +15,15 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: AdvancedPage(
-          controller: controller,
-          diagnostics: controller.diagnostics,
-          onBack: () {},
-        ),
+        home: AdvancedPage(controller: controller, onBack: () {}),
       ),
     );
     await tester.ensureVisible(find.text('技术信息'));
     await tester.tap(find.text('技术信息'));
     await tester.pump();
     expect(find.text('暂无数据'), findsAtLeastNWidgets(1));
+    expect(find.text('刷新网络诊断'), findsNothing);
+    expect(find.text('执行有限 IP 探测'), findsNothing);
     expect(find.text('复制诊断信息（暂不可用）'), findsOneWidget);
     controller.dispose();
   });
@@ -42,7 +40,7 @@ void main() {
         home: Scaffold(
           body: AdvancedPage(
             controller: controller,
-            diagnostics: controller.diagnostics,
+
             onBack: () {},
             onOpenLogDirectory: open,
           ),
