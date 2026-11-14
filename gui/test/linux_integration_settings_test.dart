@@ -94,6 +94,15 @@ void main() {
       expect(Directory('${f.home.path}/.local/bin').existsSync(), isFalse);
       await manager.change(IntegrationChange.startDaemon);
       expect((await manager.status()).autostart, 'daemon');
+      expect(f.desktop.readAsStringSync(), contains('TryExec='));
+      await f.launchEntry();
+      File('${f.product.path}/sidraviactl').deleteSync();
+      final missing = await Process.run('/usr/bin/python3', [
+        '-c',
+        'from gi.repository import Gio\nimport sys\ntry:\n app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1])\nexcept TypeError:\n pass\nelse:\n assert app is None',
+        f.desktop.path,
+      ]);
+      expect(missing.exitCode, 0, reason: '${missing.stdout}${missing.stderr}');
       await manager.change(IntegrationChange.startDisable);
       expect((await manager.status()).autostart, 'disabled');
       await manager.close();

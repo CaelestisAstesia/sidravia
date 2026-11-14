@@ -5,6 +5,8 @@
 
 #include <libayatana-appindicator/app-indicator.h>
 #include <webkit2/webkit2.h>
+#include <glib-unix.h>
+#include <csignal>
 #ifdef GDK_WINDOWING_WAYLAND
 #include <gdk/gdkwayland.h>
 #endif
@@ -32,6 +34,7 @@ struct DesktopShell {
   guint notification_subscription = 0;
   bool dark = false, starting = true, frame_received = false;
   guint startup_timeout = 0;
+  guint termination_source = 0;
   bool close_to_tray = false, hidden = false, exiting = false, configured = false;
   std::map<std::string, Notice> notices;
   GCancellable* cancel = g_cancellable_new();
@@ -416,6 +419,11 @@ DesktopShell* desktop_shell_new(GtkWindow* window, FlView* view) {
   s->window_icon = wayland_window_icon_new(window, s->icon);
   s->announcement = announcement_window_new(window,s->icon);
   s->desktop = channel(view, "sidravia/desktop", desktop_call, s);
+  s->termination_source = g_unix_signal_add(SIGTERM, +[](gpointer data) -> gboolean {
+    auto* shell = static_cast<DesktopShell*>(data);
+    if (!shell->exiting) invoke(shell->desktop, "maintenanceExitRequested");
+    return G_SOURCE_CONTINUE;
+  }, s);
   s->window_channel = channel(view, "sidravia/window", window_call, s);
   s->announcements = channel(view, "sidravia/announcements", announcement_call, s);
   s->notifications = channel(view, "sidravia/system-notifications", notification_call, s);
@@ -476,6 +484,7 @@ void desktop_shell_free(DesktopShell* s) {
   }
   if (s->pending) return; // Cancelled async calls retain resources until joined.
   if (s->startup_timeout) g_source_remove(s->startup_timeout);
+  if (s->termination_source) g_source_remove(s->termination_source);
   g_clear_object(&s->cancel);
   announcement_window_free(s->announcement);
   for (auto& entry : s->notices) dismiss_notice(s, entry.second);

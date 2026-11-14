@@ -248,7 +248,8 @@ RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
 project-downloaded replacements. Build the verified clean-source GUI portable
 first, then wrap that exact payload. The RPM excludes the portable marker and
 uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
-and icon. No process/account/autostart scriptlets are shipped. Initial support
+and icon. Reviewed Python pre/preun scriptlets coordinate only this installation;
+no account scan or automatic autostart registration is performed. Initial support
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
 ```
@@ -269,7 +270,9 @@ Acceptance requires user namespaces and a KDE/Wayland session. It snapshots the
 host RPM SQLite inventory read-only, installs/updates/erases in a newly owned
 private root, with dependency checks enabled. Installed binaries run through
 Bubblewrap over read-only host libraries and private HOME/XDG/namespace. It
-checks installed IPC/configuration/preferences/core restart/tray exit, update
+checks live GUI upgrade/removal, live headless removal, refusal of an unresponsive
+GUI, startup gate recovery, preserved/inactive TryExec entries and an independent
+portable daemon. It also checks installed IPC/configuration/preferences/core restart, update
 ownership refusal, and persistence across upgrade/removal. No host RPM install,
 real autostart registration or campus request is involved. This is not a clean
 Fedora dependency-solving/install-image test. Receipts/logs stay in the owned

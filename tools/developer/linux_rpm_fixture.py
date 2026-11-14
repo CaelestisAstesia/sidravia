@@ -4,6 +4,7 @@ Only the RPM dependency inventory and runtime system libraries are borrowed from
 the host, read-only. No caller-selectable install root or namespace is accepted.
 """
 import contextlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -20,7 +21,6 @@ from linux_rpm import APP, COMMANDS, DESKTOP, digest, same_source
 
 
 def run(root, packages, receipts, environment, source, current_source):
-    from gi.repository import Gio, GLib
     owned = Path(tempfile.mkdtemp(prefix='linux-rpm-fixture-', dir=root / '.local'))
     namespace = 'linux-gui-test-' + uuid.uuid4().hex[:12]
     (owned / 'fixture-owner').write_text(namespace)
@@ -45,9 +45,13 @@ def run(root, packages, receipts, environment, source, current_source):
     profile['institutionProtocolConfiguration'].update(serverAddress='127.0.0.1', serverPort=9, localPort={'mode': 'system_assigned'})
     (profiles / 'linux-loopback.json').write_text(json.dumps(profile))
     runtime = state / 'runtime.json'
+    missing_entry = 'from gi.repository import Gio\nimport sys\ntry:\n app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1])\nexcept TypeError:\n pass\nelse:\n assert app is None'
     events = []
     gui = None
     gui_pid = None
+    gui_pidfd = None
+    bystander = None
+    bystander_runtime = None
     installed = False
 
     def command(argv, label, command_env=env):
@@ -135,62 +139,70 @@ def run(root, packages, receipts, environment, source, current_source):
     session_runtime = environment.get('XDG_RUNTIME_DIR', '')
     if not session_runtime or not Path(session_runtime).is_absolute():
         raise RuntimeError('installed GUI acceptance requires a desktop session runtime')
-    sandbox = ['bwrap', '--unshare-user', '--die-with-parent', '--ro-bind', '/', '/',
+    def sandbox():
+        prefix = ['bwrap', '--unshare-user', '--die-with-parent', '--ro-bind', '/', '/',
                '--dev', '/dev', '--proc', '/proc', '--dev-bind-try', '/dev/dri', '/dev/dri',
                '--tmpfs', '/run', '--bind', session_runtime, session_runtime,
+               '--bind', str(sysroot / 'run/sidravia'), '/run/sidravia',
                '--ro-bind', '/usr', str(host_alias), '--ro-bind', str(view), '/usr',
-               '--ro-bind', str(sysroot / APP.relative_to('/')), str(APP),
                '--ro-bind', str(sysroot / 'usr/share/applications'), '/usr/share/applications',
                '--ro-bind', str(sysroot / 'usr/share/icons/hicolor'), '/usr/share/icons/hicolor',
                '--tmpfs', '/home', '--bind', str(owned), str(owned),
                '--bind', env['TMPDIR'], '/tmp', '--chdir', str(owned)]
+        if (sysroot / APP.relative_to('/')).exists():
+            prefix += ['--ro-bind', str(sysroot / APP.relative_to('/')), str(APP)]
+        return prefix
     dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
+    driver_binary = owned / 'contract-driver'
+    command([dart, 'compile', 'exe', 'tool/linux_portable_fixture.dart', '-o', str(driver_binary)], 'compile-contract-driver')
 
     def driver(operation):
-        command([dart, 'run', 'tool/linux_portable_fixture.dart', operation, str(runtime)], operation)
+        command(sandbox() + [str(driver_binary), operation, str(runtime), str(APP / 'sidravia_gui')], operation)
 
-    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    def transaction_stopped_gui():
+        if gui.wait(timeout=5) != 0:
+            raise RuntimeError('maintenance did not gracefully exit installed GUI')
+        wait_for(lambda: not runtime.exists(), 'maintenance stopped desktop daemon')
+        events.append('RPM-maintenance-graceful-GUI-and-daemon-exit')
 
-    def call(service, path, interface, method, params=None):
-        return bus.call_sync(service, path, interface, method, params, None, Gio.DBusCallFlags.NONE, 3000, None).unpack()
-
-    def tray_exit():
-        found = [None]
-        def ready():
-            items = call('org.kde.StatusNotifierWatcher', '/StatusNotifierWatcher', 'org.freedesktop.DBus.Properties', 'Get',
-                         GLib.Variant('(ss)', ('org.kde.StatusNotifierWatcher', 'RegisteredStatusNotifierItems')))[0]
-            for item in items:
-                service, sep, path = item.partition('/')
-                try:
-                    pid = call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetConnectionUnixProcessID', GLib.Variant('(s)', (service,)))[0]
-                    if pid != gui_pid:
-                        continue
-                    icon = call(service, '/' + path if sep else '/StatusNotifierItem', 'org.freedesktop.DBus.Properties', 'Get', GLib.Variant('(ss)', ('org.kde.StatusNotifierItem', 'IconName')))[0]
-                    if icon != str(APP / 'data/icons/sidravia.png'):
-                        raise RuntimeError('installed tray icon path mismatch')
-                    menu = call(service, '/' + path if sep else '/StatusNotifierItem', 'org.freedesktop.DBus.Properties', 'Get', GLib.Variant('(ss)', ('org.kde.StatusNotifierItem', 'Menu')))[0]
-                    layout = call(service, menu, 'com.canonical.dbusmenu', 'GetLayout', GLib.Variant('(iias)', (0, -1, [])))[1]
-                    # Exit only after a real shared snapshot reaches the tray.
-                    labels = [node[1].get('label', '') for node in layout[2]]
-                    if not any('未连接' in s for s in labels):
+    def frozen_gui_blocks_upgrade():
+        signal.pidfd_send_signal(gui_pidfd, signal.SIGSTOP)
+        transaction = None
+        try:
+            with (owned / 'rpm-refused-live-upgrade.log').open('w') as log:
+                transaction = subprocess.Popen(rpm + ['-Uvh', str(packages[1])], cwd=owned, env=env,
+                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                def gate_busy():
+                    try:
+                        with (sysroot / 'run/sidravia/rpm.lock').open() as lock:
+                            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
                         return False
-                    for node in layout[2]:
-                        if node[1].get('label') == '退出':
-                            found[0] = (service, menu, node[0])
-                            return True
-                except GLib.Error:
-                    continue
-            return False
-        wait_for(ready, 'installed real tray snapshot')
-        service, menu, item = found[0]
-        call(service, menu, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (item, 'clicked', GLib.Variant('i', 0), 0)))
-        if gui.wait(timeout=20) != 0:
-            raise RuntimeError('installed GUI failed during normal tray exit')
-        wait_for(lambda: not runtime.exists(), 'installed GUI normal owner cleanup')
-        events.append('installed-tray-exit')
+                    except BlockingIOError:
+                        return True
+                wait_for(gate_busy, 'RPM transaction gate active')
+                for name, args in (('sidravia_gui', []), ('sidraviactl', ['daemon', 'start'])):
+                    blocked = subprocess.run(sandbox() + ['/usr/bin/' + name, *args], env=env, capture_output=True, text=True, timeout=8)
+                    if blocked.returncode != 1:
+                        raise RuntimeError('RPM transaction allowed a new startup')
+                if transaction.wait(timeout=30) == 0:
+                    raise RuntimeError('RPM replaced an unresponsive running application')
+            command(rpm + ['-V', 'sidravia'], 'rpm-verify-refused-upgrade')
+            release = subprocess.check_output(rpm + ['-q', '--qf', '%{RELEASE}', 'sidravia'], text=True)
+            if release != receipts[0]['release']:
+                raise RuntimeError('refused upgrade changed installed revision')
+            events.append('unresponsive-GUI-blocks-upgrade-preserves-package-and-blocks-new-starts')
+        finally:
+            with contextlib.suppress(ProcessLookupError): signal.pidfd_send_signal(gui_pidfd, signal.SIGCONT)
+            if transaction is not None and transaction.poll() is None:
+                os.killpg(transaction.pid, signal.SIGTERM)
+                transaction.wait(timeout=5)
+        transaction_stopped_gui() # Pending SIGTERM now takes the normal exit path.
 
     def launch():
-        nonlocal gui, gui_pid
+        nonlocal gui, gui_pid, gui_pidfd
+        if gui_pidfd is not None:
+            os.close(gui_pidfd)
+            gui_pidfd = None
         pidfile = owned / 'gui.pid'
         pidfile.unlink(missing_ok=True)
         code = ('import os; from pathlib import Path; from gi.repository import Gio,GLib; '
@@ -200,17 +212,31 @@ def run(root, packages, receipts, environment, source, current_source):
                 'assert len(children)==1; Path(' + repr(str(pidfile)) + ').write_text(str(children[0])); '
                 'result=os.waitpid(children[0],0); raise SystemExit(os.waitstatus_to_exitcode(result[1]))')
         with (owned / f'gui-{len(events)}.log').open('w') as log:
-            gui = subprocess.Popen(sandbox + ['/usr/bin/python3', '-c', code], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            gui = subprocess.Popen(sandbox() + ['/usr/bin/python3', '-c', code], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         wait_for(lambda: pidfile.exists() or gui.poll() is not None, 'installed GUI exec')
         if gui.poll() is not None:
             raise RuntimeError('installed GUI launcher failed')
         gui_pid = int(pidfile.read_text())
+        gui_pidfd = os.pidfd_open(gui_pid)
         wait_for(runtime.exists, 'installed GUI desktop daemon')
         events.append('installed-GUI-bootstrap')
 
     try:
         command(rpm + ['-ivh', str(packages[0])], 'rpm-install')
         installed = True
+        # A real portable daemon with the same executable names must survive
+        # every transaction. It owns no production configuration or sessions.
+        bystander = owned / 'independent-portable'
+        bystander.mkdir()
+        for name in ('sidraviactl', 'sidraviad'):
+            shutil.copy2(sysroot / APP.relative_to('/') / name, bystander / name)
+        (bystander / 'sidravia.portable').touch()
+        catalog = bystander / 'namespaces' / namespace / 'institution-profiles'
+        catalog.mkdir(parents=True)
+        shutil.copy2(profiles / 'linux-loopback.json', catalog / 'linux-loopback.json')
+        bystander_runtime = catalog.parent / 'runtime.json'
+        command([str(bystander / 'sidraviactl'), 'daemon', 'start'], 'independent-portable-start')
+        bystander_identity = json.loads(bystander_runtime.read_text())['pid']
         command(rpm + ['-V', 'sidravia'], 'rpm-verify-install')
         for cache in ('usr/share/applications/mimeinfo.cache', 'usr/share/icons/hicolor/icon-theme.cache'):
             if not (sysroot / cache).is_file():
@@ -222,7 +248,7 @@ def run(root, packages, receipts, environment, source, current_source):
             raise RuntimeError('RPM incorrectly enabled portable mode')
         command(['desktop-file-validate', str(sysroot / f'usr/share/applications/{DESKTOP}.desktop')], 'desktop-validate')
         # The installed updater must refuse network access/archive selection.
-        update = subprocess.run(sandbox + ['/usr/bin/sidraviaupdater', 'check'], env=env, capture_output=True, text=True, timeout=15)
+        update = subprocess.run(sandbox() + ['/usr/bin/sidraviaupdater', 'check'], env=env, capture_output=True, text=True, timeout=15)
         (owned / 'installed-updater.log').write_text(update.stdout + update.stderr)
         if not update.stdout.strip():
             raise RuntimeError('installed updater failed before JSON response; see installed-updater.log')
@@ -232,27 +258,57 @@ def run(root, packages, receipts, environment, source, current_source):
         events.append('updater-system-package-managed-without-network')
         launch()
         first_daemon = json.loads(runtime.read_text())['pid']
-        command(sandbox + ['/usr/bin/sidravia_gui', '--start-visible'], 'installed-single-instance')
+        command(sandbox() + ['/usr/bin/sidravia_gui', '--start-visible'], 'installed-single-instance')
         if json.loads(runtime.read_text())['pid'] != first_daemon:
             raise RuntimeError('installed activation changed daemon generation')
         driver('prepare')
         driver('verify')
         owner_start = Path(f'/proc/{gui_pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
-        command(sandbox + ['/usr/bin/sidraviactl', 'gui', 'restart', '--owner-pid', str(gui_pid)], 'installed-core-restart', dict(env, SIDRAVIA_DESKTOP_OWNER_START=owner_start))
+        command(sandbox() + ['/usr/bin/sidraviactl', 'gui', 'restart', '--owner-pid', str(gui_pid)], 'installed-core-restart', dict(env, SIDRAVIA_DESKTOP_OWNER_START=owner_start))
         driver('verify')
-        tray_exit()
+        driver('autostart-enable')
+        entry, = (owned / 'config/autostart').glob('*.desktop')
+        autostart_hash = digest(entry)
+        driver('start-loopback')
+        frozen_gui_blocks_upgrade()
+        launch()
+        driver('verify')
+        driver('start-loopback')
         config_hash = digest(state / 'configurations.json')
         preferences_hash = digest(state / 'gui-settings.json')
         command(rpm + ['-Uvh', str(packages[1])], 'rpm-upgrade')
+        transaction_stopped_gui()
         command(rpm + ['-V', 'sidravia'], 'rpm-verify-upgrade')
         identity = subprocess.check_output(rpm + ['-q', '--qf', '%{RELEASE}', 'sidravia'], text=True)
         if identity != receipts[1]['release']:
             raise RuntimeError('RPM upgrade did not replace the packaging revision')
         launch()
         driver('verify')
-        tray_exit()
         command(rpm + ['-e', 'sidravia'], 'rpm-erase')
+        transaction_stopped_gui()
         installed = False
+        if digest(entry) != autostart_hash:
+            raise RuntimeError('package maintenance rewrote user autostart preferences')
+        command(sandbox() + ['/usr/bin/python3', '-c',
+            missing_entry, str(entry)], 'removed-GUI-TryExec-inactive')
+        # Reinstall does not enable anything; the retained explicit user choice
+        # becomes available again. Exercise the same contract for headless mode.
+        command(rpm + ['-ivh', str(packages[1])], 'rpm-reinstall')
+        installed = True
+        driver('autostart-daemon')
+        code = ('import os,sys; from gi.repository import Gio,GLib; children=[]; '
+            'app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1]); assert app; '
+            'assert app.launch_uris_as_manager([],Gio.AppLaunchContext(),GLib.SpawnFlags.DO_NOT_REAP_CHILD,None,None,lambda app,pid,data:children.append(pid),None); '
+            'pid,status=os.waitpid(children[0],0); raise SystemExit(os.waitstatus_to_exitcode(status))')
+        command(sandbox() + ['/usr/bin/python3', '-c', code, str(entry)], 'actual-XDG-headless-start')
+        wait_for(runtime.exists, 'headless autostart runtime')
+        driver('headless-verify')
+        driver('headless-start-loopback')
+        command(rpm + ['-e', 'sidravia'], 'rpm-live-headless-erase')
+        installed = False
+        wait_for(lambda: not runtime.exists(), 'RPM headless daemon graceful stop')
+        command(sandbox() + ['/usr/bin/python3', '-c',
+            missing_entry, str(entry)], 'removed-headless-TryExec-inactive')
         icon_cache = sysroot / 'usr/share/icons/hicolor/icon-theme.cache'
         if icon_cache.exists() and DESKTOP.encode() in icon_cache.read_bytes():
             raise RuntimeError('RPM uninstall retained stale application icon cache')
@@ -268,9 +324,12 @@ def run(root, packages, receipts, environment, source, current_source):
             raise RuntimeError('RPM uninstall retained package inventory')
         if digest(state / 'configurations.json') != config_hash or digest(state / 'gui-settings.json') != preferences_hash:
             raise RuntimeError('upgrade/uninstall changed private user data')
-        if list((owned / 'config').glob('autostart/*.desktop')) or (home / '.local/bin').exists():
-            raise RuntimeError('RPM transaction unexpectedly registered user integration')
-        events.append('uninstall-preserves-XDG-data-no-user-autostart-or-links')
+        if not entry.exists() or (home / '.local/bin').exists():
+            raise RuntimeError('RPM transaction changed explicit user integration')
+        events.append('uninstall-preserves-XDG-data-and-inert-explicit-autostart')
+        if json.loads(bystander_runtime.read_text())['pid'] != bystander_identity:
+            raise RuntimeError('RPM transaction displaced independent portable daemon')
+        command([str(bystander / 'sidraviactl'), 'daemon', 'status'], 'independent-portable-survived')
         if not same_source(current_source(), source):
             raise RuntimeError('source changed during RPM acceptance')
         result = {'passed': True, 'source': source, 'source_unchanged': True, 'events': events,
@@ -283,17 +342,25 @@ def run(root, packages, receipts, environment, source, current_source):
         print('RPM isolated install/upgrade/erase PASS: ' + str(owned / 'result.json'))
         return 0
     finally:
-        if gui is not None and gui.poll() is None:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(gui.pid, signal.SIGTERM)
-            try:
-                gui.wait(timeout=8)
-            except subprocess.TimeoutExpired:
+        try:
+            if gui_pidfd is not None:
+                with contextlib.suppress(ProcessLookupError): signal.pidfd_send_signal(gui_pidfd, signal.SIGCONT)
+            if gui is not None and gui.poll() is None:
                 with contextlib.suppress(ProcessLookupError):
-                    os.killpg(gui.pid, signal.SIGKILL)
-                gui.wait(timeout=5)
-        # GUI death triggers the owned daemon's bounded owner observation.
-        if runtime.exists():
-            wait_for(lambda: not runtime.exists(), 'failed fixture owner cleanup')
-        if installed:
-            command(rpm + ['-e', 'sidravia'], 'rpm-finally-erase')
+                    os.killpg(gui.pid, signal.SIGTERM)
+                try:
+                    gui.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(gui.pid, signal.SIGKILL)
+                    gui.wait(timeout=5)
+            # GUI death triggers the owned daemon's bounded owner observation.
+            if runtime.exists():
+                wait_for(lambda: not runtime.exists(), 'failed fixture owner cleanup')
+            if installed:
+                command(rpm + ['-e', 'sidravia'], 'rpm-finally-erase')
+        finally:
+            if bystander_runtime is not None and bystander_runtime.exists():
+                command([str(bystander / 'sidraviactl'), 'daemon', 'stop'], 'independent-portable-stop')
+            if gui_pidfd is not None:
+                os.close(gui_pidfd)

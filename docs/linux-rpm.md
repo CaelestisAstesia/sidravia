@@ -11,12 +11,26 @@ The package owns `/usr/bin/sidraviactl`, `sidraviad`, `sidraviaupdater` and
 is managed by RPM; the GUI does not create redundant `~/.local/bin` links.
 The updater refuses archive replacement of an RPM installation. Use the system
 package manager for upgrades. No system service or autostart is enabled by
-installation, upgrade or removal, and no transaction script stops user processes.
+installation, upgrade or removal. Maintenance scripts stop only processes from
+this exact RPM installation, without reading account configuration or user homes.
 
-Exit this installation's GUI and daemon before upgrading or removing it. The
-package manager does not coordinate a running multi-process application; an
-in-place upgrade while it is running is not supported. A separate portable
-instance is neither adopted nor stopped. Configuration uses the existing XDG
+Upgrade and removal automatically request graceful GUI/session/daemon exit.
+While the real RPM transaction lock is held, new GUI/CTL/daemon/updater starts
+from this installation are rejected. The short-lived guard observes that lock
+and the package-manager host pidfd, so a persistent Discover/PackageKit backend
+does not leave the gate locked after its transaction. No permanent service is
+installed and no process is automatically relaunched after upgrade.
+
+An unresponsive application or unsaved configuration draft blocks maintenance
+with a bounded error. Save your edits and retry in that case. The scripts never
+use SIGKILL. Independent portable copies and other installation roots are not
+stopped. The unpublished pre-coordination prototype has no startup gate or
+system-exit handler: exit that legacy installation once, and do not launch it
+during its first upgrade. A running legacy installation is refused rather than
+terminated and risking its unsaved work. Subsequent coordinated RPM versions
+support the automatic live lifecycle described above.
+
+Configuration uses the existing XDG
 Sidravia paths; RPM does not migrate data from a portable copy or remove any
 user data. For isolated namespaces, configuration/preferences/runtime/logs use
 `$XDG_CONFIG_HOME/Sidravia/namespaces/<namespace>` (fallback `~/.config`).
@@ -24,9 +38,13 @@ Default configuration/preferences use `$XDG_CONFIG_HOME/Sidravia`, while the
 production daemon runtime/logs use `$XDG_CACHE_HOME/Sidravia`.
 
 Optional GUI or background-only XDG login autostart is still an explicit user
-setting. Disable it before uninstalling; RPM does not enumerate or modify user
-home directories. Existing entries survive upgrades at the stable executable
-path. A stale entry after removal cannot start an uninstalled executable.
+setting. Newly registered RPM entries use exact `TryExec` paths: entries survive
+upgrades at stable executable paths, and are automatically ignored after removal.
+They need not be manually disabled before uninstalling. Reinstalling makes the
+retained explicit user choice available again. RPM never enumerates or edits
+user home directories. Exact older entries are recognized and migrated when
+explicitly setting autostart again; prototype entries without TryExec need that
+one-time refresh. No real account has been registered by the candidate tests.
 This is desktop login autostart, not pre-login boot authentication.
 
 Local development/acceptance uses `tools/developer/dev.py linux --rpm` and

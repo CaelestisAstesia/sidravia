@@ -18,7 +18,9 @@ Future<void> main(List<String> args) async {
       ns == null ||
       !ns.startsWith('linux-gui-test-') ||
       File('$owner/fixture-owner').readAsStringSync() != ns ||
-      args.length != 2) {
+      (args.length != 2 &&
+          !(args.length == 3 &&
+              args[2] == '/usr/lib64/sidravia/sidravia_gui'))) {
     throw StateError('owned fixture required');
   }
   final runtime = File(args[1]);
@@ -33,7 +35,9 @@ Future<void> main(List<String> args) async {
     'path-disable': IntegrationChange.pathDisable,
   };
   if (integrationActions.containsKey(args[0])) {
-    final executable = '${runtime.parent.parent.parent.path}/sidravia_gui';
+    final executable = args.length == 3
+        ? args[2]
+        : '${runtime.parent.parent.parent.path}/sidravia_gui';
     final manager = LinuxInstallationManager(
       executable: executable,
       environment: Platform.environment,
@@ -41,7 +45,10 @@ Future<void> main(List<String> args) async {
     try {
       await manager.change(integrationActions[args[0]]!);
       final status = await manager.status();
-      if (!status.userPathSupported || !status.daemonAutostartSupported) {
+      if ((args.length == 2 && !status.userPathSupported) ||
+          (args.length == 3 &&
+              (status.userPathSupported || !status.pathEnabled)) ||
+          !status.daemonAutostartSupported) {
         throw StateError('Linux integration capabilities missing');
       }
     } finally {
@@ -63,7 +70,7 @@ Future<void> main(List<String> args) async {
   try {
     final status = await client.daemonStatus();
     if (status.mode !=
-        (args[0] == 'headless-verify' ? 'headless' : 'desktop')) {
+        (args[0].startsWith('headless') ? 'headless' : 'desktop')) {
       throw StateError('unexpected runtime owner mode');
     }
     // Retained read-only APIs use accepted facts, not active route/IP probes.
@@ -101,6 +108,15 @@ Future<void> main(List<String> args) async {
     }
     if (args[0] == 'headless-verify') {
       stdout.writeln('owned-headless-verified');
+      return;
+    }
+    if (args[0] == 'start-loopback' || args[0] == 'headless-start-loopback') {
+      final config = (await client.configurationList()).single;
+      if (config.institutionProfileId != 'linux-loopback') {
+        throw StateError('synthetic loopback configuration required');
+      }
+      await client.sessionStartConfiguration(config.id);
+      stdout.writeln('owned-loopback-session-started');
       return;
     }
     if (args[0] == 'prepare') {

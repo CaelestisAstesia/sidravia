@@ -8,6 +8,7 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME}
   "main.cc"
+  "installation_gate.cc"
   "my_application.cc"
   "desktop_shell.cc"
   "announcement_window.cc"

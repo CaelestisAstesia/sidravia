@@ -77,7 +77,7 @@ class LinuxInstallationManager implements InstallationManager {
   String _header() =>
       '[Desktop Entry]\nType=Application\nName=Sidravia\n'
       'Comment=Sidravia session autostart\nIcon=${_directory.replaceAll('\\', '\\\\')}/data/icons/sidravia.png\nTerminal=false\n';
-  String _entry(String mode) {
+  String _entry(String mode, {bool guarded = true}) {
     final name = mode == 'gui' ? executable.split('/').last : 'sidraviactl';
     // GNU env treats any NAME=VALUE operand as an assignment, even when it
     // contains '/'. Use a chdir argument so '=' in a portable directory is safe.
@@ -87,7 +87,10 @@ class LinuxInstallationManager implements InstallationManager {
     final args = mode == 'gui'
         ? '--start-hidden'
         : 'daemon start --log-level info';
-    return '${_header()}Exec=${_quote('/usr/bin/env')} --chdir ${_quote(_directory)} ${_quote('SIDRAVIA_NAMESPACE=$_namespace')} ${_quote('./$name')} $args\n'
+    final tryExec = guarded && _rpmManaged
+        ? 'TryExec=${_directory.replaceAll('\\', '\\\\')}/$name\n'
+        : '';
+    return '${_header()}${tryExec}Exec=${_quote('/usr/bin/env')} --chdir ${_quote(_directory)} ${_quote('SIDRAVIA_NAMESPACE=$_namespace')} ${_quote('./$name')} $args\n'
         'X-Sidravia-Owner=linux-desktop-v2\n';
   }
 
@@ -115,8 +118,15 @@ class LinuxInstallationManager implements InstallationManager {
 
   String _mode(String? existing) {
     if (existing == null) return 'disabled';
-    if (existing == _entry('gui') || existing == _legacyGui) return 'gui';
-    if (existing == _entry('daemon')) return 'daemon';
+    if (existing == _entry('gui') ||
+        existing == _entry('gui', guarded: false) ||
+        existing == _legacyGui) {
+      return 'gui';
+    }
+    if (existing == _entry('daemon') ||
+        existing == _entry('daemon', guarded: false)) {
+      return 'daemon';
+    }
     return 'conflict';
   }
 

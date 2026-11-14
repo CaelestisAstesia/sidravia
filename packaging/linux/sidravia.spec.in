@@ -18,11 +18,14 @@ BuildArch: x86_64
 Requires: gtk3, libayatana-appindicator-gtk3, webkit2gtk4.1
 Requires: /usr/bin/env, /usr/bin/xdg-open
 Requires: desktop-file-utils, hicolor-icon-theme
+Requires(pre): /usr/bin/python3
+Requires(preun): /usr/bin/python3
 
 %description
 Sidravia Flutter desktop client with the shared CTL, daemon and read-only
 institution profiles. Authentication state remains owned by the per-user
-daemon. This package never enables autostart or starts/stops user processes.
+daemon. Package maintenance quiesces only this installation with pidfds. It
+never enables autostart or starts user processes and preserves user data.
 
 %install
 mkdir -p %{buildroot}
@@ -30,3 +33,9 @@ tar -xzf %{SOURCE0} -C %{buildroot}
 desktop-file-validate %{buildroot}/usr/share/applications/io.github.CaelestisAstesia.Sidravia.desktop
 
 %files -f %{_sourcedir}/files.list
+
+%pre -p /usr/bin/python3
+@PREIN@
+
+%preun -p /usr/bin/python3
+@PREUN@

@@ -16,6 +16,12 @@ COMMANDS = ('sidraviactl', 'sidraviad', 'sidraviaupdater', 'sidravia_gui')
 DESKTOP = 'io.github.CaelestisAstesia.Sidravia'
 
 
+def maintenance_scripts(root):
+    code = 'import sys\n' + (root / 'packaging/linux/rpm_maintenance.py').read_text()
+    return {'PREIN': code + '\nraise SystemExit(quiesce())\n',
+            'PREUN': code + "\nraise SystemExit(quiesce() if sys.argv[1] == '0' else 0)\n"}
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -55,8 +61,13 @@ def verify(package, receipt):
     identity = query(package, '--qf', '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}')
     if identity != f"sidravia|{rpm_version(receipt['version'])}|{receipt['release']}|x86_64":
         raise ValueError('RPM identity mismatch')
-    if query(package, '--scripts', '--triggers'):
-        raise ValueError('RPM may not carry process/account maintenance scripts')
+    scripts = receipt['maintenanceScripts']
+    for tag in ('PREIN', 'PREUN'):
+        if query(package, '--qf', '%{' + tag + '}') != scripts[tag].rstrip('\n') or query(package, '--qf', '%{' + tag + 'PROG}') != '/usr/bin/python3':
+            raise ValueError('RPM maintenance script differs from reviewed producer source')
+    for tag in ('POSTIN', 'POSTUN', 'PRETRANS', 'POSTTRANS', 'TRIGGERSCRIPTS', 'FILETRIGGERSCRIPTS', 'TRANSFILETRIGGERSCRIPTS'):
+        if query(package, '--qf', '%{' + tag + '}') not in ('(none)', ''):
+            raise ValueError('unexpected RPM transaction script: ' + tag)
     rows = query(package, '--qf', '[%{FILENAMES}\t%{FILEMODES:octal}\t%{FILEDIGESTS}\t%{FILELINKTOS}\n]')
     actual = {}
     for row in rows.splitlines():
@@ -109,6 +120,7 @@ def build(root, archive, output, release, env, source, current_source):
         (bundle / 'data/linux-portable.md').unlink()
         # Explicit ownership boundary consumed by GUI and updater. No runtime data.
         (bundle / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
+        (bundle / 'sidravia.rpm-lifecycle').write_text('sidravia-rpm-lifecycle-v1\n')
         stage = top / 'payload'
         installed = stage / APP.relative_to('/')
         installed.parent.mkdir(parents=True)
@@ -136,14 +148,16 @@ def build(root, archive, output, release, env, source, current_source):
         with tarfile.open(top / 'SOURCES/payload.tar.gz', 'w:gz') as tar:
             for path in sorted(stage.rglob('*')):
                 tar.add(path, arcname=str(path.relative_to(stage)), recursive=False)
+        scripts = maintenance_scripts(root)
         spec = (root / 'packaging/linux/sidravia.spec.in').read_text().replace('@VERSION@', rpmver).replace('@RELEASE@', release)
+        spec = spec.replace('@PREIN@', scripts['PREIN'].replace('%', '%%')).replace('@PREUN@', scripts['PREUN'].replace('%', '%%'))
         specpath = top / 'SPECS/sidravia.spec'
         specpath.write_text(spec)
         subprocess.run(['rpmbuild', '-bb', '--define', '_topdir ' + str(top), str(specpath)], env=env, check=True)
         package, = (top / 'RPMS/x86_64').glob('*.rpm')
         receipt = {'version': version, 'release': release, 'source': source, 'source_unchanged': True,
                    'portableSHA256': digest(archive), 'sha256': digest(package), 'files': files,
-                   'package': package.name, 'unsigned': True}
+                   'package': package.name, 'unsigned': True, 'maintenanceScripts': scripts}
         receipt['requires'] = verify(package, receipt)
         if not same_source(current_source(), source):
             raise ValueError('source changed during RPM build')

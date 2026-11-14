@@ -454,7 +454,7 @@ class GuiController extends ChangeNotifier {
         capabilities.configuration?.id == configurationId,
   );
 
-  /// Graceful exit requested only by the explicit tray path.
+  /// Graceful exit requested by the tray or an explicit system maintenance intent.
   ///
   /// Serializes with an in-flight poll/mutation, cancels future polling and
   /// submits the existing typed `daemon.stop` at most once within a bounded
