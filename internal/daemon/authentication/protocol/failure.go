@@ -14,4 +14,9 @@ type AuthenticationProtocolRunFailure struct {
 	Description            string
 	HandlingRecommendation AuthenticationProtocolFailureHandlingRecommendation
 	DiagnosticCause        error
+	// RetainRecoveryBudget applies only to bounded recovery. Once requested,
+	// successful establishment alone does not replenish Session's existing
+	// budget; explicit restart or a relevant input change still resets it.
+	// This is an internal policy hint, not peer text or an IPC field.
+	RetainRecoveryBudget bool
 }

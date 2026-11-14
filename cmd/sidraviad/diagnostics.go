@@ -237,3 +237,7 @@ func newPostCommitDiagnosticWarning(logger *slog.Logger) func(error) {
 		logger.Warn(msgStoragePostCommitDiagnostic, slog.String("event", eventStoragePostCommitDiagnostic))
 	}
 }
+
+func (d *protocolDiagnosticsAdapter) DecisionEvent(decision string, value int) {
+	d.logger.Debug("协议协商与恢复决定", slog.String("event", "protocol_decision"), slog.String("session_id", d.sessionID), slog.String("decision", decision), slog.Int("value", value))
+}

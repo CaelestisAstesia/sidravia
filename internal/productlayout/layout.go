@@ -70,8 +70,8 @@ type osResolver struct {
 func defaultResolver() osResolver {
 	return osResolver{
 		executable:    os.Executable,
-		userConfigDir: os.UserConfigDir,
-		userCacheDir:  os.UserCacheDir,
+		userConfigDir: platformUserConfigDir,
+		userCacheDir:  platformUserCacheDir,
 		lstat:         os.Lstat,
 	}
 }

@@ -309,7 +309,7 @@ func TestDiagnosticNetworkCountsKeepAutomaticAndExplicitFacts(t *testing.T) {
 }
 func TestDiagnosticFailuresGroupPrivateAccountOutcomesAndRetainRecovery(t *testing.T) {
 	groups := map[string][]string{
-		"authentication_rejected": {"credential_invalid", "session_in_use", "insufficient_funds", "account_frozen", "too_many_sessions", "authentication_rejected"},
+		"authentication_rejected": {"quota_exceeded", "account_suspended", "account_expired", "too_many_addresses", "server_session_reset", "server_session_ended", "credential_invalid", "session_in_use", "insufficient_funds", "account_frozen", "too_many_sessions", "authentication_rejected"},
 		"binding_rejected":        {"binding_ip_mismatch", "binding_mac_mismatch", "binding_pair_mismatch", "dhcp_required"},
 		"network_io_failure":      {"network_io_failed"}, "protocol_incompatible": {"incompatible_version"}, "run_creation_failed": {"protocol_run_creation_failed", "run_creation_failed"}, "runtime_definition_unavailable": {"runtime_definition_unavailable"},
 		"network_timeout": {"network_timeout"}, "server_busy": {"server_busy"}, "protocol_response_invalid": {"protocol_response_invalid"}, "protocol_contract_violated": {"protocol_contract_violated"}, "logout_cleanup_failed": {"logout_cleanup_failed"}, "other": {"private-future-code"},

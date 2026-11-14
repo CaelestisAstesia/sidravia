@@ -19,6 +19,10 @@ const (
 	kindResponseInvalid
 	kindContractViolated
 	kindCleanupFailed
+	kindServerReset
+	kindServerOffline
+	kindNegotiationUnsupported
+	kindExperimentalRejection
 )
 
 // runError is the private typed execution failure carried inside d520. It
@@ -31,6 +35,7 @@ type runError struct {
 	wireCode    byte
 	hasWireCode bool
 	cause       error
+	reason      rejectionReason
 }
 
 func (e *runError) Error() string {
@@ -74,6 +79,15 @@ func (e *runError) toFailure() *protocol.AuthenticationProtocolRunFailure {
 	var code, description string
 	var recommendation protocol.AuthenticationProtocolFailureHandlingRecommendation
 	switch e.kind {
+	case kindExperimentalRejection:
+		code, description = e.experimentalRejectionDescription()
+		recommendation = protocol.BlockUntilExplicitRestartOrRelevantInputChange
+	case kindServerReset:
+		code, description, recommendation = "server_session_reset", "The server reset this session; no confirmed account restriction was supplied.", protocol.RetryAfterBoundedRecovery
+	case kindServerOffline:
+		code, description, recommendation = "server_session_ended", "The server reports this session is no longer logged in.", protocol.RetryAfterStandardDelay
+	case kindNegotiationUnsupported:
+		code, description, recommendation = "negotiation_unsupported", "The server requires an unsupported protocol capability.", protocol.BlockUntilExplicitRestartOrRelevantInputChange
 	case kindNetworkTimeout:
 		code, description, recommendation = "network_timeout", "Network operation timed out.", protocol.RetryAfterStandardDelay
 	case kindNetworkIO:
@@ -97,6 +111,7 @@ func (e *runError) toFailure() *protocol.AuthenticationProtocolRunFailure {
 		Description:            description,
 		HandlingRecommendation: recommendation,
 		DiagnosticCause:        e,
+		RetainRecoveryBudget:   e.kind == kindServerReset,
 	}
 }
 

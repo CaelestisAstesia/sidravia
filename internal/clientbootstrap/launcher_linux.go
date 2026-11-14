@@ -3,6 +3,7 @@
 package clientbootstrap
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,7 @@ type daemonLauncherDeps struct {
 	parentEnv     func() []string
 	start         func(*exec.Cmd) error
 	release       func(*exec.Cmd) error
+	wait          func(*exec.Cmd) error
 }
 
 func defaultDaemonLauncherDeps() daemonLauncherDeps {
@@ -37,6 +39,7 @@ func defaultDaemonLauncherDeps() daemonLauncherDeps {
 		prepareLog:    daemonlog.PrepareBootstrap,
 		parentEnv:     os.Environ,
 		start:         func(cmd *exec.Cmd) error { return cmd.Start() },
+		wait:          func(cmd *exec.Cmd) error { return cmd.Wait() },
 		release: func(cmd *exec.Cmd) error {
 			if cmd.Process == nil {
 				return nil
@@ -85,6 +88,25 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 	if err := deps.start(cmd); err != nil {
 		_ = logFile.Close()
 		return daemonLaunch{}, wrapSafeOperation("启动 sidraviad", err)
+	}
+
+	// Desktop bootstrap must observe early exit/singleton contention so a core
+	// restart can retry inside its existing bounded readiness deadline. Headless
+	// callers retain their detached lifetime.
+	if options.Mode == launchcontract.ModeDesktop {
+		exited := make(chan error, 1)
+		go func() {
+			err := deps.wait(cmd)
+			var status *exec.ExitError
+			if errors.As(err, &status) && status.ExitCode() == launchcontract.ExitSingletonContention {
+				err = errors.Join(errDaemonSingletonContention, err)
+			}
+			exited <- err
+		}()
+		if err := logFile.Close(); err != nil {
+			return daemonLaunch{}, err
+		}
+		return daemonLaunch{exited: exited, pid: cmd.Process.Pid}, nil
 	}
 
 	if err := deps.release(cmd); err != nil {

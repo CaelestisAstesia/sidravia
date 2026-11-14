@@ -157,6 +157,11 @@ func TestSessionDetailExplainsAutoReconnectDisabled(t *testing.T) {
 
 func TestFailureMappings(t *testing.T) {
 	cases := map[string]string{
+		"quota_exceeded":               "账号时间或流量配额已耗尽",
+		"account_suspended":            "服务器报告账号已暂停使用",
+		"account_expired":              "账号有效期已结束",
+		"too_many_addresses":           "服务器拒绝了上报的 IPv4 地址数量",
+		"server_session_reset":         "服务器已重置连接",
 		"network_timeout":              "网络操作超时",
 		"network_io_failed":            "网络读写失败",
 		"server_busy":                  "认证服务器繁忙",

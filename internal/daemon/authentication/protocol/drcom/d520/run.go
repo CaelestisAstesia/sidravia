@@ -45,8 +45,9 @@ type execution struct {
 	tail   [4]byte
 	serial byte
 
-	ka1Sent bool
-	ka2Sent map[byte]ka2Exchange
+	ka1Sent      bool
+	ka2Sent      map[byte]ka2Exchange
+	experimental experimentalState
 }
 
 func newExecution(definition runDefinition, observer protocol.AuthenticationProtocolRunObserver, diagnostics protocol.AuthenticationProtocolDiagnostics) *execution {
@@ -101,9 +102,18 @@ func (r *d520Run) Execute(ctx context.Context, observer protocol.AuthenticationP
 	}
 
 	var failure *runError
-	if failure = exec.challenge(ctx); failure == nil {
-		if failure = exec.login(ctx); failure == nil {
-			if failure = exec.bootstrap(ctx); failure == nil {
+	loginCtx := ctx
+	if exec.definition.cfg.jluExperimental {
+		cfg := exec.definition.cfg
+		budget := cfg.challengeTimeout + time.Duration(cfg.busyMaxAttempts)*cfg.loginTimeout + time.Duration(cfg.busyMaxAttempts-1)*cfg.busyBackoffMax + 5*cfg.keepaliveTimeout
+		var cancel context.CancelFunc
+		loginCtx, cancel = context.WithTimeout(ctx, budget)
+		defer cancel()
+		exec.experimental.interval = cfg.heartbeatInterval
+	}
+	if failure = exec.challenge(loginCtx); failure == nil {
+		if failure = exec.login(loginCtx); failure == nil {
+			if failure = exec.bootstrap(loginCtx); failure == nil {
 				failure = exec.heartbeatLoop(ctx)
 			}
 		}
@@ -127,17 +137,46 @@ func (exec *execution) challenge(ctx context.Context) *runError {
 func (exec *execution) requestChallenge(ctx context.Context, timeout time.Duration) ([4]byte, *runError) {
 	seed := randomChallengeSeed()
 	req := buildChallengeRequest(seed, exec.definition.cfg.challengePadding)
+	if exec.definition.cfg.jluExperimental {
+		var correlation [3]byte
+		if _, err := rand.Read(correlation[:]); err != nil {
+			return [4]byte{}, contractViolationError("challenge randomness", err)
+		}
+		req[1] = correlation[0]
+		seed = binary.LittleEndian.Uint16(correlation[1:])
+		binary.LittleEndian.PutUint16(req[2:4], seed)
+	}
 	classify := func(datagram []byte) (exchangeResponse, error) {
+		if exec.definition.cfg.jluExperimental {
+			if len(datagram) == 0 || datagram[0] != 2 {
+				return responseIgnore, nil
+			}
+			if len(datagram) < 24 {
+				return 0, invalidResponse(protocol.ExchangeInvalidLength, "challenge negotiation truncated")
+			}
+			if datagram[1] != req[1] || binary.LittleEndian.Uint16(datagram[2:4]) != seed {
+				return responseIgnore, nil
+			}
+			if binary.LittleEndian.Uint16(datagram[8:10]) != 0 {
+				return 0, &runError{operation: "password negotiation", kind: kindNegotiationUnsupported}
+			}
+			if len(datagram) >= 44 {
+				exec.experimental.challengePing = binary.LittleEndian.Uint16(datagram[42:44])&0x8000 != 0
+			}
+		}
 		if _, err := parseChallengeResponse(datagram); err != nil {
 			return 0, err
 		}
 		return responseAccept, nil
 	}
-	resp, failure := exec.exchange.roundTrip(ctx, timeout, req, classify, phaseChallenge, exec.diagnostics)
+	resp, failure := exec.roundTrip(ctx, timeout, req, classify, phaseChallenge)
 	if failure != nil {
 		return [4]byte{}, failure
 	}
 	parsed, _ := parseChallengeResponse(resp)
+	if exec.definition.cfg.jluExperimental {
+		exec.experimental.pingSerial = resp[1] + 1
+	}
 	return parsed.salt, nil
 }
 
@@ -153,6 +192,9 @@ func (exec *execution) login(ctx context.Context) *runError {
 		return contractViolationError("login build", err)
 	}
 	classify := func(datagram []byte) (exchangeResponse, error) {
+		if exec.definition.cfg.jluExperimental && (len(datagram) == 0 || (datagram[0] != 4 && datagram[0] != 5)) {
+			return responseIgnore, nil
+		}
 		if _, err := parseLoginResponse(datagram); err != nil {
 			return 0, err
 		}
@@ -161,7 +203,7 @@ func (exec *execution) login(ctx context.Context) *runError {
 
 	maxAttempts := exec.definition.cfg.busyMaxAttempts
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.loginTimeout, loginReq, classify, phaseLogin, exec.diagnostics)
+		resp, failure := exec.roundTrip(ctx, exec.definition.cfg.loginTimeout, loginReq, classify, phaseLogin)
 		if failure != nil {
 			return failure
 		}
@@ -170,17 +212,42 @@ func (exec *execution) login(ctx context.Context) *runError {
 		case loginResponseSuccess:
 			exec.authInfo = parsed.authInfo
 			exec.hasAuthInfo = true
+			if exec.definition.cfg.jluExperimental {
+				if len(resp) < 43 {
+					return responseInvalidError("login negotiation", errors.New("login options truncated"))
+				}
+				offset := 43 + 12*int(resp[41])
+				if offset+2 > len(resp) {
+					return responseInvalidError("login negotiation", errors.New("login options truncated"))
+				}
+				exec.experimental.loginFlags = binary.LittleEndian.Uint16(resp[offset : offset+2])
+				if sink, ok := exec.observer.(protocol.BusinessObserver); ok {
+					if stats, valid := parseLoginStatistics(resp); valid {
+						sink.ObserveAccountStatistics(stats)
+					}
+				}
+
+			}
 			return nil
 		case loginResponseRejection:
+			if exec.definition.cfg.jluExperimental {
+				recordDecision(exec.diagnostics, "login_rejection", int(parsed.code))
+				recordDecision(exec.diagnostics, "login_rejection_detail_length", len(resp)-5)
+			}
 			if parsed.code != 0x02 {
+				if exec.definition.cfg.jluExperimental {
+					failure := experimentalRejectionError(resp)
+					recordDecision(exec.diagnostics, "login_rejection_class", int(failure.reason))
+					return failure
+				}
 				return rejectionError("login", parsed.code, nil)
 			}
 			if attempt+1 >= maxAttempts {
 				return serverBusyExhaustedError("login", nil)
 			}
 			backoff := randomBackoff(exec.definition.cfg.busyBackoffMin, exec.definition.cfg.busyBackoffMax)
-			if !sleepCancellable(ctx, backoff) {
-				return networkTimeoutError("login busy backoff", ctx.Err())
+			if failure := exec.waitBusyBackoff(ctx, backoff); failure != nil {
+				return failure
 			}
 		}
 	}
@@ -196,8 +263,10 @@ func (exec *execution) bootstrap(ctx context.Context) *runError {
 	if failure := exec.sendKA2(ctx, ka2Type1, true, phaseBootstrapKA2); failure != nil {
 		return failure
 	}
-	if failure := exec.sendKA2(ctx, ka2Type1, false, phaseBootstrapKA2); failure != nil {
-		return failure
+	if !exec.definition.cfg.jluExperimental {
+		if failure := exec.sendKA2(ctx, ka2Type1, false, phaseBootstrapKA2); failure != nil {
+			return failure
+		}
 	}
 	if failure := exec.sendKA2(ctx, ka2Type3, false, phaseBootstrapKA2); failure != nil {
 		return failure
@@ -209,6 +278,9 @@ func (exec *execution) bootstrap(ctx context.Context) *runError {
 // heartbeatLoop waits the Profile heartbeat interval and then runs KA1 + KA2
 // 1-3 until a failure or cancellation occurs.
 func (exec *execution) heartbeatLoop(ctx context.Context) *runError {
+	if exec.definition.cfg.jluExperimental {
+		return exec.experimentalHeartbeat(ctx)
+	}
 	for {
 		if !sleepCancellable(ctx, exec.definition.cfg.heartbeatInterval) {
 			return networkTimeoutError("heartbeat wait", ctx.Err())
@@ -228,6 +300,13 @@ func (exec *execution) heartbeatLoop(ctx context.Context) *runError {
 // sendKA1 builds and sends one KA1 request using the login salt and current
 // Auth Info, and accepts a structurally valid KA1 response.
 func (exec *execution) sendKA1(ctx context.Context, phase string) *runError {
+	if exec.definition.cfg.jluExperimental && exec.consumePingReply() {
+		exec.experimental.pingChallenge = nil
+		return nil
+	}
+	if exec.definition.cfg.jluExperimental && exec.experimental.challengePing {
+		return exec.sendChallengePing(ctx, phase)
+	}
 	passwordBytes, err := encodeProtocolText(exec.definition.login.password)
 	if err != nil {
 		return contractViolationError("ka1 build", err)
@@ -235,12 +314,19 @@ func (exec *execution) sendKA1(ctx context.Context, phase string) *runError {
 	digestA := md5A(exec.salt[:], passwordBytes)
 	timestamp := uint16(time.Now().Unix() % 0xFFFF)
 	req, err := buildKA1Request(digestA, exec.authInfo, timestamp)
+	if exec.definition.cfg.jluExperimental {
+		req, err = buildExperimentalPingRequest(digestA, exec.authInfo, time.Now().Unix())
+	}
 	if err != nil {
 		return contractViolationError("ka1 build", err)
 	}
+
+	if exec.definition.cfg.jluExperimental {
+		return exec.exchangeExperimentalPing(ctx, req, phase)
+	}
 	classify := exec.classifyKA1Response()
 	exec.ka1Sent = true
-	_, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify, phase, exec.diagnostics)
+	_, failure := exec.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify, phase)
 	return failure
 }
 
@@ -250,6 +336,9 @@ func (exec *execution) sendKA1(ctx context.Context, phase string) *runError {
 // leaves Tail unchanged. Every accepted response increments the serial
 // (wrapping at 255).
 func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool, phase string) *runError {
+	if exec.definition.cfg.jluExperimental {
+		return exec.sendExperimentalModule(ctx, typ, phase)
+	}
 	serial := exec.serial
 	req, err := buildKA2Request(serial, typ, firstType1, exec.definition.cfg.keepAliveVersion, exec.tail, exec.definition.login.clientIPv4)
 	if err != nil {
@@ -257,7 +346,7 @@ func (exec *execution) sendKA2(ctx context.Context, typ byte, firstType1 bool, p
 	}
 	exec.ka2Sent[serial] = ka2Exchange{requestType: typ, firstBootstrapType1: firstType1}
 	classify := exec.classifyKA2Response(serial, typ, firstType1)
-	resp, failure := exec.exchange.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify, phase, exec.diagnostics)
+	resp, failure := exec.roundTrip(ctx, exec.definition.cfg.keepaliveTimeout, req, classify, phase)
 	if failure != nil {
 		return failure
 	}
@@ -336,7 +425,7 @@ func (exec *execution) finalize(ctx context.Context, failure *runError) *protoco
 	if failure == nil {
 		return contractViolationError("execute", errors.New("run ended without cancellation or failure")).toFailure()
 	}
-	if exec.hasAuthInfo {
+	if exec.hasAuthInfo && failure.kind != kindServerReset && failure.kind != kindServerOffline {
 		if cleanupFailure := exec.bestEffortLogout(); cleanupFailure != nil {
 			if failure.cause != nil {
 				failure.cause = fmt.Errorf("%w; best-effort logout also failed: %v", failure.cause, cleanupFailure)
@@ -355,6 +444,11 @@ func (exec *execution) finalize(ctx context.Context, failure *runError) *protoco
 // beyond these two bounded exchanges.
 func (exec *execution) bestEffortLogout() *runError {
 	logoutCtx := context.Background()
+	if exec.definition.cfg.jluExperimental {
+		var cancel context.CancelFunc
+		logoutCtx, cancel = context.WithTimeout(logoutCtx, 2*exec.definition.cfg.logoutTimeout)
+		defer cancel()
+	}
 	salt, challengeFailure := exec.requestChallenge(logoutCtx, exec.definition.cfg.logoutTimeout)
 	if challengeFailure != nil {
 		salt = exec.salt
@@ -364,12 +458,15 @@ func (exec *execution) bestEffortLogout() *runError {
 		return contractViolationError("logout build", err)
 	}
 	classify := func(datagram []byte) (exchangeResponse, error) {
+		if exec.definition.cfg.jluExperimental && (len(datagram) == 0 || datagram[0] != 4) {
+			return responseIgnore, nil
+		}
 		if err := parseLogoutACK(datagram); err != nil {
 			return 0, err
 		}
 		return responseAccept, nil
 	}
-	_, failure := exec.exchange.roundTrip(logoutCtx, exec.definition.cfg.logoutTimeout, logoutReq, classify, phaseLogout, exec.diagnostics)
+	_, failure := exec.roundTrip(logoutCtx, exec.definition.cfg.logoutTimeout, logoutReq, classify, phaseLogout)
 	return failure
 }
 

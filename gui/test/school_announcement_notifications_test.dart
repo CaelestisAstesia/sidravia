@@ -96,12 +96,12 @@ void main() {
     expect(calls, isEmpty);
   });
 
-  test('disabled and non-Windows adapters are unsupported', () async {
+  test('disabled and unsupported adapters are unsupported', () async {
     for (final disabled in [
       SchoolAnnouncementNotifications.disabled(),
       SchoolAnnouncementNotifications(
         channel: channel,
-        platform: TargetPlatform.linux,
+        platform: TargetPlatform.android,
       ),
     ]) {
       expect(await disabled.show(token: first), unsupported);

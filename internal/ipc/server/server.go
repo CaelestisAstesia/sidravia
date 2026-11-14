@@ -65,6 +65,7 @@ var allowedMethods = map[string]struct{}{
 	contract.MethodSessionRestart:            {},
 	contract.MethodSessionRemove:             {},
 	contract.MethodSessionGet:                {},
+	contract.MethodSessionBusinessGet:        {},
 	contract.MethodSessionList:               {},
 	contract.MethodProfileList:               {},
 	contract.MethodConfigurationList:         {},

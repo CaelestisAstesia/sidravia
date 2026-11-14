@@ -18,7 +18,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-  test('disabled and non-Windows carrier never invokes native', () async {
+  test('disabled and unsupported carrier never invokes native', () async {
     messenger.setMockMethodCallHandler(
       channel,
       (_) async => fail('native invoked'),
@@ -27,7 +27,7 @@ void main() {
       SchoolAnnouncementWindow.disabled(),
       SchoolAnnouncementWindow(
         channel: channel,
-        platform: TargetPlatform.linux,
+        platform: TargetPlatform.android,
       ),
     ]) {
       expect(

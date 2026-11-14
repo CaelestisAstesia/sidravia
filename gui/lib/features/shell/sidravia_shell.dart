@@ -63,7 +63,11 @@ class SidraviaShellState extends State<SidraviaShell> {
       _history.add(_page);
       _page = page;
     });
+    _syncBusinessVisibility();
   }
+
+  void _syncBusinessVisibility() =>
+      widget.controller.setBusinessViewVisible(_page == AppPage.home);
 
   void _requestBack() {
     if (_page == AppPage.configuration) {
@@ -78,12 +82,14 @@ class SidraviaShellState extends State<SidraviaShell> {
       _history.clear();
       _page = AppPage.home;
     });
+    _syncBusinessVisibility();
   }
 
   void _back() {
     setState(
       () => _page = _history.isEmpty ? AppPage.home : _history.removeLast(),
     );
+    _syncBusinessVisibility();
   }
 
   @override

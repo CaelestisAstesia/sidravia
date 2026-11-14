@@ -68,6 +68,9 @@ type Dependencies struct {
 }
 
 type AuthenticationSession struct {
+	business            BusinessSnapshot
+	businessWake        chan struct{}
+	businessMessageID   uint64
 	definition          RuntimeDefinition
 	now                 func() time.Time
 	retryPolicy         RetryPolicy
@@ -95,6 +98,7 @@ type AuthenticationSession struct {
 	nextGeneration            uint64
 	consecutiveFailures       uint32
 	protocolRecoveryFailures  uint32
+	retainRecoveryBudget      bool
 	retryScheduleID           uint64
 	retryCancellation         RetryCancellation
 	lastStopCleanupFailure    *protocol.AuthenticationProtocolRunFailure
@@ -105,6 +109,7 @@ type AuthenticationSession struct {
 }
 
 type activeProtocolRun struct {
+	business       *businessMailbox
 	generation     uint64
 	run            protocol.AuthenticationProtocolRun
 	context        context.Context
@@ -181,7 +186,17 @@ func initializeAuthenticationSession(
 	}
 	admission := make(chan struct{}, 1)
 	admission <- struct{}{}
+	capabilities := protocol.BusinessCapabilities{}
+	if provider, ok := definition.AuthenticationProtocolFactory.(protocol.BusinessCapabilityProvider); ok {
+		var err error
+		capabilities, err = provider.BusinessCapabilities(definition.InstitutionProfile.InstitutionProtocolConfiguration)
+		if err != nil {
+			return nil, err
+		}
+	}
 	session := &AuthenticationSession{
+		businessWake:        make(chan struct{}, 1),
+		business:            BusinessSnapshot{SessionID: configuration.AuthenticationSessionID, Revision: 1, StatisticsSupported: capabilities.Statistics, TextSupported: capabilities.TextNotifications, Messages: []BusinessMessage{}, UpdatedAt: now()},
 		definition:          definition,
 		now:                 now,
 		retryPolicy:         dependencies.RetryPolicy,
@@ -315,9 +330,23 @@ func (session *AuthenticationSession) run() {
 		var message sessionMessage
 		select {
 		case message = <-session.privateInbox:
-		case message = <-session.inbox:
+		default:
+			select {
+			case message = <-session.inbox:
+			default:
+				select {
+				case message = <-session.privateInbox:
+				case message = <-session.inbox:
+				case <-session.businessWake:
+					session.consumeBusiness()
+					continue
+				}
+			}
 		}
 		switch message := message.(type) {
+		case businessQuery:
+			session.consumeBusiness()
+			message.reply <- session.businessSnapshot()
 		case snapshotQuery:
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
 		case networkDiagnosticsQuery:
@@ -496,6 +525,7 @@ func (session *AuthenticationSession) handleRestart() {
 		}
 		session.resetAutomaticIntent(true)
 		session.consecutiveFailures, session.protocolRecoveryFailures = 0, 0
+		session.retainRecoveryBudget = false
 		session.automaticReconnectBlocked = false
 		session.explicitRestartPending = true
 		session.updateSnapshot(func(snapshot *Snapshot) {
@@ -563,11 +593,16 @@ func (session *AuthenticationSession) handleAuthenticationEstablished(event auth
 		return
 	}
 	session.active.established = true
+	session.businessChanged()
 	session.active.establishedAt = session.now()
 	if session.automatic != nil {
 		session.automatic.retryAt = time.Time{}
 	}
-	session.resetRetryState()
+	session.consecutiveFailures = 0
+	if !session.retainRecoveryBudget {
+		session.protocolRecoveryFailures = 0
+	}
+	session.invalidateRetrySchedule()
 	session.updateSnapshot(func(snapshot *Snapshot) {
 		now := session.now()
 		snapshot.State = Authenticated
@@ -592,7 +627,9 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 		event.cancellationCause = cancellationCause
 	}
 	finished := session.active
+	session.consumeBusiness()
 	session.active = nil
+	session.businessChanged()
 	if session.automatic != nil && session.finishAutomaticRun(finished, event) {
 		return
 	}
@@ -663,6 +700,7 @@ func (session *AuthenticationSession) handleRunFailure(code string, failure *pro
 	}
 	switch failure.HandlingRecommendation {
 	case protocol.RetryAfterBoundedRecovery:
+		session.retainRecoveryBudget = session.retainRecoveryBudget || failure.RetainRecoveryBudget
 		if session.protocolRecoveryFailures < ^uint32(0) {
 			session.protocolRecoveryFailures++
 		}
@@ -838,7 +876,7 @@ func safePublicFailureCode(value string, forbidden []string) string {
 // when a credential happens to equal part or all of one of their names.
 func knownPublicFailureCode(value string) bool {
 	switch value {
-	case "network_timeout", "network_io_failed", "server_busy", "session_in_use",
+	case "quota_exceeded", "account_suspended", "account_expired", "too_many_addresses", "server_session_reset", "server_session_ended", "negotiation_unsupported", "network_timeout", "network_io_failed", "server_busy", "session_in_use",
 		"credential_invalid", "insufficient_funds", "account_frozen", "binding_ip_mismatch",
 		"binding_mac_mismatch", "too_many_sessions", "incompatible_version", "binding_pair_mismatch",
 		"dhcp_required", "authentication_rejected", "protocol_response_invalid", "protocol_contract_violated",
@@ -927,6 +965,7 @@ func validPublicFailureRecommendation(value protocol.AuthenticationProtocolFailu
 func (session *AuthenticationSession) resetRetryState() {
 	session.consecutiveFailures = 0
 	session.protocolRecoveryFailures = 0
+	session.retainRecoveryBudget = false
 	session.invalidateRetrySchedule()
 }
 
@@ -975,6 +1014,7 @@ func (session *AuthenticationSession) createRun(allowRecoveryState bool) {
 		return
 	}
 	session.nextGeneration++
+	session.beginBusinessRun(session.nextGeneration)
 	generation := session.nextGeneration
 	inputs := protocol.AuthenticationProtocolRunCreationInputs{
 		InstitutionProtocolConfiguration: append(protocol.InstitutionProtocolConfiguration(nil), session.definition.InstitutionProfile.InstitutionProtocolConfiguration...),
@@ -1003,7 +1043,7 @@ func (session *AuthenticationSession) createRun(allowRecoveryState bool) {
 		return
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
-	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel}
+	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel, business: &businessMailbox{}}
 	if session.automatic != nil {
 		r := session.automatic
 		active.binding = bindingCandidate{networkInterface: session.desiredBinding.NetworkInterface(), localAddress: session.desiredBinding.LocalIPv4AddressAssignment(), key: keyForBinding(session.desiredBinding)}
@@ -1032,6 +1072,7 @@ func (session *AuthenticationSession) cancelActive(requirement protocol.Authenti
 	}
 	session.active.effectiveEndAt = session.now()
 	session.active.cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: requirement})
+	session.businessChanged()
 }
 
 func (session *AuthenticationSession) updateSnapshot(mutate func(*Snapshot)) {

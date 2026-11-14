@@ -37,7 +37,7 @@ void main() {
     final platform = SidraviaPlatform.forKind(SidraviaPlatformKind.linux);
 
     expect(platform.kind, SidraviaPlatformKind.linux);
-    expect(platform.supportsDesktopPresence, isFalse);
+    expect(platform.supportsDesktopPresence, isTrue);
     expect(platform.supportsLocalBootstrap, isFalse);
   });
 }

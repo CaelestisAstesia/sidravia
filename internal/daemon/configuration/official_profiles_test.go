@@ -32,11 +32,14 @@ func TestOfficialProfilesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSummaries() error = %v", err)
 	}
-	if len(summaries) != 1 {
-		t.Fatalf("official profiles = %d, want exactly 1", len(summaries))
+	if len(summaries) != 2 {
+		t.Fatalf("official profiles = %d, want exactly 2", len(summaries))
 	}
 	if summaries[0].InstitutionProfileID != "jlu" {
 		t.Fatalf("official profile ID = %q, want jlu", summaries[0].InstitutionProfileID)
+	}
+	if summaries[1].InstitutionProfileID != "jlu-experimental" || summaries[1].DisplayName != "吉林大学（实验性）" {
+		t.Fatalf("experimental profile = %#v", summaries[1])
 	}
 	if a := summaries[0].Announcement; a == nil || a.URL != "http://login.jlu.edu.cn/notice_win.php" || a.ClientWidth != 600 || a.ClientHeight != 460 {
 		t.Fatalf("official announcement = %#v", a)

@@ -15,12 +15,13 @@ import (
 const ExitSingletonContention = 2
 
 const (
-	EnvMode            = "SIDRAVIA_DAEMON_MODE"
-	EnvDesktopOwnerPID = "SIDRAVIA_DESKTOP_OWNER_PID"
-	EnvManagedLog      = "SIDRAVIA_MANAGED_LOG"
-	EnvLogLevel        = "SIDRAVIA_LOG_LEVEL"
-	EnvSkipAutoLogin   = "SIDRAVIA_SKIP_AUTO_LOGIN"
-	EnvNamespace       = "SIDRAVIA_NAMESPACE"
+	EnvMode              = "SIDRAVIA_DAEMON_MODE"
+	EnvDesktopOwnerStart = "SIDRAVIA_DESKTOP_OWNER_START"
+	EnvDesktopOwnerPID   = "SIDRAVIA_DESKTOP_OWNER_PID"
+	EnvManagedLog        = "SIDRAVIA_MANAGED_LOG"
+	EnvLogLevel          = "SIDRAVIA_LOG_LEVEL"
+	EnvSkipAutoLogin     = "SIDRAVIA_SKIP_AUTO_LOGIN"
+	EnvNamespace         = "SIDRAVIA_NAMESPACE"
 )
 
 type Mode string
@@ -101,7 +102,7 @@ func ChildEnvironment(parent []string, options Options, logLevel string) ([]stri
 	result := make([]string, 0, len(parent)+4)
 	for _, entry := range parent {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(name, EnvManagedLog) || strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) || strings.EqualFold(name, EnvSkipAutoLogin) {
+		if strings.EqualFold(name, EnvDesktopOwnerStart) && options.Mode != ModeDesktop || strings.EqualFold(name, EnvManagedLog) || strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) || strings.EqualFold(name, EnvSkipAutoLogin) {
 			continue
 		}
 		result = append(result, entry)

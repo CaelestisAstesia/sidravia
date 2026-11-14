@@ -74,7 +74,8 @@ func (ex *udpExchange) close() error {
 // never closes the socket. After I/O the callback is stopped, and if it had
 // already started the exchange waits for it to finish before returning, so a
 // later exchange can safely set a fresh deadline. The absolute deadline is
-// never extended after an ignored datagram.
+// never extended after an ignored datagram. A nil request receives until the
+// scheduling deadline; reaching that deadline is a normal result, not a network failure.
 func (ex *udpExchange) roundTrip(
 	ctx context.Context,
 	timeout time.Duration,
@@ -83,7 +84,13 @@ func (ex *udpExchange) roundTrip(
 	phase string,
 	diagnostics protocol.AuthenticationProtocolDiagnostics,
 ) ([]byte, *runError) {
+	if ctx.Err() != nil {
+		return nil, networkTimeoutError("udp exchange", ctx.Err())
+	}
 	deadline := time.Now().Add(timeout)
+	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
+		deadline = limit
+	}
 	if err := ex.conn.SetDeadline(deadline); err != nil {
 		recordNetworkFailure(diagnostics, "set_deadline", err)
 		return nil, networkIOError("udp exchange", err)
@@ -103,19 +110,33 @@ func (ex *udpExchange) roundTrip(
 
 	diagnostics.PhaseEvent(phase, phaseBoundaryBegin)
 	defer diagnostics.PhaseEvent(phase, phaseBoundaryEnd)
-	diagnostics.DatagramEvent(phase, protocol.DatagramDirectionTx, request)
-	if _, err := ex.conn.Write(request); err != nil {
-		if ctx.Err() == nil {
-			recordNetworkFailure(diagnostics, "write", err)
+	if request != nil {
+		diagnostics.DatagramEvent(phase, protocol.DatagramDirectionTx, request)
+		if _, err := ex.conn.Write(request); err != nil {
+			if ctx.Err() == nil {
+				recordNetworkFailure(diagnostics, "write", err)
+			}
+			failure := udpReadFailure(ctx, "udp exchange write", err)
+			recordExchange(diagnostics, phase, networkOutcome(failure), 0)
+			return nil, failure
 		}
-		failure := udpReadFailure(ctx, "udp exchange write", err)
-		recordExchange(diagnostics, phase, networkOutcome(failure), 0)
-		return nil, failure
-	}
 
+	}
 	for {
+		if ctx.Err() != nil {
+			return nil, networkTimeoutError("udp exchange deadline", ctx.Err())
+		}
+		if !time.Now().Before(deadline) {
+			if request == nil {
+				return nil, nil
+			}
+			return nil, networkTimeoutError("udp exchange deadline", nil)
+		}
 		n, err := ex.conn.Read(ex.buf[:])
 		if err != nil {
+			if request == nil && ctx.Err() == nil && isTimeout(err) {
+				return nil, nil
+			}
 			if ctx.Err() == nil {
 				recordNetworkFailure(diagnostics, "read", err)
 			}
@@ -128,6 +149,11 @@ func (ex *udpExchange) roundTrip(
 		diagnostics.DatagramEvent(phase, protocol.DatagramDirectionRx, datagram)
 		class, classifyErr := classify(datagram)
 		if classifyErr != nil {
+			var runFailure *runError
+			if errors.As(classifyErr, &runFailure) {
+				recordExchange(diagnostics, phase, protocol.ExchangeControlReceived, n)
+				return nil, runFailure
+			}
 			recordExchange(diagnostics, phase, responseOutcome(classifyErr), n)
 			return nil, responseInvalidError("udp exchange response", classifyErr)
 		}

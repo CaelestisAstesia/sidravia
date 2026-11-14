@@ -87,10 +87,12 @@ class DesktopPresence extends ChangeNotifier {
     final queryRevision = ++_visibilityQueryRevision;
     final callbackRevision = _visibilityCallbackRevision;
     Object? result;
+    var observed = false;
     try {
       result = await channel
           .invokeMethod<Object?>('getVisibility')
           .timeout(const Duration(seconds: 2));
+      observed = true;
     } on Object {
       // Query errors are observational and never replace command feedback.
     }
@@ -98,10 +100,12 @@ class DesktopPresence extends ChangeNotifier {
     if (callbackRevision != _visibilityCallbackRevision) {
       return _isMainWindowVisible;
     }
-    if (queryRevision != _visibilityQueryRevision || result is! bool) {
+    if (queryRevision != _visibilityQueryRevision ||
+        !observed ||
+        (result != null && result is! bool)) {
       return null;
     }
-    _setMainWindowVisibility(result);
+    _setMainWindowVisibility(result as bool?);
     return _isMainWindowVisible;
   }
 
@@ -124,7 +128,7 @@ class DesktopPresence extends ChangeNotifier {
     return future;
   }
 
-  void _setMainWindowVisibility(bool visible) {
+  void _setMainWindowVisibility(bool? visible) {
     if (_disposed || _isMainWindowVisible == visible) return;
     _isMainWindowVisible = visible;
     notifyListeners();
@@ -233,10 +237,10 @@ class DesktopPresence extends ChangeNotifier {
       if (!_disposed && intent != null) await onTrayAction?.call(intent);
     } else if (call.method == 'visibilityChanged') {
       final visible = call.arguments;
-      if (!_disposed && enabled && visible is bool) {
+      if (!_disposed && enabled && (visible == null || visible is bool)) {
         // Even a duplicate callback supersedes an in-flight initial query.
         _visibilityCallbackRevision++;
-        _setMainWindowVisibility(visible);
+        _setMainWindowVisibility(visible as bool?);
       }
     }
     return null;

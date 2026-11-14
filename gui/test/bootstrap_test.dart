@@ -80,6 +80,22 @@ void main() {
     expect(arguments, ['gui', 'bootstrap', '--owner-pid', '77']);
   });
 
+  test('Linux bootstrap uses the native sibling name and owner', () async {
+    String? path;
+    final result = await ProcessGuiBootstrap(
+      isWindows: () => false,
+      isLinux: () => true,
+      resolvedExecutable: () => '/fixture/sidravia_gui',
+      ownerPid: () => 77,
+      launch: (exe, args) async {
+        path = exe;
+        return _Process.completed(0, stdout: utf8.encode(valid));
+      },
+    ).bootstrap();
+    expect(result.isSuccess, isTrue);
+    expect(path, '/fixture/sidraviactl');
+  });
+
   test('bounds output, kills a live child, and settles both readers', () async {
     final child = _Process.completed(0, stdout: List<int>.filled(5, 1));
     final result = await ProcessGuiBootstrap(
@@ -131,15 +147,12 @@ void main() {
     expect(result.failure?.code, 'mode_conflict');
   });
 
-  test(
-    'non-Windows bootstrap returns only the stable Unsupported state',
-    () async {
-      if (Platform.isWindows) return;
-      final result = await ProcessGuiBootstrap().bootstrap();
+  test('unsupported platforms return the stable Unsupported state', () async {
+    if (Platform.isWindows || Platform.isLinux) return;
+    final result = await ProcessGuiBootstrap().bootstrap();
 
-      expect(result.failure?.code, 'unsupported_platform');
-    },
-  );
+    expect(result.failure?.code, 'unsupported_platform');
+  });
 }
 
 class _Process implements GuiBootstrapProcess {

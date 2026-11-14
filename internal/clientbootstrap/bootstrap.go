@@ -42,7 +42,7 @@ var (
 	ErrConnectionUnavailable  = errors.New("unable to connect to daemon")
 	ErrIncompatibleGeneration = errors.New("incompatible daemon generation")
 	ErrModeConflict           = errors.New("守护进程正在由另一种模式使用；请先退出当前模式")
-	ErrDesktopUnsupported     = errors.New("图形界面 bootstrap 仅支持 Windows")
+	ErrDesktopUnsupported     = errors.New("当前平台不支持图形界面 bootstrap")
 )
 
 // NewIdentity validates the identity a client presents to the daemon.

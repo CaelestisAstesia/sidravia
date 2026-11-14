@@ -400,3 +400,33 @@ func (flags bindingFlags) policy(preserve bool) (*contract.NetworkBindingPolicy,
 	}
 	return &policy, nil
 }
+
+func runAuthBusiness(sessionID string, deps authDependencies) error {
+	return withAuthClient(deps, func(connection daemonClient) error {
+		payload, err := json.Marshal(contract.SessionGetPayload{SessionID: sessionID})
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), deps.connection.callTimeout)
+		defer cancel()
+		response, err := connection.Call(ctx, contract.MethodSessionBusinessGet, payload)
+		if err != nil {
+			return wrapSafeOperation("读取业务数据", err)
+		}
+		if !response.OK {
+			code := ""
+			if response.Error != nil {
+				code = response.Error.Code
+			}
+			return errors.New(ipcErrorText(code))
+		}
+		value, err := contract.DecodeBusinessResult(response.Result)
+		if err != nil {
+			return wrapSafeOperation("解码业务数据", err)
+		}
+		// JSON escapes terminal controls even when a message contains a line break.
+		encoder := json.NewEncoder(deps.stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(value)
+	})
+}

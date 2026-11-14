@@ -3,10 +3,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'installation_manager.dart';
+import 'linux_installation_manager.dart';
 import 'installation_manager_stub.dart' as stub;
 
-InstallationManager createManager() =>
-    Platform.isWindows ? _ProcessManager() : stub.createManager();
+InstallationManager createManager() => Platform.isWindows
+    ? _ProcessManager()
+    : Platform.isLinux
+    ? LinuxInstallationManager(
+        executable: Platform.resolvedExecutable,
+        environment: Platform.environment,
+      )
+    : stub.createManager();
 
 class _ProcessManager implements InstallationManager {
   Process? _process;

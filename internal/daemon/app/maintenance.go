@@ -121,7 +121,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 		}
 		if state.Status().Phase != "idle" {
 			switch method {
-			case contract.MethodDaemonStatus, contract.MethodProfileList, contract.MethodConfigurationList, contract.MethodConfigurationGet, contract.MethodSessionList, contract.MethodSessionGet, contract.MethodNetworkInterfaces:
+			case contract.MethodDaemonStatus, contract.MethodProfileList, contract.MethodConfigurationList, contract.MethodConfigurationGet, contract.MethodSessionList, contract.MethodSessionGet, contract.MethodSessionBusinessGet, contract.MethodNetworkInterfaces:
 			case contract.MethodDaemonStop:
 				if state.Status().Phase != "committed" {
 					return failure(contract.ErrorCodeMaintenance)
@@ -131,7 +131,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			}
 		}
 		switch method {
-		case contract.MethodDaemonStatus, contract.MethodProfileList, contract.MethodConfigurationList, contract.MethodConfigurationGet, contract.MethodSessionList, contract.MethodSessionGet, contract.MethodNetworkInterfaces, contract.MethodDiagnosticsExport:
+		case contract.MethodDaemonStatus, contract.MethodProfileList, contract.MethodConfigurationList, contract.MethodConfigurationGet, contract.MethodSessionList, contract.MethodSessionGet, contract.MethodSessionBusinessGet, contract.MethodNetworkInterfaces, contract.MethodDiagnosticsExport:
 		default:
 			restoreAvailable = false
 		}

@@ -27,6 +27,7 @@ func IPCHandler(
 	status := StatusHandler(productVersion, buildID, options)
 	daemon := DaemonHandler()
 	sessions := SessionHandler(application)
+	business := BusinessHandler(application)
 	profiles := ProfileHandler(application)
 	configurations := ConfigurationHandler(application)
 	network := NetworkHandler(application)
@@ -34,6 +35,8 @@ func IPCHandler(
 
 	return withMaintenance(application, options, func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		switch method {
+		case contract.MethodSessionBusinessGet:
+			return business(ctx, method, payload)
 		case contract.MethodDiagnosticsExport:
 			return diagnostics(ctx, method, payload)
 		case contract.MethodDaemonStatus:

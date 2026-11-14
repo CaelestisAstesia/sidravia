@@ -55,6 +55,13 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       widget.systemNotifications ?? SystemNotifications.disabled();
   late final ConnectionNotificationController _connectionNotifications;
   bool _exiting = false;
+  bool _lifecycleVisible = true;
+  void _syncBusinessWindowVisibility() {
+    widget.controller.setPresentationVisible(
+      _lifecycleVisible && widget.desktopPresence?.isMainWindowVisible != false,
+    );
+  }
+
   GuiCloseBehavior? _lastCloseBehavior;
   bool? _lastStartHidden;
   final _windowObserver = SidraviaWindowObserver();
@@ -99,6 +106,8 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     unawaited(widget.controller.start());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
+      desktop.addListener(_syncBusinessWindowVisibility);
+      _syncBusinessWindowVisibility();
       desktop.onExitRequested = _handleExitRequested;
       widget.controller.onMaintenancePrepare = _prepareMaintenance;
       widget.controller.onMaintenanceCommit = _commitMaintenance;
@@ -111,11 +120,11 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    widget.controller.setPresentationVisible(
-      state != AppLifecycleState.hidden &&
-          state != AppLifecycleState.paused &&
-          state != AppLifecycleState.detached,
-    );
+    _lifecycleVisible =
+        state != AppLifecycleState.hidden &&
+        state != AppLifecycleState.paused &&
+        state != AppLifecycleState.detached;
+    _syncBusinessWindowVisibility();
   }
 
   void _handleControllerChanged() {
@@ -371,6 +380,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     unawaited(_logDirectory.close());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
+      desktop.removeListener(_syncBusinessWindowVisibility);
       desktop.onExitRequested = null;
       widget.controller.onMaintenancePrepare = null;
       widget.controller.onMaintenanceCommit = null;

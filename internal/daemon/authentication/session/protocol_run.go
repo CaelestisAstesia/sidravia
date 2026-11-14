@@ -12,6 +12,8 @@ import (
 type protocolRunObserver struct {
 	session    *AuthenticationSession
 	generation uint64
+	context    context.Context
+	business   *businessMailbox
 }
 
 func (observer protocolRunObserver) AuthenticationEstablished() {
@@ -41,7 +43,7 @@ func (session *AuthenticationSession) executeProtocolRun(run *activeProtocolRun)
 	)
 	func() {
 		defer func() { panicked = recover() }()
-		failure = run.run.Execute(run.context, protocolRunObserver{session: session, generation: run.generation})
+		failure = run.run.Execute(run.context, protocolRunObserver{session: session, generation: run.generation, context: run.context, business: run.business})
 	}()
 	if panicked != nil {
 		failure = &protocol.AuthenticationProtocolRunFailure{

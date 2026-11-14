@@ -89,13 +89,17 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
     final unknownState = _busy ? '正在读取…' : '状态未知';
     final pathRow = DesignRow(
       title: '加入用户 PATH',
-      subtitle: _error ?? '使新打开的终端可以直接使用命令',
+      subtitle:
+          _error ??
+          (status?.userPathSupported == false
+              ? 'Linux 暂不支持通过 GUI 修改 PATH'
+              : '使新打开的终端可以直接使用命令'),
       trailing: status == null
           ? Text(unknownState)
           : DesignSwitch(
               label: '加入用户 PATH',
               value: status.pathEnabled,
-              onChanged: _busy
+              onChanged: _busy || !status.userPathSupported
                   ? null
                   : (enabled) => _perform(
                       enabled
@@ -110,7 +114,9 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
           _error ??
           (status?.autostart == 'conflict'
               ? '任务存在冲突，未修改\n启用前，建议关闭其他认证器及其开机自启'
-              : '启用前，建议关闭其他认证器及其开机自启'),
+              : (status?.daemonAutostartSupported == false
+                    ? '登录桌面会话后启动；Linux 暂不支持仅后台自启'
+                    : '启用前，建议关闭其他认证器及其开机自启')),
       trailing: SettingsDropdown<String>(
         frameKey: const ValueKey('autostart-frame'),
         dropdownKey: const ValueKey('autostart-selector'),
@@ -119,7 +125,10 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
             : status.autostart,
         hint: unknownState,
         labels: const {'disabled': '关闭', 'gui': '启动到托盘', 'daemon': '仅后台'},
-        disabledValues: {if (!(status?.guiAvailable ?? false)) 'gui'},
+        disabledValues: {
+          if (!(status?.guiAvailable ?? false)) 'gui',
+          if (status?.daemonAutostartSupported == false) 'daemon',
+        },
         onChanged: _busy || status == null || status.autostart == 'conflict'
             ? null
             : (mode) => _perform(switch (mode) {

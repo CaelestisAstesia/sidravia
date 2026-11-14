@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/application/business_controller.dart';
 import 'package:sidravia_gui/application/connection_clock.dart';
 import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
@@ -145,10 +146,38 @@ class GuiController extends ChangeNotifier {
   GuiSnapshot? get snapshot => _snapshot;
   String? get notice => _notice;
   final presentationClock = ConnectionClock();
-  void setPresentationVisible(bool visible) => presentationClock.update(
-    connectionPresentation.establishedAt,
-    active: visible,
-  );
+  final business = BusinessController();
+  bool _presentationVisible = true;
+  bool _businessViewVisible = true;
+  void setBusinessViewVisible(bool visible) {
+    _businessViewVisible = visible;
+    _updateBusiness();
+  }
+
+  void _updateBusiness() {
+    business.update(
+      connection: _client,
+      client: _client is SidraviaBusinessClient
+          ? _client as SidraviaBusinessClient
+          : null,
+      session: capabilities.retainedSession,
+      visible:
+          _presentationVisible &&
+          _businessViewVisible &&
+          !_exitRequested &&
+          _state == GuiConnectionState.ready,
+    );
+  }
+
+  void setPresentationVisible(bool visible) {
+    _presentationVisible = visible;
+    presentationClock.update(
+      connectionPresentation.establishedAt,
+      active: visible,
+    );
+    _updateBusiness();
+  }
+
   void dismissNotice(String message) {
     if (_disposed || _notice != message) return;
     _notice = null;
@@ -1059,6 +1088,7 @@ class GuiController extends ChangeNotifier {
     if (!_disposed) {
       presentationClock.update(connectionPresentation.establishedAt);
       diagnostics.updateContext(_diagnosisContext);
+      _updateBusiness();
       notifyListeners();
     }
   }
@@ -1073,11 +1103,13 @@ class GuiController extends ChangeNotifier {
     _timer = null;
     final transition = _transition;
     final diagnosisClosing = diagnostics.close();
+    final businessClosing = business.close();
     final releasing = _releaseResources();
     return _closed = () async {
       await releasing;
       await transition;
       await diagnosisClosing;
+      await businessClosing;
       await _releaseResources();
     }();
   }
@@ -1088,6 +1120,7 @@ class GuiController extends ChangeNotifier {
     _disposed = true;
     unawaited(close());
     diagnostics.dispose();
+    business.dispose();
     presentationClock.dispose();
     super.dispose();
   }

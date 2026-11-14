@@ -202,13 +202,13 @@ func diagnosticSession(paired session.NetworkDiagnosticsSnapshot, cleanupRequire
 // become artifact text. Recovery is independently projected from the actor.
 func diagnosticFailureCategory(code string) string {
 	switch code {
-	case "credential_invalid", "session_in_use", "insufficient_funds", "account_frozen", "too_many_sessions", "authentication_rejected":
+	case "quota_exceeded", "account_suspended", "account_expired", "too_many_addresses", "server_session_reset", "server_session_ended", "credential_invalid", "session_in_use", "insufficient_funds", "account_frozen", "too_many_sessions", "authentication_rejected":
 		return "authentication_rejected"
 	case "binding_ip_mismatch", "binding_mac_mismatch", "binding_pair_mismatch", "dhcp_required":
 		return "binding_rejected"
 	case "network_io_failed":
 		return "network_io_failure"
-	case "incompatible_version":
+	case "negotiation_unsupported", "incompatible_version":
 		return "protocol_incompatible"
 	case "protocol_run_creation_failed", "run_creation_failed":
 		return "run_creation_failed"

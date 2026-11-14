@@ -174,6 +174,7 @@ type commandDependencies struct {
 	daemonRestart     func(logLevel string) error
 	authStart         func(authStartOptions) error
 	authStatus        func(string) error
+	authBusiness      func(string) error
 	authStop          func(string) error
 	authRestart       func(string) error
 	authRemove        func(string) error
@@ -202,10 +203,13 @@ func defaultCommandDependencies(identity clientbootstrap.Identity) commandDepend
 		daemonRestart: func(logLevel string) error { return daemonRestart(identity, logLevel) },
 		authStart:     func(options authStartOptions) error { return authStart(identity, options) },
 		authStatus:    func(sessionID string) error { return authStatus(identity, sessionID) },
-		authStop:      func(sessionID string) error { return authStop(identity, sessionID) },
-		authRestart:   func(sessionID string) error { return authRestart(identity, sessionID) },
-		authRemove:    func(sessionID string) error { return authRemove(identity, sessionID) },
-		authList:      func() error { return authList(identity) },
+		authBusiness: func(sessionID string) error {
+			return runAuthBusiness(sessionID, defaultReadOnlyAuthDependencies(identity))
+		},
+		authStop:    func(sessionID string) error { return authStop(identity, sessionID) },
+		authRestart: func(sessionID string) error { return authRestart(identity, sessionID) },
+		authRemove:  func(sessionID string) error { return authRemove(identity, sessionID) },
+		authList:    func() error { return authList(identity) },
 		authWatch: func(ctx context.Context) error {
 			return runAuthWatch(ctx, defaultListDependencies(identity))
 		},
@@ -393,6 +397,7 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 		}),
 		newAuthStartCommand(deps),
 		newSessionCommand("status", "显示 Session 状态", deps.authStatus),
+		newSessionCommand("business", "显示服务器账户统计及最近文字通知（只读）", deps.authBusiness),
 		newSessionCommand("stop", "停止 Session", deps.authStop),
 		newSessionCommand("restart", "重启 Session", deps.authRestart),
 		newSessionCommand("remove", "删除 Session", deps.authRemove),

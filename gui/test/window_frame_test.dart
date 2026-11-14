@@ -45,16 +45,29 @@ void main() {
           );
           await tester.pumpAndSettle();
           final r = tester.getRect(find.byKey(const ValueKey('business')));
-          expect(r.top, platform == TargetPlatform.windows ? 46 : 0);
+          expect(
+            r.top,
+            (platform == TargetPlatform.windows ||
+                    platform == TargetPlatform.linux)
+                ? 46
+                : 0,
+          );
           expect(
             r.height,
-            platform == TargetPlatform.windows ? size.height - 46 : size.height,
+            (platform == TargetPlatform.windows ||
+                    platform == TargetPlatform.linux)
+                ? size.height - 46
+                : size.height,
           );
           expect(
             find.byTooltip('关闭'),
-            platform == TargetPlatform.windows ? findsOneWidget : findsNothing,
+            (platform == TargetPlatform.windows ||
+                    platform == TargetPlatform.linux)
+                ? findsOneWidget
+                : findsNothing,
           );
-          if (platform == TargetPlatform.windows) {
+          if ((platform == TargetPlatform.windows ||
+              platform == TargetPlatform.linux)) {
             expect(
               tester.getSize(find.byKey(const ValueKey('window-top'))).height,
               46,
@@ -124,7 +137,10 @@ void main() {
       expect(find.text('窗口操作失败：不可用'), findsOneWidget);
       expect(find.byTooltip('还原'), findsOneWidget);
     },
-    variant: TargetPlatformVariant({TargetPlatform.windows}),
+    variant: TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
   );
   testWidgets(
     'root dialog covers frame and centers whole window; Escape restores hit testing',
@@ -186,19 +202,29 @@ void main() {
         false,
       );
     },
-    variant: TargetPlatformVariant({TargetPlatform.windows}),
+    variant: TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
   );
-  testWidgets('keyboard activates frame controls', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SidraviaWindowFrame(child: SizedBox.expand())),
-    );
-    await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pumpAndSettle();
-    expect(calls.map((c) => c.method), contains('minimize'));
-  }, variant: TargetPlatformVariant({TargetPlatform.windows}));
+  testWidgets(
+    'keyboard activates frame controls',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: SidraviaWindowFrame(child: SizedBox.expand())),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(calls.map((c) => c.method), contains('minimize'));
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
+  );
 
   testWidgets(
     'configure failure keeps native caption fallback without duplicate controls',
@@ -225,26 +251,36 @@ void main() {
       expect(find.byTooltip('关闭'), findsNothing);
       expect(find.text('窗口初始化失败：不可用'), findsOneWidget);
     },
-    variant: TargetPlatformVariant({TargetPlatform.windows}),
+    variant: TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
   );
 
-  testWidgets('DWM theme failures remain visible in native fallback', (
-    tester,
-  ) async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SidraviaWindowCommands.channel, (call) async {
-          if (call.method == 'setDarkMode') {
-            throw PlatformException(code: 'window_unavailable');
-          }
-          return {'customFrame': false};
-        });
-    await tester.pumpWidget(
-      const MaterialApp(home: SidraviaWindowFrame(child: SizedBox.expand())),
-    );
-    await tester.pumpAndSettle();
-    expect(find.textContaining('窗口主题更新失败'), findsOneWidget);
-    expect(find.byTooltip('关闭'), findsNothing);
-  }, variant: TargetPlatformVariant({TargetPlatform.windows}));
+  testWidgets(
+    'DWM theme failures remain visible in native fallback',
+    (tester) async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SidraviaWindowCommands.channel, (
+            call,
+          ) async {
+            if (call.method == 'setDarkMode') {
+              throw PlatformException(code: 'window_unavailable');
+            }
+            return {'customFrame': false};
+          });
+      await tester.pumpWidget(
+        const MaterialApp(home: SidraviaWindowFrame(child: SizedBox.expand())),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('窗口主题更新失败'), findsOneWidget);
+      expect(find.byTooltip('关闭'), findsNothing);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
+  );
 
   testWidgets('missing plugin preview requires explicit Windows override', (
     tester,
@@ -264,6 +300,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('window-top')), findsOneWidget);
-    expect(find.text('当前环境没有 Windows 窗口控制'), findsOneWidget);
+    expect(find.text('当前环境没有桌面窗口控制'), findsOneWidget);
   });
 }

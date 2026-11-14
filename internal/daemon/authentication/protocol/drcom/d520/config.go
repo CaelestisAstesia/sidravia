@@ -16,6 +16,7 @@ import (
 // from the institution Profile lives here; nothing caller-owned or mutable is
 // retained.
 type institutionConfig struct {
+	jluExperimental    bool
 	serverAddress      netip.Addr
 	serverPort         uint16
 	localPort          localPort
@@ -88,6 +89,13 @@ func decodeInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConf
 	}
 
 	var cfg institutionConfig
+	if rawMode, exists := obj["behavior"]; exists {
+		var mode string
+		if json.Unmarshal(rawMode, &mode) != nil || mode != "jlu-experimental" {
+			return institutionConfig{}, fmt.Errorf("field behavior must be jlu-experimental when present")
+		}
+		cfg.jluExperimental = true
+	}
 
 	addressStr, err := requiredString(obj, "serverAddress")
 	if err != nil {
@@ -177,6 +185,9 @@ func decodeInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConf
 		return institutionConfig{}, fmt.Errorf("field %q must not exceed %q", "busyBackoffMin", "busyBackoffMax")
 	}
 
+	if cfg.jluExperimental && (cfg.heartbeatInterval > time.Minute || cfg.challengeTimeout > 10*time.Second || cfg.loginTimeout > 10*time.Second || cfg.keepaliveTimeout > 10*time.Second || cfg.logoutTimeout > 2*time.Second || cfg.busyMaxAttempts > 3 || cfg.busyBackoffMax > 2*time.Second) {
+		return institutionConfig{}, fmt.Errorf("experimental timing exceeds bounded policy")
+	}
 	return cfg, nil
 }
 
@@ -215,7 +226,7 @@ func rejectUnknownProfileFields(obj map[string]json.RawMessage) error {
 // field names.
 func isAllowedProfileField(name string) bool {
 	switch name {
-	case "serverAddress",
+	case "behavior", "serverAddress",
 		"serverPort",
 		"localPort",
 		"authVersionHex",

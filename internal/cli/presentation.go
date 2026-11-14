@@ -236,6 +236,20 @@ func sessionStateReasonText(code string) string {
 // failureText maps a D520/Session authentication failure code to Simplified Chinese.
 func failureText(code string) string {
 	switch code {
+	case "quota_exceeded":
+		return "账号时间或流量配额已耗尽"
+	case "account_suspended":
+		return "服务器报告账号已暂停使用"
+	case "account_expired":
+		return "账号有效期已结束"
+	case "too_many_addresses":
+		return "服务器拒绝了上报的 IPv4 地址数量"
+	case "server_session_reset":
+		return "服务器已重置连接"
+	case "server_session_ended":
+		return "服务器报告连接已离线"
+	case "negotiation_unsupported":
+		return "服务器要求的协议能力尚不支持"
 	case "network_timeout":
 		return "网络操作超时"
 	case "network_io_failed":

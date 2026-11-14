@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/features/home/business_panel.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
@@ -37,6 +38,7 @@ class HomeViewData {
     this.onDismissActionError,
     this.issue,
     this.notice,
+    this.business,
   });
   final String institution, username, state, detail, context, glyph;
   final HomeTone tone;
@@ -50,6 +52,7 @@ class HomeViewData {
   final VoidCallback? onDismissActionError;
   final SessionAuthenticationFailure? issue;
   final HomeNotice? notice;
+  final Widget? business;
 }
 
 @immutable
@@ -137,6 +140,7 @@ class HomePage extends StatelessWidget {
             : () => controller.dismissNotice(p.actionError!),
         issue: p.issue,
         notice: notice,
+        business: BusinessPanel(controller: controller.business),
       ),
     );
   }
@@ -175,6 +179,7 @@ class HomeView extends StatelessWidget {
       _HomeHeader(data: data),
       _StatusBlock(data: data),
       _HomeActions(data: data),
+      if (data.business != null) data.business!,
     ],
   );
 }

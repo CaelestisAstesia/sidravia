@@ -104,10 +104,42 @@ GuiSettingsLocation resolveWindowsGuiSettings({
   );
 }
 
+/// Linux uses the same Sidravia config root and portable marker as CTL.
+/// Relative XDG_CONFIG_HOME is invalid per XDG; fall back to HOME/.config.
+GuiSettingsLocation resolveLinuxGuiSettings({
+  required String executable,
+  required Map<String, String> environment,
+  String namespace = '',
+  FileSystemEntityType Function(String)? inspectMarker,
+}) {
+  final xdg = environment['XDG_CONFIG_HOME'];
+  final home = environment['HOME'];
+  final root = xdg != null && xdg.isNotEmpty && Directory(xdg).isAbsolute
+      ? xdg
+      : home != null && Directory(home).isAbsolute
+      ? '$home/.config'
+      : null;
+  return resolveWindowsGuiSettings(
+    executable: executable,
+    userConfigRoot: root,
+    namespace: namespace,
+    inspectMarker: inspectMarker,
+  );
+}
+
 GuiSettingsStore createPlatformGuiSettingsStore({
   String namespace = '',
   String? privateDirectory,
 }) {
+  if (Platform.isLinux) {
+    return FileGuiSettingsStore(
+      resolveLinuxGuiSettings(
+        executable: Platform.resolvedExecutable,
+        environment: Platform.environment,
+        namespace: namespace,
+      ).path,
+    );
+  }
   if (Platform.isWindows) {
     final location = resolveWindowsGuiSettings(
       executable: Platform.resolvedExecutable,

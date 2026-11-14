@@ -500,6 +500,15 @@ func (s *Supervisor) GetNetworkDiagnostics(ctx context.Context, id ID) (session.
 	return ms.actor.QueryNetworkDiagnostics(ctx)
 }
 
+// GetBusiness reads the Session-owned business snapshot without network activity.
+func (s *Supervisor) GetBusiness(ctx context.Context, id ID) (session.BusinessSnapshot, error) {
+	ms, err := s.managed(id)
+	if err != nil {
+		return session.BusinessSnapshot{}, err
+	}
+	return ms.actor.Business(ctx)
+}
+
 // List returns snapshots for all known sessions.
 func (s *Supervisor) List(ctx context.Context) ([]Snapshot, error) {
 	s.mu.Lock()

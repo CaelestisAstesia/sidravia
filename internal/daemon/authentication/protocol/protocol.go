@@ -84,6 +84,8 @@ type AuthenticationProtocolDiagnostics interface {
 type AuthenticationProtocolExchangeOutcome string
 
 const (
+	ExchangeObserved         AuthenticationProtocolExchangeOutcome = "observed"
+	ExchangeControlReceived  AuthenticationProtocolExchangeOutcome = "control_received"
 	ExchangeAccepted         AuthenticationProtocolExchangeOutcome = "accepted"
 	ExchangeStaleIgnored     AuthenticationProtocolExchangeOutcome = "stale_ignored"
 	ExchangeInvalidLength    AuthenticationProtocolExchangeOutcome = "invalid_length"
@@ -99,6 +101,13 @@ const (
 // exchange outcomes. Existing phase/Trace sinks need not implement this hook.
 type AuthenticationProtocolExchangeDiagnostics interface {
 	ExchangeOutcome(phase string, outcome AuthenticationProtocolExchangeOutcome, length int)
+}
+
+// AuthenticationProtocolDecisionDiagnostics optionally observes a fixed protocol
+// decision name and a bounded numeric value. Neither carries server text,
+// addresses, credentials, salts or packet contents.
+type AuthenticationProtocolDecisionDiagnostics interface {
+	DecisionEvent(decision string, value int)
 }
 
 // AuthenticationProtocolNetworkFailure contains only socket facts, fixed

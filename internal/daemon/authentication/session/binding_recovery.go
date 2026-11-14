@@ -67,6 +67,7 @@ func (s *AuthenticationSession) handleAutomaticNetwork(network environment.Snaps
 		// Real input changes retain the existing recovery qualification, but never
 		// replenish the new launch budget or discard an unelapsed retry deadline.
 		s.consecutiveFailures, s.protocolRecoveryFailures = 0, 0
+		s.retainRecoveryBudget = false
 		s.automatic.permitted = true
 		if s.active != nil {
 			s.cancelActive(protocol.TerminateWithoutLogout)

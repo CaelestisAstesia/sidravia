@@ -348,3 +348,20 @@ func TestNetworkFailureOnlyAtTrace(t *testing.T) {
 		}
 	}
 }
+
+func TestProtocolDecisionDebugContainsOnlySafeNumericMetadata(t *testing.T) {
+	var buffer bytes.Buffer
+	d := &protocolDiagnosticsAdapter{logger: newDaemonLogger(&buffer, slog.LevelDebug), sessionID: "test-session"}
+	d.DecisionEvent("module_version", 733)
+	out := buffer.String()
+	for _, want := range []string{"event=protocol_decision", "decision=module_version", "value=733"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %s in %s", want, out)
+		}
+	}
+	for _, unsafe := range []string{"datagram_hex", "password", "salt", "error="} {
+		if strings.Contains(out, unsafe) {
+			t.Fatalf("unsafe decision: %s", out)
+		}
+	}
+}

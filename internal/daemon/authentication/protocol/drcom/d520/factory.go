@@ -101,6 +101,7 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 		host.OperatingSystemRelease = *override.osRelease
 	}
 	login := loginInput{
+		jluExperimental:           cfg.jluExperimental,
 		username:                  credentialValue.Username,
 		password:                  credentialValue.Password,
 		mac:                       mac,
@@ -119,7 +120,7 @@ func (factory) CreateAuthenticationProtocolRun(inputs protocol.AuthenticationPro
 		loginDHCPPadding:          cfg.loginDHCPPadding,
 		loginAuthExtensionPadding: cfg.loginAuthExtensionPadding,
 	}
-	if _, _, _, _, err := encodeCredentialFields(login); err != nil {
+	if _, err := buildLoginRequest(login, [4]byte{}); err != nil {
 		return nil, err
 	}
 

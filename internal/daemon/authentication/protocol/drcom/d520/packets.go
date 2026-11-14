@@ -1,6 +1,7 @@
 package d520
 
 import (
+	"crypto/md5"
 	"encoding/binary"
 	"fmt"
 	protocol "sidravia/internal/daemon/authentication/protocol"
@@ -45,6 +46,7 @@ const (
 // Info are not part of this value: they are owned by the Run and supplied to
 // each builder separately.
 type loginInput struct {
+	jluExperimental    bool
 	username           string
 	password           string
 	mac                [6]byte
@@ -160,6 +162,9 @@ func buildLoginRequest(in loginInput, salt [4]byte) ([]byte, error) {
 		return nil, err
 	}
 
+	if in.jluExperimental && len(password) > 32 {
+		return nil, fmt.Errorf("experimental password exceeds 32 encoded bytes")
+	}
 	digestA := md5A(salt[:], password)
 	macXORed, err := macXOR(in.mac, digestA)
 	if err != nil {
@@ -172,8 +177,16 @@ func buildLoginRequest(in loginInput, salt [4]byte) ([]byte, error) {
 	writeLoginHeader(out, len(username))
 	writeLoginCredentialRegion(out, digestA, username, in.controlCheckStatus, in.adapterNum, macXORed, digestB)
 	writeLoginIPRegion(out, in.clientIPv4, digestC, in.ipdog, in.loginIPDogPadding)
+	if in.jluExperimental {
+		copy(out[97:101], []byte{0x14, 0, 7, 0x0b})
+		digest := md5.Sum(out[:101])
+		copy(out[97:105], digest[:8])
+	}
 	writeLoginHostRegion(out, hostName, in.primaryDNS, in.dhcpIPv4, in.secondaryDNS, in.osInfo, hostOS, in.loginDHCPPadding)
 	writeLoginAuthExtension(out, in.authVersion, in.mac, in.authExtTail, in.loginAuthExtensionPadding)
+	if in.jluExperimental {
+		binary.LittleEndian.PutUint16(out[328:], uint16(moduleChecksum(out[:328])))
+	}
 	return out, nil
 }
 
@@ -447,6 +460,12 @@ func buildLogoutRequest(in loginInput, salt [4]byte, authInfo [16]byte) ([]byte,
 	}
 
 	digestA := md5A(salt[:], password)
+	if in.jluExperimental {
+		input := append([]byte{6, 1}, salt[:]...)
+		input = append(input, password...)
+		digest := md5.Sum(input)
+		digestA = digest[:]
+	}
 	macXORed, err := macXOR(in.mac, digestA)
 	if err != nil {
 		return nil, fmt.Errorf("compute mac xor: %w", err)

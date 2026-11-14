@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/ipc/business_models.dart';
+export 'package:sidravia_gui/ipc/business_models.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/state_subscription.dart';
 
@@ -90,4 +92,14 @@ abstract interface class SidraviaMaintenanceClient {
     bool accepted,
     bool visible,
   );
+}
+
+/// An owned read-only request; cancellation never closes the authentication client.
+abstract interface class BusinessQuery {
+  Future<BusinessSnapshot> get result;
+  Future<void> cancel();
+}
+
+abstract interface class SidraviaBusinessClient {
+  BusinessQuery queryBusiness(String sessionId);
 }

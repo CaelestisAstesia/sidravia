@@ -89,3 +89,9 @@ const (
 	phaseBoundaryBegin = "begin"
 	phaseBoundaryEnd   = "end"
 )
+
+func recordDecision(d protocol.AuthenticationProtocolDiagnostics, decision string, value int) {
+	if sink, ok := d.(protocol.AuthenticationProtocolDecisionDiagnostics); ok {
+		sink.DecisionEvent(decision, value)
+	}
+}
