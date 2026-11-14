@@ -54,6 +54,11 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
     for key, folder in (("XDG_CONFIG_HOME", "config"), ("XDG_CACHE_HOME", "cache"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state")):
         env[key] = str(owned / folder)
         (owned / folder).mkdir()
+    home = owned / 'home'
+    home.mkdir()
+    env['HOME'] = str(home)
+    env['PATH'] = str(home / '.local/bin') + os.pathsep + env.get('PATH', '')
+    env['PUB_CACHE'] = environment.get('PUB_CACHE', str(Path(environment['HOME']) / '.pub-cache'))
     state = Path(env["XDG_CONFIG_HOME"]) / "Sidravia" / "namespaces" / namespace
     package_root = None
     if portable_archive is not None:
@@ -104,6 +109,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
     worker.start()
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     gui = None
+    headless_attempted = False
 
     def command(argv, name, cwd=root / "gui", timeout=240):
         with (owned / (name + ".log")).open("w") as log:
@@ -173,6 +179,18 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             raise RuntimeError(f"missing tray action {label}")
         call(service, menu, "com.canonical.dbusmenu", "Event", GLib.Variant("(isvu)", (item, "clicked", GLib.Variant("i", 0), 0)))
 
+    def launch_entry():
+        entry, = (Path(env['XDG_CONFIG_HOME']) / 'autostart').glob('*.desktop')
+        application = Gio.DesktopAppInfo.new_from_filename(str(entry))
+        context = Gio.AppLaunchContext()
+        for key, value in env.items(): context.setenv(key,value)
+        children = []
+        launched = application.launch_uris_as_manager([],context,
+            GLib.SpawnFlags.DO_NOT_REAP_CHILD | GLib.SpawnFlags.STDOUT_TO_DEV_NULL | GLib.SpawnFlags.STDERR_TO_DEV_NULL,
+            None,None,lambda app,child,data:children.append(child),None)
+        if not launched or len(children)!=1: raise RuntimeError('owned XDG desktop launch failed')
+        return DesktopEntryChild(children[0])
+
     try:
         if portable_archive is None:
             command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_desktop_test.dart"], "production-main-integration")
@@ -187,9 +205,15 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             binary = root / "gui/build/linux/x64/release/bundle/sidravia_gui"
         else:
             binary = package_root / 'sidravia_gui'
+            dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
+            def driver(operation):
+                command([dart,'run','tool/linux_portable_fixture.dart',operation,str(runtime)],'portable-'+operation)
+            driver('path-enable')
+            command(['/bin/bash','--noprofile','--norc','-c','command -v sidraviactl && sidraviactl --help && sidraviaupdater --help'],'owned-path-commands',cwd=owned)
+            events.append('owned-HOME-command-links-executed-in-new-shell')
         def start_gui():
             log = (owned / f"gui-{len(events)}.log").open("w")
-            process = subprocess.Popen([str(binary), "--skip-auto-login", "--start-visible"], env=dict(env, WAYLAND_DEBUG="client"), stdout=log, stderr=subprocess.STDOUT)
+            process = subprocess.Popen([str(home / ".local/bin/sidravia_gui") if portable_archive else str(binary), "--skip-auto-login", "--start-visible"], env=dict(env, WAYLAND_DEBUG="client"), stdout=log, stderr=subprocess.STDOUT)
             log.close()
             return process
         normal_trace = owned / f"gui-{len(events)}.log"
@@ -200,9 +224,6 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         if json.loads(runtime.read_text())["pid"] != daemon:
             raise RuntimeError("second instance changed daemon generation")
         if portable_archive is not None:
-            dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
-            def driver(operation):
-                command([dart, 'run', 'tool/linux_portable_fixture.dart', operation, str(runtime)], 'portable-' + operation)
             driver('prepare')
             stat = Path(f'/proc/{gui.pid}/stat').read_text()
             owner_start = stat[stat.rfind(')') + 2:].split()[19]
@@ -220,6 +241,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         if portable_archive is not None:
             driver('autostart-enable')
             driver('autostart-disable')
+            driver('path-disable')
             moved = package_root.parent / 'moved portable with spaces'
             package_root.rename(moved)
             package_root = moved
@@ -229,18 +251,8 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             events.append('whole-portable-directory-relocated')
         if portable_archive is not None:
             driver('autostart-enable')
-            entry, = (Path(env['XDG_CONFIG_HOME']) / 'autostart').glob('*.desktop')
-            application = Gio.DesktopAppInfo.new_from_filename(str(entry))
-            launch_context = Gio.AppLaunchContext()
-            for key, value in env.items():
-                launch_context.setenv(key, value)
-            children = []
-            launched = application.launch_uris_as_manager([], launch_context,
-                GLib.SpawnFlags.DO_NOT_REAP_CHILD | GLib.SpawnFlags.STDOUT_TO_DEV_NULL | GLib.SpawnFlags.STDERR_TO_DEV_NULL,
-                None, None, lambda app, child, data: children.append(child), None)
-            if not launched or len(children) != 1:
-                raise RuntimeError('owned XDG desktop launch failed')
-            gui = DesktopEntryChild(children[0])
+            driver('path-enable')
+            gui = launch_entry()
             events.append('actual-packaged-xdg-autostart-entry-launch')
         else:
             gui = start_gui()
@@ -258,6 +270,28 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         gui.wait(timeout=5)
         wait_for(lambda: not runtime.exists(), "crashed owner bounded cleanup", timeout=10)
         events.append(f"owner-crash-cleanup-{time.monotonic() - start:.3f}s")
+        if portable_archive is not None:
+            driver('autostart-daemon')
+            headless_attempted = True
+            starter = launch_entry()
+            if starter.wait(timeout=20) != 0: raise RuntimeError('headless autostart failed')
+            wait_for(runtime.exists,'owned headless daemon ready')
+            headless_pid = json.loads(runtime.read_text())['pid']
+            driver('headless-verify')
+            command(['sidraviactl','daemon','status'],'owned-path-headless-status',cwd=owned)
+            repeat = launch_entry()
+            if repeat.wait(timeout=20) != 0 or json.loads(runtime.read_text())['pid'] != headless_pid:
+                raise RuntimeError('repeat headless autostart changed daemon generation')
+            driver('autostart-enable')
+            driver('headless-verify')
+            if json.loads(runtime.read_text())['pid'] != headless_pid:
+                raise RuntimeError('registration change stopped or adopted headless daemon')
+            driver('autostart-disable')
+            command(['sidraviactl','daemon','stop'],'owned-path-headless-stop',cwd=owned)
+            wait_for(lambda:not runtime.exists(),'owned headless daemon stopped')
+            driver('path-disable')
+            events.append('actual-XDG-headless-start-repeat-status-stop-and-mode-switch')
+            events.append('owned-path-and-autostart-removed-without-live-owner-takeover')
         # These are real compositor responses/requests from only the owned
         # release GUI, not Gtk's decoration property or a client-area screenshot.
         protocol_evidence = []
@@ -289,6 +323,13 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             except (subprocess.TimeoutExpired, RuntimeError):
                 gui.kill()
                 gui.wait(timeout=5)
+        if headless_attempted and runtime.exists():
+            with (owned / 'headless-finally-stop.log').open('w') as log:
+                subprocess.run([str(binary.parent/'sidraviactl'),'daemon','stop'],env=env,stdout=log,stderr=subprocess.STDOUT,timeout=15,check=False)
+        if portable_archive is not None and 'driver' in locals():
+            for operation in ('autostart-disable','path-disable'):
+                with (owned / (operation+'-finally.log')).open('w') as log:
+                    subprocess.run([dart,'run','tool/linux_portable_fixture.dart',operation,str(runtime)],cwd=root/'gui',env=env,stdout=log,stderr=subprocess.STDOUT,timeout=30,check=False)
         wait_for(lambda: not runtime.exists(), "fixture owner cleanup", timeout=10)
         server.shutdown()
         worker.join(timeout=3)

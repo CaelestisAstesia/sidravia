@@ -19,11 +19,14 @@ class IntegrationStatus {
     required this.guiAvailable,
     this.userPathSupported = true,
     this.daemonAutostartSupported = true,
+    this.pathNotice,
+    this.autostartNotice,
   });
   final bool pathEnabled;
   final String autostart;
   final bool guiAvailable;
   final bool userPathSupported, daemonAutostartSupported;
+  final String? pathNotice, autostartNotice;
 
   factory IntegrationStatus.decode(String text) {
     final result = decodeManagerResponse(text);

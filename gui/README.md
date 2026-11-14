@@ -46,6 +46,6 @@ GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)
 
 Linux窗口复用共享Flutter自绘标题栏，GTK承载窗口并处理真实指针事件下的合成器拖动/边缘缩放，Ayatana提供系统托盘菜单，WebKitGTK提供应用内公告。Linux PNG图标直接复用已接受Windows ICO中的256px PNG内容。没有托盘服务时保留主窗口；启动隐藏只作用于本次启动，之后修改偏好不改变当前窗口可见性。Wayland的坐标、焦点和最小化归合成器管理；未激活的已映射窗口无法可靠判断是否最小化，返回未知观察，通知策略不会猜测可见性。公告复用共享导航决策：加载完成后的用户HTTP(S)外链交浏览器，同文档锚点、脚本导航与重定向仍在窗口内；非用户弹窗、非HTTP(S)、权限请求与下载被拒绝。加载提示、30秒有界失败、Web进程终止与关闭重开按原生生命周期管理。
 
-Linux系统集成目前支持登录桌面会话后的GUI自启，拒绝覆盖其他安装的自启文件；PATH修改、仅daemon自启明确保留Unsupported。两端已移除独立主动网络诊断，认证所需网卡观察、绑定、恢复和日志/诊断导出继续保留。GUI偏好默认位于`$XDG_CONFIG_HOME/Sidravia/gui-settings.json`（空/相对值回`$HOME/.config`），namespace位于`Sidravia/namespaces/<name>/gui-settings.json`。程序旁的普通文件`sidravia.portable`启用portable：分别为`config/gui-settings.json`和`namespaces/<name>/gui-settings.json`。没有隐式配置迁移或发行/系统注册行为。
+Linux系统集成支持登录桌面会话后的GUI或仅后台自启，两者互斥登记且不接管当前运行模式；拒绝覆盖其他安装的自启文件。PATH维护在HOME/.local/bin发布本安装命令链接，不改shell配置，目录不在当前PATH或有前序同名命令时明确提示；关闭只移除本安装链接。移动portable前应关闭自启和PATH，移动后重新启用。两端已移除独立主动网络诊断，认证所需网卡观察、绑定、恢复和日志/诊断导出继续保留。GUI偏好默认位于`$XDG_CONFIG_HOME/Sidravia/gui-settings.json`（空/相对值回`$HOME/.config`），namespace位于`Sidravia/namespaces/<name>/gui-settings.json`。程序旁的普通文件`sidravia.portable`启用portable：分别为`config/gui-settings.json`和`namespaces/<name>/gui-settings.json`。没有隐式配置迁移或发行/系统注册行为。
 
 GTK3/Wayland还需显式向合成器声明客户端装饰，不能仅检查GTK decorated属性。窗口图标优先使用可选`xdg_toplevel_icon_v1`协议传递原图像素；协议不可用时诊断明确为unsupported，本次不隐式注册用户桌面项。托盘图标有独立的StatusNotifier路径。

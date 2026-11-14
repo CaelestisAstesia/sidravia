@@ -17,15 +17,34 @@ copy: `config/`, `runtime/`, `logs/`, and `config/gui-settings.json`. Isolated
 `SIDRAVIA_NAMESPACE` runs use `namespaces/<namespace>/` instead. Do not share a
 writable portable copy between untrusted accounts.
 
-Settings can enable GUI autostart after login to a desktop session. This uses
-an XDG Autostart desktop entry under `$XDG_CONFIG_HOME/autostart` (absolute XDG
-path) or `$HOME/.config/autostart`. It starts this exact executable with
-`--start-hidden`; without an available tray host the main window remains
-accessible. It is not a system boot service and does not authenticate before
-login. Automatic authentication is a separate explicit preference.
+Settings supports GUI or background-only autostart after login to a desktop
+session, using one XDG Autostart entry per namespace. Its location is
+`$XDG_CONFIG_HOME/autostart` (absolute XDG path), or `$HOME/.config/autostart`.
+GUI mode starts the exact GUI with `--start-hidden`; without a tray host the
+main window remains accessible. Background mode starts the same package's
+`sidraviactl daemon start --log-level info`, without a GUI or tray. It is not a
+system boot service and does not authenticate before login. Automatic
+authentication is a separate explicit preference.
 
-Disable autostart before moving or deleting an enabled portable copy, then
-re-enable it from the new location. A conflicting entry from another location
+Changing or disabling autostart only changes future launches. It does not stop
+or adopt an already running daemon. Use this package's `sidraviactl daemon stop`
+to stop background mode before opening the GUI; desktop/headless ownership
+conflicts are reported rather than silently taking over.
+
+The user PATH switch publishes exact symlinks for `sidraviactl`, `sidraviad`,
+`sidraviaupdater` and `sidravia_gui` in `$HOME/.local/bin`. It never replaces
+unrelated files or links, and disabling it removes only this package's links.
+It does not rewrite shell startup files or the environment of existing processes.
+Fedora's default bash configuration adds this directory for a new shell; if your
+shell/session omits it, the settings message explicitly asks you to add it to
+PATH or log in again. A same-name command earlier in PATH is also reported.
+PATH registration is user-global command discovery. Runtime namespace still
+comes from the calling process's `SIDRAVIA_NAMESPACE`; command links do not
+freeze the GUI's namespace. An incomplete registration is reported and can be
+removed before retrying.
+
+Disable autostart and user PATH registration before moving or deleting an
+enabled portable copy, then re-enable them from the new location. A conflicting entry from another location
 is reported and preserved; the application never silently takes ownership.
 Move the whole directory only after exiting the GUI and its daemon. For an
 upgrade, keep a separate extracted copy and transfer only your private data

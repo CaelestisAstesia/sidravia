@@ -231,3 +231,13 @@ the actual 30-second deadline. It does not contact school pages or modify the re
 account's URI handlers. Physical mouse clicks and the real default browser remain
 separate desktop acceptance. Both native URL adapters use the shared navigation
 intent policy; Windows keeps its existing IUri parsing and test cases.
+
+Linux system integration acceptance uses private HOME/XDG roots in the portable
+fixture. It registers and removes command links, starts the GUI through its link,
+moves the package after deregistering, launches the generated GUI/background XDG
+entries, checks repeated background launch keeps its generation, and stops it
+through PATH-resolved CTL. Registration changes are checked not to adopt/stop the
+running owner. No real account autostart/PATH/shell profile is modified. Unit
+boundary tests also cover old GUI entry migration, conflicts, quoting, missing
+PATH/shadowed commands, Fedora public skeleton shell lookup, namespace isolation
+and nonblocking interprocess maintenance locking.

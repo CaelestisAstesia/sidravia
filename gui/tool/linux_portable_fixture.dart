@@ -25,18 +25,28 @@ Future<void> main(List<String> args) async {
   if (!runtime.absolute.path.startsWith('$owner/')) {
     throw StateError('outside fixture');
   }
-  if (args[0] == 'autostart-enable' || args[0] == 'autostart-disable') {
+  const integrationActions = {
+    'autostart-enable': IntegrationChange.startGui,
+    'autostart-daemon': IntegrationChange.startDaemon,
+    'autostart-disable': IntegrationChange.startDisable,
+    'path-enable': IntegrationChange.pathEnable,
+    'path-disable': IntegrationChange.pathDisable,
+  };
+  if (integrationActions.containsKey(args[0])) {
     final executable = '${runtime.parent.parent.parent.path}/sidravia_gui';
     final manager = LinuxInstallationManager(
       executable: executable,
       environment: Platform.environment,
     );
-    await manager.change(
-      args[0] == 'autostart-enable'
-          ? IntegrationChange.startGui
-          : IntegrationChange.startDisable,
-    );
-    await manager.close();
+    try {
+      await manager.change(integrationActions[args[0]]!);
+      final status = await manager.status();
+      if (!status.userPathSupported || !status.daemonAutostartSupported) {
+        throw StateError('Linux integration capabilities missing');
+      }
+    } finally {
+      await manager.close();
+    }
     return;
   }
   final info = jsonDecode(runtime.readAsStringSync()) as Map<String, dynamic>;
@@ -52,7 +62,10 @@ Future<void> main(List<String> args) async {
   );
   try {
     final status = await client.daemonStatus();
-    if (status.mode != 'desktop') throw StateError('lost desktop owner');
+    if (status.mode !=
+        (args[0] == 'headless-verify' ? 'headless' : 'desktop')) {
+      throw StateError('unexpected runtime owner mode');
+    }
     // Retained read-only APIs use accepted facts, not active route/IP probes.
     await client.networkInterfaces();
     final exported = await client.diagnosticsExport();
@@ -85,6 +98,10 @@ Future<void> main(List<String> args) async {
       }
     } finally {
       await removed.close();
+    }
+    if (args[0] == 'headless-verify') {
+      stdout.writeln('owned-headless-verified');
+      return;
     }
     if (args[0] == 'prepare') {
       final config = await client.configurationCreate(
