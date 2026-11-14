@@ -136,6 +136,7 @@ def run(root, packages, receipts, environment, source, current_source):
     if not session_runtime or not Path(session_runtime).is_absolute():
         raise RuntimeError('installed GUI acceptance requires a desktop session runtime')
     sandbox = ['bwrap', '--unshare-user', '--die-with-parent', '--ro-bind', '/', '/',
+               '--dev', '/dev', '--proc', '/proc', '--dev-bind-try', '/dev/dri', '/dev/dri',
                '--tmpfs', '/run', '--bind', session_runtime, session_runtime,
                '--ro-bind', '/usr', str(host_alias), '--ro-bind', str(view), '/usr',
                '--ro-bind', str(sysroot / APP.relative_to('/')), str(APP),
