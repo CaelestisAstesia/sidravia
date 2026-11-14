@@ -241,6 +241,11 @@ def run(root, packages, receipts, environment, source, current_source):
         installed = False
         if (sysroot / APP.relative_to('/')).exists() or any((sysroot / 'usr/bin' / n).is_symlink() for n in COMMANDS):
             raise RuntimeError('RPM uninstall retained package-owned programs')
+        for name, attributes in receipts[1]['files'].items():
+            path = sysroot / Path(name).relative_to('/')
+            if attributes['digest'] or attributes['link']:
+                if path.exists() or path.is_symlink():
+                    raise RuntimeError('RPM uninstall retained package-owned file: ' + name)
         remaining = subprocess.run(rpm + ['-q', 'sidravia'], stdout=subprocess.DEVNULL)
         if remaining.returncode != 1:
             raise RuntimeError('RPM uninstall retained package inventory')

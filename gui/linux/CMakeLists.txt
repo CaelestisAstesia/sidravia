@@ -80,6 +80,9 @@ include(flutter/generated_plugins.cmake)
 # uses WebKitGTK, not Java. Do not ship this unused Android-side runtime (whose
 # CMake build embeds the developer JDK path). Native asset acceptance below the
 # fixed developer entry rejects a future declared JNI asset until supported.
+if(TARGET jni)
+  list(REMOVE_ITEM PLUGIN_BUNDLED_LIBRARIES "$<TARGET_FILE:jni>")
+endif()
 list(FILTER PLUGIN_BUNDLED_LIBRARIES EXCLUDE REGEX "/libdartjni[.]so$")
 
 
