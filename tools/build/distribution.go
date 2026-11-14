@@ -133,6 +133,9 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	archive := base + "-portable.zip"
 	if strings.HasPrefix(t.cfg.target, "linux-") {
 		archive = base + "-portable.tar.gz"
+		if len(gui) > 0 {
+			archive = base + "-gui-portable.tar.gz"
+		}
 		if err := writeTar(filepath.Join(stage, archive), base, portable); err != nil {
 			return err
 		}

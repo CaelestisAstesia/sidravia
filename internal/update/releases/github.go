@@ -112,6 +112,9 @@ func packageSuffix(s Selection) (string, error) {
 		if s.OS == "windows" && s.Arch == "amd64" {
 			return "gui-portable.zip", nil
 		}
+		if s.OS == "linux" && s.Arch == "amd64" {
+			return "gui-portable.tar.gz", nil
+		}
 	case "core-portable":
 		if s.OS == "windows" {
 			return "core-portable.zip", nil

@@ -44,7 +44,7 @@ flutter run -d windows -t lib/dev/preview_main.dart
 
 GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。界面使用 HarmonyOS Sans，许可证位于 [assets/fonts/LICENSE.txt](assets/fonts/LICENSE.txt)。仓库中的其他平台 runner 不构成相应平台的发行支持声明。
 
-Linux窗口复用共享Flutter自绘标题栏，GTK承载窗口并处理真实指针事件下的合成器拖动/边缘缩放，Ayatana提供系统托盘菜单，WebKitGTK提供应用内公告。Linux PNG图标直接复用已接受Windows ICO中的256px PNG内容。没有托盘服务时保留主窗口；启动隐藏只作用于本次启动，之后修改偏好不改变当前窗口可见性。Wayland的坐标、焦点和最小化归合成器管理；未激活的已映射窗口无法可靠判断是否最小化，返回未知观察，通知策略不会猜测可见性。公告用户点击的新窗口HTTP(S)链接交浏览器；普通页面内导航仍由WebKit承载。
+Linux窗口复用共享Flutter自绘标题栏，GTK承载窗口并处理真实指针事件下的合成器拖动/边缘缩放，Ayatana提供系统托盘菜单，WebKitGTK提供应用内公告。Linux PNG图标直接复用已接受Windows ICO中的256px PNG内容。没有托盘服务时保留主窗口；启动隐藏只作用于本次启动，之后修改偏好不改变当前窗口可见性。Wayland的坐标、焦点和最小化归合成器管理；未激活的已映射窗口无法可靠判断是否最小化，返回未知观察，通知策略不会猜测可见性。公告复用共享导航决策：加载完成后的用户HTTP(S)外链交浏览器，同文档锚点、脚本导航与重定向仍在窗口内；非用户弹窗、非HTTP(S)、权限请求与下载被拒绝。加载提示、30秒有界失败、Web进程终止与关闭重开按原生生命周期管理。
 
 Linux系统集成目前支持登录桌面会话后的GUI自启，拒绝覆盖其他安装的自启文件；PATH修改、仅daemon自启及网络诊断明确保留Unsupported。GUI偏好默认位于`$XDG_CONFIG_HOME/Sidravia/gui-settings.json`（空/相对值回`$HOME/.config`），namespace位于`Sidravia/namespaces/<name>/gui-settings.json`。程序旁的普通文件`sidravia.portable`启用portable：分别为`config/gui-settings.json`和`namespaces/<name>/gui-settings.json`。没有隐式配置迁移或发行/系统注册行为。
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(sidravia_native_policy_tests LANGUAGES CXX)
+project(sidravia_native_policy_tests LANGUAGES C CXX)
 enable_testing()
 
 # Geometry is platform-neutral and guards both Windows and GTK input boundaries.
@@ -13,7 +13,23 @@ if(WIN32 AND MSVC)
     ../../windows/runner/announcement_link_policy.cpp)
   target_link_libraries(announcement_link_policy_test PRIVATE urlmon ole32)
   list(APPEND policies frame_decoration announcement_link_policy)
-elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
+  pkg_check_modules(WEBKIT REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
+  add_executable(announcement_link_policy_test
+    ../../linux/runner/announcement_link_policy_test.cpp
+    ../../linux/runner/announcement_link_policy.cc)
+  target_link_libraries(announcement_link_policy_test PRIVATE PkgConfig::GLIB)
+  list(APPEND policies announcement_link_policy)
+  add_executable(announcement_window_integration
+    ../announcement_window_integration.cpp
+    ../../linux/runner/announcement_window.cc
+    ../../linux/runner/announcement_link_policy.cc)
+  target_link_libraries(announcement_window_integration PRIVATE PkgConfig::WEBKIT)
+  include(../../linux/runner/wayland_window_icon.cmake)
+  sidravia_wayland_window_icon(announcement_window_integration)
+else()
   message(FATAL_ERROR "Policy tests support Windows MSVC or native Linux geometry")
 endif()
 

@@ -25,6 +25,15 @@ func (f cacheTransport) RoundTrip(r *http.Request) (*http.Response, error) { ret
 // Exercise the public commands and real secured persistence together. Only the
 // network transport is replaced; version selection and byte checks stay real.
 func TestCheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
+	checkDownloadStatusRetainsAndReusesVerifiedPackage(t, testPackageKind(), testPackageSuffix())
+}
+func TestLinuxGUICheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("Linux AMD64 GUI target")
+	}
+	checkDownloadStatusRetainsAndReusesVerifiedPackage(t, "gui-portable", "linux-amd64-gui-portable.tar.gz")
+}
+func checkDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T, kind, suffix string) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
 		t.Skip("GitHub core packages are Linux/Windows only")
 	}
@@ -40,7 +49,7 @@ func TestCheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
 	http.DefaultClient = &http.Client{Transport: cacheTransport(func(r *http.Request) (*http.Response, error) {
 		body := payload
 		if r.URL.Host == "api.github.com" {
-			name := "sidravia-v" + version + "-" + testPackageSuffix()
+			name := "sidravia-v" + version + "-" + suffix
 			body = fmt.Sprintf(`[{"id":%d,"tag_name":"v%s","assets":[{"id":%d,"name":"%s","state":"uploaded","size":%d,"digest":"sha256:%s","browser_download_url":"https://github.com/CaelestisAstesia/sidravia/releases/download/v%s/%s"}]}]`, releaseID, version, assetID, name, len(payload), hex.EncodeToString(sum[:]), version, name)
 		} else if r.URL.Host == "github.com" {
 			downloads++
@@ -51,7 +60,7 @@ func TestCheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
 	})}
 	run := func(operation string, more ...string) cached {
 		t.Helper()
-		args := append([]string{operation, "--package", testPackageKind(), "--channel", "stable"}, more...)
+		args := append([]string{operation, "--package", kind, "--channel", "stable"}, more...)
 		var out bytes.Buffer
 		if exit := Run(context.Background(), args, "0.9.0", "fixture", &out); exit != 0 {
 			t.Fatalf("%v: %s", args, out.String())
@@ -102,7 +111,7 @@ func TestCheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	exit := Run(context.Background(), []string{"download", "--package", testPackageKind(), "--channel", "stable", "--candidate", next.Check.Candidate.ID}, "0.9.0", "fixture", &out)
+	exit := Run(context.Background(), []string{"download", "--package", kind, "--channel", "stable", "--candidate", next.Check.Candidate.ID}, "0.9.0", "fixture", &out)
 	if exit == 0 || !strings.Contains(out.String(), `"cache_invalid"`) || downloads != 2 {
 		t.Fatalf("changed cache accepted: %s", out.String())
 	}

@@ -3,7 +3,7 @@
 
 #include <string>
 
-enum class AnnouncementLinkAction { in_window, external_browser, block };
+#include "../../native/announcement_navigation.h"
 
 // Shared navigation/new-window contract; only validated user gestures can leave the app.
 AnnouncementLinkAction DecideAnnouncementLink(

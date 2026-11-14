@@ -92,3 +92,35 @@ func TestNextPageRejectsIncompleteOrAmbiguousLinks(t *testing.T) {
 		t.Fatalf("valid link: %s %v", next, err)
 	}
 }
+
+func TestLinuxGUISelectionNeverFallsBackToCoreOrLegacyPortable(t *testing.T) {
+	gui := fixtureRelease("1.0.0", 1)
+	name := "sidravia-v1.0.0-linux-amd64-gui-portable.tar.gz"
+	gui.Assets[0].Name = name
+	gui.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + name
+	core := fixtureRelease("2.0.0", 2)
+	core.Assets[0].Name = "sidravia-v2.0.0-linux-amd64-core-portable.tar.gz"
+	core.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v2.0.0/" + core.Assets[0].Name
+	legacy := fixtureRelease("3.0.0", 3)
+	legacy.Assets[0].Name = "sidravia-v3.0.0-linux-amd64-portable.tar.gz"
+	legacy.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v3.0.0/" + legacy.Assets[0].Name
+	items := []release{core, legacy, gui}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(items) }))
+	defer server.Close()
+	source := NewGitHub(server.Client())
+	source.apiBase = server.URL
+	selection := Selection{OS: "linux", Arch: "amd64", Kind: "gui-portable", Channel: "stable", CurrentVersion: "0.9.0"}
+	result, err := source.Check(context.Background(), selection)
+	if err != nil || result.Candidate == nil || result.Candidate.Name != name || result.Candidate.CanApply {
+		t.Fatalf("%+v %v", result, err)
+	}
+	items = items[:2]
+	result, err = source.Check(context.Background(), selection)
+	if err != nil || result.State != "no_compatible_release" || result.Candidate != nil {
+		t.Fatalf("%+v %v", result, err)
+	}
+	selection.Arch = "arm64"
+	if _, err = source.Check(context.Background(), selection); err != ErrUnsupported {
+		t.Fatalf("unsupported arch: %v", err)
+	}
+}

@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sidravia/internal/productlayout"
 	"testing"
 )
 
@@ -41,4 +45,37 @@ func TestCacheLockIsExclusive(t *testing.T) {
 		t.Fatal(err)
 	}
 	again()
+}
+
+func TestDefaultPackageKindPreservesGUIIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux executable permission semantics")
+	}
+	root := t.TempDir()
+	layout := productlayout.Layout{Mode: productlayout.ModePortable, ExecutableDirectory: root}
+	if got := defaultPackageKind("linux", "amd64", layout); got != "core-portable" {
+		t.Fatal(got)
+	}
+	if err := os.Mkdir(filepath.Join(root, "sidravia_gui"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultPackageKind("linux", "amd64", layout); got != "core-portable" {
+		t.Fatal("directory treated as GUI")
+	}
+	if err := os.Remove(filepath.Join(root, "sidravia_gui")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sidravia_gui"), []byte("fixture"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := defaultPackageKind("linux", "amd64", layout); got != "gui-portable" {
+		t.Fatal(got)
+	}
+	if got := defaultPackageKind("linux", "arm64", layout); got != "core-portable" {
+		t.Fatal("unsupported GUI arch")
+	}
+	layout.Mode = productlayout.ModeInstalled
+	if got := defaultPackageKind("windows", "amd64", layout); got != "setup" {
+		t.Fatal(got)
+	}
 }

@@ -212,7 +212,7 @@ After producing the archive, accept that exact clean-source package on the
 current KDE/Wayland desktop with:
 
 ```sh
-.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-dev.linux.1-linux-amd64-portable.tar.gz
+.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-dev.linux.1-linux-amd64-gui-portable.tar.gz
 ```
 
 This checks the local producer receipt before extracting into an owned directory
@@ -220,3 +220,14 @@ with spaces. It launches only a synthetic namespace, exercises configuration and
 three core restarts through production typed desktop IPC; packaged CTL uses its GUI restart contract, exits through the real tray, moves the
 entire directory, then checks crashed-owner cleanup. It does not perform campus
 authentication or register the current account for autostart.
+
+### Linux announcement native acceptance
+
+`.local/bin/dev linux --announcement-integration` builds the real GTK/WebKit
+announcement adapter and runs it against an owned loopback HTTP server. It checks
+redirects/anchors/script navigation, engine-marked gesture dispatch to an isolated
+XDG URI handler, close/reopen generations, network/download/process failures and
+the actual 30-second deadline. It does not contact school pages or modify the real
+account's URI handlers. Physical mouse clicks and the real default browser remain
+separate desktop acceptance. Both native URL adapters use the shared navigation
+intent policy; Windows keeps its existing IUri parsing and test cases.

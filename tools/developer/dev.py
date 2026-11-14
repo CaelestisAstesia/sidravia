@@ -153,6 +153,8 @@ def linux_command(args, env):
     """Build/run only the explicit development target; never installs a product."""
     if platform.system() != "Linux":
         raise ValueError("linux desktop development requires native Linux")
+    if args.check_gui and (args.verify_package or args.announcement_integration):
+        raise ValueError("--check-gui must run separately from package or announcement native acceptance")
     flutter = str(Path(args.flutter).resolve())
     sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
     if sdk["frameworkVersion"] != (ROOT / "gui" / ".flutter-version").read_text().strip():
@@ -180,6 +182,11 @@ def linux_command(args, env):
             raise ValueError("package does not match the verified producer receipt")
         import linux_desktop_fixture
         return linux_desktop_fixture.run(ROOT, flutter, env, source_before, lambda: metadata(args.go, env), archive)
+    if args.announcement_integration:
+        if args.package or args.integration or args.verify_package:
+            raise ValueError("--announcement-integration requires a separate acceptance run")
+        import linux_announcement_fixture
+        return linux_announcement_fixture.run(ROOT,env,source_before,lambda:metadata(args.go,env))
     core = ROOT / ".local" / "linux-desktop-core"
     core.mkdir(parents=True, exist_ok=True)
     env = dict(env, SIDRAVIA_CORE_DIRECTORY=str(core))
@@ -262,13 +269,15 @@ def parse_args(argv=None):
             sub.add_argument("--output", required=True)
             sub.add_argument("--require-clean", action="store_true")
         if command == "linux":
-            sub.add_argument("--package", action="store_true")
-            sub.add_argument("--verify-package", help="owned native acceptance of a verified portable tar.gz")
+            mode = sub.add_mutually_exclusive_group()
+            mode.add_argument("--package", action="store_true")
+            mode.add_argument("--verify-package", help="owned native acceptance of a verified portable tar.gz")
             sub.add_argument("--version")
             sub.add_argument("--output")
             sub.add_argument("--flutter", default=".local/bin/flutter")
             sub.add_argument("--check-gui", action="store_true")
-            sub.add_argument("--integration", action="store_true")
+            mode.add_argument("--integration", action="store_true")
+            mode.add_argument("--announcement-integration", action="store_true")
         if command == "windows":
             sub.add_argument("--workspace", default=r"D:\Tools\Sidravia\build-workspace")
             sub.add_argument("--flutter", default=r"D:\Tools\Flutter\3.47.0\flutter\bin\flutter.bat")

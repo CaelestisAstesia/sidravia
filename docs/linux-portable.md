@@ -36,3 +36,8 @@ Flutter and dependency notices ship in `FLUTTER-LICENSE` and
 This build has not been accepted on other distributions, desktop environments,
 architectures, X11, or a real Windows installation. Notification delivery and a
 fresh login autostart require desktop session acceptance separately.
+
+Linux GUI candidates use the release asset suffix `-linux-amd64-gui-portable.tar.gz`.
+The updater recognizes this package kind automatically in a GUI portable layout.
+A missing GUI release does not fall back to a core-only asset. Check, download and
+integrity verification are supported; automatic installation remains unavailable.

@@ -61,16 +61,8 @@ AnnouncementLinkAction DecideAnnouncementLink(
     const std::wstring& document, const std::wstring& target,
     bool user_initiated, bool redirected, bool new_window, bool document_ready) {
   const auto uri = ParseHttpLink(target);
-  if (!uri) return AnnouncementLinkAction::block;
-  if (new_window && (!user_initiated || !document_ready)) {
-    return AnnouncementLinkAction::block;
-  }
-  if (!user_initiated || redirected || !document_ready) {
-    return AnnouncementLinkAction::in_window;
-  }
   const auto current = ParseHttpLink(document);
-  if (!new_window && current && DocumentUri(current.Get()) == DocumentUri(uri.Get())) {
-    return AnnouncementLinkAction::in_window;
-  }
-  return AnnouncementLinkAction::external_browser;
+  return DecideValidatedAnnouncementLink(uri.Get() != nullptr,
+      current && uri && DocumentUri(current.Get()) == DocumentUri(uri.Get()),
+      user_initiated, redirected, new_window, document_ready);
 }

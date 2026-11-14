@@ -88,7 +88,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     windows = target.startswith('windows-')
     require(gui is None or target in ('windows-amd64', 'linux-amd64'), 'gui_target_mismatch')
     base = f'sidravia-v{version}-{target}'
-    archive_name = base + ('-portable.zip' if windows else '-portable.tar.gz')
+    archive_name = base + ('-portable.zip' if windows else '-gui-portable.tar.gz' if gui is not None else '-portable.tar.gz')
     outputs = {archive_name}
     if windows and gui is not None:
         outputs.add(base + '-setup.exe')
