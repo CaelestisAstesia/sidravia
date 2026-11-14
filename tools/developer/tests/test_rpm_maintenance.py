@@ -43,6 +43,12 @@ class MaintenanceContracts(unittest.TestCase):
                 fcntl.flock(check, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     def test_exact_installation_signals_only_its_process(self):
+        if os.geteuid() != 0:
+            child = subprocess.run(['unshare', '--user', '--map-root-user', '--pid', '--fork', '--mount-proc',
+                sys.executable, '-m', 'unittest', 'test_rpm_maintenance.MaintenanceContracts.test_exact_installation_signals_only_its_process'],
+                cwd=Path(__file__).parent, capture_output=True, text=True, timeout=10)
+            self.assertEqual(child.returncode, 0, child.stdout + child.stderr)
+            return
         m = load()
         with tempfile.TemporaryDirectory(prefix='rpm-maintenance-', dir=ROOT / '.local') as tmp:
             app = Path(tmp) / 'app'

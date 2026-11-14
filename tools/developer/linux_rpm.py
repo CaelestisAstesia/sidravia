@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import uuid
 
 
 APP = Path('/usr/lib64/sidravia')
@@ -186,7 +187,7 @@ def accept(root, packages, env, source, current_source):
         runtime = session / 'runtime'
         runtime.mkdir(mode=0o700)
         config = session / 'bus.conf'
-        config.write_text('<busconfig><type>session</type><listen>unix:path=' + str(runtime / 'bus') + '</listen>'
+        config.write_text('<busconfig><type>session</type><listen>unix:abstract=sidravia-rpm-' + uuid.uuid4().hex + '</listen>'
             '<auth>EXTERNAL</auth><policy context="default"><allow own="*"/>'
             '<allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
         wayland = Path(env['WAYLAND_DISPLAY'])
