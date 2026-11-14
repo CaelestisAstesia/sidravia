@@ -1,5 +1,6 @@
 """Owned Linux desktop fixture; invoked only by dev.py linux --integration."""
 import contextlib
+import hashlib
 import http.server
 import json
 import os
@@ -76,6 +77,16 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
     (profiles / "linux-loopback.json").write_text(json.dumps(profile))
     runtime = state / "runtime.json"
     events = []
+    if portable_archive is not None:
+        # status performs no release query. Its secured cache location exposes
+        # the selected package kind without replacing the product's network.
+        with (owned / 'updater-auto-package.log').open('w') as log:
+            subprocess.run([str(package_root / 'sidraviaupdater'), 'status', '--channel', 'stable'], env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=15)
+        key = hashlib.sha256((str(package_root) + '\0gui-portable\0stable').encode()).hexdigest()[:32]
+        cache = Path(env['XDG_CACHE_HOME']) / 'Sidravia/updates'
+        if not (cache / key).is_dir() or len(list(cache.iterdir())) != 1:
+            raise RuntimeError('packaged updater did not automatically select GUI identity')
+        events.append('packaged-updater-auto-gui-identity-without-network')
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
