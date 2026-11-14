@@ -132,7 +132,11 @@ def run(root, packages, receipts, environment, source, current_source):
     (view / 'lib64/sidravia').mkdir()
     for name in COMMANDS:
         (view / 'bin' / name).symlink_to('../lib64/sidravia/' + name)
+    session_runtime = environment.get('XDG_RUNTIME_DIR', '')
+    if not session_runtime or not Path(session_runtime).is_absolute():
+        raise RuntimeError('installed GUI acceptance requires a desktop session runtime')
     sandbox = ['bwrap', '--unshare-user', '--die-with-parent', '--ro-bind', '/', '/',
+               '--tmpfs', '/run', '--bind', session_runtime, session_runtime,
                '--ro-bind', '/usr', str(host_alias), '--ro-bind', str(view), '/usr',
                '--ro-bind', str(sysroot / APP.relative_to('/')), str(APP),
                '--ro-bind', str(sysroot / 'usr/share/applications'), '/usr/share/applications',
@@ -218,6 +222,9 @@ def run(root, packages, receipts, environment, source, current_source):
         command(['desktop-file-validate', str(sysroot / f'usr/share/applications/{DESKTOP}.desktop')], 'desktop-validate')
         # The installed updater must refuse network access/archive selection.
         update = subprocess.run(sandbox + ['/usr/bin/sidraviaupdater', 'check'], env=env, capture_output=True, text=True, timeout=15)
+        (owned / 'installed-updater.log').write_text(update.stdout + update.stderr)
+        if not update.stdout.strip():
+            raise RuntimeError('installed updater failed before JSON response; see installed-updater.log')
         response = json.loads(update.stdout)
         if update.returncode != 1 or response['code'] != 'system_package_managed':
             raise RuntimeError('installed updater selected a portable asset')
