@@ -74,10 +74,12 @@ int main(int argc,char** argv) {
     if(!Ready() || !g_str_has_suffix(webkit_web_view_get_uri(Ready()),"/notice")) throw std::runtime_error("old load replaced new generation");
     std::puts("close/reopen isolates delayed old generation");
     open("/broken"); Until(Failed);
+    open("/missing"); Until(Failed);
+    open("/server-error"); Until(Failed);
     open("/download"); Until(Failed);
     open("/notice"); Until([]{return Ready();});
     webkit_web_view_terminate_web_process(Ready()); Until(Failed);
-    std::puts("transport failure, download rejection and process termination passed");
+    std::puts("transport/HTTP failure, download rejection and process termination passed");
     open("/hang"); Until(Failed,35);
     std::puts("real 30-second load deadline passed");
     open("/notice"); Until([]{return Ready();});

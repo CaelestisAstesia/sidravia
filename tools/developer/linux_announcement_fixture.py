@@ -25,7 +25,7 @@ def run(root, env, before, metadata):
             if self.path == '/broken':
                 self.close_connection = True
                 return
-            self.send_response(302 if self.path == '/redirect' else 200)
+            self.send_response(302 if self.path == '/redirect' else 404 if self.path == '/missing' else 500 if self.path == '/server-error' else 200)
             if self.path == '/redirect': self.send_header('Location','/notice')
             self.send_header('Content-Type','application/octet-stream' if self.path == '/download' else 'text/html; charset=utf-8')
             if self.path == '/download': self.send_header('Content-Disposition','attachment; filename="fixture.bin"')

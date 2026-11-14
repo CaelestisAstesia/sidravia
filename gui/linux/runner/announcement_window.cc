@@ -78,8 +78,10 @@ gboolean Policy(WebKitWebView*, WebKitPolicyDecision* decision, WebKitPolicyDeci
   }
   if (type == WEBKIT_POLICY_DECISION_TYPE_RESPONSE) {
     auto* response = WEBKIT_RESPONSE_POLICY_DECISION(decision);
+    auto* http = webkit_response_policy_decision_get_response(response);
     if (webkit_response_policy_decision_is_main_frame_main_resource(response) &&
-        !webkit_response_policy_decision_is_mime_type_supported(response)) {
+        (!webkit_response_policy_decision_is_mime_type_supported(response) ||
+         webkit_uri_response_get_status_code(http) >= 400)) {
       webkit_policy_decision_ignore(decision); Fail(s); return TRUE;
     }
     return FALSE;
