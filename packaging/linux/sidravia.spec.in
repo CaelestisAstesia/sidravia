@@ -1,6 +1,7 @@
 # Upstream binary candidate, not a Fedora repository source package.
 %global debug_package %{nil}
 %global _build_id_links none
+%global source_date_epoch_from_changelog 0
 # Preserve the already verified Flutter/AOT/trimmed Go payload byte for byte.
 %global __os_install_post %{nil}
 %global __provides_exclude_from ^/usr/lib64/sidravia/.*$

@@ -101,7 +101,7 @@ def run(root, packages, receipts, environment, source, current_source):
     rpm = ['bwrap', '--unshare-user', '--uid', '0', '--gid', '0', '--unshare-net',
            '--cap-add', 'CAP_SYS_CHROOT', '--ro-bind', '/', '/', '--bind', str(sysroot), str(sysroot),
            '--ro-bind', '/usr', str(sysroot / host_alias.relative_to('/')), '--chdir', str(owned),
-           'rpm', '--root', str(sysroot), '--dbpath', dbpath]
+           'rpm', '--root', str(sysroot), '--dbpath', dbpath, '--nosignature']
 
     # Do not install over an existing Sidravia system package even in the clone:
     # an unexpected inventory deserves diagnosis rather than silent replacement.

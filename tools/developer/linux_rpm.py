@@ -72,7 +72,9 @@ def verify(package, receipt):
         raise ValueError('private Flutter library leaked into external requirements')
     if any('.so' in x for x in query(package, '--provides').splitlines()):
         raise ValueError('private library leaked into global RPM provides')
-    subprocess.run(['rpm', '-K', str(package)], check=True, stdout=subprocess.DEVNULL)
+    # RPM 6's default signature policy rejects unsigned local candidates. Check
+    # every digest while explicitly declining signature acceptance for this mode.
+    subprocess.run(['rpm', '-K', '--nosignature', str(package)], check=True)
     return requirements
 
 
