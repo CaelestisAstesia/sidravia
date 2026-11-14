@@ -31,7 +31,8 @@ def rpm_version(version):
 
 
 def query(package, *args):
-    return subprocess.check_output(['rpm', '-qp', *args, str(package)], text=True).strip()
+    # Empty digest/link columns are meaningful in structured file inventories.
+    return subprocess.check_output(['rpm', '-qp', *args, str(package)], text=True).rstrip('\n')
 
 
 def tree_manifest(stage):

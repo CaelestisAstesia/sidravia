@@ -65,7 +65,43 @@ def run(root, packages, receipts, environment, source, current_source):
     with contextlib.closing(sqlite3.connect(hostdb.as_uri() + '?mode=ro', uri=True)) as src:
         with contextlib.closing(sqlite3.connect(db / 'rpmdb.sqlite')) as dst:
             src.backup(dst)
-    rpm = ['unshare', '--user', '--map-root-user', '--mount', 'rpm', '--root', str(sysroot), '--dbpath', dbpath]
+    host_alias = Path('/run/sidravia-rpm-host/usr')
+    # Provide real interpreters/tools for the dependency inventory's icon and
+    # desktop file triggers. Only private cache/output directories are writable;
+    # all borrowed system executables/libraries remain read-only bind mounts.
+    for name in ('bin', 'sbin', 'lib', 'lib64'):
+        (sysroot / name).symlink_to('usr/' + name)
+    for relative in ('usr/bin', 'usr/lib64', 'usr/lib', 'usr/share', 'usr/lib/sysimage',
+                     'usr/share/icons', 'usr/share/icons/hicolor'):
+        target = sysroot / relative
+        target.mkdir(parents=True, exist_ok=True)
+        for item in Path('/' + relative).iterdir():
+            child = target / item.name
+            if child.exists() or child.is_symlink():
+                continue
+            # Private destinations for package files and system cache triggers.
+            if relative == 'usr/share' and item.name in ('applications', 'icons', 'doc', 'licenses'):
+                child.mkdir()
+            elif relative == 'usr/share/icons' and item.name == 'hicolor':
+                child.mkdir()
+            elif relative == 'usr/share/icons/hicolor':
+                if item.name == 'index.theme':
+                    shutil.copy2(item, child)
+            else:
+                child.symlink_to(host_alias / Path(relative).relative_to('usr') / item.name)
+    # Other /usr top-level resources are read-only aliases.
+    for item in Path('/usr').iterdir():
+        target = sysroot / 'usr' / item.name
+        if not target.exists() and not target.is_symlink():
+            target.symlink_to(host_alias / item.name)
+    (sysroot / 'etc').mkdir()
+    (sysroot / 'etc/passwd').write_text('root:x:0:0:root:/root:/bin/sh\n')
+    (sysroot / 'etc/group').write_text('root:x:0:\n')
+    (sysroot / host_alias.relative_to('/')).mkdir(parents=True)
+    rpm = ['bwrap', '--unshare-user', '--uid', '0', '--gid', '0', '--unshare-net',
+           '--cap-add', 'CAP_SYS_CHROOT', '--ro-bind', '/', '/', '--bind', str(sysroot), str(sysroot),
+           '--ro-bind', '/usr', str(sysroot / host_alias.relative_to('/')), '--chdir', str(owned),
+           'rpm', '--root', str(sysroot), '--dbpath', dbpath]
 
     # Do not install over an existing Sidravia system package even in the clone:
     # an unexpected inventory deserves diagnosis rather than silent replacement.
@@ -75,7 +111,6 @@ def run(root, packages, receipts, environment, source, current_source):
 
     view = owned / 'view/usr'
     view.mkdir(parents=True)
-    host_alias = Path('/run/sidravia-rpm-host/usr')
     for path in Path('/usr').iterdir():
         if path.name in ('bin', 'lib64'):
             directory = view / path.name
@@ -94,6 +129,8 @@ def run(root, packages, receipts, environment, source, current_source):
     sandbox = ['bwrap', '--unshare-user', '--die-with-parent', '--ro-bind', '/', '/',
                '--ro-bind', '/usr', str(host_alias), '--ro-bind', str(view), '/usr',
                '--ro-bind', str(sysroot / APP.relative_to('/')), str(APP),
+               '--ro-bind', str(sysroot / 'usr/share/applications'), '/usr/share/applications',
+               '--ro-bind', str(sysroot / 'usr/share/icons/hicolor'), '/usr/share/icons/hicolor',
                '--tmpfs', '/home', '--bind', str(owned), str(owned),
                '--bind', env['TMPDIR'], '/tmp', '--chdir', str(owned)]
     dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
@@ -144,7 +181,12 @@ def run(root, packages, receipts, environment, source, current_source):
         nonlocal gui, gui_pid
         pidfile = owned / 'gui.pid'
         pidfile.unlink(missing_ok=True)
-        code = 'import os; from pathlib import Path; Path(' + repr(str(pidfile)) + ').write_text(str(os.getpid())); os.execv("/usr/bin/sidravia_gui", ["sidravia_gui", "--skip-auto-login", "--start-visible"])'
+        code = ('import os; from pathlib import Path; from gi.repository import Gio,GLib; '
+                'app=Gio.DesktopAppInfo.new_from_filename(' + repr(f'/usr/share/applications/{DESKTOP}.desktop') + '); '
+                'children=[]; assert app; '
+                'assert app.launch_uris_as_manager([],Gio.AppLaunchContext(),GLib.SpawnFlags.DO_NOT_REAP_CHILD,None,None,lambda app,pid,data:children.append(pid),None); '
+                'assert len(children)==1; Path(' + repr(str(pidfile)) + ').write_text(str(children[0])); '
+                'os.waitpid(children[0],0)')
         with (owned / f'gui-{len(events)}.log').open('w') as log:
             gui = subprocess.Popen(sandbox + ['/usr/bin/python3', '-c', code], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         wait_for(lambda: pidfile.exists() or gui.poll() is not None, 'installed GUI exec')
@@ -158,6 +200,12 @@ def run(root, packages, receipts, environment, source, current_source):
         command(rpm + ['-ivh', str(packages[0])], 'rpm-install')
         installed = True
         command(rpm + ['-V', 'sidravia'], 'rpm-verify-install')
+        for cache in ('usr/share/applications/mimeinfo.cache', 'usr/share/icons/hicolor/icon-theme.cache'):
+            if not (sysroot / cache).is_file():
+                raise RuntimeError('system RPM file trigger did not create ' + cache)
+        if DESKTOP.encode() not in (sysroot / 'usr/share/icons/hicolor/icon-theme.cache').read_bytes():
+            raise RuntimeError('RPM icon cache does not contain the installed application')
+        events.append('system-desktop-and-icon-file-triggers')
         if (sysroot / APP.relative_to('/') / 'sidravia.portable').exists():
             raise RuntimeError('RPM incorrectly enabled portable mode')
         command(['desktop-file-validate', str(sysroot / f'usr/share/applications/{DESKTOP}.desktop')], 'desktop-validate')

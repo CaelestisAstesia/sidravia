@@ -3,12 +3,17 @@ import tempfile
 import unittest
 import sys
 import shutil
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import linux_rpm
 
 
 class RPMContracts(unittest.TestCase):
+    def test_query_retains_empty_file_inventory_columns(self):
+        with mock.patch.object(linux_rpm.subprocess, 'check_output', return_value='/usr/share/licenses/sidravia/LICENSE\t100644\tabc\t\n'):
+            self.assertEqual(len(linux_rpm.query('candidate.rpm', '--qf', 'format').split('\t')), 4)
+
     @unittest.skipUnless(shutil.which('rpm'), 'requires native RPM tool')
     def test_prerelease_mapping_preserves_rpm_ordering(self):
         import subprocess
