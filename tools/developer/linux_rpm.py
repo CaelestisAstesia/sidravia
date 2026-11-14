@@ -70,6 +70,8 @@ def verify(package, receipt):
             raise ValueError('missing RPM runtime dependency: ' + required)
     if any('libflutter_linux_gtk.so' in x for x in requirements):
         raise ValueError('private Flutter library leaked into external requirements')
+    if any('libjvm' in x or 'libdartjni' in x for x in requirements):
+        raise ValueError('unused Android JNI/JDK dependency leaked into the Linux RPM')
     if any('.so' in x for x in query(package, '--provides').splitlines()):
         raise ValueError('private library leaked into global RPM provides')
     # RPM 6's default signature policy rejects unsigned local candidates. Check

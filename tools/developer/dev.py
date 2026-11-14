@@ -222,6 +222,9 @@ def linux_command(args, env):
     if args.package:
         # Exclude developer copies of core/profiles. The producer owns those.
         bundle = ROOT / "gui/build/linux/x64/release/bundle"
+        native_assets = (bundle / 'data/flutter_assets/NativeAssetsManifest.json').read_text()
+        if 'jni' in native_assets.lower() or (bundle / 'lib/libdartjni.so').exists():
+            raise ValueError('Linux JNI native assets require an explicit runtime integration; no developer JDK payload is accepted')
         with tempfile.TemporaryDirectory(prefix="linux-gui-package-", dir=ROOT / ".local") as temporary:
             stage = Path(temporary)
             for name in ("sidravia_gui", "data", "lib"):

@@ -97,11 +97,16 @@ def run(root, packages, receipts, environment, source, current_source):
     (sysroot / 'etc').mkdir()
     (sysroot / 'etc/passwd').write_text('root:x:0:0:root:/root:/bin/sh\n')
     (sysroot / 'etc/group').write_text('root:x:0:\n')
+    (sysroot / 'tmp').mkdir(mode=0o1777)
+    (sysroot / 'tmp').chmod(0o1777)
+    (sysroot / 'dev').mkdir()
+    (sysroot / 'proc').mkdir()
     (sysroot / host_alias.relative_to('/')).mkdir(parents=True)
-    rpm = ['bwrap', '--unshare-user', '--uid', '0', '--gid', '0', '--unshare-net',
+    rpm = ['bwrap', '--unshare-user', '--die-with-parent', '--uid', '0', '--gid', '0', '--unshare-net',
            '--cap-add', 'CAP_SYS_CHROOT', '--ro-bind', '/', '/', '--bind', str(sysroot), str(sysroot),
            '--ro-bind', '/usr', str(sysroot / host_alias.relative_to('/')), '--chdir', str(owned),
-           'rpm', '--root', str(sysroot), '--dbpath', dbpath, '--nosignature']
+           '--dev', str(sysroot / 'dev'), '--proc', str(sysroot / 'proc'),
+           'rpm', '--root', str(sysroot), '--dbpath', dbpath, '--nosignature', '--noplugins']
 
     # Do not install over an existing Sidravia system package even in the clone:
     # an unexpected inventory deserves diagnosis rather than silent replacement.
