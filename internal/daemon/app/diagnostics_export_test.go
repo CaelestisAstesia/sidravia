@@ -191,7 +191,7 @@ func TestExportDiagnosticsContextsDependenciesAndNormalization(t *testing.T) {
 func TestDiagnosticProjectionFutureCategoriesAndCounterGuards(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	paired := session.NetworkDiagnosticsSnapshot{Snapshot: session.Snapshot{State: "private-future-state", Intent: "private-future-intent", StateReason: &session.StateReason{Code: "private-future-code", Description: "private-secret-cause"}, LastAuthenticationFailure: &session.AuthenticationFailure{Description: "private-cause-chain"}}, ProtocolSocket: session.ProtocolSocketObservation{State: "private-future-socket"}}
+	paired := session.DiagnosticSnapshot{Snapshot: session.Snapshot{State: "private-future-state", Intent: "private-future-intent", StateReason: &session.StateReason{Code: "private-future-code", Description: "private-secret-cause"}, LastAuthenticationFailure: &session.AuthenticationFailure{Description: "private-cause-chain"}}, ProtocolSocket: session.ProtocolSocketObservation{State: "private-future-socket"}}
 	item := diagnosticSession(paired, true)
 	if item.State != "other" || item.Intent != "other" || item.ReasonCode != "other" || item.ProtocolSocketState != "other" || item.FailureCategory != "other" || item.RecoveryRecommendation != "other" || !item.CleanupRequired {
 		t.Fatal("unknown domain categories not bounded")
@@ -316,7 +316,7 @@ func TestDiagnosticFailuresGroupPrivateAccountOutcomesAndRetainRecovery(t *testi
 	}
 	for want, codes := range groups {
 		for _, code := range codes {
-			paired := session.NetworkDiagnosticsSnapshot{Snapshot: session.Snapshot{LastAuthenticationFailure: &session.AuthenticationFailure{Code: protocol.AuthenticationProtocolFailureCode(code), Description: "private-account-cause", HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange}}}
+			paired := session.DiagnosticSnapshot{Snapshot: session.Snapshot{LastAuthenticationFailure: &session.AuthenticationFailure{Code: protocol.AuthenticationProtocolFailureCode(code), Description: "private-account-cause", HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange}}}
 			item := diagnosticSession(paired, true)
 			if item.FailureCategory != want || item.RecoveryRecommendation != string(protocol.BlockUntilExplicitRestartOrRelevantInputChange) || !item.CleanupRequired {
 				t.Fatalf("lost safe failure %s: %#v", code, item)
@@ -328,7 +328,7 @@ func TestDiagnosticFailuresGroupPrivateAccountOutcomesAndRetainRecovery(t *testi
 		}
 	}
 	for _, recommendation := range []protocol.AuthenticationProtocolFailureHandlingRecommendation{protocol.RetryAfterStandardDelay, protocol.RetryAfterExtendedDelay} {
-		paired := session.NetworkDiagnosticsSnapshot{Snapshot: session.Snapshot{LastAuthenticationFailure: &session.AuthenticationFailure{Code: "network_timeout", HandlingRecommendation: recommendation}}}
+		paired := session.DiagnosticSnapshot{Snapshot: session.Snapshot{LastAuthenticationFailure: &session.AuthenticationFailure{Code: "network_timeout", HandlingRecommendation: recommendation}}}
 		if diagnosticSession(paired, false).RecoveryRecommendation != string(recommendation) {
 			t.Fatal("original recovery recommendation lost")
 		}

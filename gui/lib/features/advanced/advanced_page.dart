@@ -1,11 +1,9 @@
-import 'package:sidravia_gui/features/diagnostics/network_diagnosis_controller.dart';
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/application/gui_network_diagnosis.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
@@ -13,12 +11,10 @@ class AdvancedPage extends StatefulWidget {
   const AdvancedPage({
     super.key,
     required this.controller,
-    required this.diagnostics,
     required this.onBack,
     this.onOpenLogDirectory,
   });
   final GuiController controller;
-  final NetworkDiagnosisController diagnostics;
   final VoidCallback onBack;
   final Future<bool> Function()? onOpenLogDirectory;
   @override
@@ -27,7 +23,6 @@ class AdvancedPage extends StatefulWidget {
 
 class _AdvancedPageState extends State<AdvancedPage> {
   GuiController get controller => widget.controller;
-  NetworkDiagnosisController get diagnostics => widget.diagnostics;
   VoidCallback get onBack => widget.onBack;
 
   bool _expanded = false;
@@ -51,39 +46,11 @@ class _AdvancedPageState extends State<AdvancedPage> {
     }
   }
 
-  void _showDiagnosis() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) diagnostics.setVisible(true);
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _showDiagnosis();
-  }
-
-  @override
-  void didUpdateWidget(AdvancedPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.diagnostics != diagnostics) {
-      oldWidget.diagnostics.setVisible(false);
-      _showDiagnosis();
-    }
-  }
-
-  @override
-  void dispose() {
-    diagnostics.setVisible(false);
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: Listenable.merge([
       controller,
       controller.presentationClock,
-      diagnostics,
       GuiPreferencesScope.maybeOf(context),
     ]),
     builder: (context, _) => _build(context),
@@ -180,53 +147,6 @@ class _AdvancedPageState extends State<AdvancedPage> {
           ),
         if (expanded) ...[
           const SizedBox(height: 14),
-          DesignGroup(
-            children: [
-              DesignRow(
-                title: '网络诊断',
-                value: diagnostics.busy
-                    ? '正在观察…'
-                    : diagnostics.stale
-                    ? '观察已过期，请刷新'
-                    : '最近观察',
-              ),
-              if (diagnostics.unavailable != null)
-                DesignRow(title: '暂无数据', value: diagnostics.unavailable),
-              if (diagnostics.error != null)
-                DesignRow(title: '诊断错误', value: diagnostics.error),
-              if (diagnostics.targetLabel != null)
-                DesignRow(
-                  title: diagnostics.stale ? '上次诊断对象（已过期）' : '诊断对象',
-                  value: diagnostics.targetLabel,
-                ),
-              if (diagnostics.result != null)
-                for (final row in diagnosisRows(diagnostics.result!))
-                  DesignRow(title: row.key, value: row.value, diagnostic: true),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: diagnostics.canRequest
-                      ? () => diagnostics.refresh()
-                      : null,
-                  child: const Text('刷新网络诊断'),
-                ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: diagnostics.canRequest
-                      ? () => diagnostics.refresh(probe: true)
-                      : null,
-                  child: const Text('执行有限 IP 探测'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           DesignGroup(
             children: [
               for (final row in rows)

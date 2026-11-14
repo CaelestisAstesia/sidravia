@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -39,9 +40,28 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		}
 		entries = append(entries, zipEntry{"app_icon.ico", icon, 0644})
 	}
-	gui, err := readGUI(t.cfg.guiDirectory, entries)
+	var gui []zipEntry
+	if t.cfg.target == "linux-amd64" {
+		gui, err = readLinuxGUI(t.cfg.guiDirectory, entries)
+	} else {
+		gui, err = readGUI(t.cfg.guiDirectory, entries)
+	}
 	if err != nil {
 		return err
+	}
+	if t.cfg.target == "linux-amd64" && len(gui) > 0 {
+		var version map[string]interface{}
+		for _, entry := range gui {
+			if entry.name == "data/flutter_assets/version.json" {
+				err = json.Unmarshal(entry.data, &version)
+				if err != nil {
+					return fmt.Errorf("invalid Linux GUI version: %w", err)
+				}
+			}
+		}
+		if version["version"] != t.cfg.version || version["app_name"] != "sidravia_gui" {
+			return fmt.Errorf("Linux GUI version does not match distribution")
+		}
 	}
 	entries = append(entries, gui...)
 	out, err := filepath.Abs(t.cfg.output)
@@ -113,6 +133,9 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	archive := base + "-portable.zip"
 	if strings.HasPrefix(t.cfg.target, "linux-") {
 		archive = base + "-portable.tar.gz"
+		if len(gui) > 0 {
+			archive = base + "-gui-portable.tar.gz"
+		}
 		if err := writeTar(filepath.Join(stage, archive), base, portable); err != nil {
 			return err
 		}

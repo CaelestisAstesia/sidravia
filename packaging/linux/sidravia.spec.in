@@ -1,0 +1,41 @@
+# Upstream binary candidate, not a Fedora repository source package.
+%global debug_package %{nil}
+%global _build_id_links none
+%global source_date_epoch_from_changelog 0
+# Preserve the already verified Flutter/AOT/trimmed Go payload byte for byte.
+%global __os_install_post %{nil}
+%global __provides_exclude_from ^/usr/lib64/sidravia/.*$
+%global __requires_exclude ^libflutter_linux_gtk\\.so.*$
+
+Name: sidravia
+Version: @VERSION@
+Release: @RELEASE@
+Summary: Campus network authentication client
+License: AGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-HarmonyOS-Sans
+URL: https://github.com/CaelestisAstesia/Sidravia
+Source0: payload.tar.gz
+BuildArch: x86_64
+Requires: gtk3, libayatana-appindicator-gtk3, webkit2gtk4.1
+Requires: /usr/bin/env, /usr/bin/xdg-open
+Requires: desktop-file-utils, hicolor-icon-theme
+Requires(pre): /usr/bin/python3
+Requires(preun): /usr/bin/python3
+
+%description
+Sidravia Flutter desktop client with the shared CTL, daemon and read-only
+institution profiles. Authentication state remains owned by the per-user
+daemon. Package maintenance quiesces only this installation with pidfds. It
+never enables autostart or starts user processes and preserves user data.
+
+%install
+mkdir -p %{buildroot}
+tar -xzf %{SOURCE0} -C %{buildroot}
+desktop-file-validate %{buildroot}/usr/share/applications/io.github.CaelestisAstesia.Sidravia.desktop
+
+%files -f %{_sourcedir}/files.list
+
+%pre -p /usr/bin/python3
+@PREIN@
+
+%preun -p /usr/bin/python3
+@PREUN@

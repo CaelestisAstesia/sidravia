@@ -75,6 +75,16 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# path_provider_android transitively registers the jni FFI plugin for Linux.
+# Our Linux path_provider is the pure-Dart XDG implementation; the Linux runner
+# uses WebKitGTK, not Java. Do not ship this unused Android-side runtime (whose
+# CMake build embeds the developer JDK path). Native asset acceptance below the
+# fixed developer entry rejects a future declared JNI asset until supported.
+if(TARGET jni)
+  list(REMOVE_ITEM PLUGIN_BUNDLED_LIBRARIES "$<TARGET_FILE:jni>")
+endif()
+list(FILTER PLUGIN_BUNDLED_LIBRARIES EXCLUDE REGEX "/libdartjni[.]so$")
+
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build

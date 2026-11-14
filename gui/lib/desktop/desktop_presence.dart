@@ -48,6 +48,7 @@ class DesktopPresence extends ChangeNotifier {
   String? get feedback => _feedback;
   bool? get isMainWindowVisible => _isMainWindowVisible;
   Future<void> Function()? onExitRequested;
+  Future<void> Function()? onMaintenanceExitRequested;
   Future<void> Function(TrayIntent intent)? onTrayAction;
   TrayPopoverData? _trayPresentation;
 
@@ -232,6 +233,8 @@ class DesktopPresence extends ChangeNotifier {
       onTrayUnavailable?.call();
     } else if (call.method == 'exitRequested') {
       await onExitRequested?.call();
+    } else if (call.method == 'maintenanceExitRequested') {
+      await onMaintenanceExitRequested?.call();
     } else if (call.method == 'trayAction') {
       final intent = TrayIntent.fromMap(call.arguments);
       if (!_disposed && intent != null) await onTrayAction?.call(intent);

@@ -1,9 +1,12 @@
 #include "desktop_shell.h"
 #include "wayland_window_icon.h"
+#include "announcement_window.h"
 #include "../../native/frame_geometry.h"
 
 #include <libayatana-appindicator/app-indicator.h>
 #include <webkit2/webkit2.h>
+#include <glib-unix.h>
+#include <csignal>
 #ifdef GDK_WINDOWING_WAYLAND
 #include <gdk/gdkwayland.h>
 #endif
@@ -22,9 +25,7 @@ struct DesktopShell {
   bool custom_frame = false, frame_configured = false, modal_blocked = false;
   gchar* icon = nullptr;
   WaylandWindowIcon* window_icon = nullptr;
-  WaylandWindowIcon* announcement_icon = nullptr;
-  GtkWidget* announcement = nullptr;
-  WebKitWebView* web = nullptr;
+  AnnouncementWindow* announcement = nullptr;
   FlMethodChannel *desktop, *window_channel, *announcements, *notifications;
   AppIndicator* indicator;
   GtkWidget *menu, *status, *primary, *secondary;
@@ -33,6 +34,7 @@ struct DesktopShell {
   guint notification_subscription = 0;
   bool dark = false, starting = true, frame_received = false;
   guint startup_timeout = 0;
+  guint termination_source = 0;
   bool close_to_tray = false, hidden = false, exiting = false, configured = false;
   std::map<std::string, Notice> notices;
   GCancellable* cancel = g_cancellable_new();
@@ -292,10 +294,7 @@ static void window_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
   } else if (g_str_equal(method, "setDarkMode")) {
     s->dark = boolean(fl_method_call_get_args(call));
     g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", s->dark, nullptr);
-    if (s->web) {
-      GdkRGBA background; gdk_rgba_parse(&background, s->dark ? "#171a20" : "#ffffff");
-      webkit_web_view_set_background_color(s->web, &background);
-    }
+    announcement_window_set_dark(s->announcement,s->dark);
 
     reply(call);
   } else {
@@ -303,76 +302,19 @@ static void window_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
   }
 }
 
-static bool web_uri(const char* uri) {
-  g_autoptr(GUri) parsed = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr);
-  if (!parsed || !g_uri_get_host(parsed) || g_uri_get_userinfo(parsed)) return false;
-  return g_strcmp0(g_uri_get_scheme(parsed), "https") == 0 || g_strcmp0(g_uri_get_scheme(parsed), "http") == 0;
-}
-static gboolean web_policy(WebKitWebView*, WebKitPolicyDecision* decision, WebKitPolicyDecisionType type, gpointer data) {
-  if (type == WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION || type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
-    const char* uri = webkit_uri_request_get_uri(webkit_navigation_action_get_request(webkit_navigation_policy_decision_get_navigation_action(WEBKIT_NAVIGATION_POLICY_DECISION(decision))));
-    auto* action = webkit_navigation_policy_decision_get_navigation_action(WEBKIT_NAVIGATION_POLICY_DECISION(decision));
-    if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
-      if (webkit_navigation_action_is_user_gesture(action) && web_uri(uri)) {
-        auto* s = static_cast<DesktopShell*>(data);
-        g_autoptr(GError) error = nullptr;
-        if (!gtk_show_uri_on_window(GTK_WINDOW(s->announcement), uri, GDK_CURRENT_TIME, &error)) {
-          auto* dialog = gtk_message_dialog_new(GTK_WINDOW(s->announcement), GTK_DIALOG_DESTROY_WITH_PARENT,
-              GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", "无法打开浏览器，请在公告中复制链接后访问。");
-          g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
-          gtk_widget_show(dialog);
-        }
-      }
-      webkit_policy_decision_ignore(decision); return TRUE;
-    }
-    if (!web_uri(uri)) { webkit_policy_decision_ignore(decision); return TRUE; }
-  }
-  return FALSE;
-}
-static void close_announcement(DesktopShell* s) {
-  wayland_window_icon_free(s->announcement_icon); s->announcement_icon = nullptr;
-  if (s->announcement) gtk_widget_destroy(s->announcement);
-  s->announcement = nullptr; s->web = nullptr;
-}
-static gboolean announcement_delete(GtkWidget*, GdkEvent*, gpointer data) {
-  close_announcement(static_cast<DesktopShell*>(data)); return TRUE;
-}
 static void announcement_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
   auto* s = static_cast<DesktopShell*>(data);
-  const char* method = fl_method_call_get_name(call);
-  if (g_str_equal(method, "close")) { close_announcement(s); reply(call); return; }
-  if (!g_str_equal(method, "open")) { fl_method_call_respond_not_implemented(call, nullptr); return; }
+  const auto* method = fl_method_call_get_name(call);
+  if (g_str_equal(method,"close")) { announcement_window_close(s->announcement); reply(call); return; }
+  if (!g_str_equal(method,"open")) { fl_method_call_respond_not_implemented(call,nullptr); return; }
   auto* args = fl_method_call_get_args(call);
-  const char* uri = text(field(args, "url"));
-  auto *width = field(args, "clientWidth"), *height = field(args, "clientHeight");
-  if (!web_uri(uri) || !width || !height || fl_value_get_type(width) != FL_VALUE_TYPE_INT || fl_value_get_type(height) != FL_VALUE_TYPE_INT ||
-      fl_value_get_int(width) < 1 || fl_value_get_int(width) > 4096 || fl_value_get_int(height) < 1 || fl_value_get_int(height) > 4096) {
-    fail(call, "无效公告参数"); return;
+  auto* width = field(args,"clientWidth"); auto* height = field(args,"clientHeight");
+  if (!width || !height || fl_value_get_type(width) != FL_VALUE_TYPE_INT || fl_value_get_type(height) != FL_VALUE_TYPE_INT ||
+      fl_value_get_int(width) < 1 || fl_value_get_int(width) > 4096 || fl_value_get_int(height) < 1 || fl_value_get_int(height) > 4096 ||
+      !announcement_window_open(s->announcement,text(field(args,"url")),fl_value_get_int(width),fl_value_get_int(height))) {
+    fail(call,"无效公告参数"); return;
   }
-  if (!s->announcement) {
-    s->announcement = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(s->announcement), "Sidravia · 校园公告");
-    gtk_window_set_icon_from_file(GTK_WINDOW(s->announcement), s->icon, nullptr);
-    s->announcement_icon = wayland_window_icon_new(GTK_WINDOW(s->announcement), s->icon);
-    gtk_window_set_transient_for(GTK_WINDOW(s->announcement), s->window);
-    auto* context = webkit_web_context_new_ephemeral();
-    g_signal_connect(context, "download-started", G_CALLBACK(+[](WebKitWebContext*, WebKitDownload* download, gpointer) { webkit_download_cancel(download); }), nullptr);
-    s->web = WEBKIT_WEB_VIEW(webkit_web_view_new_with_context(context));
-    g_object_unref(context);
-    // No persistent school cookies, local-file navigation, downloads or popups.
-    g_object_set(webkit_web_view_get_settings(s->web), "allow-file-access-from-file-urls", FALSE,
-                 "allow-universal-access-from-file-urls", FALSE, "enable-developer-extras", FALSE, nullptr);
-    GdkRGBA background; gdk_rgba_parse(&background, s->dark ? "#171a20" : "#ffffff");
-    webkit_web_view_set_background_color(s->web, &background);
-    g_signal_connect(s->web, "decide-policy", G_CALLBACK(web_policy), s);
-    gtk_container_add(GTK_CONTAINER(s->announcement), GTK_WIDGET(s->web));
-    g_signal_connect(s->announcement, "delete-event", G_CALLBACK(announcement_delete), s);
-  }
-  gtk_window_set_default_size(GTK_WINDOW(s->announcement), fl_value_get_int(width), fl_value_get_int(height));
-  webkit_web_view_load_uri(s->web, uri);
-  gtk_widget_show_all(s->announcement);
-  gtk_window_present(GTK_WINDOW(s->announcement));
-  g_autoptr(FlValue) value = fl_value_new_string("opened"); reply(call, value);
+  g_autoptr(FlValue) value = fl_value_new_string("opened"); reply(call,value);
 }
 
 static void dismiss_notice(DesktopShell* s, Notice& notice) {
@@ -475,7 +417,13 @@ DesktopShell* desktop_shell_new(GtkWindow* window, FlView* view) {
   s->icon = g_build_filename(directory, "data", "icons", "sidravia.png", nullptr);
   gtk_window_set_icon_from_file(window, s->icon, nullptr);
   s->window_icon = wayland_window_icon_new(window, s->icon);
+  s->announcement = announcement_window_new(window,s->icon);
   s->desktop = channel(view, "sidravia/desktop", desktop_call, s);
+  s->termination_source = g_unix_signal_add(SIGTERM, +[](gpointer data) -> gboolean {
+    auto* shell = static_cast<DesktopShell*>(data);
+    if (!shell->exiting) invoke(shell->desktop, "maintenanceExitRequested");
+    return G_SOURCE_CONTINUE;
+  }, s);
   s->window_channel = channel(view, "sidravia/window", window_call, s);
   s->announcements = channel(view, "sidravia/announcements", announcement_call, s);
   s->notifications = channel(view, "sidravia/system-notifications", notification_call, s);
@@ -536,8 +484,9 @@ void desktop_shell_free(DesktopShell* s) {
   }
   if (s->pending) return; // Cancelled async calls retain resources until joined.
   if (s->startup_timeout) g_source_remove(s->startup_timeout);
+  if (s->termination_source) g_source_remove(s->termination_source);
   g_clear_object(&s->cancel);
-  close_announcement(s);
+  announcement_window_free(s->announcement);
   for (auto& entry : s->notices) dismiss_notice(s, entry.second);
   if (s->bus && s->notification_subscription) g_dbus_connection_signal_unsubscribe(s->bus, s->notification_subscription);
   g_clear_object(&s->bus);

@@ -189,6 +189,98 @@ this does not install a desktop entry. The owned Release fixture retains a short
 Wayland trace and checks the KWin client-decoration acknowledgement and icon
 submission/commit; client-area screenshots alone cannot prove those boundaries.
 
+### Linux GUI portable candidate
+
+From a clean isolated candidate on Fedora 45 x86_64:
+
+```sh
+.local/bin/dev linux --check-gui
+.local/bin/dev linux --package --version 0.4.0-dev.linux.1 --output .local/linux-portable-output
+```
+
+The fixed Flutter SDK builds the GUI with the requested build name. The existing
+Go distribution producer rebuilds version-bound sibling tools and owns public
+profiles/portable marker; the consumer verifies exact bytes and executable modes.
+Source identity is checked across compilation and consumption. Flutter 3.47 Linux
+forwards the compiled Dart build name but omits it from asset assembly; packaging
+stamps version.json and both producer/consumer check its actual version. The local receipt
+is `.local/linux-portable-package-result.json`. No installation, account autostart,
+release upload or signing is performed. Runtime requirements and movement rules
+are shipped in `data/linux-portable.md` from `docs/linux-portable.md`.
+
+After producing the archive, accept that exact clean-source package on the
+current KDE/Wayland desktop with:
+
+```sh
+.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-dev.linux.1-linux-amd64-gui-portable.tar.gz
+```
+
+This checks the local producer receipt before extracting into an owned directory
+with spaces. It launches only a synthetic namespace, exercises configuration and
+three core restarts through production typed desktop IPC; packaged CTL uses its GUI restart contract, exits through the real tray, moves the
+entire directory, then checks crashed-owner cleanup. It does not perform campus
+authentication or register the current account for autostart.
+
+### Linux announcement native acceptance
+
+`.local/bin/dev linux --announcement-integration` builds the real GTK/WebKit
+announcement adapter and runs it against an owned loopback HTTP server. It checks
+redirects/anchors/script navigation, engine-marked gesture dispatch to an isolated
+XDG URI handler, close/reopen generations, network/download/process failures and
+the actual 30-second deadline. It does not contact school pages or modify the real
+account's URI handlers. Physical mouse clicks and the real default browser remain
+separate desktop acceptance. Both native URL adapters use the shared navigation
+intent policy; Windows keeps its existing IUri parsing and test cases.
+
+Linux system integration acceptance uses private HOME/XDG roots in the portable
+fixture. It registers and removes command links, starts the GUI through its link,
+moves the package after deregistering, launches the generated GUI/background XDG
+entries, checks repeated background launch keeps its generation, and stops it
+through PATH-resolved CTL. Registration changes are checked not to adopt/stop the
+running owner. No real account autostart/PATH/shell profile is modified. Unit
+boundary tests also cover old GUI entry migration, conflicts, quoting, missing
+PATH/shadowed commands, Fedora public skeleton shell lookup, namespace isolation
+and nonblocking interprocess maintenance locking.
+
+### Local unsigned Fedora RPM (x86_64)
+
+RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
+project-downloaded replacements. Build the verified clean-source GUI portable
+first, then wrap that exact payload. The RPM excludes the portable marker and
+uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
+and icon. Reviewed Python pre/preun scriptlets coordinate only this installation;
+no account scan or automatic autostart registration is performed. Initial support
+and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
+
+```
+.local/bin/dev linux --package --version 0.4.0-dev.linux.5 --output .local/rpm-portable-input
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-dev.linux.5-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-dev.linux.5-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
+.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.4.0~dev.linux.5-1.x86_64.rpm .local/rpm-r2/sidravia-0.4.0~dev.linux.5-2.x86_64.rpm
+```
+
+Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
+input SHA256, output SHA256, exact file digests/modes/links and dependencies.
+Prereleases map to RPM `~`, sorting before the final version. No signing or
+repository upload is performed. The candidate is an upstream binary package;
+private Flutter runtime and font licensing prevent assuming Fedora repository
+eligibility. Full bundled notices remain in the payload.
+
+Acceptance requires user namespaces and a KDE/Wayland session. It snapshots the
+host RPM SQLite inventory read-only, installs/updates/erases in a newly owned
+private root, with dependency checks enabled. Installed binaries run through
+Bubblewrap over read-only host libraries and private HOME/XDG/namespace. A
+common private user/PID namespace and private session bus give the maintenance
+root a real process view without access to host production processes. Only the
+Wayland socket is shared; this fixture does not re-accept KDE tray delivery. It
+checks live GUI upgrade/removal, live headless removal, refusal of an unresponsive
+GUI, startup gate recovery, preserved/inactive TryExec entries and an independent
+portable daemon. It also checks installed IPC/configuration/preferences/core restart, update
+ownership refusal, and persistence across upgrade/removal. No host RPM install,
+real autostart registration or campus request is involved. This is not a clean
+Fedora dependency-solving/install-image test. Receipts/logs stay in the owned
+`.local/linux-rpm-fixture-*` until reviewed and explicitly cleaned.
+
 ## Isolated account-business fixture
 
 `.local/bin/dev linux --business-integration` uses the same pinned core/Flutter

@@ -61,11 +61,6 @@ abstract interface class SidraviaDesktopClient implements SidraviaIpcClient {
 
 /// Optional discovery; preview clients and the shared UI surface stay unchanged.
 abstract interface class SidraviaNetworkClient {
-  Future<NetworkDiagnosis> networkDiagnose({
-    String? configurationId,
-    String? sessionId,
-    bool probe = false,
-  });
   Future<NetworkInterfacesSnapshot> networkInterfaces();
   Future<ConfigurationSummary> configurationSetNetworkBindingPolicy({
     required String configurationId,

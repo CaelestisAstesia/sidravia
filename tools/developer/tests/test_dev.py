@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import sys
 import tempfile
 import unittest
@@ -104,6 +105,16 @@ class DeveloperCommands(unittest.TestCase):
             self.assertFalse(report["passed"])
             self.assertEqual(report["stages"][0]["exit_code"], 3)
             self.assertIn("useful failure detail", Path(report["log"]).read_text())
+
+    def test_linux_acceptance_modes_cannot_silently_skip_requested_work(self):
+        for pair in (("--package", "--announcement-integration"), ("--integration", "--announcement-integration"), ("--verify-package", "fixture.tar.gz", "--announcement-integration")):
+            with self.subTest(pair=pair), mock.patch("sys.stderr", new=io.StringIO()):
+                with self.assertRaises(SystemExit): dev.parse_args(["linux", *pair])
+        for mode in (("--announcement-integration",), ("--verify-package", "fixture.tar.gz")):
+            args = dev.parse_args(["linux", "--check-gui", *mode])
+            with mock.patch.object(dev.platform,"system",return_value="Linux"), mock.patch.object(dev.subprocess,"check_output") as run:
+                with self.assertRaisesRegex(ValueError,"separately"): dev.linux_command(args,{})
+                run.assert_not_called()
 
 
 if __name__ == "__main__":

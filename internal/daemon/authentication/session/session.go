@@ -349,8 +349,8 @@ func (session *AuthenticationSession) run() {
 			message.reply <- session.businessSnapshot()
 		case snapshotQuery:
 			message.reply <- snapshotReply{snapshot: session.currentSnapshot.Clone()}
-		case networkDiagnosticsQuery:
-			message.reply <- networkDiagnosticsReply{snapshot: NetworkDiagnosticsSnapshot{Snapshot: session.currentSnapshot.Clone(), ProtocolSocket: session.currentSnapshot.ProtocolSocket}}
+		case diagnosticSnapshotQuery:
+			message.reply <- diagnosticSnapshotReply{snapshot: DiagnosticSnapshot{Snapshot: session.currentSnapshot.Clone(), ProtocolSocket: session.currentSnapshot.ProtocolSocket}}
 		case protocolSocketOpenedEvent:
 			session.handleProtocolSocketOpened(message)
 		case protocolSocketClosedEvent:

@@ -109,6 +109,8 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       desktop.addListener(_syncBusinessWindowVisibility);
       _syncBusinessWindowVisibility();
       desktop.onExitRequested = _handleExitRequested;
+      desktop.onMaintenanceExitRequested = () =>
+          _handleExitRequested(maintenance: true);
       widget.controller.onMaintenancePrepare = _prepareMaintenance;
       widget.controller.onMaintenanceCommit = _commitMaintenance;
       desktop.onTrayAction = _handleTrayAction;
@@ -303,7 +305,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     await desktop.destroy();
   }
 
-  Future<void> _handleExitRequested() async {
+  Future<void> _handleExitRequested({bool maintenance = false}) async {
     final desktop = widget.desktopPresence;
     if (desktop == null || _exiting) return;
     if (widget.controller.maintenanceFrozen) {
@@ -315,9 +317,11 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     try {
       final context = _navigatorKey.currentContext;
       if (!mounted || context == null || _shellKey.currentState == null) return;
-      if (!await _shellKey.currentState!.mayExit() ||
-          !mounted ||
-          !context.mounted) {
+      final shell = _shellKey.currentState!;
+      final mayExit = maintenance
+          ? shell.canExitWithoutPrompt
+          : await shell.mayExit();
+      if (!mayExit || !mounted || !context.mounted) {
         return;
       }
       final active =
@@ -331,7 +335,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
                 ].contains(s.state),
               ) ??
               false);
-      if (active) {
+      if (active && !maintenance) {
         final approved = await showDialog<bool>(
           context: context,
           builder: (context) => DesignConfirmationDialog(
@@ -382,6 +386,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     if (desktop != null) {
       desktop.removeListener(_syncBusinessWindowVisibility);
       desktop.onExitRequested = null;
+      desktop.onMaintenanceExitRequested = null;
       widget.controller.onMaintenancePrepare = null;
       widget.controller.onMaintenanceCommit = null;
       desktop.onTrayAction = null;

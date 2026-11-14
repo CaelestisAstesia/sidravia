@@ -91,6 +91,7 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       title: '加入用户 PATH',
       subtitle:
           _error ??
+          status?.pathNotice ??
           (status?.userPathSupported == false
               ? 'Linux 暂不支持通过 GUI 修改 PATH'
               : '使新打开的终端可以直接使用命令'),
@@ -114,9 +115,10 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
           _error ??
           (status?.autostart == 'conflict'
               ? '任务存在冲突，未修改\n启用前，建议关闭其他认证器及其开机自启'
-              : (status?.daemonAutostartSupported == false
-                    ? '登录桌面会话后启动；Linux 暂不支持仅后台自启'
-                    : '启用前，建议关闭其他认证器及其开机自启')),
+              : (status?.autostartNotice ??
+                    (status?.daemonAutostartSupported == false
+                        ? '登录桌面会话后启动；Linux 暂不支持仅后台自启'
+                        : '启用前，建议关闭其他认证器及其开机自启'))),
       trailing: SettingsDropdown<String>(
         frameKey: const ValueKey('autostart-frame'),
         dropdownKey: const ValueKey('autostart-selector'),

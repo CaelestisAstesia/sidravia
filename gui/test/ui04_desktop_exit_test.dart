@@ -12,12 +12,14 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
 const channel = MethodChannel(desktopPresenceChannelName);
 
-Future<void> requestExit() async {
+Future<void> requestExit({bool maintenance = false}) async {
   await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .handlePlatformMessage(
         desktopPresenceChannelName,
         const StandardMethodCodec().encodeMethodCall(
-          const MethodCall('exitRequested'),
+          MethodCall(
+            maintenance ? 'maintenanceExitRequested' : 'exitRequested',
+          ),
         ),
         (_) {},
       );
@@ -86,6 +88,46 @@ Future<void> cleanup(
 }
 
 void main() {
+  for (final scenario in [
+    'authenticated',
+    'authenticating',
+    'waiting_for_network',
+    'waiting_before_retry',
+  ]) {
+    testWidgets('maintenance disconnects $scenario without confirmation', (
+      tester,
+    ) async {
+      final events = <String>[];
+      final (controller, client, _) = await mount(
+        tester,
+        events,
+        scenario: scenario,
+      );
+      unawaited(requestExit(maintenance: true));
+      await tester.pumpAndSettle();
+      expect(find.text('断开连接并退出？'), findsNothing);
+      expect(events, ['beginExit', 'stop', 'destroy']);
+      await cleanup(tester, controller, client);
+    });
+  }
+  testWidgets('maintenance preserves unsaved draft without a hidden prompt', (
+    tester,
+  ) async {
+    final events = <String>[];
+    final (controller, client, _) = await mount(tester, events);
+    await tester.tap(find.byKey(const ValueKey('home-configuration-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'unsaved');
+    unawaited(requestExit(maintenance: true));
+    await tester.pumpAndSettle();
+    expect(events, ['cancelExit']);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'unsaved',
+    );
+    await cleanup(tester, controller, client);
+  });
   for (final scenario in [
     'authenticated',
     'authenticating',

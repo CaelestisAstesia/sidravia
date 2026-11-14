@@ -847,23 +847,23 @@ func TestNormalizeOnlyExactNetworkQuery(t *testing.T) {
 	}
 }
 
-func TestTrustedNetworkDiagnosisMethodIsAllowlistedWithoutLoggingSelector(t *testing.T) {
+func TestRemovedNetworkDiagnosisMethodIsUnknownWithoutLoggingSelector(t *testing.T) {
 	var buf safeBuffer
 	handler := func(_ context.Context, method string, _ json.RawMessage) (json.RawMessage, *contract.Error) {
-		if method != contract.MethodNetworkDiagnose {
+		if method != "network.diagnose" {
 			t.Error("diagnosis dispatch changed")
 		}
-		return nil, &contract.Error{Code: contract.ErrorCodeConfigurationNotFound, Message: "configuration not found"}
+		return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unknown method"}
 	}
 	_, url := newTestServer(t, handler, &buf)
 	conn := dial(t, url)
 	defer conn.Close(websocket.StatusNormalClosure, "")
-	writeRequest(t, conn, "diagnostic-private-id", contract.MethodNetworkDiagnose, json.RawMessage(`{"configurationId":"private-selector"}`))
+	writeRequest(t, conn, "diagnostic-private-id", "network.diagnose", json.RawMessage(`{"configurationId":"private-selector"}`))
 	response := readResponse(t, conn)
-	if response.OK || response.ID != "diagnostic-private-id" || response.Error.Code != contract.ErrorCodeConfigurationNotFound {
-		t.Fatal("diagnosis response contract lost")
+	if response.OK || response.ID != "diagnostic-private-id" || response.Error.Code != contract.ErrorCodeUnknownMethod {
+		t.Fatal("removed method was accepted")
 	}
-	waitForLogEvent(t, &buf, "method="+contract.MethodNetworkDiagnose)
+	waitForLogEvent(t, &buf, "method="+methodUnknown)
 	if strings.Contains(buf.String(), "private-selector") || strings.Contains(buf.String(), "diagnostic-private-id") {
 		t.Fatal("diagnosis selector leaked into log")
 	}

@@ -49,7 +49,7 @@ func (application *Application) ExportDiagnostics(ctx context.Context, productVe
 		count = contract.MaximumDiagnosticSessionItems
 	}
 	for _, snapshot := range snapshots[:count] {
-		paired, err := application.sup.GetNetworkDiagnostics(ctx, snapshot.AuthenticationSessionID)
+		paired, err := application.sup.GetDiagnosticSnapshot(ctx, snapshot.AuthenticationSessionID)
 		if err != nil {
 			return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export actor: %w", errors.Join(err, context.Cause(ctx)))
 		}
@@ -184,7 +184,7 @@ func diagnosticNetwork(snapshot environment.Snapshot, available bool) (contract.
 	result.UpInterfaceCount, result.AutomaticCandidateCount, result.ExplicitBindableCount = &upCount, &automaticCount, &explicitCount
 	return result, nil
 }
-func diagnosticSession(paired session.NetworkDiagnosticsSnapshot, cleanupRequired bool) contract.DiagnosticExportSession {
+func diagnosticSession(paired session.DiagnosticSnapshot, cleanupRequired bool) contract.DiagnosticExportSession {
 	snapshot := paired.Snapshot
 	reason := "none"
 	if snapshot.StateReason != nil {

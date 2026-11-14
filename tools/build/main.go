@@ -168,8 +168,11 @@ func parseFlags(args []string) (config, error) {
 		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
 			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
 		}
-		if c.target != "windows-amd64" && (c.guiDirectory != "" || c.iscc != "") {
-			return c, errors.New("GUI and installer require windows-amd64")
+		if c.target != "windows-amd64" && c.iscc != "" {
+			return c, errors.New("installer requires windows-amd64")
+		}
+		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.guiDirectory != "" {
+			return c, errors.New("GUI requires windows-amd64 or linux-amd64")
 		}
 	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
@@ -193,7 +196,7 @@ Optional flags:
   --artifact   release (default) or field-validation
                distribution: Windows archive/optional installer or Linux archive
   --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
-  --gui-directory  optional fresh Windows Flutter Release directory
+  --gui-directory  optional fresh Windows or Linux AMD64 Flutter Release directory
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --help       show this help and exit without building
 

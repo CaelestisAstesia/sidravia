@@ -1,6 +1,6 @@
 # 命令行高级使用
 
-`sidraviactl`（下文简称 **CTL**）提供一次性认证、保存配置、多配置管理、独立后台和网络诊断等功能。日常使用 GUI 连接网络，可直接阅读[快速开始](quick-start.md)和[使用指南](guide.md)。
+`sidraviactl`（下文简称 **CTL**）提供一次性认证、保存配置、多配置管理、独立后台、网卡查询与诊断导出等功能。日常使用 GUI 连接网络，可直接阅读[快速开始](quick-start.md)和[使用指南](guide.md)。
 
 本页示例基于 `v0.3.0-alpha.1`。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
 
@@ -68,7 +68,6 @@ CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的�
 | `daemon stop` | 已停止也可成功 | 停止独立后台及其认证会话 |
 | `daemon restart [--log-level LEVEL]` | 启动独立后台 | 中断已有连接，旧 Session ID 失效；可能重新触发自动登录 |
 | `profile list`、`auth list/status/watch`、`config list/show`、`network interfaces` | 报告无法连接，不启动 | 查询已有独立后台 |
-| `network diagnose` | 报告无法连接，不启动 | 获取诊断结果；使用 `--probe` 时额外发送探测请求 |
 | `diagnostics export` | 报告无法连接，不启动 | 导出诊断到新文件，不覆盖已有文件；不支持 `--probe` |
 | `auth start/stop/restart/remove`、`config create/update/set-password/remove` | 可按需启动独立后台 | 改变会话或配置；操作失败时，后台启动或自动登录仍可能已经发生 |
 | `integration ...` | 不依赖认证后台 | 调用同目录 MGR，读取或修改 Windows 当前用户系统集成 |
@@ -289,21 +288,6 @@ sidraviactl config remove ID [--yes] [--allow-insecure-storage]
 
 以下查询和导出要求已有独立后台，不会自动启动后台。
 
-**网络诊断**：选择一份保存配置或当前后台保留的会话，检查认证目标及本机路由：
-
-```powershell
-.\sidraviactl.exe network diagnose --config <configuration-id>
-.\sidraviactl.exe network diagnose --session <session-id>
-```
-
-`--config` 与 `--session` 必须且只能提供一个。需要额外发送有限 IP 探测请求时，加上 `--probe`：
-
-```powershell
-.\sidraviactl.exe network diagnose --config <configuration-id> --probe
-```
-
-诊断命令成功或探测收到回复，都不代表认证及互联网访问已经成功，仍需结合会话状态和实际网页访问判断。
-
 **诊断导出**：将诊断摘要写入新文件：
 
 ```powershell
@@ -391,7 +375,7 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 | `auth start --profile PROFILE --username USER` | 交互式读取密码，发起不保存账号配置的一次性认证 |
 | `auth start --config ID` / `--session ID` | 从保存配置或已有会话启动认证 |
 | `auth stop ID` / `restart ID` / `remove ID` | 控制、清理会话 |
-| `network interfaces` / `diagnose ...` | 网络观察及诊断 |
+| `network interfaces` | 已观察网卡及地址 |
 | `diagnostics export --output PATH` | 将诊断摘要写入新文件 |
 | `integration ...` | Windows 当前用户自启、PATH 管理 |
 | `help [命令路径]` | 查看帮助，不启动后台；也支持公开命令的 `--help`、`-h` |
@@ -422,7 +406,6 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 .\sidraviactl.exe help config create
 .\sidraviactl.exe help config update
 .\sidraviactl.exe help auth start
-.\sidraviactl.exe help network diagnose
 .\sidraviactl.exe help integration
 ```
 
