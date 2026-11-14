@@ -269,7 +269,10 @@ eligibility. Full bundled notices remain in the payload.
 Acceptance requires user namespaces and a KDE/Wayland session. It snapshots the
 host RPM SQLite inventory read-only, installs/updates/erases in a newly owned
 private root, with dependency checks enabled. Installed binaries run through
-Bubblewrap over read-only host libraries and private HOME/XDG/namespace. It
+Bubblewrap over read-only host libraries and private HOME/XDG/namespace. A
+common private user/PID namespace and private session bus give the maintenance
+root a real process view without access to host production processes. Only the
+Wayland socket is shared; this fixture does not re-accept KDE tray delivery. It
 checks live GUI upgrade/removal, live headless removal, refusal of an unresponsive
 GUI, startup gate recovery, preserved/inactive TryExec entries and an independent
 portable daemon. It also checks installed IPC/configuration/preferences/core restart, update

@@ -12,6 +12,7 @@ import shutil
 import signal
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -106,8 +107,9 @@ def run(root, packages, receipts, environment, source, current_source):
     (sysroot / 'dev').mkdir()
     (sysroot / 'proc').mkdir()
     (sysroot / host_alias.relative_to('/')).mkdir(parents=True)
-    rpm = ['bwrap', '--unshare-user', '--die-with-parent', '--uid', '0', '--gid', '0', '--unshare-net',
-           '--cap-add', 'CAP_SYS_CHROOT', '--ro-bind', '/', '/', '--bind', str(sysroot), str(sysroot),
+    rpm = ['bwrap', '--die-with-parent', '--unshare-net',
+           '--cap-add', 'CAP_SYS_CHROOT', '--cap-add', 'CAP_SYS_PTRACE',
+           '--ro-bind', '/', '/', '--bind', str(sysroot), str(sysroot),
            '--bind', str(sysroot / 'tmp'), '/tmp', '--setenv', 'TMPDIR', '/tmp',
            '--ro-bind', '/usr', str(sysroot / host_alias.relative_to('/')), '--chdir', str(owned),
            '--dev', str(sysroot / 'dev'), '--proc', str(sysroot / 'proc'),
@@ -140,14 +142,16 @@ def run(root, packages, receipts, environment, source, current_source):
     if not session_runtime or not Path(session_runtime).is_absolute():
         raise RuntimeError('installed GUI acceptance requires a desktop session runtime')
     def sandbox():
-        prefix = ['bwrap', '--unshare-user', '--die-with-parent', '--ro-bind', '/', '/',
+        prefix = ['bwrap', '--die-with-parent', '--ro-bind', '/', '/',
                '--dev', '/dev', '--proc', '/proc', '--dev-bind-try', '/dev/dri', '/dev/dri',
-               '--tmpfs', '/run', '--bind', session_runtime, session_runtime,
+               '--tmpfs', '/run',
+               '--ro-bind', environment['WAYLAND_DISPLAY'], environment['WAYLAND_DISPLAY'],
                '--bind', str(sysroot / 'run/sidravia'), '/run/sidravia',
                '--ro-bind', '/usr', str(host_alias), '--ro-bind', str(view), '/usr',
                '--ro-bind', str(sysroot / 'usr/share/applications'), '/usr/share/applications',
                '--ro-bind', str(sysroot / 'usr/share/icons/hicolor'), '/usr/share/icons/hicolor',
                '--tmpfs', '/home', '--bind', str(owned), str(owned),
+               '--bind', session_runtime, session_runtime,
                '--bind', env['TMPDIR'], '/tmp', '--chdir', str(owned)]
         if (sysroot / APP.relative_to('/')).exists():
             prefix += ['--ro-bind', str(sysroot / APP.relative_to('/')), str(APP)]
@@ -337,7 +341,8 @@ def run(root, packages, receipts, environment, source, current_source):
                   'hostInstallation': False, 'realAccountIntegration': False, 'campusTraffic': False,
                   'rpmPlugins': 'disabled in user namespace; host SELinux/inhibit plugins not accepted',
                   'signatures': 'unsigned local candidate; all digest checks enabled',
-                  'isolation': 'private root/RPM DB, user+mount namespace, host libraries read-only'}
+                  'isolation': 'private root/RPM DB, shared private user+PID namespace, private session bus, host libraries read-only',
+                  'trayAcceptance': 'private bus has no KDE tray host; lifecycle and Wayland window only'}
         (owned / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         print('RPM isolated install/upgrade/erase PASS: ' + str(owned / 'result.json'))
         return 0
@@ -364,3 +369,18 @@ def run(root, packages, receipts, environment, source, current_source):
                 command([str(bystander / 'sidraviactl'), 'daemon', 'stop'], 'independent-portable-stop')
             if gui_pidfd is not None:
                 os.close(gui_pidfd)
+
+
+if __name__ == '__main__':
+    import dev
+    repository = Path(sys.argv[1]).resolve()
+    packages = [Path(p) for p in sys.argv[2:]]
+    receipts = [json.loads(Path(str(p) + '.json').read_text()) for p in packages]
+    source = dev.metadata('go', os.environ)
+    mapping = Path('/proc/self/uid_map').read_text().split()
+    if (os.geteuid() != 0 or mapping[0] != '0' or mapping[1] == '0' or mapping[2] != '1' or
+            Path('/proc/1/comm').read_text().strip() != 'dbus-run-sessio'):
+        raise RuntimeError('owned user/PID session namespace is required')
+    if any(not same_source(r['source'], source) for r in receipts):
+        raise RuntimeError('private fixture source differs from producer')
+    raise SystemExit(run(repository, packages, receipts, dict(os.environ), source, lambda: dev.metadata('go', os.environ)))

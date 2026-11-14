@@ -7,6 +7,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 
@@ -177,5 +178,22 @@ def accept(root, packages, env, source, current_source):
         verify(package, receipt)
     if receipts[0]['version'] != receipts[1]['version'] or int(receipts[0]['release']) >= int(receipts[1]['release']):
         raise ValueError('acceptance requires the same product version and increasing packaging revisions')
-    import linux_rpm_fixture
-    return linux_rpm_fixture.run(root, packages, receipts, env, source, current_source)
+    # Root maps only to the invoking user. A private PID namespace limits /proc
+    # to our own descendants; the shared user namespace lets the transaction
+    # root inspect them without acquiring any privilege over the real host.
+    with tempfile.TemporaryDirectory(prefix='linux-rpm-session-', dir=root / '.local') as tmp:
+        session = Path(tmp)
+        runtime = session / 'runtime'
+        runtime.mkdir(mode=0o700)
+        config = session / 'bus.conf'
+        config.write_text('<busconfig><type>session</type><listen>unix:path=' + str(runtime / 'bus') + '</listen>'
+            '<auth>EXTERNAL</auth><policy context="default"><allow own="*"/>'
+            '<allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
+        wayland = Path(env['WAYLAND_DISPLAY'])
+        if not wayland.is_absolute():
+            wayland = Path(env['XDG_RUNTIME_DIR']) / wayland
+        child_env = dict(env, XDG_RUNTIME_DIR=str(runtime), WAYLAND_DISPLAY=str(wayland))
+        command = ['unshare', '--user', '--map-root-user', '--pid', '--fork', '--mount-proc',
+            'dbus-run-session', '--config-file=' + str(config), '--', sys.executable,
+            str(root / 'tools/developer/linux_rpm_fixture.py'), str(root), *map(str, packages)]
+        return subprocess.run(command, env=child_env, check=False).returncode

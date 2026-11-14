@@ -61,8 +61,7 @@ def targets():
             except PermissionError:
                 if fd is not None:
                     os.close(fd)
-                if candidate:
-                    raise RuntimeError('cannot verify a matching installation process')
+                raise RuntimeError('process visibility is restricted; cannot prove installation is stopped')
             except (FileNotFoundError, ProcessLookupError):
                 if fd is not None:
                     os.close(fd)

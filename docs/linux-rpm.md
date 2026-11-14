@@ -51,7 +51,11 @@ Local development/acceptance uses `tools/developer/dev.py linux --rpm` and
 `--verify-rpm-upgrade`; see its README. Acceptance installs real RPMs into a
 private root/RPM database cloned from the current Fedora dependency inventory,
 then mounts the installed payload over read-only host runtime libraries in an
-unprivileged sandbox. Dependency checks remain enabled. This tests transactions
+unprivileged sandbox. All fixture processes share a private user/PID namespace
+and a private session bus; the real Wayland socket is shared for rendering.
+Production processes are outside its PID view. This round does not re-accept
+KDE tray or notification delivery (there is no tray host on the private bus).
+Dependency checks remain enabled. This tests transactions
 and installed behavior on this host; it is not a clean Fedora dependency solve,
 fresh login, campus authentication, other distribution or public release test.
 The initial upgrade test is RPM Release 1 to 2 of the same product/source,
