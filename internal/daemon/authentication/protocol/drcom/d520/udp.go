@@ -116,7 +116,7 @@ func (ex *udpExchange) roundTrip(
 			if ctx.Err() == nil {
 				recordNetworkFailure(diagnostics, "write", err)
 			}
-			failure := udpReadFailure(ctx, "udp exchange write", err)
+			failure := udpIOFailure(ctx, "udp exchange write", err)
 			recordExchange(diagnostics, phase, networkOutcome(failure), 0)
 			return nil, failure
 		}
@@ -140,7 +140,7 @@ func (ex *udpExchange) roundTrip(
 			if ctx.Err() == nil {
 				recordNetworkFailure(diagnostics, "read", err)
 			}
-			failure := udpReadFailure(ctx, "udp exchange read", err)
+			failure := udpIOFailure(ctx, "udp exchange read", err)
 			recordExchange(diagnostics, phase, networkOutcome(failure), 0)
 			return nil, failure
 		}
@@ -174,11 +174,11 @@ func networkOutcome(failure *runError) protocol.AuthenticationProtocolExchangeOu
 	return protocol.ExchangeNetworkIOFailed
 }
 
-// udpReadFailure maps a write/read error to a network failure, distinguishing
+// udpIOFailure maps a write/read error to a network failure, distinguishing
 // context cancellation (still a timeout-class failure here; the Run decides
 // cancellation handling from the context cause) from a real timeout and other
 // I/O errors.
-func udpReadFailure(ctx context.Context, operation string, err error) *runError {
+func udpIOFailure(ctx context.Context, operation string, err error) *runError {
 	if ctx.Err() != nil {
 		return networkTimeoutError(operation, err)
 	}

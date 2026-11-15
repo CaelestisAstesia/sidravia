@@ -168,7 +168,7 @@ func (exec *execution) handleControl(ctx context.Context, p []byte) *runError {
 		}
 		exec.diagnostics.DatagramEvent("online_confirmation", protocol.DatagramDirectionTx, reply)
 		if _, err := exec.exchange.conn.Write(reply); err != nil {
-			return udpReadFailure(ctx, "online confirmation", err)
+			return udpIOFailure(ctx, "online confirmation", err)
 		}
 		exec.experimental.lastConfirmation = time.Now()
 		recordExchange(exec.diagnostics, "online_confirmation", protocol.ExchangeAccepted, len(p))
