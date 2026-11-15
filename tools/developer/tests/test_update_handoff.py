@@ -58,7 +58,7 @@ class UpdateHandoff(unittest.TestCase):
                 print(native_tests.stdout.decode(errors='replace'))
             # Exercise the real CTL -> sibling updater process boundary without
             # network, cache writes, application startup or installation.
-            for filename, package in (('sidraviactl.exe', './cmd/sidravia'), ('sidraviaupdater.exe', './cmd/sidraviaupdater'), ('sidraviad.exe', './cmd/sidraviad')):
+            for filename, package in (('sidraviactl.exe', './cmd/sidraviactl'), ('sidraviaupdater.exe', './cmd/sidraviaupdater'), ('sidraviad.exe', './cmd/sidraviad')):
                 built = subprocess.run(['go', 'build', '-mod=readonly', '-ldflags',
                                         '-X main.ProductVersion=0.4.0-alpha.1 -X main.BuildID=fixture',
                                         '-o', str(root / filename), package], cwd=REPO, env=env,

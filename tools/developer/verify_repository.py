@@ -280,7 +280,7 @@ def run_cross_checks(
     checks: list[Check] = []
     # Windows amd64 production cross-builds
     for binary_name, cmd_path in [
-        ("sidraviactl.exe", "./cmd/sidravia"),
+        ("sidraviactl.exe", "./cmd/sidraviactl"),
         ("sidraviad.exe", "./cmd/sidraviad"),
         ("sidraviamgr.exe", "./cmd/sidraviamgr"),
         ("sidraviaupdater.exe", "./cmd/sidraviaupdater"),

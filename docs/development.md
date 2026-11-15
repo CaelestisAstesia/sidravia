@@ -64,7 +64,7 @@ python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/lin
 
 | 路径 | 职责 |
 | --- | --- |
-| `cmd/sidravia`、`internal/cli` | 命令行入口与呈现 |
+| `cmd/sidraviactl`、`internal/cli` | 命令行入口与呈现 |
 | `cmd/sidraviad`、`internal/daemon` | 后台组合、配置、会话、网络与协议 |
 | `internal/ipc` | 本机通信契约、客户端与服务端 |
 | `internal/clientbootstrap` | 后台探测、启动与连接 |

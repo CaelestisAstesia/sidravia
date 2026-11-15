@@ -135,7 +135,7 @@ class DistributionContract(unittest.TestCase):
         with self.assertRaisesRegex(module.VerificationError, 'BUILD-INFO'): self.verify()
 
     def test_trimpath_metadata_does_not_claim_embedded_identity(self):
-        info = {'Path': 'sidravia/cmd/sidravia', 'Settings': [{'Key': k, 'Value': v} for k, v in {'GOOS': 'linux', 'GOARCH': 'amd64', 'CGO_ENABLED': '0'}.items()]}
+        info = {'Path': 'sidravia/cmd/sidraviactl', 'Settings': [{'Key': k, 'Value': v} for k, v in {'GOOS': 'linux', 'GOARCH': 'amd64', 'CGO_ENABLED': '0'}.items()]}
         with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
             self.assertFalse(module.binary_identity(Path('inert'), 'sidraviactl', 'linux-amd64', VERSION, SHA, 'go'))
 
@@ -154,7 +154,7 @@ class DistributionContract(unittest.TestCase):
         for key, value in (('GOOS', 'windows'), ('GOARCH', 'arm64'), ('CGO_ENABLED', '1'), ('-ldflags', '-X main.ProductVersion=other -X main.BuildID=' + SHA)):
             settings = {'GOOS': 'linux', 'GOARCH': 'amd64', 'CGO_ENABLED': '0', '-ldflags': '-X main.ProductVersion=' + VERSION + ' -X main.BuildID=' + SHA}
             settings[key] = value
-            info = {'Path': 'sidravia/cmd/sidravia', 'Settings': [{'Key': k, 'Value': v} for k, v in settings.items()]}
+            info = {'Path': 'sidravia/cmd/sidraviactl', 'Settings': [{'Key': k, 'Value': v} for k, v in settings.items()]}
             with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
                 with self.assertRaises(module.VerificationError): module.binary_identity(Path('inert'), 'sidraviactl', 'linux-amd64', VERSION, SHA, 'go')
 
@@ -170,7 +170,7 @@ class DistributionContract(unittest.TestCase):
             for arch in ('amd64', 'arm64'):
                 with self.subTest(target=target, arch=arch):
                     settings = {'GOOS': target.split('-')[0], 'GOARCH': arch, 'CGO_ENABLED': '0'}
-                    info = {'Path': 'sidravia/cmd/sidravia', 'Settings': [{'Key': k, 'Value': v} for k, v in settings.items()]}
+                    info = {'Path': 'sidravia/cmd/sidraviactl', 'Settings': [{'Key': k, 'Value': v} for k, v in settings.items()]}
                     with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
                         if arch == 'amd64':
                             with self.assertRaisesRegex(module.VerificationError, 'binary_target_mismatch'):

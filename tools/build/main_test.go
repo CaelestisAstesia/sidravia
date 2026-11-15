@@ -117,8 +117,8 @@ func setupRepoRoot(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "scripts", "install.ps1"), testInstallScript)
 	writeTestFile(t, filepath.Join(root, "scripts", "uninstall.ps1"), testUninstallScript)
 	writeTestFile(t, filepath.Join(root, "tools", "cli_smoke.ps1"), testCLISmokeScript)
-	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidravia"), 0o755); err != nil {
-		t.Fatalf("mkdir cmd/sidravia: %v", err)
+	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidraviactl"), 0o755); err != nil {
+		t.Fatalf("mkdir cmd/sidraviactl: %v", err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidraviad"), 0o755); err != nil {
 		t.Fatalf("mkdir cmd/sidraviad: %v", err)
@@ -399,10 +399,10 @@ func containsExact(env []string, kv string) bool {
 // 4. go build argv has correct target, readonly module, trimpath, VCS, ldflags, output.
 
 func TestBuildArgvInjectsSharedProductIdentity(t *testing.T) {
-	cli := buildArgv("go", "/p/sidraviactl.exe", "./cmd/sidravia", "0.1.0-alpha.2", "abc")
+	cli := buildArgv("go", "/p/sidraviactl.exe", "./cmd/sidraviactl", "0.1.0-alpha.2", "abc")
 	wantCLI := []string{
 		"go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",
-		"-ldflags", "-s -w -buildid= -X main.ProductVersion=0.1.0-alpha.2 -X main.BuildID=abc", "-o", "/p/sidraviactl.exe", "./cmd/sidravia",
+		"-ldflags", "-s -w -buildid= -X main.ProductVersion=0.1.0-alpha.2 -X main.BuildID=abc", "-o", "/p/sidraviactl.exe", "./cmd/sidraviactl",
 	}
 	if !sliceEqual(cli, wantCLI) {
 		t.Errorf("cli argv = %v, want %v", cli, wantCLI)
@@ -447,14 +447,14 @@ func TestFakeBuilderTwoCallsReuse(t *testing.T) {
 		if len(fb.calls) != 2 {
 			t.Fatalf("%s: build calls = %d, want 2", artifact, len(fb.calls))
 		}
-		if fb.calls[0][len(fb.calls[0])-1] != "./cmd/sidravia" {
+		if fb.calls[0][len(fb.calls[0])-1] != "./cmd/sidraviactl" {
 			t.Errorf("%s: call 0 target = %q", artifact, fb.calls[0][len(fb.calls[0])-1])
 		}
 		if fb.calls[1][len(fb.calls[1])-1] != "./cmd/sidraviad" {
 			t.Errorf("%s: call 1 target = %q", artifact, fb.calls[1][len(fb.calls[1])-1])
 		}
 		contents := readZipContents(t, filepath.Join(out, artifactFileName("0.1.0-alpha.2", artifact)))
-		if !bytes.Equal(contents["sidraviactl.exe"], []byte("FAKE-BINARY-./cmd/sidravia")) {
+		if !bytes.Equal(contents["sidraviactl.exe"], []byte("FAKE-BINARY-./cmd/sidraviactl")) {
 			t.Errorf("%s: sidraviactl.exe does not match fake output", artifact)
 		}
 		if !bytes.Equal(contents["sidraviad.exe"], []byte("FAKE-BINARY-./cmd/sidraviad")) {
@@ -468,7 +468,7 @@ func TestFakeBuilderTwoCallsReuse(t *testing.T) {
 func TestZipManifest(t *testing.T) {
 	version := "0.1.0-alpha.2"
 	buildID := "buildid123"
-	cliBytes := []byte("FAKE-BINARY-./cmd/sidravia")
+	cliBytes := []byte("FAKE-BINARY-./cmd/sidraviactl")
 	daemonBytes := []byte("FAKE-BINARY-./cmd/sidraviad")
 	baseExpected := []string{
 		"BUILD-INFO.txt", "GETTING-STARTED.md", "LICENSE",

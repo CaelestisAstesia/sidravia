@@ -198,8 +198,8 @@ def linux_command(args, env):
     core = ROOT / ".local" / "linux-desktop-core"
     core.mkdir(parents=True, exist_ok=True)
     env = dict(env, SIDRAVIA_CORE_DIRECTORY=str(core))
-    for name, package in (("sidraviactl", "sidravia"), ("sidraviad", "sidraviad")):
-        subprocess.run([args.go, "build", "-mod=readonly", "-trimpath", "-o", str(core / name), "./cmd/" + package], cwd=ROOT, env=env, check=True)
+    for name in ("sidraviactl", "sidraviad"):
+        subprocess.run([args.go, "build", "-mod=readonly", "-trimpath", "-o", str(core / name), "./cmd/" + name], cwd=ROOT, env=env, check=True)
     def flutter_run(argv):
         subprocess.run([flutter, *argv], cwd=ROOT / "gui", env=env, check=True)
     flutter_run(["pub", "get", "--enforce-lockfile"])

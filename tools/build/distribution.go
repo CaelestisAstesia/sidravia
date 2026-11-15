@@ -98,19 +98,19 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if target[0] == "linux" {
 		suffix = ""
 	}
-	programs := []struct{ name, pkg string }{{"sidraviactl", "./cmd/sidravia"}, {"sidraviad", "./cmd/sidraviad"}, {"sidraviaupdater", "./cmd/sidraviaupdater"}}
+	programs := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}
 	if strings.HasPrefix(t.cfg.target, "windows-") {
-		programs = append(programs, struct{ name, pkg string }{"sidraviamgr", "./cmd/sidraviamgr"})
+		programs = append(programs, "sidraviamgr")
 	}
 	var binarySums strings.Builder
 	for _, program := range programs {
-		fmt.Fprintln(stderr, "building", program.name+suffix)
-		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program.name+suffix), program.pkg, t.cfg.version, t.cfg.buildID))
+		fmt.Fprintln(stderr, "building", program+suffix)
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), "./cmd/"+program, t.cfg.version, t.cfg.buildID))
 		if err != nil {
 			return err
 		}
-		entries = append(entries, zipEntry{program.name + suffix, data, 0755})
-		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program.name+suffix)
+		entries = append(entries, zipEntry{program + suffix, data, 0755})
+		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
 	}
 	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
 	// All installation files have explicit ownership; payload contains no

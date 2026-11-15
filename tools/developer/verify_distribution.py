@@ -65,7 +65,7 @@ def binary_identity(path: Path, role: str, target: str, version: str, build_id: 
     result = subprocess.run([go, 'version', '-m', '-json', str(path)], capture_output=True, text=True, check=True, timeout=30)
     info = json.loads(result.stdout)
     settings = {row['Key']: row['Value'] for row in info.get('Settings', [])}
-    package = 'sidravia/cmd/' + ('sidravia' if role == 'sidraviactl' else role)
+    package = 'sidravia/cmd/' + role
     require(info.get('Path') == package, 'binary_package_mismatch')
     require(settings.get('GOOS') == target.split('-')[0] and settings.get('GOARCH') == target.split('-')[1], 'binary_target_mismatch')
     require(settings.get('CGO_ENABLED') == '0', 'binary_cgo_mismatch')

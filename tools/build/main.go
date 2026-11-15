@@ -384,7 +384,7 @@ func verifyRepoInputs(root, artifact string) error {
 		{"docs/guide.md", false},
 		{"scripts/install.ps1", false},
 		{"scripts/uninstall.ps1", false},
-		{"cmd/sidravia", true},
+		{"cmd/sidraviactl", true},
 		{"cmd/sidraviad", true},
 	}
 	if artifact == "field-validation" {
@@ -523,7 +523,7 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 		return fmt.Errorf("create bin staging: %w", err)
 	}
 
-	cliArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidraviactl.exe"), "./cmd/sidravia", t.cfg.version, t.cfg.buildID)
+	cliArgv := buildArgv(t.cfg.goBin, filepath.Join(binDir, "sidraviactl.exe"), "./cmd/sidraviactl", t.cfg.version, t.cfg.buildID)
 	fmt.Fprintln(stderr, "building sidraviactl.exe")
 	cliBytes, err := t.build(env, cliArgv)
 	if err != nil {
