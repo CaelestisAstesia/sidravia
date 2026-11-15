@@ -29,7 +29,7 @@ def load():
 class MaintenanceContracts(unittest.TestCase):
     def test_guard_setup_failure_cannot_acknowledge_success(self):
         m = load()
-        with tempfile.TemporaryDirectory(prefix='rpm-guard-failure-', dir=ROOT / '.local') as tmp:
+        with tempfile.TemporaryDirectory(prefix='rpm-guard-failure-') as tmp:
             path = Path(tmp) / 'gate'
             lock = os.open(path, os.O_CREAT | os.O_RDONLY, 0o644)
             parent = os.pidfd_open(os.getpid())
@@ -46,13 +46,20 @@ class MaintenanceContracts(unittest.TestCase):
 
     def test_exact_installation_signals_only_its_process(self):
         if os.geteuid() != 0:
+            namespace = ['unshare', '--user', '--map-root-user', '--pid', '--fork', '--mount-proc']
+            probe = subprocess.run(namespace + ['true'], env=dict(os.environ, LC_ALL='C'),
+                                   capture_output=True, text=True, timeout=10)
+            if probe.returncode and probe.stderr.startswith('unshare:') and 'Operation not permitted' in probe.stderr:
+                self.skipTest('host forbids unprivileged user/PID namespace creation')
+            self.assertEqual(probe.returncode, 0, probe.stdout + probe.stderr)
             child = subprocess.run(['unshare', '--user', '--map-root-user', '--pid', '--fork', '--mount-proc',
                 sys.executable, '-m', 'unittest', 'test_rpm_maintenance.MaintenanceContracts.test_exact_installation_signals_only_its_process'],
-                cwd=Path(__file__).parent, capture_output=True, text=True, timeout=10)
+                cwd=Path(__file__).parent, env=dict(os.environ, LC_ALL='C'),
+                capture_output=True, text=True, timeout=10)
             self.assertEqual(child.returncode, 0, child.stdout + child.stderr)
             return
         m = load()
-        with tempfile.TemporaryDirectory(prefix='rpm-maintenance-', dir=ROOT / '.local') as tmp:
+        with tempfile.TemporaryDirectory(prefix='rpm-maintenance-') as tmp:
             app = Path(tmp) / 'app'
             app.mkdir()
             (app / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
@@ -79,7 +86,7 @@ class MaintenanceContracts(unittest.TestCase):
                     process.wait(timeout=3)
 
     def test_guard_releases_when_transaction_unlocks_while_host_stays_alive(self):
-        with tempfile.TemporaryDirectory(prefix='rpm-guard-', dir=ROOT / '.local') as tmp:
+        with tempfile.TemporaryDirectory(prefix='rpm-guard-') as tmp:
             gate = Path(tmp) / 'lock'
             code = f'''import importlib.util,os,fcntl,sys
 s=importlib.util.spec_from_file_location('m',{str(SOURCE)!r});m=importlib.util.module_from_spec(s);s.loader.exec_module(m)

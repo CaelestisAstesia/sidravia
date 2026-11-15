@@ -34,7 +34,7 @@ func TestShippedGuideHasOrderedFirstUseJourney(t *testing.T) {
 		"## 独立后台":  {"daemon start", "daemon status", "daemon stop"},
 		"## 一次性认证": {"profile list", "auth start", "auth status"},
 	} {
-		_, section, exists := strings.Cut(string(guide), heading+"\n")
+		_, section, exists := strings.Cut(strings.ReplaceAll(string(guide), "\r\n", "\n"), heading+"\n")
 		if !exists {
 			t.Fatalf("missing command journey: %s", heading)
 		}

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestOfferCannotBeReplacedAndCancelsWithoutClient(t *testing.T) {
@@ -23,6 +25,15 @@ func TestOfferCannotBeReplacedAndCancelsWithoutClient(t *testing.T) {
 	}
 	id := "456789abcdef0123456789abcdef0123"
 	first, err := NewOffer(id, hash)
+	if windows.GetCurrentProcessToken().IsElevated() {
+		if first != nil {
+			first.Close()
+		}
+		if !errors.Is(err, ErrPeer) {
+			t.Fatalf("elevated offer must be rejected: %v", err)
+		}
+		t.Skip("elevated refusal verified; handoff success requires medium integrity")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +67,15 @@ func TestHandoffRejectsUnlaunchedCoordinator(t *testing.T) {
 	}
 	id := "56789abcdef0123456789abcdef01234"
 	offer, err := NewOffer(id, hash)
+	if windows.GetCurrentProcessToken().IsElevated() {
+		if offer != nil {
+			offer.Close()
+		}
+		if !errors.Is(err, ErrPeer) {
+			t.Fatalf("elevated offer must be rejected: %v", err)
+		}
+		t.Skip("elevated refusal verified; coordinator test requires medium integrity")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

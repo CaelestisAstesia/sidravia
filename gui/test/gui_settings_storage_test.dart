@@ -36,14 +36,14 @@ if ($Mode -eq 'set') {
   $acl.SetAccessRuleProtection($true,$false)
   $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($userSid,'FullControl','Allow')))
   $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('S-1-5-18')),'FullControl','Allow')))
-  Set-Acl -LiteralPath $Target -AclObject $acl
+  [IO.File]::SetAccessControl($Target,$acl)
 } elseif ($Mode -eq 'block' -or $Mode -eq 'unblock') {
-  $acl = Get-Acl -LiteralPath $Target
+  $acl = [IO.Directory]::GetAccessControl($Target)
   $rule = New-Object Security.AccessControl.FileSystemAccessRule($userSid,'CreateFiles','Deny')
   if ($Mode -eq 'block') { $acl.AddAccessRule($rule) } else { $acl.RemoveAccessRuleSpecific($rule) }
-  Set-Acl -LiteralPath $Target -AclObject $acl
+  [IO.Directory]::SetAccessControl($Target,$acl)
 } else {
-  $acl = Get-Acl -LiteralPath $Target
+  $acl = [IO.File]::GetAccessControl($Target)
   if (-not $acl.AreAccessRulesProtected) { throw 'backup inheritance enabled' }
   $rules = @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
   if ($rules.Count -ne 2) { throw 'unexpected backup readers' }
