@@ -1,6 +1,6 @@
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
+import 'package:sidravia_gui/features/advanced/runtime_snapshot.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -25,7 +25,41 @@ class _AdvancedPageState extends State<AdvancedPage> {
   GuiController get controller => widget.controller;
   VoidCallback get onBack => widget.onBack;
 
-  bool _expanded = false;
+  String? _captured;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _captured ??= _capture();
+  }
+
+  @override
+  void didUpdateWidget(covariant AdvancedPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      _captured = _capture();
+    }
+  }
+
+  String _capture() => captureRuntimeSnapshot(controller);
+
+  Future<void> _copySnapshot() async {
+    final text = _captured;
+    if (text == null) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('快照已复制')));
+      }
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('复制失败，请重试')));
+      }
+    }
+  }
+
   bool _openingLogs = false;
 
   Future<void> _openLogs() async {
@@ -58,185 +92,127 @@ class _AdvancedPageState extends State<AdvancedPage> {
 
   Widget _build(BuildContext context) {
     final p = controller.connectionPresentation;
-    final raw = controller.snapshot;
-    final c = raw?.configurations.length == 1
-        ? raw!.configurations.single
-        : null;
-    final s = raw?.sessions.length == 1 ? raw!.sessions.single : null;
-    final d = controller.snapshot?.daemon;
-    final rows = <MapEntry<String, String>>[
-      MapEntry('核心服务状态', d?.status ?? '暂无数据'),
-      MapEntry('通信状态', controller.state.name),
-      if (controller.failure != null) ...[
-        MapEntry('通信错误', controller.failure!.code),
-        MapEntry('错误说明', controller.failure!.message),
-      ],
-      MapEntry('版本', d?.productVersion ?? '暂无数据'),
-      MapEntry('构建标识', d?.buildId ?? '暂无数据'),
-      MapEntry('运行模式', d?.mode ?? '暂无数据'),
-      MapEntry('配置数量', raw?.configurations.length.toString() ?? '暂无数据'),
-      MapEntry('会话数量', raw?.sessions.length.toString() ?? '暂无数据'),
-      MapEntry('会话状态', s?.state.wireValue ?? '暂无数据'),
-      MapEntry('会话标识', s?.id ?? '暂无数据'),
-      MapEntry('配置标识', c?.id ?? '暂无数据'),
-      if (p.issue != null) MapEntry('最近错误', s!.lastAuthenticationFailure!.code),
-    ];
-    final appearance = GuiPreferencesScope.maybeOf(context);
-    final expanded = appearance?.diagnosticsExpanded ?? _expanded;
-    final remote = s?.protocolSocket.remoteEndpoint;
-    return DesignPage(
-      children: [
-        DesignHeader(title: '连接与诊断', onBack: onBack),
-        if (p.issue != null) ...[
-          ConnectionIssueCard(failure: p.issue!),
-          const SizedBox(height: 14),
-        ],
-        if (p.actionError != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: FeedbackPill(
-              message: p.actionError!,
-              onDismiss: () => controller.dismissNotice(p.actionError!),
+    final scheme = Theme.of(context).colorScheme;
+    final linked = controller.state == GuiConnectionState.ready;
+    return Material(
+      color: scheme.surface,
+      child: DesignPage(
+        children: [
+          DesignHeader(title: '连接与诊断', onBack: onBack),
+          if (p.actionError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: FeedbackPill(
+                message: p.actionError!,
+                onDismiss: () => controller.dismissNotice(p.actionError!),
+              ),
+            ),
+          const DesignSectionTitle('运行状态快照'),
+          if (!linked)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                '后台未连接 · 上次获取的信息',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ),
+          Container(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              border: Border.all(color: scheme.outlineVariant),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: scheme.outlineVariant),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('JSON', style: TextStyle(fontSize: 12)),
+                      ),
+                      IconButton(
+                        tooltip: '刷新快照',
+                        onPressed: () => setState(() => _captured = _capture()),
+                        icon: const Icon(Icons.refresh_rounded, size: 19),
+                      ),
+                      IconButton(
+                        tooltip: '复制快照',
+                        onPressed: _copySnapshot,
+                        icon: const Icon(Icons.copy_outlined, size: 18),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 360,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(14),
+                    child: SelectableText(
+                      _captured ?? '',
+                      key: const ValueKey('runtime-snapshot-text'),
+                      style: TextStyle(
+                        fontFamily: 'Source Code Pro',
+                        fontFamilyFallback: const ['HarmonyOS Sans'],
+                        fontSize: 12,
+                        height: 1.6,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        DesignGroup(
-          children: [
-            DesignRow(title: '状态', value: p.statusTitle),
-            DesignRow(
-              title: '网卡',
-              value: p.networkBinding?.displayName ?? '暂无数据',
-            ),
-            DesignRow(
-              title: 'IP',
-              value: p.networkBinding?.localIpv4Address ?? '暂无数据',
-            ),
-            DesignRow(
-              title: '认证服务器',
-              value: remote == null
-                  ? '暂无数据'
-                  : '${remote.address}:${remote.port}',
-            ),
-            DesignRow(
-              title: '连接建立时间',
-              value: p.establishedAt?.toLocal().toString() ?? '暂无数据',
-            ),
-            if (p.establishedAt != null)
-              DesignRow(title: '连接时长', value: p.statusDetail),
-          ],
-        ),
-        const SizedBox(height: 18),
-        DesignGroup(
-          children: [
-            DesignRow(
-              title: '技术信息',
-              trailing: Icon(expanded ? Icons.expand_less : Icons.expand_more),
-              onTap: () {
-                if (appearance != null) {
-                  appearance.diagnosticsExpanded = !expanded;
-                } else {
-                  setState(() => _expanded = !expanded);
-                }
-              },
-            ),
-          ],
-        ),
-        if (appearance?.feedback != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: FeedbackPill(message: appearance!.feedback!),
-          ),
-        if (expanded) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
+          const DesignSectionTitle('高级排障'),
           DesignGroup(
             children: [
-              for (final row in rows)
-                DesignRow(title: row.key, value: row.value, diagnostic: true),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: d == null && controller.failure == null
-                      ? null
-                      : () async {
-                          try {
-                            await Clipboard.setData(
-                              ClipboardData(
-                                text: rows
-                                    .map((r) => '${r.key}: ${r.value}')
-                                    .join('\n'),
-                              ),
-                            );
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('诊断信息已复制')),
-                              );
-                            }
-                          } on Object {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('复制失败，请重试')),
-                              );
-                            }
-                          }
-                        },
-                  child: Text(
-                    d == null && controller.failure == null
-                        ? '复制诊断信息（暂不可用）'
-                        : '复制诊断信息',
-                  ),
-                ),
+              DesignRow(
+                title: _openingLogs ? '正在打开日志目录…' : '打开日志目录',
+                subtitle: widget.onOpenLogDirectory == null
+                    ? '当前环境不可用'
+                    : '查看当前实例日志',
+                onTap: widget.onOpenLogDirectory == null || _openingLogs
+                    ? null
+                    : _openLogs,
               ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: widget.onOpenLogDirectory == null || _openingLogs
-                      ? null
-                      : _openLogs,
-                  child: Text(
-                    _openingLogs
-                        ? '正在打开日志目录…'
-                        : widget.onOpenLogDirectory == null
-                        ? '打开日志目录（暂不可用）'
-                        : '打开日志目录',
-                  ),
-                ),
+              DesignRow(
+                title: '重启核心',
+                subtitle: '重启后恢复原连接状态',
+                onTap: controller.canRestartCore
+                    ? () => confirmCoreRestart(
+                        context,
+                        controller,
+                        GuiPreferencesScope.maybeOf(context)?.logLevel ??
+                            controller.runningLogLevel ??
+                            'debug',
+                      )
+                    : null,
+              ),
+              DesignRow(
+                title: '移除当前会话',
+                subtitle: controller.capabilities.canResetSession
+                    ? '清理当前 Session 记录'
+                    : '没有可清理的会话或当前不可操作',
+                onTap: controller.capabilities.canResetSession
+                    ? _confirmReset
+                    : null,
               ),
             ],
           ),
-          const SizedBox(height: 7),
         ],
-        const SizedBox(height: 18),
-        const DesignSectionTitle('高级排障'),
-        DesignGroup(
-          children: [
-            DesignRow(
-              title: '重启核心',
-              subtitle: '重启后恢复原连接状态',
-              onTap: controller.canRestartCore
-                  ? () => confirmCoreRestart(
-                      context,
-                      controller,
-                      GuiPreferencesScope.maybeOf(context)?.logLevel ??
-                          controller.runningLogLevel ??
-                          'debug',
-                    )
-                  : null,
-            ),
-            DesignRow(
-              title: '移除当前会话',
-              subtitle: controller.capabilities.canResetSession
-                  ? '清理当前 Session 记录'
-                  : '没有可清理的会话或当前不可操作',
-              onTap: controller.capabilities.canResetSession
-                  ? _confirmReset
-                  : null,
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 

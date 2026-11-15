@@ -6,7 +6,10 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 /// Memory-only replacement at the existing typed client boundary.
 /// No process, filesystem, socket, HTTP client or credential store is used.
 class OfflineDemoClient extends ChangeNotifier
-    implements SidraviaIpcClient, SidraviaNetworkClient {
+    implements
+        SidraviaIpcClient,
+        SidraviaNetworkClient,
+        SidraviaBusinessClient {
   OfflineDemoClient({DateTime? now}) {
     _sessionAutoReconnect = _configuration?.autoReconnect ?? false;
     _session = _newSession(
@@ -84,12 +87,15 @@ class OfflineDemoClient extends ChangeNotifier
   String _feedback = '模拟已连接；没有连接真实校园网';
   final List<String> _operations = [];
   bool _closed = false;
+  bool _businessEnabled = false;
 
   String get feedback => _feedback;
   List<String> get operations => List.unmodifiable(_operations);
   bool get closed => _closed;
 
   void selectScenario(String scenario) {
+    _businessEnabled = scenario == 'authenticated_business';
+    final state = _businessEnabled ? 'authenticated' : scenario;
     if (scenario == 'empty') {
       _configuration = null;
       _session = null;
@@ -105,14 +111,48 @@ class OfflineDemoClient extends ChangeNotifier
         storageProtection: 'protected',
       );
       _session = _newSession(
-        scenario,
-        establishedAt: scenario == 'authenticated'
+        state,
+        establishedAt: state == 'authenticated'
             ? DateTime.now().subtract(const Duration(hours: 2, minutes: 18))
             : null,
       );
       _sessionAutoReconnect = _configuration!.autoReconnect;
     }
     _record('demo.scenario', '已切换模拟场景：$scenario；无真实网络操作');
+  }
+
+  @override
+  BusinessQuery queryBusiness(String sessionId) {
+    final session = _requireSession(sessionId);
+    final receivedAt = session.authenticationEstablishedAt ?? DateTime.now();
+    return _OfflineBusinessQuery(
+      BusinessSnapshot(
+        sessionId: session.id,
+        runGeneration: session.protocolSocket.runGeneration,
+        revision: session.revision,
+        current: session.state == SessionState.authenticated,
+        statisticsSupported: _businessEnabled,
+        textSupported: _businessEnabled,
+        statistics: _businessEnabled
+            ? AccountStatistics(receivedAt, 126418944, 12345)
+            : null,
+        messages: _businessEnabled
+            ? [
+                ServerTextMessage(
+                  '1',
+                  receivedAt,
+                  'Offline demo: campus maintenance at 22:00.',
+                ),
+                ServerTextMessage(
+                  '2',
+                  receivedAt,
+                  'Offline demo: campus network service is operating normally.',
+                ),
+              ]
+            : const [],
+        updatedAt: receivedAt,
+      ),
+    );
   }
 
   void _record(String operation, String feedback) {
@@ -398,6 +438,16 @@ class OfflineDemoClient extends ChangeNotifier
       _sessionAutoReconnect = latest;
     }
   }
+}
+
+/// Already-completed memory query: there is no transport or work to cancel.
+class _OfflineBusinessQuery implements BusinessQuery {
+  _OfflineBusinessQuery(BusinessSnapshot snapshot)
+    : result = Future.value(snapshot);
+  @override
+  final Future<BusinessSnapshot> result;
+  @override
+  Future<void> cancel() async {}
 }
 
 class OfflineDemoBootstrap implements GuiBootstrapper {

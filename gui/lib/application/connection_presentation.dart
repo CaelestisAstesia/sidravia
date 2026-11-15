@@ -78,7 +78,7 @@ class ConnectionPresentation {
             ? previous!.single
             : null);
     final topology = caps.capability;
-    var title = '未连接', detail = '准备就绪，可以开始连接', context = '', glyph = '—';
+    var title = '未连接', detail = '准备就绪 · 可以开始连接', context = '', glyph = '—';
     var tone = HomeTone.idle;
     var primaryLabel = '开始连接', secondaryLabel = '更改配置';
     var primary = GuiConnectionAction(GuiConnectionActionKind.start, c?.id);
@@ -120,11 +120,11 @@ class ConnectionPresentation {
         tone = HomeTone.error;
       case GuiCapabilityState.createOnly:
         title = '尚未配置';
-        detail = '添加连接配置后即可开始连接';
-        context = '保存机构、账号和密码后即可开始认证';
+        detail = '选择机构并填写账号密码';
+        context = '';
         glyph = '+';
         primaryLabel = '添加配置';
-        secondaryLabel = '连接设置';
+        secondaryLabel = '设置';
         primary = const GuiConnectionAction(
           GuiConnectionActionKind.addConfiguration,
         );
@@ -169,7 +169,7 @@ class ConnectionPresentation {
               primaryLabel = '断开连接';
             case SessionState.authenticating:
               title = '正在认证';
-              detail = '正在向校园网提交认证信息…';
+              detail = '正在提交认证信息';
               context = '等待认证结果';
               glyph = '↻';
               tone = HomeTone.warning;
@@ -178,17 +178,17 @@ class ConnectionPresentation {
               title = '等待网络';
               detail = s.stateReason?.code == 'network_binding_unavailable'
                   ? '指定网卡或 IPv4 地址不可用'
-                  : '暂未发现可用的校园网络';
+                  : '暂无可用校园网络';
               context = s.stateReason?.code == 'network_binding_unavailable'
                   ? '请检查指定网卡和 IPv4；恢复后继续认证'
-                  : '检测到可用网络后会继续认证';
+                  : '网络可用后自动继续认证';
               glyph = '!';
               tone = HomeTone.warning;
               primaryLabel = '取消等待';
             case SessionState.waitingBeforeRetry:
               title = '等待重试';
-              detail = '认证暂未成功，将自动重试';
-              context = '可以立即重试';
+              detail = '认证未成功 · 将自动重试';
+              context = '也可立即重试';
               glyph = '↻';
               tone = HomeTone.warning;
               primaryLabel = '立即重试';
@@ -196,7 +196,7 @@ class ConnectionPresentation {
               secondaryLabel = '停止重试';
             case SessionState.blockedByError:
               title = '认证失败';
-              detail = '本次认证没有完成';
+              detail = '请按下方提示处理后重试';
               context = s.lastAuthenticationFailure?.description ?? '';
               if (s.stateReason?.code == 'protocol_recovery_exhausted') {
                 context = '已尝试 3 次自动恢复，请手动重新连接';
@@ -207,7 +207,7 @@ class ConnectionPresentation {
               issue = s.lastAuthenticationFailure;
             case SessionState.stopping:
               title = '正在断开';
-              detail = '正在结束当前认证会话…';
+              detail = '正在结束认证会话';
               glyph = '↻';
               tone = HomeTone.warning;
               primaryLabel = '正在断开';

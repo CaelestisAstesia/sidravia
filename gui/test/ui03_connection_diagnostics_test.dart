@@ -1,3 +1,5 @@
+import 'support/runtime_snapshot.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -10,7 +12,7 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
-import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
+import 'package:sidravia_gui/features/home/business_panel.dart';
 
 Future<void> tap(WidgetTester tester, String text) async {
   await tester.ensureVisible(find.text(text));
@@ -20,7 +22,7 @@ Future<void> tap(WidgetTester tester, String text) async {
 
 void main() {
   testWidgets(
-    'one page routes from home/settings and restores technical preference',
+    'snapshot page routes from home/settings without changing appearance',
     (tester) async {
       final store = MemoryGuiSettingsStore();
       final appearance = GuiPreferences(store: store);
@@ -43,12 +45,18 @@ void main() {
         await tap(tester, '连接与诊断');
         expect(find.byType(AdvancedPage), findsOneWidget);
         expect(find.text('核心服务状态'), findsNothing);
-        expect(find.text('10.0.0.1:61440'), findsOneWidget);
+        expect(
+          displayedSnapshot(
+            tester,
+          )['sessions'][0]['protocolSocket']['remoteEndpoint']['address'],
+          '10.0.0.1',
+        );
         expect(find.text('198.51.100.5:61440'), findsNothing);
-        await tap(tester, '技术信息');
+        await tester.tap(find.byTooltip('刷新快照'));
+        await tester.pump();
         await appearance.settled;
         expect(appearance.value, ThemeMode.system);
-        expect(store.settings!.diagnosticsExpanded, isTrue);
+        expect(appearance.diagnosticsExpanded, isFalse);
         expect(find.text('198.51.100.5:61440'), findsNothing);
         expect(find.text('执行有限 IP 探测'), findsNothing);
         expect(find.text('刷新网络诊断'), findsNothing);
@@ -57,12 +65,12 @@ void main() {
         await tester.tap(find.byTooltip('设置'));
         await tester.pumpAndSettle();
         await tap(tester, '连接与诊断');
-        expect(find.text('核心服务状态'), findsOneWidget);
+        expect(displayedSnapshot(tester)['backend'], isNotNull);
         await tap(tester, '返回');
         expect(find.byType(SettingsPage), findsOneWidget);
         final restored = GuiPreferences(store: store);
         await restored.initialize();
-        expect(restored.diagnosticsExpanded, isTrue);
+        expect(restored.diagnosticsExpanded, isFalse);
         restored.dispose();
       } finally {
         await tester.pumpWidget(const SizedBox());
@@ -80,7 +88,7 @@ void main() {
     SessionState.authenticated,
     SessionState.waitingForNetwork,
   ]) {
-    testWidgets('fault card projects real error only in $state', (
+    testWidgets('connection information projects real error only in $state', (
       tester,
     ) async {
       final client = _Client(state);
@@ -99,11 +107,13 @@ void main() {
             state == SessionState.blockedByError ||
             state == SessionState.waitingBeforeRetry;
         expect(
-          find.byType(ConnectionIssueCard),
+          find.byWidgetPredicate(
+            (w) => w is ConnectionInformationView && w.issue != null,
+          ),
           fault ? findsOneWidget : findsNothing,
         );
         if (fault) {
-          expect(find.text('backend_code'), findsOneWidget);
+          expect(find.text('backend_code'), findsNothing);
           expect(find.text('后端实际描述'), findsOneWidget);
         }
         await tester.pumpWidget(
@@ -115,13 +125,17 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(
-          find.byType(ConnectionIssueCard),
-          fault ? findsOneWidget : findsNothing,
+          find.byWidgetPredicate(
+            (w) => w is ConnectionInformationView && w.issue != null,
+          ),
+          findsNothing,
         );
-        if (fault) {
-          expect(find.text('backend_code'), findsOneWidget);
-          expect(find.text('后端实际描述'), findsOneWidget);
-        }
+        expect(
+          displayedSnapshot(
+            tester,
+          )['sessions'][0]['lastAuthenticationFailure']['code'],
+          'backend_code',
+        );
       } finally {
         await tester.pumpWidget(const SizedBox());
         await c.close();
@@ -163,7 +177,6 @@ void main() {
           mount(AdvancedPage(controller: c, onBack: () {})),
         );
         await tester.pumpAndSettle();
-        await tap(tester, '技术信息');
         await tap(tester, '移除当前会话');
         await tap(tester, '取消');
         expect(client.removals, isEmpty);

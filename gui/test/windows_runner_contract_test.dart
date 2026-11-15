@@ -64,8 +64,8 @@ void main() {
     }
     expect(flutterWindow, contains('WM_NCHITTEST'));
     expect(flutterWindow, contains('setDarkMode'));
-    expect(runner, contains('kMinimumWindowWidth = 360'));
-    expect(runner, contains('kMinimumWindowHeight = 640'));
+    expect(runner, contains('kMinimumWindowWidth = 400'));
+    expect(runner, contains('kMinimumWindowHeight = 690'));
     expect(flutterWindow, contains('"sidravia/window"'));
     expect(flutterWindow, contains('call.method_name() == "minimize"'));
     expect(flutterWindow, contains('ShowWindow(window, SW_MINIMIZE)'));

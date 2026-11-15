@@ -103,7 +103,6 @@ void main() {
       );
       await key.currentState!.navigateFromTray(AppPage.diagnostics);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('技术信息'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('打开日志目录'));
       await tester.pump();

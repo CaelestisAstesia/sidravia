@@ -72,7 +72,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(find.text('校园网公告'), findsNothing);
-          expect(find.text('吉林大学公告'), findsOneWidget);
+          expect(find.text('公告'), findsOneWidget);
           expect(find.text('在应用内打开学校公告页面'), findsNothing);
           expect(effects.where((c) => c.method == 'open'), isEmpty);
           await tester.tap(find.byType(HomeNoticeView));

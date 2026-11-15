@@ -118,8 +118,8 @@ void main() {
         };
       }
       expect(
-        tester.getSize(find.byKey(const ValueKey('home-mark'))),
-        const Size(44, 44),
+        tester.getSize(find.byKey(const ValueKey('home-mark'))).height,
+        greaterThanOrEqualTo(50),
       );
       expect(
         tester.getSize(find.byKey(const ValueKey('home-actions'))).width,
@@ -215,7 +215,7 @@ void main() {
             ),
           ),
         );
-        expect(find.text('吉林大学公告'), findsOneWidget);
+        expect(find.text('公告'), findsOneWidget);
         expect(find.text('在应用内打开学校公告页面'), findsNothing);
         await tester.tap(find.byType(HomeNoticeView));
         await tester.pumpAndSettle();
@@ -225,7 +225,7 @@ void main() {
         announcements.updateCapabilities(controller.capabilities);
         await tester.pump();
         expect(find.byType(HomeNoticeView), findsNothing);
-        expect(find.byKey(const ValueKey('home-divider')), findsNothing);
+        expect(find.byKey(const ValueKey('home-divider')), findsOneWidget);
       } finally {
         await tester.pump();
         await school_dispatch.pumpCleanup(tester, () async {

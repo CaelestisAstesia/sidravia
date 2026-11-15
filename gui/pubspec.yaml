@@ -22,6 +22,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/fonts/LICENSE.txt
+    - assets/fonts/SourceCodePro-LICENSE.md
   fonts:
     - family: HarmonyOS Sans
       fonts:
@@ -31,3 +32,7 @@ flutter:
           weight: 500
         - asset: assets/fonts/HarmonyOS_Sans_SC_Bold.ttf
           weight: 700
+    - family: Source Code Pro
+      fonts:
+        - asset: assets/fonts/SourceCodePro-Regular.otf
+          weight: 400

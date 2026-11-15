@@ -1,6 +1,7 @@
+import 'support/runtime_snapshot.dart';
 import 'school_announcement_controller_test.dart' as school_dispatch;
 
-import 'package:sidravia_gui/shared/widgets/connection_issue_card.dart';
+import 'package:sidravia_gui/features/home/business_panel.dart';
 
 import 'dart:convert';
 import 'dart:io';
@@ -160,13 +161,9 @@ Future<void> render(
       await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
       if (page == 'diagnostics') {
-        await tester.ensureVisible(find.text('技术信息'));
-        await tester.tap(find.text('技术信息'));
         await tester.pumpAndSettle();
-        expect(find.text('核心服务状态'), findsOneWidget);
-      } else {
-        expect(find.text('核心服务状态'), findsNothing);
       }
+      expect(displayedSnapshot(tester)['backend'], isNotNull);
     }
     if (page == 'announcement-feedback') {
       await tester.ensureVisible(find.byType(HomeNoticeView));
@@ -175,7 +172,12 @@ Future<void> render(
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     if (page == 'home' && scenario == 'blocked_by_error') {
-      expect(find.byType(ConnectionIssueCard), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is ConnectionInformationView && w.issue != null,
+        ),
+        findsOneWidget,
+      );
     }
     if (output.isNotEmpty) {
       final data = <String, Object?>{
@@ -206,7 +208,9 @@ Future<void> render(
           elements[key] = rect(tester.getRect(finder));
         }
       }
-      final issueFinder = find.byType(ConnectionIssueCard);
+      final issueFinder = find.byWidgetPredicate(
+        (w) => w is ConnectionInformationView && w.issue != null,
+      );
       if (issueFinder.evaluate().isNotEmpty) {
         elements['home-issue'] = rect(tester.getRect(issueFinder));
       }

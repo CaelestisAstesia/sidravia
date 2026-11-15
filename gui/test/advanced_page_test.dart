@@ -1,3 +1,7 @@
+import 'support/runtime_snapshot.dart';
+
+import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -18,13 +22,12 @@ void main() {
         home: AdvancedPage(controller: controller, onBack: () {}),
       ),
     );
-    await tester.ensureVisible(find.text('技术信息'));
-    await tester.tap(find.text('技术信息'));
     await tester.pump();
-    expect(find.text('暂无数据'), findsAtLeastNWidgets(1));
+    expect(displayedSnapshot(tester)['backend'], isNull);
+    expect(displayedSnapshot(tester)['configurations'], isNull);
     expect(find.text('刷新网络诊断'), findsNothing);
     expect(find.text('执行有限 IP 探测'), findsNothing);
-    expect(find.text('复制诊断信息（暂不可用）'), findsOneWidget);
+    expect(find.byTooltip('复制快照'), findsOneWidget);
     controller.dispose();
   });
 
@@ -47,7 +50,6 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('技术信息'));
     await tester.pumpAndSettle();
     return controller;
   }
@@ -55,12 +57,12 @@ void main() {
   testWidgets('absent platform callback is honestly disabled', (tester) async {
     final controller = await setup(tester, null);
     try {
-      final button = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, '打开日志目录（暂不可用）'),
+      final button = tester.widget<DesignRow>(
+        find.widgetWithText(DesignRow, '打开日志目录'),
       );
-      expect(button.onPressed, isNull);
+      expect(button.onTap, isNull);
       expect(find.text('查看本实例的运行日志，便于排查连接问题。'), findsNothing);
-      expect(find.text('配置数量'), findsOneWidget);
+      expect(displayedSnapshot(tester)['configurations'], isNull);
       expect(find.text('configuration_count'), findsNothing);
       expect(find.textContaining('探测仅检查指定网络路径'), findsNothing);
     } finally {
@@ -85,10 +87,8 @@ void main() {
       expect(calls, 1);
       expect(
         tester
-            .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, '正在打开日志目录…'),
-            )
-            .onPressed,
+            .widget<DesignRow>(find.widgetWithText(DesignRow, '正在打开日志目录…'))
+            .onTap,
         isNull,
       );
       result.complete(false);
@@ -96,10 +96,8 @@ void main() {
       expect(find.text('打开日志目录失败，请确认日志目录存在后重试'), findsOneWidget);
       expect(
         tester
-            .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, '打开日志目录'),
-            )
-            .onPressed,
+            .widget<DesignRow>(find.widgetWithText(DesignRow, '打开日志目录'))
+            .onTap,
         isNotNull,
       );
     } finally {

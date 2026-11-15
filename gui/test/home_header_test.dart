@@ -82,11 +82,13 @@ void main() {
           final header = tester.getRect(
             find.byKey(const ValueKey('home-header')),
           );
-          expect(header.left, 24);
-          expect(right.right, width - 24);
-          expect(left.left, 24);
+          final pageWidth = width.clamp(0, 520).toDouble();
+          final margin = (width - pageWidth) / 2 + 24;
+          expect(header.left, margin);
+          expect(right.right, width - margin);
+          expect(left.left, margin);
           expect(right.left - left.right, 12);
-          expect(left.width, width - 48 - right.width - 12);
+          expect(left.width, pageWidth - 48 - right.width - 12);
           final school = tester.getRect(find.text('吉林大学'));
           expect(school.left - left.left, 8);
           final minimum = platform == TargetPlatform.windows ? 42.0 : 48.0;
@@ -117,8 +119,8 @@ void main() {
           await tester.ensureVisible(notice);
           await tester.pumpAndSettle();
           final announcement = tester.getRect(notice);
-          expect(announcement.left, 24);
-          expect(announcement.right, width - 24);
+          expect(announcement.left, margin);
+          expect(announcement.right, width - margin);
           expect(announcement.height, 48);
           expect(find.text('吉林大学公告'), findsOneWidget);
           expect(find.text('公告'), findsNothing);

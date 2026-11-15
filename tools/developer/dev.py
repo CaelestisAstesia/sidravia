@@ -264,11 +264,38 @@ def linux_command(args, env):
     return 0
 
 
+def preview_command(args, env):
+    """Run only the in-memory Flutter demo on a loopback web server."""
+    flutter = str(Path(args.flutter).resolve())
+    sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
+    if sdk["frameworkVersion"] != (ROOT / "gui" / ".flutter-version").read_text().strip():
+        raise ValueError("Flutter SDK does not match .flutter-version")
+    env = dict(env, PATH=str(Path(sdk["flutterRoot"]) / "bin") + os.pathsep + env.get("PATH", ""))
+
+    def run(argv):
+        subprocess.run([flutter, *argv], cwd=ROOT / "gui", env=env, check=True)
+
+    run(["pub", "get", "--enforce-lockfile"])
+    target = "lib/dev/interactive_demo_main.dart"
+    if args.check:
+        run(["analyze", "--no-pub"])
+        run(["test", "--no-pub", "test/offline_demo_test.dart", "test/r51_adaptation_test.dart"])
+        run(["build", "web", "--no-pub", "--no-web-resources-cdn", "--target", target])
+    else:
+        print(f"Offline GUI preview: http://127.0.0.1:{args.port} (fictional in-memory data only)", flush=True)
+        run(["run", "--no-pub", "-d", "web-server", "--web-hostname", "127.0.0.1", "--web-port", str(args.port), "--no-web-resources-cdn", "--target", target])
+    return 0
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview"):
         sub = subs.add_parser(command)
+        if command == "preview":
+            sub.add_argument("--flutter", default=".local/bin/flutter")
+            sub.add_argument("--port", type=int, choices=range(1024, 65536), default=7357, metavar="PORT")
+            sub.add_argument("--check", action="store_true", help="analyze, test the offline demo and compile its web build without starting a server")
         sub.add_argument("--go", default="go")
         sub.add_argument("--reports", default=str(ROOT / ".project" / "evidence" / "build-efficiency"))
         if command in ("verify", "benchmark"):
@@ -315,6 +342,8 @@ def main(argv=None):
     args = parse_args(argv)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
+        if args.command == "preview":
+            return preview_command(args, env)
         if args.command == "manifest":
             manifest = source_manifest(env, args.require_clean)
             with Path(args.output).open("x", encoding="utf-8") as output:

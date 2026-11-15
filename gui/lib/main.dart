@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/licensing/source_code_pro_font_license.dart';
 import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 
 import 'dart:io';
@@ -61,6 +62,7 @@ Future<void> main([List<String> args = const []]) async {
         (args.contains('--start-hidden') || appearance.startHidden),
   );
   registerHarmonyOSFontLicense();
+  registerSourceCodeProFontLicense();
   final startedAt = DateTime.now();
   final notifications = SystemNotifications();
   runApp(

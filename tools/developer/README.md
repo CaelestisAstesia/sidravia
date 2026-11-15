@@ -2,7 +2,33 @@
 
 Run from the repository root with Python 3 and the pinned Go toolchain (Go 1.26.4).
 `dev.py` uses the existing verifier and distribution producer/consumer. It does
-not install, start the GUI/daemon, authenticate, sign, upload or publish.
+not install, authenticate, sign, upload or publish. Only explicit development
+preview/integration modes start their own GUI or isolated fixture processes.
+
+## Offline interactive GUI preview
+
+```bash
+.local/bin/dev preview
+.local/bin/dev preview --check
+```
+
+The first command serves the existing Flutter offline demo at
+`http://127.0.0.1:7357`; `--port` changes the loopback port. `--flutter` selects
+the pinned SDK executable (default `.local/bin/flutter`). The version must
+match `gui/.flutter-version`; dependencies use `--enforce-lockfile`.
+`--check` runs analysis, the offline demo/layout tests, and its Web build.
+Both modes use local CanvasKit resources rather than a rendering CDN.
+
+The demo reuses production pages with fictional in-memory clients and settings.
+It does not launch the daemon, read production credentials, contact the school,
+or register PATH/autostart. Browser refresh resets the demo. Press `r` for hot
+reload, `R` for hot restart, and `q` or Ctrl+C to stop the foreground server;
+refresh the browser if it has not picked up an update. A Web hot restart produced
+a `disposed EngineFlutterView` assertion during acceptance; its cause is not yet
+established. Refresh recovered the page, and ordinary hot reload plus subsequent
+interaction produced no new errors. Prefer `r` and refresh after `R`.
+Native tray, notifications,
+window controls and announcement hosting still require desktop verification.
 
 ```bash
 python3 tools/developer/dev.py verify --scope go --go-checks native
@@ -19,7 +45,7 @@ Go retains its own compiler scheduling. All existing cross targets are checked.
 Native tests and vet retain their order. For a small code change, use ordinary
 `go test -count=1 ./affected/package/...` rather than requiring a full matrix.
 
-Each invocation writes a unique report and complete logs under
+Verification, benchmark and core packaging invocations write a unique report and complete logs under
 `.project/evidence/build-efficiency/` by default (`--reports` overrides it).
 Reports contain source commit, dirty status, byte fingerprint, tool/cache/host
 metadata, command exits and timings. Failed checks return nonzero; source changes

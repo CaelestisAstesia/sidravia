@@ -10,6 +10,10 @@ Sidravia 采用 [GNU Affero General Public License v3](../LICENSE)。使用、�
 
 GUI 使用 HarmonyOS Sans，许可证见 [gui/assets/fonts/LICENSE.txt](../gui/assets/fonts/LICENSE.txt)。程序「关于 Sidravia」的许可页面也可查看相关许可。
 
+运行状态快照使用 Source Code Pro Regular（SIL Open Font License 1.1），许可证见
+[SourceCodePro-LICENSE.md](../gui/assets/fonts/SourceCodePro-LICENSE.md)。随包文件保留原始字体，
+来自 Fedora 官方 `adobe-source-code-pro-fonts` 2.042.1.062.1.026-10.fc45 包；程序许可页也可查看。
+
 ## 第三方依赖
 
 Go 依赖见 [go.mod](../go.mod)，Flutter 依赖见 [gui/pubspec.yaml](../gui/pubspec.yaml)。各组件的使用与分发遵循各自许可证；发行包和程序中的许可材料应随相应组件保留。

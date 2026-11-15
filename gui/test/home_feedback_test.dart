@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
 void main() {
-  testWidgets(
-    'announcement feedback stays under notice while connection errors remain at actions',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(960, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'fixed feedback slot queues and dismisses hints without shifting sections at $scale',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(960, 1500));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        var dismissed = 0;
+        Widget surface(String? error, String? announcement) => MaterialApp(
           theme: AppTheme.light(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
           home: Scaffold(
             body: HomeView(
               data: HomeViewData(
@@ -21,7 +26,7 @@ void main() {
                 state: '已连接',
                 detail: '认证成功',
                 context: '以太网',
-                glyph: '√',
+                glyph: '✓',
                 tone: HomeTone.success,
                 secondaryLabel: '连接与诊断',
                 primaryLabel: '断开连接',
@@ -31,40 +36,69 @@ void main() {
                 onSettings: () {},
                 onSecondary: () {},
                 onPrimary: () {},
-                actionError: '连接操作失败',
+                actionError: error,
+                onDismissActionError: () => dismissed++,
                 notice: HomeNotice(
                   title: '吉林大学公告',
                   onOpen: () {},
-                  feedback: '公告暂未显示，可在首页查看',
+                  feedback: announcement,
                 ),
+                business: const Text('服务器消息'),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final actionError = find.text('连接操作失败');
-      final feedback = find.text('公告暂未显示，可在首页查看');
-      final notice = tester.getRect(find.byKey(const ValueKey('home-notice')));
-      expect(tester.getRect(actionError).bottom, lessThan(notice.top));
-      expect(tester.getRect(feedback).top, greaterThanOrEqualTo(notice.bottom));
-      final pill = find.byKey(const ValueKey('home-announcement-feedback'));
-      expect(tester.getRect(pill).center.dx, notice.center.dx);
-      expect(
-        find.ancestor(of: feedback, matching: find.byType(FeedbackPill)),
-        findsOneWidget,
-      );
-      final text = tester.widget<Text>(feedback);
-      final context = tester.element(feedback);
-      expect(text.style!.color, Theme.of(context).colorScheme.onSurfaceVariant);
-      await tester.tap(
-        find.descendant(of: pill, matching: find.byTooltip('关闭提示')),
-      );
-      await tester.pump();
-      expect(feedback, findsNothing);
-      expect(actionError, findsOneWidget);
-      expect(find.byKey(const ValueKey('home-notice')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        );
+        List<Rect> anchors() => [
+          tester.getRect(find.byKey(const ValueKey('home-divider'))),
+          tester.getRect(find.byKey(const ValueKey('home-notice'))),
+          tester.getRect(find.byKey(const ValueKey('home-messages-divider'))),
+          tester.getRect(find.text('服务器消息')),
+        ];
+        await tester.pumpWidget(surface(null, null));
+        await tester.pumpAndSettle();
+        final initial = anchors();
+        final slot = tester.getRect(
+          find.byKey(const ValueKey('home-feedback-slot')),
+        );
+        await tester.pumpWidget(surface('连接操作失败', '公告暂未显示，可在首页查看'));
+        await tester.pumpAndSettle();
+        expect(anchors(), initial);
+        expect(find.text('连接操作失败'), findsOneWidget);
+        expect(find.text('公告暂未显示，可在首页查看'), findsNothing);
+        await tester.tap(find.byTooltip('关闭提示'));
+        await tester.pump();
+        expect(dismissed, 1);
+        final announcement = find.text('公告暂未显示，可在首页查看');
+        expect(announcement, findsOneWidget);
+        expect(find.text('连接操作失败'), findsNothing);
+        expect(anchors(), initial);
+        final text = tester.widget<Text>(announcement);
+        expect(
+          text.style!.color,
+          Theme.of(tester.element(announcement)).colorScheme.onSurfaceVariant,
+        );
+        await tester.tap(find.byTooltip('关闭提示'));
+        await tester.pump();
+        expect(announcement, findsNothing);
+        expect(anchors(), initial);
+        expect(
+          tester.getRect(find.byKey(const ValueKey('home-feedback-slot'))),
+          slot,
+        );
+        await tester.pumpWidget(
+          surface(List.filled(80, '较长提示内容').join('，'), null),
+        );
+        await tester.pumpAndSettle();
+        expect(anchors(), initial);
+        final scroll = tester.state<ScrollableState>(
+          find.descendant(
+            of: find.byKey(const ValueKey('home-feedback-slot')),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        expect(scroll.position.maxScrollExtent, greaterThan(0));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

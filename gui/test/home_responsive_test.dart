@@ -117,7 +117,7 @@ void main() {
         await tester.pumpWidget(surface(const HomeFixture()));
         await tester.pumpAndSettle();
         final width = entry.value.width;
-        final pageWidth = width;
+        final pageWidth = width.clamp(0, 520).toDouble();
         final t = ((width - 620) / 138).clamp(0.0, 1.0);
         const pad = 24.0;
         final header = tester.getRect(
@@ -127,8 +127,8 @@ void main() {
         expect(header.top, 12 + 4 * t);
         expect(header.width, pageWidth - 2 * pad);
         expect(
-          tester.getSize(find.byKey(const ValueKey('home-mark'))),
-          const Size(44, 44),
+          tester.getSize(find.byKey(const ValueKey('home-mark'))).height,
+          greaterThanOrEqualTo(50),
         );
         expect(
           tester.getSize(find.byKey(const ValueKey('home-actions'))).width,
@@ -139,7 +139,14 @@ void main() {
         );
         expect(notice.left, header.left);
         // Announcement stays in content flow even when the window is tall.
-        expect(notice.top, closeTo(447 + 4 * t, .00001));
+        expect(
+          notice.top,
+          closeTo(
+            tester.getRect(find.byKey(const ValueKey('home-actions'))).bottom +
+                63,
+            .00001,
+          ),
+        );
         final position = tester
             .state<ScrollableState>(find.byType(Scrollable).first)
             .position;
@@ -174,11 +181,11 @@ void main() {
         await tester.pump();
         expect(
           tester.getSize(find.byKey(const ValueKey('home-page'))).width,
-          width,
+          width.clamp(0, 520),
         );
         expect(
-          tester.getSize(find.byKey(const ValueKey('home-mark'))),
-          const Size(44, 44),
+          tester.getSize(find.byKey(const ValueKey('home-mark'))).height,
+          greaterThanOrEqualTo(50),
         );
         expect(tester.takeException(), isNull);
       }
@@ -186,7 +193,7 @@ void main() {
   );
 
   testWidgets(
-    'long content grows status and context; short viewport scrolls to the announcement',
+    'long content expands status without inner scrolling; announcement remains reachable',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -223,7 +230,20 @@ void main() {
       );
       expect(
         tester.getSize(find.byKey(const ValueKey('home-status'))).height,
-        greaterThan(258),
+        greaterThan(184),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('home-status')),
+          matching: find.byType(Scrollable),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey('home-actions'))).top,
+        greaterThan(
+          tester.getRect(find.byKey(const ValueKey('home-context'))).bottom,
+        ),
       );
       expect(tester.takeException(), isNull);
       await capture(tester, 'long');

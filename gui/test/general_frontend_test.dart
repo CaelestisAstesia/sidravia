@@ -1,3 +1,4 @@
+import 'support/runtime_snapshot.dart';
 import 'school_announcement_controller_test.dart' as school_dispatch;
 
 import 'package:flutter/material.dart';
@@ -18,7 +19,7 @@ const states = {
   'waiting_for_network': ['等待网络', '取消等待', '连接与诊断', 'session.stop'],
   'waiting_before_retry': ['等待重试', '立即重试', '停止重试', 'session.restart'],
   'blocked_by_error': ['认证失败', '重新连接', '更改配置', 'session.restart'],
-  'empty': ['尚未配置', '添加配置', '连接设置', 'configuration'],
+  'empty': ['尚未配置', '添加配置', '设置', 'configuration'],
 };
 
 class FailingClient extends OfflineDemoClient {
@@ -120,7 +121,8 @@ void main() {
             expect(find.text(entry.value[2]), findsOneWidget);
             expect(find.textContaining('30 秒'), findsNothing);
             if (entry.key == 'blocked_by_error') {
-              expect(find.text('credential_invalid'), findsOneWidget);
+              expect(find.text('credential_invalid'), findsNothing);
+              expect(find.text('服务器拒绝了本次认证'), findsOneWidget);
             }
             await tester.tap(find.text(entry.value[1]));
             await tester.pumpAndSettle();
@@ -340,11 +342,10 @@ void main() {
           await tester.tap(find.text('连接与诊断'));
           await tester.pumpAndSettle();
           expect(find.text('核心服务状态'), findsNothing);
-          await tester.ensureVisible(find.text('技术信息'));
+          expect(displayedSnapshot(tester)['backend'], isNotNull);
+          await tester.tap(find.byTooltip('刷新快照'));
           await tester.pump();
-          await tester.tap(find.text('技术信息'));
-          await tester.pumpAndSettle();
-          expect(find.text('核心服务状态'), findsOneWidget);
+          expect(displayedSnapshot(tester)['backend'], isNotNull);
           await tester.ensureVisible(find.text('返回'));
           await tester.pump();
           await tester.tap(find.text('返回'));

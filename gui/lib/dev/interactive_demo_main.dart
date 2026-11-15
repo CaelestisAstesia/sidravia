@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/licensing/source_code_pro_font_license.dart';
+
 import 'dart:async';
 
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
@@ -16,6 +18,8 @@ import 'package:flutter/services.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/semantics.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/platform/installation_manager.dart';
@@ -25,6 +29,9 @@ import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerSourceCodeProFontLicense();
+  // Keep the offline web preview inspectable by accessibility/browser tools.
+  SemanticsBinding.instance.ensureSemantics();
   const directory = String.fromEnvironment('SIDRAVIA_DEMO_SETTINGS_DIR');
   final appearance = directory.isEmpty
       ? GuiPreferences()
@@ -48,6 +55,8 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
   late final GuiController _controller;
   late final SchoolAnnouncementController _announcements;
   final _navigator = GlobalKey<NavigatorState>();
+  final _previewNavigator = GlobalKey<NavigatorState>();
+  Size _previewSize = const Size(400, 690);
   String _scenario = 'authenticated';
 
   @override
@@ -61,7 +70,9 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
     _announcements = SchoolAnnouncementController(
       preferences: _appearance,
       desktop: DesktopPresence.disabled(),
-      window: _OfflineAnnouncementWindow(_navigator),
+      window: _OfflineAnnouncementWindow(
+        kIsWeb ? _previewNavigator : _navigator,
+      ),
       notifications: SchoolAnnouncementNotifications.disabled(),
       startedAt: DateTime.now(),
     );
@@ -203,6 +214,29 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                                   child: Row(
                                     spacing: 8,
                                     children: [
+                                      if (kIsWeb)
+                                        PopupMenuButton<Size>(
+                                          tooltip: '预览窗口尺寸',
+                                          onSelected: (size) => setState(
+                                            () => _previewSize = size,
+                                          ),
+                                          itemBuilder: (_) => const [
+                                            PopupMenuItem(
+                                              value: Size(400, 690),
+                                              child: Text('400 × 690 · 桌面窗口'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: Size(720, 690),
+                                              child: Text('720 × 690 · 宽窗口'),
+                                            ),
+                                          ],
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(6),
+                                            child: Text(
+                                              '窗口：${_previewSize.width.toInt()} × ${_previewSize.height.toInt()}',
+                                            ),
+                                          ),
+                                        ),
                                       TextButton(
                                         onPressed: () =>
                                             _showTrayPreview(context),
@@ -277,6 +311,8 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                                         itemBuilder: (context) => [
                                           for (final entry in const {
                                             'authenticated': '已连接',
+                                            'authenticated_business':
+                                                '已连接 · 账户业务',
                                             'suspended': '未连接',
                                             'authenticating': '正在认证',
                                             'waiting_for_network': '等待网络',
@@ -338,10 +374,13 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                 ),
               ),
               Expanded(
-                child: SidraviaShell(
-                  controller: _controller,
-                  announcements: _announcements,
-                  createIntegrationManager: _OfflineInstallationManager.new,
+                child: _previewStage(
+                  context,
+                  SidraviaShell(
+                    controller: _controller,
+                    announcements: _announcements,
+                    createIntegrationManager: _OfflineInstallationManager.new,
+                  ),
                 ),
               ),
             ],
@@ -350,6 +389,68 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
       ),
     ),
   );
+
+  Widget _previewStage(BuildContext context, Widget child) {
+    if (!kIsWeb) return child;
+    return Builder(
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return ColoredBox(
+          color: scheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: _previewSize.width,
+                  maxHeight: _previewSize.height,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: scheme.outlineVariant),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: .12),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => MediaQuery(
+                        data: MediaQuery.of(context)
+                            .copyWith(size: constraints.biggest),
+                        child: Navigator(
+                          key: _previewNavigator,
+                          onGenerateRoute: (_) => _PreviewPageRoute(
+                            builder: (context) => Material(
+                              color: Theme.of(context).colorScheme.surface,
+                              child: child,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The preview's base route has no previous app route to block. Omitting its
+/// modal barrier keeps the developer toolbar accessible outside this Navigator.
+class _PreviewPageRoute extends MaterialPageRoute<void> {
+  _PreviewPageRoute({required super.builder});
+  @override
+  Widget buildModalBarrier() => const SizedBox.shrink();
 }
 
 /// In-memory visual preview; never invokes system integration tools.

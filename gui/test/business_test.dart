@@ -118,7 +118,48 @@ void main() {
       c.dispose();
     },
   );
-  testWidgets('plain text panel keeps zero separate from absent balance', (
+  testWidgets('server messages show latest first and expand older messages', (
+    tester,
+  ) async {
+    final c = BusinessController();
+    final client = BusinessClient();
+    c.update(
+      connection: client,
+      client: client,
+      session: session(),
+      visible: true,
+    );
+    client.queries.single.done.complete(
+      decodeBusiness(
+        vector
+            .replaceFirst('9007199254740993', '1')
+            .replaceFirst('18446744073709551615', '2')
+            .replaceFirst(
+              '"text":"Hello"}',
+              '"text":"Hello"},{"id":"2","receivedAt":"2026-11-14T01:03:03Z","text":"Latest"}',
+            ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: BusinessPanel(controller: c)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Latest'), findsOneWidget);
+    expect(find.text('Hello'), findsNothing);
+    await tester.tap(find.text('查看其余 1 条消息'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hello'), findsOneWidget);
+    expect(find.text('Latest'), findsOneWidget);
+    await tester.tap(find.text('查看其余 1 条消息'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hello'), findsNothing);
+    c.dispose();
+  });
+
+  testWidgets('account summary keeps zero separate from absent balance', (
     tester,
   ) async {
     final c = BusinessController();
@@ -133,11 +174,18 @@ void main() {
     await tester.pump();
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: BusinessPanel(controller: c)),
+        home: Scaffold(
+          body: Column(
+            children: [
+              ConnectionInformationView(controller: c),
+              BusinessPanel(controller: c),
+            ],
+          ),
+        ),
       ),
     );
-    expect(find.text('余额：暂无数据'), findsOneWidget);
-    expect(find.text('服务器历史计费流量：0.00 MiB'), findsOneWidget);
+    expect(find.text('暂无数据'), findsOneWidget);
+    expect(find.text('0.00\u00a0MiB'), findsOneWidget);
     expect(find.text('Hello'), findsOneWidget);
     expect(find.byType(SelectableText), findsOneWidget);
     c.dispose();

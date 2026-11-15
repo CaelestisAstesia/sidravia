@@ -38,16 +38,6 @@ class ConnectionIssueCard extends StatelessWidget {
               color: scheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            failure.code,
-            style: TextStyle(
-              fontSize: 11,
-              height: 14 / 11,
-              fontFamily: 'HarmonyOS Sans',
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
         ],
       ),
     );

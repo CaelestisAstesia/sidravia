@@ -1,6 +1,6 @@
 # Sidravia GUI
 
-Sidravia 的 Flutter 桌面界面，当前开发版本为 `0.3.0-alpha.1`，已发布的 GUI 资产以 Windows 为主；当前源码已支持 Windows 与 Linux 原生开发链路。日常操作见[快速开始](../docs/quick-start.md)和[使用指南](../docs/guide.md)。本文只介绍 GUI 开发；统一验证与构建入口见[开发指南](../docs/development.md)。
+Sidravia 的 Flutter 桌面界面，当前开发版本为 `0.4.0-alpha.1`，已提供 Windows 与 Linux x64 GUI 资产及原生开发链路。日常操作见[快速开始](../docs/quick-start.md)和[使用指南](../docs/guide.md)。本文只介绍 GUI 开发；统一验证与构建入口见[开发指南](../docs/development.md)。
 
 GUI 面向单份保存配置的日常连接。协议覆写、一次性认证、多配置和脚本操作保留在 [ctl 高级使用](../docs/advance.md)，本目录不为这些能力提供界面入口。
 
@@ -24,9 +24,32 @@ Linux 从仓库根使用固定SDK与统一入口：
 .local/bin/dev linux --integration
 ```
 
-前者构建含GUI、CTL、daemon及机构资源的开发bundle；后者在项目内隔离XDG根/namespace中用虚构凭据验证真实链路，不访问生产配置或校园端点。普通GUI入口会使用对应运行目录的数据；不要以开发实例接管正在使用的headless实例。详见[developer工具说明](../tools/developer/README.md#native-linux-desktop-development)。Linux正式安装包尚未提供。
+前者构建含GUI、CTL、daemon及机构资源的开发bundle；后者在项目内隔离XDG根/namespace中用虚构凭据验证真实链路，不访问生产配置或校园端点。普通GUI入口会使用对应运行目录的数据；不要以开发实例接管正在使用的headless实例。详见[developer工具说明](../tools/developer/README.md#native-linux-desktop-development)。Linux 已提供 GUI 便携包和 Fedora RPM，依赖与验收范围见[发行说明](../CHANGELOG.md)及[RPM说明](../docs/linux-rpm.md)。
 
 ## 隔离视觉预览
+
+从仓库根启动浏览器交互预览（固定 Flutter 3.47.0）：
+
+```bash
+.local/bin/dev preview
+```
+
+打开 <http://127.0.0.1:7357>。可用 `--port 7358` 改端口；验证入口为
+`.local/bin/dev preview --check`（分析、离线演示/布局测试与 Web 编译，不启动服务）。
+其他环境可运行 `python3 tools/developer/dev.py preview --flutter /path/to/flutter`。
+该命令复用 `lib/dev/interactive_demo_main.dart`、生产 shell、页面与主题，
+工具栏可切换连接状态、账户业务快照和深浅外观，也可预览公告占位及托盘内容。
+Web 预览默认在居中的 400 × 690 逻辑尺寸窗口内展示，可通过“预览窗口尺寸”切换
+720 × 690 宽窗口。原生桌面最小窗口为400 × 690；首页连接信息不做内部滚动，超长内容自然展开。浏览器可用空间不足时窗口会缩到可用范围，内容仍可滚动；
+预览背景和外框只用于开发，不改变原生程序窗口大小。
+浏览器预览中的配置、设置、自启/PATH 都只在内存模拟，刷新后重置；不要输入真实账号密码。
+认证后台、生产配置、学校网页及系统登记均不参与，渲染资源从本机服务加载。
+
+终端中按 `r` 热重载、`R` 热重启，浏览器未更新时刷新页面；按 `q` 或 Ctrl+C 停止服务。
+本次验收中 `R` 曾出现 `disposed EngineFlutterView` 报错，原因未定位；刷新后恢复，
+普通 `r` 热重载与后续交互未出现新增错误。日常修改优先使用 `r`，热重启后刷新浏览器。
+预览服务只监听 `127.0.0.1`。Web 入口仅用于开发，不构成 Web 产品支持；
+原生窗口、托盘服务、通知、自启及 WebKit/WebView2 公告仍需桌面验收。
 
 只调整布局时，可运行使用虚构内存快照的预览入口：
 
@@ -41,6 +64,8 @@ flutter run -d windows -t lib/dev/preview_main.dart
 默认关闭窗口隐藏到托盘，可以在设置中改为退出；显式退出会结束桌面后台和连接。通知、启动隐藏和公告行为可配置，具体使用语义见[使用指南](../docs/guide.md)。
 
 当前学校公告由 Profile 提供网页地址，在独立窗口中加载学校原网页。旧版静态 JSON feed 与 `SIDRAVIA_ANNOUNCEMENT_FEED_URL` 不是当前公告实现。
+
+运行状态快照使用随包 Source Code Pro 等宽字体，中文回退 HarmonyOS Sans；字体许可及来源见[许可证与致谢](../docs/acknowledgements.md)。
 
 GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。界面使用 HarmonyOS Sans，许可证位于 [assets/fonts/LICENSE.txt](assets/fonts/LICENSE.txt)。仓库中的其他平台 runner 不构成相应平台的发行支持声明。
 

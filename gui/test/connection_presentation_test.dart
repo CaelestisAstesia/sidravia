@@ -1,3 +1,5 @@
+import 'support/runtime_snapshot.dart';
+
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -272,7 +274,7 @@ void main() {
     expect(client.operations.where((op) => op == 'session.stop'), isEmpty);
     await tester.tap(find.text('连接与诊断'));
     await tester.pumpAndSettle();
-    expect(find.text('正在断开'), findsOneWidget);
+    expect(displayedSnapshot(tester)['sessions'][0]['state'], 'stopping');
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
     client.dispose();
@@ -301,13 +303,9 @@ void main() {
       await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
       expect(find.byType(AdvancedPage), findsOneWidget);
-      await tester.ensureVisible(find.text('技术信息'));
-      await tester.tap(find.text('技术信息'));
-      await tester.pumpAndSettle();
-      expect(find.text('配置数量'), findsOneWidget);
-      expect(find.text('会话数量'), findsOneWidget);
-      expect(find.text('2'), findsOneWidget);
-      expect(find.text('orphan'), findsOneWidget);
+      final snapshot = displayedSnapshot(tester);
+      expect(snapshot['configurations'], hasLength(2));
+      expect(snapshot['sessions'][0]['id'], 'orphan');
       await tester.pumpWidget(const SizedBox.shrink());
       controller.dispose();
       client.dispose();

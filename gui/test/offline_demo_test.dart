@@ -15,6 +15,31 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
   test(
+    'offline account scenario supplies a snapshot and clears on switching',
+    () async {
+      final client = OfflineDemoClient();
+      client.selectScenario('authenticated_business');
+      final session = (await client.sessionList()).single;
+      final query = client.queryBusiness(session.id);
+      final snapshot = await query.result;
+      expect(snapshot.sessionId, session.id);
+      expect(snapshot.current, isTrue);
+      expect(snapshot.statistics!.trafficBytes, 126418944);
+      expect(snapshot.statistics!.balanceCents, 12345);
+      expect(snapshot.messages, hasLength(2));
+      expect(snapshot.messages.last.text, startsWith('Offline demo:'));
+      await query.cancel();
+      client.selectScenario('authenticated');
+      final cleared = await client.queryBusiness(session.id).result;
+      expect(cleared.statisticsSupported, isFalse);
+      expect(cleared.textSupported, isFalse);
+      expect(cleared.statistics, isNull);
+      expect(cleared.messages, isEmpty);
+      client.dispose();
+    },
+  );
+
+  test(
     'offline reconnect preference waits for manual resume or restart',
     () async {
       final client = OfflineDemoClient();
@@ -161,7 +186,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(HomeNoticeView), findsOneWidget);
         expect(find.byKey(const ValueKey('home-notice')), findsOneWidget);
-        expect(find.text('吉林大学公告'), findsOneWidget);
+        expect(find.text('公告'), findsOneWidget);
         await tester.ensureVisible(find.byType(HomeNoticeView));
         await tester.pump();
         await tester.tap(find.byType(HomeNoticeView));
