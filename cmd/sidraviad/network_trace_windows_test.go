@@ -14,6 +14,10 @@ import (
 	"sidravia/internal/daemon/authentication/protocol"
 )
 
+// Functional fact collection allows for shared-runner startup latency. The
+// production deadline and the separate bounded cancellation tests remain intact.
+const windowsTraceFunctionalTimeout = 30 * time.Second
+
 func TestWindowsTraceReadOnlyLoopbackSnapshot(t *testing.T) {
 	socket, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -22,7 +26,7 @@ func TestWindowsTraceReadOnlyLoopbackSnapshot(t *testing.T) {
 	defer socket.Close()
 	local := socket.LocalAddr().(*net.UDPAddr).AddrPort()
 	local = netip.AddrPortFrom(local.Addr().Unmap(), local.Port())
-	ctx, cancel := context.WithTimeout(context.Background(), networkTraceTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), windowsTraceFunctionalTimeout)
 	defer cancel()
 	result := collectNetworkTrace(ctx, networkTraceRequest{TriggeredAt: time.Now(), Failure: protocol.AuthenticationProtocolNetworkFailure{LocalEndpoint: local, RemoteEndpoint: netip.MustParseAddrPort("127.0.0.1:61440")}})
 	if result.Status != "collected" {
@@ -65,7 +69,7 @@ func TestWindowsTraceReadOnlyLoopbackSnapshot(t *testing.T) {
 			t.Fatalf("invalid event query for %s", event.Channel)
 		}
 	}
-	partialCtx, partialCancel := context.WithTimeout(context.Background(), networkTraceTimeout)
+	partialCtx, partialCancel := context.WithTimeout(context.Background(), windowsTraceFunctionalTimeout)
 	defer partialCancel()
 	partial := collectNetworkTrace(partialCtx, networkTraceRequest{TriggeredAt: time.Now(), Failure: protocol.AuthenticationProtocolNetworkFailure{Operation: "set_deadline", LocalEndpoint: local}})
 	if partial.Status != "collected" || partial.Facts.Route.Status != "not_applicable" || partial.Facts.DefaultRoute.Status != "not_applicable" || partial.Facts.UDP.Status != "collected" || partial.Facts.Addresses.Status != "collected" {
@@ -91,7 +95,7 @@ func TestWindowsTraceCancellationIsBounded(t *testing.T) {
 }
 
 func TestWindowsTraceSourceQueryFailureIsStructured(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), networkTraceTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), windowsTraceFunctionalTimeout)
 	defer cancel()
 	// The wildcard bind address is not an assigned interface IPv4. Query it
 	// without opening a socket to exercise the actual CIM error projection.
