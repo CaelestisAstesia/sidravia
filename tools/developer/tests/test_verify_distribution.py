@@ -56,7 +56,8 @@ class DistributionContract(unittest.TestCase):
 
     def package(self, target, contents, gui=True):
         base = f'sidravia-v{VERSION}-{target}'
-        archive = self.out / (base + ('-portable.zip' if target.startswith('windows-') else '-gui-portable.tar.gz' if 'sidravia_gui' in contents else '-portable.tar.gz'))
+        kind = 'gui-portable' if 'Sidravia.exe' in contents or 'sidravia_gui' in contents else 'core-portable'
+        archive = self.out / (base + '-' + kind + ('.zip' if target.startswith('windows-') else '.tar.gz'))
         if target.startswith('windows-'):
             with zipfile.ZipFile(archive, 'w') as z:
                 for name, data in contents.items():

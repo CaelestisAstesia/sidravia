@@ -72,6 +72,8 @@ GUI interaction, installation, notification delivery or campus behavior.
 
 ## Core distributions
 
+Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
+
 From a clean Linux amd64 checkout, choose an absent output directory whose parent
 exists (the repository's ignored `dist/` path is suitable):
 

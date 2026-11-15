@@ -130,12 +130,13 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	portable := append(append([]zipEntry(nil), entries...), zipEntry{"sidravia.portable", nil, 0644})
 	base := "sidravia-v" + t.cfg.version + "-" + t.cfg.target
-	archive := base + "-portable.zip"
+	kind := "core-portable"
+	if len(gui) > 0 {
+		kind = "gui-portable"
+	}
+	archive := base + "-" + kind + ".zip"
 	if strings.HasPrefix(t.cfg.target, "linux-") {
-		archive = base + "-portable.tar.gz"
-		if len(gui) > 0 {
-			archive = base + "-gui-portable.tar.gz"
-		}
+		archive = base + "-" + kind + ".tar.gz"
 		if err := writeTar(filepath.Join(stage, archive), base, portable); err != nil {
 			return err
 		}

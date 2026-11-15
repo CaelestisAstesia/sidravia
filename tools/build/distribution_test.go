@@ -55,7 +55,7 @@ func TestDistributionContents(t *testing.T) {
 			contents := map[string]bool{}
 			bytesByName := map[string][]byte{}
 			if strings.HasPrefix(target, "windows-") {
-				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-portable.zip"))
+				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-core-portable.zip"))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -77,7 +77,7 @@ func TestDistributionContents(t *testing.T) {
 					t.Fatal("missing manager or core")
 				}
 			} else {
-				f, err := os.Open(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-portable.tar.gz"))
+				f, err := os.Open(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-core-portable.tar.gz"))
 				if err != nil {
 					t.Fatal(err)
 				}

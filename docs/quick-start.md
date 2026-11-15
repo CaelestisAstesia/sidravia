@@ -4,19 +4,19 @@
 
 ## 下载与安装
 
-本页对应 `0.4.0-alpha.1` 源码，尚未发布的资产以最终发行说明为准。便携包须明确选择包含 GUI 的版本；核心便携包不能打开图形界面。
+本页对应 `0.4.0-alpha.1`。便携包须明确选择包含 GUI 的版本；核心便携包不能打开图形界面。
 
-到 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 查看对应版本的发行说明，下载 Windows x64 安装包（`…-windows-amd64-setup.exe`）或图形界面便携包（`…-windows-amd64-portable.zip`）。文件名中的 `amd64` 对应 x64 架构。
+到 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 查看对应版本的发行说明，下载 Windows x64 安装包（`…-windows-amd64-setup.exe`）或图形界面便携包（`…-windows-amd64-gui-portable.zip`）。文件名中的 `amd64` 对应 x64 架构。
 
 - **安装版**（`…-setup.exe`）：运行安装器，保留「图形界面」组件，按向导完成安装。需要登录 Windows 后自动启动时，勾选「开机自启」，并选择「启动到托盘」；需要在任意终端直接使用命令行工具时，勾选「加入用户 PATH」。桌面快捷方式按需创建。
-- **图形界面便携版**（当前构建名为 `…-windows-amd64-portable.zip`）：完整解压到一个固定、可写的目录，打开解压后的文件夹，运行 `Sidravia.exe`。保留同目录下的 `sidravia.portable` 文件及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
+- **图形界面便携版**（ `…-windows-amd64-gui-portable.zip`）：完整解压到一个固定、可写的目录，打开解压后的文件夹，运行 `Sidravia.exe`。保留同目录下的 `sidravia.portable` 文件及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
 
 安装版将账号配置保存在 `%APPDATA%\Sidravia`，便携版保存在程序目录下的 `config` 文件夹，两者不会自动迁移数据。不要把安装版覆盖到便携目录。完整数据位置见[数据与隐私](privacy.md#数据位置)；从旧版本升级时，请先阅读对应版本的发行说明并备份配置。
 
 如需校验下载文件，请同时下载该版本的 `SHA256SUMS.txt`，与程序包放在同一文件夹。在该文件夹打开 PowerShell，运行以下命令；文件名替换为实际下载的名称：
 
 ```powershell
-Get-FileHash .\sidravia-v0.4.0-alpha.1-windows-amd64-portable.zip -Algorithm SHA256
+Get-FileHash .\sidravia-v0.4.0-alpha.1-windows-amd64-gui-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
