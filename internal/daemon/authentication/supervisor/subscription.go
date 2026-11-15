@@ -65,10 +65,10 @@ func (s *Supervisor) Subscribe() (*Subscription, error) {
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	sub := &Subscription{owner: s, ctx: ctx, cancel: cancel, pending: make(map[resourceKey]StateEvent), keys: make([]resourceKey, 0, subscriptionCapacity), wake: make(chan struct{}, 1)}
-	if s.subs == nil {
-		s.subs = make(map[*Subscription]struct{})
+	if s.subscriptions == nil {
+		s.subscriptions = make(map[*Subscription]struct{})
 	}
-	s.subs[sub] = struct{}{}
+	s.subscriptions[sub] = struct{}{}
 	return sub, nil
 }
 
@@ -110,7 +110,7 @@ func (sub *Subscription) Next(ctx context.Context) (StateEvent, error) {
 
 func (sub *Subscription) Close() {
 	sub.owner.mu.Lock()
-	delete(sub.owner.subs, sub)
+	delete(sub.owner.subscriptions, sub)
 	sub.closeWithCause(ErrSubscriptionClosed)
 	sub.owner.mu.Unlock()
 }
@@ -197,15 +197,15 @@ func (s *Supervisor) publishStateEventLocked(event StateEvent) {
 		return
 	}
 	if !event.valid() {
-		for sub := range s.subs {
+		for sub := range s.subscriptions {
 			sub.closeWithCause(ErrSubscriptionInvalidEvent)
-			delete(s.subs, sub)
+			delete(s.subscriptions, sub)
 		}
 		return
 	}
-	for sub := range s.subs {
+	for sub := range s.subscriptions {
 		if !sub.enqueue(event) {
-			delete(s.subs, sub)
+			delete(s.subscriptions, sub)
 		}
 	}
 }

@@ -88,8 +88,8 @@ type AuthenticationSession struct {
 
 	// The fields below are owned exclusively by run.
 	currentSnapshot           Snapshot
-	selector                  *automaticBindingSelector
-	automatic                 *bindingRecovery
+	selector                  *networkBindingSelector
+	bindingRecovery           *bindingRecovery // automatic binding recovery; nil for explicit bindings
 	lastNetworkRevision       uint64
 	hasNetworkRevision        bool
 	desiredBinding            environment.SelectedSystemNetworkBinding
@@ -226,8 +226,8 @@ func initializeAuthenticationSession(
 		},
 	}
 	if configuration.NetworkBindingPolicy.Mode == AutomaticallySelectLatestAvailable {
-		session.automatic = &bindingRecovery{permitted: true}
-		session.automatic.resetRound()
+		session.bindingRecovery = &bindingRecovery{permitted: true}
+		session.bindingRecovery.resetRound()
 	}
 	return session, nil
 }
@@ -395,7 +395,7 @@ func (session *AuthenticationSession) run() {
 }
 
 func (session *AuthenticationSession) handleNetworkSnapshot(network environment.Snapshot) {
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		session.handleAutomaticNetwork(network)
 		return
 	}
@@ -466,7 +466,7 @@ func (session *AuthenticationSession) handleNetworkSnapshot(network environment.
 }
 
 func (session *AuthenticationSession) handleActivate() {
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		if session.currentSnapshot.State == Stopping {
 			return
 		}
@@ -499,7 +499,7 @@ func (session *AuthenticationSession) handleSuspend() {
 		return
 	}
 	session.explicitRestartPending = false
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		session.resetAutomaticIntent(false)
 	}
 	session.invalidateRetryScheduleState()
@@ -519,7 +519,7 @@ func (session *AuthenticationSession) handleSuspend() {
 }
 
 func (session *AuthenticationSession) handleRestart() {
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		if session.currentSnapshot.State == Stopping {
 			return
 		}
@@ -580,7 +580,7 @@ func (session *AuthenticationSession) handleShutdown(reply chan error) {
 	}
 	session.explicitRestartPending = false
 	session.shuttingDown = true
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		session.resetAutomaticIntent(false)
 	}
 	session.invalidateRetrySchedule()
@@ -595,8 +595,8 @@ func (session *AuthenticationSession) handleAuthenticationEstablished(event auth
 	session.active.established = true
 	session.businessChanged()
 	session.active.establishedAt = session.now()
-	if session.automatic != nil {
-		session.automatic.retryAt = time.Time{}
+	if session.bindingRecovery != nil {
+		session.bindingRecovery.retryAt = time.Time{}
 	}
 	session.consecutiveFailures = 0
 	if !session.retainRecoveryBudget {
@@ -630,7 +630,7 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 	session.consumeBusiness()
 	session.active = nil
 	session.businessChanged()
-	if session.automatic != nil && session.finishAutomaticRun(finished, event) {
+	if session.bindingRecovery != nil && session.finishAutomaticRun(finished, event) {
 		return
 	}
 	if event.cancellationCause != nil {
@@ -737,7 +737,7 @@ func (session *AuthenticationSession) handleRunFailure(code string, failure *pro
 }
 
 func (session *AuthenticationSession) scheduleRetry(delay time.Duration, code string, failure *protocol.AuthenticationProtocolRunFailure) {
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		session.scheduleAutomaticRetry(delay, code, failure)
 		return
 	}
@@ -758,7 +758,7 @@ func (session *AuthenticationSession) scheduleRetry(delay time.Duration, code st
 }
 
 func (session *AuthenticationSession) handleRetryDelayElapsed(event authenticationRetryDelayElapsedEvent) {
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		if event.scheduleID != session.retryScheduleID || session.retryCancellation == nil {
 			return
 		}
@@ -777,9 +777,9 @@ func (session *AuthenticationSession) handleRetryDelayElapsed(event authenticati
 }
 
 func (session *AuthenticationSession) blockForFailure(code string, failure *protocol.AuthenticationProtocolRunFailure) {
-	if session.automatic != nil {
-		session.automatic.permitted = false
-		session.automatic.retryAt = time.Time{}
+	if session.bindingRecovery != nil {
+		session.bindingRecovery.permitted = false
+		session.bindingRecovery.retryAt = time.Time{}
 		session.clearAutomaticWake()
 	}
 	session.updateSnapshot(func(snapshot *Snapshot) {
@@ -792,8 +792,8 @@ func (session *AuthenticationSession) blockForFailure(code string, failure *prot
 }
 
 func (session *AuthenticationSession) blockForAutomaticReconnectDisabled(failure *protocol.AuthenticationProtocolRunFailure) {
-	if session.automatic != nil {
-		session.automatic.permitted = false
+	if session.bindingRecovery != nil {
+		session.bindingRecovery.permitted = false
 		session.clearAutomaticWake()
 	}
 	session.automaticReconnectBlocked = true
@@ -997,7 +997,7 @@ func (session *AuthenticationSession) startRunAfterRetryDelayIfNeeded() {
 }
 
 func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
-	if session.automatic != nil {
+	if session.bindingRecovery != nil {
 		session.reconcileAutomatic()
 		return
 	}
@@ -1044,8 +1044,8 @@ func (session *AuthenticationSession) createRun(allowRecoveryState bool) {
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel, business: &businessMailbox{}}
-	if session.automatic != nil {
-		r := session.automatic
+	if session.bindingRecovery != nil {
+		r := session.bindingRecovery
 		active.binding = bindingCandidate{networkInterface: session.desiredBinding.NetworkInterface(), localAddress: session.desiredBinding.LocalIPv4AddressAssignment(), key: keyForBinding(session.desiredBinding)}
 		active.recoveryEpoch = r.epoch
 		r.starts++

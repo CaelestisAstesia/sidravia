@@ -1480,11 +1480,11 @@ func (factory *delayedForwardFactory) releaseCreation() {
 }
 
 func installTestForwarder(sup *Supervisor, id ID, actor *session.AuthenticationSession) *managedSession {
-	managed := &managedSession{actor: actor, intent: session.MaintainAuthentication, state: stateActive, stateChange: make(chan struct{}), stopFwd: make(chan struct{}), forwardDone: make(chan struct{})}
+	managed := &managedSession{actor: actor, intent: session.MaintainAuthentication, state: stateActive, stateChange: make(chan struct{}), stopForwarding: make(chan struct{}), forwardDone: make(chan struct{})}
 	sup.mu.Lock()
 	sup.sessions[id] = managed
 	sup.mu.Unlock()
-	sup.wg.Add(1)
+	sup.revisionForwarders.Add(1)
 	go func() { defer close(managed.forwardDone); sup.forwardRevisions(id, managed) }()
 	return managed
 }
@@ -1498,7 +1498,7 @@ func TestSupervisorDelayedForwardUsesPublishedSnapshot(t *testing.T) {
 	definition := testRuntimeDefinition()
 	definition.Configuration.AuthenticationSessionID = "paired"
 	definition.AuthenticationProtocolFactory = factory
-	actor, err := session.NewAuthenticationSession(definition, session.MaintainAuthentication, sup.deps)
+	actor, err := session.NewAuthenticationSession(definition, session.MaintainAuthentication, sup.sessionDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1560,7 +1560,7 @@ func TestSupervisorForwardsPublishedEventAfterActorQueryCloses(t *testing.T) {
 	events := subscribeForTest(t, sup)
 	definition := testRuntimeDefinition()
 	definition.Configuration.AuthenticationSessionID = "closed-paired"
-	actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, sup.deps)
+	actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, sup.sessionDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1630,7 +1630,7 @@ func TestSupervisorRemovalDrainsQueuedFinalRevisionBeforeTerminal(t *testing.T) 
 			sup := New(testSupervisorDeps())
 			stream := subscribeForTest(t, sup)
 			diagnostics := &shutdownSignalDiagnostics{shutdown: make(chan struct{})}
-			deps := sup.deps
+			deps := sup.sessionDependencies
 			deps.Diagnostics = diagnostics
 			definition := testRuntimeDefinition()
 			definition.Configuration.AuthenticationSessionID = "drain"
@@ -1652,11 +1652,11 @@ func TestSupervisorRemovalDrainsQueuedFinalRevisionBeforeTerminal(t *testing.T) 
 			if latest.Revision <= initial.Revision {
 				t.Fatal("test requires a newer queued actor revision")
 			}
-			managed := &managedSession{actor: actor, intent: session.SuspendAuthentication, state: stateStopped, stateChange: make(chan struct{}), stopFwd: make(chan struct{}), forwardDone: make(chan struct{})}
+			managed := &managedSession{actor: actor, intent: session.SuspendAuthentication, state: stateStopped, stateChange: make(chan struct{}), stopForwarding: make(chan struct{}), forwardDone: make(chan struct{})}
 			sup.mu.Lock()
 			sup.sessions["drain"] = managed
 			sup.mu.Unlock()
-			sup.wg.Add(1)
+			sup.revisionForwarders.Add(1)
 			var once sync.Once
 			startForwarder := func() {
 				once.Do(func() { go func() { defer close(managed.forwardDone); sup.forwardRevisions("drain", managed) }() })
@@ -1683,7 +1683,7 @@ func TestSupervisorRemovalDrainsQueuedFinalRevisionBeforeTerminal(t *testing.T) 
 				t.Fatal("deleted before forwarder drain")
 			}
 			select {
-			case <-managed.stopFwd:
+			case <-managed.stopForwarding:
 				t.Fatal("normal removal stopped forwarder before drain")
 			default:
 			}
@@ -1774,7 +1774,7 @@ func TestSupervisorFailedShutdownRetainsResourceAndOriginalCause(t *testing.T) {
 				t.Fatal("failed shutdown deleted entry", err)
 			}
 			select {
-			case <-managed.stopFwd:
+			case <-managed.stopForwarding:
 				t.Fatal("failed shutdown stopped forwarder")
 			default:
 			}
@@ -1824,7 +1824,7 @@ func TestSupervisorRollbackFailureRetainsActorDuringRunShutdown(t *testing.T) {
 		t.Fatal("still-running actor deleted", err)
 	}
 	select {
-	case <-managed.stopFwd:
+	case <-managed.stopForwarding:
 		t.Fatal("failed shutdown stopped forwarding")
 	default:
 	}

@@ -403,7 +403,7 @@ func TestEqualNetworkReplayFeedsActorsWithoutDuplicateNetworkEvent(t *testing.T)
 	}
 	definition := testRuntimeDefinition()
 	definition.Configuration.AuthenticationSessionID = "replay"
-	actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, sup.deps)
+	actor, err := session.NewAuthenticationSession(definition, session.SuspendAuthentication, sup.sessionDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

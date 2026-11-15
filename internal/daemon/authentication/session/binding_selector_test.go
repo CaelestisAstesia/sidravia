@@ -9,7 +9,7 @@ import (
 )
 
 func TestAutomaticBindingSelectorPrefersWiredAtStartup(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 
 	binding, ok := selector.Select(snapshot(t, 1,
 		newNetworkInterface(t, environment.NetworkInterfaceFacts{
@@ -37,7 +37,7 @@ func TestAutomaticBindingSelectorPrefersWiredAtStartup(t *testing.T) {
 
 func TestAutomaticBindingSelectorRetainsCurrentNetwork(t *testing.T) {
 	t.Run("newer candidate does not preempt an existing binding", func(t *testing.T) {
-		selector := newAutomaticBindingSelector()
+		selector := newNetworkBindingSelector()
 		initial := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 		newer := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 24)
 
@@ -55,7 +55,7 @@ func TestAutomaticBindingSelectorRetainsCurrentNetwork(t *testing.T) {
 	})
 
 	t.Run("equal revision does not add availability history", func(t *testing.T) {
-		selector := newAutomaticBindingSelector()
+		selector := newNetworkBindingSelector()
 		initial := networkInterface(t, "initial", environment.PhysicalMediumWired, "192.0.2.10", 24)
 		current := networkInterface(t, "current", environment.PhysicalMediumWireless, "198.51.100.10", 24)
 		stale := networkInterface(t, "stale", environment.PhysicalMediumWired, "203.0.113.10", 24)
@@ -78,7 +78,7 @@ func TestAutomaticBindingSelectorRetainsCurrentNetwork(t *testing.T) {
 	})
 
 	t.Run("lower revision does not add availability history", func(t *testing.T) {
-		selector := newAutomaticBindingSelector()
+		selector := newNetworkBindingSelector()
 		initial := networkInterface(t, "initial", environment.PhysicalMediumWired, "192.0.2.10", 24)
 		current := networkInterface(t, "current", environment.PhysicalMediumWireless, "198.51.100.10", 24)
 		stale := networkInterface(t, "stale", environment.PhysicalMediumWired, "203.0.113.10", 24)
@@ -97,7 +97,7 @@ func TestAutomaticBindingSelectorRetainsCurrentNetwork(t *testing.T) {
 }
 
 func TestAutomaticBindingSelectorIgnoresNewerSoftwareInterface(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	physical := newNetworkInterface(t, environment.NetworkInterfaceFacts{
 		InterfaceID:              "physical",
 		OperationalState:         environment.OperationalStateUp,
@@ -131,7 +131,7 @@ func TestAutomaticBindingSelectorIgnoresNewerSoftwareInterface(t *testing.T) {
 }
 
 func TestAutomaticBindingSelectorIgnoresHardwareFilterAndEndpointInterfaces(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	physical := networkInterface(t, "physical", environment.PhysicalMediumWired, "192.0.2.10", 24)
 	filter := newNetworkInterface(t, environment.NetworkInterfaceFacts{
 		InterfaceID:              "filter",
@@ -165,7 +165,7 @@ func TestAutomaticBindingSelectorIgnoresHardwareFilterAndEndpointInterfaces(t *t
 }
 
 func TestAutomaticBindingSelectorReportsNoBindingForIneligibleInterfaces(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	software := newNetworkInterface(t, environment.NetworkInterfaceFacts{
 		InterfaceID:              "software",
 		OperationalState:         environment.OperationalStateUp,
@@ -220,7 +220,7 @@ func TestAutomaticBindingSelectorReportsNoBindingForIneligibleInterfaces(t *test
 }
 
 func TestAutomaticBindingSelectorFallsBackWhenCurrentBindingDisappears(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	current := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 	fallback := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 24)
 
@@ -234,7 +234,7 @@ func TestAutomaticBindingSelectorFallsBackWhenCurrentBindingDisappears(t *testin
 }
 
 func TestAutomaticBindingSelectorRetainsCurrentWhenBindingReappears(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	stable := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 	reappearing := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 24)
 
@@ -248,7 +248,7 @@ func TestAutomaticBindingSelectorRetainsCurrentWhenBindingReappears(t *testing.T
 	assertBinding(t, binding, "wired", "192.0.2.10", 24)
 
 	t.Run("prefix is part of a binding identity", func(t *testing.T) {
-		selector := newAutomaticBindingSelector()
+		selector := newNetworkBindingSelector()
 		selector.Select(snapshot(t, 1, stable, reappearing))
 		selector.Select(snapshot(t, 2, stable))
 		reappearingWithNewPrefix := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "198.51.100.10", 25)
@@ -579,7 +579,7 @@ func TestExplicitBindingSelectorObservedPairAndRevisionGate(t *testing.T) {
 	if _, ok = selector.Select(snapshot(t, 4, physical, newNetworkInterface(t, facts))); ok {
 		t.Fatal("mismatched address accepted")
 	}
-	auto := newAutomaticBindingSelector()
+	auto := newNetworkBindingSelector()
 	facts.IPv4AddressAssignments[0].Address = policy.LocalIPv4Address
 	if _, ok = auto.Select(snapshot(t, 1, newNetworkInterface(t, facts))); ok {
 		t.Fatal("automatic used software loopback")
@@ -590,7 +590,7 @@ func TestAutomaticBindingSelectorRejectsPhysicalLoopbackOnly(t *testing.T) {
 	for _, address := range []string{"127.0.0.1", "127.42.0.2"} {
 		t.Run(address, func(t *testing.T) {
 			physical := networkInterface(t, "physical", environment.PhysicalMediumWired, address, 8)
-			if binding, ok := newAutomaticBindingSelector().Select(snapshot(t, 1, physical)); ok {
+			if binding, ok := newNetworkBindingSelector().Select(snapshot(t, 1, physical)); ok {
 				t.Fatalf("automatic selected loopback binding: %+v", binding)
 			}
 			policy := NetworkBindingPolicy{Mode: ExplicitInterfaceAndLocalIPv4, InterfaceID: "physical", LocalIPv4Address: netip.MustParseAddr(address)}
@@ -615,7 +615,7 @@ func TestAutomaticBindingSelectorUsesOrdinaryAddressAlongsideLoopback(t *testing
 			{Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24},
 		},
 	})
-	binding, ok := newAutomaticBindingSelector().Select(snapshot(t, 1, physical))
+	binding, ok := newNetworkBindingSelector().Select(snapshot(t, 1, physical))
 	if !ok {
 		t.Fatal("ordinary binding missing alongside loopback")
 	}
@@ -623,7 +623,7 @@ func TestAutomaticBindingSelectorUsesOrdinaryAddressAlongsideLoopback(t *testing
 }
 
 func TestAutomaticBindingSelectorIgnoresNewerPhysicalLoopbackOnly(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	ordinary := networkInterface(t, "ordinary", environment.PhysicalMediumWireless, "192.0.2.10", 24)
 	loopback := networkInterface(t, "newer", environment.PhysicalMediumWired, "127.0.0.1", 8)
 	binding, ok := selector.Select(snapshot(t, 1, ordinary))
@@ -658,7 +658,7 @@ func TestSharedAutomaticCandidateMatchesActualSelector(t *testing.T) {
 			assignment := environment.IPv4AddressAssignment{Address: netip.MustParseAddr(test.address), PrefixLength: 24}
 			iface := newNetworkInterface(t, environment.NetworkInterfaceFacts{InterfaceID: environment.InterfaceID(test.name), OperationalState: test.state, PhysicalMedium: environment.PhysicalMediumUnknown, HardwareBacked: test.hardware, PhysicalConnectorPresent: test.connector, FilterInterface: test.filter, EndpointInterface: test.endpoint, IPv4AddressAssignments: []environment.IPv4AddressAssignment{assignment}})
 			eligible := IsAutomaticBindingCandidate(iface, assignment)
-			_, selected := newAutomaticBindingSelector().Select(snapshot(t, 1, iface))
+			_, selected := newNetworkBindingSelector().Select(snapshot(t, 1, iface))
 			if eligible != test.eligible || selected != eligible {
 				t.Fatalf("predicate/selector = %t/%t, want %t", eligible, selected, test.eligible)
 			}
@@ -667,7 +667,7 @@ func TestSharedAutomaticCandidateMatchesActualSelector(t *testing.T) {
 }
 
 func TestBindingSwitchesAfterWiredCarrierLoss(t *testing.T) {
-	selector := newAutomaticBindingSelector()
+	selector := newNetworkBindingSelector()
 	wired := networkInterface(t, "wired", environment.PhysicalMediumWired, "192.0.2.10", 24)
 	wireless := networkInterface(t, "wireless", environment.PhysicalMediumWireless, "192.0.2.20", 24)
 	first, ok := selector.Select(snapshot(t, 1, wired, wireless))

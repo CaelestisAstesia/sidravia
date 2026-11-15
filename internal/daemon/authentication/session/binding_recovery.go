@@ -36,7 +36,7 @@ func (r *bindingRecovery) resetRound() {
 }
 
 func (s *AuthenticationSession) resetAutomaticIntent(permitted bool) {
-	r := s.automatic
+	r := s.bindingRecovery
 	r.resetRound()
 	r.retryAt = time.Time{}
 	r.wakeAt = time.Time{}
@@ -68,7 +68,7 @@ func (s *AuthenticationSession) handleAutomaticNetwork(network environment.Snaps
 		// replenish the new launch budget or discard an unelapsed retry deadline.
 		s.consecutiveFailures, s.protocolRecoveryFailures = 0, 0
 		s.retainRecoveryBudget = false
-		s.automatic.permitted = true
+		s.bindingRecovery.permitted = true
 		if s.active != nil {
 			s.cancelActive(protocol.TerminateWithoutLogout)
 		}
@@ -81,7 +81,7 @@ func (s *AuthenticationSession) handleAutomaticNetwork(network environment.Snaps
 		if snapshot.State == Stopping || snapshot.Intent != MaintainAuthentication {
 			return
 		}
-		if !s.hasDesiredBinding && s.automatic.permitted {
+		if !s.hasDesiredBinding && s.bindingRecovery.permitted {
 			snapshot.State = WaitingForNetwork
 			snapshot.StateReason = initialStateReason(MaintainAuthentication, s.definition.Configuration.NetworkBindingPolicy)
 			snapshot.AuthenticationEstablishedAt, snapshot.NextRetryAt = nil, nil
@@ -100,7 +100,7 @@ func (s *AuthenticationSession) handleAutomaticNetwork(network environment.Snaps
 // reconcileAutomatic is the only automatic launch gate. Time-only wakeups use
 // saved facts and cannot grant permission to leave a blocking failure.
 func (s *AuthenticationSession) reconcileAutomatic() {
-	r := s.automatic
+	r := s.bindingRecovery
 	if s.shuttingDown || s.currentSnapshot.Intent != MaintainAuthentication || s.currentSnapshot.State == Stopping || s.active != nil || s.automaticReconnectBlocked || !r.permitted {
 		return
 	}
@@ -177,11 +177,11 @@ func latestTime(values ...time.Time) time.Time {
 
 func (s *AuthenticationSession) clearAutomaticWake() {
 	s.invalidateRetrySchedule()
-	s.automatic.wakeAt = time.Time{}
+	s.bindingRecovery.wakeAt = time.Time{}
 }
 
 func (s *AuthenticationSession) waitAutomatic(deadline time.Time, realRetry bool) {
-	r := s.automatic
+	r := s.bindingRecovery
 	s.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.NextRetryAt = nil
 		if realRetry {
@@ -204,7 +204,7 @@ func (s *AuthenticationSession) waitAutomatic(deadline time.Time, realRetry bool
 }
 
 func (s *AuthenticationSession) scheduleAutomaticRetry(delay time.Duration, code string, failure *protocol.AuthenticationProtocolRunFailure) {
-	r := s.automatic
+	r := s.bindingRecovery
 	r.permitted = true
 	r.retryAt = s.now().Add(delay)
 	s.updateSnapshot(func(snapshot *Snapshot) {
@@ -219,7 +219,7 @@ func (s *AuthenticationSession) scheduleAutomaticRetry(delay time.Duration, code
 // The common finish handler has already checked Run generation and socket
 // observations. Return true when cancellation has been fully handled here.
 func (s *AuthenticationSession) finishAutomaticRun(run *activeProtocolRun, event authenticationProtocolRunFinishedEvent) bool {
-	r := s.automatic
+	r := s.bindingRecovery
 	sameEpoch := run.recoveryEpoch == r.epoch
 	end := run.effectiveEndAt
 	if end.IsZero() {

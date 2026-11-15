@@ -16,7 +16,9 @@ type bindingKey struct {
 	prefixLength uint8
 }
 
-type automaticBindingSelector struct {
+// networkBindingSelector applies either automatic selection or an explicit binding policy.
+// Its mutable candidate state belongs to the Session actor.
+type networkBindingSelector struct {
 	policy             NetworkBindingPolicy
 	lastRevision       uint64
 	hasSnapshot        bool
@@ -25,13 +27,13 @@ type automaticBindingSelector struct {
 	hasSelectedBinding bool
 }
 
-func newAutomaticBindingSelector() *automaticBindingSelector {
-	return &automaticBindingSelector{}
+func newNetworkBindingSelector() *networkBindingSelector {
+	return &networkBindingSelector{}
 }
 
 // Select is used for explicit bindings and deterministic selection tests.
 // Session supplies its own monotonic clock to observe and choose for automation.
-func (selector *automaticBindingSelector) Select(snapshot environment.Snapshot) (environment.SelectedSystemNetworkBinding, bool) {
+func (selector *networkBindingSelector) Select(snapshot environment.Snapshot) (environment.SelectedSystemNetworkBinding, bool) {
 	selector.observe(snapshot, snapshot.ObservedAt)
 	candidate, _ := selector.choose(snapshot.ObservedAt, nil, nil, false)
 	if candidate == nil {
@@ -40,7 +42,7 @@ func (selector *automaticBindingSelector) Select(snapshot environment.Snapshot) 
 	return selector.commit(*candidate), true
 }
 
-func (selector *automaticBindingSelector) observe(snapshot environment.Snapshot, now time.Time) {
+func (selector *networkBindingSelector) observe(snapshot environment.Snapshot, now time.Time) {
 	if selector.hasSnapshot && snapshot.Revision <= selector.lastRevision {
 		return
 	}
@@ -95,7 +97,7 @@ type bindingCandidate struct {
 
 // choose reevaluates time against saved facts; it never manufactures a revision.
 // The cursor is one previous candidate, not a history of disappeared interfaces.
-func (selector *automaticBindingSelector) choose(now time.Time, failures map[environment.InterfaceID]uint8, cursor *bindingCandidate, rotate bool) (*bindingCandidate, time.Time) {
+func (selector *networkBindingSelector) choose(now time.Time, failures map[environment.InterfaceID]uint8, cursor *bindingCandidate, rotate bool) (*bindingCandidate, time.Time) {
 	var retained *bindingCandidate
 	if selector.hasSelectedBinding && !rotate {
 		for i := range selector.candidates {
@@ -162,7 +164,7 @@ func bindingInterfacePrecedes(left, right bindingCandidate) bool {
 	return left.key.interfaceID < right.key.interfaceID
 }
 
-func (selector *automaticBindingSelector) commit(candidate bindingCandidate) environment.SelectedSystemNetworkBinding {
+func (selector *networkBindingSelector) commit(candidate bindingCandidate) environment.SelectedSystemNetworkBinding {
 	binding, err := selectBinding([]bindingCandidate{candidate})
 	if err != nil {
 		panic(err)
@@ -271,8 +273,8 @@ func bindingsHaveEquivalentAuthenticationFacts(
 		(!leftHasDHCPServer || leftDHCPServer == rightDHCPServer)
 }
 
-func newPolicyBindingSelector(policy NetworkBindingPolicy) *automaticBindingSelector {
-	selector := newAutomaticBindingSelector()
+func newPolicyBindingSelector(policy NetworkBindingPolicy) *networkBindingSelector {
+	selector := newNetworkBindingSelector()
 	selector.policy = policy
 	return selector
 }

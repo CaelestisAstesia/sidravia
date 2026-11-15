@@ -39,7 +39,7 @@ func changedForTest(id ID, revision uint64) StateEvent {
 func subscriptionOwnedForTest(sup *Supervisor, sub *Subscription) bool {
 	sup.mu.Lock()
 	defer sup.mu.Unlock()
-	_, owned := sup.subs[sub]
+	_, owned := sup.subscriptions[sub]
 	return owned
 }
 

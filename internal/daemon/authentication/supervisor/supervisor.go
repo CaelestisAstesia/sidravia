@@ -42,16 +42,16 @@ const (
 // Supervisor manages authentication sessions with single-active admission.
 // At most one non-stopped MaintainAuthentication session may exist at a time.
 type Supervisor struct {
-	mu               sync.Mutex
-	sessions         map[ID]*managedSession
-	counter          uint64
-	deps             session.Dependencies
-	subs             map[*Subscription]struct{}
-	closed           atomic.Bool
-	closeOnce        sync.Once
-	wg               sync.WaitGroup
-	latestNetwork    environment.Snapshot
-	hasLatestNetwork bool
+	mu                  sync.Mutex // protects the session registry, admission state, subscriptions and latest network
+	sessions            map[ID]*managedSession
+	sessionSequence     uint64
+	sessionDependencies session.Dependencies
+	subscriptions       map[*Subscription]struct{}
+	closed              atomic.Bool
+	closeOnce           sync.Once
+	revisionForwarders  sync.WaitGroup
+	latestNetwork       environment.Snapshot
+	hasLatestNetwork    bool
 }
 
 type managedSession struct {
@@ -61,8 +61,8 @@ type managedSession struct {
 	operationMu           sync.Mutex
 	reserved              bool
 	stateChange           chan struct{}
-	stopFwd               chan struct{}
-	stopFwdOnce           sync.Once
+	stopForwarding        chan struct{}
+	stopForwardingOnce    sync.Once
 	forwardDone           chan struct{} // closed when forward goroutine exits
 	lastForwardedRevision uint64        // paired delivery metadata, protected by Supervisor.mu
 }
@@ -71,7 +71,7 @@ type managedSession struct {
 func New(deps Dependencies) *Supervisor {
 	return &Supervisor{
 		sessions: make(map[ID]*managedSession),
-		deps: session.Dependencies{
+		sessionDependencies: session.Dependencies{
 			Now:                        deps.Now,
 			RetryPolicy:                deps.RetryPolicy,
 			RetryScheduler:             deps.RetryScheduler,
@@ -108,8 +108,8 @@ func (s *Supervisor) StartResolved(
 		}
 	}
 
-	s.counter++
-	id := ID(fmt.Sprintf("session-%d", s.counter))
+	s.sessionSequence++
+	id := ID(fmt.Sprintf("session-%d", s.sessionSequence))
 	definition.Configuration.AuthenticationSessionID = id
 
 	if err := definition.Validate(); err != nil {
@@ -117,7 +117,7 @@ func (s *Supervisor) StartResolved(
 		return "", Snapshot{}, fmt.Errorf("invalid runtime definition: %w", err)
 	}
 
-	actor, err := session.NewAuthenticationSession(definition, intent, s.deps)
+	actor, err := session.NewAuthenticationSession(definition, intent, s.sessionDependencies)
 	if err != nil {
 		s.mu.Unlock()
 		return "", Snapshot{}, fmt.Errorf("create session: %w", err)
@@ -125,16 +125,16 @@ func (s *Supervisor) StartResolved(
 	actor.Start()
 
 	ms := &managedSession{
-		actor:       actor,
-		intent:      intent,
-		state:       stateActive,
-		stateChange: make(chan struct{}),
-		stopFwd:     make(chan struct{}),
-		forwardDone: make(chan struct{}),
+		actor:          actor,
+		intent:         intent,
+		state:          stateActive,
+		stateChange:    make(chan struct{}),
+		stopForwarding: make(chan struct{}),
+		forwardDone:    make(chan struct{}),
 	}
 	s.sessions[id] = ms
 
-	s.wg.Add(1)
+	s.revisionForwarders.Add(1)
 	go func() {
 		defer close(ms.forwardDone)
 		s.forwardRevisions(id, ms)
@@ -541,29 +541,29 @@ func (s *Supervisor) Close() error {
 		sessions := make([]*managedSession, 0, len(s.sessions))
 		for _, ms := range s.sessions {
 			sessions = append(sessions, ms)
-			ms.stopFwdOnce.Do(func() { close(ms.stopFwd) })
+			ms.stopForwardingOnce.Do(func() { close(ms.stopForwarding) })
 		}
-		for sub := range s.subs {
+		for sub := range s.subscriptions {
 			sub.closeWithCause(ErrSubscriptionShutdown)
 		}
-		clear(s.subs)
+		clear(s.subscriptions)
 		s.mu.Unlock()
 		for _, ms := range sessions {
 			// Preserve the existing whole-Supervisor Close return contract.
 			_ = ms.actor.Shutdown(context.Background())
 		}
-		s.wg.Wait()
+		s.revisionForwarders.Wait()
 	})
 	return nil
 }
 
 // Wait blocks until all internal goroutines have exited.
 func (s *Supervisor) Wait() {
-	s.wg.Wait()
+	s.revisionForwarders.Wait()
 }
 
 func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
-	defer s.wg.Done()
+	defer s.revisionForwarders.Done()
 	revisions := managed.actor.RevisionEvents()
 	for {
 		select {
@@ -583,7 +583,7 @@ func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
 			if err == nil {
 				s.observeStoppedRevision(id, managed, snapshot)
 			}
-		case <-managed.stopFwd:
+		case <-managed.stopForwarding:
 			return
 		}
 	}
