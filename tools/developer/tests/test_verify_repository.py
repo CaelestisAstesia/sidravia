@@ -78,6 +78,32 @@ class TestSafeArgv(unittest.TestCase):
 
 
 class TestRunCheck(unittest.TestCase):
+    def test_utf8_diagnostics_preserve_failure(self) -> None:
+        script = "import os; os.write(1, '检查失败'.encode('utf-8')); os.write(2, '错误原因'.encode('utf-8')); raise SystemExit(7)"
+        result = verifier.run_check(
+            verifier.Check([sys.executable, "-c", script]), ROOT, dict(os.environ)
+        )
+        self.assertEqual(result.exit_code, 7)
+        self.assertEqual(result.stdout, "检查失败")
+        self.assertEqual(result.stderr, "错误原因")
+
+    def test_ci_utf8_capture_and_console_preserve_failure(self) -> None:
+        child = "import os; os.write(1, '检查失败'.encode('utf-8')); os.write(2, '错误原因'.encode('utf-8')); raise SystemExit(7)"
+        script = (
+            f"import sys, os; from pathlib import Path; sys.path.insert(0, {str(VERIFIER_PATH.parent)!r}); "
+            "import verify_repository as v; "
+            f"r = v.run_and_print(v.Check([sys.executable, '-c', {child!r}]), Path.cwd(), dict(os.environ)); "
+            "raise SystemExit(r.exit_code)"
+        )
+        env = dict(os.environ, PYTHONUTF8="1")
+        env.pop("PYTHONIOENCODING", None)
+        result = verifier.subprocess.run(
+            [sys.executable, "-c", script], cwd=ROOT, env=env, capture_output=True
+        )
+        self.assertEqual(result.returncode, 7)
+        self.assertIn("检查失败", result.stdout.decode("utf-8"))
+        self.assertIn("错误原因", result.stderr.decode("utf-8"))
+
     def setUp(self) -> None:
         self.original_env = dict(os.environ)
 
@@ -465,7 +491,7 @@ class TestVerifyWorkflowTopology(unittest.TestCase):
 
         self.assertRegex(
             workflow,
-            r"(?ms)^\s*include:\s*\n\s*- os: ubuntu-latest\s*\n\s*scope: all\s*\n\s*- os: windows-latest\s*\n\s*scope: go\s*\n\s*- os: macos-latest\s*\n\s*scope: go\s*\n",
+            r"(?ms)^\s*include:\s*\n\s*- os: ubuntu-24.04\s*\n\s*scope: all\s*\n\s*- os: windows-latest\s*\n\s*scope: go\s*\n\s*- os: macos-latest\s*\n\s*scope: go\s*\n",
         )
         self.assertIn("fail-fast: false", workflow)
         self.assertRegex(workflow, r"python-version:\s*['\"]?3\.14\.4")

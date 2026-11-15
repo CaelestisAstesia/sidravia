@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: '1'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -19,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             scope: all
           - os: windows-latest
             scope: go
@@ -52,7 +55,7 @@ jobs:
         run: pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_field_validation_contract.ps1
 
   cross-compile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6

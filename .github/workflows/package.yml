@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: '1'
+
 jobs:
   package:
     strategy:
@@ -20,11 +23,11 @@ jobs:
         include:
           - os: windows-latest
             target: windows-amd64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: linux-amd64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: linux-arm64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: windows-arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60

@@ -157,6 +157,7 @@ def run_check(check: Check, repo_root: Path, base_env: dict[str, str]) -> CheckR
             cwd=cwd,
             env=env,
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
         )
