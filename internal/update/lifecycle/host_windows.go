@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
 	"strings"
@@ -275,24 +274,16 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	}
 	// A committed-but-incomplete stop must not start a duplicate or override a
 	// surviving generation. This recovery path is only for unchanged old bytes.
-	if state.Daemon.PID != 0 {
-		if p, e := windowsplatform.Observe(state.Daemon.PID); e == nil {
-			defer p.Close()
-			if p.Created == state.Daemon.Created && p.Running() {
-				return update.ErrInvalid
-			}
-		} else if !errors.Is(e, windows.ERROR_INVALID_PARAMETER) {
+	for _, previous := range []processID{state.Daemon, state.GUI} {
+		if previous.PID == 0 {
+			continue
+		}
+		running, e := windowsplatform.GenerationRunning(previous.PID, previous.Created)
+		if e != nil {
 			return e
 		}
-	}
-	if state.GUI.PID != 0 {
-		if p, e := windowsplatform.Observe(state.GUI.PID); e == nil {
-			defer p.Close()
-			if p.Created == state.GUI.Created && p.Running() {
-				return update.ErrInvalid
-			}
-		} else if !errors.Is(e, windows.ERROR_INVALID_PARAMETER) {
-			return e
+		if running {
+			return update.ErrInvalid
 		}
 	}
 	ticket := update.ResumeTicket{OperationID: op, Target: source, ExpiresAt: state.Expires, Intent: state.Intent}
@@ -311,7 +302,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		if !state.Intent.Visible {
 			args = []string{"--skip-auto-login", "--start-hidden"}
 		}
-		cmd, e := windowsplatform.StartIndependent(filepath.Join(source.ID, "Sidravia.exe"), args...)
+		cmd, e := windowsplatform.StartApplication(filepath.Join(source.ID, "Sidravia.exe"), args...)
 		if e != nil {
 			return e
 		}

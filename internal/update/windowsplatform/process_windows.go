@@ -96,6 +96,56 @@ func (p *Process) Wait(ctx context.Context) error {
 		}
 	}
 }
+
+// GenerationRunning checks only the recorded generation's liveness. An exited
+// process may remain addressable while an observer holds its handle, although
+// its image or token can no longer be queried. Identity checks for live peers
+// still belong to Observe; errors opening or waiting on a process fail closed.
+func GenerationRunning(pid uint32, created uint64) (bool, error) {
+	if pid == 0 || created == 0 {
+		return false, ErrPeer
+	}
+	h, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer windows.CloseHandle(h)
+	var start, exit, kernel, user windows.Filetime
+	if err = windows.GetProcessTimes(h, &start, &exit, &kernel, &user); err != nil {
+		return false, err
+	}
+	if uint64(start.HighDateTime)<<32|uint64(start.LowDateTime) != created {
+		return false, nil
+	}
+	status, err := windows.WaitForSingleObject(h, 0)
+	if err != nil {
+		return false, err
+	}
+	switch status {
+	case windows.WAIT_OBJECT_0:
+		return false, nil
+	case uint32(windows.WAIT_TIMEOUT):
+		return true, nil
+	default:
+		return false, fmt.Errorf("unexpected process wait result: %d", status)
+	}
+}
+
+// StartApplication restores an ordinary application in the caller's job
+// context. The short host does not own that job, so its exit does not terminate
+// the child. This does not bypass job limits or provide installer handoff.
+func StartApplication(path string, args ...string) (*exec.Cmd, error) {
+	cmd := exec.Command(path, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
 func FileHash(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

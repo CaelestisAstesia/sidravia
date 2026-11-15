@@ -310,6 +310,16 @@ func run() error {
 // Only fresh portable fixture binaries and namespace data are used here. The
 // application/IPC/CTL are the real product entry points, with no credentials.
 func realLifecycle(ctx context.Context, root, id string) error {
+	// Ordinary applications can inherit a job that disallows breakaway. Only
+	// installer handoff requires escaping its updater's kill-on-close job.
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(job)
+	if err = windows.AssignProcessToJobObject(job, windows.CurrentProcess()); err != nil {
+		return err
+	}
 	target := filepath.Join(root, "target")
 	ns := "update-native-" + id[:12]
 	layout, err := productlayout.ResolveTarget(target, mustNamespace(ns))
@@ -416,6 +426,20 @@ func realLifecycle(ctx context.Context, root, id string) error {
 		return err
 	}
 	originalDaemonPID := info.PID
+	// Retain dead process objects just as an external watcher may. Recovery
+	// must not need the image/token of an already exited generation.
+	originalObserver, err := windowsplatform.Observe(uint32(originalDaemonPID))
+	if err != nil {
+		return err
+	}
+	defer originalObserver.Close()
+	if guiMode {
+		originalGUI, e := windowsplatform.Observe(uint32(originalPID))
+		if e != nil {
+			return e
+		}
+		defer originalGUI.Close()
+	}
 	stage := func(action, op string) error {
 		cmd := exec.Command(filepath.Join(target, "sidraviactl.exe"), "update-internal", action, "--operation", op, "--coordinator", strconv.Itoa(os.Getpid()))
 		cmd.Env = env
@@ -476,6 +500,13 @@ func realLifecycle(ctx context.Context, root, id string) error {
 	}
 	if restored.PID == originalDaemonPID {
 		return errors.New("old process reused")
+	}
+	if err = stage("abort", second); err != nil {
+		return err
+	}
+	repeated, err := readInfo()
+	if err != nil || repeated.PID != restored.PID {
+		return errors.New("repeated abort replaced the recovered generation")
 	}
 	restoredProcess, err := windowsplatform.Observe(uint32(restored.PID))
 	if err != nil {
