@@ -64,7 +64,7 @@ class TestGetGofmtPath(unittest.TestCase):
 
     def test_custom_go(self) -> None:
         custom_go = "/path/to/go"
-        self.assertEqual(verifier.get_gofmt_path(custom_go), "/path/to/gofmt")
+        self.assertEqual(verifier.get_gofmt_path(custom_go), str(Path(custom_go).parent / "gofmt"))
 
 
 class TestSafeArgv(unittest.TestCase):
@@ -138,18 +138,18 @@ class TestBuildPythonChecks(unittest.TestCase):
         self.assertEqual(len(checks), 3)
 
         # Check 1: Dr.COM mock with PYTHONPATH
-        self.assertIn("drcom520d_mock_server/tests", checks[0].argv[5])
+        self.assertEqual(Path(checks[0].argv[5]), repo_root / "tools/drcom520d_mock_server/tests")
         self.assertIsNotNone(checks[0].env)
-        self.assertIn("drcom520d_mock_server/src", checks[0].env["PYTHONPATH"])
+        self.assertEqual(Path(checks[0].env["PYTHONPATH"]), repo_root / "tools/drcom520d_mock_server/src")
 
         # Check 2: Windows Dr.COM acceptance with PYTHONPATH
-        self.assertIn("windows_drcom_acceptance/tests", checks[1].argv[5])
+        self.assertEqual(Path(checks[1].argv[5]), repo_root / "tools/windows_drcom_acceptance/tests")
         self.assertIsNotNone(checks[1].env)
-        self.assertIn("windows_drcom_acceptance/src", checks[1].env["PYTHONPATH"])
+        self.assertEqual(Path(checks[1].env["PYTHONPATH"]), repo_root / "tools/windows_drcom_acceptance/src")
 
         # Check 3: the verifier's own unit suite runs without recursively
         # invoking the verifier executable.
-        self.assertIn("tools/developer/tests", checks[2].argv[5])
+        self.assertEqual(Path(checks[2].argv[5]), repo_root / "tools/developer/tests")
         self.assertIsNotNone(checks[2].env)
         self.assertEqual(checks[2].env["PYTHONDONTWRITEBYTECODE"], "1")
 

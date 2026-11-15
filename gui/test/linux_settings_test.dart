@@ -41,5 +41,6 @@ void main() {
       expect(await FileGuiSettingsStore(b.path).read(), isNull);
       expect(() => resolve({}, '../escape'), throwsFormatException);
     },
+    skip: !Platform.isLinux,
   );
 }

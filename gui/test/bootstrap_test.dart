@@ -93,7 +93,8 @@ void main() {
       },
     ).bootstrap();
     expect(result.isSuccess, isTrue);
-    expect(path, '/fixture/sidraviactl');
+    expect(File(path!).parent.path, File('/fixture/sidravia_gui').parent.path);
+    expect(File(path!).uri.pathSegments.last, 'sidraviactl');
   });
 
   test('bounds output, kills a live child, and settles both readers', () async {

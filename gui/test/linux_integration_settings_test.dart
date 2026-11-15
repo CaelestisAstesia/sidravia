@@ -107,6 +107,7 @@ void main() {
       expect((await manager.status()).autostart, 'disabled');
       await manager.close();
     },
+    skip: !Platform.isLinux,
   );
   test(
     'session GUI/daemon switching is isolated, idempotent and reversible',
