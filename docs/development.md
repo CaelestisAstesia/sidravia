@@ -62,6 +62,8 @@ python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/lin
 
 ## 代码入口
 
+命名、领域术语和模块边界统一遵循[命名与模块约定](code-conventions.md)。
+
 | 路径 | 职责 |
 | --- | --- |
 | `cmd/sidraviactl`、`internal/cli` | 命令行入口与呈现 |
