@@ -2,7 +2,7 @@
 
 `sidraviactl`（下文简称 **CTL**）提供一次性认证、保存配置、多配置管理、独立后台、网卡查询与诊断导出等功能。日常使用 GUI 连接网络，可直接阅读[快速开始](quick-start.md)和[使用指南](guide.md)。
 
-本页示例基于 `v0.3.0-alpha.1`。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
+本页对应 `0.4.0-alpha.1` 源码与命令契约，发行准备状态见[变更日志](../CHANGELOG.md)。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
 
 Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 核心包使用 `./sidraviactl`，不支持 Windows 专用的自启和 PATH 集成功能。
 

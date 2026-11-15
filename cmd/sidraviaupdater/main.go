@@ -10,7 +10,7 @@ import (
 	"sidravia/internal/update/command"
 )
 
-var ProductVersion = "0.1.0-dev"
+var ProductVersion = "0.4.0-alpha.1"
 var BuildID = "dev"
 
 func main() {

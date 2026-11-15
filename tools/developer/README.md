@@ -76,9 +76,9 @@ From a clean Linux amd64 checkout, choose an absent output directory whose paren
 exists (the repository's ignored `dist/` path is suitable):
 
 ```bash
-python3 tools/developer/dev.py package --version 0.3.0-alpha.1 --output dist/linux-amd64
-python3 tools/developer/dev.py package --target linux-arm64 --version 0.3.0-alpha.1 --output dist/linux-arm64
-python3 tools/developer/dev.py package --target windows-arm64 --version 0.3.0-alpha.1 --output dist/windows-arm64
+python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/linux-amd64
+python3 tools/developer/dev.py package --target linux-arm64 --version 0.4.0-alpha.1 --output dist/linux-arm64
+python3 tools/developer/dev.py package --target windows-arm64 --version 0.4.0-alpha.1 --output dist/windows-arm64
 ```
 
 ARM64 packages contain core tools only (Windows includes the manager). They are
@@ -195,7 +195,7 @@ From a clean isolated candidate on Fedora 45 x86_64:
 
 ```sh
 .local/bin/dev linux --check-gui
-.local/bin/dev linux --package --version 0.4.0-dev.linux.1 --output .local/linux-portable-output
+.local/bin/dev linux --package --version 0.4.0-alpha.1 --output .local/linux-portable-output
 ```
 
 The fixed Flutter SDK builds the GUI with the requested build name. The existing
@@ -212,7 +212,7 @@ After producing the archive, accept that exact clean-source package on the
 current KDE/Wayland desktop with:
 
 ```sh
-.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-dev.linux.1-linux-amd64-gui-portable.tar.gz
+.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-alpha.1-linux-amd64-gui-portable.tar.gz
 ```
 
 This checks the local producer receipt before extracting into an owned directory
@@ -253,10 +253,10 @@ no account scan or automatic autostart registration is performed. Initial suppor
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
 ```
-.local/bin/dev linux --package --version 0.4.0-dev.linux.5 --output .local/rpm-portable-input
-.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-dev.linux.5-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
-.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-dev.linux.5-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
-.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.4.0~dev.linux.5-1.x86_64.rpm .local/rpm-r2/sidravia-0.4.0~dev.linux.5-2.x86_64.rpm
+.local/bin/dev linux --package --version 0.4.0-alpha.1 --output .local/rpm-portable-input
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
+.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.4.0~alpha.1-1.x86_64.rpm .local/rpm-r2/sidravia-0.4.0~alpha.1-2.x86_64.rpm
 ```
 
 Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
