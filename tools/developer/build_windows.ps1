@@ -33,16 +33,19 @@ if (!(Test-Path -LiteralPath $marker)) {
     [IO.File]::WriteAllText($marker, 'sidravia-build-v1')
 }
 if ([IO.File]::ReadAllText($marker) -cne 'sidravia-build-v1') { throw 'Workspace ownership marker mismatch' }
-# Flutter owns plugin source links under this exact generated directory. All
+# Flutter generates plugin source links for both checked-in desktop runners. All
 # other linked objects could redirect our cache, logs or compiler writes.
+$pluginRoots = @(
+    (Join-Path $Workspace 'source\gui\windows\flutter\ephemeral\.plugin_symlinks'),
+    (Join-Path $Workspace 'source\gui\linux\flutter\ephemeral\.plugin_symlinks')
+)
 $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
 $pendingDirectories.Push($Workspace)
 while ($pendingDirectories.Count) {
     $directory = $pendingDirectories.Pop()
     foreach ($entry in Get-ChildItem -LiteralPath $directory -Force) {
         if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-            $pluginRoot = Join-Path $Workspace 'source\gui\windows\flutter\ephemeral\.plugin_symlinks'
-            if ($entry.PSIsContainer -and [IO.Path]::GetDirectoryName($entry.FullName) -eq $pluginRoot) { continue }
+            if ($entry.PSIsContainer -and $pluginRoots -contains [IO.Path]::GetDirectoryName($entry.FullName)) { continue }
             throw ('Unexpected linked build object: ' + $entry.FullName)
         }
         if ($entry.PSIsContainer) { $pendingDirectories.Push($entry.FullName) }
