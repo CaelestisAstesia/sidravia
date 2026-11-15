@@ -103,6 +103,7 @@ void main() {
           await tester.enterText(account, 'changed');
           if (replacement) await tester.enterText(password, 'replacement');
           await tester.ensureVisible(find.text('保存修改'));
+          await tester.pump();
           await tester.tap(find.text('保存修改'));
           await tester.pumpAndSettle();
           await tester.tap(find.text('保存并断开'));

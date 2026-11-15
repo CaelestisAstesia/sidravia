@@ -264,10 +264,11 @@ class DesignHeader extends StatelessWidget {
     required this.title,
     required this.onBack,
     this.bottomSpacing = 24,
+    this.titleFontSize = DesignMetrics.titleFont,
     this.actions = const [],
   });
   final String title;
-  final double bottomSpacing;
+  final double bottomSpacing, titleFontSize;
   final VoidCallback onBack;
   final List<Widget> actions;
   @override
@@ -326,8 +327,8 @@ class DesignHeader extends StatelessWidget {
             child: Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: DesignMetrics.titleFont,
+              style: TextStyle(
+                fontSize: titleFontSize,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
                 letterSpacing: -.2,
@@ -664,6 +665,7 @@ class DesignDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Dialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
     child: SizedBox(
       width: _information
           ? DesignMetrics.informationDialogWidth
@@ -688,6 +690,7 @@ class DesignDialog extends StatelessWidget {
                     : const EdgeInsets.all(DesignMetrics.dialogPadding),
                 child: DesignHeader(
                   title: title,
+                  titleFontSize: DesignMetrics.dialogTitleFont,
                   actions: actions,
                   onBack: () => Navigator.pop(context),
                   bottomSpacing: _information ? DesignMetrics.dialogPadding : 0,

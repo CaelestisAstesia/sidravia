@@ -104,13 +104,9 @@ class SettingsPage extends StatelessWidget {
                     : null,
               ),
             ),
+            ?path,
           ],
         ),
-        if (path != null) ...[
-          const SizedBox(height: 24),
-          const DesignSectionTitle('高级'),
-          DesignGroup(children: [path]),
-        ],
         const SizedBox(height: 24),
         const DesignSectionTitle('诊断与更多信息'),
         DesignGroup(

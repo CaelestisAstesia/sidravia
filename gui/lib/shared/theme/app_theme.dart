@@ -31,6 +31,7 @@ abstract final class AppColors {
 abstract final class AppButtonStyles {
   static final primary = FilledButton.styleFrom(
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
+    visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
     textStyle: const TextStyle(
@@ -44,6 +45,7 @@ abstract final class AppButtonStyles {
   );
   static final secondary = OutlinedButton.styleFrom(
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
+    visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
     side: const BorderSide(color: AppColors.lineLight),
@@ -147,6 +149,37 @@ abstract final class AppTheme {
           color: scheme.onSurfaceVariant,
         ),
       ),
+      listTileTheme: ListTileThemeData(
+        minTileHeight: DesignMetrics.rowMinHeight,
+        minVerticalPadding: DesignMetrics.rowPadding,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        titleTextStyle: const TextStyle(
+          fontFamily: 'HarmonyOS Sans',
+          fontSize: DesignMetrics.bodyFont,
+          height: 19 / 13,
+          fontWeight: FontWeight.w500,
+        ),
+        subtitleTextStyle: TextStyle(
+          fontFamily: 'HarmonyOS Sans',
+          fontSize: DesignMetrics.captionFont,
+          height: 1.45,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
+          visualDensity: VisualDensity.standard,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          textStyle: const TextStyle(
+            fontFamily: 'HarmonyOS Sans',
+            fontSize: DesignMetrics.bodyFont,
+            fontWeight: FontWeight.w500,
+            height: 20 / 13,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: dark ? AppColors.surfaceDark : AppColors.surfaceLight,
@@ -166,15 +199,33 @@ abstract final class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: AppButtonStyles.primary.copyWith(
-          backgroundColor: WidgetStatePropertyAll(scheme.primary),
-          foregroundColor: WidgetStatePropertyAll(scheme.onPrimary),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? scheme.onSurface.withValues(alpha: .12)
+                : scheme.primary,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? scheme.onSurface.withValues(alpha: .38)
+                : scheme.onPrimary,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: AppButtonStyles.secondary.copyWith(
           backgroundColor: WidgetStatePropertyAll(scheme.surface),
-          foregroundColor: WidgetStatePropertyAll(scheme.onSurface),
-          side: WidgetStatePropertyAll(BorderSide(color: scheme.outline)),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? scheme.onSurface.withValues(alpha: .38)
+                : scheme.onSurface,
+          ),
+          side: WidgetStateProperty.resolveWith(
+            (states) => BorderSide(
+              color: states.contains(WidgetState.disabled)
+                  ? scheme.onSurface.withValues(alpha: .12)
+                  : scheme.outline,
+            ),
+          ),
         ),
       ),
     );

@@ -497,75 +497,17 @@ class _HomeButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool primary;
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(9),
-      boxShadow: primary && onPressed != null
-          ? [
-              BoxShadow(
-                color: Theme.of(context).colorScheme.primary
-                    .withValues(alpha: .2),
-                offset: const Offset(0, 5),
-                blurRadius: 14,
-              ),
-            ]
-          : const [],
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(
+      minHeight:
+          Theme.of(context).platform == TargetPlatform.android ||
+              Theme.of(context).platform == TargetPlatform.iOS
+          ? 48
+          : 42,
     ),
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        minHeight:
-            Theme.of(context).platform == TargetPlatform.android ||
-                Theme.of(context).platform == TargetPlatform.iOS
-            ? 48
-            : 42,
-      ),
-      child: primary
-          ? FilledButton(
-              onPressed: onPressed,
-              style: AppButtonStyles.primary.copyWith(
-                backgroundColor: WidgetStatePropertyAll(
-                  Theme.of(context).colorScheme.primary,
-                ),
-                foregroundColor: WidgetStatePropertyAll(
-                  Theme.of(context).colorScheme.onPrimary,
-                ),
-                textStyle: WidgetStatePropertyAll(
-                  TextStyle(
-                    fontFamily: 'HarmonyOS Sans',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 20 / 13,
-                  ),
-                ),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(label),
-            )
-          : OutlinedButton(
-              onPressed: onPressed,
-              style: AppButtonStyles.secondary.copyWith(
-                backgroundColor: WidgetStatePropertyAll(
-                  Theme.of(context).colorScheme.surface,
-                ),
-                foregroundColor: WidgetStatePropertyAll(
-                  Theme.of(context).colorScheme.onSurface,
-                ),
-                side: WidgetStatePropertyAll(
-                  BorderSide(color: Theme.of(context).colorScheme.outline),
-                ),
-                textStyle: WidgetStatePropertyAll(
-                  TextStyle(
-                    fontFamily: 'HarmonyOS Sans',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 20 / 13,
-                  ),
-                ),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(label),
-            ),
-    ),
+    child: primary
+        ? FilledButton(onPressed: onPressed, child: Text(label))
+        : OutlinedButton(onPressed: onPressed, child: Text(label)),
   );
 }
 

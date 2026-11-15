@@ -91,6 +91,9 @@ class SettingsDropdown<T> extends StatelessWidget {
           for (final entry in labels.entries)
             MenuItemButton(
               autofocus: entry.key == value,
+              trailingIcon: entry.key == value
+                  ? const Icon(Icons.check, size: 16)
+                  : null,
               style: buttonStyle,
               onPressed: onChanged == null || disabledValues.contains(entry.key)
                   ? null

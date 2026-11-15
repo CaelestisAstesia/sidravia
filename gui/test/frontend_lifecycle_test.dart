@@ -220,6 +220,7 @@ void main() {
       expect(_username(tester), creating ? '' : 'student01');
       await tester.enterText(find.byType(TextField).first, 'edited-account');
       await tester.enterText(find.byType(TextField).last, 'fake-password');
+      await tester.pump();
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       if (find.text('保存连接配置？').evaluate().isNotEmpty) {
@@ -282,6 +283,7 @@ void main() {
         await _openConfiguration(tester);
         await tester.enterText(find.byType(TextField).first, 'saved-account');
         await tester.enterText(find.byType(TextField).last, 'fake-password');
+        await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         if (find.text('保存连接配置？').evaluate().isNotEmpty) {
@@ -332,6 +334,7 @@ void main() {
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'created-account');
     await tester.enterText(find.byType(TextField).last, 'fake-password');
+    await tester.pump();
     await tester.tap(find.text('保存修改'));
     await tester.pumpAndSettle();
     if (find.text('保存连接配置？').evaluate().isNotEmpty) {

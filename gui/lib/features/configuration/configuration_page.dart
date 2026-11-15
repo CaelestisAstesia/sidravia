@@ -210,7 +210,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
               obscureText: true,
               hint: _credentialStored ? '••••••••' : '输入密码',
               error: _passwordError,
-              helper: _credentialStored ? null : '首次连接请填写账号和密码',
+              helper: _credentialStored ? '留空保留原密码' : '首次连接请填写账号和密码',
             ),
             NetworkBindingSection(
               controller: widget.controller,
@@ -222,17 +222,31 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           ],
         ),
         const SizedBox(height: 18),
-        FilledButton(
-          onPressed: _saving || !_canSave ? null : _save,
-          child: Text(_saving ? '正在保存…' : '保存修改'),
-        ),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: TextButton(
-            onPressed: _saving || widget.controller.busy || !_canSave
-                ? null
-                : _discard,
-            child: const Text('放弃修改'),
+        ListenableBuilder(
+          listenable: Listenable.merge([_username, _password]),
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton(
+                onPressed: _saving || !_canSave || !_dirty ? null : _save,
+                child: Text(_saving ? '正在保存…' : '保存修改'),
+              ),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton(
+                  onPressed:
+                      _saving || widget.controller.busy || !_canSave || !_dirty
+                      ? null
+                      : _discard,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+                  child: const Text('放弃修改'),
+                ),
+              ),
+            ],
           ),
         ),
         if (_saveResult ?? widget.controller.notice case final String message)

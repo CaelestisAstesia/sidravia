@@ -236,6 +236,7 @@ void main() {
         await tester.tap(find.text('确认'));
       } else {
         await tester.enterText(find.byType(TextField).first, 'new-user');
+        await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         if (find.text('保存连接配置？').evaluate().isNotEmpty) {
@@ -374,6 +375,7 @@ void main() {
                 'fixture-password',
               );
             }
+            await tester.pump();
             await tester.tap(find.text('保存修改'));
           }
         }

@@ -44,7 +44,6 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
                           children: [
                             ListTile(
                               title: const Text('自动选择可用网卡'),
-                              subtitle: const Text('自动选择'),
                               trailing: policy.interfaceId == null
                                   ? const Icon(Icons.check)
                                   : null,
@@ -56,7 +55,6 @@ class _NetworkBindingSectionState extends State<NetworkBindingSection> {
                             for (final c in choices)
                               ListTile(
                                 title: Text(c.label),
-                                subtitle: const Text('可用'),
                                 trailing: c.policy == policy
                                     ? const Icon(Icons.check)
                                     : null,

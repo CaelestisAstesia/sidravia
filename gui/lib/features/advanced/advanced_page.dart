@@ -94,125 +94,122 @@ class _AdvancedPageState extends State<AdvancedPage> {
     final p = controller.connectionPresentation;
     final scheme = Theme.of(context).colorScheme;
     final linked = controller.state == GuiConnectionState.ready;
-    return Material(
-      color: scheme.surface,
-      child: DesignPage(
-        children: [
-          DesignHeader(title: '连接与诊断', onBack: onBack),
-          if (p.actionError != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: FeedbackPill(
-                message: p.actionError!,
-                onDismiss: () => controller.dismissNotice(p.actionError!),
-              ),
-            ),
-          const DesignSectionTitle('运行状态快照'),
-          if (!linked)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(
-                '后台未连接 · 上次获取的信息',
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-              ),
-            ),
-          Container(
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerLow,
-              border: Border.all(color: scheme.outlineVariant),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: scheme.outlineVariant),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text('JSON', style: TextStyle(fontSize: 12)),
-                      ),
-                      IconButton(
-                        tooltip: '刷新快照',
-                        onPressed: () => setState(() => _captured = _capture()),
-                        icon: const Icon(Icons.refresh_rounded, size: 19),
-                      ),
-                      IconButton(
-                        tooltip: '复制快照',
-                        onPressed: _copySnapshot,
-                        icon: const Icon(Icons.copy_outlined, size: 18),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  height: 360,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(14),
-                    child: SelectableText(
-                      _captured ?? '',
-                      key: const ValueKey('runtime-snapshot-text'),
-                      style: TextStyle(
-                        fontFamily: 'Source Code Pro',
-                        fontFamilyFallback: const ['HarmonyOS Sans'],
-                        fontSize: 12,
-                        height: 1.6,
-                        color: scheme.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return DesignPage(
+      children: [
+        DesignHeader(title: '连接与诊断', onBack: onBack),
+        if (p.actionError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: FeedbackPill(
+              message: p.actionError!,
+              onDismiss: () => controller.dismissNotice(p.actionError!),
             ),
           ),
-          const SizedBox(height: 18),
-          const DesignSectionTitle('高级排障'),
-          DesignGroup(
+        const DesignSectionTitle('运行状态快照'),
+        if (!linked)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '后台未连接 · 上次获取的信息',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DesignRow(
-                title: _openingLogs ? '正在打开日志目录…' : '打开日志目录',
-                subtitle: widget.onOpenLogDirectory == null
-                    ? '当前环境不可用'
-                    : '查看当前实例日志',
-                onTap: widget.onOpenLogDirectory == null || _openingLogs
-                    ? null
-                    : _openLogs,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: scheme.outlineVariant),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('JSON', style: TextStyle(fontSize: 12)),
+                    ),
+                    IconButton(
+                      tooltip: '刷新快照',
+                      onPressed: () => setState(() => _captured = _capture()),
+                      icon: const Icon(Icons.refresh_rounded, size: 19),
+                    ),
+                    IconButton(
+                      tooltip: '复制快照',
+                      onPressed: _copySnapshot,
+                      icon: const Icon(Icons.copy_outlined, size: 18),
+                    ),
+                  ],
+                ),
               ),
-              DesignRow(
-                title: '重启核心',
-                subtitle: '重启后恢复原连接状态',
-                onTap: controller.canRestartCore
-                    ? () => confirmCoreRestart(
-                        context,
-                        controller,
-                        GuiPreferencesScope.maybeOf(context)?.logLevel ??
-                            controller.runningLogLevel ??
-                            'debug',
-                      )
-                    : null,
-              ),
-              DesignRow(
-                title: '移除当前会话',
-                subtitle: controller.capabilities.canResetSession
-                    ? '清理当前 Session 记录'
-                    : '没有可清理的会话或当前不可操作',
-                onTap: controller.capabilities.canResetSession
-                    ? _confirmReset
-                    : null,
+              SizedBox(
+                height: 360,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(14),
+                  child: SelectableText(
+                    _captured ?? '',
+                    key: const ValueKey('runtime-snapshot-text'),
+                    style: TextStyle(
+                      fontFamily: 'Source Code Pro',
+                      fontFamilyFallback: const ['HarmonyOS Sans'],
+                      fontSize: 12,
+                      height: 1.6,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 24),
+        const DesignSectionTitle('高级排障'),
+        DesignGroup(
+          children: [
+            DesignRow(
+              title: _openingLogs ? '正在打开日志目录…' : '打开日志目录',
+              subtitle: widget.onOpenLogDirectory == null
+                  ? '当前环境不可用'
+                  : '查看当前实例日志',
+              onTap: widget.onOpenLogDirectory == null || _openingLogs
+                  ? null
+                  : _openLogs,
+            ),
+            DesignRow(
+              title: '重启核心',
+              subtitle: '重启后恢复原连接状态',
+              onTap: controller.canRestartCore
+                  ? () => confirmCoreRestart(
+                      context,
+                      controller,
+                      GuiPreferencesScope.maybeOf(context)?.logLevel ??
+                          controller.runningLogLevel ??
+                          'debug',
+                    )
+                  : null,
+            ),
+            DesignRow(
+              title: '移除当前会话',
+              subtitle: controller.capabilities.canResetSession
+                  ? '清理当前 Session 记录'
+                  : '没有可清理的会话或当前不可操作',
+              onTap: controller.capabilities.canResetSession
+                  ? _confirmReset
+                  : null,
+            ),
+          ],
+        ),
+      ],
     );
   }
 

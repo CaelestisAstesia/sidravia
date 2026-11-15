@@ -1,6 +1,7 @@
 import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -18,6 +19,108 @@ Future<void> open(WidgetTester tester, GuiController c) async {
 }
 
 void main() {
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets(
+      'configuration actions retain 48px touch targets on $platform',
+      (tester) async {
+        final client = OfflineDemoClient();
+        final c = GuiController(
+          bootstrapper: OfflineDemoBootstrap(),
+          connector: (_) async => client,
+        );
+        await c.start();
+        try {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.light(),
+              home: SidraviaShell(controller: c),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('home-configuration-button')),
+          );
+          await tester.pumpAndSettle();
+          for (final label in ['保存修改', '放弃修改']) {
+            final action = find.ancestor(
+              of: find.text(label),
+              matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+            );
+            expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
+          }
+          await tester.enterText(
+            find.byType(TextField).first,
+            'edited-demo-account',
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('保存修改'));
+          await tester.pumpAndSettle();
+          expect(find.byType(AlertDialog), findsOneWidget);
+          for (final action
+              in find
+                  .descendant(
+                    of: find.byType(AlertDialog),
+                    matching: find.byWidgetPredicate(
+                      (w) => w is ButtonStyleButton,
+                    ),
+                  )
+                  .evaluate()) {
+            expect(
+              tester.getSize(find.byWidget(action.widget)).height,
+              greaterThanOrEqualTo(48),
+            );
+          }
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await c.close();
+          c.dispose();
+          client.dispose();
+        }
+      },
+      variant: TargetPlatformVariant({platform}),
+    );
+  }
+
+  testWidgets(
+    'unchanged configuration actions are disabled and edits enable them',
+    (tester) async {
+      final client = OfflineDemoClient();
+      final c = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+      );
+      await c.start();
+      try {
+        await open(tester, c);
+        FilledButton save() => tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, '保存修改'),
+        );
+        TextButton discard() =>
+            tester.widget<TextButton>(find.widgetWithText(TextButton, '放弃修改'));
+        expect(save().onPressed, isNull);
+        expect(discard().onPressed, isNull);
+        final account = find.byType(TextField).first;
+        final original = tester.widget<TextField>(account).controller!.text;
+        await tester.enterText(account, 'another-demo-account');
+        await tester.pumpAndSettle();
+        expect(save().onPressed, isNotNull);
+        expect(discard().onPressed, isNotNull);
+        await tester.tap(find.widgetWithText(TextButton, '放弃修改'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(account).controller!.text, original);
+        expect(save().onPressed, isNull);
+        expect(discard().onPressed, isNull);
+        expect(client.operations, isNot(contains('configuration.update')));
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await c.close();
+        c.dispose();
+        client.dispose();
+      }
+    },
+  );
+
   testWidgets('keyboard and toolbar reject multiline credential paste intact', (
     tester,
   ) async {
@@ -60,10 +163,7 @@ void main() {
             .ancestor(of: field, matching: find.byType(MergeSemantics))
             .first;
         final node = tester.getSemantics(semanticField);
-        expect(
-          node.getSemanticsData().flagsCollection.isTextField,
-          isTrue,
-        );
+        expect(node.getSemanticsData().flagsCollection.isTextField, isTrue);
         expect(
           node.getSemanticsData().hasAction(SemanticsAction.setText),
           isTrue,
@@ -93,6 +193,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.widget<TextField>(field).controller!.text, before);
       }
+      await tester.pump();
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       expect(client.operations, isNot(contains('configuration.update')));
@@ -128,6 +229,7 @@ void main() {
           final secret = password ? invalid : 'valid-password!';
           await tester.enterText(find.byType(TextField).first, username);
           await tester.enterText(find.byType(TextField).last, secret);
+          await tester.pump();
           await tester.tap(find.text('保存修改'));
           await tester.pumpAndSettle();
           expect(find.textContaining('仅允许英文字母、数字和半角符号'), findsOneWidget);
@@ -188,6 +290,7 @@ void main() {
         hasLength(initialUpdates),
       );
       await tester.enterText(find.byType(TextField).last, 'new-password!');
+      await tester.pump();
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       expect(find.textContaining('仅允许英文字母、数字和半角符号'), findsNothing);
@@ -223,16 +326,19 @@ void main() {
       await c.start();
       try {
         await open(tester, c);
+        await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pump();
         expect(find.byType(AlertDialog), findsNothing);
         expect(client.operations, isNot(contains('configuration.update')));
         expect(find.byType(TextField), findsNWidgets(2));
         await tester.enterText(find.byType(TextField).last, 'temporary');
+        await tester.pump();
         await tester.tap(find.text('放弃修改'));
         await tester.pump();
         expect(find.byType(TextField), findsNWidgets(2));
         await tester.enterText(find.byType(TextField).first, 'changed');
+        await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         final active = scenario != 'suspended';
@@ -260,6 +366,7 @@ void main() {
               .text,
           'changed',
         );
+        await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         await tester.tap(find.text(active ? '保存并重新连接' : '保存并连接'));
@@ -302,6 +409,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(c.snapshot!.configurations, isEmpty);
       await tester.ensureVisible(find.text('保存修改'));
+      await tester.pump();
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('保存'));
@@ -374,6 +482,7 @@ void main() {
           find.byType(TextField).last,
           'retained-password',
         );
+        await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('保存并重新连接'));

@@ -55,7 +55,6 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
   late final GuiController _controller;
   late final SchoolAnnouncementController _announcements;
   final _navigator = GlobalKey<NavigatorState>();
-  final _previewNavigator = GlobalKey<NavigatorState>();
   Size _previewSize = const Size(400, 690);
   String _scenario = 'authenticated';
 
@@ -70,9 +69,7 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
     _announcements = SchoolAnnouncementController(
       preferences: _appearance,
       desktop: DesktopPresence.disabled(),
-      window: _OfflineAnnouncementWindow(
-        kIsWeb ? _previewNavigator : _navigator,
-      ),
+      window: _OfflineAnnouncementWindow(_navigator),
       notifications: SchoolAnnouncementNotifications.disabled(),
       startedAt: DateTime.now(),
     );
@@ -90,8 +87,10 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
       _controller.connectionPresentation,
       dark: Theme.of(context).brightness == Brightness.dark,
     );
+    final overlayContext = _navigator.currentState?.overlay?.context;
+    if (overlayContext == null) return;
     await showDialog<void>(
-      context: context,
+      context: overlayContext,
       builder: (dialogContext) => Dialog(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(10),
@@ -143,246 +142,260 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: mode,
-        home: SidraviaWindowFrame(
+        onGenerateRoute: (_) => _PreviewPageRoute(
+          builder: (context) => SidraviaWindowFrame(
+            child: SidraviaShell(
+              controller: _controller,
+              announcements: _announcements,
+              createIntegrationManager: _OfflineInstallationManager.new,
+            ),
+          ),
+        ),
+        builder: (context, navigator) => _DemoOverlay(
           child: Column(
             children: [
-              Material(
-                key: const ValueKey('demo-tools'),
-                color: const Color(0xFFFFF3CF),
-                textStyle: const TextStyle(
-                  fontFamily: 'HarmonyOS Sans',
-                  color: AppColors.inkLight,
-                ),
-                child: SafeArea(
-                  bottom: false,
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: AnimatedBuilder(
-                        animation: _client,
-                        builder: (context, _) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              height:
-                                  MediaQuery.textScalerOf(context).scale(12) *
-                                  1.2,
-                              child: const Tooltip(
-                                message: '离线演示 · 勿输入真实账号或密码',
-                                child: Text(
-                                  '离线演示 · 勿输入真实账号或密码',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    height: 1.2,
-                                    fontWeight: FontWeight.w700,
+              Theme(
+                data: AppTheme.light(),
+                child: Material(
+                  key: const ValueKey('demo-tools'),
+                  color: const Color(0xFFFFF3CF),
+                  textStyle: const TextStyle(
+                    fontFamily: 'HarmonyOS Sans',
+                    color: AppColors.inkLight,
+                  ),
+                  child: SafeArea(
+                    bottom: false,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: AnimatedBuilder(
+                          animation: _client,
+                          builder: (context, _) => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.textScalerOf(context).scale(12) *
+                                    1.2,
+                                child: const Tooltip(
+                                  message: '离线演示 · 勿输入真实账号或密码',
+                                  child: Text(
+                                    '离线演示 · 勿输入真实账号或密码',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      height: 1.2,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            SizedBox(
-                              height:
-                                  MediaQuery.textScalerOf(context).scale(11) *
-                                  1.2 *
-                                  2,
-                              child: Tooltip(
-                                message: _client.feedback,
-                                child: Text(
-                                  _client.feedback,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    height: 1.2,
+                              const SizedBox(height: 2),
+                              SizedBox(
+                                height:
+                                    MediaQuery.textScalerOf(context).scale(11) *
+                                    1.2 *
+                                    2,
+                                child: Tooltip(
+                                  message: _client.feedback,
+                                  child: Text(
+                                    _client.feedback,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      height: 1.2,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            SizedBox(
-                              height: 48,
-                              child: ScrollConfiguration(
-                                behavior: ScrollConfiguration.of(context)
-                                    .copyWith(scrollbars: false),
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Row(
-                                    spacing: 8,
-                                    children: [
-                                      if (kIsWeb)
-                                        PopupMenuButton<Size>(
-                                          tooltip: '预览窗口尺寸',
-                                          onSelected: (size) => setState(
-                                            () => _previewSize = size,
+                              SizedBox(
+                                height: 48,
+                                child: ScrollConfiguration(
+                                  behavior: ScrollConfiguration.of(context)
+                                      .copyWith(scrollbars: false),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      spacing: 8,
+                                      children: [
+                                        if (kIsWeb)
+                                          _DemoMenu<Size>(
+                                            tooltip: '预览窗口尺寸',
+                                            onSelected: (size) => setState(
+                                              () => _previewSize = size,
+                                            ),
+                                            itemBuilder: (_) => const [
+                                              PopupMenuItem(
+                                                value: Size(400, 690),
+                                                child: Text('400 × 690 · 桌面窗口'),
+                                              ),
+                                              PopupMenuItem(
+                                                value: Size(720, 690),
+                                                child: Text('720 × 690 · 宽窗口'),
+                                              ),
+                                            ],
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(6),
+                                              child: Text(
+                                                '窗口：${_previewSize.width.toInt()} × ${_previewSize.height.toInt()}',
+                                              ),
+                                            ),
                                           ),
-                                          itemBuilder: (_) => const [
-                                            PopupMenuItem(
-                                              value: Size(400, 690),
-                                              child: Text('400 × 690 · 桌面窗口'),
+                                        TextButton(
+                                          onPressed: () =>
+                                              _showTrayPreview(context),
+                                          child: const Text('离线托盘预览'),
+                                        ),
+                                        if (Theme.of(context).platform ==
+                                            TargetPlatform.windows)
+                                          TextButton(
+                                            onPressed: () async {
+                                              String text;
+                                              try {
+                                                text =
+                                                    const JsonEncoder.withIndent(
+                                                      '  ',
+                                                    ).convert(
+                                                      await SidraviaWindowCommands.diagnostics(),
+                                                    );
+                                              } catch (error) {
+                                                text = 'Windows 窗口诊断不可用：$error';
+                                              }
+                                              if (!mounted) return;
+                                              final overlayContext = _navigator
+                                                  .currentState
+                                                  ?.overlay
+                                                  ?.context;
+                                              if (overlayContext == null ||
+                                                  !overlayContext.mounted) {
+                                                return;
+                                              }
+                                              await showDialog<void>(
+                                                context: overlayContext,
+                                                builder: (dialogContext) =>
+                                                    AlertDialog(
+                                                      title: const Text(
+                                                        '原生窗口诊断（只读）',
+                                                      ),
+                                                      content:
+                                                          SingleChildScrollView(
+                                                            child:
+                                                                SelectableText(
+                                                                  text,
+                                                                ),
+                                                          ),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed: () =>
+                                                              Clipboard.setData(
+                                                                ClipboardData(
+                                                                  text: text,
+                                                                ),
+                                                              ),
+                                                          child: const Text(
+                                                            '复制诊断',
+                                                          ),
+                                                        ),
+                                                        TextButton(
+                                                          onPressed: () =>
+                                                              Navigator.pop(
+                                                                dialogContext,
+                                                              ),
+                                                          child: const Text(
+                                                            '关闭',
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                              );
+                                            },
+                                            child: const Text(
+                                              '窗口诊断',
+                                              style: TextStyle(fontSize: 11),
                                             ),
-                                            PopupMenuItem(
-                                              value: Size(720, 690),
-                                              child: Text('720 × 690 · 宽窗口'),
-                                            ),
+                                          ),
+                                        _DemoMenu<String>(
+                                          tooltip: '演示场景',
+                                          onSelected: (value) async {
+                                            _client.selectScenario(value);
+                                            await _controller.start();
+                                            if (mounted) {
+                                              setState(() => _scenario = value);
+                                            }
+                                          },
+                                          itemBuilder: (context) => [
+                                            for (final entry in const {
+                                              'authenticated': '已连接',
+                                              'authenticated_business':
+                                                  '已连接 · 账户业务',
+                                              'suspended': '未连接',
+                                              'authenticating': '正在认证',
+                                              'waiting_for_network': '等待网络',
+                                              'waiting_before_retry': '等待重试',
+                                              'blocked_by_error': '认证失败',
+                                              'empty': '尚未配置',
+                                            }.entries)
+                                              PopupMenuItem(
+                                                value: entry.key,
+                                                child: Text(entry.value),
+                                              ),
                                           ],
                                           child: Padding(
                                             padding: const EdgeInsets.all(6),
                                             child: Text(
-                                              '窗口：${_previewSize.width.toInt()} × ${_previewSize.height.toInt()}',
+                                              '场景：$_scenario',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      TextButton(
-                                        onPressed: () =>
-                                            _showTrayPreview(context),
-                                        child: const Text('离线托盘预览'),
-                                      ),
-                                      if (Theme.of(context).platform ==
-                                          TargetPlatform.windows)
-                                        TextButton(
-                                          onPressed: () async {
-                                            String text;
-                                            try {
-                                              text =
-                                                  const JsonEncoder.withIndent(
-                                                    '  ',
-                                                  ).convert(
-                                                    await SidraviaWindowCommands.diagnostics(),
-                                                  );
-                                            } catch (error) {
-                                              text = 'Windows 窗口诊断不可用：$error';
-                                            }
-                                            if (!context.mounted) return;
-                                            await showDialog<void>(
-                                              context: context,
-                                              builder: (dialogContext) =>
-                                                  AlertDialog(
-                                                    title: const Text(
-                                                      '原生窗口诊断（只读）',
-                                                    ),
-                                                    content:
-                                                        SingleChildScrollView(
-                                                          child: SelectableText(
-                                                            text,
-                                                          ),
-                                                        ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Clipboard.setData(
-                                                              ClipboardData(
-                                                                text: text,
-                                                              ),
-                                                            ),
-                                                        child: const Text(
-                                                          '复制诊断',
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              dialogContext,
-                                                            ),
-                                                        child: const Text('关闭'),
-                                                      ),
-                                                    ],
-                                                  ),
-                                            );
-                                          },
-                                          child: const Text(
-                                            '窗口诊断',
-                                            style: TextStyle(fontSize: 11),
-                                          ),
-                                        ),
-                                      PopupMenuButton<String>(
-                                        tooltip: '演示场景',
-                                        onSelected: (value) async {
-                                          _client.selectScenario(value);
-                                          await _controller.start();
-                                          if (mounted) {
-                                            setState(() => _scenario = value);
-                                          }
-                                        },
-                                        itemBuilder: (context) => [
-                                          for (final entry in const {
-                                            'authenticated': '已连接',
-                                            'authenticated_business':
-                                                '已连接 · 账户业务',
-                                            'suspended': '未连接',
-                                            'authenticating': '正在认证',
-                                            'waiting_for_network': '等待网络',
-                                            'waiting_before_retry': '等待重试',
-                                            'blocked_by_error': '认证失败',
-                                            'empty': '尚未配置',
-                                          }.entries)
+                                        _DemoMenu<ThemeMode>(
+                                          tooltip: '演示外观',
+                                          onSelected: (value) =>
+                                              _appearance.value = value,
+                                          itemBuilder: (context) => const [
                                             PopupMenuItem(
-                                              value: entry.key,
-                                              child: Text(entry.value),
+                                              value: ThemeMode.system,
+                                              child: Text('跟随系统'),
                                             ),
-                                        ],
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(6),
-                                          child: Text(
-                                            '场景：$_scenario',
-                                            style: const TextStyle(
-                                              fontSize: 11,
+                                            PopupMenuItem(
+                                              value: ThemeMode.light,
+                                              child: Text('浅色'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: ThemeMode.dark,
+                                              child: Text('深色'),
+                                            ),
+                                          ],
+                                          child: const Padding(
+                                            padding: EdgeInsets.all(6),
+                                            child: Text(
+                                              '演示外观',
+                                              style: TextStyle(fontSize: 11),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      PopupMenuButton<ThemeMode>(
-                                        tooltip: '演示外观',
-                                        onSelected: (value) =>
-                                            _appearance.value = value,
-                                        itemBuilder: (context) => const [
-                                          PopupMenuItem(
-                                            value: ThemeMode.system,
-                                            child: Text('跟随系统'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: ThemeMode.light,
-                                            child: Text('浅色'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: ThemeMode.dark,
-                                            child: Text('深色'),
-                                          ),
-                                        ],
-                                        child: const Padding(
-                                          padding: EdgeInsets.all(6),
-                                          child: Text(
-                                            '演示外观',
-                                            style: TextStyle(fontSize: 11),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-              Expanded(
-                child: _previewStage(
-                  context,
-                  SidraviaShell(
-                    controller: _controller,
-                    announcements: _announcements,
-                    createIntegrationManager: _OfflineInstallationManager.new,
-                  ),
-                ),
-              ),
+              Expanded(child: _previewStage(context, navigator!)),
             ],
           ),
         ),
@@ -423,15 +436,7 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                       builder: (context, constraints) => MediaQuery(
                         data: MediaQuery.of(context)
                             .copyWith(size: constraints.biggest),
-                        child: Navigator(
-                          key: _previewNavigator,
-                          onGenerateRoute: (_) => _PreviewPageRoute(
-                            builder: (context) => Material(
-                              color: Theme.of(context).colorScheme.surface,
-                              child: child,
-                            ),
-                          ),
-                        ),
+                        child: child,
                       ),
                     ),
                   ),
@@ -445,12 +450,70 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
   }
 }
 
-/// The preview's base route has no previous app route to block. Omitting its
-/// modal barrier keeps the developer toolbar accessible outside this Navigator.
+/// Leave the developer controls accessible outside the app's base route.
 class _PreviewPageRoute extends MaterialPageRoute<void> {
   _PreviewPageRoute({required super.builder});
   @override
   Widget buildModalBarrier() => const SizedBox.shrink();
+}
+
+/// Toolbar tooltips and menus use the full browser overlay, independently of
+/// the app Navigator confined to the simulated window.
+class _DemoOverlay extends StatefulWidget {
+  const _DemoOverlay({required this.child});
+  final Widget child;
+  @override
+  State<_DemoOverlay> createState() => _DemoOverlayState();
+}
+
+class _DemoOverlayState extends State<_DemoOverlay> {
+  late final _entry = OverlayEntry(builder: (_) => widget.child);
+  @override
+  void didUpdateWidget(covariant _DemoOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _entry.markNeedsBuild();
+  }
+
+  @override
+  void dispose() {
+    _entry.remove();
+    _entry.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Overlay(initialEntries: [_entry]);
+}
+
+class _DemoMenu<T> extends StatelessWidget {
+  const _DemoMenu({
+    required this.tooltip,
+    required this.onSelected,
+    required this.itemBuilder,
+    required this.child,
+  });
+  final String tooltip;
+  final ValueChanged<T> onSelected;
+  final PopupMenuItemBuilder<T> itemBuilder;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    menuChildren: [
+      for (final item in itemBuilder(context))
+        if (item is PopupMenuItem<T>)
+          MenuItemButton(
+            onPressed: item.enabled ? () => onSelected(item.value as T) : null,
+            child: item.child,
+          ),
+    ],
+    builder: (context, menu, _) => Tooltip(
+      message: tooltip,
+      child: TextButton(
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        child: child,
+      ),
+    ),
+  );
 }
 
 /// In-memory visual preview; never invokes system integration tools.

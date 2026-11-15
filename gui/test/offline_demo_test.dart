@@ -2,6 +2,7 @@ import 'school_announcement_controller_test.dart' as school_dispatch;
 
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/interactive_demo_main.dart';
@@ -14,6 +15,44 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
+  testWidgets('native demo modal blocks window controls until dismissed', (
+    tester,
+  ) async {
+    final calls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SidraviaWindowCommands.channel,
+      (call) async {
+        calls.add(call.method);
+        return call.method == 'configureFrame'
+            ? {'maximized': false, 'customFrame': true}
+            : null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SidraviaWindowCommands.channel,
+        null,
+      ),
+    );
+    await tester.pumpWidget(const OfflineDemoApp());
+    await tester.pumpAndSettle();
+    final point = tester.getCenter(find.byTooltip('最小化'));
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('关于 Sidravia'));
+    await tester.tap(find.text('关于 Sidravia'));
+    await tester.pumpAndSettle();
+    expect(find.text('许可'), findsOneWidget);
+    await tester.tapAt(point);
+    await tester.pumpAndSettle();
+    expect(calls, isNot(contains('minimize')));
+    expect(find.text('许可'), findsNothing);
+    await tester.tapAt(point);
+    await tester.pumpAndSettle();
+    expect(calls.where((call) => call == 'minimize'), hasLength(1));
+    await tester.pumpWidget(const SizedBox.shrink());
+  }, variant: TargetPlatformVariant({TargetPlatform.linux}));
+
   test(
     'offline account scenario supplies a snapshot and clears on switching',
     () async {
@@ -251,6 +290,7 @@ void main() {
       expect(find.byType(ConfigurationPage), findsOneWidget);
       await tester.enterText(find.byType(TextField).first, 'demo-student02');
       await tester.ensureVisible(find.text('保存修改'));
+      await tester.pump();
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
       expect(find.text('保存连接配置？'), findsOneWidget);

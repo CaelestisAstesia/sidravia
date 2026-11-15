@@ -104,6 +104,7 @@ void main() {
       expect(tester.widget<DesignInputRow>(row).label, '密码');
       await tester.enterText(find.byType(TextField).first, 'draft');
       await tester.ensureVisible(find.text('放弃修改'));
+      await tester.pump();
       await tester.tap(find.text('放弃修改'));
       await tester.pumpAndSettle();
       expect(find.text('已放弃修改'), findsOneWidget);
