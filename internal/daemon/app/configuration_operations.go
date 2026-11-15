@@ -227,7 +227,7 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 
 // validateConfigurationCandidate is write-only validation of public candidate
 // data. It never resolves stored credentials or creates a protocol Run, and
-// leaves legacy read-only enrichment unchanged.
+// leaves stored-row inspection to the tolerant describeConfiguration path.
 func (application *Application) validateConfigurationCandidate(ctx context.Context, value config.Configuration) error {
 	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
 	if err != nil {

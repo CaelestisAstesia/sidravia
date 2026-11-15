@@ -72,6 +72,10 @@ python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/lin
 | `gui/lib` | Flutter 应用、通信与界面 |
 | `tools/developer`、`tools/build` | 固定验证和发行工具 |
 
+CLI 中，`cli.go` 负责命令装配与分派，`help.go` 保存确定性的帮助规格，`presentation.go` 负责安全呈现。`read_only.go` 是连接已有后台的查询边界；认证、配置和其他命令在各自文件中执行用例，不另持有后台状态。
+
+核心应用层的 `application.go` 负责依赖装配和共享状态边界，`configuration_operations.go` 负责配置写入与关联会话退役，`session_operations.go` 负责会话意图，`read_models.go` 负责可管理的只读视图。它们仍属于同一个 `Application`；文件拆分不新增状态所有者或改变锁顺序。IPC handler 只做契约转换，认证执行继续由 Supervisor、Session 和协议 Run 各自拥有。
+
 继续阅读[架构概览](architecture.md)与[协议适配](protocols.md)。
 
 ## 提交改动

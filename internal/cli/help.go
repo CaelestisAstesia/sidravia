@@ -36,10 +36,8 @@ type helpChild struct {
 	short string
 }
 
-// helpNode is the deterministic Chinese help specification for one command.
-// The CLI presentation boundary owns it; later packages extend the same
-// specification for new daemon and Session leaves instead of regenerating
-// Cobra defaults.
+// helpNode describes one command's deterministic Chinese help. The
+// presentation layer renders this specification instead of Cobra defaults.
 type helpNode struct {
 	description string
 	usage       []string

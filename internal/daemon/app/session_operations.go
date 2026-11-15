@@ -79,16 +79,10 @@ func (application *Application) startConfigurationAuthentication(ctx context.Con
 	return SessionStartResult{SessionID: sessionID, Snapshot: snapshot, Outcome: SessionStartCreated}, nil
 }
 
-// StartOneShotAuthentication starts a one-shot authentication session from a
-// typed request that carries its own credential. It serializes with the
-// existing start/delete operation boundary, resolves the typed input, and
-// starts the session through the Supervisor with MaintainAuthentication.
-//
-// The started session is not owned by any Configuration, so it is not tracked
-// in sessionsByConfig. StopSession and GetSession work unchanged with the
-// returned ID, and the existing single-active admission rule rejects a second
-// active one-shot or persisted start. If resolution or Supervisor start fails,
-// no session or configuration tracking entry remains.
+// StartOneShotAuthentication starts an ad hoc session with request-supplied
+// credentials and the existing MaintainAuthentication intent. It uses the
+// same serialized, single-active admission boundary as persisted starts.
+// The session has no Configuration owner; failures leave no new association.
 func (application *Application) StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error) {
 	application.operationMu.Lock()
 	defer application.operationMu.Unlock()

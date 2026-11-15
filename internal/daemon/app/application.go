@@ -18,9 +18,11 @@ type Application struct {
 	profiles               *config.ProfileCatalog
 	authenticationResolver *AuthenticationResolver
 	supervisor             *supervisor.Supervisor
-	sessionIndexMu         sync.Mutex
-	operationMu            sync.Mutex // serializes configuration and Session operations
-	sessionsByConfig       map[config.ConfigurationID]session.AuthenticationSessionID
+	// operationMu serializes configuration/session operations and coherent reads.
+	// Acquire it before sessionIndexMu when both are needed.
+	sessionIndexMu   sync.Mutex // protects sessionsByConfig; released before Supervisor calls
+	operationMu      sync.Mutex
+	sessionsByConfig map[config.ConfigurationID]session.AuthenticationSessionID
 	// reconnectByConfig records the immutable policy captured by the tracked Session.
 	reconnectByConfig map[config.ConfigurationID]bool          // owned by operationMu
 	invalidSessions   map[session.AuthenticationSessionID]bool // owned by operationMu; never reuse a retired runtime

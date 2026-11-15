@@ -156,10 +156,6 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 				return errors.New("--auto-reconnect 需要 true 或 false")
 			}
 		}
-		if update.name == nil && update.profile == nil && update.username == nil && update.autoLogin == nil && update.autoReconnect == nil {
-			// A bare update is completed by the interactive path after it has
-			// fetched the current values.
-		}
 		return wrapCommandOperation(deps.configUpdate(update))
 	}}
 	updateCommand.Flags().StringVar(&update.binding.interfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
@@ -404,6 +400,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		}
 	}
 	return withAuthClient(deps, func(connection daemonClient) error {
+		// Bare updates prompt only after the persisted record is read and validated.
 		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil && policy == nil && !options.protocolOverrideFileSet && !options.clearProtocolOverride {
 			if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
 				return errors.New("非交互式更新需要至少一个更新选项")

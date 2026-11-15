@@ -144,8 +144,9 @@ type OneShotAuthenticationInput struct {
 }
 
 // ResolveOneShot resolves a typed one-shot request into the existing
-// RuntimeDefinition without reading or writing the Configuration Catalog or
-// Catalog. The supplied credential is copied directly into the definition.
+// RuntimeDefinition without accessing saved configurations or credentials.
+// Institution and protocol catalogs still supply public parameters.
+// The supplied credential is copied directly into the definition.
 // The raw protocol override is cloned so the definition does not alias
 // the caller's input.
 func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
