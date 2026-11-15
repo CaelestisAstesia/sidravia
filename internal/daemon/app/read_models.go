@@ -90,18 +90,18 @@ func (application *Application) ListSessionView(ctx context.Context) (SessionLis
 	if err := readModelContextError(ctx); err != nil {
 		return SessionListView{}, err
 	}
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
 	return application.listSessionViewLocked(ctx)
 }
 
-// The caller holds opMu. Future subscription composition can reuse this query
+// The caller holds operationMu. Future subscription composition can reuse this query
 // without recursively acquiring the operation lock.
 func (application *Application) listSessionViewLocked(ctx context.Context) (SessionListView, error) {
 	if err := readModelContextError(ctx); err != nil {
 		return SessionListView{}, err
 	}
-	snapshots, err := application.sup.List(ctx)
+	snapshots, err := application.supervisor.List(ctx)
 	if err != nil {
 		return SessionListView{}, errors.Join(err, context.Cause(ctx))
 	}

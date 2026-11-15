@@ -15,7 +15,7 @@ import (
 
 // LatestSystemNetworkSnapshot delegates to the sole accepted-facts owner.
 func (application *Application) LatestSystemNetworkSnapshot(ctx context.Context) (environment.Snapshot, bool, error) {
-	return application.sup.LatestSystemNetworkSnapshot(ctx)
+	return application.supervisor.LatestSystemNetworkSnapshot(ctx)
 }
 
 func networkInterfacesResult(snapshot environment.Snapshot, available bool) contract.NetworkInterfacesResult {

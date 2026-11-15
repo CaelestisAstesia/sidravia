@@ -73,7 +73,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			if err != nil {
 				return failure(contract.ErrorCodeMaintenance)
 			}
-			application.opMu.Lock()
+			application.operationMu.Lock()
 			view, err := application.listSessionViewLocked(ctx)
 			intent := update.RestoreIntent{Mode: string(options.Mode)}
 			for _, s := range view.Sessions {
@@ -92,7 +92,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			if err == nil {
 				application.maintenanceActive.Store(true)
 			}
-			application.opMu.Unlock()
+			application.operationMu.Unlock()
 			if err != nil {
 				close()
 				return failure(contract.ErrorCodeMaintenance)

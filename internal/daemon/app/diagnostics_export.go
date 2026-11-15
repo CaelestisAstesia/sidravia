@@ -25,8 +25,8 @@ func (application *Application) ExportDiagnostics(ctx context.Context, productVe
 	if ctx.Err() != nil {
 		return contract.DiagnosticsExportResult{}, errors.Join(ctx.Err(), context.Cause(ctx))
 	}
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
 	values, err := application.catalog.List(ctx)
 	if err != nil {
 		return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export catalog: %w", errors.Join(err, context.Cause(ctx)))
@@ -35,7 +35,7 @@ func (application *Application) ExportDiagnostics(ctx context.Context, productVe
 	if err != nil {
 		return contract.DiagnosticsExportResult{}, err
 	}
-	snapshots, err := application.sup.List(ctx)
+	snapshots, err := application.supervisor.List(ctx)
 	if err != nil {
 		return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export sessions: %w", errors.Join(err, context.Cause(ctx)))
 	}
@@ -49,13 +49,13 @@ func (application *Application) ExportDiagnostics(ctx context.Context, productVe
 		count = contract.MaximumDiagnosticSessionItems
 	}
 	for _, snapshot := range snapshots[:count] {
-		paired, err := application.sup.GetDiagnosticSnapshot(ctx, snapshot.AuthenticationSessionID)
+		paired, err := application.supervisor.GetDiagnosticSnapshot(ctx, snapshot.AuthenticationSessionID)
 		if err != nil {
 			return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export actor: %w", errors.Join(err, context.Cause(ctx)))
 		}
 		sessions.Items = append(sessions.Items, diagnosticSession(paired, application.invalidSessions[snapshot.AuthenticationSessionID]))
 	}
-	snapshot, available, err := application.sup.LatestSystemNetworkSnapshot(ctx)
+	snapshot, available, err := application.supervisor.LatestSystemNetworkSnapshot(ctx)
 	if err != nil {
 		return contract.DiagnosticsExportResult{}, fmt.Errorf("diagnostic export network: %w", errors.Join(err, context.Cause(ctx)))
 	}

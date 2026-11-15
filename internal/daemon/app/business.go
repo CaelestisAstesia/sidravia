@@ -9,7 +9,7 @@ import (
 )
 
 func (application *Application) GetSessionBusiness(ctx context.Context, id session.AuthenticationSessionID) (session.BusinessSnapshot, error) {
-	return application.sup.GetBusiness(ctx, id)
+	return application.supervisor.GetBusiness(ctx, id)
 }
 
 type businessApplication interface {

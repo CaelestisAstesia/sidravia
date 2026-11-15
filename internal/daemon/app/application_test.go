@@ -313,9 +313,9 @@ func TestConfigurationEnsureErrorPreservesAssociation(t *testing.T) {
 	if err == nil {
 		t.Fatal("ensure after Supervisor close succeeded")
 	}
-	setup.application.mu.Lock()
+	setup.application.sessionIndexMu.Lock()
 	associated := setup.application.sessionsByConfig["configuration-1"]
-	setup.application.mu.Unlock()
+	setup.application.sessionIndexMu.Unlock()
 	if returned.SessionID != "" || associated != started.SessionID {
 		t.Fatalf("ensure error changed association: returned=%#v associated=%q want=%q", returned, associated, started.SessionID)
 	}
@@ -335,9 +335,9 @@ func TestRemoveSessionClearsAssociationButKeepsConfiguration(t *testing.T) {
 	if _, err := setup.catalog.Get(ctx, "configuration-1"); err != nil {
 		t.Fatalf("RemoveSession deleted Configuration: %v", err)
 	}
-	setup.application.mu.Lock()
+	setup.application.sessionIndexMu.Lock()
 	associated := setup.application.sessionsByConfig["configuration-1"]
-	setup.application.mu.Unlock()
+	setup.application.sessionIndexMu.Unlock()
 	if associated != "" {
 		t.Fatalf("RemoveSession retained association %q", associated)
 	}
@@ -367,9 +367,9 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	if configuration.Username != "user" || credential.Username != "user" || credential.Password != "secret" {
 		t.Fatal("aggregate was partially changed after replacement failure")
 	}
-	setup.application.mu.Lock()
+	setup.application.sessionIndexMu.Lock()
 	associated := setup.application.sessionsByConfig["configuration-1"]
-	setup.application.mu.Unlock()
+	setup.application.sessionIndexMu.Unlock()
 	if associated != started.SessionID {
 		t.Fatalf("association changed after failed persistence: %q", associated)
 	}
@@ -598,9 +598,9 @@ func TestPerformAutomaticLoginStartsAutoLoginConfiguration(t *testing.T) {
 	if err := setup.application.PerformAutomaticLogin(ctx); err != nil {
 		t.Fatalf("PerformAutomaticLogin() error = %v", err)
 	}
-	setup.application.mu.Lock()
+	setup.application.sessionIndexMu.Lock()
 	sessionID := setup.application.sessionsByConfig["configuration-1"]
-	setup.application.mu.Unlock()
+	setup.application.sessionIndexMu.Unlock()
 	if sessionID == "" {
 		t.Fatal("auto-login did not start a Session")
 	}

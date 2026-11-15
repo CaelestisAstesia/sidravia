@@ -110,9 +110,9 @@ func TestExportDiagnosticsRealOwnersPrivateAndReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	application.opMu.Lock()
+	application.operationMu.Lock()
 	application.invalidSessions[before[0].AuthenticationSessionID] = true
-	application.opMu.Unlock()
+	application.operationMu.Unlock()
 	readCount, writeCount := store.reads.Load(), store.writes.Load()
 	result, err := application.ExportDiagnostics(ctx, "1.0.0+test", "build-1")
 	if err != nil {

@@ -128,7 +128,7 @@ func TestApplicationStateEmptyFullSessionAndOriginalTerminal(t *testing.T) {
 	}
 }
 
-// The second context check is inside opMu immediately before the first owner
+// The second context check is inside operationMu immediately before the first owner
 // query. It executes real source mutations, without exposing private subs/maps.
 type stateQueryContext struct {
 	context.Context

@@ -21,7 +21,7 @@ func (application *Application) SubscribeStateEvents(ctx context.Context) (contr
 	if err := readModelContextError(ctx); err != nil {
 		return contract.StateBootstrap{}, nil, err
 	}
-	source, err := application.sup.Subscribe()
+	source, err := application.supervisor.Subscribe()
 	if err != nil {
 		return contract.StateBootstrap{}, nil, err
 	}
@@ -31,13 +31,13 @@ func (application *Application) SubscribeStateEvents(ctx context.Context) (contr
 			source.Close()
 		}
 	}()
-	application.opMu.Lock()
-	defer application.opMu.Unlock()
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
 	view, err := application.listSessionViewLocked(ctx)
 	if err != nil {
 		return contract.StateBootstrap{}, nil, err
 	}
-	network, available, err := application.sup.LatestSystemNetworkSnapshot(ctx)
+	network, available, err := application.supervisor.LatestSystemNetworkSnapshot(ctx)
 	if err != nil {
 		return contract.StateBootstrap{}, nil, errors.Join(err, readModelContextError(ctx))
 	}
@@ -98,9 +98,9 @@ func (stream *applicationStateStream) Next(ctx context.Context) (contract.StateE
 	value := contract.StateEvent{Method: string(event.Kind)}
 	switch event.Kind {
 	case supervisor.StateSessionChanged:
-		stream.application.opMu.Lock()
+		stream.application.operationMu.Lock()
 		cleanup := stream.application.invalidSessions[event.SessionID]
-		stream.application.opMu.Unlock()
+		stream.application.operationMu.Unlock()
 		value.SessionChanged = &contract.SessionChangedPayload{Session: toSessionResult(event.Snapshot), CleanupRequired: cleanup}
 	case supervisor.StateSessionRemoved:
 		value.SessionRemoved = &contract.SessionRemovedPayload{SessionID: string(event.SessionID), Revision: event.Revision}

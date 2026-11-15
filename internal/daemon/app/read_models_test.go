@@ -196,10 +196,10 @@ func TestSessionListViewOwnershipContextAndFilteredCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup.application.opMu.Lock()
+	setup.application.operationMu.Lock()
 	setup.application.invalidSessions["stale-no-actor"] = true
 	setup.application.invalidSessions[started.SessionID] = true
-	setup.application.opMu.Unlock()
+	setup.application.operationMu.Unlock()
 	view, err := setup.application.ListSessionView(ctx)
 	if err != nil || len(view.Sessions) != 1 || len(view.CleanupRequiredSessionIDs) != 1 || view.CleanupRequiredSessionIDs[0] != started.SessionID {
 		t.Fatal("cleanup projection includes stale ID")
@@ -221,9 +221,9 @@ func TestSessionListViewOwnershipContextAndFilteredCleanup(t *testing.T) {
 	if err != nil || fresh.Sessions[0].AuthenticationSessionID != started.SessionID || fresh.CleanupRequiredSessionIDs[0] != started.SessionID || !reflect.DeepEqual(fresh.Sessions[0], actor) {
 		t.Fatal("returned mutable clone aliases owner")
 	}
-	setup.application.opMu.Lock()
+	setup.application.operationMu.Lock()
 	locked, err := setup.application.listSessionViewLocked(ctx)
-	setup.application.opMu.Unlock()
+	setup.application.operationMu.Unlock()
 	if err != nil || !reflect.DeepEqual(locked, fresh) {
 		t.Fatal("already-locked composition changed observation")
 	}
