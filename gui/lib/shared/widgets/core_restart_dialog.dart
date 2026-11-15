@@ -2,6 +2,15 @@ import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 
+String? coreRestartUnavailableReason(GuiController controller) {
+  if (controller.canRestartCore) return null;
+  if (!controller.supportsCoreRestart) return '当前环境不支持重启核心';
+  if (controller.busy) return '正在处理其他操作';
+  if (controller.state != GuiConnectionState.ready) return '请先连接后台服务';
+  if ((controller.snapshot?.sessions.length ?? 0) > 1) return '多个会话暂不可重启';
+  return '当前状态暂不可重启';
+}
+
 Future<void> confirmCoreRestart(
   BuildContext context,
   GuiController controller,

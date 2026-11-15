@@ -114,11 +114,14 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       subtitle:
           _error ??
           (status?.autostart == 'conflict'
-              ? '任务存在冲突，未修改\n启用前，建议关闭其他认证器及其开机自启'
-              : (status?.autostartNotice ??
-                    (status?.daemonAutostartSupported == false
-                        ? '登录桌面会话后启动；Linux 暂不支持仅后台自启'
-                        : '启用前，建议关闭其他认证器及其开机自启'))),
+                  ? '任务存在冲突，未修改\n启用前，建议关闭其他认证器及其开机自启'
+                  : (status?.autostartNotice ??
+                        (status?.daemonAutostartSupported == false
+                            ? '登录桌面会话后启动；Linux 暂不支持仅后台自启'
+                            : '启用前，建议关闭其他认证器及其开机自启'))) +
+              (status != null && !status.guiAvailable
+                  ? '\n图形程序不可用，无法启动到托盘'
+                  : ''),
       trailing: SettingsDropdown<String>(
         frameKey: const ValueKey('autostart-frame'),
         dropdownKey: const ValueKey('autostart-selector'),

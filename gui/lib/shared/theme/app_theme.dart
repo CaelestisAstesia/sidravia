@@ -153,7 +153,8 @@ abstract final class AppTheme {
         minTileHeight: DesignMetrics.rowMinHeight,
         minVerticalPadding: DesignMetrics.rowPadding,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
           fontFamily: 'HarmonyOS Sans',
           fontSize: DesignMetrics.bodyFont,
           height: 19 / 13,

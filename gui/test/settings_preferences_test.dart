@@ -73,6 +73,7 @@ void main() {
         final toggle = find.byKey(const ValueKey('start-hidden-switch'));
         expect(tester.widget<DesignSwitch>(toggle).value, true);
         expect(tester.widget<DesignSwitch>(toggle).onChanged == null, !enabled);
+        expect(find.text('托盘当前不可用'), enabled ? findsNothing : findsNWidgets(2));
         if (enabled) {
           await tester.ensureVisible(toggle);
           await tester.tap(toggle);

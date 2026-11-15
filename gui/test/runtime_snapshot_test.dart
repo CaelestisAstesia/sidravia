@@ -7,6 +7,7 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/advanced/snapshot_code_view.dart';
 import 'package:sidravia_gui/features/advanced/runtime_snapshot.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
@@ -157,12 +158,50 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      String shown() => tester
-          .widget<SelectableText>(
-            find.byKey(const ValueKey('runtime-snapshot-text')),
-          )
-          .data!;
+      String shown() => displayedSnapshotText(tester);
       final initial = shown();
+      await tester.enterText(find.byType(TextField), 'business');
+      await tester.pumpAndSettle();
+      expect(shown(), initial);
+      expect(find.text('1 / 1'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'business',
+      );
+      expect(find.text('1 / 1'), findsOneWidget);
+      final codeScroll = tester.widget<SingleChildScrollView>(
+        find.descendant(
+          of: find.byType(SnapshotCodeView),
+          matching: find.byType(SingleChildScrollView),
+        ),
+      );
+      expect(codeScroll.controller!.position.pixels, greaterThan(0));
+      await tester.tap(find.byTooltip('复制快照'));
+      await tester.pumpAndSettle();
+      expect(copied, initial);
+      await tester.enterText(find.byType(TextField), 'nonexistent-field');
+      await tester.pumpAndSettle();
+      expect(find.text('未找到匹配项'), findsOneWidget);
+      expect(shown(), initial);
+      await tester.tap(find.byTooltip('清除查找'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'id');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.keyboard_arrow_down),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.byTooltip('下一个匹配项'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('2 /'), findsOneWidget);
+      expect(shown(), initial);
+      await tester.tap(find.byTooltip('清除查找'));
+      await tester.pumpAndSettle();
       client.selectScenario('suspended');
       await controller.retry();
       await tester.pumpAndSettle();

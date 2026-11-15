@@ -11,7 +11,7 @@ class FakeManager implements InstallationManager {
   bool closed = false, path = false;
   IntegrationChange? lastChange;
   Completer<IntegrationStatus>? pending;
-  bool fail = false;
+  bool fail = false, guiAvailable = true;
   @override
   Future<IntegrationStatus> status() async {
     reads++;
@@ -20,7 +20,7 @@ class FakeManager implements InstallationManager {
     return IntegrationStatus(
       pathEnabled: path,
       autostart: 'disabled',
-      guiAvailable: true,
+      guiAvailable: guiAvailable,
     );
   }
 
@@ -37,6 +37,29 @@ class FakeManager implements InstallationManager {
 }
 
 void main() {
+  testWidgets('unavailable GUI explains and disables tray autostart', (
+    tester,
+  ) async {
+    final manager = FakeManager()..guiAvailable = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: IntegrationSettings(manager: manager)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('图形程序不可用，无法启动到托盘'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('autostart-selector')));
+    await tester.pumpAndSettle();
+    final option = tester.widget<MenuItemButton>(
+      find.widgetWithText(MenuItemButton, '启动到托盘'),
+    );
+    expect(option.onPressed, isNull);
+    expect(manager.lastChange, isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(manager.closed, isTrue);
+  });
+
   test('status rejects unknown, failed and incompatible documents', () {
     for (final data in [
       '{}',

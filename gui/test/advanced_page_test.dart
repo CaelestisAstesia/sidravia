@@ -28,6 +28,8 @@ void main() {
     expect(find.text('刷新网络诊断'), findsNothing);
     expect(find.text('执行有限 IP 探测'), findsNothing);
     expect(find.byTooltip('复制快照'), findsOneWidget);
+    expect(find.text('当前环境不支持重启核心'), findsOneWidget);
+    expect(find.text('当前环境无法打开本机目录'), findsOneWidget);
     controller.dispose();
   });
 

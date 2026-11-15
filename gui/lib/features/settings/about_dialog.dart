@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/features/settings/license_browser.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
@@ -65,43 +65,5 @@ Future<void> showSidraviaAbout(
 
 Future<void> _showLicenses(BuildContext context) => showDialog<void>(
   context: context,
-  builder: (context) => DesignDialog.information(
-    title: '开源许可',
-    body: FutureBuilder<List<LicenseEntry>>(
-      future: LicenseRegistry.licenses.toList(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return const Center(child: Text('许可加载失败'));
-        final entries = snapshot.data;
-        if (entries == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return ListView.builder(
-          shrinkWrap: true,
-          itemCount: entries.length,
-          itemBuilder: (context, index) {
-            final entry = entries[index];
-            return ListTile(
-              title: Text(
-                entry.packages.join(', '),
-                style: const TextStyle(fontSize: 13),
-              ),
-              trailing: const Icon(Icons.chevron_right, size: 18),
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (context) => DesignDialog.information(
-                  title: entry.packages.join(', '),
-                  body: SingleChildScrollView(
-                    child: SelectableText(
-                      entry.paragraphs.map((p) => p.text).join('\n\n'),
-                      style: const TextStyle(fontSize: 12, height: 1.5),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    ),
-  ),
+  builder: (context) => const LicenseBrowser(),
 );

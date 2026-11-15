@@ -3,6 +3,7 @@ import 'package:sidravia_gui/features/settings/about_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
@@ -36,6 +37,11 @@ class SettingsPage extends StatelessWidget {
     final mode = appearance?.value ?? ThemeMode.system;
     final desktopEnabled =
         appearance != null && (desktopPresence?.enabled ?? false);
+    final preferencesReason = appearance == null ? '设置尚未就绪' : null;
+    final trayReason = preferencesReason ?? (kIsWeb ? '浏览器预览不支持托盘' : '托盘当前不可用');
+    final connectionReason = shortUiText(
+      controller.capabilities.settingsDisabledReason ?? '请先添加连接配置',
+    );
     Widget applicationGroup({Widget? autostart, Widget? path}) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -45,6 +51,7 @@ class SettingsPage extends StatelessWidget {
             DesignRow(
               key: const ValueKey('appearance-row'),
               title: '外观模式',
+              subtitle: preferencesReason,
               trailing: AppearanceSelector(
                 value: mode,
                 onChanged: appearance == null
@@ -54,6 +61,7 @@ class SettingsPage extends StatelessWidget {
             ),
             DesignRow(
               title: '通知提醒',
+              subtitle: preferencesReason,
               trailing: SettingsDropdown<GuiNotificationMode>(
                 frameKey: const ValueKey('notification-mode-frame'),
                 dropdownKey: const ValueKey('notification-mode-selector'),
@@ -80,6 +88,7 @@ class SettingsPage extends StatelessWidget {
             DesignRow(
               key: const ValueKey('start-hidden-row'),
               title: '启动时隐藏到托盘',
+              subtitle: desktopEnabled ? null : trayReason,
               trailing: DesignSwitch(
                 key: const ValueKey('start-hidden-switch'),
                 label: '启动时隐藏到托盘',
@@ -91,6 +100,7 @@ class SettingsPage extends StatelessWidget {
             ),
             DesignRow(
               title: '关闭主窗口',
+              subtitle: desktopEnabled ? null : trayReason,
               trailing: SettingsDropdown<GuiCloseBehavior>(
                 frameKey: const ValueKey('close-behavior-frame'),
                 dropdownKey: const ValueKey('close-behavior-selector'),
@@ -119,28 +129,32 @@ class SettingsPage extends StatelessWidget {
                   if (appearance != null &&
                       controller.runningLogLevel != null &&
                       appearance.logLevel != controller.runningLogLevel) ...[
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Theme.of(context)
-                            .colorScheme
-                            .onSurface,
-                        side: BorderSide(
-                          color: Theme.of(context).colorScheme.outline,
+                    Tooltip(
+                      message:
+                          coreRestartUnavailableReason(controller) ?? '重启核心',
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context)
+                              .colorScheme
+                              .onSurface,
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          textStyle: const TextStyle(
+                            fontFamily: 'HarmonyOS Sans',
+                            fontSize: DesignMetrics.captionFont,
+                          ),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        textStyle: const TextStyle(
-                          fontFamily: 'HarmonyOS Sans',
-                          fontSize: DesignMetrics.captionFont,
-                        ),
+                        onPressed: controller.canRestartCore
+                            ? () => confirmCoreRestart(
+                                context,
+                                controller,
+                                appearance.logLevel,
+                              )
+                            : null,
+                        child: const Text('重启核心'),
                       ),
-                      onPressed: controller.canRestartCore
-                          ? () => confirmCoreRestart(
-                              context,
-                              controller,
-                              appearance.logLevel,
-                            )
-                          : null,
-                      child: const Text('重启核心'),
                     ),
                     const SizedBox(width: 8),
                   ],
@@ -225,38 +239,50 @@ class SettingsPage extends StatelessWidget {
                 key: const ValueKey('auto-login-row'),
                 title: '启动时自动登录',
                 subtitle: '启动Sidravia后自动开始认证',
-                trailing: DesignSwitch(
-                  key: const ValueKey('auto-login-switch'),
-                  label: '启动时自动登录',
-                  value: c?.autoLogin ?? false,
-                  onChanged:
-                      c != null && controller.capabilities.canEditAutoLogin
-                      ? (value) => controller.setAutoLogin(
-                          configurationId: c.id,
-                          autoLogin: value,
-                          onInsecureStorageConfirmation: (operation) =>
-                              confirmInsecureStorage(context, operation),
-                        )
-                      : null,
+                trailing: Tooltip(
+                  message: c != null && controller.capabilities.canEditAutoLogin
+                      ? '启动时自动登录'
+                      : connectionReason,
+                  child: DesignSwitch(
+                    key: const ValueKey('auto-login-switch'),
+                    label: '启动时自动登录',
+                    value: c?.autoLogin ?? false,
+                    onChanged:
+                        c != null && controller.capabilities.canEditAutoLogin
+                        ? (value) => controller.setAutoLogin(
+                            configurationId: c.id,
+                            autoLogin: value,
+                            onInsecureStorageConfirmation: (operation) =>
+                                confirmInsecureStorage(context, operation),
+                          )
+                        : null,
+                  ),
                 ),
               ),
               DesignRow(
                 key: const ValueKey('auto-reconnect-row'),
                 title: '自动重连',
                 subtitle: '连接中断后自动尝试重新认证',
-                trailing: DesignSwitch(
-                  key: const ValueKey('auto-reconnect-switch'),
-                  label: '自动重连',
-                  value: c?.autoReconnect ?? false,
-                  onChanged:
+                trailing: Tooltip(
+                  message:
                       c != null && controller.capabilities.canEditAutoReconnect
-                      ? (value) => controller.setAutoReconnect(
-                          configurationId: c.id,
-                          autoReconnect: value,
-                          onInsecureStorageConfirmation: (operation) =>
-                              confirmInsecureStorage(context, operation),
-                        )
-                      : null,
+                      ? '自动重连'
+                      : connectionReason,
+                  child: DesignSwitch(
+                    key: const ValueKey('auto-reconnect-switch'),
+                    label: '自动重连',
+                    value: c?.autoReconnect ?? false,
+                    onChanged:
+                        c != null &&
+                            controller.capabilities.canEditAutoReconnect
+                        ? (value) => controller.setAutoReconnect(
+                            configurationId: c.id,
+                            autoReconnect: value,
+                            onInsecureStorageConfirmation: (operation) =>
+                                confirmInsecureStorage(context, operation),
+                          )
+                        : null,
+                  ),
                 ),
               ),
             ],

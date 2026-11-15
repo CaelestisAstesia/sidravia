@@ -2,6 +2,8 @@ import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/features/advanced/runtime_snapshot.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:sidravia_gui/features/advanced/snapshot_code_view.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
@@ -152,23 +154,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
                   ],
                 ),
               ),
-              SizedBox(
-                height: 360,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(14),
-                  child: SelectableText(
-                    _captured ?? '',
-                    key: const ValueKey('runtime-snapshot-text'),
-                    style: TextStyle(
-                      fontFamily: 'Source Code Pro',
-                      fontFamilyFallback: const ['HarmonyOS Sans'],
-                      fontSize: 12,
-                      height: 1.6,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                ),
-              ),
+              SnapshotCodeView(text: _captured ?? ''),
             ],
           ),
         ),
@@ -179,7 +165,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
             DesignRow(
               title: _openingLogs ? '正在打开日志目录…' : '打开日志目录',
               subtitle: widget.onOpenLogDirectory == null
-                  ? '当前环境不可用'
+                  ? (kIsWeb ? '浏览器无法打开本机目录' : '当前环境无法打开本机目录')
                   : '查看当前实例日志',
               onTap: widget.onOpenLogDirectory == null || _openingLogs
                   ? null
@@ -187,7 +173,8 @@ class _AdvancedPageState extends State<AdvancedPage> {
             ),
             DesignRow(
               title: '重启核心',
-              subtitle: '重启后恢复原连接状态',
+              subtitle:
+                  coreRestartUnavailableReason(controller) ?? '重启后恢复原连接状态',
               onTap: controller.canRestartCore
                   ? () => confirmCoreRestart(
                       context,
