@@ -25,6 +25,7 @@ class RPMContracts(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 linux_rpm.rpm_version(invalid)
 
+    @unittest.skipUnless(sys.platform == 'linux', 'requires Linux permissions and symbolic links')
     def test_inventory_preserves_links_and_permissions_without_owning_shared_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

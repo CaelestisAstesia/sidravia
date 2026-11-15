@@ -1,5 +1,4 @@
 import contextlib
-import fcntl
 import importlib.util
 import os
 from pathlib import Path
@@ -11,6 +10,9 @@ import tempfile
 import time
 import unittest
 from unittest import mock
+
+if sys.platform == 'linux':
+    import fcntl
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / 'packaging/linux/rpm_maintenance.py'
