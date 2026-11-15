@@ -29,9 +29,9 @@ func newDiagnosticsExportCommand(operation func(string) error) *cobra.Command {
 	return command
 }
 
-func runDiagnosticsExport(deps listDependencies, path string) error {
+func runDiagnosticsExport(deps readOnlyCommandDependencies, path string) error {
 	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callList(connection, deps.connection.callTimeout, contract.MethodDiagnosticsExport)
+		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodDiagnosticsExport)
 		if err != nil {
 			return wrapSafeOperation("导出诊断信息失败", err)
 		}
@@ -65,7 +65,7 @@ func runDiagnosticsExport(deps listDependencies, path string) error {
 }
 
 func diagnosticsExport(identity clientbootstrap.Identity, path string) error {
-	return runDiagnosticsExport(defaultListDependencies(identity), path)
+	return runDiagnosticsExport(defaultReadOnlyCommandDependencies(identity), path)
 }
 
 func writeOwnedArtifact(file io.WriteCloser, artifact []byte) error {

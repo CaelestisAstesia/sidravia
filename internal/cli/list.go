@@ -2,41 +2,25 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
-	"time"
 
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/ipc/contract"
 )
 
-type listDependencies struct {
-	connection daemonConnectionDependencies
-	stdout     io.Writer
-}
-
-func defaultListDependencies(identity clientbootstrap.Identity) listDependencies {
-	return listDependencies{
-		connection: defaultReadOnlyDaemonConnectionDependencies(identity),
-		stdout:     os.Stdout,
-	}
-}
-
 func authList(identity clientbootstrap.Identity) error {
-	return runAuthList(defaultListDependencies(identity))
+	return runAuthList(defaultReadOnlyCommandDependencies(identity))
 }
 
 func profileList(identity clientbootstrap.Identity) error {
-	return runProfileList(defaultListDependencies(identity))
+	return runProfileList(defaultReadOnlyCommandDependencies(identity))
 }
 
-func runAuthList(deps listDependencies) error {
+func runAuthList(deps readOnlyCommandDependencies) error {
 	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callList(connection, deps.connection.callTimeout, contract.MethodSessionList)
+		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodSessionList)
 		if err != nil {
 			return wrapSafeOperation("列出 Session", err)
 		}
@@ -48,9 +32,9 @@ func runAuthList(deps listDependencies) error {
 	})
 }
 
-func runProfileList(deps listDependencies) error {
+func runProfileList(deps readOnlyCommandDependencies) error {
 	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callList(connection, deps.connection.callTimeout, contract.MethodProfileList)
+		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodProfileList)
 		if err != nil {
 			return wrapSafeOperation("列出 Profile", err)
 		}
@@ -60,25 +44,6 @@ func runProfileList(deps listDependencies) error {
 		}
 		return writeProfileList(deps.stdout, result)
 	})
-}
-
-// callList sends the canonical empty JSON object for a list method. List
-// commands are read-only queries and never call daemon lifecycle methods.
-func callList(connection daemonClient, timeout time.Duration, method string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	response, err := connection.Call(ctx, method, json.RawMessage(`{}`))
-	if err != nil {
-		return nil, err
-	}
-	if !response.OK {
-		code := ""
-		if response.Error != nil {
-			code = response.Error.Code
-		}
-		return nil, errors.New(ipcErrorText(code))
-	}
-	return response.Result, nil
 }
 
 func decodeSessionListResult(data []byte) (contract.SessionListResult, error) {

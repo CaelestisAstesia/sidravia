@@ -64,8 +64,8 @@ func (connection *authWatchTestPlainConnection) Close() error {
 	return nil
 }
 
-func authWatchTestDependencies(connection daemonClient, output io.Writer) listDependencies {
-	return listDependencies{
+func authWatchTestDependencies(connection daemonClient, output io.Writer) readOnlyCommandDependencies {
+	return readOnlyCommandDependencies{
 		connection: daemonConnectionDependencies{
 			acquire: func(ctx context.Context) (daemonClient, error) {
 				if _, ok := ctx.Deadline(); !ok {
@@ -274,7 +274,7 @@ func TestRunAuthWatchAcquisitionAndACKFailuresKeepCausesSafe(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		cause := errors.New("private acquisition marker")
-		deps := listDependencies{connection: daemonConnectionDependencies{
+		deps := readOnlyCommandDependencies{connection: daemonConnectionDependencies{
 			callTimeout: time.Second,
 			acquire: func(ctx context.Context) (daemonClient, error) {
 				if !errors.Is(ctx.Err(), context.Canceled) {

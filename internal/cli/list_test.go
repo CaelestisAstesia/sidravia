@@ -11,9 +11,9 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-func hotListDependencies(t *testing.T, connection daemonClient, output *bytes.Buffer) listDependencies {
+func hotListDependencies(t *testing.T, connection daemonClient, output *bytes.Buffer) readOnlyCommandDependencies {
 	t.Helper()
-	return listDependencies{
+	return readOnlyCommandDependencies{
 		connection: daemonConnectionDependencies{
 			acquire: func(_ context.Context) (daemonClient, error) {
 				return connection, nil
@@ -163,7 +163,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 		name   string
 		method string
 		data   json.RawMessage
-		run    func(listDependencies) error
+		run    func(readOnlyCommandDependencies) error
 		want   string
 	}{
 		{"sessions", contract.MethodSessionList, json.RawMessage(`{"cleanupRequiredSessionIds":[],"sessions":[]}`), runAuthList, "没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n"},
@@ -187,7 +187,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 func TestListRejectsMalformedResponsesWithoutWriting(t *testing.T) {
 	cases := []struct {
 		name string
-		run  func(listDependencies) error
+		run  func(readOnlyCommandDependencies) error
 		data json.RawMessage
 	}{
 		{"session null", runAuthList, json.RawMessage(`{"sessions":null}`)},

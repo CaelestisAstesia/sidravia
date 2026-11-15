@@ -12,11 +12,11 @@ import (
 )
 
 func networkInterfaces(identity clientbootstrap.Identity) error {
-	return runNetworkInterfaces(defaultListDependencies(identity))
+	return runNetworkInterfaces(defaultReadOnlyCommandDependencies(identity))
 }
-func runNetworkInterfaces(deps listDependencies) error {
+func runNetworkInterfaces(deps readOnlyCommandDependencies) error {
 	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callList(connection, deps.connection.callTimeout, contract.MethodNetworkInterfaces)
+		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodNetworkInterfaces)
 		if err != nil {
 			return wrapSafeOperation("查询网卡", err)
 		}

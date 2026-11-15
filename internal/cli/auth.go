@@ -34,6 +34,17 @@ type authDependencies struct {
 	inputIsConsole          func(io.Reader) bool
 }
 
+type authStartOptions struct {
+	binding                 bindingFlags
+	profileID               string
+	username                string
+	sessionID               string
+	configurationID         string
+	protocolOverrideFile    string
+	protocolOverrideFileSet bool
+	passwordStdin           bool
+}
+
 // defaultDaemonConnectionDependencies delegates all discovery, launch and
 // readiness work to bootstrap. Auth owns only operation deadlines and cleanup.
 func defaultDaemonConnectionDependencies(identity clientbootstrap.Identity) daemonConnectionDependencies {

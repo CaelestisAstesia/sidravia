@@ -77,7 +77,7 @@ type configPasswordOptions struct {
 
 func newConfigCommand(deps commandDependencies) *cobra.Command {
 	root := &cobra.Command{Use: "config", Short: "管理认证配置", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return wrapCommandOperation(renderHelpCompletion(cmd)) }}
-	root.AddCommand(newListCommand("list", "列出认证配置", deps.configList))
+	root.AddCommand(newNoArgsCommand("list", "列出认证配置", deps.configList))
 	root.AddCommand(&cobra.Command{Use: "show <configuration-id>", Short: "显示认证配置", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error { return wrapCommandOperation(deps.configShow(args[0])) }})
 
 	var create configCreateOptions

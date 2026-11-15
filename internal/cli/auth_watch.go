@@ -29,7 +29,7 @@ func safeAuthWatchFailure(message string, cause error) error {
 	return &authWatchFailure{message: message, cause: cause}
 }
 
-func runAuthWatch(ctx context.Context, deps listDependencies) error {
+func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
 	if deps.connection.acquire == nil {
 		return safeAuthWatchFailure("无法连接已有 daemon；请确认 daemon 已启动", errors.New("missing read-only acquisition"))
 	}

@@ -242,8 +242,8 @@ func TestRunDiagnosticsExportPresentationFailureLeavesCompleteFile(t *testing.T)
 	}
 }
 
-func diagnosticsExportDependencies(connection daemonClient, stdout io.Writer) listDependencies {
-	return listDependencies{
+func diagnosticsExportDependencies(connection daemonClient, stdout io.Writer) readOnlyCommandDependencies {
+	return readOnlyCommandDependencies{
 		connection: daemonConnectionDependencies{
 			acquire:     func(context.Context) (daemonClient, error) { return connection, nil },
 			callTimeout: 1,
