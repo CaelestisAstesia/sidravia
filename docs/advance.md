@@ -347,7 +347,7 @@ Windows 包通过同目录的 `sidraviamgr.exe`（MGR）维护当前 Windows 用
 
 系统集成操作返回 JSON，失败时退出码非零。发生超时或结果未确认时，先重新查询状态。遇到自启任务冲突，请核实任务归属，不要覆盖或删除未知任务。
 
-Linux 不支持这些 Windows 专用命令。完整参数、返回字段、错误码及 MGR 独有的卸载和数据清理命令，见 [Windows 维护工具](manager.md)。
+Linux 不支持这些 Windows 专用命令。MGR 的完整参数、返回字段、错误码及其与安装器的职责边界，见 [Windows 维护工具](manager.md)。
 
 ## 协议上报覆写
 
@@ -360,6 +360,21 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 保存配置中的覆写实际变化后，关联旧会话会退役，需要按需重新连接。
 
 覆写不改变真实网卡、IP、MAC、DNS、路由、socket 源地址、认证服务器或认证策略，也不意味着已支持其他学校或协议变体。文件格式、字段限制和完整操作示例见[协议上报覆写](override.md)。
+
+## 更新检查与下载
+
+当前源码通过同目录的独立 `sidraviaupdater` 执行更新操作，CTL 转发命令并输出 JSON。检查会访问 GitHub Releases；下载校验候选包的大小和 SHA256，但不等同于发布者签名验证或安装授权。
+
+| 命令 | 用途 |
+| --- | --- |
+| `update version` | 查询当前更新器版本与构建标识 |
+| `update check` | 检查匹配平台、包类型和通道的更新候选 |
+| `update status` | 查询对应选择的本地缓存状态 |
+| `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
+
+`check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果，不要填版本号或任意 URL。
+
+当前 `update apply` 返回 `apply_unavailable`，不执行自动安装。RPM 管理的安装应通过系统包管理器更新；便携版按对应平台说明手动更新。基础检查与下载能力不代表安装、回滚和正式签名链路已完成。
 
 ## 命令速查
 
@@ -378,6 +393,7 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 | `network interfaces` | 已观察网卡及地址 |
 | `diagnostics export --output PATH` | 将诊断摘要写入新文件 |
 | `integration ...` | Windows 当前用户自启、PATH 管理 |
+| `update version` / `check` / `status` / `download --candidate ID` | 更新器版本、候选检查、缓存状态和校验下载 |
 | `help [命令路径]` | 查看帮助，不启动后台；也支持公开命令的 `--help`、`-h` |
 
 ## 内部桥接与兼容入口

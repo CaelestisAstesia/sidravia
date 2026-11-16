@@ -1,10 +1,15 @@
 # 协议支持与适配
 
+本文描述当前源码内置实现，实际发行范围以对应版本说明为准。
+
 ## 当前支持
 
 | 协议 ID | 内置 Profile | 当前范围 |
 | --- | --- | --- |
-| `drcom-5.2.0-d` | `jlu`（吉林大学） | 吉林大学 Dr.Com 5.2.0 D 协议认证 |
+| `drcom-5.2.0-d` | `jlu`（吉林大学） | 原有 D520 行为 |
+| `drcom-5.2.0-d` | `jlu-experimental`（吉林大学，实验性） | 显式选择的实验行为，真实校园兼容性与长期稳定性仍待验证 |
+
+两个 Profile 共用一个协议 ID 和 Factory。`jlu-experimental` 通过机构参数 `behavior: "jlu-experimental"` 选择已实现的通信与恢复分支；`jlu` 保持原行为。个人 override 不能切换该参数。Profile 在后台启动时读取，修改源码或磁盘文件不会热切换正在运行的会话。
 
 不同学校或部署即使使用相同的认证产品，也可能有不同协议、字段与服务器参数。当前吉林大学配置不能直接用于声明其他 Dr.Com 网络兼容。
 
@@ -14,9 +19,15 @@ Sidravia 的架构不限定于校园网或 Dr.Com，但目前没有自动识别�
 
 **机构 Profile** 提供协议 ID、服务器和环境参数，可选提供公告入口，不包含用户账号密码。当前随版本打包，没有面向普通用户的任意导入入口。相同协议的新环境，确认协议行为一致后可能只需要新 Profile。
 
-**协议实现** 包含输入校验、报文编解码、认证、保活与退出。新协议或不兼容变体需要新的 Factory 与 Run，不能只修改名称或复制配置就宣称适配。
+**协议实现** 包含输入校验、报文编解码、认证、保活与退出。新协议或不兼容变体需要在 Factory / Run 中明确实现并验证差异，不能只修改名称或复制配置就宣称适配。
 
 **Override** 通过 CTL 覆写已有协议允许的上报字段与兼容参数，不改变实际 socket 源地址、受信服务器或运行策略。它不能替代协议适配，完整格式见[协议上报覆写](override.md)。
+
+## 账户统计与服务器消息
+
+当前实验性 Profile 提供可选的登录统计和服务器文字通知。历史计费流量与余额来自服务器登录快照，不是本机实时流量或实时余额；缺失值与零值区分。当前文字通知仅接收校验通过的 ASCII 纯文本子集；非 ASCII 编码和已识别的命令、弹窗类型会忽略，不保证展示任意中文服务器消息。服务器文字是数据，不作为命令执行。普通 Profile 不因共用协议 ID 就自动具备这些能力。
+
+协议通过可选业务观察接口报告数据，Session 负责 Run 代次过滤与保留快照，再由 IPC 传给客户端；这条数据链路不接管认证意图、绑定或重连策略。
 
 ## 开发入口
 
@@ -26,8 +37,9 @@ Sidravia 的架构不限定于校园网或 Dr.Com，但目前没有自动识别�
 | [协议注册](../internal/daemon/authentication/protocol/registry.go) | 按协议 ID 选择实现 |
 | [失败契约](../internal/daemon/authentication/protocol/failure.go) | 错误码、描述与恢复建议 |
 | [D520 实现](../internal/daemon/authentication/protocol/drcom/d520) | 当前编解码与执行流程 |
-| [吉林大学 Profile](../internal/daemon/configuration/profiles/jlu.json) | 当前机构参数 |
-| [后台组合](../cmd/sidraviad/main.go) | 注册并组合实际实现 |
+| [吉林大学 Profile](../internal/daemon/configuration/profiles/jlu.json) / [实验性 Profile](../internal/daemon/configuration/profiles/jlu-experimental.json) | 机构参数与显式行为选择 |
+| [业务输出契约](../internal/daemon/authentication/protocol/business.go) / [会话业务快照](../internal/daemon/authentication/session/business.go) | 登录统计和文字通知的可选链路 |
+| [后台组合](../cmd/sidraviad/runtime.go) | 注册并组合实际实现 |
 
 现有契约基于当前真实需求。未来协议如确有不同输入或平台能力，需要相应调整契约，不能假定现有字段足以覆盖全部协议。
 
