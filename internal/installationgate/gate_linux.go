@@ -15,9 +15,8 @@ import (
 
 var ErrBusy = errors.New("installation maintenance is active or its gate is unavailable")
 
-// AcquireStart shares a short startup lock with the RPM transaction. Once this
-// check releases, our executable is visible to the transaction's pidfd scan.
-// Portable targets use their target-bound durable update record instead.
+// AcquireStart returns a runtime admission lease. RPM uses its transaction
+// gate; other Linux targets retain a portable shared lease until process exit.
 func AcquireStart() (func(), error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -72,6 +71,24 @@ func acquirePortableStart(directory string) (func(), error) {
 	release, err := store.AcquireStart(context.Background())
 	if err != nil {
 		return nil, errors.Join(ErrBusy, err)
+	}
+	return release, nil
+}
+
+// AcquireRun retains only portable admission for the process lifetime. RPM's
+// transaction must be able to acquire its lock before requesting normal exit.
+func AcquireRun() (func(), error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	release, err := AcquireStart()
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Dir(exe) == "/usr/lib64/sidravia" {
+		release()
+		return func() {}, nil
 	}
 	return release, nil
 }

@@ -17,8 +17,8 @@ func DefaultRoot() (string, error) {
 	return filepath.Join(root, "Sidravia", "updates", "operations"), nil
 }
 
-// AcquireStart serializes the short startup boundary with file application.
-// After release, a live process must be included in the executor's exit check.
+// AcquireStart holds process admission against file application. Linux callers
+// retain this shared lease until exit; only an updater handoff may release early.
 // A persisted blocked phase survives loss of the executor's kernel lock.
 func (s *Store) AcquireStart(ctx context.Context) (func(), error) {
 	return s.admit(ctx, "")
@@ -38,7 +38,7 @@ func (s *Store) admit(ctx context.Context, id string) (func(), error) {
 	if _, _, err := s.Read(ctx); err != nil {
 		return nil, err
 	}
-	release, err := lock(filepath.Join(s.directory, "execution.lock"))
+	release, err := admissionLock(filepath.Join(s.directory, "execution.lock"), id != "")
 	if err != nil {
 		return nil, err
 	}

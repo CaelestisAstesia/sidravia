@@ -23,14 +23,13 @@ var (
 )
 
 func main() {
-	releaseStart, startErr := installationgate.AcquireStart()
+	releaseStart, startErr := installationgate.AcquireRun()
 	if startErr != nil {
 		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
 		os.Exit(1)
 	}
-	// The live process is now observable by the installer's final exit check.
-	// Release before starting a desktop-owned child/IPC; no persistent helper.
-	releaseStart()
+	// Portable admission stays held until exit; its shared lock permits child
+	// startup while excluding executable replacement. RPM keeps its own gate.
 	logger, level, output, err := newProductionLogger()
 	if err != nil {
 		// Cannot log via slog yet; write the fixed safe line to stderr without
@@ -47,6 +46,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "诊断日志关闭失败")
 		}
 	}
+	releaseStart()
 	os.Exit(code)
 }
 
