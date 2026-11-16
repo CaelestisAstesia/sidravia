@@ -1,9 +1,10 @@
 // Command build is the single reproducible Sidravia package builder.
 //
-// It uses only the Go standard library, requires Go 1.26.4, builds one pair of
-// Windows amd64 binaries once, and produces one portable Release or field-
-// validation zip plus an external SHA256SUMS.txt. It does not run Git, derive
-// versions, sign, tag, upload or publish anything.
+// It uses only the Go standard library and requires Go 1.26.4. Distribution
+// mode builds target-bound Windows/Linux core tools and optional AMD64 GUI
+// archives/installers. Legacy release/field-validation modes build a Windows
+// amd64 CLI pair. Each mode writes SHA256SUMS.txt. The tool does not run Git,
+// derive versions, sign, tag, upload or publish a release.
 package main
 
 import (
@@ -183,8 +184,8 @@ func parseFlags(args []string) (config, error) {
 func printHelp(w io.Writer) {
 	fmt.Fprint(w, `Usage: go run ./tools/build --version <version> --build-id <build-id> --output <dir> [--go <go>] [--artifact <kind>]
 
-Builds reproducible Windows amd64 packages for Sidravia using only the Go
-standard library. The tool runs only from the Sidravia repository root.
+Builds reproducible Sidravia packages using only the Go standard library.
+The tool runs only from the Sidravia repository root.
 
 Required flags:
   --version    canonical product version, e.g. 0.1.0-alpha.2 (no leading v)
@@ -200,9 +201,14 @@ Optional flags:
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --help       show this help and exit without building
 
-The tool requires Go 1.26.4, builds one pair of binaries once, and produces one
-portable zip plus SHA256SUMS.txt. Release contains only install/uninstall under
-scripts/. Field-validation additionally contains the guided validation tools.
+Distribution mode builds the target's core tools, optional AMD64 GUI payload,
+and Windows installer when --iscc is supplied. Archives use gui-portable or
+core-portable suffixes and include the selected version and build identifier.
+
+Legacy release/field-validation modes build the Windows amd64 CLI pair into a
+portable zip. Release contains install/uninstall scripts; field-validation adds
+the guided validation tools. Every mode writes SHA256SUMS.txt. The tool does not
+sign, upload or publish a release.
 `)
 }
 
