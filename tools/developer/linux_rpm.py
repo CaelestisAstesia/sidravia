@@ -119,7 +119,7 @@ def build(root, archive, output, release, env, source, current_source):
         if not (bundle / 'sidravia.portable').is_file():
             raise ValueError('not a GUI portable input')
         (bundle / 'sidravia.portable').unlink()
-        (bundle / 'data/linux-portable.md').unlink()
+        (bundle / 'gui-runtime/data/linux-portable.md' if (bundle / 'gui-runtime').is_dir() else bundle / 'data/linux-portable.md').unlink()
         # Explicit ownership boundary consumed by GUI and updater. No runtime data.
         (bundle / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
         (bundle / 'sidravia.rpm-lifecycle').write_text('sidravia-rpm-lifecycle-v1\n')
@@ -136,7 +136,7 @@ def build(root, archive, output, release, env, source, current_source):
         shutil.copy2(root / 'packaging/linux/sidravia.desktop', desktop)
         icon = stage / f'usr/share/icons/hicolor/256x256/apps/{DESKTOP}.png'
         icon.parent.mkdir(parents=True)
-        shutil.copy2(installed / 'data/icons/sidravia.png', icon)
+        shutil.copy2(installed / ('gui-runtime/data/icons/sidravia.png' if (installed / 'gui-runtime').is_dir() else 'data/icons/sidravia.png'), icon)
         for name, source_path in (('usr/share/doc/sidravia/linux-rpm.md', root / 'docs/linux-rpm.md'),
                                   ('usr/share/licenses/sidravia/LICENSE', root / 'LICENSE')):
             target = stage / name

@@ -4,7 +4,7 @@
 
 int main(int argc, char** argv) {
   if (!sidravia_can_start()) {
-    std::fputs("Sidravia: RPM maintenance is active; please retry after the package transaction.\n", stderr);
+    std::fputs("Sidravia: installation maintenance is active or startup admission is unavailable.\n", stderr);
     return 1;
   }
   g_autoptr(MyApplication) app = my_application_new();

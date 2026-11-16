@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'linux_product_executable.dart';
+
 import 'gui_settings_storage_io.dart';
 import 'installation_manager.dart';
 
@@ -8,9 +10,9 @@ import 'installation_manager.dart';
 /// a running daemon. PATH publishes exact executable links, never shell code.
 class LinuxInstallationManager implements InstallationManager {
   LinuxInstallationManager({
-    required this.executable,
+    required String executable,
     required this.environment,
-  });
+  }) : executable = linuxProductExecutable(executable);
   final String executable;
   final Map<String, String> environment;
   bool _closed = false;
@@ -74,9 +76,13 @@ class LinuxInstallationManager implements InstallationManager {
     return '"${value.replaceAll('\\', '\\\\\\\\').replaceAll('"', '\\\\"').replaceAll('`', '\\\\`').replaceAll(r'$', r'\\$').replaceAll('%', '%%')}"';
   }
 
+  String get _iconDirectory => Directory('$_directory/gui-runtime').existsSync()
+      ? '$_directory/gui-runtime'
+      : _directory;
+
   String _header() =>
       '[Desktop Entry]\nType=Application\nName=Sidravia\n'
-      'Comment=Sidravia session autostart\nIcon=${_directory.replaceAll('\\', '\\\\')}/data/icons/sidravia.png\nTerminal=false\n';
+      'Comment=Sidravia session autostart\nIcon=${_iconDirectory.replaceAll('\\', '\\\\')}/data/icons/sidravia.png\nTerminal=false\n';
   String _entry(String mode, {bool guarded = true}) {
     final name = mode == 'gui' ? executable.split('/').last : 'sidraviactl';
     // GNU env treats any NAME=VALUE operand as an assignment, even when it

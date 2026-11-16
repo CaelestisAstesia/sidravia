@@ -65,11 +65,15 @@ class MaintenanceContracts(unittest.TestCase):
             (app / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
             for name in m.NAMES:
                 shutil.copy2('/usr/bin/sleep', app / name)
+            runtime = app / 'gui-runtime'
+            runtime.mkdir()
+            shutil.copy2('/usr/bin/sleep', runtime / 'sidravia_gui')
             other = Path(tmp) / 'other'
             other.mkdir()
             shutil.copy2('/usr/bin/sleep', other / 'sidraviad')
             own = subprocess.Popen([str(app / 'sidraviad'), '60'])
             bystander = subprocess.Popen([str(other / 'sidraviad'), '60'])
+            gui = subprocess.Popen([str(runtime / 'sidravia_gui'), '60'])
             try:
                 m.APP = app
                 with self.assertRaisesRegex(RuntimeError, 'legacy installation'):
@@ -79,9 +83,12 @@ class MaintenanceContracts(unittest.TestCase):
                 m.require_cooperative_installation()
                 m.stop_group(False, 2)
                 self.assertEqual(own.wait(timeout=2), -signal.SIGTERM)
+                self.assertIsNone(gui.poll())
+                m.stop_group(True, 2)
+                self.assertEqual(gui.wait(timeout=2), -signal.SIGTERM)
                 self.assertIsNone(bystander.poll())
             finally:
-                for process in (own, bystander):
+                for process in (own, bystander, gui):
                     if process.poll() is None: process.terminate()
                     process.wait(timeout=3)
 

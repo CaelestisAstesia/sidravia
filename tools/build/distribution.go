@@ -54,7 +54,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if t.cfg.target == "linux-amd64" && len(gui) > 0 {
 		var version map[string]interface{}
 		for _, entry := range gui {
-			if entry.name == "data/flutter_assets/version.json" {
+			if entry.name == "gui-runtime/data/flutter_assets/version.json" {
 				err = json.Unmarshal(entry.data, &version)
 				if err != nil {
 					return fmt.Errorf("invalid Linux GUI version: %w", err)
@@ -101,6 +101,9 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		suffix = ""
 	}
 	programs := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}
+	if target[0] == "linux" && len(gui) > 0 {
+		programs = append(programs, "sidravia_gui")
+	}
 	if strings.HasPrefix(t.cfg.target, "windows-") {
 		programs = append(programs, "sidraviamgr")
 	}

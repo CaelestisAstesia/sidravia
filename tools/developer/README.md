@@ -161,8 +161,15 @@ implemented and tested using synthetic keys; no publisher key is configured.
 Distribution archives contain `sidravia-files.json`, independently checked against
 source bytes, file modes and the protected data boundary. Target-bound execution
 records preserve exact signed proof and operation claims outside replaced files.
-These records are foundations; portable startup gates and file application remain
-unconnected. GUI scheduling, unattended apply, portable replacement and signed release
+Linux portable Go entries now retain shared runtime admission, and the file
+engine takes exclusive admission against the same target-bound record. The
+engine authenticates inventories, bounds TAR/ZIP extraction, preserves unknown
+files and user data, and retains repair state after a partial write. Its current
+application adapter supports Linux core; public apply/lifecycle recovery is not
+connected yet. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
+`gui-runtime/` payload: the shared lease is inherited across exec before Flutter
+loads, then marked close-on-exec by the runner. Windows publication and the GUI
+file-application adapter require their own acceptance before enabling apply. GUI scheduling, unattended apply, portable replacement and signed release
 integration remain pending. The Windows application now exposes fixed internal
 prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
 Inno path uses these stages when the target CTL advertises protocol 1. Older

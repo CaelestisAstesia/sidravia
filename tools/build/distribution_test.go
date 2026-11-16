@@ -191,7 +191,7 @@ func TestLinuxGUIBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.name == "sidravia_gui" && e.mode != 0755 {
+		if e.name == "gui-runtime/sidravia_gui" && e.mode != 0755 {
 			t.Fatal("GUI not executable")
 		}
 	}

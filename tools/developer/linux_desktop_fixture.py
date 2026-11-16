@@ -216,7 +216,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         wait_for(registered, "owned StatusNotifier registration", timeout=5)
         service, item_path = owner
         icon = call(service, item_path, "org.freedesktop.DBus.Properties", "Get", GLib.Variant("(ss)", ("org.kde.StatusNotifierItem", "IconName")))[0]
-        expected_icon = binary.parent / "data/icons/sidravia.png"
+        expected_icon = binary.parent / ("gui-runtime/data/icons/sidravia.png" if (binary.parent / "gui-runtime").is_dir() else "data/icons/sidravia.png")
         if icon != str(expected_icon) or expected_icon.read_bytes() != (root / "gui/linux/runner/resources/sidravia.png").read_bytes():
             raise RuntimeError("tray application icon does not match the accepted resource")
         menu = call(service, item_path, "org.freedesktop.DBus.Properties", "Get", GLib.Variant("(ss)", ("org.kde.StatusNotifierItem", "Menu")))[0]
@@ -279,9 +279,18 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             binary = root / "gui/build/linux/x64/release/bundle/sidravia_gui"
         else:
             binary = package_root / 'sidravia_gui'
-            dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
+            dart = str(Path(flutter).resolve().with_name('dart'))
             def driver(operation):
                 command([dart,'run','tool/linux_portable_fixture.dart',operation,str(runtime)],'portable-'+operation)
+            # Refuse before the dynamic loader touches product runtime bytes.
+            seal = package_root / 'sidravia.update'
+            seal.write_text('synthetic-interrupted-update\n')
+            blocked = subprocess.run([str(binary), '--skip-auto-login'], env=dict(env, LD_DEBUG='libs'),
+                                     capture_output=True, text=True, timeout=10)
+            if blocked.returncode != 1 or 'libflutter_linux_gtk' in blocked.stderr or runtime.exists():
+                raise RuntimeError('portable pre-loader startup seal was bypassed')
+            seal.unlink()
+            events.append('portable-seal-refused-before-Flutter-load')
             driver('path-enable')
             command(['/bin/bash','--noprofile','--norc','-c','command -v sidraviactl && sidraviactl --help && sidraviaupdater --help'],'owned-path-commands',cwd=owned)
             events.append('owned-HOME-command-links-executed-in-new-shell')
@@ -294,6 +303,21 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         gui = start_gui()
         wait_for(runtime.exists, "release GUI real daemon")
         daemon = json.loads(runtime.read_text())["pid"]
+        if portable_archive is not None:
+            gate = Path(env['XDG_CACHE_HOME']) / 'Sidravia/updates/operations' / hashlib.sha256(str(binary.parent.resolve()).encode()).hexdigest() / 'execution.lock'
+            inherited = []
+            for fd in Path(f'/proc/{gui.pid}/fd').iterdir():
+                try:
+                    if os.readlink(fd) == str(gate):
+                        inherited.append(fd)
+                except FileNotFoundError:
+                    pass  # Unrelated GTK descriptors can close during inspection.
+            if len(inherited) != 1:
+                raise RuntimeError('GUI did not retain its exact pre-loader lease')
+            flags = int(next(line.split()[1] for line in (Path(f'/proc/{gui.pid}/fdinfo') / inherited[0].name).read_text().splitlines() if line.startswith('flags:')), 8)
+            if not flags & os.O_CLOEXEC:
+                raise RuntimeError('GUI lease can leak into child exec')
+            events.append('GUI-exec-PID-retains-cloexec-admission')
         command([str(binary), "--start-visible"], "single-instance-activation", timeout=15)
         if json.loads(runtime.read_text())["pid"] != daemon:
             raise RuntimeError("second instance changed daemon generation")

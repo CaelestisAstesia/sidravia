@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../platform/linux_product_executable.dart';
+
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 
 abstract interface class GuiBootstrapProcess {
@@ -75,7 +77,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
     var exited = false;
     try {
       final executable =
-          '${File(_resolvedExecutable()).parent.path}${Platform.pathSeparator}sidraviactl${_isWindows() ? '.exe' : ''}';
+          '${File(_isLinux() ? linuxProductExecutable(_resolvedExecutable()) : _resolvedExecutable()).parent.path}${Platform.pathSeparator}sidraviactl${_isWindows() ? '.exe' : ''}';
       child = await _launch(executable, [
         'gui',
         operation,

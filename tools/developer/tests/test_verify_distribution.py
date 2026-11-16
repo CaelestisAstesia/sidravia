@@ -60,7 +60,7 @@ class DistributionContract(unittest.TestCase):
         return json.dumps({'schemaVersion': 1, 'version': VERSION, 'buildId': SHA,
             'os': target.split('-')[0], 'arch': target.split('-')[1], 'payloadKind': kind,
             'files': [{'path': name, 'size': len(data), 'sha256': module.digest(data),
-                       'mode': 0o755 if not target.startswith('windows') and name in ('sidraviactl', 'sidraviad', 'sidraviaupdater', 'sidravia_gui') else 0o644}
+                       'mode': 0o755 if not target.startswith('windows') and name in ('sidraviactl', 'sidraviad', 'sidraviaupdater', 'sidravia_gui', 'gui-runtime/sidravia_gui') else 0o644}
                       for name, data in sorted(product.items())]}).encode()
 
     def package(self, target, contents, gui=True):
@@ -78,7 +78,7 @@ class DistributionContract(unittest.TestCase):
                 for name, data in contents.items():
                     entry = tarfile.TarInfo(base + '/' + name)
                     entry.size = len(data)
-                    entry.mode = 0o755 if name in ('sidravia_gui', 'sidraviactl', 'sidraviad', 'sidraviaupdater') else 0o644
+                    entry.mode = 0o755 if name in ('sidravia_gui', 'gui-runtime/sidravia_gui', 'sidraviactl', 'sidraviad', 'sidraviaupdater') else 0o644
                     tar.addfile(entry, io.BytesIO(data))
         sums = '\n'.join(module.digest(p.read_bytes()) + '  ' + p.name for p in sorted(self.out.iterdir()) if p.name != 'SHA256SUMS.txt')
         (self.out / 'SHA256SUMS.txt').write_text(sums + '\n')
@@ -214,13 +214,15 @@ class DistributionContract(unittest.TestCase):
             path.write_bytes(json.dumps({'version': VERSION, 'app_name': 'sidravia_gui'}).encode() if name.endswith('version.json') else name.encode())
             if name == 'sidravia_gui' or name.endswith('.so'):
                 path.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\0')
-            payload[name] = path.read_bytes()
+            payload['gui-runtime/' + name] = path.read_bytes()
+        payload['sidravia_gui'] = b'static launcher'
+        payload['BUILD-INFO.txt'] += f'BinarySHA256: {module.digest(payload["sidravia_gui"])}  sidravia_gui\n'.encode()
         payload['sidravia-files.json'] = self.ownership('linux-amd64', payload, 'gui')
         self.package('linux-amd64', payload)
         with mock.patch.object(module, 'binary_identity'):
             result = module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
         self.assertEqual(result['sourceContents'], 'passed')
-        (self.gui / 'lib/libapp.so').write_bytes(payload['lib/libapp.so'] + b'stale')
+        (self.gui / 'lib/libapp.so').write_bytes(payload['gui-runtime/lib/libapp.so'] + b'stale')
         with self.assertRaisesRegex(module.VerificationError, 'archive_source_mismatch'):
             module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
 

@@ -10,8 +10,9 @@ sudo dnf install gtk3 libayatana-appindicator-gtk3 webkit2gtk4.1
 ```
 
 Extract the entire archive into a writable directory and run `./sidravia_gui`.
-Keep `lib/` and `data/` beside the executable. Run `ldd ./sidravia_gui` to inspect
-missing libraries. No account configuration or autostart is registered by
+Keep `gui-runtime/` intact, including its `lib/` and `data/` directories.
+Run `ldd ./gui-runtime/sidravia_gui` to inspect missing runtime libraries; the
+public Go launcher itself is static. No account configuration or autostart is registered by
 extracting or opening the application. Runtime data stays beside this portable
 copy: `config/`, `runtime/`, `logs/`, and `config/gui-settings.json`. Isolated
 `SIDRAVIA_NAMESPACE` runs use `namespaces/<namespace>/` instead. Do not share a
@@ -60,3 +61,16 @@ Linux GUI candidates use the release asset suffix `-linux-amd64-gui-portable.tar
 The updater recognizes this package kind automatically in a GUI portable layout.
 A missing GUI release does not fall back to a core-only asset. Check, download and
 integrity verification are supported; automatic installation remains unavailable.
+
+
+## 更新保护基线
+
+Linux GUI 的公开入口仍是包根目录的 `sidravia_gui`，现在由静态 Go
+启动器先检查更新状态，再以同一进程启动 `gui-runtime/sidravia_gui`。
+Flutter 运行库及资源随真实 GUI 放在 `gui-runtime/` 内。请通过公开入口
+启动，不直接运行内部程序；没有额外常驻服务或驻留启动器进程。
+
+配置、日志、namespace 和命令路径保持在原位置。旧版本需要先手动升级
+到具备这一布局、运行期门禁和可信产品清单的版本。写入中、需修复或无法
+核实的更新状态会阻止启动，更新器退出或锁自动释放不会跳过该保护。
+当前生产构建尚未配置正式发行公钥，公开 `update apply` 仍不可用。

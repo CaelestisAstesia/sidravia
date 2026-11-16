@@ -417,4 +417,33 @@ void main() {
     },
     skip: !Platform.isLinux,
   );
+
+  test(
+    'runtime layout keeps public commands and nested autostart icon',
+    () async {
+      final f = _Fixture(productLeaf: 'runtime layout');
+      final runtime = Directory('${f.product.path}/gui-runtime')..createSync();
+      File('${runtime.path}/sidravia_gui').writeAsStringSync('runtime');
+      final manager = LinuxInstallationManager(
+        executable: '${runtime.path}/sidravia_gui',
+        environment: f.environment,
+      );
+      await manager.change(IntegrationChange.pathEnable);
+      expect(
+        Link('${f.home.path}/.local/bin/sidravia_gui').targetSync(),
+        f.executable,
+      );
+      await manager.change(IntegrationChange.startGui);
+      expect(
+        f.desktop.readAsStringSync(),
+        contains('Icon=${runtime.path}/data/icons/sidravia.png'),
+      );
+      expect(
+        f.desktop.readAsStringSync(),
+        isNot(contains('--chdir=${runtime.path}')),
+      );
+      await manager.close();
+    },
+    skip: !Platform.isLinux,
+  );
 }

@@ -21,7 +21,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     ../../linux/runner/announcement_link_policy_test.cpp
     ../../linux/runner/announcement_link_policy.cc)
   target_link_libraries(announcement_link_policy_test PRIVATE PkgConfig::GLIB)
-  list(APPEND policies announcement_link_policy)
+  list(APPEND policies announcement_link_policy installation_gate)
+  add_executable(installation_gate_test installation_gate_test.cpp
+    ../../linux/runner/installation_gate.cc)
+  set_target_properties(installation_gate_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/gui-runtime")
+  target_link_libraries(installation_gate_test PRIVATE PkgConfig::GLIB)
   add_executable(announcement_window_integration
     ../announcement_window_integration.cpp
     ../../linux/runner/announcement_window.cc

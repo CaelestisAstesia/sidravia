@@ -29,7 +29,10 @@ def targets():
     if (APP / 'sidravia.rpm').read_text() != 'sidravia-rpm-v1\n':
         raise RuntimeError('installed package identity unavailable')
     directory = identity(APP)
-    expected = {name: identity(APP / name) for name in NAMES}
+    paths = [APP / name for name in NAMES]
+    if (APP / 'gui-runtime/sidravia_gui').is_file():
+        paths.append(APP / 'gui-runtime/sidravia_gui')
+    expected = {str(path): identity(path) for path in paths}
     found = []
     try:
         for proc in Path('/proc').iterdir():
@@ -39,7 +42,7 @@ def targets():
             candidate = False
             try:
                 exe = os.readlink(proc / 'exe').removesuffix(' (deleted)')
-                if exe not in {str(APP / name) for name in NAMES}:
+                if exe not in expected:
                     continue
                 candidate = True
                 # Another mount/root may have the same pathname. Match the
@@ -52,7 +55,7 @@ def targets():
                     os.close(fd)
                     fd = None
                     continue
-                if identity(proc / 'exe') != expected[name]:
+                if identity(proc / 'exe') != expected[exe]:
                     os.close(fd)
                     fd = None
                     raise RuntimeError('an older executable generation is still active')

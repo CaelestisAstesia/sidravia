@@ -412,6 +412,9 @@ func TestWriteFailureKeepsDurableRepairState(t *testing.T) {
 	if err != nil || !exists || r.Phase != operations.RepairRequired {
 		t.Fatal("missing durable repair", r.Phase, err)
 	}
+	if _, err := os.Stat(filepath.Join(target, operations.StartupSeal)); err != nil {
+		t.Fatal("partial write lost relocation seal", err)
+	}
 	if _, err := s.AcquireStart(context.Background()); err == nil {
 		t.Fatal("mixed program admitted")
 	}
@@ -507,5 +510,30 @@ func TestCleanupPreservesSubstitutedRootAndUnknownContents(t *testing.T) {
 				t.Fatal("unknown staging data deleted", err)
 			}
 		})
+	}
+}
+
+func TestDurableSealIsCancellationCommitPoint(t *testing.T) {
+	target := t.TempDir()
+	old := image(t, "1.0.0", "old", map[string]string{"program": "old"}, nil)
+	next := image(t, "1.1.0", "new", map[string]string{"program": "new"}, nil)
+	install(t, target, old)
+	s, id := quiescent(t, target, old, next)
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	work, _, err := sealApplication(ctx, root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel() // exactly after the durable seal and before the Applying transition
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatal("fixture did not cancel")
+	}
+	if _, changed, err := s.Advance(work, id, operations.Quiescent, operations.Applying, "", time.Now()); err != nil || !changed {
+		t.Fatal("cancellation stranded the sealed pre-write phase", err)
 	}
 }

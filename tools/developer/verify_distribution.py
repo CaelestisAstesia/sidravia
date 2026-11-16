@@ -37,7 +37,7 @@ def validate_product_ownership(document: dict) -> None:
     require(0 < len(files) <= 20000, 'ownership_file_limit')
     paths = set()
     total = 0
-    protected = {'config', 'runtime', 'logs', 'namespaces', 'sidravia.portable', 'sidravia-files.json'}
+    protected = {'config', 'runtime', 'logs', 'namespaces', 'sidravia.portable', 'sidravia.update', 'sidravia-files.json'}
     for item in files:
         require(isinstance(item, dict) and type(item.get('size')) is int
                 and type(item.get('mode')) is int and isinstance(item.get('path'), str), 'ownership_field_type')
@@ -85,7 +85,7 @@ def read_archive(path: Path, target: str, base: str) -> dict[str, bytes]:
                 require(member.isfile() and member.name.startswith(base + '/'), 'non_file_archive_member')
                 name = member.name[len(base) + 1:]
                 require(name and not name.startswith('/') and all(part not in ('', '.', '..') for part in name.split('/')), 'unsafe_archive_path')
-                require(member.mode == (0o755 if name in ('sidravia_gui', 'sidraviactl', 'sidraviad', 'sidraviaupdater') else 0o644), 'archive_mode_mismatch')
+                require(member.mode == (0o755 if name in ('sidravia_gui', 'gui-runtime/sidravia_gui', 'sidraviactl', 'sidraviad', 'sidraviaupdater') else 0o644), 'archive_mode_mismatch')
                 stream = archive.extractfile(member)
                 require(stream is not None, 'unreadable_archive_member')
                 with stream:
@@ -154,16 +154,18 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             if path.is_file():
                 name = path.relative_to(gui).as_posix()
                 require(name.casefold() not in {key.casefold() for key in expected}, 'gui_source_collision')
-                expected[name] = path.read_bytes()
-        required_gui = ('Sidravia.exe', 'flutter_windows.dll') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+                expected[name if windows else 'gui-runtime/' + name] = path.read_bytes()
+        required_gui = ('Sidravia.exe', 'flutter_windows.dll') if windows else tuple('gui-runtime/' + name for name in ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE'))
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')
         if not windows:
             for name, data in expected.items():
-                if name == 'sidravia_gui' or name.startswith('lib/') and name.endswith('.so'):
+                if name == 'gui-runtime/sidravia_gui' or name.startswith('gui-runtime/lib/') and name.endswith('.so'):
                     require(len(data) >= 20 and data[:6] == b'\x7fELF\x02\x01' and int.from_bytes(data[18:20], 'little') == 62, 'gui_not_elf_amd64: ' + name)
-            gui_version = json.loads(expected['data/flutter_assets/version.json'])
+            gui_version = json.loads(expected['gui-runtime/data/flutter_assets/version.json'])
             require(gui_version.get('version') == version and gui_version.get('app_name') == 'sidravia_gui', 'gui_version_mismatch')
             require(all(p.relative_to(gui).as_posix() == 'sidravia_gui' or p.relative_to(gui).as_posix() == 'FLUTTER-LICENSE' or p.relative_to(gui).parts[0] in ('lib', 'data') for p in gui.rglob('*') if p.is_file()), 'unexpected_linux_gui_source')
+    if gui is not None and not windows:
+        roles.append('sidravia_gui')
     suffix = '.exe' if windows else ''
     binaries = {role + suffix: role for role in roles}
     require(not any(name.casefold() in {key.casefold() for key in expected} for name in binaries), 'gui_binary_collision')
@@ -187,7 +189,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                         'os': target.split('-')[0], 'arch': target.split('-')[1],
                         'payloadKind': 'gui' if gui is not None else 'core',
                         'files': [{'path': name, 'size': len(data), 'sha256': digest(data),
-                                   'mode': 0o755 if not windows and name in (*binaries, 'sidravia_gui') else 0o644}
+                                   'mode': 0o755 if not windows and name in (*binaries, 'gui-runtime/sidravia_gui') else 0o644}
                                   for name, data in sorted(product.items())]}
     validate_product_ownership(ownership)
     require(ownership == wanted_ownership, 'ownership_source_mismatch')

@@ -65,7 +65,7 @@ func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 		if name == "sidravia_gui" {
 			mode = 0755
 		}
-		entries = append(entries, zipEntry{name, data, mode})
+		entries = append(entries, zipEntry{"gui-runtime/" + name, data, mode})
 		found[name] = true
 		return nil
 	})

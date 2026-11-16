@@ -1,4 +1,7 @@
 import 'dart:io';
+
+import 'linux_product_executable.dart';
+
 import 'dart:math';
 import 'dart:convert';
 
@@ -120,7 +123,7 @@ GuiSettingsLocation resolveLinuxGuiSettings({
       ? '$home/.config'
       : null;
   return resolveWindowsGuiSettings(
-    executable: executable,
+    executable: linuxProductExecutable(executable),
     userConfigRoot: root,
     namespace: namespace,
     inspectMarker: inspectMarker,

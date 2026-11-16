@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/releases"
 	"testing"
 	"time"
 )
@@ -119,5 +120,27 @@ func TestShortStartupExcludesExecution(t *testing.T) {
 	}
 	if _, err := s.AcquireStart(ctx); !errors.Is(err, ErrConflict) {
 		t.Fatalf("completed but still executing admitted startup: %v", err)
+	}
+}
+
+func TestMovedOrCacheClearedTargetKeepsCrashSeal(t *testing.T) {
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(target, StartupSeal), []byte("interrupted\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	moved := target + "-moved"
+	if err := os.Rename(target, moved); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(moved) })
+	// A completely fresh external root represents a different XDG cache or a
+	// deleted cache. The moved directory still refuses admission via its seal.
+	s, err := Open(t.TempDir(), moved, releases.PublisherTrust())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if release, err := s.AcquireStart(context.Background()); err == nil {
+		release()
+		t.Fatal("moving a partial installation bypassed protection")
 	}
 }

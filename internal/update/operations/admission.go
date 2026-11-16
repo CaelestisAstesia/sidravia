@@ -45,7 +45,7 @@ func (s *Store) admit(ctx context.Context, id string) (func(), error) {
 	r, exists, err := s.Read(ctx)
 	if err == nil {
 		if id == "" {
-			if exists && r.RequiresStartupBlock() {
+			if targetSealed(s.target) || exists && r.RequiresStartupBlock() {
 				err = ErrConflict
 			}
 		} else if !exists || r.ID != id || r.Phase != Quiescent {

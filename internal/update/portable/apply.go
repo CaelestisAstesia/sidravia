@@ -129,16 +129,20 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, changed, err := store.Advance(ctx, id, operations.Quiescent, operations.Applying, "", time.Now())
+
+	// Durable sealing is the cancellation commit point. After it, finite disk
+	// work and phase publication continue together even if the caller cancels.
+	work, sealInfo, err := sealApplication(ctx, root, id)
+	if err != nil {
+		return err
+	}
+	_, changed, err := store.Advance(work, id, operations.Quiescent, operations.Applying, "", time.Now())
 	if err != nil {
 		return err
 	}
 	if !changed {
 		return operations.ErrConflict
 	}
-	// Cancellation after this boundary is not permission to leave a mixed install.
-	// Continue finite, already-verified disk work; persist any ordinary failure.
-	work := context.WithoutCancel(ctx)
 	fail := func(cause error) error {
 		_, _, recordErr := store.Advance(work, id, operations.Applying, operations.RepairRequired, "apply_failed", time.Now())
 		return errors.Join(cause, recordErr)
@@ -234,7 +238,22 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if !changed {
 		return operations.ErrConflict
 	}
-	return nil
+	// Only a durable Applied record plus a fully verified new tree permits
+	// removal. A failure keeps at least the record or seal blocking admission.
+	if err := sameTarget(); err != nil {
+		return err
+	}
+	currentSeal, err := root.Lstat(operations.StartupSeal)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(sealInfo, currentSeal) {
+		return ErrChanged
+	}
+	if err := root.Remove(operations.StartupSeal); err != nil {
+		return err
+	}
+	return syncDirectory(root, ".")
 }
 
 func absentProductPath(root *os.Root, name string) error {
@@ -297,4 +316,30 @@ func syncParents(root *os.Root, name string) error {
 			return nil
 		}
 	}
+}
+
+func sealApplication(ctx context.Context, root *os.Root, id string) (context.Context, os.FileInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	seal, err := root.OpenFile(operations.StartupSeal, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, nil, err
+	}
+	_, writeErr := io.WriteString(seal, id+"\n")
+	if writeErr == nil {
+		writeErr = seal.Sync()
+	}
+	writeErr = errors.Join(writeErr, seal.Close())
+	if writeErr != nil {
+		return nil, nil, writeErr
+	}
+	info, err := root.Lstat(operations.StartupSeal)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := syncDirectory(root, "."); err != nil {
+		return nil, nil, err
+	}
+	return context.WithoutCancel(ctx), info, nil
 }

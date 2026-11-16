@@ -28,7 +28,7 @@ func TestOwnershipRejectsPathsAliasesAndData(t *testing.T) {
 	if !SafePath("data/legal name.txt") {
 		t.Fatal("legal internal space rejected")
 	}
-	for _, name := range []string{"../escape", "/absolute", "C:/path", `lib\x.dll`, "lib//x", "lib/../x", "lib/x.", "CON.txt", "CON .txt", "lib/COM1 .dll", "CONIN$", "CONOUT$.txt", "lib/lpt1.dll", "x:y", "config/settings.json", "LOGS/log", "namespaces/x/a", Name, "sidravia.portable", "a "} {
+	for _, name := range []string{"../escape", "/absolute", "C:/path", `lib\x.dll`, "lib//x", "lib/../x", "lib/x.", "CON.txt", "CON .txt", "lib/COM1 .dll", "CONIN$", "CONOUT$.txt", "lib/lpt1.dll", "x:y", "config/settings.json", "LOGS/log", "namespaces/x/a", Name, "sidravia.portable", "sidravia.update", "a "} {
 		m := fixture()
 		m.Files[0].Path = name
 		if m.Validate() == nil {

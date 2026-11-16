@@ -122,7 +122,7 @@ func SafePath(name string) bool {
 		}
 	}
 	switch strings.ToLower(parts[0]) {
-	case "config", "runtime", "logs", "namespaces", "sidravia.portable", Name:
+	case "config", "runtime", "logs", "namespaces", "sidravia.portable", "sidravia.update", Name:
 		return false
 	}
 	return true
