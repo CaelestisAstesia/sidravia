@@ -23,6 +23,9 @@ func Download(ctx context.Context, client *http.Client, c Candidate, cacheRoot s
 	if err := validateCandidate(c); err != nil {
 		return "", err
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	info, err := os.Lstat(cacheRoot)
 	if err != nil {
 		return "", err
@@ -90,6 +93,12 @@ func Download(ctx context.Context, client *http.Client, c Candidate, cacheRoot s
 	}
 	if size != c.Size || hex.EncodeToString(hash.Sum(nil)) != c.SHA256 {
 		return "", ErrIntegrity
+	}
+	// A fully buffered response can reach EOF despite caller cancellation.
+	// Publication is the commit point; before it, cancellation removes the
+	// task-owned partial bytes rather than reporting a completed download.
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	if err = os.Rename(partial, final); err != nil {
 		return "", err

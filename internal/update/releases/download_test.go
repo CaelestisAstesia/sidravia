@@ -55,3 +55,56 @@ func TestDownloadRejectsArbitraryPathAndHostBeforeNetwork(t *testing.T) {
 		}
 	}
 }
+
+// Simulate cancellation delivered with the last response bytes. A transport may
+// already have buffered all bytes even though the caller has canceled the work.
+type cancelAtEOF struct {
+	io.Reader
+	cancel context.CancelFunc
+}
+
+func (r cancelAtEOF) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err == io.EOF {
+		r.cancel()
+	}
+	return n, err
+}
+
+func TestDownloadCanceledBeforePublicationLeavesNoPackage(t *testing.T) {
+	payload := "synthetic update bytes"
+	hash := sha256.Sum256([]byte(payload))
+	name := "sidravia-v1.0.0-windows-amd64-setup.exe"
+	candidate := Candidate{Version: "1.0.0", Name: name, Size: int64(len(payload)), SHA256: hex.EncodeToString(hash[:]), DownloadURL: "https://github.com/" + repository + "/releases/download/v1.0.0/" + name}
+	for _, before := range []bool{false, true} {
+		when := "buffered-body"
+		if before {
+			when = "before-request"
+		}
+		t.Run(when, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			cache := t.TempDir()
+			requests := 0
+			client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+				requests++
+				body := cancelAtEOF{Reader: strings.NewReader(payload), cancel: cancel}
+				return &http.Response{StatusCode: 200, ContentLength: -1, Body: io.NopCloser(body), Header: make(http.Header)}, nil
+			})}
+			if before {
+				cancel()
+			}
+			path, err := Download(ctx, client, candidate, cache)
+			if !errors.Is(err, context.Canceled) || path != "" {
+				t.Errorf("canceled download published a package: path=%q err=%v", path, err)
+			}
+			entries, err := os.ReadDir(cache)
+			if err != nil || len(entries) != 0 {
+				t.Errorf("canceled package retained: %v, %v", entries, err)
+			}
+			if before && requests != 0 {
+				t.Errorf("canceled download performed %d requests", requests)
+			}
+		})
+	}
+}
