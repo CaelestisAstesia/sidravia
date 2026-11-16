@@ -45,7 +45,7 @@ func (c *Client) SubscribeStateEvents(ctx context.Context) (contract.StateBootst
 	if c.closed {
 		return contract.StateBootstrap{}, nil, ErrClientClosed
 	}
-	c.owner = stream
+	c.subscriptionOwner = stream
 	return boot, stream, nil
 }
 

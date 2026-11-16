@@ -19,15 +19,15 @@ var (
 )
 
 type Client struct {
-	conn      *websocket.Conn
-	buildID   string
-	mu        sync.Mutex
-	closed    bool
-	busy      bool
-	owner     *stateSubscription
-	active    sync.WaitGroup
-	closeOnce sync.Once
-	closeErr  error
+	conn              *websocket.Conn
+	buildID           string
+	mu                sync.Mutex // protects admission, closed/busy state and subscription ownership
+	closed            bool
+	busy              bool
+	subscriptionOwner *stateSubscription
+	activeOperations  sync.WaitGroup
+	closeOnce         sync.Once
+	closeErr          error
 }
 
 func Connect(ctx context.Context, endpoint string, token string, buildID string) (*Client, error) {
@@ -58,14 +58,14 @@ func (c *Client) acquire(owner *stateSubscription) error {
 	if c.closed {
 		return ErrClientClosed
 	}
-	if c.owner != owner {
+	if c.subscriptionOwner != owner {
 		return ErrStateSubscriptionActive
 	}
 	if c.busy {
 		return ErrClientBusy
 	}
 	c.busy = true
-	c.active.Add(1)
+	c.activeOperations.Add(1)
 	return nil
 }
 
@@ -73,7 +73,7 @@ func (c *Client) release() {
 	c.mu.Lock()
 	c.busy = false
 	c.mu.Unlock()
-	c.active.Done()
+	c.activeOperations.Done()
 }
 
 // discontinue interrupts transport work without waiting for its own operation.
@@ -161,6 +161,6 @@ func (c *Client) Call(ctx context.Context, method string, payload json.RawMessag
 // their synchronous reads to return. It is safe to call concurrently and again.
 func (c *Client) Close() error {
 	c.discontinue()
-	c.active.Wait()
+	c.activeOperations.Wait()
 	return c.closeErr
 }
