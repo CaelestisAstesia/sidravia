@@ -54,8 +54,9 @@ type CheckResult struct {
 	Candidate *Candidate `json:"candidate,omitempty"`
 }
 type GitHub struct {
-	client  *http.Client
-	apiBase string
+	client        *http.Client
+	apiBase       string
+	publisherKeys *PublisherKeys
 }
 
 func NewGitHub(client *http.Client) *GitHub {
@@ -65,7 +66,7 @@ func NewGitHub(client *http.Client) *GitHub {
 	copyClient := *client
 	copyClient.Timeout = 20 * time.Second
 	copyClient.Jar = nil
-	source := &GitHub{client: &copyClient, apiBase: "https://api.github.com"}
+	source := &GitHub{client: &copyClient, apiBase: "https://api.github.com", publisherKeys: builtInPublisherKeys()}
 	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return ErrMetadata
@@ -198,6 +199,17 @@ func (g *GitHub) Check(ctx context.Context, s Selection) (CheckResult, error) {
 	if selected == nil {
 		return CheckResult{State: "no_compatible_release"}, nil
 	}
+	// Builds without configured publisher roots keep legacy check/download
+	// behavior. Trust can never grant apply until the execution path is ready.
+	if g.publisherKeys != nil && len(g.publisherKeys.keys) > 0 {
+		if _, err := g.AuthenticateCandidate(ctx, *selected); err != nil {
+			if !errors.Is(err, ErrSignatureMissing) {
+				return CheckResult{}, err
+			}
+		} else {
+			selected.ApplyReason = "automatic_installation_unavailable"
+		}
+	}
 	state := "up_to_date"
 	if selectedVersion.Compare(current) > 0 {
 		state = "available"
@@ -223,29 +235,20 @@ func (g *GitHub) page(ctx context.Context, endpoint string) ([]release, string, 
 		return nil, "", fmt.Errorf("query releases: %w", err)
 	}
 	defer response.Body.Close()
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	if response.StatusCode == 403 || response.StatusCode == 429 {
-		retry := time.Now().UTC().Add(time.Hour)
-		if value, parseErr := strconv.ParseInt(response.Header.Get("X-RateLimit-Reset"), 10, 64); parseErr == nil && value > time.Now().Unix() {
-			retry = time.Unix(value, 0).UTC()
-		}
-		if seconds, parseErr := strconv.Atoi(response.Header.Get("Retry-After")); parseErr == nil && seconds > 0 {
-			if seconds > 86400 {
-				seconds = 86400
-			}
-			retry = time.Now().UTC().Add(time.Duration(seconds) * time.Second)
-		} else if date, parseErr := http.ParseTime(response.Header.Get("Retry-After")); parseErr == nil && date.After(time.Now()) {
-			retry = date
-		}
-		if maximum := time.Now().UTC().Add(24 * time.Hour); retry.After(maximum) {
-			retry = maximum
-		}
-		return nil, "", &RateLimitError{RetryAt: retry}
+		return nil, "", sourceRateLimit(response.Header)
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("release source returned HTTP %d", response.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, (2<<20)+1))
 	if err != nil {
+		return nil, "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, "", err
 	}
 	if len(data) > 2<<20 {
@@ -358,4 +361,26 @@ func releaseNotes(text string) string {
 		runes = runes[:16000]
 	}
 	return string(runes) + "\n发行说明较长，请打开版本页面查看全文。"
+}
+
+// Both the release API and signed-metadata downloads use the same bounded
+// source backoff; callers must not immediately retry one endpoint via the other.
+func sourceRateLimit(header http.Header) *RateLimitError {
+	now := time.Now().UTC()
+	retry := now.Add(time.Hour)
+	if value, err := strconv.ParseInt(header.Get("X-RateLimit-Reset"), 10, 64); err == nil && value > now.Unix() {
+		retry = time.Unix(value, 0).UTC()
+	}
+	if seconds, err := strconv.Atoi(header.Get("Retry-After")); err == nil && seconds > 0 {
+		if seconds > 86400 {
+			seconds = 86400
+		}
+		retry = now.Add(time.Duration(seconds) * time.Second)
+	} else if date, err := http.ParseTime(header.Get("Retry-After")); err == nil && date.After(now) {
+		retry = date
+	}
+	if maximum := now.Add(24 * time.Hour); retry.After(maximum) {
+		retry = maximum
+	}
+	return &RateLimitError{RetryAt: retry}
 }

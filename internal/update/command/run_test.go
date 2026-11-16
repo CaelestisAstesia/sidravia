@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update/releases"
+	"strings"
 	"testing"
 )
 
@@ -98,5 +101,12 @@ func TestDefaultPackageKindPreservesGUIIdentity(t *testing.T) {
 	layout.Mode = productlayout.ModeInstalled
 	if got := defaultPackageKind("windows", "amd64", layout); got != "setup" {
 		t.Fatal(got)
+	}
+}
+
+func TestPublisherTrustFailureHasStableSafeCode(t *testing.T) {
+	err := fmt.Errorf("private release details: %w", releases.ErrUntrusted)
+	if safeCode(err) != "publisher_untrusted" || strings.Contains(safeMessage(err), "private release details") {
+		t.Fatal("publisher failure lost its safe public boundary")
 	}
 }

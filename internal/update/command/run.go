@@ -230,6 +230,8 @@ func safeCode(err error) string {
 		return "incomplete_query"
 	case errors.Is(err, releases.ErrIntegrity):
 		return "integrity_failed"
+	case errors.Is(err, releases.ErrUntrusted):
+		return "publisher_untrusted"
 	case errors.Is(err, releases.ErrMetadata):
 		return "invalid_metadata"
 	case errors.Is(err, releases.ErrUnsupported):
@@ -255,6 +257,8 @@ func safeMessage(err error) string {
 		return "当前平台尚无适用的更新能力。"
 	case "unknown_current_version":
 		return "当前构建版本无法用于更新比较。"
+	case "publisher_untrusted":
+		return "发行签名不可信，已停止操作。"
 	case "invalid_metadata":
 		return "发行信息无效，已停止操作。"
 	}
