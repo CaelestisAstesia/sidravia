@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"sidravia/internal/update/packagefiles"
 )
 
 func TestDistributionFlags(t *testing.T) {
@@ -126,6 +128,16 @@ func TestDistributionContents(t *testing.T) {
 			}
 			if string(bytesByName["BUILD-INFO.txt"]) != info {
 				t.Fatal("binary provenance does not match actual archive bytes")
+			}
+			ownership, err := packagefiles.Decode(bytesByName[packagefiles.Name])
+			if err != nil || ownership.Version != cfg.version || ownership.BuildID != cfg.buildID || len(ownership.Files) != len(bytesByName)-2 {
+				t.Fatalf("ownership does not cover exact product bytes: %+v %v", ownership, err)
+			}
+			for _, file := range ownership.Files {
+				data, found := bytesByName[file.Path]
+				if !found || int64(len(data)) != file.Size || sha256Hex(data) != file.SHA256 {
+					t.Fatal("ownership hash/size mismatch", file.Path)
+				}
 			}
 			if _, err := os.Stat(filepath.Join(out, "SHA256SUMS.txt")); err != nil {
 				t.Fatal(err)

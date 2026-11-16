@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"sidravia/internal/update/packagefiles"
 )
 
 // Only a fresh release GUI input is accepted. Core tools, public profiles and
@@ -19,7 +21,7 @@ func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	if !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("GUI directory must be absolute")
 	}
-	reserved := map[string]bool{}
+	reserved := map[string]bool{packagefiles.Name: true}
 	for _, e := range existing {
 		reserved[strings.ToLower(e.name)] = true
 	}

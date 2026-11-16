@@ -30,6 +30,38 @@ def require(condition: bool, reason: str) -> None:
         raise VerificationError(reason)
 
 
+def validate_product_ownership(document: dict) -> None:
+    require(isinstance(document, dict) and type(document.get('schemaVersion')) is int
+            and isinstance(document.get('files'), list), 'ownership_field_type')
+    files = document['files']
+    require(0 < len(files) <= 20000, 'ownership_file_limit')
+    paths = set()
+    total = 0
+    protected = {'config', 'runtime', 'logs', 'namespaces', 'sidravia.portable', 'sidravia-files.json'}
+    for item in files:
+        require(isinstance(item, dict) and type(item.get('size')) is int
+                and type(item.get('mode')) is int and isinstance(item.get('path'), str), 'ownership_field_type')
+        name = item['path']
+        require(0 < len(name) <= 1024 and all(32 <= ord(c) <= 126 and c not in '\\<>:"|?*' for c in name), 'ownership_unsafe_path')
+        parts = name.split('/')
+        require(all(part and part not in ('.', '..') and part == part.strip() and not part.endswith('.') for part in parts), 'ownership_unsafe_path')
+        for part in parts:
+            base = part.split('.')[0].rstrip(' ').upper()
+            require(base not in ('CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$')
+                    and not re.fullmatch(r'(?:COM|LPT)[1-9]', base), 'ownership_unsafe_path')
+        require(parts[0].lower() not in protected, 'ownership_protected_path')
+        key = name.lower()
+        require(key not in paths, 'ownership_path_alias')
+        paths.add(key)
+        require(0 <= item['size'] <= 2 << 30 and item['mode'] in (0o644, 0o755), 'ownership_file_limit')
+        require(isinstance(item.get('sha256'), str) and re.fullmatch('[0-9a-f]{64}', item['sha256']) is not None, 'ownership_hash')
+        total += item['size']
+        require(total <= 4 << 30, 'ownership_total_limit')
+    for name in paths:
+        parts = name.split('/')
+        require(all('/'.join(parts[:i]) not in paths for i in range(1, len(parts))), 'ownership_parent_alias')
+
+
 def native_arch() -> str | None:
     return {'amd64': 'amd64', 'x86_64': 'amd64', 'arm64': 'arm64',
             'aarch64': 'arm64'}.get(platform.machine().lower())
@@ -135,11 +167,30 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     suffix = '.exe' if windows else ''
     binaries = {role + suffix: role for role in roles}
     require(not any(name.casefold() in {key.casefold() for key in expected} for name in binaries), 'gui_binary_collision')
-    require(set(contents) == set(expected) | set(binaries), 'archive_file_set_mismatch')
+    require(set(contents) == set(expected) | set(binaries) | {'sidravia-files.json'}, 'archive_file_set_mismatch')
     expected['BUILD-INFO.txt'] += ''.join(
         f'BinarySHA256: {digest(contents[name])}  {name}\n' for name in binaries).encode()
     for name, data in expected.items():
         require(contents[name] == data, 'archive_source_mismatch: ' + name)
+    ownership_bytes = contents['sidravia-files.json']
+    require(0 < len(ownership_bytes) <= 2 << 20, 'ownership_size_limit')
+    def unique_fields(pairs):
+        result = {}
+        for key, value in pairs:
+            require(key not in result, 'duplicate_ownership_field')
+            result[key] = value
+        return result
+    ownership = json.loads(ownership_bytes.decode('utf-8'), object_pairs_hook=unique_fields)
+    product = {name: data for name, data in expected.items() if name != 'sidravia.portable'}
+    product.update({name: contents[name] for name in binaries})
+    wanted_ownership = {'schemaVersion': 1, 'version': version, 'buildId': build_id,
+                        'os': target.split('-')[0], 'arch': target.split('-')[1],
+                        'payloadKind': 'gui' if gui is not None else 'core',
+                        'files': [{'path': name, 'size': len(data), 'sha256': digest(data),
+                                   'mode': 0o755 if not windows and name in (*binaries, 'sidravia_gui') else 0o644}
+                                  for name, data in sorted(product.items())]}
+    validate_product_ownership(ownership)
+    require(ownership == wanted_ownership, 'ownership_source_mismatch')
     if smoke:
         host = {'Windows': 'windows', 'Linux': 'linux'}.get(platform.system())
         require(host == target.split('-')[0] and native_arch() == target.split('-')[1], 'smoke_requires_matching_native_host')
@@ -156,7 +207,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                 require(bool(result.stdout.strip()), 'empty_help_smoke')
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
-            'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
+            'productOwnership': 'passed', 'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
             'embeddedGoIdentity': 'passed' if all(embedded_identities) else 'not_recorded',
             'helpSmoke': 'passed' if smoke else 'not_run',
             'daemonLaunch': 'not_run', 'guiInteraction': 'not_run', 'installation': 'not_run', 'campus': 'not_run'}

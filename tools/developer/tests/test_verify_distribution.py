@@ -52,7 +52,16 @@ class DistributionContract(unittest.TestCase):
                 contents.update({p.relative_to(self.gui).as_posix(): p.read_bytes() for p in self.gui.rglob('*') if p.is_file()})
         names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'] if target.startswith('windows-') else ['sidraviactl', 'sidraviad', 'sidraviaupdater']
         contents['BUILD-INFO.txt'] += ''.join(f'BinarySHA256: {module.digest(contents[name])}  {name}\n' for name in names).encode()
+        contents['sidravia-files.json'] = self.ownership(target, contents, 'gui' if gui and target == 'windows-amd64' else 'core')
         return contents
+
+    def ownership(self, target, contents, kind):
+        product = {name: data for name, data in contents.items() if name not in ('sidravia.portable', 'sidravia-files.json')}
+        return json.dumps({'schemaVersion': 1, 'version': VERSION, 'buildId': SHA,
+            'os': target.split('-')[0], 'arch': target.split('-')[1], 'payloadKind': kind,
+            'files': [{'path': name, 'size': len(data), 'sha256': module.digest(data),
+                       'mode': 0o755 if not target.startswith('windows') and name in ('sidraviactl', 'sidraviad', 'sidraviaupdater', 'sidravia_gui') else 0o644}
+                      for name, data in sorted(product.items())]}).encode()
 
     def package(self, target, contents, gui=True):
         base = f'sidravia-v{VERSION}-{target}'
@@ -206,6 +215,7 @@ class DistributionContract(unittest.TestCase):
             if name == 'sidravia_gui' or name.endswith('.so'):
                 path.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\0')
             payload[name] = path.read_bytes()
+        payload['sidravia-files.json'] = self.ownership('linux-amd64', payload, 'gui')
         self.package('linux-amd64', payload)
         with mock.patch.object(module, 'binary_identity'):
             result = module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
@@ -213,3 +223,44 @@ class DistributionContract(unittest.TestCase):
         (self.gui / 'lib/libapp.so').write_bytes(payload['lib/libapp.so'] + b'stale')
         with self.assertRaisesRegex(module.VerificationError, 'archive_source_mismatch'):
             module.verify(self.out,self.repo,'linux-amd64',VERSION,SHA,self.gui)
+
+    def test_product_ownership_rejects_tampering_and_ambiguous_fields(self):
+        for change in ('build', 'missing', 'user-data', 'hash', 'mode', 'boolean', 'duplicate'):
+            with self.subTest(change=change):
+                for p in self.out.iterdir(): p.unlink()
+                payload = self.payload('linux-amd64', gui=False)
+                document = json.loads(payload['sidravia-files.json'])
+                if change == 'build': document['buildId'] = 'b' * 40
+                if change == 'missing': document['files'].pop()
+                if change == 'user-data': document['files'][0]['path'] = 'config/private.json'
+                if change == 'hash': document['files'][0]['sha256'] = 'b' * 64
+                if change == 'mode': document['files'][0]['mode'] = 0o777
+                if change == 'boolean': document['schemaVersion'] = True
+                encoded = json.dumps(document).encode()
+                if change == 'duplicate': encoded = encoded.replace(b'"schemaVersion": 1', b'"schemaVersion": 1, "schemaVersion": 1')
+                payload['sidravia-files.json'] = encoded
+                self.package('linux-amd64', payload, gui=False)
+                with mock.patch.object(module, 'binary_identity'):
+                    with self.assertRaises(module.VerificationError): self.verify('linux-amd64', gui=False)
+
+    def test_matching_source_archive_and_index_cannot_own_user_data(self):
+        for name in ('config/private.json', 'logs/history', 'CON .txt', 'CONOUT$.txt'):
+            with self.subTest(name=name):
+                for p in self.out.iterdir(): p.unlink()
+                injected = self.gui / name
+                injected.parent.mkdir(parents=True, exist_ok=True)
+                injected.write_bytes(b'not product data')
+                payload = self.payload('windows-amd64')
+                self.package('windows-amd64', payload)
+                with mock.patch.object(module, 'binary_identity'):
+                    with self.assertRaisesRegex(module.VerificationError, 'ownership_(protected|unsafe)_path'):
+                        self.verify('windows-amd64')
+                injected.unlink()
+
+    def test_ownership_limits_and_parent_aliases(self):
+        item = {'path': 'lib', 'size': 1, 'sha256': 'a' * 64, 'mode': 0o644}
+        for files in ([item] * 20001, [dict(item, size=3 << 30)],
+                      [item, dict(item, path='LIB/a')],
+                      [dict(item, path=str(i), size=2 << 30) for i in range(3)]):
+            with self.assertRaises(module.VerificationError):
+                module.validate_product_ownership({'schemaVersion': 1, 'files': files})

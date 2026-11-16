@@ -1,6 +1,6 @@
 // Command build is the single reproducible Sidravia package builder.
 //
-// It uses only the Go standard library and requires Go 1.26.4. Distribution
+// It uses the fixed Go 1.26.4 toolchain and shared project codecs. Distribution
 // mode builds target-bound Windows/Linux core tools and optional AMD64 GUI
 // archives/installers. Legacy release/field-validation modes build a Windows
 // amd64 CLI pair. Each mode writes SHA256SUMS.txt. The tool does not run Git,
@@ -184,7 +184,8 @@ func parseFlags(args []string) (config, error) {
 func printHelp(w io.Writer) {
 	fmt.Fprint(w, `Usage: go run ./tools/build --version <version> --build-id <build-id> --output <dir> [--go <go>] [--artifact <kind>]
 
-Builds reproducible Sidravia packages using only the Go standard library.
+Builds reproducible Sidravia packages using the fixed Go toolchain and shared
+project ownership codec.
 The tool runs only from the Sidravia repository root.
 
 Required flags:

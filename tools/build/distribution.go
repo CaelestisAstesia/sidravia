@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"sidravia/internal/update/packagefiles"
 )
 
 func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
@@ -113,6 +115,25 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
 	}
 	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
+	// The ownership index describes product bytes only: runtime data, the
+	// portable marker and this index itself are deliberately outside its scope.
+	payloadKind := "core"
+	if len(gui) > 0 {
+		payloadKind = "gui"
+	}
+	owned := packagefiles.Manifest{SchemaVersion: 1, Version: t.cfg.version, BuildID: t.cfg.buildID, OS: target[0], Arch: target[1], PayloadKind: payloadKind}
+	for _, entry := range entries {
+		mode := uint32(entry.mode.Perm())
+		if target[0] == "windows" {
+			mode = 0644
+		} // Windows ignores Unix executable bits.
+		owned.Files = append(owned.Files, packagefiles.File{Path: entry.name, Size: int64(len(entry.data)), SHA256: sha256Hex(entry.data), Mode: mode})
+	}
+	ownership, err := packagefiles.Encode(owned)
+	if err != nil {
+		return fmt.Errorf("encode product file ownership: %w", err)
+	}
+	entries = append(entries, zipEntry{packagefiles.Name, ownership, 0644})
 	// All installation files have explicit ownership; payload contains no
 	// portable marker, generated user data or legacy integration scripts.
 	payload := filepath.Join(stage, "payload")
@@ -206,7 +227,7 @@ func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	if !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("GUI directory must be absolute")
 	}
-	reserved := map[string]bool{"sidravia.portable": true, "sidraviactl.exe": true, "sidraviad.exe": true, "sidraviamgr.exe": true, "sidraviaupdater.exe": true}
+	reserved := map[string]bool{packagefiles.Name: true, "sidravia.portable": true, "sidraviactl.exe": true, "sidraviad.exe": true, "sidraviamgr.exe": true, "sidraviaupdater.exe": true}
 	for _, entry := range existing {
 		reserved[strings.ToLower(entry.name)] = true
 	}
