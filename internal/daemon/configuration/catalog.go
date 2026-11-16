@@ -40,8 +40,10 @@ func (AutoLoginConflict) Error() string {
 	return "another configuration already enables automatic login"
 }
 
+// Catalog owns saved configurations and their passwords as one persisted aggregate.
+// Get and List return public configuration copies; only Resolve returns credentials.
 type Catalog struct {
-	mu                 sync.Mutex
+	mu                 sync.Mutex // serializes record updates, persistence and migration/consent state
 	store              SensitiveStore
 	path               string
 	records            map[ConfigurationID]catalogRecord

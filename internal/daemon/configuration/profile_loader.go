@@ -19,12 +19,6 @@ import (
 // loader failures. It never echoes an absolute path.
 const profileLoaderOperation = "load institution profiles"
 
-// profileDocument is the version-1 on-disk shape of one institution Profile.
-// InstitutionProtocolConfiguration is decoded as raw JSON and preserved without
-// interpretation; the configuration package does not decode or interpret
-// protocol-specific fields. DecodeStrict scans the whole document, so duplicate
-// keys inside the protocol configuration are rejected before the protocol
-// factory sees it.
 type announcementDocument struct {
 	URL          string `json:"url"`
 	ClientWidth  int    `json:"clientWidth"`
@@ -38,6 +32,12 @@ func (document *announcementDocument) metadata() *AnnouncementMetadata {
 	return &AnnouncementMetadata{URL: document.URL, ClientWidth: document.ClientWidth, ClientHeight: document.ClientHeight}
 }
 
+// profileDocument is the version-1 on-disk shape of one institution Profile.
+// InstitutionProtocolConfiguration is decoded as raw JSON and preserved without
+// interpretation; the configuration package does not decode or interpret
+// protocol-specific fields. DecodeStrict scans the whole document, so duplicate
+// keys inside the protocol configuration are rejected before the protocol
+// factory sees it.
 type profileDocument struct {
 	Announcement                     *announcementDocument `json:"announcement"`
 	SchemaVersion                    uint64                `json:"schemaVersion"`
@@ -180,9 +180,10 @@ func loadInstitutionProfileFile(
 }
 
 // decodeInstitutionProfileDocument runs the shared strict JSON helpers. All
-// five root fields must be present, the schema version must be integer 1, no
-// unknown root field is allowed, and duplicate keys at any depth (including
-// inside the protocol configuration) are rejected before the factory sees it.
+// five required root fields must be present and the schema version must be 1.
+// Only announcement is optional. Unknown root and announcement fields are rejected;
+// protocol-specific fields remain opaque here. Duplicate keys at any depth,
+// including inside protocol configuration, are rejected before the factory sees it.
 func decodeInstitutionProfileDocument(data []byte) (profileDocument, error) {
 	if err := jsonfile.RequireObjectFields(data,
 		"schemaVersion",
