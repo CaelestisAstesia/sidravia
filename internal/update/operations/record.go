@@ -154,7 +154,7 @@ func allowed(from, to Phase) bool {
 	case Applying:
 		return to == Applied || to == RepairRequired
 	case Applied:
-		return to == Resuming || to == Completed
+		return to == Resuming || to == Completed || to == ResumeFailed
 	case Resuming:
 		return to == Completed || to == ResumeFailed
 	}

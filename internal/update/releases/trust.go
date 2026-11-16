@@ -173,3 +173,17 @@ func releaseFields(fields map[string]json.RawMessage, names ...string) bool {
 	}
 	return true
 }
+
+// Configured describes build-selected trust, never a runtime key override.
+func (keys *PublisherKeys) Configured() bool { return keys != nil && len(keys.keys) > 0 }
+
+// InstalledAsset selects the signed canonical asset for an existing layout.
+// IDs and download paths from local cache documents do not grant this trust.
+func (v VerifiedRelease) InstalledAsset(osName, arch, kind string) (Candidate, error) {
+	for _, asset := range v.manifest.Assets {
+		if asset.OS == osName && asset.Arch == arch && asset.Kind == kind {
+			return Candidate{ID: "0:0", Version: v.manifest.Version, Name: asset.Name, Size: asset.Size, SHA256: asset.SHA256}, nil
+		}
+	}
+	return Candidate{}, ErrUntrusted
+}

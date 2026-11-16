@@ -197,3 +197,112 @@ func TestReconcileCannotUseCoreInventoryToUnlockGUIOperation(t *testing.T) {
 		})
 	}
 }
+
+func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
+	for _, phase := range []operations.Phase{operations.Applied, operations.Resuming} {
+		t.Run(string(phase), func(t *testing.T) {
+			target := t.TempDir()
+			old := image(t, "1.0.0", "old", map[string]string{"program": "old"}, nil)
+			next := image(t, "1.1.0", "new", map[string]string{"program": "new"}, nil)
+			install(t, target, next)
+			store, id := verifiedOperation(t, target, old, next)
+			child := exec.Command("/usr/bin/sleep", "30")
+			if err := child.Start(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { child.Process.Kill(); child.Wait() }()
+			peer, err := linuxplatform.Observe(child.Process.Pid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer peer.Close()
+			recovery := operations.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: update.RestoreIntent{Mode: "headless"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
+			if err := store.SetRecovery(context.Background(), id, recovery, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			previous := operations.Verified
+			for _, p := range []operations.Phase{operations.Preparing, operations.Quiescent, operations.Applying, operations.Applied, operations.Resuming} {
+				if _, _, err := store.Advance(context.Background(), id, previous, p, "", time.Now()); err != nil {
+					t.Fatal(err)
+				}
+				previous = p
+				if p == phase {
+					break
+				}
+			}
+			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+				t.Fatal("live coordinator reconciled")
+			}
+			child.Process.Signal(os.Interrupt)
+			child.Wait()
+			if err := os.WriteFile(filepath.Join(target, "program"), []byte("bad"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+				t.Fatal("changed target reconciled")
+			}
+			if err := os.WriteFile(filepath.Join(target, "program"), []byte("new"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			wrong := next.inventory
+			wrong.candidate.ID = "99:99"
+			if err := ReconcileInterrupted(context.Background(), store, id, target, wrong); err == nil {
+				t.Fatal("wrong candidate reconciled")
+			}
+			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err != nil {
+				t.Fatal(err)
+			}
+			r, _, err := store.Read(context.Background())
+			if err != nil || r.Phase != operations.ResumeFailed || r.RequiresStartupBlock() {
+				t.Fatalf("%+v %v", r, err)
+			}
+			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+				t.Fatal("terminal recovery replayed")
+			}
+		})
+	}
+}
+
+func TestUnstartedOperationReconciliationHonorsCoordinatorLease(t *testing.T) {
+	for _, phase := range []operations.Phase{operations.Created, operations.Verified} {
+		t.Run(string(phase), func(t *testing.T) {
+			target := t.TempDir()
+			old := image(t, "1.0.0", "old", map[string]string{"program": "old"}, nil)
+			next := image(t, "1.1.0", "new", map[string]string{"program": "new"}, nil)
+			install(t, target, old)
+			store, err := operations.Open(t.TempDir(), target, next.keys)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := operations.New(strings.Repeat("a", 32), update.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Create(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			if phase == operations.Verified {
+				if _, _, err := store.Advance(context.Background(), r.ID, operations.Created, phase, "", time.Now()); err != nil {
+					t.Fatal(err)
+				}
+				release, err := store.AcquireCoordinator(context.Background(), r.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+				if err := ReconcileInterrupted(ctx, store, r.ID, target, old.inventory); err == nil {
+					t.Fatal("active unstarted coordinator reconciled")
+				}
+				cancel()
+				release()
+			}
+			if err := ReconcileInterrupted(context.Background(), store, r.ID, target, old.inventory); err != nil {
+				t.Fatal(err)
+			}
+			current, _, err := store.Read(context.Background())
+			if err != nil || current.Phase != operations.Aborted {
+				t.Fatal(current.Phase, err)
+			}
+		})
+	}
+}

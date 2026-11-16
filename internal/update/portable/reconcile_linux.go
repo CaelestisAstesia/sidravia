@@ -26,15 +26,29 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	if err != nil {
 		return err
 	}
-	if !exists || record.ID != id || record.Source.ID != target || record.Recovery == nil {
+	if !exists || record.ID != id || record.Source.ID != target {
 		return operations.ErrConflict
 	}
 	expected := record.Source
 	next := operations.Aborted
 	code := "preparation_failed"
 	switch record.Phase {
+	case operations.Created, operations.Verified:
+		if record.Phase == operations.Verified {
+			release, e := store.AcquireCoordinator(ctx, id)
+			if e != nil {
+				return e
+			}
+			defer release()
+		}
 	case operations.Preparing, operations.Quiescent:
-	case operations.Resuming:
+		if record.Recovery == nil {
+			return operations.ErrConflict
+		}
+	case operations.Applied, operations.Resuming:
+		if record.Recovery == nil {
+			return operations.ErrConflict
+		}
 		expected = record.Target
 		next = operations.ResumeFailed
 		code = "resume_failed"
@@ -61,20 +75,22 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	if !matched {
 		return ErrInvalid
 	}
-	if record.Phase == operations.Resuming {
+	if record.Phase == operations.Resuming || record.Phase == operations.Applied {
 		c := installed.candidate
 		if c.ID != record.Package.CandidateID || c.Name != record.Package.Name || c.Size != record.Package.Size || c.SHA256 != record.Package.SHA256 {
 			return ErrInvalid
 		}
-	} else if digest(installed.data) != record.Recovery.SourceFilesSHA256 {
+	} else if record.Recovery != nil && digest(installed.data) != record.Recovery.SourceFilesSHA256 {
 		return ErrInvalid
 	}
-	alive, err := linuxplatform.GenerationRunning(record.Recovery.CoordinatorPID, record.Recovery.CoordinatorStart)
-	if err != nil {
-		return err
-	}
-	if alive {
-		return operations.ErrConflict
+	if record.Recovery != nil {
+		alive, err := linuxplatform.GenerationRunning(record.Recovery.CoordinatorPID, record.Recovery.CoordinatorStart)
+		if err != nil {
+			return err
+		}
+		if alive {
+			return operations.ErrConflict
+		}
 	}
 	if _, err := os.Lstat(filepath.Join(target, operations.StartupSeal)); !os.IsNotExist(err) {
 		return errors.Join(ErrChanged, err)

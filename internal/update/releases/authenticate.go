@@ -26,25 +26,39 @@ func (g *GitHub) AuthenticateCandidate(ctx context.Context, c Candidate) (Verifi
 	if g.publisherKeys == nil || len(g.publisherKeys.keys) == 0 {
 		return VerifiedRelease{}, ErrUntrusted
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	data, err := g.releaseMetadata(ctx, c.Version, ReleaseManifestName, ReleaseManifestLimit)
+
+	verified, err := g.AuthenticateVersion(ctx, c.Version)
 	if err != nil {
 		return VerifiedRelease{}, err
 	}
-	signature, err := g.releaseMetadata(ctx, c.Version, ReleaseSignatureName, ed25519.SignatureSize)
-	if err != nil {
-		return VerifiedRelease{}, err
-	}
-	verified, err := g.publisherKeys.Verify(data, signature, c.Version)
-	if err != nil {
-		return VerifiedRelease{}, err
-	}
-	if _, err = verified.Asset(c); err != nil {
+	if _, err := verified.Asset(c); err != nil {
 		return VerifiedRelease{}, err
 	}
 	return verified, nil
 }
+
+// AuthenticateVersion retrieves only fixed publisher metadata for this exact
+// canonical version. It is also used to prove the installed source inventory.
+func (g *GitHub) AuthenticateVersion(ctx context.Context, version string) (VerifiedRelease, error) {
+	if _, err := ParseVersion(version); err != nil {
+		return VerifiedRelease{}, ErrMetadata
+	}
+	if g.publisherKeys == nil || !g.publisherKeys.Configured() {
+		return VerifiedRelease{}, ErrUntrusted
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	data, err := g.releaseMetadata(ctx, version, ReleaseManifestName, ReleaseManifestLimit)
+	if err != nil {
+		return VerifiedRelease{}, err
+	}
+	signature, err := g.releaseMetadata(ctx, version, ReleaseSignatureName, ed25519.SignatureSize)
+	if err != nil {
+		return VerifiedRelease{}, err
+	}
+	return g.publisherKeys.Verify(data, signature, version)
+}
+
 func (g *GitHub) releaseMetadata(ctx context.Context, version, name string, maximum int64) ([]byte, error) {
 	client := *g.client
 	client.Jar = nil
