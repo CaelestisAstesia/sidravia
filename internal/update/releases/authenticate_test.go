@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 	}
 }
 
-func TestCheckVerifiesSignaturesButNeverEnablesApply(t *testing.T) {
+func TestCheckOffersOnlyNativeSignedPortableApply(t *testing.T) {
 	key, m, c, _ := signedReleaseFixture(t)
 	data, _ := json.Marshal(m)
 	source := NewGitHub(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
@@ -92,7 +93,8 @@ func TestCheckVerifiesSignaturesButNeverEnablesApply(t *testing.T) {
 	})})
 	source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
 	result, err := source.Check(context.Background(), Selection{OS: "linux", Arch: "amd64", Kind: "core-portable", Channel: "stable", CurrentVersion: "0.9.0"})
-	if err != nil || result.Candidate == nil || result.Candidate.CanApply || result.Candidate.ApplyReason != "automatic_installation_unavailable" {
+	native := runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
+	if err != nil || result.Candidate == nil || result.Candidate.CanApply != native || (native && result.Candidate.ApplyReason != "source_verification_and_confirmation_required") {
 		t.Fatalf("%+v %v", result, err)
 	}
 }

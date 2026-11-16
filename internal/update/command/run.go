@@ -42,6 +42,12 @@ type cached struct {
 }
 
 func Run(ctx context.Context, args []string, version, buildID string, out io.Writer) int {
+	return RunWithAdmission(ctx, args, version, buildID, out, nil)
+}
+
+// RunWithAdmission transfers the host's own runtime lease only after the
+// coordinator has durably blocked ordinary startup. Read-only commands need no lease.
+func RunWithAdmission(ctx context.Context, args []string, version, buildID string, out io.Writer, releaseRuntime func()) int {
 	emit := func(ok bool, code, message string, result any) int {
 		err := json.NewEncoder(out).Encode(response{1, ok, code, message, result})
 		if err != nil {
@@ -53,7 +59,7 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		return 0
 	}
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
-		return emit(true, "ok", "Sidravia updater: check | download --candidate ID | status | version", nil)
+		return emit(true, "ok", "Sidravia updater: check | download --candidate ID | apply --candidate ID --confirm | status | recover --operation ID --confirm | version", nil)
 	}
 	if args[0] == "version" {
 		if len(args) != 1 {
@@ -62,7 +68,7 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		return emit(true, "ok", "", map[string]string{"productVersion": version, "buildId": buildID})
 	}
 	operation := args[0]
-	if operation != "check" && operation != "download" && operation != "status" && operation != "apply" {
+	if operation != "check" && operation != "download" && operation != "status" && operation != "apply" && operation != "recover" {
 		return emit(false, "invalid_arguments", "未知更新操作。", nil)
 	}
 	flags := flag.NewFlagSet("updater", flag.ContinueOnError)
@@ -74,17 +80,23 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 	channel := flags.String("channel", defaultChannel, "")
 	kind := flags.String("package", "", "")
 	candidateID := flags.String("candidate", "", "")
+	confirmed := flags.Bool("confirm", false, "")
+	operationID := flags.String("operation", "", "")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return emit(false, "invalid_arguments", "更新参数无效。", nil)
 	}
 	if *channel != "stable" && *channel != "preview" {
 		return emit(false, "invalid_arguments", "更新通道无效。", nil)
 	}
-	if operation == "apply" {
-		return emit(false, "apply_unavailable", "当前构建尚未接入自动安装。请按发行说明手动更新。", nil)
+
+	if operation == "apply" && (!applyPlatformSupported() || !releases.PublisherTrust().Configured()) {
+		return emit(false, "apply_unavailable", "当前平台或构建尚未具备可信自动更新条件，请按发行说明手动更新", nil)
 	}
-	if (operation == "check" || operation == "status") && *candidateID != "" || operation == "download" && *candidateID == "" {
-		return emit(false, "invalid_arguments", "下载需要准确的候选编号。", nil)
+	if (operation == "apply" || operation == "recover") && !*confirmed {
+		return emit(false, "confirmation_required", "请检查候选或操作编号，并使用 --confirm 明确确认", nil)
+	}
+	if ((operation == "download" || operation == "apply") && *candidateID == "") || ((operation != "download" && operation != "apply") && *candidateID != "") || ((operation == "recover") != (*operationID != "")) || (*confirmed && operation != "apply" && operation != "recover") {
+		return emit(false, "invalid_arguments", "更新参数或编号无效", nil)
 	}
 	layout, err := productlayout.Resolve()
 	if err != nil {
@@ -124,6 +136,7 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		}
 	}
 	if operation == "status" {
+		previous = projectInstalledVersion(previous, version)
 		operationRoot, err := operations.DefaultRoot()
 		if err != nil {
 			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
@@ -173,17 +186,36 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 			return emit(false, "rate_limited", "GitHub 请求受限，请稍后重试。", wait)
 		}
 	}
-	source := releases.NewGitHub(nil)
-	result, err := source.Check(ctx, selection)
-	if err != nil {
+	// All network stages share the same durable backoff, including installed
+	// proof, repeated candidate authentication and recovery.
+	failSource := func(err error, result any, applying bool) int {
 		var limited *releases.RateLimitError
 		if errors.As(err, &limited) {
 			b, _ := json.Marshal(backoff{SchemaVersion: 1, Until: limited.RetryAt})
-			if e := store.Replace(ctx, backoffPath, b); e != nil {
-				return emit(false, "cache_write_failed", "限流记录无法保存，请稍后重试。", nil)
+			if e := store.Replace(context.WithoutCancel(ctx), backoffPath, b); e != nil {
+				return emit(false, "cache_write_failed", "限流记录无法保存，请稍后重试", result)
 			}
 		}
-		return emit(false, safeCode(err), safeMessage(err), nil)
+		if applying {
+			return emit(false, applyErrorCode(err), applyErrorMessage(err), result)
+		}
+		return emit(false, safeCode(err), safeMessage(err), result)
+	}
+	source := releases.NewGitHub(nil)
+	if operation == "recover" {
+		result, err := recoverOperation(ctx, layout, version, buildID, *operationID, source)
+		if err != nil {
+			return failSource(err, result, true)
+		}
+		return emit(true, "ok", "中断协调已结束，未重复启动或恢复连接", result)
+	}
+	result, err := source.Check(ctx, selection)
+	if err != nil {
+		return failSource(err, nil, false)
+	}
+	if result.Candidate != nil && layout.Mode != productlayout.ModePortable {
+		result.Candidate.CanApply = false
+		result.Candidate.ApplyReason = "portable_layout_required"
 	}
 	state := cached{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result}
 	if previous.Downloaded != "" {
@@ -195,8 +227,25 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 			state.Downloaded = previous.Downloaded
 		}
 	}
-	if operation == "download" && (result.Candidate == nil || result.Candidate.ID != *candidateID) {
+	if (operation == "download" || operation == "apply") && (result.Candidate == nil || result.Candidate.ID != *candidateID) {
 		return emit(false, "candidate_changed", "候选版本已变化，请重新检查。", nil)
+	}
+
+	if operation == "apply" {
+		if layout.Mode != productlayout.ModePortable || *kind != defaultPackageKind(runtime.GOOS, runtime.GOARCH, layout) {
+			return emit(false, "invalid_target", "仅支持保持现有包型的 Linux 便携版更新", nil)
+		}
+		if result.State != "available" || result.Candidate == nil {
+			return emit(false, "not_newer", "候选版本不高于当前版本", nil)
+		}
+		if previous.Downloaded == "" || !samePackage(previous.Check.Candidate, result.Candidate) {
+			return emit(false, "download_required", "请先下载当前准确候选，再确认更新", nil)
+		}
+		outcome, err := applyDownloaded(ctx, root, layout, version, buildID, source, *result.Candidate, previous.Downloaded, releaseRuntime)
+		if err != nil {
+			return failSource(err, outcome, true)
+		}
+		return emit(true, "ok", "更新已安装，恢复结果见返回状态", outcome)
 	}
 	// Keep one verified package per target/type/channel. Clear the old owned
 	// leaf before obtaining a replacement; failed downloads can be retried.
@@ -210,7 +259,7 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		if state.Downloaded == "" {
 			path, err := releases.Download(ctx, nil, *result.Candidate, root)
 			if err != nil {
-				return emit(false, safeCode(err), safeMessage(err), nil)
+				return failSource(err, nil, false)
 			}
 			state.Downloaded = path
 			newDownload = path

@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -200,14 +201,22 @@ func (g *GitHub) Check(ctx context.Context, s Selection) (CheckResult, error) {
 		return CheckResult{State: "no_compatible_release"}, nil
 	}
 	// Builds without configured publisher roots keep legacy check/download
-	// behavior. Trust can never grant apply until the execution path is ready.
+	// behavior. Native portable apply still requires installed-source proof and
+	// explicit consent at the command boundary.
 	if g.publisherKeys != nil && len(g.publisherKeys.keys) > 0 {
 		if _, err := g.AuthenticateCandidate(ctx, *selected); err != nil {
 			if !errors.Is(err, ErrSignatureMissing) {
 				return CheckResult{}, err
 			}
 		} else {
-			selected.ApplyReason = "automatic_installation_unavailable"
+			selected.ApplyReason = "platform_not_supported"
+			if selectedVersion.Compare(current) <= 0 {
+				selected.ApplyReason = "not_newer"
+			}
+			if s.OS == "linux" && runtime.GOOS == "linux" && s.Arch == runtime.GOARCH && (s.Kind == "core-portable" || s.Kind == "gui-portable") && selectedVersion.Compare(current) > 0 {
+				selected.CanApply = true
+				selected.ApplyReason = "source_verification_and_confirmation_required"
+			}
 		}
 	}
 	state := "up_to_date"

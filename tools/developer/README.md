@@ -143,11 +143,13 @@ Sidravia, access credentials, authenticate, register an installation, change PAT
 or autostart, or establish production GUI/CTL lifecycle compatibility. Temporary
 files belong to the fixture; the verifier report remains under `.project/`.
 
-## Updater foundation
+## Updater commands
 
 The distribution now includes `sidraviaupdater`; CTL delegates `update check`,
-`update download --candidate ID`, `update status` and `update version` to the
-sibling executable. Optional `--channel stable|preview` and
+`update download --candidate ID`, `update status`, `update version`,
+`update apply --candidate ID --confirm` and
+`update recover --operation ID --confirm` to the sibling executable. Linux apply
+uses exec so CTL cannot hold the target open or kill its replacement coordinator. Optional `--channel stable|preview` and
 `--package setup|gui-portable|core-portable` select the GitHub candidate. Check
 uses the Releases list and SemVer ordering; download requires the exact freshly
 selected candidate and verifies size/SHA256. JSON responses use schema version 1.
@@ -155,9 +157,16 @@ A protected user cache retains one verified package per target/type/channel;
 repeated checks preserve it and repeated downloads reuse it. Unexpected cache
 paths or changed bytes fail closed and require cache inspection.
 
-This is foundation work: `update apply` returns `apply_unavailable`, and candidates
-report `canApply=false`. Pinned-key release metadata authentication and product ownership inventories are
-implemented and tested using synthetic keys; no publisher key is configured.
+Linux portable apply is wired end to end. The default build still has no publisher
+root: it returns `apply_unavailable` and `canApply=false`. A reviewed root-bearing
+build can offer native Linux portable candidates; `canApply` remains conditional
+on verifying the installed baseline and explicit confirmation. Apply refetches
+fixed signed metadata for both the installed version/build and the exact new
+candidate, rechecks the cached archive, and authenticates the local ownership
+index before requesting exit. It preserves package kind and never downgrades.
+No runtime environment variable or downloaded key can change publisher trust.
+Source errors, including old-version proof/recovery rate limits, retain shared
+bounded GitHub backoff. Tests use synthetic keys only.
 Distribution archives contain `sidravia-files.json`, independently checked against
 source bytes, file modes and the protected data boundary. Target-bound execution
 records preserve exact signed proof and operation claims outside replaced files.
@@ -171,11 +180,17 @@ admission is bound to the operation, new build, namespace and live coordinator
 ancestry; only saved configuration intent is dispatched, at most once. Explicit
 restart strips the earlier launch capability, and user mutations revoke pending
 connection recovery. Installed files, process readiness and authentication are
-separate outcomes. Public `apply` remains disabled pending CLI delivery and
-publisher/release acceptance. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
+separate outcomes. The apply JSON reports `filesApplied`, `applicationRecovery`
+and `authentication` separately; a completed update does not prove network login.
+Status remains available during startup protection and projects cached candidates
+against the currently installed version. Explicit recover verifies the installed
+source/target bytes and dead coordinator before ending an interrupted operation;
+it never repeats a launch or authentication. Partial writes retain their seal
+and require manual repair. Publisher provisioning and signed release acceptance
+remain pending. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
 `gui-runtime/` payload: the shared lease is inherited across exec before Flutter
-loads, then marked close-on-exec by the runner. Windows publication and public apply require their own acceptance before enabling installation. GUI scheduling, unattended apply, public portable apply delivery and signed release
-integration remain pending. The Windows application now exposes fixed internal
+loads, then marked close-on-exec by the runner. Windows file application requires its own implementation and native acceptance.
+GUI scheduling, unattended apply and signed release integration remain pending. The Windows application now exposes fixed internal
 prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
 Inno path uses these stages when the target CTL advertises protocol 1. Older
 targets require manual exit. Normal process entry points share Inno's current-user
@@ -188,6 +203,21 @@ The native fixture also runs the release/command tests, real CTL-to-updater
 version/disabled-apply smoke and isolated real CTL/daemon lifecycle tests. GUI
 unit/widget checks and compilation are separate from actual Windows GUI and
 installation/upgrade acceptance. Tests never authenticate with real credentials.
+
+To verify actual Linux CTL commands with private old/new binaries and a local
+TLS proxy serving the fixed GitHub URLs, run:
+
+```bash
+SIDRAVIA_CLI_UPDATE_FIXTURE=1 python3 tools/developer/dev.py verify --scope go --go-checks native --go /absolute/path/to/pinned/go
+```
+
+The opt-in `TestNativeCLIUpdate` uses a source overlay containing only a synthetic
+public publisher root, isolated HOME/XDG/namespace and no real account. It covers
+check/download/confirmed exec apply/status, stopped and running headless targets,
+confirmation/candidate/cache/source-proof/backoff failures, and interrupted
+Verified/Applied recovery without relaunch. Owned evidence is retained under
+`.local/cli-update-fixture-*`; it never installs into the host or contacts campus.
+The regular default-root suite continues to require disabled apply.
 
 To additionally run the real Windows GUI lifecycle, set
 `SIDRAVIA_GUI_TEST_DIRECTORY` to the fixed builder's current Release directory.

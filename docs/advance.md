@@ -369,16 +369,22 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 | --- | --- |
 | `update version` | 查询当前更新器版本与构建标识 |
 | `update check` | 检查匹配平台、包类型和通道的更新候选 |
-| `update status` | 查询对应选择的本地缓存状态 |
+| `update status` | 查询缓存及更新执行状态 |
 | `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
+| `update apply --candidate ID --confirm` | 确认应用已下载的 Linux 便携版准确候选 |
+| `update recover --operation ID --confirm` | 核验并结束中断的更新协调，不重复启动程序 |
 
 `check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果，不要填版本号或任意 URL。
 
-签名清单获取与验证已接入共用检查路径，但当前构建尚未配置正式发布公钥，自动安装仍关闭。Windows 安装期间的退出、取消与恢复协调已有基础代码。GUI 自动检查频率、提醒、便携版替换及完整安装后的恢复仍需后续开发与验收；现有 SHA256 校验不能替代这些步骤。
+Linux 便携版的检查、下载、确认应用、正常退出与恢复链路已接通。当前默认构建尚未配置发布公钥，`apply` 仍返回 `apply_unavailable`，候选的 `canApply` 为 false。配置固定公钥的受审构建还需取得当前版本与新版本的有效签名证明，核验本地文件清单和下载包，并由用户明确确认；缺少旧版证明时需手动升级到可信基线。Windows 文件应用、GUI 自动提醒及正式签名发行仍待实现或验收
 
-`update status` 在存在执行记录时还会返回操作 ID、阶段、源/目标版本、更新时间和失败码。`requiresStartupBlock` 表示该阶段要求启动入口阻止运行；平台入口与文件替换接通前，不代表它们已经执行。执行记录保留精确签名证据并重新验证，不把缓存中的提示字段当成安装授权。
+`update status` 在存在执行记录时还会返回操作 ID、阶段、源/目标版本、更新时间和失败码。`requiresStartupBlock` 表示该阶段阻止普通启动，`status` 和 `recover` 仍可用。执行记录保留精确签名证据并重新验证，不把缓存中的提示字段当成安装授权。
 
-当前 `update apply` 返回 `apply_unavailable`，不执行自动安装。RPM 管理的安装应通过系统包管理器更新；便携版按对应平台说明手动更新。基础检查与下载能力不代表安装、回滚和正式签名链路已完成。
+在具备可信基线的 Linux 便携版中，依次执行 `update check`、`update download --candidate ID`、`update apply --candidate ID --confirm`，最后用 `update status` 确认结果。检查、下载和应用应使用相同通道、包类型；仅允许同包型升级，不降级。应用前重新检查候选、签名和缓存，不将 `canApply` 当作安装授权
+
+应用结果分别报告 `filesApplied`（文件已安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证，本操作不据此判定登录成功）。原本未运行则不启动；原本已断开则不自动认证。更新中断时先查 `status`，确认操作 ID 后可运行 `recover`；它只在协调器已退出、文件完整且无写入封印时结束中断状态，不重复拉起程序。部分写入失败仍保持保护，需手动修复，不自动全包回滚
+
+RPM 安装继续通过系统包管理器更新。正式公钥、手动基线和发行验收完成前，请继续按平台说明手动更新
 
 ## 命令速查
 

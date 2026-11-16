@@ -35,3 +35,25 @@ func TestUpdaterFailureDoesNotBecomeSuccessfulCLIResult(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateForwardsConfirmationAndRecoveryIdentity(t *testing.T) {
+	for _, args := range [][]string{{"apply", "--candidate", "2:22", "--confirm"}, {"recover", "--operation", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--confirm"}} {
+		var got []string
+		var out bytes.Buffer
+		cmd := newUpdateCommand(&out, func(_ context.Context, a []string) ([]byte, error) {
+			got = a
+			return []byte(`{"schemaVersion":1,"ok":true,"code":"ok"}`), nil
+		})
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		want := args
+		if args[0] == "recover" {
+			want = []string{"recover", "--confirm", "--operation", args[2]}
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatal(got, want)
+		}
+	}
+}

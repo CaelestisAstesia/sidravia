@@ -32,6 +32,12 @@ func invokeUpdater(ctx context.Context, args []string) ([]byte, error) {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
+	path := filepath.Join(filepath.Dir(executable), name)
+	if len(args) > 0 && args[0] == "apply" {
+		if handled, err := handoffUpdater(path, args); handled {
+			return nil, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, filepath.Join(filepath.Dir(executable), name), args...)
@@ -46,9 +52,10 @@ func invokeUpdater(ctx context.Context, args []string) ([]byte, error) {
 	return output.data, err
 }
 func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error)) *cobra.Command {
-	group := &cobra.Command{Use: "update", Short: "通过独立更新器检查和下载更新"}
-	for _, operation := range []string{"check", "download", "status", "apply", "version"} {
-		var channel, kind, candidate string
+	group := &cobra.Command{Use: "update", Short: "检查、下载和应用更新"}
+	for _, operation := range []string{"check", "download", "status", "apply", "recover", "version"} {
+		var channel, kind, candidate, operationID string
+		var confirm bool
 		command := &cobra.Command{Use: operation, Short: operation, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			args := []string{operation}
 			if channel != "" {
@@ -59,6 +66,12 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 			}
 			if candidate != "" {
 				args = append(args, "--candidate", candidate)
+			}
+			if confirm {
+				args = append(args, "--confirm")
+			}
+			if operationID != "" {
+				args = append(args, "--operation", operationID)
 			}
 			data, processErr := invoke(cmd.Context(), args)
 			var result struct {
@@ -86,6 +99,12 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 			command.Flags().StringVar(&channel, "channel", "", "stable 或 preview")
 			command.Flags().StringVar(&kind, "package", "", "更新包类型")
 			command.Flags().StringVar(&candidate, "candidate", "", "检查结果中的候选编号")
+		}
+		if operation == "apply" || operation == "recover" {
+			command.Flags().BoolVar(&confirm, "confirm", false, "明确确认本次更新或中断收尾")
+		}
+		if operation == "recover" {
+			command.Flags().StringVar(&operationID, "operation", "", "状态结果中的操作编号")
 		}
 		group.AddCommand(command)
 	}
