@@ -220,7 +220,7 @@ class SettingsPage extends StatelessWidget {
     return ListenableBuilder(
       listenable: desktopPresence ?? const AlwaysStoppedAnimation(false),
       builder: (context, _) => DesignPage(
-        maxWidth: double.infinity,
+        maxWidth: 720,
         horizontalPadding: 24,
         children: [
           DesignHeader(title: '设置', onBack: onBack),

@@ -31,9 +31,11 @@ class SettingsDropdown<T> extends StatelessWidget {
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
     final width = DesignMetrics.choiceWidth(MediaQuery.sizeOf(context).width);
-    // Both surfaces use a common height, measured with the trigger's narrower
-    // text area (padding and trailing arrow excluded).
-    final textWidth = width - 14 - 24;
+    // Reserve matching leading/trailing slots so the label is centered in the
+    // entire capsule; measure long labels using that same available width.
+    const horizontalPadding = 12.0;
+    const arrowWidth = 20.0;
+    final textWidth = width - 2 * horizontalPadding - 2 * arrowWidth;
     double textHeight = 0;
     for (final label in [...labels.values, ?hint]) {
       final painter = TextPainter(
@@ -57,7 +59,7 @@ class SettingsDropdown<T> extends StatelessWidget {
       fixedSize: Size(width, height),
       minimumSize: Size.zero,
       maximumSize: Size(width, height),
-      padding: const EdgeInsets.symmetric(horizontal: 7),
+      padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.standard,
       alignment: AlignmentDirectional.centerStart,
@@ -131,16 +133,17 @@ class SettingsDropdown<T> extends StatelessWidget {
                   },
             child: Row(
               children: [
+                const SizedBox(width: arrowWidth),
                 Expanded(
                   child: Text(
                     labels[value] ?? hint ?? '',
                     key: value == null ? null : regionKey?.call(value as T),
                     style: style,
-                    textAlign: TextAlign.start,
+                    textAlign: TextAlign.center,
                   ),
                 ),
                 const SizedBox(
-                  width: 24,
+                  width: arrowWidth,
                   child: Icon(Icons.arrow_drop_down, size: 20),
                 ),
               ],

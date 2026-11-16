@@ -21,6 +21,43 @@ Future<void> open(WidgetTester tester, GuiController c) async {
 }
 
 void main() {
+  testWidgets('save stays centered and bounded in narrow and wide windows', (
+    tester,
+  ) async {
+    final client = OfflineDemoClient();
+    final c = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+    );
+    await c.start();
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    try {
+      for (final width in [360.0, 1440.0]) {
+        await tester.binding.setSurfaceSize(Size(width, 800));
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            home: Scaffold(
+              body: ConfigurationPage(controller: c, onBack: () {}),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final button = tester.getRect(
+          find.widgetWithText(FilledButton, '保存修改'),
+        );
+        expect(button.width, lessThanOrEqualTo(320));
+        expect(button.width, greaterThanOrEqualTo(300));
+        expect(button.center.dx, closeTo(width / 2, .01));
+        expect(tester.takeException(), isNull);
+      }
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await c.close();
+      c.dispose();
+      client.dispose();
+    }
+  });
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
     testWidgets(
       'configuration actions retain 48px touch targets on $platform',

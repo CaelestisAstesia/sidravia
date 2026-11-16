@@ -227,9 +227,18 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           builder: (context, _) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              FilledButton(
-                onPressed: _saving || !_canSave || !_dirty ? null : _save,
-                child: Text(_saving ? '正在保存…' : '保存修改'),
+              Align(
+                alignment: Alignment.center,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _saving || !_canSave || !_dirty ? null : _save,
+                      child: Text(_saving ? '正在保存…' : '保存修改'),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
