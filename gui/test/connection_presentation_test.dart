@@ -8,7 +8,7 @@ import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
@@ -302,7 +302,7 @@ void main() {
       await tester.ensureVisible(find.text('连接与诊断'));
       await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
-      expect(find.byType(AdvancedPage), findsOneWidget);
+      expect(find.byType(ConnectionDiagnosticsPage), findsOneWidget);
       final snapshot = displayedSnapshot(tester);
       expect(snapshot['configurations'], hasLength(2));
       expect(snapshot['sessions'][0]['id'], 'orphan');

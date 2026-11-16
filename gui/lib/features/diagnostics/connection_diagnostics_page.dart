@@ -1,16 +1,16 @@
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
-import 'package:sidravia_gui/features/advanced/runtime_snapshot.dart';
+import 'package:sidravia_gui/features/diagnostics/runtime_snapshot.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:sidravia_gui/features/advanced/snapshot_code_view.dart';
+import 'package:sidravia_gui/features/diagnostics/snapshot_code_view.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
-class AdvancedPage extends StatefulWidget {
-  const AdvancedPage({
+class ConnectionDiagnosticsPage extends StatefulWidget {
+  const ConnectionDiagnosticsPage({
     super.key,
     required this.controller,
     required this.onBack,
@@ -20,10 +20,11 @@ class AdvancedPage extends StatefulWidget {
   final VoidCallback onBack;
   final Future<bool> Function()? onOpenLogDirectory;
   @override
-  State<AdvancedPage> createState() => _AdvancedPageState();
+  State<ConnectionDiagnosticsPage> createState() =>
+      _ConnectionDiagnosticsPageState();
 }
 
-class _AdvancedPageState extends State<AdvancedPage> {
+class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
   GuiController get controller => widget.controller;
   VoidCallback get onBack => widget.onBack;
 
@@ -36,7 +37,7 @@ class _AdvancedPageState extends State<AdvancedPage> {
   }
 
   @override
-  void didUpdateWidget(covariant AdvancedPage oldWidget) {
+  void didUpdateWidget(covariant ConnectionDiagnosticsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.controller, widget.controller)) {
       _captured = _capture();

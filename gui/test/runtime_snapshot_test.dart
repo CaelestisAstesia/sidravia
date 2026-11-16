@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
-import 'package:sidravia_gui/features/advanced/snapshot_code_view.dart';
-import 'package:sidravia_gui/features/advanced/runtime_snapshot.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
+import 'package:sidravia_gui/features/diagnostics/snapshot_code_view.dart';
+import 'package:sidravia_gui/features/diagnostics/runtime_snapshot.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 import 'support/runtime_snapshot.dart';
@@ -153,7 +153,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: AdvancedPage(controller: controller, onBack: () {}),
+            body: ConnectionDiagnosticsPage(
+              controller: controller,
+              onBack: () {},
+            ),
           ),
         ),
       );

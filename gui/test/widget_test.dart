@@ -12,7 +12,7 @@ import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -74,7 +74,7 @@ void main() {
       expect(find.text('返回仪表盘'), findsNothing);
       await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
-      expect(find.byType(AdvancedPage), findsOneWidget);
+      expect(find.byType(ConnectionDiagnosticsPage), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();
@@ -238,8 +238,8 @@ void main() {
         await tapVisible(find.byTooltip('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
         await tapVisible(find.text('连接与诊断'));
-        expect(find.byType(AdvancedPage), findsOneWidget);
-        expect(find.byType(AdvancedPage), findsOneWidget);
+        expect(find.byType(ConnectionDiagnosticsPage), findsOneWidget);
+        expect(find.byType(ConnectionDiagnosticsPage), findsOneWidget);
         await tapVisible(find.byTooltip('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
         await tapVisible(find.byTooltip('返回'));

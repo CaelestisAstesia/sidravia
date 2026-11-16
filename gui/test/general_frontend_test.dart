@@ -391,7 +391,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byType(HomeNoticeView));
+        await tester.tap(find.byType(HomeAnnouncementEntryView));
         await tester.pumpAndSettle();
         expect(find.byType(Dialog), findsNothing);
         expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);

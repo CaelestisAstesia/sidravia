@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:flutter/material.dart';
 
 /// Shared compact search control for local, already loaded information.
@@ -14,10 +15,9 @@ class DesignSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final touch =
-        Theme.of(context).platform == TargetPlatform.android ||
-        Theme.of(context).platform == TargetPlatform.iOS;
-    final minimumHeight = touch ? 48.0 : 42.0;
+    final minimumHeight = DesignMetrics.actionTargetSize(
+      Theme.of(context).platform,
+    );
     return Material(
       color: Colors.transparent,
       child: ListenableBuilder(

@@ -75,7 +75,7 @@ void main() {
           expect(find.text('公告'), findsOneWidget);
           expect(find.text('在应用内打开学校公告页面'), findsNothing);
           expect(effects.where((c) => c.method == 'open'), isEmpty);
-          await tester.tap(find.byType(HomeNoticeView));
+          await tester.tap(find.byType(HomeAnnouncementEntryView));
           await tester.pumpAndSettle();
           expect(effects.where((c) => c.method == 'open'), hasLength(1));
           expect(preferences.lastAutomaticAnnouncementDate, isNull);

@@ -542,7 +542,17 @@ void main() {
                 closeTo(frame.center.dy, .01),
               );
               expect(tester.widget<Text>(region).textAlign, TextAlign.start);
-              expect(tester.getRect(region).left, closeTo(frame.left + 7, .01));
+              final arrowSlot = tester.getRect(
+                find.descendant(
+                  of: find.byKey(const ValueKey('appearance-selector')),
+                  matching: find.byKey(
+                    const ValueKey('settings-dropdown-arrow'),
+                  ),
+                ),
+              );
+              final labelInset = tester.getRect(region).left - frame.left;
+              expect(labelInset, closeTo(12, .01));
+              expect(labelInset, closeTo(frame.right - arrowSlot.right, .01));
               expect(
                 tester.getSize(
                   find.byKey(const ValueKey('appearance-selector')),

@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
-import 'package:sidravia_gui/features/home/business_panel.dart';
+import 'package:sidravia_gui/features/home/server_messages_panel.dart';
+import 'package:sidravia_gui/features/home/connection_information_view.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
@@ -177,7 +178,6 @@ void main() {
                 state: '已连接',
                 detail: '认证成功',
                 context: '以太网 · 192.0.2.4',
-                glyph: '✓',
                 tone: HomeTone.success,
                 secondaryLabel: '连接与诊断',
                 primaryLabel: '断开连接',
@@ -187,8 +187,13 @@ void main() {
                 onSettings: () {},
                 onSecondary: () {},
                 onPrimary: () {},
-                notice: HomeNotice(title: '查看吉林大学公告', onOpen: () {}),
-                business: BusinessPanel(controller: controller.business),
+                announcement: HomeAnnouncementEntry(
+                  title: '查看吉林大学公告',
+                  onOpen: () {},
+                ),
+                serverMessages: ServerMessagesPanel(
+                  controller: controller.business,
+                ),
                 information: ConnectionInformationView(
                   controller: controller.business,
                 ),

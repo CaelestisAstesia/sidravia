@@ -25,7 +25,6 @@ class HomeFixture extends StatelessWidget {
       state: '已连接',
       detail: '认证成功 · 已连接 2 小时 18 分钟',
       context: '以太网 · 192.168.1.20',
-      glyph: '✓',
       tone: HomeTone.success,
       secondaryLabel: '连接与诊断',
       primaryLabel: '断开连接',
@@ -35,7 +34,7 @@ class HomeFixture extends StatelessWidget {
       onSettings: () {},
       onSecondary: () {},
       onPrimary: () {},
-      notice: HomeNotice(title: '校园网维护安排', onOpen: () {}),
+      announcement: HomeAnnouncementEntry(title: '校园网维护安排', onOpen: () {}),
     ),
   );
 }

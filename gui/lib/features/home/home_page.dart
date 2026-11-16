@@ -1,4 +1,5 @@
-import 'package:sidravia_gui/features/home/business_panel.dart';
+import 'package:sidravia_gui/features/home/server_messages_panel.dart';
+import 'package:sidravia_gui/features/home/connection_information_view.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
@@ -25,7 +26,6 @@ class HomeViewData {
     required this.state,
     required this.detail,
     required this.context,
-    required this.glyph,
     required this.tone,
     required this.secondaryLabel,
     required this.primaryLabel,
@@ -38,11 +38,11 @@ class HomeViewData {
     this.actionError,
     this.onDismissActionError,
     this.issue,
-    this.notice,
-    this.business,
+    this.announcement,
+    this.serverMessages,
     this.information,
   });
-  final String institution, username, state, detail, context, glyph;
+  final String institution, username, state, detail, context;
   final HomeTone tone;
   final String secondaryLabel, primaryLabel;
   final HomeButtonKind primaryKind;
@@ -53,13 +53,17 @@ class HomeViewData {
   final String? actionError;
   final VoidCallback? onDismissActionError;
   final SessionAuthenticationFailure? issue;
-  final HomeNotice? notice;
-  final Widget? business, information;
+  final HomeAnnouncementEntry? announcement;
+  final Widget? serverMessages, information;
 }
 
 @immutable
-class HomeNotice {
-  const HomeNotice({required this.title, required this.onOpen, this.feedback});
+class HomeAnnouncementEntry {
+  const HomeAnnouncementEntry({
+    required this.title,
+    required this.onOpen,
+    this.feedback,
+  });
   final String title;
   final String? feedback;
   final VoidCallback onOpen;
@@ -99,9 +103,9 @@ class HomePage extends StatelessWidget {
     final unconfigured =
         controller.capabilities.capability == GuiCapabilityState.createOnly;
     final school = announcements?.profile;
-    final notice = school == null
+    final announcement = school == null
         ? null
-        : HomeNotice(
+        : HomeAnnouncementEntry(
             title: '公告',
             feedback: announcements?.feedback,
             onOpen: () {
@@ -115,7 +119,6 @@ class HomePage extends StatelessWidget {
         state: p.statusTitle,
         detail: p.statusDetail,
         context: p.statusContext,
-        glyph: p.glyph,
         tone: p.tone,
         secondaryLabel: p.secondaryLabel,
         primaryLabel: p.primaryLabel,
@@ -143,8 +146,8 @@ class HomePage extends StatelessWidget {
             ? null
             : () => controller.dismissNotice(p.actionError!),
         issue: p.issue,
-        notice: notice,
-        business: BusinessPanel(controller: controller.business),
+        announcement: announcement,
+        serverMessages: ServerMessagesPanel(controller: controller.business),
         information: ConnectionInformationView(
           controller: controller.business,
           contextText: p.statusContext,
@@ -196,8 +199,9 @@ class HomeView extends StatelessWidget {
         child: ColoredBox(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       const SizedBox(height: 10),
-      if (data.notice != null) HomeNoticeView(notice: data.notice!),
-      if (data.notice != null) ...[
+      if (data.announcement != null)
+        HomeAnnouncementEntryView(entry: data.announcement!),
+      if (data.announcement != null) ...[
         const SizedBox(height: 10),
         SizedBox(
           key: const ValueKey('home-messages-divider'),
@@ -207,10 +211,10 @@ class HomeView extends StatelessWidget {
           ),
         ),
       ],
-      if (data.business != null)
+      if (data.serverMessages != null)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: data.business!,
+          child: data.serverMessages!,
         ),
     ],
   );
@@ -374,7 +378,8 @@ class _HomeFeedbackSlotState extends State<_HomeFeedbackSlot> {
     if (oldWidget.data.actionError != widget.data.actionError) {
       _dismissedAction = null;
     }
-    if (oldWidget.data.notice?.feedback != widget.data.notice?.feedback) {
+    if (oldWidget.data.announcement?.feedback !=
+        widget.data.announcement?.feedback) {
       _dismissedAnnouncement = null;
     }
   }
@@ -382,7 +387,7 @@ class _HomeFeedbackSlotState extends State<_HomeFeedbackSlot> {
   @override
   Widget build(BuildContext context) {
     final action = widget.data.actionError;
-    final announcement = widget.data.notice?.feedback;
+    final announcement = widget.data.announcement?.feedback;
     final isAction = action != null && action != _dismissedAction;
     final message = isAction
         ? action
@@ -419,9 +424,9 @@ class _HomeFeedbackSlotState extends State<_HomeFeedbackSlot> {
   }
 }
 
-class HomeNoticeView extends StatelessWidget {
-  const HomeNoticeView({super.key, required this.notice});
-  final HomeNotice notice;
+class HomeAnnouncementEntryView extends StatelessWidget {
+  const HomeAnnouncementEntryView({super.key, required this.entry});
+  final HomeAnnouncementEntry entry;
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -429,7 +434,7 @@ class HomeNoticeView extends StatelessWidget {
       width: double.infinity,
       child: TextButton(
         key: const ValueKey('home-notice'),
-        onPressed: notice.onOpen,
+        onPressed: entry.onOpen,
         style: TextButton.styleFrom(
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -444,7 +449,7 @@ class HomeNoticeView extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                notice.title.replaceFirst(RegExp(r'^查看'), ''),
+                entry.title.replaceFirst(RegExp(r'^查看'), ''),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

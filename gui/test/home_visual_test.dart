@@ -83,7 +83,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('已连接'), findsOneWidget);
       expect(find.text('校园网维护安排'), findsOneWidget);
-      expect(find.byType(HomeNoticeView), findsOneWidget);
+      expect(find.byType(HomeAnnouncementEntryView), findsOneWidget);
       final measurements = <String, Object>{};
       for (final key in [
         'home-header',
@@ -182,12 +182,15 @@ void main() {
       var calls = 0;
       await tester.pumpWidget(
         MaterialApp(
-          home: HomeNoticeView(
-            notice: HomeNotice(title: '校园网维护安排', onOpen: () => calls++),
+          home: HomeAnnouncementEntryView(
+            entry: HomeAnnouncementEntry(
+              title: '校园网维护安排',
+              onOpen: () => calls++,
+            ),
           ),
         ),
       );
-      await tester.tap(find.byType(HomeNoticeView));
+      await tester.tap(find.byType(HomeAnnouncementEntryView));
       expect(calls, 1);
     },
   );
@@ -217,14 +220,14 @@ void main() {
         );
         expect(find.text('公告'), findsOneWidget);
         expect(find.text('在应用内打开学校公告页面'), findsNothing);
-        await tester.tap(find.byType(HomeNoticeView));
+        await tester.tap(find.byType(HomeAnnouncementEntryView));
         await tester.pumpAndSettle();
         expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
         client.selectScenario('empty');
         await controller.start();
         announcements.updateCapabilities(controller.capabilities);
         await tester.pump();
-        expect(find.byType(HomeNoticeView), findsNothing);
+        expect(find.byType(HomeAnnouncementEntryView), findsNothing);
         expect(find.byKey(const ValueKey('home-divider')), findsOneWidget);
       } finally {
         await tester.pump();

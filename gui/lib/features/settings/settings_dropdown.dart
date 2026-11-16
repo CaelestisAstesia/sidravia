@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_effects.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 
@@ -47,8 +48,7 @@ class SettingsDropdown<T> extends StatelessWidget {
       painter.dispose();
     }
     final platform = Theme.of(context).platform;
-    final touch =
-        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+    final touch = DesignMetrics.isTouchPlatform(platform);
     final height = (textHeight + DesignMetrics.rowPadding)
         .clamp(
           touch ? DesignMetrics.touchTarget : DesignMetrics.choiceMinHeight,
@@ -111,13 +111,7 @@ class SettingsDropdown<T> extends StatelessWidget {
           decoration: ShapeDecoration(
             color: scheme.surfaceContainerHighest,
             shape: StadiumBorder(side: BorderSide(color: scheme.outline)),
-            shadows: [
-              BoxShadow(
-                color: scheme.shadow.withValues(alpha: .06),
-                blurRadius: 4,
-                offset: const Offset(0, 1),
-              ),
-            ],
+            shadows: DesignEffects.subtleShadow(scheme),
           ),
           child: TextButton(
             key: dropdownKey,

@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_effects.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 
@@ -17,24 +18,13 @@ class DesignIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final touch =
-        theme.platform == TargetPlatform.android ||
-        theme.platform == TargetPlatform.iOS;
-    final size = touch
-        ? DesignMetrics.touchTarget
-        : DesignMetrics.buttonMinHeight;
+    final size = DesignMetrics.actionTargetSize(theme.platform);
     return DecoratedBox(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         boxShadow: onPressed == null
             ? const []
-            : [
-                BoxShadow(
-                  color: theme.colorScheme.shadow.withValues(alpha: .06),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
-              ],
+            : DesignEffects.subtleShadow(theme.colorScheme),
       ),
       child: IconButton(
         tooltip: tooltip,

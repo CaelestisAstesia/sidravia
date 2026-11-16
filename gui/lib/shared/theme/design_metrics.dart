@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Approved frontend dimensions. Responsive and homepage/tray exceptions stay local.
 abstract final class DesignMetrics {
   static const titleFont = 20.0;
@@ -18,6 +20,12 @@ abstract final class DesignMetrics {
   static const choiceMaxWidth = 180.0;
   static const choiceMinHeight = 30.0;
   static const touchTarget = 48.0;
+
+  static bool isTouchPlatform(TargetPlatform platform) =>
+      platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+
+  static double actionTargetSize(TargetPlatform platform) =>
+      isTouchPlatform(platform) ? touchTarget : buttonMinHeight;
 
   static double choiceWidth(double viewportWidth) =>
       ((viewportWidth - 74) * .55).clamp(choiceMinWidth, choiceMaxWidth);

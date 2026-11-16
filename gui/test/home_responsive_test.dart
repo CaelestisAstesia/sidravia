@@ -153,10 +153,10 @@ void main() {
         if (entry.key == 'short') {
           expect(position.maxScrollExtent, greaterThan(0));
           await capture(tester, entry.key);
-          await tester.ensureVisible(find.byType(HomeNoticeView));
+          await tester.ensureVisible(find.byType(HomeAnnouncementEntryView));
           await tester.pumpAndSettle();
           expect(
-            tester.getRect(find.byType(HomeNoticeView)).bottom,
+            tester.getRect(find.byType(HomeAnnouncementEntryView)).bottom,
             lessThanOrEqualTo(entry.value.height),
           );
         } else {
@@ -206,7 +206,6 @@ void main() {
         state: '已连接',
         detail: List.filled(12, '认证成功，网络接入信息较长').join('；'),
         context: List.filled(16, '以太网适配器及地址的详细说明').join('；'),
-        glyph: '✓',
         tone: HomeTone.success,
         secondaryLabel: '连接与诊断',
         primaryLabel: '断开连接',
@@ -216,7 +215,7 @@ void main() {
         onSettings: () => opened = true,
         onSecondary: () => opened = true,
         onPrimary: () => opened = true,
-        notice: HomeNotice(
+        announcement: HomeAnnouncementEntry(
           title: List.filled(8, '校园网维护安排与相关说明').join('，'),
           onOpen: () => opened = true,
         ),
@@ -247,9 +246,9 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       await capture(tester, 'long');
-      await tester.ensureVisible(find.byType(HomeNoticeView));
+      await tester.ensureVisible(find.byType(HomeAnnouncementEntryView));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(HomeNoticeView));
+      await tester.tap(find.byType(HomeAnnouncementEntryView));
       expect(opened, isTrue);
       expect(tester.takeException(), isNull);
     },

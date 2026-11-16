@@ -4,7 +4,7 @@ import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
@@ -138,7 +138,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                   controller: widget.controller,
                   onBack: _back,
                 ),
-                AppPage.diagnostics => AdvancedPage(
+                AppPage.diagnostics => ConnectionDiagnosticsPage(
                   onOpenLogDirectory: widget.onOpenLogDirectory,
                   controller: widget.controller,
 
