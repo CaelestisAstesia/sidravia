@@ -12,3 +12,5 @@ func AcquireRun() (func(), error) {
 	release()
 	return func() {}, nil
 }
+
+func AcquireRunIdentity(string, string) (func(), error) { return AcquireRun() }

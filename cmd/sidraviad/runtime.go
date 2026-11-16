@@ -25,6 +25,7 @@ import (
 	"sidravia/internal/ipc/server"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update/operations"
 )
 
 // Operational event codes and fixed Simplified Chinese messages for the daemon
@@ -147,6 +148,12 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 		return nil, fmt.Errorf("sidraviad: parse launch options: %w", err)
 	}
 	launchOptions.SkipAutoLogin = os.Getenv(launchcontract.EnvSkipAutoLogin) == "1"
+	launchOptions.RecoveryToken = os.Getenv(operations.EnvRecoveryToken)
+	launchOptions.RecoveryOperation = os.Getenv(operations.EnvRecoveryOperation)
+	launchOptions.RecoveryConfiguration = os.Getenv(operations.EnvRecoveryConfiguration)
+	if err := launchOptions.Validate(); err != nil {
+		return nil, err
+	}
 	launchOptions.LogLevel = os.Getenv(launchcontract.EnvLogLevel)
 	if launchOptions.LogLevel == "" {
 		launchOptions.LogLevel = "debug"

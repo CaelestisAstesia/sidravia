@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -79,6 +80,9 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 					return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 				}
 				selected = func(id clientbootstrap.Identity, owner int) (clientbootstrap.DesktopBootstrapResult, error) {
+					if skipAutoLogin && os.Getenv(launchcontract.EnvRecoveryOperation) != "" {
+						return clientbootstrap.BootstrapDesktopForUpdate(id, owner, logLevel, os.Getenv(launchcontract.EnvRecoveryOperation), os.Getenv(launchcontract.EnvRecoveryToken), os.Getenv(launchcontract.EnvRecoveryConfiguration))
+					}
 					return clientbootstrap.BootstrapDesktopWithLogLevel(id, owner, logLevel, skipAutoLogin)
 				}
 			}

@@ -61,6 +61,9 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.ConfigurationID == "" || !restoreAvailable || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeMaintenance)
 			}
+			if options.RecoveryOperation != "" && (input.OperationID != options.RecoveryOperation || input.ConfigurationID != options.RecoveryConfiguration) {
+				return failure(contract.ErrorCodeMaintenance)
+			}
 			restoreAvailable = false
 			data, _ := json.Marshal(map[string]string{"configurationId": input.ConfigurationID})
 			return next(ctx, contract.MethodSessionStartConfiguration, data)

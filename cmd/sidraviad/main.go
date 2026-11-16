@@ -23,7 +23,7 @@ var (
 )
 
 func main() {
-	releaseStart, startErr := installationgate.AcquireRun()
+	releaseStart, startErr := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 	if startErr != nil {
 		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
 		os.Exit(1)

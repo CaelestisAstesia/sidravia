@@ -24,7 +24,7 @@ func matchesMode(info os.FileInfo, mode uint32) bool {
 	return info.Mode().Perm() == os.FileMode(mode) && info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0
 }
 func applicationPlatform(i Inventory) error {
-	if i.manifest.OS != "linux" || i.manifest.Arch != runtime.GOARCH || i.manifest.PayloadKind != "core" {
+	if i.manifest.OS != "linux" || i.manifest.Arch != runtime.GOARCH || (i.manifest.PayloadKind != "core" && i.manifest.PayloadKind != "gui") {
 		return ErrUnsupported
 	}
 	return nil

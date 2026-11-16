@@ -92,3 +92,32 @@ func AcquireRun() (func(), error) {
 	}
 	return release, nil
 }
+
+// AcquireRunIdentity admits a cold recovery only for the recorded new build and
+// coordinator ancestry. Completed operations use ordinary admission and shed
+// stale recovery environment before any later child is launched.
+func AcquireRunIdentity(version, build string) (func(), error) {
+	release, err := AcquireRun()
+	if err == nil {
+		clearRecoveryEnvironment()
+		return release, nil
+	}
+	exe, exeErr := os.Executable()
+	if exeErr != nil || filepath.Dir(exe) == "/usr/lib64/sidravia" {
+		return nil, err
+	}
+	root, rootErr := operations.DefaultRoot()
+	if rootErr != nil {
+		return nil, errors.Join(err, rootErr)
+	}
+	store, openErr := operations.Open(root, filepath.Dir(exe), releases.PublisherTrust())
+	if openErr != nil {
+		return nil, errors.Join(err, openErr)
+	}
+	return store.AcquireRecoveryStart(context.Background(), os.Getenv(operations.EnvRecoveryOperation), os.Getenv(operations.EnvRecoveryToken), version, build, os.Getenv("SIDRAVIA_NAMESPACE"), os.Getenv(operations.EnvRecoveryConfiguration))
+}
+func clearRecoveryEnvironment() {
+	for _, name := range []string{operations.EnvRecoveryOperation, operations.EnvRecoveryToken, operations.EnvRecoveryConfiguration} {
+		os.Unsetenv(name)
+	}
+}

@@ -58,3 +58,27 @@ func (s *Store) admit(ctx context.Context, id string) (func(), error) {
 	}
 	return release, nil
 }
+
+// AcquireCoordinator admits a single lifecycle owner without excluding already
+// running application leases needed to negotiate a normal exit.
+func (s *Store) AcquireCoordinator(ctx context.Context, id string) (func(), error) {
+	if !update.ValidOperationID(id) {
+		return nil, ErrInvalid
+	}
+	if _, _, err := s.Read(ctx); err != nil {
+		return nil, err
+	}
+	release, err := lock(filepath.Join(s.directory, "coordinator.lock"))
+	if err != nil {
+		return nil, err
+	}
+	r, exists, err := s.Read(ctx)
+	if err == nil && (!exists || r.ID != id || r.Phase != Verified) {
+		err = ErrConflict
+	}
+	if err != nil {
+		release()
+		return nil, err
+	}
+	return release, nil
+}

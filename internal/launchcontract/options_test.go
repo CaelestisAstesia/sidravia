@@ -3,6 +3,7 @@ package launchcontract
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -130,5 +131,30 @@ func TestOmittedLogLevelDefaultsToDebugWithoutInheritingTrace(t *testing.T) {
 	}
 	if !slices.Contains(env, "SIDRAVIA_LOG_LEVEL=debug") || slices.Contains(env, "SIDRAVIA_LOG_LEVEL=trace") {
 		t.Fatalf("default child environment = %v", env)
+	}
+}
+
+func TestRecoveryLaunchIsExplicitAndRestartCannotInheritIt(t *testing.T) {
+	parent := []string{EnvRecoveryOperation + "=" + strings.Repeat("a", 32), EnvRecoveryToken + "=" + strings.Repeat("b", 32), EnvRecoveryConfiguration + "=old-config"}
+	normal := Options{Mode: ModeDesktop, DesktopOwnerPID: 123, SkipAutoLogin: true}
+	env, err := ChildEnvironment(parent, normal, "info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "SIDRAVIA_UPDATE_") {
+			t.Fatal("restart revived stale recovery", entry)
+		}
+	}
+	normal.RecoveryOperation = strings.Repeat("c", 32)
+	normal.RecoveryToken = strings.Repeat("d", 32)
+	normal.RecoveryConfiguration = "saved"
+	env, err = ChildEnvironment(parent, normal, "info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, EnvRecoveryOperation+"="+normal.RecoveryOperation) || strings.Contains(joined, "old-config") {
+		t.Fatal("explicit launch contract lost authority")
 	}
 }

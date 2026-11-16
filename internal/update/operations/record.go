@@ -51,6 +51,7 @@ type Record struct {
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 	FailureCode string    `json:"failureCode,omitempty"`
+	Recovery    *Recovery `json:"recovery,omitempty"`
 }
 
 func New(id string, source update.Target, c releases.Candidate, verified releases.VerifiedRelease, now time.Time) (Record, error) {
@@ -85,6 +86,11 @@ func (r Record) validateIdentity() error {
 	after, err := releases.ParseVersion(r.Target.Version)
 	if err != nil || after.Compare(before) <= 0 {
 		return ErrInvalid
+	}
+	if r.Recovery != nil {
+		if err := r.Recovery.validate(r); err != nil {
+			return err
+		}
 	}
 	switch r.Phase {
 	case Created, Verified, Preparing, Quiescent, Applying, Applied, Resuming, Completed:

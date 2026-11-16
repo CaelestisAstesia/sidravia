@@ -94,6 +94,12 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if err := verifyInventory(ctx, p.root, next); err != nil {
 		return err
 	}
+	if err := verifyGUI(root, old); err != nil {
+		return err
+	}
+	if err := verifyGUI(p.root, next); err != nil {
+		return err
+	}
 	marker, err := openRegular(root, "sidravia.portable")
 	if err != nil {
 		return err

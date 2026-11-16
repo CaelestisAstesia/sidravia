@@ -682,6 +682,15 @@ func waitForReadinessInContext(parent context.Context, total, interval time.Dura
 // BootstrapDesktopWithLogLevel starts a desktop generation with explicit launch policy.
 // Hot generations are retained; the returned status owns the actual log level.
 func BootstrapDesktopWithLogLevel(identity Identity, ownerPID int, level string, skipAutoLogin bool) (DesktopBootstrapResult, error) {
+	return bootstrapDesktopPolicy(identity, ownerPID, level, skipAutoLogin, "", "", "")
+}
+
+// BootstrapDesktopForUpdate delegates only the initial, authorized cold launch.
+// Ordinary bootstrap/restart never inherits recovery from ambient environment.
+func BootstrapDesktopForUpdate(identity Identity, ownerPID int, level, operation, token, configuration string) (DesktopBootstrapResult, error) {
+	return bootstrapDesktopPolicy(identity, ownerPID, level, true, operation, token, configuration)
+}
+func bootstrapDesktopPolicy(identity Identity, ownerPID int, level string, skipAutoLogin bool, operation, token, configuration string) (DesktopBootstrapResult, error) {
 	if level != "info" && level != "debug" && level != "trace" {
 		return DesktopBootstrapResult{}, launchcontract.ErrInvalidOptions
 	}
@@ -699,5 +708,11 @@ func BootstrapDesktopWithLogLevel(identity Identity, ownerPID int, level string,
 	}
 	options.LogLevel = level
 	options.SkipAutoLogin = skipAutoLogin
+	options.RecoveryOperation = operation
+	options.RecoveryToken = token
+	options.RecoveryConfiguration = configuration
+	if err := options.Validate(); err != nil {
+		return DesktopBootstrapResult{}, err
+	}
 	return bootstrapDesktop(identity, options, deps)
 }

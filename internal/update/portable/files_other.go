@@ -2,7 +2,10 @@
 
 package portable
 
-import "os"
+import (
+	"context"
+	"os"
+)
 
 // Windows shares the inventory/archive/application algorithms. Its publication
 // adapter remains disabled until native file-lock and durability acceptance.
@@ -17,3 +20,6 @@ func ensureQuiescent(string) error { return ErrUnsupported }
 func sameDevice(os.FileInfo, os.FileInfo) bool { return false }
 
 func publish(*os.Root, string, string, bool) error { return ErrUnsupported }
+
+func verifyGUI(*os.Root, Inventory) error                          { return ErrUnsupported }
+func Preflight(context.Context, string, Inventory, *Payload) error { return ErrUnsupported }

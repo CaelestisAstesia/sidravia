@@ -14,7 +14,7 @@ var ProductVersion = "0.4.0-alpha.1"
 var BuildID = "dev"
 
 func main() {
-	release, err := installationgate.AcquireRun()
+	release, err := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 	if err != nil {
 		json.NewEncoder(os.Stdout).Encode(map[string]any{"schemaVersion": 1, "ok": false, "code": "maintenance_active", "message": "安装或更新正在进行，请稍后重试。"})
 		os.Exit(1)

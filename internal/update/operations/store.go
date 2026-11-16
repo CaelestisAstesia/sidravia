@@ -275,7 +275,7 @@ func resolveExistingPrefix(value string) (string, error) {
 
 func recordShape(data []byte) bool {
 	var root map[string]json.RawMessage
-	if json.Unmarshal(data, &root) != nil || !exactRecordFields(root, []string{"schemaVersion", "operationId", "source", "target", "package", "manifest", "signature", "phase", "createdAt", "updatedAt"}, "failureCode") {
+	if json.Unmarshal(data, &root) != nil || !exactRecordFields(root, []string{"schemaVersion", "operationId", "source", "target", "package", "manifest", "signature", "phase", "createdAt", "updatedAt"}, "failureCode", "recovery") || !recoveryShape(data) {
 		return false
 	}
 	for _, name := range []string{"source", "target", "package"} {
@@ -335,13 +335,13 @@ func authorizationDigest(r Record) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 func (s *Store) checkCapacity() error {
-	// At most 4096 permanent operation claims, current.json and two locks. Unknown
+	// At most 4096 permanent operation claims, current.json and three locks. Unknown
 	// leaves are retained and consume capacity; this code never prunes history.
 	directory, err := os.Open(s.directory)
 	if err != nil {
 		return err
 	}
-	names, readErr := directory.Readdirnames(4100)
+	names, readErr := directory.Readdirnames(4101)
 	closeErr := directory.Close()
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
 		return readErr
@@ -349,7 +349,7 @@ func (s *Store) checkCapacity() error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if len(names) >= 4099 {
+	if len(names) >= 4100 {
 		return ErrCapacity
 	}
 	return nil

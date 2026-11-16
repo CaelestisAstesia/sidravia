@@ -79,6 +79,19 @@ func launch(directory string, args, env []string) error {
 		}
 		lease, err := store.AcquireInheritedStart(context.Background())
 		if err != nil {
+			lease, err = store.AcquireInheritedRecoveryStart(context.Background(), os.Getenv(operations.EnvRecoveryOperation), os.Getenv(operations.EnvRecoveryToken), ProductVersion, BuildID, os.Getenv("SIDRAVIA_NAMESPACE"), os.Getenv(operations.EnvRecoveryConfiguration))
+		} else {
+			// Later core restarts must not reuse a completed restoration capability.
+			filtered := cleanEnv[:0]
+			for _, entry := range cleanEnv {
+				key, _, _ := strings.Cut(entry, "=")
+				if key != operations.EnvRecoveryOperation && key != operations.EnvRecoveryToken && key != operations.EnvRecoveryConfiguration {
+					filtered = append(filtered, entry)
+				}
+			}
+			cleanEnv = filtered
+		}
+		if err != nil {
 			return err
 		}
 		defer lease.Close()

@@ -15,13 +15,16 @@ import (
 const ExitSingletonContention = 2
 
 const (
-	EnvMode              = "SIDRAVIA_DAEMON_MODE"
-	EnvDesktopOwnerStart = "SIDRAVIA_DESKTOP_OWNER_START"
-	EnvDesktopOwnerPID   = "SIDRAVIA_DESKTOP_OWNER_PID"
-	EnvManagedLog        = "SIDRAVIA_MANAGED_LOG"
-	EnvLogLevel          = "SIDRAVIA_LOG_LEVEL"
-	EnvSkipAutoLogin     = "SIDRAVIA_SKIP_AUTO_LOGIN"
-	EnvNamespace         = "SIDRAVIA_NAMESPACE"
+	EnvMode                  = "SIDRAVIA_DAEMON_MODE"
+	EnvDesktopOwnerStart     = "SIDRAVIA_DESKTOP_OWNER_START"
+	EnvDesktopOwnerPID       = "SIDRAVIA_DESKTOP_OWNER_PID"
+	EnvManagedLog            = "SIDRAVIA_MANAGED_LOG"
+	EnvLogLevel              = "SIDRAVIA_LOG_LEVEL"
+	EnvSkipAutoLogin         = "SIDRAVIA_SKIP_AUTO_LOGIN"
+	EnvNamespace             = "SIDRAVIA_NAMESPACE"
+	EnvRecoveryOperation     = "SIDRAVIA_UPDATE_OPERATION"
+	EnvRecoveryToken         = "SIDRAVIA_UPDATE_TOKEN"
+	EnvRecoveryConfiguration = "SIDRAVIA_UPDATE_CONFIGURATION"
 )
 
 type Mode string
@@ -36,11 +39,14 @@ var ErrInvalidOptions = errors.New("invalid daemon launch options")
 // Options is immutable launch input. DesktopOwnerPID is present only for a
 // desktop daemon and is deliberately not a command-line argument.
 type Options struct {
-	Mode            Mode
-	DesktopOwnerPID int
-	Namespace       string
-	SkipAutoLogin   bool
-	LogLevel        string
+	Mode                  Mode
+	DesktopOwnerPID       int
+	Namespace             string
+	SkipAutoLogin         bool
+	RecoveryOperation     string
+	RecoveryToken         string
+	RecoveryConfiguration string
+	LogLevel              string
 }
 
 func Headless() Options { return Options{Mode: ModeHeadless} }
@@ -73,6 +79,23 @@ func New(mode Mode, ownerPID int, namespace string) (Options, error) {
 }
 
 func (o Options) Validate() error {
+	if o.RecoveryOperation != "" {
+		if len(o.RecoveryOperation) != 32 || !o.SkipAutoLogin || len(o.RecoveryConfiguration) > 128 || len(o.RecoveryToken) != 32 {
+			return ErrInvalidOptions
+		}
+		for _, c := range o.RecoveryOperation {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return ErrInvalidOptions
+			}
+		}
+		for _, c := range o.RecoveryToken {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return ErrInvalidOptions
+			}
+		}
+	} else if o.RecoveryConfiguration != "" || o.RecoveryToken != "" {
+		return ErrInvalidOptions
+	}
 	_, err := New(o.Mode, o.DesktopOwnerPID, o.Namespace)
 	return err
 }
@@ -102,12 +125,15 @@ func ChildEnvironment(parent []string, options Options, logLevel string) ([]stri
 	result := make([]string, 0, len(parent)+4)
 	for _, entry := range parent {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(name, EnvDesktopOwnerStart) && options.Mode != ModeDesktop || strings.EqualFold(name, EnvManagedLog) || strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) || strings.EqualFold(name, EnvSkipAutoLogin) {
+		if strings.EqualFold(name, EnvDesktopOwnerStart) && options.Mode != ModeDesktop || strings.EqualFold(name, EnvManagedLog) || strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) || strings.EqualFold(name, EnvSkipAutoLogin) || strings.EqualFold(name, EnvRecoveryOperation) || strings.EqualFold(name, EnvRecoveryToken) || strings.EqualFold(name, EnvRecoveryConfiguration) {
 			continue
 		}
 		result = append(result, entry)
 	}
 	result = append(result, EnvMode+"="+string(options.Mode), EnvLogLevel+"="+logLevel, EnvManagedLog+"=1")
+	if options.RecoveryOperation != "" {
+		result = append(result, EnvRecoveryOperation+"="+options.RecoveryOperation, EnvRecoveryToken+"="+options.RecoveryToken, EnvRecoveryConfiguration+"="+options.RecoveryConfiguration)
+	}
 	if options.SkipAutoLogin {
 		result = append(result, EnvSkipAutoLogin+"=1")
 	}
