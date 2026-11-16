@@ -39,8 +39,17 @@ void main() {
       );
       final frame = tester.getRect(find.byKey(const ValueKey('frame')));
       final label = find.text('隐藏到托盘');
-      expect(tester.getRect(label).center.dx, closeTo(frame.center.dx, .01));
-      expect(tester.widget<Text>(label).textAlign, TextAlign.center);
+      final arrow = tester.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('trigger')),
+          matching: find.byKey(const ValueKey('settings-dropdown-arrow')),
+        ),
+      );
+      expect(
+        tester.getRect(label).left - frame.left,
+        closeTo(frame.right - arrow.right, .01),
+      );
+      expect(tester.widget<Text>(label).textAlign, TextAlign.start);
       await tester.tap(find.byKey(const ValueKey('trigger')));
       await tester.pumpAndSettle();
       for (final item in find.byType(MenuItemButton).evaluate()) {

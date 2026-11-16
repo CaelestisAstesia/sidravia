@@ -31,11 +31,11 @@ class SettingsDropdown<T> extends StatelessWidget {
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
     final width = DesignMetrics.choiceWidth(MediaQuery.sizeOf(context).width);
-    // Reserve matching leading/trailing slots so the label is centered in the
-    // entire capsule; measure long labels using that same available width.
+    // Equal edge padding for the leading label and trailing arrow. Measure
+    // long labels after reserving only the actual trailing arrow slot.
     const horizontalPadding = 12.0;
-    const arrowWidth = 20.0;
-    final textWidth = width - 2 * horizontalPadding - 2 * arrowWidth;
+    const arrowWidth = 10.0;
+    final textWidth = width - 2 * horizontalPadding - arrowWidth;
     double textHeight = 0;
     for (final label in [...labels.values, ?hint]) {
       final painter = TextPainter(
@@ -133,18 +133,25 @@ class SettingsDropdown<T> extends StatelessWidget {
                   },
             child: Row(
               children: [
-                const SizedBox(width: arrowWidth),
                 Expanded(
                   child: Text(
                     labels[value] ?? hint ?? '',
                     key: value == null ? null : regionKey?.call(value as T),
                     style: style,
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.start,
                   ),
                 ),
+                // Keep the Material glyph's intrinsic side bearings outside
+                // its slot so the visible arrow has the same edge inset.
                 const SizedBox(
+                  key: ValueKey('settings-dropdown-arrow'),
                   width: arrowWidth,
-                  child: Icon(Icons.arrow_drop_down, size: 20),
+                  height: 20,
+                  child: OverflowBox(
+                    minWidth: 20,
+                    maxWidth: 20,
+                    child: Icon(Icons.arrow_drop_down, size: 20),
+                  ),
                 ),
               ],
             ),
