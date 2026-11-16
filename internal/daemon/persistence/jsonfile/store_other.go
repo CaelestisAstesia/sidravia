@@ -105,20 +105,30 @@ func secureTempBasename(random []byte) string {
 	return ".sidravia-" + hex.EncodeToString(random) + ".tmp"
 }
 
-func (*otherSecureFileOperations) commit(tempPath, destinationPath string, _ bool) (bool, error) {
-	if err := os.Rename(tempPath, destinationPath); err != nil {
-		return false, err
+// commit preserves the distinction between replacing an inspected file and
+// creating a new destination. A new file must not overwrite a destination that
+// appeared since inspection, particularly a directly restorable recovery copy.
+func (*otherSecureFileOperations) commit(tempPath, destinationPath string, destinationExists bool) (bool, error) {
+	var removeErr error
+	if destinationExists {
+		if err := os.Rename(tempPath, destinationPath); err != nil {
+			return false, err
+		}
+	} else {
+		committed, err := commitNewFile(tempPath, destinationPath)
+		if !committed {
+			return false, err
+		}
+		removeErr = err
 	}
+
 	directory, err := os.Open(filepath.Dir(destinationPath))
 	if err != nil {
-		return true, err
+		return true, errors.Join(removeErr, err)
 	}
 	syncErr := directory.Sync()
 	closeErr := directory.Close()
-	if syncErr != nil {
-		return true, syncErr
-	}
-	return true, closeErr
+	return true, errors.Join(removeErr, syncErr, closeErr)
 }
 
 func (*otherSecureFileOperations) removeTemp(path string) error {

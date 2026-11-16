@@ -112,3 +112,47 @@ func TestOtherStoreRejectsSymlinkDestination(t *testing.T) {
 		t.Fatalf("symlink target = %q, %v", data, readErr)
 	}
 }
+
+// The destination was absent at inspection but appears before the atomic commit.
+// Exercise the real filesystem implementation rather than an in-memory commit.
+type destinationRaceOperations struct {
+	otherSecureFileOperations
+}
+
+func (operations *destinationRaceOperations) commit(tempPath, destinationPath string, destinationExists bool) (bool, error) {
+	if err := os.WriteFile(destinationPath, []byte("existing recovery bytes"), 0600); err != nil {
+		return false, err
+	}
+	return operations.otherSecureFileOperations.commit(tempPath, destinationPath, destinationExists)
+}
+
+func TestOtherStoreNewDestinationRacePreservesExistingBytes(t *testing.T) {
+	for _, preserve := range []bool{false, true} {
+		name := "replace"
+		if preserve {
+			name = "preserve"
+		}
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, "state.json")
+			store, err := newSecureStoreWithOperations(SecureStoreOptions{}, &destinationRaceOperations{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if preserve {
+				err = store.PreserveSensitive(context.Background(), path, []byte(`{"new":true}`), 1024, false)
+			} else {
+				err = store.Replace(context.Background(), path, []byte(`{"new":true}`))
+			}
+			requireFailureCode(t, err, persistence.FailureAtomicWrite)
+			data, readErr := os.ReadFile(path)
+			if readErr != nil || string(data) != "existing recovery bytes" {
+				t.Fatalf("concurrent destination changed: %q, %v", data, readErr)
+			}
+			entries, err := os.ReadDir(directory)
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("temporary file remained: %v, %v", entries, err)
+			}
+		})
+	}
+}
