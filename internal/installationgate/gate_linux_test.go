@@ -3,6 +3,8 @@
 package installationgate
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -48,5 +50,24 @@ func TestLinuxPackageGateBlocksStartupAndRecovers(t *testing.T) {
 	}
 	if _, err := acquireLinuxStart(app, gate); !errors.Is(err, ErrBusy) {
 		t.Fatal("symlink gate accepted")
+	}
+}
+
+func TestPortableGateRejectsUnverifiableStateEvenWithoutMarker(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	target := t.TempDir()
+	release, err := acquirePortableStart(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	sum := sha256.Sum256([]byte(target))
+	record := filepath.Join(cache, "Sidravia", "updates", "operations", hex.EncodeToString(sum[:]), "current.json")
+	if err := os.WriteFile(record, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acquirePortableStart(target); !errors.Is(err, ErrBusy) {
+		t.Fatalf("unverifiable partial update allowed startup: %v", err)
 	}
 }

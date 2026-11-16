@@ -335,13 +335,13 @@ func authorizationDigest(r Record) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 func (s *Store) checkCapacity() error {
-	// At most 4096 permanent operation claims, current.json and the lock. Unknown
+	// At most 4096 permanent operation claims, current.json and two locks. Unknown
 	// leaves are retained and consume capacity; this code never prunes history.
 	directory, err := os.Open(s.directory)
 	if err != nil {
 		return err
 	}
-	names, readErr := directory.Readdirnames(4099)
+	names, readErr := directory.Readdirnames(4100)
 	closeErr := directory.Close()
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
 		return readErr
@@ -349,7 +349,7 @@ func (s *Store) checkCapacity() error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if len(names) >= 4098 {
+	if len(names) >= 4099 {
 		return ErrCapacity
 	}
 	return nil

@@ -3,25 +3,28 @@
 package installationgate
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/operations"
+	"sidravia/internal/update/releases"
 
 	"golang.org/x/sys/unix"
 )
 
-var ErrBusy = errors.New("RPM maintenance is active or its gate is unavailable")
+var ErrBusy = errors.New("installation maintenance is active or its gate is unavailable")
 
 // AcquireStart shares a short startup lock with the RPM transaction. Once this
 // check releases, our executable is visible to the transaction's pidfd scan.
-// Portable/other installations never consult the system package gate.
+// Portable targets use their target-bound durable update record instead.
 func AcquireStart() (func(), error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
 	if filepath.Dir(exe) != "/usr/lib64/sidravia" {
-		return func() {}, nil
+		return acquirePortableStart(filepath.Dir(exe))
 	}
 	return acquireLinuxStart(filepath.Dir(exe), "/run/sidravia/rpm.lock")
 }
@@ -53,4 +56,22 @@ func acquireLinuxStart(directory, path string) (func(), error) {
 		return fail()
 	}
 	return func() { unix.Close(fd) }, nil
+}
+
+func acquirePortableStart(directory string) (func(), error) {
+	// Check for records even if the portable marker has been removed or changed:
+	// a partial update must not turn into an unguarded installed launch.
+	root, err := operations.DefaultRoot()
+	if err != nil {
+		return nil, errors.Join(ErrBusy, err)
+	}
+	store, err := operations.Open(root, directory, releases.PublisherTrust())
+	if err != nil {
+		return nil, errors.Join(ErrBusy, err)
+	}
+	release, err := store.AcquireStart(context.Background())
+	if err != nil {
+		return nil, errors.Join(ErrBusy, err)
+	}
+	return release, nil
 }

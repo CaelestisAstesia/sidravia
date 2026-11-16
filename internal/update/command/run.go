@@ -17,6 +17,7 @@ import (
 
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 )
 
@@ -123,7 +124,11 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		}
 	}
 	if operation == "status" {
-		execution, err := executionStatus(ctx, filepath.Join(cacheBase, "operations"), layout.ExecutableDirectory)
+		operationRoot, err := operations.DefaultRoot()
+		if err != nil {
+			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
+		}
+		execution, err := executionStatus(ctx, operationRoot, layout.ExecutableDirectory)
 		if err != nil {
 			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
 		}
