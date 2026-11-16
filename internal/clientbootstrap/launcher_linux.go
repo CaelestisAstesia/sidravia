@@ -10,6 +10,8 @@ import (
 	"sidravia/internal/daemonlog"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
@@ -51,10 +53,10 @@ func defaultDaemonLauncherDeps() daemonLauncherDeps {
 
 // launchDaemonProcessWith resolves the shared product layout, selects the exact
 // sibling sidraviad, prepares the bounded log, starts the child with nil stdin
-// and both output streams owned by the log file, detaches it into its own
-// session, releases the process because the CLI does not own a later Wait, and
-// closes only the parent's log handle. Resolve, log, start and release failures
-// are wrapped with fixed safe Chinese operation labels while preserving causes.
+// and both output streams owned by the log file, and detaches it into its own
+// session. Ordinary headless launches release the process; desktop and recovery
+// launches own a Wait observation. Only the parent's log handle is closed here.
+// Operation failures preserve private causes behind fixed safe labels.
 func launchDaemonProcessWith(options launchcontract.Options, logLevel string, deps daemonLauncherDeps) (daemonLaunch, error) {
 	if err := options.Validate(); err != nil {
 		return daemonLaunch{}, err
@@ -90,10 +92,31 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 		return daemonLaunch{}, wrapSafeOperation("启动 sidraviad", err)
 	}
 
-	// Desktop bootstrap must observe early exit/singleton contention so a core
-	// restart can retry inside its existing bounded readiness deadline. Headless
-	// callers retain their detached lifetime.
-	if options.Mode == launchcontract.ModeDesktop {
+	// Desktop bootstrap observes early exit/singleton contention. Recovery of a
+	// headless generation also pins the exact child until readiness is checked;
+	// ordinary headless callers retain their detached lifetime.
+	if options.Mode == launchcontract.ModeDesktop || options.SkipAutoLogin {
+		launch := daemonLaunch{}
+		if cmd.Process != nil {
+			launch.pid = cmd.Process.Pid
+		}
+		var observationErr error
+		if options.Mode == launchcontract.ModeHeadless {
+			if launch.pid <= 0 {
+				observationErr = errors.New("launched process identity is unavailable")
+			} else {
+				var fd int
+				fd, observationErr = unix.PidfdOpen(launch.pid, 0)
+				if observationErr == nil {
+					launch.alive = func() bool {
+						fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+						_, err := unix.Poll(fds, 0)
+						return err == nil && fds[0].Revents == 0
+					}
+					launch.release = func() { _ = unix.Close(fd) }
+				}
+			}
+		}
 		exited := make(chan error, 1)
 		go func() {
 			err := deps.wait(cmd)
@@ -103,10 +126,15 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 			}
 			exited <- err
 		}()
-		if err := logFile.Close(); err != nil {
-			return daemonLaunch{}, err
+		closeErr := logFile.Close()
+		if observationErr != nil || closeErr != nil {
+			if launch.release != nil {
+				launch.release()
+			}
+			return daemonLaunch{}, wrapSafeOperation("观察 sidraviad 启动", errors.Join(observationErr, closeErr))
 		}
-		return daemonLaunch{exited: exited, pid: cmd.Process.Pid}, nil
+		launch.exited = exited
+		return launch, nil
 	}
 
 	if err := deps.release(cmd); err != nil {

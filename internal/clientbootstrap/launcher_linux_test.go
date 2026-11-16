@@ -3,12 +3,17 @@
 package clientbootstrap
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"sidravia/internal/ipc/contract"
 
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
@@ -162,5 +167,71 @@ func TestLaunchDaemonProcessLinuxReleaseErrorOwnership(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "释放 sidraviad 进程") {
 		t.Errorf("error = %v, want release label", err)
+	}
+}
+
+func TestLinuxRecoveryUsesItsLaunchedProcess(t *testing.T) {
+	if os.Getenv("SIDRAVIA_RECOVERY_LAUNCH_FIXTURE") == "1" {
+		time.Sleep(30 * time.Second)
+		return
+	}
+	t.Setenv("SIDRAVIA_RECOVERY_LAUNCH_FIXTURE", "1")
+	var child *exec.Cmd
+	var launched daemonLaunch
+	releases := 0
+	launcher := portableLauncherDeps(t, os.Environ(), func(cmd *exec.Cmd) error {
+		cmd.Path = os.Args[0]
+		cmd.Args = []string{os.Args[0], "-test.run=^TestLinuxRecoveryUsesItsLaunchedProcess$"}
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		child = cmd
+		return nil
+	}, func(*exec.Cmd) error { releases++; return nil })
+	waitDone := make(chan struct{})
+	launcher.wait = func(cmd *exec.Cmd) error {
+		defer close(waitDone)
+		return cmd.Wait()
+	}
+	t.Cleanup(func() {
+		if child == nil {
+			return
+		}
+		_ = child.Process.Kill()
+		if releases > 0 {
+			_ = child.Wait()
+			return
+		}
+		select {
+		case <-waitDone:
+		case <-time.After(5 * time.Second):
+			t.Error("owned child was not reaped")
+		}
+	})
+
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		if child == nil {
+			return contract.RuntimeInfo{}, os.ErrNotExist
+		}
+		return runtime(child.Process.Pid), nil
+	}, func(_ context.Context, info contract.RuntimeInfo, _ Identity) (Client, error) {
+		return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			return statusResponseValue(t, contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build", PID: info.PID, Status: "running", Mode: "headless"}), nil
+		}}, nil
+	})
+	deps.launch = func(options launchcontract.Options, level string) (daemonLaunch, error) {
+		var err error
+		launched, err = launchDaemonProcessWith(options, level, launcher)
+		return launched, err
+	}
+	info, err := startHeadlessForRecovery(testIdentity(t), "info", deps)
+	if err != nil {
+		t.Fatalf("recovery could not identify its launched child: %v", err)
+	}
+	if child == nil || info.PID != child.Process.Pid || launched.alive == nil || releases != 0 {
+		t.Fatalf("recovery lost exact process observation: pid=%d releases=%d", info.PID, releases)
+	}
+	if !slices.Contains(child.Env, launchcontract.EnvSkipAutoLogin+"=1") {
+		t.Fatal("recovery launched without suppressing automatic login")
 	}
 }
