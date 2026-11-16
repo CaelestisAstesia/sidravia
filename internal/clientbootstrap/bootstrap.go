@@ -156,6 +156,13 @@ func probe(identity Identity, deps dependencies) (ProbeResult, error) {
 }
 
 func probeWithNamespace(identity Identity, ns productlayout.Namespace, deps dependencies) (ProbeResult, error) {
+	return probeInContext(context.Background(), identity, ns, deps)
+}
+
+func probeInContext(ctx context.Context, identity Identity, ns productlayout.Namespace, deps dependencies) (ProbeResult, error) {
+	if err := ctx.Err(); err != nil {
+		return ProbeResult{}, err
+	}
 	if err := identity.validate(); err != nil {
 		return ProbeResult{}, err
 	}
@@ -164,6 +171,9 @@ func probeWithNamespace(identity Identity, ns productlayout.Namespace, deps depe
 		return ProbeResult{}, wrapSafeOperation("运行信息路径", err)
 	}
 	info, err := deps.readRuntimeInfo(path)
+	if canceled := ctx.Err(); canceled != nil {
+		return ProbeResult{}, canceled
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ProbeResult{State: ProbeStopped}, nil
@@ -173,7 +183,10 @@ func probeWithNamespace(identity Identity, ns productlayout.Namespace, deps depe
 	if !matchesIdentity(identity, info) {
 		return ProbeResult{Info: info, State: ProbeIncompatible}, nil
 	}
-	status, ok := statusFor(identity, deps, info)
+	status, ok := statusFor(ctx, identity, deps, info)
+	if err := ctx.Err(); err != nil {
+		return ProbeResult{}, err
+	}
 	if !ok {
 		return ProbeResult{Info: info, State: ProbeUnreachable, Status: status}, nil
 	}
@@ -197,7 +210,7 @@ func connectExistingHeadless(ctx context.Context, identity Identity, deps depend
 	if err != nil {
 		return nil, wrapSafeOperation("运行命名空间", err)
 	}
-	result, err := probeWithNamespace(identity, ns, deps)
+	result, err := probeInContext(ctx, identity, ns, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +235,9 @@ func connectExistingHeadless(ctx context.Context, identity Identity, deps depend
 	defer cancel()
 	connection, err := deps.connect(connectCtx, result.Info, identity)
 	if err != nil {
+		if canceled := ctx.Err(); canceled != nil {
+			return nil, canceled
+		}
 		return nil, ErrConnectionUnavailable
 	}
 	return connection, nil
@@ -241,8 +257,8 @@ func matchesIdentity(identity Identity, info contract.RuntimeInfo) bool {
 	return identity.ProductVersion == info.ProductVersion && identity.BuildID == info.BuildID
 }
 
-func statusFor(identity Identity, deps dependencies, info contract.RuntimeInfo) (*contract.StatusResult, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
+func statusFor(parent context.Context, identity Identity, deps dependencies, info contract.RuntimeInfo) (*contract.StatusResult, bool) {
+	ctx, cancel := context.WithTimeout(parent, deps.callTimeout)
 	defer cancel()
 	conn, err := deps.connect(ctx, info, identity)
 	if err != nil {
@@ -393,10 +409,14 @@ func ensure(identity Identity, options launchcontract.Options, logLevel string, 
 }
 
 func ensureWithNamespace(identity Identity, options launchcontract.Options, logLevel string, ns productlayout.Namespace, deps dependencies) (StartOutcome, error) {
+	return ensureInContext(context.Background(), identity, options, logLevel, ns, deps)
+}
+
+func ensureInContext(ctx context.Context, identity Identity, options launchcontract.Options, logLevel string, ns productlayout.Namespace, deps dependencies) (StartOutcome, error) {
 	if err := options.Validate(); err != nil {
 		return "", err
 	}
-	result, err := probeWithNamespace(identity, ns, deps)
+	result, err := probeInContext(ctx, identity, ns, deps)
 	if err != nil {
 		return "", err
 	}
@@ -415,6 +435,9 @@ func ensureWithNamespace(identity Identity, options launchcontract.Options, logL
 		}
 		return "", ErrModeConflict
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	launched, err := deps.launch(options, logLevel)
 	if err != nil {
 		return "", wrapSafeOperation("启动 sidraviad", err)
@@ -426,8 +449,8 @@ func ensureWithNamespace(identity Identity, options launchcontract.Options, logL
 	if options.Mode == launchcontract.ModeDesktop && options.SkipAutoLogin {
 		relaunch = func() (daemonLaunch, error) { return deps.launch(options, logLevel) }
 	}
-	if err := waitForReadinessWithRelaunch(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
-		result, err := probeWithNamespace(identity, ns, deps)
+	if err := waitForReadinessInContext(ctx, deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
+		result, err := probeInContext(ctx, identity, ns, deps)
 		if err != nil {
 			return false, err
 		}
@@ -445,6 +468,7 @@ func ensureWithNamespace(identity Identity, options launchcontract.Options, logL
 }
 
 // AcquireHeadless ensures a matching headless daemon and opens one direct IPC client.
+// Cancellation stops discovery/readiness waiting; it does not stop a launched daemon.
 func AcquireHeadless(ctx context.Context, identity Identity, logLevel string) (Client, error) {
 	deps := defaultDependencies()
 	ns, err := deps.namespace()
@@ -541,10 +565,10 @@ func acquire(ctx context.Context, identity Identity, options launchcontract.Opti
 }
 
 func acquireWithNamespace(ctx context.Context, identity Identity, options launchcontract.Options, logLevel string, ns productlayout.Namespace, deps dependencies) (Client, error) {
-	if _, err := ensureWithNamespace(identity, options, logLevel, ns, deps); err != nil {
+	if _, err := ensureInContext(ctx, identity, options, logLevel, ns, deps); err != nil {
 		return nil, err
 	}
-	result, err := probeWithNamespace(identity, ns, deps)
+	result, err := probeInContext(ctx, identity, ns, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -591,13 +615,20 @@ func waitForReadiness(total, interval time.Duration, exited <-chan error, attemp
 }
 
 func waitForReadinessWithRelaunch(total, interval time.Duration, exited <-chan error, attempt func() (bool, error), relaunch func() (daemonLaunch, error)) error {
-	ctx, cancel := context.WithTimeout(context.Background(), total)
+	return waitForReadinessInContext(context.Background(), total, interval, exited, attempt, relaunch)
+}
+
+func waitForReadinessInContext(parent context.Context, total, interval time.Duration, exited <-chan error, attempt func() (bool, error), relaunch func() (daemonLaunch, error)) error {
+	ctx, cancel := context.WithTimeout(parent, total)
 	defer cancel()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	var contentionCause error
 	relaunches := 0
 	for {
+		if err := parent.Err(); err != nil {
+			return err
+		}
 		select {
 		case waitErr := <-exited:
 			ready, err := attempt()
@@ -617,6 +648,9 @@ func waitForReadinessWithRelaunch(total, interval time.Duration, exited <-chan e
 			}
 			return &daemonEarlyExitError{cause: waitErr}
 		case <-ctx.Done():
+			if err := parent.Err(); err != nil {
+				return err
+			}
 			ready, err := attempt()
 			if err != nil {
 				return err

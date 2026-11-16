@@ -724,3 +724,143 @@ func TestRestartReadinessRelaunch(t *testing.T) {
 		})
 	}
 }
+
+func TestCanceledAcquisitionNeverStartsDaemon(t *testing.T) {
+	for _, when := range []string{"before", "after-discovery", "readiness"} {
+		t.Run(when, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			reads, launches := 0, 0
+			deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+				reads++
+				if when == "after-discovery" || when == "readiness" && reads > 1 {
+					cancel()
+				}
+				return contract.RuntimeInfo{}, os.ErrNotExist
+			}, func(context.Context, contract.RuntimeInfo, Identity) (Client, error) {
+				t.Fatal("canceled acquisition reached transport")
+				return nil, nil
+			})
+			deps.launch = func(launchcontract.Options, string) (daemonLaunch, error) {
+				launches++
+				return daemonLaunch{}, nil
+			}
+			if when == "before" {
+				cancel()
+			}
+			_, err := acquire(ctx, testIdentity(t), launchcontract.Headless(), "", deps)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancellation was lost: %v", err)
+			}
+			wantLaunches := 0
+			if when == "readiness" {
+				wantLaunches = 1
+			}
+			if launches != wantLaunches || when == "before" && reads != 0 {
+				t.Fatalf("work continued after cancellation: reads=%d launches=%d", reads, launches)
+			}
+		})
+	}
+}
+
+func TestCanceledExistingConnectionDoesNotProbe(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	reads := 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) {
+		reads++
+		return contract.RuntimeInfo{}, os.ErrNotExist
+	}, nil)
+	_, err := connectExistingHeadless(ctx, testIdentity(t), deps)
+	if !errors.Is(err, context.Canceled) || reads != 0 {
+		t.Fatalf("canceled read-only connection: err=%v reads=%d", err, reads)
+	}
+}
+
+func TestAcquisitionCancellationInterruptsStatusProbe(t *testing.T) {
+	for _, existingOnly := range []bool{false, true} {
+		name := "acquire"
+		if existingOnly {
+			name = "existing-only"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			entered := make(chan struct{})
+			finished := make(chan error, 1)
+			deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil },
+				func(probeCtx context.Context, _ contract.RuntimeInfo, _ Identity) (Client, error) {
+					close(entered)
+					<-probeCtx.Done()
+					return nil, probeCtx.Err()
+				})
+			// Longer than the assertion bound so the caller, not the probe's own
+			// timeout, must release the pending transport operation.
+			deps.callTimeout = 5 * time.Second
+			identity := testIdentity(t)
+			go func() {
+				var err error
+				if existingOnly {
+					_, err = connectExistingHeadless(ctx, identity, deps)
+				} else {
+					_, err = acquire(ctx, identity, launchcontract.Headless(), "", deps)
+				}
+				finished <- err
+			}()
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("probe did not reach transport")
+			}
+			cancel()
+			select {
+			case err := <-finished:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancellation was lost: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("probe ignored caller cancellation")
+			}
+		})
+	}
+}
+
+func TestExistingConnectionPreservesCancellationAfterSuccessfulProbe(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered := make(chan struct{})
+	finished := make(chan error, 1)
+	connections := 0
+	deps := testDependencies(func(string) (contract.RuntimeInfo, error) { return runtime(1), nil },
+		func(connectCtx context.Context, _ contract.RuntimeInfo, _ Identity) (Client, error) {
+			connections++
+			if connections == 1 {
+				return &fakeClient{call: func(string, json.RawMessage) (contract.Response, error) {
+					return statusResponse(t), nil
+				}}, nil
+			}
+			close(entered)
+			<-connectCtx.Done()
+			return nil, connectCtx.Err()
+		})
+	deps.callTimeout = 5 * time.Second
+	identity := testIdentity(t)
+	go func() {
+		_, err := connectExistingHeadless(ctx, identity, deps)
+		finished <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("final connection was not attempted")
+	}
+	cancel()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("final connection lost cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("final connection ignored cancellation")
+	}
+}
