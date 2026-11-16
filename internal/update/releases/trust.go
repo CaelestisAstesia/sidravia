@@ -64,7 +64,16 @@ func builtInPublisherKeys() *PublisherKeys {
 }
 
 // VerifiedRelease cannot be constructed with trusted contents outside this package.
-type VerifiedRelease struct{ manifest ReleaseManifest }
+type VerifiedRelease struct {
+	manifest        ReleaseManifest
+	data, signature []byte
+}
+
+// Proof returns exact signed public bytes for durable storage and later
+// revalidation against the then-current publisher roots. It grants no authority.
+func (v VerifiedRelease) Proof() (data, signature []byte) {
+	return append([]byte(nil), v.data...), append([]byte(nil), v.signature...)
+}
 
 func (v VerifiedRelease) BuildID() string { return v.manifest.BuildID }
 func (v VerifiedRelease) Asset(c Candidate) (ReleaseAsset, error) {
@@ -133,7 +142,7 @@ func (keys *PublisherKeys) Verify(data, signature []byte, version string) (Verif
 		}
 		seen[a.Name] = true
 	}
-	return VerifiedRelease{manifest: m}, nil
+	return VerifiedRelease{manifest: m, data: append([]byte(nil), data...), signature: append([]byte(nil), signature...)}, nil
 }
 func releaseShape(data []byte) bool {
 	var root map[string]json.RawMessage
