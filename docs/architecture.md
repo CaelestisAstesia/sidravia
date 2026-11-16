@@ -6,10 +6,13 @@ Sidravia 将认证核心与用户界面分开。GUI 面向日常使用，CTL 提
 
 | 程序 | 职责 |
 | --- | --- |
-| `Sidravia.exe` | Flutter 界面、窗口、托盘、通知和学校公告 |
+| `Sidravia.exe`（Windows）/ `sidravia_gui`（Linux） | Flutter 界面、窗口、托盘、通知和学校公告 |
 | `sidraviactl` | 命令行意图收集、结果呈现，以及 GUI 启动所需的受限桥接 |
 | `sidraviad` | 配置和凭据、网络观察、认证会话与协议执行 |
-| `sidraviamgr` | Windows 当前用户 PATH、自启及卸载维护 |
+| `sidraviamgr` | Windows 当前用户 PATH 和登录自启；卸载与文件清理由安装器负责 |
+| `sidraviaupdater` | 独立执行更新检查、下载与完整性校验；当前自动安装未开放 |
+
+本文描述当前源码职责，各发行版的支持范围以对应说明为准。Linux 核心包不包含 MGR，Linux GUI 的系统集成见 [Linux 便携包说明](linux-portable.md)。
 
 GUI 与 CTL 通过本机回环 WebSocket 调用后台。客户端不直接改写后台配置文件；维护工具不拥有认证会话。
 
@@ -46,10 +49,10 @@ GUI 与 CTL 通过本机回环 WebSocket 调用后台。客户端不直接改写
 
 ## 源码入口
 
-1. [后台组合入口](../cmd/sidraviad/main.go)。
+1. [后台组合与生命周期](../cmd/sidraviad/runtime.go)。
 2. [应用编排](../internal/daemon/app)和 [IPC 契约](../internal/ipc/contract)。
 3. [认证会话](../internal/daemon/authentication/session)与[协议契约](../internal/daemon/authentication/protocol)。
 4. [命令行](../internal/cli)与 [Flutter 应用层](../gui/lib/application)。
-5. [Windows 维护工具](../internal/installationmanager)。
+5. [Windows 维护工具](../internal/installationmanager)与[独立更新器](../internal/update/command)。
 
-构建与验证见[开发指南](development.md)，协议扩展见[协议支持与适配](protocols.md)。
+命名与领域术语见[命名与模块约定](code-conventions.md)。构建与验证见[开发指南](development.md)，协议扩展见[协议支持与适配](protocols.md)。
