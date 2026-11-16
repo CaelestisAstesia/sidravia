@@ -306,14 +306,14 @@ void main() {
       await tester.tap(find.text('连接配置'));
       await tester.pumpAndSettle();
       expect(find.byType(ConfigurationPage), findsOneWidget);
-      await tester.tap(find.text('返回'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('auto-login-switch')));
       await tester.pumpAndSettle();
       expect(controller.capabilities.configuration!.autoLogin, isTrue);
       expect(client.operations, contains('configuration.set_auto_login'));
-      await tester.tap(find.text('返回'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
 
@@ -323,7 +323,7 @@ void main() {
       await tester.tap(find.text('连接与诊断'));
       await tester.pumpAndSettle();
       expect(find.byType(AdvancedPage), findsOneWidget);
-      await tester.tap(find.text('返回'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(HomePage), findsOneWidget);
       expect(tester.takeException(), isNull);

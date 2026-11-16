@@ -63,9 +63,7 @@ class SettingsDropdown<T> extends StatelessWidget {
       alignment: AlignmentDirectional.centerStart,
       textStyle: style,
       foregroundColor: scheme.onSurface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
-      ),
+      shape: const StadiumBorder(),
     );
     return SizedBox(
       key: frameKey,
@@ -94,7 +92,9 @@ class SettingsDropdown<T> extends StatelessWidget {
               trailingIcon: entry.key == value
                   ? const Icon(Icons.check, size: 16)
                   : null,
-              style: buttonStyle,
+              style: buttonStyle.copyWith(
+                shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
+              ),
               onPressed: onChanged == null || disabledValues.contains(entry.key)
                   ? null
                   : () => onChanged!(entry.key),
@@ -106,10 +106,16 @@ class SettingsDropdown<T> extends StatelessWidget {
             ),
         ],
         builder: (context, menu, _) => DecoratedBox(
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: scheme.surfaceContainerHighest,
-            border: Border.all(color: scheme.outline),
-            borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
+            shape: StadiumBorder(side: BorderSide(color: scheme.outline)),
+            shadows: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: .06),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
           child: TextButton(
             key: dropdownKey,

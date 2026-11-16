@@ -6,6 +6,7 @@ import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
+import 'package:sidravia_gui/shared/widgets/design_icon_button.dart';
 import 'package:sidravia_gui/app/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';
@@ -304,32 +305,11 @@ class _HomeHeader extends StatelessWidget {
             ),
           ),
           SizedBox(width: 12),
-          SizedBox(
-            width: touch ? 48 : 42,
-            height: height,
-            child: IconButton(
-              key: const ValueKey('home-settings-button'),
-              style: IconButton.styleFrom(
-                visualDensity: VisualDensity.standard,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                minimumSize: Size(touch ? 48 : 42, height),
-              ),
-              tooltip: '设置',
-              onPressed: data.onSettings,
-              icon: Icon(
-                Icons.settings_outlined,
-                size: 20,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints.tightFor(
-                width: touch ? 48 : 42,
-                height: height,
-              ),
-            ),
+          DesignIconButton(
+            key: const ValueKey('home-settings-button'),
+            tooltip: '设置',
+            onPressed: data.onSettings,
+            icon: Icons.settings_outlined,
           ),
         ],
       ),

@@ -17,7 +17,6 @@ abstract final class DesignMetrics {
   static const choiceMinWidth = 92.0;
   static const choiceMaxWidth = 180.0;
   static const choiceMinHeight = 30.0;
-  static const choiceRadius = 7.0;
   static const touchTarget = 48.0;
 
   static double choiceWidth(double viewportWidth) =>

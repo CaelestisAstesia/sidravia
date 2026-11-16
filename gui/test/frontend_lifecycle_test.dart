@@ -1,3 +1,5 @@
+import 'support/configuration_editing.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -219,6 +221,7 @@ void main() {
       expect(_selectedProfile(tester), 'jlu');
       expect(_username(tester), creating ? '' : 'student01');
       await tester.enterText(find.byType(TextField).first, 'edited-account');
+      await openPasswordEditor(tester);
       await tester.enterText(find.byType(TextField).last, 'fake-password');
       await tester.pump();
       await tester.tap(find.text('保存修改'));
@@ -256,6 +259,7 @@ void main() {
     await _mount(tester, controller);
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'unsaved-account');
+    await openPasswordEditor(tester);
     await tester.enterText(find.byType(TextField).last, 'unsaved-password');
     await tester.pump(const Duration(milliseconds: 60));
     await tester.pumpAndSettle();
@@ -282,6 +286,7 @@ void main() {
         await _mount(tester, controller);
         await _openConfiguration(tester);
         await tester.enterText(find.byType(TextField).first, 'saved-account');
+        await openPasswordEditor(tester);
         await tester.enterText(find.byType(TextField).last, 'fake-password');
         await tester.pump();
         await tester.tap(find.text('保存修改'));
@@ -333,6 +338,7 @@ void main() {
     await _mount(tester, controller);
     await _openConfiguration(tester);
     await tester.enterText(find.byType(TextField).first, 'created-account');
+    await openPasswordEditor(tester);
     await tester.enterText(find.byType(TextField).last, 'fake-password');
     await tester.pump();
     await tester.tap(find.text('保存修改'));
@@ -348,9 +354,10 @@ void main() {
       await tester.pump();
     }
     await tester.pump();
+    expect(find.text('放弃修改'), findsNothing);
     expect(
       tester
-          .widget<TextButton>(find.widgetWithText(TextButton, '放弃修改'))
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '正在保存…'))
           .onPressed,
       isNull,
     );

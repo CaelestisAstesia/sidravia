@@ -59,7 +59,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(SettingsPage), findsOneWidget);
-      expect(find.text('返回'), findsOneWidget);
+      expect(find.byTooltip('返回'), findsOneWidget);
       expect(
         await shellKey.currentState!.navigateFromTray(AppPage.home),
         isTrue,
@@ -70,9 +70,9 @@ void main() {
       await tester.pumpAndSettle();
       await shellKey.currentState!.navigateFromTray(AppPage.settings);
       await tester.pumpAndSettle();
-      expect(find.text('返回'), findsOneWidget);
+      expect(find.byTooltip('返回'), findsOneWidget);
       expect(find.text('返回仪表盘'), findsNothing);
-      await tester.tap(find.text('返回'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.byType(AdvancedPage), findsOneWidget);
     } finally {
@@ -228,21 +228,21 @@ void main() {
           find.byKey(const ValueKey('home-configuration-button')),
         );
         expect(find.byType(ConfigurationPage), findsOneWidget);
-        await tapVisible(find.text('返回'));
+        await tapVisible(find.byTooltip('返回'));
         expect(find.byType(HomePage), findsOneWidget);
 
         await tapVisible(find.byTooltip('设置'));
         expect(find.byType(SettingsPage), findsOneWidget);
         await tapVisible(find.text('连接配置'));
         expect(find.byType(ConfigurationPage), findsOneWidget);
-        await tapVisible(find.text('返回'));
+        await tapVisible(find.byTooltip('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
         await tapVisible(find.text('连接与诊断'));
         expect(find.byType(AdvancedPage), findsOneWidget);
         expect(find.byType(AdvancedPage), findsOneWidget);
-        await tapVisible(find.text('返回'));
+        await tapVisible(find.byTooltip('返回'));
         expect(find.byType(SettingsPage), findsOneWidget);
-        await tapVisible(find.text('返回'));
+        await tapVisible(find.byTooltip('返回'));
         expect(find.byType(HomePage), findsOneWidget);
 
         await tapVisible(find.byTooltip('设置'));

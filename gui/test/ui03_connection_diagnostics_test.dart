@@ -15,8 +15,9 @@ import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/features/home/business_panel.dart';
 
 Future<void> tap(WidgetTester tester, String text) async {
-  await tester.ensureVisible(find.text(text));
-  await tester.tap(find.text(text));
+  final target = text == '返回' ? find.byTooltip('返回') : find.text(text);
+  await tester.ensureVisible(target);
+  await tester.tap(target);
   await tester.pumpAndSettle();
 }
 

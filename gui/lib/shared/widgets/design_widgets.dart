@@ -1,5 +1,7 @@
 import 'dart:ui' show ImageFilter;
 
+import 'package:sidravia_gui/shared/widgets/design_icon_button.dart';
+
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -276,46 +278,14 @@ class DesignHeader extends StatelessWidget {
     final touch =
         Theme.of(context).platform == TargetPlatform.android ||
         Theme.of(context).platform == TargetPlatform.iOS;
-    Widget backButton({bool placeholder = false}) => TextButton(
-      key: placeholder ? null : const ValueKey('design-back-button'),
+    final buttonSize = touch
+        ? DesignMetrics.touchTarget
+        : DesignMetrics.buttonMinHeight;
+    Widget backButton() => DesignIconButton(
+      key: const ValueKey('design-back-button'),
+      tooltip: '返回',
+      icon: Icons.arrow_back,
       onPressed: onBack,
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        minimumSize: Size(0, touch ? 48 : 42),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.standard,
-        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.chevron_left, size: 16),
-          const SizedBox(width: 7),
-          if (placeholder)
-            Builder(
-              builder: (context) => RichText(
-                textScaler: MediaQuery.textScalerOf(context),
-                text: TextSpan(
-                  text: '返回',
-                  style: DefaultTextStyle.of(context).style.merge(
-                    const TextStyle(
-                      fontSize: DesignMetrics.bodyFont,
-                      height: 20 / 13,
-                    ),
-                  ),
-                ),
-              ),
-            )
-          else
-            const Text(
-              '返回',
-              style: TextStyle(
-                fontSize: DesignMetrics.bodyFont,
-                height: 20 / 13,
-              ),
-            ),
-        ],
-      ),
     );
     return Padding(
       padding: EdgeInsets.only(bottom: bottomSpacing),
@@ -337,14 +307,7 @@ class DesignHeader extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           if (actions.isEmpty)
-            ExcludeSemantics(
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0,
-                  child: backButton(placeholder: true),
-                ),
-              ),
-            )
+            SizedBox(width: buttonSize, height: buttonSize)
           else
             Row(mainAxisSize: MainAxisSize.min, children: actions),
         ],
@@ -382,6 +345,13 @@ class DesignGroup extends StatelessWidget {
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(DesignMetrics.groupRadius),
       border: Border.all(color: Theme.of(context).colorScheme.outline),
+      boxShadow: [
+        BoxShadow(
+          color: Theme.of(context).colorScheme.shadow.withValues(alpha: .06),
+          blurRadius: 4,
+          offset: const Offset(0, 1),
+        ),
+      ],
     ),
     child: Column(
       children: [
@@ -814,11 +784,13 @@ class DesignInputRow extends StatelessWidget {
     this.hint,
     this.error,
     this.helper,
+    this.trailing,
   });
   final String label;
   final TextEditingController controller;
   final bool enabled, obscureText;
   final String? hint, error, helper;
+  final Widget? trailing;
 
   bool _rejectMultiline(BuildContext context, String text) {
     if (!text.contains('\n') && !text.contains('\r')) return false;
@@ -894,81 +866,92 @@ class DesignInputRow extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: MergeSemantics(
-                  child: Semantics(
-                    onPaste: enabled ? () => _pasteCredential(context) : null,
-                    onSetText: enabled
-                        ? (text) {
-                            if (_rejectMultiline(context, text)) return;
-                            controller.value = TextEditingValue(
-                              text: text,
-                              selection: TextSelection.collapsed(
-                                offset: text.length,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: MergeSemantics(
+                        child: Semantics(
+                          onPaste: enabled
+                              ? () => _pasteCredential(context)
+                              : null,
+                          onSetText: enabled
+                              ? (text) {
+                                  if (_rejectMultiline(context, text)) return;
+                                  controller.value = TextEditingValue(
+                                    text: text,
+                                    selection: TextSelection.collapsed(
+                                      offset: text.length,
+                                    ),
+                                  );
+                                }
+                              : null,
+                          child: Actions(
+                            actions: {
+                              PasteTextIntent: CallbackAction<PasteTextIntent>(
+                                onInvoke: (_) {
+                                  _pasteCredential(context);
+                                  return null;
+                                },
                               ),
-                            );
-                          }
-                        : null,
-                    child: Actions(
-                      actions: {
-                        PasteTextIntent: CallbackAction<PasteTextIntent>(
-                          onInvoke: (_) {
-                            _pasteCredential(context);
-                            return null;
-                          },
-                        ),
-                      },
-                      child: TextField(
-                        controller: controller,
-                        enabled: enabled,
-                        obscureText: obscureText,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        smartDashesType: SmartDashesType.disabled,
-                        smartQuotesType: SmartQuotesType.disabled,
-                        contextMenuBuilder: (context, state) =>
-                            AdaptiveTextSelectionToolbar.buttonItems(
-                              anchors: state.contextMenuAnchors,
-                              buttonItems: [
-                                for (final item in state.contextMenuButtonItems)
-                                  if (item.type == ContextMenuButtonType.paste)
-                                    ContextMenuButtonItem(
-                                      type: ContextMenuButtonType.paste,
-                                      onPressed: () {
-                                        ContextMenuController.removeAny();
-                                        _pasteCredential(context);
-                                      },
-                                    )
-                                  else
-                                    item,
-                              ],
+                            },
+                            child: TextField(
+                              controller: controller,
+                              enabled: enabled,
+                              obscureText: obscureText,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              smartDashesType: SmartDashesType.disabled,
+                              smartQuotesType: SmartQuotesType.disabled,
+                              contextMenuBuilder: (context, state) =>
+                                  AdaptiveTextSelectionToolbar.buttonItems(
+                                    anchors: state.contextMenuAnchors,
+                                    buttonItems: [
+                                      for (final item
+                                          in state.contextMenuButtonItems)
+                                        if (item.type ==
+                                            ContextMenuButtonType.paste)
+                                          ContextMenuButtonItem(
+                                            type: ContextMenuButtonType.paste,
+                                            onPressed: () {
+                                              ContextMenuController.removeAny();
+                                              _pasteCredential(context);
+                                            },
+                                          )
+                                        else
+                                          item,
+                                    ],
+                                  ),
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: DesignMetrics.valueFont,
+                                fontFamily: 'HarmonyOS Sans',
+                              ),
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: InputDecoration(
+                                hintText: hint,
+                                hintStyle: TextStyle(
+                                  fontSize: DesignMetrics.valueFont,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                                isDense: true,
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
                             ),
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          fontSize: DesignMetrics.valueFont,
-                          fontFamily: 'HarmonyOS Sans',
-                        ),
-                        textAlignVertical: TextAlignVertical.center,
-                        decoration: InputDecoration(
-                          hintText: hint,
-                          hintStyle: TextStyle(
-                            fontSize: DesignMetrics.valueFont,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                          isDense: true,
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 12,
                           ),
                         ),
                       ),
                     ),
-                  ),
+                    ?trailing,
+                  ],
                 ),
               ),
             ],

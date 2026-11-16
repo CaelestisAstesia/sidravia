@@ -73,7 +73,7 @@ void main() {
         ]) {
           expect(find.text(original), findsOneWidget);
         }
-        await tester.tap(find.text('返回').last);
+        await tester.tap(find.byTooltip('返回').last);
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'missing-component');
         await tester.pumpAndSettle();

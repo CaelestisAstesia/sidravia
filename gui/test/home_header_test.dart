@@ -77,8 +77,8 @@ void main() {
           final settings = find.byKey(const ValueKey('home-settings-button'));
           final left = tester.getRect(configuration);
           final right = tester.getRect(settings);
-          expect(left.top, right.top);
-          expect(left.bottom, right.bottom);
+          expect(left.center.dy, right.center.dy);
+          expect(right.width, right.height);
           final header = tester.getRect(
             find.byKey(const ValueKey('home-header')),
           );

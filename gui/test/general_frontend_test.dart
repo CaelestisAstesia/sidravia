@@ -1,3 +1,4 @@
+import 'support/configuration_editing.dart';
 import 'support/runtime_snapshot.dart';
 import 'school_announcement_controller_test.dart' as school_dispatch;
 
@@ -258,6 +259,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('请输入账号'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, 'demo-new');
+    await openPasswordEditor(tester);
     await tester.enterText(find.byType(TextField).last, 'fake-only');
     await tester.ensureVisible(find.text('保存修改'));
     await tester.pump();
@@ -346,9 +348,9 @@ void main() {
           await tester.tap(find.byTooltip('刷新快照'));
           await tester.pump();
           expect(displayedSnapshot(tester)['backend'], isNotNull);
-          await tester.ensureVisible(find.text('返回'));
+          await tester.ensureVisible(find.byTooltip('返回'));
           await tester.pump();
-          await tester.tap(find.text('返回'));
+          await tester.tap(find.byTooltip('返回'));
           await tester.pumpAndSettle();
           await tester.ensureVisible(find.text('连接配置'));
           await tester.pump();
