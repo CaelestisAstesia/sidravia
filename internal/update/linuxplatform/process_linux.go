@@ -161,3 +161,35 @@ func DescendsFrom(pid, coordinator int, start string) error {
 	}
 	return ErrPeer
 }
+
+// GenerationRunning observes only liveness/start ticks; restricted executable
+// links do not turn an unknown peer into a claimed-dead coordinator.
+func GenerationRunning(pid int, start string) (bool, error) {
+	fd, err := unix.PidfdOpen(pid, 0)
+	if errors.Is(err, unix.ESRCH) || errors.Is(err, unix.ENOENT) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer unix.Close(fd)
+	actual, _, err := statFields(pid)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ESRCH) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if actual != start {
+		return false, nil
+	}
+	poll := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+	_, err = unix.Poll(poll, 0)
+	if err != nil {
+		return false, err
+	}
+	if poll[0].Revents&(unix.POLLERR|unix.POLLNVAL) != 0 {
+		return false, ErrPeer
+	}
+	return poll[0].Revents == 0, nil
+}

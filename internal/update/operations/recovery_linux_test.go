@@ -52,7 +52,7 @@ func TestRecoveryBoundToPhaseIdentityNonceAndCoordinatorTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer owner.Close()
-	recovery := Recovery{Intent: update.RestoreIntent{Mode: "headless"}, Namespace: "fixture", CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("b", 32), ExpiresAt: r.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
+	recovery := Recovery{SourceFilesSHA256: strings.Repeat("a", 64), Intent: update.RestoreIntent{Mode: "headless"}, Namespace: "fixture", CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("b", 32), ExpiresAt: r.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
 	if err := s.SetRecovery(ctx, r.ID, recovery, time.Now()); err != nil {
 		t.Fatal(err)
 	}

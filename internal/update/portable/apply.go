@@ -39,7 +39,7 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 		return err
 	}
 	next := p.inventory
-	if !exists || record.Source.ID != target || record.Source.Layout != "portable" || record.Source.Version != old.manifest.Version || record.Source.BuildID != old.manifest.BuildID || record.Target.Version != next.manifest.Version || record.Target.BuildID != next.manifest.BuildID || record.Package.CandidateID != next.candidate.ID || record.Package.Name != next.candidate.Name || record.Package.Size != next.candidate.Size || record.Package.SHA256 != next.candidate.SHA256 || old.manifest.OS != next.manifest.OS || old.manifest.Arch != next.manifest.Arch || old.manifest.PayloadKind != next.manifest.PayloadKind {
+	if !exists || !boundExecution(record, target, old, p) {
 		return ErrInvalid
 	}
 	parent, err := os.OpenRoot(filepath.Dir(target))
@@ -348,4 +348,12 @@ func sealApplication(ctx context.Context, root *os.Root, id string) (context.Con
 		return nil, nil, err
 	}
 	return context.WithoutCancel(ctx), info, nil
+}
+
+func boundExecution(record operations.Record, target string, old Inventory, p *Payload) bool {
+	if p == nil {
+		return false
+	}
+	next := p.inventory
+	return !(record.Source.ID != target || record.Source.Layout != "portable" || record.Source.Version != old.manifest.Version || record.Source.BuildID != old.manifest.BuildID || record.Target.Version != next.manifest.Version || record.Target.BuildID != next.manifest.BuildID || record.Package.CandidateID != next.candidate.ID || record.Package.Name != next.candidate.Name || record.Package.Size != next.candidate.Size || record.Package.SHA256 != next.candidate.SHA256 || old.manifest.OS != next.manifest.OS || old.manifest.Arch != next.manifest.Arch || old.manifest.PayloadKind != next.manifest.PayloadKind)
 }

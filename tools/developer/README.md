@@ -164,12 +164,17 @@ records preserve exact signed proof and operation claims outside replaced files.
 Linux portable Go entries now retain shared runtime admission, and the file
 engine takes exclusive admission against the same target-bound record. The
 engine authenticates inventories, bounds TAR/ZIP extraction, preserves unknown
-files and user data, and retains repair state after a partial write. Its current
-application adapter supports Linux core; public apply/lifecycle recovery is not
-connected yet. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
+files and user data, and retains repair state after a partial write. Its Linux adapter applies both core and the static-launcher GUI layout. A
+finite internal coordinator negotiates normal exit using exact pidfd peers,
+applies authenticated bytes, then cold-starts only the prior mode. Restore
+admission is bound to the operation, new build, namespace and live coordinator
+ancestry; only saved configuration intent is dispatched, at most once. Explicit
+restart strips the earlier launch capability, and user mutations revoke pending
+connection recovery. Installed files, process readiness and authentication are
+separate outcomes. Public `apply` remains disabled pending CLI delivery and
+publisher/release acceptance. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
 `gui-runtime/` payload: the shared lease is inherited across exec before Flutter
-loads, then marked close-on-exec by the runner. Windows publication and the GUI
-file-application adapter require their own acceptance before enabling apply. GUI scheduling, unattended apply, portable replacement and signed release
+loads, then marked close-on-exec by the runner. Windows publication and public apply require their own acceptance before enabling installation. GUI scheduling, unattended apply, public portable apply delivery and signed release
 integration remain pending. The Windows application now exposes fixed internal
 prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
 Inno path uses these stages when the target CTL advertises protocol 1. Older
@@ -330,3 +335,33 @@ fixture verifies login statistics and checksummed plain text through the real
 Run, Session, IPC and shared GUI, reauthentication isolation and retained stopped
 data. Its result and source fingerprint remain in the owned fixture directory;
 no production configuration, user integration or campus authentication is used.
+
+
+### Isolated Linux portable update coordination
+
+Build the current Linux bundle using the pinned `dev.py linux` entry, then opt
+into the real-process fixture through the normal Go verification scope:
+
+```sh
+SIDRAVIA_PORTABLE_UPDATE_FIXTURE=1 \
+SIDRAVIA_PORTABLE_UPDATE_GUI_BUNDLE="$PWD/gui/build/linux/x64/release/bundle" \
+python3 tools/developer/dev.py verify --scope go --go-checks native --go /path/to/pinned/go
+```
+
+Omit the GUI bundle variable for headless cases. The fixture builds private old
+and new executables with a source overlay containing only a synthetic public
+trust root; production sources and runtime trust configuration are unchanged.
+It uses its own HOME/XDG roots, unique namespace, loopback-only profile and
+fictional saved credentials. It checks normal core/GUI exit and replacement,
+cold mode restoration, one saved-configuration dispatch, cancellation after
+prepare, unconfirmed exit, failed new startup and coordinator-death thawing.
+There is no campus authentication, host installation, real account autostart or
+publisher signing. Owned fixtures and receipts remain under
+`.local/portable-update-fixture-*`; compilation reuses the pinned SDK and shared
+caches. A deliberately failed scratch GUI may need fixture-only process cleanup;
+production coordination never escalates normal exit to a forced kill.
+
+Recovery expiry starts with the finite coordination snapshot, not an arbitrarily
+old check record. After a coordinator dies, explicit byte-verified reconciliation
+may close a pre-write operation or mark an unconfirmed resume failed. It does
+not retry startup or authentication, and cannot clear a partial-write seal.

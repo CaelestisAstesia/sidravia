@@ -227,7 +227,9 @@ static void desktop_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
   } else if (g_str_equal(method, "beginExit")) {
     s->exiting = true; reply(call);
   } else if (g_str_equal(method, "beginUpdateExit")) {
-    fail(call, "当前 Linux 版本尚不支持自动应用更新");
+    // The runtime lease remains held until process exit. Marking this normal
+    // exit does not release file application admission or terminate the daemon.
+    s->exiting = true; reply(call);
   } else if (g_str_equal(method, "cancelExit")) {
     s->exiting = false; reply(call);
   } else if (g_str_equal(method, "destroy")) {

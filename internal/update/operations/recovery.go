@@ -11,6 +11,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/packagefiles"
 )
 
 const (
@@ -22,17 +23,19 @@ const (
 // Recovery contains launch intent only, never credentials or IPC bearer tokens.
 // Its nonce is a private, finite launch admission, not an authentication secret.
 type Recovery struct {
-	Intent           update.RestoreIntent `json:"intent"`
-	Namespace        string               `json:"namespace"`
-	CoordinatorPID   int                  `json:"coordinatorPid"`
-	CoordinatorStart string               `json:"coordinatorStart"`
-	Nonce            string               `json:"nonce"`
-	ExpiresAt        time.Time            `json:"expiresAt"`
-	LogLevel         string               `json:"logLevel"`
+	SourceFilesSHA256 string               `json:"sourceFilesSha256"`
+	Intent            update.RestoreIntent `json:"intent"`
+	Namespace         string               `json:"namespace"`
+	CoordinatorPID    int                  `json:"coordinatorPid"`
+	CoordinatorStart  string               `json:"coordinatorStart"`
+	Nonce             string               `json:"nonce"`
+	IssuedAt          time.Time            `json:"issuedAt"`
+	ExpiresAt         time.Time            `json:"expiresAt"`
+	LogLevel          string               `json:"logLevel"`
 }
 
 func (r Recovery) validate(record Record) error {
-	if r.CoordinatorPID <= 0 || r.CoordinatorPID > 1<<31-1 || len(r.CoordinatorStart) > 20 || !update.ValidOperationID(r.Nonce) || r.ExpiresAt.After(record.CreatedAt.Add(30*time.Minute)) {
+	if !packagefiles.ValidSHA256(r.SourceFilesSHA256) || r.CoordinatorPID <= 0 || r.CoordinatorPID > 1<<31-1 || len(r.CoordinatorStart) > 20 || !update.ValidOperationID(r.Nonce) || r.IssuedAt.Before(record.CreatedAt) || r.IssuedAt.After(record.UpdatedAt) || r.ExpiresAt.After(r.IssuedAt.Add(30*time.Minute)) {
 		return ErrInvalid
 	}
 	if _, err := strconv.ParseUint(r.CoordinatorStart, 10, 64); err != nil {
@@ -46,7 +49,7 @@ func (r Recovery) validate(record Record) error {
 	default:
 		return ErrInvalid
 	}
-	_, err := update.PlanRestore(update.ResumeTicket{OperationID: record.ID, Target: record.Target, Intent: r.Intent, ExpiresAt: r.ExpiresAt}, record.Target, true, record.CreatedAt)
+	_, err := update.PlanRestore(update.ResumeTicket{OperationID: record.ID, Target: record.Target, Intent: r.Intent, ExpiresAt: r.ExpiresAt}, record.Target, true, r.IssuedAt)
 	return err
 }
 
@@ -70,6 +73,7 @@ func (s *Store) SetRecovery(ctx context.Context, id string, recovery Recovery, n
 	if !exists || r.ID != id || r.Phase != Verified || r.Recovery != nil {
 		return ErrConflict
 	}
+	recovery.IssuedAt = now.UTC()
 	r.Recovery = &recovery
 	if now.After(r.UpdatedAt) {
 		r.UpdatedAt = now.UTC()
@@ -93,7 +97,7 @@ func recoveryShape(data []byte) bool {
 		return false
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || !exactRecordFields(fields, []string{"intent", "namespace", "coordinatorPid", "coordinatorStart", "nonce", "expiresAt", "logLevel"}) {
+	if json.Unmarshal(raw, &fields) != nil || !exactRecordFields(fields, []string{"sourceFilesSha256", "intent", "namespace", "coordinatorPid", "coordinatorStart", "nonce", "issuedAt", "expiresAt", "logLevel"}) {
 		return false
 	}
 	var intent map[string]json.RawMessage
