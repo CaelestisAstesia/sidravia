@@ -123,6 +123,13 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		}
 	}
 	if operation == "status" {
+		execution, err := executionStatus(ctx, filepath.Join(cacheBase, "operations"), layout.ExecutableDirectory)
+		if err != nil {
+			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
+		}
+		if execution != nil {
+			return emit(true, "ok", "", composeStatus(previous, exists, execution))
+		}
 		if !exists {
 			return emit(true, "not_checked", "尚未检查更新。", nil)
 		}

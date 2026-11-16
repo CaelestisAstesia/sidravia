@@ -66,7 +66,7 @@ func NewGitHub(client *http.Client) *GitHub {
 	copyClient := *client
 	copyClient.Timeout = 20 * time.Second
 	copyClient.Jar = nil
-	source := &GitHub{client: &copyClient, apiBase: "https://api.github.com", publisherKeys: builtInPublisherKeys()}
+	source := &GitHub{client: &copyClient, apiBase: "https://api.github.com", publisherKeys: PublisherTrust()}
 	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return ErrMetadata

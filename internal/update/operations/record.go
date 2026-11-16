@@ -122,7 +122,10 @@ func (r Record) Validate(keys *releases.PublisherKeys) error {
 	_, err = verified.Asset(r.candidate())
 	return err
 }
-func (r Record) BlocksStartup() bool {
+
+// RequiresStartupBlock is a policy requirement for the later platform gate,
+// not evidence that a running process has already been stopped.
+func (r Record) RequiresStartupBlock() bool {
 	switch r.Phase {
 	case Preparing, Quiescent, Applying, Applied, Resuming, RepairRequired:
 		return true

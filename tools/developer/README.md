@@ -156,8 +156,13 @@ repeated checks preserve it and repeated downloads reuse it. Unexpected cache
 paths or changed bytes fail closed and require cache inspection.
 
 This is foundation work: `update apply` returns `apply_unavailable`, and candidates
-report `canApply=false`. The signature verifier is tested using synthetic keys;
-no publisher key is configured. GUI scheduling, unattended apply, portable replacement and signed release
+report `canApply=false`. Pinned-key release metadata authentication and product ownership inventories are
+implemented and tested using synthetic keys; no publisher key is configured.
+Distribution archives contain `sidravia-files.json`, independently checked against
+source bytes, file modes and the protected data boundary. Target-bound execution
+records preserve exact signed proof and operation claims outside replaced files.
+These records are foundations; portable startup gates and file application remain
+unconnected. GUI scheduling, unattended apply, portable replacement and signed release
 integration remain pending. The Windows application now exposes fixed internal
 prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
 Inno path uses these stages when the target CTL advertises protocol 1. Older

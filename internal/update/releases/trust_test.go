@@ -53,7 +53,7 @@ func TestPublisherTrustBindsCandidateAndOwnership(t *testing.T) {
 	if _, err := verified.Asset(c); !errors.Is(err, ErrUntrusted) {
 		t.Fatal("package bytes were not bound", err)
 	}
-	if _, err := builtInPublisherKeys().Verify(data, ed25519.Sign(key, data), m.Version); !errors.Is(err, ErrUntrusted) {
+	if _, err := PublisherTrust().Verify(data, ed25519.Sign(key, data), m.Version); !errors.Is(err, ErrUntrusted) {
 		t.Fatal("synthetic key trusted by production", err)
 	}
 }

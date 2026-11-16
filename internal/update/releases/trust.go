@@ -56,7 +56,9 @@ func NewPublisherKeys(keys []ed25519.PublicKey) (*PublisherKeys, error) {
 	}
 	return result, nil
 }
-func builtInPublisherKeys() *PublisherKeys {
+
+// PublisherTrust returns the immutable roots selected by the product build.
+func PublisherTrust() *PublisherKeys {
 	// Intentionally empty until a publisher key is explicitly configured in a
 	// reviewed build. Synthetic keys belong only to tests.
 	keys, _ := NewPublisherKeys(nil)

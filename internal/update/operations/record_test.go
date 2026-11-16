@@ -63,7 +63,7 @@ func TestPersistedApplyingAndRepairPreventRestartAfterCoordinatorExit(t *testing
 		t.Fatal(err)
 	}
 	got, exists, err := reopened.Read(ctx)
-	if err != nil || !exists || !got.BlocksStartup() || got.Phase != Applying {
+	if err != nil || !exists || !got.RequiresStartupBlock() || got.Phase != Applying {
 		t.Fatalf("crash marker lost %+v %v", got, err)
 	}
 	if !bytes.HasPrefix(got.Manifest, []byte(" \n")) {
@@ -73,7 +73,7 @@ func TestPersistedApplyingAndRepairPreventRestartAfterCoordinatorExit(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.BlocksStartup() {
+	if !got.RequiresStartupBlock() {
 		t.Fatal("failed write unblocked startup")
 	}
 	if _, _, err = reopened.Advance(ctx, r.ID, RepairRequired, Aborted, "cancelled", time.Now()); !errors.Is(err, ErrConflict) {
@@ -109,7 +109,7 @@ func TestTransitionsAreBoundAndReplayWithoutSideEffects(t *testing.T) {
 			t.Fatal("stage replay changed state", err)
 		}
 	}
-	if r.BlocksStartup() {
+	if r.RequiresStartupBlock() {
 		t.Fatal("completed operation still blocks")
 	}
 	replay, err := store.Create(ctx, created)

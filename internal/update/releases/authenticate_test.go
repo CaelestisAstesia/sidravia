@@ -50,7 +50,7 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 			})})
 			source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
 			if mode == "unknown-root" {
-				source.publisherKeys = builtInPublisherKeys()
+				source.publisherKeys = PublisherTrust()
 			}
 			c.DownloadURL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
 			verified, err := source.AuthenticateCandidate(context.Background(), c)
