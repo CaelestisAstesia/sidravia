@@ -20,7 +20,7 @@ import (
 	"sidravia/internal/update/releases"
 )
 
-var ProductVersion = "0.4.0-alpha.1"
+var ProductVersion = "0.5.0-alpha.1"
 var BuildID = "dev"
 
 const gateFD = "SIDRAVIA_GUI_GATE_FD"

@@ -18,7 +18,7 @@ import (
 
 // Set via ldflags.
 var (
-	ProductVersion = "0.4.0-alpha.1"
+	ProductVersion = "0.5.0-alpha.1"
 	BuildID        = "dev"
 )
 

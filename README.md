@@ -16,7 +16,7 @@ Sidravia 的核心采用跨平台设计，注重运行效率。已发布的图�
 
 默认关闭窗口会隐藏到托盘，连接继续保持；需要退出时，在托盘菜单选择「退出 Sidravia」。如需启动后自动认证，可在设置中开启自动登录；如需断线后自动恢复，可开启自动重连。开机自启可在「启动与窗口行为」中设置。
 
-当前预发布版本为 [`0.4.0-alpha.1`](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.4.0-alpha.1)。Windows x64 提供安装程序、图形界面便携包和核心便携包；Linux x64 提供图形界面便携包、Fedora RPM 和核心便携包。Windows/Linux ARM64 仅提供核心便携包，尚未经实机验证。变化见[变更日志](CHANGELOG.md)，下载前请查看对应平台说明。
+下一版本候选为 **`0.5.0-alpha.1`**，尚未发布；当前公开预发布版本为 [`0.4.0-alpha.1`](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.4.0-alpha.1)。Windows x64 提供安装程序、图形界面便携包和核心便携包；Linux x64 提供图形界面便携包、Fedora RPM 和核心便携包。Windows/Linux ARM64 仅提供核心便携包，尚未经实机验证。变化见[变更日志](CHANGELOG.md)，下载前请查看对应平台说明。
 
 **预发布（Pre-release）版本之间可能引入不兼容的改动，配置格式、命令参数或使用流程可能发生变化。升级前务必阅读目标版本的发行说明并备份配置，不要假定旧版配置可直接沿用，或新版保存的数据可直接用于回退。**
 

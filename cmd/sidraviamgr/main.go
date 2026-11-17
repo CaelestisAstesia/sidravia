@@ -11,7 +11,7 @@ import (
 	"sidravia/internal/installationmanager"
 )
 
-var ProductVersion = "0.4.0-alpha.1"
+var ProductVersion = "0.5.0-alpha.1"
 var BuildID = "dev"
 
 const usage = "sidraviamgr: status [--directory absolute-path] | path enable | path disable | autostart set gui | autostart set daemon | autostart disable\nResults: UTF-8 JSON version 1. Exit codes: 0 success, 1 operation failed, 2 invalid arguments.\nOnly current-user PATH and login startup are managed here. Installation, upgrade, uninstall and data cleanup belong to the installer.\n"
