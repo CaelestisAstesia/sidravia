@@ -32,10 +32,35 @@ class DistributionContract(unittest.TestCase):
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(name.encode())
-        for name in ('Sidravia.exe', 'flutter_windows.dll', 'data/icudtl.dat'):
+        for name in ('Sidravia.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z'):
             path = self.gui / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(name.encode())
+            path.write_bytes(b'[]' if name.endswith('FontManifest.json') else name.encode())
+
+    def test_source_and_archive_agreement_does_not_admit_build_junk(self):
+        for name in ('debug.pdb', 'data/build.log', 'data/flutter_assets/AssetManifest.bin.json', 'data/flutter_assets/NOTICES', 'data/flutter_assets/assets/preview-font.ttf', 'dartjni.dll', 'unexpected.txt'):
+            with self.subTest(name=name):
+                path = self.gui / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'unused')
+                for output in self.out.iterdir():
+                    output.unlink()
+                self.package('windows-amd64', self.payload('windows-amd64'))
+                with self.assertRaises(module.VerificationError):
+                    self.verify('windows-amd64')
+                path.unlink()
+
+    def test_gui_requires_application_snapshot_not_just_engine(self):
+        (self.gui / 'data/app.so').unlink()
+        self.package('windows-amd64', self.payload('windows-amd64'))
+        with self.assertRaisesRegex(module.VerificationError, 'gui_source_incomplete'):
+            self.verify('windows-amd64')
+
+    def test_gui_rejects_missing_declared_font(self):
+        (self.gui / 'data/flutter_assets/FontManifest.json').write_text('[{"fonts":[{"asset":"assets/fonts/missing.otf"}]}]')
+        self.package('windows-amd64', self.payload('windows-amd64'))
+        with self.assertRaisesRegex(module.VerificationError, 'gui_declared_font_missing'):
+            self.verify('windows-amd64')
 
     def payload(self, target, gui=True):
         contents = {'LICENSE': b'LICENSE', 'sidravia.portable': b'',
@@ -47,7 +72,6 @@ class DistributionContract(unittest.TestCase):
             contents['sidraviad.exe'] = contents.pop('sidraviad')
             contents['sidraviaupdater.exe'] = contents.pop('sidraviaupdater')
             contents['sidraviamgr.exe'] = b'manager'
-            contents['app_icon.ico'] = b'gui/windows/runner/resources/app_icon.ico'
             if gui and target == 'windows-amd64':
                 contents.update({p.relative_to(self.gui).as_posix(): p.read_bytes() for p in self.gui.rglob('*') if p.is_file()})
         names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'] if target.startswith('windows-') else ['sidraviactl', 'sidraviad', 'sidraviaupdater']
@@ -61,7 +85,7 @@ class DistributionContract(unittest.TestCase):
             'os': target.split('-')[0], 'arch': target.split('-')[1], 'payloadKind': kind,
             'files': [{'path': name, 'size': len(data), 'sha256': module.digest(data),
                        'mode': 0o755 if not target.startswith('windows') and name in ('sidraviactl', 'sidraviad', 'sidraviaupdater', 'sidravia_gui', 'gui-runtime/sidravia_gui') else 0o644}
-                      for name, data in sorted(product.items())]}).encode()
+                      for name, data in sorted(product.items())]},separators=(',',':')).encode()
 
     def package(self, target, contents, gui=True):
         base = f'sidravia-v{VERSION}-{target}'
@@ -254,8 +278,10 @@ class DistributionContract(unittest.TestCase):
                 injected.write_bytes(b'not product data')
                 payload = self.payload('windows-amd64')
                 self.package('windows-amd64', payload)
+                with self.assertRaisesRegex(module.VerificationError,'ownership_(protected|unsafe)_path'):
+                    module.validate_product_ownership(json.loads(payload['sidravia-files.json']))
                 with mock.patch.object(module, 'binary_identity'):
-                    with self.assertRaisesRegex(module.VerificationError, 'ownership_(protected|unsafe)_path'):
+                    with self.assertRaisesRegex(module.VerificationError, 'ownership_(protected|unsafe)_path|unexpected_gui_runtime_path'):
                         self.verify('windows-amd64')
                 injected.unlink()
 

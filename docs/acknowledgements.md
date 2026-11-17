@@ -8,7 +8,7 @@ Sidravia 采用 [GNU Affero General Public License v3](../LICENSE)。使用、�
 
 ## 字体
 
-GUI 使用 HarmonyOS Sans，许可证见 [gui/assets/fonts/LICENSE.txt](../gui/assets/fonts/LICENSE.txt)。程序「关于 Sidravia」的许可页面也可查看相关许可。
+普通 GUI 使用平台默认字体与系统回退字体，不随包分发中文字体。
 
 运行状态快照使用 Source Code Pro Regular（SIL Open Font License 1.1），许可证见
 [SourceCodePro-LICENSE.md](../gui/assets/fonts/SourceCodePro-LICENSE.md)。随包文件保留原始字体，

@@ -84,8 +84,8 @@ def package_commands(args, env):
     if platform.system() != "Linux" or platform.machine().lower() not in ("amd64", "x86_64"):
         raise ValueError("package requires native Linux amd64; use windows --package for Windows GUI provenance")
     target = getattr(args, "target", "linux-amd64")
-    if target not in ("linux-amd64", "linux-arm64", "windows-arm64"):
-        raise ValueError("unsupported core target; use windows --package for Windows AMD64 GUI provenance")
+    if target not in ("linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64"):
+        raise ValueError("unsupported core target")
     output = Path(args.output).resolve()
     if output.exists() or not output.parent.is_dir():
         raise ValueError("output must not exist and its parent must exist")
@@ -155,11 +155,6 @@ def linux_command(args, env):
         raise ValueError("linux desktop development requires native Linux")
     if args.check_gui and (args.verify_package or args.announcement_integration or args.rpm or args.verify_rpm_upgrade):
         raise ValueError("--check-gui must run separately from package or announcement native acceptance")
-    flutter = str(Path(args.flutter).resolve())
-    sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
-    if sdk["frameworkVersion"] != (ROOT / "gui" / ".flutter-version").read_text().strip():
-        raise ValueError("Flutter SDK does not match .flutter-version")
-    env = dict(env, PATH=str(Path(sdk["flutterRoot"]) / "bin") + os.pathsep + env.get("PATH", ""))
     source_before = metadata(args.go, env)
     if args.rpm or args.verify_rpm_upgrade:
         if source_before['dirty']:
@@ -169,6 +164,11 @@ def linux_command(args, env):
         if args.rpm:
             return linux_rpm.build(ROOT, Path(args.rpm).resolve(), args.output, args.rpm_release, env, source_before, current_source)
         return linux_rpm.accept(ROOT, [Path(p).resolve() for p in args.verify_rpm_upgrade], env, source_before, current_source)
+    flutter = str(Path(args.flutter).resolve())
+    sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
+    if sdk["frameworkVersion"] != (ROOT / "gui" / ".flutter-version").read_text().strip():
+        raise ValueError("Flutter SDK does not match .flutter-version")
+    env = dict(env, PATH=str(Path(sdk["flutterRoot"]) / "bin") + os.pathsep + env.get("PATH", ""))
     if args.package:
         if source_before["dirty"]:
             raise ValueError("package requires a clean tracked and untracked source tree")
@@ -195,11 +195,16 @@ def linux_command(args, env):
             raise ValueError("--announcement-integration requires a separate acceptance run")
         import linux_announcement_fixture
         return linux_announcement_fixture.run(ROOT,env,source_before,lambda:metadata(args.go,env))
-    core = ROOT / ".local" / "linux-desktop-core"
-    core.mkdir(parents=True, exist_ok=True)
-    env = dict(env, SIDRAVIA_CORE_DIRECTORY=str(core))
-    for name in ("sidraviactl", "sidraviad"):
-        subprocess.run([args.go, "build", "-mod=readonly", "-trimpath", "-o", str(core / name), "./cmd/" + name], cwd=ROOT, env=env, check=True)
+    if args.package:
+        # The distribution producer owns the version-bound core. Do not build
+        # development siblings only to discard them from the package input.
+        env = dict(env, SIDRAVIA_CORE_DIRECTORY="")
+    else:
+        core = ROOT / ".local" / "linux-desktop-core"
+        core.mkdir(parents=True, exist_ok=True)
+        env = dict(env, SIDRAVIA_CORE_DIRECTORY=str(core))
+        for name, package in (("sidraviactl", "sidraviactl"), ("sidraviad", "sidraviad")):
+            subprocess.run([args.go, "build", "-mod=readonly", "-trimpath", "-o", str(core / name), "./cmd/" + package], cwd=ROOT, env=env, check=True)
     def flutter_run(argv):
         subprocess.run([flutter, *argv], cwd=ROOT / "gui", env=env, check=True)
     flutter_run(["pub", "get", "--enforce-lockfile"])
@@ -264,6 +269,26 @@ def linux_command(args, env):
     return 0
 
 
+@contextlib.contextmanager
+def preview_font_asset(font=None):
+    """Stage a host font for CanvasKit only; native products never bundle it."""
+    if font is None:
+        if shutil.which("fc-match"):
+            font = subprocess.check_output(
+                ["fc-match", "-f", "%{file}", ":lang=zh-cn"], text=True,
+            ).strip()
+        elif platform.system() == "Windows":
+            font = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/msyh.ttc"
+    if not font or not Path(font).is_file():
+        raise ValueError("web preview requires --font pointing to a local Chinese-capable font")
+    assets = ROOT / "gui/web/assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="preview-font-", dir=assets) as temporary:
+        directory = Path(temporary)
+        shutil.copy2(font, directory / "system-font.ttf")
+        yield directory.name + "/system-font.ttf"
+
+
 def preview_command(args, env):
     """Run only the in-memory Flutter demo on a loopback web server."""
     flutter = str(Path(args.flutter).resolve())
@@ -277,13 +302,15 @@ def preview_command(args, env):
 
     run(["pub", "get", "--enforce-lockfile"])
     target = "lib/dev/interactive_demo_main.dart"
-    if args.check:
-        run(["analyze", "--no-pub"])
-        run(["test", "--no-pub", "test/offline_demo_test.dart", "test/r51_adaptation_test.dart"])
-        run(["build", "web", "--no-pub", "--no-web-resources-cdn", "--target", target])
-    else:
-        print(f"Offline GUI preview: http://127.0.0.1:{args.port} (fictional in-memory data only)", flush=True)
-        run(["run", "--no-pub", "-d", "web-server", "--web-hostname", "127.0.0.1", "--web-port", str(args.port), "--no-web-resources-cdn", "--target", target])
+    with preview_font_asset(args.font) as font:
+        font_define = "--dart-define=SIDRAVIA_DEMO_SYSTEM_FONT=" + font
+        if args.check:
+            run(["analyze", "--no-pub"])
+            run(["test", "--no-pub", "test/offline_demo_test.dart", "test/r51_adaptation_test.dart"])
+            run(["build", "web", "--no-pub", "--no-web-resources-cdn", "--target", target, font_define])
+        else:
+            print(f"Offline GUI preview: http://127.0.0.1:{args.port} (fictional in-memory data only)", flush=True)
+            run(["run", "--no-pub", "-d", "web-server", "--web-hostname", "127.0.0.1", "--web-port", str(args.port), "--no-web-resources-cdn", "--target", target, font_define])
     return 0
 
 
@@ -324,6 +351,7 @@ def parse_args(argv=None):
             sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "preview":
             sub.add_argument("--flutter", default=".local/bin/flutter")
+            sub.add_argument("--font", help="local Chinese-capable font for the web preview only; defaults to the host font")
             sub.add_argument("--port", type=int, choices=range(1024, 65536), default=7357, metavar="PORT")
             sub.add_argument("--check", action="store_true", help="analyze, test the offline demo and compile its web build without starting a server")
         sub.add_argument("--go", default="go")
@@ -362,7 +390,7 @@ def parse_args(argv=None):
             sub.add_argument("--package", action="store_true")
             sub.add_argument("--check-gui", action="store_true")
         if command == "package":
-            sub.add_argument("--target", choices=("linux-amd64", "linux-arm64", "windows-arm64"), default="linux-amd64")
+            sub.add_argument("--target", choices=("linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64"), default="linux-amd64")
             sub.add_argument("--version", required=True)
             sub.add_argument("--output", required=True)
     return parser.parse_args(argv)

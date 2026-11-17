@@ -18,6 +18,19 @@ the pinned SDK executable (default `.local/bin/flutter`). The version must
 match `gui/.flutter-version`; dependencies use `--enforce-lockfile`.
 `--check` runs analysis, the offline demo/layout tests, and its Web build.
 Both modes use local CanvasKit resources rather than a rendering CDN.
+CanvasKit cannot discover desktop fonts. The helper temporarily copies a
+Chinese-capable host font into an ignored, owned `gui/web/assets/preview-font-*`
+directory and loads it only in the demo. Linux selects it through Fontconfig;
+Windows uses Microsoft YaHei. `--font /path/to/font.ttf` overrides the choice.
+The temporary source copy is removed on exit; the checked Web build retains its
+copy for local viewing. Native product bundles do not contain this preview font.
+Invoking Flutter's demo target directly without this define may fetch fallback
+fonts from the network.
+
+Widget capture modes require `--dart-define=SYSTEM_FONT_MANIFEST=/absolute/path.json`.
+The JSON maps platform font family names to lists of installed font file paths;
+it supplies real fonts to the test runner, whose system font discovery is disabled.
+Ordinary widget tests still run without this capture-only input.
 
 The demo reuses production pages with fictional in-memory clients and settings.
 It does not launch the daemon, read production credentials, contact the school,
@@ -98,7 +111,27 @@ GUI interaction, installation, notification delivery or campus behavior.
 
 ## Core distributions
 
+The supported delivery matrix is smaller than the Cartesian product of UI,
+OS, architecture and package format:
+
+| Target | Graphical program | Complete headless program |
+| --- | --- | --- |
+| Windows x64 | Setup EXE, GUI portable ZIP | Core portable ZIP; core-only selection in the same Setup EXE |
+| Windows ARM64 | Not provided | Core portable ZIP |
+| Linux x64 | GUI portable tar.gz, Fedora RPM | Core portable tar.gz |
+| Linux ARM64 | Not provided | Core portable tar.gz |
+
+These are eight downloads; the Windows installer covers two component selections.
+No ARM64 GUI, headless RPM, Linux installer, DEB or Flatpak is produced.
+The Package workflow builds Windows x64 GUI/setup/core and all four core
+OS/architecture targets. Linux GUI and RPM use the native Fedora entries below;
+they are not produced by that workflow.
+
 Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
+The external Windows ICO belongs to setup/uninstall integration and is staged
+only for Inno. Portable archives do not carry it; the GUI EXE embeds its icon.
+ZIP and gzip archives use the standard library's best compression level; their
+formats, content and extraction requirements are unchanged.
 
 From a clean Linux amd64 checkout, choose an absent output directory whose parent
 exists (the repository's ignored `dist/` path is suitable):
@@ -107,21 +140,25 @@ exists (the repository's ignored `dist/` path is suitable):
 python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/linux-amd64
 python3 tools/developer/dev.py package --target linux-arm64 --version 0.4.0-alpha.1 --output dist/linux-arm64
 python3 tools/developer/dev.py package --target windows-arm64 --version 0.4.0-alpha.1 --output dist/windows-arm64
+python3 tools/developer/dev.py package --target windows-amd64 --version 0.4.0-alpha.1 --output dist/windows-amd64-core
 ```
 
 ARM64 packages contain core tools only (Windows includes the manager). They are
 cross-compiled with CGO disabled and ARMv8.0 baseline. The consumer inspects
 archive content, checksums and Go OS/architecture metadata without executing
 foreign binaries; help smoke is recorded as `not_run`. Cross-compilation does
-not establish ARM hardware compatibility. GUI and installers remain Windows
-AMD64 only. The default Linux AMD64 package also runs native help smoke.
+not establish ARM hardware compatibility. GUI bundles are x64 on Windows and
+Linux; the Windows installer is Windows x64 only. The default Linux AMD64
+package also runs native help smoke.
 
 The full commit is passed as build-id; producer and consumer remain the existing
-implementations. Windows AMD64 distribution must use `windows --package`, which builds
+implementations. Windows AMD64 GUI distribution must use `windows --package`, which builds
 the GUI from synchronized source. A generic existing GUI directory is not accepted
 as proof of current source. Go `trimpath`'s `embedded_identity=not_recorded`
 limitation remains; source/build receipts and byte hashes are not independent
 runtime identity proof.
+The `package` entry is always headless, including Windows x64: it has no GUI or
+installer input and does not need Flutter, Inno or a Windows graphics build.
 
 Keep the latest useful build and evidence; do not automatically retain every log
 or create new task caches. Remove only a helper-owned inactive run directory when
@@ -351,6 +388,13 @@ From a clean isolated candidate on Fedora 45 x86_64:
 The fixed Flutter SDK builds the GUI with the requested build name. The existing
 Go distribution producer rebuilds version-bound sibling tools and owns public
 profiles/portable marker; the consumer verifies exact bytes and executable modes.
+Formal packaging skips development CTL/daemon builds. Desktop path_provider does
+not use JNI; its Android-side native plugin must not compile or enter either
+desktop GUI payload. Native CMake installs binary AssetManifest.bin rather than
+the web-only JSON wrapper. Producer and consumer reject build/debug artifacts,
+unsupported Java libraries and fonts outside the declared font manifest; every
+declared font must also be present. Runtime data and license directories still
+follow Flutter/plugin contracts rather than an exhaustive product allowlist.
 Source identity is checked across compilation and consumption. Flutter 3.47 Linux
 forwards the compiled Dart build name but omits it from asset assembly; packaging
 stamps version.json and both producer/consumer check its actual version. The local receipt
@@ -396,8 +440,8 @@ and nonblocking interprocess maintenance locking.
 
 RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
 project-downloaded replacements. Build the verified clean-source GUI portable
-first, then wrap that exact payload. The RPM excludes the portable marker and
-uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
+first, then wrap that exact payload. The RPM excludes the portable marker and independent updater; CTL reports
+package-manager ownership for update operations and retains version queries. It uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
 and icon. Reviewed Python pre/preun scriptlets coordinate only this installation;
 no account scan or automatic autostart registration is performed. Initial support
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
@@ -411,6 +455,7 @@ and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
 Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
 input SHA256, output SHA256, exact file digests/modes/links and dependencies.
+Wrapping an already verified portable payload does not probe or build Flutter.
 Prereleases map to RPM `~`, sorting before the final version. No signing or
 repository upload is performed. The candidate is an upstream binary package;
 private Flutter runtime and font licensing prevent assuming Fedora repository
@@ -632,7 +677,8 @@ in `expectedAssets`; missing, extra and duplicate assets fail explicitly.
 Add distribution groups for the selected targets. GUI groups also require
 `guiDirectory` naming the exact bundle supplied to the producer. A Windows GUI
 group contributes both its portable archive and setup executable. Their
-`filesSha256` binds the same producer ownership index, but static consumption
+`filesSha256` binds each format's exact producer ownership index: the setup
+includes its installer display icon while the portable omits it. Static consumption
 only checks the setup's outer bytes/PE header: its report explicitly retains
 `installerPayload: requires_native_acceptance`. Real installation/update
 validation remains required before signing/publishing. No package matrix or

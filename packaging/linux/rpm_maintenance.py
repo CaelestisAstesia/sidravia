@@ -32,7 +32,16 @@ def targets():
     paths = [APP / name for name in NAMES]
     if (APP / 'gui-runtime/sidravia_gui').is_file():
         paths.append(APP / 'gui-runtime/sidravia_gui')
-    expected = {str(path): identity(path) for path in paths}
+    candidate_paths = {str(path) for path in paths}
+    expected = {}
+    for path in paths:
+        try:
+            expected[str(path)] = identity(path)
+        except FileNotFoundError:
+            # Old RPMs carried the portable updater. New RPMs omit it, while
+            # every present process still has to match its exact old inode.
+            if path.name != 'sidraviaupdater':
+                raise
     found = []
     try:
         for proc in Path('/proc').iterdir():
@@ -42,7 +51,7 @@ def targets():
             candidate = False
             try:
                 exe = os.readlink(proc / 'exe').removesuffix(' (deleted)')
-                if exe not in expected:
+                if exe not in candidate_paths:
                     continue
                 candidate = True
                 # Another mount/root may have the same pathname. Match the
@@ -55,7 +64,7 @@ def targets():
                     os.close(fd)
                     fd = None
                     continue
-                if identity(proc / 'exe') != expected[exe]:
+                if exe not in expected or identity(proc / 'exe') != expected[exe]:
                     os.close(fd)
                     fd = None
                     raise RuntimeError('an older executable generation is still active')

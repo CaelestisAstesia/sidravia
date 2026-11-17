@@ -4,7 +4,6 @@ import 'school_announcement_controller_test.dart' as school_dispatch;
 
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'dart:convert';
 import 'dart:io';
@@ -19,6 +18,9 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/dev/preview_main.dart';
+
+import 'home_responsive_test.dart' as fonts;
+
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() {
@@ -32,37 +34,11 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await tester.binding.setSurfaceSize(const Size(398, 642));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.runAsync(() async {
-        final loader = FontLoader('HarmonyOS Sans')
-          ..addFont(
-            rootBundle.load('assets/fonts/HarmonyOS_Sans_SC_Regular.ttf'),
-          )
-          ..addFont(
-            rootBundle.load('assets/fonts/HarmonyOS_Sans_SC_Medium.ttf'),
-          )
-          ..addFont(rootBundle.load('assets/fonts/HarmonyOS_Sans_SC_Bold.ttf'));
-        await loader.load();
-        final icons = FontLoader('MaterialIcons')
-          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
-        await icons.load();
-        final symbolPath = const String.fromEnvironment(
-          'HOME_SYMBOL_FONT',
-          defaultValue: '/mnt/c/Windows/Fonts/seguisym.ttf',
-        );
-        if (await File(symbolPath).exists()) {
-          final symbols = FontLoader('Segoe UI Symbol')
-            ..addFont(
-              File(symbolPath)
-                  .readAsBytes()
-                  .then((bytes) => ByteData.sublistView(bytes)),
-            );
-          await symbols.load();
-        } else if (const bool.fromEnvironment('GENERATE_HOME_CANDIDATE')) {
-          throw StateError(
-            'HOME_SYMBOL_FONT must point to the existing Segoe UI Symbol font for candidate generation',
-          );
-        }
-      });
+      await tester.runAsync(
+        () => fonts.loadCaptureFonts(
+          forCapture: const bool.fromEnvironment('GENERATE_HOME_CANDIDATE'),
+        ),
+      );
       await tester.pumpWidget(
         MaterialApp(
           debugShowCheckedModeBanner: false,

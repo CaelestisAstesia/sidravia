@@ -31,7 +31,9 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.runAsync(fonts.loadCaptureFonts);
+    await tester.runAsync(
+      () => fonts.loadCaptureFonts(forCapture: output.isNotEmpty),
+    );
     final records = <String, Object?>{};
     for (final kind in ['home', 'design']) {
       final rows = <Object?>[];

@@ -38,6 +38,7 @@ Thumbs.db
 *.log
 
 # Local development reports and generated visual comparisons
+/gui/web/assets/preview-font-*/
 /gui/test/candidates/capture-environment.json
 /gui/test/candidates/difference.png
 /gui/test/candidates/geometry-comparison.md

@@ -14,7 +14,7 @@ import uuid
 
 
 APP = Path('/usr/lib64/sidravia')
-COMMANDS = ('sidraviactl', 'sidraviad', 'sidraviaupdater', 'sidravia_gui')
+COMMANDS = ('sidraviactl', 'sidraviad', 'sidravia_gui')
 DESKTOP = 'io.github.CaelestisAstesia.Sidravia'
 
 
@@ -75,6 +75,8 @@ def verify(package, receipt):
     for row in rows.splitlines():
         name, mode, checksum, link = row.split('\t')
         actual[name] = {'mode': int(mode, 8), 'digest': checksum, 'link': link}
+    if any(Path(name).name in ('sidraviaupdater','sidravia-files.json') for name in actual):
+        raise ValueError('RPM must not carry portable updater metadata or executable')
     if actual != receipt['files']:
         raise ValueError('RPM payload paths/modes/digests/links differ from the verified stage')
     requirements = query(package, '--requires').splitlines()
@@ -118,6 +120,11 @@ def build(root, archive, output, release, env, source, current_source):
         bundle, = extracted.iterdir()
         if not (bundle / 'sidravia.portable').is_file():
             raise ValueError('not a GUI portable input')
+        # RPM updates are served by CTL's package-manager boundary.
+        (bundle / 'sidraviaupdater').unlink()
+        # RPM owns its own file inventory; the portable ownership index also
+        # describes the updater/docs deliberately removed from this payload.
+        (bundle / 'sidravia-files.json').unlink()
         (bundle / 'sidravia.portable').unlink()
         (bundle / 'gui-runtime/data/linux-portable.md' if (bundle / 'gui-runtime').is_dir() else bundle / 'data/linux-portable.md').unlink()
         # Explicit ownership boundary consumed by GUI and updater. No runtime data.

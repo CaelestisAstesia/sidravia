@@ -56,7 +56,7 @@ class ReleaseArtifactContracts(unittest.TestCase):
         self.assertEqual(receipts[0]['embeddedGoIdentity'], 'not_recorded')
         self.assertEqual(receipts[0]['helpSmoke'], 'not_run')
 
-    def test_setup_binds_paired_gui_inventory_without_claiming_native_acceptance(self):
+    def test_setup_binds_its_own_icon_inventory_without_claiming_native_acceptance(self):
         # Start a separate normal producer directory; a release may combine it
         # with the core directory but may not silently overwrite duplicate assets.
         for path in self.fixture.out.iterdir():
@@ -64,7 +64,9 @@ class ReleaseArtifactContracts(unittest.TestCase):
         self.write_group('windows-amd64', gui=True)
         manifest, receipts = self.collect()
         self.assertEqual({a['kind'] for a in manifest['assets']}, {'gui-portable', 'setup'})
-        self.assertEqual(len({a['filesSha256'] for a in manifest['assets']}), 1)
+        self.assertEqual(len({a['filesSha256'] for a in manifest['assets']}), 2)
+        setup,= [a for a in manifest['assets'] if a['kind']=='setup']
+        self.assertEqual(setup['filesSha256'],receipts[0]['installerOwnershipSha256'])
         self.assertEqual(receipts[0]['installerPayload'], 'requires_native_acceptance')
         self.assertEqual(receipts[0]['installation'], 'not_run')
 

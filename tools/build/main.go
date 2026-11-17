@@ -10,6 +10,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"compress/flate"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -394,6 +395,14 @@ func verifyRepoInputs(root, artifact string) error {
 		{"cmd/sidraviactl", true},
 		{"cmd/sidraviad", true},
 	}
+	if artifact == "distribution" {
+		checks = []inputCheck{
+			{"LICENSE", false},
+			{"cmd/sidraviactl", true},
+			{"cmd/sidraviad", true},
+			{"cmd/sidraviaupdater", true},
+		}
+	}
 	if artifact == "field-validation" {
 		checks = append(checks,
 			inputCheck{"scripts/field-test.ps1", false},
@@ -416,7 +425,11 @@ func verifyRepoInputs(root, artifact string) error {
 
 	// Release scripts ship byte-for-byte with a UTF-8 BOM so Windows PowerShell
 	// 5.1 reads their UTF-8 content correctly. Reject before building.
-	for _, script := range []string{"scripts/install.ps1", "scripts/uninstall.ps1"} {
+	var releaseScripts []string
+	if artifact != "distribution" {
+		releaseScripts = []string{"scripts/install.ps1", "scripts/uninstall.ps1"}
+	}
+	for _, script := range releaseScripts {
 		b, err := os.ReadFile(filepath.Join(root, script))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", script, err)
@@ -620,6 +633,9 @@ func writeZip(path string, entries []zipEntry) error {
 	}
 	defer f.Close()
 	zw := zip.NewWriter(f)
+	zw.RegisterCompressor(zip.Deflate, func(w io.Writer) (io.WriteCloser, error) {
+		return flate.NewWriter(w, flate.BestCompression)
+	})
 	for _, e := range entries {
 		fh := &zip.FileHeader{Name: e.name, Method: zip.Deflate}
 		fh.Modified = zipModTime

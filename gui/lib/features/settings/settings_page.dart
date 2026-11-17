@@ -141,10 +141,8 @@ class SettingsPage extends StatelessWidget {
                             color: Theme.of(context).colorScheme.outline,
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
-                          textStyle: const TextStyle(
-                            fontFamily: 'HarmonyOS Sans',
-                            fontSize: DesignMetrics.captionFont,
-                          ),
+                          textStyle: Theme.of(context).textTheme.bodyMedium!
+                              .copyWith(fontSize: DesignMetrics.captionFont),
                         ),
                         onPressed: controller.canRestartCore
                             ? () => confirmCoreRestart(
@@ -398,12 +396,10 @@ class _LogLevelSettingRow extends StatelessWidget {
     builder: (context, constraints) {
       final scaler = MediaQuery.textScalerOf(context);
       final title = TextPainter(
-        text: const TextSpan(
+        text: TextSpan(
           text: '日志等级',
-          style: TextStyle(
-            fontFamily: 'HarmonyOS Sans',
-            fontSize: DesignMetrics.bodyFont,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium!
+              .copyWith(fontSize: DesignMetrics.bodyFont),
         ),
         textDirection: Directionality.of(context),
         textScaler: scaler,
@@ -411,12 +407,10 @@ class _LogLevelSettingRow extends StatelessWidget {
       final titleWidth = title.width;
       title.dispose();
       final restart = TextPainter(
-        text: const TextSpan(
+        text: TextSpan(
           text: '重启核心',
-          style: TextStyle(
-            fontFamily: 'HarmonyOS Sans',
-            fontSize: DesignMetrics.captionFont,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium!
+              .copyWith(fontSize: DesignMetrics.captionFont),
         ),
         textDirection: Directionality.of(context),
         textScaler: scaler,

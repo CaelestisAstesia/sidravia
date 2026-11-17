@@ -5,17 +5,21 @@ package is not a Fedora repository submission or a universal Linux build.
 Flutter/AOT runtime stays private in `/usr/lib64/sidravia`; GTK, WebKitGTK 4.1,
 Ayatana AppIndicator and the other ELF dependencies come from system RPMs.
 Flutter engine, Dart package and bundled font notices ship with the application.
+The ordinary interface uses system fonts; Chinese display requires an installed
+Chinese-capable font (for example `google-noto-sans-cjk-vf-fonts`). Only the small
+Source Code Pro diagnostic font is bundled.
 
-The package owns `/usr/bin/sidraviactl`, `sidraviad`, `sidraviaupdater` and
+The package owns `/usr/bin/sidraviactl`, `sidraviad` and
 `sidravia_gui`, plus its system desktop entry and hicolor icon. PATH discovery
 is managed by RPM; the GUI does not create redundant `~/.local/bin` links.
-The updater refuses archive replacement of an RPM installation. Use the system
-package manager for upgrades. No system service or autostart is enabled by
+The RPM omits the portable updater. `sidraviactl update version` reports the
+installed CLI identity; other `sidraviactl update` operations direct you to the
+system package manager for upgrades. No system service or autostart is enabled by
 installation, upgrade or removal. Maintenance scripts stop only processes from
 this exact RPM installation, without reading account configuration or user homes.
 
 Upgrade and removal automatically request graceful GUI/session/daemon exit.
-While the real RPM transaction lock is held, new GUI/CTL/daemon/updater starts
+While the real RPM transaction lock is held, new GUI/CTL/daemon starts
 from this installation are rejected. The short-lived guard observes that lock
 and the package-manager host pidfd, so a persistent Discover/PackageKit backend
 does not leave the gate locked after its transaction. No permanent service is

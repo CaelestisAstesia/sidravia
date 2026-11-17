@@ -125,7 +125,7 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
                     'artifact_changed_after_consumption')
             kind = 'setup' if name.endswith('-setup.exe') else receipt['payloadKind'] + '-portable'
             assets.append({'os': os_name, 'arch': arch, 'kind': kind, 'name': name, 'size': info.st_size,
-                           'sha256': expected_hash, 'filesSha256': receipt['productOwnershipSha256'], 'payloadKind': receipt['payloadKind']})
+                           'sha256': expected_hash, 'filesSha256': receipt['installerOwnershipSha256'] if kind == 'setup' else receipt['productOwnershipSha256'], 'payloadKind': receipt['payloadKind']})
         receipts.append(dict(receipt, directory=str(directory)))
     require(set(request['expectedAssets']) == {a['name'] for a in assets}, 'missing_or_unexpected_asset')
     result = {'schemaVersion': 2, 'keyId': key_id, 'version': request['version'], 'buildId': request['buildId'],

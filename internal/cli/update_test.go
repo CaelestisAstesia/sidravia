@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
+	"sidravia/internal/clientbootstrap"
 	"testing"
 )
 
@@ -60,5 +62,32 @@ func TestUpdateForwardsConfirmationAndRecoveryIdentity(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatal(got, want)
 		}
+	}
+}
+
+func TestRPMUpdatesUsePackageManagerAndCompiledIdentity(t *testing.T) {
+	identity := clientbootstrap.Identity{ProductVersion: "1.2.3", BuildID: "rpm-build"}
+	for _, operation := range []string{"check", "download", "status", "apply", "version"} {
+		t.Run(operation, func(t *testing.T) {
+			var out bytes.Buffer
+			command := newUpdateCommand(&out, func(_ context.Context, args []string) ([]byte, error) { return rpmUpdateOutput(args, identity) })
+			command.SetArgs([]string{operation})
+			err := command.Execute()
+			var response struct {
+				OK     bool              `json:"ok"`
+				Code   string            `json:"code"`
+				Result map[string]string `json:"result"`
+			}
+			if decodeErr := json.Unmarshal(out.Bytes(), &response); decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			if operation == "version" {
+				if err != nil || !response.OK || response.Result["productVersion"] != identity.ProductVersion || response.Result["buildId"] != identity.BuildID {
+					t.Fatalf("%+v %v", response, err)
+				}
+			} else if err == nil || response.OK || response.Code != "system_package_managed" {
+				t.Fatalf("%+v %v", response, err)
+			}
+		})
 	}
 }

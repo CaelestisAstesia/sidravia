@@ -72,6 +72,14 @@ func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtimeEntries := make([]zipEntry, len(entries))
+	for i, entry := range entries {
+		runtimeEntries[i] = entry
+		runtimeEntries[i].name = strings.TrimPrefix(entry.name, "gui-runtime/")
+	}
+	if err := checkGUIRuntime(runtimeEntries, false); err != nil {
+		return nil, err
+	}
 	for _, name := range []string{"sidravia_gui", "lib/libflutter_linux_gtk.so", "lib/libapp.so", "data/icudtl.dat", "data/flutter_assets/NOTICES.Z", "data/flutter_assets/version.json", "data/icons/sidravia.png", "FLUTTER-LICENSE"} {
 		if !found[name] {
 			return nil, fmt.Errorf("Linux GUI payload lacks %s", name)

@@ -29,6 +29,18 @@ import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // CanvasKit cannot discover desktop fonts. The developer entry supplies a
+  // local host font to the web preview without adding it to native products.
+  const systemFont = String.fromEnvironment('SIDRAVIA_DEMO_SYSTEM_FONT');
+  if (kIsWeb && systemFont.isNotEmpty) {
+    final ordinary = AppTheme.light().textTheme.bodyMedium!;
+    final fallbacks = ordinary.fontFamilyFallback;
+    // Avoid CanvasKit's built-in Latin-only Roboto face on Linux.
+    final family = fallbacks != null && fallbacks.isNotEmpty
+        ? fallbacks.first
+        : ordinary.fontFamily!;
+    await (FontLoader(family)..addFont(rootBundle.load(systemFont))).load();
+  }
   registerSourceCodeProFontLicense();
   // Keep the offline web preview inspectable by accessibility/browser tools.
   SemanticsBinding.instance.ensureSemantics();
@@ -159,8 +171,7 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                 child: Material(
                   key: const ValueKey('demo-tools'),
                   color: const Color(0xFFFFF3CF),
-                  textStyle: const TextStyle(
-                    fontFamily: 'HarmonyOS Sans',
+                  textStyle: AppTheme.light().textTheme.bodyMedium!.copyWith(
                     color: AppColors.inkLight,
                   ),
                   child: SafeArea(
@@ -215,7 +226,11 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
                                 ),
                               ),
                               SizedBox(
-                                height: 48,
+                                height:
+                                    (MediaQuery.textScalerOf(context)
+                                                .scale(20) +
+                                            20)
+                                        .clamp(48, double.infinity),
                                 child: ScrollConfiguration(
                                   behavior: ScrollConfiguration.of(context)
                                       .copyWith(scrollbars: false),

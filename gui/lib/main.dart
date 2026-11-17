@@ -15,7 +15,6 @@ import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/system_notifications.dart';
-import 'package:sidravia_gui/licensing/harmony_os_font_license.dart';
 import 'package:sidravia_gui/platform/sidravia_platform.dart';
 import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
 
@@ -61,7 +60,6 @@ Future<void> main([List<String> args = const []]) async {
         !args.contains('--start-visible') &&
         (args.contains('--start-hidden') || appearance.startHidden),
   );
-  registerHarmonyOSFontLicense();
   registerSourceCodeProFontLicense();
   final startedAt = DateTime.now();
   final notifications = SystemNotifications();

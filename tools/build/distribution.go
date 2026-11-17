@@ -18,7 +18,7 @@ import (
 )
 
 func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
-	if err := verifyRepoInputs(t.repoRoot, "release"); err != nil {
+	if err := verifyRepoInputs(t.repoRoot, "distribution"); err != nil {
 		return err
 	}
 	if t.cfg.iscc != "" && runtime.GOOS != "windows" {
@@ -35,7 +35,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	entries := append([]zipEntry{{"LICENSE", license, 0644}}, profiles...)
 	buildInfoIndex := len(entries)
 	entries = append(entries, zipEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
-	if strings.HasPrefix(t.cfg.target, "windows-") {
+	if t.cfg.iscc != "" {
 		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
 		if err != nil {
 			return fmt.Errorf("read application icon: %w", err)
@@ -152,7 +152,10 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			return err
 		}
 	}
-	portable := append(append([]zipEntry(nil), entries...), zipEntry{"sidravia.portable", nil, 0644})
+	portable, err := portablePayload(entries, owned)
+	if err != nil {
+		return err
+	}
 	base := "sidravia-v" + t.cfg.version + "-" + t.cfg.target
 	kind := "core-portable"
 	if len(gui) > 0 {
@@ -270,12 +273,17 @@ func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkGUIRuntime(entries, true); err != nil {
+		return nil, err
+	}
 	found := map[string]bool{}
 	for _, entry := range entries {
 		found[entry.name] = true
 	}
-	if !found["Sidravia.exe"] || !found["flutter_windows.dll"] {
-		return nil, fmt.Errorf("GUI payload lacks required Release files")
+	for _, name := range []string{"Sidravia.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/FontManifest.json", "data/flutter_assets/NOTICES.Z"} {
+		if !found[name] {
+			return nil, fmt.Errorf("GUI payload lacks required Release file: %s", name)
+		}
 	}
 	return entries, nil
 }
@@ -316,7 +324,10 @@ func writeTar(path, root string, entries []zipEntry) error {
 		return err
 	}
 	defer f.Close()
-	gz := gzip.NewWriter(f)
+	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
 	tw := tar.NewWriter(gz)
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	for _, entry := range entries {
@@ -331,4 +342,28 @@ func writeTar(path, root string, entries []zipEntry) error {
 		return err
 	}
 	return gz.Close()
+}
+
+// The installer owns its display icon; portable payloads omit it. Each format
+// gets the exact ownership index for its own bytes rather than sharing a stale
+// index whose files are no longer present in the archive.
+func portablePayload(entries []zipEntry, owned packagefiles.Manifest) ([]zipEntry, error) {
+	var result []zipEntry
+	for _, entry := range entries {
+		if entry.name != "app_icon.ico" && entry.name != packagefiles.Name {
+			result = append(result, entry)
+		}
+	}
+	portableOwned := owned
+	portableOwned.Files = nil
+	for _, file := range owned.Files {
+		if file.Path != "app_icon.ico" {
+			portableOwned.Files = append(portableOwned.Files, file)
+		}
+	}
+	raw, err := packagefiles.Encode(portableOwned)
+	if err != nil {
+		return nil, err
+	}
+	return append(result, zipEntry{packagefiles.Name, raw, 0644}, zipEntry{"sidravia.portable", nil, 0644}), nil
 }

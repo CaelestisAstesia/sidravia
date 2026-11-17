@@ -54,7 +54,7 @@ def plan(root, args):
             p = Path(test)
             if p.is_absolute() or '..' in p.parts or not test.startswith('test/') or not test.endswith('.dart'):
                 raise ValueError('GUI tests must be relative test/*.dart paths')
-        add('gui-tests', [flutter,'test','--no-pub',*tests], gui)
+        add('gui-tests', [sys.executable,root/'tools/developer/verification_commands.py','--gui-tests',flutter,root/'gui/.flutter-version',*tests],gui)
         if args.preview_build:
             add('preview-web', [flutter,'build','web','--no-pub','--no-web-resources-cdn','--target','lib/dev/interactive_demo_main.dart'], gui)
         if args.linux_build:
@@ -111,7 +111,7 @@ def run(root, args, identity):
     return 0 if report['status']=='passed' else 1
 
 
-def validate_sdk(flutter, version_file):
+def validate_sdk(flutter, version_file, tests=None):
     # This validator runs INSIDE the normal stage group/Job. The outer stage
     # deadline owns the complete SDK process tree and its result/log files.
     result = subprocess.run([flutter, '--version', '--machine'], capture_output=True)
@@ -123,10 +123,21 @@ def validate_sdk(flutter, version_file):
     if sdk['frameworkVersion'] != Path(version_file).read_text().strip():
         print('Flutter SDK does not match .flutter-version', file=sys.stderr)
         return 1
+    if tests is not None:
+        # Flutter can be a project launcher. Use the root returned by its
+        # validated SDK, not the launcher's directory or an unrelated host Dart.
+        root=Path(sdk['flutterRoot'])
+        if not root.is_absolute():
+            raise ValueError('Flutter SDK root must be absolute')
+        env=dict(os.environ)
+        env['PATH']=os.pathsep.join([str(root/'bin/cache/dart-sdk/bin'),str(root/'bin'),env.get('PATH','')])
+        return subprocess.run([flutter,'test','--no-pub',*tests],env=env).returncode
     return 0
 
 
 if __name__ == '__main__':
+    if len(sys.argv)>=4 and sys.argv[1]=='--gui-tests':
+        raise SystemExit(validate_sdk(sys.argv[2],sys.argv[3],sys.argv[4:]))
     if len(sys.argv) != 4 or sys.argv[1] != '--sdk':
         raise SystemExit('internal SDK validator: --sdk FLUTTER VERSION_FILE')
     raise SystemExit(validate_sdk(sys.argv[2], sys.argv[3]))
