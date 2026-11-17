@@ -645,7 +645,6 @@ from producing a false acceptance. A per-worktree lock excludes simultaneous
 Go/Flutter/Pub caches stay at their existing locations. There is no automatic
 package build, installer execution, test retry, Git commit or release operation.
 
-
 ## Prepare and verify public release metadata
 
 `dev.py release` reuses the existing distribution consumer and offline signing
@@ -707,3 +706,99 @@ For this development round, A/B packages are local acceptance fixtures only;
 one final public version will be selected after the other packaging/size work
 and final workspace integration finish. Existing historical releases/proofs are
 retained. Local source simulation does not certify the public GitHub channel.
+
+
+## Deterministic GUI capture and visual triage
+
+Use `dev visual` for repeated captures of the production pages/controls through
+the existing offline demo. It does not launch the production installation, read
+accounts, authenticate or alter a running preview. The previously local 27-step
+capture flow is now `gui/test/gui_capture_test.dart`; existing HTML-reference and
+home-layout scripts remain available for their original purposes.
+
+```bash
+.local/bin/dev visual capture --font-manifest .local/system-fonts.json --output .project/evidence/visual/before
+# Repeat on the candidate with the same inputs/environment.
+.local/bin/dev visual capture --font-manifest .local/system-fonts.json --output .project/evidence/visual/after
+.local/bin/dev visual compare --baseline .project/evidence/visual/before --candidate .project/evidence/visual/after --output .project/evidence/visual/review --format json
+```
+
+Pillow is required for PNG inspection/comparison (Fedora `python3-pillow`). No
+library is installed automatically. Use the pinned Flutter SDK and explicit
+system font files, as for existing widget captures. The font JSON maps platform
+font-family aliases to absolute installed font paths, for example on Linux:
+
+```json
+{
+  "Roboto": ["/usr/share/fonts/abattis-cantarell-vf-fonts/Cantarell-VF.otf"],
+  "Arial": ["/absolute/path/to/NotoSansCJK-SC.ttf"]
+}
+```
+
+Adapt paths/families to the selected theme. This explicitly binds Flutter widget
+tests to real glyphs; it does not claim native desktop font discovery. Capture
+rejects missing ordinary-family mappings or a profile without Chinese glyphs in
+its actually selected families, rather than accepting Ahem/tofu. Source Code Pro
+and real license entries are loaded unchanged from existing assets/SDK. Nothing
+is copied into native product font resources. Font bytes and the SDK license are
+checked before/after the run; input changes invalidate the capture.
+
+The default matrix is 400×800 and 960×700, each light/dark at text scale 1 and
+DPR 1: 108 actual page/control screenshots. `--request` accepts this optional
+UTF-8 JSON matrix (unknown fields/duplicate frame ids are rejected):
+
+```json
+{
+  "schema": 1,
+  "fixedTime": "2026-01-02T12:34:56.000Z",
+  "platform": "linux",
+  "frames": [
+    {"id": "large-light", "width": 400, "height": 1100, "scale": 1.6, "dark": false}
+  ]
+}
+```
+
+Each frame captures the same 27 states, including messages, announcement,
+configuration/editing/confirmation, settings, licenses/search and diagnostics.
+Choose relevant frames without duplicating the page implementation. Width and
+height are 280..1600, text scale .8..3, at most 16 frames. The fixed timestamp
+requires a timezone and is normalized to UTC. Capture verifies actual local-time
+conversion is UTC; setting `TZ=UTC` alone is not assumed to configure every OS.
+`platform` selects a Linux/Windows *theme in a widget test*, not native platform
+acceptance. The renderer, actual host, Flutter engine, fonts, fixed time and
+scenario contract are recorded, so mismatched environments cannot silently pass.
+
+The demo freezes its existing in-memory data and display clock. Default product
+and ordinary interactive-demo clocks remain live. Runtime snapshots use that
+same existing presentation clock; explicit snapshot timestamp overrides remain
+supported. No timestamp masks, guessed dynamic areas or pixel tolerances are
+used. License entries are materialized outside widget FakeAsync without editing
+their content, avoiding cross-test asset-future noise.
+
+Capture writes a new directory containing `report.json`, exact request/font/input
+receipts, stage stdout/stderr and the PNG inventory. The existing shared runner
+owns deadlines and the worktree lock. GUI checks bind the fixed SDK bin/Dart PATH
+from the validated SDK metadata before running dependent subprocess tests; its
+precheck logs remain in the same report. No baseline is overwritten or approved
+automatically. A failed, incomplete, non-UTC or source-changing run cannot be
+used as a comparison input; partial files/logs remain for diagnosis.
+
+Comparison validates receipt/image identities, compares decoded RGBA pixels,
+and produces `report.json`, red difference masks and `index.html`. The HTML lists
+only cases requiring review, with before/after/mask links and exact changed-pixel
+counts/bounding boxes; unchanged names are collapsed. Encoding-only PNG metadata
+is ignored when pixels match; rendering metadata such as gamma/ICC is not.
+Alpha changes, even one-pixel text changes, size changes, added/removed cases and
+changed frame inputs remain visible. Added/removed cases describe capture
+coverage, not proof that a product feature was added/deleted. Keep both source
+capture folders: the local HTML links to those unchanged original images.
+
+Exit codes: `0` means all cases match; `1` means changes need human review (or an
+input/execution error, distinguished by JSON status); `2` means capture inputs or
+rendering environments are incompatible. Check the structured status, not only
+the exit code. Neither a change nor incompatibility should trigger a blind retry
+or automatic baseline update. `--format json` keeps stdout compact; complete case
+inventories stay in the report. Normal output gives the summary and review index.
+
+Widget screenshots establish this deterministic rendering contract, not native
+window/tray/DPI behavior, installation, campus or release acceptance.

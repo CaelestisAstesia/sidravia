@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -54,7 +55,7 @@ def plan(root, args):
             p = Path(test)
             if p.is_absolute() or '..' in p.parts or not test.startswith('test/') or not test.endswith('.dart'):
                 raise ValueError('GUI tests must be relative test/*.dart paths')
-        add('gui-tests', [sys.executable,root/'tools/developer/verification_commands.py','--gui-tests',flutter,root/'gui/.flutter-version',*tests],gui)
+        add('gui-tests', [flutter,'test','--no-pub',*tests], gui)
         if args.preview_build:
             add('preview-web', [flutter,'build','web','--no-pub','--no-web-resources-cdn','--target','lib/dev/interactive_demo_main.dart'], gui)
         if args.linux_build:
@@ -64,14 +65,8 @@ def plan(root, args):
     return runner.validate_request({'schema':1,'stages':stages})
 
 
-def run(root, args, identity):
-    request = plan(root, args)
-    request['source'] = identity()
-    if args.plan:
-        print(json.dumps(request, ensure_ascii=False, indent=2))
-        return 0
-    directory = Path(args.reports).resolve()
-    directory.mkdir(parents=True, exist_ok=True)
+@contextlib.contextmanager
+def worktree_lock(root):
     # One owner per worktree: Flutter tools touch the same generated state.
     lock = root/'.local'/'verification.lock'
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -89,12 +84,38 @@ def run(root, args, identity):
                 fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError('another check owns this worktree') from None
+        yield
+
+
+def run(root, args, identity):
+    request = plan(root, args)
+    request['source'] = identity()
+    if args.plan:
+        print(json.dumps(request, ensure_ascii=False, indent=2))
+        return 0
+    directory = Path(args.reports).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    with worktree_lock(root):
         output = Path(tempfile.mkdtemp(prefix=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-check-'), dir=directory))
         runner.write_json(output/'request.json',request)
         try:
             request['environment'] = {}
             runner.write_json(output/'request.json',request)
-            report = runner.run_request(request,output)
+            sdk_index = next((i for i,s in enumerate(request['stages']) if s['name']=='gui-sdk'),None)
+            if sdk_index is None:
+                report = runner.run_request(request,output)
+            else:
+                prefix = dict(request,stages=request['stages'][:sdk_index+1])
+                report = runner.run_request(prefix,output)
+                remaining = request['stages'][sdk_index+1:]
+                if report['status']=='passed':
+                    sdk = runner.read_json(output/'gui-sdk.stdout.log')
+                    path = str(Path(sdk['flutterRoot'])/'bin')+os.pathsep+os.environ.get('PATH','')
+                    for stage in remaining:
+                        stage.setdefault('environment',{})['PATH'] = path
+                runner.write_json(output/'request.json',request)
+                if remaining:
+                    report = runner.run_request(dict(request,stages=remaining),output,initial_report=report)
         except Exception as error:
             report = runner.read_json(output/'report.json') if (output/'report.json').exists() else {'schema':1,'kind':'verification','source':request['source'],'stages':[]}
             report.update(status='failed',error=type(error).__name__+': '+str(error))
@@ -111,7 +132,7 @@ def run(root, args, identity):
     return 0 if report['status']=='passed' else 1
 
 
-def validate_sdk(flutter, version_file, tests=None):
+def validate_sdk(flutter, version_file):
     # This validator runs INSIDE the normal stage group/Job. The outer stage
     # deadline owns the complete SDK process tree and its result/log files.
     result = subprocess.run([flutter, '--version', '--machine'], capture_output=True)
@@ -123,21 +144,10 @@ def validate_sdk(flutter, version_file, tests=None):
     if sdk['frameworkVersion'] != Path(version_file).read_text().strip():
         print('Flutter SDK does not match .flutter-version', file=sys.stderr)
         return 1
-    if tests is not None:
-        # Flutter can be a project launcher. Use the root returned by its
-        # validated SDK, not the launcher's directory or an unrelated host Dart.
-        root=Path(sdk['flutterRoot'])
-        if not root.is_absolute():
-            raise ValueError('Flutter SDK root must be absolute')
-        env=dict(os.environ)
-        env['PATH']=os.pathsep.join([str(root/'bin/cache/dart-sdk/bin'),str(root/'bin'),env.get('PATH','')])
-        return subprocess.run([flutter,'test','--no-pub',*tests],env=env).returncode
     return 0
 
 
 if __name__ == '__main__':
-    if len(sys.argv)>=4 and sys.argv[1]=='--gui-tests':
-        raise SystemExit(validate_sdk(sys.argv[2],sys.argv[3],sys.argv[4:]))
     if len(sys.argv) != 4 or sys.argv[1] != '--sdk':
         raise SystemExit('internal SDK validator: --sdk FLUTTER VERSION_FILE')
     raise SystemExit(validate_sdk(sys.argv[2], sys.argv[3]))

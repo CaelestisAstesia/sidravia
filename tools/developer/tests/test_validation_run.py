@@ -100,3 +100,27 @@ class OutputFormatting(unittest.TestCase):
         value='\x1b[31m错误\x1b[0m\x1b]0;hidden-title\x07\x00'
         self.assertEqual(runner.human_text(value),'错误')
         self.assertEqual(json.loads(json.dumps({'text':value}))['text'],value)
+
+
+class SequenceContinuation(unittest.TestCase):
+    def test_prefix_logs_and_environment_survive_without_reexecution(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first={'schema':1,'source':{'id':'same'},'stages':[{'name':'sdk','argv':[sys.executable,'-c','print("sdk-result")']}]}
+            report=runner.run_request(first,folder)
+            second={'schema':1,'source':{'id':'same'},'stages':[{'name':'test','argv':[sys.executable,'-c','import os;print(os.environ["FIXED_SDK"])'],'environment':{'FIXED_SDK':'bound-after-validation'}}]}
+            report=runner.run_request(second,folder,initial_report=report)
+            self.assertEqual([s['name'] for s in report['stages']],['sdk','test'])
+            self.assertEqual((Path(folder)/'sdk.stdout.log').read_text().strip(),'sdk-result')
+            self.assertEqual((Path(folder)/'test.stdout.log').read_text().strip(),'bound-after-validation')
+            with self.assertRaisesRegex(ValueError,'overwrite'):
+                runner.run_request(first,folder,initial_report=report)
+            with self.assertRaisesRegex(ValueError,'source'):
+                runner.run_request(dict(second,source={'id':'other'}),folder,initial_report=report)
+
+    def test_failure_prefix_never_executes_continuation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            report=runner.run_request({'schema':1,'stages':[{'name':'sdk','argv':[sys.executable,'-c','raise SystemExit(7)']}]},folder)
+            request={'schema':1,'stages':[{'name':'later','argv':[sys.executable,'-c','raise Exception("must not run")']}]}
+            report=runner.run_request(request,folder,initial_report=report)
+            self.assertEqual(report['status'],'failed')
+            self.assertEqual(report['stages'][1]['status'],'not_run')

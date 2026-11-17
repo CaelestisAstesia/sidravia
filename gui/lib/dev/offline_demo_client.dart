@@ -10,15 +10,16 @@ class OfflineDemoClient extends ChangeNotifier
         SidraviaIpcClient,
         SidraviaNetworkClient,
         SidraviaBusinessClient {
-  OfflineDemoClient({DateTime? now}) {
+  OfflineDemoClient({DateTime? now}) : _fixedNow = now {
     _sessionAutoReconnect = _configuration?.autoReconnect ?? false;
     _session = _newSession(
       'authenticated',
-      establishedAt: (now ?? DateTime.now()).subtract(
-        const Duration(hours: 2, minutes: 18),
-      ),
+      establishedAt: _now.subtract(const Duration(hours: 2, minutes: 18)),
     );
   }
+
+  final DateTime? _fixedNow;
+  DateTime get _now => _fixedNow ?? DateTime.now();
 
   @override
   Future<NetworkInterfacesSnapshot> networkInterfaces() async =>
@@ -113,7 +114,7 @@ class OfflineDemoClient extends ChangeNotifier
       _session = _newSession(
         state,
         establishedAt: state == 'authenticated'
-            ? DateTime.now().subtract(const Duration(hours: 2, minutes: 18))
+            ? _now.subtract(const Duration(hours: 2, minutes: 18))
             : null,
       );
       _sessionAutoReconnect = _configuration!.autoReconnect;
@@ -124,7 +125,7 @@ class OfflineDemoClient extends ChangeNotifier
   @override
   BusinessQuery queryBusiness(String sessionId) {
     final session = _requireSession(sessionId);
-    final receivedAt = session.authenticationEstablishedAt ?? DateTime.now();
+    final receivedAt = session.authenticationEstablishedAt ?? _now;
     return _OfflineBusinessQuery(
       BusinessSnapshot(
         sessionId: session.id,
@@ -382,7 +383,7 @@ class OfflineDemoClient extends ChangeNotifier
       _record('session.start_configuration', '已保留当前模拟连接；没有进行真实认证');
       return _session!;
     }
-    _session = _newSession('authenticated', establishedAt: DateTime.now());
+    _session = _newSession('authenticated', establishedAt: _now);
     _record('session.start_configuration', '已模拟连接成功；没有进行真实认证');
     return _session!;
   }
@@ -404,7 +405,7 @@ class OfflineDemoClient extends ChangeNotifier
       return _session!;
     }
     _applyPendingReconnectPolicy();
-    _session = _newSession('authenticated', establishedAt: DateTime.now());
+    _session = _newSession('authenticated', establishedAt: _now);
     _record('session.ensure_running', '已模拟恢复连接；没有进行真实认证');
     return _session!;
   }
@@ -413,7 +414,7 @@ class OfflineDemoClient extends ChangeNotifier
   Future<SessionSummary> sessionRestart(String sessionId) async {
     _requireSession(sessionId);
     _applyPendingReconnectPolicy();
-    _session = _newSession('authenticated', establishedAt: DateTime.now());
+    _session = _newSession('authenticated', establishedAt: _now);
     _record('session.restart', '已模拟重新连接；没有进行真实认证');
     return _session!;
   }

@@ -109,22 +109,26 @@ class CheckPlanning(unittest.TestCase):
             time.sleep(1.5)
             self.assertFalse(sentinel.exists())
 
-
-class FixedDartEnvironment(unittest.TestCase):
-    def test_gui_test_child_uses_validated_sdk_dart_even_through_launcher(self):
+    @unittest.skipIf(os.name == 'nt', 'Unix executable fixture; Windows uses the same metadata binding')
+    def test_sdk_metadata_binds_fixed_dart_for_subprocess_checks(self):
+        actual_root=Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder);version=root/'version';version.write_text('fixture')
-            sdk=root/'actual-sdk';launcher=root/'wrapper'
-            calls=[]
-            def run(argv,**kwargs):
-                calls.append((argv,kwargs))
-                if len(calls)==1:
-                    return subprocess.CompletedProcess(argv,0,json.dumps({'frameworkVersion':'fixture','flutterRoot':str(sdk)}).encode(),b'')
-                return subprocess.CompletedProcess(argv,0)
-            before=os.environ.get('PATH')
-            with mock.patch.object(checks.subprocess,'run',side_effect=run):
-                self.assertEqual(checks.validate_sdk(str(launcher),version,['test/a.dart']),0)
-            self.assertEqual(calls[1][0],[str(launcher),'test','--no-pub','test/a.dart'])
-            path=calls[1][1]['env']['PATH'].split(os.pathsep)
-            self.assertEqual(path[:2],[str(sdk/'bin/cache/dart-sdk/bin'),str(sdk/'bin')])
-            self.assertEqual(os.environ.get('PATH'),before)
+            root=Path(folder)
+            (root/'tools').mkdir();(root/'tools/developer').symlink_to(actual_root/'tools/developer',target_is_directory=True)
+            (root/'gui').mkdir();(root/'gui/.flutter-version').write_text('fixture')
+            sdk=root/'sdk';(sdk/'bin').mkdir(parents=True)
+            dart=sdk/'bin/dart';dart.write_text('#!'+sys.executable+'\nprint("fixed-dart")\n');dart.chmod(0o700)
+            flutter=root/'wrapper-flutter'
+            script='#!'+sys.executable+'\nimport sys,json,shutil,subprocess,os\n'
+            script+='if sys.argv[1]=="--version":print(json.dumps('+repr({'frameworkVersion':'fixture','flutterRoot':str(sdk)})+'))\n'
+            script+='else:\n assert os.path.realpath(shutil.which("dart"))=='+repr(str(dart))+'\n subprocess.run(["dart","--version"],check=True)\n'
+            flutter.write_text(script);flutter.chmod(0o700)
+            args=dev.parse_args(['check','--scope','gui','--flutter',str(flutter),'--format','json','--reports',str(root/'evidence')])
+            stdout=io.StringIO()
+            with contextlib.redirect_stdout(stdout):code=checks.run(root,args,lambda:{'commit':'fixture'})
+            result=json.loads(stdout.getvalue())
+            self.assertEqual(code,0)
+            self.assertEqual([s['name'] for s in result['stages']],['gui-sdk','gui-dependencies','gui-analyze','gui-tests'])
+            request=json.loads((Path(result['report']).parent/'request.json').read_text())
+            self.assertNotIn('PATH',request['stages'][0].get('environment',{}))
+            self.assertTrue(all(s['environment']['PATH'].startswith(str(sdk/'bin')) for s in request['stages'][1:]))
