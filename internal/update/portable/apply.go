@@ -29,6 +29,11 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if err := applicationPlatform(p.inventory); err != nil {
 		return err
 	}
+	guard, err := applyGuard()
+	if err != nil {
+		return err
+	}
+	defer guard()
 	release, err := store.AcquireExecution(ctx, id)
 	if err != nil {
 		return err
@@ -243,6 +248,9 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	}
 	if !changed {
 		return operations.ErrConflict
+	}
+	if holdStartupSeal() {
+		return nil
 	}
 	// Only a durable Applied record plus a fully verified new tree permits
 	// removal. A failure keeps at least the record or seal blocking admission.

@@ -13,7 +13,7 @@ import (
 	"syscall"
 )
 
-func singleFile(info os.FileInfo) error {
+func singleFile(_ *os.File, info os.FileInfo) error {
 	s, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || s.Nlink != 1 {
 		return ErrChanged
@@ -141,3 +141,8 @@ func publish(root *os.Root, old, new string, replace bool) error {
 	}
 	return unix.Renameat2(int(sf.Fd()), filepath.Base(old), int(df.Fd()), filepath.Base(new), flags)
 }
+
+func holdStartupSeal() bool       { return false }
+func applyGuard() (func(), error) { return func() {}, nil }
+
+func plainPlatformPath(string) bool { return true }

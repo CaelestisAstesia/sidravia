@@ -43,6 +43,9 @@ func canonical(path string) bool {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return false
 	}
+	if !plainPlatformPath(path) {
+		return false
+	}
 	actual, err := filepath.EvalSymlinks(path)
 	return err == nil && actual == path
 }
@@ -56,7 +59,7 @@ func checkParents(root *os.Root, name string) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !sameDevice(base, info) {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !sameDevice(base, info) || !plainPlatformPath(filepath.Join(root.Name(), p)) {
 			return ErrChanged
 		}
 	}
@@ -82,7 +85,7 @@ func openRegular(root *os.Root, name string) (*os.File, error) {
 		f.Close()
 		return nil, ErrChanged
 	}
-	if err := singleFile(info); err != nil {
+	if err := singleFile(f, info); err != nil {
 		f.Close()
 		return nil, err
 	}

@@ -1,0 +1,48 @@
+//go:build linux || windows
+
+package portable
+
+import (
+	"context"
+	"os"
+)
+
+// Preflight checks the still-running source and the complete staged payload
+// before asking the application to stop. Apply repeats the checks after exit.
+func Preflight(ctx context.Context, target string, old Inventory, p *Payload) error {
+	if p == nil || p.root == nil || !canonical(target) {
+		return ErrInvalid
+	}
+	if err := applicationPlatform(old); err != nil {
+		return err
+	}
+	if err := applicationPlatform(p.inventory); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if err := verifyInventory(ctx, root, old); err != nil {
+		return err
+	}
+	if err := verifyGUI(root, old); err != nil {
+		return err
+	}
+	if err := verifyInventory(ctx, p.root, p.inventory); err != nil {
+		return err
+	}
+	if err := verifyGUI(p.root, p.inventory); err != nil {
+		return err
+	}
+	before := index(old)
+	for name := range index(p.inventory) {
+		if _, ok := before[name]; !ok {
+			if err := absentProductPath(root, name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

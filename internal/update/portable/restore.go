@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || windows
 
 package portable
 
@@ -6,17 +6,14 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
-	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/operations"
 )
 
@@ -51,10 +48,10 @@ func restoreApplication(ctx context.Context, layout productlayout.Layout, target
 	if operation != "" {
 		env = append(env, operations.EnvRecoveryOperation+"="+operation, operations.EnvRecoveryToken+"="+nonce, operations.EnvRecoveryConfiguration+"="+plan.ConfigurationID)
 	}
-	executable := filepath.Join(target.ID, "sidraviad")
+	executable := filepath.Join(target.ID, daemonName())
 	var args []string
 	if plan.Mode == "desktop" {
-		executable = filepath.Join(target.ID, "sidravia_gui")
+		executable = guiEntry(target.ID)
 		visible := "--start-hidden"
 		if plan.Visible {
 			visible = "--start-visible"
@@ -63,22 +60,11 @@ func restoreApplication(ctx context.Context, layout productlayout.Layout, target
 	} else {
 		env = append(env, launchcontract.EnvMode+"=headless")
 	}
-	command := exec.Command(executable, args...)
-	command.Env = env
-	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	pid, err := startApplication(executable, args, env)
 	if err != nil {
 		return contract.RuntimeInfo{}, err
 	}
-	command.Stdout = null
-	command.Stderr = null
-	if err := command.Start(); err != nil {
-		null.Close()
-		return contract.RuntimeInfo{}, err
-	}
-	null.Close()
-	go func() { _ = command.Wait() }() // owns/reaps only the newly launched child
-	process, err := linuxplatform.Observe(command.Process.Pid)
+	process, err := observeProcess(pid)
 	if err != nil {
 		return contract.RuntimeInfo{}, err
 	}

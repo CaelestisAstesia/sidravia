@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || windows
 
 package portable
 
@@ -11,14 +11,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
-	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/operations"
 )
 
@@ -40,7 +38,7 @@ type Execution struct {
 }
 type applicationPeer struct {
 	connection  *client.Client
-	daemon, gui *linuxplatform.Process
+	daemon, gui *applicationProcess
 	info        contract.RuntimeInfo
 	status      contract.StatusResult
 }
@@ -78,23 +76,6 @@ func call(ctx context.Context, c *client.Client, method string, input any, outpu
 	}
 	return nil
 }
-func observeExecutable(pid int, path string) (*linuxplatform.Process, error) {
-	process, err := linuxplatform.Observe(pid)
-	if err != nil {
-		return nil, err
-	}
-	expected, err := os.Stat(path)
-	if err != nil {
-		process.Close()
-		return nil, err
-	}
-	actual, err := os.Stat(filepath.Join("/proc", strconvPID(pid), "exe"))
-	if err != nil || process.Executable != path || !os.SameFile(expected, actual) {
-		process.Close()
-		return nil, errors.Join(ErrChanged, err)
-	}
-	return process, nil
-}
 func probeApplication(ctx context.Context, layout productlayout.Layout, identity update.Target) (peer *applicationPeer, err error) {
 	file, err := os.Open(layout.RuntimeInfoPath)
 	if os.IsNotExist(err) {
@@ -128,7 +109,7 @@ func probeApplication(ctx context.Context, layout productlayout.Layout, identity
 			p.close()
 		}
 	}()
-	p.daemon, err = observeExecutable(info.PID, filepath.Join(identity.ID, "sidraviad"))
+	p.daemon, err = observeExecutable(info.PID, filepath.Join(identity.ID, daemonName()))
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +127,7 @@ func probeApplication(ctx context.Context, layout productlayout.Layout, identity
 		if p.status.DesktopOwnerPID == nil {
 			return nil, ErrChanged
 		}
-		p.gui, err = observeExecutable(*p.status.DesktopOwnerPID, filepath.Join(identity.ID, "gui-runtime", "sidravia_gui"))
+		p.gui, err = observeExecutable(*p.status.DesktopOwnerPID, guiRuntime(identity.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -202,7 +183,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 		return err
 	}
 	defer peer.close()
-	owner, err := linuxplatform.Observe(os.Getpid())
+	owner, err := observeProcess(os.Getpid())
 	if err != nil {
 		return err
 	}
@@ -351,7 +332,10 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	defer cancel()
 	if recovery.Intent.Mode == "none" {
 		_, _, err := input.Store.Advance(work, record.ID, operations.Applied, operations.Completed, "", time.Now())
-		return err
+		if err != nil {
+			return err
+		}
+		return finishApplication(input.Target, record.ID)
 	}
 	if _, changed, err := input.Store.Advance(work, record.ID, operations.Applied, operations.Resuming, "", time.Now()); err != nil || !changed {
 		return errors.Join(operations.ErrConflict, err)
@@ -359,10 +343,16 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	_, err = restoreApplication(work, layout, record.Target, recovery, record.ID, recovery.Nonce)
 	if err != nil {
 		_, _, stateErr := input.Store.Advance(work, record.ID, operations.Resuming, operations.ResumeFailed, "resume_failed", time.Now())
-		return errors.Join(ErrRestore, err, stateErr)
+		if stateErr != nil {
+			return errors.Join(ErrRestore, err, stateErr)
+		}
+		return errors.Join(ErrRestore, err, finishApplication(input.Target, record.ID))
 	}
 	_, _, err = input.Store.Advance(work, record.ID, operations.Resuming, operations.Completed, "", time.Now())
-	return err
+	if err != nil {
+		return err
+	}
+	return finishApplication(input.Target, record.ID)
 }
 func pause(ctx context.Context) error {
 	timer := time.NewTimer(75 * time.Millisecond)
@@ -374,7 +364,6 @@ func pause(ctx context.Context) error {
 		return nil
 	}
 }
-func strconvPID(pid int) string { return strconv.Itoa(pid) }
 
 type peerFailure struct{ reply *contract.Error }
 

@@ -2,8 +2,10 @@ package portable
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"io"
 	"os"
 
@@ -19,7 +21,7 @@ func ExtractRelease(ctx context.Context, target, archive string, v releases.Veri
 	if err != nil {
 		return nil, err
 	}
-	if asset.OS != "linux" || (asset.Kind != "core-portable" && asset.Kind != "gui-portable") {
+	if (asset.OS != "linux" && asset.OS != "windows") || (asset.Kind != "core-portable" && asset.Kind != "gui-portable") {
 		return nil, ErrUnsupported
 	}
 	f, err := os.Open(archive)
@@ -33,6 +35,49 @@ func ExtractRelease(ctx context.Context, target, archive string, v releases.Veri
 	}
 	if !info.Mode().IsRegular() || info.Size() != c.Size {
 		return nil, ErrChanged
+	}
+	if asset.OS == "windows" {
+		var footer [22]byte
+		if info.Size() < 22 {
+			return nil, ErrInvalid
+		}
+		if _, err = f.ReadAt(footer[:], info.Size()-22); err != nil {
+			return nil, err
+		}
+		count := int(binary.LittleEndian.Uint16(footer[10:]))
+		if err = validateZIPDirectory(f, info.Size(), count); err != nil {
+			return nil, err
+		}
+		zr, err := zip.NewReader(f, info.Size())
+		if err != nil {
+			return nil, err
+		}
+		var data []byte
+		for _, entry := range zr.File {
+			if entry.Name != packagefiles.Name {
+				continue
+			}
+			if data != nil || !entry.Mode().IsRegular() || entry.UncompressedSize64 == 0 || entry.UncompressedSize64 > packagefiles.SizeLimit {
+				return nil, ErrInvalid
+			}
+			reader, e := entry.Open()
+			if e != nil {
+				return nil, e
+			}
+			data, e = io.ReadAll(io.LimitReader(reader, packagefiles.SizeLimit+1))
+			closeErr := reader.Close()
+			if e != nil {
+				return nil, e
+			}
+			if closeErr != nil {
+				return nil, closeErr
+			}
+		}
+		inventory, err := Authenticate(v, c, data)
+		if err != nil {
+			return nil, err
+		}
+		return Extract(ctx, target, archive, inventory)
 	}
 	gz, err := gzip.NewReader(f)
 	if err != nil {
