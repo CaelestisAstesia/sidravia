@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "environment": {
+    "PATH": "C:\\DevTools\\go\\bin;C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd",
+    "GOTOOLCHAIN": "local",
+    "GOCACHE": "{workspace}\\cache\\go",
+    "SIDRAVIA_ISCC": "C:\\DevTools\\Inno7\\ISCC.exe",
+    "SIDRAVIA_INNO_TEST_ROOT": "{run}\\fixtures"
+  },
+  "stages": [
+    {
+      "name": "runner-contracts",
+      "argv": [
+        "C:\\DevTools\\Python\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/developer/tests",
+        "-p",
+        "test_validation_run.py",
+        "-v"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "builder-containment",
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "{source}\\tools\\developer\\test_build_windows.ps1"
+      ],
+      "timeout_seconds": 90
+    },
+    {
+      "name": "native-handoff",
+      "argv": [
+        "C:\\DevTools\\Python\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/developer/tests",
+        "-p",
+        "test_update_handoff.py",
+        "-v"
+      ],
+      "timeout_seconds": 240
+    }
+  ]
+}
