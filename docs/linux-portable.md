@@ -9,6 +9,11 @@ WebKitGTK 4.1 remain system dependencies. Fedora runtime packages:
 sudo dnf install gtk3 libayatana-appindicator-gtk3 webkit2gtk4.1
 ```
 
+The Chinese interface uses installed system fonts. If Chinese characters do not
+display, install a Chinese-capable font, such as Fedora's
+`google-noto-sans-cjk-vf-fonts`. The archive bundles only Source Code Pro for
+diagnostic code text; Chinese text there also falls back to system fonts.
+
 Extract the entire archive into a writable directory and run `./sidravia_gui`.
 Keep `lib/` and `data/` beside the executable. Run `ldd ./sidravia_gui` to inspect
 missing libraries. No account configuration or autostart is registered by

@@ -9,6 +9,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"compress/flate"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -613,6 +614,9 @@ func writeZip(path string, entries []zipEntry) error {
 	}
 	defer f.Close()
 	zw := zip.NewWriter(f)
+	zw.RegisterCompressor(zip.Deflate, func(w io.Writer) (io.WriteCloser, error) {
+		return flate.NewWriter(w, flate.BestCompression)
+	})
 	for _, e := range entries {
 		fh := &zip.FileHeader{Name: e.name, Method: zip.Deflate}
 		fh.Modified = zipModTime

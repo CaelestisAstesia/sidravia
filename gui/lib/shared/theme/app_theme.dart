@@ -1,5 +1,6 @@
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 abstract final class AppColors {
   static const bgLight = Color(0xFFF7F9FB);
@@ -28,14 +29,25 @@ abstract final class AppColors {
   static const dangerDark = Color(0xFFE78C8C);
 }
 
+// Keep custom control styles on Flutter's platform font policy without
+// importing the typography's color, size or weight into those controls.
+TextStyle _systemFont() {
+  final text = Typography.material2021(platform: defaultTargetPlatform)
+      .black
+      .bodyMedium!;
+  return TextStyle(
+    fontFamily: text.fontFamily,
+    fontFamilyFallback: text.fontFamilyFallback,
+  );
+}
+
 abstract final class AppButtonStyles {
-  static final primary = FilledButton.styleFrom(
+  static ButtonStyle get primary => FilledButton.styleFrom(
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     shape: const StadiumBorder(),
-    textStyle: const TextStyle(
-      fontFamily: 'HarmonyOS Sans',
+    textStyle: _systemFont().copyWith(
       fontSize: DesignMetrics.bodyFont,
       fontWeight: FontWeight.w600,
       height: 20 / 13,
@@ -43,7 +55,7 @@ abstract final class AppButtonStyles {
     backgroundColor: AppColors.accent,
     foregroundColor: Colors.white,
   );
-  static final secondary = OutlinedButton.styleFrom(
+  static ButtonStyle get secondary => OutlinedButton.styleFrom(
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -51,8 +63,7 @@ abstract final class AppButtonStyles {
     side: const BorderSide(color: AppColors.lineLight),
     backgroundColor: AppColors.surfaceLight,
     foregroundColor: AppColors.inkLight,
-    textStyle: const TextStyle(
-      fontFamily: 'HarmonyOS Sans',
+    textStyle: _systemFont().copyWith(
       fontSize: DesignMetrics.bodyFont,
       fontWeight: FontWeight.w600,
       height: 20 / 13,
@@ -107,26 +118,14 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      fontFamily: 'HarmonyOS Sans',
       colorScheme: scheme,
       scaffoldBackgroundColor: dark ? AppColors.bgDark : AppColors.bgLight,
       dividerColor: dark ? AppColors.lineSoftDark : AppColors.lineSoftLight,
-      textTheme:
-          const TextTheme(
-            bodyLarge: TextStyle(fontSize: 16, height: 1.2),
-            bodyMedium: TextStyle(
-              fontSize: DesignMetrics.bodyFont,
-              height: 1.55,
-            ),
-            bodySmall: TextStyle(
-              fontSize: DesignMetrics.valueFont,
-              height: 1.45,
-            ),
-          ).apply(
-            fontFamily: 'HarmonyOS Sans',
-            bodyColor: scheme.onSurface,
-            displayColor: scheme.onSurface,
-          ),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(fontSize: 16, height: 1.2),
+        bodyMedium: TextStyle(fontSize: DesignMetrics.bodyFont, height: 1.55),
+        bodySmall: TextStyle(fontSize: DesignMetrics.valueFont, height: 1.45),
+      ).apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface),
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -136,14 +135,12 @@ abstract final class AppTheme {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: scheme.outline),
         ),
-        titleTextStyle: TextStyle(
-          fontFamily: 'HarmonyOS Sans',
+        titleTextStyle: _systemFont().copyWith(
           fontSize: DesignMetrics.dialogTitleFont,
           fontWeight: FontWeight.w700,
           color: scheme.onSurface,
         ),
-        contentTextStyle: TextStyle(
-          fontFamily: 'HarmonyOS Sans',
+        contentTextStyle: _systemFont().copyWith(
           fontSize: DesignMetrics.bodyFont,
           height: 1.55,
           color: scheme.onSurfaceVariant,
@@ -153,15 +150,13 @@ abstract final class AppTheme {
         minTileHeight: DesignMetrics.rowMinHeight,
         minVerticalPadding: DesignMetrics.rowPadding,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-        titleTextStyle: TextStyle(
+        titleTextStyle: _systemFont().copyWith(
           color: scheme.onSurface,
-          fontFamily: 'HarmonyOS Sans',
           fontSize: DesignMetrics.bodyFont,
           height: 19 / 13,
           fontWeight: FontWeight.w500,
         ),
-        subtitleTextStyle: TextStyle(
-          fontFamily: 'HarmonyOS Sans',
+        subtitleTextStyle: _systemFont().copyWith(
           fontSize: DesignMetrics.captionFont,
           height: 1.45,
           color: scheme.onSurfaceVariant,
@@ -172,8 +167,7 @@ abstract final class AppTheme {
           minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
           visualDensity: VisualDensity.standard,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          textStyle: const TextStyle(
-            fontFamily: 'HarmonyOS Sans',
+          textStyle: _systemFont().copyWith(
             fontSize: DesignMetrics.bodyFont,
             fontWeight: FontWeight.w500,
             height: 20 / 13,

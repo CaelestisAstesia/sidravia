@@ -66,9 +66,9 @@ flutter run -d windows -t lib/dev/preview_main.dart
 
 当前学校公告由 Profile 提供网页地址，在独立窗口中加载学校原网页。旧版静态 JSON feed 与 `SIDRAVIA_ANNOUNCEMENT_FEED_URL` 不是当前公告实现。
 
-运行状态快照使用随包 Source Code Pro 等宽字体，中文回退 HarmonyOS Sans；字体许可及来源见[许可证与致谢](../docs/acknowledgements.md)。
+运行状态快照使用随包 Source Code Pro 等宽字体，中文由系统字体回退显示；字体许可及来源见[许可证与致谢](../docs/acknowledgements.md)。
 
-GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。界面使用 HarmonyOS Sans，许可证位于 [assets/fonts/LICENSE.txt](assets/fonts/LICENSE.txt)。仓库中的其他平台 runner 不构成相应平台的发行支持声明。
+GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。普通界面使用 Flutter 的平台默认字体与系统回退字体，不随包携带中文字体；不同系统的字形可能略有差异，中文显示需要系统已安装中文字体。仓库中的其他平台 runner 不构成相应平台的发行支持声明。
 
 Linux窗口复用共享Flutter自绘标题栏，GTK承载窗口并处理真实指针事件下的合成器拖动/边缘缩放，Ayatana提供系统托盘菜单，WebKitGTK提供应用内公告。Linux PNG图标直接复用已接受Windows ICO中的256px PNG内容。没有托盘服务时保留主窗口；启动隐藏只作用于本次启动，之后修改偏好不改变当前窗口可见性。Wayland的坐标、焦点和最小化归合成器管理；未激活的已映射窗口无法可靠判断是否最小化，返回未知观察，通知策略不会猜测可见性。公告复用共享导航决策：加载完成后的用户HTTP(S)外链交浏览器，同文档锚点、脚本导航与重定向仍在窗口内；非用户弹窗、非HTTP(S)、权限请求与下载被拒绝。加载提示、30秒有界失败、Web进程终止与关闭重开按原生生命周期管理。
 

@@ -264,6 +264,26 @@ def linux_command(args, env):
     return 0
 
 
+@contextlib.contextmanager
+def preview_font_asset(font=None):
+    """Stage a host font for CanvasKit only; native products never bundle it."""
+    if font is None:
+        if shutil.which("fc-match"):
+            font = subprocess.check_output(
+                ["fc-match", "-f", "%{file}", ":lang=zh-cn"], text=True,
+            ).strip()
+        elif platform.system() == "Windows":
+            font = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/msyh.ttc"
+    if not font or not Path(font).is_file():
+        raise ValueError("web preview requires --font pointing to a local Chinese-capable font")
+    assets = ROOT / "gui/web/assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="preview-font-", dir=assets) as temporary:
+        directory = Path(temporary)
+        shutil.copy2(font, directory / "system-font.ttf")
+        yield directory.name + "/system-font.ttf"
+
+
 def preview_command(args, env):
     """Run only the in-memory Flutter demo on a loopback web server."""
     flutter = str(Path(args.flutter).resolve())
@@ -277,13 +297,15 @@ def preview_command(args, env):
 
     run(["pub", "get", "--enforce-lockfile"])
     target = "lib/dev/interactive_demo_main.dart"
-    if args.check:
-        run(["analyze", "--no-pub"])
-        run(["test", "--no-pub", "test/offline_demo_test.dart", "test/r51_adaptation_test.dart"])
-        run(["build", "web", "--no-pub", "--no-web-resources-cdn", "--target", target])
-    else:
-        print(f"Offline GUI preview: http://127.0.0.1:{args.port} (fictional in-memory data only)", flush=True)
-        run(["run", "--no-pub", "-d", "web-server", "--web-hostname", "127.0.0.1", "--web-port", str(args.port), "--no-web-resources-cdn", "--target", target])
+    with preview_font_asset(args.font) as font:
+        font_define = "--dart-define=SIDRAVIA_DEMO_SYSTEM_FONT=" + font
+        if args.check:
+            run(["analyze", "--no-pub"])
+            run(["test", "--no-pub", "test/offline_demo_test.dart", "test/r51_adaptation_test.dart"])
+            run(["build", "web", "--no-pub", "--no-web-resources-cdn", "--target", target, font_define])
+        else:
+            print(f"Offline GUI preview: http://127.0.0.1:{args.port} (fictional in-memory data only)", flush=True)
+            run(["run", "--no-pub", "-d", "web-server", "--web-hostname", "127.0.0.1", "--web-port", str(args.port), "--no-web-resources-cdn", "--target", target, font_define])
     return 0
 
 
@@ -294,6 +316,7 @@ def parse_args(argv=None):
         sub = subs.add_parser(command)
         if command == "preview":
             sub.add_argument("--flutter", default=".local/bin/flutter")
+            sub.add_argument("--font", help="local Chinese-capable font for the web preview only; defaults to the host font")
             sub.add_argument("--port", type=int, choices=range(1024, 65536), default=7357, metavar="PORT")
             sub.add_argument("--check", action="store_true", help="analyze, test the offline demo and compile its web build without starting a server")
         sub.add_argument("--go", default="go")

@@ -10,6 +10,7 @@ import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.da
 import 'package:sidravia_gui/features/diagnostics/snapshot_code_view.dart';
 import 'package:sidravia_gui/features/diagnostics/runtime_snapshot.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 import 'support/runtime_snapshot.dart';
 
@@ -53,6 +54,33 @@ class SnapshotClient extends OfflineDemoClient {
 }
 
 void main() {
+  testWidgets(
+    'snapshot keeps code font and ordinary platform fallbacks',
+    (tester) async {
+      final theme = AppTheme.light();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: const Scaffold(body: SnapshotCodeView(text: '{"state":"已连接"}')),
+        ),
+      );
+      final style = tester
+          .widget<SelectableText>(
+            find.byKey(const ValueKey('runtime-snapshot-text')),
+          )
+          .style!;
+      expect(style.fontFamily, 'Source Code Pro');
+      expect(style.fontFamilyFallback, [
+        ?theme.textTheme.bodyMedium!.fontFamily,
+        ...?theme.textTheme.bodyMedium!.fontFamilyFallback,
+      ]);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.linux,
+      TargetPlatform.windows,
+    }),
+  );
+
   testWidgets('bundled snapshot font has equal ASCII advances', (tester) async {
     await tester.runAsync(() async {
       final loader = FontLoader('Source Code Pro')

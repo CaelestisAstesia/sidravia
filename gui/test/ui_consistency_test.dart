@@ -178,11 +178,11 @@ void main() {
         final context = tester.element(find.text('自动显示公告'));
         expect(
           Theme.of(context).textTheme.bodyMedium!.fontFamily,
-          'HarmonyOS Sans',
+          ThemeData().textTheme.bodyMedium!.fontFamily,
         );
         expect(
           Theme.of(context).dialogTheme.contentTextStyle!.fontFamily,
-          'HarmonyOS Sans',
+          ThemeData().textTheme.bodyMedium!.fontFamily,
         );
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());

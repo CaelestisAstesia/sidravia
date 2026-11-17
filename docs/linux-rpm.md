@@ -5,6 +5,9 @@ package is not a Fedora repository submission or a universal Linux build.
 Flutter/AOT runtime stays private in `/usr/lib64/sidravia`; GTK, WebKitGTK 4.1,
 Ayatana AppIndicator and the other ELF dependencies come from system RPMs.
 Flutter engine, Dart package and bundled font notices ship with the application.
+The ordinary interface uses system fonts; Chinese display requires an installed
+Chinese-capable font (for example `google-noto-sans-cjk-vf-fonts`). Only the small
+Source Code Pro diagnostic font is bundled.
 
 The package owns `/usr/bin/sidraviactl`, `sidraviad`, `sidraviaupdater` and
 `sidravia_gui`, plus its system desktop entry and hicolor icon. PATH discovery

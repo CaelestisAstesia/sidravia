@@ -107,7 +107,6 @@ class DesignRow extends StatelessWidget {
                       fontWeight: diagnostic
                           ? FontWeight.w400
                           : FontWeight.w500,
-                      fontFamily: 'HarmonyOS Sans',
                       color: danger ? scheme.error : scheme.onSurface,
                     ),
                   ),
@@ -137,7 +136,6 @@ class DesignRow extends StatelessWidget {
                       fontSize: diagnostic
                           ? DesignMetrics.captionFont
                           : DesignMetrics.valueFont,
-                      fontFamily: 'HarmonyOS Sans',
                       color: scheme.onSurfaceVariant,
                     ),
                   ),

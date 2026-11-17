@@ -25,8 +25,7 @@ class SettingsDropdown<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final style = TextStyle(
-      fontFamily: 'HarmonyOS Sans',
+    final style = Theme.of(context).textTheme.bodyMedium!.copyWith(
       fontSize: DesignMetrics.captionFont,
       height: 1.35,
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,

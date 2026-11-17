@@ -214,7 +214,6 @@ class DesignInputRow extends StatelessWidget {
                               textAlign: TextAlign.right,
                               style: const TextStyle(
                                 fontSize: DesignMetrics.valueFont,
-                                fontFamily: 'HarmonyOS Sans',
                               ),
                               textAlignVertical: TextAlignVertical.center,
                               decoration: InputDecoration(

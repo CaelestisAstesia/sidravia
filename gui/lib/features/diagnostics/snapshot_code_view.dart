@@ -16,13 +16,20 @@ class _SnapshotCodeViewState extends State<SnapshotCodeView> {
   int _current = 0;
   double _textWidth = 0;
 
-  TextStyle _style(BuildContext context) => TextStyle(
-    fontFamily: 'Source Code Pro',
-    fontFamilyFallback: const ['HarmonyOS Sans'],
-    fontSize: 12,
-    height: 1.6,
-    color: Theme.of(context).colorScheme.onSurface,
-  );
+  TextStyle _style(BuildContext context) {
+    final theme = Theme.of(context);
+    final ordinary = theme.textTheme.bodyMedium!;
+    return TextStyle(
+      fontFamily: 'Source Code Pro',
+      fontFamilyFallback: [
+        ?ordinary.fontFamily,
+        ...?ordinary.fontFamilyFallback,
+      ],
+      fontSize: 12,
+      height: 1.6,
+      color: theme.colorScheme.onSurface,
+    );
+  }
 
   void _find() {
     final query = _query.text;

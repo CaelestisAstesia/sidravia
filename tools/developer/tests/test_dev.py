@@ -14,6 +14,22 @@ import dev
 
 
 class DeveloperCommands(unittest.TestCase):
+    def test_preview_stages_host_font_only_in_owned_web_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            font = root / "host-font.ttf"
+            font.write_bytes(b"host-font")
+            with mock.patch.object(dev, "ROOT", root):
+                with dev.preview_font_asset(font) as asset:
+                    staged = root / "gui/web/assets" / asset
+                    self.assertEqual(staged.read_bytes(), font.read_bytes())
+                    self.assertFalse((root / "gui/assets/fonts").exists())
+                self.assertFalse(staged.exists())
+                self.assertEqual(font.read_bytes(), b"host-font")
+                with self.assertRaisesRegex(ValueError, "Chinese-capable font"):
+                    with dev.preview_font_asset(root / "missing.ttf"):
+                        self.fail("missing font accepted")
+
     def test_package_rejects_dirty_source_before_running_builder(self):
         args = argparse.Namespace(go="go")
         with mock.patch.object(dev, "metadata", return_value={"dirty": True}):

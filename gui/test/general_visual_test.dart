@@ -66,7 +66,13 @@ void main() {
             final span =
                 tester.renderObject<RenderParagraph>(find.text(label)).text
                     as TextSpan;
-            expect(span.style?.fontFamily, 'HarmonyOS Sans');
+            expect(
+              span.style?.fontFamily,
+              Theme.of(tester.element(find.text(label)))
+                  .textTheme
+                  .bodyMedium
+                  ?.fontFamily,
+            );
           }
         },
       );
@@ -108,7 +114,7 @@ Future<void> render(
   await tester.binding.setSurfaceSize(const Size(398, 642));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.runAsync(() async {
-    await fonts.loadCaptureFonts();
+    await fonts.loadCaptureFonts(forCapture: output.isNotEmpty);
     const diagnosticFont = String.fromEnvironment(
       'DIAGNOSTIC_FONT',
       defaultValue: '/mnt/c/Windows/Fonts/consola.ttf',

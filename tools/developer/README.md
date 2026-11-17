@@ -18,6 +18,19 @@ the pinned SDK executable (default `.local/bin/flutter`). The version must
 match `gui/.flutter-version`; dependencies use `--enforce-lockfile`.
 `--check` runs analysis, the offline demo/layout tests, and its Web build.
 Both modes use local CanvasKit resources rather than a rendering CDN.
+CanvasKit cannot discover desktop fonts. The helper temporarily copies a
+Chinese-capable host font into an ignored, owned `gui/web/assets/preview-font-*`
+directory and loads it only in the demo. Linux selects it through Fontconfig;
+Windows uses Microsoft YaHei. `--font /path/to/font.ttf` overrides the choice.
+The temporary source copy is removed on exit; the checked Web build retains its
+copy for local viewing. Native product bundles do not contain this preview font.
+Invoking Flutter's demo target directly without this define may fetch fallback
+fonts from the network.
+
+Widget capture modes require `--dart-define=SYSTEM_FONT_MANIFEST=/absolute/path.json`.
+The JSON maps platform font family names to lists of installed font file paths;
+it supplies real fonts to the test runner, whose system font discovery is disabled.
+Ordinary widget tests still run without this capture-only input.
 
 The demo reuses production pages with fictional in-memory clients and settings.
 It does not launch the daemon, read production credentials, contact the school,
@@ -99,6 +112,8 @@ GUI interaction, installation, notification delivery or campus behavior.
 ## Core distributions
 
 Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
+ZIP and gzip archives use the standard library's best compression level; their
+formats, content and extraction requirements are unchanged.
 
 From a clean Linux amd64 checkout, choose an absent output directory whose parent
 exists (the repository's ignored `dist/` path is suitable):

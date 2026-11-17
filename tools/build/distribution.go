@@ -292,7 +292,10 @@ func writeTar(path, root string, entries []zipEntry) error {
 		return err
 	}
 	defer f.Close()
-	gz := gzip.NewWriter(f)
+	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
 	tw := tar.NewWriter(gz)
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	for _, entry := range entries {
