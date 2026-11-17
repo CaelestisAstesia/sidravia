@@ -318,3 +318,81 @@ fixture verifies login statistics and checksummed plain text through the real
 Run, Session, IPC and shared GUI, reauthentication isolation and retained stopped
 data. Its result and source fingerprint remain in the owned fixture directory;
 no production configuration, user integration or campus authentication is used.
+
+## Fedora → Windows VM execution and evidence
+
+`dev.py vm` connects the existing QEMU guest agent to existing Windows commands.
+It neither logs in a user nor changes VM accounts, permissions, networking or
+production installations. The requested test user must already have a loaded
+interactive desktop. Test processes run with its limited InteractiveToken;
+QGA's SYSTEM token is used only for transport, scoped setup and task management.
+
+```bash
+.local/bin/dev vm --request tools/developer/requests/windows-native.json \
+  --guest-root 'C:\Users\astesia\dv' \
+  --guest-user astesia --windows-python 'C:\DevTools\Python\python.exe'
+```
+
+These are example paths matching the local test VM; adapt them to your VM once.
+Keep the dedicated root short: the existing Inno fixture contains deeply nested
+paths and some Windows file APIs retain MAX_PATH limits. No machine-wide long-path
+policy is changed by this tool.
+`--domain` defaults to `windows11-sidravia`, `--uri` to `qemu:///session`.
+The sample request invokes the command-runner contracts, existing Windows builder
+safety tests and opt-in native Inno/Go handoff fixture. It uses fictional data,
+not a real installation. Inno/Go/Python must already exist at the specified paths;
+missing tools are failures, never an implicit installation. Full GUI/campus or
+real system integration acceptance is separate.
+
+The root must be an empty/new dedicated directory below that user's profile or
+already carry this tool's ownership marker. Runs are unique, source is copied
+from an exact SHA256 manifest, and a local VM lock is shared across worktrees.
+A small temporary task starts a dedicated kill-on-close Job wrapper. Each
+Windows command gets a dedicated Python worker and nested Job so even a parent which exits first cannot
+leave children between stages. Timeouts stop the sequence; final cleanup stops
+only this UUID task and removes its registration. No process-name kill, password,
+automatic login, HTTP server or global `safe.directory` exception is used.
+Source ZIPs and failed fixtures remain under the owned run, not in user data.
+Shared Go/Pub caches and the existing Windows builder workspace are retained.
+
+Requests are UTF-8 JSON (UTF-8 BOM is accepted), schema 1:
+
+```json
+{
+  "schema": 1,
+  "environment": {"PYTHONUTF8": "1"},
+  "stages": [
+    {
+      "name": "example",
+      "argv": ["C:\\DevTools\\Python\\python.exe", "-c", "print('中文 空格')"],
+      "cwd": ".",
+      "timeout_seconds": 30
+    }
+  ]
+}
+```
+
+`argv` is an array, not a shell string. Shells are used only when explicitly named
+as the executable. VM cwd is relative to the source snapshot. Literal tokens
+`{source}`, `{run}`, `{workspace}` expand in argv and environment values; other
+braces are unchanged. Environment entries may also be set per stage. Do not put
+credentials in requests, argv or logs. Unknown keys, duplicate stage names,
+case-ambiguous environment keys and escaping cwd/source paths are rejected.
+Stages have a 900-second default timeout (maximum 3600); `--timeout` bounds the VM
+task (default 1800, maximum 21600). A failure leaves later stages `not_run`.
+
+Default stdout is a short stage summary with a bounded failure excerpt.
+`--format json` emits one JSON result on stdout, with progress on stderr. Complete
+UTF-8 reports, exact request/source manifest and separate raw stdout/stderr logs
+are under the selected `--reports` directory. Even a timeout/interruption attempts
+to stop the owned task and collect the partial report/logs. Execution, evidence
+collection and cleanup errors remain distinct; uncertain cleanup is a failure.
+Host and guest source changes both invalidate acceptance. Snapshots carry host
+source identity; their temporary Git index is not a new claimed source commit.
+
+For a Windows GUI build, use the same request schema to invoke existing
+`build_windows.ps1` with `-SourceRoot {source}`, `-ManifestPath {run}\manifest.json`
+and `-Workspace {workspace}`, plus the existing pinned SDK arguments. That helper
+continues to own incremental source sync, caches, compiler logs and packaging
+receipts; its report location appears in the captured command log. VM execution
+itself does not imply that optional GUI/package checks were requested or passed.

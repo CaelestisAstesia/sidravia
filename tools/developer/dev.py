@@ -290,8 +290,17 @@ def preview_command(args, env):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm"):
         sub = subs.add_parser(command)
+        if command == "vm":
+            sub.add_argument("--request", required=True, help="schema-1 JSON command sequence")
+            sub.add_argument("--uri", default="qemu:///session")
+            sub.add_argument("--domain", default="windows11-sidravia")
+            sub.add_argument("--guest-root", required=True, help="dedicated owned directory below the test user's profile")
+            sub.add_argument("--guest-user", required=True, help="existing logged-in Windows user (no password)")
+            sub.add_argument("--windows-python", required=True)
+            sub.add_argument("--timeout", type=int, choices=range(1, 21601), default=1800, metavar="SECONDS")
+            sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "preview":
             sub.add_argument("--flutter", default=".local/bin/flutter")
             sub.add_argument("--port", type=int, choices=range(1024, 65536), default=7357, metavar="PORT")
@@ -342,6 +351,9 @@ def main(argv=None):
     args = parse_args(argv)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
+        if args.command == "vm":
+            import windows_vm
+            return windows_vm.run(ROOT, args, source_manifest(env), lambda: source_manifest(env))
         if args.command == "preview":
             return preview_command(args, env)
         if args.command == "manifest":
