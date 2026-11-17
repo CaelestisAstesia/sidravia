@@ -353,4 +353,3 @@ if __name__ == '__main__':
         record_inputs(*sys.argv[2:])
     else:
         raise SystemExit('internal capture input recorder')
-
