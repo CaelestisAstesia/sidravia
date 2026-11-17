@@ -470,3 +470,132 @@ Recovery expiry starts with the finite coordination snapshot, not an arbitrarily
 old check record. After a coordinator dies, explicit byte-verified reconciliation
 may close a pre-write operation or mark an unconfirmed resume failed. It does
 not retry startup or authentication, and cannot clear a partial-write seal.
+
+## Fedora → Windows VM execution and evidence
+
+`dev.py vm` connects the existing QEMU guest agent to existing Windows commands.
+It neither logs in a user nor changes VM accounts, permissions, networking or
+production installations. The requested test user must already have a loaded
+interactive desktop. Test processes run with its limited InteractiveToken;
+QGA's SYSTEM token is used only for transport, scoped setup and task management.
+
+```bash
+.local/bin/dev vm --request tools/developer/requests/windows-native.json \
+  --guest-root 'C:\Users\astesia\dv' \
+  --guest-user astesia --windows-python 'C:\DevTools\Python\python.exe'
+```
+
+These are example paths matching the local test VM; adapt them to your VM once.
+Keep the dedicated root short: the existing Inno fixture contains deeply nested
+paths and some Windows file APIs retain MAX_PATH limits. No machine-wide long-path
+policy is changed by this tool.
+`--domain` defaults to `windows11-sidravia`, `--uri` to `qemu:///session`.
+The sample request invokes the command-runner contracts, existing Windows builder
+safety tests and opt-in native Inno/Go handoff fixture. It uses fictional data,
+not a real installation. Inno/Go/Python must already exist at the specified paths;
+missing tools are failures, never an implicit installation. Full GUI/campus or
+real system integration acceptance is separate.
+
+The root must be an empty/new dedicated directory below that user's profile or
+already carry this tool's ownership marker. Runs are unique, source is copied
+from an exact SHA256 manifest, and a local VM lock is shared across worktrees.
+A small temporary task starts a dedicated kill-on-close Job wrapper. Each
+Windows command gets a dedicated Python worker and nested Job so even a parent which exits first cannot
+leave children between stages. Timeouts stop the sequence; final cleanup stops
+only this UUID task and removes its registration. No process-name kill, password,
+automatic login, HTTP server or global `safe.directory` exception is used.
+Source ZIPs and failed fixtures remain under the owned run, not in user data.
+Shared Go/Pub caches and the existing Windows builder workspace are retained.
+
+Requests are UTF-8 JSON (UTF-8 BOM is accepted), schema 1:
+
+```json
+{
+  "schema": 1,
+  "environment": {"PYTHONUTF8": "1"},
+  "stages": [
+    {
+      "name": "example",
+      "argv": ["C:\\DevTools\\Python\\python.exe", "-c", "print('中文 空格')"],
+      "cwd": ".",
+      "timeout_seconds": 30
+    }
+  ]
+}
+```
+
+`argv` is an array, not a shell string. Shells are used only when explicitly named
+as the executable. VM cwd is relative to the source snapshot. Literal tokens
+`{source}`, `{run}`, `{workspace}` expand in argv and environment values; other
+braces are unchanged. Environment entries may also be set per stage. Do not put
+credentials in requests, argv or logs. Unknown keys, duplicate stage names,
+case-ambiguous environment keys and escaping cwd/source paths are rejected.
+Stages have a 900-second default timeout (maximum 3600); `--timeout` bounds the VM
+task (default 1800, maximum 21600). A failure leaves later stages `not_run`.
+
+Default stdout is a short stage summary with a bounded failure excerpt.
+`--format json` emits one JSON result on stdout, with progress on stderr. Complete
+UTF-8 reports, exact request/source manifest and separate raw stdout/stderr logs
+are under the selected `--reports` directory. Even a timeout/interruption attempts
+to stop the owned task and collect the partial report/logs. Execution, evidence
+collection and cleanup errors remain distinct; uncertain cleanup is a failure.
+Host and guest source changes both invalidate acceptance. Snapshots carry host
+source identity; their temporary Git index is not a new claimed source commit.
+
+For a Windows GUI build, use the same request schema to invoke existing
+`build_windows.ps1` with `-SourceRoot {source}`, `-ManifestPath {run}\manifest.json`
+and `-Workspace {workspace}`, plus the existing pinned SDK arguments. That helper
+continues to own incremental source sync, caches, compiler logs and packaging
+receipts; its report location appears in the captured command log. VM execution
+itself does not imply that optional GUI/package checks were requested or passed.
+
+## Combined local checks and formatted results
+
+Use `dev check` for daily verification. Existing `verify`, `benchmark`, platform
+builders and distribution receipts remain supported; this entry composes them
+with the same schema-1 stage runner and text/JSON formatter used by `vm`.
+
+```bash
+# Default: Go native + Python. Cross builds and GUI are explicit selections.
+.local/bin/dev check
+# A local change: rerun only selected packages / developer-tool test files.
+.local/bin/dev check --scope go --go-package ./internal/update/...
+.local/bin/dev check --scope python --python-test test_validation_run.py
+# Shared GUI checks once, with an optional offline Web and/or Linux build.
+.local/bin/dev check --scope gui --preview-build --linux-build
+.local/bin/dev check --scope gui --gui-test test/offline_demo_test.dart
+# Combine scopes, inspect a machine-readable plan, or request one JSON result.
+.local/bin/dev check --scope go --scope python --scope gui --plan
+.local/bin/dev check --scope python --format json
+```
+
+Scopes and explicit test selections are deduplicated. `--go-checks` defaults to
+`native`; `cross` or `full` use the existing verifier's bounded `--jobs` scheduling.
+Targeted Go packages run `go test -count=1`, vet and diff checks; they do not claim
+full repository/cross verification. Selected Python filename patterns are below
+`tools/developer/tests`; omitting them runs the existing Python scope, including
+mock-server and acceptance-tool tests. Omitting GUI test selections runs the
+complete Flutter suite. No dependency resolution, analysis or GUI test stage is
+repeated merely because both build outputs are selected. The existing Linux
+builder still revalidates its dependencies and owns sibling binary generation;
+`--linux-build` is build evidence, not native policy/integration/RPM acceptance.
+Continue using the existing explicit Linux acceptance modes for those tasks.
+
+`--plan` writes only a UTF-8 JSON argv/cwd/timeout plan to stdout, without executing checks/builds
+or creating an evidence directory (Git/source identity is still read). Execution writes exact `request.json`, atomic
+`report.json` and raw per-stage stdout/stderr logs to one unique evidence folder.
+Human output lists status/name/time, a bounded failure excerpt and report path.
+`--format json` produces one JSON object, never compiler output mixed into JSON;
+progress goes to stderr. Child commands keep their native log bytes (the tool's
+own JSON is UTF-8); non-UTF-8 diagnostics use replacement characters only in the
+human excerpt, preserving the original log for diagnosis.
+
+Stages stop on failure, launch error or timeout; remaining stages are `not_run`.
+The report uses `passed`, `failed`, `timed_out`, `not_run` and interruption states
+rather than treating an absent command as success. Both command argv and cwd are
+recorded; environment overrides are in the request, not echoed in the summary.
+Source commit/status/byte fingerprint before and after prevent concurrent edits
+from producing a false acceptance. A per-worktree lock excludes simultaneous
+`check` runs; it does not take over a separately running preview or older tools.
+Go/Flutter/Pub caches stay at their existing locations. There is no automatic
+package build, installer execution, test retry, Git commit or release operation.
