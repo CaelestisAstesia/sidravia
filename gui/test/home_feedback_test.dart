@@ -26,7 +26,6 @@ void main() {
                 state: '已连接',
                 detail: '认证成功',
                 context: '以太网',
-                glyph: '✓',
                 tone: HomeTone.success,
                 secondaryLabel: '连接与诊断',
                 primaryLabel: '断开连接',
@@ -38,12 +37,12 @@ void main() {
                 onPrimary: () {},
                 actionError: error,
                 onDismissActionError: () => dismissed++,
-                notice: HomeNotice(
+                announcement: HomeAnnouncementEntry(
                   title: '吉林大学公告',
                   onOpen: () {},
                   feedback: announcement,
                 ),
-                business: const Text('服务器消息'),
+                serverMessages: const Text('服务器消息'),
               ),
             ),
           ),

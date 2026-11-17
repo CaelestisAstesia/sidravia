@@ -4,7 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/business_controller.dart';
-import 'package:sidravia_gui/features/home/business_panel.dart';
+import 'package:sidravia_gui/features/home/server_messages_panel.dart';
+import 'package:sidravia_gui/features/home/connection_information_view.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
@@ -143,7 +144,7 @@ void main() {
     await tester.pump();
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: BusinessPanel(controller: c)),
+        home: Scaffold(body: ServerMessagesPanel(controller: c)),
       ),
     );
     await tester.pumpAndSettle();
@@ -178,7 +179,7 @@ void main() {
           body: Column(
             children: [
               ConnectionInformationView(controller: c),
-              BusinessPanel(controller: c),
+              ServerMessagesPanel(controller: c),
             ],
           ),
         ),

@@ -1,3 +1,5 @@
+import 'support/configuration_editing.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -251,7 +253,7 @@ void main() {
         }
       }
       await tester.pump();
-      await tester.tap(find.text('返回'));
+      await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       client.gate.complete();
       await tester.pumpAndSettle();
@@ -370,6 +372,7 @@ void main() {
           } else {
             await tester.enterText(find.byType(TextField).first, 'new-user');
             if (op != GuiOperation.updateConfiguration) {
+              await openPasswordEditor(tester);
               await tester.enterText(
                 find.byType(TextField).last,
                 'fixture-password',

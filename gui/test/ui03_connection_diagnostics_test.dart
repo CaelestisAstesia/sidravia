@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
@@ -12,11 +12,12 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
-import 'package:sidravia_gui/features/home/business_panel.dart';
+import 'package:sidravia_gui/features/home/connection_information_view.dart';
 
 Future<void> tap(WidgetTester tester, String text) async {
-  await tester.ensureVisible(find.text(text));
-  await tester.tap(find.text(text));
+  final target = text == '返回' ? find.byTooltip('返回') : find.text(text);
+  await tester.ensureVisible(target);
+  await tester.tap(target);
   await tester.pumpAndSettle();
 }
 
@@ -43,7 +44,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tap(tester, '连接与诊断');
-        expect(find.byType(AdvancedPage), findsOneWidget);
+        expect(find.byType(ConnectionDiagnosticsPage), findsOneWidget);
         expect(find.text('核心服务状态'), findsNothing);
         expect(
           displayedSnapshot(
@@ -119,7 +120,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
-              body: AdvancedPage(controller: c, onBack: () {}),
+              body: ConnectionDiagnosticsPage(controller: c, onBack: () {}),
             ),
           ),
         );
@@ -174,7 +175,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('移除当前会话'), findsNothing);
         await tester.pumpWidget(
-          mount(AdvancedPage(controller: c, onBack: () {})),
+          mount(ConnectionDiagnosticsPage(controller: c, onBack: () {})),
         );
         await tester.pumpAndSettle();
         await tap(tester, '移除当前会话');

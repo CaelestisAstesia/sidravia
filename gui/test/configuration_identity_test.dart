@@ -1,3 +1,5 @@
+import 'support/configuration_editing.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -94,6 +96,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(policy.summary), findsOneWidget);
+    await openPasswordEditor(tester);
     expect(find.byType(TextField), findsNWidgets(2));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -206,6 +209,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).first, 'draft-for-A');
+        await openPasswordEditor(tester);
         await tester.enterText(find.byType(TextField).last, 'transient-draft');
         client.configurations = [otherConfiguration];
         await tester.pump(const Duration(milliseconds: 60));

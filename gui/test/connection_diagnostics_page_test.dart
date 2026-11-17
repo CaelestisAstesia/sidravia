@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
-import 'package:sidravia_gui/features/advanced/advanced_page.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
 
 void main() {
   testWidgets('diagnostics show unavailable facts without inventing values', (
@@ -19,7 +19,7 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: AdvancedPage(controller: controller, onBack: () {}),
+        home: ConnectionDiagnosticsPage(controller: controller, onBack: () {}),
       ),
     );
     await tester.pump();
@@ -43,7 +43,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: AdvancedPage(
+          body: ConnectionDiagnosticsPage(
             controller: controller,
 
             onBack: () {},

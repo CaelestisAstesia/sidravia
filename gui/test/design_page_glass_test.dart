@@ -101,7 +101,7 @@ void main() {
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
       await tester.pumpAndSettle();
       expect(find.byType(BackdropFilter), findsNothing);
-      expect(find.text('返回'), findsOneWidget);
+      expect(find.byTooltip('返回'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

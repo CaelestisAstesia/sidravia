@@ -1,7 +1,7 @@
 import 'support/runtime_snapshot.dart';
 import 'school_announcement_controller_test.dart' as school_dispatch;
 
-import 'package:sidravia_gui/features/home/business_panel.dart';
+import 'package:sidravia_gui/features/home/connection_information_view.dart';
 
 import 'dart:convert';
 import 'dart:io';
@@ -166,8 +166,8 @@ Future<void> render(
       expect(displayedSnapshot(tester)['backend'], isNotNull);
     }
     if (page == 'announcement-feedback') {
-      await tester.ensureVisible(find.byType(HomeNoticeView));
-      await tester.tap(find.byType(HomeNoticeView));
+      await tester.ensureVisible(find.byType(HomeAnnouncementEntryView));
+      await tester.tap(find.byType(HomeAnnouncementEntryView));
     }
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

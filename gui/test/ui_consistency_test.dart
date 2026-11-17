@@ -1,3 +1,5 @@
+import 'support/configuration_editing.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -59,12 +61,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.getRect(find.text('设置')), before);
-    expect(find.text('返回').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('返回').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   for (final replacement in [false, true]) {
     testWidgets(
-      'saved password placeholder, B discard, atomic password payload $replacement',
+      'saved password editor, cancellation and atomic password payload $replacement',
       (tester) async {
         final client = RecordingClient();
         final c = GuiController(
@@ -83,25 +85,29 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
+          expect(find.text('已保存密码'), findsOneWidget);
+          expect(find.byType(TextField), findsOneWidget);
+          await openPasswordEditor(tester);
           final account = find.byType(TextField).first,
               password = find.byType(TextField).last;
-          expect(
-            tester.widget<TextField>(password).decoration!.hintText,
-            '••••••••',
-          );
           expect(tester.widget<TextField>(password).controller!.text, isEmpty);
-          final original = tester.widget<TextField>(account).controller!.text;
           await tester.enterText(account, 'discarded');
           await tester.enterText(password, 'temporary');
-          await tester.ensureVisible(find.text('放弃修改'));
-          await tester.tap(find.text('放弃修改'));
+          await tester.tap(find.text('取消更改'));
           await tester.pumpAndSettle();
-          expect(tester.widget<TextField>(account).controller!.text, original);
-          expect(tester.widget<TextField>(password).controller!.text, isEmpty);
+          expect(
+            tester.widget<TextField>(account).controller!.text,
+            'discarded',
+          );
+          expect(find.byType(TextField), findsOneWidget);
+          expect(find.text('已保存密码'), findsOneWidget);
           expect(client.operations, isNot(contains('configuration.update')));
           expect(client.operations, isNot(contains('session.stop')));
           await tester.enterText(account, 'changed');
-          if (replacement) await tester.enterText(password, 'replacement');
+          if (replacement) {
+            await openPasswordEditor(tester);
+            await tester.enterText(password, 'replacement');
+          }
           await tester.ensureVisible(find.text('保存修改'));
           await tester.pump();
           await tester.tap(find.text('保存修改'));

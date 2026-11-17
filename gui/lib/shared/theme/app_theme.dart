@@ -33,7 +33,7 @@ abstract final class AppButtonStyles {
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+    shape: const StadiumBorder(),
     textStyle: const TextStyle(
       fontFamily: 'HarmonyOS Sans',
       fontSize: DesignMetrics.bodyFont,
@@ -47,7 +47,7 @@ abstract final class AppButtonStyles {
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+    shape: const StadiumBorder(),
     side: const BorderSide(color: AppColors.lineLight),
     backgroundColor: AppColors.surfaceLight,
     foregroundColor: AppColors.inkLight,
@@ -178,7 +178,7 @@ abstract final class AppTheme {
             fontWeight: FontWeight.w500,
             height: 20 / 13,
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+          shape: const StadiumBorder(),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -200,6 +200,10 @@ abstract final class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: AppButtonStyles.primary.copyWith(
+          elevation: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled) ? 0 : 1,
+          ),
+          shadowColor: WidgetStatePropertyAll(scheme.shadow),
           backgroundColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.disabled)
                 ? scheme.onSurface.withValues(alpha: .12)
@@ -214,6 +218,10 @@ abstract final class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: AppButtonStyles.secondary.copyWith(
+          elevation: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled) ? 0 : 1,
+          ),
+          shadowColor: WidgetStatePropertyAll(scheme.shadow),
           backgroundColor: WidgetStatePropertyAll(scheme.surface),
           foregroundColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.disabled)

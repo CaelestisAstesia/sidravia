@@ -8,7 +8,6 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/theme/gui_settings.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
-import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
 void main() {
   for (final width in [360.0, 960.0]) {
@@ -78,54 +77,47 @@ void main() {
     expect(find.text('请输入密码'), findsOneWidget);
     expect(find.textContaining('首次填写'), findsNothing);
   });
-  testWidgets('first credential hint belongs to password and discard closes', (
-    tester,
-  ) async {
-    final client = OfflineDemoClient()..selectScenario('empty');
-    final c = GuiController(
-      bootstrapper: OfflineDemoBootstrap(),
-      connector: (_) async => client,
-      pollDelay: const Duration(days: 1),
-    );
-    await c.start();
-    try {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ConfigurationPage(controller: c, onBack: () {}),
+  testWidgets(
+    'first credential hint belongs to password and leaving confirms discard',
+    (tester) async {
+      final client = OfflineDemoClient()..selectScenario('empty');
+      final c = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+      );
+      await c.start();
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ConfigurationPage(controller: c, onBack: () {}),
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final row = find.ancestor(
-        of: find.text('首次连接请填写账号和密码'),
-        matching: find.byType(DesignInputRow),
-      );
-      expect(tester.widget<DesignInputRow>(row).label, '密码');
-      await tester.enterText(find.byType(TextField).first, 'draft');
-      await tester.ensureVisible(find.text('放弃修改'));
-      await tester.pump();
-      await tester.tap(find.text('放弃修改'));
-      await tester.pumpAndSettle();
-      expect(find.text('已放弃修改'), findsOneWidget);
-      expect(find.byType(FeedbackPill), findsOneWidget);
-      expect(
-        tester.widget<TextField>(find.byType(TextField).first).controller!.text,
-        '',
-      );
-      final operations = List<String>.of(client.operations);
-      await tester.ensureVisible(find.byTooltip('关闭提示'));
-      await tester.tap(find.byTooltip('关闭提示'));
-      await tester.pump();
-      expect(find.text('已放弃修改'), findsNothing);
-      expect(client.operations, operations);
-      expect(c.snapshot!.configurations, isEmpty);
-    } finally {
-      await tester.pumpWidget(const SizedBox());
-      await c.close();
-      c.dispose();
-    }
-  });
+        );
+        await tester.pumpAndSettle();
+        final row = find.ancestor(
+          of: find.text('首次连接请填写账号和密码'),
+          matching: find.byType(DesignInputRow),
+        );
+        expect(tester.widget<DesignInputRow>(row).label, '密码');
+        await tester.enterText(find.byType(TextField).first, 'draft');
+        expect(find.text('放弃修改'), findsNothing);
+        await tester.tap(find.byTooltip('返回'));
+        await tester.pumpAndSettle();
+        expect(find.text('放弃未保存的修改？'), findsOneWidget);
+        final operations = List<String>.of(client.operations);
+        await tester.tap(find.text('放弃修改'));
+        await tester.pumpAndSettle();
+        expect(client.operations, operations);
+        expect(c.snapshot!.configurations, isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await c.close();
+        c.dispose();
+      }
+    },
+  );
   testWidgets('settings explanations belong to their specific rows', (
     tester,
   ) async {

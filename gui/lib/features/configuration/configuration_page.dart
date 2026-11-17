@@ -2,6 +2,7 @@ import 'package:sidravia_gui/application/gui_network_binding.dart';
 import 'package:sidravia_gui/application/gui_operation.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:sidravia_gui/features/configuration/network_binding_section.dart';
+import 'package:sidravia_gui/features/configuration/configuration_password_row.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
@@ -187,6 +188,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           ),
         if (unavailable) const DesignHelper('通信或配置状态暂不可用；草稿已保留，请恢复后再保存。'),
         DesignGroup(
+          key: const ValueKey('configuration-fields'),
           children: [
             DesignChoiceRow<String>(
               title: '机构',
@@ -203,14 +205,12 @@ class ConfigurationPageState extends State<ConfigurationPage> {
               hint: '输入账号',
               error: _usernameError,
             ),
-            DesignInputRow(
-              label: '密码',
+            ConfigurationPasswordRow(
               controller: _password,
               enabled: !_saving && !widget.controller.busy && _canSave,
-              obscureText: true,
-              hint: _credentialStored ? '••••••••' : '输入密码',
+              credentialStored: _credentialStored,
               error: _passwordError,
-              helper: _credentialStored ? '留空保留原密码' : '首次连接请填写账号和密码',
+              onCancel: () => setState(() => _passwordError = null),
             ),
             NetworkBindingSection(
               controller: widget.controller,
@@ -227,23 +227,17 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           builder: (context, _) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              FilledButton(
-                onPressed: _saving || !_canSave || !_dirty ? null : _save,
-                child: Text(_saving ? '正在保存…' : '保存修改'),
-              ),
               Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton(
-                  onPressed:
-                      _saving || widget.controller.busy || !_canSave || !_dirty
-                      ? null
-                      : _discard,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant,
+                alignment: Alignment.center,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _saving || !_canSave || !_dirty ? null : _save,
+                      child: Text(_saving ? '正在保存…' : '保存修改'),
+                    ),
                   ),
-                  child: const Text('放弃修改'),
                 ),
               ),
             ],
@@ -284,26 +278,6 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         ],
       ],
     );
-  }
-
-  void _discard() {
-    _sync();
-    if (_saving ||
-        _prompting ||
-        widget.controller.busy ||
-        !_canSave ||
-        _targetChanged) {
-      return;
-    }
-    setState(() {
-      _profile = _originalProfile;
-      _username.text = _originalUsername ?? '';
-      _password.clear();
-      _binding = _originalBinding;
-      _usernameError = null;
-      _passwordError = null;
-      _saveResult = '已放弃修改。';
-    });
   }
 
   Future<void> _confirmDelete() async {

@@ -37,7 +37,6 @@ void main() {
                       state: label,
                       detail: '状态说明',
                       context: '',
-                      glyph: '✓',
                       tone: HomeTone.success,
                       secondaryLabel: '连接与诊断',
                       primaryLabel: '断开连接',

@@ -26,7 +26,6 @@ void main() {
             state: '已连接',
             detail: '认证成功',
             context: '',
-            glyph: '✓',
             tone: HomeTone.success,
             secondaryLabel: '连接与诊断',
             primaryLabel: '断开连接',
@@ -50,7 +49,6 @@ void main() {
                       state: fixture.state,
                       detail: fixture.detail,
                       context: fixture.context,
-                      glyph: fixture.glyph,
                       tone: fixture.tone,
                       secondaryLabel: fixture.secondaryLabel,
                       primaryLabel: fixture.primaryLabel,
@@ -58,7 +56,7 @@ void main() {
                       primaryEnabled: true,
                       onHeader: () => configurationClicks++,
                       onSettings: () => settingsClicks++,
-                      notice: HomeNotice(
+                      announcement: HomeAnnouncementEntry(
                         title: '查看吉林大学公告',
                         onOpen: () => noticeClicks++,
                       ),
@@ -77,8 +75,8 @@ void main() {
           final settings = find.byKey(const ValueKey('home-settings-button'));
           final left = tester.getRect(configuration);
           final right = tester.getRect(settings);
-          expect(left.top, right.top);
-          expect(left.bottom, right.bottom);
+          expect(left.center.dy, right.center.dy);
+          expect(right.width, right.height);
           final header = tester.getRect(
             find.byKey(const ValueKey('home-header')),
           );

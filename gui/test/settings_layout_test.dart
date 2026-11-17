@@ -38,6 +38,18 @@ void main() {
         ),
       );
       final frame = tester.getRect(find.byKey(const ValueKey('frame')));
+      final label = find.text('隐藏到托盘');
+      final arrow = tester.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('trigger')),
+          matching: find.byKey(const ValueKey('settings-dropdown-arrow')),
+        ),
+      );
+      expect(
+        tester.getRect(label).left - frame.left,
+        closeTo(frame.right - arrow.right, .01),
+      );
+      expect(tester.widget<Text>(label).textAlign, TextAlign.start);
       await tester.tap(find.byKey(const ValueKey('trigger')));
       await tester.pumpAndSettle();
       for (final item in find.byType(MenuItemButton).evaluate()) {
@@ -108,26 +120,32 @@ void main() {
 
   for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
     for (final label in ['返回']) {
-      testWidgets('back button equal horizontal gutters $platform $label', (
-        tester,
-      ) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: AppTheme.light().copyWith(platform: platform),
-            home: Scaffold(
-              body: DesignHeader(title: '设置', onBack: () {}),
+      testWidgets(
+        'back button circular target and centered icon $platform $label',
+        (tester) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.light().copyWith(platform: platform),
+              home: Scaffold(
+                body: DesignHeader(title: '设置', onBack: () {}),
+              ),
             ),
-          ),
-        );
-        final back = find.byKey(const ValueKey('design-back-button'));
-        final button = tester.getRect(back);
-        final row = tester.getRect(
-          find.descendant(of: back, matching: find.byType(Row)),
-        );
-        expect(row.left - button.left, 12);
-        expect(button.right - row.right, 12);
-        expect(tester.takeException(), isNull);
-      });
+          );
+          final back = find.byKey(const ValueKey('design-back-button'));
+          final button = tester.getRect(back);
+          final icon = tester.getRect(
+            find.descendant(of: back, matching: find.byType(Icon)),
+          );
+          expect(button.width, button.height);
+          expect(button.width, platform == TargetPlatform.android ? 48 : 42);
+          expect(icon.center, button.center);
+          final widget = tester.widget<IconButton>(
+            find.descendant(of: back, matching: find.byType(IconButton)),
+          );
+          expect(widget.style!.shape!.resolve({}), isA<CircleBorder>());
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
   }
 
@@ -234,7 +252,8 @@ void main() {
       );
       final back = find.byKey(const ValueKey('design-back-button'));
       final before = tester.getRect(back);
-      expect(before.left, 24);
+      expect(before.left, (width - width.clamp(0, 720)) / 2 + 24);
+      expect(tester.getRect(find.byType(DesignHeader)).center.dx, width / 2);
       final appearanceBox = tester.getRect(
         find.byKey(const ValueKey('appearance-selector')),
       );

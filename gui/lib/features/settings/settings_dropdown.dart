@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/theme/design_effects.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 
@@ -31,9 +32,11 @@ class SettingsDropdown<T> extends StatelessWidget {
       color: onChanged == null ? scheme.onSurfaceVariant : scheme.onSurface,
     );
     final width = DesignMetrics.choiceWidth(MediaQuery.sizeOf(context).width);
-    // Both surfaces use a common height, measured with the trigger's narrower
-    // text area (padding and trailing arrow excluded).
-    final textWidth = width - 14 - 24;
+    // Equal edge padding for the leading label and trailing arrow. Measure
+    // long labels after reserving only the actual trailing arrow slot.
+    const horizontalPadding = 12.0;
+    const arrowWidth = 10.0;
+    final textWidth = width - 2 * horizontalPadding - arrowWidth;
     double textHeight = 0;
     for (final label in [...labels.values, ?hint]) {
       final painter = TextPainter(
@@ -45,8 +48,7 @@ class SettingsDropdown<T> extends StatelessWidget {
       painter.dispose();
     }
     final platform = Theme.of(context).platform;
-    final touch =
-        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+    final touch = DesignMetrics.isTouchPlatform(platform);
     final height = (textHeight + DesignMetrics.rowPadding)
         .clamp(
           touch ? DesignMetrics.touchTarget : DesignMetrics.choiceMinHeight,
@@ -57,15 +59,13 @@ class SettingsDropdown<T> extends StatelessWidget {
       fixedSize: Size(width, height),
       minimumSize: Size.zero,
       maximumSize: Size(width, height),
-      padding: const EdgeInsets.symmetric(horizontal: 7),
+      padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.standard,
       alignment: AlignmentDirectional.centerStart,
       textStyle: style,
       foregroundColor: scheme.onSurface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
-      ),
+      shape: const StadiumBorder(),
     );
     return SizedBox(
       key: frameKey,
@@ -94,7 +94,9 @@ class SettingsDropdown<T> extends StatelessWidget {
               trailingIcon: entry.key == value
                   ? const Icon(Icons.check, size: 16)
                   : null,
-              style: buttonStyle,
+              style: buttonStyle.copyWith(
+                shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
+              ),
               onPressed: onChanged == null || disabledValues.contains(entry.key)
                   ? null
                   : () => onChanged!(entry.key),
@@ -106,10 +108,10 @@ class SettingsDropdown<T> extends StatelessWidget {
             ),
         ],
         builder: (context, menu, _) => DecoratedBox(
-          decoration: BoxDecoration(
+          decoration: ShapeDecoration(
             color: scheme.surfaceContainerHighest,
-            border: Border.all(color: scheme.outline),
-            borderRadius: BorderRadius.circular(DesignMetrics.choiceRadius),
+            shape: StadiumBorder(side: BorderSide(color: scheme.outline)),
+            shadows: DesignEffects.subtleShadow(scheme),
           ),
           child: TextButton(
             key: dropdownKey,
@@ -133,9 +135,17 @@ class SettingsDropdown<T> extends StatelessWidget {
                     textAlign: TextAlign.start,
                   ),
                 ),
+                // Keep the Material glyph's intrinsic side bearings outside
+                // its slot so the visible arrow has the same edge inset.
                 const SizedBox(
-                  width: 24,
-                  child: Icon(Icons.arrow_drop_down, size: 20),
+                  key: ValueKey('settings-dropdown-arrow'),
+                  width: arrowWidth,
+                  height: 20,
+                  child: OverflowBox(
+                    minWidth: 20,
+                    maxWidth: 20,
+                    child: Icon(Icons.arrow_drop_down, size: 20),
+                  ),
                 ),
               ],
             ),
