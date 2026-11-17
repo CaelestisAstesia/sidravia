@@ -17,7 +17,9 @@ String captureRuntimeSnapshot(
   Object? endpoint(NetworkEndpoint? e) =>
       e == null ? null : {'address': e.address, 'port': e.port};
   return const JsonEncoder.withIndent('  ').convert({
-    'capturedAt': (capturedAt ?? DateTime.now()).toUtc().toIso8601String(),
+    'capturedAt': (capturedAt ?? controller.presentationClock.now)
+        .toUtc()
+        .toIso8601String(),
     'frontend': {
       'connectionState': controller.state.name,
       'busy': controller.busy,

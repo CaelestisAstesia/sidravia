@@ -31,7 +31,8 @@ class GuiController extends ChangeNotifier {
     this.pollDelay = const Duration(seconds: 3),
     this.stopTimeout = const Duration(seconds: 4),
     this.reconnectDelay = const Duration(seconds: 1),
-  });
+    ConnectionClock? presentationClock,
+  }) : presentationClock = presentationClock ?? ConnectionClock();
 
   final GuiBootstrapper bootstrapper;
   final IpcConnector connector;
@@ -74,7 +75,8 @@ class GuiController extends ChangeNotifier {
   GuiBootstrapFailure? get failure => _failure;
   GuiSnapshot? get snapshot => _snapshot;
   String? get notice => _notice;
-  final presentationClock = ConnectionClock();
+  // Owned here, including an injected clock; disposed with the controller.
+  final ConnectionClock presentationClock;
   final business = BusinessController();
   bool _presentationVisible = true;
   bool _businessViewVisible = true;

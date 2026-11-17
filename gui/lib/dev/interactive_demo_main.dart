@@ -2,6 +2,8 @@ import 'package:sidravia_gui/licensing/source_code_pro_font_license.dart';
 
 import 'dart:async';
 
+import 'package:sidravia_gui/application/connection_clock.dart';
+
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
@@ -54,7 +56,8 @@ Future<void> main() async {
 
 /// Composition only: every destination is the unchanged production page.
 class OfflineDemoApp extends StatefulWidget {
-  const OfflineDemoApp({super.key, this.appearance});
+  const OfflineDemoApp({super.key, this.appearance, this.fixedTime});
+  final DateTime? fixedTime;
   final GuiPreferences? appearance;
   @override
   State<OfflineDemoApp> createState() => _OfflineDemoAppState();
@@ -73,17 +76,22 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
   @override
   void initState() {
     super.initState();
-    _client = OfflineDemoClient();
+    final fixedTime = widget.fixedTime;
+    _client = OfflineDemoClient(now: fixedTime);
     _controller = GuiController(
       bootstrapper: OfflineDemoBootstrap(),
       connector: (_) async => _client,
+      presentationClock: fixedTime == null
+          ? null
+          : ConnectionClock(now: () => fixedTime),
     );
     _announcements = SchoolAnnouncementController(
       preferences: _appearance,
       desktop: DesktopPresence.disabled(),
       window: _OfflineAnnouncementWindow(_navigator),
       notifications: SchoolAnnouncementNotifications.disabled(),
-      startedAt: DateTime.now(),
+      startedAt: fixedTime ?? DateTime.now(),
+      clock: () => fixedTime ?? DateTime.now(),
     );
     _controller.addListener(_updateAnnouncements);
     _updateAnnouncements();
