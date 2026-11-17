@@ -27,6 +27,43 @@ def load():
 
 @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'pidfd_open'), 'requires Linux pidfds')
 class MaintenanceContracts(unittest.TestCase):
+    def test_process_inventory_accepts_old_and_new_payloads_but_requires_core(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            (app / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
+            for name in ('sidravia_gui', 'sidraviad', 'sidraviactl'):
+                (app / name).write_bytes(b'fixture')
+            with mock.patch.object(m, 'APP', app), mock.patch.object(Path, 'iterdir', return_value=[]):
+                self.assertEqual(m.targets(), [])
+                (app / 'sidraviaupdater').write_bytes(b'old updater')
+                self.assertEqual(m.targets(), [])
+                (app / 'sidraviad').unlink()
+                with self.assertRaises(FileNotFoundError):
+                    m.targets()
+
+    def test_inventory_still_finds_running_legacy_updater(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            (app / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
+            for name in ('sidravia_gui', 'sidraviad', 'sidraviactl'):
+                (app / name).write_bytes(b'fixture')
+            shutil.copy2(shutil.which('sleep'), app / 'sidraviaupdater')
+            process = subprocess.Popen([str(app / 'sidraviaupdater'), '30'])
+            try:
+                with mock.patch.object(m, 'APP', app), mock.patch.object(Path, 'iterdir', return_value=[Path('/proc') / str(process.pid)]):
+                    entries = m.targets()
+                try:
+                    self.assertEqual([name for name, _ in entries], ['sidraviaupdater'])
+                    self.assertTrue(m.alive(entries[0][1]))
+                finally:
+                    for _, fd in entries:
+                        os.close(fd)
+            finally:
+                process.terminate()
+                process.wait(timeout=3)
+
     def test_guard_setup_failure_cannot_acknowledge_success(self):
         m = load()
         with tempfile.TemporaryDirectory(prefix='rpm-guard-failure-') as tmp:

@@ -29,7 +29,15 @@ def targets():
     if (APP / 'sidravia.rpm').read_text() != 'sidravia-rpm-v1\n':
         raise RuntimeError('installed package identity unavailable')
     directory = identity(APP)
-    expected = {name: identity(APP / name) for name in NAMES}
+    expected = {}
+    for name in NAMES:
+        try:
+            expected[name] = identity(APP / name)
+        except FileNotFoundError:
+            # Older RPMs carried the portable updater. Keep matching it during
+            # upgrades, but new installations deliberately omit it.
+            if name != 'sidraviaupdater':
+                raise
     found = []
     try:
         for proc in Path('/proc').iterdir():
@@ -52,7 +60,7 @@ def targets():
                     os.close(fd)
                     fd = None
                     continue
-                if identity(proc / 'exe') != expected[name]:
+                if name not in expected or identity(proc / 'exe') != expected[name]:
                     os.close(fd)
                     fd = None
                     raise RuntimeError('an older executable generation is still active')

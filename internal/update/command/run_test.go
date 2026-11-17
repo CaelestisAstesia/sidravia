@@ -50,7 +50,7 @@ func TestCacheLockIsExclusive(t *testing.T) {
 func TestRPMOwnershipRequiresExactInstalledMarker(t *testing.T) {
 	root := t.TempDir()
 	layout := productlayout.Layout{Mode: productlayout.ModeInstalled, ExecutableDirectory: root}
-	if rpmManaged(layout) {
+	if productlayout.RPMManaged(layout) {
 		t.Fatal("unmarked installation treated as RPM")
 	}
 	path := filepath.Join(root, "sidravia.rpm")
@@ -58,12 +58,12 @@ func TestRPMOwnershipRequiresExactInstalledMarker(t *testing.T) {
 		if err := os.WriteFile(path, []byte(value), 0644); err != nil {
 			t.Fatal(err)
 		}
-		if rpmManaged(layout) != (value == "sidravia-rpm-v1\n") {
+		if productlayout.RPMManaged(layout) != (value == "sidravia-rpm-v1\n") {
 			t.Fatal("marker ownership mismatch")
 		}
 	}
 	layout.Mode = productlayout.ModePortable
-	if rpmManaged(layout) {
+	if productlayout.RPMManaged(layout) {
 		t.Fatal("portable treated as RPM")
 	}
 }

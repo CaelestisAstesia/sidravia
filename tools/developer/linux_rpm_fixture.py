@@ -252,7 +252,7 @@ def run(root, packages, receipts, environment, source, current_source):
             raise RuntimeError('RPM incorrectly enabled portable mode')
         command(['desktop-file-validate', str(sysroot / f'usr/share/applications/{DESKTOP}.desktop')], 'desktop-validate')
         # The installed updater must refuse network access/archive selection.
-        update = subprocess.run(sandbox() + ['/usr/bin/sidraviaupdater', 'check'], env=env, capture_output=True, text=True, timeout=15)
+        update = subprocess.run(sandbox() + ['/usr/bin/sidraviactl', 'update', 'check'], env=env, capture_output=True, text=True, timeout=15)
         (owned / 'installed-updater.log').write_text(update.stdout + update.stderr)
         if not update.stdout.strip():
             raise RuntimeError('installed updater failed before JSON response; see installed-updater.log')

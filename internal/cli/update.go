@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/productlayout"
 )
 
 type updateOutput struct{ data []byte }
@@ -23,7 +25,16 @@ func (b *updateOutput) Write(p []byte) (int, error) {
 	b.data = append(b.data, p...)
 	return len(p), nil
 }
-func invokeUpdater(ctx context.Context, args []string) ([]byte, error) {
+func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.Identity) ([]byte, error) {
+	if runtime.GOOS == "linux" {
+		layout, err := productlayout.Resolve()
+		if err != nil {
+			return nil, err
+		}
+		if productlayout.RPMManaged(layout) {
+			return rpmUpdateOutput(args, identity)
+		}
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -45,8 +56,17 @@ func invokeUpdater(ctx context.Context, args []string) ([]byte, error) {
 	}
 	return output.data, err
 }
+
+// RPM updates belong to the system package manager; no downloader is needed.
+func rpmUpdateOutput(args []string, identity clientbootstrap.Identity) ([]byte, error) {
+	if len(args) == 1 && args[0] == "version" {
+		return json.Marshal(map[string]any{"schemaVersion": 1, "ok": true, "code": "ok", "result": map[string]string{"productVersion": identity.ProductVersion, "buildId": identity.BuildID}})
+	}
+	return json.Marshal(map[string]any{"schemaVersion": 1, "ok": false, "code": "system_package_managed", "message": "此安装由 RPM 管理，请使用系统包管理器更新。"})
+}
+
 func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error)) *cobra.Command {
-	group := &cobra.Command{Use: "update", Short: "通过独立更新器检查和下载更新"}
+	group := &cobra.Command{Use: "update", Short: "检查和下载更新"}
 	for _, operation := range []string{"check", "download", "status", "apply", "version"} {
 		var channel, kind, candidate string
 		command := &cobra.Command{Use: operation, Short: operation, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
