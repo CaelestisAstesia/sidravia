@@ -33,7 +33,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	entries := append([]zipEntry{{"LICENSE", license, 0644}}, profiles...)
 	buildInfoIndex := len(entries)
 	entries = append(entries, zipEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
-	if strings.HasPrefix(t.cfg.target, "windows-") {
+	if t.cfg.iscc != "" {
 		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
 		if err != nil {
 			return fmt.Errorf("read application icon: %w", err)
@@ -128,7 +128,15 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			return err
 		}
 	}
-	portable := append(append([]zipEntry(nil), entries...), zipEntry{"sidravia.portable", nil, 0644})
+	var portable []zipEntry
+	for _, entry := range entries {
+		// This external icon is used by Inno's setup/uninstall entries only;
+		// the native GUI executable already embeds its own icon resource.
+		if entry.name != "app_icon.ico" {
+			portable = append(portable, entry)
+		}
+	}
+	portable = append(portable, zipEntry{"sidravia.portable", nil, 0644})
 	base := "sidravia-v" + t.cfg.version + "-" + t.cfg.target
 	kind := "core-portable"
 	if len(gui) > 0 {

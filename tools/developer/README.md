@@ -128,6 +128,8 @@ OS/architecture targets. Linux GUI and RPM use the native Fedora entries below;
 they are not produced by that workflow.
 
 Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
+The external Windows ICO belongs to setup/uninstall integration and is staged
+only for Inno. Portable archives do not carry it; the GUI EXE embeds its icon.
 ZIP and gzip archives use the standard library's best compression level; their
 formats, content and extraction requirements are unchanged.
 

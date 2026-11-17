@@ -143,7 +143,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     roles = ['sidraviactl', 'sidraviad', 'sidraviaupdater']
     if windows:
         roles.append('sidraviamgr')
-        expected['app_icon.ico'] = (repo / 'gui/windows/runner/resources/app_icon.ico').read_bytes()
     if gui is not None:
         gui_files = {}
         for path in gui.rglob('*'):

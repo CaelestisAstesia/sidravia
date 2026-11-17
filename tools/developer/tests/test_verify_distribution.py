@@ -72,7 +72,6 @@ class DistributionContract(unittest.TestCase):
             contents['sidraviad.exe'] = contents.pop('sidraviad')
             contents['sidraviaupdater.exe'] = contents.pop('sidraviaupdater')
             contents['sidraviamgr.exe'] = b'manager'
-            contents['app_icon.ico'] = b'gui/windows/runner/resources/app_icon.ico'
             if gui and target == 'windows-amd64':
                 contents.update({p.relative_to(self.gui).as_posix(): p.read_bytes() for p in self.gui.rglob('*') if p.is_file()})
         names = ['sidraviactl.exe', 'sidraviad.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'] if target.startswith('windows-') else ['sidraviactl', 'sidraviad', 'sidraviaupdater']
