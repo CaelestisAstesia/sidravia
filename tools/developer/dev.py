@@ -396,7 +396,7 @@ def parse_args(argv=None):
             sub.add_argument("--windows-go", default=r"C:\Program Files\Go\bin\go.exe")
             sub.add_argument("--windows-python")
             sub.add_argument("--iscc")
-            sub.add_argument("--version", default="0.4.0-alpha.1")
+            sub.add_argument("--version", default="0.5.0-alpha.1")
             sub.add_argument("--package", action="store_true")
             sub.add_argument("--check-gui", action="store_true")
         if command == "package":

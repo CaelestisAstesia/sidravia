@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Go,
     [string]$Python = '',
     [string]$ISCC = '',
-    [string]$Version = '0.4.0-alpha.1',
+    [string]$Version = '0.5.0-alpha.1',
     [switch]$Package,
     [switch]$CheckGUI,
     [ValidateRange(1,86400)][int]$StageTimeoutSeconds = 900
