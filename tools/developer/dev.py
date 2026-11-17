@@ -312,8 +312,18 @@ def preview_command(args, env):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check", "visual"):
         sub = subs.add_parser(command)
+        if command == "visual":
+            sub.add_argument("mode", choices=("capture", "compare"))
+            sub.add_argument("--output", required=True, help="new owned output directory; never overwrite a baseline")
+            sub.add_argument("--font-manifest", help="explicit font family/file JSON for capture")
+            sub.add_argument("--request", help="optional capture matrix/fixed-time JSON")
+            sub.add_argument("--flutter", default=".local/bin/flutter")
+            sub.add_argument("--stage-timeout", type=int, choices=range(1, 3601), default=900, metavar="SECONDS")
+            sub.add_argument("--baseline")
+            sub.add_argument("--candidate")
+            sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "check":
             sub.add_argument("--scope", action="append", choices=("go", "python", "gui"), help="repeat to combine scopes; default go+python")
             sub.add_argument("--go-checks", choices=("native", "cross", "full"), default="native")
@@ -389,6 +399,19 @@ def main(argv=None):
     args = parse_args(argv)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
+        if args.command == "visual":
+            import visual_checks
+            if args.mode == "capture":
+                if not args.font_manifest or args.baseline or args.candidate:
+                    raise ValueError("capture requires --font-manifest, without --baseline/--candidate")
+                def visual_identity():
+                    return {"commit": capture(["git", "rev-parse", "HEAD"], env),
+                            "status": capture(["git", "status", "--porcelain", "--untracked-files=all"], env),
+                            "source_fingerprint": source_fingerprint(env)}
+                return visual_checks.capture(ROOT, args, visual_identity)
+            if not args.baseline or not args.candidate or args.request or args.font_manifest:
+                raise ValueError("compare requires --baseline/--candidate, without capture inputs")
+            return visual_checks.compare(args)
         if args.command == "check":
             import verification_commands
             def identity():

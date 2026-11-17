@@ -130,16 +130,30 @@ def stage_command(stage, directory):
     return [sys.executable, str(Path(__file__).resolve()), "--worker", str(request)]
 
 
-def run_request(request, directory):
+def run_request(request, directory, initial_report=None):
     validate_request(request)
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     report_path = directory / "report.json"
-    if report_path.exists():
-        raise ValueError("report already exists; use a new run directory")
-    report = {"schema": 1, "kind": "command-sequence", "status": "running", "source": request.get("source"), "stages": []}
+    if initial_report is None:
+        if report_path.exists():
+            raise ValueError("report already exists; use a new run directory")
+        report = {"schema": 1, "kind": "command-sequence", "status": "running", "source": request.get("source"), "stages": []}
+        prior_seconds = 0
+        failed = False
+    else:
+        # Explicit continuation lets a validated SDK stage bind the following
+        # commands' environment without repeating it or losing its logs.
+        if not isinstance(initial_report, dict) or initial_report.get("kind") != "command-sequence" or initial_report.get("status") not in ("passed", "failed") or not report_path.is_file() or read_json(report_path) != initial_report or initial_report.get("source") != request.get("source"):
+            raise ValueError("continuation must match the existing owned report and source")
+        previous = {s["name"] for s in initial_report["stages"]}
+        if any(s["name"] in previous for s in request["stages"]):
+            raise ValueError("continuation cannot overwrite a completed stage")
+        report = initial_report
+        prior_seconds = report.get("duration_seconds", 0)
+        failed = report["status"] != "passed"
+        report["status"] = "running"
     started = time.monotonic()
-    failed = False
     try:
         for stage in request["stages"]:
             row = {"name": stage["name"], "argv": stage["argv"], "cwd": stage.get("cwd", "."), "status": "not_run", "exit_code": None, "duration_seconds": 0}
@@ -184,7 +198,7 @@ def run_request(request, directory):
     finally:
         if report["status"] == "running":
             report["status"] = "interrupted"
-        report["duration_seconds"] = round(time.monotonic() - started, 3)
+        report["duration_seconds"] = round(prior_seconds + time.monotonic() - started, 3)
         write_json(report_path, report)
     return report
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -64,14 +65,8 @@ def plan(root, args):
     return runner.validate_request({'schema':1,'stages':stages})
 
 
-def run(root, args, identity):
-    request = plan(root, args)
-    request['source'] = identity()
-    if args.plan:
-        print(json.dumps(request, ensure_ascii=False, indent=2))
-        return 0
-    directory = Path(args.reports).resolve()
-    directory.mkdir(parents=True, exist_ok=True)
+@contextlib.contextmanager
+def worktree_lock(root):
     # One owner per worktree: Flutter tools touch the same generated state.
     lock = root/'.local'/'verification.lock'
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -89,12 +84,38 @@ def run(root, args, identity):
                 fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError('another check owns this worktree') from None
+        yield
+
+
+def run(root, args, identity):
+    request = plan(root, args)
+    request['source'] = identity()
+    if args.plan:
+        print(json.dumps(request, ensure_ascii=False, indent=2))
+        return 0
+    directory = Path(args.reports).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    with worktree_lock(root):
         output = Path(tempfile.mkdtemp(prefix=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-check-'), dir=directory))
         runner.write_json(output/'request.json',request)
         try:
             request['environment'] = {}
             runner.write_json(output/'request.json',request)
-            report = runner.run_request(request,output)
+            sdk_index = next((i for i,s in enumerate(request['stages']) if s['name']=='gui-sdk'),None)
+            if sdk_index is None:
+                report = runner.run_request(request,output)
+            else:
+                prefix = dict(request,stages=request['stages'][:sdk_index+1])
+                report = runner.run_request(prefix,output)
+                remaining = request['stages'][sdk_index+1:]
+                if report['status']=='passed':
+                    sdk = runner.read_json(output/'gui-sdk.stdout.log')
+                    path = str(Path(sdk['flutterRoot'])/'bin')+os.pathsep+os.environ.get('PATH','')
+                    for stage in remaining:
+                        stage.setdefault('environment',{})['PATH'] = path
+                runner.write_json(output/'request.json',request)
+                if remaining:
+                    report = runner.run_request(dict(request,stages=remaining),output,initial_report=report)
         except Exception as error:
             report = runner.read_json(output/'report.json') if (output/'report.json').exists() else {'schema':1,'kind':'verification','source':request['source'],'stages':[]}
             report.update(status='failed',error=type(error).__name__+': '+str(error))

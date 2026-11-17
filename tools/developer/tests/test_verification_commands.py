@@ -108,3 +108,27 @@ class CheckPlanning(unittest.TestCase):
             self.assertTrue(all(s['status']=='not_run' for s in result['stages'][1:]))
             time.sleep(1.5)
             self.assertFalse(sentinel.exists())
+
+    @unittest.skipIf(os.name == 'nt', 'Unix executable fixture; Windows uses the same metadata binding')
+    def test_sdk_metadata_binds_fixed_dart_for_subprocess_checks(self):
+        actual_root=Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/'tools').mkdir();(root/'tools/developer').symlink_to(actual_root/'tools/developer',target_is_directory=True)
+            (root/'gui').mkdir();(root/'gui/.flutter-version').write_text('fixture')
+            sdk=root/'sdk';(sdk/'bin').mkdir(parents=True)
+            dart=sdk/'bin/dart';dart.write_text('#!'+sys.executable+'\nprint("fixed-dart")\n');dart.chmod(0o700)
+            flutter=root/'wrapper-flutter'
+            script='#!'+sys.executable+'\nimport sys,json,shutil,subprocess,os\n'
+            script+='if sys.argv[1]=="--version":print(json.dumps('+repr({'frameworkVersion':'fixture','flutterRoot':str(sdk)})+'))\n'
+            script+='else:\n assert os.path.realpath(shutil.which("dart"))=='+repr(str(dart))+'\n subprocess.run(["dart","--version"],check=True)\n'
+            flutter.write_text(script);flutter.chmod(0o700)
+            args=dev.parse_args(['check','--scope','gui','--flutter',str(flutter),'--format','json','--reports',str(root/'evidence')])
+            stdout=io.StringIO()
+            with contextlib.redirect_stdout(stdout):code=checks.run(root,args,lambda:{'commit':'fixture'})
+            result=json.loads(stdout.getvalue())
+            self.assertEqual(code,0)
+            self.assertEqual([s['name'] for s in result['stages']],['gui-sdk','gui-dependencies','gui-analyze','gui-tests'])
+            request=json.loads((Path(result['report']).parent/'request.json').read_text())
+            self.assertNotIn('PATH',request['stages'][0].get('environment',{}))
+            self.assertTrue(all(s['environment']['PATH'].startswith(str(sdk/'bin')) for s in request['stages'][1:]))
