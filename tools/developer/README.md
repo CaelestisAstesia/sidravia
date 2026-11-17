@@ -250,6 +250,12 @@ not certify real PATH/startup registration or real campus authentication. Native
 C++ seal/mutex/refused-admission tests are in the existing
 `tools/developer/test_gui_native.ps1` policy suite. Full GUI running/recovery and
 real installation acceptance remain distinct from compilation and hook tests.
+Set `SIDRAVIA_WINDOWS_SETUP_GUI_BUNDLE` to the fixed builder's current Windows
+Release directory to include its real GUI files in this installed-update
+fixture. It verifies GUI-owned startup, normal exit and one cold desktop
+recovery through the actual Inno hooks, then normally stops its owned processes.
+Run this variant from an ordinary interactive Windows user session; a service
+account or a task job with process-breakaway restrictions is not equivalent.
 
 To additionally run the real Windows GUI lifecycle, set
 `SIDRAVIA_GUI_TEST_DIRECTORY` to the fixed builder's current Release directory.

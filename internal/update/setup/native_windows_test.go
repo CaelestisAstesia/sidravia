@@ -38,6 +38,7 @@ func TestNativeInstalledUpdate(t *testing.T) {
 	if os.Getenv("SIDRAVIA_WINDOWS_SETUP_FIXTURE") != "1" {
 		t.Skip("explicit isolated Windows setup fixture required")
 	}
+	bundle := os.Getenv("SIDRAVIA_WINDOWS_SETUP_GUI_BUNDLE")
 	compiler := os.Getenv("SIDRAVIA_ISCC")
 	if compiler == "" {
 		t.Fatal("pinned native Inno compiler required")
@@ -135,6 +136,9 @@ func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
 				t.Fatalf("build %s: %s %v", role, out, e)
 			}
 		}
+		if bundle != "" {
+			copyNativeTree(t, bundle, v.dir)
+		}
 		info := []byte("ProductVersion: " + v.version + "\nBuildID: " + v.build + "\n")
 		if e = os.WriteFile(filepath.Join(v.dir, "BUILD-INFO.txt"), info, 0644); e != nil {
 			t.Fatal(e)
@@ -192,19 +196,42 @@ begin Result := True; end;
 	}
 	var files strings.Builder
 	files.WriteString("[Files]\n")
-	entries, e := os.ReadDir(payload)
+	e = filepath.WalkDir(payload, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(payload, path)
+		if err != nil {
+			return err
+		}
+		component := "core"
+		if bundle != "" && !CoreFile(filepath.ToSlash(relative)) && relative != packagefiles.Name {
+			component = "gui"
+		}
+		dest := "{app}"
+		if dir := filepath.Dir(relative); dir != "." {
+			dest += "\\" + dir
+		}
+		fmt.Fprintf(&files, "Source: \"payload\\%s\"; DestDir: \"%s\"; Components: %s; Flags: ignoreversion\n", relative, dest, component)
+		return nil
+	})
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, entry := range entries {
-		fmt.Fprintf(&files, "Source: \"payload\\%s\"; DestDir: \"{app}\"; Components: core; Flags: ignoreversion\n", entry.Name())
-	}
+
 	// QueryManager is stubbed, but Inno compilation still resolves the named leaf.
 	files.WriteString("Source: \"payload\\sidraviamgr.exe\"; Flags: dontcopy\n")
 	if e = os.WriteFile(filepath.Join(owned, "files.iss"), []byte(files.String()), 0644); e != nil {
 		t.Fatal(e)
 	}
-	compile := exec.Command(compiler, "/DProductVersion=1.1.0", "/DHasGUI=0", "/O"+source, "/Fsidravia-v1.1.0-windows-amd64-setup", filepath.Join(owned, "sidravia.iss"))
+	hasGUI := "0"
+	if bundle != "" {
+		hasGUI = "1"
+	}
+	compile := exec.Command(compiler, "/DProductVersion=1.1.0", "/DHasGUI="+hasGUI, "/O"+source, "/Fsidravia-v1.1.0-windows-amd64-setup", filepath.Join(owned, "sidravia.iss"))
 	if out, e := compile.CombinedOutput(); e != nil {
 		t.Fatalf("compile Inno: %s %v", out, e)
 	}
@@ -456,7 +483,50 @@ begin Result := True; end;
 			return
 		}
 		defer conn.Close()
-		r, e := conn.Call(ctx, contract.MethodDaemonStop, []byte(`{}`))
+		statusReply, e := conn.Call(ctx, contract.MethodDaemonStatus, []byte(`{}`))
+		if e != nil || !statusReply.OK {
+			t.Error("owned status unavailable", e)
+			return
+		}
+		var status contract.StatusResult
+		if e = json.Unmarshal(statusReply.Result, &status); e != nil {
+			t.Error(e)
+			return
+		}
+		var r contract.Response
+		var guiPeer *windowsplatform.Process
+		if status.Mode == "desktop" {
+			if status.DesktopOwnerPID == nil {
+				t.Error("owned GUI PID absent")
+				return
+			}
+			guiPeer, e = windowsplatform.Observe(uint32(*status.DesktopOwnerPID))
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			defer guiPeer.Close()
+			if !strings.EqualFold(guiPeer.Path, filepath.Join(oldDir, "Sidravia.exe")) {
+				t.Error("owned GUI path changed")
+				return
+			}
+			op := strings.Repeat("f", 32)
+			payload, _ := json.Marshal(contract.UpdatePreparePayload{OperationID: op, CoordinatorPID: uint32(os.Getpid()), Interactive: new(bool)})
+			r, e = conn.Call(ctx, contract.MethodUpdatePrepare, payload)
+			for until := time.Now().Add(10 * time.Second); e == nil && r.OK && time.Now().Before(until); time.Sleep(50 * time.Millisecond) {
+				var view update.MaintenanceView
+				if json.Unmarshal(r.Result, &view) == nil && view.Phase == "prepared" {
+					break
+				}
+				r, e = conn.Call(ctx, contract.MethodUpdateStatus, []byte(`{}`))
+			}
+			if e == nil && r.OK {
+				payload, _ = json.Marshal(contract.UpdateOperationPayload{OperationID: op})
+				r, e = conn.Call(ctx, contract.MethodUpdateCommit, payload)
+			}
+		} else {
+			r, e = conn.Call(ctx, contract.MethodDaemonStop, []byte(`{}`))
+		}
 		if e != nil || !r.OK {
 			t.Error("owned normal stop unconfirmed", e)
 			return
@@ -464,9 +534,61 @@ begin Result := True; end;
 		if e = peer.Wait(ctx); e != nil {
 			t.Error(e)
 		}
+		if guiPeer != nil {
+			if e = guiPeer.Wait(ctx); e != nil {
+				t.Error(e)
+			}
+		}
 	})
-	if e = life("start"); e != nil {
-		t.Fatal(e)
+	if bundle == "" {
+		if e = life("start"); e != nil {
+			t.Fatal(e)
+		}
+	} else {
+		gui := exec.Command(filepath.Join(oldDir, "Sidravia.exe"), "--skip-auto-login", "--start-visible")
+		gui.Env = os.Environ()
+		log, e := os.OpenFile(filepath.Join(owned, "gui-source.log"), os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+		if e != nil {
+			t.Fatal(e)
+		}
+		t.Cleanup(func() { log.Close() })
+		gui.Stdout = log
+		gui.Stderr = log
+		if e = gui.Start(); e != nil {
+			t.Fatal(e)
+		}
+		ownerPID := gui.Process.Pid
+		gui.Process.Release()
+		ready := false
+		for until := time.Now().Add(30 * time.Second); time.Now().Before(until); time.Sleep(100 * time.Millisecond) {
+			b, e := os.ReadFile(layout.RuntimeInfoPath)
+			if e != nil {
+				continue
+			}
+			info, e := contract.DecodeRuntimeInfo(b)
+			if e != nil {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			conn, e := client.Connect(ctx, info.Endpoint, info.Token, info.BuildID)
+			if e == nil {
+				r, e := conn.Call(ctx, contract.MethodDaemonStatus, []byte(`{}`))
+				if e == nil && r.OK {
+					var status contract.StatusResult
+					if json.Unmarshal(r.Result, &status) == nil && status.Mode == "desktop" && status.DesktopOwnerPID != nil && *status.DesktopOwnerPID == ownerPID {
+						ready = true
+					}
+				}
+				conn.Close()
+			}
+			cancel()
+			if ready {
+				break
+			}
+		}
+		if !ready {
+			t.Fatal("real source GUI not ready")
+		}
 	}
 	run("ok", "check")
 	run("ok", "download", "--candidate", "2:22")
@@ -493,18 +615,33 @@ begin Result := True; end;
 }
 func nativeIndex(t *testing.T, dir, version, build string) []byte {
 	t.Helper()
-	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: "core"}
-	entries, e := os.ReadDir(dir)
+	kind := "core"
+	if _, e := os.Stat(filepath.Join(dir, "Sidravia.exe")); e == nil {
+		kind = "gui"
+	}
+	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: kind}
+	e := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		m.Files = append(m.Files, packagefiles.File{Path: filepath.ToSlash(relative), Size: int64(len(data)), SHA256: sum(data), Mode: 0644})
+		return nil
+	})
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, entry := range entries {
-		b, e := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if e != nil {
-			t.Fatal(e)
-		}
-		m.Files = append(m.Files, packagefiles.File{Path: entry.Name(), Size: int64(len(b)), SHA256: sum(b), Mode: 0644})
-	}
+
 	data, e := packagefiles.Encode(m)
 	if e != nil {
 		t.Fatal(e)
@@ -519,7 +656,11 @@ func nativeProof(t *testing.T, root, version, build string, index, archive []byt
 	c := releases.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-setup.exe", Size: int64(len(archive)), SHA256: sum(archive)}
 	c.DownloadURL = "https://github.com/CaelestisAstesia/sidravia/releases/download/v" + version + "/" + c.Name
 	id, _ := releases.PublisherKeyID(key.Public().(ed25519.PublicKey))
-	m := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: "core"}}}
+	ownership, e := packagefiles.Decode(index)
+	if e != nil {
+		t.Fatal(e)
+	}
+	m := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: ownership.PayloadKind}}}
 	b, _ := json.Marshal(m)
 	dir := filepath.Join(root, version)
 	if e := os.MkdirAll(dir, 0700); e != nil {
@@ -635,7 +776,11 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 				break
 			}
 		}
-		session := Session{SchemaVersion: 1, OperationID: id, Source: record.Source, Updater: dead, Coordinator: dead, Finalizer: dead, Namespace: os.Getenv(launchcontract.EnvNamespace), Expires: time.Now().Add(20 * time.Minute), SourceManifest: oldManifest, SourceSignature: oldSignature, SourceIndex: oldIndex, Integration: "pending"}
+		hasGUI := false
+		if _, e := os.Stat(filepath.Join(target, "Sidravia.exe")); e == nil {
+			hasGUI = true
+		}
+		session := Session{SchemaVersion: 1, OperationID: id, HasGUI: hasGUI, Source: record.Source, Updater: dead, Coordinator: dead, Finalizer: dead, Namespace: os.Getenv(launchcontract.EnvNamespace), Expires: time.Now().Add(20 * time.Minute), SourceManifest: oldManifest, SourceSignature: oldSignature, SourceIndex: oldIndex, Integration: "pending"}
 		if e = SaveSession(context.Background(), session); e != nil {
 			t.Fatal(e)
 		}
