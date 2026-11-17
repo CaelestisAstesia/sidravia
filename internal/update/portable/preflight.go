@@ -13,6 +13,9 @@ func Preflight(ctx context.Context, target string, old Inventory, p *Payload) er
 	if p == nil || p.root == nil || !canonical(target) {
 		return ErrInvalid
 	}
+	if old.manifest.OS != p.inventory.manifest.OS || old.manifest.Arch != p.inventory.manifest.Arch || old.manifest.PayloadKind != p.inventory.manifest.PayloadKind {
+		return ErrInvalid
+	}
 	if err := applicationPlatform(old); err != nil {
 		return err
 	}
@@ -24,6 +27,9 @@ func Preflight(ctx context.Context, target string, old Inventory, p *Payload) er
 		return err
 	}
 	defer root.Close()
+	if err := availableSpace(root, 1<<20); err != nil {
+		return err
+	}
 	if err := verifyInventory(ctx, root, old); err != nil {
 		return err
 	}

@@ -104,6 +104,9 @@ func installedProof(ctx context.Context, source *releases.GitHub, layout product
 	return proof, asset, data, nil
 }
 func applyErrorCode(err error) string {
+	if code := platformApplyErrorCode(err); code == "handoff_unconfirmed" {
+		return code
+	}
 	var remote *url.Error
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -132,8 +135,10 @@ func applyErrorCode(err error) string {
 }
 func applyErrorMessage(err error) string {
 	switch applyErrorCode(err) {
+	case "handoff_unconfirmed":
+		return "更新交接结果未能确认，请查看 status，勿重复应用更新"
 	case "handoff_unavailable":
-		return "无法从当前进程环境交接安装器，程序尚未停止，请按发行说明手动运行可信安装包"
+		return "无法从当前进程环境交接更新程序，请检查 status 或按发行说明手动更新"
 	case "apply_failed":
 		return "更新未完成，请查看 status 确认执行阶段"
 	case "staging_cleanup_failed":

@@ -157,9 +157,9 @@ A protected user cache retains one verified package per target/type/channel;
 repeated checks preserve it and repeated downloads reuse it. Unexpected cache
 paths or changed bytes fail closed and require cache inspection.
 
-Linux portable apply and Windows installed setup handoff are wired into the CLI. The default build still has no publisher
+Linux/Windows portable apply and Windows installed setup handoff are wired into the CLI. The default build still has no publisher
 root: it returns `apply_unavailable` and `canApply=false`. A reviewed root-bearing
-build can offer native Linux portable or Windows AMD64 setup candidates; `canApply` remains conditional
+build can offer native Linux portable or Windows AMD64 portable/setup candidates; `canApply` remains conditional
 on verifying the installed baseline and explicit confirmation. Apply refetches
 fixed signed metadata for both the installed version/build and the exact new
 candidate, rechecks the cached archive, and authenticates the local ownership
@@ -189,7 +189,9 @@ it never repeats a launch or authentication. Partial writes retain their seal
 and require manual repair. Publisher provisioning and signed release acceptance
 remain pending. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
 `gui-runtime/` payload: the shared lease is inherited across exec before Flutter
-loads, then marked close-on-exec by the runner. Windows portable file application remains unsupported.
+loads, then marked close-on-exec by the runner. Windows portable uses the same
+inventory/extraction/file engine and finite lifecycle coordinator with native
+process-generation and NTFS handle-relative publication adapters.
 GUI scheduling, unattended apply and signed release integration remain pending. The Windows application now exposes fixed internal
 prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
 Inno path uses these stages when the target CTL advertises protocol 1. Older
@@ -239,6 +241,41 @@ existing CTL. Windows imported DLLs load before that entry, so the check prevent
 entering application logic and is not a pre-loader guarantee. An interrupted
 installation may first produce a Windows loader error and require the trusted
 installer's repair. No extra launcher or resident service is introduced.
+
+Windows portable preserves the public filenames and directory layout. A
+verified copy of the installed updater runs briefly in its secured external
+operation cache because Windows cannot overwrite its own running image. The
+source updater validates the exact child readiness and commits an acknowledgment;
+the helper waits for the source updater and calling CTL to exit before applying.
+Cancellation before acknowledgment revokes the operation; after that point the
+result is handed-over or explicitly unconfirmed, never a promise of cancellation.
+The next update removes only the previous verified helper after its exact
+generation has exited; the latest helper and private receipts remain cached.
+No new resident service, launcher or runtime trust/source option is introduced.
+
+This adapter supports local NTFS on Windows AMD64. It uses the existing
+current-user installer mutex during publication, refuses live target processes,
+and retains its own seal through one cold recovery. Go and native GUI admission
+check the signed operation, exact live helper ancestry, new build and finite
+recovery token. Explicit recover may revoke a sealed, unchanged Quiescent source
+or finalize a complete Applied/Resuming target after all owners die; it never
+replays startup/authentication or repairs partly written bytes automatically.
+As with installed GUI, its entry check runs after imported DLL loading.
+
+For isolated real Windows portable CLI acceptance, set
+`SIDRAVIA_WINDOWS_PORTABLE_FIXTURE=1` and
+`SIDRAVIA_WINDOWS_PORTABLE_TEST_ROOT` to an owned scratch root, then use the fixed
+native Go verifier. Optionally set `SIDRAVIA_WINDOWS_PORTABLE_GUI_BUNDLE` to the
+fixed builder's current Release directory. The fixture runs real CLI/updater/
+daemon and optional GUI binaries using synthetic signed releases in a fixed-host
+source overlay. It automatically compares the full installed inventory, old/new
+process generations, prior mode, unknown user files and retirement, and writes
+bounded credential-free result receipts. Faults cover cache corruption, missing
+confirmation, late readiness after handoff timeout, Created/Verified, sealed
+Quiescent and Applied/Resuming interruptions, corrupt recovery targets and
+repeated recovery without launch. No real user configuration, campus, registry,
+PATH or startup integration is used; compilation and synthetic acceptance do not
+replace formal signed-release/channel acceptance.
 
 For isolated real Windows CLI/Inno production-hook acceptance, set
 `SIDRAVIA_WINDOWS_SETUP_FIXTURE=1`, `SIDRAVIA_ISCC` to the pinned Inno compiler,

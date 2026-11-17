@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
@@ -41,7 +42,13 @@ func AcquireRunIdentityContext(ctx context.Context, version, build string) (func
 		return nil, e
 	}
 	if sealed || exists && r.RequiresStartupBlock() {
-		if e := setup.AuthorizeRecovery(ctx, layout.ExecutableDirectory, version, build); e != nil {
+		var admissionErr error
+		if exists && r.Source.Layout == "portable" {
+			_, admissionErr = store.AcquireRecoveryStart(ctx, os.Getenv(launchcontract.EnvRecoveryOperation), os.Getenv(launchcontract.EnvRecoveryToken), version, build, os.Getenv(launchcontract.EnvNamespace), os.Getenv(launchcontract.EnvRecoveryConfiguration))
+		} else {
+			admissionErr = setup.AuthorizeRecovery(ctx, layout.ExecutableDirectory, version, build)
+		}
+		if admissionErr != nil {
 			return nil, ErrBusy
 		}
 	}

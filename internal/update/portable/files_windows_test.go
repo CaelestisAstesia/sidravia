@@ -31,7 +31,11 @@ type winImage struct {
 
 func windowsImage(t *testing.T, version, build string, files map[string][]byte) winImage {
 	t.Helper()
-	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: "core"}
+	kind := "core"
+	if _, ok := files["Sidravia.exe"]; ok {
+		kind = "gui"
+	}
+	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: kind}
 	for name, data := range files {
 		m.Files = append(m.Files, packagefiles.File{Path: name, Size: int64(len(data)), SHA256: digest(data), Mode: 0644})
 	}
@@ -59,11 +63,12 @@ func windowsImage(t *testing.T, version, build string, files map[string][]byte) 
 	if err = w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	c := releases.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-core-portable.zip", Size: int64(buf.Len()), SHA256: digest(buf.Bytes())}
+	c := releases.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-" + kind + "-portable.zip", Size: int64(buf.Len()), SHA256: digest(buf.Bytes())}
+	c.DownloadURL = "https://github.com/CaelestisAstesia/sidravia/releases/download/v" + version + "/" + c.Name
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	pub := key.Public().(ed25519.PublicKey)
 	id, _ := releases.PublisherKeyID(pub)
-	manifest := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "core-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(raw), PayloadKind: "core"}}}
+	manifest := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: kind + "-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(raw), PayloadKind: kind}}}
 	b, _ := json.Marshal(manifest)
 	keys, _ := releases.NewPublisherKeys([]ed25519.PublicKey{pub})
 	v, e := keys.Verify(b, ed25519.Sign(key, b), version)

@@ -74,28 +74,49 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 	}
 }
 
-func TestCheckOffersOnlyNativeSignedPortableApply(t *testing.T) {
-	key, m, c, _ := signedReleaseFixture(t)
-	data, _ := json.Marshal(m)
-	source := NewGitHub(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		body := data
-		if r.URL.Host == "api.github.com" {
-			item := fixtureRelease("1.0.0", 1)
-			item.Assets[0].Name = c.Name
-			item.Assets[0].Size = c.Size
-			item.Assets[0].Digest = "sha256:" + c.SHA256
-			item.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
-			body, _ = json.Marshal([]release{item})
-		} else if strings.HasSuffix(r.URL.Path, ReleaseSignatureName) {
-			body = ed25519.Sign(key, data)
-		}
-		return &http.Response{StatusCode: 200, Header: make(http.Header), ContentLength: int64(len(body)), Body: io.NopCloser(bytes.NewReader(body))}, nil
-	})})
-	source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
-	result, err := source.Check(context.Background(), Selection{OS: "linux", Arch: "amd64", Kind: "core-portable", Channel: "stable", CurrentVersion: "0.9.0"})
-	native := runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
-	if err != nil || result.Candidate == nil || result.Candidate.CanApply != native || (native && result.Candidate.ApplyReason != "source_verification_and_confirmation_required") {
-		t.Fatalf("%+v %v", result, err)
+func TestCheckOffersOnlyNativeSignedApply(t *testing.T) {
+	for _, item := range []struct{ platform, kind string }{{"linux", "core-portable"}, {"windows", "setup"}, {"windows", "core-portable"}, {"windows", "gui-portable"}} {
+		platform, kind := item.platform, item.kind
+		t.Run(platform+"-"+kind, func(t *testing.T) {
+			key, m, c, _ := signedReleaseFixture(t)
+			m.Assets[0].OS = platform
+			m.Assets[0].Kind = kind
+			payload := "core"
+			if kind == "gui-portable" {
+				payload = "gui"
+			}
+			m.Assets[0].PayloadKind = payload
+			suffix := kind + ".zip"
+			if kind == "setup" {
+				suffix = "setup.exe"
+			}
+			if platform == "linux" {
+				suffix = kind + ".tar.gz"
+			}
+			c.Name = "sidravia-v1.0.0-" + platform + "-amd64-" + suffix
+			m.Assets[0].Name = c.Name
+			data, _ := json.Marshal(m)
+			source := NewGitHub(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+				body := data
+				if r.URL.Host == "api.github.com" {
+					item := fixtureRelease("1.0.0", 1)
+					item.Assets[0].Name = c.Name
+					item.Assets[0].Size = c.Size
+					item.Assets[0].Digest = "sha256:" + c.SHA256
+					item.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
+					body, _ = json.Marshal([]release{item})
+				} else if strings.HasSuffix(r.URL.Path, ReleaseSignatureName) {
+					body = ed25519.Sign(key, data)
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), ContentLength: int64(len(body)), Body: io.NopCloser(bytes.NewReader(body))}, nil
+			})})
+			source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+			result, err := source.Check(context.Background(), Selection{OS: platform, Arch: "amd64", Kind: kind, Channel: "stable", CurrentVersion: "0.9.0"})
+			native := runtime.GOOS == platform && runtime.GOARCH == "amd64"
+			if err != nil || result.Candidate == nil || result.Candidate.CanApply != native || (native && result.Candidate.ApplyReason != "source_verification_and_confirmation_required") {
+				t.Fatalf("%+v %v", result, err)
+			}
+		})
 	}
 }
 

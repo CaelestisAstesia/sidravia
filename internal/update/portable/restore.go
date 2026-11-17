@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -38,6 +39,9 @@ func restoreApplication(ctx context.Context, layout productlayout.Layout, target
 	env := make([]string, 0, len(os.Environ())+8)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
+		if runtime.GOOS == "windows" {
+			key = strings.ToUpper(key)
+		}
 		switch key {
 		case operations.EnvRecoveryOperation, operations.EnvRecoveryToken, operations.EnvRecoveryConfiguration, launchcontract.EnvNamespace, launchcontract.EnvMode, launchcontract.EnvDesktopOwnerPID, launchcontract.EnvDesktopOwnerStart, launchcontract.EnvSkipAutoLogin, launchcontract.EnvLogLevel:
 			continue

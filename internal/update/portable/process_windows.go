@@ -4,9 +4,10 @@ package portable
 
 import (
 	"context"
-	"errors"
+	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/operations"
 	"sidravia/internal/update/windowsplatform"
 	"strconv"
 	"strings"
@@ -37,7 +38,12 @@ func observeExecutable(pid int, path string) (*applicationProcess, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !strings.EqualFold(p.native.Path, path) || !p.native.Running() {
+	user, e := windows.GetCurrentProcessToken().GetTokenUser()
+	if e != nil {
+		p.Close()
+		return nil, e
+	}
+	if p.native.SID != user.User.Sid.String() || !strings.EqualFold(p.native.Path, path) || !p.native.Running() {
 		p.Close()
 		return nil, ErrChanged
 	}
@@ -60,18 +66,8 @@ func finishApplication(target, id string) error {
 		return err
 	}
 	defer root.Close()
-	f, err := openRegular(root, "sidravia.update")
-	if err != nil {
+	if err = operations.VerifyPortableSeal(target, id); err != nil {
 		return err
 	}
-	data := make([]byte, 34)
-	n, readErr := f.Read(data)
-	closeErr := f.Close()
-	if readErr != nil || string(data[:n]) != id+"\n" {
-		return errors.Join(ErrChanged, readErr, closeErr)
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return root.Remove("sidravia.update")
+	return root.Remove(operations.StartupSeal)
 }
