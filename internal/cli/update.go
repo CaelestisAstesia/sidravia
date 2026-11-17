@@ -56,7 +56,8 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 	for _, operation := range []string{"check", "download", "status", "apply", "recover", "version"} {
 		var channel, kind, candidate, operationID string
 		var confirm bool
-		command := &cobra.Command{Use: operation, Short: operation, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		command := &cobra.Command{Use: operation, Short: operation, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			defer func() { err = wrapCommandOperation(err) }()
 			args := []string{operation}
 			if channel != "" {
 				args = append(args, "--channel", channel)

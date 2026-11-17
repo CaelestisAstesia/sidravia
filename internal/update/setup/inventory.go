@@ -35,6 +35,9 @@ func CoreFile(name string) bool {
 }
 
 func VerifyInstalled(ctx context.Context, target string, v releases.VerifiedRelease, c releases.Candidate, index []byte, hasGUI bool) (packagefiles.Manifest, error) {
+	return verifyInstalled(ctx, target, v, c, index, hasGUI, nil)
+}
+func verifyInstalled(ctx context.Context, target string, v releases.VerifiedRelease, c releases.Candidate, index []byte, hasGUI bool, retired map[string]bool) (packagefiles.Manifest, error) {
 	m, err := v.VerifyFiles(c, index)
 	if err != nil {
 		return m, err
@@ -85,7 +88,7 @@ func VerifyInstalled(ctx context.Context, target string, v releases.VerifiedRele
 		wanted[strings.ToLower(f.Path)] = true
 		path := filepath.FromSlash(f.Path)
 		info, e := root.Lstat(path)
-		if !hasGUI && !CoreFile(f.Path) {
+		if m.PayloadKind == "gui" && !hasGUI && !CoreFile(f.Path) {
 			if !os.IsNotExist(e) {
 				return m, ErrChanged
 			}
@@ -159,7 +162,7 @@ func VerifyInstalled(ctx context.Context, target string, v releases.VerifiedRele
 		}
 
 		ext := filepath.Ext(name)
-		if (ext == ".exe" || ext == ".dll") && !wanted[name] && !uninstaller(name) {
+		if (ext == ".exe" || ext == ".dll") && !wanted[name] && !uninstaller(name) && !retired[name] {
 			return m, ErrChanged
 		}
 	}

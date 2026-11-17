@@ -147,3 +147,7 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 	}
 	return result(portable.ReconcileInterrupted(ctx, store, id, layout.ExecutableDirectory, inventory))
 }
+
+func validApplyTarget(l productlayout.Layout, kind string) bool {
+	return l.Mode == productlayout.ModePortable && kind == defaultPackageKind(runtime.GOOS, runtime.GOARCH, l)
+}

@@ -157,9 +157,9 @@ A protected user cache retains one verified package per target/type/channel;
 repeated checks preserve it and repeated downloads reuse it. Unexpected cache
 paths or changed bytes fail closed and require cache inspection.
 
-Linux portable apply is wired end to end. The default build still has no publisher
+Linux portable apply and Windows installed setup handoff are wired into the CLI. The default build still has no publisher
 root: it returns `apply_unavailable` and `canApply=false`. A reviewed root-bearing
-build can offer native Linux portable candidates; `canApply` remains conditional
+build can offer native Linux portable or Windows AMD64 setup candidates; `canApply` remains conditional
 on verifying the installed baseline and explicit confirmation. Apply refetches
 fixed signed metadata for both the installed version/build and the exact new
 candidate, rechecks the cached archive, and authenticates the local ownership
@@ -189,7 +189,7 @@ it never repeats a launch or authentication. Partial writes retain their seal
 and require manual repair. Publisher provisioning and signed release acceptance
 remain pending. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
 `gui-runtime/` payload: the shared lease is inherited across exec before Flutter
-loads, then marked close-on-exec by the runner. Windows file application requires its own implementation and native acceptance.
+loads, then marked close-on-exec by the runner. Windows portable file application remains unsupported.
 GUI scheduling, unattended apply and signed release integration remain pending. The Windows application now exposes fixed internal
 prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
 Inno path uses these stages when the target CTL advertises protocol 1. Older
@@ -218,6 +218,38 @@ confirmation/candidate/cache/source-proof/backoff failures, and interrupted
 Verified/Applied recovery without relaunch. Owned evidence is retained under
 `.local/cli-update-fixture-*`; it never installs into the host or contacts campus.
 The regular default-root suite continues to require disabled apply.
+
+Windows installed `apply` pins and verifies the setup and source CTL, persists
+a target-bound operation with signed source/target proofs, and authenticates the exact Inno worker before
+exiting. A denied job breakaway fails before stopping applications. `handed_over`
+is not installation success. Inno's fixed short CTL hooks prepare/stop, establish
+the target-bound seal, verify the complete selected payload, then acknowledge a
+new finite updater before exiting. That updater observes the exact worker's exit;
+installer exit/integration/restart and application recovery are separate facts.
+The original components and directory are fixed; existing wizard integration
+choices remain explicit. Files, index and generated uninstaller leaves reject
+reparse points and hard links. Recovery admission requires the exact operation,
+new build, nonce, namespace/configuration, expiry and live finalizer ancestry.
+Explicit recover never repeats launch/authentication; it may clear only its own
+seal after full signed source/target verification and confirmed dead owners.
+
+The Windows GUI filename/layout is unchanged. Its existing native entry checks
+the durable seal; during authorized recovery it delegates admission to the
+existing CTL. Windows imported DLLs load before that entry, so the check prevents
+entering application logic and is not a pre-loader guarantee. An interrupted
+installation may first produce a Windows loader error and require the trusted
+installer's repair. No extra launcher or resident service is introduced.
+
+For isolated real Windows CLI/Inno production-hook acceptance, set
+`SIDRAVIA_WINDOWS_SETUP_FIXTURE=1`, `SIDRAVIA_ISCC` to the pinned Inno compiler,
+and `SIDRAVIA_INNO_TEST_ROOT` to an owned scratch root, then run the fixed native
+Go verifier. `TestNativeInstalledUpdate` builds synthetic-root source overlays
+with a fixed-host release transport and loopback IPC passthrough. It removes
+fixture installation registration/shortcuts and stubs integration IO; it does
+not certify real PATH/startup registration or real campus authentication. Native
+C++ seal/mutex/refused-admission tests are in the existing
+`tools/developer/test_gui_native.ps1` policy suite. Full GUI running/recovery and
+real installation acceptance remain distinct from compilation and hook tests.
 
 To additionally run the real Windows GUI lifecycle, set
 `SIDRAVIA_GUI_TEST_DIRECTORY` to the fixed builder's current Release directory.

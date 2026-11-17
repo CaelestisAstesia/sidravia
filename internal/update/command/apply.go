@@ -21,6 +21,7 @@ var errOperation = errors.New("update operation unavailable or busy")
 
 type applyResult struct {
 	Operation           *operationView `json:"operation,omitempty"`
+	HandedOver          bool           `json:"handedOver,omitempty"`
 	FilesApplied        bool           `json:"filesApplied"`
 	ApplicationRecovery string         `json:"applicationRecovery"`
 	Authentication      string         `json:"authentication"`
@@ -131,6 +132,8 @@ func applyErrorCode(err error) string {
 }
 func applyErrorMessage(err error) string {
 	switch applyErrorCode(err) {
+	case "handoff_unavailable":
+		return "无法从当前进程环境交接安装器，程序尚未停止，请按发行说明手动运行可信安装包"
 	case "apply_failed":
 		return "更新未完成，请查看 status 确认执行阶段"
 	case "staging_cleanup_failed":

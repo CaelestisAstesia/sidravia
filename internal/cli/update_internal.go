@@ -35,5 +35,6 @@ func newUpdateInternalCommand(identity clientbootstrap.Identity, out io.Writer) 
 		cmd.Flags().BoolVar(&interactive, "interactive", false, "")
 		root.AddCommand(cmd)
 	}
+	addSetupStages(root, identity)
 	return root
 }

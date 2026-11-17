@@ -223,6 +223,9 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if !newIdentity || r.Phase != operations.Applying || s.HasGUI != hasGUI {
 			return ErrInvalid
 		}
+		if e = retireInstalled(ctx, r, s); e != nil {
+			return e
+		}
 		if e = verifyTarget(ctx, r, s); e != nil {
 			return e
 		}
@@ -252,34 +255,38 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 	}
 	return ErrInvalid
 }
-func verifyTarget(ctx context.Context, r operations.Record, s Session) error {
+func targetEvidence(r operations.Record) (releases.VerifiedRelease, releases.Candidate, []byte, error) {
 	proof, e := releases.PublisherTrust().Verify(r.Manifest, r.Signature, r.Target.Version)
-	if e != nil {
-		return e
-	}
 	c := releases.Candidate{ID: r.Package.CandidateID, Version: r.Target.Version, Name: r.Package.Name, Size: r.Package.Size, SHA256: r.Package.SHA256}
+	if e != nil {
+		return proof, c, nil, e
+	}
 	root, e := os.OpenRoot(r.Target.ID)
 	if e != nil {
-		return e
+		return proof, c, nil, e
 	}
 	defer root.Close()
-	if e := plainPath(filepath.Join(r.Target.ID, "sidravia-files.json")); e != nil {
-		return e
+	if e = plainPath(filepath.Join(r.Target.ID, "sidravia-files.json")); e != nil {
+		return proof, c, nil, e
 	}
 	f, e := root.Open("sidravia-files.json")
 	if e != nil {
-		return e
+		return proof, c, nil, e
 	}
-	if e := singleLink(f); e != nil {
+	if e = singleLink(f); e != nil {
 		f.Close()
-		return e
+		return proof, c, nil, e
 	}
 	b, e := jsonfile.ReadLimited(f, 2<<20)
 	closeErr := f.Close()
-	if e = errors.Join(e, closeErr); e != nil {
+	return proof, c, b, errors.Join(e, closeErr)
+}
+func verifyTarget(ctx context.Context, r operations.Record, s Session) error {
+	proof, c, index, e := targetEvidence(r)
+	if e != nil {
 		return e
 	}
-	_, e = VerifyInstalled(ctx, r.Target.ID, proof, c, b, s.HasGUI)
+	_, e = VerifyInstalled(ctx, r.Target.ID, proof, c, index, s.HasGUI)
 	return e
 }
 
@@ -466,6 +473,9 @@ func Reconcile(ctx context.Context, layout productlayout.Layout, version, build,
 	if targetPhase {
 		if version != r.Target.Version || build != r.Target.BuildID {
 			return ErrInvalid
+		}
+		if e = retireInstalled(ctx, r, s); e != nil {
+			return e
 		}
 		// A partial tree cannot pass this check. After an explicit manual repair to
 		// the exact signed target, the same check can safely release its own seal.

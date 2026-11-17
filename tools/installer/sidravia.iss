@@ -94,7 +94,7 @@ Name: "{group}\卸载 Sidravia"; Filename: "{uninstallexe}"
 
 [Run]
 #if IncludeGUI
-Filename: "{app}\Sidravia.exe"; Description: "启动 Sidravia"; Components: gui; Flags: nowait postinstall skipifsilent; BeforeInstall: ReleaseInstaller
+Filename: "{app}\Sidravia.exe"; Description: "启动 Sidravia"; Components: gui; Flags: nowait postinstall skipifsilent; BeforeInstall: ReleaseInstaller; Check: ManualLaunchAllowed
 #endif
 
 [Code]
@@ -140,6 +140,9 @@ var
   InstallerMutex: NativeUInt;
   UpdateOperation: String;
   UpdatePrepared, UpdateFilesStarted: Boolean;
+  ManagedOperation, ManagedTarget: String;
+  ManagedStarted, ManagedInstalled: Boolean;
+  ManagedUpdater: NativeUInt;
 
 { Fixed Windows API bindings used by this installer, not a file executor. }
 function FileAttributes(Name: String): LongWord;
@@ -436,18 +439,40 @@ begin
   end;
 end;
 
+function ManagedStage(Stage: String): Boolean; forward;
+function HexToken(Value: String): Boolean; forward;
+function OpenUpdateProcess(Access: LongWord; Inherit: Boolean; PID: LongWord): NativeUInt;
+  external 'OpenProcess@kernel32.dll stdcall';
+
 function InitializeSetup: Boolean;
 begin
   Result := HoldInstaller;
   if not Result then MsgBox('另一个安装/卸载操作正在进行，或无法核实当前账户。请稍后重试。', mbError, MB_OK);
+  if not Result then Exit;
+  ManagedOperation := ExpandConstant('{param:SIDRAVIAUPDATE|}');
+  if ManagedOperation = '' then Exit;
+  Result := False;
+  if not HexToken(ManagedOperation) then Exit;
+  ManagedTarget := ExpandFileName(ExpandConstant('{param:DIR|}'));
+  if not SafePath(ManagedTarget) then Exit;
+  ManagedUpdater := OpenUpdateProcess($00100000 or $1000, False,
+    StrToIntDef(ExpandConstant('{param:SIDRAVIAUPDATER|0}'), 0));
+  if ManagedUpdater = 0 then Exit;
+  if not ManagedStage('accept') then Exit;
+  { Do not stop applications or write while updater/old CTL still owns files. }
+  Result := WaitNative(ManagedUpdater, 45000) = 0;
 end;
 
+function ManualLaunchAllowed: Boolean; forward;
 procedure AbortApplicationUpdate; forward;
 
 procedure DeinitializeSetup;
 begin
   ReleaseInstaller;
-  if UpdatePrepared and not UpdateFilesStarted then AbortApplicationUpdate;
+  if ManagedUpdater <> 0 then begin CloseNativeHandle(ManagedUpdater); ManagedUpdater := 0; end;
+  if (ManagedOperation <> '') and ManagedStarted and not UpdateFilesStarted then begin
+    if not ManagedStage('abort') then Log('Managed update cancellation recovery unconfirmed.');
+  end else if UpdatePrepared and not UpdateFilesStarted then AbortApplicationUpdate;
 end;
 
 procedure DeinitializeUninstall;
@@ -484,6 +509,16 @@ begin
     Result := True;
   except
     Result := False;
+  end;
+end;
+
+function WaitProductExited: Boolean;
+var Attempt: Integer;
+begin
+  Result := False;
+  for Attempt := 1 to 20 do begin
+    if ProductExited(False) then begin Result := True; Exit; end;
+    Sleep(100);
   end;
 end;
 
@@ -1052,6 +1087,24 @@ begin
 #endif
 end;
 
+function ManualLaunchAllowed: Boolean;
+begin Result := ManagedOperation = ''; end;
+
+function ManagedStage(Stage: String): Boolean;
+var Code: Integer; Tool, Args: String;
+begin
+  Tool := ManagedTarget + '\sidraviactl.exe';
+  if (Stage = 'installed') then Tool := ExpandConstant('{app}\sidraviactl.exe');
+  Args := 'update-internal setup-' + Stage + ' --operation ' + ManagedOperation +
+    ' --coordinator ' + IntToStr(CurrentPID);
+  if Stage = 'accept' then Args := Args + ' --updater ' +
+    ExpandConstant('{param:SIDRAVIAUPDATER|0}');
+#if IncludeGUI
+  if (Stage <> 'accept') and WizardIsComponentSelected('gui') then Args := Args + ' --gui';
+#endif
+  Result := Exec(Tool, Args, '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+end;
+
 function SelectedStartupMode(GUISelected: Boolean; SelectedIndex: Integer): String;
 begin
   Result := 'daemon';
@@ -1179,6 +1232,13 @@ begin
     '不显示窗口和托盘图标，通过命令行管理连接');
   SetChoiceListPadding(StartupPage.CheckListBox);
   StartupPage.SelectedValueIndex := 0;
+  if ManagedOperation <> '' then begin
+#if IncludeGUI
+    if FileExists(ManagedTarget + '\Sidravia.exe') then WizardSelectComponents('core,gui')
+    else
+#endif
+      WizardSelectComponents('core');
+  end;
 #if IncludeGUI
   if GetPreviousData('StartupMode', 'gui') = 'daemon' then
     StartupPage.SelectedValueIndex := 1;
@@ -1347,23 +1407,45 @@ begin
   if (Result = '') and not WizardSilent and not IntegrationConfirmed then
     Result := '请返回安装选项页，确认本次开机自启和 PATH 选择。';
   if Result = '' then Result := CheckUpgrade;
-  if (Result = '') and not ProductExited(False) then Result := PrepareApplicationUpdate;
-  if (Result = '') and not ProductExited(False) then
+  if (Result = '') and (ManagedOperation <> '') then begin
+    if CompareText(ExpandFileName(WizardDirValue), ManagedTarget) <> 0 then
+      Result := '自动更新不能更改安装位置，请使用当前安装目录。'
+    else if HasSelectedGUI <> FileExists(ManagedTarget + '\Sidravia.exe') then
+      Result := '自动更新保留当前安装组件；如需增减图形界面，请单独运行可信安装器。'
+    else begin
+      if not ManagedStarted then begin
+        ManagedStarted := True;
+        if not ManagedStage('prepare') or not ManagedStage('stop') then
+          Result := '更新准备或正常退出未确认，请取消安装后查看 update status。';
+      end else
+        Result := '本次更新准备已执行，请取消安装后重新检查状态。';
+    end;
+  end;
+  if (Result = '') and (ManagedOperation = '') and not ProductExited(False) then Result := PrepareApplicationUpdate;
+  if (Result = '') and not WaitProductExited then
     Result := '仍有此目录的程序占用，请取消安装后核实；无法确认退出时不会覆盖文件。';
 end;
 
 procedure CurStepChanged(Step: TSetupStep);
 var
   Mode: String;
+  Code: Integer;
 begin
   if Step = ssInstall then begin
-    if not SafePath(ExpandConstant('{app}')) or not ProductExited(False) then
+    if not SafePath(ExpandConstant('{app}')) or not WaitProductExited then
       RaiseException('安装前检查失败，请退出产品并重试。程序文件尚未修改。');
     if not PreserveUpgradeData then
       RaiseException('无法保存升级前的恢复副本，程序文件尚未修改。');
+    if (ManagedOperation <> '') and not ManagedStage('write') then
+      RaiseException('无法建立更新保护，程序文件尚未修改。');
     UpdateFilesStarted := True;
   end;
   if Step = ssPostInstall then begin
+    if ManagedOperation <> '' then begin
+      if not ManagedStage('installed') then
+        RaiseException('新版文件核验未完成，请保留现场并查看 update status。');
+      ManagedInstalled := True;
+    end;
     WizardForm.StatusLabel.Caption := '正在设置开机自启…';
     if WizardIsTaskSelected('autostart') then begin
       Mode := EffectiveStartupMode;
@@ -1380,9 +1462,18 @@ begin
         IntegrationFailed := not RunManager('path disable');
       if IntegrationFailed then IntegrationDetail := '开机自启已完成；未完成：PATH。';
     end;
-    if IntegrationFailed then
+    if IntegrationFailed then Log(IntegrationDetail);
+    if IntegrationFailed and not WizardSilent then
       MsgBox('程序文件已安装。' + #13#10 + IntegrationDetail + #13#10 +
         '请检查冲突或权限问题后重跑安装器，重新确认未完成选项。重跑按当前状态显示默认值，不自动重试旧选择。', mbError, MB_OK);
+  end;
+  if (Step = ssDone) and (ManagedOperation <> '') and ManagedInstalled then begin
+    if not Exec(ExpandConstant('{app}\sidraviaupdater.exe'),
+      'setup-finish --operation ' + ManagedOperation + ' --coordinator ' + IntToStr(CurrentPID),
+      '', SW_HIDE, ewNoWait, Code) then
+      Log('Installed update finalizer could not start; inspect update status.')
+    else if not ManagedStage('ready') then
+      Log('Installed update finalizer did not acknowledge readiness; inspect update status.');
   end;
 end;
 

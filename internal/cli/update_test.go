@@ -32,6 +32,11 @@ func TestUpdaterFailureDoesNotBecomeSuccessfulCLIResult(t *testing.T) {
 		cmd.SetArgs([]string{"apply"})
 		if err := cmd.Execute(); err == nil {
 			t.Fatal("updater failure accepted")
+		} else {
+			var operation *commandOperationError
+			if !errors.As(err, &operation) {
+				t.Fatal("updater failure would be misclassified as command usage", err)
+			}
 		}
 	}
 }

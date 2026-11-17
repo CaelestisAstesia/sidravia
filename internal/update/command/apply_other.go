@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !windows
 
 package command
 
@@ -16,3 +16,5 @@ func applyDownloaded(context.Context, string, productlayout.Layout, string, stri
 func recoverOperation(context.Context, productlayout.Layout, string, string, string, *releases.GitHub) (*applyResult, error) {
 	return nil, releases.ErrUnsupported
 }
+
+func validApplyTarget(productlayout.Layout, string) bool { return false }

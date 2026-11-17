@@ -14,6 +14,9 @@ var ProductVersion = "0.4.0-alpha.1"
 var BuildID = "dev"
 
 func main() {
+	if handled, code := setupFinish(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	release := func() {}
 	var err error
 	if !command.ControlEntry(os.Args[1:]) {

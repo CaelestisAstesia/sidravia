@@ -10,7 +10,14 @@ import (
 
 // Only a bounded status projection leaves the execution store. Signed proof,
 // filesystem targets and private recovery inputs are not CLI presentation data.
+type installerView struct {
+	ExitCode        *uint32 `json:"exitCode,omitempty"`
+	Integration     string  `json:"integration"`
+	RestartRequired bool    `json:"restartRequired"`
+}
+
 type operationView struct {
+	Installer            *installerView   `json:"installer,omitempty"`
 	ID                   string           `json:"operationId"`
 	Phase                operations.Phase `json:"phase"`
 	SourceVersion        string           `json:"sourceVersion"`
@@ -36,7 +43,11 @@ func readExecutionStatus(ctx context.Context, store *operations.Store) (*operati
 	if err != nil || !exists {
 		return nil, err
 	}
-	return &operationView{ID: r.ID, Phase: r.Phase, SourceVersion: r.Source.Version, TargetVersion: r.Target.Version, RequiresStartupBlock: r.RequiresStartupBlock(), UpdatedAt: r.UpdatedAt, FailureCode: r.FailureCode}, nil
+	installer, e := installerStatus(ctx, r)
+	if e != nil {
+		return nil, e
+	}
+	return &operationView{Installer: installer, ID: r.ID, Phase: r.Phase, SourceVersion: r.Source.Version, TargetVersion: r.Target.Version, RequiresStartupBlock: r.RequiresStartupBlock(), UpdatedAt: r.UpdatedAt, FailureCode: r.FailureCode}, nil
 }
 
 func composeStatus(previous cached, hasCheck bool, execution *operationView) statusResult {

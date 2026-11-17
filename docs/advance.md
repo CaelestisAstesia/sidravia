@@ -371,18 +371,22 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 | `update check` | 检查匹配平台、包类型和通道的更新候选 |
 | `update status` | 查询缓存及更新执行状态 |
 | `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
-| `update apply --candidate ID --confirm` | 确认应用已下载的 Linux 便携版准确候选 |
+| `update apply --candidate ID --confirm` | 确认应用 Linux 便携版或 Windows 安装版的准确候选 |
 | `update recover --operation ID --confirm` | 核验并结束中断的更新协调，不重复启动程序 |
 
 `check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果，不要填版本号或任意 URL。
 
-Linux 便携版的检查、下载、确认应用、正常退出与恢复链路已接通。当前默认构建尚未配置发布公钥，`apply` 仍返回 `apply_unavailable`，候选的 `canApply` 为 false。配置固定公钥的受审构建还需取得当前版本与新版本的有效签名证明，核验本地文件清单和下载包，并由用户明确确认；缺少旧版证明时需手动升级到可信基线。Windows 文件应用、GUI 自动提醒及正式签名发行仍待实现或验收
+Linux 便携版和 Windows 安装版已接入检查、下载、确认应用、正常退出与恢复链路。当前默认构建尚未配置发布公钥，`apply` 仍返回 `apply_unavailable`，候选的 `canApply` 为 false。配置固定公钥的受审构建还需取得当前版本与新版本的有效签名证明，核验本地文件清单和下载包，并由用户明确确认；缺少旧版证明时需手动升级到可信基线。Windows 便携版文件应用、GUI 自动提醒及正式签名发行仍待实现或验收
 
 `update status` 在存在执行记录时还会返回操作 ID、阶段、源/目标版本、更新时间和失败码。`requiresStartupBlock` 表示该阶段阻止普通启动，`status` 和 `recover` 仍可用。执行记录保留精确签名证据并重新验证，不把缓存中的提示字段当成安装授权。
 
-在具备可信基线的 Linux 便携版中，依次执行 `update check`、`update download --candidate ID`、`update apply --candidate ID --confirm`，最后用 `update status` 确认结果。检查、下载和应用应使用相同通道、包类型；仅允许同包型升级，不降级。应用前重新检查候选、签名和缓存，不将 `canApply` 当作安装授权
+在具备可信基线的 Linux 便携版或 Windows 安装版中，依次执行 `update check`、`update download --candidate ID`、`update apply --candidate ID --confirm`，最后用 `update status` 确认结果。检查、下载和应用应使用相同通道、包类型；仅允许同包型升级，不降级。应用前重新检查候选、签名和缓存，不将 `canApply` 当作安装授权
 
-应用结果分别报告 `filesApplied`（文件已安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证，本操作不据此判定登录成功）。原本未运行则不启动；原本已断开则不自动认证。更新中断时先查 `status`，确认操作 ID 后可运行 `recover`；它只在协调器已退出、文件完整且无写入封印时结束中断状态，不重复拉起程序。部分写入失败仍保持保护，需手动修复，不自动全包回滚
+应用结果分别报告 `filesApplied`（文件已安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证，本操作不据此判定登录成功）。原本未运行则不启动；原本已断开则不自动认证。更新中断时先查 `status`，确认操作 ID 后可运行 `recover`；它只在协调器已退出且文件完整时结束中断状态，不重复拉起程序。Windows 可在核验精确目标后清理本次操作留下的更新标记；部分写入失败仍保持保护，需用可信安装器修复后再核验，不自动全包回滚
+
+Windows 的 `apply` 返回 `handed_over` 仅表示可信安装器已接管，不表示安装完成。安装器沿用原安装位置和组件，按现有向导确认自启与 PATH 选项；之后以 `status` 的执行阶段及 `installer` 字段确认安装器退出码、系统集成结果和重启要求。进程环境不允许独立交接时，会在退出应用前拒绝操作，可按发行说明手动运行可信安装包
+
+Windows 保留原 `Sidravia.exe` 和目录布局。持久标记阻止半更新版本进入界面与业务逻辑，但 Windows 会先加载导入 DLL，极端中断也可能先出现系统加载错误；此检查不承诺在 DLL 加载之前拦截。恢复只使用本次操作绑定的冷启动许可，原本未运行不启动，用户明确断开的连接不自动恢复
 
 RPM 安装继续通过系统包管理器更新。正式公钥、手动基线和发行验收完成前，请继续按平台说明手动更新
 

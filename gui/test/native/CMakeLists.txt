@@ -12,7 +12,10 @@ if(WIN32 AND MSVC)
     ../../windows/runner/announcement_link_policy_test.cpp
     ../../windows/runner/announcement_link_policy.cpp)
   target_link_libraries(announcement_link_policy_test PRIVATE urlmon ole32)
-  list(APPEND policies frame_decoration announcement_link_policy)
+  add_executable(installation_gate_test installation_gate_windows_test.cpp
+    ../../windows/runner/installation_gate.cpp)
+  target_link_libraries(installation_gate_test PRIVATE advapi32)
+  list(APPEND policies frame_decoration announcement_link_policy installation_gate)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)

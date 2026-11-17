@@ -217,6 +217,10 @@ func (g *GitHub) Check(ctx context.Context, s Selection) (CheckResult, error) {
 				selected.CanApply = true
 				selected.ApplyReason = "source_verification_and_confirmation_required"
 			}
+			if runtime.GOOS == "windows" && runtime.GOARCH == "amd64" && s.OS == "windows" && s.Arch == "amd64" && s.Kind == "setup" && selectedVersion.Compare(current) > 0 {
+				selected.CanApply = true
+				selected.ApplyReason = "source_verification_and_confirmation_required"
+			}
 		}
 	}
 	state := "up_to_date"

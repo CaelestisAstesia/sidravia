@@ -213,7 +213,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	if err != nil {
 		return failSource(err, nil, false)
 	}
-	if result.Candidate != nil && layout.Mode != productlayout.ModePortable {
+	if result.Candidate != nil && !validApplyTarget(layout, *kind) {
 		result.Candidate.CanApply = false
 		result.Candidate.ApplyReason = "portable_layout_required"
 	}
@@ -232,8 +232,8 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	}
 
 	if operation == "apply" {
-		if layout.Mode != productlayout.ModePortable || *kind != defaultPackageKind(runtime.GOOS, runtime.GOARCH, layout) {
-			return emit(false, "invalid_target", "仅支持保持现有包型的 Linux 便携版更新", nil)
+		if !validApplyTarget(layout, *kind) {
+			return emit(false, "invalid_target", "仅支持保持现有包型的受支持安装目标", nil)
 		}
 		if result.State != "available" || result.Candidate == nil {
 			return emit(false, "not_newer", "候选版本不高于当前版本", nil)
@@ -244,6 +244,9 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		outcome, err := applyDownloaded(ctx, root, layout, version, buildID, source, *result.Candidate, previous.Downloaded, releaseRuntime)
 		if err != nil {
 			return failSource(err, outcome, true)
+		}
+		if outcome != nil && outcome.HandedOver {
+			return emit(true, "handed_over", "安装器已接管，请在安装器中继续，完成后用 status 查询结果", outcome)
 		}
 		return emit(true, "ok", "更新已安装，恢复结果见返回状态", outcome)
 	}
