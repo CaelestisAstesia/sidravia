@@ -212,3 +212,39 @@ func ObserveParent() (*Process, error) {
 	}
 	return Observe(pid)
 }
+
+// DescendsFrom proves a live, exact-generation recovery owner in a bounded
+// process tree. A copied environment token in a sibling terminal is insufficient.
+func DescendsFrom(pid, owner uint32, created uint64) error {
+	for depth := 0; depth < 32 && pid != 0; depth++ {
+		p, err := Observe(pid)
+		if err != nil {
+			return err
+		}
+		if p.PID == owner {
+			valid := p.Created == created && p.Running()
+			p.Close()
+			if valid {
+				return nil
+			}
+			return ErrPeer
+		}
+		p.Close()
+		next, err := parentPID(pid)
+		if err != nil || next == pid {
+			return ErrPeer
+		}
+		pid = next
+	}
+	return ErrPeer
+}
+
+func StartApplicationEnvironment(path string, args, env []string) (*exec.Cmd, error) {
+	cmd := exec.Command(path, args...)
+	cmd.Env = env
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}

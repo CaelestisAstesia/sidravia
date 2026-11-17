@@ -42,6 +42,7 @@ type record struct {
 	Expires       time.Time            `json:"expires"`
 	Stage         string               `json:"stage"`
 	LogLevel      string               `json:"logLevel"`
+	RecoveryToken string               `json:"recoveryToken,omitempty"`
 }
 
 func Run(ctx context.Context, action, op string, coordinator uint32, interactive bool, identity clientbootstrap.Identity) error {
@@ -180,6 +181,9 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		state.Stage = "prepared"
 		return save()
 	}
+	if action == "abort" && !exists {
+		return nil
+	}
 	if !exists || jsonfile.DecodeStrict(raw, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != source || state.Namespace != ns.String() || state.Coordinator != (processID{peer.PID, peer.Created}) || !time.Now().Before(state.Expires) {
 		return update.ErrInvalid
 	}
@@ -286,73 +290,10 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			return update.ErrInvalid
 		}
 	}
-	ticket := update.ResumeTicket{OperationID: op, Target: source, ExpiresAt: state.Expires, Intent: state.Intent}
-	if _, err = update.ClaimRestore(directory, ticket, source, true, time.Now()); err != nil {
+	if err = restore(ctx, state, identity, peer.SID, directory); err != nil {
 		return err
 	}
-	var restored contract.RuntimeInfo
-	if state.Intent.Mode == "headless" {
-		var e error
-		restored, e = clientbootstrap.StartHeadlessForRecovery(identity, state.LogLevel)
-		if e != nil {
-			return e
-		}
-	} else if state.Intent.Mode == "desktop" {
-		args := []string{"--skip-auto-login", "--start-visible"}
-		if !state.Intent.Visible {
-			args = []string{"--skip-auto-login", "--start-hidden"}
-		}
-		cmd, e := windowsplatform.StartApplication(filepath.Join(source.ID, "Sidravia.exe"), args...)
-		if e != nil {
-			return e
-		}
-		gui, e := observeTarget(uint32(cmd.Process.Pid), 0, source.ID, "Sidravia.exe", peer.SID)
-		if e != nil {
-			cmd.Process.Release()
-			return e
-		}
-		defer gui.Close()
-		pid := cmd.Process.Pid
-		if e = cmd.Process.Release(); e != nil {
-			return e
-		}
-		ready := false
-		for until := time.Now().Add(15 * time.Second); time.Now().Before(until); {
-			probe, e := clientbootstrap.Probe(identity)
-			if e == nil && probe.State == clientbootstrap.ProbeReachable && probe.Status != nil && probe.Status.DesktopOwnerPID != nil && *probe.Status.DesktopOwnerPID == pid && gui.Running() {
-				restored = probe.Info
-				ready = true
-				break
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
-		if !ready {
-			return update.ErrInvalid
-		}
-	}
-	if state.Intent.Maintain {
-		probe, e := clientbootstrap.Probe(identity)
-		if e != nil || probe.State != clientbootstrap.ProbeReachable || probe.Info != restored {
-			return update.ErrInvalid
-		}
-		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
-		if e != nil {
-			return e
-		}
-		defer conn.Close()
-		payload, _ := json.Marshal(contract.UpdateResumePayload{OperationID: op, ConfigurationID: state.Intent.ConfigurationID})
-		result, e := conn.Call(ctx, contract.MethodUpdateResume, payload)
-		if e != nil {
-			return e
-		}
-		if !result.OK {
-			return update.ErrInvalid
-		}
-	}
+
 	state.Stage = "aborted"
 	return save()
 }
@@ -403,4 +344,142 @@ func observeTarget(pid uint32, created uint64, directory, name, sid string) (*wi
 		return nil, fmt.Errorf("target process identity: %w", update.ErrInvalid)
 	}
 	return p, nil
+}
+
+// PreparedSnapshot exports only the application-owned saved-config intent to
+// the signed setup coordinator. It never exports runtime tokens or credentials.
+func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identity clientbootstrap.Identity) (update.RestoreIntent, string, error) {
+	parent, err := windowsplatform.ObserveParent()
+	if err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	defer parent.Close()
+	if parent.PID != coordinator || !parent.Running() {
+		return update.RestoreIntent{}, "", update.ErrInvalid
+	}
+	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
+	if err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	layout, err := productlayout.ResolveNamespace(ns)
+	if err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	root, err := os.UserCacheDir()
+	if err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	hash := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
+	path := filepath.Join(root, "Sidravia", "updates", "operations", hex.EncodeToString(hash[:16]), op, "state.json")
+	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	if err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	data, exists, err := store.Read(ctx, path, 16<<10)
+	if err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	var state record
+	expected := update.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
+	if !exists || jsonfile.DecodeStrict(data, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != expected || state.Namespace != ns.String() || state.Coordinator != (processID{parent.PID, parent.Created}) || state.Stage != "prepared" || !time.Now().Before(state.Expires) {
+		return update.RestoreIntent{}, "", update.ErrInvalid
+	}
+	if err := verifySource(state); err != nil {
+		return update.RestoreIntent{}, "", err
+	}
+	return state.Intent, state.LogLevel, nil
+}
+
+// RestoreInstalled is called only after the signed coordinator has verified the
+// complete new installation and claimed its durable Resuming transition.
+func RestoreInstalled(ctx context.Context, op string, target update.Target, intent update.RestoreIntent, expires time.Time, level, directory string, identity clientbootstrap.Identity, sid, nonce string) error {
+	state := record{OperationID: op, Source: target, Intent: intent, Expires: expires, LogLevel: level, RecoveryToken: nonce}
+	return restore(ctx, state, identity, sid, directory)
+}
+func restore(ctx context.Context, state record, identity clientbootstrap.Identity, sid, directory string) error {
+	op := state.OperationID
+	source := state.Source
+	ticket := update.ResumeTicket{OperationID: op, Target: source, ExpiresAt: state.Expires, Intent: state.Intent}
+	if _, err := update.ClaimRestore(directory, ticket, source, true, time.Now()); err != nil {
+		return err
+	}
+	var restored contract.RuntimeInfo
+	if state.Intent.Mode == "headless" {
+		var e error
+		if state.RecoveryToken != "" {
+			restored, e = clientbootstrap.StartHeadlessForUpdate(identity, state.LogLevel, op, state.RecoveryToken, state.Intent.ConfigurationID)
+		} else {
+			restored, e = clientbootstrap.StartHeadlessForRecovery(identity, state.LogLevel)
+		}
+		if e != nil {
+			return e
+		}
+	} else if state.Intent.Mode == "desktop" {
+		args := []string{"--skip-auto-login", "--start-visible"}
+		if !state.Intent.Visible {
+			args = []string{"--skip-auto-login", "--start-hidden"}
+		}
+		env := os.Environ()
+		if state.RecoveryToken != "" {
+			clean := env[:0]
+			for _, item := range env {
+				name, _, _ := strings.Cut(item, "=")
+				if !strings.EqualFold(name, launchcontract.EnvRecoveryOperation) && !strings.EqualFold(name, launchcontract.EnvRecoveryToken) && !strings.EqualFold(name, launchcontract.EnvRecoveryConfiguration) {
+					clean = append(clean, item)
+				}
+			}
+			env = append(clean, launchcontract.EnvRecoveryOperation+"="+op, launchcontract.EnvRecoveryToken+"="+state.RecoveryToken, launchcontract.EnvRecoveryConfiguration+"="+state.Intent.ConfigurationID)
+		}
+		cmd, e := windowsplatform.StartApplicationEnvironment(filepath.Join(source.ID, "Sidravia.exe"), args, env)
+		if e != nil {
+			return e
+		}
+		gui, e := observeTarget(uint32(cmd.Process.Pid), 0, source.ID, "Sidravia.exe", sid)
+		if e != nil {
+			cmd.Process.Release()
+			return e
+		}
+		defer gui.Close()
+		pid := cmd.Process.Pid
+		if e = cmd.Process.Release(); e != nil {
+			return e
+		}
+		ready := false
+		for until := time.Now().Add(15 * time.Second); time.Now().Before(until); {
+			probe, e := clientbootstrap.Probe(identity)
+			if e == nil && probe.State == clientbootstrap.ProbeReachable && probe.Status != nil && probe.Status.DesktopOwnerPID != nil && *probe.Status.DesktopOwnerPID == pid && gui.Running() {
+				restored = probe.Info
+				ready = true
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+		if !ready {
+			return update.ErrInvalid
+		}
+	}
+	if state.Intent.Maintain {
+		probe, e := clientbootstrap.Probe(identity)
+		if e != nil || probe.State != clientbootstrap.ProbeReachable || probe.Info != restored {
+			return update.ErrInvalid
+		}
+		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
+		if e != nil {
+			return e
+		}
+		defer conn.Close()
+		payload, _ := json.Marshal(contract.UpdateResumePayload{OperationID: op, ConfigurationID: state.Intent.ConfigurationID})
+		result, e := conn.Call(ctx, contract.MethodUpdateResume, payload)
+		if e != nil {
+			return e
+		}
+		if !result.OK {
+			return update.ErrInvalid
+		}
+	}
+	return nil
 }
