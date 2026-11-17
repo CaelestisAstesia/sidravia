@@ -93,3 +93,10 @@ class ValidationContracts(unittest.TestCase):
             for name in ('../a.txt', 'C:/a.txt', 'NUL.txt', 'a.txt.', 'a\\b', '.project/secret'):
                 with self.subTest(name=name), self.assertRaises(ValueError):
                     windows_vm.snapshot(root, {'files':[{'path':name,'sha256':digest}]})
+
+
+class OutputFormatting(unittest.TestCase):
+    def test_terminal_control_sequences_are_removed_only_from_human_output(self):
+        value='\x1b[31m错误\x1b[0m\x1b]0;hidden-title\x07\x00'
+        self.assertEqual(runner.human_text(value),'错误')
+        self.assertEqual(json.loads(json.dumps({'text':value}))['text'],value)

@@ -396,3 +396,54 @@ and `-Workspace {workspace}`, plus the existing pinned SDK arguments. That helpe
 continues to own incremental source sync, caches, compiler logs and packaging
 receipts; its report location appears in the captured command log. VM execution
 itself does not imply that optional GUI/package checks were requested or passed.
+
+## Combined local checks and formatted results
+
+Use `dev check` for daily verification. Existing `verify`, `benchmark`, platform
+builders and distribution receipts remain supported; this entry composes them
+with the same schema-1 stage runner and text/JSON formatter used by `vm`.
+
+```bash
+# Default: Go native + Python. Cross builds and GUI are explicit selections.
+.local/bin/dev check
+# A local change: rerun only selected packages / developer-tool test files.
+.local/bin/dev check --scope go --go-package ./internal/update/...
+.local/bin/dev check --scope python --python-test test_validation_run.py
+# Shared GUI checks once, with an optional offline Web and/or Linux build.
+.local/bin/dev check --scope gui --preview-build --linux-build
+.local/bin/dev check --scope gui --gui-test test/offline_demo_test.dart
+# Combine scopes, inspect a machine-readable plan, or request one JSON result.
+.local/bin/dev check --scope go --scope python --scope gui --plan
+.local/bin/dev check --scope python --format json
+```
+
+Scopes and explicit test selections are deduplicated. `--go-checks` defaults to
+`native`; `cross` or `full` use the existing verifier's bounded `--jobs` scheduling.
+Targeted Go packages run `go test -count=1`, vet and diff checks; they do not claim
+full repository/cross verification. Selected Python filename patterns are below
+`tools/developer/tests`; omitting them runs the existing Python scope, including
+mock-server and acceptance-tool tests. Omitting GUI test selections runs the
+complete Flutter suite. No dependency resolution, analysis or GUI test stage is
+repeated merely because both build outputs are selected. The existing Linux
+builder still revalidates its dependencies and owns sibling binary generation;
+`--linux-build` is build evidence, not native policy/integration/RPM acceptance.
+Continue using the existing explicit Linux acceptance modes for those tasks.
+
+`--plan` writes only a UTF-8 JSON argv/cwd/timeout plan to stdout, without executing checks/builds
+or creating an evidence directory (Git/source identity is still read). Execution writes exact `request.json`, atomic
+`report.json` and raw per-stage stdout/stderr logs to one unique evidence folder.
+Human output lists status/name/time, a bounded failure excerpt and report path.
+`--format json` produces one JSON object, never compiler output mixed into JSON;
+progress goes to stderr. Child commands keep their native log bytes (the tool's
+own JSON is UTF-8); non-UTF-8 diagnostics use replacement characters only in the
+human excerpt, preserving the original log for diagnosis.
+
+Stages stop on failure, launch error or timeout; remaining stages are `not_run`.
+The report uses `passed`, `failed`, `timed_out`, `not_run` and interruption states
+rather than treating an absent command as success. Both command argv and cwd are
+recorded; environment overrides are in the request, not echoed in the summary.
+Source commit/status/byte fingerprint before and after prevent concurrent edits
+from producing a false acceptance. A per-worktree lock excludes simultaneous
+`check` runs; it does not take over a separately running preview or older tools.
+Go/Flutter/Pub caches stay at their existing locations. There is no automatic
+package build, installer execution, test retry, Git commit or release operation.

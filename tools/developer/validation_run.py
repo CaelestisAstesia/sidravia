@@ -23,6 +23,20 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+def configure_output():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+def human_text(value):
+    # Keep raw child bytes in logs and escaped data in JSON; terminal summaries
+    # must not execute child-provided colors, cursor moves or OSC sequences.
+    text = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", str(value))
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text)
+
+
 def validate_request(request):
     if not isinstance(request, dict) or set(request) - {"schema", "stages", "source", "environment"}:
         raise ValueError("unknown request fields")
@@ -184,7 +198,7 @@ def present(report, report_path, output_format="text"):
         print(f"  {stage['status']:10} {stage['name']} {stage.get('duration_seconds', 0):.3f}s")
         if stage["status"] in ("failed", "timed_out"):
             if stage.get("error"):
-                print("    " + stage["error"][:500])
+                print("    " + human_text(stage["error"])[:500])
             for stream in ("stderr", "stdout"):
                 if stage.get(stream):
                     path = Path(report_path).parent / stage[stream]
@@ -193,15 +207,16 @@ def present(report, report_path, output_format="text"):
                             log.seek(max(0, path.stat().st_size - 1200))
                             tail = log.read().decode("utf-8", errors="replace").strip()
                         if tail:
-                            print("    " + tail.replace("\r", "").replace("\n", "\n    "))
+                            print("    " + human_text(tail).replace("\n", "\n    "))
                             break
     for key in ("error", "evidence_error", "cleanup_error", "source_error"):
         if report.get(key):
-            print(key + ": " + str(report[key])[:500])
+            print(key + ": " + human_text(report[key])[:500])
     print("Report: " + str(report_path))
 
 
 def main():
+    configure_output()
     if len(sys.argv) == 3 and sys.argv[1] == "--worker":
         job = own_windows_job() if os.name == "nt" else None
         return subprocess.call(read_json(sys.argv[2])["argv"])

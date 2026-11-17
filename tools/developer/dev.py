@@ -290,8 +290,21 @@ def preview_command(args, env):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check"):
         sub = subs.add_parser(command)
+        if command == "check":
+            sub.add_argument("--scope", action="append", choices=("go", "python", "gui"), help="repeat to combine scopes; default go+python")
+            sub.add_argument("--go-checks", choices=("native", "cross", "full"), default="native")
+            sub.add_argument("--jobs", type=int, choices=range(1, 5), default=2)
+            sub.add_argument("--go-package", action="append", default=[])
+            sub.add_argument("--python-test", action="append", default=[], help="filename pattern in tools/developer/tests")
+            sub.add_argument("--gui-test", action="append", default=[], help="test/*.dart path relative to gui")
+            sub.add_argument("--flutter", default=".local/bin/flutter")
+            sub.add_argument("--preview-build", action="store_true")
+            sub.add_argument("--linux-build", action="store_true")
+            sub.add_argument("--stage-timeout", type=int, choices=range(1, 3601), default=900, metavar="SECONDS")
+            sub.add_argument("--plan", action="store_true", help="print the JSON command plan without executing it")
+            sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "vm":
             sub.add_argument("--request", required=True, help="schema-1 JSON command sequence")
             sub.add_argument("--uri", default="qemu:///session")
@@ -348,9 +361,18 @@ def parse_args(argv=None):
 
 
 def main(argv=None):
+    import validation_run
+    validation_run.configure_output()
     args = parse_args(argv)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
+        if args.command == "check":
+            import verification_commands
+            def identity():
+                return {"commit": capture(["git", "rev-parse", "HEAD"], env),
+                        "status": capture(["git", "status", "--porcelain", "--untracked-files=all"], env),
+                        "source_fingerprint": source_fingerprint(env)}
+            return verification_commands.run(ROOT, args, identity)
         if args.command == "vm":
             import windows_vm
             return windows_vm.run(ROOT, args, source_manifest(env), lambda: source_manifest(env))
@@ -404,7 +426,10 @@ def main(argv=None):
         print(f"Report: {directory / 'report.json'}")
         return 0 if report["passed"] else 1
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        print(f"dev: {error}", file=sys.stderr)
+        if getattr(args, "format", "text") == "json":
+            print(json.dumps({"schema": 1, "status": "failed", "error": str(error)}, ensure_ascii=False))
+        else:
+            print(f"dev: {error}", file=sys.stderr)
         return 1
 
 
