@@ -30,6 +30,34 @@ def require(condition: bool, reason: str) -> None:
         raise VerificationError(reason)
 
 
+def verify_gui_runtime(files: dict[str, bytes], windows: bool) -> None:
+    fonts = json.loads(files.get('data/flutter_assets/FontManifest.json', b'[]'))
+    require(isinstance(fonts, list), 'invalid_gui_font_manifest')
+    declared = set()
+    for family in fonts:
+        require(isinstance(family, dict) and isinstance(family.get('fonts'), list), 'invalid_gui_font_manifest')
+        for font in family['fonts']:
+            require(isinstance(font, dict) and isinstance(font.get('asset'), str), 'invalid_gui_font_manifest')
+            declared.add('data/flutter_assets/' + font['asset'])
+    require(declared <= files.keys(), 'gui_declared_font_missing')
+    for name in files:
+        lower = name.lower()
+        path = Path(lower)
+        require(not any(part.startswith('.') for part in path.parts), 'gui_hidden_build_content: ' + name)
+        require(path.suffix not in ('.pdb', '.lib', '.exp', '.ilk', '.obj', '.o', '.a', '.log', '.d', '.map', '.tmp'), 'gui_build_artifact: ' + name)
+        require(path.suffix not in ('.woff', '.woff2'), 'gui_web_font: ' + name)
+        if path.suffix in ('.ttf', '.otf', '.ttc'):
+            require(name in declared, 'gui_undeclared_font: ' + name)
+        require(path.name not in ('libdartjni.so', 'dartjni.dll', 'libdartjni.dll', 'libjvm.so', 'jvm.dll'), 'gui_unsupported_java: ' + name)
+        require(lower not in ('data/flutter_assets/notices', 'data/flutter_assets/assetmanifest.bin.json'), 'gui_web_only_asset: ' + name)
+        allowed = lower.startswith(('data/', 'licenses/'))
+        if windows:
+            allowed |= lower in ('sidravia.exe', 'native_assets.json') or '/' not in lower and lower.endswith('.dll')
+        else:
+            allowed |= lower in ('sidravia_gui', 'flutter-license', 'lib/native_assets.json') or lower.startswith('lib/') and lower.endswith('.so')
+        require(allowed, 'unexpected_gui_runtime_path: ' + name)
+
+
 def native_arch() -> str | None:
     return {'amd64': 'amd64', 'x86_64': 'amd64', 'arm64': 'arm64',
             'aarch64': 'arm64'}.get(platform.machine().lower())
@@ -117,13 +145,16 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         roles.append('sidraviamgr')
         expected['app_icon.ico'] = (repo / 'gui/windows/runner/resources/app_icon.ico').read_bytes()
     if gui is not None:
+        gui_files = {}
         for path in gui.rglob('*'):
             require(not path.is_symlink(), 'gui_source_link')
             if path.is_file():
                 name = path.relative_to(gui).as_posix()
                 require(name.casefold() not in {key.casefold() for key in expected}, 'gui_source_collision')
                 expected[name] = path.read_bytes()
-        required_gui = ('Sidravia.exe', 'flutter_windows.dll') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+                gui_files[name] = expected[name]
+        verify_gui_runtime(gui_files, windows)
+        required_gui = ('Sidravia.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')
         if not windows:
             for name, data in expected.items():

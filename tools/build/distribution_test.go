@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -140,8 +141,12 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), "gui")
 	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), "dll")
+	for _, name := range []string{"data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/NOTICES.Z"} {
+		writeTestFile(t, filepath.Join(root, name), "runtime")
+	}
+	writeTestFile(t, filepath.Join(root, "data/flutter_assets/FontManifest.json"), "[]")
 	gui, err := readGUI(root, nil)
-	if err != nil || len(gui) != 2 {
+	if err != nil || len(gui) != 7 {
 		t.Fatal(err)
 	}
 	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]zipEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
@@ -158,6 +163,55 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "Sidravia.exe"), filepath.Join(root, "link.exe")); err == nil {
 		if _, err := readGUI(root, nil); err == nil {
 			t.Fatal("accepted link")
+		}
+	}
+}
+
+func TestDistributionDoesNotDependOnLegacyWindowsScripts(t *testing.T) {
+	root := setupRepoRoot(t)
+	for _, name := range []string{"scripts", "docs"} {
+		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fb := &fakeBuilder{}
+	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: "linux-amd64", output: filepath.Join(t.TempDir(), "out")}
+	if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if len(fb.calls) != 3 {
+		t.Fatalf("core builds = %d", len(fb.calls))
+	}
+}
+
+func TestGUIPayloadRejectsUnusedBuildAndWebContent(t *testing.T) {
+	missingFont := []zipEntry{{name: "data/flutter_assets/FontManifest.json", data: []byte(`[{"fonts":[{"asset":"assets/fonts/missing.otf"}]}]`)}}
+	if err := checkGUIRuntime(missingFont, true); err == nil {
+		t.Fatal("accepted missing declared font")
+	}
+	for _, windows := range []bool{false, true} {
+		for _, name := range []string{"debug.pdb", "data/build.log", "data/flutter_assets/AssetManifest.bin.json", "data/flutter_assets/NOTICES", "data/flutter_assets/assets/old.ttf", "licenses/.DS_Store", "lib/notes.txt", "libdartjni.dll", "lib/libdartjni.so"} {
+			t.Run(fmt.Sprintf("windows=%t/%s", windows, name), func(t *testing.T) {
+				entries := []zipEntry{{name: "data/flutter_assets/FontManifest.json", data: []byte("[]")}, {name: name, data: []byte("unused")}}
+				if err := checkGUIRuntime(entries, windows); err == nil {
+					t.Fatalf("accepted non-runtime input: %s", name)
+				}
+			})
+		}
+	}
+	for _, windows := range []bool{false, true} {
+		library := "lib/plugin.so"
+		if windows {
+			library = "plugin.dll"
+		}
+		entries := []zipEntry{
+			{name: library},
+			{name: "licenses/plugin/LICENSE.txt"},
+			{name: "data/flutter_assets/FontManifest.json", data: []byte(`[{"fonts":[{"asset":"assets/fonts/code.otf"}]}]`)},
+			{name: "data/flutter_assets/assets/fonts/code.otf"},
+		}
+		if err := checkGUIRuntime(entries, windows); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

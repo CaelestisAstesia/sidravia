@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,34 @@ import dev
 
 
 class DeveloperCommands(unittest.TestCase):
+    def test_linux_package_does_not_build_discarded_development_core(self):
+        class ReachedFlutter(Exception):
+            pass
+        for package in (False, True):
+            with self.subTest(package=package), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'gui').mkdir()
+                (root / 'gui/.flutter-version').write_text('3.47.0')
+                args = dev.parse_args(['linux', *(['--package', '--version', '0.4.0', '--output', str(root / 'out')] if package else [])])
+                calls = []
+                def run(argv, **kwargs):
+                    calls.append((argv, kwargs['env']))
+                    if 'pub' in argv:
+                        raise ReachedFlutter()
+                sdk = json.dumps({'frameworkVersion': '3.47.0', 'flutterRoot': str(root / 'sdk')})
+                with mock.patch.object(dev, 'ROOT', root), mock.patch.object(dev.platform, 'system', return_value='Linux'), mock.patch.object(dev.platform, 'machine', return_value='x86_64'), mock.patch.object(dev, 'metadata', return_value={'dirty': False}), mock.patch.object(dev.subprocess, 'check_output', return_value=sdk), mock.patch.object(dev.subprocess, 'run', side_effect=run):
+                    with self.assertRaises(ReachedFlutter):
+                        dev.linux_command(args, {})
+                self.assertEqual(len([argv for argv, _ in calls if argv[1] == 'build']), 0 if package else 2)
+                self.assertEqual(calls[-1][1]['SIDRAVIA_CORE_DIRECTORY'], '' if package else str(root / '.local/linux-desktop-core'))
+
+    def test_rpm_wraps_verified_input_without_a_flutter_sdk(self):
+        args = dev.parse_args(['linux', '--rpm', '/inert.tar.gz', '--output', '/inert-out'])
+        with mock.patch.object(dev.platform, 'system', return_value='Linux'), mock.patch.object(dev, 'metadata', return_value={'dirty': False}), mock.patch('linux_rpm.build', return_value=0) as build, mock.patch.object(dev.subprocess, 'check_output') as probe:
+            self.assertEqual(dev.linux_command(args, {}), 0)
+            build.assert_called_once()
+            probe.assert_not_called()
+
     def test_preview_stages_host_font_only_in_owned_web_assets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -48,8 +77,8 @@ class DeveloperCommands(unittest.TestCase):
                 self.assertEqual(command[command.index("--target") + 1], "linux-amd64")
             self.assertIn("--smoke", commands[1])
 
-    def test_arm_package_uses_selected_target_without_execution(self):
-        for target in ("windows-arm64", "linux-arm64"):
+    def test_cross_core_package_uses_selected_target_without_gui_or_execution(self):
+        for target in ("windows-amd64", "windows-arm64", "linux-arm64"):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
                 args = argparse.Namespace(go="go", output=str(Path(directory) / "dist"), version="0.3.0-alpha.1", target=target)
                 with mock.patch.object(dev, "metadata", return_value={"dirty": False, "commit": "a" * 40}), mock.patch.object(dev.platform, "system", return_value="Linux"), mock.patch.object(dev.platform, "machine", return_value="x86_64"):
@@ -57,6 +86,8 @@ class DeveloperCommands(unittest.TestCase):
                 for command in commands:
                     self.assertEqual(command[command.index("--target") + 1], target)
                     self.assertEqual(command[command.index("--build-id") + 1], "a" * 40)
+                    self.assertNotIn('--gui-directory', command)
+                    self.assertNotIn('--iscc', command)
                 self.assertNotIn("--smoke", commands[1])
 
     def test_parallel_cross_preserves_checks_and_failure(self):

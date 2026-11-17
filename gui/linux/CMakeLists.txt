@@ -73,6 +73,11 @@ set_target_properties(${BINARY_NAME}
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+# Desktop path_provider uses Dart/FFI, not its Android JNI backend. Disable
+# JNI discovery before the generated plugin is configured, so a developer JDK
+# cannot turn an unused native library into a build or runtime dependency.
+set(CMAKE_DISABLE_FIND_PACKAGE_JNI TRUE)
+set(JNI_FOUND FALSE)
 include(flutter/generated_plugins.cmake)
 
 # path_provider_android transitively registers the jni FFI plugin for Linux.
@@ -133,7 +138,8 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime
   # Native Flutter reads NOTICES.Z. A web build can leave its uncompressed
   # duplicate in the shared generated asset directory.
-  REGEX "/flutter_assets/NOTICES$" EXCLUDE)
+  REGEX "/flutter_assets/NOTICES$" EXCLUDE
+  REGEX "/flutter_assets/AssetManifest[.]bin[.]json$" EXCLUDE)
 
 # Install the AOT library on non-Debug builds only.
 if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")

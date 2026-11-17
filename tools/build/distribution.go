@@ -16,7 +16,7 @@ import (
 )
 
 func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
-	if err := verifyRepoInputs(t.repoRoot, "release"); err != nil {
+	if err := verifyRepoInputs(t.repoRoot, "distribution"); err != nil {
 		return err
 	}
 	if t.cfg.iscc != "" && runtime.GOOS != "windows" {
@@ -246,12 +246,17 @@ func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkGUIRuntime(entries, true); err != nil {
+		return nil, err
+	}
 	found := map[string]bool{}
 	for _, entry := range entries {
 		found[entry.name] = true
 	}
-	if !found["Sidravia.exe"] || !found["flutter_windows.dll"] {
-		return nil, fmt.Errorf("GUI payload lacks required Release files")
+	for _, name := range []string{"Sidravia.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/FontManifest.json", "data/flutter_assets/NOTICES.Z"} {
+		if !found[name] {
+			return nil, fmt.Errorf("GUI payload lacks required Release file: %s", name)
+		}
 	}
 	return entries, nil
 }

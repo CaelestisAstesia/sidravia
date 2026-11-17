@@ -111,6 +111,22 @@ GUI interaction, installation, notification delivery or campus behavior.
 
 ## Core distributions
 
+The supported delivery matrix is smaller than the Cartesian product of UI,
+OS, architecture and package format:
+
+| Target | Graphical program | Complete headless program |
+| --- | --- | --- |
+| Windows x64 | Setup EXE, GUI portable ZIP | Core portable ZIP; core-only selection in the same Setup EXE |
+| Windows ARM64 | Not provided | Core portable ZIP |
+| Linux x64 | GUI portable tar.gz, Fedora RPM | Core portable tar.gz |
+| Linux ARM64 | Not provided | Core portable tar.gz |
+
+These are eight downloads; the Windows installer covers two component selections.
+No ARM64 GUI, headless RPM, Linux installer, DEB or Flatpak is produced.
+The Package workflow builds Windows x64 GUI/setup/core and all four core
+OS/architecture targets. Linux GUI and RPM use the native Fedora entries below;
+they are not produced by that workflow.
+
 Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
 ZIP and gzip archives use the standard library's best compression level; their
 formats, content and extraction requirements are unchanged.
@@ -122,21 +138,25 @@ exists (the repository's ignored `dist/` path is suitable):
 python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/linux-amd64
 python3 tools/developer/dev.py package --target linux-arm64 --version 0.4.0-alpha.1 --output dist/linux-arm64
 python3 tools/developer/dev.py package --target windows-arm64 --version 0.4.0-alpha.1 --output dist/windows-arm64
+python3 tools/developer/dev.py package --target windows-amd64 --version 0.4.0-alpha.1 --output dist/windows-amd64-core
 ```
 
 ARM64 packages contain core tools only (Windows includes the manager). They are
 cross-compiled with CGO disabled and ARMv8.0 baseline. The consumer inspects
 archive content, checksums and Go OS/architecture metadata without executing
 foreign binaries; help smoke is recorded as `not_run`. Cross-compilation does
-not establish ARM hardware compatibility. GUI and installers remain Windows
-AMD64 only. The default Linux AMD64 package also runs native help smoke.
+not establish ARM hardware compatibility. GUI bundles are x64 on Windows and
+Linux; the Windows installer is Windows x64 only. The default Linux AMD64
+package also runs native help smoke.
 
 The full commit is passed as build-id; producer and consumer remain the existing
-implementations. Windows AMD64 distribution must use `windows --package`, which builds
+implementations. Windows AMD64 GUI distribution must use `windows --package`, which builds
 the GUI from synchronized source. A generic existing GUI directory is not accepted
 as proof of current source. Go `trimpath`'s `embedded_identity=not_recorded`
 limitation remains; source/build receipts and byte hashes are not independent
 runtime identity proof.
+The `package` entry is always headless, including Windows x64: it has no GUI or
+installer input and does not need Flutter, Inno or a Windows graphics build.
 
 Keep the latest useful build and evidence; do not automatically retain every log
 or create new task caches. Remove only a helper-owned inactive run directory when
@@ -244,6 +264,13 @@ From a clean isolated candidate on Fedora 45 x86_64:
 The fixed Flutter SDK builds the GUI with the requested build name. The existing
 Go distribution producer rebuilds version-bound sibling tools and owns public
 profiles/portable marker; the consumer verifies exact bytes and executable modes.
+Formal packaging skips development CTL/daemon builds. Desktop path_provider does
+not use JNI; its Android-side native plugin must not compile or enter either
+desktop GUI payload. Native CMake installs binary AssetManifest.bin rather than
+the web-only JSON wrapper. Producer and consumer reject build/debug artifacts,
+unsupported Java libraries and fonts outside the declared font manifest; every
+declared font must also be present. Runtime data and license directories still
+follow Flutter/plugin contracts rather than an exhaustive product allowlist.
 Source identity is checked across compilation and consumption. Flutter 3.47 Linux
 forwards the compiled Dart build name but omits it from asset assembly; packaging
 stamps version.json and both producer/consumer check its actual version. The local receipt
@@ -304,6 +331,7 @@ and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
 Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
 input SHA256, output SHA256, exact file digests/modes/links and dependencies.
+Wrapping an already verified portable payload does not probe or build Flutter.
 Prereleases map to RPM `~`, sorting before the final version. No signing or
 repository upload is performed. The candidate is an upstream binary package;
 private Flutter runtime and font licensing prevent assuming Fedora repository

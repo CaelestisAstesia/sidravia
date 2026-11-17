@@ -55,6 +55,10 @@ add_subdirectory("runner")
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+# Desktop path_provider does not use the Android JNI backend. Do not let an
+# installed developer JDK enable an unused native library in Release output.
+set(CMAKE_DISABLE_FIND_PACKAGE_JNI TRUE)
+set(JNI_FOUND FALSE)
 include(flutter/generated_plugins.cmake)
 
 
@@ -103,7 +107,8 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime
   # Native Flutter reads NOTICES.Z. A web build can leave its uncompressed
   # duplicate in the shared generated asset directory.
-  REGEX "/flutter_assets/NOTICES$" EXCLUDE)
+  REGEX "/flutter_assets/NOTICES$" EXCLUDE
+  REGEX "/flutter_assets/AssetManifest[.]bin[.]json$" EXCLUDE)
 
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"

@@ -388,6 +388,14 @@ func verifyRepoInputs(root, artifact string) error {
 		{"cmd/sidravia", true},
 		{"cmd/sidraviad", true},
 	}
+	if artifact == "distribution" {
+		checks = []inputCheck{
+			{"LICENSE", false},
+			{"cmd/sidravia", true},
+			{"cmd/sidraviad", true},
+			{"cmd/sidraviaupdater", true},
+		}
+	}
 	if artifact == "field-validation" {
 		checks = append(checks,
 			inputCheck{"scripts/field-test.ps1", false},
@@ -410,7 +418,11 @@ func verifyRepoInputs(root, artifact string) error {
 
 	// Release scripts ship byte-for-byte with a UTF-8 BOM so Windows PowerShell
 	// 5.1 reads their UTF-8 content correctly. Reject before building.
-	for _, script := range []string{"scripts/install.ps1", "scripts/uninstall.ps1"} {
+	var releaseScripts []string
+	if artifact != "distribution" {
+		releaseScripts = []string{"scripts/install.ps1", "scripts/uninstall.ps1"}
+	}
+	for _, script := range releaseScripts {
 		b, err := os.ReadFile(filepath.Join(root, script))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", script, err)

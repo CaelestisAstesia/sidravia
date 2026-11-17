@@ -123,6 +123,9 @@ func setupRepoRoot(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidraviad"), 0o755); err != nil {
 		t.Fatalf("mkdir cmd/sidraviad: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidraviaupdater"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	return root
 }
 

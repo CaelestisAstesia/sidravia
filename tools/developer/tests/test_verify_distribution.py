@@ -32,10 +32,35 @@ class DistributionContract(unittest.TestCase):
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(name.encode())
-        for name in ('Sidravia.exe', 'flutter_windows.dll', 'data/icudtl.dat'):
+        for name in ('Sidravia.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z'):
             path = self.gui / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(name.encode())
+            path.write_bytes(b'[]' if name.endswith('FontManifest.json') else name.encode())
+
+    def test_source_and_archive_agreement_does_not_admit_build_junk(self):
+        for name in ('debug.pdb', 'data/build.log', 'data/flutter_assets/AssetManifest.bin.json', 'data/flutter_assets/NOTICES', 'data/flutter_assets/assets/preview-font.ttf', 'dartjni.dll', 'unexpected.txt'):
+            with self.subTest(name=name):
+                path = self.gui / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'unused')
+                for output in self.out.iterdir():
+                    output.unlink()
+                self.package('windows-amd64', self.payload('windows-amd64'))
+                with self.assertRaises(module.VerificationError):
+                    self.verify('windows-amd64')
+                path.unlink()
+
+    def test_gui_requires_application_snapshot_not_just_engine(self):
+        (self.gui / 'data/app.so').unlink()
+        self.package('windows-amd64', self.payload('windows-amd64'))
+        with self.assertRaisesRegex(module.VerificationError, 'gui_source_incomplete'):
+            self.verify('windows-amd64')
+
+    def test_gui_rejects_missing_declared_font(self):
+        (self.gui / 'data/flutter_assets/FontManifest.json').write_text('[{"fonts":[{"asset":"assets/fonts/missing.otf"}]}]')
+        self.package('windows-amd64', self.payload('windows-amd64'))
+        with self.assertRaisesRegex(module.VerificationError, 'gui_declared_font_missing'):
+            self.verify('windows-amd64')
 
     def payload(self, target, gui=True):
         contents = {'LICENSE': b'LICENSE', 'sidravia.portable': b'',
