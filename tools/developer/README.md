@@ -599,3 +599,65 @@ from producing a false acceptance. A per-worktree lock excludes simultaneous
 `check` runs; it does not take over a separately running preview or older tools.
 Go/Flutter/Pub caches stay at their existing locations. There is no automatic
 package build, installer execution, test retry, Git commit or release operation.
+
+
+## Prepare and verify public release metadata
+
+`dev.py release` reuses the existing distribution consumer and offline signing
+tool. It does not generate/unlock/store a key, sign, start a product, install,
+change trust roots, tag, upload or publish. The source must be clean and the
+request `buildId` must equal that exact Git commit. This is a preparation and
+validation tool, not a new build or publication workflow.
+
+Keep the public request and results outside distribution output directories
+(e.g. in ignored `.local/release/`). Each distribution directory must remain the
+unchanged producer output, with its own SHA256SUMS.txt. Paths in the request are
+relative to the request file, or absolute. Specify every intended upload asset
+in `expectedAssets`; missing, extra and duplicate assets fail explicitly.
+
+```json
+{
+  "schemaVersion": 1,
+  "version": "1.2.3-preview.1",
+  "buildId": "0123456789abcdef0123456789abcdef01234567",
+  "expectedAssets": [
+    "sidravia-v1.2.3-preview.1-linux-amd64-core-portable.tar.gz"
+  ],
+  "distributions": [
+    {"target": "linux-amd64", "directory": "linux-core"}
+  ]
+}
+```
+
+Add distribution groups for the selected targets. GUI groups also require
+`guiDirectory` naming the exact bundle supplied to the producer. A Windows GUI
+group contributes both its portable archive and setup executable. Their
+`filesSha256` binds the same producer ownership index, but static consumption
+only checks the setup's outer bytes/PE header: its report explicitly retains
+`installerPayload: requires_native_acceptance`. Real installation/update
+validation remains required before signing/publishing. No package matrix or
+compression format is changed by this tool.
+
+Use the pinned Go toolchain for the public structure/signature verifier:
+
+```sh
+python3 tools/developer/dev.py release prepare --request .local/release/request.json --public-key .local/release/publisher-public.txt --output .local/release/sidravia-release.json --go /absolute/path/to/pinned/go --format json
+python3 tools/developer/dev.py release verify --request .local/release/request.json --public-key .local/release/publisher-public.txt --manifest .local/release/sidravia-release.json --signature .local/release/sidravia-release.sig --go /absolute/path/to/pinned/go --format json
+```
+
+`prepare` creates a new unsigned manifest exclusively; it never overwrites one.
+It independently checks archives, source-owned resources, payload version/build,
+all product-file hashes and asset hashes. It sorts the public asset list and
+uses the same v2 manifest validator as the updater. `verify` reconsumes the
+current artifact bytes, requires the signed manifest to match that inventory,
+and verifies its exact bytes with the supplied public key. It never regenerates
+or rewrites signed metadata. JSON and the normal report directory preserve
+source identity, each distribution receipt, and explicit `not_run` native,
+public-download and publication boundaries. The existing trimpath embedded-Go
+identity limitation remains visible in each consumer receipt.
+
+Private key custody and manual signing remain separate authorized operations.
+For this development round, A/B packages are local acceptance fixtures only;
+one final public version will be selected after the other packaging/size work
+and final workspace integration finish. Existing historical releases/proofs are
+retained. Local source simulation does not certify the public GitHub channel.

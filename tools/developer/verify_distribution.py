@@ -209,6 +209,8 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                 require(bool(result.stdout.strip()), 'empty_help_smoke')
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
+            'productOwnershipSha256': digest(ownership_bytes), 'payloadKind': ownership['payloadKind'],
+            'installerPayload': 'requires_native_acceptance' if windows and gui is not None else 'not_applicable',
             'productOwnership': 'passed', 'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
             'embeddedGoIdentity': 'passed' if all(embedded_identities) else 'not_recorded',
             'helpSmoke': 'passed' if smoke else 'not_run',

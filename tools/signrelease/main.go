@@ -18,6 +18,9 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(args []string, input io.Reader, out, stderr io.Writer) int {
+	if len(args) > 0 && (args[0] == "inspect" || args[0] == "verify") {
+		return publicRun(args[0], args[1:], out, stderr)
+	}
 	flags := flag.NewFlagSet("signrelease", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	manifest := flags.String("manifest", "", "exact reviewed v2 release manifest")

@@ -290,8 +290,16 @@ def preview_command(args, env):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check", "release"):
         sub = subs.add_parser(command)
+        if command == "release":
+            sub.add_argument("mode", choices=("prepare", "verify"))
+            sub.add_argument("--request", required=True, help="public release artifact inventory JSON")
+            sub.add_argument("--public-key", required=True, help="base64 Ed25519 public key file; never a private seed")
+            sub.add_argument("--output", help="new unsigned manifest file for prepare")
+            sub.add_argument("--manifest", help="exact existing manifest for verify")
+            sub.add_argument("--signature", help="existing detached signature for verify")
+            sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "check":
             sub.add_argument("--scope", action="append", choices=("go", "python", "gui"), help="repeat to combine scopes; default go+python")
             sub.add_argument("--go-checks", choices=("native", "cross", "full"), default="native")
@@ -376,6 +384,27 @@ def main(argv=None):
         if args.command == "vm":
             import windows_vm
             return windows_vm.run(ROOT, args, source_manifest(env), lambda: source_manifest(env))
+        if args.command == "release":
+            import release_artifacts
+            if (args.mode == "prepare" and (not args.output or args.manifest or args.signature)) or (args.mode == "verify" and (args.output or not args.manifest or not args.signature)):
+                raise ValueError("prepare requires only --output; verify requires --manifest and --signature")
+            before = metadata(args.go, env)
+            result = release_artifacts.run(args, ROOT, before)
+            after = metadata(args.go, env)
+            result.update(source=before, source_after=after, source_unchanged=same_source(before, after))
+            if not result['source_unchanged']:
+                raise ValueError("source changed during release validation")
+            directory = Path(args.reports).resolve()
+            directory.mkdir(parents=True, exist_ok=True)
+            directory = Path(tempfile.mkdtemp(prefix="release-" + args.mode + "-", dir=directory))
+            report = directory / "report.json"
+            report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+            if args.format == "json":
+                print(json.dumps(dict(result, report=str(report)), ensure_ascii=False))
+            else:
+                print(f"Release {args.mode}: PASS; artifacts {result['assets']}; signature {result['signature']}")
+                print(f"Report: {report}")
+            return 0
         if args.command == "preview":
             return preview_command(args, env)
         if args.command == "manifest":
