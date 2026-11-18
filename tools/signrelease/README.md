@@ -1,5 +1,70 @@
 # Offline release signatures
 
+## Publisher key custody on KDE
+
+`key_custody.py` is a separate, explicitly invoked Linux publisher tool. It uses
+the system Python, `python3-cryptography`, GI/libsecret and GnuPG; these are not
+product dependencies. It never invokes the signer, changes product trust roots,
+or uploads anything. It refuses Secret Service providers other than KDE's
+KWallet/ksecretd and only searches its own publisher attributes. The preflight
+does not read existing secrets or create a key:
+
+```sh
+/usr/bin/python3 -s tools/signrelease/key_custody.py preflight
+```
+
+After reviewing the code and being ready to enter a backup passphrase locally:
+
+```sh
+/usr/bin/python3 -s tools/signrelease/key_custody.py create
+```
+
+GPG's local pinentry asks for the backup passphrase. Do not send it through chat,
+arguments, environment variables or logs. The tool generates an Ed25519 seed in
+memory, persists a GPG AES-256 encrypted recovery document **before** writing the
+base64 seed into KWallet, then checks wallet readback and decrypts the backup to
+confirm the same public key. A second pinentry prompt deliberately checks actual
+recovery without relying on GPG's symmetric passphrase cache. No plaintext key
+file is created. Core dumps are disabled, but Python/library memory erasure and
+protection against malicious software in the same account are not guaranteed.
+KWallet is secret storage, not a non-exportable hardware signing device.
+
+New files under `~/.local/share/sidravia-signing/` are private (directory 0700,
+files 0600). Existing entries/files, symlinks, shared directories and repository
+paths are refused. The tool does not change wallet passwords, auto-unlock or
+access policies. Only the newly created publisher entry is read back; it does not
+export other secrets. It does not automatically retry after a partial failure.
+
+- `publisher-ed25519-seed.gpg`: encrypted recovery document, suitable for manual
+  upload to OneDrive. The cloud account only receives ciphertext.
+- `publisher-public.txt`: base64 public key; not a secret.
+- `publisher-key.json`: public identity, backup hash and successful custody checks.
+
+Upload the encrypted `.gpg` backup yourself. Keep the backup passphrase in a
+separate password manager. Download it again to a fresh path and verify it
+against the independently retained public key:
+
+```sh
+/usr/bin/python3 -s tools/signrelease/key_custody.py verify-backup \
+  --backup /absolute/path/to/downloaded-backup.gpg \
+  --public-key "$HOME/.local/share/sidravia-signing/publisher-public.txt"
+```
+
+Verification decrypts only into process memory and does not access the wallet,
+sign or upload. It requires the expected public key, so a different valid key's
+backup is not accepted. Never upload a decrypted recovery document.
+
+If an operation fails or is cancelled, preserve the wallet entry and any files
+already created. An encryption cancellation leaves no key files or wallet entry;
+a later failure can leave an encrypted backup/public key, and possibly the wallet
+entry, without the final success record. A missing record is **not success**.
+Do not delete them or generate another key: use `verify-backup` to establish which
+identity remains, then explicitly arrange recovery of that same key. This tool
+does not silently replace or delete a wallet entry. Formal signing, public-key
+embedding and publication remain separate authorized operations.
+
+## Signing an exact release manifest
+
 This developer tool signs the exact reviewed `sidravia-release.json` v2 bytes.
 It does not generate or store private keys, rewrite the manifest, access the
 network, upload a release or authorize installation. Run the fixed distribution
