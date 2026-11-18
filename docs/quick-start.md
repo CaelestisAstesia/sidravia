@@ -1,26 +1,37 @@
 # 快速开始
 
-本文介绍如何在 Windows x64 上安装 Sidravia 图形界面并完成首次连接，适用于吉林大学 Dr.Com 5.2.0 D 认证环境。使用核心包或命令行工具，请参阅[命令行高级使用](advance.md)。
+本文介绍 Windows 与 Linux 图形界面的安装与首次连接，适用于吉林大学 Dr.Com 5.2.0 D 认证环境。核心包没有图形界面，使用方法见[命令行高级使用](advance.md)。
+
+本页适用于 `0.5.0-alpha.1`。从旧版升级时，请先阅读[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.1)。
 
 ## 下载与安装
 
-本页对应 `0.4.0-alpha.1`。便携包须明确选择包含 GUI 的版本；核心便携包不能打开图形界面。
+先在[项目首页的下载表](../README.md#选择下载包)确认系统、架构和 GUI／核心包型，再到 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 下载对应文件。`amd64` 表示 Intel／AMD 的 x86-64；ARM64 当前仅提供核心便携包，尚未经实机验证。
 
-到 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 查看对应版本的发行说明，下载 Windows x64 安装包（`…-windows-amd64-setup.exe`）或图形界面便携包（`…-windows-amd64-gui-portable.zip`）。文件名中的 `amd64` 对应 x64 架构。
+### Windows x64
 
-- **安装版**（`…-setup.exe`）：运行安装器，保留「图形界面」组件，按向导完成安装。需要登录 Windows 后自动启动时，勾选「开机自启」，并选择「启动到托盘」；需要在任意终端直接使用命令行工具时，勾选「加入用户 PATH」。桌面快捷方式按需创建。
-- **图形界面便携版**（ `…-windows-amd64-gui-portable.zip`）：完整解压到一个固定、可写的目录，打开解压后的文件夹，运行 `Sidravia.exe`。保留同目录下的 `sidravia.portable` 文件及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
+- **安装版**（`…-windows-amd64-setup.exe`）：运行安装器，保留「图形界面」组件，按向导完成安装。需要登录 Windows 后自动启动时，勾选「开机自启」并选择「启动到托盘」；需要在任意终端使用命令行工具时，勾选「加入用户 PATH」。桌面快捷方式按需创建。取消 GUI 组件即为仅核心安装。
+- **GUI 便携版**（`…-windows-amd64-gui-portable.zip`）：完整解压到固定、可写的目录，运行 `Sidravia.exe`。保留 `sidravia.portable` 及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
 
 安装版将账号配置保存在 `%APPDATA%\Sidravia`，便携版保存在程序目录下的 `config` 文件夹，两者不会自动迁移数据。不要把安装版覆盖到便携目录。完整数据位置见[数据与隐私](privacy.md#数据位置)；从旧版本升级时，请先阅读对应版本的发行说明并备份配置。
 
-如需校验下载文件，请同时下载该版本的 `SHA256SUMS.txt`，与程序包放在同一文件夹。在该文件夹打开 PowerShell，运行以下命令；文件名替换为实际下载的名称：
+### Linux x64
+
+- **GUI 便携版**（`…-linux-amd64-gui-portable.tar.gz`）：先安装[运行依赖](linux-portable.md#运行环境)，完整解压到可写目录，在包根目录运行 `./sidravia_gui`。保留 `gui-runtime/` 和其他随包文件。
+- **Fedora RPM**：按 [RPM 说明](linux-rpm.md)使用 `dnf` 安装 GUI 包，然后从应用菜单打开 Sidravia。RPM 的配置位于当前用户的 XDG 目录，不会自动导入便携版数据。
+
+Linux 的自启在登录桌面后生效，自动认证需另行开启。便携版保留程序目录内的数据，具体位置见[数据与隐私](privacy.md#linux)。
+
+### 校验下载
+
+同时下载该版本的 `SHA256SUMS.txt`，与程序包放在同一目录。Windows 在该目录打开 PowerShell，文件名替换为实际下载的名称：
 
 ```powershell
-Get-FileHash .\sidravia-v0.4.0-alpha.1-windows-amd64-gui-portable.zip -Algorithm SHA256
+Get-FileHash .\sidravia-v0.5.0-alpha.1-windows-amd64-gui-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
-将计算结果与校验文件中对应文件名的 SHA256 值比较，两者应完全一致，字母大小写不影响比较。不一致时请重新下载，暂勿运行。
+Linux 可用 `sha256sum <下载文件名>` 计算哈希，与清单中对应项比较；只下载部分资产时无需检查其他未下载项。两者应完全一致，十六进制字母大小写不影响比较。不一致时暂勿运行。
 
 ## 第一次连接
 
@@ -38,7 +49,7 @@ Get-Content .\SHA256SUMS.txt
 
 - **启动时自动登录**：后台启动并取得网络状态后，使用保存的配置自动认证；开启开关不会立即发起连接。
 - **自动重连**：断线或发生可恢复错误后自动重试。修改在下次连接时生效；需要立即应用时，断开后重新连接。
-- **开机自启**：在「启动与窗口行为」中选择「启动到托盘」，让 Sidravia 在登录 Windows 后自动启动。如需同时自动认证，还应开启「启动时自动登录」，并关闭其他认证客户端的自启。
+- **开机自启**：在「启动与窗口行为」中选择「启动到托盘」，让 Sidravia 在登录系统后的桌面会话中自动启动。如需同时自动认证，还应开启「启动时自动登录」，并关闭其他认证客户端的自启。
 
 默认点击关闭按钮会隐藏到托盘，连接继续保持。可通过托盘菜单重新打开窗口；需要断开并退出时，选择「退出 Sidravia」。
 

@@ -4,7 +4,7 @@
 
 日常连接与配置使用 GUI 或 [CTL](advance.md)；普通安装版卸载从 Windows 应用列表进行。仅在需要命令行维护、排查系统集成时，使用本页命令。
 
-本文描述 `0.4.0-alpha.1` 源码的六项 MGR 操作。已发布 `v0.3.0-alpha.1` 仍有旧卸载/清理命令；本轮将其退役，相关职责由 Inno 安装器承担。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 核心包不提供 MGR；非 Windows 构建的实际维护操作返回 `unsupported`，帮助查看不依赖 Windows 系统集成。
+本文描述 `0.5.0-alpha.1` 源码的六项 MGR 操作。旧版遗留的卸载/清理命令已退役，相关职责由 Inno 安装器承担。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 不提供 MGR；其 GUI 使用独立的平台集成实现，见 [Linux 便携版](linux-portable.md)。非 Windows 的 MGR 构建执行维护操作时返回 `unsupported`。
 
 ## 调用范围与参数规则
 
@@ -20,7 +20,7 @@ PATH 与自启任务作用于运行命令的当前 Windows 用户。正常维护
 
 MGR 使用当前用户的串行锁协调维护。无法取得锁、确认相关进程身份或核实系统状态时，会返回失败；它不会强制终止或接管认证后台。
 
-设置开机自启不等于开启自动登录。需要程序启动后自动认证，还应在保存配置中开启自动登录。
+需要程序启动后自动认证时，在保存配置中开启自动登录。
 
 ## 完整命令表
 
@@ -54,7 +54,7 @@ MGR 不提供安装、升级、修复或删除程序文件的命令，这些工�
 .\sidraviamgr.exe path disable
 ```
 
-PATH 写入保留其他条目和原有字符串类型，目录匹配忽略大小写和末尾路径分隔符；不承诺识别环境变量展开、符号链接或短路径等所有等价拼法。写后会校验并广播环境变更，现有终端不会自动刷新其环境，请打开新终端。
+PATH 写入保留其他条目和原有字符串类型，目录匹配忽略大小写和末尾路径分隔符；维护时请使用完整路径。写后会校验并广播环境变更，现有终端不会自动刷新其环境，请打开新终端。
 
 自启模式二选一：
 
@@ -103,7 +103,7 @@ MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录�
 | `autostart` | 字符串，可省略 | `disabled`、`gui`、`daemon`、`conflict` |
 | `guiAvailable` | 布尔值 | 同目录存在常规 GUI 文件；不证明 GUI 可启动或运行验收通过 |
 
-每个结果只反映该操作实际检查的内容，并非完整状态快照。例如自启操作中的 `pathEnabled: false` 不代表 PATH 已禁用。需要综合状态时另调用 `status`。`capabilities` 也不表示每项操作在当前布局和进程状态下都可成功。
+每项操作只返回相关状态。需要同时查询 PATH、自启和 GUI 文件时，运行 `status`。`capabilities` 列出平台支持的能力，操作结果看 `ok` 和 `code`。
 
 PowerShell 脚本应先保存退出码，再解析并核对 JSON；缺失、格式错误或不支持的结构版本均应报错：
 
@@ -153,6 +153,6 @@ CTL `integration ...` 也输出相同的公开结果字段，但其失败退出�
 
 ## 实现与验收边界
 
-入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installationmanager/path.go)、[Windows 操作分派](../internal/installationmanager/platform_windows.go)、[计划任务规则](../internal/installationmanager/task.ps1)、[Inno 安装与清理](../tools/installer/sidravia.iss)。本文说明代码契约，不代表已在当前设备执行自启、卸载或数据删除验收。
+入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installationmanager/path.go)、[Windows 操作分派](../internal/installationmanager/platform_windows.go)、[计划任务规则](../internal/installationmanager/task.ps1)、[Inno 安装与清理](../tools/installer/sidravia.iss)。
 
 返回：[CTL 高级使用](advance.md) · [使用指南](guide.md) · [数据与隐私](privacy.md)

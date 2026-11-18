@@ -11,12 +11,15 @@
 在仓库根目录使用统一入口：
 
 ```bash
-python3 tools/developer/dev.py verify --scope go --go-checks native
-python3 tools/developer/dev.py verify --scope go --go-checks cross
-python3 tools/developer/dev.py verify --scope python
+python3 tools/developer/dev.py check
+python3 tools/developer/dev.py check --scope go --go-package ./internal/update/...
+python3 tools/developer/dev.py check --scope gui
+python3 tools/developer/dev.py check --scope go --go-checks cross
 ```
 
-根据改动选择检查范围；局部 Go 修改也可以直接运行对应包的 `go test -count=1`。交叉编译只证明可编译，不能证明目标平台运行行为。真实认证、安装卸载和系统集成验证需要对应环境与明确操作范围。
+默认 `check` 执行 Go 原生检查与 Python 测试，GUI 和交叉编译按需选择。完整参数与 JSON 回执见[工具说明](../tools/developer/README.md#combined-local-checks-and-formatted-results)。
+
+根据改动选择检查范围；局部 Go 修改也可以直接运行对应包的 `go test -count=1`。目标平台的运行行为需要原生验证。真实认证、安装卸载和系统集成验证需要对应环境与明确操作范围。
 
 ## Windows GUI
 
@@ -51,10 +54,10 @@ python3 tools/developer/dev.py windows --package --windows-python 'C:\Python314\
 该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包：
 
 ```bash
-python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/linux-amd64
+python3 tools/developer/dev.py package --version 0.5.0-alpha.1 --output dist/linux-amd64
 ```
 
-同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。ARM64 仅提供核心便携包，Windows 核心包包含 MGR；GUI 支持 Windows/Linux AMD64，安装程序为 Windows AMD64，RPM 初始目标为 Fedora 45 x86_64。交叉编译和包检查不代表已通过 ARM64 实机验证。
+同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。ARM64 仅提供核心便携包，Windows 核心包包含 MGR；GUI 支持 Windows/Linux AMD64，安装程序为 Windows AMD64，RPM 初始目标为 Fedora 45 x86_64。ARM64 尚待实机验证。
 
 输出目录的父目录需存在。以上入口不会安装程序、启动 GUI、真实认证、签名或发布。包内容、哈希与 help smoke 检查也不能代替实际安装和网络验证。
 

@@ -118,11 +118,11 @@ OS, architecture and package format:
 | --- | --- | --- |
 | Windows x64 | Setup EXE, GUI portable ZIP | Core portable ZIP; core-only selection in the same Setup EXE |
 | Windows ARM64 | Not provided | Core portable ZIP |
-| Linux x64 | GUI portable tar.gz, Fedora RPM | Core portable tar.gz |
+| Linux x64 | GUI portable tar.gz, Fedora GUI RPM | Core portable tar.gz, Fedora core RPM |
 | Linux ARM64 | Not provided | Core portable tar.gz |
 
-These are eight downloads; the Windows installer covers two component selections.
-No ARM64 GUI, headless RPM, Linux installer, DEB or Flatpak is produced.
+These are nine downloads; the Windows installer covers two component selections.
+No ARM64 GUI/RPM, Linux installer, DEB or Flatpak is produced.
 The Package workflow builds Windows x64 GUI/setup/core and all four core
 OS/architecture targets. Linux GUI and RPM use the native Fedora entries below;
 they are not produced by that workflow.
@@ -137,10 +137,10 @@ From a clean Linux amd64 checkout, choose an absent output directory whose paren
 exists (the repository's ignored `dist/` path is suitable):
 
 ```bash
-python3 tools/developer/dev.py package --version 0.4.0-alpha.1 --output dist/linux-amd64
-python3 tools/developer/dev.py package --target linux-arm64 --version 0.4.0-alpha.1 --output dist/linux-arm64
-python3 tools/developer/dev.py package --target windows-arm64 --version 0.4.0-alpha.1 --output dist/windows-arm64
-python3 tools/developer/dev.py package --target windows-amd64 --version 0.4.0-alpha.1 --output dist/windows-amd64-core
+python3 tools/developer/dev.py package --version 0.5.0-alpha.1 --output dist/linux-amd64
+python3 tools/developer/dev.py package --target linux-arm64 --version 0.5.0-alpha.1 --output dist/linux-arm64
+python3 tools/developer/dev.py package --target windows-arm64 --version 0.5.0-alpha.1 --output dist/windows-arm64
+python3 tools/developer/dev.py package --target windows-amd64 --version 0.5.0-alpha.1 --output dist/windows-amd64-core
 ```
 
 ARM64 packages contain core tools only (Windows includes the manager). They are
@@ -383,7 +383,7 @@ From a clean isolated candidate on Fedora 45 x86_64:
 
 ```sh
 .local/bin/dev linux --check-gui
-.local/bin/dev linux --package --version 0.4.0-alpha.1 --output .local/linux-portable-output
+.local/bin/dev linux --package --version 0.5.0-alpha.1 --output .local/linux-portable-output
 ```
 
 The fixed Flutter SDK builds the GUI with the requested build name. The existing
@@ -407,7 +407,7 @@ After producing the archive, accept that exact clean-source package on the
 current KDE/Wayland desktop with:
 
 ```sh
-.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.4.0-alpha.1-linux-amd64-gui-portable.tar.gz
+.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz
 ```
 
 This checks the local producer receipt before extracting into an owned directory
@@ -448,10 +448,10 @@ no account scan or automatic autostart registration is performed. Initial suppor
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
 ```
-.local/bin/dev linux --package --version 0.4.0-alpha.1 --output .local/rpm-portable-input
-.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
-.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.4.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
-.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.4.0~alpha.1-1.x86_64.rpm .local/rpm-r2/sidravia-0.4.0~alpha.1-2.x86_64.rpm
+.local/bin/dev linux --package --version 0.5.0-alpha.1 --output .local/rpm-portable-input
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
+.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
+.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.5.0~alpha.1-1.x86_64.rpm .local/rpm-r2/sidravia-0.5.0~alpha.1-2.x86_64.rpm
 ```
 
 Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
@@ -476,6 +476,21 @@ ownership refusal, and persistence across upgrade/removal. No host RPM install,
 real autostart registration or campus request is involved. This is not a clean
 Fedora dependency-solving/install-image test. Receipts/logs stay in the owned
 `.local/linux-rpm-fixture-*` until reviewed and explicitly cleaned.
+
+### Core-only Fedora RPM
+
+The `sidravia-core` package includes CTL, daemon and institution profiles without
+GUI libraries, desktop integration or the portable updater. It conflicts with
+the full `sidravia` package because both own the same installation paths.
+Use the exact verified core portable archive from the current clean source:
+
+```bash
+python3 tools/developer/dev.py linux --rpm-core dist/linux-amd64/sidravia-v0.5.0-alpha.1-linux-amd64-core-portable.tar.gz --version 0.5.0-alpha.1 --output dist/rpm-core
+```
+
+Use an absent output directory with an existing parent. Core RPM lifecycle
+acceptance uses the existing `linux --verify-rpm-upgrade OLD_RPM NEW_RPM` entry.
+ARM64 RPM is not currently produced.
 
 ## Isolated account-business fixture
 

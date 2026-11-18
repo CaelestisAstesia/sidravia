@@ -2,9 +2,9 @@
 
 `sidraviactl`（下文简称 **CTL**）提供一次性认证、保存配置、多配置管理、独立后台、网卡查询与诊断导出等功能。日常使用 GUI 连接网络，可直接阅读[快速开始](quick-start.md)和[使用指南](guide.md)。
 
-本页对应 `0.4.0-alpha.1` 源码与命令契约，发行准备状态见[变更日志](../CHANGELOG.md)。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
+本页适用于 `0.5.0-alpha.1`，版本变化见[变更日志](../CHANGELOG.md)。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
 
-Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 核心包使用 `./sidraviactl`，不支持 Windows 专用的自启和 PATH 集成功能。
+Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 便携包使用 `./sidraviactl`，RPM 安装后可直接使用 `sidraviactl`。Linux GUI 的自启和 PATH 设置见[便携版说明](linux-portable.md)，本页的 `integration` 命令仅供 Windows 使用。
 
 `<configuration-id>`、`<session-id>` 和 `<账号>` 等表示需要替换的内容，实际输入时不保留尖括号。交互式输入密码时不会回显；不要把密码直接写进命令行参数。
 
@@ -39,7 +39,7 @@ CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的�
 .\sidraviactl.exe daemon status
 ```
 
-`daemon status` 用于确认后台状态；命令执行成功不代表已经认证成功。已有保存配置开启自动登录时，启动后台可能自动发起认证。手动连接前，先查看当前会话：
+`daemon status` 查询后台运行状态。已有保存配置开启自动登录时，启动后台可能自动发起认证。手动连接前，先查看当前会话：
 
 ```powershell
 .\sidraviactl.exe auth list
@@ -57,7 +57,7 @@ CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的�
 .\sidraviactl.exe daemon restart
 ```
 
-重启会中断当前连接，使旧 Session ID 失效；开启自动登录的配置可能随后重新发起认证。单条 CTL 命令执行结束或关闭终端，不等于停止独立后台。
+重启会中断当前连接，使旧 Session ID 失效；开启自动登录的配置可能随后重新发起认证。停止独立后台请执行 `daemon stop`。
 
 ## 后台与命令副作用
 
@@ -90,7 +90,7 @@ CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的�
 
 本次认证不会创建持久保存的账号配置，但会在当前后台保留会话记录。示例未指定网卡与 IPv4，采用自动选择，通常建议保留此方式。
 
-`auth start` 返回不代表认证已成功。使用返回的 Session ID 查询状态，或持续观察：
+发起认证后，使用返回的 Session ID 查询结果，或持续观察：
 
 ```powershell
 .\sidraviactl.exe auth list
@@ -139,7 +139,7 @@ sidraviactl auth start --session SESSION_ID
 
 参数名后的 `PROFILE`、`USER`、`CONFIGURATION_ID`、`SESSION_ID` 等都是待替换值，使用空格与参数名分隔。
 
-`auth start --session ID` 可恢复已停止且仍被后台保留的会话；需要明确重新尝试失败或等待中的认证时，使用 `auth restart ID`。命令返回成功不等于认证完成，仍需通过 `auth status ID` 或 `auth watch` 确认结果。
+`auth start --session ID` 可恢复已停止且仍被后台保留的会话；需要明确重新尝试失败或等待中的认证时，使用 `auth restart ID`。认证结果通过 `auth status ID` 或 `auth watch` 查看。
 
 ## 保存配置
 
@@ -209,7 +209,7 @@ sidraviactl auth start --session SESSION_ID
 
 自动化程序应通过标准输入传入一行 UTF-8 密码，不要将密码直接写入命令行参数、终端历史或公开脚本。Windows PowerShell 5.1 的默认管道编码可能改变非 ASCII 字符，使用时应确认传入编码。
 
-**输入限制**：标准输入密码上限为 4096 字节，末尾的 LF 或 CRLF 会被移除。这是输入通道限制，不代表协议支持任意同等长度的密码。D520 账号按严格 GBK 编码后最多 36 字节；账号、密码及主机文本不接受 NUL 或 GBK 无法表示的字符。字节数不等于字符数。
+**输入限制**：标准输入密码上限为 4096 字节，末尾的 LF 或 CRLF 会被移除。账号和密码还需符合协议限制。D520 账号按严格 GBK 编码后最多 36 字节；账号、密码及主机文本不接受 NUL 或 GBK 无法表示的字符。长度按编码后的字节计算。
 
 ## 更新密码与删除参数
 
@@ -341,7 +341,7 @@ Windows 包通过同目录的 `sidraviamgr.exe`（MGR）维护当前 Windows 用
 
 - `set gui`：下次登录 Windows 时启动到托盘，需要同目录包含 GUI 组件。
 - `set daemon`：下次登录 Windows 时仅启动独立后台。
-- `disable`：关闭自启，不代表立即停止当前程序。
+- `disable`：关闭下次登录自启，当前程序继续运行。
 
 两种自启模式互斥，设置不会立即启动程序；需要自动认证时，还应在保存配置中开启自动登录。
 
@@ -359,11 +359,11 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 
 保存配置中的覆写实际变化后，关联旧会话会退役，需要按需重新连接。
 
-覆写不改变真实网卡、IP、MAC、DNS、路由、socket 源地址、认证服务器或认证策略，也不意味着已支持其他学校或协议变体。文件格式、字段限制和完整操作示例见[协议上报覆写](override.md)。
+覆写仅调整认证报文中的允许字段，实际网卡、IP、MAC、DNS、路由和认证服务器保持原有设置。文件格式、字段限制和完整操作示例见[协议上报覆写](override.md)。
 
 ## 更新检查与下载
 
-当前源码通过同目录的独立 `sidraviaupdater` 执行更新操作，CTL 转发命令并输出 JSON。检查会访问 GitHub Releases；下载校验候选包的大小和 SHA256，但不等同于发布者签名验证或安装授权。
+CTL 通过同目录的 `sidraviaupdater` 检查、下载和应用更新，结果以 JSON 输出。检查与下载使用 GitHub Releases。RPM 使用系统包管理器更新。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -376,22 +376,37 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 
 `check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果，不要填版本号或任意 URL。
 
-Linux／Windows 便携版和 Windows 安装版已接入检查、下载、确认应用、正常退出与恢复链路。默认构建已固定发布公钥；没有有效签名证明的候选仍不会提供自动应用。更新还需取得当前版本与新版本的有效签名证明，核验本地文件清单和下载包，并由用户明确确认；缺少旧版证明时需手动升级到可信基线。GUI 自动提醒及正式签名发行仍待实现或验收
+### 使用条件
 
-Windows 便携版目前支持 AMD64、本地 NTFS 目录，文件名与目录布局保持不变。更新时会临时运行一份已核验的更新器副本，等原更新器及调用命令退出后再替换文件；`handed_over` 只表示交接，完成情况以 `update status` 为准。下一次更新会核验并清理已退出的上一份副本，最新副本和操作回执保留在用户缓存中，不增加常驻服务
+自动应用支持 Linux x64 便携版、Windows x64 便携版和安装版。Windows 便携版需放在本地 NTFS 目录。
 
+程序内固定了发布者公钥。更新时会核验当前版本和目标版本的签名、文件清单及下载包；旧版缺少签名证明时，先按发行说明手动升级。GUI 暂无更新入口。
 
-`update status` 在存在执行记录时还会返回操作 ID、阶段、源/目标版本、更新时间和失败码。`requiresStartupBlock` 表示该阶段阻止普通启动，`status` 和 `recover` 仍可用。执行记录保留精确签名证据并重新验证，不把缓存中的提示字段当成安装授权。
+### 检查、下载和应用
 
-在具备可信基线的 Linux／Windows 便携版或 Windows 安装版中，依次执行 `update check`、`update download --candidate ID`、`update apply --candidate ID --confirm`，最后用 `update status` 确认结果。检查、下载和应用应使用相同通道、包类型；仅允许同包型升级，不降级。应用前重新检查候选、签名和缓存，不将 `canApply` 当作安装授权
+先运行 `update check`，从结果中取得候选 ID，再依次执行：
 
-应用结果分别报告 `filesApplied`（文件已安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证，本操作不据此判定登录成功）。原本未运行则不启动；原本已断开则不自动认证。更新中断时先查 `status`，确认操作 ID 后可运行 `recover`；它只在协调器已退出且文件完整时结束中断状态，不重复拉起程序。Windows 可在核验精确目标后清理本次操作留下的更新标记；部分写入失败仍保持保护，需用可信安装器修复后再核验，不自动全包回滚
+```text
+sidraviactl update download --candidate ID
+sidraviactl update apply --candidate ID --confirm
+sidraviactl update status
+```
 
-Windows 的 `apply` 返回 `handed_over` 仅表示可信安装器已接管，不表示安装完成。安装器沿用原安装位置和组件，按现有向导确认自启与 PATH 选项；之后以 `status` 的执行阶段及 `installer` 字段确认安装器退出码、系统集成结果和重启要求。进程环境不允许独立交接时，会在退出应用前拒绝操作，可按发行说明手动运行可信安装包
+Windows 在程序目录中使用 `.\sidraviactl.exe`，Linux 便携版使用 `./sidraviactl`。检查、下载和应用应保持相同通道、包型。更新只接受同包型的更高版本。
 
-Windows 保留原 `Sidravia.exe` 和目录布局。持久标记阻止半更新版本进入界面与业务逻辑，但 Windows 会先加载导入 DLL，极端中断也可能先出现系统加载错误；此检查不承诺在 DLL 加载之前拦截。恢复只使用本次操作绑定的冷启动许可，原本未运行不启动，用户明确断开的连接不自动恢复
+应用前会再次核对候选、签名和缓存，并请求程序正常退出。请先保存正在编辑的配置。更新后按原运行模式冷启动，已保存配置的连接意图会尝试恢复；原本未运行或已主动断开的状态会保留。一次性密码需要重新输入。
 
-RPM 安装继续通过系统包管理器更新。正式签名、可信手动基线和发行验收完成前，请继续按平台说明手动更新
+Windows 返回 `handed_over` 后，用 `update status` 查看最终结果。安装版还会报告安装器退出码、系统集成结果和重启要求。安装器沿用原目录与组件，自启和 PATH 按向导确认。
+
+应用结果分为 `filesApplied`（文件安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证状态）。文件安装后，请确认程序能够打开，并检查校园网连接。
+
+### 更新中断
+
+先运行 `update status`，记下操作 ID、阶段和失败码。`requiresStartupBlock` 为真时，程序会暂停普通启动，保留状态查询和恢复入口。
+
+协调器退出、文件完整时，可用 `update recover --operation ID --confirm` 结束中断状态。文件已部分替换或提示 `repair_required` 时，保留更新记录，按发行说明修复。Windows 安装版可重新运行对应版本的可信安装器；便携版可完整解压到新目录，再迁移需要保留的配置。
+
+Windows GUI 在极端中断后可能先显示系统 DLL 加载错误，也按上述方式修复。更新不会自动降级或全包回滚。
 
 ## 命令速查
 
@@ -444,7 +459,7 @@ RPM 安装继续通过系统包管理器更新。正式签名、可信手动基�
 
 **退出码**：公开命令成功返回 `0`，失败（包括用法错误）返回 `1`。成功仅表示该命令完成，不保证认证成功、网络可用或后台处于某个特定状态；应结合返回内容判断。内部桥接命令的特殊退出码见上一节。
 
-**结果未知**：通信超时或中断不代表后台未执行操作。修改配置、控制会话或调整系统集成后遇到结果未确认，应先查询实际状态，再决定是否重试。
+**结果未知**：通信超时或中断后，先查询配置、会话或系统集成的实际状态，再决定是否重试。
 
 **脚本读取**：普通查询输出用于终端阅读，不保证固定排版。仅对明确声明为 JSON 的结果按结构读取：系统集成 JSON 输出到 stdout，失败时还可能向 stderr 输出错误文本；诊断导出 JSON 写入目标文件，终端只显示完成提示。
 

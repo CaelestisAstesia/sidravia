@@ -2,27 +2,41 @@
 
 **网络接入认证客户端**
 
-Sidravia 旨在提供一个开源的第三方网络认证客户端，追求比官方认证器更稳定、现代、高效的使用体验。项目包含图形界面与命令行工具，支持开机自启、自动登录、连接保持与断线恢复，以及安静的后台运行，并为开发者和高级用户提供诊断与日志工具。
+Sidravia 是一个开源的网络认证客户端，提供图形界面和命令行工具，支持登录自启、自动认证、断线重连和日志诊断。
 
 目前支持 **吉林大学 Dr.Com 5.2.0 D 协议认证**，欢迎更多开发者贡献其他学校和认证协议的适配。
 
-Sidravia 的核心采用跨平台设计，注重运行效率。已发布的图形界面资产以 Windows 为主；当前源码还支持 Linux 原生 GUI 开发，见 [GUI 开发说明](gui/README.md)。各发行资产的支持范围仍以对应发行说明为准。
+Sidravia 使用共享的 Go 认证核心与 Flutter 桌面界面，面向 Windows 和 Linux。Linux GUI 当前适配 Fedora 45 x86_64、KDE Plasma / Wayland。
 
 [下载](https://github.com/CaelestisAstesia/sidravia/releases) · [快速开始](docs/quick-start.md) · [使用指南](docs/guide.md) · [变更日志](CHANGELOG.md)
 
 ## 使用
 
-从 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 下载 Windows x64 安装包或图形界面便携包。安装或完整解压后，打开 Sidravia，在「设置 → 连接配置」选择机构、填写账号和密码，然后保存并连接。
+当前版本为 **[0.5.0-alpha.1](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.1)**。请按系统、架构和使用方式选择下载包。
 
-默认关闭窗口会隐藏到托盘，连接继续保持；需要退出时，在托盘菜单选择「退出 Sidravia」。如需启动后自动认证，可在设置中开启自动登录；如需断线后自动恢复，可开启自动重连。开机自启可在「启动与窗口行为」中设置。
+### 选择下载包
 
-下一版本候选为 **`0.5.0-alpha.1`**，尚未发布；当前公开预发布版本为 [`0.4.0-alpha.1`](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.4.0-alpha.1)。Windows x64 提供安装程序、图形界面便携包和核心便携包；Linux x64 提供图形界面便携包、Fedora RPM 和核心便携包。Windows/Linux ARM64 仅提供核心便携包，尚未经实机验证。变化见[变更日志](CHANGELOG.md)，下载前请查看对应平台说明。
+| 系统与架构 | 图形界面 | 仅核心（命令行） |
+| --- | --- | --- |
+| Windows x86-64 | 安装版、GUI 便携 ZIP | 安装版取消 GUI 组件，或核心便携 ZIP |
+| Windows ARM64 | 暂不提供 | 核心便携 ZIP |
+| Linux x86-64 | GUI 便携 tar.gz、Fedora RPM | 核心便携 tar.gz、Fedora 核心 RPM |
+| Linux ARM64 | 暂不提供 | 核心便携 tar.gz |
 
-**预发布（Pre-release）版本之间可能引入不兼容的改动，配置格式、命令参数或使用流程可能发生变化。升级前务必阅读目标版本的发行说明并备份配置，不要假定旧版配置可直接沿用，或新版保存的数据可直接用于回退。**
+`amd64`、`x86_64` 和 x64 都表示 x86-64，Intel 与 AMD 的 64 位电脑均适用；当前没有 32 位 x86 包。ARM64 核心包尚待实机验证。
+
+**GUI 包包含界面和核心**，适合日常桌面使用。核心包通过 `sidraviactl` 使用，适合终端和脚本。安装版由安装器管理快捷方式、升级和卸载；便携版完整解压后运行；RPM 交给 Fedora 包管理器管理。
+
+Windows 打开 `Sidravia.exe`，Linux GUI 便携版运行包根目录的 `./sidravia_gui`，RPM 安装后从应用菜单打开。在「设置 → 连接配置」选择机构、填写账号和密码，保存并连接。操作步骤见[快速开始](docs/quick-start.md)，Linux 用户请同时查看[便携版](docs/linux-portable.md)或 [RPM](docs/linux-rpm.md) 说明。
+
+默认关闭窗口会隐藏到托盘，连接继续保持；需要退出时，在托盘菜单选择「退出 Sidravia」。启动时自动登录、断线后自动重连和登录系统后自启可分别设置。Linux 没有托盘服务时会保留可访问的主窗口。
+
+预发布版本可能调整配置格式和命令。升级前请阅读发行说明并备份配置。
 
 ## 文档
 
 - [快速开始](docs/quick-start.md)：安装与首次连接。
+- [Linux 便携版](docs/linux-portable.md) · [Fedora RPM](docs/linux-rpm.md)：运行依赖、系统集成和包管理。
 - [使用指南](docs/guide.md)：连接设置、托盘、自启和公告。
 - [常见问题](docs/troubleshooting.md)：连不上、断线与问题反馈。
 - [数据与隐私](docs/privacy.md)：密码保存位置、日志和卸载数据。

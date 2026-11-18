@@ -1,6 +1,6 @@
 # Sidravia GUI
 
-Sidravia 的 Flutter 桌面界面，当前开发版本为 `0.4.0-alpha.1`，已提供 Windows 与 Linux x64 GUI 资产及原生开发链路。日常操作见[快速开始](../docs/quick-start.md)和[使用指南](../docs/guide.md)。本文只介绍 GUI 开发；统一验证与构建入口见[开发指南](../docs/development.md)。
+Sidravia 的 Flutter 桌面界面，当前版本为 `0.5.0-alpha.1`，支持 Windows 与 Linux x64。日常操作见[快速开始](../docs/quick-start.md)和[使用指南](../docs/guide.md)。本文只介绍 GUI 开发；统一验证与构建入口见[开发指南](../docs/development.md)。
 
 GUI 面向单份保存配置的日常连接。协议覆写、一次性认证、多配置和脚本操作保留在 [ctl 高级使用](../docs/advance.md)，本目录不为这些能力提供界面入口。
 
@@ -24,7 +24,7 @@ Linux 从仓库根使用固定SDK与统一入口：
 .local/bin/dev linux --integration
 ```
 
-前者构建含GUI、CTL、daemon及机构资源的开发bundle；后者在项目内隔离XDG根/namespace中用虚构凭据验证真实链路，不访问生产配置或校园端点。普通GUI入口会使用对应运行目录的数据；不要以开发实例接管正在使用的headless实例。详见[developer工具说明](../tools/developer/README.md#native-linux-desktop-development)。Linux 已提供 GUI 便携包和 Fedora RPM，依赖与验收范围见[发行说明](../CHANGELOG.md)及[RPM说明](../docs/linux-rpm.md)。
+前者构建含GUI、CTL、daemon及机构资源的开发bundle；后者在项目内隔离XDG根/namespace中用虚构凭据验证真实链路，不访问生产配置或校园端点。普通GUI入口会使用对应运行目录的数据；不要以开发实例接管正在使用的headless实例。详见[developer工具说明](../tools/developer/README.md#native-linux-desktop-development)。Linux 支持构建 GUI 便携包和 Fedora RPM，依赖与验收范围见[发行说明](../CHANGELOG.md)及[RPM说明](../docs/linux-rpm.md)。
 
 ## 隔离视觉预览
 
@@ -47,9 +47,9 @@ Web 预览默认在居中的 400 × 690 逻辑尺寸窗口内展示，可通过�
 认证后台、生产配置、学校网页及系统登记均不参与，渲染资源从本机服务加载。
 
 终端中按 `r` 热重载、`R` 热重启，浏览器未更新时刷新页面；按 `q` 或 Ctrl+C 停止服务。
-本次验收中 `R` 曾出现 `disposed EngineFlutterView` 报错，原因未定位；刷新后恢复，
+`R` 热重启曾出现 `disposed EngineFlutterView` 报错，原因未定位；刷新后恢复，
 普通 `r` 热重载与后续交互未出现新增错误。日常修改优先使用 `r`，热重启后刷新浏览器。
-预览服务只监听 `127.0.0.1`。Web 入口仅用于开发，不构成 Web 产品支持；
+预览服务只监听 `127.0.0.1`。Web 入口用于开发预览；
 原生窗口、托盘服务、通知、自启及 WebKit/WebView2 公告仍需桌面验收。
 
 只调整布局时，可运行使用虚构内存快照的预览入口：
@@ -68,10 +68,10 @@ flutter run -d windows -t lib/dev/preview_main.dart
 
 运行状态快照使用随包 Source Code Pro 等宽字体，中文由系统字体回退显示；字体许可及来源见[许可证与致谢](../docs/acknowledgements.md)。
 
-GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。普通界面使用 Flutter 的平台默认字体与系统回退字体，不随包携带中文字体；不同系统的字形可能略有差异，中文显示需要系统已安装中文字体。仓库中的其他平台 runner 不构成相应平台的发行支持声明。
+GUI 设置与认证配置分开保存，见[数据与隐私](../docs/privacy.md)。普通界面使用 Flutter 的平台默认字体与系统回退字体，不随包携带中文字体；不同系统的字形可能略有差异，中文显示需要系统已安装中文字体。GUI 当前发行目标为 Windows 与 Linux x64。
 
 Linux窗口复用共享Flutter自绘标题栏，GTK承载窗口并处理真实指针事件下的合成器拖动/边缘缩放，Ayatana提供系统托盘菜单，WebKitGTK提供应用内公告。Linux PNG图标直接复用已接受Windows ICO中的256px PNG内容。没有托盘服务时保留主窗口；启动隐藏只作用于本次启动，之后修改偏好不改变当前窗口可见性。Wayland的坐标、焦点和最小化归合成器管理；未激活的已映射窗口无法可靠判断是否最小化，返回未知观察，通知策略不会猜测可见性。公告复用共享导航决策：加载完成后的用户HTTP(S)外链交浏览器，同文档锚点、脚本导航与重定向仍在窗口内；非用户弹窗、非HTTP(S)、权限请求与下载被拒绝。加载提示、30秒有界失败、Web进程终止与关闭重开按原生生命周期管理。
 
 Linux系统集成支持登录桌面会话后的GUI或仅后台自启，两者互斥登记且不接管当前运行模式；拒绝覆盖其他安装的自启文件。PATH维护在HOME/.local/bin发布本安装命令链接，不改shell配置，目录不在当前PATH或有前序同名命令时明确提示；关闭只移除本安装链接。移动portable前应关闭自启和PATH，移动后重新启用。两端已移除独立主动网络诊断，认证所需网卡观察、绑定、恢复和日志/诊断导出继续保留。GUI偏好默认位于`$XDG_CONFIG_HOME/Sidravia/gui-settings.json`（空/相对值回`$HOME/.config`），namespace位于`Sidravia/namespaces/<name>/gui-settings.json`。程序旁的普通文件`sidravia.portable`启用portable：分别为`config/gui-settings.json`和`namespaces/<name>/gui-settings.json`。没有隐式配置迁移或发行/系统注册行为。
 
-GTK3/Wayland还需显式向合成器声明客户端装饰，不能仅检查GTK decorated属性。窗口图标优先使用可选`xdg_toplevel_icon_v1`协议传递原图像素；协议不可用时诊断明确为unsupported，本次不隐式注册用户桌面项。托盘图标有独立的StatusNotifier路径。
+GTK3/Wayland还需显式向合成器声明客户端装饰，不能仅检查GTK decorated属性。窗口图标优先使用可选`xdg_toplevel_icon_v1`协议传递原图像素；协议不可用时诊断明确为unsupported，便携运行不注册用户桌面项。托盘图标有独立的StatusNotifier路径。

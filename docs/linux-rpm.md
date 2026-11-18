@@ -1,70 +1,54 @@
-# Linux RPM candidate
+# Fedora RPM
 
-Initial target: Fedora 45 x86_64, KDE/Wayland. This unsigned upstream binary
-package is not a Fedora repository submission or a universal Linux build.
-Flutter/AOT runtime stays private in `/usr/lib64/sidravia`; GTK, WebKitGTK 4.1,
-Ayatana AppIndicator and the other ELF dependencies come from system RPMs.
-Flutter engine, Dart package and bundled font notices ship with the application.
-The ordinary interface uses system fonts; Chinese display requires an installed
-Chinese-capable font (for example `google-noto-sans-cjk-vf-fonts`). Only the small
-Source Code Pro diagnostic font is bundled.
+本页适用于 `0.5.0-alpha.1`，运行环境为 **Fedora 45 x86_64、KDE Plasma / Wayland**。软件包由项目提供，下载见[发行页面](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.1)。
 
-The package owns `/usr/bin/sidraviactl`, `sidraviad` and
-`sidravia_gui`, plus its system desktop entry and hicolor icon. PATH discovery
-is managed by RPM; the GUI does not create redundant `~/.local/bin` links.
-The RPM omits the portable updater. `sidraviactl update version` reports the
-installed CLI identity; other `sidraviactl update` operations direct you to the
-system package manager for upgrades. No system service or autostart is enabled by
-installation, upgrade or removal. Maintenance scripts stop only processes from
-this exact RPM installation, without reading account configuration or user homes.
+## 选择与安装
 
-Upgrade and removal automatically request graceful GUI/session/daemon exit.
-While the real RPM transaction lock is held, new GUI/CTL/daemon starts
-from this installation are rejected. The short-lived guard observes that lock
-and the package-manager host pidfd, so a persistent Discover/PackageKit backend
-does not leave the gate locked after its transaction. No permanent service is
-installed and no process is automatically relaunched after upgrade.
+| 软件包 | 内容 |
+| --- | --- |
+| `sidravia` | GUI、CTL、后台和机构资源 |
+| `sidravia-core` | CTL、后台和机构资源 |
 
-An unresponsive application or unsaved configuration draft blocks maintenance
-with a bounded error. Save your edits and retry in that case. The scripts never
-use SIGKILL. Independent portable copies and other installation roots are not
-stopped. The unpublished pre-coordination prototype has no startup gate or
-system-exit handler: exit that legacy installation once, and do not launch it
-during its first upgrade. A running legacy installation is refused rather than
-terminated and risking its unsaved work. Subsequent coordinated RPM versions
-support the automatic live lifecycle described above.
+两个包共用安装路径，不能同时安装。核心包不依赖 GTK、WebKitGTK 等图形库。切换包型时，先退出程序并备份配置，卸载原包后再安装另一包。两种包使用相同的用户数据位置。
 
-Configuration uses the existing XDG
-Sidravia paths; RPM does not migrate data from a portable copy or remove any
-user data. For isolated namespaces, configuration/preferences/runtime/logs use
-`$XDG_CONFIG_HOME/Sidravia/namespaces/<namespace>` (fallback `~/.config`).
-Default configuration/preferences use `$XDG_CONFIG_HOME/Sidravia`, while the
-production daemon runtime/logs use `$XDG_CACHE_HOME/Sidravia`.
+ARM64 RPM 暂不提供。ARM64 用户可选择[核心便携包](../README.md#选择下载包)。
 
-Optional GUI or background-only XDG login autostart is still an explicit user
-setting. Newly registered RPM entries use exact `TryExec` paths: entries survive
-upgrades at stable executable paths, and are automatically ignored after removal.
-They need not be manually disabled before uninstalling. Reinstalling makes the
-retained explicit user choice available again. RPM never enumerates or edits
-user home directories. Exact older entries are recognized and migrated when
-explicitly setting autostart again; prototype entries without TryExec need that
-one-time refresh. No real account has been registered by the candidate tests.
-This is desktop login autostart, not pre-login boot authentication.
+下载对应 `.rpm` 与校验清单，按[快速开始](quick-start.md#校验下载)核对哈希。在下载目录执行，尖括号部分替换为实际文件名：
 
-Local development/acceptance uses `tools/developer/dev.py linux --rpm` and
-`--verify-rpm-upgrade`; see its README. Acceptance installs real RPMs into a
-private root/RPM database cloned from the current Fedora dependency inventory,
-then mounts the installed payload over read-only host runtime libraries in an
-unprivileged sandbox. All fixture processes share a private user/PID namespace
-and a private session bus; the real Wayland socket is shared for rendering.
-Production processes are outside its PID view. This round does not re-accept
-KDE tray or notification delivery (there is no tray host on the private bus).
-Dependency checks remain enabled. This tests transactions
-and installed behavior on this host; it is not a clean Fedora dependency solve,
-fresh login, campus authentication, other distribution or public release test.
-The initial upgrade test is RPM Release 1 to 2 of the same product/source,
-not a cross-version user-data migration test. Unsigned-candidate verification
-disables signature acceptance explicitly while retaining all digest checks.
-Host RPM plugins (including SELinux labeling and shutdown inhibition) are
-disabled inside the user namespace; ordinary desktop/icon file triggers run
-and their cache outputs are checked. Host SELinux installation is not accepted.
+```bash
+sudo dnf install ./<下载的RPM文件名>.rpm
+```
+
+安装失败时，保留 `dnf` 的错误提示并查看发行说明。
+
+GUI 包安装后从应用菜单打开 Sidravia，首次连接见[快速开始](quick-start.md)。命令行可直接使用 `sidraviactl`，无需另外加入 PATH。
+
+## 程序与依赖
+
+程序位于 `/usr/lib64/sidravia`，核心包提供 `/usr/bin/sidraviactl` 与 `/usr/bin/sidraviad`。GUI 包另带界面、应用菜单和图标。
+
+GUI 入口为 `/usr/bin/sidravia_gui`，Flutter 运行库和资源随程序安装。
+
+GUI 依赖由系统 RPM 提供，包括 GTK 3、WebKitGTK 4.1 和 Ayatana AppIndicator。中文使用系统字体，缺字时可安装 `google-noto-sans-cjk-vf-fonts`；随包只携带诊断用 Source Code Pro 及相应许可。
+
+RPM 不包含便携更新器。`sidraviactl update version` 查询已安装 CLI 身份，其他更新操作提示使用包管理器；GUI 不再创建冗余的 `~/.local/bin` 链接。
+
+## 配置与登录自启
+
+账号配置和 GUI 设置默认位于 `~/.config/Sidravia`，后台运行信息与日志位于 `~/.cache/Sidravia`。绝对的 `XDG_CONFIG_HOME`、`XDG_CACHE_HOME` 可分别改变这两个根目录。namespace 路径及明文密码保护说明见[数据与隐私](privacy.md#linux)。RPM 不自动迁移便携版数据。
+
+安装、升级或移除不会启用自启、安装常驻系统服务或自动启动用户程序。GUI 用户可自行选择登录桌面会话后启动 GUI 或仅后台；自动认证需另行开启自动登录。
+
+RPM 的自启登记带精确 `TryExec` 路径：升级后路径稳定，卸载后桌面会话自动忽略缺失程序，再次安装后保留的自启选择可能重新生效。RPM 不遍历或修改用户家目录。早期原型缺少 `TryExec` 的登记，需用户重新设置一次自启。
+
+## 升级与卸载
+
+升级时下载新版 RPM，使用同样的 `dnf install ./<文件名>.rpm` 命令；包名与架构需匹配当前安装。卸载前确认需要保留的配置已备份，再使用系统软件管理器移除，或用 `sudo dnf remove <实际包名>`；GUI 包名为 `sidravia`，核心包名为 `sidravia-core`。
+
+事务会请求本安装的 GUI、会话与后台正常退出；未保存的配置草稿或无法响应的程序会阻止维护，先保存修改、正常退出后重试。脚本不使用 SIGKILL，也不停止独立便携副本。事务锁生效期间拒绝从本安装启动新进程；事务完成后不自动重启程序。
+
+RPM 卸载后保留用户配置与日志。需要清理时，先按[数据位置](privacy.md#linux)核对并备份。不要手工替换 `/usr/lib64/sidravia` 中的文件，更新和修复继续由包管理器负责。
+
+## 开发与验证
+
+构建与隔离验收入口见[开发工具说明](../tools/developer/README.md#local-unsigned-fedora-rpm-x86_64)。
