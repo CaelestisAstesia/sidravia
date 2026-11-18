@@ -194,9 +194,10 @@ A protected user cache retains one verified package per target/type/channel;
 repeated checks preserve it and repeated downloads reuse it. Unexpected cache
 paths or changed bytes fail closed and require cache inspection.
 
-Linux/Windows portable apply and Windows installed setup handoff are wired into the CLI. The default build still has no publisher
-root: it returns `apply_unavailable` and `canApply=false`. A reviewed root-bearing
-build can offer native Linux portable or Windows AMD64 portable/setup candidates; `canApply` remains conditional
+Linux/Windows portable apply and Windows installed setup handoff are wired into the CLI.
+The default build pins the reviewed publisher public key. Missing or invalid
+publisher signatures never authorize application. Native Linux portable and
+Windows AMD64 portable/setup candidates can be offered; `canApply` remains conditional
 on verifying the installed baseline and explicit confirmation. Apply refetches
 fixed signed metadata for both the installed version/build and the exact new
 candidate, rechecks the cached archive, and authenticates the local ownership
