@@ -14,7 +14,10 @@ import (
 func TestRetiredCodeDeletionKeepsModifiedLinkedAndExternalFiles(t *testing.T) {
 	for _, scenario := range []string{"matching", "modified", "linked", "alias", "cancelled"} {
 		t.Run(scenario, func(t *testing.T) {
-			target := t.TempDir()
+			target, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
 			path := filepath.Join(target, "retired.dll")
 			data := []byte("old")
 			if e := os.WriteFile(path, data, 0644); e != nil {

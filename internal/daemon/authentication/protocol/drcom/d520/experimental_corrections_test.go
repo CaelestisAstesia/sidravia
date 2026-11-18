@@ -20,25 +20,26 @@ func TestExperimentalLateRepliesKeepOnlineAndFinishOriginalStages(t *testing.T) 
 		response := base(request)
 		if delay.Load() && len(response) > 0 {
 			delayed.Add(1)
-			time.Sleep(20 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		}
 		return response
 	})
 	durations := defaultTestDurations()
-	durations.keepalive = 10 * time.Millisecond
-	durations.heartbeat = 30 * time.Millisecond
+	// Keep the same late-reply ratios without relying on 10ms host scheduling.
+	durations.keepalive = 50 * time.Millisecond
+	durations.heartbeat = 150 * time.Millisecond
 	run := experimentalTestRun(t, peer, durations)
 	observer := newRecordingObserver(peer)
 	_, cancel, done := startRun(t, run, observer)
 	defer cancel(context.Canceled)
-	observer.waitForEstablished(t, time.Second)
+	observer.waitForEstablished(t, 3*time.Second)
 	delay.Store(true)
-	// Exceeds twice the 150ms online window. All subsequent replies arrive
-	// after their 10ms request deadlines, while the sole reader is recovering.
+	// Exceeds twice the 750ms online window. All subsequent replies arrive
+	// after their 50ms request deadlines, while the sole reader is recovering.
 	select {
 	case failure := <-done:
 		t.Fatalf("late valid replies lost: %#v", failure)
-	case <-time.After(350 * time.Millisecond):
+	case <-time.After(1750 * time.Millisecond):
 	}
 	cancel(context.Canceled)
 	assertRunReturns(t, done, true, time.Second)

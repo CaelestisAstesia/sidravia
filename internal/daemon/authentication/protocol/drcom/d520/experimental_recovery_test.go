@@ -154,8 +154,9 @@ func TestExperimentalRecoveryStillExpiresWithoutOnlineEvidence(t *testing.T) {
 			policy := &delayedRecoveryPeer{}
 			peer := newTestPeer(t, policy.responder(mode))
 			durations := defaultTestDurations()
-			durations.keepalive = 10 * time.Millisecond
-			durations.heartbeat = 30 * time.Millisecond
+			// Preserve request/evidence ratios with headroom for hosted scheduling.
+			durations.keepalive = 50 * time.Millisecond
+			durations.heartbeat = 150 * time.Millisecond
 			durations.logout = time.Millisecond
 			run := experimentalTestRun(t, peer, durations)
 			diagnostics := &recoveryDecisions{}
@@ -163,9 +164,9 @@ func TestExperimentalRecoveryStillExpiresWithoutOnlineEvidence(t *testing.T) {
 			observer := newRecordingObserver(peer)
 			_, cancel, done := startRun(t, run, observer)
 			defer cancel(context.Canceled)
-			observer.waitForEstablished(t, time.Second)
+			observer.waitForEstablished(t, 3*time.Second)
 			policy.online.Store(true)
-			failure := assertRunReturns(t, done, false, time.Second)
+			failure := assertRunReturns(t, done, false, 3*time.Second)
 			cause, ok := failure.DiagnosticCause.(*runError)
 			if !ok || cause.operation != "online evidence expired" {
 				t.Fatalf("expected total evidence deadline, got %#v", failure.DiagnosticCause)

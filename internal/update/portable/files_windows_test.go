@@ -104,7 +104,10 @@ func TestWindowsSharedPublication(t *testing.T) {
 	for _, scenario := range []string{"complete", "occupied", "old-modified", "unknown-dll", "hard-link", "index-link", "new-user-collision"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx := context.Background()
-			base := t.TempDir()
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
 			target := filepath.Join(base, "portable with spaces")
 			oldFiles := winFiles("old")
 			oldFiles["retired.dll"] = []byte("retired")
@@ -168,7 +171,7 @@ func TestWindowsSharedPublication(t *testing.T) {
 				}
 				defer windows.CloseHandle(h)
 			}
-			err := Apply(ctx, store, record.ID, target, old.inventory, payload)
+			err = Apply(ctx, store, record.ID, target, old.inventory, payload)
 			if scenario != "complete" {
 				if err == nil {
 					t.Fatal("unsafe publication accepted")
