@@ -15,7 +15,7 @@ import (
 )
 
 func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
-	for _, mode := range []string{"valid", "missing", "tampered", "wrong-asset", "wrong-version", "unknown-root", "too-large"} {
+	for _, mode := range []string{"valid", "missing", "tampered", "wrong-asset", "wrong-version", "unknown-root", "unconfigured-root", "too-large"} {
 		t.Run(mode, func(t *testing.T) {
 			key, m, c, _ := signedReleaseFixture(t)
 			if mode == "wrong-asset" {
@@ -53,6 +53,9 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 			if mode == "unknown-root" {
 				source.publisherKeys = PublisherTrust()
 			}
+			if mode == "unconfigured-root" {
+				source.publisherKeys, _ = NewPublisherKeys(nil)
+			}
 			c.DownloadURL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
 			verified, err := source.AuthenticateCandidate(context.Background(), c)
 			if mode == "valid" {
@@ -67,7 +70,7 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 			if mode == "missing" && !errors.Is(err, ErrSignatureMissing) {
 				t.Fatal(err)
 			}
-			if mode == "unknown-root" && requests != 0 {
+			if mode == "unconfigured-root" && requests != 0 {
 				t.Fatal("unconfigured root performed a metadata request")
 			}
 		})

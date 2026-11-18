@@ -437,7 +437,7 @@ func fixtureOverlay(t *testing.T, repo, owned string) string {
 		parts = append(parts, fmt.Sprintf("%d", b))
 	}
 	replacement := "NewPublisherKeys([]ed25519.PublicKey{{" + strings.Join(parts, ",") + "}})"
-	updated := strings.Replace(string(data), "NewPublisherKeys(nil)", replacement, 1)
+	updated := strings.Replace(string(data), "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", replacement, 1)
 	if updated == string(data) {
 		t.Fatal("trust overlay source shape changed")
 	}

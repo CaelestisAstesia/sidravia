@@ -7,9 +7,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+
+if sys.platform != 'linux' or importlib.util.find_spec('cryptography') is None:
+    raise unittest.SkipTest('Linux publisher custody requires optional system cryptography')
 
 SPEC = importlib.util.spec_from_file_location('key_custody', Path(__file__).resolve().parents[2] / 'signrelease/key_custody.py')
 custody = importlib.util.module_from_spec(SPEC)

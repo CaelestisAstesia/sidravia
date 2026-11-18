@@ -57,11 +57,14 @@ func NewPublisherKeys(keys []ed25519.PublicKey) (*PublisherKeys, error) {
 	return result, nil
 }
 
-// PublisherTrust returns the immutable roots selected by the product build.
+// publisherPublicKey is the reviewed Ed25519 release publisher public key.
+// Key ID: c68f12717c77cdf1fc732185e2a5977340970e69da491da1847b5faf19ddeb9a
+// Private material is never part of the product or runtime configuration.
+const publisherPublicKey = "\x81\x9b\x30\x86\x4c\xac\xfa\x36\x1b\x32\xd8\x29\x53\x18\x0a\x4f\xb8\x83\xca\x15\x7a\x13\x65\xc7\xd7\x36\xdd\x64\x77\x0f\x58\xfe"
+
+// PublisherTrust returns fresh immutable copies of the build-pinned root.
 func PublisherTrust() *PublisherKeys {
-	// Intentionally empty until a publisher key is explicitly configured in a
-	// reviewed build. Synthetic keys belong only to tests.
-	keys, _ := NewPublisherKeys(nil)
+	keys, _ := NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})
 	return keys
 }
 

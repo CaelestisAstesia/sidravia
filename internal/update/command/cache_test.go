@@ -52,6 +52,9 @@ func checkDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T, kind, suff
 			name := "sidravia-v" + version + "-" + suffix
 			body = fmt.Sprintf(`[{"id":%d,"tag_name":"v%s","assets":[{"id":%d,"name":"%s","state":"uploaded","size":%d,"digest":"sha256:%s","browser_download_url":"https://github.com/CaelestisAstesia/sidravia/releases/download/v%s/%s"}]}]`, releaseID, version, assetID, name, len(payload), hex.EncodeToString(sum[:]), version, name)
 		} else if r.URL.Host == "github.com" {
+			if strings.HasSuffix(r.URL.Path, releases.ReleaseManifestName) || strings.HasSuffix(r.URL.Path, releases.ReleaseSignatureName) {
+				return &http.Response{StatusCode: http.StatusNotFound, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(""))}, nil
+			}
 			downloads++
 		} else {
 			t.Fatalf("unexpected host %s", r.URL.Host)
@@ -75,6 +78,9 @@ func checkDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T, kind, suff
 		return result.Result
 	}
 	first := run("check")
+	if first.Check.Candidate.CanApply {
+		t.Fatal("unsigned candidate offered automatic application")
+	}
 	downloaded := run("download", "--candidate", first.Check.Candidate.ID)
 	if downloaded.Downloaded == "" || downloads != 1 {
 		t.Fatalf("%+v downloads %d", downloaded, downloads)

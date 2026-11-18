@@ -83,7 +83,7 @@ func TestNativeCLIUpdate(t *testing.T) {
 	for _, b := range pub {
 		parts = append(parts, fmt.Sprint(b))
 	}
-	replacement := strings.Replace(string(src), "NewPublisherKeys(nil)", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
+	replacement := strings.Replace(string(src), "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
 	if replacement == string(src) {
 		t.Fatal("trust overlay source changed")
 	}

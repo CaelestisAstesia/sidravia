@@ -3,6 +3,7 @@ package releases
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,26 @@ import (
 
 	"sidravia/internal/update/packagefiles"
 )
+
+func TestPublisherTrustPinsReviewedPublicKey(t *testing.T) {
+	const expectedID = "c68f12717c77cdf1fc732185e2a5977340970e69da491da1847b5faf19ddeb9a"
+	public, err := base64.StdEncoding.DecodeString("gZswhkys+jYbMtgpUxgKT7iDyhV6E2XH1zbdZHcPWP4=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := PublisherKeyID(public)
+	if err != nil || id != expectedID {
+		t.Fatal("reviewed publisher identity changed", err)
+	}
+	roots := PublisherTrust()
+	if !roots.Configured() || len(roots.keys) != 1 || string(roots.keys[id]) != string(public) {
+		t.Fatal("production must trust only the reviewed publisher")
+	}
+	roots.keys[id][0] ^= 1
+	if string(PublisherTrust().keys[id]) != string(public) {
+		t.Fatal("caller changed the build-pinned root")
+	}
+}
 
 func signedReleaseFixture(t *testing.T) (ed25519.PrivateKey, ReleaseManifest, Candidate, []byte) {
 	t.Helper()

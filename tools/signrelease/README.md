@@ -85,7 +85,8 @@ verifies the complete manifest with the derived public key, and refuses an
 existing output. The signature is raw 64-byte Ed25519 data, matching the updater's
 fixed metadata reader. Key storage/unlocking and formal signing are separate
 publisher operations; this implementation has only been tested with synthetic
-in-memory keys. No formal key is configured in the product.
+in-memory keys. The product pins the publisher public key; private material stays
+outside the repository and is not accessed by public verification or packaging.
 
 The tool clears its owned seed buffers as a best effort; this is not a guarantee
 that all copies inside the Go runtime or cryptographic implementation are erased.

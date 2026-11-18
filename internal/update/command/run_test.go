@@ -14,12 +14,16 @@ import (
 	"testing"
 )
 
-func TestNonMutatingCommandsAndDisabledApply(t *testing.T) {
+func TestNonMutatingCommandsAndExplicitApplyConfirmation(t *testing.T) {
+	applyCode := "apply_unavailable"
+	if applyPlatformSupported() && releases.PublisherTrust().Configured() {
+		applyCode = "confirmation_required"
+	}
 	for _, item := range []struct {
 		args []string
 		code string
 		exit int
-	}{{[]string{"--help"}, "ok", 0}, {[]string{"version"}, "ok", 0}, {[]string{"invalid"}, "invalid_arguments", 1}, {[]string{"download"}, "invalid_arguments", 1}, {[]string{"apply", "--candidate", "1:2"}, "apply_unavailable", 1}} {
+	}{{[]string{"--help"}, "ok", 0}, {[]string{"version"}, "ok", 0}, {[]string{"invalid"}, "invalid_arguments", 1}, {[]string{"download"}, "invalid_arguments", 1}, {[]string{"apply", "--candidate", "1:2"}, applyCode, 1}} {
 		var out bytes.Buffer
 		exit := Run(context.Background(), item.args, "0.4.0-alpha.1", "fixture", &out)
 		var result response

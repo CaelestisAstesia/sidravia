@@ -65,7 +65,8 @@ fresh login autostart require desktop session acceptance separately.
 Linux GUI candidates use the release asset suffix `-linux-amd64-gui-portable.tar.gz`.
 The updater recognizes this package kind automatically in a GUI portable layout.
 A missing GUI release does not fall back to a core-only asset. Check, download and
-integrity verification are supported; automatic installation remains unavailable.
+integrity verification are supported. Automatic installation additionally requires
+valid publisher signatures for both installed and target versions.
 
 
 ## 更新保护基线
@@ -78,7 +79,8 @@ Flutter 运行库及资源随真实 GUI 放在 `gui-runtime/` 内。请通过公
 配置、日志、namespace 和命令路径保持在原位置。旧版本需要先手动升级
 到具备这一布局、运行期门禁和可信产品清单的版本。写入中、需修复或无法
 核实的更新状态会阻止启动，更新器退出或锁自动释放不会跳过该保护。
-当前生产构建尚未配置正式发行公钥，公开 `update apply` 仍不可用。
+当前构建已固定正式发行公钥，但没有当前及目标版本的有效签名证明时，
+`update apply` 仍会拒绝操作。公钥本身不能代替正式签名或首次可信手动安装。
 
 
 内部更新协调会先请求程序正常退出；不能确认退出时不会写入文件或强行结束

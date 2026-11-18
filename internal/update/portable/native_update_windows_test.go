@@ -74,7 +74,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		for _, b := range pub {
 			parts = append(parts, fmt.Sprint(b))
 		}
-		return strings.Replace(s, "NewPublisherKeys(nil)", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
+		return strings.Replace(s, "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
 	})
 	overlay("internal/update/releases/github.go", func(s string) string {
 		s = strings.Replace(s, "\"context\"", "\"context\"\n\"os\"\n\"bytes\"\n\"path/filepath\"", 1)
