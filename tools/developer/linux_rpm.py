@@ -15,6 +15,7 @@ import uuid
 
 APP = Path('/usr/lib64/sidravia')
 COMMANDS = ('sidraviactl', 'sidraviad', 'sidravia_gui')
+CORE_COMMANDS = ('sidraviactl', 'sidraviad')
 DESKTOP = 'io.github.CaelestisAstesia.Sidravia'
 
 
@@ -61,7 +62,9 @@ def verify(package, receipt):
     if digest(package) != receipt['sha256']:
         raise ValueError('RPM differs from producer hash')
     identity = query(package, '--qf', '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}')
-    if identity != f"sidravia|{rpm_version(receipt['version'])}|{receipt['release']}|x86_64":
+    core = receipt.get('kind') == 'core'
+    name = 'sidravia-core' if core else 'sidravia'
+    if identity != f"{name}|{rpm_version(receipt['version'])}|{receipt['release']}|x86_64":
         raise ValueError('RPM identity mismatch')
     scripts = receipt['maintenanceScripts']
     for tag in ('PREIN', 'PREUN'):
@@ -80,10 +83,19 @@ def verify(package, receipt):
     if actual != receipt['files']:
         raise ValueError('RPM payload paths/modes/digests/links differ from the verified stage')
     requirements = query(package, '--requires').splitlines()
-    for required in ('gtk3', 'webkit2gtk4.1', 'libayatana-appindicator-gtk3',
-                     '/usr/bin/env', '/usr/bin/xdg-open', 'desktop-file-utils', 'hicolor-icon-theme'):
+    for required in (() if core else ('gtk3', 'webkit2gtk4.1', 'libayatana-appindicator-gtk3',
+                     '/usr/bin/env', '/usr/bin/xdg-open', 'desktop-file-utils', 'hicolor-icon-theme')):
         if required not in requirements:
             raise ValueError('missing RPM runtime dependency: ' + required)
+    if core:
+        if any(Path(path).name == 'sidravia_gui' or '/gui-runtime/' in path or '/applications/' in path
+               or '/icons/' in path for path in actual):
+            raise ValueError('core RPM contains desktop payload')
+        if any(any(word in requirement.lower() for word in ('gtk', 'webkit', 'ayatana', 'flutter', 'xdg-open', 'desktop-file-utils', 'hicolor'))
+               for requirement in requirements):
+            raise ValueError('core RPM requires desktop runtime')
+        if query(package, '--conflicts').splitlines() != ['sidravia']:
+            raise ValueError('core RPM must conflict with the full desktop package')
     if any('libflutter_linux_gtk.so' in x for x in requirements):
         raise ValueError('private Flutter library leaked into external requirements')
     if any('libjvm' in x or 'libdartjni' in x for x in requirements):
@@ -96,15 +108,20 @@ def verify(package, receipt):
     return requirements
 
 
-def build(root, archive, output, release, env, source, current_source):
+def build(root, archive, output, release, env, source, current_source, *, core=False, version=None, go='go'):
     if not output or not re.fullmatch(r'[1-9][0-9]*', release):
         raise ValueError('RPM requires --output and a positive numeric --rpm-release')
     output = Path(output).resolve()
     if output.exists() or not output.parent.is_dir():
         raise ValueError('RPM output must not exist and its parent must exist')
-    portable = json.loads((root / '.local/linux-portable-package-result.json').read_text())
+    if core:
+        import verify_distribution
+        portable = verify_distribution.verify(archive.parent, root, 'linux-amd64', version, source['commit'], go=go)
+        portable['source'] = source
+    else:
+        portable = json.loads((root / '.local/linux-portable-package-result.json').read_text())
     if not same_source(portable['source'], source) or portable['artifactHashes'].get(archive.name) != digest(archive):
-        raise ValueError('RPM input must be the exact clean-source verified GUI portable')
+        raise ValueError('RPM input must be the exact clean-source verified portable')
     version = portable['version']
     rpmver = rpm_version(version)
     with tempfile.TemporaryDirectory(prefix='linux-rpm-build-', dir=root / '.local') as tmp:
@@ -119,33 +136,39 @@ def build(root, archive, output, release, env, source, current_source):
             tar.extractall(extracted, filter='data')
         bundle, = extracted.iterdir()
         if not (bundle / 'sidravia.portable').is_file():
-            raise ValueError('not a GUI portable input')
+            raise ValueError('not a portable input')
         # RPM updates are served by CTL's package-manager boundary.
         (bundle / 'sidraviaupdater').unlink()
         # RPM owns its own file inventory; the portable ownership index also
         # describes the updater/docs deliberately removed from this payload.
         (bundle / 'sidravia-files.json').unlink()
         (bundle / 'sidravia.portable').unlink()
-        (bundle / 'gui-runtime/data/linux-portable.md' if (bundle / 'gui-runtime').is_dir() else bundle / 'data/linux-portable.md').unlink()
+        if not core:
+            (bundle / 'gui-runtime/data/linux-portable.md' if (bundle / 'gui-runtime').is_dir() else bundle / 'data/linux-portable.md').unlink()
         # Explicit ownership boundary consumed by GUI and updater. No runtime data.
         (bundle / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
         (bundle / 'sidravia.rpm-lifecycle').write_text('sidravia-rpm-lifecycle-v1\n')
+        if core:
+            (bundle / 'sidravia.rpm-core').write_text('sidravia-rpm-core-v1\n')
         stage = top / 'payload'
         installed = stage / APP.relative_to('/')
         installed.parent.mkdir(parents=True)
         shutil.move(bundle, installed)
         bindir = stage / 'usr/bin'
         bindir.mkdir()
-        for name in COMMANDS:
+        for name in (CORE_COMMANDS if core else COMMANDS):
             (bindir / name).symlink_to('../lib64/sidravia/' + name)
-        desktop = stage / f'usr/share/applications/{DESKTOP}.desktop'
-        desktop.parent.mkdir(parents=True)
-        shutil.copy2(root / 'packaging/linux/sidravia.desktop', desktop)
-        icon = stage / f'usr/share/icons/hicolor/256x256/apps/{DESKTOP}.png'
-        icon.parent.mkdir(parents=True)
-        shutil.copy2(installed / ('gui-runtime/data/icons/sidravia.png' if (installed / 'gui-runtime').is_dir() else 'data/icons/sidravia.png'), icon)
-        for name, source_path in (('usr/share/doc/sidravia/linux-rpm.md', root / 'docs/linux-rpm.md'),
-                                  ('usr/share/licenses/sidravia/LICENSE', root / 'LICENSE')):
+        if not core:
+            desktop = stage / f'usr/share/applications/{DESKTOP}.desktop'
+            desktop.parent.mkdir(parents=True)
+            shutil.copy2(root / 'packaging/linux/sidravia.desktop', desktop)
+            icon = stage / f'usr/share/icons/hicolor/256x256/apps/{DESKTOP}.png'
+            icon.parent.mkdir(parents=True)
+            shutil.copy2(installed / ('gui-runtime/data/icons/sidravia.png' if (installed / 'gui-runtime').is_dir() else 'data/icons/sidravia.png'), icon)
+        documentation = [('usr/share/licenses/sidravia/LICENSE', root / 'LICENSE')]
+        if not core:
+            documentation.append(('usr/share/doc/sidravia/linux-rpm.md', root / 'docs/linux-rpm.md'))
+        for name, source_path in documentation:
             target = stage / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_path, target)
@@ -158,7 +181,7 @@ def build(root, archive, output, release, env, source, current_source):
             for path in sorted(stage.rglob('*')):
                 tar.add(path, arcname=str(path.relative_to(stage)), recursive=False)
         scripts = maintenance_scripts(root)
-        spec = (root / 'packaging/linux/sidravia.spec.in').read_text().replace('@VERSION@', rpmver).replace('@RELEASE@', release)
+        spec = (root / ('packaging/linux/sidravia-core.spec.in' if core else 'packaging/linux/sidravia.spec.in')).read_text().replace('@VERSION@', rpmver).replace('@RELEASE@', release)
         spec = spec.replace('@PREIN@', scripts['PREIN'].replace('%', '%%')).replace('@PREUN@', scripts['PREUN'].replace('%', '%%'))
         specpath = top / 'SPECS/sidravia.spec'
         specpath.write_text(spec)
@@ -167,6 +190,7 @@ def build(root, archive, output, release, env, source, current_source):
         receipt = {'version': version, 'release': release, 'source': source, 'source_unchanged': True,
                    'portableSHA256': digest(archive), 'sha256': digest(package), 'files': files,
                    'package': package.name, 'unsigned': True, 'maintenanceScripts': scripts}
+        receipt['kind'] = 'core' if core else 'gui'
         receipt['requires'] = verify(package, receipt)
         if not same_source(current_source(), source):
             raise ValueError('source changed during RPM build')
@@ -180,6 +204,8 @@ def build(root, archive, output, release, env, source, current_source):
 
 def accept(root, packages, env, source, current_source):
     receipts = [json.loads(Path(str(p) + '.json').read_text()) for p in packages]
+    if receipts[0].get('kind', 'gui') != receipts[1].get('kind', 'gui'):
+        raise ValueError('RPM acceptance requires matching package kinds')
     for package, receipt in zip(packages, receipts):
         if not same_source(receipt['source'], source):
             raise ValueError('RPM acceptance requires its exact clean producer source')
@@ -197,10 +223,12 @@ def accept(root, packages, env, source, current_source):
         config.write_text('<busconfig><type>session</type><listen>unix:abstract=sidravia-rpm-' + uuid.uuid4().hex + '</listen>'
             '<auth>EXTERNAL</auth><policy context="default"><allow own="*"/>'
             '<allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
-        wayland = Path(env['WAYLAND_DISPLAY'])
-        if not wayland.is_absolute():
-            wayland = Path(env['XDG_RUNTIME_DIR']) / wayland
-        child_env = dict(env, XDG_RUNTIME_DIR=str(runtime), WAYLAND_DISPLAY=str(wayland))
+        child_env = dict(env, XDG_RUNTIME_DIR=str(runtime))
+        if receipts[0].get('kind') != 'core':
+            wayland = Path(env['WAYLAND_DISPLAY'])
+            if not wayland.is_absolute():
+                wayland = Path(env['XDG_RUNTIME_DIR']) / wayland
+            child_env['WAYLAND_DISPLAY'] = str(wayland)
         command = ['unshare', '--user', '--map-root-user', '--pid', '--fork', '--mount-proc',
             'dbus-run-session', '--config-file=' + str(config), '--', sys.executable,
             str(root / 'tools/developer/linux_rpm_fixture.py'), str(root), *map(str, packages)]

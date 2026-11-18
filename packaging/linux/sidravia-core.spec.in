@@ -1,0 +1,35 @@
+# Upstream binary candidate, not a Fedora repository source package.
+%global debug_package %{nil}
+%global _build_id_links none
+%global source_date_epoch_from_changelog 0
+%global __os_install_post %{nil}
+
+Name: sidravia-core
+Version: @VERSION@
+Release: @RELEASE@
+Summary: Campus network authentication command-line client and daemon
+License: AGPL-3.0-only
+URL: https://github.com/CaelestisAstesia/Sidravia
+Source0: payload.tar.gz
+BuildArch: x86_64
+Conflicts: sidravia
+Requires(pre): /usr/bin/python3
+Requires(preun): /usr/bin/python3
+
+%description
+Sidravia command-line client, daemon and institution profiles without a GUI.
+Updates are managed by RPM. Package maintenance stops only this installation,
+never enables autostart or starts user processes, and preserves user data.
+This package and the full sidravia desktop package cannot be installed together.
+
+%install
+mkdir -p %{buildroot}
+tar -xzf %{SOURCE0} -C %{buildroot}
+
+%files -f %{_sourcedir}/files.list
+
+%pre -p /usr/bin/python3
+@PREIN@
+
+%preun -p /usr/bin/python3
+@PREUN@

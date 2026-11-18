@@ -40,7 +40,9 @@ def targets():
         except FileNotFoundError:
             # Old RPMs carried the portable updater. New RPMs omit it, while
             # every present process still has to match its exact old inode.
-            if path.name != 'sidraviaupdater':
+            core_marker = APP / 'sidravia.rpm-core'
+            if path.name != 'sidraviaupdater' and not (path.name == 'sidravia_gui'
+                    and core_marker.is_file() and core_marker.read_text() == 'sidravia-rpm-core-v1\n'):
                 raise
     found = []
     try:

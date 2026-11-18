@@ -27,6 +27,27 @@ def load():
 
 @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'pidfd_open'), 'requires Linux pidfds')
 class MaintenanceContracts(unittest.TestCase):
+    def test_core_payload_allows_missing_gui_only_with_exact_marker(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            (app / 'sidravia.rpm').write_text('sidravia-rpm-v1\n')
+            for name in ('sidraviad', 'sidraviactl'):
+                (app / name).write_bytes(b'fixture')
+            marker = app / 'sidravia.rpm-core'
+            with mock.patch.object(m, 'APP', app), mock.patch.object(Path, 'iterdir', return_value=[]):
+                with self.assertRaises(FileNotFoundError):
+                    m.targets()
+                marker.write_text('sidravia-rpm-core-v1\n')
+                self.assertEqual(m.targets(), [])
+                marker.write_text('invalid\n')
+                with self.assertRaises(FileNotFoundError):
+                    m.targets()
+                marker.write_text('sidravia-rpm-core-v1\n')
+                (app / 'sidraviad').unlink()
+                with self.assertRaises(FileNotFoundError):
+                    m.targets()
+
     def test_process_inventory_accepts_old_and_new_payloads_but_requires_core(self):
         m = load()
         with tempfile.TemporaryDirectory() as tmp:

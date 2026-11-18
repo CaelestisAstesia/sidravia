@@ -22,6 +22,8 @@ from linux_rpm import APP, COMMANDS, DESKTOP, digest, same_source
 
 
 def run(root, packages, receipts, environment, source, current_source):
+    core = receipts[0].get('kind') == 'core'
+    package_name = 'sidravia-core' if core else 'sidravia'
     owned = Path(tempfile.mkdtemp(prefix='linux-rpm-fixture-', dir=root / '.local'))
     namespace = 'linux-gui-test-' + uuid.uuid4().hex[:12]
     (owned / 'fixture-owner').write_text(namespace)
@@ -117,9 +119,10 @@ def run(root, packages, receipts, environment, source, current_source):
 
     # Do not install over an existing Sidravia system package even in the clone:
     # an unexpected inventory deserves diagnosis rather than silent replacement.
-    existing = subprocess.run(rpm + ['-q', 'sidravia'], stdout=subprocess.DEVNULL)
-    if existing.returncode != 1:
-        raise RuntimeError('unexpected existing system Sidravia package inventory')
+    for name in ('sidravia', 'sidravia-core'):
+        existing = subprocess.run(rpm + ['-q', name], stdout=subprocess.DEVNULL)
+        if existing.returncode != 1:
+            raise RuntimeError('unexpected existing system Sidravia package inventory')
 
     view = owned / 'view/usr'
     view.mkdir(parents=True)
@@ -145,7 +148,6 @@ def run(root, packages, receipts, environment, source, current_source):
         prefix = ['bwrap', '--die-with-parent', '--ro-bind', '/', '/',
                '--dev', '/dev', '--proc', '/proc', '--dev-bind-try', '/dev/dri', '/dev/dri',
                '--tmpfs', '/run',
-               '--ro-bind', environment['WAYLAND_DISPLAY'], environment['WAYLAND_DISPLAY'],
                '--bind', str(sysroot / 'run/sidravia'), '/run/sidravia',
                '--ro-bind', '/usr', str(host_alias), '--ro-bind', str(view), '/usr',
                '--ro-bind', str(sysroot / 'usr/share/applications'), '/usr/share/applications',
@@ -153,12 +155,15 @@ def run(root, packages, receipts, environment, source, current_source):
                '--tmpfs', '/home', '--bind', str(owned), str(owned),
                '--bind', session_runtime, session_runtime,
                '--bind', env['TMPDIR'], '/tmp', '--chdir', str(owned)]
+        if not core:
+            prefix += ['--ro-bind', environment['WAYLAND_DISPLAY'], environment['WAYLAND_DISPLAY']]
         if (sysroot / APP.relative_to('/')).exists():
             prefix += ['--ro-bind', str(sysroot / APP.relative_to('/')), str(APP)]
         return prefix
     dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
     driver_binary = owned / 'contract-driver'
-    command([dart, 'compile', 'exe', 'tool/linux_portable_fixture.dart', '-o', str(driver_binary)], 'compile-contract-driver')
+    if not core:
+        command([dart, 'compile', 'exe', 'tool/linux_portable_fixture.dart', '-o', str(driver_binary)], 'compile-contract-driver')
 
     def driver(operation):
         command(sandbox() + [str(driver_binary), operation, str(runtime), str(APP / 'sidravia_gui')], operation)
@@ -241,7 +246,51 @@ def run(root, packages, receipts, environment, source, current_source):
         bystander_runtime = catalog.parent / 'runtime.json'
         command([str(bystander / 'sidraviactl'), 'daemon', 'start'], 'independent-portable-start')
         bystander_identity = json.loads(bystander_runtime.read_text())['pid']
-        command(rpm + ['-V', 'sidravia'], 'rpm-verify-install')
+        command(rpm + ['-V', package_name], 'rpm-verify-install')
+        if core:
+            # Exercise real installed CTL/daemon and live maintenance without
+            # Flutter, a desktop connection, account credentials or network IO.
+            ctl = sandbox() + ['/usr/bin/sidraviactl']
+            for args, label in ((['update', 'version'], 'core-version'), (['daemon', 'start'], 'core-daemon-start'),
+                                (['daemon', 'status'], 'core-daemon-status')):
+                command(ctl + args, label)
+            wait_for(runtime.exists, 'installed core daemon runtime')
+            saved = state / 'private-user-data'
+            saved.write_bytes(b'fixture data must survive maintenance\n')
+            saved_hash = digest(saved)
+            update = subprocess.run(ctl + ['update', 'check'], env=env, capture_output=True, text=True, timeout=15)
+            if update.returncode != 1 or json.loads(update.stdout)['code'] != 'system_package_managed':
+                raise RuntimeError('core RPM selected a portable update')
+            events.append('core-package-manager-update-boundary')
+            command(rpm + ['-Uvh', str(packages[1])], 'core-live-upgrade')
+            wait_for(lambda: not runtime.exists(), 'upgrade stopped core daemon')
+            command(rpm + ['-V', package_name], 'core-verify-upgrade')
+            if subprocess.check_output(rpm + ['-q', '--qf', '%{RELEASE}', package_name], text=True) != receipts[1]['release']:
+                raise RuntimeError('core RPM upgrade revision mismatch')
+            command(ctl + ['daemon', 'start'], 'core-upgraded-daemon-start')
+            wait_for(runtime.exists, 'upgraded core daemon runtime')
+            command(rpm + ['-e', package_name], 'core-live-erase')
+            installed = False
+            wait_for(lambda: not runtime.exists(), 'erase stopped core daemon')
+            if digest(saved) != saved_hash:
+                raise RuntimeError('core RPM changed user data')
+            if (sysroot / APP.relative_to('/')).exists() or any((sysroot / 'usr/bin' / n).is_symlink() for n in COMMANDS):
+                raise RuntimeError('core RPM left package files after erase')
+            if subprocess.run(rpm + ['-q', package_name], stdout=subprocess.DEVNULL).returncode != 1:
+                raise RuntimeError('core RPM left package inventory after erase')
+            if json.loads(bystander_runtime.read_text())['pid'] != bystander_identity:
+                raise RuntimeError('core RPM displaced independent portable daemon')
+            command([str(bystander / 'sidraviactl'), 'daemon', 'status'], 'independent-portable-survived')
+            if not same_source(current_source(), source):
+                raise RuntimeError('source changed during core RPM acceptance')
+            result = {'passed': True, 'kind': 'core', 'source': source, 'source_unchanged': True,
+                      'events': events, 'rpmSHA256': [r['sha256'] for r in receipts],
+                      'dependencyChecks': 'enabled against host inventory snapshot',
+                      'hostInstallation': False, 'realAccountIntegration': False, 'campusTraffic': False,
+                      'signatures': 'unsigned local candidate; digest checks enabled'}
+            (owned / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+            print('Core RPM isolated install/upgrade/erase PASS: ' + str(owned / 'result.json'))
+            return 0
         for cache in ('usr/share/applications/mimeinfo.cache', 'usr/share/icons/hicolor/icon-theme.cache'):
             if not (sysroot / cache).is_file():
                 raise RuntimeError('system RPM file trigger did not create ' + cache)
@@ -360,10 +409,12 @@ def run(root, packages, receipts, environment, source, current_source):
                         os.killpg(gui.pid, signal.SIGKILL)
                     gui.wait(timeout=5)
             # GUI death triggers the owned daemon's bounded owner observation.
+            if core and runtime.exists():
+                command(sandbox() + ['/usr/bin/sidraviactl', 'daemon', 'stop'], 'core-finally-stop')
             if runtime.exists():
                 wait_for(lambda: not runtime.exists(), 'failed fixture owner cleanup')
             if installed:
-                command(rpm + ['-e', 'sidravia'], 'rpm-finally-erase')
+                command(rpm + ['-e', package_name], 'rpm-finally-erase')
         finally:
             if bystander_runtime is not None and bystander_runtime.exists():
                 command([str(bystander / 'sidraviactl'), 'daemon', 'stop'], 'independent-portable-stop')

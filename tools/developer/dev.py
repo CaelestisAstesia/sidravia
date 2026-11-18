@@ -153,16 +153,19 @@ def linux_command(args, env):
     """Build/run only the explicit development target; never installs a product."""
     if platform.system() != "Linux":
         raise ValueError("linux desktop development requires native Linux")
-    if args.check_gui and (args.verify_package or args.announcement_integration or args.rpm or args.verify_rpm_upgrade):
+    if args.check_gui and (args.verify_package or args.announcement_integration or args.rpm or args.rpm_core or args.verify_rpm_upgrade):
         raise ValueError("--check-gui must run separately from package or announcement native acceptance")
     source_before = metadata(args.go, env)
-    if args.rpm or args.verify_rpm_upgrade:
+    if args.rpm or args.rpm_core or args.verify_rpm_upgrade:
         if source_before['dirty']:
             raise ValueError('RPM candidates require clean source')
         import linux_rpm
         current_source = lambda: metadata(args.go, env)
-        if args.rpm:
-            return linux_rpm.build(ROOT, Path(args.rpm).resolve(), args.output, args.rpm_release, env, source_before, current_source)
+        if args.rpm or args.rpm_core:
+            if args.rpm_core and not args.version:
+                raise ValueError('--rpm-core requires --version')
+            return linux_rpm.build(ROOT, Path(args.rpm or args.rpm_core).resolve(), args.output, args.rpm_release, env, source_before, current_source,
+                                   core=bool(args.rpm_core), version=args.version, go=args.go)
         return linux_rpm.accept(ROOT, [Path(p).resolve() for p in args.verify_rpm_upgrade], env, source_before, current_source)
     flutter = str(Path(args.flutter).resolve())
     sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=ROOT, env=env, text=True))
@@ -381,6 +384,7 @@ def parse_args(argv=None):
             mode.add_argument("--package", action="store_true")
             mode.add_argument("--verify-package", help="owned native acceptance of a verified portable tar.gz")
             mode.add_argument("--rpm", metavar="PORTABLE", help="build RPM from the exact clean-source verified GUI portable")
+            mode.add_argument("--rpm-core", metavar="PORTABLE", help="build core-only RPM from an exact clean-source verified core portable; requires --version")
             mode.add_argument("--verify-rpm-upgrade", nargs=2, metavar=("OLD_RPM", "NEW_RPM"), help="isolated RPM install/upgrade/erase and installed GUI acceptance")
             sub.add_argument("--rpm-release", default="1", help="positive RPM packaging revision")
             sub.add_argument("--version")
