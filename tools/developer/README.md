@@ -661,6 +661,43 @@ from producing a false acceptance. A per-worktree lock excludes simultaneous
 Go/Flutter/Pub caches stay at their existing locations. There is no automatic
 package build, installer execution, test retry, Git commit or release operation.
 
+## Recommend checks from a Git diff
+
+```bash
+# Staged + unstaged + nonignored untracked changes against HEAD.
+.local/bin/dev check --recommend
+# Include committed branch changes as well as current local edits.
+.local/bin/dev check --recommend --base main
+```
+
+This is a read-only JSON recommendation, built by the existing `check` planner.
+It never runs tests/builds, resolves dependencies, acquires locks or writes
+evidence. Output contains the exact resolved base commit, source identity,
+per-path reasons/scopes/manual requirements, a schema-1 command plan, an argv
+array for ordinary `check`, and explicit `not_covered` boundaries. Like `--plan`,
+it emits JSON even when `--format` defaults to text. `--format` selects the format
+of the suggested execution command. Inspect/customize that command before use;
+there is no automatic execution or claim of acceptance. Run it in `command_cwd`
+with the usual pinned-tool environment; argv is an array, not a shell string.
+
+`--base` compares that exact commit tree with the worktree, **not a merge base**.
+Renames include old and new paths, deletions remain visible, and NUL-delimited
+Git output preserves spaces/Unicode/newlines. Ignored local/private files are
+excluded. Invalid bases and source changes during planning fail explicitly.
+Do not combine recommendation with explicit scope/test/build selections;
+ordinary `check` still accepts them unchanged. `--base` is recommendation-only.
+
+Rules deliberately select existing whole scopes rather than guessing an import
+graph: Go changes use native repository checks to include reverse dependents;
+platform-specific Go filenames and module changes additionally recommend the
+existing cross-compile contracts. GUI changes select shared analysis/tests,
+with affected-page visual or native acceptance called out separately. Developer
+Python/mock/acceptance-tool changes select the existing Python suite. Delivery
+scripts/CI and unknown paths conservatively select all three scopes and require
+manual review. Documentation/metadata-only or clean diffs produce no executable
+check command, never the default Go/Python selection. No recommendation certifies
+native behavior on other platforms, installation/update, campus or release state.
+
 ## Inspect an existing check or VM receipt
 
 ```bash

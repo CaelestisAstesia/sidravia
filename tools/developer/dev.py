@@ -346,6 +346,8 @@ def parse_args(argv=None):
             sub.add_argument("--candidate")
             sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "check":
+            sub.add_argument("--recommend", action="store_true", help="only recommend a check plan from Git changes; never execute")
+            sub.add_argument("--base", help="exact comparison ref for --recommend; default HEAD, including local changes")
             sub.add_argument("--scope", action="append", choices=("go", "python", "gui"), help="repeat to combine scopes; default go+python")
             sub.add_argument("--go-checks", choices=("native", "cross", "full"), default="native")
             sub.add_argument("--jobs", type=int, choices=range(1, 5), default=2)
@@ -443,6 +445,11 @@ def main(argv=None):
                 return {"commit": capture(["git", "rev-parse", "HEAD"], env),
                         "status": capture(["git", "status", "--porcelain", "--untracked-files=all"], env),
                         "source_fingerprint": source_fingerprint(env)}
+            if args.recommend:
+                import check_recommendations
+                return check_recommendations.run(ROOT, args, identity)
+            if args.base is not None:
+                raise ValueError('--base requires --recommend')
             return verification_commands.run(ROOT, args, identity)
         if args.command == "vm":
             import windows_vm
