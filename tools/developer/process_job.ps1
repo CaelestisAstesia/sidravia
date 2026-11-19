@@ -1,3 +1,5 @@
+param([switch]$AllowBreakaway)
+
 # Assign this dedicated process before starting any descendants.
 Add-Type -TypeDefinition @'
 using System;
@@ -26,11 +28,13 @@ public static class SidraviaBuildJob {
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
     [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
-    public static void Ensure() {
+    public static void Ensure() { Ensure(false); }
+    public static void Ensure(bool allowBreakaway) {
         if (job != IntPtr.Zero) return;
         IntPtr candidate = CreateJobObject(IntPtr.Zero, null);
         if (candidate == IntPtr.Zero) throw new Win32Exception();
         var info = new Limits(); info.Basic.Flags = 0x2000;
+        if (allowBreakaway) info.Basic.Flags |= 0x0800;
         if (!SetInformationJobObject(candidate, 9, ref info, (uint)Marshal.SizeOf(info)) ||
             !AssignProcessToJobObject(candidate, GetCurrentProcess())) {
             int error = Marshal.GetLastWin32Error(); CloseHandle(candidate);
@@ -40,4 +44,4 @@ public static class SidraviaBuildJob {
     }
 }
 '@
-[SidraviaBuildJob]::Ensure()
+[SidraviaBuildJob]::Ensure([bool]$AllowBreakaway)

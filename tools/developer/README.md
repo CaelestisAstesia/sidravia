@@ -864,3 +864,36 @@ gzip-only releases remain supported. A failed signature is not treated as a
 successful gzip fallback. Publish the complete xz metadata pair with every xz
 asset. RPM remains managed by the system package manager; its producer can wrap
 a verified gzip or xz input without changing installed files.
+
+### Explicit isolated Windows updater acceptance
+
+The default VM wrapper and every command worker keep their original
+kill-on-close Jobs and prohibit breakaway. This correctly rejects a production
+updater's attempt to outlive its caller; that environment is not equivalent to
+an ordinary interactive update.
+
+For an explicitly authorized **dedicated test VM**, `dev vm
+--native-update-fixtures` additionally enables `BREAKAWAY_OK` in both owned
+Jobs. It does not change production admission or the default runner. Normal
+children remain contained; only processes requesting explicit breakaway can
+leave. Never use this mode for untrusted requests or a production VM/session.
+
+The controller creates a fresh short fixture directory under its owned guest
+root, binds it with a per-run ownership marker, and overrides both native Inno
+and portable fixture root variables to that directory. After task removal it
+checks all remaining executable images in that exact tree. Cleanup opens the
+actual process handle, verifies its image path and token SID, records its
+creation time and stops only that owned test process. A leaked process makes
+the acceptance **fail**, even if it was successfully stopped. Unknown cleanup
+remains a failure. Fixture files/logs remain as evidence; no process-name kill,
+account change, production integration or global Job-policy change is made.
+
+Start with `test_native_breakaway.py` as a harmless probe: the stage remains in
+a Job, an explicit child leaves it, and SID/session/medium integrity must remain
+identical. Run `test_validation_run.py` to prove that default Jobs still reject
+breakaway and retain existing descendant cleanup. Only then run the existing
+setup/portable native fixtures with synthetic keys. Use `go test -p 1` (or
+separate serial stages): setup, portable and installationgate intentionally
+share the current user's installation mutex and are not independent parallel
+acceptance jobs. Restore a VM started exclusively for acceptance to its prior
+state after evidence and cleanup have been checked.
