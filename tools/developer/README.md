@@ -2,8 +2,22 @@
 
 Run from the repository root with Python 3 and the pinned Go toolchain (Go 1.26.4).
 `dev.py` uses the existing verifier and distribution producer/consumer. It does
-not install, authenticate, sign, upload or publish. Only explicit development
+not install, authenticate, sign, upload or publish. `release download` makes only
+the explicitly requested public HTTPS reads. Only explicit development
 preview/integration modes start their own GUI or isolated fixture processes.
+
+Choose one existing entry for the scenario; there is no new mandatory sequence:
+
+| Scenario | Entry | Result to inspect |
+| --- | --- | --- |
+| Choose checks for a change | `check --recommend --base main` | Reasons, argv plan, manual gaps; nothing runs |
+| Run selected daily checks | `check --scope … --format json` | Stage/source status, exact report path |
+| Diagnose an existing run | `report <run> --format json` | Bounded failures, execution/evidence/cleanup |
+| Windows execution | `vm --request … --format json` | Ordinary-user task, collected logs, task cleanup |
+| Native acceptance | Existing platform fixture + `report --kind …` / `--native …` | Actual recorded checks; unrecorded cleanup and manual items |
+| GUI regression | `visual capture` / `visual compare` | Matching environment and changed-case index |
+| Local release candidate | `release prepare` / `release verify` | Exact local payload and signature checks |
+| Public asset verification | `release download` | Explicit URL bytes, signature scope and unsigned extras |
 
 ## Offline interactive GUI preview
 
@@ -781,7 +795,7 @@ still means successful reading, even if a supplied receipt reports failure.
 
 ## Prepare and verify public release metadata
 
-`dev.py release` reuses the existing distribution consumer and offline signing
+`dev.py release prepare/verify` reuses the existing distribution consumer and offline signing
 tool. It does not generate/unlock/store a key, sign, start a product, install,
 change trust roots, tag, upload or publish. The source must be clean and the
 request `buildId` must equal that exact Git commit. This is a preparation and
@@ -841,6 +855,65 @@ one final public version will be selected after the other packaging/size work
 and final workspace integration finish. Existing historical releases/proofs are
 retained. Local source simulation does not certify the public GitHub channel.
 
+
+### Verify explicitly selected public downloads
+
+```bash
+.local/bin/dev release download --request .local/public-release-request.json --public-key .local/publisher-public.txt --output .project/evidence/public-download/new-run --format json
+.local/bin/dev report .project/evidence/public-download/new-run --format json
+```
+
+Create the output's parent directory first; the output itself must not exist.
+The existing shared runner owns the worker, its subprocess tree, logs and the
+whole-operation deadline (`--stage-timeout`, default 900 seconds, maximum 3600).
+Individual HTTPS operations have a 30-second socket timeout. No automatic retry,
+cache purge, Git operation, package extraction/execution, installation, signing
+or publication occurs. Downloads and partial failure evidence remain owned by
+the new run directory; a later attempt must use a different one.
+
+The UTF-8 request has exactly `schemaVersion: 1`, `version`, `manifest`,
+`signature`, and `assets`. Each asset has exactly `name`, `url`, `size`, `sha256`.
+For example (replace **all** example byte counts and zero hashes with reviewed
+expected values, and add every intended asset including RPM/checksum files):
+
+```json
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "manifest": "sidravia-release.json",
+  "signature": "sidravia-release.sig",
+  "assets": [
+    {"name":"sidravia-v1.0.0-linux-amd64-core-portable.tar.gz","url":"https://example.invalid/releases/package.tar.gz","size":42,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+    {"name":"sidravia-release.json","url":"https://example.invalid/releases/sidravia-release.json","size":512,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+    {"name":"sidravia-release.sig","url":"https://example.invalid/releases/sidravia-release.sig","size":64,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}
+  ]
+}
+```
+
+Use trusted, independently reviewed public inventory and publisher-key bytes.
+TLS and matching a supplied hash do not establish that the inventory itself is
+trusted. Initial URLs must be public HTTPS without credentials, query parameters
+or fragments. CDN HTTPS redirects may contain queries, which are never copied to
+reports; HTTP downgrade and credential-bearing redirects are rejected. Up to
+32 unique portable filenames, 2 GiB per asset and 8 GiB total are supported.
+All intended public files are downloaded anonymously and checked for exact size
+and SHA256; final files are rehashed after signature verification. No archive is
+unpacked, and no downloaded code is run.
+
+The existing Go verifier checks the exact signed manifest bytes against the
+supplied public key. Every signed package must occur in the request with matching
+size/hash and the requested version. `signedAssets` lists those packages;
+`verifiedMetadata` lists manifest/signature; `hashOnlyAssets` lists extra files
+such as RPM/checksum assets outside that signature's package list. Their trust
+comes from the supplied inventory, never an invented signature guarantee.
+
+The complete `report.json` keeps the request, stage/raw logs, per-file receipts,
+source stability and explicit `not_covered` boundaries. JSON stdout is compact.
+Input/source changes invalidate the result; no clean current product commit is
+required to read an older public release. This tests the explicit URLs only, not
+GitHub asset discovery/listing completeness, payload ownership, native upgrade,
+GUI/campus or final release acceptance. Existing exact-payload `prepare/verify`
+checks retain their clean-source requirements.
 
 ## Deterministic GUI capture and visual triage
 

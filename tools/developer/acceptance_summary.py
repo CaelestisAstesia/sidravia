@@ -128,6 +128,9 @@ def dimensions(result):
             gaps.append('task_removed proves owned scheduled-task removal only; product/fixture cleanup remains separate.')
         else:
             gaps.append('Owned VM task cleanup is unknown, incomplete or not started.')
+    if kind == 'release-download':
+        row['download'] = result.get('download', {})
+        gaps.extend(result.get('not_covered', []))
     if kind in NATIVE_KINDS:
         row['execution']['checks'] = result['checks']
         if result.get('limits'):

@@ -330,13 +330,14 @@ def parse_args(argv=None):
             sub.add_argument("--tail-bytes", type=int, choices=range(0, 16385), default=2000, metavar="BYTES")
             sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "release":
-            sub.add_argument("mode", choices=("prepare", "verify"))
+            sub.add_argument("mode", choices=("prepare", "verify", "download"))
             sub.add_argument("--request", required=True, help="public release artifact inventory JSON")
             sub.add_argument("--public-key", required=True, help="base64 Ed25519 public key file; never a private seed")
             sub.add_argument("--output", help="new unsigned manifest file for prepare")
             sub.add_argument("--manifest", help="exact existing manifest for verify")
             sub.add_argument("--signature", help="existing detached signature for verify")
             sub.add_argument("--format", choices=("text", "json"), default="text")
+            sub.add_argument("--stage-timeout", type=int, choices=range(1, 3601), default=900, metavar='SECONDS')
         if command == "visual":
             sub.add_argument("mode", choices=("capture", "compare"))
             sub.add_argument("--output", required=True, help="new owned output directory; never overwrite a baseline")
@@ -458,6 +459,11 @@ def main(argv=None):
             return windows_vm.run(ROOT, args, source_manifest(env), lambda: source_manifest(env))
         if args.command == "release":
             import release_artifacts
+            if args.mode == 'download':
+                if not args.output or args.manifest or args.signature:
+                    raise ValueError('download requires only --output; metadata names are in --request')
+                import release_download
+                return release_download.run(ROOT, args, lambda: metadata(args.go, env))
             if (args.mode == "prepare" and (not args.output or args.manifest or args.signature)) or (args.mode == "verify" and (args.output or not args.manifest or not args.signature)):
                 raise ValueError("prepare requires only --output; verify requires --manifest and --signature")
             before = metadata(args.go, env)

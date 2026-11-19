@@ -104,6 +104,15 @@ class Recommendations(unittest.TestCase):
                          ['gui-sdk', 'gui-dependencies', 'gui-analyze', 'gui-tests'])
         self.assertTrue(any('campus' in item for item in result['not_covered']))
 
+    def test_runtime_markdown_resource_is_not_treated_as_documentation(self):
+        self.write('gui/assets/fonts/SourceCodePro-LICENSE.md', 'runtime license text')
+        self.write('README.md', 'ordinary documentation')
+        result = self.recommend()
+        self.assertEqual(result['scopes'], ['gui'])
+        decisions = {row['path']: row for row in result['changes']}
+        self.assertEqual(decisions['README.md']['scopes'], [])
+        self.assertEqual(decisions['gui/assets/fonts/SourceCodePro-LICENSE.md']['scopes'], ['gui'])
+
     def test_unknown_paths_are_visible_and_fall_back_conservatively(self):
         self.write('unexpected/config.blob', 'data')
         result = self.recommend()

@@ -9,7 +9,7 @@ from pathlib import Path, PureWindowsPath
 import validation_run as runner
 
 
-KINDS = {'verification', 'windows-vm', 'command-sequence', 'visual-capture'}
+KINDS = {'verification', 'windows-vm', 'command-sequence', 'visual-capture', 'release-download'}
 STATUSES = {'passed', 'failed', 'timed_out', 'not_run', 'running', 'interrupted'}
 ERRORS = ('error', 'evidence_error', 'cleanup_error', 'source_error')
 FACTS = ('source_unchanged', 'host_source_unchanged', 'guest_source_unchanged',
@@ -88,6 +88,24 @@ def inspect(path, stage=None, tail_bytes=2000):
     if isinstance(source, dict):
         result['source'] = {key: source[key] for key in
                             ('commit', 'dirty', 'source_fingerprint', 'manifest_sha256') if key in source}
+    if report['kind'] == 'release-download':
+        download = report.get('download', {})
+        if not isinstance(download, dict):
+            raise ValueError('invalid download result')
+        for key in ('status', 'signature', 'version', 'buildId', 'error'):
+            if key in download and (not isinstance(download[key], str) or len(download[key]) > 2000):
+                raise ValueError('invalid download field: ' + key)
+        for key in ('signedAssets', 'hashOnlyAssets', 'verifiedMetadata'):
+            if key in download and (not isinstance(download[key], list) or len(download[key]) > 32
+                    or any(not isinstance(value, str) or not value or len(value) > 256 for value in download[key])):
+                raise ValueError('invalid download list: ' + key)
+        gaps = report.get('not_covered', [])
+        if (not isinstance(gaps, list) or len(gaps) > 64
+                or any(not isinstance(value, str) or len(value) > 2000 for value in gaps)):
+            raise ValueError('invalid download not_covered')
+        result['download'] = {key: download[key] for key in
+                              ('status', 'signature', 'version', 'buildId', 'signedAssets', 'hashOnlyAssets', 'verifiedMetadata', 'error') if key in download}
+        result['not_covered'] = gaps
     for original, row in zip(report['stages'], rows):
         if stage is not None and row['name'] != stage:
             continue
@@ -115,6 +133,8 @@ def run(args):
             print(runner.human_text(f"source.{key}: {value}"))
         for key, value in {**result.get('facts', {}), **result.get('errors', {})}.items():
             print(runner.human_text(f"{key}: {value}"))
+        if 'download' in result:
+            print('Download: ' + runner.human_text(json.dumps(result['download'], ensure_ascii=False)))
         for row in result.get('stages', []):
             print(runner.human_text(f"  {row['status']:11} {row['name']} {row['duration_seconds']:.3f}s"))
             if row.get('error'):

@@ -132,6 +132,20 @@ class ReportInspection(unittest.TestCase):
         self.assertNotIn('\x1b', output.getvalue())
         self.assertIn('source_unchanged: False', output.getvalue())
 
+    def test_partial_download_receipt_and_malformed_fields_keep_json_contract(self):
+        self.save(kind='release-download', stages=[], status='interrupted')
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(dev.main(['report', str(self.directory), '--format', 'json']), 0)
+        self.assertEqual(json.loads(output.getvalue())['status'], 'interrupted')
+        for change in ({'not_covered': None}, {'not_covered': [None]}, {'download': None},
+                       {'download': {'signature': []}}, {'download': {'signedAssets': [None]}}):
+            self.save(kind='release-download', **change)
+            output = io.StringIO()
+            with self.subTest(change=change), contextlib.redirect_stdout(output):
+                self.assertEqual(dev.main(['report', str(self.directory), '--format', 'json']), 1)
+            self.assertIn('invalid download', json.loads(output.getvalue())['error'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -30,6 +30,8 @@ def classify(path):
     p = PurePosixPath(path)
     if path.startswith('.github/workflows/'):
         return SCOPES, 'CI configuration can affect all verification jobs', 'Hosted workflow validation'
+    if path.startswith('gui/assets/'):
+        return ('gui',), 'bundled GUI resource, including runtime-loaded license text', 'Affected-page visual/interaction review'
     if path.startswith('docs/') or p.suffix.lower() == '.md' or path in ('LICENSE', 'NOTICE', '.gitignore'):
         return (), 'documentation or repository metadata; no executable check inferred', None
     if path in ('go.mod', 'go.sum'):
