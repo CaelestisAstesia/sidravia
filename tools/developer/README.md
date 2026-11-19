@@ -889,11 +889,18 @@ remains a failure. Fixture files/logs remain as evidence; no process-name kill,
 account change, production integration or global Job-policy change is made.
 
 Start with `test_native_breakaway.py` as a harmless probe: the stage remains in
-a Job, an explicit child leaves it, and SID/session/medium integrity must remain
-identical. Run `test_validation_run.py` to prove that default Jobs still reject
+both named owned Jobs, an explicit child leaves those Jobs, and SID/session/medium
+integrity must remain identical. An ancestor such as Task Scheduler may retain
+its own Job; this mode does not change that ancestor. Run `test_validation_run.py` to prove that default Jobs still reject
 breakaway and retain existing descendant cleanup. Only then run the existing
 setup/portable native fixtures with synthetic keys. Use `go test -p 1` (or
 separate serial stages): setup, portable and installationgate intentionally
 share the current user's installation mutex and are not independent parallel
 acceptance jobs. Restore a VM started exclusively for acceptance to its prior
 state after evidence and cleanup have been checked.
+
+`test_native_breakaway.py --leak-probe` is an explicit negative cleanup test. It
+builds a harmless sleeping executable inside the controller-owned fixture root
+and leaves it running with explicit breakaway. The stage succeeds, but the VM
+receipt must **fail** with one exact owned process stopped and zero remaining.
+Preserve this expected-failure receipt; do not report it as product acceptance.

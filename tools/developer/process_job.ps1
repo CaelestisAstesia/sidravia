@@ -31,7 +31,7 @@ public static class SidraviaBuildJob {
     public static void Ensure() { Ensure(false); }
     public static void Ensure(bool allowBreakaway) {
         if (job != IntPtr.Zero) return;
-        IntPtr candidate = CreateJobObject(IntPtr.Zero, null);
+        IntPtr candidate = CreateJobObject(IntPtr.Zero, allowBreakaway ? Environment.GetEnvironmentVariable("SIDRAVIA_NATIVE_OUTER_JOB") : null);
         if (candidate == IntPtr.Zero) throw new Win32Exception();
         var info = new Limits(); info.Basic.Flags = 0x2000;
         if (allowBreakaway) info.Basic.Flags |= 0x0800;

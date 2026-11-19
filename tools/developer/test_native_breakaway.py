@@ -15,6 +15,8 @@ def identity():
     kernel.IsProcessInJob.argtypes = [w.HANDLE, w.HANDLE, c.POINTER(w.BOOL)]
     kernel.IsProcessInJob.restype = w.BOOL
     kernel.ProcessIdToSessionId.argtypes = [w.DWORD, c.POINTER(w.DWORD)]
+    kernel.OpenJobObjectW.argtypes = [w.DWORD, w.BOOL, w.LPCWSTR]
+    kernel.OpenJobObjectW.restype = w.HANDLE
     kernel.CloseHandle.argtypes = [w.HANDLE]
     kernel.LocalFree.argtypes = [c.c_void_p]
     security.OpenProcessToken.argtypes = [w.HANDLE, w.DWORD, c.POINTER(w.HANDLE)]
@@ -50,7 +52,21 @@ def identity():
         label = c.cast(integrity, c.POINTER(c.c_void_p))[0]
         count = security.GetSidSubAuthorityCount(label)[0]
         rid = security.GetSidSubAuthority(label, count - 1)[0]
-        return dict(pid=os.getpid(), sid=user_sid, integrity=rid, session=session.value, in_job=bool(inside.value))
+        owned = {}
+        for variable in ('SIDRAVIA_NATIVE_OUTER_JOB', 'SIDRAVIA_NATIVE_WORKER_JOB'):
+            if variable not in os.environ:
+                continue
+            job = kernel.OpenJobObjectW(4, False, os.environ[variable])
+            if not job:
+                raise c.WinError(c.get_last_error())
+            try:
+                member = w.BOOL()
+                if not kernel.IsProcessInJob(kernel.GetCurrentProcess(), job, c.byref(member)):
+                    raise c.WinError(c.get_last_error())
+                owned[variable] = bool(member.value)
+            finally:
+                kernel.CloseHandle(job)
+        return dict(owned_jobs=owned, pid=os.getpid(), sid=user_sid, integrity=rid, session=session.value, in_job=bool(inside.value))
     finally:
         kernel.CloseHandle(token)
 
@@ -75,7 +91,8 @@ def main():
     if '--expect-blocked' in sys.argv:
         raise RuntimeError('default runner unexpectedly allowed breakaway')
     child = json.loads(result.stdout)
-    if child['in_job'] or any(child[k] != current[k] for k in ('sid', 'integrity', 'session')):
+    print(json.dumps(dict(parent=current, child=child)), flush=True)
+    if len(current['owned_jobs']) != 2 or not all(current['owned_jobs'].values()) or any(child['owned_jobs'].values()) or any(child[k] != current[k] for k in ('sid', 'integrity', 'session')):
         raise RuntimeError('breakaway changed user/session/integrity or remained contained')
     print(json.dumps(dict(parent=current, child=child, breakaway='explicitly_allowed')))
     if '--leak-probe' in sys.argv:

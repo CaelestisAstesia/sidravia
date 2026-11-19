@@ -108,7 +108,12 @@ def own_windows_job(native_update_fixtures=False):
     api.AssignProcessToJobObject.restype = w.BOOL
     api.CloseHandle.argtypes = [w.HANDLE]
     api.CloseHandle.restype = w.BOOL
-    job = api.CreateJobObjectW(None, None)
+    name = None
+    if native_update_fixtures:
+        import uuid
+        name = 'Local\\Sidravia-Native-Worker-' + uuid.uuid4().hex
+        os.environ['SIDRAVIA_NATIVE_WORKER_JOB'] = name
+    job = api.CreateJobObjectW(None, name)
     if not job:
         raise c.WinError(c.get_last_error())
     limits = Limits()

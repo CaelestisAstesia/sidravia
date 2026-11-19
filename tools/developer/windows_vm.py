@@ -190,7 +190,7 @@ for($pass=0;$pass -lt 5;$pass++){
    $stopped+=@{pid=$id;created=$created;path=$path}
   }catch{
    if($p -and $p.HasExited){continue}
-   if(!$p -and $_.Exception -is [ArgumentException] -and !(Get-Process -Id ([int]$row.ProcessId) -ErrorAction SilentlyContinue)){continue}
+   if(!$p -and $_.Exception.GetBaseException() -is [ArgumentException] -and !(Get-Process -Id ([int]$row.ProcessId) -ErrorAction SilentlyContinue)){continue}
    throw
   }finally{if($p){$p.Dispose()}}
  }
@@ -277,6 +277,7 @@ $null=New-Item -ItemType Directory -Path $r
             # Run in the existing InteractiveToken, never as QGA's SYSTEM token.
             launcher = f"""
 $ErrorActionPreference='Stop'
+{'$env:SIDRAVIA_NATIVE_OUTER_JOB='+ps_quote('Local\\Sidravia-Native-'+run_id) if native_updates else ''}
 . {ps_quote(source + r'\tools\developer\process_job.ps1')}{' -AllowBreakaway' if native_updates else ''}
 & git -C {ps_quote(source)} init -q
 if($LASTEXITCODE){{exit $LASTEXITCODE}}
