@@ -320,8 +320,13 @@ def preview_command(args, env):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check", "release", "visual"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check", "release", "visual", "report"):
         sub = subs.add_parser(command)
+        if command == "report":
+            sub.add_argument("path", help="existing stage report JSON or its directory")
+            sub.add_argument("--stage", help="show one exact stage, including successful-stage logs")
+            sub.add_argument("--tail-bytes", type=int, choices=range(0, 16385), default=2000, metavar="BYTES")
+            sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "release":
             sub.add_argument("mode", choices=("prepare", "verify"))
             sub.add_argument("--request", required=True, help="public release artifact inventory JSON")
@@ -416,6 +421,9 @@ def main(argv=None):
     args = parse_args(argv)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
+        if args.command == "report":
+            import report_inspection
+            return report_inspection.run(args)
         if args.command == "visual":
             import visual_checks
             if args.mode == "capture":

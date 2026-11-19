@@ -661,6 +661,39 @@ from producing a false acceptance. A per-worktree lock excludes simultaneous
 Go/Flutter/Pub caches stay at their existing locations. There is no automatic
 package build, installer execution, test retry, Git commit or release operation.
 
+## Inspect an existing check or VM receipt
+
+```bash
+.local/bin/dev report /absolute/path/to/run-directory
+.local/bin/dev report /absolute/path/to/report.json --format json
+.local/bin/dev report /absolute/path/to/run-directory --stage gui-tests --tail-bytes 4000
+```
+
+This read-only command consumes existing schema-1 `check`, `vm`, command-sequence
+and `visual capture` stage reports. It does not run tools, contact a VM, take a
+lock, create evidence or change the receipt. Use the original command's output
+to select the exact run; there is no implicit "latest" selection across sources.
+Other receipt types (including visual comparisons and release inventories) keep
+their existing readers and are rejected explicitly here.
+
+The compact result includes original status, stage counts/status/exit/timing,
+source identity and recorded source-stability, evidence and cleanup facts.
+Unknown/unrecorded facts remain absent; they are not inferred as successful.
+Large source/image inventories, argv and environment are omitted. By default,
+only failed, timed-out or interrupted stages include raw log tails. `--stage`
+selects one exact stage and includes its logs even after success; `--tail-bytes 0`
+disables log reads. Each stream is bounded to 2000 bytes by default (maximum
+16384), with missing/truncated state explicit. Invalid UTF-8 is replaced in the
+excerpt only; original bytes remain unchanged. Collected logs must be ordinary
+sibling stdout/stderr files, with no traversal or symlink references.
+
+`--format json` emits one UTF-8 object; text output strips terminal controls.
+Exit 0 means the receipt was read successfully, **not that its checks passed**:
+consume `status`, stage coverage, errors and source/evidence/cleanup facts.
+Malformed/unsupported receipts or an unknown stage return exit 1, with a JSON
+error when requested. Reading a report does not revalidate product/artifact bytes
+or certify native, campus or release acceptance.
+
 ## Prepare and verify public release metadata
 
 `dev.py release` reuses the existing distribution consumer and offline signing
