@@ -49,13 +49,13 @@ func VerifyManifest(data, signature []byte, key ed25519.PublicKey, version strin
 	seen := map[string]bool{}
 	for _, asset := range manifest.Assets {
 		selection := Selection{OS: asset.OS, Arch: asset.Arch, Kind: asset.Kind, Channel: "preview"}
-		suffix, err := packageSuffix(selection)
+		suffix, err := PackageSuffix(selection)
 		if err != nil {
 			return Manifest{}, ErrMetadata
 		}
 		expected := "sidravia-v" + version + "-" + asset.OS + "-" + asset.Arch + "-" + suffix
-		candidate := Candidate{Version: version, Name: asset.Name, Size: asset.Size, SHA256: asset.SHA256, DownloadURL: "https://github.com/" + repository + "/releases/download/v" + version + "/" + asset.Name}
-		if asset.Name != expected || validateCandidate(candidate) != nil || seen[asset.Name] {
+		candidate := Candidate{Version: version, Name: asset.Name, Size: asset.Size, SHA256: asset.SHA256, DownloadURL: "https://github.com/" + Repository + "/releases/download/v" + version + "/" + asset.Name}
+		if asset.Name != expected || ValidateCandidate(candidate) != nil || seen[asset.Name] {
 			return Manifest{}, ErrMetadata
 		}
 		seen[asset.Name] = true

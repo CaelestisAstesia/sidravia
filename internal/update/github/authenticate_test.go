@@ -1,4 +1,4 @@
-package releases
+package github
 
 import (
 	"bytes"
@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"sidravia/internal/update/releases"
 )
 
 func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
@@ -30,17 +32,17 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 				data = append(data, ' ')
 			}
 			if mode == "too-large" {
-				data = bytes.Repeat([]byte("x"), ReleaseManifestLimit+1)
+				data = bytes.Repeat([]byte("x"), releases.ReleaseManifestLimit+1)
 			}
 			requests := 0
 			source := NewGitHub(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 				requests++
-				prefix := "https://github.com/" + repository + "/releases/download/v1.0.0/"
+				prefix := "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/"
 				if !strings.HasPrefix(r.URL.String(), prefix) {
 					t.Fatal("candidate redirected to another release", r.URL)
 				}
 				body := data
-				if strings.HasSuffix(r.URL.Path, ReleaseSignatureName) {
+				if strings.HasSuffix(r.URL.Path, releases.ReleaseSignatureName) {
 					body = signature
 				}
 				status := http.StatusOK
@@ -49,14 +51,14 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 				}
 				return &http.Response{StatusCode: status, Header: make(http.Header), ContentLength: int64(len(body)), Body: io.NopCloser(bytes.NewReader(body))}, nil
 			})})
-			source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+			source.publisherKeys, _ = releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
 			if mode == "unknown-root" {
-				source.publisherKeys = PublisherTrust()
+				source.publisherKeys = releases.PublisherTrust()
 			}
 			if mode == "unconfigured-root" {
-				source.publisherKeys, _ = NewPublisherKeys(nil)
+				source.publisherKeys, _ = releases.NewPublisherKeys(nil)
 			}
-			c.DownloadURL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
+			c.DownloadURL = "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/" + c.Name
 			verified, err := source.AuthenticateCandidate(context.Background(), c)
 			if mode == "valid" {
 				if err != nil || verified.BuildID() != "build" {
@@ -106,15 +108,15 @@ func TestCheckOffersOnlyNativeSignedApply(t *testing.T) {
 					item.Assets[0].Name = c.Name
 					item.Assets[0].Size = c.Size
 					item.Assets[0].Digest = "sha256:" + c.SHA256
-					item.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
+					item.Assets[0].URL = "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/" + c.Name
 					body, _ = json.Marshal([]release{item})
-				} else if strings.HasSuffix(r.URL.Path, ReleaseSignatureName) {
+				} else if strings.HasSuffix(r.URL.Path, releases.ReleaseSignatureName) {
 					body = ed25519.Sign(key, data)
 				}
 				return &http.Response{StatusCode: 200, Header: make(http.Header), ContentLength: int64(len(body)), Body: io.NopCloser(bytes.NewReader(body))}, nil
 			})})
-			source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
-			result, err := source.Check(context.Background(), Selection{OS: platform, Arch: "amd64", Kind: kind, Channel: "stable", CurrentVersion: "0.9.0"})
+			source.publisherKeys, _ = releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+			result, err := source.Check(context.Background(), releases.Selection{OS: platform, Arch: "amd64", Kind: kind, Channel: "stable", CurrentVersion: "0.9.0"})
 			native := runtime.GOOS == platform && runtime.GOARCH == "amd64"
 			if err != nil || result.Candidate == nil || result.Candidate.CanApply != native || (native && result.Candidate.ApplyReason != "source_verification_and_confirmation_required") {
 				t.Fatalf("%+v %v", result, err)
@@ -133,15 +135,15 @@ func TestCheckDoesNotTreatCanceledMetadata404AsUnsigned(t *testing.T) {
 			item.Assets[0].Name = c.Name
 			item.Assets[0].Size = c.Size
 			item.Assets[0].Digest = "sha256:" + c.SHA256
-			item.Assets[0].URL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
+			item.Assets[0].URL = "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/" + c.Name
 			body, _ := json.Marshal([]release{item})
 			return &http.Response{StatusCode: 200, Header: make(http.Header), ContentLength: int64(len(body)), Body: io.NopCloser(bytes.NewReader(body))}, nil
 		}
 		cancel()
 		return &http.Response{StatusCode: 404, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(""))}, nil
 	})})
-	source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
-	result, err := source.Check(ctx, Selection{OS: "linux", Arch: "amd64", Kind: "core-portable", Channel: "stable", CurrentVersion: "0.9.0"})
+	source.publisherKeys, _ = releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+	result, err := source.Check(ctx, releases.Selection{OS: "linux", Arch: "amd64", Kind: "core-portable", Channel: "stable", CurrentVersion: "0.9.0"})
 	if !errors.Is(err, context.Canceled) || result.Candidate != nil {
 		t.Fatalf("canceled metadata became unsigned success: %+v %v", result, err)
 	}
@@ -153,8 +155,8 @@ func TestSignedMetadataRetainsSourceBackoff(t *testing.T) {
 		source := NewGitHub(&http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: status, Header: http.Header{"Retry-After": []string{"600"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
 		})})
-		source.publisherKeys, _ = NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
-		c.DownloadURL = "https://github.com/" + repository + "/releases/download/v1.0.0/" + c.Name
+		source.publisherKeys, _ = releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+		c.DownloadURL = "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/" + c.Name
 		_, err := source.AuthenticateCandidate(context.Background(), c)
 		var limited *RateLimitError
 		if !errors.As(err, &limited) || time.Until(limited.RetryAt) < 9*time.Minute || time.Until(limited.RetryAt) > 11*time.Minute {
@@ -170,7 +172,7 @@ func TestCheckRejectsCanceledBufferedAPIPage(t *testing.T) {
 		data, _ := json.Marshal([]release{fixtureRelease("1.0.0", 1)})
 		return &http.Response{StatusCode: 200, Header: make(http.Header), ContentLength: -1, Body: io.NopCloser(cancelAtEOF{Reader: bytes.NewReader(data), cancel: cancel})}, nil
 	})})
-	result, err := source.Check(ctx, Selection{OS: "windows", Arch: "amd64", Kind: "setup", Channel: "stable", CurrentVersion: "0.9.0"})
+	result, err := source.Check(ctx, releases.Selection{OS: "windows", Arch: "amd64", Kind: "setup", Channel: "stable", CurrentVersion: "0.9.0"})
 	if !errors.Is(err, context.Canceled) || result.Candidate != nil {
 		t.Fatal("canceled API page returned a candidate", err)
 	}

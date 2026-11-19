@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/releases"
 )
 
@@ -40,7 +41,7 @@ func inspectCached(root, path string, candidate *releases.Candidate) (bool, erro
 		return false, err
 	}
 	if !info.Mode().IsRegular() || info.Size() != candidate.Size {
-		return false, releases.ErrIntegrity
+		return false, github.ErrIntegrity
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -53,7 +54,7 @@ func inspectCached(root, path string, candidate *releases.Candidate) (bool, erro
 		return false, err
 	}
 	if size != candidate.Size || hex.EncodeToString(hash.Sum(nil)) != candidate.SHA256 {
-		return false, releases.ErrIntegrity
+		return false, github.ErrIntegrity
 	}
 	return true, nil
 }

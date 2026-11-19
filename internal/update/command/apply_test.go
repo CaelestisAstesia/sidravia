@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 )
@@ -14,9 +15,9 @@ func TestApplyErrorsPreserveSafeDomainAndRateLimitPriority(t *testing.T) {
 		err  error
 		code string
 	}{
-		{errors.Join(errSourceProof, releases.ErrRateLimited), "rate_limited"},
+		{errors.Join(errSourceProof, github.ErrRateLimited), "rate_limited"},
 		{errors.Join(errSourceProof, releases.ErrUntrusted), "source_proof_unavailable"},
-		{releases.ErrIntegrity, "integrity_failed"},
+		{github.ErrIntegrity, "integrity_failed"},
 		{errors.Join(errSourceProof, context.Canceled), "cancelled"},
 		{errManualRepair, "manual_repair_required"},
 		{operations.ErrConflict, "update_busy"},

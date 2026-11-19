@@ -17,6 +17,7 @@ import (
 
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 )
@@ -189,7 +190,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	// All network stages share the same durable backoff, including installed
 	// proof, repeated candidate authentication and recovery.
 	failSource := func(err error, result any, applying bool) int {
-		var limited *releases.RateLimitError
+		var limited *github.RateLimitError
 		if errors.As(err, &limited) {
 			b, _ := json.Marshal(backoff{SchemaVersion: 1, Until: limited.RetryAt})
 			if e := store.Replace(context.WithoutCancel(ctx), backoffPath, b); e != nil {
@@ -201,7 +202,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		}
 		return emit(false, safeCode(err), safeMessage(err), result)
 	}
-	source := releases.NewGitHub(nil)
+	source := github.NewGitHub(nil)
 	if operation == "recover" {
 		result, err := recoverOperation(ctx, layout, version, buildID, *operationID, source)
 		if err != nil {
@@ -260,7 +261,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	newDownload := ""
 	if operation == "download" {
 		if state.Downloaded == "" {
-			path, err := releases.Download(ctx, nil, *result.Candidate, root)
+			path, err := github.Download(ctx, nil, *result.Candidate, root)
 			if err != nil {
 				return failSource(err, nil, false)
 			}
@@ -288,11 +289,11 @@ func safeCode(err error) string {
 		return "cancelled"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
-	case errors.Is(err, releases.ErrRateLimited):
+	case errors.Is(err, github.ErrRateLimited):
 		return "rate_limited"
-	case errors.Is(err, releases.ErrIncomplete):
+	case errors.Is(err, github.ErrIncomplete):
 		return "incomplete_query"
-	case errors.Is(err, releases.ErrIntegrity):
+	case errors.Is(err, github.ErrIntegrity):
 		return "integrity_failed"
 	case errors.Is(err, releases.ErrUntrusted):
 		return "publisher_untrusted"

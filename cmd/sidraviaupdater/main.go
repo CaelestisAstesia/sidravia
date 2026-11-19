@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"os/signal"
-	"sidravia/internal/installationgate"
 
+	"sidravia/internal/installationgate"
 	"sidravia/internal/update/command"
+	"sidravia/internal/update/entry"
 )
 
 var ProductVersion = "0.5.0-alpha.1"
@@ -22,7 +23,7 @@ func main() {
 	}
 	release := func() {}
 	var err error
-	if !command.ControlEntry(os.Args[1:]) {
+	if !entry.ControlEntry(os.Args[1:]) {
 		release, err = installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 	}
 	if err != nil {

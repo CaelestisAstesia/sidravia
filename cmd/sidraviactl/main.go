@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sidravia/internal/installationgate"
-	"sidravia/internal/update/command"
 
 	"sidravia/internal/cli"
+	"sidravia/internal/installationgate"
+	"sidravia/internal/update/entry"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 
 func main() {
 	releaseRun := func() {}
-	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && command.ControlEntry(os.Args[2:])) {
+	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && entry.ControlEntry(os.Args[2:])) {
 		release, err := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "安装或更新正在进行，请完成或取消后再运行命令。")

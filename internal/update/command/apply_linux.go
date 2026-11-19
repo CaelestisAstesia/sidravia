@@ -14,6 +14,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/portable"
 	"sidravia/internal/update/releases"
@@ -35,7 +36,7 @@ func platformApplyErrorCode(err error) string {
 	}
 	return "apply_failed"
 }
-func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *releases.GitHub, candidate releases.Candidate, path string, releaseRuntime func()) (outcome *applyResult, err error) {
+func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *github.GitHub, candidate releases.Candidate, path string, releaseRuntime func()) (outcome *applyResult, err error) {
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil {
 		return nil, err
@@ -45,7 +46,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 		return nil, err
 	}
 	if !exists {
-		return nil, releases.ErrIntegrity
+		return nil, github.ErrIntegrity
 	}
 	opRoot, err := operations.DefaultRoot()
 	if err != nil {
@@ -99,7 +100,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	err = portable.Execute(ctx, portable.Execution{Store: store, OperationID: record.ID, Target: layout.ExecutableDirectory, Old: old, Payload: payload, Namespace: ns.String(), ReleaseRuntime: releaseRuntime})
 	return nil, err
 }
-func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *releases.GitHub) (*applyResult, error) {
+func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *github.GitHub) (*applyResult, error) {
 	if layout.Mode != productlayout.ModePortable || !update.ValidOperationID(id) {
 		return nil, operations.ErrInvalid
 	}
