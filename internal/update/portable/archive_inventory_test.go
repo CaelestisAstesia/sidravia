@@ -3,10 +3,14 @@
 package portable
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,5 +57,65 @@ func TestExtractReleaseAuthenticatesDiscoveredIndex(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestXZReleaseUsesAuthenticatedIndexAndFullArchiveValidation(t *testing.T) {
+	if _, err := exec.LookPath("xz"); err != nil {
+		t.Skip("XZ fixture encoder unavailable")
+	}
+	original := image(t, "1.1.0", "new", map[string]string{"program": "new"}, nil)
+	gz, err := gzip.NewReader(bytes.NewReader(original.archive))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawTar, err := io.ReadAll(gz)
+	gz.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("xz", "--threads=1", "--lzma2=dict=8MiB", "--stdout")
+	cmd.Stdin = bytes.NewReader(rawTar)
+	archive, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, badProof := range []bool{false, true} {
+		raw, _ := original.verified.Proof()
+		var m releases.ReleaseManifest
+		json.Unmarshal(raw, &m)
+		a := &m.Assets[0]
+		a.Name = strings.TrimSuffix(a.Name, ".gz") + ".xz"
+		a.Size = int64(len(archive))
+		a.SHA256 = digest(archive)
+		if badProof {
+			a.FilesSHA256 = strings.Repeat("b", 64)
+		}
+		raw, _ = json.Marshal(m)
+		key := ed25519.NewKeyFromSeed(make([]byte, 32))
+		proof, err := original.keys.Verify(raw, ed25519.Sign(key, raw), m.Version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := original.inventory.candidate
+		c.Name = a.Name
+		c.Size = a.Size
+		c.SHA256 = a.SHA256
+		path := filepath.Join(t.TempDir(), c.Name)
+		os.WriteFile(path, archive, 0600)
+		payload, err := ExtractRelease(context.Background(), t.TempDir(), path, proof, c)
+		if badProof {
+			if err == nil {
+				payload.Close()
+				t.Fatal("XZ index mismatch accepted")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = payload.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

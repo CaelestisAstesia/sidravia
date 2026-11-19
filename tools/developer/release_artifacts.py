@@ -157,6 +157,21 @@ def public_check(repo, go, mode, manifest_data, public_data, signature_data=None
     return report
 
 
+def encoding_compatibility(manifest, path):
+    xz_assets = [a for a in manifest['assets'] if a['name'].endswith('.tar.xz')]
+    if not xz_assets:
+        return
+    require(len(xz_assets) == len(manifest['assets']), 'mixed_legacy_and_xz_manifest')
+    require(path.name == 'sidravia-release-xz.json', 'xz_manifest_requires_separate_name')
+    legacy = document(path.parent / 'sidravia-release.json')
+    require(isinstance(legacy, dict), 'invalid_legacy_manifest')
+    require(all(legacy.get(k) == manifest[k] for k in ('schemaVersion', 'version', 'buildId', 'keyId', 'minimumProtocol')), 'xz_legacy_identity_mismatch')
+    require(isinstance(legacy.get('assets'), list) and all(isinstance(a, dict) and isinstance(a.get('name'), str) for a in legacy['assets']) and not any(a['name'].endswith('.tar.xz') for a in legacy['assets']), 'xz_in_legacy_manifest')
+    for asset in xz_assets:
+        matches = [a for a in legacy['assets'] if all(a.get(k) == asset[k] for k in ('os', 'arch', 'kind'))]
+        require(len(matches) == 1 and matches[0]['name'] == asset['name'][:-3] + '.gz' and all(matches[0].get(k) == asset[k] for k in ('filesSha256', 'payloadKind')), 'xz_legacy_ownership_mismatch')
+
+
 def prepare(repo, go, request_path, public_key, output, *, request_snapshot=None):
     output = Path(os.path.abspath(output))
     require(not output.exists() and not output.is_symlink(), 'output_already_exists')
@@ -166,6 +181,7 @@ def prepare(repo, go, request_path, public_key, output, *, request_snapshot=None
     require(expected['keyId'] == public_identity_bytes(public_data), 'public_key_changed')
     for receipt in receipts:
         require(not output.absolute().is_relative_to(Path(receipt['directory'])), 'manifest_output_inside_distribution')
+    encoding_compatibility(expected, output)
     data = (json.dumps(expected, ensure_ascii=True, indent=2) + '\n').encode('utf-8')
     public_check(repo, go, 'inspect', data, public_data)
     with output.open('xb') as handle:
@@ -180,6 +196,7 @@ def verify(repo, go, request_path, public_key, manifest, signature, *, request_s
     public_data = read_public(public_key,256)
     signature_data = read_public(signature,64)
     expected, receipts = collect(repo, request_path, public_key, go, request_snapshot=request_snapshot)
+    encoding_compatibility(expected, Path(manifest))
     require(expected['keyId'] == public_identity_bytes(public_data), 'public_key_changed')
     try:
         parsed = json.loads(data,object_pairs_hook=unique_object)

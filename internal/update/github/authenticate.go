@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"sidravia/internal/update/releases"
@@ -29,7 +30,7 @@ func (g *GitHub) AuthenticateCandidate(ctx context.Context, c releases.Candidate
 		return releases.VerifiedRelease{}, releases.ErrUntrusted
 	}
 
-	verified, err := g.AuthenticateVersion(ctx, c.Version)
+	verified, err := g.authenticateVersion(ctx, c.Version, strings.HasSuffix(c.Name, ".tar.xz"))
 	if err != nil {
 		return releases.VerifiedRelease{}, err
 	}
@@ -42,6 +43,10 @@ func (g *GitHub) AuthenticateCandidate(ctx context.Context, c releases.Candidate
 // AuthenticateVersion retrieves only fixed publisher metadata for this exact
 // canonical version. It is also used to prove the installed source inventory.
 func (g *GitHub) AuthenticateVersion(ctx context.Context, version string) (releases.VerifiedRelease, error) {
+	return g.authenticateVersion(ctx, version, false)
+}
+
+func (g *GitHub) authenticateVersion(ctx context.Context, version string, useXZ bool) (releases.VerifiedRelease, error) {
 	if _, err := releases.ParseVersion(version); err != nil {
 		return releases.VerifiedRelease{}, releases.ErrMetadata
 	}
@@ -50,11 +55,15 @@ func (g *GitHub) AuthenticateVersion(ctx context.Context, version string) (relea
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	data, err := g.releaseMetadata(ctx, version, releases.ReleaseManifestName, releases.ReleaseManifestLimit)
+	manifestName, signatureName := releases.ReleaseManifestName, releases.ReleaseSignatureName
+	if useXZ {
+		manifestName, signatureName = releases.XZReleaseManifestName, releases.XZReleaseSignatureName
+	}
+	data, err := g.releaseMetadata(ctx, version, manifestName, releases.ReleaseManifestLimit)
 	if err != nil {
 		return releases.VerifiedRelease{}, err
 	}
-	signature, err := g.releaseMetadata(ctx, version, releases.ReleaseSignatureName, ed25519.SignatureSize)
+	signature, err := g.releaseMetadata(ctx, version, signatureName, ed25519.SignatureSize)
 	if err != nil {
 		return releases.VerifiedRelease{}, err
 	}

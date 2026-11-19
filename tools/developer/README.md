@@ -818,3 +818,49 @@ inventories stay in the report. Normal output gives the summary and review index
 
 Widget screenshots establish this deterministic rendering contract, not native
 window/tray/DPI behavior, installation, campus or release acceptance.
+
+## Optional Linux xz portable archives
+
+The default remains `.tar.gz`. Build the alternative with the same clean source,
+version and build ID. XZ is Linux-target-only; Windows ZIP/setup paths do not change.
+
+```bash
+python3 tools/developer/dev.py package --target linux-amd64 --version VERSION --output OUTPUT_GZIP
+python3 tools/developer/dev.py package --target linux-amd64 --version VERSION --compression xz --output OUTPUT_XZ
+# The native GUI producer accepts the same --compression xz option.
+```
+
+Encoding requires the verified build-only XZ Utils **5.8.3**, using one thread,
+CRC64 and an 8 MiB LZMA2 dictionary. `XZ_OPT` and `XZ_DEFAULTS` are ignored.
+The payload is written by the same deterministic tar serializer. The consumer
+requires exactly one archive encoding in each output directory and verifies its
+contents, ownership index, hashes and target as usual. No system xz executable
+is required by the product: runtime decoding uses the pinned pure-Go XZ Embedded
+port (`github.com/xi2/xz`), limited to an 8 MiB dictionary, with the existing total
+expansion/cancellation/file checks. The format implementation is behind the
+portable archive reader; local startup/signature validation does not import it.
+
+### Publisher metadata and 0.5 compatibility
+
+A 0.5 client validates the entire signed manifest and rejects unknown archive
+names. Merely adding gzip alongside xz in the same manifest is incompatible.
+Keep `sidravia-release.json` and `sidravia-release.sig` for the existing gzip/ZIP/
+setup assets. Prepare a second request containing **only xz distributions**, then
+write `sidravia-release-xz.json`; its signature is `sidravia-release-xz.sig`.
+These are additional fixed names, not keys obtained from a release. They use the
+same publisher root and schema-2 verification, and require the same deliberate
+signing/release authorization as the primary files.
+
+Prepare/verify the legacy request first. Both metadata pairs must be in the same
+release. The xz preparer/verifier requires the primary manifest in the same local
+directory, the same version/build/key/protocol, and a gzip counterpart with the
+identical `filesSha256` and `payloadKind` for every xz asset. This preserves the
+installed-source proof used by later updates. Use identical native GUI input
+bytes when encoding the two formats; independently rebuilt Flutter outputs may
+differ, in which case preparation correctly refuses them.
+
+New clients prefer xz when an asset exists and verify the xz metadata pair;
+gzip-only releases remain supported. A failed signature is not treated as a
+successful gzip fallback. Publish the complete xz metadata pair with every xz
+asset. RPM remains managed by the system package manager; its producer can wrap
+a verified gzip or xz input without changing installed files.

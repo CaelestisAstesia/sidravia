@@ -3,7 +3,6 @@ package portable
 import (
 	"archive/tar"
 	"archive/zip"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -115,12 +114,11 @@ func Extract(ctx context.Context, target, archive string, i Inventory) (result *
 		return p.writeStage(ctx, name, modeFor(i, entry.Mode), size, r, entry.SHA256)
 	}
 	switch {
-	case strings.HasSuffix(i.candidate.Name, ".tar.gz"):
-		gz, e := gzip.NewReader(f)
+	case strings.HasSuffix(i.candidate.Name, ".tar.gz"), strings.HasSuffix(i.candidate.Name, ".tar.xz"):
+		gz, e := openTarStream(ctx, f, i.candidate.Name)
 		if e != nil {
 			return nil, e
 		}
-		gz.Multistream(false)
 		// Bound even ignored archive metadata and padding, not just copied files.
 		limited := &io.LimitedReader{R: &contextReader{ctx: ctx, r: gz}, N: required + packagefiles.SizeLimit + int64(packagefiles.MaximumFiles)*2048 + 1<<20}
 		tr := tar.NewReader(limited)
@@ -140,7 +138,7 @@ func Extract(ctx context.Context, target, archive string, i Inventory) (result *
 				return nil, e
 			}
 		}
-		// Drain the gzip trailer so CRC failures cannot hide behind tar EOF.
+		// Drain the compression trailer so CRC failures cannot hide behind tar EOF.
 		if _, e = io.Copy(io.Discard, limited); e != nil {
 			return nil, e
 		}

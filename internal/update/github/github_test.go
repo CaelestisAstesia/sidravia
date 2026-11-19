@@ -29,6 +29,8 @@ func TestCheckSelectsSemVerAcrossPagesAndDoesNotAuthorizeExecution(t *testing.T)
 	}))
 	defer server.Close()
 	source := NewGitHub(server.Client())
+	// Discovery-only fixtures never access public signature endpoints.
+	source.publisherKeys = nil
 	source.apiBase = server.URL
 	got, err := source.Check(context.Background(), releases.Selection{OS: "windows", Arch: "amd64", Kind: "setup", Channel: "preview", CurrentVersion: "1.0.0-alpha.1"})
 	if err != nil || got.State != "available" || got.Candidate.Version != "1.0.0-alpha.10" || got.Candidate.CanApply {
@@ -68,6 +70,8 @@ func TestCheckFailsClosedOnBrokenPagesMetadataAndRateLimits(t *testing.T) {
 			}))
 			defer server.Close()
 			source := NewGitHub(server.Client())
+			// Discovery-only fixtures never access public signature endpoints.
+			source.publisherKeys = nil
 			source.apiBase = server.URL
 			got, err := source.Check(context.Background(), releases.Selection{OS: "windows", Arch: "amd64", Kind: "setup", Channel: "stable", CurrentVersion: "0.9.0"})
 			if err == nil || got.Candidate != nil {
@@ -110,6 +114,8 @@ func TestLinuxGUISelectionNeverFallsBackToCoreOrLegacyPortable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(items) }))
 	defer server.Close()
 	source := NewGitHub(server.Client())
+	// Discovery-only fixtures never access public signature endpoints.
+	source.publisherKeys = nil
 	source.apiBase = server.URL
 	selection := releases.Selection{OS: "linux", Arch: "amd64", Kind: "gui-portable", Channel: "stable", CurrentVersion: "0.9.0"}
 	result, err := source.Check(context.Background(), selection)

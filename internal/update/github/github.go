@@ -74,7 +74,7 @@ type asset struct {
 }
 
 func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.CheckResult, error) {
-	suffix, err := releases.PackageSuffix(s)
+	suffixes, err := releases.PackageSuffixes(s)
 	if err != nil {
 		return releases.CheckResult{}, err
 	}
@@ -111,11 +111,17 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 			if v.Prerelease() != r.Prerelease {
 				continue
 			}
-			name := "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
+			var name string
 			var matches []asset
-			for _, a := range r.Assets {
-				if a.Name == name {
-					matches = append(matches, a)
+			for _, suffix := range suffixes {
+				name = "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
+				for _, a := range r.Assets {
+					if a.Name == name {
+						matches = append(matches, a)
+					}
+				}
+				if len(matches) > 0 {
+					break
 				}
 			}
 			if len(matches) == 0 {
@@ -125,6 +131,7 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 				return releases.CheckResult{}, releases.ErrMetadata
 			}
 			a := matches[0]
+			name = a.Name
 			hash := strings.TrimPrefix(a.Digest, "sha256:")
 			decoded, decodeErr := hex.DecodeString(hash)
 			if a.ID <= 0 || a.State != "uploaded" || a.Size <= 0 || a.Size > 2<<30 || !strings.HasPrefix(a.Digest, "sha256:") || decodeErr != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != hash {
@@ -135,7 +142,7 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 			if err != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.Path != expectedPath || u.RawQuery != "" || u.Fragment != "" {
 				return releases.CheckResult{}, releases.ErrMetadata
 			}
-			if selected == nil || v.Compare(selectedVersion) > 0 {
+			if selected == nil || v.Compare(selectedVersion) > 0 || v.Compare(selectedVersion) == 0 && strings.HasSuffix(a.Name, ".tar.xz") && !strings.HasSuffix(selected.Name, ".tar.xz") {
 				selectedVersion = v
 				selected = &releases.Candidate{ID: fmt.Sprintf("%d:%d", r.ID, a.ID), Version: v.String(), Name: name, Size: a.Size, SHA256: hash, DownloadURL: a.URL, ReleaseURL: "https://github.com/" + releases.Repository + "/releases/tag/" + r.Tag, Notes: releaseNotes(r.Body), ApplyReason: "publisher_signature_required"}
 			}

@@ -127,7 +127,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         # and traversal at extraction. Keep this fixture under the project.
         extracted = owned / 'extracted with spaces'
         extracted.mkdir()
-        with tarfile.open(portable_archive, 'r:gz') as archive:
+        with tarfile.open(portable_archive, 'r:*') as archive:
             archive.extractall(extracted, filter='data')
         package_root, = extracted.iterdir()
         if not (package_root / 'sidravia.portable').is_file():

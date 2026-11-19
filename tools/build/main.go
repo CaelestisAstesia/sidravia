@@ -72,6 +72,7 @@ type config struct {
 	target       string
 	guiDirectory string
 	iscc         string
+	compression  string
 	help         bool
 }
 
@@ -84,6 +85,7 @@ var knownValueFlags = map[string]bool{
 	"--target":        true,
 	"--gui-directory": true,
 	"--iscc":          true,
+	"--compression":   true,
 }
 
 // parseFlags parses the strict flag grammar. It rejects positional arguments,
@@ -152,6 +154,8 @@ func parseFlags(args []string) (config, error) {
 			c.guiDirectory = val
 		case "--iscc":
 			c.iscc = val
+		case "--compression":
+			c.compression = val
 		}
 	}
 	if c.help {
@@ -165,6 +169,9 @@ func parseFlags(args []string) (config, error) {
 	}
 	if c.output == "" {
 		return c, errors.New("missing required flag --output")
+	}
+	if c.compression != "" && (c.artifact != "distribution" || !strings.HasPrefix(c.target, "linux-") || (c.compression != "gzip" && c.compression != "xz")) {
+		return c, errors.New("compression requires a Linux distribution and gzip or xz")
 	}
 	if c.artifact == "distribution" {
 		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
@@ -199,6 +206,7 @@ Optional flags:
   --artifact   release (default) or field-validation
                distribution: Windows archive/optional installer or Linux archive
   --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
+  --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Windows or Linux AMD64 Flutter Release directory
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --help       show this help and exit without building

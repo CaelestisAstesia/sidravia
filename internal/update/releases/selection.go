@@ -1,7 +1,10 @@
 // Package releases owns local release metadata and publisher trust without network I/O.
 package releases
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Repository is the single upstream identity used by metadata and transport.
 const Repository = "CaelestisAstesia/sidravia"
@@ -67,4 +70,30 @@ func PackageSuffix(s Selection) (string, error) {
 		}
 	}
 	return "", ErrUnsupported
+}
+
+// PackageSuffixes orders compatible encodings for new clients; gzip remains supported.
+func PackageSuffixes(s Selection) ([]string, error) {
+	legacy, err := PackageSuffix(s)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasSuffix(legacy, ".tar.gz") {
+		return []string{strings.TrimSuffix(legacy, ".gz") + ".xz", legacy}, nil
+	}
+	return []string{legacy}, nil
+}
+
+// AssetNameValid binds a supported archive encoding to the exact release target.
+func AssetNameValid(version string, s Selection, name string) bool {
+	suffixes, err := PackageSuffixes(s)
+	if err != nil {
+		return false
+	}
+	for _, suffix := range suffixes {
+		if name == "sidravia-v"+version+"-"+s.OS+"-"+s.Arch+"-"+suffix {
+			return true
+		}
+	}
+	return false
 }

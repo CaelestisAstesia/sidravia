@@ -3,7 +3,6 @@ package portable
 import (
 	"archive/tar"
 	"archive/zip"
-	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"io"
@@ -79,7 +78,7 @@ func ExtractRelease(ctx context.Context, target, archive string, v releases.Veri
 		}
 		return Extract(ctx, target, archive, inventory)
 	}
-	gz, err := gzip.NewReader(f)
+	gz, err := openTarStream(ctx, f, c.Name)
 	if err != nil {
 		return nil, err
 	}

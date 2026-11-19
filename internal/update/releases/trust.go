@@ -13,6 +13,8 @@ import (
 
 const ReleaseManifestName = "sidravia-release.json"
 const ReleaseSignatureName = "sidravia-release.sig"
+const XZReleaseManifestName = "sidravia-release-xz.json"
+const XZReleaseSignatureName = "sidravia-release-xz.sig"
 const ReleaseManifestLimit = 256 << 10
 
 // ReleaseManifest v2 binds executable identity and the separately authenticated
@@ -156,12 +158,18 @@ func ValidateReleaseManifest(data []byte) (ReleaseManifest, error) {
 		}
 	}
 	seen := map[string]bool{}
+	ownership := map[string]ReleaseAsset{}
 	for _, a := range m.Assets {
-		suffix, err := PackageSuffix(Selection{OS: a.OS, Arch: a.Arch, Kind: a.Kind, Channel: "preview"})
+		selection := Selection{OS: a.OS, Arch: a.Arch, Kind: a.Kind, Channel: "preview"}
 		c := Candidate{Version: m.Version, Name: a.Name, Size: a.Size, SHA256: a.SHA256, DownloadURL: "https://github.com/" + Repository + "/releases/download/v" + m.Version + "/" + a.Name}
-		if (a.PayloadKind != "core" && a.PayloadKind != "gui") || (a.Kind == "core-portable" && a.PayloadKind != "core") || (a.Kind == "gui-portable" && a.PayloadKind != "gui") || (a.PayloadKind == "gui" && a.Arch != "amd64") || err != nil || a.Name != "sidravia-v"+m.Version+"-"+a.OS+"-"+a.Arch+"-"+suffix || ValidateCandidate(c) != nil || !packagefiles.ValidSHA256(a.FilesSHA256) || seen[a.Name] {
+		if (a.PayloadKind != "core" && a.PayloadKind != "gui") || (a.Kind == "core-portable" && a.PayloadKind != "core") || (a.Kind == "gui-portable" && a.PayloadKind != "gui") || (a.PayloadKind == "gui" && a.Arch != "amd64") || !AssetNameValid(m.Version, selection, a.Name) || ValidateCandidate(c) != nil || !packagefiles.ValidSHA256(a.FilesSHA256) || seen[a.Name] {
 			return ReleaseManifest{}, ErrMetadata
 		}
+		target := a.OS + "/" + a.Arch + "/" + a.Kind
+		if previous, ok := ownership[target]; ok && (previous.FilesSHA256 != a.FilesSHA256 || previous.PayloadKind != a.PayloadKind) {
+			return ReleaseManifest{}, ErrMetadata
+		}
+		ownership[target] = a
 		seen[a.Name] = true
 	}
 	return m, nil

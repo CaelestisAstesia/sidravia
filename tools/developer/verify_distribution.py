@@ -118,7 +118,7 @@ def read_archive(path: Path, target: str, base: str) -> dict[str, bytes]:
                 require(not member.is_dir() and not stat.S_ISLNK(member.external_attr >> 16), 'non_file_archive_member')
                 add(member.filename, archive.read(member))
     else:
-        with tarfile.open(path, 'r:gz') as archive:
+        with tarfile.open(path, 'r:xz' if path.name.endswith('.tar.xz') else 'r:gz') as archive:
             for member in archive:
                 require(member.isfile() and member.name.startswith(base + '/'), 'non_file_archive_member')
                 name = member.name[len(base) + 1:]
@@ -160,6 +160,11 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     base = f'sidravia-v{version}-{target}'
     kind = 'gui-portable' if gui is not None else 'core-portable'
     archive_name = base + '-' + kind + ('.zip' if windows else '.tar.gz')
+    if not windows:
+        alternatives = [base + '-' + kind + suffix for suffix in ('.tar.gz', '.tar.xz')]
+        present = [name for name in alternatives if (directory / name).exists()]
+        require(len(present) == 1, 'missing_or_ambiguous_archive_encoding')
+        archive_name = present[0]
     outputs = {archive_name}
     if windows and gui is not None:
         outputs.add(base + '-setup.exe')
