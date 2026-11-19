@@ -711,7 +711,8 @@ and `visual capture` stage reports. It does not run tools, contact a VM, take a
 lock, create evidence or change the receipt. Use the original command's output
 to select the exact run; there is no implicit "latest" selection across sources.
 Other receipt types (including visual comparisons and release inventories) keep
-their existing readers and are rejected explicitly here.
+their existing readers and are rejected explicitly here, except for the native
+formats explicitly selected below.
 
 The compact result includes original status, stage counts/status/exit/timing,
 source identity and recorded source-stability, evidence and cleanup facts.
@@ -730,6 +731,53 @@ consume `status`, stage coverage, errors and source/evidence/cleanup facts.
 Malformed/unsupported receipts or an unknown stage return exit 1, with a JSON
 error when requested. Reading a report does not revalidate product/artifact bytes
 or certify native, campus or release acceptance.
+
+### VM and native acceptance summary
+
+```bash
+# Attach copied Windows read-only acceptance snapshots to an exact VM run.
+.local/bin/dev report /absolute/path/to/vm-run --native windows-field=/absolute/path/to/Installed.json --format json
+# Existing Linux fixtures can be read directly, or attached in the same manner.
+.local/bin/dev report /absolute/path/to/linux-desktop-fixture/result.json --kind linux-desktop --format json
+.local/bin/dev report /absolute/path/to/vm-run --native linux-rpm=/absolute/path/to/rpm-result.json
+```
+
+`--kind` selects `stage` (default), `linux-desktop` (including business/portable
+fixtures), `linux-announcement`, `linux-rpm` (GUI/core), or `windows-field`
+(`offline_acceptance.ps1`). Native directories resolve to `result.json`; Windows
+snapshots use an explicit file. `--native KIND=PATH` is repeatable and attaches
+only explicitly selected receipts. Unknown kinds, malformed receipts, duplicate
+inputs and native `--stage` filtering fail rather than guessing a schema.
+Standalone Windows build reports and other integration tools' free-form logs
+are not native acceptance receipts; supply the existing VM stage report for
+execution evidence. No VM transport, producer or cleanup routine is replaced.
+
+Text and JSON now include an `acceptance` section. Each receipt has independent
+`execution`, `evidence`, `cleanup`, source identity, errors and `not_covered`
+fields. VM stage outcome is separate from the overall reported status, so passed
+commands cannot hide collection or cleanup failures. `task_removed` covers only
+the runner's owned scheduled task, not cleanup of the product it invoked. Local
+receipt availability does not prove all raw logs were collected or revalidated.
+
+Legacy Linux result files can be written before final `finally` cleanup. Their
+cleanup is therefore `not_recorded`, even when `passed` is true. The reader does
+not infer cleanup from a command exit, event name, absent process or retained
+evidence folder, and never deletes evidence. Windows `FAIL`/`BLOCK` remain failures;
+`SKIP`/`MANUAL` and missing/empty checks remain incomplete. One Before/Installed/
+AfterKeep/AfterDelete checkpoint does not prove the full installer cycle. Full
+PATH, user/file inventories and raw check details are omitted from the summary.
+
+Attached receipts retain their own sources/candidate build IDs. Source comparison
+reports `different_commits`, `same_commit_only` or `unknown`; equal commit IDs do
+not bind dirty bytes, artifact hashes, fixture instances or separate checkpoints.
+The summary never combines independent receipts into an overall acceptance PASS.
+Its `review_status` is `attention_required` for recorded failures, source
+conflicts or uncertain VM cleanup; `incomplete` for missing/partial facts; or
+`recorded_checks_only` when supplied VM facts are complete. None is full product
+acceptance. The top-level `status` still describes the primary receipt alone.
+Campus/long-term, real-account autostart, native GUI delivery/DPI and release
+boundaries stay explicit, along with isolated RPM host/plugin/tray limits. Exit 0
+still means successful reading, even if a supplied receipt reports failure.
 
 ## Prepare and verify public release metadata
 

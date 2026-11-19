@@ -99,16 +99,23 @@ def inspect(path, stage=None, tail_bytes=2000):
 
 
 def run(args):
-    result = inspect(args.path, args.stage, args.tail_bytes)
+    import acceptance_summary
+    if args.kind == 'stage':
+        result = inspect(args.path, args.stage, args.tail_bytes)
+    else:
+        if args.stage:
+            raise ValueError('--stage only applies to stage receipts')
+        result = acceptance_summary.native(args.path, args.kind)
+    result['acceptance'] = acceptance_summary.combine(result, args.native)
     if args.format == 'json':
         print(json.dumps(result, ensure_ascii=False))
     else:
-        print(f"{result['status'].upper()} {result['report_kind']} {result['duration_seconds']:.3f}s")
+        print(f"{result['status'].upper()} {result['report_kind']} {result.get('duration_seconds', 0):.3f}s")
         for key, value in result.get('source', {}).items():
             print(runner.human_text(f"source.{key}: {value}"))
-        for key, value in {**result['facts'], **result['errors']}.items():
+        for key, value in {**result.get('facts', {}), **result.get('errors', {})}.items():
             print(runner.human_text(f"{key}: {value}"))
-        for row in result['stages']:
+        for row in result.get('stages', []):
             print(runner.human_text(f"  {row['status']:11} {row['name']} {row['duration_seconds']:.3f}s"))
             if row.get('error'):
                 print('    ' + runner.human_text(row['error']))
@@ -119,6 +126,16 @@ def run(args):
                 print(runner.human_text(f"    {name}: {log['path']} ({detail})"))
                 if log.get('tail'):
                     print('    ' + runner.human_text(log['tail']).replace('\n', '\n    '))
+        for receipt in result['acceptance']['receipts']:
+            print(runner.human_text('Acceptance: ' + receipt['report']))
+            for dimension in ('execution', 'evidence', 'cleanup'):
+                print('  ' + dimension + ': ' + runner.human_text(json.dumps(receipt[dimension], ensure_ascii=False)))
+            for gap in receipt['not_covered']:
+                print('  NOT COVERED: ' + runner.human_text(gap))
+        print('Acceptance review: ' + result['acceptance']['review_status'])
+        print('Source comparison: ' + result['acceptance']['source_comparison'])
+        for gap in result['acceptance']['not_covered']:
+            print('NOT COVERED: ' + gap)
         print('Report: ' + runner.human_text(result['report']))
     # Reading a failed receipt successfully is distinct from test acceptance.
     return 0

@@ -324,6 +324,8 @@ def parse_args(argv=None):
         sub = subs.add_parser(command)
         if command == "report":
             sub.add_argument("path", help="existing stage report JSON or its directory")
+            sub.add_argument("--kind", choices=('stage', 'linux-desktop', 'linux-announcement', 'linux-rpm', 'windows-field'), default='stage', help="explicit existing receipt format")
+            sub.add_argument("--native", action='append', default=[], metavar='KIND=PATH', help="attach an explicitly selected native receipt; repeatable")
             sub.add_argument("--stage", help="show one exact stage, including successful-stage logs")
             sub.add_argument("--tail-bytes", type=int, choices=range(0, 16385), default=2000, metavar="BYTES")
             sub.add_argument("--format", choices=("text", "json"), default="text")
