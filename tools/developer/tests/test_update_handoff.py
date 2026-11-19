@@ -64,7 +64,9 @@ class UpdateHandoff(unittest.TestCase):
                                         '-o', str(root / filename), package], cwd=REPO, env=env,
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
                 self.assertEqual(built.returncode, 0, built.stdout.decode(errors='replace'))
-            for operation, code, expected_exit in (('version', 'ok', 0), ('apply', 'apply_unavailable', 1)):
+            # Desktop builds pin publisher trust; apply must stop at explicit
+            # confirmation before touching layout, cache or network.
+            for operation, code, expected_exit in (('version', 'ok', 0), ('apply', 'confirmation_required', 1)):
                 invoked = subprocess.run([str(root / 'sidraviactl.exe'), 'update', operation],
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
                 self.assertEqual(invoked.returncode, expected_exit, invoked.stderr.decode(errors='replace'))
