@@ -157,9 +157,9 @@ func (exec *execution) requestChallenge(ctx context.Context, timeout time.Durati
 			if datagram[1] != req[1] || binary.LittleEndian.Uint16(datagram[2:4]) != seed {
 				return responseIgnore, nil
 			}
-			if binary.LittleEndian.Uint16(datagram[8:10]) != 0 {
-				return 0, &runError{operation: "password negotiation", kind: kindNegotiationUnsupported}
-			}
+			// A nonzero password-extension indicator at [8:10] does not prove
+			// that the extension is required. Keep the existing login format;
+			// the server's login response determines whether it is accepted.
 			if len(datagram) >= 44 {
 				exec.experimental.challengePing = binary.LittleEndian.Uint16(datagram[42:44])&0x8000 != 0
 			}

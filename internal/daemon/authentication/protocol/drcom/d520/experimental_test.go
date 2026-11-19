@@ -125,6 +125,54 @@ func experimentalResponder() func([]byte) [][]byte {
 	}
 }
 
+func TestExperimentalPasswordExtensionIndicatorAllowsExistingLogin(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		indicator uint16
+	}{
+		{"zero", 0},
+		{"enabled", 1},
+		{"high_byte", 0x0100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := experimentalResponder()
+			peer := newTestPeer(t, func(req []byte) [][]byte {
+				responses := base(req)
+				if len(req) == 20 && req[0] == 1 {
+					// Synthetic extended challenge; no campus packet or credential data.
+					challenge := make([]byte, 76)
+					copy(challenge, responses[0])
+					binary.LittleEndian.PutUint16(challenge[8:10], tc.indicator)
+					return [][]byte{challenge}
+				}
+				return responses
+			})
+			run := experimentalTestRun(t, peer, defaultTestDurations())
+			observer := newRecordingObserver(peer)
+			_, cancel, done := startRun(t, run, observer)
+			defer cancel(context.Canceled)
+			observer.waitForEstablished(t, time.Second)
+			cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: protocol.TerminateWithBestEffortLogout})
+			assertRunReturns(t, done, true, time.Second)
+			logins, logouts := 0, 0
+			for _, req := range peer.requests() {
+				if isLoginReq(req) {
+					logins++
+					if len(req) != 330 || !bytes.Equal(req[312:314], []byte{2, 12}) {
+						t.Fatal("password extension indicator changed the existing login layout")
+					}
+				}
+				if isLogoutReq(req) {
+					logouts++
+				}
+			}
+			if logins != 1 || logouts != 1 || observer.establishedCallCount() != 1 {
+				t.Fatalf("logins=%d logouts=%d establishments=%d", logins, logouts, observer.establishedCallCount())
+			}
+		})
+	}
+}
+
 func TestExperimentalProfilePolicy(t *testing.T) {
 	var cfg map[string]any
 	if err := json.Unmarshal(testConfigJSON(1234, defaultTestDurations()), &cfg); err != nil {
