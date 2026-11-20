@@ -93,12 +93,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await select('切换到 systemd');
+    await select('systemd');
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(manager.actions, isEmpty);
 
-    await select('切换到 systemd');
+    await select('systemd');
     await tester.tap(find.text('确认'));
     await tester.pumpAndSettle();
     expect(manager.actions, ['takeover']);

@@ -140,7 +140,7 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
         'recover': '恢复原管理方式',
         if (state.canDiscardReplacement) 'discard': '放弃恢复并解绑',
       } else if (state.directory == null)
-        'takeover': '切换到 systemd'
+        'takeover': 'systemd'
       else ...{
         if (!state.matchesInstallation) 'replace': '更换为本安装',
         if (state.matchesInstallation) ...{
