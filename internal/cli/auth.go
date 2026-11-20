@@ -35,14 +35,12 @@ type authDependencies struct {
 }
 
 type authStartOptions struct {
-	binding                 bindingFlags
-	profileID               string
-	username                string
-	sessionID               string
-	configurationID         string
-	protocolOverrideFile    string
-	protocolOverrideFileSet bool
-	passwordStdin           bool
+	binding         bindingFlags
+	profileID       string
+	username        string
+	sessionID       string
+	configurationID string
+	passwordStdin   bool
 }
 
 // defaultDaemonConnectionDependencies delegates all discovery, launch and
@@ -103,13 +101,6 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			return err
 		}
 	}
-	if options.protocolOverrideFileSet && (options.sessionID != "" || options.configurationID != "") {
-		return errors.New("一次性协议上下文 Override 文件不能与 --session 或 --config 同时使用")
-	}
-	protocolOverride, err := loadProtocolContextOverride(options.protocolOverrideFile, options.protocolOverrideFileSet)
-	if err != nil {
-		return err
-	}
 	policy, err := options.binding.policy(false)
 	if err != nil {
 		return err
@@ -147,15 +138,11 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			return err
 		}
 		payload := contract.SessionStartOneShotPayload{
-			DisplayName:             options.profileID,
-			InstitutionProfileID:    options.profileID,
-			Username:                options.username,
-			Password:                password,
-			NetworkBindingPolicy:    *policy,
-			ProtocolContextOverride: json.RawMessage("{}"),
-		}
-		if options.protocolOverrideFileSet {
-			payload.ProtocolContextOverride = protocolOverride
+			DisplayName:          options.profileID,
+			InstitutionProfileID: options.profileID,
+			Username:             options.username,
+			Password:             password,
+			NetworkBindingPolicy: *policy,
 		}
 		result, err := callSessionStart(deps, connection, contract.MethodSessionStartOneShot, payload)
 		if err != nil {

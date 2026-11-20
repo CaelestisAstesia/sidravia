@@ -42,6 +42,7 @@ func ProfileHandler(application profileApplication) func(context.Context, string
 				announcement = &contract.ProfileAnnouncementResult{URL: summary.Announcement.URL, ClientWidth: summary.Announcement.ClientWidth, ClientHeight: summary.Announcement.ClientHeight}
 			}
 			results = append(results, contract.ProfileSummaryResult{
+				OverrideSchemaVersion:    summary.OverrideSchemaVersion,
 				InstitutionProfileID:     string(summary.InstitutionProfileID),
 				Announcement:             announcement,
 				DisplayName:              summary.DisplayName,

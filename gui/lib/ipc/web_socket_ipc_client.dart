@@ -15,7 +15,8 @@ class WebSocketIpcClient
         SidraviaDiagnosticClient,
         SidraviaStateClient,
         SidraviaMaintenanceClient,
-        SidraviaBusinessClient {
+        SidraviaBusinessClient,
+        SidraviaOverrideClient {
   WebSocketIpcClient._(
     this._socket,
     this._bootstrap, {
@@ -234,6 +235,42 @@ class WebSocketIpcClient
   );
 
   @override
+  Future<ConfigurationOverride> configurationOverride(
+    String id, {
+    String? expectedDocument,
+  }) => _call('configuration.getOverride', {
+    'configurationId': id,
+    'expectedDocument': ?expectedDocument,
+  }, decodeConfigurationOverride);
+
+  @override
+  Future<OverrideValidation> validateOverride(
+    String profile,
+    String document,
+  ) => _call('configuration.validateOverride', {
+    'institutionProfileId': profile,
+    'document': document,
+  }, decodeOverrideValidation);
+
+  @override
+  Future<ConfigurationSummary> saveConfigurationEdit(
+    Map<String, Object?> fields, {
+    required bool creating,
+    required bool allowInsecureStorage,
+  }) => _call(creating ? 'configuration.create' : 'configuration.update', {
+    ...fields,
+    if (allowInsecureStorage || creating)
+      'allowInsecureStorage': allowInsecureStorage,
+  }, decodeConfiguration);
+
+  @override
+  Future<SessionSummary> startConfigurationVersion(String id, String version) =>
+      _call('session.startConfiguration', {
+        'configurationId': id,
+        'expectedVersion': version,
+      }, decodeSessionOperation);
+
+  @override
   Future<SessionSummary> sessionStartConfiguration(
     String configurationId,
   ) async => _call('session.startConfiguration', {
@@ -283,7 +320,7 @@ class WebSocketIpcClient
 
   Future<T> _call<T>(
     String method,
-    Map<String, Object> payload,
+    Map<String, Object?> payload,
     T Function(String result) decode, {
     T Function(Object? result)? decodeValue,
     bool unsubscribe = false,

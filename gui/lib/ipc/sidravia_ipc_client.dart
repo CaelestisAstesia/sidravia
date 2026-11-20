@@ -98,3 +98,18 @@ abstract interface class BusinessQuery {
 abstract interface class SidraviaBusinessClient {
   BusinessQuery queryBusiness(String sessionId);
 }
+
+/// Configuration editing supported by the matching desktop daemon.
+abstract interface class SidraviaOverrideClient {
+  Future<ConfigurationOverride> configurationOverride(
+    String id, {
+    String? expectedDocument,
+  });
+  Future<OverrideValidation> validateOverride(String profile, String document);
+  Future<ConfigurationSummary> saveConfigurationEdit(
+    Map<String, Object?> fields, {
+    required bool creating,
+    required bool allowInsecureStorage,
+  });
+  Future<SessionSummary> startConfigurationVersion(String id, String version);
+}

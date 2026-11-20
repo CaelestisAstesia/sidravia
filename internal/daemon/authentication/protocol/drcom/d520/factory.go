@@ -27,6 +27,8 @@ func (factory) ValidateInstitutionProtocolConfiguration(raw protocol.Institution
 	return err
 }
 
+func (factory) OverrideSchemaVersion() int { return 1 }
+
 func (factory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
 	return validateProtocolContextOverride(raw)
 }

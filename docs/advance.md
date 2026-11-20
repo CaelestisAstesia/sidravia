@@ -29,7 +29,7 @@ Sidravia 支持以下认证后台模式。
 
 GUI 目前只管理一份保存的连接配置。使用 CTL 保存多份配置后，如需返回 GUI，请先备份并确认要保留哪份，再决定是否删除其他配置；删除配置会同时删除其中保存的账号与密码。
 
-CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的连接，但 GUI 不提供覆写编辑入口。修改或清除方式见[协议上报覆写](override.md)。
+GUI 和 CTL 编辑的是同一份持久协议上报覆写。修改或清除方式见[协议上报覆写](override.md)。
 
 ## 独立后台
 
@@ -120,7 +120,7 @@ CTL 保存的协议上报覆写也会影响 GUI 后续使用该配置建立的�
 `auth start` 支持三种互斥形式，每次只能选择一种：
 
 ```text
-sidraviactl auth start --profile PROFILE --username USER [--password-stdin] [--interface-id ID --local-ipv4 IPv4] [--protocol-override-file PATH]
+sidraviactl auth start --profile PROFILE --username USER [--password-stdin] [--interface-id ID --local-ipv4 IPv4]
 sidraviactl auth start --config CONFIGURATION_ID
 sidraviactl auth start --session SESSION_ID
 ```
@@ -130,11 +130,10 @@ sidraviactl auth start --session SESSION_ID
 | `--profile PROFILE`、`--username USER` | 使用指定机构和账号发起一次性认证，不创建保存配置 |
 | `--password-stdin` | 从标准输入读取一行密码；仅用于一次性认证，省略时交互式读取 |
 | `--interface-id ID`、`--local-ipv4 IPv4` | 一次性认证的实际网卡绑定，必须成对提供；省略时自动选择 |
-| `--protocol-override-file PATH` | 为一次性会话提供协议上报覆写，不保存为配置；格式见[覆写参考](override.md) |
 | `--config CONFIGURATION_ID` | 使用保存的账号、绑定和覆写，启动或确保对应会话运行 |
 | `--session SESSION_ID` | 确保当前后台保留的会话运行；不会强制重启正在认证、已连接、等待或错误状态的会话 |
 
-`--config` 与 `--session` 不能混用，也不能附加一次性认证的账号、密码、网卡或覆写参数。需要修改保存配置时，应使用 `config` 命令。
+`--config` 与 `--session` 不能混用，也不能附加一次性认证的账号、密码或网卡参数。需要修改保存配置时，应使用 `config` 命令。
 
 一次性认证不提供 `--auto-login`、`--auto-reconnect` 或 `--automatic-binding` 参数。通常省略网卡绑定参数，使用自动选择；手动绑定的限制见[指定网卡](#指定网卡)。
 
@@ -352,9 +351,8 @@ Linux 不支持这些 Windows 专用命令。MGR 的完整参数、返回字段�
 
 ## 协议上报覆写
 
-D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认证报文上报字段及兼容参数。通常连接网络无需修改这些设置；GUI 目前没有覆写编辑入口。
+D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认证报文上报字段及兼容参数。通常连接网络无需修改这些设置；GUI 可在「连接配置 → 高级」编辑持久覆写。
 
-- **一次性认证**：在 `auth start --profile ... --username ...` 中传入覆写文件，仅用于该次会话，不保存为配置。
 - **保存配置**：在 `config create` 或 `config update` 中传入覆写文件，后续使用该配置认证时继续生效，包括通过 GUI 建立的连接。
 - **修改与清除**：`config update <configuration-id> --protocol-override-file PATH` 整体替换原覆写；清除时使用 `config update <configuration-id> --clear-protocol-override`，不会与文件内容逐字段合并。
 

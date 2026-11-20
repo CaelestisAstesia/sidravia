@@ -34,8 +34,8 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 	}
 	setup.application.authenticationResolver.protocols = registry
 	for _, value := range []config.Configuration{
-		{ConfigurationID: "broken-profile", InstitutionProfileID: "missing-profile", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}},
-		{ConfigurationID: "broken-protocol", InstitutionProfileID: "missing-protocol", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}},
+		{ConfigurationID: "broken-profile", InstitutionProfileID: "missing-profile", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)},
+		{ConfigurationID: "broken-protocol", InstitutionProfileID: "missing-protocol", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)},
 		{ConfigurationID: "broken-override", InstitutionProfileID: "d520-profile", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{"private-legacy-key":"private-value"}`)},
 	} {
 		if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
@@ -87,6 +87,25 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 	if _, err := setup.application.SetConfigurationPassword(ctx, "broken-override", "new-private-password", false); err == nil {
 		t.Fatal("invalid override write newly accepted")
 	}
+	var clearOverride protocol.AuthenticationProtocolContextOverride
+	for _, id := range []config.ConfigurationID{"broken-profile", "broken-protocol"} {
+		before, err := setup.catalog.Get(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := setup.application.UpdateConfiguration(ctx, id, config.Update{ProtocolContextOverride: &clearOverride, DisplayName: &name}); err == nil {
+			t.Fatal("mixed edit bypassed strict candidate validation")
+		}
+		after, err := setup.catalog.Get(ctx, id)
+		if err != nil || !reflect.DeepEqual(before, after) {
+			t.Fatal("mixed edit partially committed")
+		}
+		cleared, err := setup.application.UpdateConfiguration(ctx, id, config.Update{ProtocolContextOverride: &clearOverride})
+		before.ProtocolContextOverride = nil
+		if err != nil || cleared.RuntimeAvailability != want[id] || !reflect.DeepEqual(before, cleared.Configuration) {
+			t.Fatalf("isolated clear did not preserve unavailable configuration: %v", err)
+		}
+	}
 	for id := range want {
 		if id == "configuration-1" {
 			continue
@@ -137,6 +156,14 @@ func TestConfigurationReadValidationOwnsInputAndPropagatesUnexpectedErrors(t *te
 	}
 	if _, err := setup.application.GetConfiguration(ctx, "invalid-profile"); err == nil {
 		t.Fatal("invalid lookup swallowed")
+	}
+	var clearOverride protocol.AuthenticationProtocolContextOverride
+	if _, err := setup.application.UpdateConfiguration(ctx, "invalid-profile", config.Update{ProtocolContextOverride: &clearOverride}); err == nil {
+		t.Fatal("invalid Profile lookup was accepted")
+	}
+	after, err := setup.catalog.Get(ctx, "invalid-profile")
+	if err != nil || !reflect.DeepEqual(invalidID, after) {
+		t.Fatal("clear committed despite returning a Profile lookup error")
 	}
 	if _, err := setup.application.GetConfiguration(nil, "configuration-1"); err == nil {
 		t.Fatal("nil context accepted")

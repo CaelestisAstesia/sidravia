@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 
@@ -29,6 +31,7 @@ type SensitiveStore interface {
 type catalogRecord struct {
 	configuration Configuration
 	password      string
+	version       string
 }
 
 // AutoLoginConflict is returned when enabling AutoLogin would result in more
@@ -69,6 +72,14 @@ func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catal
 			return nil, err
 		}
 	}
+	for id, record := range records {
+		version, err := newConfigurationVersion()
+		if err != nil {
+			return nil, err
+		}
+		record.version = version
+		records[id] = record
+	}
 	catalog := &Catalog{store: store, path: path, records: records}
 	if exists {
 		// decodeCatalogDocument already validated this envelope and version.
@@ -100,6 +111,28 @@ func (catalog *Catalog) Get(ctx context.Context, id ConfigurationID) (Configurat
 		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
 	}
 	return record.configuration.Clone(), nil
+}
+
+// Version is an opaque edit baseline valid only for this catalog generation.
+func (catalog *Catalog) Version(ctx context.Context, id ConfigurationID) (string, error) {
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
+	if err := validateCatalogContext(ctx); err != nil {
+		return "", err
+	}
+	record, ok := catalog.records[id]
+	if !ok {
+		return "", persistence.NewFailure(persistence.FailureNotFound, nil)
+	}
+	return record.version, nil
+}
+
+func newConfigurationVersion() (string, error) {
+	var entropy [16]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", entropy), nil
 }
 
 // HasRecord reports whether the catalog owns the Configuration aggregate. It
@@ -193,6 +226,7 @@ func (catalog *Catalog) nextConfigurationID() (ConfigurationID, error) {
 }
 
 type Update struct {
+	ExpectedVersion         string
 	ProtocolContextOverride *protocol.AuthenticationProtocolContextOverride
 	NetworkBindingPolicy    *NetworkBindingPolicy
 	Password                *string
@@ -219,6 +253,9 @@ func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update U
 	record, exists := catalog.records[id]
 	if !exists {
 		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+	}
+	if update.ExpectedVersion != "" && record.version != update.ExpectedVersion {
+		return Configuration{}, ErrVersionConflict
 	}
 	record.configuration = record.configuration.Clone()
 	if update.ProtocolContextOverride != nil {
@@ -331,7 +368,20 @@ func (catalog *Catalog) StorageProtection() jsonfile.ProtectionStatus {
 	return catalog.store.ProtectionStatus()
 }
 
+var ErrVersionConflict = errors.New("configuration version changed")
+
 func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationID]catalogRecord, allow bool) error {
+	for id, record := range candidate {
+		old, exists := catalog.records[id]
+		if !exists || !reflect.DeepEqual(old, record) {
+			version, err := newConfigurationVersion()
+			if err != nil {
+				return err
+			}
+			record.version = version
+			candidate[id] = record
+		}
+	}
 	data, err := encodeCatalogDocument(candidate)
 	if err != nil {
 		return err

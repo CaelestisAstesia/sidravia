@@ -75,6 +75,8 @@ type NetworkBindingSummary struct {
 }
 
 type Snapshot struct {
+	HasOverrideDocument         bool
+	HasProtocolOverride         bool
 	AuthenticationSessionID     AuthenticationSessionID
 	ConfigurationID             profile.ConfigurationID
 	DisplayName                 string

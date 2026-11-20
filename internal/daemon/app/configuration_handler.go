@@ -85,7 +85,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 				}
 				override = &converted
 			}
-			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
+			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{ExpectedVersion: request.ExpectedVersion, ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationSetPassword:
 			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
@@ -115,7 +115,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 
 func toConfigurationResult(value ConfigurationResult) contract.ConfigurationResult {
 	return contract.ConfigurationResult{
-		RuntimeAvailability:  string(value.RuntimeAvailability),
+		Version: value.Version, OverrideState: value.OverrideState(), OverrideSchemaVersion: value.OverrideSchemaVersion, RuntimeAvailability: string(value.RuntimeAvailability),
 		NetworkBindingPolicy: contract.NetworkBindingPolicyFromDomain(value.Configuration.NetworkBindingPolicy),
 		ConfigurationID:      string(value.Configuration.ConfigurationID), DisplayName: value.Configuration.DisplayName,
 		InstitutionProfileID: string(value.Configuration.InstitutionProfileID), InstitutionDisplayName: value.InstitutionDisplayName,
@@ -138,6 +138,9 @@ func configurationInvalid() *contract.Error {
 	return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed configuration payload"}
 }
 func configurationError(err error) *contract.Error {
+	if errors.Is(err, config.ErrVersionConflict) {
+		return configurationVersionConflict()
+	}
 	if errors.Is(err, ErrConfigurationSessionInvalidation) {
 		return &contract.Error{Code: contract.ErrorCodeConfigurationSessionInvalidationFailed, Message: "configuration committed; session cleanup required"}
 	}

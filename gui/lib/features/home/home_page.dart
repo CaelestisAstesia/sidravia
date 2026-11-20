@@ -36,6 +36,8 @@ class HomeViewData {
     required this.onSecondary,
     required this.onPrimary,
     this.actionError,
+    this.overrideStatus,
+    this.overrideWarning = false,
     this.onDismissActionError,
     this.issue,
     this.announcement,
@@ -51,6 +53,8 @@ class HomeViewData {
   final VoidCallback? onSecondary;
   final VoidCallback? onPrimary;
   final String? actionError;
+  final String? overrideStatus;
+  final bool overrideWarning;
   final VoidCallback? onDismissActionError;
   final SessionAuthenticationFailure? issue;
   final HomeAnnouncementEntry? announcement;
@@ -100,6 +104,24 @@ class HomePage extends StatelessWidget {
   Widget _build(BuildContext context) {
     final p = controller.connectionPresentation;
     final configurationId = controller.capabilities.configuration?.id;
+    final snapshot = controller.snapshot;
+    final fallback = snapshot?.configurations;
+    final configuration =
+        controller.capabilities.configuration ??
+        (fallback?.length == 1 ? fallback!.single : null);
+    final related = snapshot?.sessions
+        .where(
+          (s) =>
+              s.configurationId == configuration?.id && configuration != null,
+        )
+        .toList();
+    final overrideStatus = projectOverrideStatus(
+      configuration,
+      related ?? const [],
+      fresh:
+          controller.capabilities.isReady &&
+          snapshot?.daemon.status == 'running',
+    );
     final unconfigured =
         controller.capabilities.capability == GuiCapabilityState.createOnly;
     final school = announcements?.profile;
@@ -146,6 +168,11 @@ class HomePage extends StatelessWidget {
             ? null
             : () => controller.dismissNotice(p.actionError!),
         issue: p.issue,
+        overrideStatus: overrideStatus,
+        overrideWarning:
+            configuration?.overrideState == 'invalid' ||
+            configuration?.overrideState == 'unavailable' ||
+            related?.any((s) => s.cleanupRequired) == true,
         announcement: announcement,
         serverMessages: ServerMessagesPanel(controller: controller.business),
         information: ConnectionInformationView(
@@ -223,92 +250,95 @@ class HomeView extends StatelessWidget {
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({required this.data});
   final HomeViewData data;
+
   @override
   Widget build(BuildContext context) {
-    final platform = Theme.of(context).platform;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final touch =
-        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
-    final scaler = MediaQuery.textScalerOf(context);
-    final textHeight = scaler.scale(16) * 1.2 + 2 + scaler.scale(12) * 1.2 + 6;
-    final height = textHeight > (touch ? 48 : 42)
-        ? textHeight.ceilToDouble()
-        : (touch ? 48.0 : 42.0);
+        theme.platform == TargetPlatform.android ||
+        theme.platform == TargetPlatform.iOS;
+    final account = Text(
+      data.username,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: colors.onSurfaceVariant,
+        fontSize: 12,
+        height: 1.2,
+      ),
+    );
+    final status = data.overrideStatus;
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Row(
         key: const ValueKey('home-header'),
         children: [
           Expanded(
-            child: SizedBox(
-              width: double.infinity,
-              child: SizedBox(
-                height: height,
-                child: Tooltip(
-                  message: '连接配置',
-                  child: TextButton(
-                    key: const ValueKey('home-configuration-button'),
-                    onPressed: data.onHeader,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.onSurface,
-                      visualDensity: VisualDensity.standard,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      minimumSize: const Size(0, 42),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                data.institution,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.2,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                data.username,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                  fontSize: 12,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.chevron_right,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ],
-                    ),
+            child: Tooltip(
+              message: '连接配置',
+              child: TextButton(
+                key: const ValueKey('home-configuration-button'),
+                onPressed: data.onHeader,
+                style: TextButton.styleFrom(
+                  foregroundColor: colors.onSurface,
+                  visualDensity: VisualDensity.standard,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
                   ),
+                  minimumSize: Size(0, touch ? 48 : 42),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            data.institution,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          if (status == null)
+                            account
+                          else
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                account,
+                                _overrideBadge(colors, status),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           DesignIconButton(
             key: const ValueKey('home-settings-button'),
             tooltip: '设置',
@@ -316,6 +346,34 @@ class _HomeHeader extends StatelessWidget {
             icon: Icons.settings_outlined,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _overrideBadge(ColorScheme colors, String status) {
+    final label = switch (status) {
+      '自定义协议覆写规则已启用' => '协议覆写已启用',
+      '当前连接使用自定义协议覆写规则' || '当前会话使用自定义协议覆写规则' => '当前会话使用覆写',
+      '已保存自定义协议覆写规则' => '已保存协议覆写',
+      '自定义协议覆写规则无效' => '协议覆写无效',
+      _ => status,
+    };
+    return Ink(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: ShapeDecoration(
+        color: data.overrideWarning
+            ? colors.errorContainer
+            : colors.primaryContainer,
+        shape: const StadiumBorder(),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: data.overrideWarning ? colors.error : colors.primary,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          height: 1.2,
+        ),
       ),
     );
   }
@@ -616,4 +674,42 @@ class _StatusLabel extends StatelessWidget {
       );
     },
   );
+}
+
+String? projectOverrideStatus(
+  ConfigurationSummary? configuration,
+  List<SessionSummary> related, {
+  required bool fresh,
+}) {
+  if (configuration == null) return null;
+  final state = configuration.overrideState;
+  final session = related.length == 1 ? related.single : null;
+  final usesOverride = session?.hasProtocolOverride == true;
+  final cleanup = related.any((s) => s.cleanupRequired);
+  final String? status;
+  if (cleanup &&
+      (related.any((s) => s.cleanupRequired && s.hasOverrideDocument) ||
+          usesOverride ||
+          state == 'enabled' ||
+          state == 'empty' ||
+          state == 'invalid')) {
+    status = state == 'none' || state == 'empty'
+        ? '保存的覆写已清除或停用，旧会话清理未完成。请在连接与诊断中移除当前会话。'
+        : '覆写配置已更改，旧会话清理未完成。请在连接与诊断中移除当前会话。';
+  } else if (usesOverride && session?.state == SessionState.authenticated) {
+    status = '当前连接使用自定义协议覆写规则';
+  } else if (usesOverride) {
+    status = '当前会话使用自定义协议覆写规则';
+  } else {
+    status = switch (state) {
+      'enabled'
+          when session == null || session.state == SessionState.suspended =>
+        '自定义协议覆写规则已启用',
+      'enabled' => '已保存自定义协议覆写规则',
+      'invalid' => '自定义协议覆写规则无效',
+      'unavailable' => '自定义协议覆写规则暂不可用',
+      _ => null,
+    };
+  }
+  return status == null || fresh ? status : '上次读取：$status';
 }

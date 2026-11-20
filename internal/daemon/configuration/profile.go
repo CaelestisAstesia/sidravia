@@ -86,6 +86,7 @@ type InstitutionProfile struct {
 }
 
 type InstitutionProfileSummary struct {
+	OverrideSchemaVersion    int
 	InstitutionProfileID     InstitutionProfileID
 	DisplayName              string
 	AuthenticationProtocolID protocol.AuthenticationProtocolID

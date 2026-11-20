@@ -156,7 +156,6 @@ var helpSpecs = map[string]helpNode{
 			"--profile <profile-id>：机构 Profile ID",
 			"--username <username>：认证账号",
 			"--password-stdin：从 stdin 读取密码",
-			"--protocol-override-file <path>：从严格 JSON 对象文件读取协议上下文 Override（仅一次性认证）",
 			"--interface-id <id> 与 --local-ipv4 <IPv4>：同时指定真实绑定；不可用时等待，不回退",
 			"--session <session-id>：确保已有 Session 正在运行",
 			"--config <configuration-id>：从持久配置启动或确保 Session 正在运行",

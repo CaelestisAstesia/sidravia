@@ -169,6 +169,7 @@ type ConfigurationIDPayload struct {
 	ConfigurationID string `json:"configurationId"`
 }
 type ConfigurationCreatePayload struct {
+	OverrideDocument        *string              `json:"overrideDocument,omitempty"`
 	ProtocolContextOverride json.RawMessage      `json:"protocolContextOverride,omitempty"`
 	NetworkBindingPolicy    NetworkBindingPolicy `json:"networkBindingPolicy"`
 	ConfigurationID         string               `json:"configurationId,omitempty"`
@@ -181,6 +182,8 @@ type ConfigurationCreatePayload struct {
 	AutoReconnect           bool                 `json:"autoReconnect"`
 }
 type ConfigurationUpdatePayload struct {
+	OverrideDocument        *string               `json:"overrideDocument,omitempty"`
+	ExpectedVersion         string                `json:"expectedVersion,omitempty"`
 	ProtocolContextOverride json.RawMessage       `json:"protocolContextOverride,omitempty"`
 	NetworkBindingPolicy    *NetworkBindingPolicy `json:"networkBindingPolicy,omitempty"`
 	Password                *string               `json:"password,omitempty"`
@@ -198,6 +201,9 @@ type ConfigurationSetPasswordPayload struct {
 	AllowInsecureStorage bool   `json:"allowInsecureStorage"`
 }
 type ConfigurationResult struct {
+	Version                  string               `json:"version,omitempty"`
+	OverrideState            string               `json:"overrideState,omitempty"`
+	OverrideSchemaVersion    int                  `json:"overrideSchemaVersion,omitempty"`
 	RuntimeAvailability      string               `json:"runtimeAvailability"`
 	ConfigurationID          string               `json:"configurationId"`
 	DisplayName              string               `json:"displayName"`
@@ -232,6 +238,7 @@ func DecodeConfigurationIDPayload(data []byte) (ConfigurationIDPayload, error) {
 }
 func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, error) {
 	var wire struct {
+		OverrideDocument        *string               `json:"overrideDocument"`
 		ProtocolContextOverride json.RawMessage       `json:"protocolContextOverride"`
 		NetworkBindingPolicy    *NetworkBindingPolicy `json:"networkBindingPolicy"`
 		ConfigurationID         *string               `json:"configurationId"`
@@ -243,7 +250,7 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 		AutoLogin               *bool                 `json:"autoLogin"`
 		AutoReconnect           *bool                 `json:"autoReconnect"`
 	}
-	if err := decodeRequestPayload(data, &wire, "protocolContextOverride", "networkBindingPolicy", "configurationId", "displayName", "institutionProfileId", "username", "password", "allowInsecureStorage", "autoLogin", "autoReconnect"); err != nil {
+	if err := decodeRequestPayload(data, &wire, "overrideDocument", "protocolContextOverride", "networkBindingPolicy", "configurationId", "displayName", "institutionProfileId", "username", "password", "allowInsecureStorage", "autoLogin", "autoReconnect"); err != nil {
 		return ConfigurationCreatePayload{}, err
 	}
 	var fields map[string]json.RawMessage
@@ -261,6 +268,9 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 		return ConfigurationCreatePayload{}, fmt.Errorf("missing required configuration field")
 	}
 	var override json.RawMessage
+	if err := readOverrideDocument(data, wire.OverrideDocument, &wire.ProtocolContextOverride); err != nil {
+		return ConfigurationCreatePayload{}, err
+	}
 	if len(wire.ProtocolContextOverride) > 0 {
 		var err error
 		override, err = DecodeProtocolContextOverride(wire.ProtocolContextOverride)
@@ -316,10 +326,13 @@ func rejectNullFields(data []byte, names ...string) error {
 }
 func DecodeConfigurationUpdatePayload(data []byte) (ConfigurationUpdatePayload, error) {
 	var value ConfigurationUpdatePayload
-	if err := decodeRequestPayload(data, &value, "protocolContextOverride", "networkBindingPolicy", "password", "allowInsecureStorage", "configurationId", "displayName", "institutionProfileId", "username", "autoLogin", "autoReconnect"); err != nil {
+	if err := decodeRequestPayload(data, &value, "expectedVersion", "overrideDocument", "protocolContextOverride", "networkBindingPolicy", "password", "allowInsecureStorage", "configurationId", "displayName", "institutionProfileId", "username", "autoLogin", "autoReconnect"); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
-	if err := rejectNullFields(data, "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage", "networkBindingPolicy"); err != nil {
+	if err := rejectNullFields(data, "expectedVersion", "displayName", "institutionProfileId", "username", "password", "autoLogin", "autoReconnect", "allowInsecureStorage", "networkBindingPolicy"); err != nil {
+		return ConfigurationUpdatePayload{}, err
+	}
+	if err := readOverrideDocument(data, value.OverrideDocument, &value.ProtocolContextOverride); err != nil {
 		return ConfigurationUpdatePayload{}, err
 	}
 	if value.ConfigurationID == "" || value.DisplayName == nil && value.InstitutionProfileID == nil && value.Username == nil && value.AutoLogin == nil && value.AutoReconnect == nil && value.Password == nil && value.NetworkBindingPolicy == nil && len(value.ProtocolContextOverride) == 0 {
@@ -370,17 +383,13 @@ func DecodeEmptyPayload(data []byte) error {
 }
 
 // SessionStartOneShotPayload is the typed payload for a session.startOneShot
-// request. The protocolContextOverride is an opaque JSON document that the
-// daemon forwards to the selected authentication protocol factory; the IPC layer
-// never interprets it. It deliberately omits ConfigurationID,
-// arbitrary environment facts, factory selection and a generic parameter map.
+// request. It deliberately omits persisted configuration fields.
 type SessionStartOneShotPayload struct {
-	DisplayName             string               `json:"displayName"`
-	InstitutionProfileID    string               `json:"institutionProfileId"`
-	Username                string               `json:"username"`
-	Password                string               `json:"password"`
-	NetworkBindingPolicy    NetworkBindingPolicy `json:"networkBindingPolicy"`
-	ProtocolContextOverride json.RawMessage      `json:"protocolContextOverride"`
+	DisplayName          string               `json:"displayName"`
+	InstitutionProfileID string               `json:"institutionProfileId"`
+	Username             string               `json:"username"`
+	Password             string               `json:"password"`
+	NetworkBindingPolicy NetworkBindingPolicy `json:"networkBindingPolicy"`
 }
 
 // SessionStopPayload is the typed payload for a session.stop request.
@@ -420,12 +429,11 @@ type SessionStartResult struct {
 // DecodeSessionStartOneShotPayload strictly decodes a session.startOneShot
 // payload. It rejects unknown fields, missing required fields, null, trailing
 // JSON values and trailing garbage. The password may be empty; the username,
-// institution profile id, network binding policy mode and a non-null protocol
-// context override are required. Returned errors never include the payload or
-// password.
+// institution profile ID and network binding policy are required. Errors never
+// include the payload or password.
 func DecodeSessionStartOneShotPayload(data []byte) (SessionStartOneShotPayload, error) {
 	var payload SessionStartOneShotPayload
-	if err := decodeRequestPayload(data, &payload, "displayName", "institutionProfileId", "username", "password", "networkBindingPolicy", "protocolContextOverride"); err != nil {
+	if err := decodeRequestPayload(data, &payload, "displayName", "institutionProfileId", "username", "password", "networkBindingPolicy"); err != nil {
 		return SessionStartOneShotPayload{}, err
 	}
 	if payload.InstitutionProfileID == "" {
@@ -437,14 +445,6 @@ func DecodeSessionStartOneShotPayload(data []byte) (SessionStartOneShotPayload, 
 	if _, err := payload.NetworkBindingPolicy.Domain(); err != nil {
 		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing networkBindingPolicy")
 	}
-	if len(payload.ProtocolContextOverride) == 0 || string(payload.ProtocolContextOverride) == "null" {
-		return SessionStartOneShotPayload{}, fmt.Errorf("decode start payload: missing protocolContextOverride")
-	}
-	raw, err := DecodeProtocolContextOverride(payload.ProtocolContextOverride)
-	if err != nil {
-		return SessionStartOneShotPayload{}, err
-	}
-	payload.ProtocolContextOverride = raw
 	return payload, nil
 }
 
@@ -533,6 +533,8 @@ type SessionAuthenticationFailure struct {
 // password, raw protocol configuration, the raw protocol context override or
 // diagnostic causes.
 type SessionResult struct {
+	HasOverrideDocument         bool                          `json:"hasOverrideDocument,omitempty"`
+	HasProtocolOverride         bool                          `json:"hasProtocolOverride,omitempty"`
 	ProtocolSocket              NetworkProtocolSocket         `json:"protocolSocket"`
 	AuthenticationSessionID     string                        `json:"sessionId"`
 	ConfigurationID             string                        `json:"configurationId,omitempty"`
@@ -573,6 +575,7 @@ type ProfileAnnouncementResult struct {
 }
 
 type ProfileSummaryResult struct {
+	OverrideSchemaVersion    int                        `json:"overrideSchemaVersion,omitempty"`
 	Announcement             *ProfileAnnouncementResult `json:"announcement,omitempty"`
 	InstitutionProfileID     string                     `json:"institutionProfileId"`
 	DisplayName              string                     `json:"displayName"`

@@ -58,7 +58,17 @@ func NewApplication(
 }
 
 func (application *Application) ListInstitutionProfiles(ctx context.Context) ([]config.InstitutionProfileSummary, error) {
-	return application.profiles.ListSummaries(ctx)
+	summaries, err := application.profiles.ListSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range summaries {
+		factory, err := application.authenticationResolver.protocols.GetFactory(summaries[i].AuthenticationProtocolID)
+		if err == nil {
+			summaries[i].OverrideSchemaVersion = overrideSchemaVersion(factory)
+		}
+	}
+	return summaries, nil
 }
 
 // ApplySystemNetworkSnapshot delegates a typed system network snapshot to the

@@ -44,7 +44,8 @@ class SidraviaShellState extends State<SidraviaShell> {
 
   Future<bool> mayExit() async =>
       _page != AppPage.configuration ||
-      await (_configurationKey.currentState?.mayLeave() ?? Future.value(false));
+      await (_configurationKey.currentState?.mayLeave(waitForSave: true) ??
+          Future.value(false));
 
   Future<bool> navigateFromTray(AppPage page) async {
     if (!mounted) return false;

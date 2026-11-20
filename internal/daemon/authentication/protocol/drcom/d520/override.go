@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -40,7 +39,7 @@ func invalidOverride() error {
 }
 func invalidOverrideField(name string) error {
 	// name is supplied only by constant cases in the protocol whitelist.
-	return fmt.Errorf("protocol context override field %q is invalid", name)
+	return protocol.OverrideFieldError{Field: name}
 }
 
 func decodeProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) (reportedContextOverride, error) {
@@ -228,7 +227,7 @@ func decodeProtocolContextOverride(raw protocol.AuthenticationProtocolContextOve
 		host := environment.SystemHostInformation{OperatingSystemFamily: *out.osFamily, OperatingSystemRelease: *out.osRelease}
 		encoded, err := encodeProtocolText(deriveHostOS(host))
 		if err != nil || len(encoded) > 32 {
-			return reportedContextOverride{}, errors.New("protocol context override combined host OS is invalid")
+			return reportedContextOverride{}, invalidOverrideField("osRelease")
 		}
 	}
 	return out, nil

@@ -8,7 +8,7 @@ import (
 )
 
 func validStartJSON() []byte {
-	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"custom":"value"}}`)
+	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`)
 }
 
 func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
@@ -31,28 +31,6 @@ func TestDecodeSessionStartOneShotPayloadAcceptsValid(t *testing.T) {
 	if payload.NetworkBindingPolicy.Mode != "automatically_select_latest_available" {
 		t.Errorf("networkBindingPolicyMode: got %q", payload.NetworkBindingPolicy.Mode)
 	}
-	if string(payload.ProtocolContextOverride) != `{"custom":"value"}` {
-		t.Errorf("protocolContextOverride: got %q", string(payload.ProtocolContextOverride))
-	}
-}
-
-func TestDecodeSessionStartOneShotPayloadRejectsDuplicateAndEscapedKeys(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"x":1,"\u0078":2}}`)
-	if _, err := DecodeSessionStartOneShotPayload(data); err == nil || !strings.Contains(err.Error(), "duplicate object key") {
-		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v, want duplicate object key", err)
-	}
-}
-
-func TestDecodeSessionStartOneShotPayloadPreservesLargeNumbersAndSiblingObjects(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"entries":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}}`)
-	payload, err := DecodeSessionStartOneShotPayload(data)
-	if err != nil {
-		t.Fatalf("DecodeSessionStartOneShotPayload() error = %v", err)
-	}
-	want := `{"entries":[{"counter":999999999999999999999999},{"counter":999999999999999999999999}]}`
-	if string(payload.ProtocolContextOverride) != want {
-		t.Fatalf("protocol context changed: %s", payload.ProtocolContextOverride)
-	}
 }
 
 func TestMarshalStatusResultCarriesModeAndOptionalOwner(t *testing.T) {
@@ -71,7 +49,7 @@ func TestMarshalStatusResultCarriesModeAndOptionalOwner(t *testing.T) {
 }
 
 func TestDecodeSessionStartOneShotPayloadAcceptsEmptyPassword(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`)
 	payload, err := DecodeSessionStartOneShotPayload(data)
 	if err != nil {
 		t.Fatalf("expected valid decode with empty password, got error: %v", err)
@@ -82,23 +60,22 @@ func TestDecodeSessionStartOneShotPayloadAcceptsEmptyPassword(t *testing.T) {
 }
 
 func TestDecodeSessionStartOneShotPayloadRejectsEmptyUsername(t *testing.T) {
-	data := []byte(`{"institutionProfileId":"profile-1","username":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`)
+	data := []byte(`{"institutionProfileId":"profile-1","username":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`)
 	if _, err := DecodeSessionStartOneShotPayload(data); err == nil {
 		t.Fatal("expected error for empty username, got nil")
 	}
 }
 
 func TestDecodeSessionStartOneShotPayloadRejects(t *testing.T) {
-	base := `{"institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`
+	base := `{"institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`
 	cases := []struct {
 		name string
 		data string
 	}{
-		{"unknown field", `{"displayName":"x","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{},"extra":"y"}`},
-		{"missing username", `{"institutionProfileId":"profile-1","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`},
-		{"missing profile id", `{"username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}`},
-		{"missing binding mode", `{"institutionProfileId":"profile-1","username":"alice","protocolContextOverride":{}}`},
-		{"missing override", `{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`},
+		{"unknown field", `{"displayName":"x","institutionProfileId":"profile-1","username":"alice","password":"secret","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"extra":"y"}`},
+		{"missing username", `{"institutionProfileId":"profile-1","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`},
+		{"missing profile id", `{"username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`},
+		{"missing binding mode", `{"institutionProfileId":"profile-1","username":"alice"}`},
 		{"null override", `{"institutionProfileId":"profile-1","username":"alice","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}`},
 		{"null payload", `null`},
 		{"empty payload", ``},
@@ -121,7 +98,7 @@ func TestDecodeSessionStartOneShotPayloadDoesNotLeakPassword(t *testing.T) {
 	}{
 		{
 			"trailing garbage after password",
-			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{}}!!!`,
+			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}!!!`,
 		},
 		{
 			"malformed json around password",
@@ -129,7 +106,7 @@ func TestDecodeSessionStartOneShotPayloadDoesNotLeakPassword(t *testing.T) {
 		},
 		{
 			"unknown field with password",
-			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{},"extra":"y"}`,
+			`{"institutionProfileId":"p","username":"u","password":"SUPER-SECRET-PASSWORD-12345","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"extra":"y"}`,
 		},
 	}
 	for _, tc := range cases {
@@ -632,7 +609,7 @@ func TestNetworkBindingPolicyStrictOwnedShape(t *testing.T) {
 			t.Fatal("invalid binding policy accepted")
 		}
 	}
-	if _, err := DecodeSessionStartOneShotPayload([]byte(`{"institutionProfileId":"p","username":"u","networkBindingPolicyMode":"automatically_select_latest_available","protocolContextOverride":{}}`)); err == nil {
+	if _, err := DecodeSessionStartOneShotPayload([]byte(`{"institutionProfileId":"p","username":"u","networkBindingPolicyMode":"automatically_select_latest_available"}`)); err == nil {
 		t.Fatal("old one-shot wire accepted")
 	}
 }
@@ -663,7 +640,7 @@ func TestProtocolContextOverrideGenericBoundAndRawShape(t *testing.T) {
 		t.Fatal("raw source limit not enforced")
 	}
 }
-func TestConfigurationOverridePresenceReplacementClearAndOneShotObject(t *testing.T) {
+func TestConfigurationOverridePresenceReplacementAndClear(t *testing.T) {
 	create := `{"institutionProfileId":"p","username":"u","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`
 	omitted, err := DecodeConfigurationCreatePayload([]byte(create))
 	if err != nil || len(omitted.ProtocolContextOverride) != 0 {
@@ -696,9 +673,6 @@ func TestConfigurationOverridePresenceReplacementClearAndOneShotObject(t *testin
 		if _, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"c","protocolContextOverride":` + raw + `}`)); err == nil {
 			t.Fatal("update malformed object accepted")
 		}
-	}
-	if _, err := DecodeSessionStartOneShotPayload(bytes.Replace(validStartJSON(), []byte(`{"custom":"value"}`), []byte(`[]`), 1)); err == nil {
-		t.Fatal("oneShot array root accepted")
 	}
 	oversized := []byte("{" + strings.Repeat(" ", MaximumProtocolContextOverrideBytes) + "}")
 	if _, err := DecodeConfigurationUpdatePayload([]byte(`{"configurationId":"c","protocolContextOverride":` + string(oversized) + `}`)); err == nil {

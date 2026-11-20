@@ -6,7 +6,6 @@ import (
 	"errors"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
@@ -20,7 +19,7 @@ import (
 // Configuration, Credentials, Supervisor or Session internals.
 type sessionApplication interface {
 	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error)
-	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID) (SessionStartResult, error)
+	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID, expectedVersion ...string) (SessionStartResult, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (SessionStartResult, error)
 	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
@@ -66,11 +65,11 @@ func SessionHandler(application sessionApplication) func(ctx context.Context, me
 }
 
 func handleSessionStartConfiguration(ctx context.Context, application sessionApplication, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-	request, err := contract.DecodeConfigurationIDPayload(payload)
+	request, err := contract.DecodeConfigurationStartPayload(payload)
 	if err != nil {
 		return nil, invalidArgumentError()
 	}
-	result, err := application.StartConfigurationAuthentication(ctx, config.ConfigurationID(request.ConfigurationID))
+	result, err := application.StartConfigurationAuthentication(ctx, config.ConfigurationID(request.ConfigurationID), request.ExpectedVersion)
 	if err != nil {
 		return nil, sessionError(err)
 	}
@@ -156,8 +155,7 @@ func handleSessionStartOneShot(ctx context.Context, application sessionApplicati
 			Username: request.Username,
 			Password: request.Password,
 		},
-		NetworkBindingPolicy:    policy,
-		ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(request.ProtocolContextOverride),
+		NetworkBindingPolicy: policy,
 	}
 
 	result, err := application.StartOneShotAuthentication(ctx, input)
@@ -225,6 +223,9 @@ func invalidArgumentError() *contract.Error {
 // every other failure maps to session_operation_failed. The message is generic
 // and never includes the username, password, opaque override or wrapped cause.
 func sessionError(err error) *contract.Error {
+	if errors.Is(err, config.ErrVersionConflict) {
+		return configurationVersionConflict()
+	}
 	switch {
 	case errors.Is(err, supervisor.ErrSessionNotFound):
 		return &contract.Error{Code: contract.ErrorCodeSessionNotFound, Message: "session not found"}
@@ -255,6 +256,8 @@ func sessionError(err error) *contract.Error {
 // never appear in a public Snapshot.
 func toSessionResult(snapshot session.Snapshot) contract.SessionResult {
 	result := contract.SessionResult{
+		HasOverrideDocument:      snapshot.HasOverrideDocument,
+		HasProtocolOverride:      snapshot.HasProtocolOverride,
 		ProtocolSocket:           *networkProtocolSocket(snapshot.ProtocolSocket),
 		AuthenticationSessionID:  string(snapshot.AuthenticationSessionID),
 		ConfigurationID:          string(snapshot.ConfigurationID),

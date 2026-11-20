@@ -350,12 +350,11 @@ func TestIPCHandlerDoesNotLeakPassword(t *testing.T) {
 func ipcStartPayload(t *testing.T, password, profileID string) []byte {
 	t.Helper()
 	data, err := json.Marshal(contract.SessionStartOneShotPayload{
-		DisplayName:             "secrecy display",
-		InstitutionProfileID:    profileID,
-		Username:                "secrecy-user",
-		Password:                password,
-		NetworkBindingPolicy:    contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
-		ProtocolContextOverride: json.RawMessage(`{}`),
+		DisplayName:          "secrecy display",
+		InstitutionProfileID: profileID,
+		Username:             "secrecy-user",
+		Password:             password,
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 	})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)

@@ -55,7 +55,7 @@ func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Conte
 	}
 	return SessionStartResult{SessionID: fake.snapshot.AuthenticationSessionID, Snapshot: fake.snapshot, Outcome: SessionStartCreated}, nil
 }
-func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id config.ConfigurationID) (SessionStartResult, error) {
+func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id config.ConfigurationID, _ ...string) (SessionStartResult, error) {
 	fake.configCalls++
 	fake.lastConfigID = id
 	if fake.err != nil {
@@ -262,7 +262,7 @@ func fullSnapshot() session.Snapshot {
 }
 
 func validStartPayload() []byte {
-	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"SECRET-USER","password":"SECRET-PASS","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"marker":"OVERRIDE-MARKER"}}`)
+	return []byte(`{"displayName":"Library WiFi","institutionProfileId":"profile-1","username":"SECRET-USER","password":"SECRET-PASS","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`)
 }
 
 func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
@@ -295,9 +295,6 @@ func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
 	}
 	if input.NetworkBindingPolicy.Mode != session.AutomaticallySelectLatestAvailable {
 		t.Errorf("binding mode: got %q", input.NetworkBindingPolicy.Mode)
-	}
-	if string(input.ProtocolContextOverride) != `{"marker":"OVERRIDE-MARKER"}` {
-		t.Errorf("protocolContextOverride: got %q", string(input.ProtocolContextOverride))
 	}
 
 	var sr contract.SessionStartResult
@@ -592,7 +589,7 @@ func TestSessionHandlerRealInitialOneShotSocketAndCleanupProjection(t *testing.T
 	defer func() { releaseRun(); setup.cleanup() }()
 	ctx := context.Background()
 	handler := SessionHandler(setup.application)
-	raw, publicErr := handler(ctx, contract.MethodSessionStartOneShot, []byte(`{"institutionProfileId":"profile-1","username":"one-shot-user","password":"private-password","protocolContextOverride":{},"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`))
+	raw, publicErr := handler(ctx, contract.MethodSessionStartOneShot, []byte(`{"institutionProfileId":"profile-1","username":"one-shot-user","password":"private-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`))
 	if publicErr != nil {
 		t.Fatal(publicErr)
 	}

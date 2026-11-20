@@ -15,6 +15,8 @@ import (
 )
 
 type ConfigurationResult struct {
+	Version                  string
+	OverrideSchemaVersion    int
 	RuntimeAvailability      ConfigurationRuntimeAvailability
 	Configuration            config.Configuration
 	InstitutionDisplayName   string
@@ -102,6 +104,15 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if err != nil {
 		return ConfigurationResult{}, err
 	}
+	if update.ExpectedVersion != "" {
+		version, err := application.catalog.Version(ctx, id)
+		if err != nil {
+			return ConfigurationResult{}, err
+		}
+		if version != update.ExpectedVersion {
+			return ConfigurationResult{}, config.ErrVersionConflict
+		}
+	}
 	// Only newly changed credentials are validated; unrelated edits retain a
 	// legacy username verbatim, including an unchanged value sent by older GUIs.
 	if update.Username != nil && *update.Username != current.Username {
@@ -115,6 +126,12 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 		}
 	}
 	candidate := current.Clone()
+	clearOnly := update.ProtocolContextOverride != nil && len(*update.ProtocolContextOverride) == 0 &&
+		update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil &&
+		update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil && update.NetworkBindingPolicy == nil
+	if clearOnly && len(current.ProtocolContextOverride) == 0 {
+		return application.describeConfiguration(ctx, current)
+	}
 	if update.ProtocolContextOverride != nil {
 		candidate.ProtocolContextOverride = append(protocol.AuthenticationProtocolContextOverride(nil), (*update.ProtocolContextOverride)...)
 	}
@@ -136,11 +153,22 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	if update.AutoReconnect != nil {
 		candidate.AutoReconnect = *update.AutoReconnect
 	}
-	if err := application.validateConfigurationCandidate(ctx, candidate); err != nil {
-		return ConfigurationResult{}, err
-	}
-	if _, err := application.enrich(ctx, candidate); err != nil {
-		return ConfigurationResult{}, err
+	// Removing only an override is a recovery operation even if the saved
+	// Profile or protocol cannot be resolved. The catalog still validates and
+	// commits the configuration using its ordinary storage protections.
+	var cleared ConfigurationResult
+	if clearOnly {
+		cleared, err = application.describeConfiguration(ctx, candidate)
+		if err != nil {
+			return ConfigurationResult{}, err
+		}
+	} else {
+		if err := application.validateConfigurationCandidate(ctx, candidate); err != nil {
+			return ConfigurationResult{}, err
+		}
+		if _, err := application.enrich(ctx, candidate); err != nil {
+			return ConfigurationResult{}, err
+		}
 	}
 	value, err := application.catalog.Update(ctx, id, update)
 	if err != nil {
@@ -156,6 +184,15 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 		if err := application.retireConfigurationSession(ctx, id); err != nil {
 			return ConfigurationResult{}, err
 		}
+	}
+	if clearOnly {
+		cleared.Configuration = value
+		cleared.Version, err = application.catalog.Version(context.WithoutCancel(ctx), id)
+		if err != nil {
+			return ConfigurationResult{}, err
+		}
+		cleared.StorageProtection = application.catalog.StorageProtection()
+		return cleared, nil
 	}
 	return application.enrich(ctx, value)
 }
@@ -207,19 +244,27 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 		}
 		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
-	if _, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID); err != nil {
+	factory, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID)
+	if err != nil {
 		return ConfigurationResult{}, NewResolutionFailure(ProtocolNotFound, err)
 	}
 	stored := false
+	version := ""
 	if value.ConfigurationID != "" {
 		var err error
 		stored, err = application.catalog.HasRecord(ctx, value.ConfigurationID)
 		if err != nil {
 			return ConfigurationResult{}, err
 		}
+		if stored {
+			version, err = application.catalog.Version(ctx, value.ConfigurationID)
+			if err != nil {
+				return ConfigurationResult{}, err
+			}
+		}
 	}
 	return ConfigurationResult{
-		RuntimeAvailability: ConfigurationRuntimeAvailable, Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
+		Version: version, OverrideSchemaVersion: overrideSchemaVersion(factory), RuntimeAvailability: ConfigurationRuntimeAvailable, Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
 		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
 		CredentialStored:         stored, StorageProtection: application.catalog.StorageProtection(),
 	}, nil

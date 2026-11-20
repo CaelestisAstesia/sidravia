@@ -74,7 +74,7 @@ func appTestConfiguration(id config.ConfigurationID) config.Configuration {
 	return config.Configuration{ConfigurationID: id, DisplayName: string(id) + " display", InstitutionProfileID: "profile-1", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)}
 }
 func validOneShotInput() OneShotAuthenticationInput {
-	return OneShotAuthenticationInput{InstitutionProfileID: "profile-1", AuthenticationCredential: credential.AuthenticationCredential{Username: "user", Password: "secret"}, NetworkBindingPolicy: session.NetworkBindingPolicy{Mode: session.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)}
+	return OneShotAuthenticationInput{InstitutionProfileID: "profile-1", AuthenticationCredential: credential.AuthenticationCredential{Username: "user", Password: "secret"}, NetworkBindingPolicy: session.NetworkBindingPolicy{Mode: session.AutomaticallySelectLatestAvailable}}
 }
 
 func newAppTestSetup(t *testing.T) *appTestSetup {
