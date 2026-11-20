@@ -32,10 +32,14 @@ type Recovery struct {
 	IssuedAt          time.Time            `json:"issuedAt"`
 	ExpiresAt         time.Time            `json:"expiresAt"`
 	LogLevel          string               `json:"logLevel"`
+	ManagedService    bool                 `json:"managedService,omitempty"`
 }
 
 func (r Recovery) validate(record Record) error {
 	if !packagefiles.ValidSHA256(r.SourceFilesSHA256) || r.CoordinatorPID <= 0 || r.CoordinatorPID > 1<<31-1 || len(r.CoordinatorStart) > 20 || !update.ValidOperationID(r.Nonce) || r.IssuedAt.Before(record.CreatedAt) || r.IssuedAt.After(record.UpdatedAt) || r.ExpiresAt.After(r.IssuedAt.Add(30*time.Minute)) {
+		return ErrInvalid
+	}
+	if r.ManagedService && (r.Namespace != "" || (r.Intent.Mode != "none" && r.Intent.Mode != "systemd") || record.Source.Layout != "portable") {
 		return ErrInvalid
 	}
 	if _, err := strconv.ParseUint(r.CoordinatorStart, 10, 64); err != nil {
@@ -97,7 +101,7 @@ func recoveryShape(data []byte) bool {
 		return false
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || !exactRecordFields(fields, []string{"sourceFilesSha256", "intent", "namespace", "coordinatorPid", "coordinatorStart", "nonce", "issuedAt", "expiresAt", "logLevel"}) {
+	if json.Unmarshal(raw, &fields) != nil || !exactRecordFields(fields, []string{"sourceFilesSha256", "intent", "namespace", "coordinatorPid", "coordinatorStart", "nonce", "issuedAt", "expiresAt", "logLevel"}, "managedService") {
 		return false
 	}
 	var intent map[string]json.RawMessage

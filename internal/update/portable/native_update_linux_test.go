@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -48,11 +49,18 @@ func TestNativePortableUpdate(t *testing.T) {
 	if bundle != "" {
 		kinds = append(kinds, "gui")
 	}
+	if os.Getenv("SIDRAVIA_SYSTEMD_UPDATE_FIXTURE") == "1" {
+		kinds = append(kinds, "systemd", "systemd-cancel", "systemd-apply-conflict", "systemd-new-failed", "systemd-interrupted-rollback", "systemd-before-write-recovery")
+		if bundle != "" {
+			kinds = append(kinds, "systemd-gui")
+		}
+	}
 	baseEnv := os.Environ()
 	for _, scenario := range kinds {
 		t.Run(scenario, func(t *testing.T) {
+			managed := strings.HasPrefix(scenario, "systemd")
 			kind := "core"
-			if scenario == "gui" {
+			if scenario == "gui" || scenario == "systemd-gui" {
 				kind = "gui"
 			}
 			owned, err := os.MkdirTemp(filepath.Join(repo, ".local"), "portable-update-fixture-")
@@ -72,7 +80,7 @@ func TestNativePortableUpdate(t *testing.T) {
 			buildFixtureProducts(t, repo, newDir, "1.1.0", "native-new", kind, bundle, overlay, baseEnv)
 			old := fixtureArchive(t, oldDir, "1.0.0", "native-old", kind)
 			counter := filepath.Join(owned, "new-launch-count")
-			if scenario == "failed-new-start" {
+			if scenario == "failed-new-start" || scenario == "systemd-new-failed" {
 				source := filepath.Join(owned, "fail-main.go")
 				code := "package main\nimport \"os\"\nfunc main(){f,_:=os.OpenFile(" + strconv.Quote(counter) + ",os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600);f.WriteString(\"started\\n\");f.Close();os.Exit(7)}\n"
 				if err := os.WriteFile(source, []byte(code), 0600); err != nil {
@@ -82,6 +90,12 @@ func TestNativePortableUpdate(t *testing.T) {
 				command.Env = append(baseEnv, "GOTOOLCHAIN=local", "CGO_ENABLED=0")
 				if out, err := command.CombinedOutput(); err != nil {
 					t.Fatalf("failure fixture %s %v", out, err)
+				}
+			}
+			const addedPath = "new-product-file.txt"
+			if scenario == "systemd-apply-conflict" {
+				if err := os.WriteFile(filepath.Join(newDir, addedPath), []byte("new package"), 0644); err != nil {
+					t.Fatal(err)
 				}
 			}
 			next := fixtureArchive(t, newDir, "1.1.0", "native-new", kind)
@@ -96,6 +110,9 @@ func TestNativePortableUpdate(t *testing.T) {
 				t.Fatal(err)
 			}
 			namespace := "native-update-" + kind + "-" + strings.TrimPrefix(filepath.Base(owned), "portable-update-fixture-")
+			if managed {
+				namespace = ""
+			}
 			for name, value := range map[string]string{"HOME": filepath.Join(owned, "home"), "XDG_CACHE_HOME": filepath.Join(owned, "cache"), "XDG_CONFIG_HOME": filepath.Join(owned, "config"), "XDG_DATA_HOME": filepath.Join(owned, "data"), "XDG_STATE_HOME": filepath.Join(owned, "state"), launchcontract.EnvNamespace: namespace, launchcontract.EnvSkipAutoLogin: "1"} {
 				t.Setenv(name, value)
 			}
@@ -146,21 +163,52 @@ func TestNativePortableUpdate(t *testing.T) {
 			if kind == "core" {
 				command.Env = append(command.Env, launchcontract.EnvMode+"=headless")
 			}
-			log, err := os.OpenFile(filepath.Join(owned, "old-start.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-			if err != nil {
-				t.Fatal(err)
+			if managed {
+				ctl := filepath.Join(oldDir, "sidraviactl")
+				service := func(action string) ([]byte, error) {
+					return exec.Command(ctl, "integration", "service", action).CombinedOutput()
+				}
+				out, err := service("status")
+				if err != nil || !bytes.Contains(out, []byte(`"registered":false`)) {
+					t.Fatalf("fixture requires an unused isolated user manager: %s %v", out, err)
+				}
+				t.Cleanup(func() {
+					if out, err := service("unregister"); err != nil {
+						t.Errorf("unregister fixture: %s %v", out, err)
+					}
+				})
+				for _, action := range []string{"register", "enable", "start"} {
+					if out, err := service(action); err != nil {
+						t.Fatalf("%s fixture: %s %v", action, out, err)
+					}
+				}
 			}
-			command.Stdout = log
-			command.Stderr = log
-			if err := command.Start(); err != nil {
+			var guiExited chan error
+			if !managed || kind == "gui" {
+				log, err := os.OpenFile(filepath.Join(owned, "old-start.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				command.Stdout = log
+				command.Stderr = log
+				if err := command.Start(); err != nil {
+					log.Close()
+					t.Fatal(err)
+				}
 				log.Close()
-				t.Fatal(err)
+				guiExited = make(chan error, 1)
+				go func() { guiExited <- command.Wait() }()
+				if managed {
+					t.Cleanup(func() { _ = command.Process.Kill() })
+				}
 			}
-			log.Close()
-			go command.Wait()
 			source := update.Target{ID: oldDir, Version: "1.0.0", BuildID: "native-old", Layout: "portable"}
 			oldPeer := waitFixturePeer(t, layout, source)
 			t.Cleanup(func() {
+				if managed {
+					oldPeer.close()
+					return
+				}
 				for _, identity := range []update.Target{{ID: oldDir, Version: "1.1.0", BuildID: "native-new", Layout: "portable"}, source} {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					peer, _ := probeApplication(ctx, layout, identity)
@@ -192,7 +240,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 				oldPeer.close()
 			})
-			if kind == "gui" {
+			if kind == "gui" && !managed {
 				ready, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				attempts := 0
 				for {
@@ -226,6 +274,23 @@ func TestNativePortableUpdate(t *testing.T) {
 					}
 				}
 				cancel()
+			}
+			if scenario == "systemd-gui" {
+				wait, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				for {
+					gui, err := observeManagedGUI(oldDir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if gui != nil {
+						gui.Close()
+						break
+					}
+					if err := pause(wait); err != nil {
+						t.Fatal(err)
+					}
+				}
 			}
 			originalPID := oldPeer.daemon.PID
 			savedID := ""
@@ -303,9 +368,109 @@ func TestNativePortableUpdate(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 			defer cancel()
 
+			if scenario == "systemd-interrupted-rollback" || scenario == "systemd-before-write-recovery" {
+				lease()
+				ctl := filepath.Join(oldDir, "sidraviactl")
+				if out, err := exec.Command(ctl, "integration", "service", "stop").CombinedOutput(); err != nil {
+					t.Fatalf("stop source: %s %v", out, err)
+				}
+				interrupted := exec.Command("/usr/bin/sleep", "30")
+				if err := interrupted.Start(); err != nil {
+					t.Fatal(err)
+				}
+				owner, err := observeProcess(interrupted.Process.Pid)
+				if err != nil {
+					_ = interrupted.Process.Kill()
+					_ = interrupted.Wait()
+					t.Fatal(err)
+				}
+				defer owner.Close()
+				if err := interrupted.Process.Kill(); err != nil {
+					t.Fatal(err)
+				}
+				_ = interrupted.Wait()
+				now := time.Now()
+				if err := store.SetRecovery(ctx, r.ID, operations.Recovery{
+					SourceFilesSHA256: digest(old.inventory.data), Intent: update.RestoreIntent{Mode: "systemd"},
+					CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("d", 32),
+					ExpiresAt: now.Add(15 * time.Minute), LogLevel: "info", ManagedService: true,
+				}, now); err != nil {
+					t.Fatal(err)
+				}
+				for _, phases := range [][2]operations.Phase{{operations.Verified, operations.Preparing}, {operations.Preparing, operations.Quiescent}} {
+					if _, _, err := store.Advance(ctx, r.ID, phases[0], phases[1], "", time.Now()); err != nil {
+						t.Fatal(err)
+					}
+				}
+				dirs, err := newProductDirectories(oldDir, next.inventory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				backup, err := stageServiceRollback(ctx, oldDir, old.inventory, rollbackDirectory(oldDir, r.ID))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := errors.Join(persistRollbackInputs(ctx, backup, next.inventory, dirs), backup.root.Close()); err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "systemd-before-write-recovery" {
+					if err := ReconcileInterrupted(ctx, store, r.ID, oldDir, old.inventory); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					if err := Apply(ctx, store, r.ID, oldDir, old.inventory, p); err != nil {
+						t.Fatal(err)
+					}
+					if _, _, err := store.Advance(ctx, r.ID, operations.Applied, operations.RollingBack, "", time.Now()); err != nil {
+						t.Fatal(err)
+					}
+					// No in-memory snapshot is available to this entrance.
+					if err := RecoverManagedService(ctx, store, r.ID, oldDir); err != nil {
+						t.Fatal(err)
+					}
+				}
+				peer := waitFixturePeer(t, layout, source)
+				defer peer.close()
+				if peer.status.Mode != "systemd" {
+					t.Fatal("recovered generation escaped systemd")
+				}
+				if _, err := os.Stat(rollbackDirectory(oldDir, r.ID)); !os.IsNotExist(err) {
+					t.Fatal("interrupted recovery did not clean its snapshot", err)
+				}
+				if scenario == "systemd-interrupted-rollback" {
+					// Simulate interruption after terminal cleanup deleted the
+					// next index and some no-longer-needed backup product bytes.
+					partial, err := stageServiceRollback(ctx, oldDir, old.inventory, rollbackDirectory(oldDir, r.ID))
+					if err != nil {
+						t.Fatal(err)
+					}
+					name := old.inventory.manifest.Files[0].Path
+					if err := errors.Join(partial.root.Remove(name), partial.root.Close()); err != nil {
+						t.Fatal(err)
+					}
+					if err := RecoverManagedService(ctx, store, r.ID, oldDir); err != nil {
+						t.Fatal(err)
+					}
+					if pending, err := ManagedRollbackPending(oldDir, r.ID); err != nil || pending {
+						t.Fatal("repeat recovery left partial cleanup pending", err)
+					}
+				}
+				t.Log("fresh recovery restored the original running service and cleaned the snapshot")
+				return
+			}
 			handoff := lease
-			if scenario == "cancel-after-prepare" {
+			if scenario == "cancel-after-prepare" || scenario == "systemd-cancel" {
 				handoff = func() { lease(); cancel() }
+			}
+			if scenario == "systemd-apply-conflict" {
+				handoff = func() {
+					lease()
+					// Simulate an unrelated file appearing after Preflight and
+					// before Apply repeats its path and inventory checks.
+					if err := os.WriteFile(filepath.Join(oldDir, addedPath), []byte("keep user file"), 0600); err != nil {
+						t.Error(err)
+					}
+				}
 			}
 			if scenario == "unconfirmed-exit" {
 				handoff = func() {
@@ -320,6 +485,51 @@ func TestNativePortableUpdate(t *testing.T) {
 				if err := command.Process.Signal(syscall.SIGCONT); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if scenario == "systemd-new-failed" {
+				current, _, err := store.Read(context.Background())
+				if err != nil || executeErr == nil || current.Phase != operations.RolledBack {
+					t.Fatalf("managed post-write rollback failed: %v %v %v", current.Phase, err, executeErr)
+				}
+				rolledBack := waitFixturePeer(t, layout, source)
+				defer rolledBack.close()
+				if rolledBack.status.Mode != "systemd" || rolledBack.daemon.PID == originalPID {
+					t.Fatal("old daemon was not restored by systemd")
+				}
+				if _, err := os.Stat(counter); err != nil {
+					t.Fatal("new generation was never started", err)
+				}
+				dirs, err := filepath.Glob(filepath.Join(owned, ".sidravia-service-rollback-*"))
+				if err != nil || len(dirs) != 0 {
+					t.Fatal("rollback retained a temporary snapshot", dirs, err)
+				}
+				if _, err := os.Stat(filepath.Join(oldDir, operations.StartupSeal)); !os.IsNotExist(err) {
+					t.Fatal("rollback retained startup seal", err)
+				}
+				t.Log("failed new executable was replaced with verified old package, old IPC is reachable")
+				return
+			}
+			if scenario == "systemd-cancel" || scenario == "systemd-apply-conflict" {
+				current, _, err := store.Read(context.Background())
+				if err != nil || executeErr == nil || current.Phase != operations.Aborted {
+					t.Fatalf("managed cancellation failed: %v %v %v", current.Phase, err, executeErr)
+				}
+				running := waitFixturePeer(t, layout, source)
+				defer running.close()
+				if running.status.Mode != "systemd" {
+					t.Fatal("source generation escaped systemd")
+				}
+				if scenario == "systemd-apply-conflict" {
+					if running.daemon.PID == originalPID {
+						t.Fatal("fault did not exercise stop then automatic restoration")
+					}
+					data, err := os.ReadFile(filepath.Join(oldDir, addedPath))
+					if err != nil || string(data) != "keep user file" {
+						t.Fatal("rollback changed the conflicting file", err)
+					}
+					t.Log("pre-write conflict after normal shutdown restored the old running service")
+				}
+				return
 			}
 			if scenario == "cancel-after-prepare" || scenario == "unconfirmed-exit" || scenario == "failed-new-start" {
 				if executeErr == nil {
@@ -371,6 +581,17 @@ func TestNativePortableUpdate(t *testing.T) {
 			if executeErr != nil {
 				t.Fatal(executeErr)
 			}
+			if scenario == "systemd-gui" {
+				select {
+				case err := <-guiExited:
+					if err != nil {
+						t.Fatal("GUI did not exit normally", err)
+					}
+					t.Log("managed update negotiated normal exit of the live Flutter GUI")
+				case <-ctx.Done():
+					t.Fatal("the GUI did not exit")
+				}
+			}
 			record, _, err := store.Read(ctx)
 			if err != nil || record.Phase != operations.Completed {
 				t.Fatal(record.Phase, err)
@@ -379,13 +600,16 @@ func TestNativePortableUpdate(t *testing.T) {
 			if kind == "gui" {
 				expectedMode = "desktop"
 			}
-			if record.Recovery == nil || record.Recovery.Intent.Mode != expectedMode || record.Recovery.Intent.Maintain != (scenario == "saved-configuration") {
+			if !managed && (record.Recovery == nil || record.Recovery.Intent.Mode != expectedMode || record.Recovery.Intent.Maintain != (scenario == "saved-configuration")) {
 				t.Fatal("original mode/disconnected intent not retained")
 			}
 			if running, err := oldPeer.daemon.Running(); err != nil || running {
 				t.Fatal("old daemon did not exit", err)
 			}
 			restored := waitFixturePeer(t, layout, record.Target)
+			if managed && restored.status.Mode != "systemd" {
+				t.Fatal("updated daemon escaped systemd")
+			}
 			if restored.daemon.PID == originalPID {
 				t.Fatal("restored old generation")
 			}
@@ -409,6 +633,45 @@ func TestNativePortableUpdate(t *testing.T) {
 			restored.close()
 			if err := Execute(ctx, Execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String()}); err == nil {
 				t.Fatal("duplicate execution admitted")
+			}
+			if managed {
+				// Explicit downgrade uses an independently unpacked old package.
+				// Keep both directories intact and use the product registration flow.
+				downgradeDir := filepath.Join(owned, "restored portable A")
+				if err := os.Mkdir(downgradeDir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				archive := filepath.Join(owned, old.inventory.candidate.Name)
+				if err := os.WriteFile(archive, old.archive, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if out, err := exec.Command("/usr/bin/tar", "-xzf", archive, "--strip-components=1", "-C", downgradeDir).CombinedOutput(); err != nil {
+					t.Fatalf("extract exact old package: %s %v", out, err)
+				}
+				root, err := os.OpenRoot(downgradeDir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := errors.Join(verifyInventory(ctx, root, old.inventory), root.Close()); err != nil {
+					t.Fatal("old package inventory", err)
+				}
+				ctl := filepath.Join(downgradeDir, "sidraviactl")
+				if out, err := exec.Command(ctl, "integration", "service", "replace").CombinedOutput(); err != nil {
+					t.Fatalf("replace with exact old package: %s %v", out, err)
+				}
+				downgradedLayout, err := productlayout.ResolveTarget(downgradeDir, ns)
+				if err != nil {
+					t.Fatal(err)
+				}
+				downgraded := waitFixturePeer(t, downgradedLayout, update.Target{ID: downgradeDir, Version: source.Version, BuildID: source.BuildID, Layout: "portable"})
+				defer downgraded.close()
+				if downgraded.status.Mode != "systemd" {
+					t.Fatal("downgraded daemon escaped systemd")
+				}
+				if _, err := os.Stat(filepath.Join(layout.InstitutionProfilesDirectory, "update-loopback.json")); err != nil {
+					t.Fatal("original installation data did not survive downgrade", err)
+				}
+				t.Log("managed A→B→A with independent portable directories passed")
 			}
 			receipt := map[string]any{"passed": true, "kind": kind, "normalExit": true, "newBuildReady": true, "originalModeRestored": true, "disconnectedPreserved": scenario != "saved-configuration", "savedConfigurationRestoredOnce": scenario == "saved-configuration", "replayRejected": true, "syntheticTrustOverlayOnly": true, "productionApplyEnabled": false, "campusAuthentication": false}
 			data, _ := json.MarshalIndent(receipt, "", "  ")

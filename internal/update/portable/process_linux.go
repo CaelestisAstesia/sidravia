@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sidravia/internal/update/linuxplatform"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -54,4 +55,36 @@ func startApplication(path string, args, env []string) (int, error) {
 	}
 	go func() { _ = command.Wait() }()
 	return command.Process.Pid, nil
+}
+
+// Track the graphical process by executable and pidfd. The service IPC no
+// longer reports a desktop owner, so that field cannot locate an open GUI.
+func observeManagedGUI(target string) (*applicationProcess, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, err
+	}
+	var gui *applicationProcess
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil || pid <= 0 {
+			continue
+		}
+		exe, err := os.Readlink(filepath.Join("/proc", entry.Name(), "exe"))
+		if err != nil || strings.TrimSuffix(exe, " (deleted)") != guiRuntime(target) {
+			continue
+		}
+		current, err := observeExecutable(pid, guiRuntime(target))
+		if err != nil || gui != nil {
+			if current != nil {
+				current.Close()
+			}
+			if gui != nil {
+				gui.Close()
+			}
+			return nil, errors.Join(ErrPreparation, err)
+		}
+		gui = current
+	}
+	return gui, nil
 }

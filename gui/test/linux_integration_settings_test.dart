@@ -96,15 +96,27 @@ void main() {
       expect((await manager.status()).autostart, 'daemon');
       expect(f.desktop.readAsStringSync(), contains('TryExec='));
       await f.launchEntry();
-      File('${f.product.path}/sidraviactl').deleteSync();
+      final ctl = File('${f.product.path}/sidraviactl');
+      final backup = ctl.renameSync('${ctl.path}.missing');
       final missing = await Process.run('/usr/bin/python3', [
         '-c',
         'from gi.repository import Gio\nimport sys\ntry:\n app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1])\nexcept TypeError:\n pass\nelse:\n assert app is None',
         f.desktop.path,
       ]);
       expect(missing.exitCode, 0, reason: '${missing.stdout}${missing.stderr}');
-      await manager.change(IntegrationChange.startDisable);
+      await expectLater(
+        manager.change(IntegrationChange.startDisable),
+        throwsA(
+          isA<IntegrationFailure>().having(
+            (error) => error.message,
+            'message',
+            contains('重试关闭'),
+          ),
+        ),
+      );
       expect((await manager.status()).autostart, 'disabled');
+      backup.renameSync(ctl.path);
+      await manager.change(IntegrationChange.startDisable);
       await manager.close();
     },
     skip: !Platform.isLinux,
@@ -362,27 +374,23 @@ void main() {
       final f = _Fixture();
       final m = f.manager;
       await m.change(IntegrationChange.startGui);
-      final script = File('${f.root.path}/hold.dart')
-        ..writeAsStringSync(
-          "import 'dart:io'; Future<void> main(List<String> a) async {final f=File(a.single).openSync(mode:FileMode.append);f.lockSync(FileLock.exclusive);stdout.writeln('locked');await stdin.drain<void>();f.closeSync();}",
-        );
-      final child = await Process.start(
-        'dart',
-        [
-          script.path,
-          '${f.root.path}/config/autostart/.sidravia-integration.lock',
-        ],
-        environment: {
-          ...f.environment,
-          'PATH': Platform.environment['PATH'] ?? '',
-        },
-      );
+      final directory = Directory('${f.root.path}/config/autostart');
+      final oldLock = File('${directory.path}/.sidravia-integration.lock');
+      expect(oldLock.existsSync(), isFalse);
+      final child = await Process.start('/usr/bin/flock', [
+        '--exclusive',
+        directory.path,
+        '/usr/bin/sh',
+        '-c',
+        'echo locked; cat >/dev/null',
+      ]);
       try {
         expect(
           await child.stdout
               .transform(utf8.decoder)
               .transform(const LineSplitter())
-              .first,
+              .first
+              .timeout(const Duration(seconds: 5)),
           'locked',
         );
         await expectLater(
@@ -395,6 +403,7 @@ void main() {
         expect(await child.exitCode.timeout(const Duration(seconds: 5)), 0);
       }
       await m.change(IntegrationChange.startDisable);
+      expect(directory.listSync(), isEmpty);
       await m.close();
     },
     skip: !Platform.isLinux,

@@ -22,6 +22,8 @@ import (
 func applyPlatformSupported() bool { return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" }
 func platformApplyErrorCode(err error) string {
 	switch {
+	case errors.Is(err, portable.ErrRolledBack):
+		return "update_rolled_back"
 	case errors.Is(err, portable.ErrRestore):
 		return "resume_failed"
 	case errors.Is(err, portable.ErrPreparation):
@@ -57,8 +59,15 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	}
 	if r, exists, err := store.Read(ctx); err != nil {
 		return nil, err
-	} else if exists && r.RequiresStartupBlock() {
-		return operationResult(ctx, store), operations.ErrConflict
+	} else if exists {
+		if r.RequiresStartupBlock() {
+			return operationResult(ctx, store), operations.ErrConflict
+		}
+		if r.Recovery != nil && r.Recovery.ManagedService {
+			if pending, err := portable.ManagedRollbackPending(layout.ExecutableDirectory, r.ID); pending || err != nil {
+				return operationResult(ctx, store), errors.Join(operations.ErrConflict, err)
+			}
+		}
 	}
 	oldProof, oldAsset, oldIndex, err := installedProof(ctx, source, layout, version, build)
 	if err != nil {
@@ -119,6 +128,12 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 		return nil, errOperation
 	}
 	result := func(err error) (*applyResult, error) { return operationResult(context.WithoutCancel(ctx), store), err }
+	if record.Recovery != nil && record.Recovery.ManagedService {
+		switch record.Phase {
+		case operations.Applying, operations.RepairRequired, operations.Applied, operations.ServiceStarting, operations.RollingBack, operations.RolledBack, operations.Completed, operations.Aborted:
+			return result(portable.RecoverManagedService(ctx, store, id, layout.ExecutableDirectory))
+		}
+	}
 	switch record.Phase {
 	case operations.Applying, operations.RepairRequired:
 		return result(errManualRepair)
@@ -126,7 +141,7 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 		return result(nil)
 	}
 	expected := record.Source
-	if record.Phase == operations.Resuming || record.Phase == operations.Applied {
+	if record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting {
 		expected = record.Target
 	}
 	if version != expected.Version || build != expected.BuildID {
@@ -136,7 +151,7 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 	if err != nil {
 		return result(err)
 	}
-	if record.Phase == operations.Resuming || record.Phase == operations.Applied {
+	if record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting {
 		// Restore the original operation's candidate identity, not a synthetic local
 		// source ID; every signed size/hash/name is checked by the existing consumer.
 		c.ID = record.Package.CandidateID

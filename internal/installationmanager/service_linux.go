@@ -1,0 +1,657 @@
+//go:build linux
+
+package installationmanager
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"golang.org/x/sys/unix"
+
+	"sidravia/internal/productlayout"
+	"sidravia/internal/useradmission"
+)
+
+const registrationPrefix = "# Sidravia registration v1 "
+
+func unitLocation() (string, error) {
+	home, err := productlayout.AccountHome(os.Geteuid())
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(home) || os.Geteuid() == 0 {
+		return "", ErrServiceUnavailable
+	}
+	return filepath.Join(home, ".config", "systemd", "user", userUnitName), nil
+}
+
+func registrationBytes(layout productlayout.Layout) ([]byte, error) {
+	body, err := renderUserUnit(layout)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(layout)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(registrationPrefix+base64.RawStdEncoding.EncodeToString(data)+"\n"), body...), nil
+}
+
+func readRegistration(path string) (productlayout.Layout, []byte, error) {
+	var layout productlayout.Layout
+	file, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return layout, nil, nil
+	}
+	if err != nil {
+		return layout, nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return layout, nil, err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || info.Size() > 16384 {
+		return layout, nil, ErrServiceConflict
+	}
+	data, err := io.ReadAll(io.LimitReader(file, 16385))
+	if err != nil {
+		return layout, nil, err
+	}
+	line, _, _ := bytes.Cut(data, []byte("\n"))
+	encoded, ok := strings.CutPrefix(string(line), registrationPrefix)
+	if !ok {
+		return layout, nil, ErrServiceConflict
+	}
+	fields, err := base64.RawStdEncoding.DecodeString(encoded)
+	if err != nil || json.Unmarshal(fields, &layout) != nil || !filepath.IsAbs(layout.ExecutableDirectory) {
+		return productlayout.Layout{}, nil, ErrServiceConflict
+	}
+	expected, err := registrationBytes(layout)
+	if err != nil || !bytes.Equal(data, expected) {
+		return productlayout.Layout{}, nil, ErrServiceConflict
+	}
+	return layout, data, nil
+}
+
+func registeredService() (productlayout.Layout, bool, error) {
+	if os.Geteuid() == 0 {
+		return productlayout.Layout{}, false, nil
+	}
+	path, err := unitLocation()
+	if err != nil {
+		return productlayout.Layout{}, false, err
+	}
+	layout, data, err := readRegistration(path)
+	return layout, data != nil, err
+}
+
+func managerCommand(ctx context.Context, binary string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.WaitDelay = time.Second
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "SYSTEMD_PAGER=cat", "SYSTEMD_COLORS=0")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("%s %s: %w", filepath.Base(binary), args[0], err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func control(ctx context.Context, args ...string) (string, error) {
+	return managerCommand(ctx, "/usr/bin/systemctl", append([]string{"--user", "--no-ask-password"}, args...)...)
+}
+
+func serviceSwitchStatus(path string, state ServiceState) ServiceState {
+	pending, exists, journalErr := loadServiceSwitch(switchPath(path))
+	state.RecoveryPending = exists
+	state.CanDiscardReplacement = exists && pending.Mode == "replacement"
+	state.RecoveryBlocked = journalErr != nil
+	state.CanDiscardDamaged = errors.Is(journalErr, ErrServiceJournalDamaged)
+	return state
+}
+
+func readServiceState(ctx context.Context, path string, layout productlayout.Layout, owned bool) (ServiceState, error) {
+	state := serviceSwitchStatus(path, ServiceState{Registered: owned, Directory: layout.ExecutableDirectory})
+	out, err := control(ctx, "show", "--property=LoadState,ActiveState,UnitFileState,FragmentPath,DropInPaths", userUnitName)
+	if err != nil {
+		return state, errors.Join(ErrServiceUnavailable, err)
+	}
+	fields := make(map[string]string)
+	for _, line := range strings.Split(out, "\n") {
+		key, value, _ := strings.Cut(line, "=")
+		fields[key] = value
+	}
+	state.Supported = true
+	if hasCustomDropIns(fields["DropInPaths"]) || fields["LoadState"] == "masked" ||
+		(owned && (fields["LoadState"] != "loaded" || fields["FragmentPath"] != path)) ||
+		(!owned && (fields["FragmentPath"] != "" || fields["LoadState"] != "not-found")) {
+		return state, ErrServiceConflict
+	}
+	switch fields["ActiveState"] {
+	case "active":
+		state.Running = true
+	case "inactive", "failed":
+	default:
+		return state, ErrServiceConflict
+	}
+	state.Enabled = fields["UnitFileState"] == "enabled"
+	linger, err := managerCommand(ctx, "/usr/bin/loginctl", "show-user", strconv.Itoa(os.Geteuid()), "--property=Linger", "--value")
+	if err != nil {
+		return state, errors.Join(ErrServiceUnavailable, err)
+	}
+	state.Linger = linger == "yes"
+	return state, nil
+}
+
+// Explicit starts can retry once when systemd rejected the job before
+// spawning a process. Automatic restarts still use the unit's normal limit.
+func startService(ctx context.Context) error {
+	_, err := control(ctx, "start", userUnitName)
+	if err == nil {
+		return nil
+	}
+	result, inspectErr := control(ctx, "show", "--property=Result", "--value", userUnitName)
+	if inspectErr != nil || result != "start-limit-hit" {
+		return errors.Join(err, inspectErr)
+	}
+	if _, resetErr := control(ctx, "reset-failed", userUnitName); resetErr != nil {
+		return errors.Join(err, resetErr)
+	}
+	_, err = control(ctx, "start", userUnitName)
+	return err
+}
+
+func stopService(ctx context.Context, wasRunning bool) error {
+	if _, err := control(ctx, "stop", userUnitName); err != nil {
+		return err
+	}
+	if !wasRunning {
+		return nil
+	}
+	out, err := control(ctx, "show", "--property=ActiveState,Result,ExecMainCode,ExecMainStatus", userUnitName)
+	if err != nil {
+		return errors.Join(ErrServiceStop, err)
+	}
+	result := "\n" + out + "\n"
+	// systemd may collect a successfully stopped disabled unit before
+	// the next command, yielding a fresh inactive unit with ExecMainCode=0.
+	// Failed units are retained, so the Result check is still required.
+	if !strings.Contains(result, "\nActiveState=inactive\n") ||
+		!strings.Contains(result, "\nResult=success\n") ||
+		(!strings.Contains(result, "\nExecMainCode=1\n") && !strings.Contains(result, "\nExecMainCode=0\n")) ||
+		!strings.Contains(result, "\nExecMainStatus=0\n") {
+		return ErrServiceStop
+	}
+	return nil
+}
+
+func hasCustomDropIns(paths string) bool {
+	for _, path := range strings.Fields(paths) {
+		if filepath.Dir(path) != "/usr/lib/systemd/user/service.d" {
+			return true
+		}
+	}
+	return false
+}
+
+func clearRegistrationScratch(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 ||
+		!info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return ErrServiceConflict
+	}
+	return os.Remove(path)
+}
+
+func saveUnit(path string, contents []byte) error {
+	staging := path + ".sidravia-tmp"
+	if err := clearRegistrationScratch(staging); err != nil {
+		return err
+	}
+	if contents == nil {
+		err := os.Remove(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	file, err := os.OpenFile(staging, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, 0600)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(staging)
+	_, writeErr := file.Write(contents)
+	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
+		return err
+	}
+	return os.Rename(staging, path)
+}
+
+type serviceLeaseKey struct{}
+
+func holdServiceRegistration(ctx context.Context) (context.Context, func(), error) {
+	path, err := unitLocation()
+	if err != nil {
+		return nil, nil, err
+	}
+	dir, err := unix.Open(filepath.Dir(path), unix.O_DIRECTORY|unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := unix.Flock(dir, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		unix.Close(dir)
+		return nil, nil, errors.Join(ErrServiceConflict, err)
+	}
+	for _, scratch := range []string{path + ".sidravia-tmp", switchPath(path) + ".sidravia-tmp"} {
+		if err := clearRegistrationScratch(scratch); err != nil {
+			unix.Close(dir)
+			return nil, nil, err
+		}
+	}
+	return context.WithValue(ctx, serviceLeaseKey{}, path), func() { unix.Close(dir) }, nil
+}
+
+func userService(ctx context.Context, action string, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (state ServiceState, resultErr error) {
+	path, err := unitLocation()
+	if err != nil || !layout.Namespace.IsProduction() {
+		return state, errors.Join(ErrServiceUnavailable, err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 50*time.Second)
+	defer cancel()
+	if layout.Mode == productlayout.ModePortable && layout.ServiceCacheRoot == "" && (action == "register" || action == "replace") {
+		cache, err := os.UserCacheDir()
+		if err != nil || !filepath.IsAbs(cache) {
+			return state, errors.Join(ErrServiceUnavailable, err)
+		}
+		layout.ServiceCacheRoot = filepath.Clean(cache)
+	}
+	parent := filepath.Dir(path)
+	if action == "register" || action == "replace" {
+		if err := os.MkdirAll(parent, 0700); err != nil {
+			return state, err
+		}
+	}
+	// Lock the existing unit directory for mutations, without creating a
+	// persistent lock file or placing a write requirement on status.
+	if action != "status" && action != "linger-on" && action != "linger-off" && ctx.Value(serviceLeaseKey{}) != path {
+		locked, release, err := holdServiceRegistration(ctx)
+		if errors.Is(err, os.ErrNotExist) && action == "unregister" {
+			return readServiceState(ctx, path, productlayout.Layout{}, false)
+		}
+		if err != nil {
+			return state, err
+		}
+		defer release()
+		ctx = locked
+	}
+	if ctx.Value(serviceSwitchKey{}) != path && action != "status" {
+		if _, pending, err := loadServiceSwitch(switchPath(path)); err != nil {
+			return state, errors.Join(ErrServiceJournal, err)
+		} else if pending {
+			return state, ErrServiceRecovery
+		}
+	}
+	if action == "discard-damaged" {
+		if ctx.Value(serviceSwitchKey{}) != path {
+			return state, ErrServiceJournal
+		}
+		if err := discardDamagedServiceSwitch(switchPath(path)); err != nil {
+			return serviceSwitchStatus(path, state), err
+		}
+		// Clearing a local record does not require an online manager or a
+		// usable registration. Report unavailable observation separately.
+		actual, err := userService(ctx, "status", layout, nil)
+		if err != nil {
+			actual.Supported = false
+		}
+		return actual, nil
+	}
+	oldLayout, oldData, err := readRegistration(path)
+	if err != nil {
+		return serviceSwitchStatus(path, state), err
+	}
+	before, err := readServiceState(ctx, path, oldLayout, oldData != nil)
+	if err != nil || action == "status" {
+		return before, err
+	}
+	if action == "linger-on" || action == "linger-off" {
+		op := "enable-linger"
+		if action == "linger-off" {
+			op = "disable-linger"
+		}
+		if _, err := managerCommand(ctx, "/usr/bin/loginctl", op, strconv.Itoa(os.Geteuid())); err != nil {
+			return before, err
+		}
+		return readServiceState(ctx, path, oldLayout, oldData != nil)
+	}
+	if action == "register" || action == "replace" || action == "unregister" {
+		if action == "register" && oldData != nil {
+			if oldLayout == layout {
+				return before, nil
+			}
+			return before, ErrServiceConflict
+		}
+		if action == "unregister" && oldData == nil {
+			return before, nil
+		}
+		var next []byte
+		if action != "unregister" {
+			if layout.Mode != productlayout.ModePortable && !productlayout.RPMManaged(layout) {
+				return before, ErrServiceUnavailable
+			}
+			info, err := os.Stat(filepath.Join(layout.ExecutableDirectory, "sidraviad"))
+			if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+				return before, ErrServiceUnavailable
+			}
+			next, err = registrationBytes(layout)
+			if err != nil {
+				return before, err
+			}
+		}
+		apply := func() (err error) {
+			if !before.Registered && next != nil {
+				release, err := useradmission.Acquire()
+				if err != nil {
+					return errors.Join(ErrServiceConflict, err)
+				}
+				defer func() { err = errors.Join(err, release()) }()
+			}
+			return replaceRegistration(ctx, path, before, oldLayout, oldData, next, layout, ready)
+		}
+		if err := apply(); err != nil {
+			observe, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			lastLayout, lastData, _ := readRegistration(path)
+			actual, observationErr := readServiceState(observe, path, lastLayout, lastData != nil)
+			return actual, errors.Join(err, observationErr)
+		}
+		if next == nil {
+			layout = productlayout.Layout{}
+		}
+		return readServiceState(ctx, path, layout, next != nil)
+	}
+	if oldData == nil || oldLayout.ExecutableDirectory != layout.ExecutableDirectory {
+		return before, ErrServiceConflict
+	}
+	switch action {
+	case "start", "stop", "enable", "disable", "restart", "recover-start":
+	default:
+		return before, ErrServiceUnavailable
+	}
+	startedHere := false
+	switch action {
+	case "stop":
+		err = stopService(ctx, before.Running)
+	case "start", "recover-start":
+		if !before.Running {
+			err = startService(ctx)
+			startedHere = err == nil
+		}
+	case "restart":
+		if err = stopService(ctx, before.Running); err == nil {
+			err = startService(ctx)
+			startedHere = err == nil
+		}
+	default:
+		_, err = control(ctx, action, userUnitName)
+	}
+	if err == nil && ready != nil && (action == "start" || action == "restart" || action == "recover-start") {
+		err = ready(ctx, oldLayout)
+		if err != nil && startedHere {
+			finish, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			_, stopErr := control(finish, "stop", userUnitName)
+			err = errors.Join(err, stopErr)
+		}
+	}
+	actual, observeErr := readServiceState(ctx, path, oldLayout, true)
+	return actual, errors.Join(err, observeErr)
+}
+
+func replaceRegistration(ctx context.Context, path string, before ServiceState, oldLayout productlayout.Layout, oldData, next []byte, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (resultErr error) {
+	apply := func(ctx context.Context, data []byte, enabled bool) error {
+		if err := saveUnit(path, data); err != nil {
+			return err
+		}
+		if _, err := control(ctx, "daemon-reload"); err != nil {
+			return err
+		}
+		if data != nil {
+			if _, err := readServiceState(ctx, path, layout, true); err != nil {
+				return err
+			}
+		}
+		if data != nil && enabled {
+			_, err := control(ctx, "enable", userUnitName)
+			return err
+		}
+		return nil
+	}
+	if before.Registered {
+		if err := stopService(ctx, before.Running); err != nil {
+			return err
+		}
+	}
+	defer func() {
+		if resultErr == nil {
+			return
+		}
+		restore, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		_, observed, err := readRegistration(path)
+		if err != nil || (!bytes.Equal(observed, oldData) && !bytes.Equal(observed, next)) {
+			resultErr = errors.Join(resultErr, ErrServiceConflict, err)
+			return
+		}
+		if observed != nil {
+			if _, err := control(restore, "disable", "--now", userUnitName); err != nil {
+				resultErr = errors.Join(resultErr, err)
+				return
+			}
+		}
+		if err := apply(restore, oldData, before.Enabled); err != nil {
+			resultErr = errors.Join(resultErr, err)
+			return
+		}
+		if before.Running {
+			_, err := control(restore, "reset-failed", userUnitName)
+			if err == nil {
+				_, err = control(restore, "start", userUnitName)
+			}
+			if err == nil && ready != nil {
+				err = ready(restore, oldLayout)
+			}
+			resultErr = errors.Join(resultErr, err)
+		}
+	}()
+	if before.Registered {
+		if _, err := control(ctx, "disable", userUnitName); err != nil {
+			return err
+		}
+	}
+	if err := apply(ctx, next, before.Enabled); err != nil {
+		return err
+	}
+	if next != nil && before.Running {
+		if err := startService(ctx); err != nil {
+			return err
+		}
+		if ready != nil {
+			return ready(ctx, layout)
+		}
+	}
+	return nil
+}
+
+func userManagerAvailable(ctx context.Context, runtime string) (bool, error) {
+	private := filepath.Join(runtime, "systemd/private")
+	listening, err := socketListening(ctx, private)
+	if listening || err != nil {
+		return listening, err
+	}
+	bus := filepath.Join(runtime, "bus")
+	listening, err = socketListening(ctx, bus)
+	if err != nil || !listening {
+		return false, err
+	}
+	// A separate session bus can outlive the manager. Query the bus daemon
+	// for the owner without activating the systemd service.
+	out, err := managerCommand(ctx, "/usr/bin/busctl", "--address=unix:path="+bus, "--timeout=2s",
+		"call", "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+		"NameHasOwner", "s", "org.freedesktop.systemd1")
+	if err != nil {
+		return false, err
+	}
+	switch out {
+	case "b true":
+		return true, nil
+	case "b false":
+		return false, nil
+	default:
+		return false, ErrServiceUnavailable
+	}
+}
+
+func socketListening(ctx context.Context, path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return false, ErrServiceConflict
+	}
+	dialer := net.Dialer{Timeout: time.Second}
+	conn, err := dialer.DialContext(ctx, "unix", path)
+	switch {
+	case err == nil:
+		return true, conn.Close()
+	case errors.Is(err, os.ErrNotExist), errors.Is(err, syscall.ECONNREFUSED):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// cleanupErasedRPM is called as the owning user after RPM has finished an
+// erase. The registration, switch record, and desktop entries each require
+// their own proof of RPM ownership.
+func cleanupErasedRPM(ctx context.Context) (resultErr error) {
+	root := rpmAppDirectory
+	if _, err := os.Lstat(filepath.Join(root, "sidravia.rpm")); !errors.Is(err, os.ErrNotExist) {
+		return errors.Join(ErrServiceConflict, err)
+	}
+	var desktopLayout productlayout.Layout
+	defer func() {
+		if _, err := os.Lstat(filepath.Join(root, "sidravia.rpm")); errors.Is(err, os.ErrNotExist) {
+			resultErr = errors.Join(resultErr, cleanupRPMAutostart(desktopLayout))
+		}
+	}()
+	path, err := unitLocation()
+	if err != nil {
+		return err
+	}
+	locked, release, err := holdServiceRegistration(ctx)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer release()
+	layout, data, err := readRegistration(path)
+	if err != nil {
+		return err
+	}
+	desktopLayout = layout
+	if data != nil && layout.Mode == productlayout.ModeInstalled && layout.ExecutableDirectory == root {
+		if err := removeRPMRegistration(locked, path, layout); err != nil {
+			return err
+		}
+	}
+
+	// A damaged or unrelated switch record cannot authorize deleting it.
+	// The verified RPM unit above can still be removed under the same lease.
+	switchState, switching, err := loadServiceSwitch(switchPath(path))
+	if err == nil && switching && switchState.Layout.Mode == productlayout.ModeInstalled && switchState.Layout.ExecutableDirectory == root {
+		return ClearServiceSwitch(context.WithValue(locked, serviceSwitchKey{}, path))
+	}
+	return nil
+}
+
+func removeRPMRegistration(ctx context.Context, path string, layout productlayout.Layout) error {
+	online, err := userManagerAvailable(ctx, filepath.Join("/run/user", strconv.Itoa(os.Geteuid())))
+	if err != nil {
+		return err
+	}
+	if online {
+		before, err := readServiceState(ctx, path, layout, true)
+		if err != nil {
+			return err
+		}
+		if err := stopService(ctx, before.Running); err != nil {
+			return err
+		}
+	}
+
+	linkErr := removeRPMEnableLink(path)
+	unitErr := saveUnit(path, nil)
+	if online {
+		_, err = control(ctx, "daemon-reload")
+	}
+	return errors.Join(linkErr, unitErr, err)
+}
+
+func removeRPMEnableLink(path string) error {
+	wants := filepath.Join(filepath.Dir(path), "default.target.wants")
+	info, err := os.Lstat(wants)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+
+	link := filepath.Join(wants, userUnitName)
+	target, err := os.Readlink(link)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.EINVAL) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if target != path && target != filepath.Join("..", userUnitName) {
+		return nil
+	}
+	err = os.Remove(link)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}

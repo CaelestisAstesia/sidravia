@@ -8,9 +8,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/installationmanager"
+	"sidravia/internal/productlayout"
 	"sidravia/internal/update/releases"
 	"time"
 
+	"sidravia/internal/update"
 	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/operations"
 )
@@ -41,11 +44,11 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 			}
 			defer release()
 		}
-	case operations.Preparing, operations.Quiescent:
+	case operations.Preparing, operations.Quiescent, operations.SourceStarting:
 		if record.Recovery == nil {
 			return operations.ErrConflict
 		}
-	case operations.Applied, operations.Resuming:
+	case operations.Applied, operations.Resuming, operations.ServiceStarting:
 		if record.Recovery == nil {
 			return operations.ErrConflict
 		}
@@ -75,7 +78,7 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	if !matched {
 		return ErrInvalid
 	}
-	if record.Phase == operations.Resuming || record.Phase == operations.Applied {
+	if record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting {
 		c := installed.candidate
 		if c.ID != record.Package.CandidateID || c.Name != record.Package.Name || c.Size != record.Package.Size || c.SHA256 != record.Package.SHA256 {
 			return ErrInvalid
@@ -106,6 +109,10 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	if err := verifyGUI(root, installed); err != nil {
 		return err
 	}
+	if record.Recovery != nil && record.Recovery.ManagedService &&
+		(record.Phase == operations.Preparing || record.Phase == operations.Quiescent || record.Phase == operations.SourceStarting) {
+		return recoverManagedPreparation(ctx, store, record, installed)
+	}
 	_, changed, err := store.Advance(ctx, id, record.Phase, next, code, time.Now())
 	if err != nil {
 		return err
@@ -114,4 +121,28 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 		return operations.ErrConflict
 	}
 	return nil
+}
+
+func recoverManagedPreparation(ctx context.Context, store *operations.Store, record operations.Record, installed Inventory) error {
+	unlock, err := store.AcquireRollbackCoordinator(ctx, record.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = locked
+	layout, found, err := installationmanager.RegisteredService()
+	if err != nil || !found || layout.Mode != productlayout.ModePortable || layout.ExecutableDirectory != record.Source.ID {
+		return errors.Join(ErrChanged, err)
+	}
+	if err := cleanRollbackSnapshot(record, &installed); err != nil {
+		return err
+	}
+	return resumeManagedPreparation(ctx, store, record, func(ctx context.Context, target update.Target) error {
+		return startManagedService(ctx, layout, target, true)
+	})
 }

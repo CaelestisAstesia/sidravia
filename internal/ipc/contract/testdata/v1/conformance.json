@@ -9,7 +9,8 @@
     ],
     "daemonModes": [
       "headless",
-      "desktop"
+      "desktop",
+      "systemd"
     ],
     "sessionStartOutcomes": [
       "created",

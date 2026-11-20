@@ -22,7 +22,7 @@ DESKTOP = 'io.github.CaelestisAstesia.Sidravia'
 def maintenance_scripts(root):
     code = 'import sys\n' + (root / 'packaging/linux/rpm_maintenance.py').read_text()
     return {'PREIN': code + '\nraise SystemExit(quiesce())\n',
-            'PREUN': code + "\nraise SystemExit(quiesce() if sys.argv[1] == '0' else 0)\n"}
+            'PREUN': code + "\nraise SystemExit(quiesce(remove=True) if sys.argv[1] == '0' else 0)\n"}
 
 
 def digest(path):

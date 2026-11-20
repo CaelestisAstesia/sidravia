@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/productlayout"
@@ -131,7 +132,7 @@ func probeApplication(ctx context.Context, layout productlayout.Layout, identity
 		if err != nil {
 			return nil, err
 		}
-	} else if p.status.Mode != "headless" || p.status.DesktopOwnerPID != nil {
+	} else if (p.status.Mode != "headless" && p.status.Mode != "systemd") || p.status.DesktopOwnerPID != nil {
 		return nil, ErrChanged
 	}
 	return p, nil
@@ -183,6 +184,18 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 		return err
 	}
 	defer peer.close()
+	if ns.IsProduction() {
+		registered, found, err := installationmanager.RegisteredService()
+		if err != nil {
+			return err
+		}
+		if found && registered.ExecutableDirectory == layout.ExecutableDirectory {
+			return executeManaged(ctx, input, record, layout, registered, peer)
+		}
+	}
+	if peer != nil && peer.status.Mode == "systemd" {
+		return ErrChanged
+	}
 	owner, err := observeProcess(os.Getpid())
 	if err != nil {
 		return err

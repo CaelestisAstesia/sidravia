@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/installationmanager"
 )
 
@@ -62,7 +63,7 @@ func invokeInstallationManager(ctx context.Context, args []string) ([]byte, erro
 	return output.Bytes(), err
 }
 
-func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error)) *cobra.Command {
+func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error), identities ...clientbootstrap.Identity) *cobra.Command {
 	group := &cobra.Command{Use: "integration", Short: "查询或修改当前用户 PATH 与开机自启"}
 	run := func(args []string) func(*cobra.Command, []string) error {
 		return func(cmd *cobra.Command, _ []string) error {
@@ -100,6 +101,67 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 	}
 	startup.AddCommand(set)
 	group.AddCommand(path, startup)
+	if runtime.GOOS == "linux" && len(identities) == 1 {
+		service := &cobra.Command{Use: "service", Short: "管理 systemd 用户服务"}
+		for _, action := range []string{"status", "register", "replace", "unregister", "start", "stop", "restart", "enable", "disable", "linger-on", "linger-off", "takeover", "release", "recover", "discard", "discard-damaged"} {
+			var owner int
+			var interrupt bool
+			changesMode := action == "takeover" || action == "release" || action == "recover" || action == "discard" || action == "discard-damaged"
+			command := &cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+				var state installationmanager.ServiceState
+				var err error
+				if changesMode {
+					state, err = clientbootstrap.SwitchService(cmd.Context(), identities[0], action, owner, interrupt)
+				} else {
+					state, err = clientbootstrap.ServiceOperation(cmd.Context(), identities[0], action)
+				}
+				if outputErr := json.NewEncoder(out).Encode(state); outputErr != nil {
+					return outputErr
+				}
+				if err != nil {
+					message := "用户服务操作失败，请刷新并检查实际状态。"
+					switch {
+					case errors.Is(err, installationmanager.ErrServiceJournalDamaged):
+						message = "切换记录已损坏，无法自动恢复。确认放弃后运行 sidraviactl integration service discard-damaged --yes 清除记录。"
+					case errors.Is(err, installationmanager.ErrServiceJournal):
+						message = "无法读取或确认切换记录，请检查状态和用户服务目录后重试。"
+					case errors.Is(err, installationmanager.ErrServiceRecovery):
+						message = "后台管理切换需要恢复，请运行 sidraviactl integration service recover。"
+					case errors.Is(err, installationmanager.ErrServiceStop):
+						message = "后台未正常退出。请检查用户服务的实际状态和日志。"
+					case errors.Is(err, installationmanager.ErrServiceConflict), errors.Is(err, clientbootstrap.ErrModeConflict):
+						message = "用户服务状态或运行身份冲突，请检查原后台状态后再重试。"
+					}
+					return wrapCommandOperation(integrationFailure(message, err))
+				}
+				return nil
+			}}
+			if action == "discard" || action == "discard-damaged" {
+				confirmed := false
+				run := command.RunE
+				if action == "discard" {
+					command.Short = "放弃中断的安装更换并解除登记"
+				} else {
+					command.Short = "清除损坏的切换记录并保留当前登记"
+				}
+				command.Flags().BoolVar(&confirmed, "yes", false, "确认放弃恢复")
+				command.RunE = func(cmd *cobra.Command, args []string) error {
+					if !confirmed {
+						return wrapCommandOperation(integrationFailure("请用 --yes 确认放弃恢复。", nil))
+					}
+					return run(cmd, args)
+				}
+			}
+			if action == "takeover" || action == "release" {
+				command.Flags().BoolVar(&interrupt, "interrupt-session", false, "确认中断一次性认证")
+			}
+			if action == "release" {
+				command.Flags().IntVar(&owner, "owner-pid", 0, "接管后台的 GUI 进程")
+			}
+			service.AddCommand(command)
+		}
+		group.AddCommand(service)
+	}
 	return group
 }
 func safeManagerCode(code string) string {

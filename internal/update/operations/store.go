@@ -16,6 +16,7 @@ import (
 
 	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/update"
+	"sidravia/internal/update/packagefiles"
 	"sidravia/internal/update/releases"
 )
 
@@ -353,4 +354,21 @@ func (s *Store) checkCapacity() error {
 		return ErrCapacity
 	}
 	return nil
+}
+
+// AuthenticateTargetIndex opens a product inventory under the exact signed
+// target already authorized for this operation.
+func (s *Store) AuthenticateTargetIndex(ctx context.Context, id string, data []byte) (packagefiles.Manifest, error) {
+	record, found, err := s.Read(ctx)
+	if err != nil {
+		return packagefiles.Manifest{}, err
+	}
+	if !found || record.ID != id {
+		return packagefiles.Manifest{}, ErrConflict
+	}
+	proof, err := s.keys.Verify(record.Manifest, record.Signature, record.Target.Version)
+	if err != nil {
+		return packagefiles.Manifest{}, err
+	}
+	return proof.VerifyFiles(record.candidate(), data)
 }

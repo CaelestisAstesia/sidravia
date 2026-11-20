@@ -37,6 +37,7 @@ type Layout struct {
 	InstitutionProfilesDirectory string
 	RuntimeInfoPath              string
 	DaemonLogPath                string
+	ServiceCacheRoot             string // pinned only in a systemd registration
 }
 
 // portableMarker is the fixed regular-file marker that enables portable mode.

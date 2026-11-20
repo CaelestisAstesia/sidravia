@@ -18,6 +18,7 @@ BuildArch: x86_64
 Requires: gtk3, libayatana-appindicator-gtk3, webkit2gtk4.1
 Requires: /usr/bin/env, /usr/bin/xdg-open
 Requires: desktop-file-utils, hicolor-icon-theme
+Requires: /usr/bin/getent
 Requires(pre): /usr/bin/python3
 Requires(preun): /usr/bin/python3
 

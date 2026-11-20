@@ -158,7 +158,7 @@ GuiBootstrapResult decodeGuiBootstrap(String source) {
         productVersion.isEmpty ||
         buildId.isEmpty ||
         daemonPid <= 0 ||
-        mode != 'desktop' ||
+        !const {'desktop', 'systemd'}.contains(mode) ||
         !RegExp(r'^[0-9a-f]{64}$').hasMatch(token)) {
       return const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
     }

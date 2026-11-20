@@ -48,7 +48,7 @@ func (s *Store) admit(ctx context.Context, id string) (func(), error) {
 			if targetSealed(s.target) || exists && r.RequiresStartupBlock() {
 				err = ErrConflict
 			}
-		} else if !exists || r.ID != id || r.Phase != Quiescent {
+		} else if !exists || r.ID != id || (r.Phase != Quiescent && r.Phase != RollingBack) {
 			err = ErrConflict
 		}
 	}
@@ -62,6 +62,14 @@ func (s *Store) admit(ctx context.Context, id string) (func(), error) {
 // AcquireCoordinator admits a single lifecycle owner without excluding already
 // running application leases needed to negotiate a normal exit.
 func (s *Store) AcquireCoordinator(ctx context.Context, id string) (func(), error) {
+	return s.acquireCoordinator(ctx, id, false)
+}
+
+func (s *Store) AcquireRollbackCoordinator(ctx context.Context, id string) (func(), error) {
+	return s.acquireCoordinator(ctx, id, true)
+}
+
+func (s *Store) acquireCoordinator(ctx context.Context, id string, rollback bool) (func(), error) {
 	if !update.ValidOperationID(id) {
 		return nil, ErrInvalid
 	}
@@ -73,8 +81,22 @@ func (s *Store) AcquireCoordinator(ctx context.Context, id string) (func(), erro
 		return nil, err
 	}
 	r, exists, err := s.Read(ctx)
-	if err == nil && (!exists || r.ID != id || r.Phase != Verified) {
-		err = ErrConflict
+	if err == nil {
+		switch {
+		case !exists || r.ID != id:
+			err = ErrConflict
+		case rollback:
+			switch r.Phase {
+			case Preparing, Quiescent, SourceStarting, Applying, RepairRequired, Applied, ServiceStarting, RollingBack, RolledBack, Aborted, Completed:
+			default:
+				err = ErrConflict
+			}
+			if r.Recovery == nil || !r.Recovery.ManagedService {
+				err = ErrConflict
+			}
+		case r.Phase != Verified:
+			err = ErrConflict
+		}
 	}
 	if err != nil {
 		release()

@@ -11,9 +11,12 @@ const (
 )
 
 type UpdatePreparePayload struct {
-	OperationID    string `json:"operationId"`
-	CoordinatorPID uint32 `json:"coordinatorPid"`
-	Interactive    *bool  `json:"interactive"`
+	OperationID      string `json:"operationId"`
+	CoordinatorPID   uint32 `json:"coordinatorPid"`
+	Interactive      *bool  `json:"interactive"`
+	ManagedGUIUpdate bool   `json:"managedGuiUpdate,omitempty"`
+	ServiceSwitch    bool   `json:"serviceSwitch,omitempty"`
+	InterruptOneShot bool   `json:"interruptOneShot,omitempty"`
 }
 type UpdateOperationPayload struct {
 	OperationID string `json:"operationId"`
