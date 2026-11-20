@@ -36,7 +36,87 @@ class FakeManager implements InstallationManager {
   }
 }
 
+class FakeUserServiceManager extends FakeManager implements UserServiceManager {
+  bool registered = false;
+  final actions = <String>[];
+
+  @override
+  Future<UserServiceStatus?> userService(String action) async {
+    if (action != 'status') {
+      actions.add(action);
+      registered = action == 'takeover';
+    }
+    return UserServiceStatus(
+      available: true,
+      directory: registered ? '/fixture' : null,
+      running: registered,
+      enabled: false,
+      linger: false,
+      matchesInstallation: registered,
+      recoveryPending: false,
+      canDiscardReplacement: false,
+      recoveryBlocked: false,
+      canDiscardDamaged: false,
+    );
+  }
+}
+
 void main() {
+  testWidgets('background dropdown confirms changes and reports current mode', (
+    tester,
+  ) async {
+    final manager = FakeUserServiceManager();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 320,
+              child: IntegrationSettings(manager: manager),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final selector = find.byKey(const ValueKey('user-service-selector'));
+    expect(
+      find.descendant(of: selector, matching: find.text('应用管理')),
+      findsOneWidget,
+    );
+    Future<void> select(String option) async {
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(MenuItemButton, option));
+      await tester.pumpAndSettle();
+    }
+
+    await select('切换到 systemd');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(manager.actions, isEmpty);
+
+    await select('切换到 systemd');
+    await tester.tap(find.text('确认'));
+    await tester.pumpAndSettle();
+    expect(manager.actions, ['takeover']);
+    expect(
+      find.descendant(of: selector, matching: find.text('systemd')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('/fixture'), findsNothing);
+
+    await select('切回应用管理');
+    await tester.tap(find.text('确认'));
+    await tester.pumpAndSettle();
+    expect(manager.actions, ['takeover', 'release']);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('unavailable GUI explains and disables tray autostart', (
     tester,
   ) async {

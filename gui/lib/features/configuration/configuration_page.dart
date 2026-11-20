@@ -498,6 +498,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
             child: DesignHelper(_changedTargetGuidance),
           ),
         if (unavailable) const DesignHelper('通信或配置状态暂不可用；草稿已保留，请恢复后再保存。'),
+        const DesignSectionTitle('基础配置'),
         DesignGroup(
           key: const ValueKey('configuration-fields'),
           children: [

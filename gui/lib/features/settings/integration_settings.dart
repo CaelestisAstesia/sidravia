@@ -15,7 +15,7 @@ class IntegrationSettings extends StatefulWidget {
   });
   final InstallationManager? manager;
   final InstallationManager Function()? createManager;
-  final Widget Function(Widget autostart, Widget path)? builder;
+  final Widget Function(List<Widget> startupRows, Widget path)? builder;
   @override
   State<IntegrationSettings> createState() => _IntegrationSettingsState();
 }
@@ -132,58 +132,51 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
     }
   }
 
-  Widget _serviceRows(UserServiceStatus state) => Column(
-    children: [
+  List<Widget> _serviceRows(UserServiceStatus state) {
+    final labels = <String, String>{
+      if (state.recoveryBlocked) ...{
+        if (state.canDiscardDamaged) 'discard-damaged': '清除损坏的切换记录',
+      } else if (state.recoveryPending) ...{
+        'recover': '恢复原管理方式',
+        if (state.canDiscardReplacement) 'discard': '放弃恢复并解绑',
+      } else if (state.directory == null)
+        'takeover': '切换到 systemd'
+      else ...{
+        if (!state.matchesInstallation) 'replace': '更换为本安装',
+        if (state.matchesInstallation) ...{
+          'release': '切回应用管理',
+          if (state.running) 'stop': '停止后台' else 'start': '启动后台',
+          if (state.enabled) 'disable': '关闭后台自启' else 'enable': '开启后台自启',
+        },
+        'unregister': '解除登记',
+      },
+    };
+    final current = !state.available || state.recoveryBlocked
+        ? '状态未知'
+        : state.recoveryPending
+        ? '等待恢复'
+        : state.directory == null
+        ? '应用管理'
+        : state.matchesInstallation
+        ? 'systemd'
+        : 'systemd · 其他安装';
+    return [
       DesignRow(
         title: '后台管理方式',
-        subtitle: [
-          if (!state.available)
-            '无法确认后台运行状态'
-          else if (state.directory == null)
-            '应用管理'
-          else ...[
-            'systemd · ${state.directory}',
-            state.running ? '后台正在运行' : '后台已停止',
-          ],
-          if (state.recoveryBlocked)
-            state.canDiscardDamaged ? '切换记录已损坏，无法自动恢复。' : '无法确认切换记录，请检查用户服务目录。',
-          ?_serviceError,
-        ].join('\n'),
-        trailing: PopupMenuButton<String>(
-          tooltip: '管理用户服务',
-          enabled:
-              !_busy && (!state.recoveryBlocked || state.canDiscardDamaged),
-          onSelected: _changeService,
-          itemBuilder: (context) => [
-            if (state.recoveryBlocked) ...[
-              if (state.canDiscardDamaged)
-                const PopupMenuItem(
-                  value: 'discard-damaged',
-                  child: Text('清除损坏的切换记录'),
-                ),
-            ] else if (state.recoveryPending) ...[
-              const PopupMenuItem(value: 'recover', child: Text('恢复原管理方式')),
-              if (state.canDiscardReplacement)
-                const PopupMenuItem(value: 'discard', child: Text('放弃恢复并解绑')),
-            ] else if (state.directory == null)
-              const PopupMenuItem(value: 'takeover', child: Text('切换到 systemd'))
-            else ...[
-              if (!state.matchesInstallation)
-                const PopupMenuItem(value: 'replace', child: Text('更换为本安装')),
-              if (state.matchesInstallation) ...[
-                const PopupMenuItem(value: 'release', child: Text('切回应用管理')),
-                if (state.running)
-                  const PopupMenuItem(value: 'stop', child: Text('停止后台'))
-                else
-                  const PopupMenuItem(value: 'start', child: Text('启动后台')),
-                PopupMenuItem(
-                  value: state.enabled ? 'disable' : 'enable',
-                  child: Text(state.enabled ? '关闭后台自启' : '开启后台自启'),
-                ),
-              ],
-              const PopupMenuItem(value: 'unregister', child: Text('解除登记')),
-            ],
-          ],
+        subtitle:
+            _serviceError ??
+            (state.recoveryBlocked
+                ? state.canDiscardDamaged
+                      ? '切换记录已损坏，无法自动恢复。'
+                      : '无法确认切换记录，请检查用户服务目录。'
+                : null),
+        trailing: SettingsDropdown<String>(
+          frameKey: const ValueKey('user-service-frame'),
+          dropdownKey: const ValueKey('user-service-selector'),
+          value: null,
+          hint: current,
+          labels: labels,
+          onChanged: _busy || labels.isEmpty ? null : _changeService,
         ),
       ),
       if (state.available)
@@ -198,8 +191,8 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
                 : (value) => _changeService(value ? 'linger-on' : 'linger-off'),
           ),
         ),
-    ],
-  );
+    ];
+  }
 
   @override
   void dispose() {
@@ -291,23 +284,21 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
               }),
       ),
     );
-    final startupControls = Column(
-      children: [
-        withRetry(autostartRow),
-        if (service != null)
-          _serviceRows(service)
-        else if (_serviceError != null)
-          DesignRow(
-            title: '后台管理方式',
-            subtitle: _serviceError,
-            trailing: TextButton(
-              onPressed: _busy ? null : () => _perform(),
-              child: const Text('重试'),
-            ),
+    final startupRows = <Widget>[
+      withRetry(autostartRow),
+      if (service != null)
+        ..._serviceRows(service)
+      else if (_serviceError != null)
+        DesignRow(
+          title: '后台管理方式',
+          subtitle: _serviceError,
+          trailing: TextButton(
+            onPressed: _busy ? null : () => _perform(),
+            child: const Text('重试'),
           ),
-      ],
-    );
-    return widget.builder?.call(startupControls, withRetry(pathRow)) ??
-        DesignGroup(children: [startupControls, withRetry(pathRow)]);
+        ),
+    ];
+    return widget.builder?.call(startupRows, withRetry(pathRow)) ??
+        DesignGroup(children: [...startupRows, withRetry(pathRow)]);
   }
 }

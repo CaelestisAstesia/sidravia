@@ -42,7 +42,10 @@ class SettingsPage extends StatelessWidget {
     final connectionReason = shortUiText(
       controller.capabilities.settingsDisabledReason ?? '请先添加连接配置',
     );
-    Widget applicationGroup({Widget? autostart, Widget? path}) => Column(
+    Widget applicationGroup({
+      List<Widget> startupRows = const [],
+      Widget? path,
+    }) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const DesignSectionTitle('常规'),
@@ -84,7 +87,7 @@ class SettingsPage extends StatelessWidget {
         const DesignSectionTitle('启动与窗口行为'),
         DesignGroup(
           children: [
-            ?autostart,
+            ...startupRows,
             DesignRow(
               key: const ValueKey('start-hidden-row'),
               title: '启动时隐藏到托盘',
@@ -347,8 +350,8 @@ class SettingsPage extends StatelessWidget {
           if (desktopEnabled || createIntegrationManager != null)
             IntegrationSettings(
               createManager: createIntegrationManager,
-              builder: (autostart, path) =>
-                  applicationGroup(autostart: autostart, path: path),
+              builder: (startupRows, path) =>
+                  applicationGroup(startupRows: startupRows, path: path),
             )
           else
             applicationGroup(),
