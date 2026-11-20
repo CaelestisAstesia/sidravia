@@ -320,16 +320,24 @@ def preview_command(args, env):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check", "release", "visual"):
+    for command in ("verify", "benchmark", "package", "manifest", "windows", "linux", "preview", "vm", "check", "release", "visual", "report"):
         sub = subs.add_parser(command)
+        if command == "report":
+            sub.add_argument("path", help="existing stage report JSON or its directory")
+            sub.add_argument("--kind", choices=('stage', 'linux-desktop', 'linux-announcement', 'linux-rpm', 'windows-field'), default='stage', help="explicit existing receipt format")
+            sub.add_argument("--native", action='append', default=[], metavar='KIND=PATH', help="attach an explicitly selected native receipt; repeatable")
+            sub.add_argument("--stage", help="show one exact stage, including successful-stage logs")
+            sub.add_argument("--tail-bytes", type=int, choices=range(0, 16385), default=2000, metavar="BYTES")
+            sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "release":
-            sub.add_argument("mode", choices=("prepare", "verify"))
+            sub.add_argument("mode", choices=("prepare", "verify", "download"))
             sub.add_argument("--request", required=True, help="public release artifact inventory JSON")
             sub.add_argument("--public-key", required=True, help="base64 Ed25519 public key file; never a private seed")
             sub.add_argument("--output", help="new unsigned manifest file for prepare")
             sub.add_argument("--manifest", help="exact existing manifest for verify")
             sub.add_argument("--signature", help="existing detached signature for verify")
             sub.add_argument("--format", choices=("text", "json"), default="text")
+            sub.add_argument("--stage-timeout", type=int, choices=range(1, 3601), default=900, metavar='SECONDS')
         if command == "visual":
             sub.add_argument("mode", choices=("capture", "compare"))
             sub.add_argument("--output", required=True, help="new owned output directory; never overwrite a baseline")
@@ -341,6 +349,8 @@ def parse_args(argv=None):
             sub.add_argument("--candidate")
             sub.add_argument("--format", choices=("text", "json"), default="text")
         if command == "check":
+            sub.add_argument("--recommend", action="store_true", help="only recommend a check plan from Git changes; never execute")
+            sub.add_argument("--base", help="exact comparison ref for --recommend; default HEAD, including local changes")
             sub.add_argument("--scope", action="append", choices=("go", "python", "gui"), help="repeat to combine scopes; default go+python")
             sub.add_argument("--go-checks", choices=("native", "cross", "full"), default="native")
             sub.add_argument("--jobs", type=int, choices=range(1, 5), default=2)
@@ -416,6 +426,9 @@ def main(argv=None):
     args = parse_args(argv)
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
+        if args.command == "report":
+            import report_inspection
+            return report_inspection.run(args)
         if args.command == "visual":
             import visual_checks
             if args.mode == "capture":
@@ -435,12 +448,22 @@ def main(argv=None):
                 return {"commit": capture(["git", "rev-parse", "HEAD"], env),
                         "status": capture(["git", "status", "--porcelain", "--untracked-files=all"], env),
                         "source_fingerprint": source_fingerprint(env)}
+            if args.recommend:
+                import check_recommendations
+                return check_recommendations.run(ROOT, args, identity)
+            if args.base is not None:
+                raise ValueError('--base requires --recommend')
             return verification_commands.run(ROOT, args, identity)
         if args.command == "vm":
             import windows_vm
             return windows_vm.run(ROOT, args, source_manifest(env), lambda: source_manifest(env))
         if args.command == "release":
             import release_artifacts
+            if args.mode == 'download':
+                if not args.output or args.manifest or args.signature:
+                    raise ValueError('download requires only --output; metadata names are in --request')
+                import release_download
+                return release_download.run(ROOT, args, lambda: metadata(args.go, env))
             if (args.mode == "prepare" and (not args.output or args.manifest or args.signature)) or (args.mode == "verify" and (args.output or not args.manifest or not args.signature)):
                 raise ValueError("prepare requires only --output; verify requires --manifest and --signature")
             before = metadata(args.go, env)

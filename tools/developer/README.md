@@ -2,8 +2,22 @@
 
 Run from the repository root with Python 3 and the pinned Go toolchain (Go 1.26.4).
 `dev.py` uses the existing verifier and distribution producer/consumer. It does
-not install, authenticate, sign, upload or publish. Only explicit development
+not install, authenticate, sign, upload or publish. `release download` makes only
+the explicitly requested public HTTPS reads. Only explicit development
 preview/integration modes start their own GUI or isolated fixture processes.
+
+Choose one existing entry for the scenario; there is no new mandatory sequence:
+
+| Scenario | Entry | Result to inspect |
+| --- | --- | --- |
+| Choose checks for a change | `check --recommend --base main` | Reasons, argv plan, manual gaps; nothing runs |
+| Run selected daily checks | `check --scope … --format json` | Stage/source status, exact report path |
+| Diagnose an existing run | `report <run> --format json` | Bounded failures, execution/evidence/cleanup |
+| Windows execution | `vm --request … --format json` | Ordinary-user task, collected logs, task cleanup |
+| Native acceptance | Existing platform fixture + `report --kind …` / `--native …` | Actual recorded checks; unrecorded cleanup and manual items |
+| GUI regression | `visual capture` / `visual compare` | Matching environment and changed-case index |
+| Local release candidate | `release prepare` / `release verify` | Exact local payload and signature checks |
+| Public asset verification | `release download` | Explicit URL bytes, signature scope and unsigned extras |
 
 ## Offline interactive GUI preview
 
@@ -661,9 +675,127 @@ from producing a false acceptance. A per-worktree lock excludes simultaneous
 Go/Flutter/Pub caches stay at their existing locations. There is no automatic
 package build, installer execution, test retry, Git commit or release operation.
 
+## Recommend checks from a Git diff
+
+```bash
+# Staged + unstaged + nonignored untracked changes against HEAD.
+.local/bin/dev check --recommend
+# Include committed branch changes as well as current local edits.
+.local/bin/dev check --recommend --base main
+```
+
+This is a read-only JSON recommendation, built by the existing `check` planner.
+It never runs tests/builds, resolves dependencies, acquires locks or writes
+evidence. Output contains the exact resolved base commit, source identity,
+per-path reasons/scopes/manual requirements, a schema-1 command plan, an argv
+array for ordinary `check`, and explicit `not_covered` boundaries. Like `--plan`,
+it emits JSON even when `--format` defaults to text. `--format` selects the format
+of the suggested execution command. Inspect/customize that command before use;
+there is no automatic execution or claim of acceptance. Run it in `command_cwd`
+with the usual pinned-tool environment; argv is an array, not a shell string.
+
+`--base` compares that exact commit tree with the worktree, **not a merge base**.
+Renames include old and new paths, deletions remain visible, and NUL-delimited
+Git output preserves spaces/Unicode/newlines. Ignored local/private files are
+excluded. Invalid bases and source changes during planning fail explicitly.
+Do not combine recommendation with explicit scope/test/build selections;
+ordinary `check` still accepts them unchanged. `--base` is recommendation-only.
+
+Rules deliberately select existing whole scopes rather than guessing an import
+graph: Go changes use native repository checks to include reverse dependents;
+platform-specific Go filenames and module changes additionally recommend the
+existing cross-compile contracts. GUI changes select shared analysis/tests,
+with affected-page visual or native acceptance called out separately. Developer
+Python/mock/acceptance-tool changes select the existing Python suite. Delivery
+scripts/CI and unknown paths conservatively select all three scopes and require
+manual review. Documentation/metadata-only or clean diffs produce no executable
+check command, never the default Go/Python selection. No recommendation certifies
+native behavior on other platforms, installation/update, campus or release state.
+
+## Inspect an existing check or VM receipt
+
+```bash
+.local/bin/dev report /absolute/path/to/run-directory
+.local/bin/dev report /absolute/path/to/report.json --format json
+.local/bin/dev report /absolute/path/to/run-directory --stage gui-tests --tail-bytes 4000
+```
+
+This read-only command consumes existing schema-1 `check`, `vm`, command-sequence
+and `visual capture` stage reports. It does not run tools, contact a VM, take a
+lock, create evidence or change the receipt. Use the original command's output
+to select the exact run; there is no implicit "latest" selection across sources.
+Other receipt types (including visual comparisons and release inventories) keep
+their existing readers and are rejected explicitly here, except for the native
+formats explicitly selected below.
+
+The compact result includes original status, stage counts/status/exit/timing,
+source identity and recorded source-stability, evidence and cleanup facts.
+Unknown/unrecorded facts remain absent; they are not inferred as successful.
+Large source/image inventories, argv and environment are omitted. By default,
+only failed, timed-out or interrupted stages include raw log tails. `--stage`
+selects one exact stage and includes its logs even after success; `--tail-bytes 0`
+disables log reads. Each stream is bounded to 2000 bytes by default (maximum
+16384), with missing/truncated state explicit. Invalid UTF-8 is replaced in the
+excerpt only; original bytes remain unchanged. Collected logs must be ordinary
+sibling stdout/stderr files, with no traversal or symlink references.
+
+`--format json` emits one UTF-8 object; text output strips terminal controls.
+Exit 0 means the receipt was read successfully, **not that its checks passed**:
+consume `status`, stage coverage, errors and source/evidence/cleanup facts.
+Malformed/unsupported receipts or an unknown stage return exit 1, with a JSON
+error when requested. Reading a report does not revalidate product/artifact bytes
+or certify native, campus or release acceptance.
+
+### VM and native acceptance summary
+
+```bash
+# Attach copied Windows read-only acceptance snapshots to an exact VM run.
+.local/bin/dev report /absolute/path/to/vm-run --native windows-field=/absolute/path/to/Installed.json --format json
+# Existing Linux fixtures can be read directly, or attached in the same manner.
+.local/bin/dev report /absolute/path/to/linux-desktop-fixture/result.json --kind linux-desktop --format json
+.local/bin/dev report /absolute/path/to/vm-run --native linux-rpm=/absolute/path/to/rpm-result.json
+```
+
+`--kind` selects `stage` (default), `linux-desktop` (including business/portable
+fixtures), `linux-announcement`, `linux-rpm` (GUI/core), or `windows-field`
+(`offline_acceptance.ps1`). Native directories resolve to `result.json`; Windows
+snapshots use an explicit file. `--native KIND=PATH` is repeatable and attaches
+only explicitly selected receipts. Unknown kinds, malformed receipts, duplicate
+inputs and native `--stage` filtering fail rather than guessing a schema.
+Standalone Windows build reports and other integration tools' free-form logs
+are not native acceptance receipts; supply the existing VM stage report for
+execution evidence. No VM transport, producer or cleanup routine is replaced.
+
+Text and JSON now include an `acceptance` section. Each receipt has independent
+`execution`, `evidence`, `cleanup`, source identity, errors and `not_covered`
+fields. VM stage outcome is separate from the overall reported status, so passed
+commands cannot hide collection or cleanup failures. `task_removed` covers only
+the runner's owned scheduled task, not cleanup of the product it invoked. Local
+receipt availability does not prove all raw logs were collected or revalidated.
+
+Legacy Linux result files can be written before final `finally` cleanup. Their
+cleanup is therefore `not_recorded`, even when `passed` is true. The reader does
+not infer cleanup from a command exit, event name, absent process or retained
+evidence folder, and never deletes evidence. Windows `FAIL`/`BLOCK` remain failures;
+`SKIP`/`MANUAL` and missing/empty checks remain incomplete. One Before/Installed/
+AfterKeep/AfterDelete checkpoint does not prove the full installer cycle. Full
+PATH, user/file inventories and raw check details are omitted from the summary.
+
+Attached receipts retain their own sources/candidate build IDs. Source comparison
+reports `different_commits`, `same_commit_only` or `unknown`; equal commit IDs do
+not bind dirty bytes, artifact hashes, fixture instances or separate checkpoints.
+The summary never combines independent receipts into an overall acceptance PASS.
+Its `review_status` is `attention_required` for recorded failures, source
+conflicts or uncertain VM cleanup; `incomplete` for missing/partial facts; or
+`recorded_checks_only` when supplied VM facts are complete. None is full product
+acceptance. The top-level `status` still describes the primary receipt alone.
+Campus/long-term, real-account autostart, native GUI delivery/DPI and release
+boundaries stay explicit, along with isolated RPM host/plugin/tray limits. Exit 0
+still means successful reading, even if a supplied receipt reports failure.
+
 ## Prepare and verify public release metadata
 
-`dev.py release` reuses the existing distribution consumer and offline signing
+`dev.py release prepare/verify` reuses the existing distribution consumer and offline signing
 tool. It does not generate/unlock/store a key, sign, start a product, install,
 change trust roots, tag, upload or publish. The source must be clean and the
 request `buildId` must equal that exact Git commit. This is a preparation and
@@ -723,6 +855,65 @@ one final public version will be selected after the other packaging/size work
 and final workspace integration finish. Existing historical releases/proofs are
 retained. Local source simulation does not certify the public GitHub channel.
 
+
+### Verify explicitly selected public downloads
+
+```bash
+.local/bin/dev release download --request .local/public-release-request.json --public-key .local/publisher-public.txt --output .project/evidence/public-download/new-run --format json
+.local/bin/dev report .project/evidence/public-download/new-run --format json
+```
+
+Create the output's parent directory first; the output itself must not exist.
+The existing shared runner owns the worker, its subprocess tree, logs and the
+whole-operation deadline (`--stage-timeout`, default 900 seconds, maximum 3600).
+Individual HTTPS operations have a 30-second socket timeout. No automatic retry,
+cache purge, Git operation, package extraction/execution, installation, signing
+or publication occurs. Downloads and partial failure evidence remain owned by
+the new run directory; a later attempt must use a different one.
+
+The UTF-8 request has exactly `schemaVersion: 1`, `version`, `manifest`,
+`signature`, and `assets`. Each asset has exactly `name`, `url`, `size`, `sha256`.
+For example (replace **all** example byte counts and zero hashes with reviewed
+expected values, and add every intended asset including RPM/checksum files):
+
+```json
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "manifest": "sidravia-release.json",
+  "signature": "sidravia-release.sig",
+  "assets": [
+    {"name":"sidravia-v1.0.0-linux-amd64-core-portable.tar.gz","url":"https://example.invalid/releases/package.tar.gz","size":42,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+    {"name":"sidravia-release.json","url":"https://example.invalid/releases/sidravia-release.json","size":512,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+    {"name":"sidravia-release.sig","url":"https://example.invalid/releases/sidravia-release.sig","size":64,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}
+  ]
+}
+```
+
+Use trusted, independently reviewed public inventory and publisher-key bytes.
+TLS and matching a supplied hash do not establish that the inventory itself is
+trusted. Initial URLs must be public HTTPS without credentials, query parameters
+or fragments. CDN HTTPS redirects may contain queries, which are never copied to
+reports; HTTP downgrade and credential-bearing redirects are rejected. Up to
+32 unique portable filenames, 2 GiB per asset and 8 GiB total are supported.
+All intended public files are downloaded anonymously and checked for exact size
+and SHA256; final files are rehashed after signature verification. No archive is
+unpacked, and no downloaded code is run.
+
+The existing Go verifier checks the exact signed manifest bytes against the
+supplied public key. Every signed package must occur in the request with matching
+size/hash and the requested version. `signedAssets` lists those packages;
+`verifiedMetadata` lists manifest/signature; `hashOnlyAssets` lists extra files
+such as RPM/checksum assets outside that signature's package list. Their trust
+comes from the supplied inventory, never an invented signature guarantee.
+
+The complete `report.json` keeps the request, stage/raw logs, per-file receipts,
+source stability and explicit `not_covered` boundaries. JSON stdout is compact.
+Input/source changes invalidate the result; no clean current product commit is
+required to read an older public release. This tests the explicit URLs only, not
+GitHub asset discovery/listing completeness, payload ownership, native upgrade,
+GUI/campus or final release acceptance. Existing exact-payload `prepare/verify`
+checks retain their clean-source requirements.
 
 ## Deterministic GUI capture and visual triage
 
