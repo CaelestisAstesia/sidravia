@@ -1,6 +1,8 @@
 # Fedora RPM
 
-本页适用于 `0.5.0-alpha.2`，运行环境为 **Fedora 45 x86_64、KDE Plasma / Wayland**。软件包由项目提供，下载见[发行页面](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
+本文介绍当前开发版。[0.5.0-alpha.2 对应文档](https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/linux-rpm.md)。
+
+图形包初始支持环境为 **Fedora 45 x86_64、KDE Plasma / Wayland**。软件包由项目提供，下载见[发行页面](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
 
 ## 选择与安装
 

@@ -1,6 +1,8 @@
 # Linux 便携版
 
-本页适用于 `0.5.0-alpha.2`。下载与版本变化见[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
+本文介绍当前开发版。[0.5.0-alpha.2 对应文档](https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/linux-portable.md)。
+
+下载与版本变化见[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
 
 ## 运行环境
 
