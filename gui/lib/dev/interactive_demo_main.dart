@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/localization/app_locale.dart';
 import 'package:sidravia_gui/licensing/source_code_pro_font_license.dart';
 
 import 'dart:async';
@@ -155,6 +156,9 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
     child: ValueListenableBuilder<ThemeMode>(
       valueListenable: _appearance,
       builder: (context, mode, _) => MaterialApp(
+        locale: AppLocale.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: AppLocale.delegates,
         title: 'Sidravia 离线演示',
         navigatorKey: _navigator,
         navigatorObservers: [_windowObserver],

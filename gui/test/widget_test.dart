@@ -145,6 +145,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('尚未配置'), findsAtLeastNWidgets(1));
+      expect(
+        Localizations.localeOf(tester.element(find.byType(HomePage))),
+        const Locale.fromSubtags(
+          languageCode: 'zh',
+          scriptCode: 'Hans',
+          countryCode: 'CN',
+        ),
+      );
 
       final pending = desktop.onTrayAction!(
         const TrayIntent(TrayIntentKind.addConfiguration),

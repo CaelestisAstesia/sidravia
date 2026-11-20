@@ -98,6 +98,14 @@ void main() {
     );
     await tester.pump();
     expect(tester.takeException(), isNull);
+    expect(
+      Localizations.localeOf(tester.element(find.text('立即重试'))),
+      const Locale.fromSubtags(
+        languageCode: 'zh',
+        scriptCode: 'Hans',
+        countryCode: 'CN',
+      ),
+    );
     await tester.tap(find.text('立即重试'));
     await tester.pump();
     expect(find.text('托盘操作暂不可用，请双击图标显示主界面后重试。'), findsOneWidget);

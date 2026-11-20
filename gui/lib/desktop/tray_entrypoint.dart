@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/localization/app_locale.dart';
 import 'package:sidravia_gui/application/connection_clock.dart';
 
 import 'dart:async';
@@ -142,6 +143,9 @@ class _TrayPopoverAppState extends State<TrayPopoverApp> {
     final dark = data?.dark ?? false;
     if (data != null) _scheduleMeasure();
     return MaterialApp(
+      locale: AppLocale.locale,
+      supportedLocales: AppLocale.supportedLocales,
+      localizationsDelegates: AppLocale.delegates,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

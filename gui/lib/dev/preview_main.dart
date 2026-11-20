@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/localization/app_locale.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
@@ -8,6 +9,9 @@ class _PreviewApp extends StatelessWidget {
   const _PreviewApp();
   @override
   Widget build(BuildContext context) => MaterialApp(
+    locale: AppLocale.locale,
+    supportedLocales: AppLocale.supportedLocales,
+    localizationsDelegates: AppLocale.delegates,
     debugShowCheckedModeBanner: false,
     theme: AppTheme.light(),
     home: const Scaffold(body: HomeFixture()),

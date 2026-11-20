@@ -1,3 +1,4 @@
+import 'package:sidravia_gui/shared/localization/app_locale.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'dart:async';
@@ -411,6 +412,9 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     child: ValueListenableBuilder<ThemeMode>(
       valueListenable: _appearance,
       builder: (context, mode, _) => MaterialApp(
+        locale: AppLocale.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: AppLocale.delegates,
         scaffoldMessengerKey: _messengerKey,
         navigatorKey: _navigatorKey,
         title: 'Sidravia',
