@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
@@ -117,6 +118,7 @@ class OverrideEditor extends StatefulWidget {
     required this.onBack,
     required this.onComplete,
     required this.onChanged,
+    required this.clearRequested,
     required this.enabled,
     required this.loading,
     required this.onRestore,
@@ -125,8 +127,11 @@ class OverrideEditor extends StatefulWidget {
   });
 
   final OverrideTextController text;
-  final VoidCallback onBack, onComplete, onChanged;
-  final VoidCallback? onRestore, onReload;
+  final VoidCallback onBack, onComplete;
+  final ValueChanged<bool> onChanged;
+  final ValueGetter<bool>? onRestore;
+  final VoidCallback? onReload;
+  final bool clearRequested;
   final bool enabled, loading;
   final String? error;
 
@@ -134,40 +139,149 @@ class OverrideEditor extends StatefulWidget {
   State<OverrideEditor> createState() => _OverrideEditorState();
 }
 
+typedef _Edit = ({TextEditingValue value, bool clearRequested});
+
 class _OverrideEditorState extends State<OverrideEditor> {
-  TextEditingValue? _beforeFormat;
+  static const _historyLimit = 128;
+  final _undo = <_Edit>[];
+  final _redo = <_Edit>[];
+  late _Edit _current;
+  bool _applying = false;
+  bool _composing = false;
   String? _formatError;
 
-  void _format() {
-    try {
-      final undo = widget.text.value;
-      final formatted = formatOverride(undo.text);
-      if (formatted == undo.text) return;
-      setState(() {
-        _beforeFormat = undo;
-        _formatError = null;
-      });
-      widget.text.value = TextEditingValue(
-        text: formatted,
-        selection: TextSelection.collapsed(offset: formatted.length),
+  @override
+  void initState() {
+    super.initState();
+    _current = (
+      value: widget.text.value,
+      clearRequested: widget.clearRequested,
+    );
+    widget.text.addListener(_onTextChanged);
+  }
+
+  @override
+  void didUpdateWidget(OverrideEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      oldWidget.text.removeListener(_onTextChanged);
+      widget.text.addListener(_onTextChanged);
+      _undo.clear();
+      _redo.clear();
+    }
+    if (oldWidget.text != widget.text || oldWidget.loading && !widget.loading) {
+      _current = (
+        value: widget.text.value,
+        clearRequested: widget.clearRequested,
       );
-      widget.onChanged();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.text.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    if (_applying || !widget.enabled) return;
+    final value = widget.text.value;
+    final composing =
+        value.isComposingRangeValid && !value.composing.isCollapsed;
+    if (composing != _composing) setState(() => _composing = composing);
+    if (composing) return;
+    if (value.text == _current.value.text) {
+      _current = (value: value, clearRequested: _current.clearRequested);
+      return;
+    }
+    _record((value: value, clearRequested: false));
+    widget.onChanged(false);
+  }
+
+  void _record(_Edit edit) {
+    if (edit.value.text == _current.value.text &&
+        edit.clearRequested == _current.clearRequested) {
+      return;
+    }
+    setState(() {
+      if (_undo.length == _historyLimit) _undo.removeAt(0);
+      _undo.add(_current);
+      _redo.clear();
+      _current = edit;
+      _formatError = null;
+    });
+  }
+
+  void _apply(_Edit edit) {
+    _applying = true;
+    try {
+      widget.text.value = edit.value;
+    } finally {
+      _applying = false;
+    }
+    widget.onChanged(edit.clearRequested);
+  }
+
+  void _moveHistory(List<_Edit> from, List<_Edit> to) {
+    if (!widget.enabled || _composing || from.isEmpty) return;
+    setState(() {
+      to.add(_current);
+      _current = from.removeLast();
+      _formatError = null;
+    });
+    _apply(_current);
+  }
+
+  void _format() {
+    if (!widget.enabled || _composing) return;
+    try {
+      final before = widget.text.text;
+      final formatted = formatOverride(before);
+      if (formatted == before) return;
+      final edit = (
+        value: TextEditingValue(
+          text: formatted,
+          selection: TextSelection.collapsed(offset: formatted.length),
+        ),
+        clearRequested: _current.clearRequested,
+      );
+      _record(edit);
+      _apply(edit);
     } on FormatException catch (error) {
       setState(() => _formatError = error.message);
     }
   }
 
-  void _undoFormat() {
-    final before = _beforeFormat;
-    if (before == null) return;
-    _resetFormat();
-    widget.text.value = before;
-    widget.onChanged();
-  }
-
-  void _resetFormat() {
+  Future<void> _confirmRestore() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => DesignConfirmationDialog(
+        title: const Text('恢复协议默认值？'),
+        content: const Text('此操作会移除草稿中的自定义覆写。已保存的规则要等你返回连接配置并保存后才会清除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final restore = widget.onRestore;
+    if (restore == null) return;
+    _applying = true;
+    try {
+      final clearRequested = restore();
+      _record((value: widget.text.value, clearRequested: clearRequested));
+    } finally {
+      _applying = false;
+    }
     setState(() {
-      _beforeFormat = null;
+      _composing = false;
       _formatError = null;
     });
   }
@@ -183,13 +297,44 @@ class _OverrideEditorState extends State<OverrideEditor> {
         children: [
           if (widget.onReload == null)
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Semantics(header: true, child: const Text('覆写 JSON')),
-                  const SizedBox(height: 8),
-                  _editor(context),
+                  _toolbar(context),
+                  const SizedBox(height: 4),
+                  CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(
+                        LogicalKeyboardKey.keyZ,
+                        control: true,
+                      ): () =>
+                          _moveHistory(_undo, _redo),
+                      const SingleActivator(
+                        LogicalKeyboardKey.keyZ,
+                        meta: true,
+                      ): () =>
+                          _moveHistory(_undo, _redo),
+                      const SingleActivator(
+                        LogicalKeyboardKey.keyY,
+                        control: true,
+                      ): () =>
+                          _moveHistory(_redo, _undo),
+                      const SingleActivator(
+                        LogicalKeyboardKey.keyZ,
+                        control: true,
+                        shift: true,
+                      ): () =>
+                          _moveHistory(_redo, _undo),
+                      const SingleActivator(
+                        LogicalKeyboardKey.keyZ,
+                        meta: true,
+                        shift: true,
+                      ): () =>
+                          _moveHistory(_redo, _undo),
+                    },
+                    child: _editor(context),
+                  ),
                 ],
               ),
             ),
@@ -203,39 +348,111 @@ class _OverrideEditorState extends State<OverrideEditor> {
             ),
         ],
       ),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          OutlinedButton(
-            onPressed: widget.enabled ? _format : null,
-            child: const Text('格式化'),
-          ),
-          if (_beforeFormat != null)
-            TextButton(
-              onPressed: widget.enabled ? _undoFormat : null,
-              child: const Text('撤销格式化'),
+      const SizedBox(height: 18),
+      Align(
+        alignment: Alignment.center,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed:
+                  !widget.loading && !_composing && widget.onReload == null
+                  ? widget.onComplete
+                  : null,
+              child: const Text('保存修改'),
             ),
-          TextButton(
-            onPressed: widget.onRestore == null
-                ? null
-                : () {
-                    _resetFormat();
-                    widget.onRestore!();
-                  },
-            child: const Text('恢复协议默认值'),
           ),
-          FilledButton(
-            onPressed: !widget.loading && widget.onReload == null
-                ? widget.onComplete
-                : null,
-            child: const Text('完成编辑'),
+        ),
+      ),
+      const SizedBox(height: 8),
+      const Align(
+        alignment: Alignment.center,
+        child: DesignHelper('返回连接配置并保存后生效'),
+      ),
+      const SizedBox(height: 24),
+      const DesignSectionTitle('恢复默认'),
+      DesignGroup(
+        children: [
+          DesignRow(
+            title: '恢复协议默认值',
+            subtitle: '清除自定义协议覆写',
+            danger: true,
+            onTap: widget.onRestore == null ? null : _confirmRestore,
           ),
         ],
       ),
     ],
   );
+
+  Widget _toolbar(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final touch =
+        theme.platform == TargetPlatform.android ||
+        theme.platform == TargetPlatform.iOS;
+    final tapTarget = touch
+        ? MaterialTapTargetSize.padded
+        : MaterialTapTargetSize.shrinkWrap;
+    final outline = BorderSide(color: colors.outline);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(6),
+    );
+    final iconStyle = IconButton.styleFrom(
+      side: outline,
+      shape: shape,
+      minimumSize: const Size(26, 26),
+      padding: EdgeInsets.zero,
+      tapTargetSize: tapTarget,
+      visualDensity: VisualDensity.standard,
+    );
+    return OverflowBar(
+      alignment: MainAxisAlignment.spaceBetween,
+      overflowAlignment: OverflowBarAlignment.end,
+      overflowSpacing: 4,
+      children: [
+        Semantics(header: true, child: const Text('JSON')),
+        Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            IconButton.outlined(
+              tooltip: '撤销',
+              style: iconStyle,
+              onPressed: widget.enabled && !_composing && _undo.isNotEmpty
+                  ? () => _moveHistory(_undo, _redo)
+                  : null,
+              icon: const Icon(Icons.undo, size: 15),
+            ),
+            IconButton.outlined(
+              tooltip: '重做',
+              style: iconStyle,
+              onPressed: widget.enabled && !_composing && _redo.isNotEmpty
+                  ? () => _moveHistory(_redo, _undo)
+                  : null,
+              icon: const Icon(Icons.redo, size: 15),
+            ),
+            OutlinedButton(
+              onPressed: widget.enabled && !_composing ? _format : null,
+              style: OutlinedButton.styleFrom(
+                side: outline,
+                shape: shape,
+                minimumSize: const Size(0, 26),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                tapTargetSize: tapTarget,
+                visualDensity: VisualDensity.standard,
+                textStyle: theme.textTheme.bodySmall,
+                elevation: 0,
+              ),
+              child: const Text('格式化'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   Widget _editor(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -244,8 +461,23 @@ class _OverrideEditorState extends State<OverrideEditor> {
               .copyWith(fontFamily: 'Source Code Pro');
       final direction = Directionality.of(context);
       final scaler = MediaQuery.textScalerOf(context);
-      final gutter = scaler.scale(42).clamp(0.0, constraints.maxWidth / 3);
       final strut = StrutStyle.fromTextStyle(style, forceStrutHeight: true);
+      const gutterGap = 6.0;
+      // Keep implicit decoration and focus borders out of the editor.
+      const fieldPadding = 5.0;
+      final lineCount = '\n'.allMatches(widget.text.text).length + 1;
+      final sample = lineCount.toString().padLeft(3, '0');
+      final measure = TextPainter(
+        text: TextSpan(text: sample, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        strutStyle: strut,
+      )..layout();
+      final gutter = (measure.width.ceilToDouble() + gutterGap).clamp(
+        0.0,
+        constraints.maxWidth / 3,
+      );
+      measure.dispose();
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -265,7 +497,11 @@ class _OverrideEditorState extends State<OverrideEditor> {
                   for (var i = 0; i < lines.length; i++) {
                     numbers.add('${i + 1}');
                     painter.text = TextSpan(text: lines[i], style: style);
-                    painter.layout(maxWidth: constraints.maxWidth - gutter);
+                    painter.layout(
+                      maxWidth:
+                          (constraints.maxWidth - gutter - 2 * fieldPadding)
+                              .clamp(0.0, double.infinity),
+                    );
                     final wrapped = painter.computeLineMetrics().length;
                     for (var j = 1; j < wrapped; j++) {
                       numbers.add('');
@@ -273,7 +509,10 @@ class _OverrideEditorState extends State<OverrideEditor> {
                   }
                   painter.dispose();
                   return Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.only(
+                      right: gutterGap,
+                      top: fieldPadding,
+                    ),
                     child: Text(
                       numbers.join('\n'),
                       textAlign: TextAlign.right,
@@ -288,24 +527,28 @@ class _OverrideEditorState extends State<OverrideEditor> {
             ),
           ),
           Expanded(
-            child: Semantics(
-              label: '覆写 JSON',
-              child: TextField(
-                controller: widget.text,
-                readOnly: !widget.enabled,
-                minLines: 8,
-                maxLines: null,
-                style: style,
-                strutStyle: strut,
-                autocorrect: false,
-                enableSuggestions: false,
-                onChanged: (_) {
-                  _resetFormat();
-                  widget.onChanged();
-                },
-                decoration: const InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(fieldPadding),
+                child: Semantics(
+                  label: '覆写 JSON',
+                  child: TextField(
+                    controller: widget.text,
+                    readOnly: !widget.enabled,
+                    minLines: 12,
+                    maxLines: null,
+                    style: style,
+                    strutStyle: strut,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: null,
+                  ),
                 ),
               ),
             ),

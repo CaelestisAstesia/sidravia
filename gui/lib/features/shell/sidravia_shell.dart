@@ -36,7 +36,6 @@ class SidraviaShellState extends State<SidraviaShell> {
   AppPage _page = AppPage.home;
   final _configurationKey = GlobalKey<ConfigurationPageState>();
   final _history = <AppPage>[];
-  String? _openOverrideFor;
 
   bool get canExitWithoutPrompt =>
       _configurationKey.currentState?.canExitWithoutPrompt ?? true;
@@ -61,21 +60,11 @@ class SidraviaShellState extends State<SidraviaShell> {
 
   void _go(AppPage page) {
     if (_page == page) return;
-    if (page != AppPage.configuration) _openOverrideFor = null;
     setState(() {
       _history.add(_page);
       _page = page;
     });
     _syncBusinessVisibility();
-  }
-
-  void _openOverride(String configurationId) {
-    if (_page != AppPage.home ||
-        !widget.controller.capabilities.matchesConfiguration(configurationId)) {
-      return;
-    }
-    _openOverrideFor = configurationId;
-    _go(AppPage.configuration);
   }
 
   void _syncBusinessVisibility() =>
@@ -91,7 +80,6 @@ class SidraviaShellState extends State<SidraviaShell> {
 
   void _saved() {
     setState(() {
-      _openOverrideFor = null;
       _history.clear();
       _page = AppPage.home;
     });
@@ -99,7 +87,6 @@ class SidraviaShellState extends State<SidraviaShell> {
   }
 
   void _back() {
-    _openOverrideFor = null;
     setState(
       () => _page = _history.isEmpty ? AppPage.home : _history.removeLast(),
     );
@@ -138,7 +125,6 @@ class SidraviaShellState extends State<SidraviaShell> {
                   connectionNotifications: widget.connectionNotifications,
                   desktopPresence: widget.desktopPresence,
                   onNavigate: _go,
-                  onOpenOverride: _openOverride,
                 ),
                 AppPage.settings => SettingsPage(
                   createIntegrationManager: widget.createIntegrationManager,
@@ -149,7 +135,6 @@ class SidraviaShellState extends State<SidraviaShell> {
                 ),
                 AppPage.configuration => ConfigurationPage(
                   key: _configurationKey,
-                  openOverrideFor: _openOverrideFor,
                   onSaved: _saved,
                   controller: widget.controller,
                   onBack: _back,

@@ -2,7 +2,7 @@
 
 Sidravia 的 Flutter 桌面界面，当前版本为 `0.5.0-alpha.1`，支持 Windows 与 Linux x64。日常操作见[快速开始](../docs/quick-start.md)和[使用指南](../docs/guide.md)。本文只介绍 GUI 开发；统一验证与构建入口见[开发指南](../docs/development.md)。
 
-GUI 面向单份保存配置的日常连接。协议覆写、一次性认证、多配置和脚本操作保留在 [ctl 高级使用](../docs/advance.md)，本目录不为这些能力提供界面入口。
+GUI 面向单份保存配置的日常连接，可在「连接配置 → 高级 → 协议上报覆写」编辑[持久覆写](../docs/override.md)。一次性认证、多配置和脚本操作见 [ctl 高级使用](../docs/advance.md)。
 
 GUI 通过同包的 `sidraviactl`（Windows 为 `sidraviactl.exe`） 启动 desktop 后台，并使用本机 typed WebSocket IPC。账号、凭据、配置和认证状态由后台拥有；窗口、托盘、外观和公告呈现由前端负责。desktop 与独立 headless 模式互斥。
 

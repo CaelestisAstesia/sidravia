@@ -19,12 +19,10 @@ class ConfigurationPage extends StatefulWidget {
     required this.controller,
     required this.onBack,
     this.onSaved,
-    this.openOverrideFor,
   });
   final GuiController controller;
   final VoidCallback onBack;
   final VoidCallback? onSaved;
-  final String? openOverrideFor;
   @override
   State<ConfigurationPage> createState() => ConfigurationPageState();
 }
@@ -42,12 +40,33 @@ class ConfigurationPageState extends State<ConfigurationPage> {
   String? _version, _savedOverride, _overrideError;
   bool _storedOverridePresent = false, _documentUnavailable = false;
   bool _editingOverride = false, _overrideLoaded = false, _overrideBusy = false;
-  bool _readBackCommitted = false;
+  String? _readBackReceiptVersion;
   bool _clearOverride = false,
       _overrideEdited = false,
       _saveUnconfirmed = false;
   String? _validatedProfile, _validatedText;
   String? _template;
+  ({
+    TextEditingValue value,
+    bool clear,
+    bool edited,
+    String? validatedProfile,
+    String? validatedText,
+    String? error,
+  })?
+  _overrideEntry;
+
+  void _rememberOverrideEntry() {
+    _overrideEntry = (
+      value: _overrideText.value,
+      clear: _clearOverride,
+      edited: _overrideEdited,
+      validatedProfile: _validatedProfile,
+      validatedText: _validatedText,
+      error: _overrideError,
+    );
+  }
+
   bool get _overrideDirty =>
       _clearOverride ||
       (_overrideEdited && _overrideText.text != (_savedOverride ?? _template));
@@ -66,10 +85,19 @@ class ConfigurationPageState extends State<ConfigurationPage> {
 
   Future<void> _openOverride() async {
     if (!_canSave || _overrideBusy) return;
-    setState(() => _editingOverride = true);
+    setState(() {
+      if (!_editingOverride) {
+        _overrideEntry = null;
+        if (_overrideLoaded) _rememberOverrideEntry();
+      }
+      _editingOverride = true;
+    });
     if (_overrideLoaded) return;
     if (_creating) {
-      setState(() => _loadOverride(null));
+      setState(() {
+        _loadOverride(null);
+        _rememberOverrideEntry();
+      });
       return;
     }
     setState(() => _overrideBusy = true);
@@ -89,6 +117,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           read.document,
           stored: read.configuration.overrideState != 'none',
         );
+        _rememberOverrideEntry();
       }
     });
   }
@@ -100,32 +129,45 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     _template = _schemaVersion == 0
         ? ''
         : '{\n  "schemaVersion": $_schemaVersion\n}';
-    _overrideText.text = document ?? (_documentUnavailable ? '' : _template!);
+    _setOverrideText(document ?? (_documentUnavailable ? '' : _template!));
     _overrideLoaded = true;
     _overrideError = _documentUnavailable ? '已保存的覆写无法完整读取，仍可恢复协议默认值' : null;
   }
 
-  void _changeOverride() {
+  void _setOverrideText(String text) {
+    _overrideText.value = TextEditingValue(
+      text: text,
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+
+  void _changeOverride(bool clearRequested) {
     setState(() {
-      _clearOverride = false;
-      _overrideEdited = true;
-      _overrideError = overrideSyntaxError(_overrideText.text);
+      _clearOverride = clearRequested;
+      _overrideEdited = !clearRequested;
+      _overrideError = clearRequested
+          ? null
+          : overrideSyntaxError(_overrideText.text);
     });
   }
 
-  void _restoreOverride() {
+  bool _restoreOverride() {
     setState(() {
       _clearOverride = _storedOverridePresent;
       _overrideEdited = false;
-      _overrideText.text = _template ?? '';
+      _setOverrideText(_template ?? '');
       _validatedText = null;
       _overrideError = null;
     });
+    return _clearOverride;
   }
 
   Future<void> _completeOverride() async {
     if (!_overrideDirty || _clearOverride || _validOverrideDraft) {
-      setState(() => _editingOverride = false);
+      setState(() {
+        _overrideEntry = null;
+        _editingOverride = false;
+      });
       return;
     }
     final text = _overrideText.text;
@@ -148,6 +190,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         _validatedProfile = profile;
         _validatedText = text;
         _overrideError = null;
+        _overrideEntry = null;
         _editingOverride = false;
       } else {
         _overrideError = result == null
@@ -190,7 +233,13 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           config.institutionProfileId == _profile &&
           config.username == _username.text &&
           config.networkBindingPolicy == _binding;
-      if (!matches || !_readBackCommitted && _password.text.isNotEmpty) {
+      if (_password.text.isNotEmpty &&
+          (_readBackReceiptVersion == null ||
+              config.version != _readBackReceiptVersion)) {
+        _saveResult = '无法核对已提交的密码。草稿仍保留，请核对后重新打开配置。';
+        return;
+      }
+      if (!matches) {
         _saveResult = '无法确认提交目标与当前配置一致。草稿仍保留，请核对后重新打开配置。';
         return;
       }
@@ -236,7 +285,26 @@ class ConfigurationPageState extends State<ConfigurationPage> {
 
   Future<void> requestLeave() async {
     if (_editingOverride) {
-      if (!_overrideBusy) setState(() => _editingOverride = false);
+      if (_overrideBusy || _prompting) return;
+      final entry = _overrideEntry;
+      final changed =
+          entry != null &&
+          (entry.value.text != _overrideText.text ||
+              entry.clear != _clearOverride);
+      if (changed && !await _confirmDiscard()) return;
+      if (!mounted) return;
+      setState(() {
+        if (entry != null) {
+          _overrideText.value = entry.value;
+          _clearOverride = entry.clear;
+          _overrideEdited = entry.edited;
+          _validatedProfile = entry.validatedProfile;
+          _validatedText = entry.validatedText;
+          _overrideError = entry.error;
+        }
+        _overrideEntry = null;
+        _editingOverride = false;
+      });
       return;
     }
     if (await mayLeave() && mounted) widget.onBack();
@@ -249,12 +317,16 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     }
     if (_saving || _prompting || _overrideBusy) return false;
     if (!_dirty) return true;
+    return _confirmDiscard(showUnknownResult: _saveUnconfirmed);
+  }
+
+  Future<bool> _confirmDiscard({bool showUnknownResult = false}) async {
     _prompting = true;
     final discard = await showDialog<bool>(
       context: context,
       builder: (context) => DesignConfirmationDialog(
         title: const Text('放弃未保存的修改？'),
-        content: _saveUnconfirmed ? const Text('放弃本地草稿不会撤销后台可能已完成的保存。') : null,
+        content: showUnknownResult ? const Text('放弃本地草稿不会撤销后台可能已完成的保存。') : null,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -296,13 +368,6 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     _password = TextEditingController();
     _sync();
     widget.controller.addListener(_onSnapshot);
-    if (widget.openOverrideFor != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _boundConfigurationId == widget.openOverrideFor) {
-          _openOverride();
-        }
-      });
-    }
   }
 
   void _onSnapshot() {
@@ -377,11 +442,12 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         onBack: requestLeave,
         onComplete: _completeOverride,
         onChanged: _changeOverride,
+        clearRequested: _clearOverride,
         enabled:
             _overrideLoaded &&
             !_overrideBusy &&
             _canSave &&
-            (!_documentUnavailable || _clearOverride) &&
+            !_documentUnavailable &&
             _schemaVersion > 0,
         loading: _overrideBusy,
         error: _targetChanged ? _changedTargetGuidance : _overrideError,
@@ -792,27 +858,42 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         (widget.onSaved ?? widget.onBack)();
         if (reconnect) {
           final committed = saved;
-          if (committed != null) {
+          if (committed != null &&
+              (committed.version != null ||
+                  _version != null ||
+                  _overrideDirty)) {
             await controller.connectSavedConfiguration(committed);
-          } else if (!controller.supportsOverrideEditing) {
-            final id = controller.capabilities.configuration?.id;
+          } else {
+            final id =
+                committed?.id ??
+                boundId ??
+                controller.capabilities.configuration?.id;
             if (id != null) await controller.startConfiguration(id);
           }
         }
       } else {
-        final readBack =
-            boundId != null &&
-            (result?.committed == true || result?.unknown == true);
+        final committed = result?.committed == true;
+        final unknown = result?.unknown == true;
+        final receipt = saved;
+        final readBackId = committed && receipt != null ? receipt.id : boundId;
         setState(() {
-          _readBackCommitted = result?.committed == true;
-          _saveUnconfirmed = readBack || result?.unknown == true;
+          if (_creating && committed && receipt != null) {
+            _creating = false;
+            _boundConfigurationId = receipt.id;
+            _version = receipt.version;
+            _credentialStored = receipt.credentialStored;
+          }
+          _readBackReceiptVersion = committed ? receipt?.version : null;
+          _saveUnconfirmed = unknown || committed && readBackId != null;
           if (result?.errorCode == 'configuration_version_conflict') {
             _targetChanged = true;
           }
         });
         setState(
-          () => _saveResult = result?.unknown == true
-              ? '保存结果未知，请恢复通信后确认配置；未自动连接。'
+          () => _saveResult = unknown
+              ? readBackId == null
+                    ? '保存结果未知。通信恢复后请重新打开连接配置检查是否已创建。'
+                    : '保存结果未知，请恢复通信后确认配置；未自动连接。'
               : result?.committed == true
               ? result?.errorCode == 'configuration_session_invalidation_failed'
                     ? '配置已提交，但旧会话清理失败；请清理会话后再连接。'

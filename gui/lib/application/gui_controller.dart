@@ -336,7 +336,13 @@ class GuiController extends ChangeNotifier {
 
   Future<bool> connectSavedConfiguration(ConfigurationSummary saved) async {
     final version = saved.version;
-    if (version == null || !supportsOverrideEditing) return false;
+    if (version == null || !supportsOverrideEditing) {
+      if (!_disposed) {
+        _notice = '配置已保存，但无法核对连接所需的配置版本。请确认后手动连接。';
+        _notify();
+      }
+      return false;
+    }
     final ok = await _mutate(
       (client, _) => (client as SidraviaOverrideClient)
           .startConfigurationVersion(saved.id, version),
