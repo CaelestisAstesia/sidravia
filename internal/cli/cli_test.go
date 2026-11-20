@@ -39,16 +39,7 @@ func TestParseAuthStartConfigurationModeIsExclusive(t *testing.T) {
 	}
 }
 
-func TestParseAuthStartProtocolOverrideFileFormsAndConflicts(t *testing.T) {
-	for _, args := range [][]string{
-		{"--profile", "jlu", "--username", "user", "--protocol-override-file", "override.json"},
-		{"--profile", "jlu", "--username", "user", "--protocol-override-file=override.json"},
-	} {
-		options, err := parseAuthStart(args)
-		if err != nil || !options.protocolOverrideFileSet || options.protocolOverrideFile != "override.json" {
-			t.Fatalf("parse %q = %#v, %v", args, options, err)
-		}
-	}
+func TestParseAuthStartProtocolOverrideFileIsRejected(t *testing.T) {
 	for _, args := range [][]string{
 		{"--profile", "jlu", "--username", "user", "--protocol-override-file"},
 		{"--profile", "jlu", "--username", "user", "--protocol-override-file="},

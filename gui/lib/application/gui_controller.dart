@@ -279,6 +279,81 @@ class GuiController extends ChangeNotifier {
     }
   }
 
+  bool get supportsOverrideEditing => _client is SidraviaOverrideClient;
+
+  Future<ConfigurationOverride?> readConfigurationOverride(
+    String id, {
+    String? expectedDocument,
+  }) => _readOverride(
+    (client) =>
+        client.configurationOverride(id, expectedDocument: expectedDocument),
+    allowed: (caps) => caps.matchesConfiguration(id),
+  );
+
+  Future<OverrideValidation?> validateConfigurationOverride(
+    String profile,
+    String document,
+  ) => _readOverride((client) => client.validateOverride(profile, document));
+
+  Future<T?> _readOverride<T>(
+    Future<T> Function(SidraviaOverrideClient) read, {
+    bool Function(GuiCapabilities)? allowed,
+  }) async {
+    if (!supportsOverrideEditing) return null;
+    T? result;
+    final ok = await _mutate((client, _) async {
+      return result = await read(client as SidraviaOverrideClient);
+    }, allowed: allowed);
+    return ok ? result : null;
+  }
+
+  Future<bool> saveConfigurationEdit(
+    Map<String, Object?> fields, {
+    required bool creating,
+    required void Function(ConfigurationSummary) onSaved,
+    required void Function(GuiMutationResult) onResult,
+    required InsecureStorageConfirmation onInsecureStorageConfirmation,
+  }) => _mutate(
+    (client, allow) async {
+      final result = await (client as SidraviaOverrideClient)
+          .saveConfigurationEdit(
+            fields,
+            creating: creating,
+            allowInsecureStorage: allow,
+          );
+      onSaved(result);
+      return result;
+    },
+    operation: GuiOperation.updateConfiguration,
+    onResult: onResult,
+    onInsecureStorageConfirmation: onInsecureStorageConfirmation,
+    allowed: (caps) =>
+        supportsOverrideEditing &&
+        (creating
+            ? caps.canCreate
+            : caps.matchesConfiguration(fields['configurationId']! as String)),
+  );
+
+  Future<bool> connectSavedConfiguration(ConfigurationSummary saved) async {
+    final version = saved.version;
+    if (version == null || !supportsOverrideEditing) return false;
+    final ok = await _mutate(
+      (client, _) => (client as SidraviaOverrideClient)
+          .startConfigurationVersion(saved.id, version),
+      allowed: (caps) =>
+          caps.canConnect &&
+          caps.matchesConfiguration(saved.id) &&
+          !sessionNeedsReset,
+    );
+    if (!ok && !_disposed) {
+      _notice = _notice == '配置已变化，请重新读取后再继续。'
+          ? '配置已保存，但连接前配置已变化，请确认后手动连接。'
+          : '配置已保存，但未能连接。请检查当前连接状态。';
+      _notify();
+    }
+    return ok;
+  }
+
   Future<bool> createConfiguration({
     required String institutionProfileId,
     required String username,
@@ -641,7 +716,7 @@ class GuiController extends ChangeNotifier {
     try {
       await action(client, allowInsecureStorage);
       if (!_canContinue(generation) || !identical(_client, client)) {
-        completer.complete(const GuiMutationResult(false));
+        completer.complete(const GuiMutationResult(false, null, true));
         return;
       }
       await _refresh(generation, client);
@@ -817,7 +892,7 @@ class GuiController extends ChangeNotifier {
   }
 
   void _scheduleRefresh(int generation, SidraviaIpcClient client) {
-    if (client is SidraviaStateClient ||
+    if ((client is SidraviaStateClient && client is! SidraviaOverrideClient) ||
         !_canContinue(generation) ||
         !identical(_client, client) ||
         _state != GuiConnectionState.ready) {
@@ -828,12 +903,20 @@ class GuiController extends ChangeNotifier {
       _timer = null;
       return;
     }
-    _timer = Timer(pollDelay, () {
+    // Session and network events do not invalidate the saved configuration.
+    final delay =
+        client is SidraviaStateClient && pollDelay < const Duration(seconds: 5)
+        ? const Duration(seconds: 5)
+        : pollDelay;
+    _timer = Timer(delay, () {
       _timer = null;
-      if (_transition != null ||
-          _exitRequested ||
+      if (_exitRequested ||
           !_current(generation) ||
           !identical(_client, client)) {
+        return;
+      }
+      if (_transition != null) {
+        _scheduleRefresh(generation, client);
         return;
       }
       _transition = _poll(generation, client);
@@ -979,8 +1062,9 @@ class GuiController extends ChangeNotifier {
   String _guidance(GuiOperation operation, String code, String fallback) =>
       switch (code) {
         'configuration_session_invalidation_failed' =>
-          '配置已提交，旧会话清理未完成；请在连接配置中移除旧会话后重试。',
+          '配置已提交，旧会话清理未完成。请在“连接与诊断”中移除当前会话。',
         'profile_not_found' => '学校配置已不存在，请刷新。',
+        'configuration_version_conflict' => '配置已变化，请重新读取后再继续。',
         'configuration_conflict' => '登录配置已存在，请刷新。',
         'insecure_storage_confirmation_required' =>
           operation.insecureStorageGuidance,

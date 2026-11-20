@@ -45,7 +45,11 @@ func (application *Application) describeConfiguration(ctx context.Context, value
 	if err != nil {
 		return ConfigurationResult{}, err
 	}
-	result := ConfigurationResult{Configuration: value.Clone(), CredentialStored: stored, StorageProtection: application.catalog.StorageProtection()}
+	version, err := application.catalog.Version(ctx, value.ConfigurationID)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	result := ConfigurationResult{Version: version, Configuration: value.Clone(), CredentialStored: stored, StorageProtection: application.catalog.StorageProtection()}
 	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
 	if contextErr := readModelContextError(ctx); contextErr != nil {
 		return ConfigurationResult{}, errors.Join(err, contextErr)
@@ -68,6 +72,7 @@ func (application *Application) describeConfiguration(ctx context.Context, value
 		result.RuntimeAvailability = ConfigurationRuntimeProtocolUnavailable
 		return result, nil
 	}
+	result.OverrideSchemaVersion = overrideSchemaVersion(factory)
 	result.RuntimeAvailability = ConfigurationRuntimeAvailable
 	if err := factory.ValidateProtocolContextOverride(append(protocol.AuthenticationProtocolContextOverride(nil), value.ProtocolContextOverride...)); err != nil {
 		result.RuntimeAvailability = ConfigurationRuntimeOverrideInvalid

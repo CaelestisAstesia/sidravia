@@ -131,3 +131,27 @@ func (NoopAuthenticationProtocolDiagnostics) PhaseEvent(string, string) {}
 
 func (NoopAuthenticationProtocolDiagnostics) DatagramEvent(string, AuthenticationProtocolDatagramDirection, []byte) {
 }
+
+// ProtocolOverrideCapability identifies factories with an editable JSON override.
+type ProtocolOverrideCapability interface {
+	OverrideSchemaVersion() int
+}
+
+// OverrideFieldError identifies an invalid field from the protocol's own
+// whitelist. It never contains a supplied value or an unknown member name.
+type OverrideFieldError struct{ Field string }
+
+func (err OverrideFieldError) Error() string {
+	return "invalid protocol override field: " + err.Field
+}
+
+// HasOverrideFields distinguishes a version-only document from a real override.
+// It is used for safe status projection, never to validate a stored document.
+func HasOverrideFields(raw AuthenticationProtocolContextOverride) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return false
+	}
+	delete(fields, "schemaVersion")
+	return len(fields) != 0
+}

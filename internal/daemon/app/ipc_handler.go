@@ -53,6 +53,8 @@ func IPCHandler(
 			return sessions(ctx, method, payload)
 		case contract.MethodSessionStartConfiguration:
 			return sessions(ctx, method, payload)
+		case contract.MethodConfigurationGetOverride, contract.MethodConfigurationValidateOverride:
+			return application.handleConfigurationOverride(ctx, method, payload)
 		case contract.MethodConfigurationList,
 			contract.MethodConfigurationGet,
 			contract.MethodConfigurationCreate,

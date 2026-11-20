@@ -138,8 +138,10 @@ class InstitutionProfile {
     required this.displayName,
     required this.protocolId,
     this.announcement,
+    this.overrideSchemaVersion = 0,
   });
   final String id, displayName, protocolId;
+  final int overrideSchemaVersion;
   final AnnouncementMetadata? announcement;
 }
 
@@ -423,6 +425,9 @@ class ConfigurationSummary {
     this.autoLogin = false,
     this.autoReconnect = false,
     this.runtimeAvailability = ConfigurationRuntimeAvailability.available,
+    this.version,
+    this.overrideState,
+    this.overrideSchemaVersion = 0,
   });
   final String id,
       displayName,
@@ -434,6 +439,8 @@ class ConfigurationSummary {
   final NetworkBindingPolicy networkBindingPolicy;
   final bool credentialStored, autoLogin, autoReconnect;
   final ConfigurationRuntimeAvailability runtimeAvailability;
+  final String? version, overrideState;
+  final int overrideSchemaVersion;
 }
 
 class SessionStateReason {
@@ -478,6 +485,8 @@ class SessionSummary {
     BigInt? revision,
     NetworkProtocolSocket? protocolSocket,
     this.cleanupRequired = false,
+    this.hasProtocolOverride = false,
+    this.hasOverrideDocument = false,
     this.updatedAt,
   })
     // Public names and private nullable storage preserve const previews.
@@ -505,7 +514,7 @@ class SessionSummary {
     runGeneration: BigInt.zero,
   );
   NetworkProtocolSocket get protocolSocket => _protocolSocket ?? _previewSocket;
-  final bool cleanupRequired;
+  final bool cleanupRequired, hasProtocolOverride, hasOverrideDocument;
 }
 
 class IpcProtocolException implements Exception {
@@ -608,12 +617,17 @@ List<InstitutionProfile> decodeProfiles(String source) =>
             'displayName',
             'authenticationProtocolId',
             if (raw.containsKey('announcement')) 'announcement',
+            if (raw.containsKey('overrideSchemaVersion'))
+              'overrideSchemaVersion',
           });
           return InstitutionProfile(
             id: _text(v['institutionProfileId']),
             displayName: _text(v['displayName']),
             protocolId: _text(v['authenticationProtocolId']),
             announcement: _announcement(v['announcement']),
+            overrideSchemaVersion: v.containsKey('overrideSchemaVersion')
+                ? _positive(v['overrideSchemaVersion'])
+                : 0,
           );
         })
         .toList(growable: false);
@@ -634,7 +648,11 @@ ConfigurationSummary decodeConfiguration(String source) => _configuration(
 );
 
 ConfigurationSummary _configuration(Object? raw) {
-  final v = _object(raw, const {
+  if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
+  final v = _object(raw, {
+    if (raw.containsKey('version')) 'version',
+    if (raw.containsKey('overrideState')) 'overrideState',
+    if (raw.containsKey('overrideSchemaVersion')) 'overrideSchemaVersion',
     'configurationId',
     'displayName',
     'institutionProfileId',
@@ -660,6 +678,13 @@ ConfigurationSummary _configuration(Object? raw) {
   }
   return ConfigurationSummary(
     runtimeAvailability: availability,
+    version: v.containsKey('version') ? _text(v['version']) : null,
+    overrideState: v.containsKey('overrideState')
+        ? _text(v['overrideState'])
+        : null,
+    overrideSchemaVersion: v.containsKey('overrideSchemaVersion')
+        ? _positive(v['overrideSchemaVersion'])
+        : 0,
     id: _text(v['configurationId']),
     displayName: _optionalText(v['displayName']),
     institutionProfileId: _text(v['institutionProfileId']),
@@ -742,6 +767,8 @@ SessionSummary _session(Object? raw, {bool cleanupRequired = false}) {
     'updatedAt',
   };
   const optional = {
+    'hasProtocolOverride',
+    'hasOverrideDocument',
     'configurationId',
     'stateReason',
     'selectedNetworkBinding',
@@ -774,6 +801,12 @@ SessionSummary _session(Object? raw, {bool cleanupRequired = false}) {
   }
   return SessionSummary(
     cleanupRequired: cleanupRequired,
+    hasOverrideDocument:
+        raw.containsKey('hasOverrideDocument') &&
+        _bool(raw['hasOverrideDocument']),
+    hasProtocolOverride:
+        raw.containsKey('hasProtocolOverride') &&
+        _bool(raw['hasProtocolOverride']),
     institutionProfileId: _text(raw['institutionProfileId']),
     institutionDisplayName: _text(raw['institutionDisplayName']),
     authenticationProtocolId: _text(raw['authenticationProtocolId']),
@@ -1639,4 +1672,42 @@ MaintenanceStatus decodeMaintenanceStatus(String source) {
     throw const IpcProtocolException();
   }
   return MaintenanceStatus(id as String?, phase, value['interactive'] as bool);
+}
+
+typedef ConfigurationOverride = ({
+  ConfigurationSummary configuration,
+  String? document,
+  bool? matchesDocument,
+});
+typedef OverrideValidation = ({bool valid, String? field});
+
+ConfigurationOverride decodeConfigurationOverride(String source) {
+  final raw = decodeBindingCheckedJson(source);
+  if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
+  final v = _object(raw, {
+    'configuration',
+    'document',
+    if (raw.containsKey('matchesDocument')) 'matchesDocument',
+  });
+  final document = v['document'];
+  if (document != null && document is! String) {
+    throw const IpcProtocolException();
+  }
+  return (
+    configuration: _configuration(v['configuration']),
+    document: document as String?,
+    matchesDocument: v.containsKey('matchesDocument')
+        ? _bool(v['matchesDocument'])
+        : null,
+  );
+}
+
+OverrideValidation decodeOverrideValidation(String source) {
+  final raw = decodeBindingCheckedJson(source);
+  if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
+  final v = _object(raw, {'valid', if (raw.containsKey('field')) 'field'});
+  return (
+    valid: _bool(v['valid']),
+    field: v.containsKey('field') ? _text(v['field']) : null,
+  );
 }

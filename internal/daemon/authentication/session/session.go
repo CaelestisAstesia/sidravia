@@ -210,6 +210,8 @@ func initializeAuthenticationSession(
 		admission:           admission,
 		selector:            newPolicyBindingSelector(configuration.NetworkBindingPolicy),
 		currentSnapshot: Snapshot{
+			HasOverrideDocument:      len(configuration.ProtocolContextOverride) > 0,
+			HasProtocolOverride:      protocol.HasOverrideFields(configuration.ProtocolContextOverride),
 			ProtocolSocket:           ProtocolSocketObservation{State: ProtocolSocketNotObserved},
 			AuthenticationSessionID:  configuration.AuthenticationSessionID,
 			ConfigurationID:          configuration.ConfigurationID,

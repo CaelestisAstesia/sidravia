@@ -20,9 +20,18 @@ const (
 	SessionStartResumed        = "resumed"
 )
 
-func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (SessionStartResult, error) {
+func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID, expectedVersion ...string) (SessionStartResult, error) {
 	application.operationMu.Lock()
 	defer application.operationMu.Unlock()
+	if len(expectedVersion) != 0 && expectedVersion[0] != "" {
+		version, err := application.catalog.Version(ctx, configurationID)
+		if err != nil {
+			return SessionStartResult{}, err
+		}
+		if version != expectedVersion[0] {
+			return SessionStartResult{}, config.ErrVersionConflict
+		}
+	}
 	return application.startConfigurationAuthentication(ctx, configurationID)
 }
 

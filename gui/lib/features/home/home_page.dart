@@ -36,6 +36,9 @@ class HomeViewData {
     required this.onSecondary,
     required this.onPrimary,
     this.actionError,
+    this.overrideStatus,
+    this.overrideWarning = false,
+    this.onOverride,
     this.onDismissActionError,
     this.issue,
     this.announcement,
@@ -51,6 +54,9 @@ class HomeViewData {
   final VoidCallback? onSecondary;
   final VoidCallback? onPrimary;
   final String? actionError;
+  final String? overrideStatus;
+  final bool overrideWarning;
+  final VoidCallback? onOverride;
   final VoidCallback? onDismissActionError;
   final SessionAuthenticationFailure? issue;
   final HomeAnnouncementEntry? announcement;
@@ -77,12 +83,14 @@ class HomePage extends StatelessWidget {
     this.announcements,
     this.connectionNotifications,
     this.desktopPresence,
+    this.onOpenOverride,
   });
   final GuiController controller;
   final ValueChanged<AppPage> onNavigate;
   final SchoolAnnouncementController? announcements;
   final ConnectionNotificationController? connectionNotifications;
   final DesktopPresence? desktopPresence;
+  final ValueChanged<String>? onOpenOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +108,24 @@ class HomePage extends StatelessWidget {
   Widget _build(BuildContext context) {
     final p = controller.connectionPresentation;
     final configurationId = controller.capabilities.configuration?.id;
+    final snapshot = controller.snapshot;
+    final fallback = snapshot?.configurations;
+    final configuration =
+        controller.capabilities.configuration ??
+        (fallback?.length == 1 ? fallback!.single : null);
+    final related = snapshot?.sessions
+        .where(
+          (s) =>
+              s.configurationId == configuration?.id && configuration != null,
+        )
+        .toList();
+    final overrideStatus = projectOverrideStatus(
+      configuration,
+      related ?? const [],
+      fresh:
+          controller.capabilities.isReady &&
+          snapshot?.daemon.status == 'running',
+    );
     final unconfigured =
         controller.capabilities.capability == GuiCapabilityState.createOnly;
     final school = announcements?.profile;
@@ -146,6 +172,24 @@ class HomePage extends StatelessWidget {
             ? null
             : () => controller.dismissNotice(p.actionError!),
         issue: p.issue,
+        overrideStatus: overrideStatus,
+        overrideWarning:
+            configuration?.overrideState == 'invalid' ||
+            configuration?.overrideState == 'unavailable' ||
+            related?.any((s) => s.cleanupRequired) == true,
+        onOverride:
+            configurationId != null &&
+                onOpenOverride != null &&
+                controller.supportsOverrideEditing &&
+                controller.capabilities.matchesConfiguration(configurationId)
+            ? () {
+                if (controller.capabilities.matchesConfiguration(
+                  configurationId,
+                )) {
+                  onOpenOverride!(configurationId);
+                }
+              }
+            : null,
         announcement: announcement,
         serverMessages: ServerMessagesPanel(controller: controller.business),
         information: ConnectionInformationView(
@@ -191,6 +235,26 @@ class HomeView extends StatelessWidget {
     children: [
       _HomeHeader(data: data),
       _StatusBlock(data: data),
+      if (data.overrideStatus case final String status)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton(
+            onPressed: data.onOverride,
+            style: OutlinedButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              foregroundColor: data.overrideWarning
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Expanded(child: Text(status)),
+                if (data.onOverride != null)
+                  const Icon(Icons.chevron_right, size: 18),
+              ],
+            ),
+          ),
+        ),
       _HomeActions(data: data),
       _HomeFeedbackSlot(data: data),
       SizedBox(
@@ -616,4 +680,42 @@ class _StatusLabel extends StatelessWidget {
       );
     },
   );
+}
+
+String? projectOverrideStatus(
+  ConfigurationSummary? configuration,
+  List<SessionSummary> related, {
+  required bool fresh,
+}) {
+  if (configuration == null) return null;
+  final state = configuration.overrideState;
+  final session = related.length == 1 ? related.single : null;
+  final usesOverride = session?.hasProtocolOverride == true;
+  final cleanup = related.any((s) => s.cleanupRequired);
+  final String? status;
+  if (cleanup &&
+      (related.any((s) => s.cleanupRequired && s.hasOverrideDocument) ||
+          usesOverride ||
+          state == 'enabled' ||
+          state == 'empty' ||
+          state == 'invalid')) {
+    status = state == 'none' || state == 'empty'
+        ? '保存的覆写已清除或停用，旧会话清理未完成。请在连接与诊断中移除当前会话。'
+        : '覆写配置已更改，旧会话清理未完成。请在连接与诊断中移除当前会话。';
+  } else if (usesOverride && session?.state == SessionState.authenticated) {
+    status = '当前连接使用自定义协议覆写规则';
+  } else if (usesOverride) {
+    status = '当前会话使用自定义协议覆写规则';
+  } else {
+    status = switch (state) {
+      'enabled'
+          when session == null || session.state == SessionState.suspended =>
+        '自定义协议覆写规则已启用',
+      'enabled' => '已保存自定义协议覆写规则',
+      'invalid' => '自定义协议覆写规则无效',
+      'unavailable' => '自定义协议覆写规则暂不可用',
+      _ => null,
+    };
+  }
+  return status == null || fresh ? status : '上次读取：$status';
 }

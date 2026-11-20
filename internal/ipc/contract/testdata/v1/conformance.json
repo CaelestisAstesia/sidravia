@@ -133,7 +133,7 @@
     {
       "name": "session-start-one-shot",
       "method": "session.startOneShot",
-      "request": "{\"kind\":\"request\",\"id\":\"v1-03\",\"method\":\"session.startOneShot\",\"payload\":{\"displayName\":\"Fixture one-shot\",\"institutionProfileId\":\"jlu\",\"username\":\"fixture-user\",\"password\":\"fixture-one-shot-password\",\"protocolContextOverride\":{},\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
+      "request": "{\"kind\":\"request\",\"id\":\"v1-03\",\"method\":\"session.startOneShot\",\"payload\":{\"displayName\":\"Fixture one-shot\",\"institutionProfileId\":\"jlu\",\"username\":\"fixture-user\",\"password\":\"fixture-one-shot-password\",\"networkBindingPolicy\":{\"mode\":\"automatically_select_latest_available\"}}}",
       "successResponse": "{\"kind\":\"response\",\"id\":\"v1-03\",\"ok\":true,\"result\":{\"outcome\":\"created\",\"session\":{\"sessionId\":\"session-one-shot\",\"displayName\":\"Fixture one-shot\",\"institutionProfileId\":\"jlu\",\"institutionDisplayName\":\"Jilin University\",\"authenticationProtocolId\":\"drcom-5.2.0-d\",\"accountName\":\"fixture-account\",\"intent\":\"maintain_authentication\",\"state\":\"waiting_for_network\",\"revision\":1,\"updatedAt\":\"2026-08-14T10:00:00Z\",\"protocolSocket\":{\"state\":\"not_observed\",\"runGeneration\":0}}}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-03\",\"ok\":false,\"error\":{\"code\":\"profile_not_found\",\"message\":\"institution profile not found\"}}"
     },

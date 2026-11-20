@@ -6,7 +6,7 @@ import (
 )
 
 func (value *ConfigurationResult) UnmarshalJSON(data []byte) error {
-	if err := networkObject(data, []string{"configurationId", "displayName", "institutionProfileId", "institutionDisplayName", "authenticationProtocolId", "username", "credentialStored", "storageProtection", "autoLogin", "autoReconnect", "networkBindingPolicy", "runtimeAvailability"}); err != nil {
+	if err := networkObject(data, []string{"configurationId", "displayName", "institutionProfileId", "institutionDisplayName", "authenticationProtocolId", "username", "credentialStored", "storageProtection", "autoLogin", "autoReconnect", "networkBindingPolicy", "runtimeAvailability"}, "version", "overrideState", "overrideSchemaVersion"); err != nil {
 		return err
 	}
 	type plain ConfigurationResult

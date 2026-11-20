@@ -140,7 +140,6 @@ type OneShotAuthenticationInput struct {
 	InstitutionProfileID     config.InstitutionProfileID
 	AuthenticationCredential credential.AuthenticationCredential
 	NetworkBindingPolicy     session.NetworkBindingPolicy
-	ProtocolContextOverride  protocol.AuthenticationProtocolContextOverride
 }
 
 // ResolveOneShot resolves a typed one-shot request into the existing
@@ -190,7 +189,6 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 			DisplayName:             input.DisplayName,
 			InstitutionProfileID:    institutionProfile.InstitutionProfileID,
 			NetworkBindingPolicy:    input.NetworkBindingPolicy,
-			ProtocolContextOverride: append(protocol.AuthenticationProtocolContextOverride(nil), input.ProtocolContextOverride...),
 		},
 		AuthenticationCredential:      input.AuthenticationCredential,
 		InstitutionProfile:            institutionProfile,

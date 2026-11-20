@@ -496,23 +496,7 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 			continue
 		}
 		if flag == "--protocol-override-file" {
-			if options.protocolOverrideFileSet {
-				return authStartOptions{}, errCommandUsage
-			}
-			if !hasValue {
-				if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
-					return authStartOptions{}, errCommandUsage
-				}
-				value = args[index+1]
-				index++
-			}
-			if value == "" || strings.ContainsRune(value, '\x00') {
-				return authStartOptions{}, errCommandUsage
-			}
-			options.protocolOverrideFile = value
-			options.protocolOverrideFileSet = true
-			index++
-			continue
+			return authStartOptions{}, errors.New("一次性认证不支持协议覆写，请先保存到连接配置")
 		}
 		switch args[index] {
 		case "--profile":
@@ -562,7 +546,7 @@ func parseAuthStart(args []string) (authStartOptions, error) {
 		return authStartOptions{}, errors.New("网卡绑定选项不能与 --session 或 --config 同时使用")
 	}
 	if sessionSet || configSet {
-		if sessionSet && configSet || profileSet || usernameSet || passwordStdinSet || options.protocolOverrideFileSet {
+		if sessionSet && configSet || profileSet || usernameSet || passwordStdinSet {
 			return authStartOptions{}, errCommandUsage
 		}
 		return options, nil
