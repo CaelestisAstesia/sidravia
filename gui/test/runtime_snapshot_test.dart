@@ -208,6 +208,7 @@ void main() {
         ),
       );
       expect(codeScroll.controller!.position.pixels, greaterThan(0));
+      await tester.ensureVisible(find.byTooltip('复制快照'));
       await tester.tap(find.byTooltip('复制快照'));
       await tester.pumpAndSettle();
       expect(copied, initial);
@@ -215,6 +216,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('未找到匹配项'), findsOneWidget);
       expect(shown(), initial);
+      await tester.ensureVisible(find.byTooltip('清除查找'));
       await tester.tap(find.byTooltip('清除查找'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'id');
@@ -227,23 +229,28 @@ void main() {
             .onPressed,
         isNotNull,
       );
+      await tester.ensureVisible(find.byTooltip('下一个匹配项'));
       await tester.tap(find.byTooltip('下一个匹配项'));
       await tester.pumpAndSettle();
       expect(find.textContaining('2 /'), findsOneWidget);
       expect(shown(), initial);
+      await tester.ensureVisible(find.byTooltip('清除查找'));
       await tester.tap(find.byTooltip('清除查找'));
       await tester.pumpAndSettle();
       client.selectScenario('suspended');
       await controller.retry();
       await tester.pumpAndSettle();
       expect(shown(), initial);
+      await tester.ensureVisible(find.byTooltip('复制快照'));
       await tester.tap(find.byTooltip('复制快照'));
       await tester.pumpAndSettle();
       expect(copied, initial);
+      await tester.ensureVisible(find.byTooltip('刷新快照'));
       await tester.tap(find.byTooltip('刷新快照'));
       await tester.pump();
       expect(displayedSnapshot(tester)['sessions'][0]['state'], 'suspended');
       expect(shown(), isNot(initial));
+      await tester.ensureVisible(find.byTooltip('复制快照'));
       await tester.tap(find.byTooltip('复制快照'));
       await tester.pumpAndSettle();
       expect(copied, shown());
