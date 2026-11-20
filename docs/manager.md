@@ -4,7 +4,7 @@
 
 日常连接与配置使用 GUI 或 [CTL](advance.md)；普通安装版卸载从 Windows 应用列表进行。仅在需要命令行维护、排查系统集成时，使用本页命令。
 
-本文描述 `0.5.0-alpha.1` 源码的六项 MGR 操作。旧版遗留的卸载/清理命令已退役，相关职责由 Inno 安装器承担。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 不提供 MGR；其 GUI 使用独立的平台集成实现，见 [Linux 便携版](linux-portable.md)。非 Windows 的 MGR 构建执行维护操作时返回 `unsupported`。
+本文描述 `0.5.0-alpha.2` 源码的六项 MGR 操作。旧版遗留的卸载/清理命令已退役，相关职责由 Inno 安装器承担。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 不提供 MGR；其 GUI 使用独立的平台集成实现，见 [Linux 便携版](linux-portable.md)。非 Windows 的 MGR 构建执行维护操作时返回 `unsupported`。
 
 ## 调用范围与参数规则
 

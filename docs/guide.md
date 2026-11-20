@@ -1,6 +1,6 @@
 # 使用指南
 
-本页适用于 `0.5.0-alpha.1`。Windows 与 Linux GUI 的主要操作相同，Linux 安装与运行说明见[便携版](linux-portable.md)和 [Fedora RPM](linux-rpm.md)。
+本页适用于 `0.5.0-alpha.2`。Windows 与 Linux GUI 的主要操作相同，Linux 安装与运行说明见[便携版](linux-portable.md)和 [Fedora RPM](linux-rpm.md)。
 
 ## 连接配置
 

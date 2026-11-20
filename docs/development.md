@@ -54,7 +54,7 @@ python3 tools/developer/dev.py windows --package --windows-python 'C:\Python314\
 该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包：
 
 ```bash
-python3 tools/developer/dev.py package --version 0.5.0-alpha.1 --output dist/linux-amd64
+python3 tools/developer/dev.py package --version 0.5.0-alpha.2 --output dist/linux-amd64
 ```
 
 同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。ARM64 仅提供核心便携包，Windows 核心包包含 MGR；GUI 支持 Windows/Linux AMD64，安装程序为 Windows AMD64，RPM 初始目标为 Fedora 45 x86_64。ARM64 尚待实机验证。

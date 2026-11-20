@@ -1,6 +1,6 @@
 # Linux 便携版
 
-本页适用于 `0.5.0-alpha.1`。下载与版本变化见[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.1)。
+本页适用于 `0.5.0-alpha.2`。下载与版本变化见[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
 
 ## 运行环境
 

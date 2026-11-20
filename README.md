@@ -12,7 +12,7 @@ Sidravia 使用共享的 Go 认证核心与 Flutter 桌面界面，面向 Window
 
 ## 使用
 
-当前版本为 **[0.5.0-alpha.1](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.1)**。请按系统、架构和使用方式选择下载包。
+当前版本为 **[0.5.0-alpha.2](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)**。请按系统、架构和使用方式选择下载包。
 
 ### 选择下载包
 

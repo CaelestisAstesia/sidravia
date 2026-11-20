@@ -2,7 +2,7 @@
 
 本文介绍 Windows 与 Linux 图形界面的安装与首次连接，适用于吉林大学 Dr.Com 5.2.0 D 认证环境。核心包没有图形界面，使用方法见[命令行高级使用](advance.md)。
 
-本页适用于 `0.5.0-alpha.1`。从旧版升级时，请先阅读[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.1)。
+本页适用于 `0.5.0-alpha.2`。从旧版升级时，请先阅读[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
 
 ## 下载与安装
 
@@ -27,7 +27,7 @@ Linux 的自启在登录桌面后生效，自动认证需另行开启。便携�
 同时下载该版本的 `SHA256SUMS.txt`，与程序包放在同一目录。Windows 在该目录打开 PowerShell，文件名替换为实际下载的名称：
 
 ```powershell
-Get-FileHash .\sidravia-v0.5.0-alpha.1-windows-amd64-gui-portable.zip -Algorithm SHA256
+Get-FileHash .\sidravia-v0.5.0-alpha.2-windows-amd64-gui-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
