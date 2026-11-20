@@ -44,6 +44,41 @@ class ReleaseArtifactContracts(unittest.TestCase):
     def collect(self):
         return release.collect(self.fixture.repo, self.request, self.key, 'go')
 
+    def test_xz_preparation_preserves_primary_manifest_and_ownership(self):
+        import gzip, lzma
+        legacy, _ = self.collect()
+        primary = self.root / 'sidravia-release.json'
+        primary.write_text(json.dumps(legacy))
+        original = next(self.fixture.out.glob('*.tar.gz'))
+        encoded = original.with_name(original.name[:-3] + '.xz')
+        encoded.write_bytes(lzma.compress(gzip.decompress(original.read_bytes()), preset=6))
+        original.unlink()
+        (self.fixture.out / 'SHA256SUMS.txt').write_text(hashlib.sha256(encoded.read_bytes()).hexdigest() + '  ' + encoded.name + '\n')
+        self.data['expectedAssets'] = [encoded.name]
+        self.save()
+        output = self.root / 'sidravia-release-xz.json'
+        before = primary.read_bytes()
+        with mock.patch.object(release, 'public_check'):
+            result = release.prepare(self.fixture.repo, 'go', self.request, self.key, output)
+        self.assertEqual(primary.read_bytes(), before)
+        sidecar = json.loads(output.read_text())
+        self.assertEqual(sidecar['assets'][0]['filesSha256'], legacy['assets'][0]['filesSha256'])
+        self.assertEqual(result['signature'], 'not_checked')
+
+    def test_xz_sidecar_requires_matching_legacy_ownership(self):
+        import copy
+        legacy, _ = self.collect()
+        (self.root / 'sidravia-release.json').write_text(json.dumps(legacy))
+        sidecar = copy.deepcopy(legacy)
+        sidecar['assets'][0]['name'] = sidecar['assets'][0]['name'][:-3] + '.xz'
+        path = self.root / 'sidravia-release-xz.json'
+        release.encoding_compatibility(sidecar, path)
+        with self.assertRaisesRegex(ValueError, 'separate_name'):
+            release.encoding_compatibility(sidecar, self.root / 'sidravia-release.json')
+        sidecar['assets'][0]['filesSha256'] = 'a' * 64
+        with self.assertRaisesRegex(ValueError, 'ownership_mismatch'):
+            release.encoding_compatibility(sidecar, path)
+
     def test_existing_consumer_binds_exact_archive_and_ownership(self):
         manifest, receipts = self.collect()
         self.assertEqual(manifest['keyId'], hashlib.sha256(bytes(range(32))).hexdigest())

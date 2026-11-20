@@ -1,4 +1,4 @@
-package releases
+package github
 
 import (
 	"context"
@@ -8,19 +8,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
+
+	"sidravia/internal/update/releases"
 )
 
 var ErrIntegrity = errors.New("update package integrity check failed")
 
 // Download stores a verified artifact in a new private child of an already
 // secured cache root. It never executes a file. Publisher trust is independent.
-func Download(ctx context.Context, client *http.Client, c Candidate, cacheRoot string) (string, error) {
-	if err := validateCandidate(c); err != nil {
+func Download(ctx context.Context, client *http.Client, c releases.Candidate, cacheRoot string) (string, error) {
+	if err := releases.ValidateCandidate(c); err != nil {
 		return "", err
 	}
 	if err := ctx.Err(); err != nil {
@@ -31,7 +31,7 @@ func Download(ctx context.Context, client *http.Client, c Candidate, cacheRoot s
 		return "", err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", ErrMetadata
+		return "", releases.ErrMetadata
 	}
 	if client == nil {
 		client = http.DefaultClient
@@ -40,8 +40,8 @@ func Download(ctx context.Context, client *http.Client, c Candidate, cacheRoot s
 	copyClient.Timeout = 10 * time.Minute
 	copyClient.Jar = nil
 	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !downloadHost(req.URL) {
-			return ErrMetadata
+		if len(via) >= 5 || !releases.DownloadHost(req.URL) {
+			return releases.ErrMetadata
 		}
 		req.Header.Del("Authorization")
 		req.Header.Del("Cookie")
@@ -105,40 +105,4 @@ func Download(ctx context.Context, client *http.Client, c Candidate, cacheRoot s
 	}
 	complete = true
 	return final, nil
-}
-func downloadHost(u *url.URL) bool {
-	if u == nil || u.Scheme != "https" || u.User != nil {
-		return false
-	}
-	switch u.Host {
-	case "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com":
-		return true
-	}
-	return false
-}
-func validateCandidate(c Candidate) error {
-	v, err := ParseVersion(c.Version)
-	if err != nil {
-		return ErrMetadata
-	}
-	if c.Name == "" || len(c.Name) > 200 || !strings.HasPrefix(c.Name, "sidravia-v"+v.String()+"-") {
-		return ErrMetadata
-	}
-	for _, ch := range c.Name {
-		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || strings.ContainsRune("._+-", ch)) {
-			return ErrMetadata
-		}
-	}
-	if c.Size <= 0 || c.Size > 2<<30 {
-		return ErrMetadata
-	}
-	hash, err := hex.DecodeString(c.SHA256)
-	if err != nil || len(hash) != 32 || hex.EncodeToString(hash) != c.SHA256 {
-		return ErrMetadata
-	}
-	u, err := url.Parse(c.DownloadURL)
-	if err != nil || !downloadHost(u) || u.Host != "github.com" || u.Path != "/"+repository+"/releases/download/v"+c.Version+"/"+c.Name || u.RawQuery != "" || u.Fragment != "" {
-		return ErrMetadata
-	}
-	return nil
 }

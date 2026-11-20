@@ -18,6 +18,25 @@ class ValidationContracts(unittest.TestCase):
     def stage(self, name, script, **kwargs):
         return dict(name=name, argv=[sys.executable, '-c', script], timeout_seconds=10, **kwargs)
 
+    @unittest.skipUnless(os.name != 'nt', 'non-Windows rejection contract')
+    def test_native_update_mode_is_not_silently_enabled_on_other_hosts(self):
+        with tempfile.TemporaryDirectory() as folder, self.assertRaisesRegex(ValueError, 'Windows worker'):
+            runner.run_request({'schema': 1, 'stages': [self.stage('never', 'raise Exception()')]}, folder, native_update_fixtures=True)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows default Job contract')
+    def test_default_job_still_blocks_explicit_breakaway(self):
+        probe = Path(__file__).resolve().parents[1] / 'test_native_breakaway.py'
+        with tempfile.TemporaryDirectory() as folder:
+            result = runner.run_request({'schema': 1, 'stages': [{'name': 'probe', 'argv': [sys.executable, str(probe), '--expect-blocked'], 'timeout_seconds': 30}]}, folder)
+        self.assertEqual(result['status'], 'passed')
+
+    @unittest.skipUnless(os.name == 'nt' and os.environ.get('SIDRAVIA_NATIVE_JOB_PROBE_FIXTURE') == '1', 'explicit dedicated native VM only')
+    def test_native_job_requires_explicit_breakaway_and_same_identity(self):
+        probe = Path(__file__).resolve().parents[1] / 'test_native_breakaway.py'
+        with tempfile.TemporaryDirectory() as folder:
+            result = runner.run_request({'schema': 1, 'stages': [{'name': 'probe', 'argv': [sys.executable, str(probe)], 'timeout_seconds': 30}]}, folder, native_update_fixtures=True)
+        self.assertEqual(result['status'], 'passed')
+
     def test_unicode_argv_logs_and_machine_output(self):
         stage = self.stage('unicode', 'import sys;print(repr(sys.argv[1:]));print("错误",file=sys.stderr)')
         stage['argv'] += ['中文 空格', 'a"b', 'tail\\']

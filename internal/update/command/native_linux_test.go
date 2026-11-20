@@ -59,6 +59,17 @@ func TestNativeCLIUpdate(t *testing.T) {
 	if os.Getenv("SIDRAVIA_CLI_UPDATE_FIXTURE") != "1" {
 		t.Skip("explicit private CLI fixture required")
 	}
+	nativeCLIUpdate(t, false)
+}
+
+func TestNativeCLIXZUpdate(t *testing.T) {
+	if os.Getenv("SIDRAVIA_CLI_XZ_FIXTURE") != "1" {
+		t.Skip("explicit private XZ CLI fixture required")
+	}
+	nativeCLIUpdate(t, true)
+}
+
+func nativeCLIUpdate(t *testing.T, useXZ bool) {
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +110,12 @@ func TestNativeCLIUpdate(t *testing.T) {
 	target := filepath.Join(owned, "portable with spaces")
 	nextDir := filepath.Join(owned, "new-products")
 	baseEnv := os.Environ()
-	for _, item := range []struct{ dir, version, build string }{{target, "1.0.0", "cli-old"}, {nextDir, "1.1.0", "cli-new"}} {
+	products := []struct{ dir, version, build string }{{target, "1.0.0", "cli-old"}, {nextDir, "1.1.0", "cli-new"}}
+	thirdDir := filepath.Join(owned, "third-products")
+	if useXZ {
+		products = append(products, struct{ dir, version, build string }{thirdDir, "1.2.0", "cli-third"})
+	}
+	for _, item := range products {
 		if err := os.MkdirAll(item.dir, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -114,6 +130,20 @@ func TestNativeCLIUpdate(t *testing.T) {
 	}
 	old := makeCLIImage(t, target, "1.0.0", "cli-old", "1:11", key, keys)
 	next := makeCLIImage(t, nextDir, "1.1.0", "cli-new", "2:22", key, keys)
+	nextGzip := next
+	if useXZ {
+		next = cliXZImage(t, next, key, keys)
+	}
+	type encodingPair struct{ legacy, selected cliImage }
+	published := map[string]encodingPair{"1.0.0": {old, old}, "1.1.0": {nextGzip, next}}
+	var third cliImage
+	if useXZ {
+		third = makeCLIImage(t, thirdDir, "1.2.0", "cli-third", "3:33", key, keys)
+	}
+	releaseID := 2
+	thirdPhase := false
+	postXZSourceHits := 0
+
 	if err := os.WriteFile(filepath.Join(target, packagefiles.Name), old.index, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -130,11 +160,18 @@ func TestNativeCLIUpdate(t *testing.T) {
 		defer mu.Unlock()
 		hits++
 		if r.Host == "api.github.com" && r.URL.Path == "/repos/CaelestisAstesia/sidravia/releases" {
-			json.NewEncoder(w).Encode([]any{map[string]any{"id": 2, "tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": []any{map[string]any{"id": candidateID, "name": next.candidate.Name, "size": next.candidate.Size, "digest": "sha256:" + next.candidate.SHA256, "browser_download_url": next.candidate.DownloadURL, "state": "uploaded"}}}})
+			json.NewEncoder(w).Encode([]any{map[string]any{"id": releaseID, "tag_name": "v" + next.candidate.Version, "draft": false, "prerelease": false, "assets": []any{map[string]any{"id": candidateID, "name": next.candidate.Name, "size": next.candidate.Size, "digest": "sha256:" + next.candidate.SHA256, "browser_download_url": next.candidate.DownloadURL, "state": "uploaded"}}}})
 			return
 		}
-		image := next
-		prefix := "/CaelestisAstesia/sidravia/releases/download/v1.1.0/"
+		image, legacy := next, nextGzip
+		prefix := "/CaelestisAstesia/sidravia/releases/download/v" + next.candidate.Version + "/"
+		for version, pair := range published {
+			at := "/CaelestisAstesia/sidravia/releases/download/v" + version + "/"
+			if strings.HasPrefix(r.URL.Path, at) {
+				image, legacy, prefix = pair.selected, pair.legacy, at
+				break
+			}
+		}
 		if strings.HasPrefix(r.URL.Path, "/CaelestisAstesia/sidravia/releases/download/v1.0.0/") {
 			image = old
 			prefix = "/CaelestisAstesia/sidravia/releases/download/v1.0.0/"
@@ -161,6 +198,9 @@ func TestNativeCLIUpdate(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		if image.candidate.Version == "1.0.0" {
+			legacy = image
+		}
 		if newLimited && image.candidate.Version == "1.1.0" {
 			w.Header().Set("Retry-After", "600")
 			w.WriteHeader(429)
@@ -169,8 +209,15 @@ func TestNativeCLIUpdate(t *testing.T) {
 		name := strings.TrimPrefix(r.URL.Path, prefix)
 		switch name {
 		case releases.ReleaseManifestName:
-			w.Write(image.manifest)
+			if thirdPhase && image.candidate.Version == "1.1.0" {
+				postXZSourceHits++
+			}
+			w.Write(legacy.manifest)
 		case releases.ReleaseSignatureName:
+			w.Write(legacy.signature)
+		case releases.XZReleaseManifestName:
+			w.Write(image.manifest)
+		case releases.XZReleaseSignatureName:
 			w.Write(image.signature)
 		case image.candidate.Name:
 			w.Write(image.archive)
@@ -482,6 +529,37 @@ func TestNativeCLIUpdate(t *testing.T) {
 	}
 	life("status")
 	run("ok", "status")
+	if useXZ {
+		mu.Lock()
+		published["1.2.0"] = encodingPair{third, third}
+		next, nextGzip, releaseID, candidateID, thirdPhase = third, third, 3, 33, true
+		mu.Unlock()
+		run("ok", "check")
+		run("ok", "download", "--candidate", "3:33")
+		again := run("ok", "apply", "--candidate", "3:33", "--confirm")
+		if err := json.Unmarshal(again, &result); err != nil || !result.FilesApplied || result.Operation.Phase != operations.Completed || result.ApplicationRecovery != "ready" {
+			t.Fatalf("post-XZ upgrade: %s %v", again, err)
+		}
+		raw, err := os.ReadFile(layout.RuntimeInfoPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current, err := contract.DecodeRuntimeInfo(raw)
+		if err != nil || current.ProductVersion != "1.2.0" || current.BuildID != "cli-third" {
+			t.Fatalf("post-XZ runtime identity: %+v %v", current, err)
+		}
+		mu.Lock()
+		sourceHits := postXZSourceHits
+		mu.Unlock()
+		if sourceHits == 0 {
+			t.Fatal("XZ installed source was not authenticated through legacy metadata")
+		}
+		run("ok", "version")
+		life("status")
+		if err := os.WriteFile(filepath.Join(owned, "xz-passed"), []byte("test-key gzip A -> XZ B -> gzip C; signed source/index verification, live daemon normal exit and cold restoration; loopback-only\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile(filepath.Join(owned, "passed"), []byte("real CLI check/download/confirmed exec apply/status + source/cache/candidate/backoff/recover guards\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -601,4 +679,53 @@ func cliTLSProxy(t *testing.T, handler http.Handler) (string, []byte) {
 	}))
 	t.Cleanup(proxy.Close)
 	return proxy.URL, certPEM
+}
+
+// cliXZImage changes only the archive encoding and signed transport identity;
+// the installed ownership bytes remain identical to the gzip counterpart.
+func cliXZImage(t *testing.T, image cliImage, key ed25519.PrivateKey, keys *releases.PublisherKeys) cliImage {
+	t.Helper()
+	gz, err := gzip.NewReader(bytes.NewReader(image.archive))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(gz)
+	gz.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("xz", "--threads=1", "--check=crc64", "-6", "--lzma2=dict=8MiB", "--stdout")
+	cmd.Stdin = bytes.NewReader(raw)
+	for _, value := range os.Environ() {
+		name, _, _ := strings.Cut(value, "=")
+		if name != "XZ_OPT" && name != "XZ_DEFAULTS" {
+			cmd.Env = append(cmd.Env, value)
+		}
+	}
+	compressed, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	image.archive = compressed
+	image.candidate.Name = strings.TrimSuffix(image.candidate.Name, ".gz") + ".xz"
+	image.candidate.Size = int64(len(compressed))
+	image.candidate.SHA256 = cliDigest(compressed)
+	image.candidate.DownloadURL = strings.TrimSuffix(image.candidate.DownloadURL, ".gz") + ".xz"
+	var manifest releases.ReleaseManifest
+	if err := json.Unmarshal(image.manifest, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Assets[0].Name = image.candidate.Name
+	manifest.Assets[0].Size = image.candidate.Size
+	manifest.Assets[0].SHA256 = image.candidate.SHA256
+	image.manifest, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image.signature = ed25519.Sign(key, image.manifest)
+	image.proof, err = keys.Verify(image.manifest, image.signature, image.candidate.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return image
 }

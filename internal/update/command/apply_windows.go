@@ -6,11 +6,12 @@ import (
 	"context"
 	"errors"
 	"runtime"
-	"sidravia/internal/update"
-	"sidravia/internal/update/portable"
 
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update"
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
+	"sidravia/internal/update/portable"
 	"sidravia/internal/update/releases"
 	"sidravia/internal/update/setup"
 )
@@ -39,13 +40,13 @@ func platformApplyErrorCode(err error) string {
 	}
 	return "apply_failed"
 }
-func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *releases.GitHub, c releases.Candidate, path string, _ func()) (*applyResult, error) {
+func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *github.GitHub, c releases.Candidate, path string, _ func()) (*applyResult, error) {
 	valid, err := inspectCached(root, path, &c)
 	if err != nil {
 		return nil, err
 	}
 	if !valid {
-		return nil, releases.ErrIntegrity
+		return nil, github.ErrIntegrity
 	}
 	old, oldAsset, index, err := installedProof(ctx, source, layout, version, build)
 	if err != nil {
@@ -67,7 +68,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	}
 	return &applyResult{Operation: &operationView{ID: r.ID, Phase: r.Phase, SourceVersion: r.Source.Version, TargetVersion: r.Target.Version, UpdatedAt: r.UpdatedAt, RequiresStartupBlock: r.RequiresStartupBlock()}, HandedOver: true, ApplicationRecovery: "pending", Authentication: "not_evaluated"}, err
 }
-func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *releases.GitHub) (*applyResult, error) {
+func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *github.GitHub) (*applyResult, error) {
 	if layout.Mode == productlayout.ModePortable {
 		return recoverPortableWindows(ctx, layout, version, build, id, source)
 	}
@@ -83,7 +84,7 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 	return operationResult(context.WithoutCancel(ctx), store), err
 }
 
-func recoverPortableWindows(ctx context.Context, layout productlayout.Layout, version, build, id string, source *releases.GitHub) (*applyResult, error) {
+func recoverPortableWindows(ctx context.Context, layout productlayout.Layout, version, build, id string, source *github.GitHub) (*applyResult, error) {
 	if !update.ValidOperationID(id) {
 		return nil, operations.ErrInvalid
 	}

@@ -1,4 +1,4 @@
-package releases
+package github
 
 import (
 	"context"
@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+
+	"sidravia/internal/update/releases"
 )
 
 var ErrSignatureMissing = errors.New("release has no publisher signature")
@@ -16,45 +19,53 @@ var ErrSignatureMissing = errors.New("release has no publisher signature")
 // exact release. It never enables installation or trusts a key from that release.
 // Apply must authenticate again against current roots rather than trusting a
 // cached candidate's explanatory fields.
-func (g *GitHub) AuthenticateCandidate(ctx context.Context, c Candidate) (VerifiedRelease, error) {
+func (g *GitHub) AuthenticateCandidate(ctx context.Context, c releases.Candidate) (releases.VerifiedRelease, error) {
 	if err := ctx.Err(); err != nil {
-		return VerifiedRelease{}, err
+		return releases.VerifiedRelease{}, err
 	}
-	if err := validateCandidate(c); err != nil {
-		return VerifiedRelease{}, err
+	if err := releases.ValidateCandidate(c); err != nil {
+		return releases.VerifiedRelease{}, err
 	}
-	if g.publisherKeys == nil || len(g.publisherKeys.keys) == 0 {
-		return VerifiedRelease{}, ErrUntrusted
+	if !g.publisherKeys.Configured() {
+		return releases.VerifiedRelease{}, releases.ErrUntrusted
 	}
 
-	verified, err := g.AuthenticateVersion(ctx, c.Version)
+	verified, err := g.authenticateVersion(ctx, c.Version, strings.HasSuffix(c.Name, ".tar.xz"))
 	if err != nil {
-		return VerifiedRelease{}, err
+		return releases.VerifiedRelease{}, err
 	}
 	if _, err := verified.Asset(c); err != nil {
-		return VerifiedRelease{}, err
+		return releases.VerifiedRelease{}, err
 	}
 	return verified, nil
 }
 
 // AuthenticateVersion retrieves only fixed publisher metadata for this exact
 // canonical version. It is also used to prove the installed source inventory.
-func (g *GitHub) AuthenticateVersion(ctx context.Context, version string) (VerifiedRelease, error) {
-	if _, err := ParseVersion(version); err != nil {
-		return VerifiedRelease{}, ErrMetadata
+func (g *GitHub) AuthenticateVersion(ctx context.Context, version string) (releases.VerifiedRelease, error) {
+	return g.authenticateVersion(ctx, version, false)
+}
+
+func (g *GitHub) authenticateVersion(ctx context.Context, version string, useXZ bool) (releases.VerifiedRelease, error) {
+	if _, err := releases.ParseVersion(version); err != nil {
+		return releases.VerifiedRelease{}, releases.ErrMetadata
 	}
 	if g.publisherKeys == nil || !g.publisherKeys.Configured() {
-		return VerifiedRelease{}, ErrUntrusted
+		return releases.VerifiedRelease{}, releases.ErrUntrusted
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	data, err := g.releaseMetadata(ctx, version, ReleaseManifestName, ReleaseManifestLimit)
-	if err != nil {
-		return VerifiedRelease{}, err
+	manifestName, signatureName := releases.ReleaseManifestName, releases.ReleaseSignatureName
+	if useXZ {
+		manifestName, signatureName = releases.XZReleaseManifestName, releases.XZReleaseSignatureName
 	}
-	signature, err := g.releaseMetadata(ctx, version, ReleaseSignatureName, ed25519.SignatureSize)
+	data, err := g.releaseMetadata(ctx, version, manifestName, releases.ReleaseManifestLimit)
 	if err != nil {
-		return VerifiedRelease{}, err
+		return releases.VerifiedRelease{}, err
+	}
+	signature, err := g.releaseMetadata(ctx, version, signatureName, ed25519.SignatureSize)
+	if err != nil {
+		return releases.VerifiedRelease{}, err
 	}
 	return g.publisherKeys.Verify(data, signature, version)
 }
@@ -63,14 +74,14 @@ func (g *GitHub) releaseMetadata(ctx context.Context, version, name string, maxi
 	client := *g.client
 	client.Jar = nil
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !downloadHost(req.URL) {
-			return ErrMetadata
+		if len(via) >= 5 || !releases.DownloadHost(req.URL) {
+			return releases.ErrMetadata
 		}
 		req.Header.Del("Authorization")
 		req.Header.Del("Cookie")
 		return nil
 	}
-	url := "https://github.com/" + repository + "/releases/download/v" + version + "/" + name
+	url := "https://github.com/" + releases.Repository + "/releases/download/v" + version + "/" + name
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -94,7 +105,7 @@ func (g *GitHub) releaseMetadata(ctx context.Context, version, name string, maxi
 		return nil, fmt.Errorf("release metadata source returned HTTP %d", response.StatusCode)
 	}
 	if response.ContentLength > maximum {
-		return nil, ErrMetadata
+		return nil, releases.ErrMetadata
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, maximum+1))
 	if err != nil {
@@ -104,7 +115,7 @@ func (g *GitHub) releaseMetadata(ctx context.Context, version, name string, maxi
 		return nil, err
 	}
 	if len(data) == 0 || int64(len(data)) > maximum {
-		return nil, ErrMetadata
+		return nil, releases.ErrMetadata
 	}
 	return data, nil
 }

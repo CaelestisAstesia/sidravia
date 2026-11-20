@@ -1,4 +1,4 @@
-package releases
+package github
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"sidravia/internal/update/releases"
 )
 
 type roundTrip func(*http.Request) (*http.Response, error)
@@ -19,7 +21,7 @@ func TestDownloadVerifiesBytesAndNeverLeavesBadPackage(t *testing.T) {
 	data := "synthetic update bytes"
 	hash := sha256.Sum256([]byte(data))
 	name := "sidravia-v1.0.0-windows-amd64-setup.exe"
-	candidate := Candidate{Version: "1.0.0", Name: name, Size: int64(len(data)), SHA256: hex.EncodeToString(hash[:]), DownloadURL: "https://github.com/" + repository + "/releases/download/v1.0.0/" + name}
+	candidate := releases.Candidate{Version: "1.0.0", Name: name, Size: int64(len(data)), SHA256: hex.EncodeToString(hash[:]), DownloadURL: "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/" + name}
 	for _, body := range []string{data, "truncated", data + "extra", strings.Repeat("x", len(data))} {
 		t.Run(body, func(t *testing.T) {
 			cache := t.TempDir()
@@ -48,9 +50,9 @@ func TestDownloadVerifiesBytesAndNeverLeavesBadPackage(t *testing.T) {
 	}
 }
 func TestDownloadRejectsArbitraryPathAndHostBeforeNetwork(t *testing.T) {
-	for _, candidate := range []Candidate{{Version: "1.0.0", Name: "../secret"}, {Version: "1.0.0", Name: "sidravia-v1.0.0-windows-amd64-setup.exe", Size: 1, SHA256: strings.Repeat("a", 64), DownloadURL: "https://foreign.invalid/setup.exe"}} {
+	for _, candidate := range []releases.Candidate{{Version: "1.0.0", Name: "../secret"}, {Version: "1.0.0", Name: "sidravia-v1.0.0-windows-amd64-setup.exe", Size: 1, SHA256: strings.Repeat("a", 64), DownloadURL: "https://foreign.invalid/setup.exe"}} {
 		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) { t.Fatal("network called"); return nil, nil })}
-		if _, err := Download(context.Background(), client, candidate, t.TempDir()); !errors.Is(err, ErrMetadata) {
+		if _, err := Download(context.Background(), client, candidate, t.TempDir()); !errors.Is(err, releases.ErrMetadata) {
 			t.Fatal(err)
 		}
 	}
@@ -75,7 +77,7 @@ func TestDownloadCanceledBeforePublicationLeavesNoPackage(t *testing.T) {
 	payload := "synthetic update bytes"
 	hash := sha256.Sum256([]byte(payload))
 	name := "sidravia-v1.0.0-windows-amd64-setup.exe"
-	candidate := Candidate{Version: "1.0.0", Name: name, Size: int64(len(payload)), SHA256: hex.EncodeToString(hash[:]), DownloadURL: "https://github.com/" + repository + "/releases/download/v1.0.0/" + name}
+	candidate := releases.Candidate{Version: "1.0.0", Name: name, Size: int64(len(payload)), SHA256: hex.EncodeToString(hash[:]), DownloadURL: "https://github.com/" + releases.Repository + "/releases/download/v1.0.0/" + name}
 	for _, before := range []bool{false, true} {
 		when := "buffered-body"
 		if before {

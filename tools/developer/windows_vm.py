@@ -139,6 +139,70 @@ def host_lock(directory, domain):
         yield
 
 
+def cleanup_native_updates(guest, root, owner, sid):
+    """Stop only exact-handle processes in this run's owned fixture tree.
+
+    A normal pass must leave none. Stopping a leaked process is reported as a
+    failed acceptance, not hidden behind task removal or VM shutdown.
+    """
+    script = r"""$ErrorActionPreference='Stop'
+$r=@ROOT@;$owner=@OWNER@;$sid=@SID@
+$part=$r
+while($part){if((Test-Path -LiteralPath $part) -and ((Get-Item -LiteralPath $part -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'linked native fixture root'};$part=[IO.Path]::GetDirectoryName($part)}
+$marker=Join-Path $r '.sidravia-native-owner'
+if(!(Test-Path -LiteralPath $marker -PathType Leaf) -or ((Get-Item -LiteralPath $marker -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -or [IO.File]::ReadAllText($marker) -cne $owner){throw 'native fixture ownership unavailable'}
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class SidraviaNativeToken {
+ [DllImport("advapi32.dll", SetLastError=true)] public static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+ [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
+}
+'@
+function NativePath($path){
+ if($path.StartsWith('\\?\')){$path=$path.Substring(4)}
+ return [IO.Path]::GetFullPath($path)
+}
+function InNativeScope($path){return (NativePath $path).StartsWith(($r.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase)}
+function AssertNoLinks($path){
+ $part=$path
+ while($part){if((Get-Item -LiteralPath $part -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'linked native executable path'};$part=[IO.Path]::GetDirectoryName($part)}
+}
+$stopped=@()
+for($pass=0;$pass -lt 5;$pass++){
+ $rows=@(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and (InNativeScope $_.ExecutablePath)})
+ if(!$rows.Count){break}
+ foreach($row in $rows){
+  $p=$null
+  try{
+   $p=[Diagnostics.Process]::GetProcessById([int]$row.ProcessId)
+   $handle=$p.Handle
+   $path=$p.MainModule.FileName
+   if(!(InNativeScope $path)){throw 'native process identity changed'}
+   AssertNoLinks (NativePath $path)
+   $token=[IntPtr]::Zero
+   if(![SidraviaNativeToken]::OpenProcessToken($handle,8,[ref]$token)){throw 'native process token unavailable'}
+   try{$identity=[Security.Principal.WindowsIdentity]::new($token);try{if($identity.User.Value -cne $sid){throw 'native process owner mismatch'}}finally{$identity.Dispose()}}finally{[void][SidraviaNativeToken]::CloseHandle($token)}
+   $created=$p.StartTime.ToUniversalTime().ToString('o')
+   $id=$p.Id
+   $p.Kill()
+   if(!$p.WaitForExit(5000)){throw 'native process did not exit'}
+   $stopped+=@{pid=$id;created=$created;path=$path}
+  }catch{
+   if($p -and $p.HasExited){continue}
+   if(!$p -and $_.Exception.GetBaseException() -is [ArgumentException] -and !(Get-Process -Id ([int]$row.ProcessId) -ErrorAction SilentlyContinue)){continue}
+   throw
+  }finally{if($p){$p.Dispose()}}
+ }
+}
+$left=@(Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -and (InNativeScope $_.ExecutablePath)})
+if($left.Count){throw 'native fixture processes still running'}
+@{verified=$true;stopped=@($stopped);remaining=0} | ConvertTo-Json -Depth 5 -Compress
+"""
+    script = script.replace('@ROOT@', ps_quote(root)).replace('@OWNER@', ps_quote(owner)).replace('@SID@', ps_quote(sid))
+    return json.loads(guest.powershell(script, timeout=60))
+
+
 def run(root, args, manifest, source_after):
     guest = Guest(args.uri, args.domain)
     run_id = uuid.uuid4().hex
@@ -153,12 +217,20 @@ def run(root, args, manifest, source_after):
     remote = guest_root + '\\runs\\' + run_id
     source = remote + '\\source'
     request = expand_request(runner.read_json(args.request), {'source': source, 'run': remote, 'workspace': guest_root + '\\build'})
+    native_updates = getattr(args, 'native_update_fixtures', False)
+    native_root = guest_root + '\\fx-native-' + run_id[:12]
+    native_owner = 'sidravia-native-update-v1:' + run_id
+    if native_updates:
+        request.setdefault('environment', {}).update(SIDRAVIA_INNO_TEST_ROOT=native_root, SIDRAVIA_WINDOWS_PORTABLE_TEST_ROOT=native_root, SIDRAVIA_NATIVE_JOB_PROBE_FIXTURE='1')
     identity = {'commit': manifest['source_commit'], 'dirty': manifest['dirty'], 'manifest_sha256': hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(), 'file_count': len(manifest['files'])}
     request['source'] = identity
     payload = snapshot(root, manifest)
     receipt = {'schema': 1, 'kind': 'windows-vm', 'status': 'failed', 'source': identity, 'stages': [], 'guest_run': remote, 'task': task, 'cleanup': 'not_started'}
     started = time.monotonic()
     task_created = False
+    native_created = False
+    if native_updates:
+        receipt.update(native_update_fixtures=True, native_fixture_root=native_root)
     common = subprocess.check_output(['git', 'rev-parse', '--git-common-dir'], cwd=root, text=True).strip()
     with host_lock((root / common).resolve() / 'development-locks', args.uri + ':' + args.domain):
         try:
@@ -187,6 +259,15 @@ $null=New-Item -ItemType Directory -Path $remote
 """
             preflight = json.loads(guest.powershell(setup))
             receipt['preflight'] = preflight
+            if native_updates:
+                guest.powershell(f"""
+$r={ps_quote(native_root)}
+if(Test-Path -LiteralPath $r){{throw 'native fixture root already exists'}}
+$null=New-Item -ItemType Directory -Path $r
+[IO.File]::WriteAllText((Join-Path $r '.sidravia-native-owner'),{ps_quote(native_owner)})
+""")
+                native_created = True
+
             print('VM preflight passed; transferring source snapshot', file=sys.stderr, flush=True)
             guest.put(remote + '\\source.zip', payload)
             guest.put(remote + '\\manifest.json', (json.dumps(manifest) + '\n').encode())
@@ -196,12 +277,13 @@ $null=New-Item -ItemType Directory -Path $remote
             # Run in the existing InteractiveToken, never as QGA's SYSTEM token.
             launcher = f"""
 $ErrorActionPreference='Stop'
-. {ps_quote(source + r'\tools\developer\process_job.ps1')}
+{'$env:SIDRAVIA_NATIVE_OUTER_JOB='+ps_quote('Local\\Sidravia-Native-'+run_id) if native_updates else ''}
+. {ps_quote(source + r'\tools\developer\process_job.ps1')}{' -AllowBreakaway' if native_updates else ''}
 & git -C {ps_quote(source)} init -q
 if($LASTEXITCODE){{exit $LASTEXITCODE}}
 & git -C {ps_quote(source)} add --all
 if($LASTEXITCODE){{exit $LASTEXITCODE}}
-& {ps_quote(args.windows_python)} {ps_quote(source + r'\tools\developer\validation_run.py')} --request {ps_quote(remote + r'\request.json')} --output {ps_quote(remote)} --format json
+& {ps_quote(args.windows_python)} {ps_quote(source + r'\tools\developer\validation_run.py')} --request {ps_quote(remote + r'\request.json')} --output {ps_quote(remote)} --format json{' --native-update-fixtures' if native_updates else ''}
 exit $LASTEXITCODE
 """
             # Extraction and verification happen before task registration.
@@ -271,13 +353,21 @@ Unregister-ScheduledTask -TaskName {ps_quote(task)} -Confirm:$false}}
                     receipt['cleanup'] = 'task_removed'
                 except Exception as error:
                     receipt.update(status='failed', cleanup='unknown', cleanup_error=str(error))
+            if native_created:
+                try:
+                    native = cleanup_native_updates(guest, native_root, native_owner, preflight['sid'])
+                    receipt['native_process_cleanup'] = native
+                    if native['stopped']:
+                        receipt.update(status='failed', cleanup_error='native fixture leaked processes; exact owned processes were stopped')
+                except Exception as error:
+                    receipt.update(status='failed', native_process_cleanup='unknown', cleanup_error=str(error))
             # Collect after the wrapper/job has exited, including the partial
             # report on timeout, cancellation or transport failures.
             if task_created and receipt['cleanup'] == 'task_removed':
                 try:
                     collected = json.loads(guest.get(remote + '\\report.json', 4 * 1024 * 1024).decode('utf-8-sig'))
                     receipt.update(stages=collected['stages'], guest_duration_seconds=collected.get('duration_seconds'))
-                    if 'error' not in receipt:
+                    if not any(k in receipt for k in ('error', 'cleanup_error')):
                         receipt['status'] = 'interrupted' if collected['status'] == 'running' else collected['status']
                     total = 0
                     for row in receipt['stages']:

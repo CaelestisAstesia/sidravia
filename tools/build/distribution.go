@@ -164,7 +164,14 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	archive := base + "-" + kind + ".zip"
 	if strings.HasPrefix(t.cfg.target, "linux-") {
 		archive = base + "-" + kind + ".tar.gz"
-		if err := writeTar(filepath.Join(stage, archive), base, portable); err != nil {
+		if t.cfg.compression == "xz" {
+			archive = base + "-" + kind + ".tar.xz"
+		}
+		write := writeTar
+		if t.cfg.compression == "xz" {
+			write = writeTarXZ
+		}
+		if err := write(filepath.Join(stage, archive), base, portable); err != nil {
 			return err
 		}
 	} else if err := writeZip(filepath.Join(stage, archive), portable); err != nil {
@@ -328,7 +335,15 @@ func writeTar(path, root string, entries []zipEntry) error {
 	if err != nil {
 		return err
 	}
-	tw := tar.NewWriter(gz)
+	if err := writeTarContents(gz, root, entries); err != nil {
+		gz.Close()
+		return err
+	}
+	return gz.Close()
+}
+
+func writeTarContents(writer io.Writer, root string, entries []zipEntry) error {
+	tw := tar.NewWriter(writer)
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	for _, entry := range entries {
 		if err := tw.WriteHeader(&tar.Header{Name: root + "/" + entry.name, Mode: int64(entry.mode.Perm()), Size: int64(len(entry.data)), ModTime: zipModTime}); err != nil {
@@ -338,10 +353,7 @@ func writeTar(path, root string, entries []zipEntry) error {
 			return err
 		}
 	}
-	if err := tw.Close(); err != nil {
-		return err
-	}
-	return gz.Close()
+	return tw.Close()
 }
 
 // The installer owns its display icon; portable payloads omit it. Each format

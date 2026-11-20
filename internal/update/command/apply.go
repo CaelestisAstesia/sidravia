@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/packagefiles"
 	"sidravia/internal/update/releases"
@@ -81,10 +82,10 @@ func readIndex(target string) ([]byte, error) {
 	}
 	return data, nil
 }
-func installedProof(ctx context.Context, source *releases.GitHub, layout productlayout.Layout, version, buildID string) (releases.VerifiedRelease, releases.Candidate, []byte, error) {
+func installedProof(ctx context.Context, source *github.GitHub, layout productlayout.Layout, version, buildID string) (releases.VerifiedRelease, releases.Candidate, []byte, error) {
 	proof, err := source.AuthenticateVersion(ctx, version)
 	if err != nil {
-		if errors.Is(err, releases.ErrSignatureMissing) || errors.Is(err, releases.ErrUntrusted) || errors.Is(err, releases.ErrMetadata) {
+		if errors.Is(err, github.ErrSignatureMissing) || errors.Is(err, releases.ErrUntrusted) || errors.Is(err, releases.ErrMetadata) {
 			err = errors.Join(errSourceProof, err)
 		}
 		return releases.VerifiedRelease{}, releases.Candidate{}, nil, err
@@ -115,7 +116,7 @@ func applyErrorCode(err error) string {
 		return "cancelled"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
-	case errors.Is(err, releases.ErrRateLimited):
+	case errors.Is(err, github.ErrRateLimited):
 		return "rate_limited"
 	case errors.Is(err, errSourceProof):
 		return "source_proof_unavailable"
@@ -185,10 +186,3 @@ func projectInstalledVersion(state cached, version string) cached {
 	}
 	return state
 }
-
-// ReadOnly is shared with process entry points so status remains queryable
-// during maintenance. Invalid arguments still reach the ordinary parser.
-func ReadOnly(args []string) bool {
-	return len(args) == 0 || args[0] == "status" || args[0] == "version" || args[0] == "help" || args[0] == "--help"
-}
-func ControlEntry(args []string) bool { return ReadOnly(args) || len(args) > 0 && args[0] == "recover" }

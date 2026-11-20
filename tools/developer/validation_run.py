@@ -83,7 +83,7 @@ def terminate_tree(process):
     process.wait(timeout=5)
 
 
-def own_windows_job():
+def own_windows_job(native_update_fixtures=False):
     """The dedicated worker owns a Job before spawning the actual command."""
     import ctypes as c
     from ctypes import wintypes as w
@@ -108,11 +108,18 @@ def own_windows_job():
     api.AssignProcessToJobObject.restype = w.BOOL
     api.CloseHandle.argtypes = [w.HANDLE]
     api.CloseHandle.restype = w.BOOL
-    job = api.CreateJobObjectW(None, None)
+    name = None
+    if native_update_fixtures:
+        import uuid
+        name = 'Local\\Sidravia-Native-Worker-' + uuid.uuid4().hex
+        os.environ['SIDRAVIA_NATIVE_WORKER_JOB'] = name
+    job = api.CreateJobObjectW(None, name)
     if not job:
         raise c.WinError(c.get_last_error())
     limits = Limits()
     limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if native_update_fixtures:
+        limits.basic.flags |= 0x0800  # explicit developer-only BREAKAWAY_OK
     if not api.SetInformationJobObject(job, 9, c.byref(limits), c.sizeof(limits)) or not api.AssignProcessToJobObject(job, api.GetCurrentProcess()):
         error = c.get_last_error()
         api.CloseHandle(job)
@@ -122,16 +129,21 @@ def own_windows_job():
     return job
 
 
-def stage_command(stage, directory):
+def stage_command(stage, directory, native_update_fixtures=False):
     if os.name != "nt":
         return stage["argv"]
     request = Path(directory).resolve() / (stage["name"] + ".command.json")
-    write_json(request, {"argv": stage["argv"]})
+    worker = {"argv": stage["argv"]}
+    if native_update_fixtures:
+        worker["native_update_fixtures"] = True
+    write_json(request, worker)
     return [sys.executable, str(Path(__file__).resolve()), "--worker", str(request)]
 
 
-def run_request(request, directory, initial_report=None):
+def run_request(request, directory, initial_report=None, *, native_update_fixtures=False):
     validate_request(request)
+    if native_update_fixtures and os.name != "nt":
+        raise ValueError("native update fixtures require a Windows worker")
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     report_path = directory / "report.json"
@@ -146,6 +158,8 @@ def run_request(request, directory, initial_report=None):
         # commands' environment without repeating it or losing its logs.
         if not isinstance(initial_report, dict) or initial_report.get("kind") != "command-sequence" or initial_report.get("status") not in ("passed", "failed") or not report_path.is_file() or read_json(report_path) != initial_report or initial_report.get("source") != request.get("source"):
             raise ValueError("continuation must match the existing owned report and source")
+        if bool(initial_report.get("native_update_fixtures", False)) != native_update_fixtures:
+            raise ValueError("continuation cannot change native update mode")
         previous = {s["name"] for s in initial_report["stages"]}
         if any(s["name"] in previous for s in request["stages"]):
             raise ValueError("continuation cannot overwrite a completed stage")
@@ -153,6 +167,8 @@ def run_request(request, directory, initial_report=None):
         prior_seconds = report.get("duration_seconds", 0)
         failed = report["status"] != "passed"
         report["status"] = "running"
+    if native_update_fixtures:
+        report["native_update_fixtures"] = True
     started = time.monotonic()
     try:
         for stage in request["stages"]:
@@ -170,7 +186,7 @@ def run_request(request, directory, initial_report=None):
             process = None
             try:
                 with (directory / row["stdout"]).open("wb") as stdout, (directory / row["stderr"]).open("wb") as stderr:
-                    process = subprocess.Popen(stage_command(stage, directory), cwd=row["cwd"], env=env, stdout=stdout, stderr=stderr, start_new_session=os.name != "nt")
+                    process = subprocess.Popen(stage_command(stage, directory, native_update_fixtures), cwd=row["cwd"], env=env, stdout=stdout, stderr=stderr, start_new_session=os.name != "nt")
                     try:
                         row["exit_code"] = process.wait(timeout=stage.get("timeout_seconds", 900))
                         row["status"] = "passed" if row["exit_code"] == 0 else "failed"
@@ -232,14 +248,16 @@ def present(report, report_path, output_format="text"):
 def main():
     configure_output()
     if len(sys.argv) == 3 and sys.argv[1] == "--worker":
-        job = own_windows_job() if os.name == "nt" else None
-        return subprocess.call(read_json(sys.argv[2])["argv"])
+        worker = read_json(sys.argv[2])
+        job = own_windows_job(worker.get("native_update_fixtures", False)) if os.name == "nt" else None
+        return subprocess.call(worker["argv"])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument("--native-update-fixtures", action="store_true", help="explicit isolated Windows update acceptance; ordinary runs stay contained")
     args = parser.parse_args()
-    report = run_request(read_json(args.request), args.output)
+    report = run_request(read_json(args.request), args.output, native_update_fixtures=args.native_update_fixtures)
     present(report, Path(args.output) / "report.json", args.format)
     return 0 if report["status"] == "passed" else 1
 

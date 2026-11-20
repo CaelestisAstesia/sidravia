@@ -14,6 +14,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/portable"
 	"sidravia/internal/update/releases"
@@ -37,7 +38,7 @@ func platformApplyErrorCode(err error) string {
 	}
 	return "apply_failed"
 }
-func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *releases.GitHub, candidate releases.Candidate, path string, releaseRuntime func()) (outcome *applyResult, err error) {
+func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *github.GitHub, candidate releases.Candidate, path string, releaseRuntime func()) (outcome *applyResult, err error) {
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil {
 		return nil, err
@@ -47,7 +48,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 		return nil, err
 	}
 	if !exists {
-		return nil, releases.ErrIntegrity
+		return nil, github.ErrIntegrity
 	}
 	opRoot, err := operations.DefaultRoot()
 	if err != nil {
@@ -108,7 +109,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	err = portable.Execute(ctx, portable.Execution{Store: store, OperationID: record.ID, Target: layout.ExecutableDirectory, Old: old, Payload: payload, Namespace: ns.String(), ReleaseRuntime: releaseRuntime})
 	return nil, err
 }
-func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *releases.GitHub) (*applyResult, error) {
+func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *github.GitHub) (*applyResult, error) {
 	if layout.Mode != productlayout.ModePortable || !update.ValidOperationID(id) {
 		return nil, operations.ErrInvalid
 	}
@@ -141,20 +142,44 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 		return result(nil)
 	}
 	expected := record.Source
-	if record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting {
+	checksTarget := record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting
+	if checksTarget {
 		expected = record.Target
 	}
 	if version != expected.Version || build != expected.BuildID {
 		return result(errSourceProof)
 	}
-	proof, c, index, err := installedProof(ctx, source, layout, version, build)
-	if err != nil {
-		return result(err)
-	}
-	if record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting {
-		// Restore the original operation's candidate identity, not a synthetic local
-		// source ID; every signed size/hash/name is checked by the existing consumer.
-		c.ID = record.Package.CandidateID
+	var proof releases.VerifiedRelease
+	var c releases.Candidate
+	var index []byte
+	if checksTarget {
+		// Recovery must authenticate the encoding recorded by this operation.
+		// The installed-source gzip counterpart has identical files but a
+		// different archive hash/name and cannot replace the original proof.
+		c = releases.Candidate{ID: record.Package.CandidateID, Version: record.Target.Version, Name: record.Package.Name, Size: record.Package.Size, SHA256: record.Package.SHA256}
+		c.DownloadURL = "https://github.com/" + releases.Repository + "/releases/download/v" + c.Version + "/" + c.Name
+		proof, err = source.AuthenticateCandidate(ctx, c)
+		if err != nil {
+			if errors.Is(err, github.ErrSignatureMissing) || errors.Is(err, releases.ErrUntrusted) || errors.Is(err, releases.ErrMetadata) {
+				err = errors.Join(errSourceProof, err)
+			}
+			return result(err)
+		}
+		if proof.BuildID() != build {
+			return result(errSourceProof)
+		}
+		index, err = readIndex(layout.ExecutableDirectory)
+		if err != nil {
+			return result(errors.Join(errSourceProof, err))
+		}
+		if _, err = proof.VerifyFiles(c, index); err != nil {
+			return result(errors.Join(errSourceProof, err))
+		}
+	} else {
+		proof, c, index, err = installedProof(ctx, source, layout, version, build)
+		if err != nil {
+			return result(err)
+		}
 	}
 	inventory, err := portable.Authenticate(proof, c, index)
 	if err != nil {

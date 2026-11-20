@@ -76,7 +76,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		}
 		return strings.Replace(s, "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
 	})
-	overlay("internal/update/releases/github.go", func(s string) string {
+	overlay("internal/update/github/github.go", func(s string) string {
 		s = strings.Replace(s, "\"context\"", "\"context\"\n\"os\"\n\"bytes\"\n\"path/filepath\"", 1)
 		return s + fmt.Sprintf(`
 func init(){http.DefaultTransport=fixtureTransport{fallback:http.DefaultTransport}}
@@ -84,10 +84,10 @@ type fixtureTransport struct{fallback http.RoundTripper}
 func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
  var file string
  if r.URL.Scheme=="http" && r.URL.Hostname()=="127.0.0.1" && r.URL.Path=="/ipc" {return f.fallback.RoundTrip(r)}
- if r.URL.Scheme!="https"{return nil,ErrMetadata}
- if r.URL.Host=="api.github.com" && r.URL.Path=="/repos/"+repository+"/releases"{file="api.json"}else if r.URL.Host=="github.com" && strings.HasPrefix(r.URL.Path,"/"+repository+"/releases/download/v"){
-  tail:=strings.TrimPrefix(r.URL.Path,"/"+repository+"/releases/download/v");parts:=strings.Split(tail,"/");if len(parts)!=2 || strings.Contains(tail,"..") || strings.Contains(tail,"\\"){return nil,ErrMetadata};file=filepath.Join(parts[0],parts[1])
- }else{return nil,ErrMetadata}
+ if r.URL.Scheme!="https"{return nil,releases.ErrMetadata}
+ if r.URL.Host=="api.github.com" && r.URL.Path=="/repos/"+releases.Repository+"/releases"{file="api.json"}else if r.URL.Host=="github.com" && strings.HasPrefix(r.URL.Path,"/"+releases.Repository+"/releases/download/v"){
+  tail:=strings.TrimPrefix(r.URL.Path,"/"+releases.Repository+"/releases/download/v");parts:=strings.Split(tail,"/");if len(parts)!=2 || strings.Contains(tail,"..") || strings.Contains(tail,"\\"){return nil,releases.ErrMetadata};file=filepath.Join(parts[0],parts[1])
+ }else{return nil,releases.ErrMetadata}
  data,e:=os.ReadFile(filepath.Join(%s,file));status:=200;if os.IsNotExist(e){data=nil;status=404}else if e!=nil{return nil,e}
  return &http.Response{StatusCode:status,Header:make(http.Header),ContentLength:int64(len(data)),Body:io.NopCloser(bytes.NewReader(data)),Request:r},nil
 }

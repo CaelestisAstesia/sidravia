@@ -90,6 +90,10 @@ def package_commands(args, env):
     if output.exists() or not output.parent.is_dir():
         raise ValueError("output must not exist and its parent must exist")
     producer = [args.go, "run", "-mod=readonly", "./tools/build", "--version", args.version, "--build-id", info["commit"], "--artifact", "distribution", "--target", target, "--output", str(output), "--go", args.go]
+    if getattr(args, "compression", "gzip") == "xz":
+        if not target.startswith("linux-"):
+            raise ValueError("xz compression requires a Linux target")
+        producer += ["--compression", "xz"]
     consumer = [sys.executable, "tools/developer/verify_distribution.py", "--directory", str(output), "--target", target, "--version", args.version, "--build-id", info["commit"], "--go", args.go]
     if target == "linux-amd64":
         consumer.append("--smoke")
@@ -259,6 +263,8 @@ def linux_command(args, env):
             if not same_source(source_before, metadata(args.go, env)):
                 raise ValueError("source changed during GUI build")
             producer = [args.go, "run", "-mod=readonly", "./tools/build", "--artifact", "distribution", "--target", "linux-amd64", "--version", args.version, "--build-id", source_before["commit"], "--go", args.go, "--gui-directory", str(stage), "--output", str(output)]
+            if getattr(args, "compression", "gzip") == "xz":
+                producer += ["--compression", "xz"]
             subprocess.run(producer, cwd=ROOT, env=env, check=True)
             import verify_distribution
             receipt = verify_distribution.verify(output, ROOT, "linux-amd64", args.version, source_before["commit"], stage, args.go, smoke=True)
@@ -367,6 +373,7 @@ def parse_args(argv=None):
             sub.add_argument("--request", required=True, help="schema-1 JSON command sequence")
             sub.add_argument("--uri", default="qemu:///session")
             sub.add_argument("--domain", default="windows11-sidravia")
+            sub.add_argument("--native-update-fixtures", action="store_true", help="isolated Windows update acceptance with scoped breakaway and process cleanup")
             sub.add_argument("--guest-root", required=True, help="dedicated owned directory below the test user's profile")
             sub.add_argument("--guest-user", required=True, help="existing logged-in Windows user (no password)")
             sub.add_argument("--windows-python", required=True)
@@ -413,6 +420,8 @@ def parse_args(argv=None):
             sub.add_argument("--version", default="0.5.0-alpha.1")
             sub.add_argument("--package", action="store_true")
             sub.add_argument("--check-gui", action="store_true")
+        if command in ("package", "linux"):
+            sub.add_argument("--compression", choices=("gzip", "xz"), default="gzip")
         if command == "package":
             sub.add_argument("--target", choices=("linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64"), default="linux-amd64")
             sub.add_argument("--version", required=True)

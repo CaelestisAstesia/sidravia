@@ -1,4 +1,5 @@
-package releases
+// Package github queries and downloads release assets; local publisher trust remains in releases.
+package github
 
 import (
 	"context"
@@ -14,50 +15,24 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-const repository = "CaelestisAstesia/sidravia"
+	"sidravia/internal/update/releases"
+)
 
 var (
 	ErrIncomplete  = errors.New("update release query incomplete")
-	ErrMetadata    = errors.New("invalid update release metadata")
 	ErrRateLimited = errors.New("update source rate limited")
-	ErrUnsupported = errors.New("update target unsupported")
 )
 
-type Selection struct {
-	OS             string
-	Arch           string
-	Kind           string
-	Channel        string
-	CurrentVersion string
-}
-type Candidate struct {
-	ID          string `json:"id"`
-	Version     string `json:"version"`
-	Name        string `json:"name"`
-	Size        int64  `json:"size"`
-	SHA256      string `json:"sha256"`
-	DownloadURL string `json:"downloadUrl"`
-	ReleaseURL  string `json:"releaseUrl"`
-	Notes       string `json:"notes"`
-	// Digest is transport integrity metadata, not a publisher signature.
-	CanApply    bool   `json:"canApply"`
-	ApplyReason string `json:"applyReason"`
-}
 type RateLimitError struct{ RetryAt time.Time }
 
 func (e *RateLimitError) Error() string { return ErrRateLimited.Error() }
 func (e *RateLimitError) Unwrap() error { return ErrRateLimited }
 
-type CheckResult struct {
-	State     string     `json:"state"`
-	Candidate *Candidate `json:"candidate,omitempty"`
-}
 type GitHub struct {
 	client        *http.Client
 	apiBase       string
-	publisherKeys *PublisherKeys
+	publisherKeys *releases.PublisherKeys
 }
 
 func NewGitHub(client *http.Client) *GitHub {
@@ -67,14 +42,14 @@ func NewGitHub(client *http.Client) *GitHub {
 	copyClient := *client
 	copyClient.Timeout = 20 * time.Second
 	copyClient.Jar = nil
-	source := &GitHub{client: &copyClient, apiBase: "https://api.github.com", publisherKeys: PublisherTrust()}
+	source := &GitHub{client: &copyClient, apiBase: "https://api.github.com", publisherKeys: releases.PublisherTrust()}
 	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
-			return ErrMetadata
+			return releases.ErrMetadata
 		}
 		base, _ := url.Parse(source.apiBase)
 		if req.URL.Scheme != base.Scheme || req.URL.Host != base.Host || req.URL.User != nil {
-			return ErrMetadata
+			return releases.ErrMetadata
 		}
 		return nil
 	}
@@ -98,65 +73,35 @@ type asset struct {
 	State  string `json:"state"`
 }
 
-func packageSuffix(s Selection) (string, error) {
-	if s.Channel != "stable" && s.Channel != "preview" {
-		return "", ErrUnsupported
-	}
-	if s.Arch != "amd64" && s.Arch != "arm64" {
-		return "", ErrUnsupported
-	}
-	switch s.Kind {
-	case "setup":
-		if s.OS == "windows" && s.Arch == "amd64" {
-			return "setup.exe", nil
-		}
-	case "gui-portable":
-		if s.OS == "windows" && s.Arch == "amd64" {
-			return "gui-portable.zip", nil
-		}
-		if s.OS == "linux" && s.Arch == "amd64" {
-			return "gui-portable.tar.gz", nil
-		}
-	case "core-portable":
-		if s.OS == "windows" {
-			return "core-portable.zip", nil
-		}
-		if s.OS == "linux" {
-			return "core-portable.tar.gz", nil
-		}
-	}
-	return "", ErrUnsupported
-}
-
-func (g *GitHub) Check(ctx context.Context, s Selection) (CheckResult, error) {
-	suffix, err := packageSuffix(s)
+func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.CheckResult, error) {
+	suffixes, err := releases.PackageSuffixes(s)
 	if err != nil {
-		return CheckResult{}, err
+		return releases.CheckResult{}, err
 	}
-	current, err := ParseVersion(s.CurrentVersion)
+	current, err := releases.ParseVersion(s.CurrentVersion)
 	if err != nil {
-		return CheckResult{}, ErrVersion
+		return releases.CheckResult{}, releases.ErrVersion
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	endpoint := g.apiBase + "/repos/" + repository + "/releases?per_page=100"
-	var selected *Candidate
-	var selectedVersion Version
+	endpoint := g.apiBase + "/repos/" + releases.Repository + "/releases?per_page=100"
+	var selected *releases.Candidate
+	var selectedVersion releases.Version
 	seen := map[string]bool{}
 	for page := 0; endpoint != ""; page++ {
 		if page >= 5 || seen[endpoint] {
-			return CheckResult{}, ErrIncomplete
+			return releases.CheckResult{}, ErrIncomplete
 		}
 		seen[endpoint] = true
 		items, next, err := g.page(ctx, endpoint)
 		if err != nil {
-			return CheckResult{}, err
+			return releases.CheckResult{}, err
 		}
 		for _, r := range items {
 			if r.Draft || r.ID <= 0 || !strings.HasPrefix(r.Tag, "v") {
 				continue
 			}
-			v, err := ParseVersion(strings.TrimPrefix(r.Tag, "v"))
+			v, err := releases.ParseVersion(strings.TrimPrefix(r.Tag, "v"))
 			if err != nil {
 				continue
 			}
@@ -166,47 +111,54 @@ func (g *GitHub) Check(ctx context.Context, s Selection) (CheckResult, error) {
 			if v.Prerelease() != r.Prerelease {
 				continue
 			}
-			name := "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
+			var name string
 			var matches []asset
-			for _, a := range r.Assets {
-				if a.Name == name {
-					matches = append(matches, a)
+			for _, suffix := range suffixes {
+				name = "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
+				for _, a := range r.Assets {
+					if a.Name == name {
+						matches = append(matches, a)
+					}
+				}
+				if len(matches) > 0 {
+					break
 				}
 			}
 			if len(matches) == 0 {
 				continue
 			}
 			if len(matches) != 1 {
-				return CheckResult{}, ErrMetadata
+				return releases.CheckResult{}, releases.ErrMetadata
 			}
 			a := matches[0]
+			name = a.Name
 			hash := strings.TrimPrefix(a.Digest, "sha256:")
 			decoded, decodeErr := hex.DecodeString(hash)
 			if a.ID <= 0 || a.State != "uploaded" || a.Size <= 0 || a.Size > 2<<30 || !strings.HasPrefix(a.Digest, "sha256:") || decodeErr != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != hash {
-				return CheckResult{}, ErrMetadata
+				return releases.CheckResult{}, releases.ErrMetadata
 			}
 			u, err := url.Parse(a.URL)
-			expectedPath := "/" + repository + "/releases/download/" + r.Tag + "/" + name
+			expectedPath := "/" + releases.Repository + "/releases/download/" + r.Tag + "/" + name
 			if err != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.Path != expectedPath || u.RawQuery != "" || u.Fragment != "" {
-				return CheckResult{}, ErrMetadata
+				return releases.CheckResult{}, releases.ErrMetadata
 			}
-			if selected == nil || v.Compare(selectedVersion) > 0 {
+			if selected == nil || v.Compare(selectedVersion) > 0 || v.Compare(selectedVersion) == 0 && strings.HasSuffix(a.Name, ".tar.xz") && !strings.HasSuffix(selected.Name, ".tar.xz") {
 				selectedVersion = v
-				selected = &Candidate{ID: fmt.Sprintf("%d:%d", r.ID, a.ID), Version: v.String(), Name: name, Size: a.Size, SHA256: hash, DownloadURL: a.URL, ReleaseURL: "https://github.com/" + repository + "/releases/tag/" + r.Tag, Notes: releaseNotes(r.Body), ApplyReason: "publisher_signature_required"}
+				selected = &releases.Candidate{ID: fmt.Sprintf("%d:%d", r.ID, a.ID), Version: v.String(), Name: name, Size: a.Size, SHA256: hash, DownloadURL: a.URL, ReleaseURL: "https://github.com/" + releases.Repository + "/releases/tag/" + r.Tag, Notes: releaseNotes(r.Body), ApplyReason: "publisher_signature_required"}
 			}
 		}
 		endpoint = next
 	}
 	if selected == nil {
-		return CheckResult{State: "no_compatible_release"}, nil
+		return releases.CheckResult{State: "no_compatible_release"}, nil
 	}
 	// Builds without configured publisher roots keep legacy check/download
 	// behavior. Native portable apply still requires installed-source proof and
 	// explicit consent at the command boundary.
-	if g.publisherKeys != nil && len(g.publisherKeys.keys) > 0 {
+	if g.publisherKeys.Configured() {
 		if _, err := g.AuthenticateCandidate(ctx, *selected); err != nil {
 			if !errors.Is(err, ErrSignatureMissing) {
-				return CheckResult{}, err
+				return releases.CheckResult{}, err
 			}
 		} else {
 			selected.ApplyReason = "platform_not_supported"
@@ -229,13 +181,13 @@ func (g *GitHub) Check(ctx context.Context, s Selection) (CheckResult, error) {
 	} else if selectedVersion.Compare(current) < 0 {
 		state = "ahead_of_channel"
 	}
-	return CheckResult{State: state, Candidate: selected}, nil
+	return releases.CheckResult{State: state, Candidate: selected}, nil
 }
 func (g *GitHub) page(ctx context.Context, endpoint string) ([]release, string, error) {
 	base, _ := url.Parse(g.apiBase)
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != base.Scheme || u.Host != base.Host || u.Path != "/repos/"+repository+"/releases" || u.User != nil {
-		return nil, "", ErrMetadata
+	if err != nil || u.Scheme != base.Scheme || u.Host != base.Host || u.Path != "/repos/"+releases.Repository+"/releases" || u.User != nil {
+		return nil, "", releases.ErrMetadata
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -269,7 +221,7 @@ func (g *GitHub) page(ctx context.Context, endpoint string) ([]release, string, 
 	}
 	var items []release
 	if err = json.Unmarshal(data, &items); err != nil || items == nil {
-		return nil, "", ErrMetadata
+		return nil, "", releases.ErrMetadata
 	}
 	next, err := nextPage(strings.Join(response.Header.Values("Link"), ","))
 	if err != nil {
@@ -285,7 +237,7 @@ func nextPage(header string) (string, error) {
 		return "", nil
 	}
 	if len(header) > 16384 {
-		return "", ErrMetadata
+		return "", releases.ErrMetadata
 	}
 	var links []string
 	start := 0
@@ -310,12 +262,12 @@ func nextPage(header string) (string, error) {
 			}
 		case '<':
 			if angle {
-				return "", ErrMetadata
+				return "", releases.ErrMetadata
 			}
 			angle = true
 		case '>':
 			if !angle {
-				return "", ErrMetadata
+				return "", releases.ErrMetadata
 			}
 			angle = false
 		case ',':
@@ -326,7 +278,7 @@ func nextPage(header string) (string, error) {
 		}
 	}
 	if quoted || escaped || angle {
-		return "", ErrMetadata
+		return "", releases.ErrMetadata
 	}
 	links = append(links, header[start:])
 	next := ""
@@ -334,31 +286,31 @@ func nextPage(header string) (string, error) {
 		link = strings.TrimSpace(link)
 		end := strings.IndexByte(link, '>')
 		if !strings.HasPrefix(link, "<") || end <= 1 {
-			return "", ErrMetadata
+			return "", releases.ErrMetadata
 		}
 		rest := strings.TrimSpace(link[end+1:])
 		if rest != "" && !strings.HasPrefix(rest, ";") {
-			return "", ErrMetadata
+			return "", releases.ErrMetadata
 		}
 		_, parameters, err := mime.ParseMediaType("link" + rest)
 		if err != nil {
-			return "", ErrMetadata
+			return "", releases.ErrMetadata
 		}
 		for _, relation := range strings.Fields(parameters["rel"]) {
 			if !strings.EqualFold(relation, "next") {
 				continue
 			}
 			if next != "" {
-				return "", ErrMetadata
+				return "", releases.ErrMetadata
 			}
 			next = link[1:end]
 			u, err := url.Parse(next)
 			if err != nil || u.Fragment != "" {
-				return "", ErrMetadata
+				return "", releases.ErrMetadata
 			}
 			n, err := strconv.Atoi(u.Query().Get("page"))
 			if err != nil || n < 1 || n > 100 {
-				return "", ErrMetadata
+				return "", releases.ErrMetadata
 			}
 		}
 	}

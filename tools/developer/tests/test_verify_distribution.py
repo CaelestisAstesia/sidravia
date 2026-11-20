@@ -110,6 +110,20 @@ class DistributionContract(unittest.TestCase):
     def verify(self, target='linux-amd64', smoke=False, gui=True):
         return module.verify(self.out, self.repo, target, VERSION, SHA, self.gui if target == 'windows-amd64' and gui else None, smoke=smoke)
 
+    def test_xz_consumes_the_same_exact_payload_and_rejects_ambiguous_formats(self):
+        import gzip, lzma
+        self.package('linux-amd64', self.payload('linux-amd64', gui=False), gui=False)
+        original = next(self.out.glob('*.tar.gz'))
+        encoded = original.with_name(original.name[:-3] + '.xz')
+        encoded.write_bytes(lzma.compress(gzip.decompress(original.read_bytes()), preset=6))
+        with mock.patch.object(module, 'binary_identity'), self.assertRaisesRegex(ValueError, 'ambiguous_archive_encoding'):
+            self.verify('linux-amd64', gui=False)
+        original.unlink()
+        (self.out / 'SHA256SUMS.txt').write_text(module.digest(encoded.read_bytes()) + '  ' + encoded.name + '\n')
+        with mock.patch.object(module, 'binary_identity'):
+            result = self.verify('linux-amd64', gui=False)
+        self.assertEqual(result['productOwnership'], 'passed')
+
     def test_exact_windows_and_linux_contract(self):
         for target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'):
             with self.subTest(target=target):
