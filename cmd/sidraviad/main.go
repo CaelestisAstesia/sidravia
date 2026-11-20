@@ -22,12 +22,31 @@ var (
 	BuildID        = "dev"
 )
 
-func main() {
+func main() { os.Exit(runProcess()) }
+
+func runProcess() (code int) {
 	releaseStart, startErr := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 	if startErr != nil {
 		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
-		os.Exit(1)
+		return 1
 	}
+	defer releaseStart()
+	releaseInstance, err := acquireUserInstance()
+	if errors.Is(err, host.ErrAlreadyRunning) {
+		return launchcontract.ExitSingletonContention
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, msgDaemonStartFailed)
+		return 1
+	}
+	defer func() {
+		if err := releaseInstance(); err != nil {
+			fmt.Fprintln(os.Stderr, "后台运行锁清理失败。")
+			if code == 0 {
+				code = 1
+			}
+		}
+	}()
 	// Portable admission stays held until exit; its shared lock permits child
 	// startup while excluding executable replacement. RPM keeps its own gate.
 	logger, level, output, err := newProductionLogger()
@@ -35,19 +54,18 @@ func main() {
 		// Cannot log via slog yet; write the fixed safe line to stderr without
 		// echoing the invalid value.
 		fmt.Fprintln(os.Stderr, msgDaemonStartFailed)
-		os.Exit(1)
+		return 1
 	}
 	if traceLoggingEnabled(level) {
 		logger.Warn(msgTraceLoggingSensitive, slog.String("event", eventTraceLoggingSensitive))
 	}
-	code := runMain(logger)
+	code = runMain(logger)
 	if output != nil {
 		if err := output.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "诊断日志关闭失败")
 		}
 	}
-	releaseStart()
-	os.Exit(code)
+	return code
 }
 
 // runtimeLike is the subset of *composedRuntime that the process boundary

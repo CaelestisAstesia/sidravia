@@ -106,6 +106,10 @@ type runtimeActivityResult struct {
 }
 
 func deriveDefaultPaths(namespace string) (defaultPaths, error) {
+	return deriveLaunchPaths(namespace, "")
+}
+
+func deriveLaunchPaths(namespace, packageMode string) (defaultPaths, error) {
 	ns, err := productlayout.NewNamespace(namespace)
 	if err != nil {
 		return defaultPaths{}, fmt.Errorf("sidraviad: invalid runtime namespace: %w", err)
@@ -113,6 +117,10 @@ func deriveDefaultPaths(namespace string) (defaultPaths, error) {
 	layout, err := productlayout.ResolveNamespace(ns)
 	if err != nil {
 		return defaultPaths{}, fmt.Errorf("sidraviad: derive default paths: %w", err)
+	}
+	if packageMode != "" && (string(layout.Mode) != packageMode ||
+		(layout.Mode == productlayout.ModeInstalled && !productlayout.RPMManaged(layout))) {
+		return defaultPaths{}, errors.New("sidraviad: registered package layout changed")
 	}
 	return defaultPaths{
 		profiles:       layout.InstitutionProfilesDirectory,
@@ -165,8 +173,22 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 			return nil, fmt.Errorf("sidraviad: open desktop owner: %w", err)
 		}
 	}
-	paths, err := deriveDefaultPaths(launchOptions.Namespace)
+	packageMode := ""
+	if launchOptions.Mode == launchcontract.ModeSystemd {
+		packageMode = os.Getenv(launchcontract.EnvSystemdPackage)
+		if packageMode != string(productlayout.ModeInstalled) && packageMode != string(productlayout.ModePortable) {
+			return nil, errors.New("sidraviad: user service requires a registered package layout")
+		}
+	}
+	paths, err := deriveLaunchPaths(launchOptions.Namespace, packageMode)
 	if err != nil {
+		if owner != nil {
+			_ = owner.Close()
+		}
+		return nil, err
+	}
+
+	if err := configureServiceSwitch(&launchOptions, paths); err != nil {
 		if owner != nil {
 			_ = owner.Close()
 		}
@@ -277,8 +299,8 @@ func composeObjectGraphWithLaunchOptions(
 	if launchOptions.Mode == launchcontract.ModeDesktop && desktopOwner == nil {
 		return nil, errors.New("sidraviad: desktop owner watcher is required")
 	}
-	if launchOptions.Mode == launchcontract.ModeHeadless && desktopOwner != nil {
-		return nil, errors.New("sidraviad: headless daemon cannot have desktop owner watcher")
+	if launchOptions.Mode != launchcontract.ModeDesktop && desktopOwner != nil {
+		return nil, errors.New("sidraviad: independent daemon cannot have desktop owner watcher")
 	}
 	if hostInfo.HostName == "" {
 		return nil, errors.New("sidraviad: host name is required")

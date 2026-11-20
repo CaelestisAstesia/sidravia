@@ -4,7 +4,7 @@
 
 本页适用于 `0.5.0-alpha.2`，版本变化见[变更日志](../CHANGELOG.md)。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
 
-Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 便携包使用 `./sidraviactl`，RPM 安装后可直接使用 `sidraviactl`。Linux GUI 的自启和 PATH 设置见[便携版说明](linux-portable.md)，本页的 `integration` 命令仅供 Windows 使用。
+Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 便携包使用 `./sidraviactl`，RPM 安装后可直接使用 `sidraviactl`。Linux GUI 的自启和 PATH 设置见[便携版说明](linux-portable.md)，Linux 使用 `integration service` 管理 systemd 用户服务。PATH 和桌面自启的 CTL 命令仅供 Windows 使用。
 
 `<configuration-id>`、`<session-id>` 和 `<账号>` 等表示需要替换的内容，实际输入时不保留尖括号。交互式输入密码时不会回显；不要把密码直接写进命令行参数。
 
@@ -12,14 +12,15 @@ Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后�
 
 ## 与 GUI 配合使用
 
-Sidravia 有两种互斥的认证后台模式：
+Sidravia 支持以下认证后台模式。
 
 | 模式 | 使用方 | 生命周期 |
 | --- | --- | --- |
 | `desktop` | GUI | 由 GUI 启动和管理；隐藏到托盘后继续运行，真正退出 GUI 后结束 |
 | `headless` | CTL | 独立运行；单条 CTL 命令执行结束后，后台及认证可以继续运行 |
+| `systemd` | Linux GUI 与 CTL | 由用户服务管理器托管，退出 GUI 后后台与认证继续运行 |
 
-**GUI 和 CTL 不能同时控制同一认证后台。**
+在应用管理模式下，按下列步骤在 GUI 和 CTL 之间切换。systemd 托管模式允许两个前端同时连接同一后台。
 
 - **GUI → CTL**：从托盘菜单选择「退出 Sidravia」，再执行 `.\sidraviactl.exe daemon start`。
 - **CTL → GUI**：执行 `.\sidraviactl.exe daemon stop`，再打开 GUI。
@@ -398,15 +399,18 @@ Windows 在程序目录中使用 `.\sidraviactl.exe`，Linux 便携版使用 `./
 
 Windows 返回 `handed_over` 后，用 `update status` 查看最终结果。安装版还会报告安装器退出码、系统集成结果和重启要求。安装器沿用原目录与组件，自启和 PATH 按向导确认。
 
+Linux 便携版在 systemd 托管模式下更新时，先请求已连接的 GUI 正常退出，再停止后台。若后台已停止而 GUI 仍打开，请退出 GUI 后重试。成功后仅恢复原先运行的后台，并按配置的自动登录设置启动认证。
+新版启动失败时，更新器会核对并恢复旧版产品文件，尝试恢复原来的运行状态。
+
 应用结果分为 `filesApplied`（文件安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证状态）。文件安装后，请确认程序能够打开，并检查校园网连接。
 
 ### 更新中断
 
 先运行 `update status`，记下操作 ID、阶段和失败码。`requiresStartupBlock` 为真时，程序会暂停普通启动，保留状态查询和恢复入口。
 
-协调器退出、文件完整时，可用 `update recover --operation ID --confirm` 结束中断状态。文件已部分替换或提示 `repair_required` 时，保留更新记录，按发行说明修复。Windows 安装版可重新运行对应版本的可信安装器；便携版可完整解压到新目录，再迁移需要保留的配置。
+协调器退出后，可用 `update recover --operation ID --confirm` 恢复。Linux 托管便携版遇到写入中断或 `rolling_back` 时，该命令会重新核对同一事务保存的快照，尝试恢复原版。请用 `daemon status` 确认实际运行版本。遇到无法核对的文件时，保留更新记录和快照，按发行说明修复。
 
-Windows GUI 在极端中断后可能先显示系统 DLL 加载错误，也按上述方式修复。更新不会自动降级或全包回滚。
+Windows 安装版可重新运行对应版本的可信安装器。便携版也可完整解压到新目录，再按需要迁移兼容的配置。
 
 ## 命令速查
 

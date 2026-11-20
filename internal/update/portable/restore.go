@@ -22,6 +22,9 @@ import (
 // runtime generation and optional saved-configuration dispatch are separate
 // from file installation; a successful dispatch is not authentication success.
 func restoreApplication(ctx context.Context, layout productlayout.Layout, target update.Target, recovery operations.Recovery, operation, nonce string) (contract.RuntimeInfo, error) {
+	if recovery.Intent.Mode == "systemd" {
+		return contract.RuntimeInfo{}, ErrRestore
+	}
 	if recovery.Intent.Mode == "none" {
 		return contract.RuntimeInfo{}, nil
 	}

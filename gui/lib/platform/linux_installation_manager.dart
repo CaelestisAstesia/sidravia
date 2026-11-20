@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
+import 'dart:math';
+
+import 'package:ffi/ffi.dart';
 
 import 'linux_product_executable.dart';
 
@@ -8,7 +12,8 @@ import 'installation_manager.dart';
 
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
-class LinuxInstallationManager implements InstallationManager {
+class LinuxInstallationManager
+    implements InstallationManager, UserServiceManager {
   LinuxInstallationManager({
     required String executable,
     required this.environment,
@@ -16,6 +21,54 @@ class LinuxInstallationManager implements InstallationManager {
   final String executable;
   final Map<String, String> environment;
   bool _closed = false;
+
+  @override
+  Future<UserServiceStatus?> userService(String action) async {
+    _checkOpen();
+    if (_namespace.isNotEmpty) return null;
+    try {
+      final result = await Process.run(
+        '$_directory/sidraviactl',
+        [
+          'integration',
+          'service',
+          action,
+          if (action == 'takeover' || action == 'release')
+            '--interrupt-session',
+          if (action == 'release') ...['--owner-pid', '$pid'],
+          if (action == 'discard' || action == 'discard-damaged') '--yes',
+        ],
+        environment: environment,
+        includeParentEnvironment: false,
+      );
+      if (result.exitCode != 0 && action != 'status') {
+        throw const IntegrationFailure('后台服务操作失败，请检查实际状态。');
+      }
+      final value = jsonDecode(result.stdout as String);
+      if (value is! Map<String, dynamic>) return null;
+      final available = result.exitCode == 0 && value['supported'] == true;
+      if (!available && value['recoveryBlocked'] != true) return null;
+      return UserServiceStatus(
+        available: available,
+        directory: value['registered'] == true
+            ? value['directory'] as String
+            : null,
+        running: value['running'] as bool,
+        enabled: value['enabled'] as bool,
+        linger: value['linger'] as bool,
+        matchesInstallation: value['directory'] == _directory,
+        recoveryPending: value['recoveryPending'] == true,
+        recoveryBlocked: value['recoveryBlocked'] == true,
+        canDiscardDamaged: value['canDiscardDamaged'] == true,
+        canDiscardReplacement: value['canDiscardReplacement'] == true,
+      );
+    } on IntegrationFailure {
+      rethrow;
+    } on Object {
+      if (action == 'status') return null;
+      throw const IntegrationFailure('无法取得用户服务状态。');
+    }
+  }
 
   String get _namespace => environment['SIDRAVIA_NAMESPACE'] ?? '';
   String _normalRoot(String path) => File.fromUri(
@@ -150,33 +203,45 @@ class LinuxInstallationManager implements InstallationManager {
     directory.createSync();
   }
 
+  // Lock the existing directory inode, so releasing the descriptor leaves
+  // no lock file and cannot split contenders across two lock file inodes.
   T _locked<T>(String directory, T Function() operation) {
     _ensureDirectory(Directory(directory));
-    final path = '$directory/.sidravia-integration.lock';
-    final type = FileSystemEntity.typeSync(path, followLinks: false);
-    if ((type != FileSystemEntityType.notFound &&
-            type != FileSystemEntityType.file) ||
-        (type == FileSystemEntityType.file && File(path).lengthSync() != 0)) {
-      throw const IntegrationFailure('维护锁文件存在冲突，未修改。');
+    final libc = DynamicLibrary.process();
+    final open = libc
+        .lookupFunction<
+          Pointer<Void> Function(Pointer<Utf8>),
+          Pointer<Void> Function(Pointer<Utf8>)
+        >('opendir');
+    final close = libc
+        .lookupFunction<
+          Int Function(Pointer<Void>),
+          int Function(Pointer<Void>)
+        >('closedir');
+    final descriptor = libc
+        .lookupFunction<
+          Int Function(Pointer<Void>),
+          int Function(Pointer<Void>)
+        >('dirfd');
+    final flock = libc
+        .lookupFunction<Int Function(Int, Int), int Function(int, int)>(
+          'flock',
+        );
+    final handle = using(
+      (arena) => open(directory.toNativeUtf8(allocator: arena)),
+    );
+    if (handle == nullptr) {
+      throw const IntegrationFailure('无法打开系统集成目录。');
     }
-    final lock = File(path).openSync(mode: FileMode.append);
-    var held = false;
     try {
-      try {
-        lock.lockSync(
-          FileLock.exclusive,
-        ); // Nonblocking: do not freeze GTK/Flutter.
-        held = true;
-      } on FileSystemException {
-        throw const IntegrationFailure('另一项系统集成操作正在进行，请稍后重试。');
+      const lockExclusive = 2;
+      const lockNonblocking = 4;
+      if (flock(descriptor(handle), lockExclusive | lockNonblocking) != 0) {
+        throw const IntegrationFailure('无法取得系统集成锁，请稍后重试。');
       }
       return operation();
     } finally {
-      try {
-        if (held) lock.unlockSync();
-      } finally {
-        lock.closeSync();
-      }
+      close(handle);
     }
   }
 
@@ -326,33 +391,126 @@ class LinuxInstallationManager implements InstallationManager {
         _changePath(change == IntegrationChange.pathEnable);
         return;
       }
+      final disabling = change == IntegrationChange.startDisable;
+      final mode = change == IntegrationChange.startGui ? 'gui' : 'daemon';
+      final target = mode == 'gui' ? executable : '$_directory/sidraviactl';
+      if (!disabling && !_available(target)) {
+        throw const IntegrationFailure('启动程序不存在或不可执行。');
+      }
+      final rpm = _rpmManaged;
       _locked(File(_path).parent.path, () {
-        final existing = _existing();
-        if (_mode(existing) == 'conflict') {
-          throw const IntegrationFailure('自启项属于其他程序或安装，未修改。');
+        try {
+          final file = File(_path);
+          final prefix = rpm
+              ? '.sidravia-autostart-rpm-'
+              : '.sidravia-autostart-app-';
+          final stagePrefix = '$prefix${file.uri.pathSegments.last}-';
+          final noncePattern = RegExp(r'^[0-9a-f]{32}$');
+          for (final candidate in file.parent.listSync(followLinks: false)) {
+            final name = candidate.path.substring(file.parent.path.length + 1);
+            if (!name.startsWith(stagePrefix) ||
+                !noncePattern.hasMatch(name.substring(stagePrefix.length))) {
+              continue;
+            }
+            final result = Process.runSync(
+              '$_directory/sidraviactl',
+              ['linux-recover-autostart-stage', '--', candidate.path],
+              environment: environment,
+              includeParentEnvironment: false,
+            );
+            if (result.exitCode != 0) {
+              throw const IntegrationFailure('无法清理桌面自启暂存目录。');
+            }
+          }
+          final existing = _existing();
+          if (_mode(existing) == 'conflict') {
+            throw const IntegrationFailure('自启项属于其他程序或安装，未修改。');
+          }
+          if (disabling) {
+            if (existing != null) file.deleteSync();
+            if (rpm) _trackRPMAutostart(false);
+            return;
+          }
+          final contents = _entry(mode);
+          if (rpm) _trackRPMAutostart(true);
+          if (existing == contents) return;
+          // A surviving no-clobber mv can only consume this operation's entry.
+          final random = Random.secure();
+          final nonce = List.generate(
+            16,
+            (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+          ).join();
+          final stage = Directory('${file.parent.path}/$stagePrefix$nonce');
+          final created = Process.runSync('/usr/bin/mkdir', [
+            '-m',
+            '700',
+            '--',
+            stage.path,
+          ]);
+          if (created.exitCode != 0) {
+            throw const IntegrationFailure('无法创建桌面自启暂存目录。');
+          }
+          final marker = File('${stage.path}/.sidravia-stage-v1');
+          try {
+            marker.createSync(exclusive: true);
+            final staged = File('${stage.path}/entry');
+            staged.writeAsStringSync(contents, flush: true);
+            if (existing == null) {
+              // Keep publication on the same filesystem, with no replacement
+              // or traversal if another writer created the destination.
+              final result = Process.runSync('/usr/bin/mv', [
+                '--no-clobber',
+                '-T',
+                '--',
+                staged.path,
+                _path,
+              ]);
+              if (result.exitCode != 0 || staged.existsSync()) {
+                throw const IntegrationFailure('自启项已变化，未覆盖原文件。');
+              }
+            } else {
+              if (_existing() != existing) {
+                throw const IntegrationFailure('自启项已变化，未覆盖原文件。');
+              }
+              staged.renameSync(_path);
+            }
+          } finally {
+            final staged = File('${stage.path}/entry');
+            if (staged.existsSync()) staged.deleteSync();
+            if (marker.existsSync()) marker.deleteSync();
+            stage.deleteSync();
+          }
+        } on Object {
+          if (rpm && !disabling) _trackRPMAutostart(false);
+          rethrow;
         }
-        final file = File(_path);
-        if (change == IntegrationChange.startDisable) {
-          if (existing != null) file.deleteSync();
-          return;
-        }
-        final mode = change == IntegrationChange.startGui ? 'gui' : 'daemon';
-        final target = mode == 'gui' ? executable : '$_directory/sidraviactl';
-        if (!_available(target)) {
-          throw const IntegrationFailure('启动程序不存在或不可执行。');
-        }
-        final contents = _entry(mode);
-        if (existing == contents) return;
-        // Serialize our writers; after removing an exact owned definition,
-        // exclusive creation refuses an unrelated writer rather than replacing it.
-        if (existing != null) file.deleteSync();
-        file.createSync(exclusive: true);
-        file.writeAsStringSync(contents, flush: true);
       });
     } on IntegrationFailure {
       rethrow;
     } on Object {
       throw const IntegrationFailure('Linux 系统集成修改失败，请刷新确认当前状态。');
+    }
+  }
+
+  void _trackRPMAutostart(bool enable) {
+    if (_configRoot == '$_home/.config') return;
+    final failure = IntegrationFailure(
+      enable ? '无法登记 RPM 桌面自启目录。' : '无法清理 RPM 桌面自启目录登记。修复安装后可重试关闭。',
+    );
+    try {
+      final result = Process.runSync(
+        '$_directory/sidraviactl',
+        [
+          enable ? 'rpm-track-autostart' : 'rpm-untrack-autostart',
+          '--',
+          _configRoot,
+        ],
+        environment: environment,
+        includeParentEnvironment: false,
+      );
+      if (result.exitCode != 0) throw failure;
+    } on ProcessException {
+      throw failure;
     }
   }
 

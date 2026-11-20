@@ -92,3 +92,32 @@ abstract interface class InstallationManager {
 }
 
 InstallationManager createInstallationManager() => platform.createManager();
+
+class UserServiceStatus {
+  const UserServiceStatus({
+    required this.available,
+    required this.directory,
+    required this.running,
+    required this.enabled,
+    required this.linger,
+    required this.matchesInstallation,
+    required this.recoveryPending,
+    required this.canDiscardReplacement,
+    required this.recoveryBlocked,
+    required this.canDiscardDamaged,
+  });
+  final String? directory;
+  final bool available,
+      running,
+      enabled,
+      linger,
+      matchesInstallation,
+      recoveryPending,
+      canDiscardReplacement,
+      recoveryBlocked,
+      canDiscardDamaged;
+}
+
+abstract interface class UserServiceManager {
+  Future<UserServiceStatus?> userService(String action);
+}

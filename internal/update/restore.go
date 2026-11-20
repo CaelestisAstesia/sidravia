@@ -71,16 +71,16 @@ func PlanRestore(ticket ResumeTicket, actual Target, applied bool, now time.Time
 		return RestorePlan{}, ErrExpired
 	}
 	i := ticket.Intent
-	if i.Mode != "none" && i.Mode != "desktop" && i.Mode != "headless" {
+	if i.Mode != "none" && i.Mode != "desktop" && i.Mode != "headless" && i.Mode != "systemd" {
 		return RestorePlan{}, ErrInvalid
 	}
-	if (i.Visible && i.Mode != "desktop") || (i.Maintain != (i.ConfigurationID != "")) || (i.Mode == "none" && i.Maintain) {
+	if (i.Visible && i.Mode != "desktop") || (i.Maintain != (i.ConfigurationID != "")) || ((i.Mode == "none" || i.Mode == "systemd") && i.Maintain) {
 		return RestorePlan{}, ErrInvalid
 	}
 	if len(i.ConfigurationID) > 128 {
 		return RestorePlan{}, ErrInvalid
 	}
-	return RestorePlan{Mode: i.Mode, Visible: i.Visible, SkipAutoLogin: i.Mode != "none", ConfigurationID: i.ConfigurationID}, nil
+	return RestorePlan{Mode: i.Mode, Visible: i.Visible, SkipAutoLogin: i.Mode != "none" && i.Mode != "systemd", ConfigurationID: i.ConfigurationID}, nil
 }
 
 // ClaimRestore requires an already secured operation directory. A durable

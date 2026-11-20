@@ -171,7 +171,7 @@ func assertEnums(t *testing.T, enums fixtureEnums) {
 	assertEnum(t, "diagnosticSocketStates", enums.DiagnosticSocketStates, []string{"not_observed", "open", "closed", "close_failed", "close_unconfirmed", "other"})
 	assertEnum(t, "networkSocketStates", enums.NetworkSocketStates, []string{"not_observed", "open", "closed", "close_failed", "close_unconfirmed"})
 	t.Helper()
-	assertEnum(t, "daemonModes", enums.DaemonModes, []string{string(launchcontract.ModeHeadless), string(launchcontract.ModeDesktop)})
+	assertEnum(t, "daemonModes", enums.DaemonModes, []string{string(launchcontract.ModeHeadless), string(launchcontract.ModeDesktop), string(launchcontract.ModeSystemd)})
 	assertEnum(t, "sessionStartOutcomes", enums.SessionStartOutcomes, []string{app.SessionStartCreated, app.SessionStartAlreadyRunning, app.SessionStartResumed})
 	assertEnum(t, "sessionIntents", enums.SessionIntents, []string{string(session.MaintainAuthentication), string(session.SuspendAuthentication)})
 	assertEnum(t, "sessionStates", enums.SessionStates, []string{

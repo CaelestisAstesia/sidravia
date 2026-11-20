@@ -38,12 +38,15 @@ func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Wri
 	if err != nil {
 		return classifyGUIBootstrapFailure(err)
 	}
+	desktop := result.Status.Mode == string(launchcontract.ModeDesktop) &&
+		result.Status.DesktopOwnerPID != nil && *result.Status.DesktopOwnerPID == ownerPID
+	service := result.Status.Mode == string(launchcontract.ModeSystemd) && result.Status.DesktopOwnerPID == nil
 	if result.Status.ProductVersion != identity.ProductVersion || result.Status.BuildID != identity.BuildID ||
-		result.Status.Mode != string(launchcontract.ModeDesktop) || result.Status.DesktopOwnerPID == nil || *result.Status.DesktopOwnerPID != ownerPID ||
+		(!desktop && !service) ||
 		result.Status.PID <= 0 || result.Info.PID <= 0 || result.Status.PID != result.Info.PID {
 		return unconfirmedGUIBootstrap(errors.New("GUI bootstrap authoritative confirmation failed"))
 	}
-	value := guiBootstrapSuccess{LogLevel: result.Status.LogLevel, SchemaVersion: 1, Endpoint: result.Info.Endpoint, Token: result.Info.Token, ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, DaemonPID: result.Status.PID, Mode: string(launchcontract.ModeDesktop)}
+	value := guiBootstrapSuccess{LogLevel: result.Status.LogLevel, SchemaVersion: 1, Endpoint: result.Info.Endpoint, Token: result.Info.Token, ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, DaemonPID: result.Status.PID, Mode: result.Status.Mode}
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return outputGUIBootstrapFailure(err)

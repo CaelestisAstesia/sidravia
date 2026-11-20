@@ -145,7 +145,7 @@ func defaultDependencies() dependencies {
 }
 
 // Probe is read-only and never starts, stops, removes or rewrites runtime state.
-func Probe(identity Identity) (ProbeResult, error) { return probe(identity, defaultDependencies()) }
+func Probe(identity Identity) (ProbeResult, error) { return probeDefault(identity) }
 
 func probe(identity Identity, deps dependencies) (ProbeResult, error) {
 	ns, err := deps.namespace()
@@ -202,6 +202,16 @@ func Connect(ctx context.Context, identity Identity, info contract.RuntimeInfo) 
 // runtime generation is reachable, identity-matching and headless. It never
 // launches a process or changes runtime state.
 func ConnectExistingHeadless(ctx context.Context, identity Identity) (Client, error) {
+	ns, err := defaultDependencies().namespace()
+	if err != nil {
+		return nil, err
+	}
+	if layout, registered, err := serviceLayout(ns); registered || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		return connectService(ctx, identity, layout)
+	}
 	return connectExistingHeadless(ctx, identity, defaultDependencies())
 }
 
@@ -282,7 +292,7 @@ func validStatusFor(identity Identity, info contract.RuntimeInfo, status *contra
 		return false
 	}
 	switch status.Mode {
-	case string(launchcontract.ModeHeadless):
+	case string(launchcontract.ModeHeadless), string(launchcontract.ModeSystemd):
 		return status.DesktopOwnerPID == nil
 	case string(launchcontract.ModeDesktop):
 		return status.DesktopOwnerPID != nil && *status.DesktopOwnerPID > 0
@@ -487,6 +497,12 @@ func AcquireHeadless(ctx context.Context, identity Identity, logLevel string) (C
 	if err != nil {
 		return nil, wrapSafeOperation("运行命名空间", err)
 	}
+	if layout, registered, err := serviceLayout(ns); registered || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		return connectService(ctx, identity, layout)
+	}
 	options := headlessOptions(ns)
 	return acquireWithNamespace(ctx, identity, options, logLevel, ns, deps)
 }
@@ -504,6 +520,13 @@ func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, 
 	if err != nil {
 		return DesktopBootstrapResult{}, wrapSafeOperation("运行命名空间", err)
 	}
+	if layout, registered, err := serviceLayout(ns); registered || err != nil {
+		if err != nil {
+			return DesktopBootstrapResult{}, err
+		}
+		return bootstrapService(identity, layout)
+	}
+
 	return bootstrapDesktopWithNamespace(identity, ownerPID, ns, deps)
 }
 
@@ -711,6 +734,13 @@ func bootstrapDesktopPolicy(identity Identity, ownerPID int, level string, skipA
 	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
+	if layout, registered, err := serviceLayout(ns); registered || err != nil {
+		if err != nil {
+			return DesktopBootstrapResult{}, err
+		}
+		return bootstrapService(identity, layout)
+	}
+
 	options, err := desktopOptions(ownerPID, ns)
 	if err != nil {
 		return DesktopBootstrapResult{}, err

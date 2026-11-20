@@ -18,17 +18,21 @@ var (
 type Phase string
 
 const (
-	Created        Phase = "created"
-	Verified       Phase = "verified"
-	Preparing      Phase = "preparing"
-	Quiescent      Phase = "quiescent"
-	Applying       Phase = "applying"
-	Applied        Phase = "applied"
-	Resuming       Phase = "resuming"
-	Completed      Phase = "completed"
-	Aborted        Phase = "aborted"
-	RepairRequired Phase = "repair_required"
-	ResumeFailed   Phase = "resume_failed"
+	Created         Phase = "created"
+	Verified        Phase = "verified"
+	Preparing       Phase = "preparing"
+	Quiescent       Phase = "quiescent"
+	Applying        Phase = "applying"
+	Applied         Phase = "applied"
+	Resuming        Phase = "resuming"
+	ServiceStarting Phase = "service_starting"
+	RollingBack     Phase = "rolling_back"
+	SourceStarting  Phase = "source_starting"
+	RolledBack      Phase = "rolled_back"
+	Completed       Phase = "completed"
+	Aborted         Phase = "aborted"
+	RepairRequired  Phase = "repair_required"
+	ResumeFailed    Phase = "resume_failed"
 )
 
 type Package struct {
@@ -87,18 +91,28 @@ func (r Record) validateIdentity() error {
 	if err != nil || after.Compare(before) <= 0 {
 		return ErrInvalid
 	}
+	if r.Phase == ServiceStarting && (r.Recovery == nil || r.Recovery.Intent.Mode != "systemd") {
+		return ErrInvalid
+	}
+	if (r.Phase == RollingBack || r.Phase == RolledBack || r.Phase == SourceStarting) && (r.Recovery == nil || !r.Recovery.ManagedService) {
+		return ErrInvalid
+	}
 	if r.Recovery != nil {
 		if err := r.Recovery.validate(r); err != nil {
 			return err
 		}
 	}
 	switch r.Phase {
-	case Created, Verified, Preparing, Quiescent, Applying, Applied, Resuming, Completed:
+	case Created, Verified, Preparing, Quiescent, Applying, Applied, Resuming, ServiceStarting, RollingBack, SourceStarting, Completed:
 		if r.FailureCode != "" {
 			return ErrInvalid
 		}
 	case Aborted:
 		if r.FailureCode != "cancelled" && r.FailureCode != "preparation_failed" {
+			return ErrInvalid
+		}
+	case RolledBack:
+		if r.FailureCode != "update_rolled_back" {
 			return ErrInvalid
 		}
 	case RepairRequired:
@@ -133,13 +147,13 @@ func (r Record) Validate(keys *releases.PublisherKeys) error {
 // not evidence that a running process has already been stopped.
 func (r Record) RequiresStartupBlock() bool {
 	switch r.Phase {
-	case Preparing, Quiescent, Applying, Applied, Resuming, RepairRequired:
+	case Preparing, Quiescent, Applying, Applied, Resuming, RepairRequired, RollingBack:
 		return true
 	}
 	return false
 }
 func (r Record) terminal() bool {
-	return r.Phase == Completed || r.Phase == Aborted || r.Phase == ResumeFailed
+	return r.Phase == Completed || r.Phase == Aborted || r.Phase == ResumeFailed || r.Phase == RolledBack
 }
 func allowed(from, to Phase) bool {
 	switch from {
@@ -148,13 +162,21 @@ func allowed(from, to Phase) bool {
 	case Verified:
 		return to == Preparing || to == Aborted
 	case Preparing:
-		return to == Quiescent || to == Aborted
+		return to == Quiescent || to == Aborted || to == SourceStarting
 	case Quiescent:
-		return to == Applying || to == Aborted
+		return to == Applying || to == Aborted || to == SourceStarting
 	case Applying:
-		return to == Applied || to == RepairRequired
+		return to == Applied || to == RepairRequired || to == RollingBack
 	case Applied:
-		return to == Resuming || to == Completed || to == ResumeFailed
+		return to == Resuming || to == ServiceStarting || to == RollingBack || to == Completed || to == ResumeFailed
+	case ServiceStarting:
+		return to == Completed || to == ResumeFailed || to == RollingBack
+	case RepairRequired:
+		return to == RollingBack
+	case RollingBack:
+		return to == RolledBack
+	case SourceStarting:
+		return to == Aborted
 	case Resuming:
 		return to == Completed || to == ResumeFailed
 	}

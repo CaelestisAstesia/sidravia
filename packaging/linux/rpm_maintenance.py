@@ -1,6 +1,8 @@
 """Embedded in RPM scriptlets; never imports product code or reads user data."""
 import fcntl
 import os
+import pwd
+import subprocess
 from pathlib import Path
 import select
 import signal
@@ -86,6 +88,176 @@ def targets():
     return found
 
 
+def account_command(uid, command, timeout, stdout=subprocess.PIPE):
+    account = pwd.getpwuid(uid)
+    runtime = f'/run/user/{uid}'
+    return subprocess.run(
+        command, user=uid, group=account.pw_gid, extra_groups=[], cwd='/',
+        env={'HOME': account.pw_dir, 'PATH': '/usr/bin', 'LC_ALL': 'C',
+             'XDG_RUNTIME_DIR': runtime, 'DBUS_SESSION_BUS_ADDRESS': f'unix:path={runtime}/bus'},
+        stdout=stdout, stderr=subprocess.DEVNULL,
+        text=True, timeout=timeout, check=False)
+
+
+def user_service(uid, *args, timeout=20):
+    result = account_command(
+        uid, ['/usr/bin/systemctl', '--user', '--no-ask-password',
+              *args, 'sidravia.service'], timeout)
+    if result.returncode != 0:
+        raise RuntimeError('cannot coordinate the registered user service')
+    return result.stdout.strip()
+
+
+def wait_for_service_ipc(uid):
+    def state():
+        observed = user_service(uid, 'show', '-p', 'ActiveState,MainPID,InvocationID', timeout=2)
+        return dict(line.split('=', 1) for line in observed.splitlines())
+
+    deadline = time.monotonic() + 12
+    while time.monotonic() < deadline:
+        observed = state()
+        pid = observed.get('MainPID', '')
+        invocation = observed.get('InvocationID', '')
+        if observed.get('ActiveState') in ('inactive', 'failed'):
+            return False
+        if observed.get('ActiveState') == 'active' and pid.isdigit() and int(pid) > 0 and invocation:
+            probe = account_command(uid, [str(APP / 'sidraviactl'), 'rpm-user-service-ready', pid],
+                                    2, stdout=subprocess.DEVNULL)
+            if probe.returncode == 0 and state() == observed:
+                return True
+        time.sleep(.2)
+    return False
+
+
+def stop_managed_daemons(stopped, leases):
+    entries = targets()
+    try:
+        for name, fd in entries:
+            if name != 'sidraviad' or not alive(fd):
+                continue
+            fields = dict(line.split(':', 1) for line in
+                          Path(f'/proc/self/fdinfo/{fd}').read_text().splitlines())
+            pid = int(fields['Pid'])
+            proc = Path(f'/proc/{pid}')
+            if not any(line.endswith('/sidravia.service')
+                       for line in (proc / 'cgroup').read_text().splitlines()):
+                continue
+            uid = proc.stat().st_uid
+            if uid == 0:
+                raise RuntimeError('invalid Sidravia user service owner')
+            home = Path(pwd.getpwuid(uid).pw_dir)
+            expected = home / '.config/systemd/user/sidravia.service'
+            lease = os.open(expected.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                info = os.fstat(lease)
+                if info.st_uid != uid or info.st_mode & 0o022:
+                    raise RuntimeError('invalid user service directory ownership')
+                fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BaseException:
+                os.close(lease)
+                raise
+            leases.append(lease)
+            observed = user_service(uid, 'show', '-p', 'MainPID,FragmentPath,DropInPaths,ExecStart')
+            values = dict(line.split('=', 1) for line in observed.splitlines())
+            if (values.get('MainPID') != str(pid)
+                    or values.get('FragmentPath') != str(expected)
+                    or not values.get('ExecStart', '').startswith('{ path=/usr/lib64/sidravia/sidraviad ;')
+                    or any(Path(path).parent != Path('/usr/lib/systemd/user/service.d')
+                           for path in values.get('DropInPaths', '').split())
+                    or not alive(fd)):
+                raise RuntimeError('could not establish registered service ownership')
+            user_service(uid, 'stop')
+            stopped.append(uid)
+            if alive(fd):
+                raise RuntimeError('registered user service did not stop')
+            observed = user_service(uid, 'show', '-p', 'ActiveState,Result,ExecMainCode,ExecMainStatus')
+            values = dict(line.split('=', 1) for line in observed.splitlines())
+            if (values.get('ActiveState') != 'inactive'
+                    or values.get('Result') != 'success'
+                    or values.get('ExecMainCode') not in ('0', '1')
+                    or values.get('ExecMainStatus') != '0'):
+                raise RuntimeError('registered user service did not exit normally')
+    finally:
+        for _, fd in entries:
+            os.close(fd)
+
+
+def resume_verified_package(uids):
+    if not uids:
+        return
+    for package in ('sidravia', 'sidravia-core'):
+        verified = subprocess.run(
+            ['/usr/bin/rpm', '-V', '--nosignature', package],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=30, check=False)
+        if verified.returncode == 0:
+            break
+    else:
+        for uid in uids:
+            report_user_failure(uid, 'recovery skipped because the installed RPM failed verification')
+        return
+    for uid in uids:
+        try:
+            home = Path(pwd.getpwuid(uid).pw_dir)
+            expected = home / '.config/systemd/user/sidravia.service'
+            observed = user_service(uid, 'show', '-p', 'ExecStart,FragmentPath')
+            values = dict(line.split('=', 1) for line in observed.splitlines())
+            if (values.get('FragmentPath') != str(expected)
+                    or not values.get('ExecStart', '').startswith('{ path=/usr/lib64/sidravia/sidraviad ;')):
+                report_user_failure(uid, 'recovery skipped because the registration changed')
+                continue
+            try:
+                user_service(uid, 'start')
+            except RuntimeError:
+                if user_service(uid, 'show', '-p', 'Result', '--value') != 'start-limit-hit':
+                    raise
+                user_service(uid, 'reset-failed')
+                user_service(uid, 'start')
+            if not wait_for_service_ipc(uid):
+                report_user_failure(uid, 'user service did not reach IPC readiness after the package transaction')
+        except (RuntimeError, OSError, subprocess.SubprocessError):
+            report_user_failure(uid, 'could not restore or verify the user service after the package transaction')
+
+
+def cleanup_erased_registration(binary):
+    # Run the verified old CLI from an open descriptor under each owning UID.
+    # The transaction root never reads or unlinks a user's home directory.
+    deadline = time.monotonic() + 30
+    for account in pwd.getpwall():
+        if account.pw_uid == 0 or not account.pw_dir.startswith('/'):
+            continue
+        runtime = f'/run/user/{account.pw_uid}'
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            report_erase_failure(account.pw_uid)
+            break
+        try:
+            result = subprocess.run(
+                [f'/proc/self/fd/{binary}', 'rpm-erase-user-registration'],
+                user=account.pw_uid, group=account.pw_gid, extra_groups=[],
+                cwd='/', pass_fds=(binary,), timeout=remaining,
+                env={'HOME': account.pw_dir, 'PATH': '/usr/bin', 'LC_ALL': 'C',
+                     'XDG_RUNTIME_DIR': runtime, 'DBUS_SESSION_BUS_ADDRESS': f'unix:path={runtime}/bus'},
+                check=False)
+            if result.returncode:
+                report_erase_failure(account.pw_uid)
+        except (OSError, subprocess.SubprocessError):
+            report_erase_failure(account.pw_uid)
+
+
+def report_erase_failure(uid):
+    report_user_failure(uid, 'could not remove the user registration after erase')
+
+
+def report_user_failure(uid, reason):
+    try:
+        subprocess.run(['/usr/bin/logger', '-t', 'sidravia-rpm',
+                        f'Sidravia UID {uid}: {reason}'],
+                       timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def stop_group(gui, timeout):
     entries = targets()
     selected = [(name, fd) for name, fd in entries if (name == 'sidravia_gui') == gui]
@@ -125,7 +297,7 @@ def transaction_busy(fd):
     return False
 
 
-def hold_until_transaction_exits(lock, parent, transaction):
+def hold_until_transaction_exits(lock, parent, transaction, resume=(), leases=(), erase_cli=None):
     """A tiny orphan owns only kernel descriptors, not a product lifecycle."""
     ready_read, ready_write = os.pipe2(os.O_CLOEXEC)
     child = os.fork()
@@ -148,7 +320,7 @@ def hold_until_transaction_exits(lock, parent, transaction):
             os.dup2(null, fd)
         for item in list(Path('/proc/self/fd').iterdir()):
             fd = int(item.name)
-            if fd > 2 and fd not in (lock, parent, transaction, ready_write):
+            if fd > 2 and fd not in (lock, parent, transaction, ready_write, erase_cli, *leases):
                 try:
                     os.close(fd)
                 except OSError:
@@ -167,14 +339,49 @@ def hold_until_transaction_exits(lock, parent, transaction):
                 waiter.poll()
                 break
             waiter.poll(100)
+        if erase_cli is not None:
+            held_gate = os.fstat(lock)
+            held_gate_identity = (held_gate.st_dev, held_gate.st_ino)
+            # Keep the startup gate through erase cleanup. A fresh Sidravia
+            # pre-install already has a five-second bound on this lock and
+            # fails before writing files if it races this cleanup.
+            for lease in leases:
+                os.close(lease)
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    fcntl.lockf(transaction, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        report_user_failure(0, 'erase cleanup could not obtain the RPM transaction lock')
+                        return
+                    time.sleep(.1)
+            if not (APP / 'sidravia.rpm').exists():
+                # Check and remove the gate only while the RPM database lock
+                # prevents another transaction from needing or replacing it.
+                try:
+                    installed_gate = GATE.lstat()
+                    if (installed_gate.st_dev, installed_gate.st_ino) == held_gate_identity:
+                        GATE.unlink()
+                except FileNotFoundError:
+                    pass
+                cleanup_erased_registration(erase_cli)
+                return
+            fcntl.lockf(transaction, fcntl.LOCK_UN)
+        os.close(lock)
+        if not transaction_busy(transaction):
+            resume_verified_package(resume)
     except BaseException:
         os._exit(1)
     finally:
         os._exit(0)
 
 
-def quiesce():
-    lock = parent = transaction = None
+def quiesce(remove=False):
+    lock = parent = transaction = erase_cli = None
+    stopped = []
+    leases = []
     try:
         if os.geteuid() != 0:
             raise RuntimeError('RPM maintenance requires the transaction root')
@@ -201,6 +408,7 @@ def quiesce():
                     raise RuntimeError('another package operation or startup is active')
                 time.sleep(.05)
         require_cooperative_installation()
+        stop_managed_daemons(stopped, leases)
         stop_group(True, 15)
         stop_group(False, 10)
         remaining = targets()
@@ -208,9 +416,19 @@ def quiesce():
             os.close(fd)
         if remaining:
             raise RuntimeError('application restarted during maintenance')
-        hold_until_transaction_exits(lock, parent, transaction)
+        if remove:
+            erase_cli = os.open(APP / 'sidraviactl', os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            info = os.fstat(erase_cli)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                raise RuntimeError('cannot establish ownership of the erase cleanup program')
+        hold_until_transaction_exits(lock, parent, transaction, stopped, leases, erase_cli)
         return 0
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        if stopped and lock is not None and parent is not None and transaction is not None:
+            try:
+                hold_until_transaction_exits(lock, parent, transaction, stopped, leases)
+            except (OSError, RuntimeError):
+                pass
         # Static reasons only; never echo process command lines or user data.
         if isinstance(error, RuntimeError):
             print('Sidravia maintenance: ' + str(error), flush=True)
@@ -218,6 +436,10 @@ def quiesce():
             print('Sidravia maintenance failed; package operation must stop.', flush=True)
         return 1
     finally:
+        for lease in leases:
+            os.close(lease)
+        if erase_cli is not None:
+            os.close(erase_cli)
         if lock is not None:
             os.close(lock)
         if parent is not None:

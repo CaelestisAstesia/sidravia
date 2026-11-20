@@ -32,7 +32,7 @@ func operationResult(ctx context.Context, store *operations.Store) *applyResult 
 	if err != nil || view == nil {
 		return nil
 	}
-	applied := view.Phase == operations.Applied || view.Phase == operations.Resuming || view.Phase == operations.Completed || view.Phase == operations.ResumeFailed
+	applied := view.Phase == operations.Applied || view.Phase == operations.Resuming || view.Phase == operations.ServiceStarting || view.Phase == operations.Completed || view.Phase == operations.ResumeFailed
 	recovery := "not_started"
 	record, _, err := store.Read(ctx)
 	if view.Phase == operations.Completed {
@@ -42,6 +42,8 @@ func operationResult(ctx context.Context, store *operations.Store) *applyResult 
 		}
 	} else if view.Phase == operations.ResumeFailed {
 		recovery = "not_confirmed"
+	} else if view.Phase == operations.RolledBack {
+		recovery = "source_files_restored"
 	}
 	return &applyResult{Operation: view, FilesApplied: applied, ApplicationRecovery: recovery, Authentication: "not_evaluated"}
 }
@@ -149,6 +151,8 @@ func applyErrorMessage(err error) string {
 		return "更新曾中断写入，请按发行说明手动修复，程序仍保持启动保护"
 	case "update_busy":
 		return "另一项更新仍在进行，或操作阶段不允许重复执行"
+	case "update_rolled_back":
+		return "更新失败，已恢复旧版程序文件。请用 daemon status 确认运行版本和状态"
 	case "resume_failed":
 		return "文件已安装，但程序恢复未确认，请检查运行状态"
 	case "preparation_rejected":

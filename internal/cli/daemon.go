@@ -263,6 +263,14 @@ func isExplicitHeadless(status *contract.StatusResult) bool {
 }
 
 func daemonStart(identity clientbootstrap.Identity, logLevel string) error {
+	if registered, err := clientbootstrap.HasService(); registered || err != nil {
+		if err != nil {
+			return err
+		}
+		// Existing XDG login entries also use daemon start. Keep an
+		// automatic login entry from overriding systemd enablement.
+		return wrapSafeOperation("托管后台请使用 sidraviactl integration service start", clientbootstrap.ErrModeConflict)
+	}
 	outcome, err := clientbootstrap.EnsureHeadless(identity, logLevel)
 	if err != nil {
 		return err
@@ -279,6 +287,15 @@ func daemonStatus(identity clientbootstrap.Identity) error {
 }
 
 func daemonStop(identity clientbootstrap.Identity) error {
+	if registered, err := clientbootstrap.HasService(); registered || err != nil {
+		if err != nil {
+			return err
+		}
+		if _, err := clientbootstrap.ServiceOperation(context.Background(), identity, "stop"); err != nil {
+			return err
+		}
+		return writeDaemonStopped(os.Stdout)
+	}
 	outcome, err := runDaemonStopWithOutcome(defaultStopDependencies(identity))
 	if err != nil {
 		return err
@@ -291,6 +308,15 @@ func daemonStop(identity clientbootstrap.Identity) error {
 }
 
 func daemonRestart(identity clientbootstrap.Identity, logLevel string) error {
+	if registered, err := clientbootstrap.HasService(); registered || err != nil {
+		if err != nil {
+			return err
+		}
+		if _, err := clientbootstrap.ServiceOperation(context.Background(), identity, "restart"); err != nil {
+			return err
+		}
+		return writeDaemonRestarted(os.Stdout)
+	}
 	outcome, err := runDaemonRestartWithOutcome(defaultRestartDependencies(identity), logLevel)
 	if err != nil {
 		return err

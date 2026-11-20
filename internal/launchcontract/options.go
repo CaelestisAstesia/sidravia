@@ -5,6 +5,7 @@ package launchcontract
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -27,11 +28,15 @@ const (
 	EnvRecoveryConfiguration = "SIDRAVIA_UPDATE_CONFIGURATION"
 )
 
+// EnvSystemdPackage pins the data layout selected when registering a user unit.
+const EnvSystemdPackage = "SIDRAVIA_SYSTEMD_PACKAGE"
+
 type Mode string
 
 const (
 	ModeHeadless Mode = "headless"
 	ModeDesktop  Mode = "desktop"
+	ModeSystemd  Mode = "systemd"
 )
 
 var ErrInvalidOptions = errors.New("invalid daemon launch options")
@@ -41,11 +46,14 @@ var ErrInvalidOptions = errors.New("invalid daemon launch options")
 type Options struct {
 	Mode                  Mode
 	DesktopOwnerPID       int
+	DesktopOwnerStart     string
 	Namespace             string
 	SkipAutoLogin         bool
 	RecoveryOperation     string
 	RecoveryToken         string
 	RecoveryConfiguration string
+	SwitchOperation       string
+	SwitchConfiguration   string
 	LogLevel              string
 }
 
@@ -68,6 +76,10 @@ func New(mode Mode, ownerPID int, namespace string) (Options, error) {
 		if ownerPID != 0 {
 			return Options{}, ErrInvalidOptions
 		}
+	case ModeSystemd:
+		if ownerPID != 0 || !ns.IsProduction() || runtime.GOOS != "linux" {
+			return Options{}, ErrInvalidOptions
+		}
 	case ModeDesktop:
 		if ownerPID <= 0 {
 			return Options{}, ErrInvalidOptions
@@ -79,6 +91,12 @@ func New(mode Mode, ownerPID int, namespace string) (Options, error) {
 }
 
 func (o Options) Validate() error {
+	if o.DesktopOwnerStart != "" {
+		n, err := strconv.ParseUint(o.DesktopOwnerStart, 10, 64)
+		if o.Mode != ModeDesktop || err != nil || n == 0 {
+			return ErrInvalidOptions
+		}
+	}
 	if o.RecoveryOperation != "" {
 		if len(o.RecoveryOperation) != 32 || !o.SkipAutoLogin || len(o.RecoveryConfiguration) > 128 || len(o.RecoveryToken) != 32 {
 			return ErrInvalidOptions
@@ -125,7 +143,7 @@ func ChildEnvironment(parent []string, options Options, logLevel string) ([]stri
 	result := make([]string, 0, len(parent)+4)
 	for _, entry := range parent {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(name, EnvDesktopOwnerStart) && options.Mode != ModeDesktop || strings.EqualFold(name, EnvManagedLog) || strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) || strings.EqualFold(name, EnvSkipAutoLogin) || strings.EqualFold(name, EnvRecoveryOperation) || strings.EqualFold(name, EnvRecoveryToken) || strings.EqualFold(name, EnvRecoveryConfiguration) {
+		if strings.EqualFold(name, EnvDesktopOwnerStart) && (options.Mode != ModeDesktop || options.DesktopOwnerStart != "") || strings.EqualFold(name, EnvManagedLog) || strings.EqualFold(name, EnvMode) || strings.EqualFold(name, EnvDesktopOwnerPID) || strings.EqualFold(name, EnvLogLevel) || strings.EqualFold(name, EnvNamespace) || strings.EqualFold(name, EnvSkipAutoLogin) || strings.EqualFold(name, EnvRecoveryOperation) || strings.EqualFold(name, EnvRecoveryToken) || strings.EqualFold(name, EnvRecoveryConfiguration) {
 			continue
 		}
 		result = append(result, entry)
@@ -142,6 +160,9 @@ func ChildEnvironment(parent []string, options Options, logLevel string) ([]stri
 	}
 	if options.Mode == ModeDesktop {
 		result = append(result, fmt.Sprintf("%s=%d", EnvDesktopOwnerPID, options.DesktopOwnerPID))
+		if options.DesktopOwnerStart != "" {
+			result = append(result, EnvDesktopOwnerStart+"="+options.DesktopOwnerStart)
+		}
 	}
 	return result, nil
 }

@@ -71,3 +71,5 @@ func finishApplication(target, id string) error {
 	}
 	return root.Remove(operations.StartupSeal)
 }
+
+func observeManagedGUI(string) (*applicationProcess, error) { return nil, ErrUnsupported }

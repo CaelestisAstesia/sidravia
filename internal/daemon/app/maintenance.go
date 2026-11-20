@@ -38,6 +38,15 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 		return nil, &contract.Error{Code: code, Message: "更新准备未完成，请取消更新或正常退出后重试。"}
 	}
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+		if options.Mode == launchcontract.ModeSystemd {
+			switch method {
+			case contract.MethodDaemonStop:
+				return nil, &contract.Error{
+					Code:    contract.ErrorCodeMaintenance,
+					Message: "后台由 systemd 托管，请使用用户服务管理入口。",
+				}
+			}
+		}
 		mu.Lock()
 		defer mu.Unlock()
 		if alive != nil && state.Expire(time.Now(), alive()) {
@@ -61,6 +70,9 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.ConfigurationID == "" || !restoreAvailable || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeMaintenance)
 			}
+			if options.SwitchOperation != "" && (input.OperationID != options.SwitchOperation || input.ConfigurationID != options.SwitchConfiguration) {
+				return failure(contract.ErrorCodeMaintenance)
+			}
 			if options.RecoveryOperation != "" && (input.OperationID != options.RecoveryOperation || input.ConfigurationID != options.RecoveryConfiguration) {
 				return failure(contract.ErrorCodeMaintenance)
 			}
@@ -72,15 +84,37 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.CoordinatorPID == 0 || input.Interactive == nil || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeInvalidArgument)
 			}
+			if (options.Mode == launchcontract.ModeSystemd && !input.ServiceSwitch && !input.ManagedGUIUpdate) ||
+				(input.ManagedGUIUpdate && (options.Mode != launchcontract.ModeSystemd || input.ServiceSwitch)) ||
+				(input.ServiceSwitch && (*input.Interactive || options.Namespace != "")) ||
+				(input.InterruptOneShot && !input.ServiceSwitch) {
+				return failure(contract.ErrorCodeMaintenance)
+			}
 			live, close, err := open(input.CoordinatorPID)
 			if err != nil {
 				return failure(contract.ErrorCodeMaintenance)
 			}
 			application.operationMu.Lock()
+			if input.ManagedGUIUpdate {
+				err := state.PrepareManagedGUI(input.OperationID, *input.Interactive, time.Now())
+				if err == nil {
+					application.maintenanceActive.Store(true)
+				}
+				application.operationMu.Unlock()
+				if err != nil {
+					close()
+					return failure(contract.ErrorCodeMaintenance)
+				}
+				alive, closeOwner = live, close
+				return output()
+			}
 			view, err := application.listSessionViewLocked(ctx)
 			intent := update.RestoreIntent{Mode: string(options.Mode)}
 			for _, s := range view.Sessions {
 				if s.Intent == session.MaintainAuthentication {
+					if s.ConfigurationID == "" && input.ServiceSwitch && input.InterruptOneShot {
+						continue
+					}
 					if s.ConfigurationID == "" || intent.Maintain {
 						err = update.ErrInvalid
 						break
@@ -90,7 +124,11 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 				}
 			}
 			if err == nil {
-				err = state.Prepare(input.OperationID, *input.Interactive, intent, time.Now())
+				if input.ServiceSwitch {
+					err = state.PrepareServiceSwitch(input.OperationID, intent, time.Now())
+				} else {
+					err = state.Prepare(input.OperationID, *input.Interactive, intent, time.Now())
+				}
 			}
 			if err == nil {
 				application.maintenanceActive.Store(true)

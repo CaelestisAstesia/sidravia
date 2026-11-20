@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-const daemonModes = {'headless', 'desktop'};
+const daemonModes = {'headless', 'desktop', 'systemd'};
 
 enum ConfigurationRuntimeAvailability {
   available('available'),

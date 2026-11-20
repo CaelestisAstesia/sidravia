@@ -181,7 +181,10 @@ class GuiController extends ChangeNotifier {
   String _restartLevel = "debug";
   String? _restoreConfiguration;
   String? get runningLogLevel => snapshot?.daemon.logLevel;
-  bool get supportsCoreRestart => bootstrapper is GuiCoreRestarter;
+  bool _serviceManaged = false;
+
+  bool get supportsCoreRestart =>
+      !_serviceManaged && bootstrapper is GuiCoreRestarter;
   bool get canRestartCore =>
       supportsCoreRestart &&
       !busy &&
@@ -245,6 +248,7 @@ class GuiController extends ChangeNotifier {
         await _closeQuietly(client);
         return;
       }
+      _serviceManaged = boot.value!.mode == 'systemd';
       _client = client;
       await _refresh(generation, client);
       if (!_canContinue(generation) || _state != GuiConnectionState.ready) {
@@ -511,6 +515,7 @@ class GuiController extends ChangeNotifier {
       _timer?.cancel();
       _timer = null;
       if (_disposed) return false;
+      if (_serviceManaged) return true;
       final generation = _generation;
       final client = _client;
       if (client is! SidraviaDesktopClient) return false;
@@ -554,6 +559,7 @@ class GuiController extends ChangeNotifier {
         _setFailure(boot.failure!);
         return;
       }
+      _serviceManaged = boot.value!.mode == 'systemd';
       final client = await connector(boot.value!);
       if (!_canContinue(generation)) {
         await _closeQuietly(client);

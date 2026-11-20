@@ -23,7 +23,9 @@ class IntegrationSettings extends StatefulWidget {
 class _IntegrationSettingsState extends State<IntegrationSettings> {
   late final InstallationManager _manager;
   IntegrationStatus? _status;
+  UserServiceStatus? _service;
   String? _error;
+  String? _serviceError;
   bool _busy = false;
 
   @override
@@ -39,11 +41,21 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
     setState(() {
       _busy = true;
       _error = null;
+      _serviceError = null;
     });
     try {
       if (change != null) await _manager.change(change);
       final next = await _manager.status();
-      if (mounted) setState(() => _status = next);
+      final services = _manager;
+      final service = services is UserServiceManager
+          ? await (services as UserServiceManager).userService('status')
+          : null;
+      if (mounted) {
+        setState(() {
+          _status = next;
+          _service = service;
+        });
+      }
     } on Object catch (error) {
       if (mounted) {
         setState(() {
@@ -56,6 +68,139 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
     }
   }
 
+  Future<void> _changeService(String action) async {
+    final manager = _manager;
+    if (_busy || manager is! UserServiceManager) return;
+    final services = manager as UserServiceManager;
+    if (const {
+      'replace',
+      'takeover',
+      'release',
+      'recover',
+      'discard',
+      'discard-damaged',
+      'unregister',
+      'linger-on',
+      'linger-off',
+    }.contains(action)) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('确认修改用户服务'),
+          content: Text(
+            action.startsWith('linger')
+                ? '此设置影响当前用户的所有 systemd 用户服务。'
+                : action == 'discard-damaged'
+                ? '清除损坏的切换记录。保留当前后台、登记和账号配置。'
+                : action == 'discard'
+                ? '放弃恢复，停止后台并解除登记；各安装的账号配置会保留。'
+                : action == 'takeover' || action == 'release'
+                ? '切换会短暂中断认证。一次性认证需要重新输入。'
+                : '此操作可能中断认证。各安装的账号配置会保留。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted || _busy) return;
+    }
+    setState(() {
+      _busy = true;
+      _serviceError = null;
+    });
+    try {
+      final next = await services.userService(action);
+      if (mounted) setState(() => _service = next);
+    } on IntegrationFailure catch (error) {
+      final actual = await services.userService('status');
+      if (mounted) {
+        setState(() {
+          _service = actual;
+          _serviceError = error.message;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _serviceRows(UserServiceStatus state) => Column(
+    children: [
+      DesignRow(
+        title: '后台管理方式',
+        subtitle: [
+          if (!state.available)
+            '无法确认后台运行状态'
+          else if (state.directory == null)
+            '应用管理'
+          else ...[
+            'systemd · ${state.directory}',
+            state.running ? '后台正在运行' : '后台已停止',
+          ],
+          if (state.recoveryBlocked)
+            state.canDiscardDamaged ? '切换记录已损坏，无法自动恢复。' : '无法确认切换记录，请检查用户服务目录。',
+          ?_serviceError,
+        ].join('\n'),
+        trailing: PopupMenuButton<String>(
+          tooltip: '管理用户服务',
+          enabled:
+              !_busy && (!state.recoveryBlocked || state.canDiscardDamaged),
+          onSelected: _changeService,
+          itemBuilder: (context) => [
+            if (state.recoveryBlocked) ...[
+              if (state.canDiscardDamaged)
+                const PopupMenuItem(
+                  value: 'discard-damaged',
+                  child: Text('清除损坏的切换记录'),
+                ),
+            ] else if (state.recoveryPending) ...[
+              const PopupMenuItem(value: 'recover', child: Text('恢复原管理方式')),
+              if (state.canDiscardReplacement)
+                const PopupMenuItem(value: 'discard', child: Text('放弃恢复并解绑')),
+            ] else if (state.directory == null)
+              const PopupMenuItem(value: 'takeover', child: Text('切换到 systemd'))
+            else ...[
+              if (!state.matchesInstallation)
+                const PopupMenuItem(value: 'replace', child: Text('更换为本安装')),
+              if (state.matchesInstallation) ...[
+                const PopupMenuItem(value: 'release', child: Text('切回应用管理')),
+                if (state.running)
+                  const PopupMenuItem(value: 'stop', child: Text('停止后台'))
+                else
+                  const PopupMenuItem(value: 'start', child: Text('启动后台')),
+                PopupMenuItem(
+                  value: state.enabled ? 'disable' : 'enable',
+                  child: Text(state.enabled ? '关闭后台自启' : '开启后台自启'),
+                ),
+              ],
+              const PopupMenuItem(value: 'unregister', child: Text('解除登记')),
+            ],
+          ],
+        ),
+      ),
+      if (state.available)
+        DesignRow(
+          title: '注销后保留用户服务',
+          subtitle: '开启后，设为自启的用户服务也可在登录前启动',
+          trailing: DesignSwitch(
+            label: '注销后保留用户服务',
+            value: state.linger,
+            onChanged: _busy || state.recoveryPending || state.recoveryBlocked
+                ? null
+                : (value) => _changeService(value ? 'linger-on' : 'linger-off'),
+          ),
+        ),
+    ],
+  );
+
   @override
   void dispose() {
     unawaited(_manager.close());
@@ -65,6 +210,7 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
   @override
   Widget build(BuildContext context) {
     final status = _status;
+    final service = _service;
     Widget withRetry(Widget row) => _error == null
         ? row
         : Column(
@@ -132,7 +278,9 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
         labels: const {'disabled': '关闭', 'gui': '启动到托盘', 'daemon': '仅后台'},
         disabledValues: {
           if (!(status?.guiAvailable ?? false)) 'gui',
-          if (status?.daemonAutostartSupported == false) 'daemon',
+          if (status?.daemonAutostartSupported == false ||
+              service?.directory != null)
+            'daemon',
         },
         onChanged: _busy || status == null || status.autostart == 'conflict'
             ? null
@@ -143,7 +291,23 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
               }),
       ),
     );
-    return widget.builder?.call(withRetry(autostartRow), withRetry(pathRow)) ??
-        DesignGroup(children: [withRetry(autostartRow), withRetry(pathRow)]);
+    final startupControls = Column(
+      children: [
+        withRetry(autostartRow),
+        if (service != null)
+          _serviceRows(service)
+        else if (_serviceError != null)
+          DesignRow(
+            title: '后台管理方式',
+            subtitle: _serviceError,
+            trailing: TextButton(
+              onPressed: _busy ? null : () => _perform(),
+              child: const Text('重试'),
+            ),
+          ),
+      ],
+    );
+    return widget.builder?.call(startupControls, withRetry(pathRow)) ??
+        DesignGroup(children: [startupControls, withRetry(pathRow)]);
   }
 }
