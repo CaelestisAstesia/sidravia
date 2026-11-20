@@ -165,6 +165,7 @@ class _OfflineDemoAppState extends State<OfflineDemoApp> {
         onGenerateRoute: (_) => _PreviewPageRoute(
           builder: (context) => SidraviaWindowFrame(
             child: SidraviaShell(
+              websiteLatencyEnabled: false,
               controller: _controller,
               announcements: _announcements,
               createIntegrationManager: _OfflineInstallationManager.new,

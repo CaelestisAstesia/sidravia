@@ -20,8 +20,10 @@ class SidraviaShell extends StatefulWidget {
     this.desktopPresence,
     this.onOpenLogDirectory,
     this.createIntegrationManager,
+    this.websiteLatencyEnabled = true,
   });
   final GuiController controller;
+  final bool websiteLatencyEnabled;
   final SchoolAnnouncementController? announcements;
   final ConnectionNotificationController? connectionNotifications;
   final DesktopPresence? desktopPresence;
@@ -139,6 +141,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                   onBack: _back,
                 ),
                 AppPage.diagnostics => ConnectionDiagnosticsPage(
+                  websiteLatencyEnabled: widget.websiteLatencyEnabled,
                   onOpenLogDirectory: widget.onOpenLogDirectory,
                   controller: widget.controller,
 

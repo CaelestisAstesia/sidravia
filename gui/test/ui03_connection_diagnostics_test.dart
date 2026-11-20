@@ -53,6 +53,7 @@ void main() {
           '10.0.0.1',
         );
         expect(find.text('198.51.100.5:61440'), findsNothing);
+        await tester.ensureVisible(find.byTooltip('刷新快照'));
         await tester.tap(find.byTooltip('刷新快照'));
         await tester.pump();
         await appearance.settled;

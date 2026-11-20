@@ -1,3 +1,7 @@
+import 'website_latency_section.dart';
+import 'website_latency.dart';
+import 'website_latency_platform.dart';
+
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/features/diagnostics/runtime_snapshot.dart';
 import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
@@ -15,8 +19,10 @@ class ConnectionDiagnosticsPage extends StatefulWidget {
     required this.controller,
     required this.onBack,
     this.onOpenLogDirectory,
+    this.websiteLatencyEnabled = true,
   });
   final GuiController controller;
+  final bool websiteLatencyEnabled;
   final VoidCallback onBack;
   final Future<bool> Function()? onOpenLogDirectory;
   @override
@@ -29,6 +35,17 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
   VoidCallback get onBack => widget.onBack;
 
   String? _captured;
+  late final _websiteLatency = WebsiteLatencyController(
+    createProbe: widget.websiteLatencyEnabled
+        ? websiteLatencyProbeFactory
+        : null,
+  );
+
+  @override
+  void dispose() {
+    _websiteLatency.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -108,6 +125,7 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
               onDismiss: () => controller.dismissNotice(p.actionError!),
             ),
           ),
+        WebsiteLatencySection(controller: _websiteLatency),
         const DesignSectionTitle('运行状态快照'),
         if (!linked)
           Padding(
