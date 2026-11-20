@@ -399,12 +399,11 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	usernameMarker := "fictional-user-7B2F0D91"
 	passwordMarker := "fictional-password-4A8C6E13"
 	startPayload, _ := json.Marshal(contract.SessionStartOneShotPayload{
-		DisplayName:             "Test Session",
-		InstitutionProfileID:    "jlu",
-		Username:                usernameMarker,
-		Password:                passwordMarker,
-		NetworkBindingPolicy:    contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
-		ProtocolContextOverride: json.RawMessage(`{}`),
+		DisplayName:          "Test Session",
+		InstitutionProfileID: "jlu",
+		Username:             usernameMarker,
+		Password:             passwordMarker,
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 	})
 
 	startResponse, err := conn.Call(ctx, contract.MethodSessionStartOneShot, startPayload)
@@ -1203,12 +1202,11 @@ func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
 	defer conn.Close()
 
 	startPayload, _ := json.Marshal(contract.SessionStartOneShotPayload{
-		DisplayName:             "Test Session",
-		InstitutionProfileID:    "jlu",
-		Username:                "fictional-user-9Z1",
-		Password:                "fictional-password-9Z2",
-		NetworkBindingPolicy:    contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
-		ProtocolContextOverride: json.RawMessage(`{}`),
+		DisplayName:          "Test Session",
+		InstitutionProfileID: "jlu",
+		Username:             "fictional-user-9Z1",
+		Password:             "fictional-password-9Z2",
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 	})
 	response, err := conn.Call(ctx, contract.MethodSessionStartOneShot, startPayload)
 	if err != nil {
