@@ -173,6 +173,65 @@ func TestExperimentalPasswordExtensionIndicatorAllowsExistingLogin(t *testing.T)
 	}
 }
 
+func TestExperimentalPingReplyFramingAtBootstrap(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		datagramLength int
+		declaredLength uint16
+		subtype        byte
+		established    bool
+	}{
+		{"matching_lengths", 20, 20, 6, true},
+		{"campus_statistics_extension", 72, 16, 6, true},
+		{"truncated", 15, 16, 6, false},
+		{"other_datagram_length", 71, 16, 6, false},
+		{"other_declared_length", 72, 17, 6, false},
+		{"wrong_subtype", 72, 16, 4, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := experimentalResponder()
+			peer := newTestPeer(t, func(req []byte) [][]byte {
+				if !isKA1Req(req) {
+					return base(req)
+				}
+				reply := make([]byte, tc.datagramLength)
+				reply[0] = 7
+				binary.LittleEndian.PutUint16(reply[2:4], tc.declaredLength)
+				reply[4] = tc.subtype
+				if tc.datagramLength == 72 {
+					reply[32] = 0x55 // Synthetic statistics data.
+				}
+				return [][]byte{reply}
+			})
+			run := experimentalTestRun(t, peer, defaultTestDurations())
+			observer := newRecordingObserver(peer)
+			_, cancel, done := startRun(t, run, observer)
+			defer cancel(context.Canceled)
+			if tc.established {
+				observer.waitForEstablished(t, time.Second)
+				cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: protocol.TerminateWithBestEffortLogout})
+				assertRunReturns(t, done, true, time.Second)
+			} else {
+				select {
+				case failure := <-done:
+					if failure == nil || failure.Code != "network_timeout" {
+						t.Fatalf("expected KA1 exchange timeout, got %#v", failure)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("run did not report a KA1 exchange timeout")
+				}
+			}
+			wantEstablished := 0
+			if tc.established {
+				wantEstablished = 1
+			}
+			if got := observer.establishedCallCount(); got != wantEstablished {
+				t.Fatalf("establishments = %d, want %d", got, wantEstablished)
+			}
+		})
+	}
+}
+
 func TestExperimentalProfilePolicy(t *testing.T) {
 	var cfg map[string]any
 	if err := json.Unmarshal(testConfigJSON(1234, defaultTestDurations()), &cfg); err != nil {

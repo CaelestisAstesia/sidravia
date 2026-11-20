@@ -106,7 +106,13 @@ func (exec *execution) roundTrip(ctx context.Context, timeout time.Duration, req
 // Only a framed ping reply (subtype 6) can satisfy KA1. In particular, module,
 // statistics, unknown 07 messages and challenge replies cannot satisfy it.
 func isExperimentalPingReply(p []byte) bool {
-	return len(p) >= 6 && len(p) <= maxResponseDatagramLength && p[0] == 7 && int(binary.LittleEndian.Uint16(p[2:4])) == len(p) && p[4] == 6
+	if len(p) < 6 || len(p) > maxResponseDatagramLength || p[0] != 7 || p[4] != 6 {
+		return false
+	}
+	declaredLength := int(binary.LittleEndian.Uint16(p[2:4]))
+	// The campus reply declares 16 bytes even when the datagram carries
+	// online statistics starting at offset 32.
+	return declaredLength == len(p) || (declaredLength == 16 && len(p) == 72)
 }
 
 func (exec *execution) learnInterval(p []byte) {
