@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +78,7 @@ func TestCandidateAuthenticationUsesPinnedRootsAndExactRelease(t *testing.T) {
 	}
 }
 
-func TestCheckOffersOnlyNativeSignedApply(t *testing.T) {
+func TestCheckVerifiesSignedCandidatesIndependentlyOfHost(t *testing.T) {
 	for _, item := range []struct{ platform, kind string }{{"linux", "core-portable"}, {"windows", "setup"}, {"windows", "core-portable"}, {"windows", "gui-portable"}} {
 		platform, kind := item.platform, item.kind
 		t.Run(platform+"-"+kind, func(t *testing.T) {
@@ -117,8 +116,7 @@ func TestCheckOffersOnlyNativeSignedApply(t *testing.T) {
 			})})
 			source.publisherKeys, _ = releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
 			result, err := source.Check(context.Background(), releases.Selection{OS: platform, Arch: "amd64", Kind: kind, Channel: "stable", CurrentVersion: "0.9.0"})
-			native := runtime.GOOS == platform && runtime.GOARCH == "amd64"
-			if err != nil || result.Candidate == nil || result.Candidate.CanApply != native || (native && result.Candidate.ApplyReason != "source_verification_and_confirmation_required") {
+			if err != nil || result.Candidate == nil || !result.PublisherVerified || result.Candidate.CanApply || result.Candidate.ApplyReason != "" {
 				t.Fatalf("%+v %v", result, err)
 			}
 		})

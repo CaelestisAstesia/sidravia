@@ -225,12 +225,12 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		return failSource(err, nil, false)
 	}
 	if rpm {
+		if result.Candidate != nil {
+			result.Candidate.ApplyReason = "system_package_managed"
+		}
 		return emit(true, "ok", "", cached{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result})
 	}
-	if result.Candidate != nil && !validApplyTarget(layout, *kind) {
-		result.Candidate.CanApply = false
-		result.Candidate.ApplyReason = "portable_layout_required"
-	}
+	projectApplyOffer(result, validApplyTarget(layout, *kind), applyPlatformSupported())
 	state := cached{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result}
 	if previous.Downloaded != "" {
 		valid, err := inspectCached(root, previous.Downloaded, previous.Check.Candidate)

@@ -39,6 +39,9 @@ type Candidate struct {
 type CheckResult struct {
 	State     string     `json:"state"`
 	Candidate *Candidate `json:"candidate,omitempty"`
+
+	// PublisherVerified describes this discovery only. Apply verifies again.
+	PublisherVerified bool `json:"-"`
 }
 
 // PackageSuffix defines the supported distribution names used by discovery and signed metadata.

@@ -65,7 +65,7 @@ func TestCheckRPMSelectsMatchingPublishedPackageWithoutPortableSignature(t *test
 				if c != nil {
 					t.Fatalf("unexpected candidate %+v", c)
 				}
-			} else if c == nil || c.Name != tc.name || c.CanApply || c.ApplyReason != "system_package_managed" {
+			} else if c == nil || c.Name != tc.name || got.PublisherVerified || c.CanApply || c.ApplyReason != "" {
 				t.Fatalf("unexpected candidate %+v", c)
 			}
 		})

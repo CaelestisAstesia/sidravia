@@ -42,3 +42,27 @@ func TestInstalledStatusDoesNotMutateCachedCandidateOrOfferReinstall(t *testing.
 		t.Fatal(ahead)
 	}
 }
+
+func TestApplyOfferRetainsReasonPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name, state, reason                        string
+		verified, layoutEligible, platformEligible bool
+		canApply                                   bool
+	}{
+		{"wrong layout", "available", "portable_layout_required", false, false, true, false},
+		{"unsigned", "up_to_date", "publisher_signature_required", false, true, true, false},
+		{"already current", "up_to_date", "not_newer", true, true, false, false},
+		{"ahead of channel", "ahead_of_channel", "not_newer", true, true, true, false},
+		{"unsupported platform", "available", "platform_not_supported", true, true, false, false},
+		{"eligible", "available", "source_verification_and_confirmation_required", true, true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := &releases.Candidate{CanApply: true}
+			result := releases.CheckResult{State: tc.state, Candidate: candidate, PublisherVerified: tc.verified}
+			projectApplyOffer(result, tc.layoutEligible, tc.platformEligible)
+			if candidate.CanApply != tc.canApply || candidate.ApplyReason != tc.reason {
+				t.Fatalf("canApply=%v, reason=%q", candidate.CanApply, candidate.ApplyReason)
+			}
+		})
+	}
+}

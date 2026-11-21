@@ -11,7 +11,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -156,7 +155,7 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 			}
 			if selected == nil || v.Compare(selectedVersion) > 0 || v.Compare(selectedVersion) == 0 && strings.HasSuffix(a.Name, ".tar.xz") && !strings.HasSuffix(selected.Name, ".tar.xz") {
 				selectedVersion = v
-				selected = &releases.Candidate{ID: fmt.Sprintf("%d:%d", r.ID, a.ID), Version: v.String(), Name: name, Size: a.Size, SHA256: hash, DownloadURL: a.URL, ReleaseURL: "https://github.com/" + releases.Repository + "/releases/tag/" + r.Tag, Notes: releaseNotes(r.Body), ApplyReason: "publisher_signature_required"}
+				selected = &releases.Candidate{ID: fmt.Sprintf("%d:%d", r.ID, a.ID), Version: v.String(), Name: name, Size: a.Size, SHA256: hash, DownloadURL: a.URL, ReleaseURL: "https://github.com/" + releases.Repository + "/releases/tag/" + r.Tag, Notes: releaseNotes(r.Body)}
 			}
 		}
 		endpoint = next
@@ -164,30 +163,13 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 	if selected == nil {
 		return releases.CheckResult{State: "no_compatible_release"}, nil
 	}
-	// Builds without configured publisher roots keep legacy check/download
-	// behavior. Native portable apply still requires installed-source proof and
-	// explicit consent at the command boundary.
-	if rpm {
-		selected.ApplyReason = "system_package_managed"
-	} else if g.publisherKeys.Configured() {
-		if _, err := g.AuthenticateCandidate(ctx, *selected); err != nil {
-			if !errors.Is(err, ErrSignatureMissing) {
-				return releases.CheckResult{}, err
-			}
-		} else {
-			selected.ApplyReason = "platform_not_supported"
-			if selectedVersion.Compare(current) <= 0 {
-				selected.ApplyReason = "not_newer"
-			}
-			if s.OS == "linux" && runtime.GOOS == "linux" && s.Arch == runtime.GOARCH && (s.Kind == "core-portable" || s.Kind == "gui-portable") && selectedVersion.Compare(current) > 0 {
-				selected.CanApply = true
-				selected.ApplyReason = "source_verification_and_confirmation_required"
-			}
-			if runtime.GOOS == "windows" && runtime.GOARCH == "amd64" && s.OS == "windows" && s.Arch == "amd64" && (s.Kind == "setup" || s.Kind == "core-portable" || s.Kind == "gui-portable") && selectedVersion.Compare(current) > 0 {
-				selected.CanApply = true
-				selected.ApplyReason = "source_verification_and_confirmation_required"
-			}
+	verified := false
+	if !rpm && g.publisherKeys.Configured() {
+		_, err := g.AuthenticateCandidate(ctx, *selected)
+		if err != nil && !errors.Is(err, ErrSignatureMissing) {
+			return releases.CheckResult{}, err
 		}
+		verified = err == nil
 	}
 	state := "up_to_date"
 	if selectedVersion.Compare(current) > 0 {
@@ -195,7 +177,7 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 	} else if selectedVersion.Compare(current) < 0 {
 		state = "ahead_of_channel"
 	}
-	return releases.CheckResult{State: state, Candidate: selected}, nil
+	return releases.CheckResult{State: state, Candidate: selected, PublisherVerified: verified}, nil
 }
 
 // RPM releases are numbered independently of the product version. Within a
