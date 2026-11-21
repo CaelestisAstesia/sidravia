@@ -649,22 +649,10 @@ class ConfigurationPageState extends State<ConfigurationPage> {
         c.id != _boundConfigurationId) {
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => DesignConfirmationDialog(
-        title: const Text('删除登录配置？'),
-        content: const Text('此操作会删除已保存的账号与凭据。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+    final confirmed = await showDesignConfirmation(
+      context,
+      title: const Text('删除登录配置？'),
+      content: const Text('此操作会删除已保存的账号与凭据。'),
     );
     if (confirmed != true || !mounted) return;
     final ok = await widget.controller.deleteConfiguration(

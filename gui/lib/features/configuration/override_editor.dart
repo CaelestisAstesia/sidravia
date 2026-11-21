@@ -253,22 +253,10 @@ class _OverrideEditorState extends State<OverrideEditor> {
   }
 
   Future<void> _confirmRestore() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => DesignConfirmationDialog(
-        title: const Text('恢复协议默认值？'),
-        content: const Text('此操作会移除草稿中的自定义覆写。已保存的规则要等你返回连接配置并保存后才会清除。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+    final confirmed = await showDesignConfirmation(
+      context,
+      title: const Text('恢复协议默认值？'),
+      content: const Text('此操作会移除草稿中的自定义覆写。已保存的规则要等你返回连接配置并保存后才会清除。'),
     );
     if (confirmed != true || !mounted) return;
     final restore = widget.onRestore;

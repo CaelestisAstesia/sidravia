@@ -81,6 +81,28 @@ class DesignConfirmationDialog extends StatelessWidget {
       AlertDialog(title: title, content: content, actions: actions);
 }
 
+Future<bool?> showDesignConfirmation(
+  BuildContext context, {
+  required Widget title,
+  Widget? content,
+}) => showDialog<bool>(
+  context: context,
+  builder: (context) => DesignConfirmationDialog(
+    title: title,
+    content: content,
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('取消'),
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context, true),
+        child: const Text('确认'),
+      ),
+    ],
+  ),
+);
+
 Future<T?> showDesignChoice<T>(
   BuildContext context, {
   required String title,

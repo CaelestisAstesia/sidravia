@@ -85,31 +85,19 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       'linger-on',
       'linger-off',
     }.contains(action)) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('确认修改用户服务'),
-          content: Text(
-            action.startsWith('linger')
-                ? '此设置影响当前用户的所有 systemd 用户服务。'
-                : action == 'discard-damaged'
-                ? '清除损坏的切换记录。保留当前后台、登记和账号配置。'
-                : action == 'discard'
-                ? '放弃恢复，停止后台并解除登记；各安装的账号配置会保留。'
-                : action == 'takeover' || action == 'release'
-                ? '切换会短暂中断认证。一次性认证需要重新输入。'
-                : '此操作可能中断认证。各安装的账号配置会保留。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('确认'),
-            ),
-          ],
+      final confirmed = await showDesignConfirmation(
+        context,
+        title: const Text('确认修改用户服务'),
+        content: Text(
+          action.startsWith('linger')
+              ? '此设置影响当前用户的所有 systemd 用户服务。'
+              : action == 'discard-damaged'
+              ? '清除损坏的切换记录。保留当前后台、登记和账号配置。'
+              : action == 'discard'
+              ? '放弃恢复，停止后台并解除登记；各安装的账号配置会保留。'
+              : action == 'takeover' || action == 'release'
+              ? '切换会短暂中断认证。一次性认证需要重新输入。'
+              : '此操作可能中断认证。各安装的账号配置会保留。',
         ),
       );
       if (confirmed != true || !mounted || _busy) return;

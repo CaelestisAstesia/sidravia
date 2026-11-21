@@ -222,22 +222,10 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
   Future<void> _confirmReset() async {
     final session = controller.capabilities.retainedSession;
     if (session == null || !controller.capabilities.canResetSession) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => DesignConfirmationDialog(
-        title: const Text('移除当前会话？'),
-        content: const Text('此操作会清理当前 Session 记录。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+    final confirmed = await showDesignConfirmation(
+      context,
+      title: const Text('移除当前会话？'),
+      content: const Text('此操作会清理当前 Session 记录。'),
     );
     if (confirmed == true && mounted) await controller.resetSession(session.id);
   }
