@@ -22,6 +22,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/operations"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -73,12 +74,12 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		return err
 	}
 	source := update.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
-	cache, err := os.UserCacheDir()
+	root, err := operations.DefaultRoot()
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
-	directory := filepath.Join(cache, "Sidravia", "updates", "operations", hex.EncodeToString(sum[:16]), op)
+	directory := filepath.Join(root, hex.EncodeToString(sum[:16]), op)
 	statePath := filepath.Join(directory, "state.json")
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
 	if err != nil {
@@ -365,12 +366,12 @@ func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identi
 	if err != nil {
 		return update.RestoreIntent{}, "", err
 	}
-	root, err := os.UserCacheDir()
+	root, err := operations.DefaultRoot()
 	if err != nil {
 		return update.RestoreIntent{}, "", err
 	}
 	hash := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
-	path := filepath.Join(root, "Sidravia", "updates", "operations", hex.EncodeToString(hash[:16]), op, "state.json")
+	path := filepath.Join(root, hex.EncodeToString(hash[:16]), op, "state.json")
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
 	if err != nil {
 		return update.RestoreIntent{}, "", err

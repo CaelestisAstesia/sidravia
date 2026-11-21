@@ -4,17 +4,27 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+
 	"sidravia/internal/update"
 )
 
-// DefaultRoot is shared by updater status and portable process admission. It
-// stays outside the replaceable program directory, including portable layouts.
-func DefaultRoot() (string, error) {
+// CacheRoot returns the existing update cache location, separate from daemon
+// data directories and from the install tree being replaced.
+func CacheRoot() (string, error) {
 	root, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "Sidravia", "updates", "operations"), nil
+	return filepath.Join(root, "Sidravia", "updates"), nil
+}
+
+// DefaultRoot is shared by updater status and portable process admission.
+func DefaultRoot() (string, error) {
+	root, err := CacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "operations"), nil
 }
 
 // AcquireStart holds process admission against file application. Linux callers

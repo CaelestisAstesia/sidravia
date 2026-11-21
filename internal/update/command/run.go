@@ -124,13 +124,12 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		}
 	}
 	selection := releases.Selection{OS: runtime.GOOS, Arch: runtime.GOARCH, Kind: *kind, Channel: *channel, CurrentVersion: version}
-	root, err := os.UserCacheDir()
+	cacheBase, err := operations.CacheRoot()
 	if err != nil {
 		return emit(false, "cache_unavailable", "更新缓存不可用。", nil)
 	}
 	identity := sha256.Sum256([]byte(layout.ExecutableDirectory + "\x00" + *kind + "\x00" + *channel))
-	cacheBase := filepath.Join(root, "Sidravia", "updates")
-	root = filepath.Join(cacheBase, hex.EncodeToString(identity[:16]))
+	root := filepath.Join(cacheBase, hex.EncodeToString(identity[:16]))
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
 	if err != nil {
 		return emit(false, "cache_unavailable", "更新缓存保护不可用。", nil)
