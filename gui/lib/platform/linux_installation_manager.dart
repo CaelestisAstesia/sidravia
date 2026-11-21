@@ -11,6 +11,7 @@ import 'linux_product_executable.dart';
 import 'gui_settings_storage_io.dart';
 import 'installation_manager.dart';
 import 'update_check_process.dart';
+import 'update_check_response.dart';
 
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
@@ -131,23 +132,7 @@ class LinuxInstallationManager
           _ => '无法检查更新，请稍后重试。',
         });
       }
-      final check =
-          (raw['result'] as Map<String, dynamic>)['check']
-              as Map<String, dynamic>;
-      final state = switch (check['state']) {
-        'available' => UpdateCheckState.available,
-        'up_to_date' => UpdateCheckState.upToDate,
-        'ahead_of_channel' => UpdateCheckState.aheadOfChannel,
-        'no_compatible_release' => UpdateCheckState.noCompatibleRelease,
-        _ => throw const FormatException(),
-      };
-      final candidate = check['candidate'] as Map<String, dynamic>?;
-      final version = candidate?['version'] as String?;
-      if (state == UpdateCheckState.available &&
-          (version == null || !_releaseVersion.hasMatch(version))) {
-        throw const FormatException();
-      }
-      return (state: state, version: version);
+      return decodeUpdateCheckResult(raw);
     } on IntegrationFailure {
       rethrow;
     } on Object {

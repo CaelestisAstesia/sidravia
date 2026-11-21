@@ -6,6 +6,7 @@ import 'installation_manager.dart';
 import 'linux_installation_manager.dart';
 import 'installation_manager_stub.dart' as stub;
 import 'update_check_process.dart';
+import 'update_check_response.dart';
 
 InstallationManager createManager({UpdateCheckProcess? updateCheck}) =>
     Platform.isWindows
@@ -45,25 +46,7 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
           _ => '无法检查更新，请稍后重试。',
         });
       }
-      final check =
-          (raw['result'] as Map<String, dynamic>)['check']
-              as Map<String, dynamic>;
-      final state = switch (check['state']) {
-        'available' => UpdateCheckState.available,
-        'up_to_date' => UpdateCheckState.upToDate,
-        'ahead_of_channel' => UpdateCheckState.aheadOfChannel,
-        'no_compatible_release' => UpdateCheckState.noCompatibleRelease,
-        _ => throw const FormatException(),
-      };
-      final candidate = check['candidate'] as Map<String, dynamic>?;
-      final version = candidate?['version'] as String?;
-      if (state == UpdateCheckState.available &&
-          (version == null ||
-              !RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')
-                  .hasMatch(version))) {
-        throw const FormatException();
-      }
-      return (state: state, version: version);
+      return decodeUpdateCheckResult(raw);
     } on IntegrationFailure {
       rethrow;
     } on Object {
