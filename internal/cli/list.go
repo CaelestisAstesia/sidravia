@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -52,7 +50,7 @@ func decodeSessionListResult(data []byte) (contract.SessionListResult, error) {
 
 func decodeProfileListResult(data []byte) (contract.ProfileListResult, error) {
 	var result contract.ProfileListResult
-	if err := decodeStrictList(data, &result); err != nil {
+	if err := decodeStrictCLI(data, &result, "列表结果之后存在多余数据"); err != nil {
 		return contract.ProfileListResult{}, err
 	}
 	if result.Profiles == nil {
@@ -66,22 +64,6 @@ func decodeProfileListResult(data []byte) (contract.ProfileListResult, error) {
 		}
 	}
 	return result, nil
-}
-
-func decodeStrictList(data []byte, destination any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("列表结果之后存在多余数据")
-		}
-		return fmt.Errorf("列表结果之后存在多余数据")
-	}
-	return nil
 }
 
 func writeSessionList(output io.Writer, result contract.SessionListResult) error {

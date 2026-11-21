@@ -1,12 +1,9 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -508,25 +505,13 @@ func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) 
 			return err
 		}
 		var result contract.ConfigurationRemoveResult
-		if err := decodeStrictCLI(raw, &result); err != nil || result.ConfigurationID == "" || result.Status != "removed" {
+		if err := decodeStrictCLI(raw, &result, "结果包含多余数据"); err != nil || result.ConfigurationID == "" || result.Status != "removed" {
 			return wrapSafeOperation("解码配置删除结果", err)
 		}
 		return writeAll(deps.stdout, "配置已删除："+sanitizeDynamicText(result.ConfigurationID)+"\n")
 	})
 }
 
-func decodeStrictCLI(data []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return fmt.Errorf("结果包含多余数据")
-	}
-	return nil
-}
 func decodeConfiguration(data []byte) (contract.ConfigurationResult, error) {
 	return contract.DecodeConfigurationResult(data)
 }

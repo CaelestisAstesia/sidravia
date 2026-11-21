@@ -104,6 +104,39 @@ func TestConfigurationDecodersRejectUnknownTrailingAndIncompleteResults(t *testi
 	}
 }
 
+func TestConfigRemoveStrictlyDecodesResponse(t *testing.T) {
+	const valid = `{"configurationId":"campus","status":"removed"}`
+	for _, tc := range []struct {
+		name, response string
+		ok             bool
+	}{
+		{"valid", valid, true},
+		{"unknown field", `{"configurationId":"campus","status":"removed","extra":true}`, false},
+		{"trailing value", valid + ` {}`, false},
+		{"trailing garbage", valid + ` !`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+				if method != contract.MethodConfigurationRemove {
+					t.Fatalf("unexpected method: %s", method)
+				}
+				return contract.Response{OK: true, Result: json.RawMessage(tc.response)}, nil
+			}}
+			deps := hotAuthDependencies(t, connection)
+			var output bytes.Buffer
+			deps.stdout = &output
+			err := runConfigRemove("campus", true, deps)
+			if tc.ok {
+				if err != nil || output.String() != "配置已删除：campus\n" {
+					t.Fatalf("remove response = %q, %v", &output, err)
+				}
+			} else if err == nil || err.Error() != "解码配置删除结果" || output.Len() != 0 {
+				t.Fatalf("malformed remove response = %q, %v", &output, err)
+			}
+		})
+	}
+}
+
 func TestConfigurationNonInteractiveRequirementsAreStableAndSecretFree(t *testing.T) {
 	deps := authDependencies{
 		stdin: strings.NewReader("secret\n"), stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
