@@ -3,6 +3,8 @@ package cli
 import (
 	"errors"
 	"io"
+
+	"sidravia/internal/credentialinput"
 )
 
 const maxPasswordBytes = 4096
@@ -25,6 +27,23 @@ func wrapSafeOperation(label string, cause error) error {
 		return nil
 	}
 	return safeOperationError{label: label, cause: cause}
+}
+
+func (deps authDependencies) readValidatedPassword(fromStdin bool) (string, error) {
+	var password string
+	var err error
+	if fromStdin {
+		password, err = deps.readStdinPassword(deps.stdin)
+	} else {
+		password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := credentialinput.Validate(password); err != nil {
+		return "", err
+	}
+	return password, nil
 }
 
 func readPasswordStdin(input io.Reader) (string, error) {

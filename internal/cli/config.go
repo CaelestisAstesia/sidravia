@@ -321,16 +321,8 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 			}
 			policy = &selected
 		}
-		var password string
-		if options.passwordStdin {
-			password, err = deps.readStdinPassword(deps.stdin)
-		} else {
-			password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
-		}
+		password, err := deps.readValidatedPassword(options.passwordStdin)
 		if err != nil {
-			return err
-		}
-		if err := credentialinput.Validate(password); err != nil {
 			return err
 		}
 		if interactive && !options.allowInsecure {
@@ -451,17 +443,8 @@ func runConfigSetPassword(options configPasswordOptions, deps authDependencies) 
 			return wrapSafeOperation("写入存储警告", err)
 		}
 	}
-	var password string
-	var err error
-	if options.passwordStdin {
-		password, err = deps.readStdinPassword(deps.stdin)
-	} else {
-		password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
-	}
+	password, err := deps.readValidatedPassword(options.passwordStdin)
 	if err != nil {
-		return err
-	}
-	if err := credentialinput.Validate(password); err != nil {
 		return err
 	}
 	return withAuthClient(deps, func(connection daemonClient) error {

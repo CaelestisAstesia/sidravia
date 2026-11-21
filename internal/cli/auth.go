@@ -123,18 +123,8 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			}
 			return writeSessionStartResult(deps.stdout, result)
 		}
-		var password string
-		var err error
-		if options.passwordStdin {
-			password, err = deps.readStdinPassword(deps.stdin)
-		} else {
-			password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
-		}
+		password, err := deps.readValidatedPassword(options.passwordStdin)
 		if err != nil {
-			return err
-		}
-
-		if err := credentialinput.Validate(password); err != nil {
 			return err
 		}
 		payload := contract.SessionStartOneShotPayload{
