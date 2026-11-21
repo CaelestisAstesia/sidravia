@@ -57,7 +57,12 @@ class _UpdateSettingsState extends State<UpdateSettings> {
           UpdateCheckState.upToDate => '当前已是最新版本',
           UpdateCheckState.aheadOfChannel => '当前版本高于此通道已发布的版本',
           UpdateCheckState.noCompatibleRelease => '未找到适用于此安装的发行包',
-          null => _checking ? '正在检查…' : '通过系统包管理器安装更新',
+          null =>
+            _checking
+                ? '正在检查…'
+                : widget.checker.usesSystemPackageManager
+                ? '通过系统包管理器安装更新'
+                : null,
         };
     return Column(
       children: [

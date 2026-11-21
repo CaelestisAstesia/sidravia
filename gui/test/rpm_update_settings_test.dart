@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
+import 'package:sidravia_gui/features/settings/update_settings.dart';
 import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
@@ -19,6 +20,8 @@ const _capture = String.fromEnvironment('GEN_FRONTEND_OUTPUT');
 class _UpdateManager extends FakeManager implements PackageUpdateChecker {
   @override
   bool supportsUpdateCheck = false;
+  @override
+  bool usesSystemPackageManager = true;
   var pendingCheck = Completer<PackageUpdate>();
   String? openedVersion;
   int checks = 0;
@@ -36,6 +39,19 @@ class _UpdateManager extends FakeManager implements PackageUpdateChecker {
 }
 
 void main() {
+  testWidgets('portable update check omits the package-manager hint', (
+    tester,
+  ) async {
+    final manager = _UpdateManager()..usesSystemPackageManager = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: UpdateSettings(checker: manager)),
+      ),
+    );
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('通过系统包管理器安装更新'), findsNothing);
+  });
+
   for (final width in [360.0, 960.0]) {
     for (final dark in [false, true]) {
       testWidgets('RPM update check in settings at $width dark=$dark', (
@@ -75,6 +91,7 @@ void main() {
         await tester.pumpWidget(page());
         await tester.pumpAndSettle();
         final check = find.widgetWithText(OutlinedButton, '检查更新');
+        expect(find.text('通过系统包管理器安装更新'), findsOneWidget);
         await tester.ensureVisible(check);
         final activate = tester.widget<OutlinedButton>(check).onPressed!;
         await tester.tap(check);

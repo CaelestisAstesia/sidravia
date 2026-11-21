@@ -30,6 +30,9 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
   bool get supportsUpdateCheck => !_closed;
 
   @override
+  bool get usesSystemPackageManager => false;
+
+  @override
   Future<PackageUpdate> checkUpdate() async {
     if (_closed) throw const IntegrationFailure('检查更新已取消。');
     final executable = File(Platform.resolvedExecutable).parent.uri

@@ -78,8 +78,10 @@ void main() {
       final manager = f.manager;
       final marker = File('${f.product.path}/sidravia.rpm');
       expect(manager.supportsUpdateCheck, isTrue);
+      expect(manager.usesSystemPackageManager, isFalse);
       marker.writeAsStringSync('sidravia-rpm-v1\n');
       expect(manager.supportsUpdateCheck, isTrue);
+      expect(manager.usesSystemPackageManager, isTrue);
       final ctl = File('${f.product.path}/sidraviactl');
       ctl.writeAsStringSync('''#!/usr/bin/python3
 import sys

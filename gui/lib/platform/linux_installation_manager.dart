@@ -102,6 +102,15 @@ class LinuxInstallationManager
     }
   }
 
+  @override
+  bool get usesSystemPackageManager {
+    try {
+      return _rpmManaged;
+    } on FileSystemException {
+      return false;
+    }
+  }
+
   static final _releaseVersion = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
 
   @override
