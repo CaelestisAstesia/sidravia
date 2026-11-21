@@ -10,6 +10,7 @@ import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/update_check_process.dart';
 
 class SidraviaShell extends StatefulWidget {
   const SidraviaShell({
@@ -20,6 +21,7 @@ class SidraviaShell extends StatefulWidget {
     this.desktopPresence,
     this.onOpenLogDirectory,
     this.createIntegrationManager,
+    this.updateCheck,
     this.websiteLatencyEnabled = true,
   });
   final GuiController controller;
@@ -29,6 +31,7 @@ class SidraviaShell extends StatefulWidget {
   final DesktopPresence? desktopPresence;
   final Future<bool> Function()? onOpenLogDirectory;
   final InstallationManager Function()? createIntegrationManager;
+  final UpdateCheckProcess? updateCheck;
 
   @override
   State<SidraviaShell> createState() => SidraviaShellState();
@@ -130,6 +133,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                 ),
                 AppPage.settings => SettingsPage(
                   createIntegrationManager: widget.createIntegrationManager,
+                  updateCheck: widget.updateCheck,
                   desktopPresence: widget.desktopPresence,
                   controller: widget.controller,
                   onNavigate: _go,

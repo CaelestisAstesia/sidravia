@@ -40,7 +40,7 @@ func main() {
 		}
 		// An updater child takes over coordination; retaining this caller's
 		// lease would prevent that child from ever obtaining execution admission.
-		if len(os.Args) > 1 && os.Args[1] == "update" {
+		if len(os.Args) > 1 && os.Args[1] == "update" && !entry.CheckInCTL(os.Args[2:]) {
 			release()
 		} else {
 			releaseRun = release

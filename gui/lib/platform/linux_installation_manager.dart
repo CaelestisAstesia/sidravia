@@ -10,6 +10,7 @@ import 'linux_product_executable.dart';
 
 import 'gui_settings_storage_io.dart';
 import 'installation_manager.dart';
+import 'update_check_process.dart';
 
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
@@ -18,12 +19,13 @@ class LinuxInstallationManager
   LinuxInstallationManager({
     required String executable,
     required this.environment,
-  }) : executable = linuxProductExecutable(executable);
+    UpdateCheckProcess? updateCheck,
+  }) : _updateCheck = updateCheck ?? UpdateCheckProcess(),
+       executable = linuxProductExecutable(executable);
   final String executable;
   final Map<String, String> environment;
+  final UpdateCheckProcess _updateCheck;
   bool _closed = false;
-  Process? _updateProcess;
-  Future<PackageUpdate>? _updateCheck;
 
   @override
   Future<UserServiceStatus?> userService(String action) async {
@@ -93,7 +95,7 @@ class LinuxInstallationManager
       // RPM and GUI portable installations share the same updater contract.
       // The presence of the sibling CTL is the package capability boundary;
       // package-manager installation remains owned by RPM, not by this UI.
-      return File('$_directory/sidraviactl').existsSync();
+      return !_closed && File('$_directory/sidraviactl').existsSync();
     } on FileSystemException {
       return false;
     }
@@ -104,40 +106,14 @@ class LinuxInstallationManager
   @override
   Future<PackageUpdate> checkUpdate() async {
     _checkOpen();
-    if (_updateCheck != null || !supportsUpdateCheck) {
+    if (!supportsUpdateCheck) {
       throw const IntegrationFailure('当前无法检查更新。');
     }
-    final operation = _runUpdateCheck();
-    _updateCheck = operation;
     try {
-      return await operation;
-    } finally {
-      _updateCheck = null;
-    }
-  }
-
-  Future<PackageUpdate> _runUpdateCheck() async {
-    Timer? timer;
-    var timedOut = false;
-    try {
-      final child = await Process.start(
+      final (:code, :output) = await _updateCheck.run(
         '$_directory/sidraviactl',
-        const ['update', 'check'],
         environment: environment,
-        includeParentEnvironment: false,
       );
-      _updateProcess = child;
-      if (_closed) child.kill();
-      timer = Timer(const Duration(seconds: 50), () {
-        timedOut = true;
-        child.kill();
-      });
-      final (code, output, _) = await (
-        child.exitCode,
-        child.stdout.transform(utf8.decoder).join(),
-        child.stderr.drain<void>(),
-      ).wait;
-      if (timedOut) throw const IntegrationFailure('检查更新超时，请重试。');
       if (_closed) throw const IntegrationFailure('检查更新已取消。');
       if (output.isEmpty) {
         throw const IntegrationFailure('无法运行更新检查，请检查安装状态后重试。');
@@ -176,9 +152,6 @@ class LinuxInstallationManager
       rethrow;
     } on Object {
       throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
-    } finally {
-      timer?.cancel();
-      _updateProcess = null;
     }
   }
 
@@ -638,11 +611,6 @@ class LinuxInstallationManager
   @override
   Future<void> close() async {
     _closed = true;
-    _updateProcess?.kill();
-    try {
-      await _updateCheck;
-    } on IntegrationFailure {
-      // The check caller receives the result; close only waits for cleanup.
-    }
+    await _updateCheck.cancel();
   }
 }

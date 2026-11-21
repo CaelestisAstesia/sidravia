@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'update_check_process.dart';
 import 'installation_manager_stub.dart'
     if (dart.library.io) 'installation_manager_io.dart'
     as platform;
@@ -91,7 +92,9 @@ abstract interface class InstallationManager {
   Future<void> close();
 }
 
-InstallationManager createInstallationManager() => platform.createManager();
+InstallationManager createInstallationManager({
+  UpdateCheckProcess? updateCheck,
+}) => platform.createManager(updateCheck: updateCheck);
 
 class UserServiceStatus {
   const UserServiceStatus({

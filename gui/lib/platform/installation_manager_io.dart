@@ -5,17 +5,23 @@ import 'dart:io';
 import 'installation_manager.dart';
 import 'linux_installation_manager.dart';
 import 'installation_manager_stub.dart' as stub;
+import 'update_check_process.dart';
 
-InstallationManager createManager() => Platform.isWindows
-    ? _ProcessManager()
+InstallationManager createManager({UpdateCheckProcess? updateCheck}) =>
+    Platform.isWindows
+    ? _ProcessManager(updateCheck ?? UpdateCheckProcess())
     : Platform.isLinux
     ? LinuxInstallationManager(
         executable: Platform.resolvedExecutable,
         environment: Platform.environment,
+        updateCheck: updateCheck,
       )
     : stub.createManager();
 
 class _ProcessManager implements InstallationManager, PackageUpdateChecker {
+  _ProcessManager(this._updateCheck);
+
+  final UpdateCheckProcess _updateCheck;
   Process? _process;
   bool _busy = false, _closed = false;
 
@@ -24,10 +30,14 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
 
   @override
   Future<PackageUpdate> checkUpdate() async {
+    if (_closed) throw const IntegrationFailure('检查更新已取消。');
     final output = await _runUpdaterCheck();
+    if (_closed) throw const IntegrationFailure('检查更新已取消。');
     try {
       final raw = jsonDecode(output) as Map<String, dynamic>;
-      if (raw['schemaVersion'] != 1 || raw['ok'] != true || raw['code'] != 'ok') {
+      if (raw['schemaVersion'] != 1 ||
+          raw['ok'] != true ||
+          raw['code'] != 'ok') {
         throw IntegrationFailure(switch (raw['code']) {
           'rate_limited' => 'GitHub 请求受限，请稍后重试。',
           'source_unavailable' || 'incomplete_query' => '更新来源暂时不可用，请检查网络后重试。',
@@ -35,8 +45,9 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
           _ => '无法检查更新，请稍后重试。',
         });
       }
-      final check = (raw['result'] as Map<String, dynamic>)['check']
-          as Map<String, dynamic>;
+      final check =
+          (raw['result'] as Map<String, dynamic>)['check']
+              as Map<String, dynamic>;
       final state = switch (check['state']) {
         'available' => UpdateCheckState.available,
         'up_to_date' => UpdateCheckState.upToDate,
@@ -48,7 +59,8 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
       final version = candidate?['version'] as String?;
       if (state == UpdateCheckState.available &&
           (version == null ||
-              !RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$').hasMatch(version))) {
+              !RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')
+                  .hasMatch(version))) {
         throw const FormatException();
       }
       return (state: state, version: version);
@@ -61,18 +73,13 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
 
   Future<String> _runUpdaterCheck() async {
     final executable = File(Platform.resolvedExecutable).parent.uri
-        .resolve('sidraviactl.exe').toFilePath();
-    try {
-      final result = await Process.run(executable, const ['update', 'check'], runInShell: false);
-      if (result.exitCode != 0 || result.stdout is! String || (result.stdout as String).isEmpty) {
-        throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
-      }
-      return result.stdout as String;
-    } on IntegrationFailure {
-      rethrow;
-    } on Object {
+        .resolve('sidraviactl.exe')
+        .toFilePath();
+    final result = await _updateCheck.run(executable);
+    if (result.code != 0 || result.output.isEmpty) {
       throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
     }
+    return result.output;
   }
 
   @override
@@ -80,8 +87,12 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
     if (!RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$').hasMatch(version)) {
       throw const IntegrationFailure('无法打开浏览器。');
     }
-    final result = await Process.run('cmd.exe', ['/c', 'start', '',
-      'https://github.com/CaelestisAstesia/sidravia/releases/tag/v$version']);
+    final result = await Process.run('cmd.exe', [
+      '/c',
+      'start',
+      '',
+      'https://github.com/CaelestisAstesia/sidravia/releases/tag/v$version',
+    ]);
     if (result.exitCode != 0) throw const IntegrationFailure('无法打开浏览器。');
   }
 
@@ -159,10 +170,12 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
   @override
   Future<void> close() async {
     _closed = true;
+    final cancelledUpdate = _updateCheck.cancel();
     final child = _process;
     if (child != null) {
       child.kill();
       await child.exitCode;
     }
+    await cancelledUpdate;
   }
 }

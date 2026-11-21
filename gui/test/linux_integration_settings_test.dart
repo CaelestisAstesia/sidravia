@@ -71,34 +71,64 @@ open(${jsonEncode('${root.path}/observed')},"w").write(json.dumps([os.environ.ge
 }
 
 void main() {
-  test('RPM checker uses the bundled CTL and closes a pending query', () async {
-    final f = _Fixture();
-    final manager = f.manager;
-    final marker = File('${f.product.path}/sidravia.rpm');
-    expect(manager.supportsUpdateCheck, isFalse);
-    marker.writeAsStringSync('sidravia-rpm-v1\n');
-    expect(manager.supportsUpdateCheck, isTrue);
-    final ctl = File('${f.product.path}/sidraviactl');
-    ctl.writeAsStringSync('''#!/usr/bin/python3
+  test(
+    'portable and RPM checks use bundled CTL and close a pending query',
+    () async {
+      final f = _Fixture();
+      final manager = f.manager;
+      final marker = File('${f.product.path}/sidravia.rpm');
+      expect(manager.supportsUpdateCheck, isTrue);
+      marker.writeAsStringSync('sidravia-rpm-v1\n');
+      expect(manager.supportsUpdateCheck, isTrue);
+      final ctl = File('${f.product.path}/sidraviactl');
+      ctl.writeAsStringSync('''#!/usr/bin/python3
 import sys
 assert sys.argv[1:] == ['update', 'check']
 print('{"schemaVersion":1,"ok":true,"code":"ok","result":{"check":{"state":"available","candidate":{"version":"0.6.0-alpha.1"}}}}')
 ''');
-    expect(await manager.checkUpdate(), (
-      state: UpdateCheckState.available,
-      version: '0.6.0-alpha.1',
-    ));
+      expect(await manager.checkUpdate(), (
+        state: UpdateCheckState.available,
+        version: '0.6.0-alpha.1',
+      ));
 
-    ctl.writeAsStringSync('''#!/usr/bin/python3
+      ctl.writeAsStringSync('''#!/usr/bin/python3
 import time
 time.sleep(120)
 ''');
-    final pending = expectLater(
+      final pending = expectLater(
+        manager.checkUpdate(),
+        throwsA(isA<IntegrationFailure>()),
+      );
+      await expectLater(
+        manager.checkUpdate(),
+        throwsA(isA<IntegrationFailure>()),
+      );
+      await manager.close();
+      await pending;
+      expect(manager.supportsUpdateCheck, isFalse);
+    },
+    skip: !Platform.isLinux,
+  );
+
+  test('update checks bound CTL output', () async {
+    final f = _Fixture();
+    final manager = f.manager;
+    File('${f.product.path}/sidraviactl')
+        .writeAsStringSync('''#!/usr/bin/python3
+import sys
+sys.stdout.write('x' * ((2 << 20) + 1))
+''');
+    await expectLater(
       manager.checkUpdate(),
-      throwsA(isA<IntegrationFailure>()),
+      throwsA(
+        isA<IntegrationFailure>().having(
+          (failure) => failure.message,
+          'message',
+          '更新检查返回了过大的结果。',
+        ),
+      ),
     );
     await manager.close();
-    await pending;
   }, skip: !Platform.isLinux);
 
   test(

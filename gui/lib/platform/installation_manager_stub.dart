@@ -1,6 +1,8 @@
 import 'installation_manager.dart';
+import 'update_check_process.dart';
 
-InstallationManager createManager() => _UnsupportedManager();
+InstallationManager createManager({UpdateCheckProcess? updateCheck}) =>
+    _UnsupportedManager();
 
 class _UnsupportedManager implements InstallationManager {
   @override

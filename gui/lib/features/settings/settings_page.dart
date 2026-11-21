@@ -12,6 +12,7 @@ import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/update_check_process.dart';
 
 import 'integration_settings.dart';
 import 'settings_dropdown.dart';
@@ -24,10 +25,12 @@ class SettingsPage extends StatelessWidget {
     required this.onBack,
     this.desktopPresence,
     this.createIntegrationManager,
+    this.updateCheck,
   });
   final GuiController controller;
   final DesktopPresence? desktopPresence;
   final InstallationManager Function()? createIntegrationManager;
+  final UpdateCheckProcess? updateCheck;
   final ValueChanged<AppPage> onNavigate;
   final VoidCallback onBack;
   @override
@@ -352,7 +355,9 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 24),
           if (showIntegration || (desktopPresence?.supported ?? false))
             IntegrationSettings(
-              createManager: createIntegrationManager,
+              createManager:
+                  createIntegrationManager ??
+                  () => createInstallationManager(updateCheck: updateCheck),
               builder: (startupRows, path, update) => applicationGroup(
                 startupRows: showIntegration ? startupRows : const [],
                 path: showIntegration ? path : null,
