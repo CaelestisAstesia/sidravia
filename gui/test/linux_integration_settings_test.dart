@@ -71,6 +71,36 @@ open(${jsonEncode('${root.path}/observed')},"w").write(json.dumps([os.environ.ge
 }
 
 void main() {
+  test('RPM checker uses the bundled CTL and closes a pending query', () async {
+    final f = _Fixture();
+    final manager = f.manager;
+    final marker = File('${f.product.path}/sidravia.rpm');
+    expect(manager.supportsUpdateCheck, isFalse);
+    marker.writeAsStringSync('sidravia-rpm-v1\n');
+    expect(manager.supportsUpdateCheck, isTrue);
+    final ctl = File('${f.product.path}/sidraviactl');
+    ctl.writeAsStringSync('''#!/usr/bin/python3
+import sys
+assert sys.argv[1:] == ['update', 'check']
+print('{"schemaVersion":1,"ok":true,"code":"ok","result":{"check":{"state":"available","candidate":{"version":"0.6.0-alpha.1"}}}}')
+''');
+    expect(await manager.checkUpdate(), (
+      state: UpdateCheckState.available,
+      version: '0.6.0-alpha.1',
+    ));
+
+    ctl.writeAsStringSync('''#!/usr/bin/python3
+import time
+time.sleep(120)
+''');
+    final pending = expectLater(
+      manager.checkUpdate(),
+      throwsA(isA<IntegrationFailure>()),
+    );
+    await manager.close();
+    await pending;
+  }, skip: !Platform.isLinux);
+
   test(
     'RPM commands are package managed while autostart remains explicit',
     () async {

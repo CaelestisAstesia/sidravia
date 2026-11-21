@@ -5,6 +5,7 @@ import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'settings_dropdown.dart';
+import 'update_settings.dart';
 
 class IntegrationSettings extends StatefulWidget {
   const IntegrationSettings({
@@ -15,7 +16,8 @@ class IntegrationSettings extends StatefulWidget {
   });
   final InstallationManager? manager;
   final InstallationManager Function()? createManager;
-  final Widget Function(List<Widget> startupRows, Widget path)? builder;
+  final Widget Function(List<Widget> startupRows, Widget path, Widget? update)?
+  builder;
   @override
   State<IntegrationSettings> createState() => _IntegrationSettingsState();
 }
@@ -298,7 +300,14 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
           ),
         ),
     ];
-    return widget.builder?.call(startupRows, withRetry(pathRow)) ??
+    final manager = _manager;
+    final checker = manager is PackageUpdateChecker
+        ? manager as PackageUpdateChecker
+        : null;
+    final update = checker?.supportsUpdateCheck == true
+        ? UpdateSettings(checker: checker!)
+        : null;
+    return widget.builder?.call(startupRows, withRetry(pathRow), update) ??
         DesignGroup(children: [...startupRows, withRetry(pathRow)]);
   }
 }

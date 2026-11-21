@@ -364,7 +364,7 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 
 ## 更新检查与下载
 
-CTL 通过同目录的 `sidraviaupdater` 检查、下载和应用更新，结果以 JSON 输出。检查与下载使用 GitHub Releases。RPM 使用系统包管理器更新。
+检查与下载使用 GitHub Releases，CTL 以 JSON 输出结果。便携版和 Windows 安装版通过同目录的 `sidraviaupdater` 检查、下载和应用更新。RPM 通过 CTL 查询当前包型的新版本，安装由系统包管理器完成。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -375,13 +375,13 @@ CTL 通过同目录的 `sidraviaupdater` 检查、下载和应用更新，结果
 | `update apply --candidate ID --confirm` | 确认应用 Linux／Windows 便携版或 Windows 安装版的准确候选 |
 | `update recover --operation ID --confirm` | 核验并结束中断的更新协调，不重复启动程序 |
 
-`check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果，不要填版本号或任意 URL。
+`check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果。RPM 的 `check` 支持选择通道，包类型由已安装的 RPM 决定。
 
 ### 使用条件
 
 自动应用支持 Linux x64 便携版、Windows x64 便携版和安装版。Windows 便携版需放在本地 NTFS 目录。
 
-程序内固定了发布者公钥。更新时会核验当前版本和目标版本的签名、文件清单及下载包；旧版缺少签名证明时，先按发行说明手动升级。GUI 暂无更新入口。
+程序内固定了发布者公钥。自动更新时会核验当前版本和目标版本的签名、文件清单及下载包；旧版缺少签名证明时，先按发行说明手动升级。RPM 版 GUI 可在「软件更新」中检查新版并打开发行页。
 
 ### 检查、下载和应用
 

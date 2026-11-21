@@ -67,7 +67,7 @@ func TestUpdateForwardsConfirmationAndRecoveryIdentity(t *testing.T) {
 
 func TestRPMUpdatesUsePackageManagerAndCompiledIdentity(t *testing.T) {
 	identity := clientbootstrap.Identity{ProductVersion: "1.2.3", BuildID: "rpm-build"}
-	for _, operation := range []string{"check", "download", "status", "apply", "version"} {
+	for _, operation := range []string{"download", "status", "apply", "recover", "version"} {
 		t.Run(operation, func(t *testing.T) {
 			var out bytes.Buffer
 			command := newUpdateCommand(&out, func(_ context.Context, args []string) ([]byte, error) { return rpmUpdateOutput(args, identity) })

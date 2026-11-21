@@ -455,8 +455,7 @@ and nonblocking interprocess maintenance locking.
 
 RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
 project-downloaded replacements. Build the verified clean-source GUI portable
-first, then wrap that exact payload. The RPM excludes the portable marker and independent updater; CTL reports
-package-manager ownership for update operations and retains version queries. It uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
+first, then wrap that exact payload. The RPM excludes the portable marker and independent updater. CTL checks GitHub Releases metadata and reports package-manager ownership for downloads and installation. The RPM uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
 and icon. Reviewed Python pre/preun scriptlets coordinate only this installation;
 no account scan or automatic autostart registration is performed. Initial support
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).

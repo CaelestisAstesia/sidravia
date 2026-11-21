@@ -103,14 +103,25 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	if err != nil {
 		return emit(false, "invalid_target", "无法确认当前程序布局。", nil)
 	}
-	if runtime.GOOS == "linux" && productlayout.RPMManaged(layout) {
-		return emit(false, "system_package_managed", "此安装由 RPM 管理，请使用系统包管理器更新。", nil)
-	}
-	if *kind == "" {
-		*kind = defaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
-	}
-	if *kind != "setup" && *kind != "gui-portable" && *kind != "core-portable" {
-		return emit(false, "invalid_arguments", "更新包类型无效。", nil)
+	rpm := runtime.GOOS == "linux" && productlayout.RPMManaged(layout)
+	if rpm {
+		if operation != "check" {
+			return emit(false, "system_package_managed", "此安装由 RPM 管理，请使用系统包管理器更新。", nil)
+		}
+		if *kind != "" {
+			return emit(false, "invalid_arguments", "RPM 的更新包类型由当前安装确定。", nil)
+		}
+		*kind = "gui-rpm"
+		if productlayout.RPMCore(layout) {
+			*kind = "core-rpm"
+		}
+	} else {
+		if *kind == "" {
+			*kind = defaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
+		}
+		if *kind != "setup" && *kind != "gui-portable" && *kind != "core-portable" {
+			return emit(false, "invalid_arguments", "更新包类型无效。", nil)
+		}
 	}
 	selection := releases.Selection{OS: runtime.GOOS, Arch: runtime.GOARCH, Kind: *kind, Channel: *channel, CurrentVersion: version}
 	root, err := os.UserCacheDir()
@@ -213,6 +224,9 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	result, err := source.Check(ctx, selection)
 	if err != nil {
 		return failSource(err, nil, false)
+	}
+	if rpm {
+		return emit(true, "ok", "", cached{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result})
 	}
 	if result.Candidate != nil && !validApplyTarget(layout, *kind) {
 		result.Candidate.CanApply = false

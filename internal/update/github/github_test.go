@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +16,60 @@ import (
 func fixtureRelease(version string, id int64) release {
 	name := "sidravia-v" + version + "-windows-amd64-setup.exe"
 	return release{ID: id, Tag: "v" + version, Prerelease: strings.Contains(version, "-"), Assets: []asset{{ID: id, Name: name, State: "uploaded", Size: 3, Digest: "sha256:" + strings.Repeat("a", 64), URL: "https://github.com/" + releases.Repository + "/releases/download/v" + version + "/" + name}}}
+}
+
+func TestCheckRPMSelectsMatchingPublishedPackageWithoutPortableSignature(t *testing.T) {
+	stable := fixtureRelease("0.9.0", 1)
+	preview := fixtureRelease("1.0.0-alpha.2", 2)
+	newer := fixtureRelease("1.0.0-alpha.3", 3)
+	add := func(r *release, name string) {
+		a := r.Assets[0]
+		a.ID = a.ID*100 + int64(len(r.Assets))
+		a.Name = name
+		a.URL = "https://github.com/" + releases.Repository + "/releases/download/" + r.Tag + "/" + name
+		r.Assets = append(r.Assets, a)
+	}
+	add(&stable, "sidravia-0.9.0-1.x86_64.rpm")
+	add(&preview, "sidravia-1.0.0-alpha.2-1.x86_64.rpm")
+	add(&preview, "sidravia-1.0.0~alpha.2-10.x86_64.rpm")
+	add(&preview, "sidravia-core-1.0.0-alpha.2-2.x86_64.rpm")
+	add(&newer, "sidravia-1.0.0-alpha.3-1.aarch64.rpm")
+	add(&newer, "sidravia-core-1.0.0-alpha.3-1.x86_64.rpm")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/"+releases.Repository+"/releases" {
+			t.Errorf("unexpected endpoint %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode([]release{stable, preview, newer})
+	}))
+	defer server.Close()
+	source := NewGitHub(server.Client())
+	source.apiBase = server.URL
+	key, _, _, _ := signedReleaseFixture(t)
+	source.publisherKeys, _ = releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+	for _, tc := range []struct{ kind, channel, current, state, name string }{
+		{"gui-rpm", "preview", "1.0.0-alpha.1", "available", "sidravia-1.0.0~alpha.2-10.x86_64.rpm"},
+		{"gui-rpm", "preview", "1.0.0-alpha.2", "up_to_date", "sidravia-1.0.0~alpha.2-10.x86_64.rpm"},
+		{"gui-rpm", "stable", "1.0.0-alpha.1", "ahead_of_channel", "sidravia-0.9.0-1.x86_64.rpm"},
+		{"core-rpm", "preview", "1.0.0-alpha.2", "available", "sidravia-core-1.0.0-alpha.3-1.x86_64.rpm"},
+		{"core-rpm", "stable", "0.8.0", "no_compatible_release", ""},
+	} {
+		t.Run(tc.kind+"/"+tc.channel+"/"+tc.current, func(t *testing.T) {
+			got, err := source.Check(context.Background(), releases.Selection{OS: "linux", Arch: "amd64", Kind: tc.kind, Channel: tc.channel, CurrentVersion: tc.current})
+			if err != nil || got.State != tc.state {
+				t.Fatalf("%+v %v", got, err)
+			}
+			c := got.Candidate
+			if tc.name == "" {
+				if c != nil {
+					t.Fatalf("unexpected candidate %+v", c)
+				}
+			} else if c == nil || c.Name != tc.name || c.CanApply || c.ApplyReason != "system_package_managed" {
+				t.Fatalf("unexpected candidate %+v", c)
+			}
+		})
+	}
 }
 func TestCheckSelectsSemVerAcrossPagesAndDoesNotAuthorizeExecution(t *testing.T) {
 	var server *httptest.Server

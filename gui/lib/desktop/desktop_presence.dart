@@ -52,7 +52,8 @@ class DesktopPresence extends ChangeNotifier {
   Future<void> Function(TrayIntent intent)? onTrayAction;
   TrayPopoverData? _trayPresentation;
 
-  bool get enabled => _channel != null && _operational && _initialized;
+  bool get supported => _channel != null;
+  bool get enabled => supported && _operational && _initialized;
 
   /// Asks the native runner whether this process is the primary desktop
   /// presence or an already-activating second instance. Any channel failure is

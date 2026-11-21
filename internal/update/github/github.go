@@ -74,9 +74,18 @@ type asset struct {
 }
 
 func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.CheckResult, error) {
-	suffixes, err := releases.PackageSuffixes(s)
-	if err != nil {
-		return releases.CheckResult{}, err
+	rpm := s.Kind == "gui-rpm" || s.Kind == "core-rpm"
+	var suffixes []string
+	if rpm {
+		if s.OS != "linux" || s.Arch != "amd64" || (s.Channel != "stable" && s.Channel != "preview") {
+			return releases.CheckResult{}, releases.ErrUnsupported
+		}
+	} else {
+		var err error
+		suffixes, err = releases.PackageSuffixes(s)
+		if err != nil {
+			return releases.CheckResult{}, err
+		}
 	}
 	current, err := releases.ParseVersion(s.CurrentVersion)
 	if err != nil {
@@ -111,17 +120,20 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 			if v.Prerelease() != r.Prerelease {
 				continue
 			}
-			var name string
 			var matches []asset
-			for _, suffix := range suffixes {
-				name = "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
-				for _, a := range r.Assets {
-					if a.Name == name {
-						matches = append(matches, a)
+			if rpm {
+				matches = rpmAssets(r.Assets, v.String(), s.Kind)
+			} else {
+				for _, suffix := range suffixes {
+					name := "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
+					for _, a := range r.Assets {
+						if a.Name == name {
+							matches = append(matches, a)
+						}
 					}
-				}
-				if len(matches) > 0 {
-					break
+					if len(matches) > 0 {
+						break
+					}
 				}
 			}
 			if len(matches) == 0 {
@@ -131,7 +143,7 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 				return releases.CheckResult{}, releases.ErrMetadata
 			}
 			a := matches[0]
-			name = a.Name
+			name := a.Name
 			hash := strings.TrimPrefix(a.Digest, "sha256:")
 			decoded, decodeErr := hex.DecodeString(hash)
 			if a.ID <= 0 || a.State != "uploaded" || a.Size <= 0 || a.Size > 2<<30 || !strings.HasPrefix(a.Digest, "sha256:") || decodeErr != nil || len(decoded) != 32 || hex.EncodeToString(decoded) != hash {
@@ -155,7 +167,9 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 	// Builds without configured publisher roots keep legacy check/download
 	// behavior. Native portable apply still requires installed-source proof and
 	// explicit consent at the command boundary.
-	if g.publisherKeys.Configured() {
+	if rpm {
+		selected.ApplyReason = "system_package_managed"
+	} else if g.publisherKeys.Configured() {
 		if _, err := g.AuthenticateCandidate(ctx, *selected); err != nil {
 			if !errors.Is(err, ErrSignatureMissing) {
 				return releases.CheckResult{}, err
@@ -183,6 +197,43 @@ func (g *GitHub) Check(ctx context.Context, s releases.Selection) (releases.Chec
 	}
 	return releases.CheckResult{State: state, Candidate: selected}, nil
 }
+
+// RPM releases are numbered independently of the product version. Within a
+// tag, select the highest package revision for the exact installed flavor.
+func rpmAssets(assets []asset, version, kind string) []asset {
+	packageName := "sidravia"
+	if kind == "core-rpm" {
+		packageName = "sidravia-core"
+	}
+	publishedPrefix := packageName + "-" + version + "-"
+	nativePrefix := packageName + "-" + strings.Replace(version, "-", "~", 1) + "-"
+	var matches []asset
+	var highest uint64
+	for _, a := range assets {
+		revision, ok := strings.CutPrefix(a.Name, publishedPrefix)
+		if !ok {
+			revision, ok = strings.CutPrefix(a.Name, nativePrefix)
+		}
+		if !ok {
+			continue
+		}
+		revision, ok = strings.CutSuffix(revision, ".x86_64.rpm")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseUint(revision, 10, 64)
+		if err != nil || n == 0 || strconv.FormatUint(n, 10) != revision || n < highest {
+			continue
+		}
+		if n > highest {
+			highest = n
+			matches = matches[:0]
+		}
+		matches = append(matches, a)
+	}
+	return matches
+}
+
 func (g *GitHub) page(ctx context.Context, endpoint string) ([]release, string, error) {
 	base, _ := url.Parse(g.apiBase)
 	u, err := url.Parse(endpoint)

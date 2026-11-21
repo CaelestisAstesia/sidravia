@@ -37,6 +37,7 @@ class SettingsPage extends StatelessWidget {
     final mode = appearance?.value ?? ThemeMode.system;
     final desktopEnabled =
         appearance != null && (desktopPresence?.enabled ?? false);
+    final showIntegration = desktopEnabled || createIntegrationManager != null;
     final preferencesReason = appearance == null ? '设置尚未就绪' : null;
     final trayReason = preferencesReason ?? (kIsWeb ? '浏览器预览不支持托盘' : '托盘当前不可用');
     final connectionReason = shortUiText(
@@ -45,6 +46,7 @@ class SettingsPage extends StatelessWidget {
     Widget applicationGroup({
       List<Widget> startupRows = const [],
       Widget? path,
+      Widget? update,
     }) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -206,6 +208,7 @@ class SettingsPage extends StatelessWidget {
               subtitle: '核心、会话与故障信息',
               onTap: () => onNavigate(AppPage.diagnostics),
             ),
+            ?update,
             DesignRow(
               title: '关于 Sidravia',
               subtitle: '版本、许可与项目链接',
@@ -347,11 +350,14 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          if (desktopEnabled || createIntegrationManager != null)
+          if (showIntegration || (desktopPresence?.supported ?? false))
             IntegrationSettings(
               createManager: createIntegrationManager,
-              builder: (startupRows, path) =>
-                  applicationGroup(startupRows: startupRows, path: path),
+              builder: (startupRows, path, update) => applicationGroup(
+                startupRows: showIntegration ? startupRows : const [],
+                path: showIntegration ? path : null,
+                update: update,
+              ),
             )
           else
             applicationGroup(),

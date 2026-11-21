@@ -258,7 +258,7 @@ def run(root, packages, receipts, environment, source, current_source):
             saved = state / 'private-user-data'
             saved.write_bytes(b'fixture data must survive maintenance\n')
             saved_hash = digest(saved)
-            update = subprocess.run(ctl + ['update', 'check'], env=env, capture_output=True, text=True, timeout=15)
+            update = subprocess.run(ctl + ['update', 'download', '--candidate', '1:2'], env=env, capture_output=True, text=True, timeout=15)
             if update.returncode != 1 or json.loads(update.stdout)['code'] != 'system_package_managed':
                 raise RuntimeError('core RPM selected a portable update')
             events.append('core-package-manager-update-boundary')
@@ -300,8 +300,8 @@ def run(root, packages, receipts, environment, source, current_source):
         if (sysroot / APP.relative_to('/') / 'sidravia.portable').exists():
             raise RuntimeError('RPM incorrectly enabled portable mode')
         command(['desktop-file-validate', str(sysroot / f'usr/share/applications/{DESKTOP}.desktop')], 'desktop-validate')
-        # The installed updater must refuse network access/archive selection.
-        update = subprocess.run(sandbox() + ['/usr/bin/sidraviactl', 'update', 'check'], env=env, capture_output=True, text=True, timeout=15)
+        # The installed CLI may check release metadata but must refuse downloads.
+        update = subprocess.run(sandbox() + ['/usr/bin/sidraviactl', 'update', 'download', '--candidate', '1:2'], env=env, capture_output=True, text=True, timeout=15)
         (owned / 'installed-updater.log').write_text(update.stdout + update.stderr)
         if not update.stdout.strip():
             raise RuntimeError('installed updater failed before JSON response; see installed-updater.log')

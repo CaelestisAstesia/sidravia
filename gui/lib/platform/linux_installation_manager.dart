@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
@@ -13,7 +14,7 @@ import 'installation_manager.dart';
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
 class LinuxInstallationManager
-    implements InstallationManager, UserServiceManager {
+    implements InstallationManager, UserServiceManager, PackageUpdateChecker {
   LinuxInstallationManager({
     required String executable,
     required this.environment,
@@ -21,6 +22,8 @@ class LinuxInstallationManager
   final String executable;
   final Map<String, String> environment;
   bool _closed = false;
+  Process? _updateProcess;
+  Future<PackageUpdate>? _updateCheck;
 
   @override
   Future<UserServiceStatus?> userService(String action) async {
@@ -75,10 +78,125 @@ class LinuxInstallationManager
     Directory(path).absolute.uri.normalizePath().resolve('__path_anchor__'),
   ).parent.path;
   String get _directory => _normalRoot(File(executable).parent.path);
-  bool get _rpmManaged =>
-      File('$_directory/sidravia.rpm').existsSync() &&
-      File('$_directory/sidravia.rpm').readAsStringSync() ==
-          'sidravia-rpm-v1\n';
+  bool get _rpmManaged {
+    const marker = 'sidravia-rpm-v1\n';
+    final path = '$_directory/sidravia.rpm';
+    return FileSystemEntity.typeSync(path, followLinks: false) ==
+            FileSystemEntityType.file &&
+        File(path).lengthSync() == marker.length &&
+        File(path).readAsStringSync() == marker;
+  }
+
+  @override
+  bool get supportsUpdateCheck {
+    try {
+      return _rpmManaged;
+    } on FileSystemException {
+      return false;
+    }
+  }
+
+  static final _releaseVersion = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
+
+  @override
+  Future<PackageUpdate> checkUpdate() async {
+    _checkOpen();
+    if (_updateCheck != null || !supportsUpdateCheck) {
+      throw const IntegrationFailure('当前无法检查更新。');
+    }
+    final operation = _runUpdateCheck();
+    _updateCheck = operation;
+    try {
+      return await operation;
+    } finally {
+      _updateCheck = null;
+    }
+  }
+
+  Future<PackageUpdate> _runUpdateCheck() async {
+    Timer? timer;
+    var timedOut = false;
+    try {
+      final child = await Process.start(
+        '$_directory/sidraviactl',
+        const ['update', 'check'],
+        environment: environment,
+        includeParentEnvironment: false,
+      );
+      _updateProcess = child;
+      if (_closed) child.kill();
+      timer = Timer(const Duration(seconds: 50), () {
+        timedOut = true;
+        child.kill();
+      });
+      final (code, output, _) = await (
+        child.exitCode,
+        child.stdout.transform(utf8.decoder).join(),
+        child.stderr.drain<void>(),
+      ).wait;
+      if (timedOut) throw const IntegrationFailure('检查更新超时，请重试。');
+      if (_closed) throw const IntegrationFailure('检查更新已取消。');
+      if (output.isEmpty) {
+        throw const IntegrationFailure('无法运行更新检查，请检查安装状态后重试。');
+      }
+      final raw = jsonDecode(output);
+      if (raw is! Map<String, dynamic> || raw['schemaVersion'] != 1) {
+        throw const FormatException();
+      }
+      if (code != 0 || raw['ok'] != true || raw['code'] != 'ok') {
+        throw IntegrationFailure(switch (raw['code']) {
+          'rate_limited' => 'GitHub 请求受限，请稍后重试。',
+          'update_busy' => '正在执行另一项更新操作，请稍后重试。',
+          'timeout' => '检查更新超时，请重试。',
+          'source_unavailable' || 'incomplete_query' => '更新来源暂时不可用，请检查网络后重试。',
+          _ => '无法检查更新，请稍后重试。',
+        });
+      }
+      final check =
+          (raw['result'] as Map<String, dynamic>)['check']
+              as Map<String, dynamic>;
+      final state = switch (check['state']) {
+        'available' => UpdateCheckState.available,
+        'up_to_date' => UpdateCheckState.upToDate,
+        'ahead_of_channel' => UpdateCheckState.aheadOfChannel,
+        'no_compatible_release' => UpdateCheckState.noCompatibleRelease,
+        _ => throw const FormatException(),
+      };
+      final candidate = check['candidate'] as Map<String, dynamic>?;
+      final version = candidate?['version'] as String?;
+      if (state == UpdateCheckState.available &&
+          (version == null || !_releaseVersion.hasMatch(version))) {
+        throw const FormatException();
+      }
+      return (state: state, version: version);
+    } on IntegrationFailure {
+      rethrow;
+    } on Object {
+      throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
+    } finally {
+      timer?.cancel();
+      _updateProcess = null;
+    }
+  }
+
+  @override
+  Future<void> openReleasePage(String version) async {
+    _checkOpen();
+    const failure = IntegrationFailure('无法打开浏览器。');
+    if (!_releaseVersion.hasMatch(version)) throw failure;
+    try {
+      final result = await Process.run(
+        '/usr/bin/xdg-open',
+        ['https://github.com/CaelestisAstesia/sidravia/releases/tag/v$version'],
+        environment: environment,
+        includeParentEnvironment: false,
+      );
+      if (result.exitCode != 0) throw failure;
+    } on ProcessException {
+      throw failure;
+    }
+  }
+
   String get _configRoot {
     final xdg = environment['XDG_CONFIG_HOME'];
     if (xdg != null && xdg.isNotEmpty && Directory(xdg).isAbsolute) {
@@ -517,5 +635,11 @@ class LinuxInstallationManager
   @override
   Future<void> close() async {
     _closed = true;
+    _updateProcess?.kill();
+    try {
+      await _updateCheck;
+    } on IntegrationFailure {
+      // The check caller receives the result; close only waits for cleanup.
+    }
   }
 }

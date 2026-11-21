@@ -33,7 +33,7 @@ GUI 入口为 `/usr/bin/sidravia_gui`，Flutter 运行库和资源随程序安�
 
 GUI 依赖由系统 RPM 提供，包括 GTK 3、WebKitGTK 4.1 和 Ayatana AppIndicator。中文使用系统字体，缺字时可安装 `google-noto-sans-cjk-vf-fonts`；随包只携带诊断用 Source Code Pro 及相应许可。
 
-RPM 不包含便携更新器。`sidraviactl update version` 查询已安装 CLI 身份，其他更新操作提示使用包管理器；GUI 不再创建冗余的 `~/.local/bin` 链接。
+在设置的「诊断与更多信息 → 软件更新」中检查 GitHub Releases 上有没有适用于当前安装的新版本。发现新版后，可以打开发行页下载 RPM，安装由系统包管理器完成。命令行可用 `sidraviactl update check`，`sidraviactl update version` 显示已安装版本与构建标识。检查比较产品版本，同版本的 RPM 重新打包不会提示。GUI 不再创建冗余的 `~/.local/bin` 链接。
 
 ## 配置与登录自启
 

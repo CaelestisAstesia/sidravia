@@ -121,3 +121,18 @@ class UserServiceStatus {
 abstract interface class UserServiceManager {
   Future<UserServiceStatus?> userService(String action);
 }
+
+enum UpdateCheckState {
+  available,
+  upToDate,
+  aheadOfChannel,
+  noCompatibleRelease,
+}
+
+typedef PackageUpdate = ({UpdateCheckState state, String? version});
+
+abstract interface class PackageUpdateChecker {
+  bool get supportsUpdateCheck;
+  Future<PackageUpdate> checkUpdate();
+  Future<void> openReleasePage(String version);
+}

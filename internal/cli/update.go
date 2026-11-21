@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/productlayout"
+	"sidravia/internal/update/command"
 )
 
 type updateOutput struct{ data []byte }
@@ -32,6 +34,11 @@ func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.
 			return nil, err
 		}
 		if productlayout.RPMManaged(layout) {
+			if len(args) > 0 && args[0] == "check" {
+				var out bytes.Buffer
+				command.Run(ctx, args, identity.ProductVersion, identity.BuildID, &out)
+				return out.Bytes(), nil
+			}
 			return rpmUpdateOutput(args, identity)
 		}
 	}
