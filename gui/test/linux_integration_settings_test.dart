@@ -393,6 +393,8 @@ sys.stdout.write('x' * ((2 << 20) + 1))
   test('relative XDG falls back to private HOME and namespace entries stay separate', () async {
     final f = _Fixture();
     f.environment['XDG_CONFIG_HOME'] = 'relative-xdg';
+    f.environment['HOME'] = '${f.home.path}/';
+    File('${f.product.path}/sidravia.rpm').writeAsStringSync('sidravia-rpm-v1\n');
     final m = f.manager;
     await m.change(IntegrationChange.startDaemon);
     final another = LinuxInstallationManager(
@@ -411,6 +413,7 @@ sys.stdout.write('x' * ((2 << 20) + 1))
     await m.change(IntegrationChange.startDisable);
     expect((await another.status()).autostart, 'gui');
     await another.change(IntegrationChange.startDisable);
+    expect(File('${f.root.path}/observed').existsSync(), isFalse);
     await m.close();
     await another.close();
   }, skip: !Platform.isLinux);

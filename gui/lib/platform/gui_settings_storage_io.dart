@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'linux_product_executable.dart';
+import 'linux_user_directories.dart';
 
 import 'dart:math';
 import 'dart:convert';
@@ -115,16 +116,11 @@ GuiSettingsLocation resolveLinuxGuiSettings({
   String namespace = '',
   FileSystemEntityType Function(String)? inspectMarker,
 }) {
-  final xdg = environment['XDG_CONFIG_HOME'];
-  final home = environment['HOME'];
-  final root = xdg != null && xdg.isNotEmpty && Directory(xdg).isAbsolute
-      ? xdg
-      : home != null && Directory(home).isAbsolute
-      ? '$home/.config'
-      : null;
+  final override = linuxUserConfigOverride(environment);
+  final home = override == null ? linuxUserHome(environment) : null;
   return resolveWindowsGuiSettings(
     executable: linuxProductExecutable(executable),
-    userConfigRoot: root,
+    userConfigRoot: override ?? (home == null ? null : '$home/.config'),
     namespace: namespace,
     inspectMarker: inspectMarker,
   );

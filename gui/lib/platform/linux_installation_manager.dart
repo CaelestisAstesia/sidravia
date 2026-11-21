@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:ffi/ffi.dart';
 
 import 'linux_product_executable.dart';
+import 'linux_user_directories.dart';
 
 import 'gui_settings_storage_io.dart';
 import 'installation_manager.dart';
@@ -155,16 +156,13 @@ class LinuxInstallationManager
   }
 
   String get _configRoot {
-    final xdg = environment['XDG_CONFIG_HOME'];
-    if (xdg != null && xdg.isNotEmpty && Directory(xdg).isAbsolute) {
-      return _normalRoot(xdg);
-    }
-    return '$_home/.config';
+    final override = linuxUserConfigOverride(environment);
+    return override == null ? '$_home/.config' : _normalRoot(override);
   }
 
   String get _home {
-    final home = environment['HOME'];
-    if (home == null || home.isEmpty || !Directory(home).isAbsolute) {
+    final home = linuxUserHome(environment);
+    if (home == null) {
       throw const IntegrationFailure('无法确定用户 HOME，未修改命令目录。');
     }
     return _normalRoot(home);
