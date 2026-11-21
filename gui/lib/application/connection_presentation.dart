@@ -185,6 +185,12 @@ class ConnectionPresentation {
               glyph = '!';
               tone = HomeTone.warning;
               primaryLabel = '取消等待';
+              secondaryLabel = s.stateReason?.code == 'network_binding_unavailable'
+                  ? '检查网卡设置'
+                  : '连接与诊断';
+              secondary = s.stateReason?.code == 'network_binding_unavailable'
+                  ? GuiConnectionAction(GuiConnectionActionKind.editConfiguration, s.configurationId)
+                  : const GuiConnectionAction(GuiConnectionActionKind.showDetails);
             case SessionState.waitingBeforeRetry:
               title = '等待重试';
               detail = '认证未成功 · 将自动重试';
@@ -205,6 +211,16 @@ class ConnectionPresentation {
               tone = HomeTone.error;
               primaryLabel = '重新连接';
               issue = s.lastAuthenticationFailure;
+              if (s.lastAuthenticationFailure?.code == 'credential_invalid' ||
+                  s.lastAuthenticationFailure?.code == 'account_expired' ||
+                  s.lastAuthenticationFailure?.code == 'account_suspended' ||
+                  s.lastAuthenticationFailure?.code == 'account_frozen') {
+                secondaryLabel = '检查账号配置';
+                secondary = GuiConnectionAction(
+                  GuiConnectionActionKind.editConfiguration,
+                  s.configurationId,
+                );
+              }
             case SessionState.stopping:
               title = '正在断开';
               detail = '正在结束认证会话';

@@ -8,11 +8,12 @@
 struct AnnouncementWindow {
   GtkWindow* parent;
   std::string icon, document;
-  GtkWidget *window = nullptr, *stack = nullptr, *label = nullptr;
+  GtkWidget *window = nullptr, *stack = nullptr, *status = nullptr, *label = nullptr, *fallback = nullptr;
   WebKitWebView* web = nullptr;
   WaylandWindowIcon* window_icon = nullptr;
   enum class Phase { closed, loading, ready, failed } phase = Phase::closed;
   bool dark = false;
+  std::string fallback_uri;
   guint timer = 0, external = 0, release = 0;
   std::deque<std::string> links;
 };
@@ -34,7 +35,8 @@ void Fail(AnnouncementWindow* s) {
   if (s->external) { g_source_remove(s->external); s->external = 0; }
   s->links.clear();
   gtk_label_set_text(GTK_LABEL(s->label), "公告加载失败");
-  gtk_stack_set_visible_child(GTK_STACK(s->stack), s->label);
+  gtk_widget_set_sensitive(s->fallback, TRUE);
+  gtk_stack_set_visible_child(GTK_STACK(s->stack), s->status);
   // WebKit still owns the emission stack (notably process termination). Do
   // not destroy its view from that callback; join disposal on the next turn.
   s->release = g_idle_add([](gpointer data) -> gboolean {
@@ -128,7 +130,7 @@ void announcement_window_close(AnnouncementWindow* s) {
     g_signal_handlers_disconnect_by_data(window,s);
     gtk_widget_destroy(window);
   }
-  s->stack = s->label = nullptr;
+  s->stack = s->status = s->label = s->fallback = nullptr;
 }
 bool announcement_window_open(AnnouncementWindow* s,const char* uri,int width,int height) {
   if (!uri || !AnnouncementHttpUri(uri) || width < 1 || width > 4096 || height < 1 || height > 4096) return false;
@@ -140,9 +142,26 @@ bool announcement_window_open(AnnouncementWindow* s,const char* uri,int width,in
   gtk_window_set_default_size(GTK_WINDOW(s->window),width,height);
   if (!s->icon.empty()) gtk_window_set_icon_from_file(GTK_WINDOW(s->window),s->icon.c_str(),nullptr);
   s->window_icon = wayland_window_icon_new(GTK_WINDOW(s->window),s->icon.c_str());
-  s->stack = gtk_stack_new(); s->label = gtk_label_new("正在加载公告…");
+  s->fallback_uri = uri;
+  s->stack = gtk_stack_new();
+  s->status = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  s->label = gtk_label_new("正在加载公告…");
+  s->fallback = gtk_button_new_with_label("在浏览器中打开学校页面");
+  gtk_widget_set_sensitive(s->fallback, FALSE);
+  gtk_box_pack_start(GTK_BOX(s->status), s->label, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(s->status), s->fallback, FALSE, FALSE, 0);
+  g_signal_connect(s->fallback, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
+    auto* s = static_cast<AnnouncementWindow*>(data);
+    g_autoptr(GError) error = nullptr;
+    if (!gtk_show_uri_on_window(GTK_WINDOW(s->window), s->fallback_uri.c_str(), GDK_CURRENT_TIME, &error)) {
+      auto* dialog = gtk_message_dialog_new(GTK_WINDOW(s->window), GTK_DIALOG_DESTROY_WITH_PARENT,
+          GTK_MESSAGE_WARNING, GTK_BUTTONS_CLOSE, "%s", "无法打开学校页面，请检查默认浏览器设置");
+      g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
+      gtk_widget_show(dialog);
+    }
+  }), s);
   gtk_container_add(GTK_CONTAINER(s->window),s->stack);
-  gtk_stack_add_named(GTK_STACK(s->stack),s->label,"status");
+  gtk_stack_add_named(GTK_STACK(s->stack),s->status,"status");
   auto* context = webkit_web_context_new_ephemeral();
   g_signal_connect(context,"download-started",G_CALLBACK(+[](WebKitWebContext*,WebKitDownload* download,gpointer) { webkit_download_cancel(download); }),nullptr);
   s->web = WEBKIT_WEB_VIEW(webkit_web_view_new_with_context(context));

@@ -15,9 +15,75 @@ InstallationManager createManager() => Platform.isWindows
       )
     : stub.createManager();
 
-class _ProcessManager implements InstallationManager {
+class _ProcessManager implements InstallationManager, PackageUpdateChecker {
   Process? _process;
   bool _busy = false, _closed = false;
+
+  @override
+  bool get supportsUpdateCheck => !_closed;
+
+  @override
+  Future<PackageUpdate> checkUpdate() async {
+    final output = await _runUpdaterCheck();
+    try {
+      final raw = jsonDecode(output) as Map<String, dynamic>;
+      if (raw['schemaVersion'] != 1 || raw['ok'] != true || raw['code'] != 'ok') {
+        throw IntegrationFailure(switch (raw['code']) {
+          'rate_limited' => 'GitHub 请求受限，请稍后重试。',
+          'source_unavailable' || 'incomplete_query' => '更新来源暂时不可用，请检查网络后重试。',
+          'no_compatible_release' => '未找到适用于此安装的发行包',
+          _ => '无法检查更新，请稍后重试。',
+        });
+      }
+      final check = (raw['result'] as Map<String, dynamic>)['check']
+          as Map<String, dynamic>;
+      final state = switch (check['state']) {
+        'available' => UpdateCheckState.available,
+        'up_to_date' => UpdateCheckState.upToDate,
+        'ahead_of_channel' => UpdateCheckState.aheadOfChannel,
+        'no_compatible_release' => UpdateCheckState.noCompatibleRelease,
+        _ => throw const FormatException(),
+      };
+      final candidate = check['candidate'] as Map<String, dynamic>?;
+      final version = candidate?['version'] as String?;
+      if (state == UpdateCheckState.available &&
+          (version == null ||
+              !RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$').hasMatch(version))) {
+        throw const FormatException();
+      }
+      return (state: state, version: version);
+    } on IntegrationFailure {
+      rethrow;
+    } on Object {
+      throw const IntegrationFailure('无法检查更新，请检查安装是否完整。');
+    }
+  }
+
+  Future<String> _runUpdaterCheck() async {
+    final executable = File(Platform.resolvedExecutable).parent.uri
+        .resolve('sidraviactl.exe').toFilePath();
+    try {
+      final result = await Process.run(executable, const ['update', 'check'], runInShell: false);
+      if (result.exitCode != 0 || result.stdout is! String || (result.stdout as String).isEmpty) {
+        throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
+      }
+      return result.stdout as String;
+    } on IntegrationFailure {
+      rethrow;
+    } on Object {
+      throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
+    }
+  }
+
+  @override
+  Future<void> openReleasePage(String version) async {
+    if (!RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$').hasMatch(version)) {
+      throw const IntegrationFailure('无法打开浏览器。');
+    }
+    final result = await Process.run('cmd.exe', ['/c', 'start', '',
+      'https://github.com/CaelestisAstesia/sidravia/releases/tag/v$version']);
+    if (result.exitCode != 0) throw const IntegrationFailure('无法打开浏览器。');
+  }
 
   @override
   Future<IntegrationStatus> status() async =>

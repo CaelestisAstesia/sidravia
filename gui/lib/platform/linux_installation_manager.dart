@@ -90,7 +90,10 @@ class LinuxInstallationManager
   @override
   bool get supportsUpdateCheck {
     try {
-      return _rpmManaged;
+      // RPM and GUI portable installations share the same updater contract.
+      // The presence of the sibling CTL is the package capability boundary;
+      // package-manager installation remains owned by RPM, not by this UI.
+      return File('$_directory/sidraviactl').existsSync();
     } on FileSystemException {
       return false;
     }
