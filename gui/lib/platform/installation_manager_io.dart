@@ -32,37 +32,21 @@ class _ProcessManager implements InstallationManager, PackageUpdateChecker {
   @override
   Future<PackageUpdate> checkUpdate() async {
     if (_closed) throw const IntegrationFailure('检查更新已取消。');
-    final output = await _runUpdaterCheck();
+    final executable = File(Platform.resolvedExecutable).parent.uri
+        .resolve('sidraviactl.exe')
+        .toFilePath();
+    final (:code, :output) = await _updateCheck.run(executable);
     if (_closed) throw const IntegrationFailure('检查更新已取消。');
+    if (output.isEmpty) {
+      throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
+    }
     try {
-      final raw = jsonDecode(output) as Map<String, dynamic>;
-      if (raw['schemaVersion'] != 1 ||
-          raw['ok'] != true ||
-          raw['code'] != 'ok') {
-        throw IntegrationFailure(switch (raw['code']) {
-          'rate_limited' => 'GitHub 请求受限，请稍后重试。',
-          'source_unavailable' || 'incomplete_query' => '更新来源暂时不可用，请检查网络后重试。',
-          'no_compatible_release' => '未找到适用于此安装的发行包',
-          _ => '无法检查更新，请稍后重试。',
-        });
-      }
-      return decodeUpdateCheckResult(raw);
+      return decodeUpdateCheckResponse(code, output);
     } on IntegrationFailure {
       rethrow;
     } on Object {
       throw const IntegrationFailure('无法检查更新，请检查安装是否完整。');
     }
-  }
-
-  Future<String> _runUpdaterCheck() async {
-    final executable = File(Platform.resolvedExecutable).parent.uri
-        .resolve('sidraviactl.exe')
-        .toFilePath();
-    final result = await _updateCheck.run(executable);
-    if (result.code != 0 || result.output.isEmpty) {
-      throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
-    }
-    return result.output;
   }
 
   @override

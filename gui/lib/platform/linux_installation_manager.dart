@@ -119,20 +119,7 @@ class LinuxInstallationManager
       if (output.isEmpty) {
         throw const IntegrationFailure('无法运行更新检查，请检查安装状态后重试。');
       }
-      final raw = jsonDecode(output);
-      if (raw is! Map<String, dynamic> || raw['schemaVersion'] != 1) {
-        throw const FormatException();
-      }
-      if (code != 0 || raw['ok'] != true || raw['code'] != 'ok') {
-        throw IntegrationFailure(switch (raw['code']) {
-          'rate_limited' => 'GitHub 请求受限，请稍后重试。',
-          'update_busy' => '正在执行另一项更新操作，请稍后重试。',
-          'timeout' => '检查更新超时，请重试。',
-          'source_unavailable' || 'incomplete_query' => '更新来源暂时不可用，请检查网络后重试。',
-          _ => '无法检查更新，请稍后重试。',
-        });
-      }
-      return decodeUpdateCheckResult(raw);
+      return decodeUpdateCheckResponse(code, output);
     } on IntegrationFailure {
       rethrow;
     } on Object {
