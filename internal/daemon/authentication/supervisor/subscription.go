@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"sidravia/internal/daemon/authentication/session"
 	environment "sidravia/internal/daemon/environment"
 )
 
@@ -207,5 +208,46 @@ func (s *Supervisor) publishStateEventLocked(event StateEvent) {
 		if !sub.enqueue(event) {
 			delete(s.subscriptions, sub)
 		}
+	}
+}
+
+func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
+	defer s.revisionForwarders.Done()
+	revisions := managed.actor.RevisionEvents()
+	for {
+		select {
+		case event, ok := <-revisions:
+			if !ok {
+				return
+			}
+			s.mu.Lock()
+			if current, ok := s.sessions[id]; ok && current == managed && !s.closed.Load() {
+				managed.lastForwardedRevision = event.Revision
+				s.publishStateEventLocked(StateEvent{Kind: StateSessionChanged, SessionID: event.AuthenticationSessionID, Revision: event.Revision, Snapshot: event.Snapshot})
+			}
+			s.mu.Unlock()
+			// Latest query updates only private stopped admission, after publishing
+			// the actor's original pair. Its failure cannot suppress that publication.
+			snapshot, err := managed.actor.Snapshot(context.Background())
+			if err == nil {
+				s.observeStoppedRevision(id, managed, snapshot)
+			}
+		case <-managed.stopForwarding:
+			return
+		}
+	}
+}
+
+func (s *Supervisor) observeStoppedRevision(id ID, managed *managedSession, snapshot Snapshot) {
+	if snapshot.State != session.Suspended {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, exists := s.sessions[id]
+	if exists && current == managed && managed.state == stateStopping {
+		managed.state = stateStopped
+		close(managed.stateChange)
+		managed.stateChange = make(chan struct{})
 	}
 }

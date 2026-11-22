@@ -377,52 +377,6 @@ func (s *Supervisor) Remove(ctx context.Context, id ID) error {
 	return nil
 }
 
-func (s *Supervisor) reserveDeletion(id ID, ms *managedSession) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	current, ok := s.sessions[id]
-	if !ok || current != ms {
-		return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
-	}
-	ms.reserved = true
-	return nil
-}
-
-func (s *Supervisor) reserveAdmission(id ID, ms *managedSession) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	current, ok := s.sessions[id]
-	if !ok || current != ms {
-		return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
-	}
-	if ms.intent == session.MaintainAuthentication {
-		for otherID, other := range s.sessions {
-			if otherID != id && other.intent == session.MaintainAuthentication &&
-				(other.state != stateStopped || other.reserved) {
-				return fmt.Errorf("%w", ErrActiveSessionConflict)
-			}
-		}
-	}
-	ms.reserved = true
-	return nil
-}
-
-func (s *Supervisor) releaseReservation(id ID, ms *managedSession) {
-	s.mu.Lock()
-	if current, ok := s.sessions[id]; ok && current == ms {
-		ms.reserved = false
-	}
-	s.mu.Unlock()
-}
-
-func (s *Supervisor) markActive(id ID, ms *managedSession) {
-	s.mu.Lock()
-	if current, ok := s.sessions[id]; ok && current == ms {
-		ms.state = stateActive
-	}
-	s.mu.Unlock()
-}
-
 func (s *Supervisor) waitStopped(ctx context.Context, id ID, ms *managedSession) error {
 	for {
 		s.mu.Lock()
@@ -560,45 +514,4 @@ func (s *Supervisor) Close() error {
 // Wait blocks until all internal goroutines have exited.
 func (s *Supervisor) Wait() {
 	s.revisionForwarders.Wait()
-}
-
-func (s *Supervisor) forwardRevisions(id ID, managed *managedSession) {
-	defer s.revisionForwarders.Done()
-	revisions := managed.actor.RevisionEvents()
-	for {
-		select {
-		case event, ok := <-revisions:
-			if !ok {
-				return
-			}
-			s.mu.Lock()
-			if current, ok := s.sessions[id]; ok && current == managed && !s.closed.Load() {
-				managed.lastForwardedRevision = event.Revision
-				s.publishStateEventLocked(StateEvent{Kind: StateSessionChanged, SessionID: event.AuthenticationSessionID, Revision: event.Revision, Snapshot: event.Snapshot})
-			}
-			s.mu.Unlock()
-			// Latest query updates only private stopped admission, after publishing
-			// the actor's original pair. Its failure cannot suppress that publication.
-			snapshot, err := managed.actor.Snapshot(context.Background())
-			if err == nil {
-				s.observeStoppedRevision(id, managed, snapshot)
-			}
-		case <-managed.stopForwarding:
-			return
-		}
-	}
-}
-
-func (s *Supervisor) observeStoppedRevision(id ID, managed *managedSession, snapshot Snapshot) {
-	if snapshot.State != session.Suspended {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	current, exists := s.sessions[id]
-	if exists && current == managed && managed.state == stateStopping {
-		managed.state = stateStopped
-		close(managed.stateChange)
-		managed.stateChange = make(chan struct{})
-	}
 }
