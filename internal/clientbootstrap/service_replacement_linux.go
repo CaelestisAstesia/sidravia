@@ -165,6 +165,3 @@ func discardReplacement(ctx context.Context, state installationmanager.ServiceSw
 	}
 	return actual, err
 }
-
-// CheckRPMServiceIPC is the read-only RPM recovery check for an observed main
-// process. The caller also checks that systemd still reports that invocation.

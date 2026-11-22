@@ -416,6 +416,8 @@ func callServiceIPC(ctx context.Context, client Client, method string, value, re
 	return nil
 }
 
+// CheckRPMServiceIPC is the read-only RPM recovery check for an observed main
+// process. The caller also checks that systemd still reports that invocation.
 func CheckRPMServiceIPC(ctx context.Context, identity Identity, pid int) error {
 	layout, found, err := serviceLayout(productlayout.Namespace{})
 	if err != nil || !found || !productlayout.RPMManaged(layout) {
