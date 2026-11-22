@@ -297,6 +297,19 @@ def transaction_busy(fd):
     return False
 
 
+def wait_for_transaction_exit(parent, transaction, waiter):
+    while alive(parent):
+        try:
+            if not transaction_busy(transaction):
+                break
+        except OSError:
+            # Uncertain transaction state must fail closed until its host
+            # exits, never free the startup gate while files may change.
+            waiter.poll()
+            break
+        waiter.poll(100)
+
+
 def hold_until_transaction_exits(lock, parent, transaction, resume=(), leases=(), erase_cli=None):
     """A tiny orphan owns only kernel descriptors, not a product lifecycle."""
     ready_read, ready_write = os.pipe2(os.O_CLOEXEC)
@@ -329,16 +342,7 @@ def hold_until_transaction_exits(lock, parent, transaction, resume=(), leases=()
         waiter.register(parent, select.POLLIN)
         os.write(ready_write, b'R')
         os.close(ready_write)
-        while alive(parent):
-            try:
-                if not transaction_busy(transaction):
-                    break
-            except OSError:
-                # Uncertain transaction state must fail closed until its host
-                # exits, never free the startup gate while files may change.
-                waiter.poll()
-                break
-            waiter.poll(100)
+        wait_for_transaction_exit(parent, transaction, waiter)
         if erase_cli is not None:
             held_gate = os.fstat(lock)
             held_gate_identity = (held_gate.st_dev, held_gate.st_ino)
