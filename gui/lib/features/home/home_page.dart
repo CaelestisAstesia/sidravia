@@ -1,19 +1,20 @@
 import 'package:sidravia_gui/features/home/server_messages_panel.dart';
 import 'package:sidravia_gui/features/home/connection_information_view.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/widgets/design_icon_button.dart';
-import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
+import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 
 export 'package:sidravia_gui/application/connection_presentation.dart'
     show HomeTone, HomeButtonKind;
@@ -255,9 +256,7 @@ class _HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final touch =
-        theme.platform == TargetPlatform.android ||
-        theme.platform == TargetPlatform.iOS;
+    final touch = DesignMetrics.isTouchPlatform(theme.platform);
     final account = Text(
       data.username,
       maxLines: 1,
@@ -542,11 +541,7 @@ class _HomeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ConstrainedBox(
     constraints: BoxConstraints(
-      minHeight:
-          Theme.of(context).platform == TargetPlatform.android ||
-              Theme.of(context).platform == TargetPlatform.iOS
-          ? 48
-          : 42,
+      minHeight: DesignMetrics.actionTargetSize(Theme.of(context).platform),
     ),
     child: primary
         ? FilledButton(onPressed: onPressed, child: Text(label))

@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 void main() {
   test(

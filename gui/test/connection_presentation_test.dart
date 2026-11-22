@@ -1,7 +1,7 @@
 import 'support/runtime_snapshot.dart';
 
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_capabilities.dart';

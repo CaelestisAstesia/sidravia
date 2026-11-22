@@ -1,7 +1,7 @@
 import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 /// Resolves the configured school's metadata without connection-action guards.
 InstitutionProfile? schoolAnnouncementProfileFor(GuiCapabilities capabilities) {

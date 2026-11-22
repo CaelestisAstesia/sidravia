@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
 
 void main() {
   test('MVP routes preserve the HTML labels', () {

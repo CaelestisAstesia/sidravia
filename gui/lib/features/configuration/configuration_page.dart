@@ -13,6 +13,8 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
+part 'configuration_fields.dart';
+
 class ConfigurationPage extends StatefulWidget {
   const ConfigurationPage({
     super.key,
@@ -499,40 +501,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           ),
         if (unavailable) const DesignHelper('通信或配置状态暂不可用；草稿已保留，请恢复后再保存。'),
         const DesignSectionTitle('基础配置'),
-        DesignGroup(
-          key: const ValueKey('configuration-fields'),
-          children: [
-            DesignChoiceRow<String>(
-              title: '机构',
-              value: _profile ?? '',
-              options: [for (final p in profiles) (p.id, p.displayName)],
-              onChanged: _saving || widget.controller.busy || !_canSave
-                  ? null
-                  : _changeProfile,
-            ),
-            DesignInputRow(
-              label: '账号',
-              controller: _username,
-              enabled: !_saving && !widget.controller.busy && _canSave,
-              hint: '输入账号',
-              error: _usernameError,
-            ),
-            ConfigurationPasswordRow(
-              controller: _password,
-              enabled: !_saving && !widget.controller.busy && _canSave,
-              credentialStored: _credentialStored,
-              error: _passwordError,
-              onCancel: () => setState(() => _passwordError = null),
-            ),
-            NetworkBindingSection(
-              controller: widget.controller,
-              policy: _binding,
-              onChanged: _saving || widget.controller.busy || !_canSave
-                  ? null
-                  : (value) => setState(() => _binding = value),
-            ),
-          ],
-        ),
+        _configurationFields(profiles, setState),
         if (widget.controller.supportsOverrideEditing &&
             (_schemaVersion > 0 ||
                 const {'empty', 'enabled', 'invalid', 'unavailable'}.contains(

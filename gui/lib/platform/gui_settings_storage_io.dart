@@ -6,7 +6,7 @@ import 'linux_user_directories.dart';
 import 'dart:math';
 import 'dart:convert';
 
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 import 'gui_settings_backup_io.dart';
 

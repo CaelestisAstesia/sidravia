@@ -4,7 +4,7 @@ import 'website_latency_platform.dart';
 
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/features/diagnostics/runtime_snapshot.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sidravia_gui/features/diagnostics/snapshot_code_view.dart';

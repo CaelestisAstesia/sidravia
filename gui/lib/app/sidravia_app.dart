@@ -12,16 +12,17 @@ import 'package:sidravia_gui/features/announcements/school_announcement_notifica
 
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
 import 'package:sidravia_gui/application/connection_presentation.dart';
-import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/tray_navigation.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
 import 'package:sidravia_gui/platform/update_check_process.dart';
 
@@ -194,22 +195,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       _publishTrayPresentation();
       return;
     }
-    final action = switch (intent.kind) {
-      TrayIntentKind.addConfiguration => const GuiConnectionAction(
-        GuiConnectionActionKind.addConfiguration,
-      ),
-      TrayIntentKind.editConfiguration => GuiConnectionAction(
-        GuiConnectionActionKind.editConfiguration,
-        intent.targetId,
-      ),
-      TrayIntentKind.showSettings => const GuiConnectionAction(
-        GuiConnectionActionKind.showSettings,
-      ),
-      TrayIntentKind.showDetails => const GuiConnectionAction(
-        GuiConnectionActionKind.showDetails,
-      ),
-      _ => null,
-    };
+    final action = trayNavigationAction(intent);
     if (action == null || !same(action)) {
       _publishTrayPresentation();
       return;

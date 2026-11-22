@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';

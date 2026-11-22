@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 import 'package:sidravia_gui/desktop/tray_popover.dart';
 
 const desktopPresenceChannelName = 'sidravia/desktop';

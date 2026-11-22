@@ -10,8 +10,8 @@ import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 import 'package:sidravia_gui/features/home/connection_information_view.dart';
 
 Future<void> tap(WidgetTester tester, String text) async {

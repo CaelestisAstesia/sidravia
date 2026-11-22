@@ -8,7 +8,7 @@ import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class RecordingClient extends OfflineDemoClient {

@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 

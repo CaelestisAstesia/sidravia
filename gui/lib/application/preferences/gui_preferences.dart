@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 /// The single frontend preference owner; storage never contains backend state.
 class GuiPreferences extends ValueNotifier<ThemeMode> {

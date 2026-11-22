@@ -6,11 +6,11 @@ import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 void main() {
   late Directory root;

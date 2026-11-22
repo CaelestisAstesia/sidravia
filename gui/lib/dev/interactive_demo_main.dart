@@ -28,7 +28,7 @@ import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

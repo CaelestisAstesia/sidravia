@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:flutter/services.dart';
-import 'package:sidravia_gui/app/app_destination.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';

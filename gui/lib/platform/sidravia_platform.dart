@@ -1,8 +1,14 @@
+import 'package:flutter/foundation.dart';
+
 import 'dart:io';
 
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
+
+bool supportsNativeWindowFrame(TargetPlatform platform) =>
+    !kIsWeb &&
+    (platform == TargetPlatform.windows || platform == TargetPlatform.linux);
 
 enum SidraviaPlatformKind { windows, linux, android, ios, other }
 

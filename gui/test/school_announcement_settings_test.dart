@@ -5,8 +5,8 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 void main() {
   testWidgets(

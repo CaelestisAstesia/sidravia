@@ -7,8 +7,8 @@ import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 
 import 'school_announcement_policy_test.dart' as data;

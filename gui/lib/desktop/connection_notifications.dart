@@ -6,8 +6,8 @@ import 'package:sidravia_gui/application/gui_capabilities.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/system_notifications.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 enum ConnectionNoticeKind { success, recovery, error, progress, delayed }
 

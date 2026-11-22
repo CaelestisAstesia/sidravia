@@ -5,8 +5,8 @@ import 'package:sidravia_gui/application/gui_connection_state.dart';
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_policy.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 const school = InstitutionProfile(
   id: 'jlu',

@@ -1,3 +1,5 @@
+import 'package:sidravia_gui/platform/sidravia_platform.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -19,11 +21,7 @@ abstract final class SidraviaWindowCommands {
 /// Native hit testing must respect the same modal barrier as Flutter.
 class SidraviaWindowObserver extends NavigatorObserver {
   void _sync(Route<dynamic>? route) {
-    if (!kIsWeb &&
-        {
-          TargetPlatform.windows,
-          TargetPlatform.linux,
-        }.contains(defaultTargetPlatform)) {
+    if (supportsNativeWindowFrame(defaultTargetPlatform)) {
       unawaited(
         SidraviaWindowCommands.channel
             .invokeMethod<void>('setModalBlocked', route is PopupRoute)
@@ -58,11 +56,7 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
   final _maximizeTooltip = GlobalKey<TooltipState>();
   Brightness? _brightness;
   bool get _desktop =>
-      !kIsWeb &&
-      const {
-        TargetPlatform.windows,
-        TargetPlatform.linux,
-      }.contains(widget.platform ?? defaultTargetPlatform);
+      supportsNativeWindowFrame(widget.platform ?? defaultTargetPlatform);
   @override
   void initState() {
     super.initState();

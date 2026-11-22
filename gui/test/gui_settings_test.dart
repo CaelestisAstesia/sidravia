@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 
 void main() {
   test('fresh preferences use Debug and explicit Info remains saved', () async {

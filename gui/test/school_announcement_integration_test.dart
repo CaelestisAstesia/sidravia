@@ -11,8 +11,8 @@ import 'package:sidravia_gui/features/announcements/school_announcement_controll
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
-import 'package:sidravia_gui/shared/theme/gui_preferences.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

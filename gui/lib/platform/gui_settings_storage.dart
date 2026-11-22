@@ -1,5 +1,5 @@
 import 'package:path_provider/path_provider.dart';
-import 'package:sidravia_gui/shared/theme/gui_settings.dart';
+import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 import 'gui_settings_storage_stub.dart'
     if (dart.library.io) 'gui_settings_storage_io.dart'

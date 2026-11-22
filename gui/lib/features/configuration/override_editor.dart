@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 const maxOverrideBytes = 16384;
@@ -376,9 +377,7 @@ class _OverrideEditorState extends State<OverrideEditor> {
   Widget _toolbar(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final touch =
-        theme.platform == TargetPlatform.android ||
-        theme.platform == TargetPlatform.iOS;
+    final touch = DesignMetrics.isTouchPlatform(theme.platform);
     final tapTarget = touch
         ? MaterialTapTargetSize.padded
         : MaterialTapTargetSize.shrinkWrap;
