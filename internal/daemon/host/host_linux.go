@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"sidravia/internal/ipc/contract"
 	"sidravia/internal/persistence/jsonfile"
 )
 
@@ -78,25 +77,9 @@ func runLinuxHost(ctx context.Context, cfg Config, deps linuxHostDeps) error {
 	}
 	defer listener.Close()
 
-	_, portStr, err := net.SplitHostPort(listener.Addr().String())
+	info, err := publishRuntimeInfo(ctx, cfg, listener, store)
 	if err != nil {
-		return fmt.Errorf("host: parse listener address: %w", err)
-	}
-
-	info := contract.RuntimeInfo{
-		SchemaVersion:  1,
-		Endpoint:       "ws://127.0.0.1:" + portStr + "/ipc",
-		PID:            os.Getpid(),
-		Token:          cfg.Token,
-		ProductVersion: cfg.ProductVersion,
-		BuildID:        cfg.BuildID,
-	}
-	infoData, err := contract.EncodeRuntimeInfo(info)
-	if err != nil {
-		return fmt.Errorf("host: encode runtime info: %w", err)
-	}
-	if err := store.Replace(ctx, cfg.RuntimeInfoPath, infoData); err != nil {
-		return fmt.Errorf("host: write runtime info: %w", err)
+		return err
 	}
 
 	defer cleanupRuntimeInfo(cfg.RuntimeInfoPath, info, store, os.Remove)
