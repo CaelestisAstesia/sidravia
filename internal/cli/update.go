@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"time"
 
@@ -47,15 +46,10 @@ func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.
 			return rpmUpdateOutput(args, identity)
 		}
 	}
-	executable, err := os.Executable()
+	path, err := siblingExecutable("sidraviaupdater")
 	if err != nil {
 		return nil, err
 	}
-	name := "sidraviaupdater"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	path := filepath.Join(filepath.Dir(executable), name)
 	if len(args) > 0 && args[0] == "apply" {
 		if handled, err := handoffUpdater(path, args); handled {
 			return nil, err
@@ -63,7 +57,7 @@ func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.
 	}
 	ctx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(filepath.Dir(executable), name), args...)
+	cmd := exec.CommandContext(ctx, path, args...)
 	var output updateOutput
 	cmd.Stdout = &output
 	cmd.Stderr = io.Discard

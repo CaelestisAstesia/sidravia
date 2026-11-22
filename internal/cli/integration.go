@@ -1,24 +1,17 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/spf13/cobra"
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/installationmanager"
 )
-
-type managerOutput struct{ bytes.Buffer }
 
 type integrationOperationError struct {
 	message string
@@ -29,38 +22,6 @@ func (e *integrationOperationError) Error() string { return e.message }
 func (e *integrationOperationError) Unwrap() error { return e.cause }
 func integrationFailure(message string, cause error) error {
 	return &integrationOperationError{message: message, cause: cause}
-}
-
-func (b *managerOutput) Write(p []byte) (int, error) {
-	if b.Len()+len(p) > 65536 {
-		return 0, errors.New("manager output too large")
-	}
-	return b.Buffer.Write(p)
-}
-
-func invokeInstallationManager(ctx context.Context, args []string) ([]byte, error) {
-	if runtime.GOOS != "windows" {
-		return nil, errors.New("当前平台尚不支持安装集成管理。")
-	}
-	path, err := os.Executable()
-	if err != nil {
-		return nil, integrationFailure("无法确定维护工具的位置。", err)
-	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(filepath.Dir(path), "sidraviamgr.exe"), args...)
-	var output managerOutput
-	cmd.Stdout = &output
-	cmd.Stderr = io.Discard
-	cmd.WaitDelay = time.Second
-	err = cmd.Run()
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("维护操作已取消或超时：%w", ctx.Err())
-	}
-	if err != nil && output.Len() == 0 {
-		return nil, integrationFailure("维护工具无法运行，请检查安装是否完整。", err)
-	}
-	return output.Bytes(), err
 }
 
 func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error), identities ...clientbootstrap.Identity) *cobra.Command {
