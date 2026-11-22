@@ -55,6 +55,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<TrayPopoverWindow> tray_popover_window_;
   flutter::EncodableMap tray_presentation_;
 
+  void ConfigureContentChannels();
   flutter::EncodableMap WindowState();
   void PublishWindowState();
   bool maximize_hovered_ = false;

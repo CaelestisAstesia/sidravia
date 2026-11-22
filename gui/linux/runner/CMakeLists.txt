@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME}
   "installation_gate.cc"
   "my_application.cc"
   "desktop_shell.cc"
+  "desktop_notifications.cc"
   "announcement_window.cc"
   "announcement_link_policy.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"

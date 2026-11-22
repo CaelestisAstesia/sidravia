@@ -1,4 +1,4 @@
-#include "desktop_shell.h"
+#include "desktop_shell_internal.h"
 #include "wayland_window_icon.h"
 #include "announcement_window.h"
 #include "../../native/frame_geometry.h"
@@ -13,63 +13,8 @@
 #include <map>
 #include <string>
 
-struct Notice {
-  guint id = 0;
-  guint64 generation = 0;
-  std::string token;
-};
-struct DesktopShell {
-  GtkWindow* window;
-  FlView* view;
-  GtkGesture* frame_gesture;
-  bool custom_frame = false, frame_configured = false, modal_blocked = false;
-  gchar* icon = nullptr;
-  WaylandWindowIcon* window_icon = nullptr;
-  AnnouncementWindow* announcement = nullptr;
-  FlMethodChannel *desktop, *window_channel, *announcements, *notifications;
-  AppIndicator* indicator;
-  GtkWidget *menu, *status, *primary, *secondary;
-  FlValue *primary_intent = nullptr, *secondary_intent = nullptr;
-  GDBusConnection* bus = nullptr;
-  guint notification_subscription = 0;
-  bool dark = false, starting = true, frame_received = false;
-  guint startup_timeout = 0;
-  guint termination_source = 0;
-  bool close_to_tray = false, hidden = false, exiting = false, configured = false;
-  std::map<std::string, Notice> notices;
-  GCancellable* cancel = g_cancellable_new();
-  unsigned pending = 0;
-  bool closing = false;
-};
+using namespace sidravia_desktop;
 
-static FlValue* field(FlValue* args, const char* key) {
-  return args && fl_value_get_type(args) == FL_VALUE_TYPE_MAP
-      ? fl_value_lookup_string(args, key) : nullptr;
-}
-static const char* text(FlValue* value) {
-  return value && fl_value_get_type(value) == FL_VALUE_TYPE_STRING
-      ? fl_value_get_string(value) : "";
-}
-static bool boolean(FlValue* value) {
-  return value && fl_value_get_type(value) == FL_VALUE_TYPE_BOOL && fl_value_get_bool(value);
-}
-static void reply(FlMethodCall* call, FlValue* value = nullptr) {
-  g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(fl_method_success_response_new(value));
-  fl_method_call_respond(call, response, nullptr);
-}
-static void fail(FlMethodCall* call, const char* message) {
-  g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(
-      fl_method_error_response_new("desktop_unavailable", message, nullptr));
-  fl_method_call_respond(call, response, nullptr);
-}
-static void invoke(FlMethodChannel* channel, const char* method, FlValue* value = nullptr) {
-  fl_method_channel_invoke_method(channel, method, value, nullptr,
-    [](GObject* source, GAsyncResult* result, gpointer) {
-      g_autoptr(GError) error = nullptr;
-      g_autoptr(FlMethodResponse) response = fl_method_channel_invoke_method_finish(FL_METHOD_CHANNEL(source), result, &error);
-      if (error || (response && FL_IS_METHOD_ERROR_RESPONSE(response))) g_debug("Sidravia desktop event was not acknowledged");
-    }, nullptr);
-}
 static FlValue* main_visibility(DesktopShell* s) {
   auto* window = gtk_widget_get_window(GTK_WIDGET(s->window));
   if (!gtk_widget_get_visible(GTK_WIDGET(s->window)) || !window ||
@@ -317,92 +262,6 @@ static void announcement_call(FlMethodChannel*, FlMethodCall* call, gpointer dat
     fail(call,"无效公告参数"); return;
   }
   g_autoptr(FlValue) value = fl_value_new_string("opened"); reply(call,value);
-}
-
-static void dismiss_notice(DesktopShell* s, Notice& notice) {
-  ++notice.generation;
-  if (s->bus && notice.id) {
-    g_dbus_connection_call(s->bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "CloseNotification",
-      g_variant_new("(u)", notice.id), nullptr, G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, nullptr, nullptr);
-  }
-  notice.id = 0; notice.token.clear();
-}
-static void notification_signal(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* signal, GVariant* args, gpointer data) {
-  auto* s = static_cast<DesktopShell*>(data);
-  guint id; const gchar* action = nullptr;
-  if (g_str_equal(signal, "ActionInvoked")) g_variant_get(args, "(u&s)", &id, &action);
-  else if (g_str_equal(signal, "NotificationClosed")) { guint reason; g_variant_get(args, "(uu)", &id, &reason); }
-  else return;
-  for (auto& entry : s->notices) {
-    if (entry.second.id != id) continue;
-    if (action && g_str_equal(action, "default")) {
-      g_autoptr(FlValue) value = fl_value_new_map();
-      fl_value_set_string_take(value, "category", fl_value_new_string(entry.first.c_str()));
-      fl_value_set_string_take(value, "token", fl_value_new_string(entry.second.token.c_str()));
-      invoke(s->notifications, "clicked", value);
-    }
-    entry.second.id = 0; entry.second.token.clear();
-    break;
-  }
-}
-static void notification_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
-  auto* s = static_cast<DesktopShell*>(data);
-  const char* method = fl_method_call_get_name(call);
-  auto* args = fl_method_call_get_args(call);
-  if (g_str_equal(method, "dispose")) {
-    for (auto& entry : s->notices) dismiss_notice(s, entry.second);
-    reply(call); return;
-  }
-  std::string category = text(field(args, "category"));
-  if (category != "connection" && category != "announcement") { fail(call, "无效通知类别"); return; }
-  auto& notice = s->notices[category];
-  if (g_str_equal(method, "dismiss")) { dismiss_notice(s, notice); reply(call); return; }
-  if (!g_str_equal(method, "show")) { fl_method_call_respond_not_implemented(call, nullptr); return; }
-  if (!s->bus) { g_autoptr(FlValue) value = fl_value_new_string("unsupported"); reply(call, value); return; }
-  const char* token = text(field(args, "token"));
-  if (strlen(token) != 32 || !*text(field(args, "title")) || !*text(field(args, "body"))) { fail(call, "无效通知参数"); return; }
-  GVariantBuilder actions, hints;
-  g_variant_builder_init(&actions, G_VARIANT_TYPE("as"));
-  g_variant_builder_add(&actions, "s", "default"); g_variant_builder_add(&actions, "s", "打开 Sidravia");
-  g_variant_builder_init(&hints, G_VARIANT_TYPE("a{sv}"));
-  g_variant_builder_add(&hints, "{sv}", "desktop-entry", g_variant_new_string(APPLICATION_ID));
-  // Async IPC keeps an unavailable notification server off the GTK input path.
-  struct PendingNotice {
-    DesktopShell* shell;
-    FlMethodCall* call;
-    std::string category, token;
-    guint64 generation;
-  };
-  auto* pending = new PendingNotice{s, FL_METHOD_CALL(g_object_ref(call)), category, token, ++notice.generation};
-  ++s->pending;
-  g_dbus_connection_call(s->bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
-    g_variant_new("(susssasa{sv}i)", "Sidravia", notice.id, s->icon, text(field(args, "title")), text(field(args, "body")), &actions, &hints, -1),
-    G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, 1500, s->cancel,
-    [](GObject* source, GAsyncResult* result, gpointer data) {
-      auto* p = static_cast<PendingNotice*>(data);
-      auto* s = p->shell;
-      g_autoptr(GError) error = nullptr;
-      g_autoptr(GVariant) value = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), result, &error);
-      auto& current = s->notices[p->category];
-      guint id = 0;
-      if (value) g_variant_get(value, "(u)", &id);
-      if (s->closing || current.generation != p->generation) {
-        if (id && id != current.id) {
-          Notice stale; stale.id = id; dismiss_notice(s, stale);
-        }
-        fail(p->call, "通知请求已取消");
-      } else if (!value) {
-        fail(p->call, "通知服务不可用");
-      } else {
-        current.id = id; current.token = p->token;
-        g_autoptr(FlValue) submitted = fl_value_new_string("submitted");
-        reply(p->call, submitted);
-      }
-      g_object_unref(p->call); delete p;
-      --s->pending;
-      if (s->closing && !s->pending) desktop_shell_free(s);
-    }, pending);
-
 }
 
 static FlMethodChannel* channel(FlView* view, const char* name, FlMethodChannelMethodCallHandler handler, DesktopShell* s) {

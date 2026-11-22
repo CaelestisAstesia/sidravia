@@ -7,9 +7,11 @@ void main() {
     final runner = File('windows/runner/flutter_window.cpp').readAsStringSync();
     final header = File('windows/runner/flutter_window.h').readAsStringSync();
     final cmake = File('windows/runner/CMakeLists.txt').readAsStringSync();
-    expect(runner, contains('"sidravia/announcements"'));
+    final content = File('windows/runner/flutter_content_channels.cpp')
+        .readAsStringSync();
+    expect(content, contains('"sidravia/announcements"'));
     expect(
-      runner,
+      content,
       contains('school_announcement_window_->Open(GetHandle(), *arguments)'),
     );
     expect(header, contains('std::unique_ptr<SchoolAnnouncementWindow>'));
@@ -111,7 +113,10 @@ void main() {
     expect(flutterWindow, contains('NIM_ADD'));
     expect(flutterWindow, contains('NIM_DELETE'));
     expect(flutterWindow, isNot(contains('NIF_INFO')));
-    expect(flutterWindow, contains('sidravia/system-notifications'));
+    expect(
+      File('windows/runner/flutter_content_channels.cpp').readAsStringSync(),
+      contains('sidravia/system-notifications'),
+    );
     expect(flutterWindow, contains('TaskbarCreated'));
     expect(
       flutterWindow,
