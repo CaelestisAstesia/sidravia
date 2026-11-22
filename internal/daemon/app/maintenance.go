@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
@@ -94,46 +93,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			if err != nil {
 				return failure(contract.ErrorCodeMaintenance)
 			}
-			application.operationMu.Lock()
-			if input.ManagedGUIUpdate {
-				err := state.PrepareManagedGUI(input.OperationID, *input.Interactive, time.Now())
-				if err == nil {
-					application.maintenanceActive.Store(true)
-				}
-				application.operationMu.Unlock()
-				if err != nil {
-					close()
-					return failure(contract.ErrorCodeMaintenance)
-				}
-				alive, closeOwner = live, close
-				return output()
-			}
-			view, err := application.listSessionViewLocked(ctx)
-			intent := update.RestoreIntent{Mode: string(options.Mode)}
-			for _, s := range view.Sessions {
-				if s.Intent == session.MaintainAuthentication {
-					if s.ConfigurationID == "" && input.ServiceSwitch && input.InterruptOneShot {
-						continue
-					}
-					if s.ConfigurationID == "" || intent.Maintain {
-						err = update.ErrInvalid
-						break
-					}
-					intent.Maintain = true
-					intent.ConfigurationID = string(s.ConfigurationID)
-				}
-			}
-			if err == nil {
-				if input.ServiceSwitch {
-					err = state.PrepareServiceSwitch(input.OperationID, intent, time.Now())
-				} else {
-					err = state.Prepare(input.OperationID, *input.Interactive, intent, time.Now())
-				}
-			}
-			if err == nil {
-				application.maintenanceActive.Store(true)
-			}
-			application.operationMu.Unlock()
+			err = application.prepareMaintenance(ctx, options.Mode, input, &state)
 			if err != nil {
 				close()
 				return failure(contract.ErrorCodeMaintenance)
