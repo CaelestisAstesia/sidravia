@@ -3,6 +3,7 @@ package contract
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 const (
@@ -98,4 +99,22 @@ func readOverrideDocument(data []byte, document *string, raw *json.RawMessage) e
 	}
 	*raw = decoded
 	return nil
+}
+
+// MaximumProtocolContextOverrideBytes bounds one opaque override source object.
+const MaximumProtocolContextOverrideBytes = 16384
+
+// DecodeProtocolContextOverride validates generic original JSON shape only;
+// the selected protocol Factory owns schema and field semantics. Errors never
+// reproduce untrusted member names, values or parser diagnostics.
+func DecodeProtocolContextOverride(data []byte) (json.RawMessage, error) {
+	invalid := fmt.Errorf("protocol context override must be one bounded strict object")
+	if len(data) > MaximumProtocolContextOverrideBytes || validateNetworkUnicode(data) != nil {
+		return nil, invalid
+	}
+	var object map[string]json.RawMessage
+	if decodeStrict(data, &object) != nil || object == nil {
+		return nil, invalid
+	}
+	return append(json.RawMessage(nil), data...), nil
 }
