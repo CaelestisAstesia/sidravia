@@ -3,7 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
+	"path/filepath"
+	"sidravia/internal/update/packagefiles"
 	"strings"
 )
 
@@ -77,4 +81,66 @@ func checkGUIRuntime(entries []zipEntry, windows bool) error {
 		}
 	}
 	return nil
+}
+
+func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
+	if root == "" {
+		return nil, nil
+	}
+	if !filepath.IsAbs(root) {
+		return nil, fmt.Errorf("GUI directory must be absolute")
+	}
+	reserved := map[string]bool{packagefiles.Name: true, "sidravia.portable": true, "sidraviactl.exe": true, "sidraviad.exe": true, "sidraviamgr.exe": true, "sidraviaupdater.exe": true}
+	for _, entry := range existing {
+		reserved[strings.ToLower(entry.name)] = true
+	}
+	var entries []zipEntry
+	err := filepath.WalkDir(root, func(path string, info fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("GUI payload contains a link")
+		}
+		if info.IsDir() {
+			return nil
+		}
+		metadata, err := info.Info()
+		if err != nil {
+			return err
+		}
+		if !metadata.Mode().IsRegular() {
+			return fmt.Errorf("GUI payload contains a non-regular file")
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		name := filepath.ToSlash(rel)
+		if reserved[strings.ToLower(name)] || strings.ContainsAny(name, "\"\r\n;{}") {
+			return fmt.Errorf("GUI payload name conflicts with installation content: %s", name)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, zipEntry{name, data, metadata.Mode().Perm()})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := checkGUIRuntime(entries, true); err != nil {
+		return nil, err
+	}
+	found := map[string]bool{}
+	for _, entry := range entries {
+		found[entry.name] = true
+	}
+	for _, name := range []string{"Sidravia.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/FontManifest.json", "data/flutter_assets/NOTICES.Z"} {
+		if !found[name] {
+			return nil, fmt.Errorf("GUI payload lacks required Release file: %s", name)
+		}
+	}
+	return entries, nil
 }
