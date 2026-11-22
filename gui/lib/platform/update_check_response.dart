@@ -1,8 +1,7 @@
 import 'dart:convert';
 
 import 'installation_manager.dart';
-
-final _releaseVersion = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
+import 'update_release_version.dart';
 
 PackageUpdate decodeUpdateCheckResponse(int exitCode, String output) {
   final response = jsonDecode(output);
@@ -37,7 +36,7 @@ PackageUpdate decodeUpdateCheckResponse(int exitCode, String output) {
   final candidate = check['candidate'] as Map<String, dynamic>?;
   final version = candidate?['version'] as String?;
   if (state == UpdateCheckState.available &&
-      (version == null || !_releaseVersion.hasMatch(version))) {
+      (version == null || !validReleaseVersion(version))) {
     throw const FormatException();
   }
   return (state: state, version: version);

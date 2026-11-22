@@ -13,6 +13,7 @@ import 'gui_settings_storage_io.dart';
 import 'installation_manager.dart';
 import 'update_check_process.dart';
 import 'update_check_response.dart';
+import 'update_release_version.dart';
 
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
@@ -112,8 +113,6 @@ class LinuxInstallationManager
     }
   }
 
-  static final _releaseVersion = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
-
   @override
   Future<PackageUpdate> checkUpdate() async {
     _checkOpen();
@@ -141,11 +140,12 @@ class LinuxInstallationManager
   Future<void> openReleasePage(String version) async {
     _checkOpen();
     const failure = IntegrationFailure('无法打开浏览器。');
-    if (!_releaseVersion.hasMatch(version)) throw failure;
+    final url = releasePageUrl(version);
+    if (url == null) throw failure;
     try {
       final result = await Process.run(
         '/usr/bin/xdg-open',
-        ['https://github.com/CaelestisAstesia/sidravia/releases/tag/v$version'],
+        [url],
         environment: environment,
         includeParentEnvironment: false,
       );
@@ -424,7 +424,7 @@ class LinuxInstallationManager
         if (_rpmManaged) {
           pathSupported = false;
           pathEnabled = true;
-          pathNotice = '命令由 RPM 安装到 /usr/bin；请使用系统包管理器维护。';
+          pathNotice = '命令由 RPM 安装到 /usr/bin，请使用系统包管理器维护。';
         } else {
           final state = _pathState();
           pathEnabled = state.enabled;
