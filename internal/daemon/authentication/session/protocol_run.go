@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"time"
 
 	"sidravia/internal/daemon/authentication/protocol"
 )
@@ -58,4 +59,91 @@ func (session *AuthenticationSession) executeProtocolRun(run *activeProtocolRun)
 		failure:           failure,
 		cancellationCause: context.Cause(run.context),
 	})
+}
+
+func (session *AuthenticationSession) handleAuthenticationEstablished(event authenticationEstablishedEvent) {
+	if session.active == nil || session.active.generation != event.generation || session.active.established || context.Cause(session.active.context) != nil {
+		return
+	}
+	session.active.established = true
+	session.businessChanged()
+	session.active.establishedAt = session.now()
+	if session.bindingRecovery != nil {
+		session.bindingRecovery.retryAt = time.Time{}
+	}
+	session.consecutiveFailures = 0
+	if !session.retainRecoveryBudget {
+		session.protocolRecoveryFailures = 0
+	}
+	session.invalidateRetrySchedule()
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		now := session.now()
+		snapshot.State = Authenticated
+		snapshot.StateReason = nil
+		snapshot.AuthenticationEstablishedAt = &now
+		snapshot.LastAuthenticationFailure = nil
+		snapshot.NextRetryAt = nil
+	})
+}
+
+func (session *AuthenticationSession) handleProtocolRunFinished(event authenticationProtocolRunFinishedEvent) {
+	if session.active == nil || session.active.generation != event.generation {
+		return
+	}
+	if session.currentSnapshot.ProtocolSocket.RunGeneration == event.generation && session.currentSnapshot.ProtocolSocket.State == ProtocolSocketOpen {
+		session.updateSnapshot(func(snapshot *Snapshot) {
+			snapshot.ProtocolSocket.State = ProtocolSocketCloseUnconfirmed
+			snapshot.ProtocolSocket.UpdatedAt = session.now()
+		})
+	}
+	if cancellationCause := context.Cause(session.active.context); cancellationCause != nil {
+		event.cancellationCause = cancellationCause
+	}
+	finished := session.active
+	session.consumeBusiness()
+	session.active = nil
+	session.businessChanged()
+	if session.bindingRecovery != nil && session.finishAutomaticRun(finished, event) {
+		return
+	}
+	if event.cancellationCause != nil {
+		var cancellation protocol.AuthenticationProtocolRunCancellationCause
+		if errors.As(event.cancellationCause, &cancellation) &&
+			cancellation.CleanupRequirement == protocol.TerminateWithBestEffortLogout {
+			session.lastStopCleanupFailure = event.failure
+		}
+		if session.currentSnapshot.Intent == SuspendAuthentication {
+			session.completeSuspensionIfReady()
+			return
+		}
+		if !session.shuttingDown && session.explicitRestartPending {
+			if session.hasDesiredBinding && session.currentSnapshot.Intent == MaintainAuthentication {
+				session.explicitRestartPending = false
+				session.startRun(true)
+			}
+			return
+		}
+		if !session.shuttingDown && session.currentSnapshot.Intent == MaintainAuthentication && session.hasDesiredBinding {
+			if !session.definition.AutoReconnect && cancellation.CleanupRequirement == protocol.TerminateWithoutLogout {
+				session.blockForAutomaticReconnectDisabled(event.failure)
+				return
+			}
+			session.startRunIfNeeded()
+		}
+		return
+	}
+	if event.failure == nil {
+		event.failure = &protocol.AuthenticationProtocolRunFailure{
+			Code:                   protocol.AuthenticationProtocolFailureCode(StateReasonCodeProtocolContractViolated),
+			Description:            "Authentication protocol run returned without establishing cancellation or a result.",
+			HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange,
+		}
+		session.handleRunFailure(StateReasonCodeProtocolContractViolated, event.failure)
+		return
+	}
+	reasonCode := StateReasonCodeProtocolRunFailed
+	if event.failure.Code == protocol.AuthenticationProtocolFailureCode(StateReasonCodeProtocolContractViolated) {
+		reasonCode = StateReasonCodeProtocolContractViolated
+	}
+	session.handleRunFailure(reasonCode, event.failure)
 }

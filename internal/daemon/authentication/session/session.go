@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -587,93 +586,6 @@ func (session *AuthenticationSession) handleShutdown(reply chan error) {
 	session.cancelActive(protocol.TerminateWithBestEffortLogout)
 }
 
-func (session *AuthenticationSession) handleAuthenticationEstablished(event authenticationEstablishedEvent) {
-	if session.active == nil || session.active.generation != event.generation || session.active.established || context.Cause(session.active.context) != nil {
-		return
-	}
-	session.active.established = true
-	session.businessChanged()
-	session.active.establishedAt = session.now()
-	if session.bindingRecovery != nil {
-		session.bindingRecovery.retryAt = time.Time{}
-	}
-	session.consecutiveFailures = 0
-	if !session.retainRecoveryBudget {
-		session.protocolRecoveryFailures = 0
-	}
-	session.invalidateRetrySchedule()
-	session.updateSnapshot(func(snapshot *Snapshot) {
-		now := session.now()
-		snapshot.State = Authenticated
-		snapshot.StateReason = nil
-		snapshot.AuthenticationEstablishedAt = &now
-		snapshot.LastAuthenticationFailure = nil
-		snapshot.NextRetryAt = nil
-	})
-}
-
-func (session *AuthenticationSession) handleProtocolRunFinished(event authenticationProtocolRunFinishedEvent) {
-	if session.active == nil || session.active.generation != event.generation {
-		return
-	}
-	if session.currentSnapshot.ProtocolSocket.RunGeneration == event.generation && session.currentSnapshot.ProtocolSocket.State == ProtocolSocketOpen {
-		session.updateSnapshot(func(snapshot *Snapshot) {
-			snapshot.ProtocolSocket.State = ProtocolSocketCloseUnconfirmed
-			snapshot.ProtocolSocket.UpdatedAt = session.now()
-		})
-	}
-	if cancellationCause := context.Cause(session.active.context); cancellationCause != nil {
-		event.cancellationCause = cancellationCause
-	}
-	finished := session.active
-	session.consumeBusiness()
-	session.active = nil
-	session.businessChanged()
-	if session.bindingRecovery != nil && session.finishAutomaticRun(finished, event) {
-		return
-	}
-	if event.cancellationCause != nil {
-		var cancellation protocol.AuthenticationProtocolRunCancellationCause
-		if errors.As(event.cancellationCause, &cancellation) &&
-			cancellation.CleanupRequirement == protocol.TerminateWithBestEffortLogout {
-			session.lastStopCleanupFailure = event.failure
-		}
-		if session.currentSnapshot.Intent == SuspendAuthentication {
-			session.completeSuspensionIfReady()
-			return
-		}
-		if !session.shuttingDown && session.explicitRestartPending {
-			if session.hasDesiredBinding && session.currentSnapshot.Intent == MaintainAuthentication {
-				session.explicitRestartPending = false
-				session.startRun(true)
-			}
-			return
-		}
-		if !session.shuttingDown && session.currentSnapshot.Intent == MaintainAuthentication && session.hasDesiredBinding {
-			if !session.definition.AutoReconnect && cancellation.CleanupRequirement == protocol.TerminateWithoutLogout {
-				session.blockForAutomaticReconnectDisabled(event.failure)
-				return
-			}
-			session.startRunIfNeeded()
-		}
-		return
-	}
-	if event.failure == nil {
-		event.failure = &protocol.AuthenticationProtocolRunFailure{
-			Code:                   protocol.AuthenticationProtocolFailureCode(StateReasonCodeProtocolContractViolated),
-			Description:            "Authentication protocol run returned without establishing cancellation or a result.",
-			HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange,
-		}
-		session.handleRunFailure(StateReasonCodeProtocolContractViolated, event.failure)
-		return
-	}
-	reasonCode := StateReasonCodeProtocolRunFailed
-	if event.failure.Code == protocol.AuthenticationProtocolFailureCode(StateReasonCodeProtocolContractViolated) {
-		reasonCode = StateReasonCodeProtocolContractViolated
-	}
-	session.handleRunFailure(reasonCode, event.failure)
-}
-
 func (session *AuthenticationSession) completeSuspensionIfReady() {
 	if session.shuttingDown ||
 		session.active != nil ||
@@ -810,8 +722,6 @@ func (session *AuthenticationSession) blockForAutomaticReconnectDisabled(failure
 	})
 }
 
-// publicFailure projects a protocol failure using its recommendation when the
-// Session applies that recommendation unchanged.
 func (session *AuthenticationSession) resetRetryState() {
 	session.consecutiveFailures = 0
 	session.protocolRecoveryFailures = 0
@@ -923,45 +833,6 @@ func (session *AuthenticationSession) cancelActive(requirement protocol.Authenti
 	session.active.effectiveEndAt = session.now()
 	session.active.cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: requirement})
 	session.businessChanged()
-}
-
-func (session *AuthenticationSession) updateSnapshot(mutate func(*Snapshot)) {
-	before := session.currentSnapshot.Clone()
-	mutate(&session.currentSnapshot)
-	if publicSnapshotsEqual(before, session.currentSnapshot) {
-		return
-	}
-	session.currentSnapshot.Revision++
-	session.currentSnapshot.UpdatedAt = session.now()
-	session.publishRevision()
-}
-
-func publicSnapshotsEqual(left, right Snapshot) bool {
-	left.Revision, right.Revision = 0, 0
-	left.UpdatedAt, right.UpdatedAt = time.Time{}, time.Time{}
-	return reflect.DeepEqual(left, right)
-}
-
-func (session *AuthenticationSession) publishInitialRevision() { session.publishRevision() }
-
-func (session *AuthenticationSession) publishRevision() {
-	event := RevisionEvent{AuthenticationSessionID: session.currentSnapshot.AuthenticationSessionID, Revision: session.currentSnapshot.Revision, Snapshot: session.currentSnapshot.Clone()}
-	select {
-	case session.revisions <- event:
-	default:
-		select {
-		case <-session.revisions:
-		default:
-		}
-		select {
-		case session.revisions <- event:
-		default:
-		}
-	}
-	// The diagnostic sink observes every committed revision directly, without
-	// going through the coalescing RevisionEvents stream, so no intermediate
-	// public revision is lost. It has no return value and cannot change state.
-	session.diagnostics.SessionSnapshot(session.currentSnapshot.Clone())
 }
 
 func (session *AuthenticationSession) completeShutdown() {

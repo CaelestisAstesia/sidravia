@@ -8,6 +8,8 @@ import (
 	"sidravia/internal/daemon/authentication/protocol"
 )
 
+// publicFailure projects a protocol failure using its recommendation when the
+// Session applies that recommendation unchanged.
 func (session *AuthenticationSession) publicFailure(failure *protocol.AuthenticationProtocolRunFailure) *AuthenticationFailure {
 	return session.publicFailureWithRecommendation(failure, failure.HandlingRecommendation)
 }
