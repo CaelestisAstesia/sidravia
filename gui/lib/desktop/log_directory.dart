@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
+import 'package:sidravia_gui/platform/desktop_process.dart';
 
 /// Opens only this instance's directory, resolved by the sibling CLI.
 class DesktopLogDirectory {
@@ -30,7 +30,7 @@ class DesktopLogDirectory {
   static Future<GuiBootstrapProcess> _start(
     String executable,
     List<String> args,
-  ) async => _LogProcess(
+  ) async => SystemDesktopProcess(
     await Process.start(
       executable,
       args,
@@ -69,8 +69,7 @@ class DesktopLogDirectory {
     }
 
     try {
-      final executable =
-          '${File(_executable()).parent.path}${Platform.pathSeparator}sidraviactl${_isWindows() ? '.exe' : ''}';
+      final executable = desktopCtlPath(_executable(), windows: _isWindows());
       child = await _launch(executable, const ['gui', 'open-log-directory']);
       exit = child.exitCode;
       output = drain(child.stdout);
@@ -108,17 +107,4 @@ class DesktopLogDirectory {
     if (cancel != null && !cancel.isCompleted) cancel.complete();
     await _work;
   }
-}
-
-class _LogProcess implements GuiBootstrapProcess {
-  _LogProcess(this.process);
-  final Process process;
-  @override
-  Stream<List<int>> get stdout => process.stdout;
-  @override
-  Stream<List<int>> get stderr => process.stderr;
-  @override
-  Future<int> get exitCode => process.exitCode;
-  @override
-  bool kill() => process.kill();
 }

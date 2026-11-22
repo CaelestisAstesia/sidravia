@@ -33,16 +33,11 @@ class SidraviaPlatform {
       bootstrapper is ProcessGuiBootstrap;
 
   factory SidraviaPlatform.detect({String namespace = ''}) {
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isLinux) {
       return SidraviaPlatform(
-        kind: SidraviaPlatformKind.windows,
-        bootstrapper: ProcessGuiBootstrap(),
-        desktopPresence: DesktopPresence(namespace: namespace),
-      );
-    }
-    if (Platform.isLinux) {
-      return SidraviaPlatform(
-        kind: SidraviaPlatformKind.linux,
+        kind: Platform.isWindows
+            ? SidraviaPlatformKind.windows
+            : SidraviaPlatformKind.linux,
         bootstrapper: ProcessGuiBootstrap(),
         desktopPresence: DesktopPresence(namespace: namespace),
       );

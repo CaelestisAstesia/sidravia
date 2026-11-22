@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/platform/desktop_process.dart';
 import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 
 void main() {

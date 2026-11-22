@@ -6,18 +6,6 @@ import '../platform/linux_product_executable.dart';
 
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 
-abstract interface class GuiBootstrapProcess {
-  Stream<List<int>> get stdout;
-  Stream<List<int>> get stderr;
-  Future<int> get exitCode;
-  bool kill();
-}
-
-typedef GuiBootstrapLauncher = Future<GuiBootstrapProcess> Function(
-  String executable,
-  List<String> arguments,
-);
-
 class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   ProcessGuiBootstrap({
     this.logLevel,
@@ -55,7 +43,7 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
       final fields = stat.substring(stat.lastIndexOf(')') + 2).split(' ');
       environment['SIDRAVIA_DESKTOP_OWNER_START'] = fields[19];
     }
-    return _SystemProcess(
+    return SystemDesktopProcess(
       await Process.start(executable, arguments, environment: environment),
     );
   }
@@ -76,8 +64,12 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
     Future<List<int>>? err;
     var exited = false;
     try {
-      final executable =
-          '${File(_isLinux() ? linuxProductExecutable(_resolvedExecutable()) : _resolvedExecutable()).parent.path}${Platform.pathSeparator}sidraviactl${_isWindows() ? '.exe' : ''}';
+      final executable = desktopCtlPath(
+        _isLinux()
+            ? linuxProductExecutable(_resolvedExecutable())
+            : _resolvedExecutable(),
+        windows: _isWindows(),
+      );
       child = await _launch(executable, [
         'gui',
         operation,
@@ -133,17 +125,4 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
     }
     return bytes;
   }
-}
-
-class _SystemProcess implements GuiBootstrapProcess {
-  _SystemProcess(this.value);
-  final Process value;
-  @override
-  Stream<List<int>> get stdout => value.stdout;
-  @override
-  Stream<List<int>> get stderr => value.stderr;
-  @override
-  Future<int> get exitCode => value.exitCode;
-  @override
-  bool kill() => value.kill();
 }
