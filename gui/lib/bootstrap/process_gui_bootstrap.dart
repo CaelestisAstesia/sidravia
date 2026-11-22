@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../platform/desktop_process.dart';
 import '../platform/linux_product_executable.dart';
 
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
