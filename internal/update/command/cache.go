@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"sidravia/internal/update/github"
 	"sidravia/internal/update/releases"
@@ -71,4 +72,17 @@ func removeCached(root, path string, candidate *releases.Candidate) error {
 }
 func samePackage(a, b *releases.Candidate) bool {
 	return a != nil && b != nil && a.ID == b.ID && a.Version == b.Version && a.Name == b.Name && a.Size == b.Size && a.SHA256 == b.SHA256 && a.DownloadURL == b.DownloadURL
+}
+
+type backoff struct {
+	SchemaVersion int       `json:"schemaVersion"`
+	Until         time.Time `json:"until"`
+}
+
+type cached struct {
+	SchemaVersion int                  `json:"schemaVersion"`
+	Selection     releases.Selection   `json:"selection"`
+	CheckedAt     time.Time            `json:"checkedAt"`
+	Check         releases.CheckResult `json:"check"`
+	Downloaded    string               `json:"downloaded,omitempty"`
 }
