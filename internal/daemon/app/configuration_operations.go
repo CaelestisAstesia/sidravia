@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"time"
 
 	"sidravia/internal/credentialinput"
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/persistence"
 	"sidravia/internal/persistence/jsonfile"
@@ -197,42 +195,8 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	return application.enrich(ctx, value)
 }
 
-// ErrConfigurationSessionInvalidation distinguishes a durable edit from failed cleanup.
-var ErrConfigurationSessionInvalidation = errors.New("configuration committed; session cleanup required")
-
 func (application *Application) SetConfigurationPassword(ctx context.Context, id config.ConfigurationID, password string, allow bool) (ConfigurationResult, error) {
 	return application.UpdateConfiguration(ctx, id, config.Update{Password: &password, AllowInsecureStorage: allow})
-}
-
-func (application *Application) retireConfigurationSession(ctx context.Context, id config.ConfigurationID) error {
-	application.sessionIndexMu.Lock()
-	sessionID := application.sessionsByConfig[id]
-	application.sessionIndexMu.Unlock()
-	if sessionID == "" {
-		return nil
-	}
-	application.invalidSessions[sessionID] = true
-	// Once persistence commits, caller cancellation must not skip cleanup.
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 4*time.Second)
-	defer cancel()
-	if err := application.supervisor.Remove(cleanup, sessionID); err != nil && !errors.Is(err, supervisor.ErrSessionNotFound) {
-		return errors.Join(ErrConfigurationSessionInvalidation, err)
-	}
-	delete(application.invalidSessions, sessionID)
-	application.sessionIndexMu.Lock()
-	delete(application.sessionsByConfig, id)
-	application.sessionIndexMu.Unlock()
-	delete(application.reconnectByConfig, id)
-	return nil
-}
-
-func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID, allow ...bool) error {
-	application.operationMu.Lock()
-	defer application.operationMu.Unlock()
-	if err := application.catalog.Delete(ctx, id, allow...); err != nil {
-		return err
-	}
-	return application.retireConfigurationSession(ctx, id)
 }
 
 func (application *Application) enrich(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {
