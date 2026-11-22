@@ -109,6 +109,7 @@ func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
 `, strconv.Quote(source))
 	})
 	overlay("internal/update/command/run.go", func(s string) string {
+		s = strings.Replace(s, "\"io\"", "\"io\"\n\"os\"", 1)
 		return strings.Replace(s, "failSource := func(err error, result any, applying bool) int {", "failSource := func(err error, result any, applying bool) int {\nif applying{os.WriteFile("+strconv.Quote(filepath.Join(owned, "apply-cause.txt"))+",[]byte(err.Error()),0600)}", 1)
 	})
 	overlay("cmd/sidraviactl/main.go", func(s string) string {
