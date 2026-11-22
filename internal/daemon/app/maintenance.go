@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"sidravia/internal/daemon/authentication/session"
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update"
 )
 

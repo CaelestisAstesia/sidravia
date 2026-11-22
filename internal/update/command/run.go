@@ -15,7 +15,7 @@ import (
 	"runtime"
 	"time"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"

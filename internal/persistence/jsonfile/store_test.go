@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 type fakeWritableTemp struct {

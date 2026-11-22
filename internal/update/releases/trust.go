@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update/packagefiles"
 )
 

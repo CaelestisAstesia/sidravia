@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 type Store interface {

@@ -13,7 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 	"strconv"
 	"strings"
 	"testing"

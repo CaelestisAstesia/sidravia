@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 	"testing"
 )
 

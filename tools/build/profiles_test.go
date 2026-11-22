@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 func syntheticProfile(id string) string {

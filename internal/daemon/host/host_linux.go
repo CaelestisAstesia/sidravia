@@ -15,8 +15,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 // Run starts the daemon host on Linux. It validates its inputs, acquires a

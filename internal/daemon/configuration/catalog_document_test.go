@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 func TestCatalogDocumentRoundTripIsDeterministic(t *testing.T) {

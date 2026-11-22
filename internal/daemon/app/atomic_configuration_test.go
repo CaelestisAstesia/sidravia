@@ -12,7 +12,7 @@ import (
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 	"strings"
 	"sync"
 	"testing"

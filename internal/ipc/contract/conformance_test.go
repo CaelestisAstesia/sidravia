@@ -11,9 +11,9 @@ import (
 
 	"sidravia/internal/daemon/app"
 	"sidravia/internal/daemon/authentication/session"
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 const fixturePath = "testdata/v1/conformance.json"

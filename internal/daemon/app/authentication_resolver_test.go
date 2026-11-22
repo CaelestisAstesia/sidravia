@@ -16,7 +16,7 @@ import (
 	config "sidravia/internal/daemon/configuration"
 	credential "sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/environment"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 type appMemoryStore struct{ data map[string][]byte }

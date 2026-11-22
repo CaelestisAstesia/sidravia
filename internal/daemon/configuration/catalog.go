@@ -15,8 +15,8 @@ import (
 
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/credentials"
-	"sidravia/internal/daemon/persistence"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 const catalogFileSizeLimit int64 = 1 * 1024 * 1024

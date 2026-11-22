@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 func TestUnsupportedProtectionFallbackIsPermanentAndWarnsOnce(t *testing.T) {

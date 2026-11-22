@@ -10,8 +10,8 @@ import (
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/persistence"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 type ConfigurationResult struct {

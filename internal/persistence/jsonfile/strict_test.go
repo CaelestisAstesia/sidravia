@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 type strictConfiguration struct {

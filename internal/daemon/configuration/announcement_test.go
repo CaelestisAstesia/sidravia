@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 func announcementProfileDocument(raw string) string {

@@ -11,7 +11,7 @@ import (
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 // loadOfficialProfileEntries snapshots and validates the complete official

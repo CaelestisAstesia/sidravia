@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 const Name = "sidravia-files.json"

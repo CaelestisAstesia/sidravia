@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"

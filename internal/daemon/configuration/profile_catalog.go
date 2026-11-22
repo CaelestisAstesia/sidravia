@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 type ProfileCatalog struct {

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"sidravia/internal/daemon/persistence"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 func legacyCatalogFixture() []byte {

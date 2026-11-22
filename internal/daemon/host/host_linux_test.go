@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 func validLinuxHostConfig(t *testing.T) Config {

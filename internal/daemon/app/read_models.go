@@ -8,7 +8,7 @@ import (
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 // ConfigurationRuntimeAvailability is a read-only description of the selected

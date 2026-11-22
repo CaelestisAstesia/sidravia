@@ -9,9 +9,9 @@ import (
 
 	"sidravia/internal/daemon/authentication/protocol"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/persistence"
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/persistence"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 func TestConfigurationHandlerListAndPasswordSecrecy(t *testing.T) {

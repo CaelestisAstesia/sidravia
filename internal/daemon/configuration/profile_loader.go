@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/persistence"
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 // profileLoaderOperation is the static label used by directory- and call-level

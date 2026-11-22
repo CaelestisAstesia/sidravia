@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 const localSystemSID = "S-1-5-18"

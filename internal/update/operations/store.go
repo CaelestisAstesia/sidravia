@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update"
 	"sidravia/internal/update/packagefiles"
 	"sidravia/internal/update/releases"

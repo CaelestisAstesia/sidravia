@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 func newOtherTestStore(t *testing.T) *SecureStore {

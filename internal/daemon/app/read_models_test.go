@@ -11,7 +11,7 @@ import (
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {

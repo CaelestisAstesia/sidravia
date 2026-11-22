@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/persistence/jsonfile"
 )
 
 // Run starts the daemon host on Windows.

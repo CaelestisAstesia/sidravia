@@ -19,10 +19,10 @@ import (
 	"sidravia/internal/daemon/desktopowner"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 )
 

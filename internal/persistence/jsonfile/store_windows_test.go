@@ -13,7 +13,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 func windowsTestOwner(t *testing.T) resolvedOwner {

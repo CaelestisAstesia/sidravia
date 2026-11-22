@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"sidravia/internal/daemon/persistence/jsonfile"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"

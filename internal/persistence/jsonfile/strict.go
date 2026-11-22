@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"sidravia/internal/daemon/persistence"
+	"sidravia/internal/persistence"
 )
 
 const (

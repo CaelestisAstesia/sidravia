@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/daemon/persistence/jsonfile"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
