@@ -59,6 +59,31 @@ void main() {
       await adapter.close();
     },
   );
+  test(
+    'Linux packaged runner opens logs through the public sibling CTL',
+    () async {
+      final root = Directory('product with spaces').absolute;
+      final child = Child();
+      String? launched;
+      final adapter = DesktopLogDirectory(
+        isWindows: () => false,
+        isLinux: () => true,
+        resolvedExecutable: () =>
+            root.uri.resolve('gui-runtime/sidravia_gui').toFilePath(),
+        launch: (exe, args) async {
+          launched = exe;
+          expect(args, ['gui', 'open-log-directory']);
+          return child;
+        },
+      );
+      final pending = adapter.open();
+      child.finish(0);
+      expect(await pending, isTrue);
+      expect(launched, root.uri.resolve('sidraviactl').toFilePath());
+      await adapter.close();
+    },
+  );
+
   test('unsupported never launches, close prevents later opens', () async {
     var calls = 0;
     final adapter = DesktopLogDirectory(

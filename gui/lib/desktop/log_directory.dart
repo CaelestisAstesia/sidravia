@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:sidravia_gui/platform/desktop_process.dart';
+import 'package:sidravia_gui/platform/linux_product_executable.dart';
 
 /// Opens only this instance's directory, resolved by the sibling CLI.
 class DesktopLogDirectory {
@@ -69,7 +70,11 @@ class DesktopLogDirectory {
     }
 
     try {
-      final executable = desktopCtlPath(_executable(), windows: _isWindows());
+      final current = _executable();
+      final executable = desktopCtlPath(
+        _isLinux() ? linuxProductExecutable(current) : current,
+        windows: _isWindows(),
+      );
       child = await _launch(executable, const ['gui', 'open-log-directory']);
       exit = child.exitCode;
       output = drain(child.stdout);
