@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/app/sidravia_app.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_controller.dart';
@@ -13,6 +12,8 @@ import 'package:sidravia_gui/features/announcements/school_announcement_notifica
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
+
+import 'support/offline_gui_controller.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,10 +48,7 @@ void main() {
         await desktop.initialize();
         final startedAt = DateTime.now();
         final client = OfflineDemoClient()..selectScenario('suspended');
-        final gui = GuiController(
-          bootstrapper: OfflineDemoBootstrap(),
-          connector: (_) async => client,
-        );
+        final gui = offlineGuiController(client);
         final owner = SchoolAnnouncementController(
           preferences: preferences,
           desktop: desktop,

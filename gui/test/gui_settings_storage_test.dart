@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
+import 'support/offline_gui_controller.dart';
+
 void main() {
   late Directory root;
   setUp(() {
@@ -154,10 +156,7 @@ if ($Mode -eq 'set') {
           return owner;
         }))!;
         final client = OfflineDemoClient();
-        final controller = GuiController(
-          bootstrapper: OfflineDemoBootstrap(),
-          connector: (_) async => client,
-        );
+        final controller = offlineGuiController(client);
         await tester.pumpWidget(
           SidraviaApp(controller: controller, appearance: first),
         );

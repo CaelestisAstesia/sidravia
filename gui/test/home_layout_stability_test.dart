@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/home/server_messages_panel.dart';
 import 'package:sidravia_gui/features/home/connection_information_view.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
+
+import 'support/offline_gui_controller.dart';
 
 void main() {
   for (final width in [320.0, 400.0, 720.0]) {
@@ -16,10 +17,7 @@ void main() {
           await tester.binding.setSurfaceSize(Size(width, 1100));
           addTearDown(() => tester.binding.setSurfaceSize(null));
           final client = OfflineDemoClient();
-          final controller = GuiController(
-            bootstrapper: OfflineDemoBootstrap(),
-            connector: (_) async => client,
-          );
+          final controller = offlineGuiController(client);
           await controller.start();
           await tester.pumpWidget(
             MaterialApp(
@@ -94,10 +92,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(320, 1100));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final client = OfflineDemoClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(
@@ -162,10 +157,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final client = OfflineDemoClient()
         ..selectScenario('authenticated_business');
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(

@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
@@ -20,6 +19,8 @@ import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'support/capture_fonts.dart' as fonts;
+
+import 'support/offline_gui_controller.dart';
 
 const output = String.fromEnvironment('GEN_FRONTEND_OUTPUT');
 const scenarios = [
@@ -131,10 +132,7 @@ Future<void> render(
     }
   });
   final client = OfflineDemoClient()..selectScenario(scenario);
-  final controller = GuiController(
-    bootstrapper: OfflineDemoBootstrap(),
-    connector: (_) async => client,
-  );
+  final controller = offlineGuiController(client);
   await controller.start();
   final notices = await school_dispatch.manualAnnouncements(tester, controller);
   await notices.start();

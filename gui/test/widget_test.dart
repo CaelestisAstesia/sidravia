@@ -18,6 +18,8 @@ import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 
+import 'support/offline_gui_controller.dart';
+
 void main() {
   testWidgets('HTML MVP uses a single surface without the legacy sidebar', (
     tester,
@@ -133,10 +135,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, nativeCallHandler);
     final client = OfflineDemoClient()..selectScenario('empty');
-    final controller = GuiController(
-      bootstrapper: OfflineDemoBootstrap(),
-      connector: (_) async => client,
-    );
+    final controller = offlineGuiController(client);
     final desktop = DesktopPresence();
     await desktop.initialize();
     try {
@@ -190,10 +189,7 @@ void main() {
       tester,
     ) async {
       final client = OfflineDemoClient(now: DateTime.utc(2026, 10, 10));
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       final announcements = await school_dispatch.manualAnnouncements(
         tester,

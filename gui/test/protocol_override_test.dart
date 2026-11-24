@@ -14,6 +14,8 @@ import 'package:sidravia_gui/ipc/state_models.dart';
 import 'package:sidravia_gui/ipc/state_subscription.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
+import 'support/offline_gui_controller.dart';
+
 const original = '{"schemaVersion":1,"hostName":"sample"}';
 const changed = '{"schemaVersion":1,"hostName":"new"}';
 
@@ -175,10 +177,7 @@ void main() {
 
   test('saved configuration refreshes without a session event', () async {
     final client = _LiveOverrideClient();
-    final controller = GuiController(
-      bootstrapper: OfflineDemoBootstrap(),
-      connector: (_) async => client,
-    );
+    final controller = offlineGuiController(client);
     try {
       await controller.start();
       expect(controller.capabilities.configuration?.overrideState, 'enabled');

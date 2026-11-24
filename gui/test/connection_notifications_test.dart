@@ -6,10 +6,11 @@ import 'package:sidravia_gui/desktop/connection_notifications.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/system_notifications.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
+
+import 'support/offline_gui_controller.dart';
 
 final base = DateTime.utc(2026, 10, 12, 10);
 SessionSummary session(
@@ -377,10 +378,7 @@ void main() {
         platform: TargetPlatform.windows,
       );
       final client = OfflineDemoClient();
-      final c = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final c = offlineGuiController(client);
       await c.start();
       final owner = ConnectionNotificationController(
         preferences: prefs,
@@ -468,10 +466,7 @@ void main() {
           platform: TargetPlatform.windows,
         );
         final client = OfflineDemoClient();
-        final c = GuiController(
-          bootstrapper: OfflineDemoBootstrap(),
-          connector: (_) async => client,
-        );
+        final c = offlineGuiController(client);
         await c.start();
         final owner = ConnectionNotificationController(
           preferences: prefs,
@@ -531,10 +526,7 @@ void main() {
             platform: TargetPlatform.windows,
           );
           final client = OfflineDemoClient();
-          final c = GuiController(
-            bootstrapper: OfflineDemoBootstrap(),
-            connector: (_) async => client,
-          );
+          final c = offlineGuiController(client);
           await c.start();
           var opens = 0;
           final owner = ConnectionNotificationController(

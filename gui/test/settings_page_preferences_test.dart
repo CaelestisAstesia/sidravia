@@ -14,6 +14,8 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
+import 'support/offline_gui_controller.dart';
+
 void main() {
   for (final enabled in [true, false]) {
     testWidgets(
@@ -107,10 +109,7 @@ void main() {
     'formal settings reconnect saves true false, failures, guards, no session mutation',
     (tester) async {
       final client = ReconnectClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(
@@ -200,10 +199,7 @@ void main() {
     'empty configuration reason remains separate from functional copy',
     (tester) async {
       final client = OfflineDemoClient()..selectScenario('empty');
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(

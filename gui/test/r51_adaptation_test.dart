@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
-import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 
@@ -17,6 +16,8 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'support/capture_fonts.dart' as fonts;
+
+import 'support/offline_gui_controller.dart';
 
 const output = String.fromEnvironment('R51_OUTPUT');
 const baseline = bool.fromEnvironment('R51_BASELINE');
@@ -128,10 +129,7 @@ void main() {
     (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final client = OfflineDemoClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(

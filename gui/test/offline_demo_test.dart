@@ -14,6 +14,8 @@ import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
+import 'support/offline_gui_controller.dart';
+
 void main() {
   testWidgets('native demo modal blocks window controls until dismissed', (
     tester,
@@ -273,10 +275,7 @@ void main() {
     'production shell routes home configuration, settings, details and diagnostics',
     (tester) async {
       final client = OfflineDemoClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(
@@ -337,10 +336,7 @@ void main() {
     'production home buttons stop and restart through the fake typed client',
     (tester) async {
       final client = OfflineDemoClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       await tester.pumpWidget(
         MaterialApp(home: SidraviaShell(controller: controller)),
@@ -373,10 +369,7 @@ void main() {
     'production home keeps the manual school entry with explicit Unsupported feedback',
     (tester) async {
       final client = OfflineDemoClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       final announcements = await school_dispatch.manualAnnouncements(
         tester,

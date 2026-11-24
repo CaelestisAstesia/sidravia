@@ -23,6 +23,8 @@ import 'support/capture_fonts.dart' as fonts;
 
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
+import 'support/offline_gui_controller.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
@@ -175,10 +177,7 @@ void main() {
     'formal HomePage hides unavailable metadata and shows manual school entry',
     (tester) async {
       final client = OfflineDemoClient();
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
+      final controller = offlineGuiController(client);
       await controller.start();
       final announcements = await school_dispatch.manualAnnouncements(
         tester,

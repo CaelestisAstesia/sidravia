@@ -13,6 +13,8 @@ import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
+import 'support/offline_gui_controller.dart';
+
 Future<void> open(WidgetTester tester, GuiController c) async {
   await tester.pumpWidget(MaterialApp(home: SidraviaShell(controller: c)));
   await tester.pumpAndSettle();
@@ -25,10 +27,7 @@ void main() {
     tester,
   ) async {
     final client = OfflineDemoClient();
-    final c = GuiController(
-      bootstrapper: OfflineDemoBootstrap(),
-      connector: (_) async => client,
-    );
+    final c = offlineGuiController(client);
     await c.start();
     addTearDown(() => tester.binding.setSurfaceSize(null));
     try {
@@ -63,10 +62,7 @@ void main() {
       'configuration actions retain 48px touch targets on $platform',
       (tester) async {
         final client = OfflineDemoClient();
-        final c = GuiController(
-          bootstrapper: OfflineDemoBootstrap(),
-          connector: (_) async => client,
-        );
+        final c = offlineGuiController(client);
         await c.start();
         try {
           await tester.pumpWidget(
