@@ -205,6 +205,24 @@ class DistributionContract(unittest.TestCase):
             with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
                 with self.assertRaises(module.VerificationError): module.binary_identity(Path('inert'), 'sidraviactl', 'linux-amd64', VERSION, SHA, 'go')
 
+    def test_linux_gui_launcher_package_is_distinct_from_artifact_name(self):
+        info = {
+            'Path': 'sidravia/cmd/sidravia-gui-launcher',
+            'Settings': [
+                {'Key': 'GOOS', 'Value': 'linux'},
+                {'Key': 'GOARCH', 'Value': 'amd64'},
+                {'Key': 'CGO_ENABLED', 'Value': '0'},
+                {'Key': '-ldflags', 'Value': f'-X main.ProductVersion={VERSION} -X main.BuildID={SHA}'},
+            ],
+        }
+        artifact = Path('sidravia_gui')
+        with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
+            self.assertTrue(module.binary_identity(artifact, artifact.name, 'linux-amd64', VERSION, SHA, 'go'))
+        info['Path'] = 'sidravia/cmd/sidraviactl'
+        with mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=json.dumps(info))):
+            with self.assertRaisesRegex(module.VerificationError, 'binary_package_mismatch'):
+                module.binary_identity(artifact, artifact.name, 'linux-amd64', VERSION, SHA, 'go')
+
     def test_smoke_executes_help_only_and_never_daemon(self):
         self.package('windows-amd64', self.payload('windows-amd64'))
         with mock.patch.object(module, 'binary_identity'), mock.patch.object(module.platform, 'system', return_value='Windows'), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=b'help')) as run:

@@ -722,7 +722,11 @@ func buildFixtureProducts(t *testing.T, repo, directory, version, build, kind, b
 		roles = append(roles, "sidravia_gui")
 	}
 	for _, role := range roles {
-		command := exec.Command(filepath.Join(runtime.GOROOT(), "bin/go"), "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-overlay", overlay, "-ldflags", "-X main.ProductVersion="+version+" -X main.BuildID="+build, "-o", filepath.Join(directory, role), "./cmd/"+role)
+		sourcePackage := "./cmd/" + role
+		if role == "sidravia_gui" {
+			sourcePackage = "./cmd/sidravia-gui-launcher"
+		}
+		command := exec.Command(filepath.Join(runtime.GOROOT(), "bin/go"), "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-overlay", overlay, "-ldflags", "-X main.ProductVersion="+version+" -X main.BuildID="+build, "-o", filepath.Join(directory, role), sourcePackage)
 		command.Dir = repo
 		command.Env = append(env, "GOTOOLCHAIN=local", "CGO_ENABLED=0")
 		if out, err := command.CombinedOutput(); err != nil {

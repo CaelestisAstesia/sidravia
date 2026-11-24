@@ -106,8 +106,12 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	var binarySums strings.Builder
 	for _, program := range programs {
+		sourcePackage := "./cmd/" + program
+		if program == "sidravia_gui" {
+			sourcePackage = "./cmd/sidravia-gui-launcher"
+		}
 		fmt.Fprintln(stderr, "building", program+suffix)
-		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), "./cmd/"+program, t.cfg.version, t.cfg.buildID))
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), sourcePackage, t.cfg.version, t.cfg.buildID))
 		if err != nil {
 			return err
 		}
