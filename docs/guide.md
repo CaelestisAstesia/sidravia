@@ -72,6 +72,8 @@
 
 手动更新前，先查看新版发行说明，正常退出图形界面和后台，再备份账号配置及需要保留的 GUI 设置。关闭窗口默认只是隐藏到托盘，请从托盘菜单选择「退出 Sidravia」。
 
+如果 Linux 便携版由 systemd 托管，手动更新或移动前先在旧目录运行 `./sidraviactl integration service stop`。到新目录后用 `./sidraviactl integration service replace` 更新登记，需要继续运行时再执行 `./sidraviactl integration service start`。移除前用 `./sidraviactl integration service unregister` 解除登记。见 [systemd 用户服务](linux-portable.md#systemd-用户服务)。
+
 - **Windows 安装版更新**：使用原 Windows 账户运行新版安装器，直接覆盖原安装目录，无需先卸载。安装 GUI 时，完成页默认勾选「启动 Sidravia」，可取消；纯核心和静默安装不自动启动。0.5 安装器保留组件与实际自启/PATH 设置，兼容配置继续沿用；同版重跑用于修复，普通降级会拒绝。
 - **便携版更新**：将新版完整解压到新目录，保留新版的 `sidravia.portable`。首次启动前，将旧目录 `config` 文件夹中的 `configurations.json` 复制到新目录对应位置；需要保留 GUI 设置时，再复制 `gui-settings.json`。目标已有同名文件时先备份。不要用旧程序、运行记录或机构配置替换新版随包文件。
 - **Fedora RPM 更新与卸载**：使用系统包管理器，见 [RPM 说明](linux-rpm.md)。维护会请求本安装正常退出，未保存草稿可能阻止操作。升级后恢复原先运行的已登记 systemd 用户服务；卸载保留用户数据。

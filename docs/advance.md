@@ -70,14 +70,14 @@ GUI 和 CTL 编辑的是同一份持久协议上报覆写。修改或清除方�
 | `daemon start [--log-level LEVEL]` | 启动独立后台 | 复用已有兼容后台；不会热更新其日志等级；可能触发配置的自动登录 |
 | `daemon stop` | 已停止也可成功 | 停止独立后台及其认证会话 |
 | `daemon restart [--log-level LEVEL]` | 启动独立后台 | 中断已有连接，旧 Session ID 失效；可能重新触发自动登录 |
-| `profile list`、`auth list/status/watch`、`config list/show`、`network interfaces` | 报告无法连接，不启动 | 查询已有独立后台 |
+| `profile list`、`auth list/status/watch`、`config list/show`、`network interfaces` | 报告无法连接，不启动 | 查询已有独立后台或 systemd 用户服务 |
 | `diagnostics export` | 报告无法连接，不启动 | 导出诊断到新文件，不覆盖已有文件；不支持 `--probe` |
 | `auth start/stop/restart/remove`、`config create/update/set-password/remove` | 可按需启动独立后台 | 改变会话或配置；操作失败时，后台启动或自动登录仍可能已经发生 |
 | `integration status/path/autostart` | 不依赖认证后台 | 通过 MGR 管理 Windows 当前用户系统集成 |
 | `integration service ...` | 按操作查询、启动或停止服务 | 在 Linux 管理已登记的 [systemd 用户服务](linux-portable.md#systemd-用户服务) |
 | `help`、公开命令的 `--help` / `-h` | 不启动 | 显示帮助 |
 
-认证及配置操作可连接 `headless` 或 Linux `systemd` 后台。`daemon status` 也可查询 GUI 管理的 `desktop` 后台。需要启停托管后台时，用 `integration service start`、`stop` 或 `restart`。CTL 与后台必须来自同一构建的配套程序。
+认证、配置及只读查询可连接 `headless` 或 Linux `systemd` 后台。`daemon status` 也可查询 GUI 管理的 `desktop` 后台。需要启停托管后台时，用 `integration service start`、`stop` 或 `restart`。CTL 与后台必须来自同一构建的配套程序。
 
 命令失败不一定意味着没有发生任何操作。遇到启动或执行结果未确认的提示时，请先查询后台、会话或配置状态，再决定是否重试。
 
@@ -365,18 +365,18 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 
 ## 更新检查与下载
 
-检查与下载使用 GitHub Releases，CTL 以 JSON 输出结果。便携版和 Windows 安装版通过同目录的 `sidraviaupdater` 检查、下载和应用更新。RPM 通过 CTL 查询当前包型的新版本，安装由系统包管理器完成。
+检查与下载使用 GitHub Releases，CTL 以 JSON 输出结果。Windows 和 Linux 的 CTL 直接执行检查。便携版和 Windows 安装版的下载、应用和中断恢复由同目录的 `sidraviaupdater` 执行。RPM 由系统包管理器更新。
 
 | 命令 | 用途 |
 | --- | --- |
-| `update version` | 查询当前更新器版本与构建标识 |
+| `update version` | 查询版本与构建标识。RPM 由 CTL 报告，其他包由同目录的更新器报告 |
 | `update check` | 检查匹配平台、包类型和通道的更新候选 |
 | `update status` | 查询缓存及更新执行状态 |
 | `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
 | `update apply --candidate ID --confirm` | 确认应用 Linux／Windows 便携版或 Windows 安装版的准确候选 |
 | `update recover --operation ID --confirm` | 核验并处理指定的中断更新；Linux 托管便携版可尝试恢复原文件和服务 |
 
-`check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果。RPM 的 `check` 支持选择通道，包类型由已安装的 RPM 决定。
+除 `version` 外，可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型须受当前平台支持。省略时按当前版本和程序布局选择。检查、下载和应用应使用相同的通道、包类型，候选编号取自检查结果。RPM 的 `check` 支持选择通道，包类型由已安装的 RPM 决定。
 
 ### 使用条件
 
