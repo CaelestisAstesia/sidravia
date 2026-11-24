@@ -9,8 +9,9 @@ set(policies frame_geometry)
 if(WIN32 AND MSVC)
   add_executable(frame_decoration_test ../frame_decoration_test.cpp)
   add_executable(announcement_link_policy_test
-    ../../windows/runner/announcement_link_policy_test.cpp
+    announcement_link_policy_test.cpp
     ../../windows/runner/announcement_link_policy.cpp)
+  target_include_directories(announcement_link_policy_test PRIVATE ../../windows/runner)
   target_link_libraries(announcement_link_policy_test PRIVATE urlmon ole32)
   add_executable(installation_gate_test installation_gate_windows_test.cpp
     ../../windows/runner/installation_gate.cpp)
@@ -21,8 +22,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
   pkg_check_modules(WEBKIT REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
   add_executable(announcement_link_policy_test
-    ../../linux/runner/announcement_link_policy_test.cpp
+    announcement_link_policy_test.cpp
     ../../linux/runner/announcement_link_policy.cc)
+  target_include_directories(announcement_link_policy_test PRIVATE ../../linux/runner)
   target_link_libraries(announcement_link_policy_test PRIVATE PkgConfig::GLIB)
   list(APPEND policies announcement_link_policy installation_gate)
   add_executable(installation_gate_test installation_gate_test.cpp
