@@ -239,29 +239,7 @@ void main() {
     },
   );
 
-  test('validates production, accepted and rejected runtime namespaces', () {
-    expect(validateDesktopNamespace(null), '');
-    expect(validateDesktopNamespace(''), '');
-    expect(validateDesktopNamespace('ns02-native-a'), 'ns02-native-a');
-    expect(validateDesktopNamespace('A.B_c-9'), 'A.B_c-9');
-    for (final invalid in [
-      ' production',
-      'production ',
-      '../invalid',
-      'a:b',
-      '.leading',
-      'trailing.',
-      'a..b',
-      'DEFAULT',
-      'prod',
-      'é',
-    ]) {
-      expect(validateDesktopNamespace(invalid), isNull, reason: invalid);
-    }
-    expect(validateDesktopNamespace('a' * 65), isNull);
-  });
-
-  test('initialize passes the exact validated namespace argument', () async {
+  test('initialize passes the exact namespace argument', () async {
     const channel = MethodChannel(desktopPresenceChannelName);
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -273,7 +251,7 @@ void main() {
     });
     final presence = DesktopPresence(
       channel: channel,
-      namespace: validateDesktopNamespace('Ns02-Native-A')!,
+      namespace: 'Ns02-Native-A',
     );
     addTearDown(presence.dispose);
     expect(await presence.initialize(), DesktopPresenceDisposition.primary);

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:sidravia_gui/desktop/desktop_presence.dart';
+import 'package:sidravia_gui/platform/paths/product_namespace.dart';
 
 const systemNotificationsChannelName = 'sidravia/system-notifications';
 
@@ -109,7 +109,7 @@ class SystemNotificationSlot {
     final channel = _owner._channel;
     if (channel == null) return SystemNotificationResult.unsupported;
     if (!_validToken(token) ||
-        validateDesktopNamespace(namespace) == null ||
+        validateProductNamespace(namespace) == null ||
         !_validText(title, 128) ||
         !_validText(body, 512)) {
       return SystemNotificationResult.failed;

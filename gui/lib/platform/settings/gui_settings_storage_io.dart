@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../paths/linux_product_executable.dart';
 import '../paths/linux_user_directories.dart';
+import '../paths/product_namespace.dart';
 
 import 'dart:math';
 import 'dart:convert';
@@ -14,16 +15,6 @@ bool get needsPrivateGuiDirectory => Platform.isAndroid || Platform.isIOS;
 
 bool _missing(FileSystemException error) =>
     [2, 3].contains(error.osError?.errorCode);
-
-/// Mirrors productlayout namespace grammar; no CWD or daemon dependency.
-bool validGuiNamespace(String value) =>
-    value.isEmpty ||
-    value.length <= 64 &&
-        RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(value) &&
-        !value.startsWith('.') &&
-        !value.endsWith('.') &&
-        !value.contains('..') &&
-        !['production', 'default', 'prod'].contains(value.toLowerCase());
 
 class GuiSettingsLocation {
   const GuiSettingsLocation(this.mode, this.namespace, this.path);
@@ -60,7 +51,7 @@ GuiSettingsLocation resolveWindowsGuiSettings({
   String namespace = '',
   FileSystemEntityType Function(String)? inspectMarker,
 }) {
-  if (!validGuiNamespace(namespace)) {
+  if (validateProductNamespace(namespace) == null) {
     throw const FormatException('Invalid namespace');
   }
   final directory = File(executable).parent;
@@ -150,7 +141,7 @@ GuiSettingsStore createPlatformGuiSettingsStore({
   if (needsPrivateGuiDirectory &&
       privateDirectory != null &&
       Directory(privateDirectory).isAbsolute) {
-    if (!validGuiNamespace(namespace)) {
+    if (validateProductNamespace(namespace) == null) {
       throw const FormatException('Invalid namespace');
     }
     final root = namespace.isEmpty

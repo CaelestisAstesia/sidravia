@@ -257,28 +257,16 @@ if ($Mode -eq 'set') {
       '${driveRoot}config${Platform.pathSeparator}gui-settings.json',
     );
   });
-  test('same Go namespace valid invalid cases', () {
-    for (final value in ['', 'isolated-1', 'mock-test', 'a.b_c-9']) {
-      expect(validGuiNamespace(value), true);
-    }
-    for (final value in [
-      '   ',
-      ' spaced ',
-      'a/b',
-      r'a\b',
-      'c:drive',
-      '..',
-      '.hidden',
-      'hidden.',
-      'production',
-      'default',
-      'PROD',
-      'control\nx',
-      '中文',
-      'x12345678901234567890123456789012345678901234567890123456789012345',
-    ]) {
-      expect(validGuiNamespace(value), false);
-    }
+  test('invalid namespace fails before inspecting the portable marker', () {
+    expect(
+      () => resolveWindowsGuiSettings(
+        executable: '${root.path}/Sidravia.exe',
+        userConfigRoot: root.path,
+        namespace: '../invalid',
+        inspectMarker: (_) => fail('must reject namespace before marker read'),
+      ),
+      throwsFormatException,
+    );
   });
   test('invalid marker and inspection errors never fall back', () {
     final exe = '${root.path}/program';

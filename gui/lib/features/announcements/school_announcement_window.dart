@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/platform/paths/product_namespace.dart';
 
 const schoolAnnouncementChannelName = 'sidravia/announcements';
 
@@ -33,7 +33,7 @@ class SchoolAnnouncementWindow {
     if (_disposed) return SchoolAnnouncementOpenResult.failed;
     final channel = _channel;
     if (channel == null) return SchoolAnnouncementOpenResult.unsupported;
-    if (validateDesktopNamespace(namespace) == null) {
+    if (validateProductNamespace(namespace) == null) {
       return SchoolAnnouncementOpenResult.failed;
     }
     final payload = {

@@ -15,6 +15,7 @@ import 'package:sidravia_gui/app/sidravia_app.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/desktop/desktop_presence.dart';
 import 'package:sidravia_gui/desktop/system_notifications.dart';
+import 'package:sidravia_gui/platform/paths/product_namespace.dart';
 import 'package:sidravia_gui/platform/sidravia_platform.dart';
 import 'package:sidravia_gui/desktop/tray_entrypoint.dart';
 
@@ -35,7 +36,7 @@ Future<void> main([List<String> args = const []]) async {
   }
   WidgetsFlutterBinding.ensureInitialized();
   final rawNamespace = Platform.environment['SIDRAVIA_NAMESPACE'];
-  final namespace = validateDesktopNamespace(rawNamespace);
+  final namespace = validateProductNamespace(rawNamespace);
   if (namespace == null) exit(2);
   // GuiPreferences restoration is independent of bootstrap/IPC readiness.
   late final GuiPreferences appearance;

@@ -9,7 +9,7 @@ import 'package:ffi/ffi.dart';
 import '../integration_failure.dart';
 import '../paths/linux_product_executable.dart';
 import '../paths/linux_user_directories.dart';
-import '../settings/gui_settings_storage_io.dart';
+import '../paths/product_namespace.dart';
 import '../update/package_update_checker.dart';
 import '../update/update_check_process.dart';
 import '../update/update_check_response.dart';
@@ -186,7 +186,8 @@ class LinuxInstallationManager
 
   void _checkOpen() {
     if (_closed) throw const IntegrationFailure('系统集成操作已取消。');
-    if (!validGuiNamespace(_namespace) || !File(executable).isAbsolute) {
+    if (validateProductNamespace(_namespace) == null ||
+        !File(executable).isAbsolute) {
       throw const IntegrationFailure('启动路径或命名空间无效。');
     }
   }

@@ -10,24 +10,6 @@ const desktopPresenceChannelName = 'sidravia/desktop';
 
 enum DesktopPresenceDisposition { primary, activatedExisting }
 
-/// Validates the advanced runtime namespace at the native shell boundary.
-/// Null and empty input select the byte-compatible production namespace.
-String? validateDesktopNamespace(String? value) {
-  if (value == null || value.isEmpty) return '';
-  if (value.length > 64 ||
-      !RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(value) ||
-      value.startsWith('.') ||
-      value.endsWith('.') ||
-      value.contains('..')) {
-    return null;
-  }
-  final folded = value.toLowerCase();
-  if (folded == 'production' || folded == 'default' || folded == 'prod') {
-    return null;
-  }
-  return value;
-}
-
 class DesktopPresence extends ChangeNotifier {
   DesktopPresence({MethodChannel? channel, this._namespace = ''})
     : _channel = channel ?? const MethodChannel(desktopPresenceChannelName) {

@@ -8,6 +8,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_notifica
 import 'package:sidravia_gui/features/announcements/school_announcement_policy.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/platform/paths/product_namespace.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
@@ -23,7 +24,7 @@ class SchoolAnnouncementController extends ChangeNotifier {
     DateTime Function()? clock,
   }) : _policy = SchoolAnnouncementPolicy(startedAt: startedAt),
        _clock = clock ?? DateTime.now {
-    if (validateDesktopNamespace(namespace) == null) {
+    if (validateProductNamespace(namespace) == null) {
       throw const FormatException('Invalid desktop namespace');
     }
   }
