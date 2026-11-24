@@ -87,6 +87,29 @@ class CheckPlanning(unittest.TestCase):
                         self.assertIn('another developer command owns this worktree', child.stderr)
                         self.assertFalse((root/'gui').exists())
 
+    def test_python_check_can_run_while_a_flutter_writer_owns_the_worktree(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            suite = root / 'tools/developer/tests'
+            suite.mkdir(parents=True)
+            suite.joinpath('test_example.py').write_text(
+                'import unittest\n'
+                'class Example(unittest.TestCase):\n'
+                '    def test_example(self):\n'
+                '        self.assertTrue(True)\n'
+            )
+            args = dev.parse_args([
+                'check', '--scope', 'python', '--python-test', 'test_example.py',
+                '--format', 'json', '--reports', str(root / 'evidence'),
+            ])
+            stdout = io.StringIO()
+            with checks.worktree_lock(root), contextlib.redirect_stdout(stdout):
+                code = checks.run(root, args, lambda: {'commit': 'fixture'})
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(code, 0)
+            self.assertTrue(result['source_unchanged'])
+            self.assertEqual(result['stages'][0]['status'], 'passed')
+
     def test_linux_bundle_stage_can_take_ownership_after_prior_checks(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

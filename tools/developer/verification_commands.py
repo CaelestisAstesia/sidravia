@@ -95,17 +95,18 @@ def run(root, args, identity):
         return 0
     directory = Path(args.reports).resolve()
     directory.mkdir(parents=True, exist_ok=True)
+    stages = request['stages']
+    bundle = stages[-1:] if stages and stages[-1]['name'] == 'linux-bundle' else []
+    checked_stages = stages[:-1] if bundle else stages
+    sdk_index = next((i for i, stage in enumerate(checked_stages) if stage['name'] == 'gui-sdk'), None)
     with contextlib.ExitStack() as locks:
-        locks.enter_context(worktree_lock(root))
+        if sdk_index is not None or bundle:
+            locks.enter_context(worktree_lock(root))
         output = Path(tempfile.mkdtemp(prefix=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-check-'), dir=directory))
         runner.write_json(output/'request.json',request)
         try:
             request['environment'] = {}
             runner.write_json(output/'request.json',request)
-            stages = request['stages']
-            bundle = stages[-1:] if stages and stages[-1]['name'] == 'linux-bundle' else []
-            checked_stages = stages[:-1] if bundle else stages
-            sdk_index = next((i for i,s in enumerate(checked_stages) if s['name']=='gui-sdk'),None)
             if sdk_index is None:
                 report = runner.run_request(dict(request,stages=checked_stages),output)
             else:
