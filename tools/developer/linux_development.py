@@ -98,7 +98,9 @@ def run(root, args, env, *, metadata, same_source):
         native_assets = (bundle / 'data/flutter_assets/NativeAssetsManifest.json').read_text()
         if 'jni' in native_assets.lower() or (bundle / 'lib/libdartjni.so').exists():
             raise ValueError('Linux JNI native assets require an explicit runtime integration; no developer JDK payload is accepted')
-        with tempfile.TemporaryDirectory(prefix="linux-gui-package-", dir=root / ".local") as temporary:
+        local = root / ".local"
+        local.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="linux-gui-package-", dir=local) as temporary:
             stage = Path(temporary)
             for name in ("sidravia_gui", "data", "lib"):
                 origin = bundle / name
@@ -130,7 +132,7 @@ def run(root, args, env, *, metadata, same_source):
             if not same_source(source_before, metadata(args.go, env)):
                 raise ValueError("source changed during packaging; candidate not accepted")
             receipt.update(source=source_before, source_unchanged=True, flutter=sdk["frameworkVersion"], guiBuildName=args.version)
-            (root / ".local/linux-portable-package-result.json").write_text(json.dumps(receipt, indent=2) + "\n")
+            (local / "linux-portable-package-result.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print("Verified Linux GUI portable: " + str(output))
         return 0
     print("Development bundle: gui/build/linux/x64/release/bundle (not installed or started)")

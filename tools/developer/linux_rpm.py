@@ -126,7 +126,9 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
         raise ValueError('RPM input must be the exact clean-source verified portable')
     version = portable['version']
     rpmver = rpm_version(version)
-    with tempfile.TemporaryDirectory(prefix='linux-rpm-build-', dir=root / '.local') as tmp:
+    local = root / '.local'
+    local.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='linux-rpm-build-', dir=local) as tmp:
         top = Path(tmp)
         for name in ('SOURCES', 'SPECS', 'BUILD', 'BUILDROOT', 'RPMS', 'SRPMS'):
             (top / name).mkdir()
@@ -224,7 +226,9 @@ def accept(root, packages, env, source, *, go, flutter):
     # Root maps only to the invoking user. A private PID namespace limits /proc
     # to our own descendants; the shared user namespace lets the transaction
     # root inspect them without acquiring any privilege over the real host.
-    with tempfile.TemporaryDirectory(prefix='linux-rpm-session-', dir=root / '.local') as tmp:
+    local = root / '.local'
+    local.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='linux-rpm-session-', dir=local) as tmp:
         session = Path(tmp)
         runtime = session / 'runtime'
         runtime.mkdir(mode=0o700)

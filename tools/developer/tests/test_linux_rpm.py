@@ -17,7 +17,7 @@ class RPMContracts(unittest.TestCase):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
                 workspace = pathlib.Path(tmp)
                 root = workspace / 'checkout'
-                (root / '.local').mkdir(parents=True)
+                root.mkdir()
                 sdk = workspace / 'shared-sdk'
                 dart = sdk / 'bin/dart'
                 flutter = workspace / 'wrapper/flutter'
@@ -45,6 +45,7 @@ class RPMContracts(unittest.TestCase):
                       mock.patch.object(dev.subprocess, 'check_output', return_value=probe_result) as probe,
                       mock.patch.object(dev.subprocess, 'run', return_value=mock.Mock(returncode=19)) as run):
                     self.assertEqual(dev.linux_command(args, env), 19)
+                self.assertTrue((root / '.local').is_dir())
                 metadata.assert_called_once_with(go, env)
                 argv = run.call_args.args[0]
                 index = argv.index(str(root / 'tools/developer/linux_rpm_fixture.py'))
