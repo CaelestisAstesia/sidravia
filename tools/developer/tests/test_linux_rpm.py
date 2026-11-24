@@ -1,3 +1,4 @@
+import json
 import pathlib
 import tempfile
 import unittest
@@ -7,9 +8,57 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import linux_rpm
+import dev
 
 
 class RPMContracts(unittest.TestCase):
+    def test_acceptance_uses_explicit_tools_and_only_gui_probes_flutter(self):
+        for kind in ('gui', 'core'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                workspace = pathlib.Path(tmp)
+                root = workspace / 'checkout'
+                (root / '.local').mkdir(parents=True)
+                sdk = workspace / 'shared-sdk'
+                dart = sdk / 'bin/dart'
+                flutter = workspace / 'wrapper/flutter'
+                go = str(workspace / 'shared-go/bin/go')
+                env = {}
+                if kind == 'gui':
+                    (root / 'gui').mkdir()
+                    (root / 'gui/.flutter-version').write_text('3.47.0\n')
+                    dart.parent.mkdir(parents=True)
+                    dart.touch()
+                    env = {'XDG_RUNTIME_DIR': str(workspace), 'WAYLAND_DISPLAY': 'wayland-0'}
+                source = dict(commit='fixture', dirty=False, status='', source_fingerprint='fixture')
+                packages = [root / 'old.rpm', root / 'new.rpm']
+                for release, pkg in enumerate(packages, start=1):
+                    pkg.with_suffix('.rpm.json').write_text(json.dumps({
+                        'kind': kind, 'version': '1.0.0', 'release': str(release), 'source': source,
+                    }))
+                probe_result = json.dumps({'frameworkVersion': '3.47.0', 'flutterRoot': str(sdk)})
+                args = dev.parse_args(['linux', '--go', go, '--flutter', str(flutter),
+                                       '--verify-rpm-upgrade', *map(str, packages)])
+                with (mock.patch.object(dev, 'ROOT', root),
+                      mock.patch.object(dev.platform, 'system', return_value='Linux'),
+                      mock.patch.object(dev, 'metadata', return_value=source) as metadata,
+                      mock.patch.object(linux_rpm, 'verify'),
+                      mock.patch.object(dev.subprocess, 'check_output', return_value=probe_result) as probe,
+                      mock.patch.object(dev.subprocess, 'run', return_value=mock.Mock(returncode=19)) as run):
+                    self.assertEqual(dev.linux_command(args, env), 19)
+                metadata.assert_called_once_with(go, env)
+                argv = run.call_args.args[0]
+                index = argv.index(str(root / 'tools/developer/linux_rpm_fixture.py'))
+                expected = ['--go', go]
+                if kind == 'gui':
+                    expected += ['--dart', str(dart)]
+                    probe.assert_called_once_with([str(flutter.resolve()), '--version', '--machine'],
+                                                 cwd=root, env=env, text=True)
+                    self.assertEqual(run.call_args.kwargs['env']['WAYLAND_DISPLAY'], str(workspace / 'wayland-0'))
+                else:
+                    probe.assert_not_called()
+                    self.assertNotIn('WAYLAND_DISPLAY', run.call_args.kwargs['env'])
+                self.assertEqual(argv[index + 1:], [*expected, str(root), *map(str, packages)])
+
     def test_query_retains_empty_file_inventory_columns(self):
         with mock.patch.object(linux_rpm.subprocess, 'check_output', return_value='/usr/share/licenses/sidravia/LICENSE\t100644\tabc\t\n'):
             self.assertEqual(len(linux_rpm.query('candidate.rpm', '--qf', 'format').split('\t')), 4)

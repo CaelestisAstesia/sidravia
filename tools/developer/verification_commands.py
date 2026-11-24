@@ -132,6 +132,15 @@ def run(root, args, identity):
     return 0 if report['status']=='passed' else 1
 
 
+def resolve_flutter_sdk(flutter, version_file, *, cwd, env):
+    executable = Path(flutter).resolve()
+    sdk = json.loads(subprocess.check_output([str(executable), '--version', '--machine'],
+                                              cwd=cwd, env=env, text=True))
+    if sdk['frameworkVersion'] != version_file.read_text().strip():
+        raise ValueError('Flutter SDK does not match .flutter-version')
+    return executable, sdk
+
+
 def validate_sdk(flutter, version_file):
     # This validator runs INSIDE the normal stage group/Job. The outer stage
     # deadline owns the complete SDK process tree and its result/log files.

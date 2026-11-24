@@ -12,6 +12,8 @@ import tarfile
 import tempfile
 import uuid
 
+from verification_commands import resolve_flutter_sdk
+
 
 APP = Path('/usr/lib64/sidravia')
 COMMANDS = ('sidraviactl', 'sidraviad', 'sidravia_gui')
@@ -202,7 +204,7 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
     return 0
 
 
-def accept(root, packages, env, source, current_source):
+def accept(root, packages, env, source, *, go, flutter):
     receipts = [json.loads(Path(str(p) + '.json').read_text()) for p in packages]
     if receipts[0].get('kind', 'gui') != receipts[1].get('kind', 'gui'):
         raise ValueError('RPM acceptance requires matching package kinds')
@@ -212,6 +214,13 @@ def accept(root, packages, env, source, current_source):
         verify(package, receipt)
     if receipts[0]['version'] != receipts[1]['version'] or int(receipts[0]['release']) >= int(receipts[1]['release']):
         raise ValueError('acceptance requires the same product version and increasing packaging revisions')
+    core = receipts[0].get('kind') == 'core'
+    dart = None
+    if not core:
+        _, sdk = resolve_flutter_sdk(flutter, root / 'gui/.flutter-version', cwd=root, env=env)
+        dart = Path(sdk['flutterRoot']) / 'bin/dart'
+        if not dart.is_file():
+            raise ValueError('Flutter SDK is missing bin/dart')
     # Root maps only to the invoking user. A private PID namespace limits /proc
     # to our own descendants; the shared user namespace lets the transaction
     # root inspect them without acquiring any privilege over the real host.
@@ -224,12 +233,15 @@ def accept(root, packages, env, source, current_source):
             '<auth>EXTERNAL</auth><policy context="default"><allow own="*"/>'
             '<allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
         child_env = dict(env, XDG_RUNTIME_DIR=str(runtime))
-        if receipts[0].get('kind') != 'core':
+        if not core:
             wayland = Path(env['WAYLAND_DISPLAY'])
             if not wayland.is_absolute():
                 wayland = Path(env['XDG_RUNTIME_DIR']) / wayland
             child_env['WAYLAND_DISPLAY'] = str(wayland)
         command = ['unshare', '--user', '--map-root-user', '--pid', '--fork', '--mount-proc',
             'dbus-run-session', '--config-file=' + str(config), '--', sys.executable,
-            str(root / 'tools/developer/linux_rpm_fixture.py'), str(root), *map(str, packages)]
+            str(root / 'tools/developer/linux_rpm_fixture.py'), '--go', go]
+        if dart is not None:
+            command.extend(['--dart', str(dart)])
+        command.extend([str(root), *map(str, packages)])
         return subprocess.run(command, env=child_env, check=False).returncode

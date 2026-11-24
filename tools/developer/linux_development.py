@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from verification_commands import resolve_flutter_sdk
+
 
 def run(root, args, env, *, metadata, same_source):
     """Build/run only the explicit development target; never installs a product."""
@@ -28,11 +30,10 @@ def run(root, args, env, *, metadata, same_source):
                 raise ValueError('--rpm-core requires --version')
             return linux_rpm.build(root, Path(args.rpm or args.rpm_core).resolve(), args.output, args.rpm_release, env, source_before, current_source,
                                    core=bool(args.rpm_core), version=args.version, go=args.go)
-        return linux_rpm.accept(root, [Path(p).resolve() for p in args.verify_rpm_upgrade], env, source_before, current_source)
-    flutter = str(Path(args.flutter).resolve())
-    sdk = json.loads(subprocess.check_output([flutter, "--version", "--machine"], cwd=root, env=env, text=True))
-    if sdk["frameworkVersion"] != (root / "gui" / ".flutter-version").read_text().strip():
-        raise ValueError("Flutter SDK does not match .flutter-version")
+        return linux_rpm.accept(root, [Path(p).resolve() for p in args.verify_rpm_upgrade], env, source_before,
+                                go=args.go, flutter=args.flutter)
+    flutter, sdk = resolve_flutter_sdk(args.flutter, root / "gui/.flutter-version", cwd=root, env=env)
+    flutter = str(flutter)
     env = dict(env, PATH=str(Path(sdk["flutterRoot"]) / "bin") + os.pathsep + env.get("PATH", ""))
     if args.package:
         if source_before["dirty"]:

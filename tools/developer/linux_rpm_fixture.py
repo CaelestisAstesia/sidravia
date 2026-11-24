@@ -3,6 +3,7 @@
 Only the RPM dependency inventory and runtime system libraries are borrowed from
 the host, read-only. No caller-selectable install root or namespace is accepted.
 """
+import argparse
 import contextlib
 import fcntl
 import json
@@ -12,7 +13,6 @@ import shutil
 import signal
 import sqlite3
 import subprocess
-import sys
 import tempfile
 import time
 import uuid
@@ -21,7 +21,7 @@ from linux_desktop_fixture import wait_for
 from linux_rpm import APP, COMMANDS, DESKTOP, digest, same_source
 
 
-def run(root, packages, receipts, environment, source, current_source):
+def run(root, packages, receipts, environment, source, current_source, *, dart):
     core = receipts[0].get('kind') == 'core'
     package_name = 'sidravia-core' if core else 'sidravia'
     owned = Path(tempfile.mkdtemp(prefix='linux-rpm-fixture-', dir=root / '.local'))
@@ -160,7 +160,6 @@ def run(root, packages, receipts, environment, source, current_source):
         if (sysroot / APP.relative_to('/')).exists():
             prefix += ['--ro-bind', str(sysroot / APP.relative_to('/')), str(APP)]
         return prefix
-    dart = str(root / '.local/tools/flutter-linux-3.47.0/bin/dart')
     driver_binary = owned / 'contract-driver'
     if not core:
         command([dart, 'compile', 'exe', 'tool/linux_portable_fixture.dart', '-o', str(driver_binary)], 'compile-contract-driver')
@@ -424,14 +423,23 @@ def run(root, packages, receipts, environment, source, current_source):
 
 if __name__ == '__main__':
     import dev
-    repository = Path(sys.argv[1]).resolve()
-    packages = [Path(p) for p in sys.argv[2:]]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--go', required=True)
+    parser.add_argument('--dart')
+    parser.add_argument('repository', type=Path)
+    parser.add_argument('packages', nargs=2, type=Path)
+    args = parser.parse_args()
+    repository = args.repository.resolve()
+    packages = args.packages
     receipts = [json.loads(Path(str(p) + '.json').read_text()) for p in packages]
-    source = dev.metadata('go', os.environ)
+    if receipts[0].get('kind') != 'core' and not args.dart:
+        parser.error('--dart is required for GUI RPM acceptance')
+    source = dev.metadata(args.go, os.environ)
     mapping = Path('/proc/self/uid_map').read_text().split()
     if (os.geteuid() != 0 or mapping[0] != '0' or mapping[1] == '0' or mapping[2] != '1' or
             Path('/proc/1/comm').read_text().strip() != 'dbus-run-sessio'):
         raise RuntimeError('owned user/PID session namespace is required')
     if any(not same_source(r['source'], source) for r in receipts):
         raise RuntimeError('private fixture source differs from producer')
-    raise SystemExit(run(repository, packages, receipts, dict(os.environ), source, lambda: dev.metadata('go', os.environ)))
+    raise SystemExit(run(repository, packages, receipts, dict(os.environ), source,
+                         lambda: dev.metadata(args.go, os.environ), dart=args.dart))
