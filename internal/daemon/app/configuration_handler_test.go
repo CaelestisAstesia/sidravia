@@ -34,6 +34,59 @@ func TestConfigurationHandlerListAndPasswordSecrecy(t *testing.T) {
 	}
 }
 
+func TestConfigurationHandlerCompletesReceiptAfterCanceledWrite(t *testing.T) {
+	for _, tc := range []struct {
+		method, payload, id string
+	}{
+		{
+			contract.MethodConfigurationCreate,
+			`{"displayName":"new","institutionProfileId":"profile-1","username":"test","password":"fixture-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+			"",
+		},
+		{contract.MethodConfigurationUpdate, `{"configurationId":"configuration-1","displayName":"changed"}`, "configuration-1"},
+		{contract.MethodConfigurationSetPassword, `{"configurationId":"configuration-1","password":"fixture-password","allowInsecureStorage":false}`, "configuration-1"},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			t.Cleanup(setup.cleanup)
+			before := context.Background()
+			var oldVersion string
+			if tc.id != "" {
+				var err error
+				oldVersion, err = setup.catalog.Version(before, config.ConfigurationID(tc.id))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(before)
+			t.Cleanup(cancel)
+			setup.store.cancelAfterReplace = cancel
+			handler := ConfigurationHandler(setup.application)
+			raw, failure := handler(ctx, tc.method, json.RawMessage(tc.payload))
+			if ctx.Err() != context.Canceled || failure != nil {
+				t.Fatalf("write context = %v, receipt error = %v", ctx.Err(), failure)
+			}
+			receipt, err := contract.DecodeConfigurationResult(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if receipt.ConfigurationID == "" || tc.id != "" && receipt.ConfigurationID != tc.id ||
+				receipt.Version == "" || receipt.Version == oldVersion || !receipt.CredentialStored ||
+				strings.Contains(string(raw), "fixture-password") {
+				t.Fatal("receipt did not identify the committed record safely")
+			}
+			query, err := json.Marshal(contract.ConfigurationIDPayload{ConfigurationID: receipt.ConfigurationID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fresh, failure := handler(before, contract.MethodConfigurationGet, query)
+			if failure != nil || string(raw) != string(fresh) {
+				t.Fatalf("write and read receipts differ: %s, %s, error %v", raw, fresh, failure)
+			}
+		})
+	}
+}
+
 func TestConfigurationHandlerRejectsUnknownCreateFields(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()

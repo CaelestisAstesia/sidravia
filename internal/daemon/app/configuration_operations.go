@@ -82,17 +82,15 @@ func (application *Application) CreateConfiguration(ctx context.Context, value c
 	if err := credentialinput.Validate(password); err != nil {
 		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
-	if err := application.validateConfigurationCandidate(ctx, value); err != nil {
-		return ConfigurationResult{}, err
-	}
-	if _, err := application.enrich(ctx, value); err != nil {
+	receipt, err := application.prepareConfigurationWrite(ctx, value)
+	if err != nil {
 		return ConfigurationResult{}, err
 	}
 	persisted, err := application.catalog.Create(ctx, value, password, allow)
 	if err != nil {
 		return ConfigurationResult{}, err
 	}
-	return application.enrich(ctx, persisted)
+	return application.completeConfigurationWrite(ctx, receipt, persisted)
 }
 
 func (application *Application) UpdateConfiguration(ctx context.Context, id config.ConfigurationID, update config.Update) (ConfigurationResult, error) {
@@ -154,19 +152,14 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 	// Removing only an override is a recovery operation even if the saved
 	// Profile or protocol cannot be resolved. The catalog still validates and
 	// commits the configuration using its ordinary storage protections.
-	var cleared ConfigurationResult
+	var receipt ConfigurationResult
 	if clearOnly {
-		cleared, err = application.describeConfiguration(ctx, candidate)
-		if err != nil {
-			return ConfigurationResult{}, err
-		}
+		receipt, err = application.describeConfiguration(ctx, candidate)
 	} else {
-		if err := application.validateConfigurationCandidate(ctx, candidate); err != nil {
-			return ConfigurationResult{}, err
-		}
-		if _, err := application.enrich(ctx, candidate); err != nil {
-			return ConfigurationResult{}, err
-		}
+		receipt, err = application.prepareConfigurationWrite(ctx, candidate)
+	}
+	if err != nil {
+		return ConfigurationResult{}, err
 	}
 	value, err := application.catalog.Update(ctx, id, update)
 	if err != nil {
@@ -183,23 +176,17 @@ func (application *Application) UpdateConfiguration(ctx context.Context, id conf
 			return ConfigurationResult{}, err
 		}
 	}
-	if clearOnly {
-		cleared.Configuration = value
-		cleared.Version, err = application.catalog.Version(context.WithoutCancel(ctx), id)
-		if err != nil {
-			return ConfigurationResult{}, err
-		}
-		cleared.StorageProtection = application.catalog.StorageProtection()
-		return cleared, nil
-	}
-	return application.enrich(ctx, value)
+	return application.completeConfigurationWrite(ctx, receipt, value)
 }
 
 func (application *Application) SetConfigurationPassword(ctx context.Context, id config.ConfigurationID, password string, allow bool) (ConfigurationResult, error) {
 	return application.UpdateConfiguration(ctx, id, config.Update{Password: &password, AllowInsecureStorage: allow})
 }
 
-func (application *Application) enrich(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {
+// prepareConfigurationWrite validates the public candidate and resolves the
+// receipt metadata before committing. It never reads credentials or starts a Run;
+// stored-row inspection uses the tolerant describeConfiguration path.
+func (application *Application) prepareConfigurationWrite(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {
 	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
 	if err != nil {
 		var failure *persistence.Failure
@@ -212,49 +199,31 @@ func (application *Application) enrich(ctx context.Context, value config.Configu
 	if err != nil {
 		return ConfigurationResult{}, NewResolutionFailure(ProtocolNotFound, err)
 	}
-	stored := false
-	version := ""
-	if value.ConfigurationID != "" {
-		var err error
-		stored, err = application.catalog.HasRecord(ctx, value.ConfigurationID)
-		if err != nil {
-			return ConfigurationResult{}, err
-		}
-		if stored {
-			version, err = application.catalog.Version(ctx, value.ConfigurationID)
-			if err != nil {
-				return ConfigurationResult{}, err
-			}
-		}
+	if err := factory.ValidateUsername(value.Username); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	if err := factory.ValidateProtocolContextOverride(append(protocol.AuthenticationProtocolContextOverride(nil), value.ProtocolContextOverride...)); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
 	return ConfigurationResult{
-		Version: version, OverrideSchemaVersion: overrideSchemaVersion(factory), RuntimeAvailability: ConfigurationRuntimeAvailable, Configuration: value.Clone(), InstitutionDisplayName: profile.DisplayName,
+		OverrideSchemaVersion:    overrideSchemaVersion(factory),
+		RuntimeAvailability:      ConfigurationRuntimeAvailable,
+		InstitutionDisplayName:   profile.DisplayName,
 		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
-		CredentialStored:         stored, StorageProtection: application.catalog.StorageProtection(),
 	}, nil
 }
 
-// validateConfigurationCandidate is write-only validation of public candidate
-// data. It never resolves stored credentials or creates a protocol Run, and
-// leaves stored-row inspection to the tolerant describeConfiguration path.
-func (application *Application) validateConfigurationCandidate(ctx context.Context, value config.Configuration) error {
-	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
+// completeConfigurationWrite only reads in-memory metadata under operationMu.
+// Cancellation after persistence must not turn a committed edit into a
+// validation failure. A disconnected client can still miss the receipt.
+func (application *Application) completeConfigurationWrite(ctx context.Context, receipt ConfigurationResult, value config.Configuration) (ConfigurationResult, error) {
+	version, err := application.catalog.Version(context.WithoutCancel(ctx), value.ConfigurationID)
 	if err != nil {
-		var failure *persistence.Failure
-		if errors.As(err, &failure) && failure.Code() == persistence.FailureNotFound {
-			return NewResolutionFailure(ProfileNotFound, err)
-		}
-		return NewResolutionFailure(InvalidConfiguration, err)
+		return ConfigurationResult{}, err
 	}
-	factory, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID)
-	if err != nil {
-		return NewResolutionFailure(ProtocolNotFound, err)
-	}
-	if err := factory.ValidateUsername(value.Username); err != nil {
-		return NewResolutionFailure(InvalidConfiguration, err)
-	}
-	if err := factory.ValidateProtocolContextOverride(append(protocol.AuthenticationProtocolContextOverride(nil), value.ProtocolContextOverride...)); err != nil {
-		return NewResolutionFailure(InvalidConfiguration, err)
-	}
-	return nil
+	receipt.Configuration = value
+	receipt.Version = version
+	receipt.CredentialStored = true
+	receipt.StorageProtection = application.catalog.StorageProtection()
+	return receipt, nil
 }

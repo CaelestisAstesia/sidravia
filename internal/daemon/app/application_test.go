@@ -27,11 +27,12 @@ type applicationTestSetup struct {
 }
 
 type controlledAppStore struct {
-	mu      sync.Mutex
-	data    map[string][]byte
-	fail    bool
-	block   chan struct{}
-	entered chan struct{}
+	mu                 sync.Mutex
+	data               map[string][]byte
+	fail               bool
+	block              chan struct{}
+	entered            chan struct{}
+	cancelAfterReplace context.CancelFunc
 }
 
 func newControlledAppStore() *controlledAppStore {
@@ -68,6 +69,10 @@ func (store *controlledAppStore) ReplaceSensitive(ctx context.Context, path stri
 		return errors.New("controlled replacement failure")
 	}
 	store.data[path] = append([]byte(nil), data...)
+	if store.cancelAfterReplace != nil {
+		store.cancelAfterReplace()
+		store.cancelAfterReplace = nil
+	}
 	return nil
 }
 
