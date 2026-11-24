@@ -16,7 +16,7 @@ import (
 
 // loadOfficialProfileEntries snapshots and validates the complete official
 // Profile source directory before returning the exact bytes to package.
-func loadOfficialProfileEntries(repoRoot string) ([]zipEntry, error) {
+func loadOfficialProfileEntries(repoRoot string) ([]archiveEntry, error) {
 	sourceDir := filepath.Join(repoRoot, "internal", "daemon", "configuration", "profiles")
 	info, err := os.Lstat(sourceDir)
 	if err != nil {
@@ -94,10 +94,10 @@ func loadOfficialProfileEntries(repoRoot string) ([]zipEntry, error) {
 		return nil, fmt.Errorf("validate complete Profile set: %w", err)
 	}
 
-	profiles := make([]zipEntry, 0, len(sources))
+	profiles := make([]archiveEntry, 0, len(sources))
 	for _, source := range sources {
 		id := strings.TrimSuffix(source.name, ".json")
-		profiles = append(profiles, zipEntry{
+		profiles = append(profiles, archiveEntry{
 			name: "institution-profiles/" + id + ".json",
 			data: source.data,
 			mode: 0o644,

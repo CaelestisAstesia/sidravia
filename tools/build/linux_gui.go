@@ -14,7 +14,7 @@ import (
 
 // Only a fresh release GUI input is accepted. Core tools, public profiles and
 // portable state belong to the distribution producer, never this input.
-func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
+func readLinuxGUI(root string, existing []archiveEntry) ([]archiveEntry, error) {
 	if root == "" {
 		return nil, nil
 	}
@@ -25,7 +25,7 @@ func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	for _, e := range existing {
 		reserved[strings.ToLower(e.name)] = true
 	}
-	var entries []zipEntry
+	var entries []archiveEntry
 	found := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, item fs.DirEntry, err error) error {
 		if err != nil {
@@ -65,14 +65,14 @@ func readLinuxGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 		if name == "sidravia_gui" {
 			mode = 0755
 		}
-		entries = append(entries, zipEntry{"gui-runtime/" + name, data, mode})
+		entries = append(entries, archiveEntry{"gui-runtime/" + name, data, mode})
 		found[name] = true
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	runtimeEntries := make([]zipEntry, len(entries))
+	runtimeEntries := make([]archiveEntry, len(entries))
 	for i, entry := range entries {
 		runtimeEntries[i] = entry
 		runtimeEntries[i].name = strings.TrimPrefix(entry.name, "gui-runtime/")

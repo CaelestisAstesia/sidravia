@@ -9,7 +9,7 @@ import (
 	"sidravia/internal/update/packagefiles"
 )
 
-func installerManifest(root string, entries, gui []zipEntry) string {
+func installerManifest(root string, entries, gui []archiveEntry) string {
 	guiNames := map[string]bool{}
 	for _, entry := range gui {
 		guiNames[entry.name] = true
@@ -39,8 +39,8 @@ func installerManifest(root string, entries, gui []zipEntry) string {
 	return out.String()
 }
 
-func portablePayload(entries []zipEntry, owned packagefiles.Manifest) ([]zipEntry, error) {
-	var result []zipEntry
+func portablePayload(entries []archiveEntry, owned packagefiles.Manifest) ([]archiveEntry, error) {
+	var result []archiveEntry
 	for _, entry := range entries {
 		if entry.name != "app_icon.ico" && entry.name != packagefiles.Name {
 			result = append(result, entry)
@@ -57,5 +57,5 @@ func portablePayload(entries []zipEntry, owned packagefiles.Manifest) ([]zipEntr
 	if err != nil {
 		return nil, err
 	}
-	return append(result, zipEntry{packagefiles.Name, raw, 0644}, zipEntry{"sidravia.portable", nil, 0644}), nil
+	return append(result, archiveEntry{packagefiles.Name, raw, 0644}, archiveEntry{"sidravia.portable", nil, 0644}), nil
 }

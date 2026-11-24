@@ -8,7 +8,7 @@ import (
 	"sort"
 )
 
-func writeTar(path, root string, entries []zipEntry) error {
+func writeTar(path, root string, entries []archiveEntry) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -25,11 +25,11 @@ func writeTar(path, root string, entries []zipEntry) error {
 	return gz.Close()
 }
 
-func writeTarContents(writer io.Writer, root string, entries []zipEntry) error {
+func writeTarContents(writer io.Writer, root string, entries []archiveEntry) error {
 	tw := tar.NewWriter(writer)
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	for _, entry := range entries {
-		if err := tw.WriteHeader(&tar.Header{Name: root + "/" + entry.name, Mode: int64(entry.mode.Perm()), Size: int64(len(entry.data)), ModTime: zipModTime}); err != nil {
+		if err := tw.WriteHeader(&tar.Header{Name: root + "/" + entry.name, Mode: int64(entry.mode.Perm()), Size: int64(len(entry.data)), ModTime: archiveModTime}); err != nil {
 			return err
 		}
 		if _, err := tw.Write(entry.data); err != nil {

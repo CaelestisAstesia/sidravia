@@ -75,7 +75,7 @@ func TestZipFailureCleans(t *testing.T) {
 	out := filepath.Join(outParent, "dist")
 	fb := &fakeBuilder{}
 	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
-	tt.packageArtifacts = func(string, string, string, string, string, []zipEntry, []byte, []byte) error { return errZip }
+	tt.packageArtifacts = func(string, string, string, string, string, []archiveEntry, []byte, []byte) error { return errZip }
 	err := tt.execute(io.Discard, io.Discard)
 	if !errors.Is(err, errZip) {
 		t.Fatalf("expected errZip, got %v", err)

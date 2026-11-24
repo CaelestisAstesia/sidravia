@@ -466,7 +466,7 @@ type tool struct {
 	cfg              config
 	repoRoot         string
 	build            buildFunc
-	packageArtifacts func(repoRoot, staging, version, buildID, artifact string, profiles []zipEntry, cliBytes, daemonBytes []byte) error
+	packageArtifacts func(repoRoot, staging, version, buildID, artifact string, profiles []archiveEntry, cliBytes, daemonBytes []byte) error
 	publish          func(staging, out string) error
 	runtimeVersion   func() string
 	probeGoVersion   func(goBin string) (string, error)

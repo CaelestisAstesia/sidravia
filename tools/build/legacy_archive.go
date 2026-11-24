@@ -110,7 +110,7 @@ func artifactFileName(version, artifact string) string {
 }
 
 // writeArtifacts builds one selected portable zip and SHA256SUMS.txt in staging.
-func writeArtifacts(repoRoot, staging, version, buildID, artifact string, profiles []zipEntry, cliBytes, daemonBytes []byte) error {
+func writeArtifacts(repoRoot, staging, version, buildID, artifact string, profiles []archiveEntry, cliBytes, daemonBytes []byte) error {
 	zipName := artifactFileName(version, artifact)
 	sumsName := "SHA256SUMS.txt"
 
@@ -161,8 +161,8 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, profil
 	return nil
 }
 
-func assembleEntries(artifact string, license, gettingStarted []byte, profiles []zipEntry, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []zipEntry {
-	entries := []zipEntry{
+func assembleEntries(artifact string, license, gettingStarted []byte, profiles []archiveEntry, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes []byte, version, buildID string) []archiveEntry {
+	entries := []archiveEntry{
 		{"BUILD-INFO.txt", buildInfoBytes(version, buildID, artifact), 0o644},
 		{"GETTING-STARTED.md", gettingStarted, 0o644},
 		{"LICENSE", license, 0o644},
@@ -172,11 +172,11 @@ func assembleEntries(artifact string, license, gettingStarted []byte, profiles [
 		{"sidraviad.exe", daemonBytes, 0o755},
 	}
 	entries = append(entries, profiles...)
-	entries = append(entries, zipEntry{"scripts/install.ps1", installScript, 0o644})
-	entries = append(entries, zipEntry{"scripts/uninstall.ps1", uninstallScript, 0o644})
+	entries = append(entries, archiveEntry{"scripts/install.ps1", installScript, 0o644})
+	entries = append(entries, archiveEntry{"scripts/uninstall.ps1", uninstallScript, 0o644})
 	if artifact == "field-validation" {
-		entries = append(entries, zipEntry{"scripts/field-test.ps1", fieldTestScript, 0o644})
-		entries = append(entries, zipEntry{"scripts/cli-smoke.ps1", cliSmokeScript, 0o644})
+		entries = append(entries, archiveEntry{"scripts/field-test.ps1", fieldTestScript, 0o644})
+		entries = append(entries, archiveEntry{"scripts/cli-smoke.ps1", cliSmokeScript, 0o644})
 	}
 	return entries
 }

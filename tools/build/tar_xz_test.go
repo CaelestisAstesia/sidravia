@@ -24,7 +24,7 @@ func TestXZProducerUsesDeterministicTarAndBoundedDictionary(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(version), "xz (XZ Utils) "+xzVersion+"\n") {
 		t.Skip("fixed XZ encoder unavailable")
 	}
-	entries := []zipEntry{{name: "LICENSE", data: []byte("license"), mode: 0644}}
+	entries := []archiveEntry{{name: "LICENSE", data: []byte("license"), mode: 0644}}
 	var previous []byte
 	for _, name := range []string{"a", "b"} {
 		path := filepath.Join(t.TempDir(), name+".tar.xz")

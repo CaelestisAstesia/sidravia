@@ -145,7 +145,7 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	if err != nil || len(gui) != 7 {
 		t.Fatal(err)
 	}
-	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]zipEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
+	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]archiveEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
 	if !strings.Contains(manifest, "Components: core") || !strings.Contains(manifest, "Components: gui") || !strings.Contains(manifest, "Check: RemoveGUIComponent") {
 		t.Fatal("component ownership missing")
 	}
@@ -181,14 +181,14 @@ func TestDistributionDoesNotDependOnLegacyWindowsScripts(t *testing.T) {
 }
 
 func TestGUIPayloadRejectsUnusedBuildAndWebContent(t *testing.T) {
-	missingFont := []zipEntry{{name: "data/flutter_assets/FontManifest.json", data: []byte(`[{"fonts":[{"asset":"assets/fonts/missing.otf"}]}]`)}}
+	missingFont := []archiveEntry{{name: "data/flutter_assets/FontManifest.json", data: []byte(`[{"fonts":[{"asset":"assets/fonts/missing.otf"}]}]`)}}
 	if err := checkGUIRuntime(missingFont, true); err == nil {
 		t.Fatal("accepted missing declared font")
 	}
 	for _, windows := range []bool{false, true} {
 		for _, name := range []string{"debug.pdb", "data/build.log", "data/flutter_assets/AssetManifest.bin.json", "data/flutter_assets/NOTICES", "data/flutter_assets/assets/old.ttf", "licenses/.DS_Store", "lib/notes.txt", "libdartjni.dll", "lib/libdartjni.so"} {
 			t.Run(fmt.Sprintf("windows=%t/%s", windows, name), func(t *testing.T) {
-				entries := []zipEntry{{name: "data/flutter_assets/FontManifest.json", data: []byte("[]")}, {name: name, data: []byte("unused")}}
+				entries := []archiveEntry{{name: "data/flutter_assets/FontManifest.json", data: []byte("[]")}, {name: name, data: []byte("unused")}}
 				if err := checkGUIRuntime(entries, windows); err == nil {
 					t.Fatalf("accepted non-runtime input: %s", name)
 				}
@@ -200,7 +200,7 @@ func TestGUIPayloadRejectsUnusedBuildAndWebContent(t *testing.T) {
 		if windows {
 			library = "plugin.dll"
 		}
-		entries := []zipEntry{
+		entries := []archiveEntry{
 			{name: library},
 			{name: "licenses/plugin/LICENSE.txt"},
 			{name: "data/flutter_assets/FontManifest.json", data: []byte(`[{"fonts":[{"asset":"assets/fonts/code.otf"}]}]`)},
@@ -250,7 +250,7 @@ func TestLinuxGUIBoundary(t *testing.T) {
 
 func TestInstallerAndPortableHaveIndependentExactInventories(t *testing.T) {
 	owned := packagefiles.Manifest{SchemaVersion: 1, Version: "1.0.0", BuildID: "test", OS: "windows", Arch: "amd64", PayloadKind: "gui"}
-	entries := []zipEntry{{"Sidravia.exe", []byte("gui"), 0755}, {"app_icon.ico", []byte("installer icon"), 0644}}
+	entries := []archiveEntry{{"Sidravia.exe", []byte("gui"), 0755}, {"app_icon.ico", []byte("installer icon"), 0644}}
 	for _, entry := range entries {
 		owned.Files = append(owned.Files, packagefiles.File{Path: entry.name, Size: int64(len(entry.data)), SHA256: sha256Hex(entry.data), Mode: 0644})
 	}
@@ -258,7 +258,7 @@ func TestInstallerAndPortableHaveIndependentExactInventories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries = append(entries, zipEntry{packagefiles.Name, raw, 0644})
+	entries = append(entries, archiveEntry{packagefiles.Name, raw, 0644})
 	portable, err := portablePayload(entries, owned)
 	if err != nil {
 		t.Fatal(err)

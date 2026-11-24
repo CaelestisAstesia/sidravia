@@ -24,7 +24,7 @@ func xzCommand(args ...string) *exec.Cmd {
 	return command
 }
 
-func writeTarXZ(path, root string, entries []zipEntry) (err error) {
+func writeTarXZ(path, root string, entries []archiveEntry) (err error) {
 	version, err := xzCommand("--version").Output()
 	if err != nil {
 		return fmt.Errorf("XZ Utils %s is required: %w", xzVersion, err)

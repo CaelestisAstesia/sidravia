@@ -13,7 +13,7 @@ import (
 
 // Native GUI inputs may contain runtime libraries and application assets, but
 // not arbitrary siblings left in an incremental compiler output directory.
-func checkGUIRuntime(entries []zipEntry, windows bool) error {
+func checkGUIRuntime(entries []archiveEntry, windows bool) error {
 	declaredFonts := map[string]bool{}
 	actualFiles := map[string]bool{}
 	for _, entry := range entries {
@@ -83,7 +83,7 @@ func checkGUIRuntime(entries []zipEntry, windows bool) error {
 	return nil
 }
 
-func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
+func readGUI(root string, existing []archiveEntry) ([]archiveEntry, error) {
 	if root == "" {
 		return nil, nil
 	}
@@ -94,7 +94,7 @@ func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 	for _, entry := range existing {
 		reserved[strings.ToLower(entry.name)] = true
 	}
-	var entries []zipEntry
+	var entries []archiveEntry
 	err := filepath.WalkDir(root, func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -124,7 +124,7 @@ func readGUI(root string, existing []zipEntry) ([]zipEntry, error) {
 		if err != nil {
 			return err
 		}
-		entries = append(entries, zipEntry{name, data, metadata.Mode().Perm()})
+		entries = append(entries, archiveEntry{name, data, metadata.Mode().Perm()})
 		return nil
 	})
 	if err != nil {

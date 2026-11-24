@@ -11,18 +11,18 @@ import (
 	"time"
 )
 
-// zipEntry is a single file to add to a zip archive.
-type zipEntry struct {
+// archiveEntry is one file in a package payload.
+type archiveEntry struct {
 	name string
 	data []byte
 	mode os.FileMode
 }
 
-var zipModTime = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
+var archiveModTime = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // writeZip writes entries to path in lexicographic name order with fixed
 // timestamps, modes and Deflate compression.
-func writeZip(path string, entries []zipEntry) error {
+func writeZip(path string, entries []archiveEntry) error {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
@@ -35,7 +35,7 @@ func writeZip(path string, entries []zipEntry) error {
 	})
 	for _, e := range entries {
 		fh := &zip.FileHeader{Name: e.name, Method: zip.Deflate}
-		fh.Modified = zipModTime
+		fh.Modified = archiveModTime
 		fh.SetMode(e.mode)
 		w, err := zw.CreateHeader(fh)
 		if err != nil {

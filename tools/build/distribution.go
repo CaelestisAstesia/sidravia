@@ -29,17 +29,17 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	entries := append([]zipEntry{{"LICENSE", license, 0644}}, profiles...)
+	entries := append([]archiveEntry{{"LICENSE", license, 0644}}, profiles...)
 	buildInfoIndex := len(entries)
-	entries = append(entries, zipEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
+	entries = append(entries, archiveEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
 	if t.cfg.iscc != "" {
 		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
 		if err != nil {
 			return fmt.Errorf("read application icon: %w", err)
 		}
-		entries = append(entries, zipEntry{"app_icon.ico", icon, 0644})
+		entries = append(entries, archiveEntry{"app_icon.ico", icon, 0644})
 	}
-	var gui []zipEntry
+	var gui []archiveEntry
 	if t.cfg.target == "linux-amd64" {
 		gui, err = readLinuxGUI(t.cfg.guiDirectory, entries)
 	} else {
@@ -115,7 +115,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		entries = append(entries, zipEntry{program + suffix, data, 0755})
+		entries = append(entries, archiveEntry{program + suffix, data, 0755})
 		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
 	}
 	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
@@ -137,7 +137,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("encode product file ownership: %w", err)
 	}
-	entries = append(entries, zipEntry{packagefiles.Name, ownership, 0644})
+	entries = append(entries, archiveEntry{packagefiles.Name, ownership, 0644})
 	// All installation files have explicit ownership; payload contains no
 	// portable marker, generated user data or legacy integration scripts.
 	payload := filepath.Join(stage, "payload")
