@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func newHelpCommand(root *cobra.Command) *cobra.Command {
@@ -21,7 +22,7 @@ func newHelpCommand(root *cobra.Command) *cobra.Command {
 				}
 				target = next
 			}
-			if _, ok := helpSpecs[target.CommandPath()]; !ok {
+			if target != root && !target.IsAvailableCommand() {
 				return errCommandUsage
 			}
 			target.SetOut(cmd.OutOrStdout())
@@ -47,9 +48,8 @@ type helpNode struct {
 	examples    []string
 }
 
-// helpSpecs is the static, deterministic help specification keyed by command
-// path. It is the sole source of CLI help text; Cobra’s generated defaults
-// are never shown.
+// helpSpecs supplies extended help for commands with detailed usage examples.
+// Commands with options registered directly on Cobra use that metadata.
 var helpSpecs = map[string]helpNode{
 	"sidraviactl network":            {description: "只读查看已有 daemon 接受的网络观察。", usage: []string{"sidraviactl network <command>"}, children: []helpChild{{"interfaces", "列出已观察网卡"}}},
 	"sidraviactl network interfaces": {description: "列出网卡与 IPv4 候选；使用时重新核对绑定。", usage: []string{"sidraviactl network interfaces"}, examples: []string{"sidraviactl network interfaces"}},
@@ -257,8 +257,64 @@ func renderHelp(p *presentation, c *cobra.Command) string {
 	node, ok := helpSpecs[c.CommandPath()]
 	if !ok {
 		node = helpNode{usage: []string{c.CommandPath()}}
+		for parent := c; parent.HasParent(); parent = parent.Parent() {
+			if parent.Hidden {
+				return renderHelpNode(p, node)
+			}
+		}
+		node = registeredHelpNode(c)
+	} else if !c.HasParent() {
+		// Keep the deliberate ordering and descriptions while exposing newer
+		// public commands from the same tree used to dispatch them.
+		children := append([]helpChild(nil), node.children...)
+		for _, child := range registeredHelpChildren(c) {
+			alreadyListed := false
+			for _, listed := range node.children {
+				if listed.name == child.name {
+					alreadyListed = true
+					break
+				}
+			}
+			if !alreadyListed {
+				children = append(children, child)
+			}
+		}
+		node.children = children
 	}
 	return renderHelpNode(p, node)
+}
+
+func registeredHelpChildren(c *cobra.Command) []helpChild {
+	var children []helpChild
+	for _, child := range c.Commands() {
+		if child.IsAvailableCommand() {
+			children = append(children, helpChild{child.Name(), child.Short})
+		}
+	}
+	return children
+}
+
+func registeredHelpNode(c *cobra.Command) helpNode {
+	node := helpNode{description: c.Short, children: registeredHelpChildren(c)}
+	usage := c.CommandPath()
+	if len(node.children) > 0 {
+		usage += " <command>"
+	}
+	c.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
+		if flag.Hidden || flag.Name == "help" {
+			return
+		}
+		name := "--" + flag.Name
+		if flag.NoOptDefVal == "" {
+			name += " VALUE"
+		}
+		node.options = append(node.options, name+"    "+flag.Usage)
+	})
+	if len(node.options) > 0 {
+		usage += " [选项]"
+	}
+	node.usage = []string{usage}
+	return node
 }
 
 // renderHelpNode renders a help node as sections separated by one blank line.

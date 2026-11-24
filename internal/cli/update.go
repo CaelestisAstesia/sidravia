@@ -79,10 +79,19 @@ func rpmUpdateOutput(args []string, identity clientbootstrap.Identity) ([]byte, 
 
 func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error)) *cobra.Command {
 	group := &cobra.Command{Use: "update", Short: "检查、下载和应用更新"}
-	for _, operation := range []string{"check", "download", "status", "apply", "recover", "version"} {
+	operations := []struct{ name, description string }{
+		{"check", "检查适用于当前安装的版本"},
+		{"download", "下载并校验指定候选"},
+		{"status", "查看缓存与更新状态"},
+		{"apply", "应用已确认的更新"},
+		{"recover", "核对并处理已中断的更新"},
+		{"version", "显示版本与构建标识"},
+	}
+	for _, item := range operations {
+		operation := item.name
 		var channel, kind, candidate, operationID string
 		var confirm bool
-		command := &cobra.Command{Use: operation, Short: operation, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (err error) {
+		command := &cobra.Command{Use: operation, Short: item.description, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			defer func() { err = wrapCommandOperation(err) }()
 			args := []string{operation}
 			if channel != "" {

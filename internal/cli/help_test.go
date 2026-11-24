@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -98,6 +99,8 @@ func TestHelpPathRejectsUnknownHiddenAndExtraTokensSafely(t *testing.T) {
 	for _, args := range [][]string{
 		{"help", "missing-marker"},
 		{"help", "status"},
+		{"help", "help"},
+		{"help", "gui", "bootstrap"},
 		{"help", "auth", "start", "extra-marker"},
 	} {
 		err := runCommand(args, commandDependencies{output: io.Discard})
@@ -109,6 +112,43 @@ func TestHelpPathRejectsUnknownHiddenAndExtraTokensSafely(t *testing.T) {
 				t.Fatalf("%q echoed marker in %q", args, err)
 			}
 		}
+	}
+}
+
+func TestHelpListsRegisteredMaintenanceCommands(t *testing.T) {
+	cases := []struct {
+		path []string
+		want []string
+	}{
+		{nil, []string{"\n  integration ", "\n  update "}},
+		{[]string{"integration"}, []string{"\n  autostart ", "\n  path ", "\n  status "}},
+		{[]string{"update"}, []string{"\n  apply ", "\n  recover ", "\n  version "}},
+		{[]string{"update", "recover"}, []string{"--operation VALUE", "--confirm"}},
+	}
+	if runtime.GOOS == "linux" {
+		cases = append(cases, struct {
+			path []string
+			want []string
+		}{[]string{"integration", "service", "discard"}, []string{"--yes"}})
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.path, " "), func(t *testing.T) {
+			var named, flagged bytes.Buffer
+			if err := runCommand(append([]string{"help"}, tc.path...), commandDependencies{output: &named}); err != nil {
+				t.Fatal(err)
+			}
+			if err := runCommand(append(append([]string{}, tc.path...), "--help"), commandDependencies{output: &flagged}); err != nil {
+				t.Fatal(err)
+			}
+			if named.String() != flagged.String() {
+				t.Fatalf("help forms differ: %q and %q", named.String(), flagged.String())
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(named.String(), want) {
+					t.Errorf("help omitted %q:\n%s", want, named.String())
+				}
+			}
+		})
 	}
 }
 

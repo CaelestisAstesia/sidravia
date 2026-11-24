@@ -25,7 +25,7 @@ func integrationFailure(message string, cause error) error {
 }
 
 func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error), identities ...clientbootstrap.Identity) *cobra.Command {
-	group := &cobra.Command{Use: "integration", Short: "查询或修改当前用户 PATH 与开机自启"}
+	group := &cobra.Command{Use: "integration", Short: "管理当前用户的系统集成"}
 	run := func(args []string) func(*cobra.Command, []string) error {
 		return func(cmd *cobra.Command, _ []string) error {
 			data, processErr := invoke(cmd.Context(), args)
