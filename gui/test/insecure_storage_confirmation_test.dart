@@ -10,7 +10,7 @@ import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
-import 'connection_presentation_test.dart' show otherConfiguration;
+import 'support/connection_state_fixture.dart' show otherConfiguration;
 
 class ConsentClient extends OfflineDemoClient {
   final attempts = <(GuiOperation, bool, String?)>[];

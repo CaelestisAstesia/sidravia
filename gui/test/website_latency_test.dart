@@ -5,14 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/diagnostics/website_latency.dart';
 import 'package:sidravia_gui/features/diagnostics/website_latency_io.dart';
 
-class PendingProbe implements WebsiteLatencyProbe {
-  final done = Completer<WebsiteLatencyResult>();
-  @override
-  Future<WebsiteLatencyResult> get result => done.future;
-  @override
-  void cancel() =>
-      done.complete(const WebsiteLatencyResult(WebsiteLatencyStatus.cancelled));
-}
+import 'support/pending_website_probe.dart';
 
 void main() {
   test(

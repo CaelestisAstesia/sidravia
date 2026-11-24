@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:sidravia_gui/features/diagnostics/website_latency.dart';
 
-import 'website_latency_test.dart' show PendingProbe;
+import 'support/pending_website_probe.dart' show PendingProbe;
 
 import 'dart:ui' as ui;
 

@@ -6,35 +6,7 @@ import 'package:sidravia_gui/features/settings/integration_settings.dart';
 import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
-class FakeManager implements InstallationManager {
-  int reads = 0;
-  bool closed = false, path = false;
-  IntegrationChange? lastChange;
-  Completer<IntegrationStatus>? pending;
-  bool fail = false, guiAvailable = true;
-  @override
-  Future<IntegrationStatus> status() async {
-    reads++;
-    if (fail) throw const IntegrationFailure('读取失败');
-    if (pending != null) return pending!.future;
-    return IntegrationStatus(
-      pathEnabled: path,
-      autostart: 'disabled',
-      guiAvailable: guiAvailable,
-    );
-  }
-
-  @override
-  Future<void> change(IntegrationChange change) async {
-    lastChange = change;
-    path = change == IntegrationChange.pathEnable;
-  }
-
-  @override
-  Future<void> close() async {
-    closed = true;
-  }
-}
+import 'support/installation_manager_fixture.dart';
 
 class FakeUserServiceManager extends FakeManager implements UserServiceManager {
   bool registered = false;

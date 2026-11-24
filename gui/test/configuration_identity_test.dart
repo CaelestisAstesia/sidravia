@@ -7,7 +7,7 @@ import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 
-import 'connection_presentation_test.dart'
+import 'support/connection_state_fixture.dart'
     show configuration, otherConfiguration, session;
 
 class ReplacementClient extends OfflineDemoClient {
