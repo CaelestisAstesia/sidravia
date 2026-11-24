@@ -48,6 +48,13 @@ def classify(path):
         return ('gui',), 'GUI source, assets, dependencies or platform project', ('Native GUI build and platform acceptance' if native else 'Affected-page visual/interaction review')
     if path.startswith(('tools/drcom520d_mock_server/', 'tools/windows_drcom_acceptance/')):
         return ('python',), 'existing Python verifier covers these tool suites', None
+    if path in (
+        'tools/developer/linux_development.py',
+        'tools/developer/linux_rpm.py',
+        'tools/developer/linux_rpm_fixture.py',
+        'tools/developer/verify_distribution.py',
+    ):
+        return ('python',), 'delivery builder or package consumer verifier', 'Relevant native fixture and exact-package acceptance'
     if path.startswith('tools/developer/') and p.suffix == '.py':
         return ('python',), 'developer Python tool/test: run the existing Python scope', None
     if path.startswith('tools/developer/'):

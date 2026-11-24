@@ -137,6 +137,17 @@ class Recommendations(unittest.TestCase):
         self.assertEqual(decisions['README.md']['scopes'], [])
         self.assertEqual(decisions['gui/assets/fonts/SourceCodePro-LICENSE.md']['scopes'], ['gui'])
 
+    def test_delivery_python_tools_keep_package_acceptance(self):
+        paths = ('tools/developer/linux_development.py', 'tools/developer/linux_rpm.py',
+                 'tools/developer/linux_rpm_fixture.py', 'tools/developer/verify_distribution.py')
+        for path in paths:
+            self.write(path, 'changed')
+        result = self.recommend()
+        self.assertEqual(result['scopes'], ['python'])
+        self.assertEqual({row['path'] for row in result['changes']}, set(paths))
+        for row in result['changes']:
+            self.assertIn('exact-package acceptance', row['manual'])
+
     def test_unknown_paths_are_visible_and_fall_back_conservatively(self):
         self.write('unexpected/config.blob', 'data')
         result = self.recommend()
