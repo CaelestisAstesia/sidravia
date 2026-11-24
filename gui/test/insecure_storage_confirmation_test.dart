@@ -241,14 +241,7 @@ void main() {
         await tester.pump();
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
-        if (find.text('保存连接配置？').evaluate().isNotEmpty) {
-          await tester.tap(
-            find.text('保存并断开').evaluate().isNotEmpty
-                ? find.text('保存并断开')
-                : find.text('保存并停止').evaluate().isNotEmpty
-                ? find.text('保存并停止')
-                : find.text('保存'),
-          );
+        if (await tapConfigurationSaveConfirmation(tester)) {
           await tester.pump();
         }
       }
@@ -383,14 +376,7 @@ void main() {
           }
         }
         await tester.pumpAndSettle();
-        if (find.text('保存连接配置？').evaluate().isNotEmpty) {
-          await tester.tap(
-            find.text('保存并断开').evaluate().isNotEmpty
-                ? find.text('保存并断开')
-                : find.text('保存并停止').evaluate().isNotEmpty
-                ? find.text('保存并停止')
-                : find.text('保存'),
-          );
+        if (await tapConfigurationSaveConfirmation(tester)) {
           await tester.pumpAndSettle();
         }
         expect(find.text('允许未受保护的存储？'), findsOneWidget);
