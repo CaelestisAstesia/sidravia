@@ -4,6 +4,35 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 void main() {
+  testWidgets('page header remains visible when body scrolls at 360', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: DesignPage(
+            children: [
+              DesignHeader(title: '设置', onBack: () {}),
+              for (var i = 0; i < 30; i++)
+                DesignRow(title: '示例 $i', value: '值'),
+            ],
+          ),
+        ),
+      ),
+    );
+    final before = tester.getRect(find.text('设置'));
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -500),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text('设置')), before);
+    expect(find.byTooltip('返回').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   Future<void> mount(
     WidgetTester tester, {
     bool dark = false,

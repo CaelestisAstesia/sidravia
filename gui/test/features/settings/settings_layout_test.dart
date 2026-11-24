@@ -270,7 +270,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('修改后从下次连接生效。'), findsNothing);
+      expect(find.textContaining('修改后从下次连接生效'), findsNothing);
       expect(find.text('重启核心后生效'), findsOneWidget);
       expect(find.text('下次启动生效；不改变自动登录或当前窗口。'), findsNothing);
       expect(find.text('INFO'), findsOneWidget);
@@ -278,6 +278,21 @@ void main() {
       expect(closeBox.right, appearanceBox.right);
       expect(find.text('每天只显示一次。'), findsNothing);
       expect(find.text('通知可点击查看公告。'), findsNothing);
+      expect(find.text('自动重连成功也计入连接成功。'), findsNothing);
+      final announcement = find.text('自动显示公告');
+      final announcementCard = find.ancestor(
+        of: announcement,
+        matching: find.byType(DesignGroup),
+      );
+      expect(announcementCard, findsOneWidget);
+      expect(
+        find.descendant(of: announcementCard, matching: find.text('公告加载失败')),
+        findsNothing,
+      );
+      final theme = Theme.of(tester.element(announcement));
+      final platformFont = ThemeData().textTheme.bodyMedium!.fontFamily;
+      expect(theme.textTheme.bodyMedium!.fontFamily, platformFont);
+      expect(theme.dialogTheme.contentTextStyle!.fontFamily, platformFont);
       expect(find.text('桌面托盘不可用；关闭与启动隐藏设置暂不可操作。'), findsNothing);
       expect(find.text('离线演示：外观只保存在演示内存中。'), findsNothing);
       for (final key in [
