@@ -10,7 +10,7 @@ extension _MaintenancePolling on GuiController {
     }
     _maintenanceTimer = Timer(const Duration(seconds: 1), () {
       _maintenanceTimer = null;
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       if (_transition != null || _userBusy) {
         _scheduleMaintenance(generation, client);
         return;
@@ -27,7 +27,7 @@ extension _MaintenancePolling on GuiController {
     try {
       final maintenance = client as SidraviaMaintenanceClient;
       final view = await maintenance.updateStatus();
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       _maintenanceFrozen = view.phase != 'idle';
       _notify();
       if (view.phase == 'idle') {
@@ -40,7 +40,7 @@ extension _MaintenancePolling on GuiController {
         final consent =
             await onMaintenancePrepare?.call(view.interactive) ??
             (accepted: false, visible: false);
-        if (!_canContinue(generation) || !identical(_client, client)) return;
+        if (!_canUseClient(generation, client)) return;
         await maintenance.updateAcknowledge(
           view.operationId!,
           consent.accepted,
@@ -51,7 +51,7 @@ extension _MaintenancePolling on GuiController {
           view.phase == 'committed' &&
           _maintenanceOperation == view.operationId;
     } on Object catch (error) {
-      if (_current(generation) && identical(_client, client)) {
+      if (_ownsClient(generation, client)) {
         await _invalidate(generation, client, error);
       }
     } finally {

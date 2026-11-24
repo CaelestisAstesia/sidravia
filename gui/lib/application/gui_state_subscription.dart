@@ -5,18 +5,18 @@ extension _GuiStateSubscription on GuiController {
   Future<void> _refresh(int generation, SidraviaIpcClient client) async {
     try {
       final daemon = await client.daemonStatus();
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       final profiles = await client.profileList();
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       final configurations = await client.configurationList();
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       List<SessionSummary> sessions;
       NetworkInterfacesSnapshot? network;
       if (client is SidraviaStateClient) {
         if (_subscription == null) {
           final subscription = await (client as SidraviaStateClient)
               .subscribeStateEvents();
-          if (!_canContinue(generation) || !identical(_client, client)) {
+          if (!_canUseClient(generation, client)) {
             await _closeQuietly(client);
             await subscription.close();
             return;
@@ -34,7 +34,7 @@ extension _GuiStateSubscription on GuiController {
           network = await (client as SidraviaNetworkClient).networkInterfaces();
         }
       }
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       // Session IDs are local to a daemon instance. A stale reconnect to the
       // same PID retains its marker; only a complete new snapshot replaces it.
       if (_snapshot?.daemon.pid != daemon.pid) {
@@ -61,7 +61,7 @@ extension _GuiStateSubscription on GuiController {
           ),
         );
       }
-      if (!_canContinue(generation) || !identical(_client, client)) return;
+      if (!_canUseClient(generation, client)) return;
       _retryAttempt = 0;
       _state = GuiConnectionState.ready;
       _failure = null;
@@ -70,15 +70,14 @@ extension _GuiStateSubscription on GuiController {
       _scheduleMaintenance(generation, client);
       _notify();
     } on Object catch (error) {
-      if (!_current(generation) || !identical(_client, client)) return;
+      if (!_ownsClient(generation, client)) return;
       await _invalidate(generation, client, error);
     }
   }
 
   void _scheduleRefresh(int generation, SidraviaIpcClient client) {
     if ((client is SidraviaStateClient && client is! SidraviaOverrideClient) ||
-        !_canContinue(generation) ||
-        !identical(_client, client) ||
+        !_canUseClient(generation, client) ||
         _state != GuiConnectionState.ready) {
       return;
     }
@@ -94,9 +93,7 @@ extension _GuiStateSubscription on GuiController {
         : pollDelay;
     _timer = Timer(delay, () {
       _timer = null;
-      if (_exitRequested ||
-          !_current(generation) ||
-          !identical(_client, client)) {
+      if (_exitRequested || !_ownsClient(generation, client)) {
         return;
       }
       if (_transition != null) {
@@ -118,7 +115,7 @@ extension _GuiStateSubscription on GuiController {
   }
 
   void _applyEvent(int generation, SidraviaIpcClient client, StateEvent event) {
-    if (!_canContinue(generation) || !identical(_client, client)) return;
+    if (!_canUseClient(generation, client)) return;
     final previous = _snapshot;
     if (previous == null) return;
     var sessions = previous.sessions;

@@ -530,10 +530,7 @@ class GuiController extends ChangeNotifier {
       operation: GuiOperation.updateConfiguration,
       fallback: '网络绑定保存失败，请检查当前网卡和 IPv4 后重试。',
       onInsecureStorageConfirmation: onInsecureStorageConfirmation,
-      allowed: (caps) =>
-          networkBindingUnavailable == null &&
-          caps.matchesConfiguration(configurationId) &&
-          networkBindingEligible(snapshot?.network, policy),
+      allowed: (_) => canSaveNetworkBinding(configurationId, policy),
     );
   }
 
@@ -730,7 +727,7 @@ class GuiController extends ChangeNotifier {
     _notice = null;
     try {
       await action(client, allowInsecureStorage);
-      if (!_canContinue(generation) || !identical(_client, client)) {
+      if (!_canUseClient(generation, client)) {
         completer.complete(const GuiMutationResult(false, null, true));
         return;
       }
@@ -739,7 +736,7 @@ class GuiController extends ChangeNotifier {
         GuiMutationResult(_state == GuiConnectionState.ready, null, true),
       );
     } on IpcRequestFailure catch (error) {
-      if (_current(generation) && identical(_client, client)) {
+      if (_ownsClient(generation, client)) {
         if (error.code == 'configuration_session_invalidation_failed') {
           _outdatedSessionId = capabilities.retainedSession?.id;
           await _refresh(generation, client);
@@ -756,7 +753,7 @@ class GuiController extends ChangeNotifier {
         ),
       );
     } on Object catch (error) {
-      if (_current(generation) && identical(_client, client)) {
+      if (_ownsClient(generation, client)) {
         await _invalidate(generation, client, error);
       }
       completer.complete(const GuiMutationResult(false, null, false, true));
@@ -774,7 +771,7 @@ class GuiController extends ChangeNotifier {
     SidraviaIpcClient client,
     Object error,
   ) async {
-    if (!_current(generation) || !identical(_client, client)) return;
+    if (!_ownsClient(generation, client)) return;
     _timer?.cancel();
     _timer = null;
     _state = _snapshot == null
@@ -872,6 +869,12 @@ class GuiController extends ChangeNotifier {
   bool _current(int generation) => !_disposed && generation == _generation;
 
   bool _canContinue(int generation) => !_exitRequested && _current(generation);
+
+  bool _ownsClient(int generation, SidraviaIpcClient client) =>
+      _current(generation) && identical(_client, client);
+
+  bool _canUseClient(int generation, SidraviaIpcClient client) =>
+      !_exitRequested && _ownsClient(generation, client);
 
   Future<void> _closeQuietly(SidraviaIpcClient? client) async {
     if (client == null) return;
