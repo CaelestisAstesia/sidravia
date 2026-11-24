@@ -73,10 +73,11 @@ GUI 和 CTL 编辑的是同一份持久协议上报覆写。修改或清除方�
 | `profile list`、`auth list/status/watch`、`config list/show`、`network interfaces` | 报告无法连接，不启动 | 查询已有独立后台 |
 | `diagnostics export` | 报告无法连接，不启动 | 导出诊断到新文件，不覆盖已有文件；不支持 `--probe` |
 | `auth start/stop/restart/remove`、`config create/update/set-password/remove` | 可按需启动独立后台 | 改变会话或配置；操作失败时，后台启动或自动登录仍可能已经发生 |
-| `integration ...` | 不依赖认证后台 | 调用同目录 MGR，读取或修改 Windows 当前用户系统集成 |
+| `integration status/path/autostart` | 不依赖认证后台 | 通过 MGR 管理 Windows 当前用户系统集成 |
+| `integration service ...` | 按操作查询、启动或停止服务 | 在 Linux 管理已登记的 [systemd 用户服务](linux-portable.md#systemd-用户服务) |
 | `help`、公开命令的 `--help` / `-h` | 不启动 | 显示帮助 |
 
-除 `daemon status` 外，表中需要连接认证后台的命令均要求 `headless` 模式，不会接管 GUI 使用的 `desktop` 后台。CTL 与后台必须来自同一构建的配套程序。
+认证及配置操作可连接 `headless` 或 Linux `systemd` 后台。`daemon status` 也可查询 GUI 管理的 `desktop` 后台。需要启停托管后台时，用 `integration service start`、`stop` 或 `restart`。CTL 与后台必须来自同一构建的配套程序。
 
 命令失败不一定意味着没有发生任何操作。遇到启动或执行结果未确认的提示时，请先查询后台、会话或配置状态，再决定是否重试。
 
@@ -373,7 +374,7 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 | `update status` | 查询缓存及更新执行状态 |
 | `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
 | `update apply --candidate ID --confirm` | 确认应用 Linux／Windows 便携版或 Windows 安装版的准确候选 |
-| `update recover --operation ID --confirm` | 核验并结束中断的更新协调，不重复启动程序 |
+| `update recover --operation ID --confirm` | 核验并处理指定的中断更新；Linux 托管便携版可尝试恢复原文件和服务 |
 
 `check`、`status`、`download` 可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型仍须受当前平台支持。未指定时按当前版本和程序布局选择；检查和下载应使用相同的通道、包类型，`ID` 取自检查结果。RPM 的 `check` 支持选择通道，包类型由已安装的 RPM 决定。
 
@@ -428,7 +429,8 @@ Windows 安装版可重新运行对应版本的可信安装器。便携版也可
 | `auth stop ID` / `restart ID` / `remove ID` | 控制、清理会话 |
 | `network interfaces` | 已观察网卡及地址 |
 | `diagnostics export --output PATH` | 将诊断摘要写入新文件 |
-| `integration ...` | Windows 当前用户自启、PATH 管理 |
+| `integration status/path/autostart` | Windows 当前用户自启、PATH 管理 |
+| `integration service ...` | Linux systemd 用户服务管理 |
 | `update version` / `check` / `status` / `download --candidate ID` | 更新器版本、候选检查、缓存状态和校验下载 |
 | `help [命令路径]` | 查看帮助，不启动后台；也支持公开命令的 `--help`、`-h` |
 
@@ -440,7 +442,7 @@ Windows 安装版可重新运行对应版本的可信安装器。便携版也可
 | --- | --- |
 | `gui bootstrap --owner-pid PID [--log-level LEVEL]` | 正整数 PID 必填，绑定 GUI 进程身份，启动或确认 desktop 后台；日志等级省略则采用启动默认行为，显式值仅允许 `info`、`debug`、`trace` |
 | `gui restart --owner-pid PID [--log-level LEVEL]` | 同一 GUI 所有者才能重启 desktop 后台；日志等级默认 `debug`，允许值同上 |
-| `gui open-log-directory` | 无业务参数；Windows 打开当前实例已存在的日志目录，不创建目录、不启动后台 |
+| `gui open-log-directory` | 无业务参数；在 Windows 或 Linux 打开当前实例已存在的日志目录，不创建目录、不启动后台 |
 | 旧顶层 `status` | 已退役，仅提示改用 `daemon status` 并返回失败；旧脚本应更新命令 |
 
 `gui bootstrap` 和 `gui restart` 成功时向 stdout 输出 `schemaVersion: 1` 的 JSON 连接文档，包含连接端点、运行 token、产品版本、构建标识、后台 PID、模式和日志等级。**运行 token 属于敏感信息，不要公开输出文档或将其附在问题反馈中。**
@@ -459,6 +461,7 @@ Windows 安装版可重新运行对应版本的可信安装器。便携版也可
 .\sidraviactl.exe help config update
 .\sidraviactl.exe help auth start
 .\sidraviactl.exe help integration
+.\sidraviactl.exe help update
 ```
 
 **退出码**：公开命令成功返回 `0`，失败（包括用法错误）返回 `1`。成功仅表示该命令完成，不保证认证成功、网络可用或后台处于某个特定状态；应结合返回内容判断。内部桥接命令的特殊退出码见上一节。

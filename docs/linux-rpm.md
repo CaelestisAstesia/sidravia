@@ -2,7 +2,7 @@
 
 本文介绍当前开发版。[0.5.0-alpha.2 对应文档](https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/linux-rpm.md)。
 
-图形包初始支持环境为 **Fedora 45 x86_64、KDE Plasma / Wayland**。软件包由项目提供，下载见[发行页面](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
+图形包初始支持环境为 **Fedora 45 x86_64、KDE Plasma / Wayland**。从[发行页面](https://github.com/CaelestisAstesia/sidravia/releases)下载对应版本的 RPM。
 
 ## 选择与安装
 
@@ -15,10 +15,11 @@
 
 ARM64 RPM 暂不提供。ARM64 用户可选择[核心便携包](../README.md#选择下载包)。
 
-下载对应 `.rpm` 与校验清单，按[快速开始](quick-start.md#校验下载)核对哈希。在下载目录执行，尖括号部分替换为实际文件名：
+下载对应 `.rpm` 与校验清单，按[快速开始](quick-start.md#校验下载)核对哈希。在下载目录执行，把变量值改成实际文件名：
 
 ```bash
-sudo dnf install ./<下载的RPM文件名>.rpm
+rpm_file='实际下载的文件名.rpm'
+sudo dnf install "./$rpm_file"
 ```
 
 安装失败时，保留 `dnf` 的错误提示并查看发行说明。

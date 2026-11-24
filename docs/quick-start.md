@@ -10,6 +10,8 @@
 
 ### Windows x64
 
+Windows GUI 需要 [Microsoft Visual C++ x64 运行库](https://aka.ms/vc14/vc_redist.x64.exe)。学校公告还需要系统的 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
+
 - **安装版**（`…-windows-amd64-setup.exe`）：运行安装器，保留「图形界面」组件，按向导完成安装。需要登录 Windows 后自动启动时，勾选「开机自启」并选择「启动到托盘」；需要在任意终端使用命令行工具时，勾选「加入用户 PATH」。桌面快捷方式按需创建。取消 GUI 组件即为仅核心安装。
 - **GUI 便携版**（`…-windows-amd64-gui-portable.zip`）：完整解压到固定、可写的目录，运行 `Sidravia.exe`。保留 `sidravia.portable` 及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
 
@@ -18,7 +20,7 @@
 ### Linux x64
 
 - **GUI 便携版**（`…-linux-amd64-gui-portable.tar.gz`）：先安装[运行依赖](linux-portable.md#运行环境)，完整解压到可写目录，在包根目录运行 `./sidravia_gui`。保留 `gui-runtime/` 和其他随包文件。
-- **Fedora RPM**：按 [RPM 说明](linux-rpm.md)使用 `dnf` 安装 GUI 包，然后从应用菜单打开 Sidravia。RPM 的配置位于当前用户的 XDG 目录，不会自动导入便携版数据。
+- **Fedora RPM**：按 [0.5.0-alpha.2 的 RPM 说明](https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/linux-rpm.md)使用 `dnf` 安装 GUI 包，然后从应用菜单打开 Sidravia。RPM 的配置位于当前用户的 XDG 目录，不会自动导入便携版数据。
 
 Linux 的自启在登录桌面后生效，自动认证需另行开启。便携版保留程序目录内的数据，具体位置见[数据与隐私](privacy.md#linux)。
 

@@ -8,12 +8,12 @@
 
 当前仓库固定 Go **1.26.4**、Flutter **3.47.0**，CI 使用 Python **3.14.4**。工具版本与完整参数见 [developer 工具说明](../tools/developer/README.md)和[验证工作流](../.github/workflows/verify.yml)。不需要为每次修改创建新编译环境或清理缓存。
 
-在仓库根目录使用统一入口：
+将固定 Go 放入 PATH。从仓库根目录使用统一入口，GUI 命令中的路径替换为本机 Flutter 可执行文件：
 
 ```bash
 python3 tools/developer/dev.py check
 python3 tools/developer/dev.py check --scope go --go-package ./internal/update/...
-python3 tools/developer/dev.py check --scope gui
+python3 tools/developer/dev.py check --scope gui --flutter /absolute/path/to/flutter
 python3 tools/developer/dev.py check --scope go --go-checks cross
 ```
 
@@ -51,10 +51,11 @@ python3 tools/developer/dev.py linux --check-gui --flutter /absolute/path/to/flu
 python3 tools/developer/dev.py windows --package --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
 ```
 
-该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包：
+该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包。以下版本号仅作本地构建示例：
 
 ```bash
-python3 tools/developer/dev.py package --version 0.5.0-alpha.2 --output dist/linux-amd64
+mkdir -p dist
+python3 tools/developer/dev.py package --version 0.6.0-alpha.1 --output dist/linux-amd64
 ```
 
 同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。ARM64 仅提供核心便携包，Windows 核心包包含 MGR；GUI 支持 Windows/Linux AMD64，安装程序为 Windows AMD64，RPM 初始目标为 Fedora 45 x86_64。ARM64 尚待实机验证。
@@ -73,10 +74,10 @@ python3 tools/developer/dev.py package --version 0.5.0-alpha.2 --output dist/lin
 | `cmd/sidraviad`、`internal/daemon` | 后台组合、配置、会话、网络与协议 |
 | `internal/ipc` | 本机通信契约、客户端与服务端 |
 | `internal/clientbootstrap` | 后台探测、启动与连接 |
-| `cmd/sidraviamgr`、`internal/installationmanager` | Windows 当前用户 PATH 与登录自启 |
+| `cmd/sidraviamgr`、`internal/installationmanager` | Windows 当前用户 PATH 与登录自启，Linux systemd 用户服务 |
 | `cmd/sidraviaupdater`、`internal/update` | 更新候选选择、下载、校验与受限生命周期协作 |
 | `gui/lib` | Flutter 应用、通信与界面 |
-| `tools/developer`、`tools/build` | 固定验证和发行工具 |
+| `packaging`、`tools/build`、`tools/developer` | 安装模板、包生产和独立验证工具 |
 
 CLI 中，`cli.go` 负责命令装配与分派，`help.go` 保存确定性的帮助规格，`presentation.go` 负责安全呈现。`read_only.go` 是连接已有后台的查询边界；认证、配置和其他命令在各自文件中执行用例，不另持有后台状态。
 

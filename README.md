@@ -12,7 +12,7 @@ Sidravia 使用共享的 Go 认证核心与 Flutter 桌面界面，面向 Window
 
 ## 使用
 
-当前版本为 **[0.5.0-alpha.2](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)**。请按系统、架构和使用方式选择下载包。
+当前公开预发布版为 **[0.5.0-alpha.2](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)**。下表对应此版本。下载后按[快速开始](docs/quick-start.md)安装。当前源码新增的功能及构建方式见[开发指南](docs/development.md)。
 
 ### 选择下载包
 
@@ -26,10 +26,6 @@ Sidravia 使用共享的 Go 认证核心与 Flutter 桌面界面，面向 Window
 `amd64`、`x86_64` 和 x64 都表示 x86-64，Intel 与 AMD 的 64 位电脑均适用；当前没有 32 位 x86 包。ARM64 核心包尚待实机验证。
 
 **GUI 包包含界面和核心**，适合日常桌面使用。核心包通过 `sidraviactl` 使用，适合终端和脚本。安装版由安装器管理快捷方式、升级和卸载；便携版完整解压后运行；RPM 交给 Fedora 包管理器管理。
-
-Windows 打开 `Sidravia.exe`，Linux GUI 便携版运行包根目录的 `./sidravia_gui`，RPM 安装后从应用菜单打开。在「设置 → 连接配置」选择机构、填写账号和密码，保存并连接。操作步骤见[快速开始](docs/quick-start.md)，Linux 用户请同时查看[便携版](docs/linux-portable.md)或 [RPM](docs/linux-rpm.md) 说明。
-
-默认关闭窗口会隐藏到托盘，连接继续保持；需要退出时，在托盘菜单选择「退出 Sidravia」。启动时自动登录、断线后自动重连和登录系统后自启可分别设置。Linux 没有托盘服务时会保留可访问的主窗口。
 
 预发布版本可能调整配置格式和命令。升级前请阅读发行说明并备份配置。
 

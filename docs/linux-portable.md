@@ -2,7 +2,7 @@
 
 本文介绍当前开发版。[0.5.0-alpha.2 对应文档](https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/linux-portable.md)。
 
-下载与版本变化见[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
+从[发行页面](https://github.com/CaelestisAstesia/sidravia/releases)选择与系统架构和用途匹配的包。只有发行说明列出的功能适用于对应下载包。
 
 ## 运行环境
 
@@ -20,7 +20,15 @@ GTK 3、GLib、glibc、libstdc++、Wayland 等系统库也需可用。中文界�
 
 ## 解压与启动
 
-完整解压到当前用户可写的固定目录，在包根目录运行：
+完整解压到当前用户可写的固定目录。以下命令可解压 `.tar.gz` 或 `.tar.xz`，把变量值改成实际下载文件名：
+
+```sh
+archive='sidravia-v0.5.0-alpha.2-linux-amd64-gui-portable.tar.gz'
+mkdir -p "$HOME/Applications"
+tar -xf "$archive" -C "$HOME/Applications"
+```
+
+进入解压出的包根目录，运行：
 
 ```bash
 ./sidravia_gui
@@ -46,11 +54,11 @@ GUI 的用户 PATH 设置在 `~/.local/bin` 创建本安装的 `sidraviactl`、`
 
 ## 更新、移动和移除
 
-移动或删除前，在旧位置关闭已启用的自启及 PATH 登记，正常退出 GUI 与后台，再操作整个目录；移动后按需重新登记。
+移动或删除前，在旧位置关闭已启用的桌面自启及 PATH 登记。如果使用 [systemd 用户服务](#systemd-用户服务)，先运行 `./sidraviactl integration service unregister`。正常退出 GUI 与后台后再移动或移除目录，移动后按需重新登记。
 
 手动升级时，完整解压新版到新目录，在两端都退出后只转移需要保留的私有数据，不能覆盖正在运行的目录。配置迁移步骤见[使用指南](guide.md#更新移动与卸载)。
 
-GUI 包使用 `-linux-amd64-gui-portable.tar.gz`，核心包使用 `-core-portable.tar.gz`。更新器按当前包型选择更新。自动更新的使用条件、命令和故障处理见[更新检查与下载](advance.md#更新检查与下载)。
+GUI 包的名称含 `-linux-amd64-gui-portable`，仅核心包以 `-core-portable` 区分。归档扩展名以该版本发行页为准。更新器按当前包型选择更新，见[更新检查与下载](advance.md#更新检查与下载)。
 
 其他发行版、桌面环境和 X11 尚待验证。通知、登录自启和校园认证请在实际使用环境中检查。
 

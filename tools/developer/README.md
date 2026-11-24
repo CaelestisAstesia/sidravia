@@ -1,6 +1,6 @@
 # Development commands
 
-Run from the repository root with Python 3 and the pinned Go toolchain (Go 1.26.4).
+Run from the repository root with Python 3 and Go 1.26.4 on PATH. For GUI commands, pass the pinned Flutter executable with `--flutter /absolute/path/to/flutter` unless you have already configured the local default. In packaging examples, the supplied version labels the resulting local artifacts.
 `dev.py` uses the existing verifier and distribution producer/consumer. It does
 not install, authenticate, sign, upload or publish. `release download` makes only
 the explicitly requested public HTTPS reads. Only explicit development
@@ -22,8 +22,8 @@ Choose one existing entry for the scenario; there is no new mandatory sequence:
 ## Offline interactive GUI preview
 
 ```bash
-.local/bin/dev preview
-.local/bin/dev preview --check
+python3 tools/developer/dev.py preview --flutter /absolute/path/to/flutter
+python3 tools/developer/dev.py preview --check --flutter /absolute/path/to/flutter
 ```
 
 The first command serves the existing Flutter offline demo at
@@ -370,8 +370,8 @@ in-app, ephemeral announcement view. No custom window positioning is promised
 under Wayland: the compositor controls placement and focus.
 
 ```
-.local/bin/dev linux --check-gui
-.local/bin/dev linux --integration
+python3 tools/developer/dev.py linux --check-gui
+python3 tools/developer/dev.py linux --integration
 ```
 
 The first command checks shared native frame geometry and builds a development bundle with exact sibling CTL/daemon
@@ -396,8 +396,8 @@ submission/commit; client-area screenshots alone cannot prove those boundaries.
 From a clean isolated candidate on Fedora 45 x86_64:
 
 ```sh
-.local/bin/dev linux --check-gui
-.local/bin/dev linux --package --version 0.5.0-alpha.1 --output .local/linux-portable-output
+python3 tools/developer/dev.py linux --check-gui
+python3 tools/developer/dev.py linux --package --version 0.5.0-alpha.1 --output .local/linux-portable-output
 ```
 
 The fixed Flutter SDK builds the GUI with the requested build name. The existing
@@ -421,7 +421,7 @@ After producing the archive, accept that exact clean-source package on the
 current KDE/Wayland desktop with:
 
 ```sh
-.local/bin/dev linux --verify-package .local/linux-portable-output/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz
+python3 tools/developer/dev.py linux --verify-package .local/linux-portable-output/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz
 ```
 
 This checks the local producer receipt before extracting into an owned directory
@@ -432,7 +432,7 @@ authentication or register the current account for autostart.
 
 ### Linux announcement native acceptance
 
-`.local/bin/dev linux --announcement-integration` builds the real GTK/WebKit
+`python3 tools/developer/dev.py linux --announcement-integration` builds the real GTK/WebKit
 announcement adapter and runs it against an owned loopback HTTP server. It checks
 redirects/anchors/script navigation, engine-marked gesture dispatch to an isolated
 XDG URI handler, close/reopen generations, network/download/process failures and
@@ -461,10 +461,10 @@ no account scan or automatic autostart registration is performed. Initial suppor
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
 ```
-.local/bin/dev linux --package --version 0.5.0-alpha.1 --output .local/rpm-portable-input
-.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
-.local/bin/dev linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
-.local/bin/dev linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.5.0~alpha.1-1.x86_64.rpm .local/rpm-r2/sidravia-0.5.0~alpha.1-2.x86_64.rpm
+python3 tools/developer/dev.py linux --package --version 0.5.0-alpha.1 --output .local/rpm-portable-input
+python3 tools/developer/dev.py linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
+python3 tools/developer/dev.py linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2
+python3 tools/developer/dev.py linux --verify-rpm-upgrade .local/rpm-r1/sidravia-0.5.0~alpha.1-1.x86_64.rpm .local/rpm-r2/sidravia-0.5.0~alpha.1-2.x86_64.rpm --flutter /absolute/path/to/flutter
 ```
 
 Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
@@ -475,7 +475,8 @@ repository upload is performed. The candidate is an upstream binary package;
 private Flutter runtime and font licensing prevent assuming Fedora repository
 eligibility. Full bundled notices remain in the payload.
 
-Acceptance requires user namespaces and a KDE/Wayland session. It snapshots the
+GUI acceptance requires user namespaces, a KDE/Wayland session, and the pinned
+Flutter SDK. Core acceptance does not use Flutter or Wayland. The fixture snapshots the
 host RPM SQLite inventory read-only, installs/updates/erases in a newly owned
 private root, with dependency checks enabled. Installed binaries run through
 Bubblewrap over read-only host libraries and private HOME/XDG/namespace. A
@@ -507,7 +508,7 @@ ARM64 RPM is not currently produced.
 
 ## Isolated account-business fixture
 
-`.local/bin/dev linux --business-integration` uses the same pinned core/Flutter
+`python3 tools/developer/dev.py linux --business-integration` uses the same pinned core/Flutter
 build entry and owned namespace/XDG fixture. It runs only the account-business
 native test, with fictional credentials and a UDP peer bound to loopback. The
 fixture verifies login statistics and checksummed plain text through the real
@@ -554,7 +555,7 @@ interactive desktop. Test processes run with its limited InteractiveToken;
 QGA's SYSTEM token is used only for transport, scoped setup and task management.
 
 ```bash
-.local/bin/dev vm --request tools/developer/requests/windows-native.json \
+python3 tools/developer/dev.py vm --request tools/developer/requests/windows-native.json \
   --guest-root 'C:\Users\astesia\dv' \
   --guest-user astesia --windows-python 'C:\DevTools\Python\python.exe'
 ```
@@ -631,16 +632,16 @@ with the same schema-1 stage runner and text/JSON formatter used by `vm`.
 
 ```bash
 # Default: Go native + Python. Cross builds and GUI are explicit selections.
-.local/bin/dev check
+python3 tools/developer/dev.py check
 # A local change: rerun only selected packages / developer-tool test files.
-.local/bin/dev check --scope go --go-package ./internal/update/...
-.local/bin/dev check --scope python --python-test test_validation_run.py
+python3 tools/developer/dev.py check --scope go --go-package ./internal/update/...
+python3 tools/developer/dev.py check --scope python --python-test test_validation_run.py
 # Shared GUI checks once, with an optional offline Web and/or Linux build.
-.local/bin/dev check --scope gui --preview-build --linux-build
-.local/bin/dev check --scope gui --gui-test test/offline_demo_test.dart
+python3 tools/developer/dev.py check --scope gui --preview-build --linux-build
+python3 tools/developer/dev.py check --scope gui --gui-test test/offline_demo_test.dart
 # Combine scopes, inspect a machine-readable plan, or request one JSON result.
-.local/bin/dev check --scope go --scope python --scope gui --plan
-.local/bin/dev check --scope python --format json
+python3 tools/developer/dev.py check --scope go --scope python --scope gui --plan
+python3 tools/developer/dev.py check --scope python --format json
 ```
 
 Scopes and explicit test selections are deduplicated. `--go-checks` defaults to
@@ -678,9 +679,9 @@ package build, installer execution, test retry, Git commit or release operation.
 
 ```bash
 # Staged + unstaged + nonignored untracked changes against HEAD.
-.local/bin/dev check --recommend
+python3 tools/developer/dev.py check --recommend
 # Include committed branch changes as well as current local edits.
-.local/bin/dev check --recommend --base main
+python3 tools/developer/dev.py check --recommend --base main
 ```
 
 This is a read-only JSON recommendation, built by the existing `check` planner.
@@ -714,9 +715,9 @@ native behavior on other platforms, installation/update, campus or release state
 ## Inspect an existing check or VM receipt
 
 ```bash
-.local/bin/dev report /absolute/path/to/run-directory
-.local/bin/dev report /absolute/path/to/report.json --format json
-.local/bin/dev report /absolute/path/to/run-directory --stage gui-tests --tail-bytes 4000
+python3 tools/developer/dev.py report /absolute/path/to/run-directory
+python3 tools/developer/dev.py report /absolute/path/to/report.json --format json
+python3 tools/developer/dev.py report /absolute/path/to/run-directory --stage gui-tests --tail-bytes 4000
 ```
 
 This read-only command consumes existing schema-1 `check`, `vm`, command-sequence
@@ -749,10 +750,10 @@ or certify native, campus or release acceptance.
 
 ```bash
 # Attach copied Windows read-only acceptance snapshots to an exact VM run.
-.local/bin/dev report /absolute/path/to/vm-run --native windows-field=/absolute/path/to/Installed.json --format json
+python3 tools/developer/dev.py report /absolute/path/to/vm-run --native windows-field=/absolute/path/to/Installed.json --format json
 # Existing Linux fixtures can be read directly, or attached in the same manner.
-.local/bin/dev report /absolute/path/to/linux-desktop-fixture/result.json --kind linux-desktop --format json
-.local/bin/dev report /absolute/path/to/vm-run --native linux-rpm=/absolute/path/to/rpm-result.json
+python3 tools/developer/dev.py report /absolute/path/to/linux-desktop-fixture/result.json --kind linux-desktop --format json
+python3 tools/developer/dev.py report /absolute/path/to/vm-run --native linux-rpm=/absolute/path/to/rpm-result.json
 ```
 
 `--kind` selects `stage` (default), `linux-desktop` (including business/portable
@@ -858,8 +859,8 @@ retained. Local source simulation does not certify the public GitHub channel.
 ### Verify explicitly selected public downloads
 
 ```bash
-.local/bin/dev release download --request .local/public-release-request.json --public-key .local/publisher-public.txt --output .project/evidence/public-download/new-run --format json
-.local/bin/dev report .project/evidence/public-download/new-run --format json
+python3 tools/developer/dev.py release download --request .local/public-release-request.json --public-key .local/publisher-public.txt --output .project/evidence/public-download/new-run --format json
+python3 tools/developer/dev.py report .project/evidence/public-download/new-run --format json
 ```
 
 Create the output's parent directory first; the output itself must not exist.
@@ -923,10 +924,10 @@ capture flow is now `gui/test/gui_capture_test.dart`; existing HTML-reference an
 home-layout scripts remain available for their original purposes.
 
 ```bash
-.local/bin/dev visual capture --font-manifest .local/system-fonts.json --output .project/evidence/visual/before
+python3 tools/developer/dev.py visual capture --font-manifest .local/system-fonts.json --output .project/evidence/visual/before
 # Repeat on the candidate with the same inputs/environment.
-.local/bin/dev visual capture --font-manifest .local/system-fonts.json --output .project/evidence/visual/after
-.local/bin/dev visual compare --baseline .project/evidence/visual/before --candidate .project/evidence/visual/after --output .project/evidence/visual/review --format json
+python3 tools/developer/dev.py visual capture --font-manifest .local/system-fonts.json --output .project/evidence/visual/after
+python3 tools/developer/dev.py visual compare --baseline .project/evidence/visual/before --candidate .project/evidence/visual/after --output .project/evidence/visual/review --format json
 ```
 
 Pillow is required for PNG inspection/comparison (Fedora `python3-pillow`). No
