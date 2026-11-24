@@ -63,22 +63,7 @@ func readInteractivePasswordWith(input io.Reader, errorOutput io.Writer, get ter
 		return "", wrapSafeOperation("关闭控制台回显", err)
 	}
 
-	password, readErr := readPasswordLine(input)
-	lineBreakErr := writeAll(errorOutput, "\n")
-	restoreErr := set(fd, unix.TCSETS, original)
-
-	var resultErrors []error
-	if readErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("读取交互式密码", readErr))
-	}
-	if lineBreakErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("写入密码换行", lineBreakErr))
-	}
-	if restoreErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("恢复控制台模式", restoreErr))
-	}
-	if len(resultErrors) != 0 {
-		return "", errors.Join(resultErrors...)
-	}
-	return password, nil
+	return readPasswordWithEchoDisabled(input, errorOutput, func() error {
+		return set(fd, unix.TCSETS, original)
+	})
 }

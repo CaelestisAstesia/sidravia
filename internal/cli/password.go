@@ -122,9 +122,17 @@ func readHiddenPassword(
 		return "", wrapSafeOperation("关闭控制台回显", err)
 	}
 
+	return readPasswordWithEchoDisabled(input, errorOutput, func() error {
+		return setMode(originalMode)
+	})
+}
+
+// The caller owns the original platform mode. Always restore it after the
+// read and newline, and retain each failure for errors.Is.
+func readPasswordWithEchoDisabled(input io.Reader, errorOutput io.Writer, restore func() error) (string, error) {
 	password, readErr := readPasswordLine(input)
 	lineBreakErr := writeAll(errorOutput, "\n")
-	restoreErr := setMode(originalMode)
+	restoreErr := restore()
 
 	var resultErrors []error
 	if readErr != nil {
