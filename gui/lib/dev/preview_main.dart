@@ -1,6 +1,6 @@
 import 'package:sidravia_gui/shared/localization/app_locale.dart';
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/features/home/home_page.dart';
+import 'package:sidravia_gui/features/home/home_view.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 void main() => runApp(const _PreviewApp());
