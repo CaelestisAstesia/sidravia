@@ -86,8 +86,9 @@ GUI 包的名称含 `-linux-amd64-gui-portable`，仅核心包以 `-core-portabl
 遇到系统权限拒绝时，请在可授权的桌面会话操作或请管理员使用 `loginctl`。
 
 手动移动目录或更换安装前，退出 GUI，再从旧目录运行 `./sidraviactl integration service stop`。
+移动整个目录，或先按[便携版更新步骤](guide.md#更新移动与卸载)把需要保留的配置复制到新安装。
 从目标目录运行 `./sidraviactl integration service replace` 更新登记，需要继续运行时再执行
-`./sidraviactl integration service start`。各安装继续使用各自目录中的配置。
+`./sidraviactl integration service start`。
 更换中断后可从任一参与安装运行 `sidraviactl integration service recover`，恢复原登记和原启用状态。若旧安装已移除，可用 `sidraviactl integration service discard --yes` 停止后台、解除登记并清除中断记录。各安装的数据会保留。
 
 如果状态提示切换记录损坏，在设置的「后台管理方式」中清除损坏的切换记录，或运行 `sidraviactl integration service discard-damaged --yes`。这会保留当前后台、登记和账号配置。清除后可按实际状态继续管理或解除登记。
