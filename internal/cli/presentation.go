@@ -103,14 +103,6 @@ func newPresentation(w io.Writer) *presentation {
 	return &presentation{output: out, profile: profile, restore: restore}
 }
 
-// newTestPresentation forces a specific profile for tests. It never queries the
-// developer terminal, never enables virtual-terminal processing, and never
-// mutates package-global termenv state.
-func newTestPresentation(w io.Writer, profile termenv.Profile) *presentation {
-	out := termenv.NewOutput(w, termenv.WithProfile(profile), termenv.WithTTY(false))
-	return &presentation{output: out, profile: profile, restore: func() error { return nil }}
-}
-
 func newPlainPresentation() *presentation {
 	out := termenv.NewOutput(io.Discard, termenv.WithProfile(termenv.Ascii), termenv.WithTTY(false))
 	return &presentation{output: out, profile: termenv.Ascii, restore: func() error { return nil }}
