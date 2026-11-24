@@ -1,12 +1,12 @@
 # Sidravia 命令行完整冒烟测试（Windows）。
 #
-# 本脚本针对本地真实后台服务运行公开 CLI 命令，并报告通过/失败结果。
+# 本脚本会在指定安装中启动、停止和重启后台，并创建测试配置。
+# 请在使用隔离账号或测试数据目录的 Windows 环境运行。
 # 真实认证由 field-test.ps1 在获授权的 Windows 现场环境中执行。本脚本仅支持
 # PowerShell 7，并使用 UTF-8 编码。
 #
 # 用法：
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\cli_smoke.ps1 -SidraviaCtl C:\path\sidraviactl.exe
+#   pwsh -NoProfile -File .\tools\cli_smoke.ps1 -SidraviaCtl C:\test-install\sidraviactl.exe
 [CmdletBinding()]
 param(
     [string]$SidraviaCtl = '.\sidraviactl.exe'

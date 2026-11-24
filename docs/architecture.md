@@ -10,9 +10,9 @@ Sidravia 将认证核心与用户界面分开。GUI 面向日常使用，CTL 提
 | `sidraviactl` | 命令行意图收集、结果呈现，以及 GUI 启动所需的受限桥接 |
 | `sidraviad` | 配置和凭据、网络观察、认证会话与协议执行 |
 | `sidraviamgr` | Windows 当前用户 PATH 和登录自启；卸载与文件清理由安装器负责 |
-| `sidraviaupdater` | 独立执行更新检查、下载、签名核验及确认后的应用与恢复；RPM 由包管理器维护 |
+| `sidraviaupdater` | 执行便携版和 Windows 安装版的更新下载、核验、应用和恢复 |
 
-自动应用会核验当前版本、目标版本的签名和文件清单，并要求用户确认。使用条件见[更新说明](advance.md#更新检查与下载)。
+Windows 和 Linux 的 `sidraviactl update check` 在 CTL 进程内检查更新。应用更新需用户确认，并核验当前版本和目标版本的签名与文件清单。RPM 由系统包管理器维护。见[更新说明](advance.md#更新检查与下载)。
 
 本文描述当前源码职责，各发行版的支持范围以对应说明为准。Linux 核心包不包含 MGR，Linux GUI 的系统集成见 [Linux 便携包说明](linux-portable.md)。
 

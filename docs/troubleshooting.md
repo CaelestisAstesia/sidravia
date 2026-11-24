@@ -82,16 +82,16 @@
 
 确认 GUI、CTL、后台及配套资源来自同一个发行包，并已完整安装或解压。不要只替换单个 EXE，也不要混用不同版本的程序文件。
 
-如果仍有旧后台运行，请先通过原版本正常退出：GUI 从托盘菜单选择「退出 Sidravia」；独立后台使用原包中的 `sidraviactl daemon stop`。退出后再启动新版。
+如果仍有旧后台运行，请先用原版本正常退出。GUI 从托盘菜单选择「退出 Sidravia」，独立后台使用原包中的 `sidraviactl daemon stop`。Linux 已使用 systemd 托管时，用原安装的 `sidraviactl integration service stop`，再按对应包型的[更新步骤](guide.md#更新移动与卸载)继续。
 
-GUI 会自行启动配套核心。使用 CTL 时，只读查询不会自动启动后台；可在程序目录打开 PowerShell，先执行：
+在应用管理模式下，GUI 会启动配套核心。若使用 CTL 并需要启动独立后台，可在 Windows 程序目录打开 PowerShell，执行：
 
 ```powershell
 .\sidraviactl.exe daemon start
 .\sidraviactl.exe daemon status
 ```
 
-若提示模式冲突，请按上文[模式切换说明](#gui-与-ctl-提示模式冲突)处理。问题持续时，保留具体错误提示，并说明是否刚更新版本、移动目录或切换使用方式。
+Linux 便携版使用 `./sidraviactl`，RPM 安装后可直接使用 `sidraviactl`。已登记的后台通过 `integration service status` 查询，按需用 `integration service start` 启动。若提示模式冲突，请按上文[模式切换说明](#gui-与-ctl-提示模式冲突)处理。
 
 ## Linux 界面无法启动
 
@@ -113,7 +113,7 @@ GUI 会自行启动配套核心。使用 CTL 时，只读查询不会自动启�
 - 是否使用 VPN、代理、TUN 或其他认证客户端。
 - 是否刚升级、移动程序目录，或修改网卡绑定。
 
-GUI 用户可在「设置 → 连接与诊断」复制诊断摘要。已经使用 CTL 且后台可连接时，可在程序目录打开 PowerShell，将诊断导出到尚不存在的文件：
+GUI 用户可在「设置 → 连接与诊断 → 运行状态快照」使用「复制快照」。已经使用 CTL 且后台可连接时，可在程序目录打开 PowerShell，将诊断摘要导出到尚不存在的文件：
 
 ```powershell
 .\sidraviactl.exe diagnostics export --output .\sidravia-diagnostics.json
