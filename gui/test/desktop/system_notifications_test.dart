@@ -83,6 +83,7 @@ void main() {
     await event('clicked', {'category': 'announcement', 'token': tokenA});
     expect(clicked, ['announcement:$tokenA']);
     await announcement.show(token: tokenA, title: '公告', body: '查看');
+    expect(await show(), submitted);
     expect(
       await announcement.show(token: tokenB, title: '公告', body: '更新'),
       submitted,
@@ -91,16 +92,25 @@ void main() {
       'announcement',
       'connection',
       'announcement',
+      'connection',
       'announcement',
     ]);
     await event('clicked', {'category': 'announcement', 'token': tokenA});
     expect(clicked, ['announcement:$tokenA']);
+    await click();
+    expect(clicked, ['announcement:$tokenA', 'connection:$tokenA']);
+
+    expect(await show(token: tokenB), submitted);
     await announcement.dismiss();
     expect(calls.last.arguments, {'category': 'announcement'});
     await event('clicked', {'category': 'announcement', 'token': tokenB});
     await click(tokenB);
     await click(tokenB);
-    expect(clicked, ['announcement:$tokenA', 'connection:$tokenB']);
+    expect(clicked, [
+      'announcement:$tokenA',
+      'connection:$tokenA',
+      'connection:$tokenB',
+    ]);
   });
 
   test(

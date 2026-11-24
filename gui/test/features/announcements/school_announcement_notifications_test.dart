@@ -13,6 +13,16 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final calls = <MethodCall>[];
 
+  Future<void> nativeEvent(String method, Map<String, Object> arguments) async {
+    await messenger.handlePlatformMessage(
+      channel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        MethodCall(method, arguments),
+      ),
+      (_) {},
+    );
+  }
+
   setUp(() {
     calls.clear();
     messenger.setMockMethodCallHandler(channel, (call) async {
@@ -44,11 +54,38 @@ void main() {
         'body': '点击查看学校公告',
       });
       expect(await adapter.dismiss(), isTrue);
+      final failures = <String>[];
+      adapter.onFailed = failures.add;
+      expect(
+        await adapter.show(token: announcementToken),
+        SchoolAnnouncementNotificationResult.submitted,
+      );
+      await nativeEvent('failed', {
+        'category': 'announcement',
+        'token': announcementToken,
+        'error_code': -2147024891,
+      });
+      expect(failures, [announcementToken]);
+      expect(adapter.lastFailureCode, '0x80070005');
+
       await adapter.dispose();
       await adapter.dispose();
-      expect(calls.map((call) => call.method), ['show', 'dismiss', 'dispose']);
+      expect(calls.map((call) => call.method), [
+        'show',
+        'dismiss',
+        'show',
+        'dispose',
+      ]);
       expect(calls[1].arguments, {'category': 'announcement'});
-      expect(calls[2].arguments, isNull);
+      expect(calls.last.arguments, isNull);
+      expect(adapter.lastFailureCode, isNull);
+      await nativeEvent('failed', {
+        'category': 'announcement',
+        'token': announcementToken,
+        'error_code': -1,
+      });
+      expect(failures, [announcementToken]);
+      expect(adapter.lastFailureCode, isNull);
       expect(
         await adapter.show(token: announcementToken),
         SchoolAnnouncementNotificationResult.failed,
@@ -103,13 +140,7 @@ void main() {
         ('announcement', announcementToken),
         ('connection', connectionToken),
       ]) {
-        await messenger.handlePlatformMessage(
-          channel.name,
-          const StandardMethodCodec().encodeMethodCall(
-            MethodCall('clicked', {'category': category, 'token': token}),
-          ),
-          (_) {},
-        );
+        await nativeEvent('clicked', {'category': category, 'token': token});
       }
       expect(clicked, ['connection:$connectionToken']);
       expect(
