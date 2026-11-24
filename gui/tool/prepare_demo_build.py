@@ -19,7 +19,7 @@ paths.update([
 ])
 manifest = {}
 for name in sorted(paths):
-    if name.startswith(('gui/archive/', 'gui/test/', 'gui/tool/')):
+    if name.startswith(('gui/test/', 'gui/tool/')):
         continue
     source = root / name
     if not source.is_file():
