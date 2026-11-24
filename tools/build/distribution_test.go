@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/tar"
-	"archive/zip"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -57,23 +56,9 @@ func TestDistributionContents(t *testing.T) {
 			contents := map[string]bool{}
 			bytesByName := map[string][]byte{}
 			if strings.HasPrefix(target, "windows-") {
-				z, err := zip.OpenReader(filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-core-portable.zip"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer z.Close()
-				for _, f := range z.File {
-					contents[f.Name] = true
-					stream, err := f.Open()
-					if err != nil {
-						t.Fatal(err)
-					}
-					data, err := io.ReadAll(stream)
-					closeErr := stream.Close()
-					if err != nil || closeErr != nil {
-						t.Fatalf("archive read: %v / %v", err, closeErr)
-					}
-					bytesByName[f.Name] = data
+				bytesByName = readZipContents(t, filepath.Join(out, "sidravia-v0.3.0-alpha.1-"+target+"-core-portable.zip"))
+				for name := range bytesByName {
+					contents[name] = true
 				}
 				if !contents["sidraviamgr.exe"] || !contents["sidraviaupdater.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || contents["app_icon.ico"] {
 					t.Fatal("missing manager or core")
