@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/logging/protection"
+	"sidravia/internal/daemon/logging/internal/protection"
 )
 
 func checkLogMode(t *testing.T, path string, mode os.FileMode) {

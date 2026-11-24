@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/logging/protection"
+	"sidravia/internal/daemon/logging/internal/protection"
 )
 
 func testWriter(t *testing.T, dir string, now *time.Time, policy retentionPolicy, fallback *bytes.Buffer) *Writer {

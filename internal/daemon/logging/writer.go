@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/daemon/logging/protection"
+	"sidravia/internal/daemon/logging/internal/protection"
 )
 
 // Writer owns the daemon's dated diagnostics, independently of inherited

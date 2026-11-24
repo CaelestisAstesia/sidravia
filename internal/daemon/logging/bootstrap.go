@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"sidravia/internal/daemon/logging/protection"
+	"sidravia/internal/daemon/logging/internal/protection"
 )
 
 const daemonLogRotateThreshold int64 = 10 * 1024 * 1024
