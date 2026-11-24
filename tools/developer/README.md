@@ -397,6 +397,7 @@ From a clean isolated candidate on Fedora 45 x86_64:
 
 ```sh
 python3 tools/developer/dev.py linux --check-gui
+mkdir -p .local
 python3 tools/developer/dev.py linux --package --version 0.5.0-alpha.1 --output .local/linux-portable-output
 ```
 
@@ -460,7 +461,8 @@ and icon. Reviewed Python pre/preun scriptlets coordinate only this installation
 no account scan or automatic autostart registration is performed. Initial support
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
 
-```
+```sh
+mkdir -p .local
 python3 tools/developer/dev.py linux --package --version 0.5.0-alpha.1 --output .local/rpm-portable-input
 python3 tools/developer/dev.py linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 1 --output .local/rpm-r1
 python3 tools/developer/dev.py linux --rpm .local/rpm-portable-input/sidravia-v0.5.0-alpha.1-linux-amd64-gui-portable.tar.gz --rpm-release 2 --output .local/rpm-r2

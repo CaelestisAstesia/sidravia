@@ -7,6 +7,7 @@
 /.project/
 
 # Local reference and scratch material
+/.local/
 /参考/
 /outside/
 
