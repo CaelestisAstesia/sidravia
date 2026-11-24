@@ -76,6 +76,8 @@ void main() {
       final store = FileGuiSettingsStore(path);
       final restored = (await store.read())!;
       expect(restored.logLevel, 'debug');
+      expect(restored.diagnosticsExpanded, true);
+      expect(restored.startHidden, true);
       expect(restored.announcementFrequency, stored.announcementFrequency);
       expect(
         restored.hiddenAnnouncementBehavior,
@@ -155,7 +157,7 @@ void main() {
           jsonDecode(encodeGuiSettings(stored)) as Map<String, dynamic>;
       final invalid = <Map<String, dynamic>>[
         {...base, 'schemaVersion': 7},
-        for (final level in ['unknown', null, true, 1])
+        for (final level in ['unknown', 'verbose', null, true, 1])
           {...base, 'logLevel': level},
         {...base, 'announcementFrequency': 'unknown'},
         {...base, 'announcementFrequency': true},

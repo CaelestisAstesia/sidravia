@@ -7,6 +7,66 @@ import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 void main() {
   test(
+    'log preferences default to Debug, restore explicit Info and save Trace',
+    () async {
+      expect(const GuiSettings().logLevel, 'debug');
+      final fresh = GuiPreferences(store: MemoryGuiSettingsStore());
+      await fresh.initialize();
+      expect(fresh.logLevel, 'debug');
+      fresh.dispose();
+      final explicit = decodeGuiSettings(
+        encodeGuiSettings(const GuiSettings(logLevel: 'info')),
+      );
+      final store = MemoryGuiSettingsStore()..settings = explicit;
+      final restored = GuiPreferences(store: store);
+      await restored.initialize();
+      expect(restored.logLevel, 'info');
+      restored.logLevel = 'trace';
+      await restored.settled;
+      expect(store.settings!.logLevel, 'trace');
+      restored.dispose();
+    },
+  );
+  test(
+    'mode changed during load wins and queued writes preserve other prefs',
+    () async {
+      final store = ControlledStore();
+      final prefs = GuiPreferences(store: store);
+      prefs.notificationMode = GuiNotificationMode.silent;
+      store.readResult.complete(
+        const GuiSettings(
+          appearanceMode: GuiAppearanceMode.dark,
+          logLevel: 'debug',
+          closeBehavior: GuiCloseBehavior.exit,
+          startHidden: true,
+          notificationMode: GuiNotificationMode.all,
+          announcementFrequency: GuiAnnouncementFrequency.everyConnection,
+        ),
+      );
+      await prefs.settled;
+      expect(prefs.notificationMode, GuiNotificationMode.silent);
+      prefs.notificationMode = GuiNotificationMode.all;
+      prefs.diagnosticsExpanded = true;
+      await prefs.settled;
+      expect(store.saved.last.notificationMode, GuiNotificationMode.all);
+      expect(store.saved.last.logLevel, 'debug');
+      expect(store.saved.last.appearanceMode, GuiAppearanceMode.dark);
+      expect(store.saved.last.closeBehavior, GuiCloseBehavior.exit);
+      expect(store.saved.last.startHidden, isTrue);
+      expect(
+        store.saved.last.announcementFrequency,
+        GuiAnnouncementFrequency.everyConnection,
+      );
+      expect(store.saved.last.diagnosticsExpanded, isTrue);
+      store.failSave = true;
+      prefs.notificationMode = GuiNotificationMode.abnormal;
+      await prefs.settled;
+      expect(prefs.notificationMode, GuiNotificationMode.abnormal);
+      expect(prefs.feedback, contains('未能保存'));
+      prefs.dispose();
+    },
+  );
+  test(
     'late startup read never overwrites user selection; saves serialize',
     () async {
       final store = ControlledStore();
