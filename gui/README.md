@@ -10,6 +10,8 @@
 python3 tools/developer/dev.py check --scope gui --flutter /absolute/path/to/flutter
 ```
 
+Flutter 递归发现 [`test/`](test) 下的用例。页面用例按功能放在 [`test/features/`](test/features)，应用流程、状态、IPC 和桌面能力各有自己的目录。可用 `--gui-test test/features/home/home_connection_actions_test.dart` 选择单个文件。原生 C++ 测试由 [`test/native/`](test/native) 的 CMake 运行，真实桌面集成保留在 [`integration_test/`](integration_test)。
+
 在配置好 Windows 工具链后，按[开发指南](../docs/development.md#windows-gui)构建 GUI。从 Windows 的 `gui` 目录使用 `flutter run -d windows` 时，应用会使用当前用户的实际后台与数据。
 
 Linux 开发包构建与隔离集成测试从仓库根运行：
