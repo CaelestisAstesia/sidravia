@@ -29,6 +29,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/packagefiles"
 )
@@ -75,7 +76,8 @@ func TestNativePortableUpdate(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			overlay := fixtureOverlay(t, repo, owned)
+			key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+			overlay := testfixture.WritePublisherOverlay(t, repo, owned, key.Public().(ed25519.PublicKey))
 			buildFixtureProducts(t, repo, oldDir, "1.0.0", "native-old", kind, bundle, overlay, baseEnv)
 			buildFixtureProducts(t, repo, newDir, "1.1.0", "native-new", kind, bundle, overlay, baseEnv)
 			old := fixtureArchive(t, oldDir, "1.0.0", "native-old", kind)
@@ -680,40 +682,6 @@ func TestNativePortableUpdate(t *testing.T) {
 			}
 		})
 	}
-}
-func fixtureOverlay(t *testing.T, repo, owned string) string {
-	t.Helper()
-	original := filepath.Join(repo, "internal/update/releases/trust.go")
-	data, err := os.ReadFile(original)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := ed25519.NewKeyFromSeed(make([]byte, 32))
-	pub := key.Public().(ed25519.PublicKey)
-	raw, _ := json.Marshal([]byte(pub))
-	var encoded []byte
-	if err := json.Unmarshal(raw, &encoded); err != nil {
-		t.Fatal(err)
-	}
-	parts := []string{}
-	for _, b := range encoded {
-		parts = append(parts, fmt.Sprintf("%d", b))
-	}
-	replacement := "NewPublisherKeys([]ed25519.PublicKey{{" + strings.Join(parts, ",") + "}})"
-	updated := strings.Replace(string(data), "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", replacement, 1)
-	if updated == string(data) {
-		t.Fatal("trust overlay source shape changed")
-	}
-	source := filepath.Join(owned, "synthetic-trust.go")
-	if err := os.WriteFile(source, []byte(updated), 0600); err != nil {
-		t.Fatal(err)
-	}
-	overlay, _ := json.Marshal(map[string]any{"Replace": map[string]string{original: source}})
-	path := filepath.Join(owned, "overlay.json")
-	if err := os.WriteFile(path, overlay, 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }
 func buildFixtureProducts(t *testing.T, repo, directory, version, build, kind, bundle, overlay string, env []string) {
 	t.Helper()

@@ -37,6 +37,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/packagefiles"
@@ -85,28 +86,7 @@ func nativeCLIUpdate(t *testing.T, useXZ bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := filepath.Join(repo, "internal/update/releases/trust.go")
-	src, err := os.ReadFile(original)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parts []string
-	for _, b := range pub {
-		parts = append(parts, fmt.Sprint(b))
-	}
-	replacement := strings.Replace(string(src), "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
-	if replacement == string(src) {
-		t.Fatal("trust overlay source changed")
-	}
-	sourceFile := filepath.Join(owned, "synthetic-trust.go")
-	if err := os.WriteFile(sourceFile, []byte(replacement), 0600); err != nil {
-		t.Fatal(err)
-	}
-	overlay, _ := json.Marshal(map[string]any{"Replace": map[string]string{original: sourceFile}})
-	overlayPath := filepath.Join(owned, "overlay.json")
-	if err := os.WriteFile(overlayPath, overlay, 0600); err != nil {
-		t.Fatal(err)
-	}
+	overlayPath := testfixture.WritePublisherOverlay(t, repo, owned, pub)
 	target := filepath.Join(owned, "portable with spaces")
 	nextDir := filepath.Join(owned, "new-products")
 	baseEnv := os.Environ()
