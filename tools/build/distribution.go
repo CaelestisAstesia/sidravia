@@ -180,7 +180,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	outputs := []string{archive}
 	if t.cfg.iscc != "" {
-		template, err := os.ReadFile(filepath.Join(t.repoRoot, "tools", "installer", "sidravia.iss"))
+		template, err := os.ReadFile(filepath.Join(t.repoRoot, "packaging", "windows", "sidravia.iss"))
 		if err != nil {
 			return err
 		}

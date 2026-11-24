@@ -153,6 +153,6 @@ CTL `integration ...` 也输出相同的公开结果字段，但其失败退出�
 
 ## 实现与验收边界
 
-入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installationmanager/path.go)、[Windows 操作分派](../internal/installationmanager/platform_windows.go)、[计划任务规则](../internal/installationmanager/task.ps1)、[Inno 安装与清理](../tools/installer/sidravia.iss)。
+入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installationmanager/path.go)、[Windows 操作分派](../internal/installationmanager/platform_windows.go)、[计划任务规则](../internal/installationmanager/task.ps1)、[Inno 安装与清理](../packaging/windows/sidravia.iss)。
 
 返回：[CTL 高级使用](advance.md) · [使用指南](guide.md) · [数据与隐私](privacy.md)

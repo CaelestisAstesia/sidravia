@@ -166,7 +166,7 @@ func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
 	newIndex := nativeIndex(t, payload, "1.1.0", "setup-new")
 	// Full production Pascal code with only system-integration IO stubbed. The
 	// fixture has no uninstall registration, shortcuts or genuine data backup.
-	template, e := os.ReadFile(filepath.Join(repo, "tools/installer/sidravia.iss"))
+	template, e := os.ReadFile(filepath.Join(repo, "packaging/windows/sidravia.iss"))
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -71,7 +71,7 @@ if ($Mode -eq 'create') {
             subprocess.run([powershell, '-NoProfile', '-File', windows_path(acl_script), native, 'create'],
                            check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
 
-            source = (REPO / 'tools/installer/sidravia.iss').read_text().split('[Code]\n', 1)[1]
+            source = (REPO / 'packaging/windows/sidravia.iss').read_text().split('[Code]\n', 1)[1]
             # Rename entry points; no production wizard/uninstall event executes.
             events = ('InitializeSetup', 'DeinitializeSetup', 'DeinitializeUninstall', 'InitializeWizard', 'RegisterPreviousData', 'ShouldSkipPage', 'CurPageChanged',
                       'UpdateReadyMemo', 'NextButtonClick', 'PrepareToInstall', 'CurStepChanged',
@@ -85,7 +85,7 @@ if ($Mode -eq 'create') {
             source = source.replace('io.github.astesia.Sidravia.Announcements', identity)
             for name in ('Sidravia.exe', 'sidraviad.exe', 'sidraviactl.exe', 'sidraviaupdater.exe'):
                 source = source.replace('Name="' + name + '"', 'Name="inno-fixture-unused-' + name + '"')
-            cases = (REPO / 'tools/installer/contracts.iss').read_text().replace('@ROOT@', native).replace('io.github.astesia.Sidravia.InnoTest.FIXTURE', identity)
+            cases = (REPO / 'packaging/windows/testdata/contracts.iss').read_text().replace('@ROOT@', native).replace('io.github.astesia.Sidravia.InnoTest.FIXTURE', identity)
             script = root / 'contracts.iss'
             script.write_text('#define ProductVersion "0.3.0-alpha.2"\n#define IncludeGUI 0\n'
                               '[Setup]\nAppName=Sidravia isolated contracts\nAppVersion=1\n'
