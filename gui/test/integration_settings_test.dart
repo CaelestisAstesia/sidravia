@@ -12,11 +12,19 @@ import 'support/installation_manager_fixture.dart';
 class FakeUserServiceManager extends FakeManager implements UserServiceManager {
   bool registered = false;
   final actions = <String>[];
+  Completer<UserServiceStatus?>? pendingChange;
+  int statusReads = 0;
+  bool failStatus = false;
 
   @override
   Future<UserServiceStatus?> userService(String action) async {
-    if (action != 'status') {
+    if (action == 'status') {
+      statusReads++;
+      if (closed || failStatus) throw const IntegrationFailure('无法读取状态');
+    } else {
       actions.add(action);
+      final pending = pendingChange;
+      if (pending != null) return pending.future;
       registered = action == 'takeover';
     }
     return UserServiceStatus(
@@ -35,6 +43,53 @@ class FakeUserServiceManager extends FakeManager implements UserServiceManager {
 }
 
 void main() {
+  for (final leave in [false, true]) {
+    testWidgets('handles failed user-service change with leave=$leave', (
+      tester,
+    ) async {
+      final change = Completer<UserServiceStatus?>();
+      final manager = FakeUserServiceManager()..pendingChange = change;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: IntegrationSettings(manager: manager)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('user-service-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(MenuItemButton, 'systemd'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认'));
+      await tester.pumpAndSettle();
+      expect(manager.actions, ['takeover']);
+      expect(manager.statusReads, 1);
+
+      if (leave) await tester.pumpWidget(const SizedBox.shrink());
+      manager.failStatus = true;
+      const message = '后台服务操作失败，请检查实际状态。';
+      change.completeError(const IntegrationFailure(message));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(manager.statusReads, leave ? 1 : 2);
+      if (leave) {
+        expect(manager.closed, isTrue);
+      } else {
+        expect(find.text(shortUiText(message)), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('user-service-selector')),
+          findsNothing,
+        );
+        manager.failStatus = false;
+        await tester.tap(find.text('重试'));
+        await tester.pumpAndSettle();
+        expect(manager.statusReads, 3);
+        expect(find.text(shortUiText(message)), findsNothing);
+        expect(find.text('应用管理'), findsOneWidget);
+      }
+    });
+  }
+
   testWidgets('background dropdown confirms changes and reports current mode', (
     tester,
   ) async {

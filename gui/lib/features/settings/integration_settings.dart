@@ -112,7 +112,13 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       final next = await services.userService(action);
       if (mounted) setState(() => _service = next);
     } on IntegrationFailure catch (error) {
-      final actual = await services.userService('status');
+      if (!mounted) return;
+      UserServiceStatus? actual;
+      try {
+        actual = await services.userService('status');
+      } on IntegrationFailure {
+        // Keep the action error and mark the service state unknown.
+      }
       if (mounted) {
         setState(() {
           _service = actual;
