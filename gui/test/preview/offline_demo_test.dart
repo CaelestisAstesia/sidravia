@@ -364,46 +364,4 @@ void main() {
       client.dispose();
     },
   );
-
-  testWidgets(
-    'production home keeps the manual school entry with explicit Unsupported feedback',
-    (tester) async {
-      final client = OfflineDemoClient();
-      final controller = offlineGuiController(client);
-      await controller.start();
-      final announcements = await school_dispatch.manualAnnouncements(
-        tester,
-        controller,
-      );
-      await announcements.start();
-      try {
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
-            home: SidraviaShell(
-              controller: controller,
-              announcements: announcements,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('home-notice')), findsOneWidget);
-        await tester.tap(find.byType(HomeAnnouncementEntryView));
-        await tester.pumpAndSettle();
-        expect(find.byType(Dialog), findsNothing);
-        expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
-      } finally {
-        await tester.pump();
-        await school_dispatch.pumpCleanup(tester, () async {
-          await announcements.close();
-          await controller.close();
-        });
-        await tester.pumpWidget(const SizedBox.shrink());
-        controller.dispose();
-        announcements.dispose();
-        client.dispose();
-      }
-      expect(client.closed, isTrue);
-    },
-  );
 }

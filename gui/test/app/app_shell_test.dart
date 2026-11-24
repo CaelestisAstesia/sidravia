@@ -272,6 +272,7 @@ void main() {
         client.dispose();
         await tester.binding.setSurfaceSize(null);
       }
+      expect(client.closed, isTrue);
     });
   }
 }
