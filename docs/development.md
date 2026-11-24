@@ -45,10 +45,10 @@ python3 tools/developer/dev.py linux --check-gui --flutter /absolute/path/to/flu
 
 ## 构建发行包
 
-发行包构建要求干净的源码提交与尚不存在的输出目录。以下 Windows 路径为示例，须替换为实际安装的工具路径：
+发行包构建要求干净的源码提交与尚不存在的输出目录。请填写候选版本，并把以下 Windows 工具路径换成本机路径。
 
 ```bash
-python3 tools/developer/dev.py windows --package --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
+python3 tools/developer/dev.py windows --package --version 0.6.0-alpha.1 --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
 ```
 
 该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包。以下版本号仅作本地构建示例：

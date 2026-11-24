@@ -88,7 +88,7 @@ Run from Windows or WSL with Windows PowerShell interop:
 ```bash
 python3 tools/developer/dev.py windows
 python3 tools/developer/dev.py windows --check-gui
-python3 tools/developer/dev.py windows --package --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
+python3 tools/developer/dev.py windows --package --version 0.6.0-alpha.1 --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
 ```
 
 The last command's Python and Inno paths are examples; supply installed native
