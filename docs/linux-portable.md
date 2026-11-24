@@ -54,7 +54,7 @@ GUI 的用户 PATH 设置在 `~/.local/bin` 创建本安装的 `sidraviactl`、`
 
 ## 更新、移动和移除
 
-移动或删除前，在旧位置关闭已启用的桌面自启及 PATH 登记。如果使用 [systemd 用户服务](#systemd-用户服务)，先运行 `./sidraviactl integration service unregister`。正常退出 GUI 与后台后再移动或移除目录，移动后按需重新登记。
+移动或删除前，在旧位置关闭已启用的桌面自启及 PATH 登记，并正常退出 GUI。使用 [systemd 用户服务](#systemd-用户服务) 时，按下节步骤停止服务并在移动后更新登记。确定移除时，在删除目录前运行 `./sidraviactl integration service unregister`。应用管理模式下还需确认后台已结束。
 
 手动升级时，完整解压新版到新目录，在两端都退出后只转移需要保留的私有数据，不能覆盖正在运行的目录。配置迁移步骤见[使用指南](guide.md#更新移动与卸载)。
 
