@@ -65,7 +65,7 @@ GUI「运行状态快照」显示并复制界面已接收的公共状态，排�
 
 ## 备份与卸载
 
-备份前，请正常退出 GUI 和后台。Linux 使用 systemd 托管时，先在当前安装中用 `sidraviactl integration service stop` 停止用户服务。需要保留账号与连接设置时，备份 `configurations.json`。需要保留外观等 GUI 设置时，同时备份 `gui-settings.json`。备份含明文密码，请按账号凭据妥善保管。
+备份前，请正常退出 GUI 和后台。Linux 使用 systemd 托管时，先停止用户服务。便携版在包根目录运行 `./sidraviactl integration service stop`，RPM 安装后运行 `sidraviactl integration service stop`。需要保留账号与连接设置时，备份 `configurations.json`。需要保留外观等 GUI 设置时，同时备份 `gui-settings.json`。备份含明文密码，请按账号凭据妥善保管。
 
 无需为恢复配置备份 `runtime.json` 等临时运行信息，也不要用旧版运行记录替换新版文件。预发布版本之间可能存在不兼容改动，恢复或迁移前请查看目标版本的发行说明。
 
