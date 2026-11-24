@@ -38,15 +38,6 @@ class BusinessSnapshot {
   final DateTime updatedAt;
 }
 
-Map<String, dynamic> _object(Object? raw, Set<String> keys) {
-  if (raw is! Map<String, dynamic> ||
-      raw.length != keys.length ||
-      !raw.keys.toSet().containsAll(keys)) {
-    throw const IpcProtocolException();
-  }
-  return raw;
-}
-
 DateTime _time(Object? raw) {
   if (raw is! String ||
       !RegExp(
@@ -148,7 +139,7 @@ BusinessSnapshot decodeBusiness(String source) {
 }
 
 BusinessSnapshot decodeBusinessValue(Object? raw) {
-  final v = _object(raw, {
+  final v = decodeObjectValue(raw, {
     'sessionId',
     'runGeneration',
     'revision',
@@ -168,7 +159,7 @@ BusinessSnapshot decodeBusinessValue(Object? raw) {
       textSupported = _bool(v['textSupported']);
   AccountStatistics? statistics;
   if (v['statistics'] != null) {
-    final s = _object(v['statistics'], {
+    final s = decodeObjectValue(v['statistics'], {
       'receivedAt',
       'source',
       'scope',
@@ -195,7 +186,7 @@ BusinessSnapshot decodeBusinessValue(Object? raw) {
   final messages = <ServerTextMessage>[];
   BigInt previous = BigInt.zero;
   for (final raw in rawMessages) {
-    final m = _object(raw, {'id', 'receivedAt', 'text'});
+    final m = decodeObjectValue(raw, {'id', 'receivedAt', 'text'});
     final mid = m['id'], text = m['text'];
     final number = mid is String ? BigInt.tryParse(mid) : null;
     if (number == null ||

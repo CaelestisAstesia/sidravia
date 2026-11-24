@@ -10,7 +10,7 @@ class MaintenanceStatus {
 MaintenanceStatus decodeMaintenanceStatus(String source) {
   final raw = decodeBindingCheckedJson(source);
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
-  final value = _object(raw, {
+  final value = decodeObjectValue(raw, {
     'schemaVersion',
     'phase',
     'interactive',

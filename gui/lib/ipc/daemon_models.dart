@@ -37,7 +37,7 @@ DaemonStatus decodeDaemonStatus(String source) {
           'desktopOwnerPid',
         }
       : const {'productVersion', 'buildId', 'pid', 'status', 'mode'};
-  final value = _object(raw, {
+  final value = decodeObjectValue(raw, {
     ...expected,
     if (raw.containsKey("logLevel")) "logLevel",
   });

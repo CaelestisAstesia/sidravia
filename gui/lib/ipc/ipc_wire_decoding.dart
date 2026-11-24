@@ -184,9 +184,9 @@ class IpcRequestFailure implements Exception {
 }
 
 Map<String, dynamic> decodeObject(String source, Set<String> keys) =>
-    _object(decodeBindingCheckedJson(source), keys);
+    decodeObjectValue(decodeBindingCheckedJson(source), keys);
 
-Map<String, dynamic> _object(Object? value, Set<String> keys) {
+Map<String, dynamic> decodeObjectValue(Object? value, Set<String> keys) {
   if (value is! Map<String, dynamic> ||
       value.length != keys.length ||
       !value.keys.toSet().containsAll(keys)) {
@@ -255,4 +255,20 @@ DateTime _time(Object? value) {
   final parsed = DateTime.tryParse(text);
   if (parsed == null) throw const IpcProtocolException();
   return parsed;
+}
+
+// Validate Go timestamps without discarding their nanosecond precision.
+String _nonzeroWireTime(Object? value) {
+  final text = _text(value);
+  if (!RegExp(
+    r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$',
+  ).hasMatch(text)) {
+    throw const IpcProtocolException();
+  }
+  final parsed = _time(text);
+  if (parsed.isAtSameMomentAs(DateTime.utc(1)) &&
+      !RegExp(r'\.\d*[1-9]\d*').hasMatch(text)) {
+    throw const IpcProtocolException();
+  }
+  return text;
 }

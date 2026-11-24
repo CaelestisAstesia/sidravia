@@ -749,6 +749,12 @@ void main() {
   test('strict binding policy and raw escaped duplicate keys', () {
     final valid = NetworkBindingPolicy.explicit('Lo-ID', '127.0.0.1');
     expect(NetworkBindingPolicy.decode(valid.toJson()), valid);
+    const broadcast = '255.255.255.255';
+    final binding = NetworkBindingPolicy.explicit('Lo-ID', broadcast);
+    expect(
+      NetworkBindingPolicy.decode(binding.toJson()).localIpv4Address,
+      broadcast,
+    );
     for (final raw in [
       null,
       {},

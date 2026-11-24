@@ -178,14 +178,14 @@ DiagnosticExport decodeDiagnosticExport(String source) {
 }
 
 void decodeDiagnosticExportPayload(String source) {
-  _object(
+  decodeObjectValue(
     decodeBindingCheckedJson(source, strictUnsignedNumbers: true),
     const {},
   );
 }
 
 DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
-  final v = _object(raw, const {
+  final v = decodeObjectValue(raw, const {
     'schemaVersion',
     'generatedAt',
     'productVersion',
@@ -200,7 +200,7 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
   if (schema != 1) {
     throw const IpcProtocolException();
   }
-  final generated = _networkTime(v['generatedAt']);
+  final generated = _nonzeroWireTime(v['generatedAt']);
   final version = _diagnosticMetadata(v['productVersion']);
   final build = _diagnosticMetadata(v['buildId']);
   final os = _networkEnum(v['operatingSystem'], diagnosticOperatingSystems);
@@ -209,7 +209,7 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
     throw const IpcProtocolException();
   }
   final available = _bool((v['network'] as Map<String, dynamic>)['available']);
-  final n = _object(v['network'], {
+  final n = decodeObjectValue(v['network'], {
     'available',
     if (available) 'interfaceCount',
     if (available) 'ipv4AssignmentCount',
@@ -241,7 +241,7 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
           network.explicitBindableCount! > network.ipv4AssignmentCount!)) {
     throw const IpcProtocolException();
   }
-  final c = _object(v['catalog'], const {
+  final c = decodeObjectValue(v['catalog'], const {
     'storageProtection',
     'totalConfigurations',
     'autoLoginConfigurations',
@@ -302,11 +302,11 @@ DiagnosticExport decodeDiagnosticExportValue(Object? raw) {
     automaticBindingConfigurations: automatic,
     explicitBindingConfigurations: explicit,
   );
-  final s = _object(v['sessions'], const {'totalCount', 'truncated', 'items'});
+  final s = decodeObjectValue(v['sessions'], const {'totalCount', 'truncated', 'items'});
   final sessionTotal = _networkUint(s['totalCount'], 4294967295);
   final truncated = _bool(s['truncated']);
   final items = _list(s['items']).map((raw) {
-    final item = _object(raw, const {
+    final item = decodeObjectValue(raw, const {
       'state',
       'intent',
       'reasonCode',

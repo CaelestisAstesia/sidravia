@@ -12,7 +12,7 @@ class AnnouncementMetadata {
 
 AnnouncementMetadata? _announcement(Object? raw) {
   if (raw == null) return null;
-  final value = _object(raw, const {'url', 'clientWidth', 'clientHeight'});
+  final value = decodeObjectValue(raw, const {'url', 'clientWidth', 'clientHeight'});
   final url = _text(value['url']);
   final width = _positive(value['clientWidth']);
   final height = _positive(value['clientHeight']);
@@ -69,7 +69,7 @@ List<InstitutionProfile> decodeProfiles(String source) =>
     _list(decodeObject(source, const {'profiles'})['profiles'])
         .map((raw) {
           if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
-          final v = _object(raw, {
+          final v = decodeObjectValue(raw, {
             'institutionProfileId',
             'displayName',
             'authenticationProtocolId',

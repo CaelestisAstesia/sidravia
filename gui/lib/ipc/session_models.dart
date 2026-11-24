@@ -129,7 +129,7 @@ Object? _sessionJson(String source) => decodeBindingCheckedJson(
 List<SessionSummary> decodeSessions(String source) =>
     decodeSessionsValue(_sessionJson(source));
 List<SessionSummary> decodeSessionsValue(Object? raw) {
-  final root = _object(raw, const {'sessions', 'cleanupRequiredSessionIds'});
+  final root = decodeObjectValue(raw, const {'sessions', 'cleanupRequiredSessionIds'});
   final rows = _list(root['sessions']);
   final ids = <String>{};
   for (final row in rows) {
@@ -160,7 +160,7 @@ SessionSummary decodeSessionValue(Object? raw) => _session(raw);
 SessionSummary decodeSessionOperation(String source) =>
     decodeSessionOperationValue(_sessionJson(source));
 SessionSummary decodeSessionOperationValue(Object? raw) {
-  final value = _object(raw, const {'outcome', 'session'});
+  final value = decodeObjectValue(raw, const {'outcome', 'session'});
   if (!const {
     'created',
     'already_running',
@@ -246,21 +246,21 @@ SessionSummary _session(Object? raw, {bool cleanupRequired = false}) {
         ? _binding(raw['selectedNetworkBinding'])
         : null,
     authenticationEstablishedAt: raw.containsKey('authenticationEstablishedAt')
-        ? _time(_networkTime(raw['authenticationEstablishedAt']))
+        ? _time(_nonzeroWireTime(raw['authenticationEstablishedAt']))
         : null,
     nextRetryAt: raw.containsKey('nextRetryAt')
-        ? _time(_networkTime(raw['nextRetryAt']))
+        ? _time(_nonzeroWireTime(raw['nextRetryAt']))
         : null,
     lastAuthenticationFailure: raw.containsKey('lastAuthenticationFailure')
         ? _failure(raw['lastAuthenticationFailure'])
         : null,
     revision: revision,
-    updatedAt: _time(_networkTime(raw['updatedAt'])),
+    updatedAt: _time(_nonzeroWireTime(raw['updatedAt'])),
   );
 }
 
 SessionStateReason _reason(Object? raw) {
-  final v = _object(raw, const {'code', 'description'});
+  final v = decodeObjectValue(raw, const {'code', 'description'});
   return SessionStateReason(
     code: _text(v['code']),
     description: _text(v['description']),
@@ -268,7 +268,7 @@ SessionStateReason _reason(Object? raw) {
 }
 
 SessionNetworkBinding _binding(Object? raw) {
-  final v = _object(raw, const {
+  final v = decodeObjectValue(raw, const {
     'interfaceId',
     'displayName',
     'localIpv4Address',
@@ -281,7 +281,7 @@ SessionNetworkBinding _binding(Object? raw) {
 }
 
 SessionAuthenticationFailure _failure(Object? raw) {
-  final v = _object(raw, const {
+  final v = decodeObjectValue(raw, const {
     'code',
     'description',
     'handlingRecommendation',

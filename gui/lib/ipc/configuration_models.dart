@@ -72,7 +72,7 @@ ConfigurationRemoveResult decodeConfigurationRemove(
 }
 
 List<ConfigurationSummary> decodeConfigurations(String source) {
-  final root = _object(
+  final root = decodeObjectValue(
     decodeBindingCheckedJson(source, preserveUnsignedRevision: true),
     const {'storageProtection', 'configurations'},
   );
@@ -88,7 +88,7 @@ ConfigurationSummary decodeConfiguration(String source) => _configuration(
 
 ConfigurationSummary _configuration(Object? raw) {
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
-  final v = _object(raw, {
+  final v = decodeObjectValue(raw, {
     if (raw.containsKey('version')) 'version',
     if (raw.containsKey('overrideState')) 'overrideState',
     if (raw.containsKey('overrideSchemaVersion')) 'overrideSchemaVersion',
@@ -158,7 +158,7 @@ typedef OverrideValidation = ({bool valid, String? field});
 ConfigurationOverride decodeConfigurationOverride(String source) {
   final raw = decodeBindingCheckedJson(source);
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
-  final v = _object(raw, {
+  final v = decodeObjectValue(raw, {
     'configuration',
     'document',
     if (raw.containsKey('matchesDocument')) 'matchesDocument',
@@ -179,7 +179,7 @@ ConfigurationOverride decodeConfigurationOverride(String source) {
 OverrideValidation decodeOverrideValidation(String source) {
   final raw = decodeBindingCheckedJson(source);
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
-  final v = _object(raw, {'valid', if (raw.containsKey('field')) 'field'});
+  final v = decodeObjectValue(raw, {'valid', if (raw.containsKey('field')) 'field'});
   return (
     valid: _bool(v['valid']),
     field: v.containsKey('field') ? _text(v['field']) : null,

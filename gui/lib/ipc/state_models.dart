@@ -46,19 +46,10 @@ Object? _raw(String source) {
   );
 }
 
-Map<String, dynamic> _object(Object? value, Set<String> keys) {
-  if (value is! Map<String, dynamic> ||
-      value.length != keys.length ||
-      !value.keys.toSet().containsAll(keys)) {
-    throw const IpcProtocolException();
-  }
-  return value;
-}
-
 StateBootstrap decodeStateBootstrap(String source) =>
     decodeStateBootstrapValue(_raw(source));
 StateBootstrap decodeStateBootstrapValue(Object? raw) {
-  final root = _object(raw, const {'sessions', 'network'});
+  final root = decodeObjectValue(raw, const {'sessions', 'network'});
   final sessions = decodeSessionsValue(root['sessions']);
   if (sessions.length + 1 > stateResourceCapacity) {
     throw const IpcProtocolException();
@@ -72,11 +63,11 @@ StateBootstrap decodeStateBootstrapValue(Object? raw) {
 StateEvent decodeStateEvent(String source) =>
     decodeStateEventValue(_raw(source));
 StateEvent decodeStateEventValue(Object? raw) {
-  final root = _object(raw, const {'kind', 'method', 'payload'});
+  final root = decodeObjectValue(raw, const {'kind', 'method', 'payload'});
   if (root['kind'] != 'event') throw const IpcProtocolException();
   switch (root['method']) {
     case 'session.changed':
-      final payload = _object(root['payload'], const {
+      final payload = decodeObjectValue(root['payload'], const {
         'session',
         'cleanupRequired',
       });
@@ -95,7 +86,7 @@ StateEvent decodeStateEventValue(Object? raw) {
         }).single,
       );
     case 'session.removed':
-      final payload = _object(root['payload'], const {'sessionId', 'revision'});
+      final payload = decodeObjectValue(root['payload'], const {'sessionId', 'revision'});
       final id = payload['sessionId'];
       final revision = payload['revision'];
       if (id is! String ||
@@ -118,7 +109,7 @@ StateEvent decodeStateEventValue(Object? raw) {
 void decodeStateUnsubscribe(String source) =>
     decodeStateUnsubscribeValue(_raw(source));
 void decodeStateUnsubscribeValue(Object? raw) {
-  if (_object(raw, const {'status'})['status'] != 'unsubscribed') {
+  if (decodeObjectValue(raw, const {'status'})['status'] != 'unsubscribed') {
     throw const IpcProtocolException();
   }
 }

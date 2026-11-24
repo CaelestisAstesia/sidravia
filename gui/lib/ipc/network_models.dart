@@ -42,20 +42,7 @@ class NetworkBindingPolicy {
         )) {
       throw const IpcProtocolException();
     }
-    final parts = address.split('.');
-    if (parts.length != 4) throw const IpcProtocolException();
-    final values = <int>[];
-    for (final part in parts) {
-      final n = int.tryParse(part);
-      if (n == null || n < 0 || n > 255 || n.toString() != part) {
-        throw const IpcProtocolException();
-      }
-      values.add(n);
-    }
-    if (values.every((n) => n == 0) ||
-        (values.first >= 224 && values.first <= 239)) {
-      throw const IpcProtocolException();
-    }
+    _networkIPv4(address, broadcast: true);
     return NetworkBindingPolicy._(
       'explicit_interface_and_local_ipv4',
       id,
@@ -75,10 +62,14 @@ class NetworkBindingPolicy {
   static NetworkBindingPolicy decode(Object? raw) {
     if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
     if (raw['mode'] == 'automatically_select_latest_available') {
-      _object(raw, const {'mode'});
+      decodeObjectValue(raw, const {'mode'});
       return const NetworkBindingPolicy.automatic();
     }
-    final v = _object(raw, const {'mode', 'interfaceId', 'localIpv4Address'});
+    final v = decodeObjectValue(raw, const {
+      'mode',
+      'interfaceId',
+      'localIpv4Address',
+    });
     if (v['mode'] != 'explicit_interface_and_local_ipv4') {
       throw const IpcProtocolException();
     }
@@ -162,7 +153,7 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
     throw const IpcProtocolException();
   }
   final available = raw['available'] as bool;
-  final root = _object(raw, {
+  final root = decodeObjectValue(raw, {
     'available',
     'revision',
     'interfaces',
@@ -174,7 +165,7 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
     throw const IpcProtocolException();
   }
   final rows = _list(root['interfaces']).map((raw) {
-    final row = _object(raw, {
+    final row = decodeObjectValue(raw, {
       'interfaceId',
       'displayName',
       if (raw is Map<String, dynamic> && raw.containsKey('description'))
@@ -226,7 +217,7 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
       filterInterface: _bool(row['filterInterface']),
       endpointInterface: _bool(row['endpointInterface']),
       ipv4Assignments: _list(row['ipv4Assignments']).map((raw) {
-        final address = _object(raw, const {
+        final address = decodeObjectValue(raw, const {
           'address',
           'prefixLength',
           'automaticCandidate',
@@ -256,18 +247,7 @@ NetworkInterfacesSnapshot decodeNetworkInterfacesValue(Object? raw) {
   }).toList();
   String? observedAt;
   if (available) {
-    observedAt = _text(root['observedAt']);
-    if (!RegExp(
-      r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$',
-    ).hasMatch(observedAt)) {
-      throw const IpcProtocolException();
-    }
-    final observed = _time(observedAt);
-    // Reject the zero Go observation, while retaining nonzero nanoseconds.
-    if (observed.isAtSameMomentAs(DateTime.utc(1)) &&
-        !RegExp(r'\.\d*[1-9]\d*').hasMatch(observedAt)) {
-      throw const IpcProtocolException();
-    }
+    observedAt = _nonzeroWireTime(root['observedAt']);
   } else if (rows.isNotEmpty) {
     throw const IpcProtocolException();
   }
@@ -321,21 +301,6 @@ String _networkEnum(Object? value, Set<String> allowed) {
   return text;
 }
 
-String _networkTime(Object? value) {
-  final text = _text(value);
-  if (!RegExp(
-    r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$',
-  ).hasMatch(text)) {
-    throw const IpcProtocolException();
-  }
-  final parsed = _time(text);
-  if (parsed.isAtSameMomentAs(DateTime.utc(1)) &&
-      !RegExp(r'\.\d*[1-9]\d*').hasMatch(text)) {
-    throw const IpcProtocolException();
-  }
-  return text;
-}
-
 int _networkIPv4(
   String text, {
   bool zero = false,
@@ -363,7 +328,7 @@ int _networkIPv4(
 }
 
 NetworkEndpoint _networkEndpoint(Object? raw, {bool broadcast = false}) {
-  final v = _object(raw, const {'address', 'port'});
+  final v = decodeObjectValue(raw, const {'address', 'port'});
   final address = _text(v['address']);
   _networkIPv4(address, broadcast: broadcast);
   return NetworkEndpoint(
@@ -400,7 +365,7 @@ NetworkProtocolSocket _decodeProtocolSocket(Object? raw) {
     throw const IpcProtocolException();
   }
   final updated = s.containsKey('updatedAt')
-      ? _networkTime(s['updatedAt'])
+      ? _nonzeroWireTime(s['updatedAt'])
       : null;
   NetworkEndpoint? local, remote;
   if (state == 'not_observed') {
