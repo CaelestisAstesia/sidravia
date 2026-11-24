@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'linux_product_executable.dart';
-import 'linux_user_directories.dart';
+import '../paths/linux_product_executable.dart';
+import '../paths/linux_user_directories.dart';
 
 import 'dart:math';
 import 'dart:convert';

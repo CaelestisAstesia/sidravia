@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'installation_manager.dart';
-import 'update_check_process.dart';
-import 'update_check_response.dart';
-import 'update_release_version.dart';
+import '../update/update_check_process.dart';
+import '../update/update_check_response.dart';
+import '../update/update_release_version.dart';
 
 class WindowsInstallationManager
     implements InstallationManager, PackageUpdateChecker {

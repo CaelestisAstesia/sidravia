@@ -15,7 +15,7 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 
 import 'dart:convert';
 
-import 'package:sidravia_gui/platform/gui_settings_storage.dart';
+import 'package:sidravia_gui/platform/settings/gui_settings_storage.dart';
 
 import 'package:flutter/services.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
@@ -25,7 +25,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/semantics.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';

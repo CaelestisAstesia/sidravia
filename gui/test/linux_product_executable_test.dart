@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
-import 'package:sidravia_gui/platform/linux_product_executable.dart';
+import 'package:sidravia_gui/platform/settings/gui_settings_storage_io.dart';
+import 'package:sidravia_gui/platform/paths/linux_product_executable.dart';
 
 void main() {
   group('Linux product paths', () {

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
-import 'package:sidravia_gui/platform/update_check_response.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
+import 'package:sidravia_gui/platform/update/update_check_response.dart';
 
 void main() {
   const success =

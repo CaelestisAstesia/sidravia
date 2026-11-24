@@ -2,7 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
+import 'package:sidravia_gui/platform/settings/gui_settings_storage_io.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 Future<void> main(List<String> args) async {

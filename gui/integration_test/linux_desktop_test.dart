@@ -14,7 +14,7 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/process_gui_bootstrap.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
-import 'package:sidravia_gui/platform/gui_settings_storage.dart';
+import 'package:sidravia_gui/platform/settings/gui_settings_storage.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 import 'package:sidravia_gui/desktop/system_notifications.dart';
 import 'package:sidravia_gui/desktop/log_directory.dart';

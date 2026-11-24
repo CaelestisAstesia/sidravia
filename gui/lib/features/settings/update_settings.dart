@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class UpdateSettings extends StatefulWidget {

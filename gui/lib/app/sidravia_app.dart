@@ -24,7 +24,7 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
-import 'package:sidravia_gui/platform/update_check_process.dart';
+import 'package:sidravia_gui/platform/update/update_check_process.dart';
 
 class SidraviaApp extends StatefulWidget {
   const SidraviaApp({

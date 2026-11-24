@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 
 class FakeManager implements InstallationManager {
   int reads = 0;

@@ -9,7 +9,7 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/features/settings/update_settings.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
 import 'support/capture_fonts.dart' as fonts;

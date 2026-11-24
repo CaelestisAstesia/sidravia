@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'installation_manager.dart';
+import '../installation/installation_manager.dart';
 
 /// Owns the one CTL child used to check update availability.
 class UpdateCheckProcess {

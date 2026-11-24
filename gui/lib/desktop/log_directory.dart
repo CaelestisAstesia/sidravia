@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:sidravia_gui/platform/desktop_process.dart';
-import 'package:sidravia_gui/platform/linux_product_executable.dart';
+import 'package:sidravia_gui/platform/paths/linux_product_executable.dart';
 
 /// Opens only this instance's directory, resolved by the sibling CLI.
 class DesktopLogDirectory {

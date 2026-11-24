@@ -7,7 +7,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_controll
 import 'package:sidravia_gui/features/announcements/school_announcement_window.dart';
 import 'package:sidravia_gui/features/announcements/school_announcement_notifications.dart';
 
-import 'package:sidravia_gui/platform/gui_settings_storage.dart';
+import 'package:sidravia_gui/platform/settings/gui_settings_storage.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 
 import 'package:flutter/widgets.dart';

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/settings/integration_settings.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 import 'support/installation_manager_fixture.dart';

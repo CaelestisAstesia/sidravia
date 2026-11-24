@@ -11,8 +11,8 @@ import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
-import 'package:sidravia_gui/platform/installation_manager.dart';
-import 'package:sidravia_gui/platform/update_check_process.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
+import 'package:sidravia_gui/platform/update/update_check_process.dart';
 
 import 'integration_settings.dart';
 import 'settings_dropdown.dart';

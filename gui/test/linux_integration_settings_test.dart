@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/settings/integration_settings.dart';
-import 'package:sidravia_gui/platform/linux_installation_manager.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/linux_installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 
 class _Fixture {
   _Fixture({String? productLeaf}) {

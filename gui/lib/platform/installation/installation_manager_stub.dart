@@ -1,5 +1,5 @@
 import 'installation_manager.dart';
-import 'update_check_process.dart';
+import '../update/update_check_process.dart';
 
 InstallationManager createManager({UpdateCheckProcess? updateCheck}) =>
     _UnsupportedManager();

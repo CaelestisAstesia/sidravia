@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'update_check_process.dart';
+import '../update/update_check_process.dart';
 import 'installation_manager_stub.dart'
     if (dart.library.io) 'installation_manager_io.dart'
     as platform;

@@ -9,8 +9,8 @@ import 'package:sidravia_gui/features/announcements/school_announcement_controll
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
-import 'package:sidravia_gui/platform/update_check_process.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
+import 'package:sidravia_gui/platform/update/update_check_process.dart';
 
 class SidraviaShell extends StatefulWidget {
   const SidraviaShell({

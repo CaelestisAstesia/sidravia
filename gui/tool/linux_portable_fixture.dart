@@ -6,9 +6,9 @@ import 'dart:io';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
-import 'package:sidravia_gui/platform/gui_settings_storage_io.dart';
-import 'package:sidravia_gui/platform/linux_installation_manager.dart';
-import 'package:sidravia_gui/platform/installation_manager.dart';
+import 'package:sidravia_gui/platform/settings/gui_settings_storage_io.dart';
+import 'package:sidravia_gui/platform/installation/linux_installation_manager.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 Future<void> main(List<String> args) async {
