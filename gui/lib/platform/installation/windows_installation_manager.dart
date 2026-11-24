@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'installation_manager.dart';
+import '../integration_failure.dart';
+import '../update/package_update_checker.dart';
 import '../update/update_check_process.dart';
 import '../update/update_check_response.dart';
 import '../update/update_release_version.dart';
+import 'installation_manager.dart';
 
 class WindowsInstallationManager
     implements InstallationManager, PackageUpdateChecker {

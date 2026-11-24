@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import '../installation/installation_manager.dart';
+import '../integration_failure.dart';
+import 'package_update_checker.dart';
 import 'update_release_version.dart';
 
 PackageUpdate decodeUpdateCheckResponse(int exitCode, String output) {

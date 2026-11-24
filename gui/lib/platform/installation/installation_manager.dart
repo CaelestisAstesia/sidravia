@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../integration_failure.dart';
 import '../update/update_check_process.dart';
 import 'installation_manager_stub.dart'
     if (dart.library.io) 'installation_manager_io.dart'
@@ -47,11 +48,6 @@ class IntegrationStatus {
       guiAvailable: result['guiAvailable'] as bool,
     );
   }
-}
-
-class IntegrationFailure implements Exception {
-  const IntegrationFailure(this.message);
-  final String message;
 }
 
 Map<String, dynamic> decodeManagerResponse(String text) {
@@ -123,20 +119,4 @@ class UserServiceStatus {
 
 abstract interface class UserServiceManager {
   Future<UserServiceStatus?> userService(String action);
-}
-
-enum UpdateCheckState {
-  available,
-  upToDate,
-  aheadOfChannel,
-  noCompatibleRelease,
-}
-
-typedef PackageUpdate = ({UpdateCheckState state, String? version});
-
-abstract interface class PackageUpdateChecker {
-  bool get supportsUpdateCheck;
-  bool get usesSystemPackageManager;
-  Future<PackageUpdate> checkUpdate();
-  Future<void> openReleasePage(String version);
 }

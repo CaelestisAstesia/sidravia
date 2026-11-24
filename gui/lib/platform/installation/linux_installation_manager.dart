@@ -6,14 +6,15 @@ import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 
+import '../integration_failure.dart';
 import '../paths/linux_product_executable.dart';
 import '../paths/linux_user_directories.dart';
-
 import '../settings/gui_settings_storage_io.dart';
-import 'installation_manager.dart';
+import '../update/package_update_checker.dart';
 import '../update/update_check_process.dart';
 import '../update/update_check_response.dart';
 import '../update/update_release_version.dart';
+import 'installation_manager.dart';
 
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
