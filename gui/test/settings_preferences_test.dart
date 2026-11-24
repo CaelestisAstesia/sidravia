@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 
 void main() {
   for (final enabled in [true, false]) {

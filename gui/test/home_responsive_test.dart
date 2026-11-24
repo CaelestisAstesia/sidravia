@@ -4,13 +4,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/dev/preview_main.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-const output = String.fromEnvironment('HOME_RESPONSIVE_OUTPUT');
+import 'support/capture_fonts.dart';
+
+const output = homeResponsiveCaptureOutput;
 const sizes = {
   'reference': Size(398, 642),
   'compact': Size(398, 572),
@@ -23,36 +24,6 @@ const sizes = {
   'short': Size(398, 280),
   'narrow': Size(298, 542),
 };
-
-Future<void> loadCaptureFonts({bool forCapture = false}) async {
-  const manifest = String.fromEnvironment('SYSTEM_FONT_MANIFEST');
-  if (manifest.isNotEmpty) {
-    final fonts = jsonDecode(await File(manifest).readAsString()) as Map;
-    for (final entry in fonts.entries) {
-      final loader = FontLoader(entry.key as String);
-      for (final path in entry.value as List) {
-        loader.addFont(
-          File(path as String).readAsBytes().then(ByteData.sublistView),
-        );
-      }
-      await loader.load();
-    }
-  } else if (forCapture || output.isNotEmpty) {
-    throw StateError('SYSTEM_FONT_MANIFEST is required for real-font capture');
-  }
-  await (FontLoader(
-    'MaterialIcons',
-  )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
-  const path = String.fromEnvironment(
-    'HOME_SYMBOL_FONT',
-    defaultValue: '/mnt/c/Windows/Fonts/seguisym.ttf',
-  );
-  if (await File(path).exists()) {
-    await (FontLoader(
-      'Segoe UI Symbol',
-    )..addFont(File(path).readAsBytes().then(ByteData.sublistView))).load();
-  }
-}
 
 Widget surface(Widget child) => MaterialApp(
   debugShowCheckedModeBanner: false,

@@ -19,7 +19,7 @@ import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 
 const output = String.fromEnvironment('GEN_FRONTEND_OUTPUT');
 const scenarios = [

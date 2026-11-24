@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/features/diagnostics/website_latency_section.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 
 const output = String.fromEnvironment('WEBSITE_LATENCY_CAPTURE');
 

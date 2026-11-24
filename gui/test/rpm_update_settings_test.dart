@@ -12,7 +12,7 @@ import 'package:sidravia_gui/features/settings/update_settings.dart';
 import 'package:sidravia_gui/platform/installation_manager.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 import 'integration_settings_test.dart' show FakeManager;
 
 const _capture = String.fromEnvironment('GEN_FRONTEND_OUTPUT');

@@ -10,7 +10,7 @@ import 'package:sidravia_gui/dev/interactive_demo_main.dart';
 
 import 'dart:convert';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 import 'school_announcement_controller_test.dart' as owners;
 import 'support/runtime_snapshot.dart';
 

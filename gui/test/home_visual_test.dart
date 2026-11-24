@@ -19,7 +19,7 @@ import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/dev/preview_main.dart';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 

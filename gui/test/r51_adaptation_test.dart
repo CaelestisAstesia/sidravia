@@ -16,7 +16,7 @@ import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
-import 'home_responsive_test.dart' as fonts;
+import 'support/capture_fonts.dart' as fonts;
 
 const output = String.fromEnvironment('R51_OUTPUT');
 const baseline = bool.fromEnvironment('R51_BASELINE');
