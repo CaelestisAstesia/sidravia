@@ -8,7 +8,7 @@ import 'package:sidravia_gui/dev/offline_demo_client.dart';
 import 'package:sidravia_gui/dev/interactive_demo_main.dart';
 import 'package:sidravia_gui/features/diagnostics/runtime_snapshot.dart';
 
-import 'school_announcement_controller_test.dart' as owners;
+import 'support/announcement_shell_fixture.dart' as owners;
 import 'support/runtime_snapshot.dart';
 
 void main() {

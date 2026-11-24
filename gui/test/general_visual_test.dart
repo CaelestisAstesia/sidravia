@@ -1,5 +1,5 @@
 import 'support/runtime_snapshot.dart';
-import 'school_announcement_controller_test.dart' as school_dispatch;
+import 'support/announcement_shell_fixture.dart' as school_dispatch;
 
 import 'package:sidravia_gui/features/home/connection_information_view.dart';
 

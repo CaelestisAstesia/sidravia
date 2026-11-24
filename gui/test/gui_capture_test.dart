@@ -11,7 +11,7 @@ import 'package:sidravia_gui/dev/interactive_demo_main.dart';
 import 'dart:convert';
 
 import 'support/capture_fonts.dart' as fonts;
-import 'school_announcement_controller_test.dart' as owners;
+import 'support/announcement_shell_fixture.dart' as owners;
 import 'support/runtime_snapshot.dart';
 
 import 'package:sidravia_gui/shared/theme/app_theme.dart';

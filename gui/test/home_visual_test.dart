@@ -1,6 +1,6 @@
 import 'package:sidravia_gui/dev/offline_demo_client.dart';
 
-import 'school_announcement_controller_test.dart' as school_dispatch;
+import 'support/announcement_shell_fixture.dart' as school_dispatch;
 
 import 'package:sidravia_gui/application/gui_snapshot.dart';
 import 'package:flutter/material.dart';

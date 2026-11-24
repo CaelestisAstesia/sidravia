@@ -1,4 +1,4 @@
-import 'school_announcement_controller_test.dart' as school_dispatch;
+import 'support/announcement_shell_fixture.dart' as school_dispatch;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
