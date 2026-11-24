@@ -3,12 +3,13 @@ package session
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"sync"
+	"testing"
 	"time"
 
 	"sidravia/internal/daemon/authentication/protocol"
 	environment "sidravia/internal/daemon/environment"
-	"testing"
 )
 
 type controlledFactory struct {
@@ -193,3 +194,112 @@ func fireAutomaticWake(t *testing.T, session *AuthenticationSession) {
 		}
 	}
 }
+
+func newTestSession(t *testing.T, factory *controlledFactory, intent Intent) *AuthenticationSession {
+	t.Helper()
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	scheduler := &manualRetryScheduler{}
+	dependencies := testDependencies(scheduler.bindClock(func() time.Time { return time.Unix(100, 0) }))
+	dependencies.RetryScheduler = scheduler
+	session, err := NewAuthenticationSession(definition, intent, dependencies)
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	return session
+}
+
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func shutdownTestSession(t *testing.T, session *AuthenticationSession) {
+	t.Helper()
+	ctx := testContext(t)
+	if err := session.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown() error = %v", err)
+	}
+}
+
+func sessionSnapshot(t *testing.T, ctx context.Context, session *AuthenticationSession) Snapshot {
+	t.Helper()
+	snapshot, err := session.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("snapshot() error = %v", err)
+	}
+	return snapshot
+}
+
+func waitForState(t *testing.T, ctx context.Context, session *AuthenticationSession, want State) Snapshot {
+	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		got := sessionSnapshot(t, ctx, session)
+		if got.State == want {
+			return got
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("state = %q, want %q: %v", got.State, want, ctx.Err())
+		case <-tick.C:
+		}
+	}
+}
+
+func waitForFactoryRun(t *testing.T, ctx context.Context, factory *controlledFactory, index int) *controlledRun {
+	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		inputs := factory.creationInputs()
+		if len(inputs) > index {
+			return factory.run(index)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("factory did not create run %d: %v", index, ctx.Err())
+		case <-tick.C:
+		}
+	}
+}
+
+func waitForInboxMessage(t *testing.T, ctx context.Context, session *AuthenticationSession) {
+	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for len(session.inbox) == 0 {
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-tick.C:
+		}
+	}
+}
+
+func usableSystemNetworkSnapshot(t *testing.T, revision uint64, interfaceID, displayName string) environment.Snapshot {
+	t.Helper()
+	networkInterface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{
+		InterfaceID:              environment.InterfaceID(interfaceID),
+		DisplayName:              displayName,
+		OperationalState:         environment.OperationalStateUp,
+		PhysicalMedium:           environment.PhysicalMediumWired,
+		HardwareBacked:           true,
+		PhysicalConnectorPresent: true,
+		AddressAssignmentMethod:  environment.AddressAssignmentDHCP,
+		HardwareAddress:          []byte{0, 1, 2, 3, 4, 5},
+		IPv4AddressAssignments: []environment.IPv4AddressAssignment{{
+			Address: netip.MustParseAddr("192.0.2.10"), PrefixLength: 24,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewNetworkInterface() error = %v", err)
+	}
+	return environment.NewSnapshot(revision, time.Unix(int64(revision), 0), []environment.NetworkInterface{networkInterface})
+}
+
+var _ protocol.AuthenticationProtocolRun = (*controlledRun)(nil)
