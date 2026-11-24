@@ -53,7 +53,7 @@ type helpNode struct {
 var helpSpecs = map[string]helpNode{
 	"sidraviactl network":            {description: "只读查看已有 daemon 接受的网络观察。", usage: []string{"sidraviactl network <command>"}, children: []helpChild{{"interfaces", "列出已观察网卡"}}},
 	"sidraviactl network interfaces": {description: "列出网卡与 IPv4 候选；使用时重新核对绑定。", usage: []string{"sidraviactl network interfaces"}, examples: []string{"sidraviactl network interfaces"}},
-	"sidraviactl diagnostics":        {description: "只读导出安全白名单诊断摘要；只连接已有 headless daemon。", usage: []string{"sidraviactl diagnostics <command>"}, children: []helpChild{{"export", "写入新的诊断文件"}}},
+	"sidraviactl diagnostics":        {description: "只读导出安全白名单诊断摘要；连接已有独立后台或 systemd 用户服务。", usage: []string{"sidraviactl diagnostics <command>"}, children: []helpChild{{"export", "写入新的诊断文件"}}},
 	"sidraviactl diagnostics export": {description: "将安全白名单诊断摘要写入一个新文件；不会覆盖已有路径。", usage: []string{"sidraviactl diagnostics export --output PATH"}, options: []string{"--output PATH    新诊断文件路径；目标必须尚不存在"}, examples: []string{"sidraviactl diagnostics export --output diagnostics.json"}},
 	"sidraviactl": {
 		description: "Sidravia 命令行客户端。",
@@ -141,7 +141,7 @@ var helpSpecs = map[string]helpNode{
 		},
 	},
 	"sidraviactl auth watch": {
-		description: "只连接已有 headless daemon，显示初始状态并持续显示最新 Session 与网络状态。daemon 可合并更新；输出不是每次状态转换的历史记录。按 Ctrl+C 停止；连接断开后请重新运行此命令。",
+		description: "连接已有独立后台或 systemd 用户服务，显示初始状态并持续显示最新 Session 与网络状态。daemon 可合并更新；输出不是每次状态转换的历史记录。按 Ctrl+C 停止；连接断开后请重新运行此命令。",
 		usage:       []string{"sidraviactl auth watch"},
 		examples:    []string{"sidraviactl auth watch"},
 	},
@@ -296,7 +296,10 @@ func registeredHelpChildren(c *cobra.Command) []helpChild {
 
 func registeredHelpNode(c *cobra.Command) helpNode {
 	node := helpNode{description: c.Short, children: registeredHelpChildren(c)}
-	usage := c.CommandPath()
+	usage := c.Use
+	if c.HasParent() {
+		usage = c.Parent().CommandPath() + " " + usage
+	}
 	if len(node.children) > 0 {
 		usage += " <command>"
 	}

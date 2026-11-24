@@ -116,20 +116,23 @@ func TestHelpPathRejectsUnknownHiddenAndExtraTokensSafely(t *testing.T) {
 }
 
 func TestHelpListsRegisteredMaintenanceCommands(t *testing.T) {
-	cases := []struct {
+	type helpCase struct {
 		path []string
 		want []string
-	}{
-		{nil, []string{"\n  integration ", "\n  update "}},
-		{[]string{"integration"}, []string{"\n  autostart ", "\n  path ", "\n  status "}},
-		{[]string{"update"}, []string{"\n  apply ", "\n  recover ", "\n  version "}},
-		{[]string{"update", "recover"}, []string{"--operation VALUE", "--confirm"}},
+		omit string
+	}
+	cases := []helpCase{
+		{path: nil, want: []string{"\n  integration ", "\n  update "}},
+		{path: []string{"integration"}, want: []string{"\n  autostart ", "\n  path ", "\n  status "}},
+		{path: []string{"update"}, want: []string{"\n  apply ", "\n  recover ", "\n  version "}},
+		{path: []string{"update", "check"}, omit: "--candidate"},
+		{path: []string{"update", "status"}, omit: "--candidate"},
+		{path: []string{"update", "download"}, want: []string{"update download --candidate ID"}},
+		{path: []string{"update", "apply"}, want: []string{"update apply --candidate ID --confirm"}},
+		{path: []string{"update", "recover"}, want: []string{"update recover --operation ID --confirm", "--operation VALUE"}, omit: "--candidate"},
 	}
 	if runtime.GOOS == "linux" {
-		cases = append(cases, struct {
-			path []string
-			want []string
-		}{[]string{"integration", "service", "discard"}, []string{"--yes"}})
+		cases = append(cases, helpCase{path: []string{"integration", "service", "discard"}, want: []string{"--yes"}})
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.path, " "), func(t *testing.T) {
@@ -147,6 +150,9 @@ func TestHelpListsRegisteredMaintenanceCommands(t *testing.T) {
 				if !strings.Contains(named.String(), want) {
 					t.Errorf("help omitted %q:\n%s", want, named.String())
 				}
+			}
+			if tc.omit != "" && strings.Contains(named.String(), tc.omit) {
+				t.Errorf("help advertised inapplicable %q:\n%s", tc.omit, named.String())
 			}
 		})
 	}

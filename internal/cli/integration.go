@@ -49,16 +49,16 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 			return nil
 		}
 	}
-	group.AddCommand(&cobra.Command{Use: "status", Short: "查询实际系统集成状态（JSON）", Args: cobra.NoArgs, RunE: run([]string{"status"})})
-	path := &cobra.Command{Use: "path", Short: "管理当前用户 PATH"}
+	group.AddCommand(&cobra.Command{Use: "status", Short: "查询 Windows 实际系统集成状态（JSON）", Args: cobra.NoArgs, RunE: run([]string{"status"})})
+	path := &cobra.Command{Use: "path", Short: "管理 Windows 当前用户 PATH"}
 	for _, op := range []string{"enable", "disable"} {
-		path.AddCommand(&cobra.Command{Use: op, Short: op + " PATH", Args: cobra.NoArgs, RunE: run([]string{"path", op})})
+		path.AddCommand(&cobra.Command{Use: op, Short: op + " Windows 用户 PATH", Args: cobra.NoArgs, RunE: run([]string{"path", op})})
 	}
-	startup := &cobra.Command{Use: "autostart", Short: "管理下次登录时的启动模式"}
-	startup.AddCommand(&cobra.Command{Use: "disable", Short: "关闭开机自启", Args: cobra.NoArgs, RunE: run([]string{"autostart", "disable"})})
-	set := &cobra.Command{Use: "set", Short: "选择 GUI 托盘或后台模式"}
+	startup := &cobra.Command{Use: "autostart", Short: "管理 Windows 登录时的启动模式"}
+	startup.AddCommand(&cobra.Command{Use: "disable", Short: "关闭 Windows 登录自启", Args: cobra.NoArgs, RunE: run([]string{"autostart", "disable"})})
+	set := &cobra.Command{Use: "set", Short: "选择 Windows GUI 托盘或后台模式"}
 	for _, mode := range []string{"gui", "daemon"} {
-		set.AddCommand(&cobra.Command{Use: mode, Short: mode, Args: cobra.NoArgs, RunE: run([]string{"autostart", "set", mode})})
+		set.AddCommand(&cobra.Command{Use: mode, Short: "设置 Windows 登录启动模式", Args: cobra.NoArgs, RunE: run([]string{"autostart", "set", mode})})
 	}
 	startup.AddCommand(set)
 	group.AddCommand(path, startup)

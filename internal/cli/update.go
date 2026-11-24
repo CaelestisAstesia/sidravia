@@ -79,19 +79,20 @@ func rpmUpdateOutput(args []string, identity clientbootstrap.Identity) ([]byte, 
 
 func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error)) *cobra.Command {
 	group := &cobra.Command{Use: "update", Short: "检查、下载和应用更新"}
-	operations := []struct{ name, description string }{
+	operations := []struct{ use, description string }{
 		{"check", "检查适用于当前安装的版本"},
-		{"download", "下载并校验指定候选"},
+		{"download --candidate ID", "下载并校验指定候选"},
 		{"status", "查看缓存与更新状态"},
-		{"apply", "应用已确认的更新"},
-		{"recover", "核对并处理已中断的更新"},
+		{"apply --candidate ID --confirm", "应用已确认的更新"},
+		{"recover --operation ID --confirm", "核对并处理已中断的更新"},
 		{"version", "显示版本与构建标识"},
 	}
 	for _, item := range operations {
-		operation := item.name
+		command := &cobra.Command{Use: item.use, Short: item.description, Args: cobra.NoArgs}
+		operation := command.Name()
 		var channel, kind, candidate, operationID string
 		var confirm bool
-		command := &cobra.Command{Use: operation, Short: item.description, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (err error) {
+		command.RunE = func(cmd *cobra.Command, _ []string) (err error) {
 			defer func() { err = wrapCommandOperation(err) }()
 			args := []string{operation}
 			if channel != "" {
@@ -130,11 +131,15 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 				return integrationFailure("更新操作未完成，请查看返回结果。", processErr)
 			}
 			return nil
-		}}
+		}
 		if operation != "version" {
 			command.Flags().StringVar(&channel, "channel", "", "stable 或 preview")
 			command.Flags().StringVar(&kind, "package", "", "更新包类型")
 			command.Flags().StringVar(&candidate, "candidate", "", "检查结果中的候选编号")
+			if operation != "download" && operation != "apply" {
+				// Keep invalid calls reaching the updater's existing JSON error.
+				command.Flags().Lookup("candidate").Hidden = true
+			}
 		}
 		if operation == "apply" || operation == "recover" {
 			command.Flags().BoolVar(&confirm, "confirm", false, "明确确认本次更新或中断收尾")
