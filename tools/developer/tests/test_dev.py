@@ -159,8 +159,12 @@ class DeveloperCommands(unittest.TestCase):
                 with self.assertRaises(SystemExit): dev.parse_args(["linux", *pair])
         for mode in (("--announcement-integration",), ("--verify-package", "fixture.tar.gz")):
             args = dev.parse_args(["linux", "--check-gui", *mode])
-            with mock.patch.object(dev.platform,"system",return_value="Linux"), mock.patch.object(dev.subprocess,"check_output") as run:
-                with self.assertRaisesRegex(ValueError,"separately"): dev.linux_command(args,{})
+            with (tempfile.TemporaryDirectory() as directory,
+                  mock.patch.object(dev, "ROOT", Path(directory)),
+                  mock.patch.object(dev.platform, "system", return_value="Linux"),
+                  mock.patch.object(dev.subprocess, "check_output") as run):
+                with self.assertRaisesRegex(ValueError, "separately"):
+                    dev.linux_command(args, {})
                 run.assert_not_called()
 
 

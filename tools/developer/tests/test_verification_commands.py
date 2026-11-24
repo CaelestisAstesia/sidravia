@@ -68,6 +68,51 @@ class CheckPlanning(unittest.TestCase):
             self.assertEqual(result['stages'][0]['exit_code'],9)
             self.assertEqual((Path(result['report']).parent/'failure.stdout.log').read_text().strip(),'诊断')
 
+    def test_normal_linux_and_preview_entries_reject_a_busy_worktree(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            developer = Path(dev.__file__).parent
+            entry = (
+                'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); '
+                'import dev; dev.ROOT = Path(sys.argv[2]); raise SystemExit(dev.main(sys.argv[3:]))'
+            )
+            with checks.worktree_lock(root):
+                for command in ('linux', 'preview'):
+                    with self.subTest(command=command):
+                        child = subprocess.run(
+                            [sys.executable, '-c', entry, str(developer), str(root), command],
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        self.assertEqual(child.returncode, 1, child.stderr)
+                        self.assertIn('another developer command owns this worktree', child.stderr)
+                        self.assertFalse((root/'gui').exists())
+
+    def test_linux_bundle_stage_can_take_ownership_after_prior_checks(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            args = dev.parse_args([
+                'check', '--scope', 'gui', '--linux-build', '--format', 'json',
+                '--reports', str(root / 'evidence'),
+            ])
+            developer = Path(dev.__file__).parent
+            child = (
+                'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); '
+                'from verification_commands import worktree_lock\n'
+                'with worktree_lock(Path(sys.argv[2])): print("child owns the worktree")'
+            )
+            request = {'schema': 1, 'stages': [
+                {'name': 'gui-tests', 'argv': [sys.executable, '-c', 'pass'], 'cwd': str(root)},
+                {'name': 'linux-bundle', 'argv': [sys.executable, '-c', child, str(developer), str(root)], 'cwd': str(root)},
+            ]}
+            stdout = io.StringIO()
+            with mock.patch.object(checks, 'plan', return_value=request), contextlib.redirect_stdout(stdout):
+                code = checks.run(root, args, lambda: {'commit': 'fixture'})
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(code, 0)
+            self.assertTrue(all(stage['status'] == 'passed' for stage in result['stages']))
+            log = Path(result['report']).parent / 'linux-bundle.stdout.log'
+            self.assertIn('child owns the worktree', log.read_text())
+
     def test_source_edit_invalidates_a_successful_process(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)

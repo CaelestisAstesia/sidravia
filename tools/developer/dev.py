@@ -155,8 +155,12 @@ def windows_command(args, env):
 
 def linux_command(args, env):
     import linux_development
+    from verification_commands import worktree_lock
 
-    return linux_development.run(ROOT, args, env, metadata=metadata, same_source=same_source)
+    # RPM producers wrap existing inputs without writing Flutter state.
+    lock = contextlib.nullcontext() if args.rpm or args.rpm_core else worktree_lock(ROOT)
+    with lock:
+        return linux_development.run(ROOT, args, env, metadata=metadata, same_source=same_source)
 
 
 @contextlib.contextmanager
@@ -374,7 +378,9 @@ def main(argv=None):
                 print(f"Report: {report}")
             return 0
         if args.command == "preview":
-            return preview_command(args, env)
+            from verification_commands import worktree_lock
+            with worktree_lock(ROOT):
+                return preview_command(args, env)
         if args.command == "manifest":
             manifest = source_manifest(env, args.require_clean)
             with Path(args.output).open("x", encoding="utf-8") as output:

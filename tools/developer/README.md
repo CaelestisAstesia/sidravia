@@ -672,9 +672,13 @@ The report uses `passed`, `failed`, `timed_out`, `not_run` and interruption stat
 rather than treating an absent command as success. Both command argv and cwd are
 recorded; environment overrides are in the request, not echoed in the summary.
 Source commit/status/byte fingerprint before and after prevent concurrent edits
-from producing a false acceptance. A per-worktree lock excludes simultaneous
-`check` runs; it does not take over a separately running preview or older tools.
-Go/Flutter/Pub caches stay at their existing locations. There is no automatic
+from producing a false acceptance. Run `check`, `preview`, visual capture and Flutter
+operations under `linux` one at a time in a worktree. They share a lock and report
+contention before using the same generated state. With `check --linux-build`, the
+final Linux build acquires the lock after the preceding checks release it. Use
+separate worktrees for parallel Flutter development, including direct Flutter
+commands or older developer tools. Go/Flutter/Pub caches stay at their existing
+locations. There is no automatic
 package build, installer execution, test retry, Git commit or release operation.
 
 ## Recommend checks from a Git diff

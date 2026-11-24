@@ -77,13 +77,13 @@ def worktree_lock(root):
             try:
                 msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
             except OSError:
-                raise ValueError('another check owns this worktree') from None
+                raise ValueError('another developer command owns this worktree') from None
         else:
             import fcntl
             try:
                 fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:
-                raise ValueError('another check owns this worktree') from None
+                raise ValueError('another developer command owns this worktree') from None
         yield
 
 
@@ -95,27 +95,36 @@ def run(root, args, identity):
         return 0
     directory = Path(args.reports).resolve()
     directory.mkdir(parents=True, exist_ok=True)
-    with worktree_lock(root):
+    with contextlib.ExitStack() as locks:
+        locks.enter_context(worktree_lock(root))
         output = Path(tempfile.mkdtemp(prefix=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-check-'), dir=directory))
         runner.write_json(output/'request.json',request)
         try:
             request['environment'] = {}
             runner.write_json(output/'request.json',request)
-            sdk_index = next((i for i,s in enumerate(request['stages']) if s['name']=='gui-sdk'),None)
+            stages = request['stages']
+            bundle = stages[-1:] if stages and stages[-1]['name'] == 'linux-bundle' else []
+            checked_stages = stages[:-1] if bundle else stages
+            sdk_index = next((i for i,s in enumerate(checked_stages) if s['name']=='gui-sdk'),None)
             if sdk_index is None:
-                report = runner.run_request(request,output)
+                report = runner.run_request(dict(request,stages=checked_stages),output)
             else:
-                prefix = dict(request,stages=request['stages'][:sdk_index+1])
+                prefix = dict(request,stages=checked_stages[:sdk_index+1])
                 report = runner.run_request(prefix,output)
-                remaining = request['stages'][sdk_index+1:]
+                remaining = checked_stages[sdk_index+1:]
                 if report['status']=='passed':
                     sdk = runner.read_json(output/'gui-sdk.stdout.log')
                     path = str(Path(sdk['flutterRoot'])/'bin')+os.pathsep+os.environ.get('PATH','')
-                    for stage in remaining:
+                    for stage in stages[sdk_index+1:]:
                         stage.setdefault('environment',{})['PATH'] = path
                 runner.write_json(output/'request.json',request)
                 if remaining:
                     report = runner.run_request(dict(request,stages=remaining),output,initial_report=report)
+            if bundle:
+                # The public Linux command acquires this lock itself. Finish
+                # all earlier Flutter stages before giving the child ownership.
+                locks.close()
+                report = runner.run_request(dict(request,stages=bundle),output,initial_report=report)
         except Exception as error:
             report = runner.read_json(output/'report.json') if (output/'report.json').exists() else {'schema':1,'kind':'verification','source':request['source'],'stages':[]}
             report.update(status='failed',error=type(error).__name__+': '+str(error))
