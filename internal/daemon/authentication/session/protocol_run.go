@@ -147,3 +147,94 @@ func (session *AuthenticationSession) handleProtocolRunFinished(event authentica
 	}
 	session.handleRunFailure(reasonCode, event.failure)
 }
+
+func (session *AuthenticationSession) startRunIfNeeded() {
+	session.startRun(false)
+}
+
+func (session *AuthenticationSession) startRunForRelevantInputChangeIfNeeded() {
+	session.startRun(true)
+}
+
+func (session *AuthenticationSession) startRunAfterRetryDelayIfNeeded() {
+	session.startRun(true)
+}
+
+func (session *AuthenticationSession) startRun(allowRecoveryState bool) {
+	if session.bindingRecovery != nil {
+		session.reconcileAutomatic()
+		return
+	}
+	session.createRun(allowRecoveryState)
+}
+
+// createRun is called only after automatic policy admission, or directly for
+// the unchanged explicit-binding path.
+func (session *AuthenticationSession) createRun(allowRecoveryState bool) {
+	if session.shuttingDown || session.active != nil || session.currentSnapshot.Intent != MaintainAuthentication || !session.hasDesiredBinding || session.automaticReconnectBlocked {
+		return
+	}
+	if !allowRecoveryState && (session.currentSnapshot.State == BlockedByError || session.currentSnapshot.State == WaitingBeforeRetry) {
+		return
+	}
+	session.nextGeneration++
+	session.beginBusinessRun(session.nextGeneration)
+	generation := session.nextGeneration
+	inputs := protocol.AuthenticationProtocolRunCreationInputs{
+		InstitutionProtocolConfiguration: append(protocol.InstitutionProtocolConfiguration(nil), session.definition.InstitutionProfile.InstitutionProtocolConfiguration...),
+		AuthenticationCredential:         session.definition.AuthenticationCredential,
+		SelectedSystemNetworkBinding:     session.desiredBinding,
+		SystemHostInformation:            session.definition.SystemHostInformation,
+		ProtocolContextOverride:          append(protocol.AuthenticationProtocolContextOverride(nil), session.definition.Configuration.ProtocolContextOverride...),
+		Diagnostics:                      session.protocolDiagnostics,
+	}
+	run, err := session.definition.AuthenticationProtocolFactory.CreateAuthenticationProtocolRun(inputs)
+	if err != nil || run == nil {
+		var diagnosticCause error
+		switch {
+		case err != nil:
+			diagnosticCause = err
+		default:
+			diagnosticCause = errors.New("authentication protocol factory returned a nil run")
+		}
+		failure := &protocol.AuthenticationProtocolRunFailure{
+			Code:                   protocol.AuthenticationProtocolFailureCode(StateReasonCodeProtocolRunCreationFailed),
+			Description:            "Unable to create authentication protocol run.",
+			HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange,
+			DiagnosticCause:        diagnosticCause,
+		}
+		session.blockForFailure(StateReasonCodeProtocolRunCreationFailed, failure)
+		return
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	active := &activeProtocolRun{generation: generation, run: run, context: ctx, cancel: cancel, business: &businessMailbox{}}
+	if session.bindingRecovery != nil {
+		r := session.bindingRecovery
+		active.binding = bindingCandidate{networkInterface: session.desiredBinding.NetworkInterface(), localAddress: session.desiredBinding.LocalIPv4AddressAssignment(), key: keyForBinding(session.desiredBinding)}
+		active.recoveryEpoch = r.epoch
+		r.starts++
+		cursor := active.binding
+		r.cursor = &cursor
+		r.permitted = false
+		r.retryAt = time.Time{}
+		session.explicitRestartPending = false
+	}
+	session.active = active
+	session.diagnostics.ProtocolRunGeneration(generation)
+	session.updateSnapshot(func(snapshot *Snapshot) {
+		snapshot.ProtocolSocket = ProtocolSocketObservation{RunGeneration: generation, State: ProtocolSocketNotObserved, UpdatedAt: session.now()}
+		snapshot.State = Authenticating
+		snapshot.StateReason = nil
+		snapshot.AuthenticationEstablishedAt = nil
+	})
+	go session.executeProtocolRun(active)
+}
+
+func (session *AuthenticationSession) cancelActive(requirement protocol.AuthenticationProtocolRunCleanupRequirement) {
+	if session.active == nil || context.Cause(session.active.context) != nil {
+		return
+	}
+	session.active.effectiveEndAt = session.now()
+	session.active.cancel(protocol.AuthenticationProtocolRunCancellationCause{CleanupRequirement: requirement})
+	session.businessChanged()
+}

@@ -143,3 +143,69 @@ func (session *AuthenticationSession) post(message sessionMessage) {
 	case <-session.done:
 	}
 }
+
+func (session *AuthenticationSession) Snapshot(ctx context.Context) (Snapshot, error) {
+	reply := make(chan snapshotReply, 1)
+	if err := session.send(ctx, snapshotQuery{reply: reply}); err != nil {
+		return Snapshot{}, err
+	}
+	return receiveSnapshotReply(ctx, session.done, reply)
+}
+
+func (session *AuthenticationSession) ApplySystemNetworkSnapshot(ctx context.Context, network environment.Snapshot) (Snapshot, error) {
+	reply := make(chan snapshotReply, 1)
+	if err := session.send(ctx, systemNetworkSnapshotCommand{network: network, reply: reply}); err != nil {
+		return Snapshot{}, err
+	}
+	return receiveSnapshotReply(ctx, session.done, reply)
+}
+
+func (session *AuthenticationSession) Activate(ctx context.Context) (Snapshot, error) {
+	reply := make(chan snapshotReply, 1)
+	if err := session.send(ctx, activateCommand{reply: reply}); err != nil {
+		return Snapshot{}, err
+	}
+	return receiveSnapshotReply(ctx, session.done, reply)
+}
+
+func (session *AuthenticationSession) Suspend(ctx context.Context) (Snapshot, error) {
+	reply := make(chan snapshotReply, 1)
+	if err := session.send(ctx, suspendCommand{reply: reply}); err != nil {
+		return Snapshot{}, err
+	}
+	return receiveSnapshotReply(ctx, session.done, reply)
+}
+
+func (session *AuthenticationSession) Restart(ctx context.Context) (Snapshot, error) {
+	reply := make(chan snapshotReply, 1)
+	if err := session.send(ctx, restartCommand{reply: reply}); err != nil {
+		return Snapshot{}, err
+	}
+	return receiveSnapshotReply(ctx, session.done, reply)
+}
+
+func (session *AuthenticationSession) Shutdown(ctx context.Context) error {
+	reply := make(chan error, 1)
+	if err := session.beginShutdown(ctx, shutdownCommand{reply: reply}); err != nil {
+		return err
+	}
+	select {
+	case err := <-reply:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-session.done:
+		return nil
+	}
+}
+
+func receiveSnapshotReply(ctx context.Context, done <-chan struct{}, reply <-chan snapshotReply) (Snapshot, error) {
+	select {
+	case result := <-reply:
+		return result.snapshot, result.err
+	case <-ctx.Done():
+		return Snapshot{}, ctx.Err()
+	case <-done:
+		return Snapshot{}, ErrAuthenticationSessionClosed
+	}
+}
