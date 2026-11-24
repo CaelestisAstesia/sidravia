@@ -1,18 +1,14 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/state_models.dart';
+
+import 'conformance_fixture.dart';
 
 void main() {
   test(
     'full state preserves original metadata, cleanup, socket and uint64',
     () {
-      final fixture = jsonDecode(
-        File('../internal/ipc/contract/testdata/v1/conformance.json')
-            .readAsStringSync(),
-      ) as Map<String, dynamic>;
+      final fixture = readIpcConformanceFixture();
       final cases = (fixture['stateCases'] as List)
           .cast<Map<String, dynamic>>();
       final bootstrap = decodeStateBootstrap(

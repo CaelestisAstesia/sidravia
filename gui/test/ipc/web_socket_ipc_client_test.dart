@@ -7,6 +7,8 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 
+import 'conformance_fixture.dart';
+
 void main() {
   test('real Session direct/list/start/ensure keep exact actor tokens and App cleanup', () async {
     const wire =
@@ -1130,13 +1132,7 @@ Future<HttpServer> _server(
 }
 
 Map<String, dynamic> _fixtureResult(String method) {
-  final fixture = jsonDecode(
-    File('../internal/ipc/contract/testdata/v1/conformance.json')
-        .readAsStringSync(),
-  ) as Map<String, dynamic>;
-  final item = (fixture['cases'] as List<dynamic>)
-      .cast<Map<String, dynamic>>()
-      .firstWhere((value) => value['method'] == method);
+  final item = readIpcMethodFixture(method);
   return (jsonDecode(item['successResponse'] as String)
           as Map<String, dynamic>)['result']
       as Map<String, dynamic>;

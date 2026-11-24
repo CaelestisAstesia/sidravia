@@ -1,14 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/state_models.dart';
 
+import 'conformance_fixture.dart';
+
 void main() {
   test('shared typed state grammar agrees with Go', () {
     final seen = <String>{};
-    final cases = _fixture()['stateCases'] as List;
+    final cases = readIpcConformanceFixture()['stateCases'] as List;
     expect(cases, isNotEmpty);
     for (final raw in cases) {
       final item = raw as Map<String, dynamic>;
@@ -43,9 +44,9 @@ void main() {
       }
     }
     for (final item
-        in (_fixture()['cases'] as List).cast<Map<String, dynamic>>().where(
-          (v) => (v['method'] as String).startsWith('state.'),
-        )) {
+        in (readIpcConformanceFixture()['cases'] as List)
+            .cast<Map<String, dynamic>>()
+            .where((v) => (v['method'] as String).startsWith('state.'))) {
       final response = decodeBindingCheckedJson(
         item['successResponse'] as String,
         preserveUnsignedRevision: true,
@@ -66,7 +67,7 @@ void main() {
   });
 
   test('shared safe export strict grammar and invariants', () {
-    final fixture = _fixture();
+    final fixture = readIpcConformanceFixture();
     final enums = fixture['enums'] as Map<String, dynamic>;
     expect(
       enums['configurationRuntimeAvailabilities'],
@@ -122,7 +123,8 @@ void main() {
   });
 
   test('fixture names exactly all twenty-one owned v1 methods', () {
-    final cases = (_fixture()['cases'] as List).cast<Map<String, dynamic>>();
+    final cases = (readIpcConformanceFixture()['cases'] as List)
+        .cast<Map<String, dynamic>>();
     expect(cases, hasLength(21));
     expect(cases.map((c) => c['method']).toSet(), {
       'daemon.status',
@@ -184,9 +186,7 @@ void main() {
   );
 
   test('configuration.get shared success decodes every public field', () {
-    final fixture = (_fixture()['cases'] as List<dynamic>)
-        .cast<Map<String, dynamic>>()
-        .singleWhere((value) => value['method'] == 'configuration.get');
+    final fixture = readIpcMethodFixture('configuration.get');
     final response = jsonDecode(
       fixture['successResponse'] as String,
     ) as Map<String, dynamic>;
@@ -212,23 +212,9 @@ void main() {
   });
 
   test('consumes all five read-only IPC fixture examples', () {
-    final fixture = jsonDecode(
-      File('../internal/ipc/contract/testdata/v1/conformance.json')
-          .readAsStringSync(),
-    ) as Map<String, dynamic>;
+    final fixture = readIpcConformanceFixture();
     expect(fixture['schemaVersion'], 1);
-    final cases = (fixture['cases'] as List<dynamic>)
-        .cast<Map<String, dynamic>>()
-        .where(
-          (value) => const {
-            'daemon.status',
-            'profile.list',
-            'configuration.list',
-            'session.list',
-            'network.interfaces',
-          }.contains(value['method']),
-        )
-        .toList(growable: false);
+    final cases = _readOnlyCases(fixture);
     expect(cases.map((value) => value['method']).toSet(), hasLength(5));
 
     for (final value in cases) {
@@ -260,7 +246,7 @@ void main() {
   });
 
   test('fixture request and error envelopes remain read-only and exact', () {
-    final fixture = _fixture();
+    final fixture = readIpcConformanceFixture();
     final cases = _readOnlyCases(fixture);
     for (final value in cases) {
       final request =
@@ -302,13 +288,7 @@ void main() {
   test(
     'accepts desktop status and the fixture retained full-detail Session',
     () {
-      final fixture = jsonDecode(
-        File('../internal/ipc/contract/testdata/v1/conformance.json')
-            .readAsStringSync(),
-      ) as Map<String, dynamic>;
-      final full = (fixture['cases'] as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .firstWhere((value) => value['method'] == 'session.get');
+      final full = readIpcMethodFixture('session.get');
       final response =
           jsonDecode(full['successResponse'] as String) as Map<String, dynamic>;
       final session = _decodeOneSession(jsonEncode(response['result']));
@@ -327,10 +307,7 @@ void main() {
   test(
     'accepts one-shot omission and rejects enum, optional, and field errors',
     () {
-      final fixture = _fixture();
-      final oneShot = (fixture['cases'] as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .firstWhere((value) => value['method'] == 'session.startOneShot');
+      final oneShot = readIpcMethodFixture('session.startOneShot');
       final oneShotResponse = jsonDecode(
         oneShot['successResponse'] as String,
       ) as Map<String, dynamic>;
@@ -370,7 +347,7 @@ void main() {
   });
 
   test('decodes all nine operational fixture requests and success shapes', () {
-    final cases = (_fixture()['cases'] as List<dynamic>)
+    final cases = (readIpcConformanceFixture()['cases'] as List<dynamic>)
         .cast<Map<String, dynamic>>()
         .where(
           (value) => const {
@@ -442,11 +419,6 @@ void main() {
     },
   );
 }
-
-Map<String, dynamic> _fixture() => jsonDecode(
-  File('../internal/ipc/contract/testdata/v1/conformance.json')
-      .readAsStringSync(),
-) as Map<String, dynamic>;
 
 List<Map<String, dynamic>> _readOnlyCases(Map<String, dynamic> fixture) =>
     (fixture['cases'] as List<dynamic>)
