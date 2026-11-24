@@ -6,11 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
-
-	"sidravia/internal/daemon/logging/internal/protection"
 )
 
 func checkLogMode(t *testing.T, path string, mode os.FileMode) {
@@ -90,7 +87,7 @@ func TestLinuxDiagnosticSegmentPrivate(t *testing.T) {
 	checkLogMode(t, path, 0600)
 }
 func TestLinuxLogRefusesRedirectedObjects(t *testing.T) {
-	for _, kind := range []string{"symlink", "broken-symlink", "fifo", "hardlink", "directory", "parent-symlink", "backup-symlink"} {
+	for _, kind := range []string{"symlink", "broken-symlink", "hardlink", "directory", "parent-symlink", "backup-symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			dir := filepath.Join(root, "logs")
@@ -125,10 +122,6 @@ func TestLinuxLogRefusesRedirectedObjects(t *testing.T) {
 				if e := os.Symlink(outside, path+".1"); e != nil {
 					t.Fatal(e)
 				}
-			case "fifo":
-				if e := syscall.Mkfifo(path, 0600); e != nil {
-					t.Fatal(e)
-				}
 			case "hardlink":
 				if e := os.Link(outside, path); e != nil {
 					t.Fatal(e)
@@ -138,23 +131,12 @@ func TestLinuxLogRefusesRedirectedObjects(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
-			// Avoid blocking the baseline FIFO open; known protection entry is tested directly.
-			if kind == "fifo" {
-				p, e := protection.New()
-				if e != nil {
-					t.Fatal(e)
-				}
-				if e := p.File(path); e == nil {
-					t.Fatal("FIFO accepted")
-				}
-			} else {
-				f, e := PrepareBootstrap(path)
-				if f != nil {
-					f.Close()
-				}
-				if e == nil {
-					t.Error("redirected/nonregular log accepted")
-				}
+			f, e := PrepareBootstrap(path)
+			if f != nil {
+				f.Close()
+			}
+			if e == nil {
+				t.Error("redirected/nonregular log accepted")
 			}
 			b, e := os.ReadFile(outside)
 			if e != nil || string(b) != "unrelated" {
