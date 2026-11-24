@@ -222,3 +222,18 @@ func MarshalConfigurationRemoveResult(value ConfigurationRemoveResult) (json.Raw
 	data, err := json.Marshal(value)
 	return json.RawMessage(data), err
 }
+
+// DecodeConfigurationRemoveResult verifies that the receipt identifies the requested configuration.
+func DecodeConfigurationRemoveResult(data []byte, expectedConfigurationID string) (ConfigurationRemoveResult, error) {
+	var result ConfigurationRemoveResult
+	if err := networkObject(data, []string{"configurationId", "status"}); err != nil {
+		return result, err
+	}
+	if err := decodeStrict(data, &result); err != nil {
+		return ConfigurationRemoveResult{}, err
+	}
+	if result.ConfigurationID == "" || result.ConfigurationID != expectedConfigurationID || result.Status != "removed" {
+		return ConfigurationRemoveResult{}, fmt.Errorf("invalid configuration removal result")
+	}
+	return result, nil
+}

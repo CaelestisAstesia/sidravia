@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -171,7 +170,7 @@ func runAuthRemove(sessionID string, deps authDependencies) error {
 			}
 			return errors.New(ipcErrorText(code))
 		}
-		result, err := decodeSessionRemoveResult(response.Result)
+		result, err := contract.DecodeSessionRemoveResult(response.Result, sessionID)
 		if err != nil {
 			return wrapSafeOperation("解码 Session 响应", err)
 		}
@@ -309,23 +308,6 @@ func callSessionStart(deps authDependencies, connection daemonClient, method str
 		return contract.SessionStartResult{}, errors.New(ipcErrorText(code))
 	}
 	return decodeSessionStartResult(response.Result)
-}
-
-func decodeSessionRemoveResult(data []byte) (contract.SessionRemoveResult, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var result contract.SessionRemoveResult
-	if err := decoder.Decode(&result); err != nil {
-		return contract.SessionRemoveResult{}, err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return contract.SessionRemoveResult{}, fmt.Errorf("Session 删除结果之后存在多余数据")
-	}
-	if result.SessionID == "" || result.Status != "removed" {
-		return contract.SessionRemoveResult{}, fmt.Errorf("Session 删除结果无效")
-	}
-	return result, nil
 }
 
 func writeSessionRemoveResult(output io.Writer, result contract.SessionRemoveResult) error {

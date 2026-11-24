@@ -197,6 +197,21 @@ func MarshalSessionRemoveResult(result SessionRemoveResult) (json.RawMessage, er
 	return json.RawMessage(data), nil
 }
 
+// DecodeSessionRemoveResult verifies that the receipt identifies the requested session.
+func DecodeSessionRemoveResult(data []byte, expectedSessionID string) (SessionRemoveResult, error) {
+	var result SessionRemoveResult
+	if err := networkObject(data, []string{"sessionId", "status"}); err != nil {
+		return result, err
+	}
+	if err := decodeStrict(data, &result); err != nil {
+		return SessionRemoveResult{}, err
+	}
+	if result.SessionID == "" || result.SessionID != expectedSessionID || result.Status != "removed" {
+		return SessionRemoveResult{}, fmt.Errorf("invalid session removal result")
+	}
+	return result, nil
+}
+
 type SessionListResult struct {
 	CleanupRequiredSessionIDs []string        `json:"cleanupRequiredSessionIds"`
 	Sessions                  []SessionResult `json:"sessions"`

@@ -111,6 +111,10 @@ func TestConfigRemoveStrictlyDecodesResponse(t *testing.T) {
 		ok             bool
 	}{
 		{"valid", valid, true},
+		{"missing ID", `{"status":"removed"}`, false},
+		{"wrong ID", `{"configurationId":"elsewhere","status":"removed"}`, false},
+		{"wrong status", `{"configurationId":"campus","status":"wrong"}`, false},
+		{"duplicate field", `{"configurationId":"campus","status":"removed","status":"removed"}`, false},
 		{"unknown field", `{"configurationId":"campus","status":"removed","extra":true}`, false},
 		{"trailing value", valid + ` {}`, false},
 		{"trailing garbage", valid + ` !`, false},

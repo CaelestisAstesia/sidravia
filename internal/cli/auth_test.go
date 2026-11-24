@@ -190,19 +190,27 @@ func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
 	}
 }
 
-func TestDecodeSessionRemoveResultStrict(t *testing.T) {
-	valid, err := decodeSessionRemoveResult([]byte(`{"sessionId":"session-1","status":"removed"}`))
-	if err != nil || valid.SessionID != "session-1" {
-		t.Fatalf("valid remove result=%#v err=%v", valid, err)
-	}
+func TestRunAuthRemoveRejectsInvalidReceipts(t *testing.T) {
 	for _, data := range []string{
 		`{"sessionId":"","status":"removed"}`,
 		`{"sessionId":"session-1","status":"wrong"}`,
+		`{"sessionId":"session-2","status":"removed"}`,
+		`{"status":"removed"}`,
+		`{"sessionId":"session-1","status":"removed","status":"removed"}`,
 		`{"sessionId":"session-1","status":"removed","extra":true}`,
 		`{"sessionId":"session-1","status":"removed"}{}`,
 	} {
-		if _, err := decodeSessionRemoveResult([]byte(data)); err == nil {
-			t.Fatalf("accepted invalid remove result %s", data)
+		connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+			if method != contract.MethodSessionRemove {
+				t.Fatalf("unexpected method %s", method)
+			}
+			return contract.NewSuccessResponse("1", json.RawMessage(data)), nil
+		}}
+		deps := hotAuthDependencies(t, connection)
+		var output bytes.Buffer
+		deps.stdout = &output
+		if err := runAuthRemove("session-1", deps); err == nil || err.Error() != "解码 Session 响应" || output.Len() != 0 {
+			t.Fatalf("invalid remove receipt %s produced output %q, error %v", data, &output, err)
 		}
 	}
 }

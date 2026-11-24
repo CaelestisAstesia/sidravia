@@ -455,8 +455,8 @@ func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) 
 		if err != nil {
 			return err
 		}
-		var result contract.ConfigurationRemoveResult
-		if err := decodeStrictCLI(raw, &result, "结果包含多余数据"); err != nil || result.ConfigurationID == "" || result.Status != "removed" {
+		result, err := contract.DecodeConfigurationRemoveResult(raw, id)
+		if err != nil {
 			return wrapSafeOperation("解码配置删除结果", err)
 		}
 		return writeAll(deps.stdout, "配置已删除："+sanitizeDynamicText(result.ConfigurationID)+"\n")
