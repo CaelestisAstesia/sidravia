@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sidravia/internal/persistence"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
+	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/packagefiles"
 	"sidravia/internal/update/releases"
@@ -66,77 +66,24 @@ func TestNativeInstalledUpdate(t *testing.T) {
 	}
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	pub := key.Public().(ed25519.PublicKey)
-	replacements := map[string]string{}
-	overlay := func(relative string, edit func(string) string) {
-		t.Helper()
-		original := filepath.Join(repo, filepath.FromSlash(relative))
-		data, e := os.ReadFile(original)
-		if e != nil {
-			t.Fatal(e)
-		}
-		out := edit(string(data))
-		if out == string(data) {
-			t.Fatal("overlay source changed", relative)
-		}
-		dest := filepath.Join(owned, strings.ReplaceAll(relative, "/", "-"))
-		if e = os.WriteFile(dest, []byte(out), 0600); e != nil {
-			t.Fatal(e)
-		}
-		replacements[original] = dest
-	}
-	overlay("internal/update/releases/trust.go", func(s string) string {
-		parts := []string{}
-		for _, b := range pub {
-			parts = append(parts, fmt.Sprint(b))
-		}
-		return strings.Replace(s, "NewPublisherKeys([]ed25519.PublicKey{ed25519.PublicKey(publisherPublicKey)})", "NewPublisherKeys([]ed25519.PublicKey{{"+strings.Join(parts, ",")+"}})", 1)
-	})
-	overlay("internal/update/github/github.go", func(s string) string {
-		s = strings.Replace(s, "\"context\"", "\"context\"\n\"os\"\n\"bytes\"\n\"path/filepath\"", 1)
-		return s + fmt.Sprintf(`
-func init(){http.DefaultTransport=fixtureTransport{fallback:http.DefaultTransport}}
-type fixtureTransport struct{fallback http.RoundTripper}
-func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
- var file string
- if r.URL.Scheme=="http" && r.URL.Hostname()=="127.0.0.1" && r.URL.Path=="/ipc" {return f.fallback.RoundTrip(r)}
- if r.URL.Scheme!="https"{return nil,releases.ErrMetadata}
- if r.URL.Host=="api.github.com" && r.URL.Path=="/repos/"+releases.Repository+"/releases"{file="api.json"}else if r.URL.Host=="github.com" && strings.HasPrefix(r.URL.Path,"/"+releases.Repository+"/releases/download/v"){
-  tail:=strings.TrimPrefix(r.URL.Path,"/"+releases.Repository+"/releases/download/v");parts:=strings.Split(tail,"/");if len(parts)!=2 || strings.Contains(tail,"..") || strings.Contains(tail,"\\"){return nil,releases.ErrMetadata};file=filepath.Join(parts[0],parts[1])
- }else{return nil,releases.ErrMetadata}
- data,e:=os.ReadFile(filepath.Join(%s,file));status:=200;if os.IsNotExist(e){data=nil;status=404}else if e!=nil{return nil,e}
- return &http.Response{StatusCode:status,Header:make(http.Header),ContentLength:int64(len(data)),Body:io.NopCloser(bytes.NewReader(data)),Request:r},nil
-}
-`, strconv.Quote(source))
-	})
-	overlay("internal/update/command/run.go", func(s string) string {
+	overlay := testfixture.NewWindowsOverlay(t, repo, owned, source, pub)
+	overlay.Replace("internal/update/command/run.go", func(s string) string {
 		s = strings.Replace(s, "\"io\"", "\"io\"\n\"os\"", 1)
 		return strings.Replace(s, "failSource := func(err error, result any, applying bool) int {", "failSource := func(err error, result any, applying bool) int {\nif applying{os.WriteFile("+strconv.Quote(filepath.Join(owned, "apply-cause.txt"))+",[]byte(err.Error()),0600)}", 1)
 	})
-	overlay("cmd/sidraviactl/main.go", func(s string) string {
+	overlay.Replace("cmd/sidraviactl/main.go", func(s string) string {
 		return strings.Replace(s, "fmt.Fprintln(os.Stderr, \"安装或更新正在进行，请完成或取消后再运行命令。\")", "fmt.Fprintln(os.Stderr, \"fixture startup cause:\",err)\n fmt.Fprintln(os.Stderr, \"安装或更新正在进行，请完成或取消后再运行命令。\")", 1)
 	})
-	overlay("internal/update/setup/begin_windows.go", func(s string) string {
+	overlay.Replace("internal/update/setup/begin_windows.go", func(s string) string {
 		s = strings.Replace(s, "\tabort := func(cause error)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tabort := func(cause error)", 1)
 		return strings.Replace(s, "\toffer, err := windowsplatform.NewOffer", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\toffer, err := windowsplatform.NewOffer", 1)
 	})
-	overlay("internal/update/windowsplatform/process_windows.go", func(s string) string {
+	overlay.Replace("internal/update/windowsplatform/process_windows.go", func(s string) string {
 		return strings.Replace(s, "func StartIndependent(path string, args ...string) (*exec.Cmd, error) {", "func StartIndependent(path string, args ...string) (*exec.Cmd, error) {\nargs=append(args,\"/VERYSILENT\",\"/SUPPRESSMSGBOXES\",\"/TASKS=\",\"/LOG=\"+"+strconv.Quote(filepath.Join(owned, "setup.log"))+")", 1)
 	})
-	overlayPath := filepath.Join(owned, "overlay.json")
-	b, _ := json.Marshal(map[string]any{"Replace": replacements})
-	if e = os.WriteFile(overlayPath, b, 0600); e != nil {
-		t.Fatal(e)
-	}
-	buildEnv := os.Environ()
+	overlayPath := overlay.Write()
 	for _, v := range []struct{ dir, version, build string }{{oldDir, "1.0.0", "setup-old"}, {payload, "1.1.0", "setup-new"}} {
-		for _, role := range []string{"sidraviactl", "sidraviad", "sidraviaupdater", "sidraviamgr"} {
-			cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin/go.exe"), "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-overlay", overlayPath, "-ldflags", "-X main.ProductVersion="+v.version+" -X main.BuildID="+v.build, "-o", filepath.Join(v.dir, role+".exe"), "./cmd/"+role)
-			cmd.Dir = repo
-			cmd.Env = append(buildEnv, "GOTOOLCHAIN=local", "CGO_ENABLED=0")
-			if out, e := cmd.CombinedOutput(); e != nil {
-				t.Fatalf("build %s: %s %v", role, out, e)
-			}
-		}
+		overlay.BuildProduct(overlayPath, v.dir, v.version, v.build)
 		if bundle != "" {
 			copyNativeTree(t, bundle, v.dir)
 		}
