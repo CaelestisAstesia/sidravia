@@ -1,4 +1,4 @@
-package daemonlog
+package logging
 
 import (
 	"bytes"

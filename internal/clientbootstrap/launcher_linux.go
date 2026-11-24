@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/daemonlog"
+	"sidravia/internal/daemon/logging"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -38,7 +38,7 @@ type daemonLauncherDeps struct {
 func defaultDaemonLauncherDeps() daemonLauncherDeps {
 	return daemonLauncherDeps{
 		resolveLayout: productlayout.ResolveNamespace,
-		prepareLog:    daemonlog.PrepareBootstrap,
+		prepareLog:    logging.PrepareBootstrap,
 		parentEnv:     os.Environ,
 		start:         func(cmd *exec.Cmd) error { return cmd.Start() },
 		wait:          func(cmd *exec.Cmd) error { return cmd.Wait() },

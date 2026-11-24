@@ -1,6 +1,6 @@
 //go:build linux
 
-package daemonlog
+package logging
 
 import (
 	"os"

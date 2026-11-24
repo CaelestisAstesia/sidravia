@@ -1,6 +1,6 @@
 //go:build !windows && !linux
 
-package daemonlog
+package logging
 
 type unprotectedDaemonLogProtection struct{}
 

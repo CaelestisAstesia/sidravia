@@ -1,6 +1,6 @@
 //go:build windows
 
-package daemonlog
+package logging
 
 import (
 	"os"

@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/daemonlog"
+	"sidravia/internal/daemon/logging"
 
 	"golang.org/x/sys/windows"
 
@@ -35,7 +35,7 @@ type windowsDaemonLauncherDeps struct {
 }
 
 func defaultWindowsDaemonLauncherDeps() windowsDaemonLauncherDeps {
-	return windowsDaemonLauncherDeps{productlayout.ResolveNamespace, daemonlog.PrepareBootstrap, os.Environ, func(c *exec.Cmd) error { return c.Start() }, func(c *exec.Cmd) error { return c.Wait() }}
+	return windowsDaemonLauncherDeps{productlayout.ResolveNamespace, logging.PrepareBootstrap, os.Environ, func(c *exec.Cmd) error { return c.Start() }, func(c *exec.Cmd) error { return c.Wait() }}
 }
 
 func launchDaemonProcessWith(options launchcontract.Options, logLevel string, deps windowsDaemonLauncherDeps) (daemonLaunch, error) {

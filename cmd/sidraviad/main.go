@@ -11,7 +11,7 @@ import (
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/installationgate"
 
-	"sidravia/internal/daemonlog"
+	"sidravia/internal/daemon/logging"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
@@ -130,7 +130,7 @@ func newProductionLogger() (*slog.Logger, slog.Level, io.Closer, error) {
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	output, err := daemonlog.NewWriter(filepath.Dir(layout.DaemonLogPath), os.Stderr)
+	output, err := logging.NewWriter(filepath.Dir(layout.DaemonLogPath), os.Stderr)
 	if err != nil {
 		return nil, 0, nil, err
 	}
