@@ -16,11 +16,11 @@ import verification_commands as checks
 
 class CheckPlanning(unittest.TestCase):
     def test_gui_combination_has_one_analysis_and_one_test_stage(self):
-        args=dev.parse_args(['check','--scope','gui','--scope','gui','--gui-test','test/offline_demo_test.dart','--gui-test','test/offline_demo_test.dart','--preview-build','--linux-build'])
+        args=dev.parse_args(['check','--scope','gui','--scope','gui','--gui-test','test/preview/offline_demo_test.dart','--gui-test','test/preview/offline_demo_test.dart','--preview-build','--linux-build'])
         request=checks.plan(Path('/repo'),args)
         names=[s['name'] for s in request['stages']]
         self.assertEqual(names,['gui-sdk','gui-dependencies','gui-analyze','gui-tests','preview-web','linux-bundle'])
-        self.assertEqual(request['stages'][3]['argv'].count('test/offline_demo_test.dart'),1)
+        self.assertEqual(request['stages'][3]['argv'].count('test/preview/offline_demo_test.dart'),1)
         self.assertNotIn('--check-gui',request['stages'][-1]['argv'])
 
     def test_targeted_checks_preserve_test_rerun_and_avoid_full_matrix(self):

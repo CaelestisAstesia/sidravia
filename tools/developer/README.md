@@ -640,7 +640,7 @@ python3 tools/developer/dev.py check --scope go --go-package ./internal/update/.
 python3 tools/developer/dev.py check --scope python --python-test test_validation_run.py
 # Shared GUI checks once, with an optional offline Web and/or Linux build.
 python3 tools/developer/dev.py check --scope gui --preview-build --linux-build
-python3 tools/developer/dev.py check --scope gui --gui-test test/offline_demo_test.dart
+python3 tools/developer/dev.py check --scope gui --gui-test test/preview/offline_demo_test.dart
 # Combine scopes, inspect a machine-readable plan, or request one JSON result.
 python3 tools/developer/dev.py check --scope go --scope python --scope gui --plan
 python3 tools/developer/dev.py check --scope python --format json
@@ -927,7 +927,7 @@ checks retain their clean-source requirements.
 Use `dev visual` for repeated captures of the production pages/controls through
 the existing offline demo. It does not launch the production installation, read
 accounts, authenticate or alter a running preview. The previously local 27-step
-capture flow is now `gui/test/gui_capture_test.dart`; existing HTML-reference and
+capture entry is `gui/test/visual/gui_capture_test.dart`; existing HTML-reference and
 home-layout scripts remain available for their original purposes.
 
 ```bash

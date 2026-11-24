@@ -54,7 +54,7 @@ def plan(root, args):
         for test in tests:
             p = Path(test)
             if p.is_absolute() or '..' in p.parts or not test.startswith('test/') or not test.endswith('.dart'):
-                raise ValueError('GUI tests must be relative test/*.dart paths')
+                raise ValueError('GUI test files must use Dart paths under test/, relative to gui')
         add('gui-tests', [flutter,'test','--no-pub',*tests], gui)
         if args.preview_build:
             add('preview-web', [flutter,'build','web','--no-pub','--no-web-resources-cdn','--target','lib/dev/interactive_demo_main.dart'], gui)

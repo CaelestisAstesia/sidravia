@@ -1,0 +1,306 @@
+import 'package:sidravia_gui/dev/offline_demo_client.dart';
+
+import '../support/announcement_shell_fixture.dart' as school_dispatch;
+
+import 'package:sidravia_gui/application/gui_snapshot.dart';
+import 'package:flutter/material.dart';
+
+import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/rendering.dart';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
+import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
+import 'package:sidravia_gui/features/home/home_page.dart';
+import 'package:sidravia_gui/ipc/ipc_models.dart';
+import 'package:sidravia_gui/dev/preview_main.dart';
+
+import '../support/capture_fonts.dart' as fonts;
+
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
+
+import '../support/offline_gui_controller.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets(
+    'connected reference fixture renders the production home surface',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.binding.setSurfaceSize(const Size(398, 642));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.runAsync(
+        () => fonts.loadCaptureFonts(
+          forCapture: const bool.fromEnvironment('GENERATE_HOME_CANDIDATE'),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light().copyWith(platform: TargetPlatform.windows),
+          home: const Scaffold(
+            body: SizedBox.expand(
+              child: RepaintBoundary(
+                key: ValueKey('capture'),
+                child: ColoredBox(
+                  color: AppColors.bgLight,
+                  child: HomeFixture(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已连接'), findsOneWidget);
+      expect(find.text('校园网维护安排'), findsOneWidget);
+      expect(find.byType(HomeAnnouncementEntryView), findsOneWidget);
+      final measurements = <String, Object>{};
+      for (final key in [
+        'home-header',
+        'home-status',
+        'home-mark',
+        'home-context',
+        'home-actions',
+        'home-divider',
+        'home-notice',
+      ]) {
+        final rect = tester.getRect(find.byKey(ValueKey(key)));
+        measurements[key] = {
+          'x': rect.left,
+          'y': rect.top,
+          'width': rect.width,
+          'height': rect.height,
+        };
+      }
+      for (final entry in {
+        'institution': '吉林大学',
+        'username': 'student01',
+        'status-title': '已连接',
+        'status-detail': '认证成功 · 已连接 2 小时 18 分钟',
+        'notice-title': '校园网维护安排',
+      }.entries) {
+        final rect = tester.getRect(find.text(entry.value));
+        measurements[entry.key] = {
+          'x': rect.left,
+          'y': rect.top,
+          'width': rect.width,
+          'height': rect.height,
+        };
+      }
+      expect(
+        tester.getSize(find.byKey(const ValueKey('home-mark'))).height,
+        greaterThanOrEqualTo(50),
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('home-actions'))).width,
+        320,
+      );
+      if (const bool.fromEnvironment('GENERATE_HOME_CANDIDATE')) {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('capture')),
+        );
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 1);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await Directory('test/candidates').create(recursive: true);
+          await File('test/candidates/flutter-content.png')
+              .writeAsBytes(bytes!.buffer.asUint8List());
+          await File('test/candidates/flutter-measurements.json')
+              .writeAsString(jsonEncode(measurements));
+          image.dispose();
+        });
+      }
+    },
+  );
+
+  testWidgets('formal HomePage maps controller.notice and existing action', (
+    tester,
+  ) async {
+    final client = _Client();
+    final controller = GuiController(
+      bootstrapper: _Bootstrapper(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    client.failStop = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(controller: controller, onNavigate: (_) {}),
+      ),
+    );
+    expect(find.text('当前状态无法执行此操作'), findsNothing);
+    await tester.tap(find.text('断开连接'));
+    await tester.pump();
+    expect(find.text('当前状态无法执行此操作'), findsOneWidget);
+    expect(client.stopCalls, 1);
+    await tester.tap(find.byTooltip('关闭提示'));
+    await tester.pump();
+    expect(find.text('当前状态无法执行此操作'), findsNothing);
+    expect(client.stopCalls, 1);
+    client.failStop = false;
+    await tester.tap(find.text('断开连接'));
+    await tester.pump();
+    expect(client.stopCalls, 2);
+    expect(find.text('当前状态无法执行此操作'), findsNothing);
+    controller.dispose();
+  });
+
+  testWidgets(
+    'shared home announcement invokes the supplied preview callback',
+    (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeAnnouncementEntryView(
+            entry: HomeAnnouncementEntry(
+              title: '校园网维护安排',
+              onOpen: () => calls++,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byType(HomeAnnouncementEntryView));
+      expect(calls, 1);
+    },
+  );
+
+  testWidgets(
+    'formal HomePage hides unavailable metadata and shows manual school entry',
+    (tester) async {
+      final client = OfflineDemoClient();
+      final controller = offlineGuiController(client);
+      await controller.start();
+      final announcements = await school_dispatch.manualAnnouncements(
+        tester,
+        controller,
+      );
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomePage(
+              controller: controller,
+              announcements: announcements,
+              onNavigate: (_) {},
+            ),
+          ),
+        );
+        expect(find.text('公告'), findsOneWidget);
+        expect(find.text('在应用内打开学校公告页面'), findsNothing);
+        await tester.tap(find.byType(HomeAnnouncementEntryView));
+        await tester.pumpAndSettle();
+        expect(find.text('当前环境暂不支持应用内公告'), findsOneWidget);
+        client.selectScenario('empty');
+        await controller.start();
+        announcements.updateCapabilities(controller.capabilities);
+        await tester.pump();
+        expect(find.byType(HomeAnnouncementEntryView), findsNothing);
+        expect(find.byKey(const ValueKey('home-divider')), findsOneWidget);
+      } finally {
+        await tester.pump();
+        await school_dispatch.pumpCleanup(tester, () async {
+          await announcements.close();
+          await controller.close();
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+        announcements.dispose();
+        client.dispose();
+      }
+    },
+  );
+}
+
+final _homeSnapshot = GuiSnapshot(
+  daemon: const DaemonStatus(
+    productVersion: 'fixture',
+    buildId: 'fixture',
+    pid: 1,
+    status: 'running',
+    mode: 'desktop',
+  ),
+  profiles: const [
+    InstitutionProfile(
+      id: 'jlu',
+      displayName: '吉林大学',
+      protocolId: 'drcom-5.2.0-d',
+    ),
+  ],
+  configurations: const [
+    ConfigurationSummary(
+      id: 'cfg-a',
+      displayName: '吉林大学',
+      institutionProfileId: 'jlu',
+      institutionDisplayName: '吉林大学',
+      authenticationProtocolId: 'drcom-5.2.0-d',
+      username: 'student01',
+      credentialStored: true,
+      storageProtection: 'protected',
+    ),
+  ],
+  sessions: [
+    SessionSummary(
+      id: 'session-a',
+      displayName: '吉林大学',
+      accountName: 'student01',
+      state: SessionState.authenticated,
+      intent: SessionIntent.maintainAuthentication,
+      configurationId: 'cfg-a',
+      selectedNetworkBinding: SessionNetworkBinding(
+        interfaceId: 'ethernet',
+        displayName: '以太网',
+        localIpv4Address: '192.168.1.20',
+      ),
+    ),
+  ],
+);
+
+class _Bootstrapper implements GuiBootstrapper {
+  @override
+  Future<GuiBootstrapResult> bootstrap() async => GuiBootstrapResult.success(
+    GuiBootstrap(
+      endpoint: Uri.parse('ws://127.0.0.1:4711/ipc'),
+      token: 'fixture-only',
+      productVersion: 'fixture',
+      buildId: 'fixture',
+      daemonPid: 1,
+      mode: 'desktop',
+    ),
+  );
+}
+
+class _Client implements SidraviaIpcClient {
+  bool failStop = false;
+  int stopCalls = 0;
+  @override
+  Future<DaemonStatus> daemonStatus() async => _homeSnapshot.daemon;
+  @override
+  Future<List<InstitutionProfile>> profileList() async =>
+      _homeSnapshot.profiles;
+  @override
+  Future<List<ConfigurationSummary>> configurationList() async =>
+      _homeSnapshot.configurations;
+  @override
+  Future<List<SessionSummary>> sessionList() async => _homeSnapshot.sessions;
+  @override
+  Future<SessionSummary> sessionStop(String sessionId) async {
+    expect(sessionId, 'session-a');
+    stopCalls++;
+    if (failStop) throw const IpcRequestFailure('session_state_conflict');
+    return _homeSnapshot.sessions.single;
+  }
+
+  @override
+  Future<void> close() async {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('unexpected client call: ${invocation.memberName}');
+}

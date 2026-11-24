@@ -1,0 +1,404 @@
+import '../support/runtime_snapshot.dart';
+
+import 'package:flutter/material.dart';
+import 'package:sidravia_gui/app/navigation/app_destination.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sidravia_gui/application/connection_presentation.dart';
+import 'package:sidravia_gui/application/gui_capabilities.dart';
+import 'package:sidravia_gui/application/gui_controller.dart';
+import 'package:sidravia_gui/application/gui_snapshot.dart';
+import 'package:sidravia_gui/dev/offline_demo_client.dart';
+import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
+import 'package:sidravia_gui/features/home/home_page.dart';
+import 'package:sidravia_gui/features/settings/settings_page.dart';
+import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
+import 'package:sidravia_gui/ipc/ipc_models.dart';
+
+import '../support/connection_state_fixture.dart';
+
+void main() {
+  test('exhausted protocol recovery explains manual reconnection', () {
+    final p = ConnectionPresentation.project(
+      caps(
+        sessions: [
+          const SessionSummary(
+            id: 'demo-session',
+            displayName: '',
+            accountName: 'u',
+            state: SessionState.blockedByError,
+            intent: SessionIntent.maintainAuthentication,
+            configurationId: 'demo-config',
+            stateReason: SessionStateReason(
+              code: 'protocol_recovery_exhausted',
+              description: 'Protocol recovery exhausted.',
+            ),
+          ),
+        ],
+      ),
+    );
+    expect(p.statusContext, '已尝试 3 次自动恢复，请手动重新连接');
+    expect(p.primaryLabel, '重新连接');
+    expect(p.primaryAction.kind, GuiConnectionActionKind.reconnect);
+  });
+  testWidgets('captured edit and header intents cannot navigate from A to B', (
+    tester,
+  ) async {
+    final client = NavigationClient();
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    final destinations = <AppPage>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(controller: controller, onNavigate: destinations.add),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final old = tester.widget<HomeView>(find.byType(HomeView)).data;
+    old.onSecondary!();
+    expect(destinations, [AppPage.configuration]);
+    destinations.clear();
+    client.configuration = otherConfiguration;
+    await controller.retry();
+    old.onSecondary!();
+    old.onHeader();
+    expect(destinations, isEmpty);
+    await tester.pumpAndSettle();
+    tester.widget<HomeView>(find.byType(HomeView)).data.onSecondary!();
+    expect(destinations, [AppPage.configuration]);
+    expect(client.operations, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+    client.dispose();
+  });
+  final matrix =
+      <
+        SessionState,
+        (
+          String,
+          String,
+          GuiConnectionActionKind,
+          String,
+          GuiConnectionActionKind,
+          bool,
+        )
+      >{
+        SessionState.authenticated: (
+          '已连接',
+          '断开连接',
+          GuiConnectionActionKind.stop,
+          '连接与诊断',
+          GuiConnectionActionKind.showDetails,
+          true,
+        ),
+        SessionState.suspended: (
+          '未连接',
+          '开始连接',
+          GuiConnectionActionKind.start,
+          '更改配置',
+          GuiConnectionActionKind.editConfiguration,
+          true,
+        ),
+        SessionState.authenticating: (
+          '正在认证',
+          '取消连接',
+          GuiConnectionActionKind.stop,
+          '连接与诊断',
+          GuiConnectionActionKind.showDetails,
+          true,
+        ),
+        SessionState.waitingForNetwork: (
+          '等待网络',
+          '取消等待',
+          GuiConnectionActionKind.stop,
+          '连接与诊断',
+          GuiConnectionActionKind.showDetails,
+          true,
+        ),
+        SessionState.waitingBeforeRetry: (
+          '等待重试',
+          '立即重试',
+          GuiConnectionActionKind.reconnect,
+          '停止重试',
+          GuiConnectionActionKind.stop,
+          true,
+        ),
+        SessionState.blockedByError: (
+          '认证失败',
+          '重新连接',
+          GuiConnectionActionKind.reconnect,
+          '更改配置',
+          GuiConnectionActionKind.editConfiguration,
+          true,
+        ),
+        SessionState.stopping: (
+          '正在断开',
+          '正在断开',
+          GuiConnectionActionKind.stop,
+          '连接与诊断',
+          GuiConnectionActionKind.showDetails,
+          false,
+        ),
+      };
+  for (final entry in matrix.entries) {
+    test('canonical projection ${entry.key.name}', () {
+      final p = ConnectionPresentation.project(
+        caps(sessions: [session(entry.key)]),
+      );
+      final (title, label, action, secondary, secondaryAction, enabled) =
+          entry.value;
+      expect(p.statusTitle, title);
+      expect(p.primaryLabel, label);
+      expect(p.primaryAction.kind, action);
+      expect(p.secondaryLabel, secondary);
+      expect(p.secondaryAction.kind, secondaryAction);
+      expect(p.primaryEnabled, enabled);
+      expect(
+        p.primaryAction.targetId,
+        action == GuiConnectionActionKind.start
+            ? 'demo-config'
+            : 'demo-session',
+      );
+      expect(
+        ConnectionPresentation.project(
+          caps(sessions: [session(entry.key)], busy: true),
+        ).primaryEnabled,
+        isFalse,
+      );
+    });
+  }
+  test('Home uses operation eligibility for missing runtime, credential and cleanup', () {
+    final unavailable = ConfigurationSummary(
+      id: configuration.id,
+      displayName: '',
+      institutionProfileId: 'jlu',
+      institutionDisplayName: '吉林大学',
+      authenticationProtocolId: 'd',
+      username: 'u',
+      credentialStored: false,
+      storageProtection: 'protected',
+      runtimeAvailability: ConfigurationRuntimeAvailability.profileUnavailable,
+    );
+    final idle = ConnectionPresentation.project(
+      caps(configurations: [unavailable]),
+    );
+    expect(idle.primaryEnabled, false);
+    expect(idle.actionError, contains('不可用'));
+    final active = ConnectionPresentation.project(
+      caps(
+        configurations: [unavailable],
+        sessions: [session(SessionState.authenticated)],
+      ),
+    );
+    expect(active.primaryEnabled, true);
+    expect(active.primaryAction.kind, GuiConnectionActionKind.stop);
+    final cleanup = const SessionSummary(
+      id: 'demo-session',
+      configurationId: 'demo-config',
+      displayName: '',
+      accountName: 'u',
+      state: SessionState.waitingBeforeRetry,
+      intent: SessionIntent.maintainAuthentication,
+      cleanupRequired: true,
+    );
+    final retry = ConnectionPresentation.project(caps(sessions: [cleanup]));
+    expect(retry.primaryEnabled, false);
+    expect(retry.secondaryEnabled, true);
+    expect(retry.secondaryAction.kind, GuiConnectionActionKind.stop);
+    expect(retry.actionError, contains('清理未完成'));
+  });
+
+  test('connection lifecycle and topology stay distinct and fail closed', () {
+    for (final state in GuiConnectionState.values) {
+      final p = ConnectionPresentation.project(caps(state: state));
+      if (state != GuiConnectionState.ready) {
+        expect(p.statusTitle, isNot('尚未配置'));
+        expect(
+          p.primaryEnabled,
+          [GuiConnectionState.failed, GuiConnectionState.stale].contains(state),
+        );
+      }
+    }
+    final empty = ConnectionPresentation.project(caps(configurations: []));
+    expect(empty.primaryAction.kind, GuiConnectionActionKind.addConfiguration);
+    expect(empty.primaryEnabled, isTrue);
+    for (final pair in <(List<ConfigurationSummary>, List<SessionSummary>)>[
+      ([configuration, otherConfiguration], []),
+      (
+        [configuration],
+        [
+          session(SessionState.authenticated),
+          session(SessionState.suspended, id: 'extra'),
+        ],
+      ),
+      (
+        [configuration],
+        [session(SessionState.authenticated, configurationId: 'foreign')],
+      ),
+      (
+        [configuration],
+        [session(SessionState.authenticated, configurationId: null)],
+      ),
+      ([], [session(SessionState.authenticated, configurationId: null)]),
+    ]) {
+      final p = ConnectionPresentation.project(
+        caps(configurations: pair.$1, sessions: pair.$2),
+      );
+      expect(p.statusTitle, isNot('尚未配置'));
+      expect(p.statusTitle, isNot('未连接'));
+      expect(p.primaryEnabled, isFalse);
+    }
+  });
+  testWidgets('stopping Home binding disables stop and shares Details title', (
+    tester,
+  ) async {
+    final client = OfflineDemoClient()..selectScenario('stopping');
+    final controller = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await controller.start();
+    await tester.pumpWidget(
+      MaterialApp(home: SidraviaShell(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    final view = tester.widget<HomeView>(find.byType(HomeView));
+    expect(view.data.state, controller.connectionPresentation.statusTitle);
+    expect(view.data.onPrimary, isNull);
+    expect(find.text('未连接'), findsNothing);
+    expect(await controller.stopSession('demo-session'), isFalse);
+    expect(await controller.restartSession('demo-session'), isFalse);
+    expect(await controller.startConfiguration('demo-config'), isFalse);
+    expect(client.operations.where((op) => op == 'session.stop'), isEmpty);
+    await tester.tap(find.text('连接与诊断'));
+    await tester.pumpAndSettle();
+    expect(displayedSnapshot(tester)['sessions'][0]['state'], 'stopping');
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+    client.dispose();
+  });
+  testWidgets(
+    'ambiguous topology visible in Home Settings and raw Diagnostics',
+    (tester) async {
+      final client = TopologyClient();
+      final controller = GuiController(
+        bootstrapper: OfflineDemoBootstrap(),
+        connector: (_) async => client,
+        pollDelay: const Duration(days: 1),
+      );
+      await controller.start();
+      await tester.pumpWidget(
+        MaterialApp(home: SidraviaShell(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('尚未配置'), findsNothing);
+      expect(find.text('检测到多个连接配置'), findsOneWidget);
+      await tester.tap(find.byTooltip('设置'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(find.textContaining('存在多个连接配置'), findsAtLeastNWidgets(1));
+      await tester.ensureVisible(find.text('连接与诊断'));
+      await tester.tap(find.text('连接与诊断'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConnectionDiagnosticsPage), findsOneWidget);
+      final snapshot = displayedSnapshot(tester);
+      expect(snapshot['configurations'], hasLength(2));
+      expect(snapshot['sessions'][0]['id'], 'orphan');
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+      client.dispose();
+    },
+  );
+  test('controller refuses mismatched and ambiguous write targets', () async {
+    final client = TopologyClient();
+    final c = GuiController(
+      bootstrapper: OfflineDemoBootstrap(),
+      connector: (_) async => client,
+      pollDelay: const Duration(days: 1),
+    );
+    await c.start();
+    expect(
+      await c.createConfiguration(
+        institutionProfileId: 'jlu',
+        username: 'u',
+        password: 'p',
+      ),
+      isFalse,
+    );
+    expect(
+      await c.updateConfiguration(
+        configurationId: 'demo-config',
+        institutionProfileId: 'jlu',
+        username: 'u',
+      ),
+      isFalse,
+    );
+    expect(
+      await c.setPassword(configurationId: 'demo-config', password: 'p'),
+      isFalse,
+    );
+    expect(await c.startConfiguration('demo-config'), isFalse);
+    expect(await c.stopSession('orphan'), isFalse);
+    expect(await c.restartSession('orphan'), isFalse);
+    expect(await c.ensureSessionRunning('orphan'), isFalse);
+    expect(client.operations, isEmpty);
+    c.dispose();
+    client.dispose();
+  });
+}
+
+GuiCapabilities caps({
+  List<ConfigurationSummary> configurations = const [configuration],
+  List<SessionSummary> sessions = const [],
+  GuiConnectionState state = GuiConnectionState.ready,
+  bool busy = false,
+}) => GuiCapabilities(
+  state: state,
+  busy: busy,
+  snapshot: GuiSnapshot(
+    daemon: const DaemonStatus(
+      productVersion: 'v',
+      buildId: 'b',
+      pid: 1,
+      status: 'running',
+      mode: 'desktop',
+    ),
+    profiles: const [OfflineDemoClient.profile],
+    configurations: configurations,
+    sessions: sessions,
+  ),
+);
+class TopologyClient extends OfflineDemoClient {
+  @override
+  Future<List<ConfigurationSummary>> configurationList() async => [
+    configuration,
+    otherConfiguration,
+  ];
+  @override
+  Future<List<SessionSummary>> sessionList() async => [
+    session(SessionState.authenticated, id: 'orphan', configurationId: null),
+  ];
+}
+
+class NavigationClient extends OfflineDemoClient {
+  ConfigurationSummary configuration = const ConfigurationSummary(
+    id: 'demo-config',
+    displayName: '',
+    institutionProfileId: 'jlu',
+    institutionDisplayName: '吉林大学',
+    authenticationProtocolId: 'd',
+    username: 'u',
+    credentialStored: true,
+    storageProtection: 'protected',
+  );
+  @override
+  Future<List<ConfigurationSummary>> configurationList() async => [
+    configuration,
+  ];
+  @override
+  Future<List<SessionSummary>> sessionList() async => [];
+}

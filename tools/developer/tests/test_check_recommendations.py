@@ -106,7 +106,7 @@ class Recommendations(unittest.TestCase):
 
     def test_shared_native_gui_paths_recommend_ctest(self):
         paths = ('gui/native/announcement_navigation.h',
-                 'gui/test/announcement_window_integration.cpp',
+                 'gui/test/native/announcement_window_integration.cpp',
                  'gui/test/native/CMakeLists.txt')
         for path in paths:
             self.write(path, 'changed')

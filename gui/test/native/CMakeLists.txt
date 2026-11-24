@@ -3,11 +3,11 @@ project(sidravia_native_policy_tests LANGUAGES C CXX)
 enable_testing()
 
 # Geometry is platform-neutral and guards both Windows and GTK input boundaries.
-add_executable(frame_geometry_test ../frame_geometry_test.cpp)
+add_executable(frame_geometry_test frame_geometry_test.cpp)
 set(policies frame_geometry)
 
 if(WIN32 AND MSVC)
-  add_executable(frame_decoration_test ../frame_decoration_test.cpp)
+  add_executable(frame_decoration_test frame_decoration_test.cpp)
   add_executable(announcement_link_policy_test
     announcement_link_policy_test.cpp
     ../../windows/runner/announcement_link_policy.cpp)
@@ -33,7 +33,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/gui-runtime")
   target_link_libraries(installation_gate_test PRIVATE PkgConfig::GLIB)
   add_executable(announcement_window_integration
-    ../announcement_window_integration.cpp
+    announcement_window_integration.cpp
     ../../linux/runner/announcement_window.cc
     ../../linux/runner/announcement_link_policy.cc)
   target_link_libraries(announcement_window_integration PRIVATE PkgConfig::WEBKIT)

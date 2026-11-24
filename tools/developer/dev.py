@@ -200,7 +200,7 @@ def preview_command(args, env):
         font_define = "--dart-define=SIDRAVIA_DEMO_SYSTEM_FONT=" + font
         if args.check:
             run(["analyze", "--no-pub"])
-            run(["test", "--no-pub", "test/offline_demo_test.dart", "test/r51_adaptation_test.dart"])
+            run(["test", "--no-pub", "test/preview/offline_demo_test.dart", "test/preview/r51_adaptation_test.dart"])
             run(["build", "web", "--no-pub", "--no-web-resources-cdn", "--target", target, font_define])
         else:
             print(f"Offline GUI preview: http://127.0.0.1:{args.port} (fictional in-memory data only)", flush=True)
@@ -247,7 +247,7 @@ def parse_args(argv=None):
             sub.add_argument("--jobs", type=int, choices=range(1, 5), default=2)
             sub.add_argument("--go-package", action="append", default=[])
             sub.add_argument("--python-test", action="append", default=[], help="filename pattern in tools/developer/tests")
-            sub.add_argument("--gui-test", action="append", default=[], help="test/*.dart path relative to gui")
+            sub.add_argument("--gui-test", action="append", default=[], help="Dart file under test/, relative to gui")
             sub.add_argument("--flutter", default=".local/bin/flutter")
             sub.add_argument("--preview-build", action="store_true")
             sub.add_argument("--linux-build", action="store_true")

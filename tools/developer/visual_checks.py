@@ -128,7 +128,7 @@ def capture(root, args, identity):
             {'name': 'gui-sdk', 'argv': [sys.executable, str(root/'tools/developer/verification_commands.py'), '--sdk', flutter, str(root/'gui/.flutter-version')]},
             {'name': 'capture-inputs', 'argv': [sys.executable, str(root/'tools/developer/visual_checks.py'), '--record-inputs', str(output/'gui-sdk.stdout.log'), str(output/'fonts.json'), str(output/'inputs.json')]},
             {'name': 'gui-dependencies', 'argv': [flutter, 'pub', 'get', '--enforce-lockfile']},
-            {'name': 'gui-capture', 'argv': [flutter, 'test', '--no-pub', '--concurrency=1', '--dart-define=GUI_CAPTURE_REQUEST='+str(request_path), '--dart-define=SYSTEM_FONT_MANIFEST='+str(output/'fonts.json'), 'test/gui_capture_test.dart']},
+            {'name': 'gui-capture', 'argv': [flutter, 'test', '--no-pub', '--concurrency=1', '--dart-define=GUI_CAPTURE_REQUEST='+str(request_path), '--dart-define=SYSTEM_FONT_MANIFEST='+str(output/'fonts.json'), 'test/visual/gui_capture_test.dart']},
         ]
         request = {'schema': 1, 'source': before, 'environment': {'TZ': 'UTC'}, 'stages': [dict(c, cwd=str(root/'gui'), timeout_seconds=args.stage_timeout) for c in commands]}
         runner.write_json(output/'request.json', request)
