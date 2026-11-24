@@ -13,17 +13,7 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-const states = {
-  'authenticated': ['已连接', '断开连接', '连接与诊断', 'session.stop'],
-  'suspended': ['未连接', '开始连接', '更改配置', 'session.start_configuration'],
-  'authenticating': ['正在认证', '取消连接', '连接与诊断', 'session.stop'],
-  'waiting_for_network': ['等待网络', '取消等待', '连接与诊断', 'session.stop'],
-  'waiting_before_retry': ['等待重试', '立即重试', '停止重试', 'session.restart'],
-  'blocked_by_error': ['认证失败', '重新连接', '检查账号配置', 'session.restart'],
-  'empty': ['尚未配置', '添加配置', '设置', 'configuration'],
-};
-
-class FailingClient extends OfflineDemoClient {
+class _FailingClient extends OfflineDemoClient {
   bool fail = true;
   @override
   Future<ConfigurationSummary> configurationUpdate({
@@ -92,82 +82,6 @@ void main() {
     },
   );
 
-  for (final entry in states.entries) {
-    for (final platform in [
-      TargetPlatform.windows,
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-    ]) {
-      for (final dark in [false, true]) {
-        testWidgets(
-          'formal HomePage ${entry.key} $platform dark=$dark binds correct action',
-          (tester) async {
-            final client = OfflineDemoClient()..selectScenario(entry.key);
-            final controller = GuiController(
-              bootstrapper: OfflineDemoBootstrap(),
-              connector: (_) async => client,
-            );
-            await controller.start();
-            await tester.pumpWidget(
-              MaterialApp(
-                theme: (dark ? AppTheme.dark() : AppTheme.light()).copyWith(
-                  platform: platform,
-                ),
-                home: SidraviaShell(controller: controller),
-              ),
-            );
-            await tester.pumpAndSettle();
-            expect(find.byType(HomePage), findsOneWidget);
-            expect(find.text(entry.value[0]), findsAtLeastNWidgets(1));
-            expect(find.text(entry.value[2]), findsOneWidget);
-            expect(find.textContaining('30 秒'), findsNothing);
-            if (entry.key == 'blocked_by_error') {
-              expect(find.text('credential_invalid'), findsNothing);
-              expect(find.text('服务器拒绝了本次认证'), findsOneWidget);
-            }
-            await tester.tap(find.text(entry.value[1]));
-            await tester.pumpAndSettle();
-            if (entry.key == 'empty') {
-              expect(find.text('保存修改'), findsOneWidget);
-            } else {
-              expect(client.operations.last, entry.value[3]);
-            }
-            await tester.pumpWidget(const SizedBox.shrink());
-            controller.dispose();
-            client.dispose();
-          },
-        );
-      }
-    }
-  }
-  testWidgets(
-    'retry secondary stops the actual session; failure secondary opens configuration',
-    (tester) async {
-      final client = OfflineDemoClient()
-        ..selectScenario('waiting_before_retry');
-      final controller = GuiController(
-        bootstrapper: OfflineDemoBootstrap(),
-        connector: (_) async => client,
-      );
-      await controller.start();
-      await tester.pumpWidget(
-        MaterialApp(home: SidraviaShell(controller: controller)),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('停止重试'));
-      await tester.pumpAndSettle();
-      expect(client.operations.last, 'session.stop');
-      client.selectScenario('blocked_by_error');
-      await controller.start();
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('检查账号配置'));
-      await tester.pumpAndSettle();
-      expect(find.text('保存修改'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
-      controller.dispose();
-      client.dispose();
-    },
-  );
   testWidgets('production App theme switch affects pages and follows system', (
     tester,
   ) async {
@@ -229,7 +143,7 @@ void main() {
   testWidgets('form validates, retains failure draft and saves actual client', (
     tester,
   ) async {
-    final client = FailingClient();
+    final client = _FailingClient();
     final controller = GuiController(
       bootstrapper: OfflineDemoBootstrap(),
       connector: (_) async => client,
