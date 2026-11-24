@@ -36,16 +36,21 @@ def classify(path):
         return (), 'documentation or repository metadata; no executable check inferred', None
     if path in ('go.mod', 'go.sum'):
         return ('go',), 'Go dependency/toolchain change', None
+    if path.startswith(('packaging/', 'scripts/', 'tools/build/')):
+        return SCOPES, 'build, integration or packaging inputs affect delivery contracts', 'Relevant native fixture and exact-package acceptance'
     if p.suffix == '.go':
         return ('go',), 'Go source/test: full native scope includes reverse dependents', None
     if path.startswith('gui/'):
+        if (path.startswith(('gui/native/', 'gui/test/native/'))
+                or (path.startswith('gui/test/') and p.suffix in ('.cc', '.cpp', '.h'))):
+            return ('gui',), 'shared native GUI code or contract test', 'Native CTest and affected GUI platform acceptance'
         native = path.startswith(('gui/linux/', 'gui/windows/', 'gui/macos/'))
         return ('gui',), 'GUI source, assets, dependencies or platform project', ('Native GUI build and platform acceptance' if native else 'Affected-page visual/interaction review')
     if path.startswith(('tools/drcom520d_mock_server/', 'tools/windows_drcom_acceptance/')):
         return ('python',), 'existing Python verifier covers these tool suites', None
     if path.startswith('tools/developer/') and p.suffix == '.py':
         return ('python',), 'developer Python tool/test: run the existing Python scope', None
-    if path.startswith(('scripts/', 'tools/build/', 'tools/developer/')):
+    if path.startswith('tools/developer/'):
         return SCOPES, 'build, integration or acceptance inputs affect delivery contracts', 'Relevant native fixture and exact-package acceptance'
     if path.startswith('tools/wireshark/'):
         return ('python',), 'acceptance-tool suite includes Lua contract checks', 'Packet/decoder scenario review'

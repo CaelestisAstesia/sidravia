@@ -104,6 +104,30 @@ class Recommendations(unittest.TestCase):
                          ['gui-sdk', 'gui-dependencies', 'gui-analyze', 'gui-tests'])
         self.assertTrue(any('campus' in item for item in result['not_covered']))
 
+    def test_shared_native_gui_paths_recommend_ctest(self):
+        paths = ('gui/native/announcement_navigation.h',
+                 'gui/test/announcement_window_integration.cpp',
+                 'gui/test/native/CMakeLists.txt')
+        for path in paths:
+            self.write(path, 'changed')
+        result = self.recommend()
+        self.assertEqual(result['scopes'], ['gui'])
+        self.assertEqual({row['path'] for row in result['changes']}, set(paths))
+        for row in result['changes']:
+            self.assertIn('Native CTest', row['manual'])
+
+    def test_delivery_paths_keep_package_acceptance_and_consumer_checks(self):
+        paths = ('tools/build/distribution.go', 'packaging/windows/sidravia.iss',
+                 'packaging/linux/sidravia.spec.in')
+        for path in paths:
+            self.write(path, 'changed')
+        result = self.recommend()
+        self.assertEqual(result['scopes'], ['go', 'python', 'gui'])
+        self.assertIn('python', {stage['name'] for stage in result['request']['stages']})
+        self.assertEqual({row['path'] for row in result['changes']}, set(paths))
+        for row in result['changes']:
+            self.assertIn('exact-package acceptance', row['manual'])
+
     def test_runtime_markdown_resource_is_not_treated_as_documentation(self):
         self.write('gui/assets/fonts/SourceCodePro-LICENSE.md', 'runtime license text')
         self.write('README.md', 'ordinary documentation')
