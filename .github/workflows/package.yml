@@ -6,7 +6,6 @@ on:
       version:
         description: 'Canonical product version, no leading v'
         required: true
-        default: '0.5.0-alpha.1'
         type: string
 
 permissions:

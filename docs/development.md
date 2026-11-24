@@ -62,7 +62,7 @@ python3 tools/developer/dev.py package --version 0.6.0-alpha.1 --output dist/lin
 
 输出目录的父目录需存在。以上入口不会安装程序、启动 GUI、真实认证、签名或发布。包内容、哈希与 help smoke 检查也不能代替实际安装和网络验证。
 
-手动 Package 工作流见 [package.yml](../.github/workflows/package.yml)。早期 `tools/build` 的 legacy 模式为历史 CLI 包保留，现代 GUI 发行使用 `distribution` 路径；不要混用其安装集成说明。
+手动触发 [Package 工作流](../.github/workflows/package.yml)时，填写本次候选的 `version`，例如 `0.6.0-alpha.1`。版本号不带 `v`。早期 `tools/build` 的 legacy 模式为历史 CLI 包保留，现代 GUI 发行使用 `distribution` 路径。
 
 ## 代码入口
 
