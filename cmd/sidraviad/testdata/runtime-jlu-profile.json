@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "institutionProfileId": "jlu",
+  "displayName": "Jilin University",
+  "authenticationProtocolId": "drcom-5.2.0-d",
+  "institutionProtocolConfiguration": {
+    "serverAddress": "127.0.0.1",
+    "serverPort": 61440,
+    "localPort": {"mode": "fixed", "value": 61440},
+    "authVersionHex": "0a00",
+    "keepAliveVersionHex": "0b00",
+    "controlCheckStatusHex": "00",
+    "ipdogHex": "00",
+    "adapterNumberHex": "00",
+    "osInfoHex": "0000000000000000000000000000000000000000",
+    "challengePaddingHex": "000000000000000000000000000000",
+    "loginIPDogPaddingHex": "00000000",
+    "loginDHCPPaddingHex": "0000000000000000",
+    "loginAuthExtensionPaddingHex": "0000",
+    "challengeTimeout": "5s",
+    "loginTimeout": "5s",
+    "keepaliveTimeout": "5s",
+    "logoutTimeout": "5s",
+    "heartbeatInterval": "30s",
+    "busyMaxAttempts": 5,
+    "busyBackoffMin": "100ms",
+    "busyBackoffMax": "5s"
+  }
+}

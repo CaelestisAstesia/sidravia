@@ -111,23 +111,8 @@ func TestRuntimeFailureLogsStartedWithoutStopOrCause(t *testing.T) {
 // production session diagnostics adapter into created Sessions, so the Info
 // session_snapshot event appears and the password never does.
 func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
 	var buf bytes.Buffer
-	logger := bufferLogger(&buf)
-
-	rt, err := composeObjectGraph(
-		context.Background(), store, paths, hostInfo, observer, hostRunner.run,
-		"test-token", "1.0.0-test", "abc1234", logger,
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph: %v", err)
-	}
+	rt := composeRuntimeWithJLUProfile(t, bufferLogger(&buf)).runtime
 	defer func() {
 		rt.shutdown.Close()
 		rt.shutdown.Wait()
@@ -136,7 +121,7 @@ func TestCompositionInjectsSessionDiagnostics(t *testing.T) {
 	defer httpServer.Close()
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
 	ctx := context.Background()
-	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	conn, err := client.Connect(ctx, wsURL, runtimeFixtureToken, runtimeFixtureBuildID)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}

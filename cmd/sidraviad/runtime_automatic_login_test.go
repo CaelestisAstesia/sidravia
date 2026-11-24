@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -33,26 +32,6 @@ func (p *countingAutomaticLoginPerformer) Count() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.count
-}
-
-func newLifecycleRuntimeWithAutomaticLogin(
-	observer *fakeObserver,
-	hostRunner *fakeHostRunner,
-	sink *fakeSnapshotSink,
-	shutdown *fakeShutdown,
-	logger *slog.Logger,
-	performer automaticLoginPerformer,
-) *composedRuntime {
-	return &composedRuntime{
-		observer:       observer,
-		snapshotSink:   sink,
-		automaticLogin: performer,
-		shutdown:       shutdown,
-		hostRunner:     hostRunner.run,
-		logger:         logger,
-		productVersion: "test-version",
-		buildID:        "test-build",
-	}
 }
 
 func waitForSinkSnapshots(t *testing.T, sink *fakeSnapshotSink, want int) {

@@ -223,35 +223,42 @@ func writeTestProfile(t *testing.T, dir string, name string, content []byte) {
 
 func validJLUProfile(t *testing.T) []byte {
 	t.Helper()
-	return []byte(`{
-  "schemaVersion": 1,
-  "institutionProfileId": "jlu",
-  "displayName": "Jilin University",
-  "authenticationProtocolId": "drcom-5.2.0-d",
-  "institutionProtocolConfiguration": {
-    "serverAddress": "127.0.0.1",
-    "serverPort": 61440,
-    "localPort": {"mode": "fixed", "value": 61440},
-    "authVersionHex": "0a00",
-    "keepAliveVersionHex": "0b00",
-    "controlCheckStatusHex": "00",
-    "ipdogHex": "00",
-    "adapterNumberHex": "00",
-    "osInfoHex": "0000000000000000000000000000000000000000",
-    "challengePaddingHex": "000000000000000000000000000000",
-    "loginIPDogPaddingHex": "00000000",
-    "loginDHCPPaddingHex": "0000000000000000",
-    "loginAuthExtensionPaddingHex": "0000",
-    "challengeTimeout": "5s",
-    "loginTimeout": "5s",
-    "keepaliveTimeout": "5s",
-    "logoutTimeout": "5s",
-    "heartbeatInterval": "30s",
-    "busyMaxAttempts": 5,
-    "busyBackoffMin": "100ms",
-    "busyBackoffMax": "5s"
-  }
-}`)
+	profile, err := os.ReadFile(filepath.Join("testdata", "runtime-jlu-profile.json"))
+	if err != nil {
+		t.Fatalf("read JLU profile fixture: %v", err)
+	}
+	return profile
+}
+
+const (
+	runtimeFixtureToken   = "test-token"
+	runtimeFixtureVersion = "1.0.0-test"
+	runtimeFixtureBuildID = "abc1234"
+)
+
+type runtimeCompositionFixture struct {
+	runtime    *composedRuntime
+	paths      defaultPaths
+	store      *inMemoryStore
+	observer   *fakeObserver
+	hostRunner *fakeHostRunner
+}
+
+func composeRuntimeWithJLUProfile(t *testing.T, logger *slog.Logger) runtimeCompositionFixture {
+	t.Helper()
+	paths := testPaths(t)
+	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
+	store := newInMemoryStore()
+	observer := newFakeObserver()
+	hostRunner := newFakeHostRunner()
+	rt, err := composeObjectGraph(
+		context.Background(), store, paths, testHostInfo(), observer, hostRunner.run,
+		runtimeFixtureToken, runtimeFixtureVersion, runtimeFixtureBuildID, logger,
+	)
+	if err != nil {
+		t.Fatalf("composeObjectGraph() error = %v", err)
+	}
+	return runtimeCompositionFixture{rt, paths, store, observer, hostRunner}
 }
 
 func testHostInfo() environment.SystemHostInformation {
@@ -340,10 +347,21 @@ func newLifecycleRuntime(
 	shutdown *fakeShutdown,
 	logger *slog.Logger,
 ) *composedRuntime {
+	return newLifecycleRuntimeWithAutomaticLogin(observer, hostRunner, sink, shutdown, logger, &fakeAutomaticLoginPerformer{})
+}
+
+func newLifecycleRuntimeWithAutomaticLogin(
+	observer *fakeObserver,
+	hostRunner *fakeHostRunner,
+	sink *fakeSnapshotSink,
+	shutdown *fakeShutdown,
+	logger *slog.Logger,
+	performer automaticLoginPerformer,
+) *composedRuntime {
 	return &composedRuntime{
 		observer:       observer,
 		snapshotSink:   sink,
-		automaticLogin: &fakeAutomaticLoginPerformer{},
+		automaticLogin: performer,
 		shutdown:       shutdown,
 		hostRunner:     hostRunner.run,
 		logger:         logger,

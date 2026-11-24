@@ -14,29 +14,8 @@ import (
 )
 
 func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-		discardLogger(),
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
-	}
+	fixture := composeRuntimeWithJLUProfile(t, discardLogger())
+	rt := fixture.runtime
 	defer func() {
 		rt.shutdown.Close()
 		rt.shutdown.Wait()
@@ -46,7 +25,7 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 	defer httpServer.Close()
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
 	ctx := context.Background()
-	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	conn, err := client.Connect(ctx, wsURL, runtimeFixtureToken, runtimeFixtureBuildID)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -144,7 +123,7 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 		t.Fatalf("session.stop error: %+v", stopResponse.Error)
 	}
 
-	if hostRunner.wasCalled() {
+	if fixture.hostRunner.wasCalled() {
 		t.Fatal("host runner was called during IPC session test")
 	}
 }
@@ -154,20 +133,8 @@ func TestSessionStartOneShotThroughComposedHandler(t *testing.T) {
 // stop channel, which cancels the child context and runs the existing graceful
 // shutdown path. The response reaches the client before shutdown begins.
 func TestCompositionDaemonStopTriggersRuntimeShutdown(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(), store, paths, hostInfo, observer, hostRunner.run,
-		"test-token", "1.0.0-test", "abc1234", discardLogger(),
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph: %v", err)
-	}
+	fixture := composeRuntimeWithJLUProfile(t, discardLogger())
+	rt := fixture.runtime
 
 	httpServer := httptest.NewServer(rt.hostCfg.Handler)
 	defer httpServer.Close()
@@ -176,15 +143,15 @@ func TestCompositionDaemonStopTriggersRuntimeShutdown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	result := runRuntime(rt, context.Background())
-	waitForSignal(t, hostRunner.started, "host start")
-	waitForSignal(t, observer.started, "observer start")
+	waitForSignal(t, fixture.hostRunner.started, "host start")
+	waitForSignal(t, fixture.observer.started, "observer start")
 
-	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	conn, err := client.Connect(ctx, wsURL, runtimeFixtureToken, runtimeFixtureBuildID)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	defer conn.Close()
-	idle, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	idle, err := client.Connect(ctx, wsURL, runtimeFixtureToken, runtimeFixtureBuildID)
 	if err != nil {
 		t.Fatalf("connect idle: %v", err)
 	}

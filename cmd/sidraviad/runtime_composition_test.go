@@ -15,29 +15,8 @@ import (
 )
 
 func TestComposeObjectGraphWithValidProfile(t *testing.T) {
-	paths := testPaths(t)
-	writeTestProfile(t, paths.profiles, "jlu.json", validJLUProfile(t))
-
-	store := newInMemoryStore()
-	hostInfo := testHostInfo()
-	observer := newFakeObserver()
-	hostRunner := newFakeHostRunner()
-
-	rt, err := composeObjectGraph(
-		context.Background(),
-		store,
-		paths,
-		hostInfo,
-		observer,
-		hostRunner.run,
-		"test-token",
-		"1.0.0-test",
-		"abc1234",
-		discardLogger(),
-	)
-	if err != nil {
-		t.Fatalf("composeObjectGraph() error = %v", err)
-	}
+	fixture := composeRuntimeWithJLUProfile(t, discardLogger())
+	rt := fixture.runtime
 	defer func() {
 		rt.shutdown.Close()
 		rt.shutdown.Wait()
@@ -47,7 +26,7 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 	defer httpServer.Close()
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ipc"
 	ctx := context.Background()
-	conn, err := client.Connect(ctx, wsURL, "test-token", "abc1234")
+	conn, err := client.Connect(ctx, wsURL, runtimeFixtureToken, runtimeFixtureBuildID)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -93,11 +72,11 @@ func TestComposeObjectGraphWithValidProfile(t *testing.T) {
 		t.Fatalf("profile.list result = %#v", profiles.Profiles[0])
 	}
 
-	if !store.wasOpened(paths.configurations) {
+	if !fixture.store.wasOpened(fixture.paths.configurations) {
 		t.Fatal("store was not opened at configurations path")
 	}
 
-	if hostRunner.wasCalled() {
+	if fixture.hostRunner.wasCalled() {
 		t.Fatal("host runner was called during construction")
 	}
 }
