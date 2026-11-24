@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/persistence"
 )

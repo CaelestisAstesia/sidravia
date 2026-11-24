@@ -16,7 +16,6 @@ import (
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
-	"sidravia/internal/persistence"
 	"sidravia/internal/persistence/jsonfile"
 )
 
