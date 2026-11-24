@@ -47,10 +47,7 @@ func testNetworkSnapshot(revision uint64) environment.Snapshot {
 // waiting_for_network to a Snapshot with a selected binding after Apply.
 func TestSupervisorApplyNetworkSnapshotMovesWaitingSessionToBinding(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, initial, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -88,10 +85,7 @@ func TestSupervisorApplyNetworkSnapshotMovesWaitingSessionToBinding(t *testing.T
 // initial Snapshot, so the new Session already has its selected binding.
 func TestSupervisorApplyNetworkSnapshotBeforeStartSelectsBinding(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	if err := supervisor.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshot(1)); err != nil {
@@ -119,10 +113,7 @@ func TestSupervisorApplyNetworkSnapshotBeforeStartSelectsBinding(t *testing.T) {
 // make a Session revert to a previous binding.
 func TestSupervisorNetworkSnapshotNewerReplacesOlderIgnored(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, initial, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -177,10 +168,7 @@ func TestSupervisorNetworkSnapshotNewerReplacesOlderIgnored(t *testing.T) {
 // started after the replay receives the original stored binding.
 func TestSupervisorNetworkSnapshotEqualRevisionReplaysStored(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	authoritative := testNetworkSnapshotWithInterface(1, "iface-a", "192.0.2.10")
@@ -217,10 +205,7 @@ func TestSupervisorApplyNetworkSnapshotRejectsInvalidContextAndClosed(t *testing
 
 	t.Run("nil context", func(t *testing.T) {
 		supervisor := New(testSupervisorDeps())
-		defer func() {
-			_ = supervisor.Close()
-			supervisor.Wait()
-		}()
+		defer closeTestSupervisor(supervisor)
 
 		if err := supervisor.ApplySystemNetworkSnapshot(nil, snapshot); err == nil {
 			t.Fatal("expected error for nil context, got nil")
@@ -239,10 +224,7 @@ func TestSupervisorApplyNetworkSnapshotRejectsInvalidContextAndClosed(t *testing
 
 	t.Run("cancelled context", func(t *testing.T) {
 		supervisor := New(testSupervisorDeps())
-		defer func() {
-			_ = supervisor.Close()
-			supervisor.Wait()
-		}()
+		defer closeTestSupervisor(supervisor)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -277,10 +259,7 @@ func TestSupervisorApplyNetworkSnapshotRejectsInvalidContextAndClosed(t *testing
 // snapshot.
 func TestSupervisorFailedStartAfterSnapshotLeavesNoResidual(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	if err := supervisor.ApplySystemNetworkSnapshot(ctx, testNetworkSnapshot(1)); err != nil {
@@ -320,7 +299,7 @@ func TestSupervisorFailedStartAfterSnapshotLeavesNoResidual(t *testing.T) {
 
 func TestLatestSystemNetworkSnapshotAuthorityAndIsolation(t *testing.T) {
 	sup := New(testSupervisorDeps())
-	defer func() { _ = sup.Close(); sup.Wait() }()
+	defer closeTestSupervisor(sup)
 	ctx := context.Background()
 	if got, available, err := sup.LatestSystemNetworkSnapshot(ctx); err != nil || available || got.Revision != 0 {
 		t.Fatalf("initial read = %v %t %v", got, available, err)

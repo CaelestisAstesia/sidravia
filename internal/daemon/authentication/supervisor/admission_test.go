@@ -13,10 +13,7 @@ import (
 
 func TestSupervisorRejectsSecondActiveMaintainAuthentication(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	if _, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication); err != nil {
@@ -31,10 +28,7 @@ func TestSupervisorRejectsSecondActiveMaintainAuthentication(t *testing.T) {
 
 func TestSupervisorAllowsNewSessionAfterStop(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -65,10 +59,7 @@ func TestSupervisorAllowsNewSessionAfterStop(t *testing.T) {
 
 func TestSupervisorPreCanceledStopRollsAdmissionBackToActive(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	id, _, err := supervisor.StartResolved(context.Background(), testRuntimeDefinition(), session.MaintainAuthentication)
 	if err != nil {
@@ -100,10 +91,7 @@ func TestSupervisorPreCanceledStopRollsAdmissionBackToActive(t *testing.T) {
 
 func TestSupervisorRestartAdmitsStoppedSession(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -127,10 +115,7 @@ func TestSupervisorRestartAdmitsStoppedSession(t *testing.T) {
 
 func TestSupervisorRestartAcceptsActiveSession(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -167,10 +152,7 @@ func TestSupervisorEnsureRunningSuspendedAndRemove(t *testing.T) {
 
 func TestSupervisorRemoveStoppedWhileAnotherSessionActive(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 	ctx := context.Background()
 
 	sessionA, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -424,7 +406,7 @@ func TestSupervisorEnsureRunningPreservesEveryActivePublicState(t *testing.T) {
 				deps.RetryPolicy = supervisorRetryPolicy{delay: time.Minute, ok: true}
 			}
 			supervisor := New(deps)
-			defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+			defer closeTestSupervisor(supervisor)
 			factory := newStateFactory()
 			definition := testRuntimeDefinition()
 			definition.AuthenticationProtocolFactory = factory
@@ -597,10 +579,7 @@ func waitForSupervisorReservation(t *testing.T, supervisor *Supervisor, id ID, w
 
 func TestSupervisorForgetStoppedRemovesSession(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -624,10 +603,7 @@ func TestSupervisorForgetStoppedRemovesSession(t *testing.T) {
 
 func TestSupervisorForgetStoppedRejectsActiveSession(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -697,10 +673,7 @@ func TestSupervisorStopStartRace(t *testing.T) {
 // residual sessions, and allows a subsequent MaintainAuthentication start.
 func TestSupervisorPreCancelledContextReturnsErrorAndCleansUp(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

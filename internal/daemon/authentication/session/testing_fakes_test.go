@@ -268,19 +268,6 @@ func waitForFactoryRun(t *testing.T, ctx context.Context, factory *controlledFac
 	}
 }
 
-func waitForInboxMessage(t *testing.T, ctx context.Context, session *AuthenticationSession) {
-	t.Helper()
-	tick := time.NewTicker(time.Millisecond)
-	defer tick.Stop()
-	for len(session.inbox) == 0 {
-		select {
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-tick.C:
-		}
-	}
-}
-
 func usableSystemNetworkSnapshot(t *testing.T, revision uint64, interfaceID, displayName string) environment.Snapshot {
 	t.Helper()
 	networkInterface, err := environment.NewNetworkInterface(environment.NetworkInterfaceFacts{

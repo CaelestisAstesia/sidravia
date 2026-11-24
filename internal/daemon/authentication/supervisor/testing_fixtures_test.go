@@ -343,3 +343,10 @@ func (stubFactory) ValidateUsername(string) error             { return nil }
 func (*sequentialHeldFactory) ValidateUsername(string) error  { return nil }
 func (heldCancellationFactory) ValidateUsername(string) error { return nil }
 func (*stateFactory) ValidateUsername(string) error           { return nil }
+
+// closeTestSupervisor joins all remaining actors when a test doesn't assert
+// the Close result itself.
+func closeTestSupervisor(supervisor *Supervisor) {
+	_ = supervisor.Close()
+	supervisor.Wait()
+}

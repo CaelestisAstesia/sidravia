@@ -16,10 +16,7 @@ import (
 
 func TestSupervisorRevisionEventsReceivesUpdates(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	events := subscribeForTest(t, supervisor)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -37,10 +34,7 @@ func TestSupervisorRevisionEventsReceivesUpdates(t *testing.T) {
 
 func TestSupervisorSlowSubscriberDoesNotBlock(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	_ = subscribeForTest(t, supervisor)
 
@@ -171,7 +165,7 @@ func installTestForwarder(sup *Supervisor, id ID, actor *session.AuthenticationS
 
 func TestSupervisorDelayedForwardUsesPublishedSnapshot(t *testing.T) {
 	sup := New(testSupervisorDeps())
-	defer func() { sup.Close(); sup.Wait() }()
+	defer closeTestSupervisor(sup)
 	events := subscribeForTest(t, sup)
 	factory := &delayedForwardFactory{stateFactory: newStateFactory(), entered: make(chan struct{}), release: make(chan struct{})}
 	defer factory.releaseCreation()
@@ -236,7 +230,7 @@ func TestSupervisorDelayedForwardUsesPublishedSnapshot(t *testing.T) {
 
 func TestSupervisorForwardsPublishedEventAfterActorQueryCloses(t *testing.T) {
 	sup := New(testSupervisorDeps())
-	defer func() { sup.Close(); sup.Wait() }()
+	defer closeTestSupervisor(sup)
 	events := subscribeForTest(t, sup)
 	definition := testRuntimeDefinition()
 	definition.Configuration.AuthenticationSessionID = "closed-paired"
@@ -268,7 +262,7 @@ func TestSupervisorForwardsPublishedEventAfterActorQueryCloses(t *testing.T) {
 
 func TestSupervisorSubscriberClonesOwnEveryNestedSnapshotField(t *testing.T) {
 	sup := New(testSupervisorDeps())
-	defer func() { sup.Close(); sup.Wait() }()
+	defer closeTestSupervisor(sup)
 	left, right := subscribeForTest(t, sup), subscribeForTest(t, sup)
 	now := time.Unix(100, 0)
 	snapshot := Snapshot{AuthenticationSessionID: "clone", Revision: 9, StateReason: &session.StateReason{Code: "test", Description: "original"}, SelectedNetworkBinding: &session.NetworkBindingSummary{DisplayName: "original"}, AuthenticationEstablishedAt: &now, NextRetryAt: &now, LastAuthenticationFailure: &session.AuthenticationFailure{Code: "original"}, ProtocolSocket: session.ProtocolSocketObservation{RunGeneration: 1, State: session.ProtocolSocketClosed, LocalEndpoint: netip.MustParseAddrPort("127.0.0.1:40001"), RemoteEndpoint: netip.MustParseAddrPort("127.0.0.1:61440")}}

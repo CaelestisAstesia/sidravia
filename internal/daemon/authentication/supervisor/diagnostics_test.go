@@ -35,7 +35,7 @@ func TestSupervisorPassesDiagnosticsToSession(t *testing.T) {
 	deps := testSupervisorDeps()
 	deps.Diagnostics = capture
 	supervisor := New(deps)
-	defer func() { _ = supervisor.Close(); supervisor.Wait() }()
+	defer closeTestSupervisor(supervisor)
 
 	if _, _, err := supervisor.StartResolved(context.Background(), testRuntimeDefinition(), session.SuspendAuthentication); err != nil {
 		t.Fatalf("StartResolved: %v", err)
@@ -56,7 +56,7 @@ func TestSupervisorPassesDiagnosticsToSession(t *testing.T) {
 
 func TestSupervisorDiagnosticSnapshotMissingRetainedAndReadOnly(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() { supervisor.Close(); supervisor.Wait() }()
+	defer closeTestSupervisor(supervisor)
 	if _, err := supervisor.GetDiagnosticSnapshot(context.Background(), "missing"); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("missing = %v", err)
 	}

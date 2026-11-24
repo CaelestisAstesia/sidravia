@@ -18,10 +18,7 @@ func TestMissingSessionPreservesStableErrorIdentity(t *testing.T) {
 
 func TestSupervisorStartResolvedAllocatesSessionID(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id1, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.SuspendAuthentication)
@@ -43,10 +40,7 @@ func TestSupervisorStartResolvedAllocatesSessionID(t *testing.T) {
 
 func TestSupervisorGetReturnsLatestSnapshot(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)
@@ -65,10 +59,7 @@ func TestSupervisorGetReturnsLatestSnapshot(t *testing.T) {
 
 func TestSupervisorListReturnsAllSessions(t *testing.T) {
 	supervisor := New(testSupervisorDeps())
-	defer func() {
-		_ = supervisor.Close()
-		supervisor.Wait()
-	}()
+	defer closeTestSupervisor(supervisor)
 
 	ctx := context.Background()
 	id1, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.MaintainAuthentication)

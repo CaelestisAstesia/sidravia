@@ -9,6 +9,27 @@ import (
 	environment "sidravia/internal/daemon/environment"
 )
 
+func newAutoReconnectDisabledSession(t *testing.T) (*AuthenticationSession, *controlledFactory, *manualRetryScheduler) {
+	t.Helper()
+	now := time.Unix(100, 0)
+	policy := standardRetryPolicy()
+	scheduler := &manualRetryScheduler{}
+	factory := &controlledFactory{}
+	definition := validRuntimeDefinition(t)
+	definition.AuthenticationProtocolFactory = factory
+	definition.AutoReconnect = false
+	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
+		Now:            func() time.Time { return now },
+		RetryPolicy:    policy,
+		RetryScheduler: scheduler,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationSession() error = %v", err)
+	}
+	session.Start()
+	return session, factory, scheduler
+}
+
 func TestSessionAutoReconnectFalseBlocksOnRetryableFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -20,22 +41,7 @@ func TestSessionAutoReconnectFalseBlocksOnRetryableFailure(t *testing.T) {
 		{"extended", "server_busy", "The authentication server reported busy.", protocol.RetryAfterExtendedDelay},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			now := time.Unix(100, 0)
-			policy := standardRetryPolicy()
-			scheduler := &manualRetryScheduler{}
-			factory := &controlledFactory{}
-			definition := validRuntimeDefinition(t)
-			definition.AuthenticationProtocolFactory = factory
-			definition.AutoReconnect = false
-			session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-				Now:            func() time.Time { return now },
-				RetryPolicy:    policy,
-				RetryScheduler: scheduler,
-			})
-			if err != nil {
-				t.Fatalf("NewAuthenticationSession() error = %v", err)
-			}
-			session.Start()
+			session, factory, scheduler := newAutoReconnectDisabledSession(t)
 			defer shutdownTestSession(t, session)
 
 			ctx := testContext(t)
@@ -71,22 +77,7 @@ func TestSessionAutoReconnectFalseBlocksOnRetryableFailure(t *testing.T) {
 }
 
 func TestSessionAutoReconnectFalseDoesNotRestartOnLaterSnapshot(t *testing.T) {
-	now := time.Unix(100, 0)
-	policy := standardRetryPolicy()
-	scheduler := &manualRetryScheduler{}
-	factory := &controlledFactory{}
-	definition := validRuntimeDefinition(t)
-	definition.AuthenticationProtocolFactory = factory
-	definition.AutoReconnect = false
-	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-		Now:            func() time.Time { return now },
-		RetryPolicy:    policy,
-		RetryScheduler: scheduler,
-	})
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	session.Start()
+	session, factory, _ := newAutoReconnectDisabledSession(t)
 	defer shutdownTestSession(t, session)
 
 	ctx := testContext(t)
@@ -106,22 +97,7 @@ func TestSessionAutoReconnectFalseDoesNotRestartOnLaterSnapshot(t *testing.T) {
 }
 
 func TestSessionAutoReconnectFalseRestartClearsBlock(t *testing.T) {
-	now := time.Unix(100, 0)
-	policy := standardRetryPolicy()
-	scheduler := &manualRetryScheduler{}
-	factory := &controlledFactory{}
-	definition := validRuntimeDefinition(t)
-	definition.AuthenticationProtocolFactory = factory
-	definition.AutoReconnect = false
-	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-		Now:            func() time.Time { return now },
-		RetryPolicy:    policy,
-		RetryScheduler: scheduler,
-	})
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	session.Start()
+	session, factory, _ := newAutoReconnectDisabledSession(t)
 	defer shutdownTestSession(t, session)
 
 	ctx := testContext(t)
@@ -313,22 +289,7 @@ func newExplicitAutoReconnectDisabledSession(t *testing.T) (*controlledFactory, 
 }
 
 func TestSessionAutoReconnectFalseSuspendReachesSuspended(t *testing.T) {
-	now := time.Unix(100, 0)
-	policy := standardRetryPolicy()
-	scheduler := &manualRetryScheduler{}
-	factory := &controlledFactory{}
-	definition := validRuntimeDefinition(t)
-	definition.AuthenticationProtocolFactory = factory
-	definition.AutoReconnect = false
-	session, err := NewAuthenticationSession(definition, MaintainAuthentication, Dependencies{
-		Now:            func() time.Time { return now },
-		RetryPolicy:    policy,
-		RetryScheduler: scheduler,
-	})
-	if err != nil {
-		t.Fatalf("NewAuthenticationSession() error = %v", err)
-	}
-	session.Start()
+	session, factory, _ := newAutoReconnectDisabledSession(t)
 	defer shutdownTestSession(t, session)
 
 	ctx := testContext(t)
