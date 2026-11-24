@@ -48,7 +48,7 @@ void StartLoading(AnnouncementWindow* s) {
   if (s->phase == AnnouncementWindow::Phase::loading) return; // Redirects retain the original deadline.
   s->phase = AnnouncementWindow::Phase::loading;
   gtk_label_set_text(GTK_LABEL(s->label), "正在加载公告…");
-  gtk_stack_set_visible_child(GTK_STACK(s->stack),s->label);
+  gtk_stack_set_visible_child(GTK_STACK(s->stack),s->status);
   CancelTimer(s);
   s->timer = g_timeout_add(30000, [](gpointer data) -> gboolean {
     auto* s = static_cast<AnnouncementWindow*>(data); s->timer = 0; Fail(s); return G_SOURCE_REMOVE;
@@ -183,7 +183,7 @@ bool announcement_window_open(AnnouncementWindow* s,const char* uri,int width,in
   announcement_window_set_dark(s,s->dark);
   StartLoading(s);
   gtk_widget_show_all(s->window);
-  gtk_stack_set_visible_child(GTK_STACK(s->stack),s->label);
+  gtk_stack_set_visible_child(GTK_STACK(s->stack),s->status);
   webkit_web_view_load_uri(s->web,uri);
   gtk_window_present(GTK_WINDOW(s->window));
   return true;

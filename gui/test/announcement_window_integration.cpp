@@ -32,7 +32,15 @@ GtkWidget* Top() {
   g_list_free(windows); return found;
 }
 GtkWidget* Visible() { auto* top=Top(); if(!top) return nullptr; auto* stack=Find(top,GTK_TYPE_STACK); return stack ? gtk_stack_get_visible_child(GTK_STACK(stack)) : nullptr; }
-bool Failed() { auto* child=Visible(); return child && GTK_IS_LABEL(child) && !g_strcmp0(gtk_label_get_text(GTK_LABEL(child)),"公告加载失败"); }
+bool ShowingStatus(const char* message, bool can_open_in_browser) {
+  auto* panel = Visible();
+  if (!panel || !GTK_IS_BOX(panel)) return false;
+  auto* label = Find(panel, GTK_TYPE_LABEL);
+  auto* browser = Find(panel, GTK_TYPE_BUTTON);
+  return label && browser && !g_strcmp0(gtk_label_get_text(GTK_LABEL(label)), message) &&
+         (gtk_widget_get_sensitive(browser) != FALSE) == can_open_in_browser;
+}
+bool Failed() { return ShowingStatus("公告加载失败", true); }
 WebKitWebView* Ready() { auto* child=Visible(); return child && WEBKIT_IS_WEB_VIEW(child) ? WEBKIT_WEB_VIEW(child) : nullptr; }
 void Script(WebKitWebView* web,const char* code) {
   struct Result { bool done=false,failed=false; } result;
@@ -67,7 +75,9 @@ int main(int argc,char** argv) {
     std::ifstream request(argv[3]); std::string line; std::getline(request,line);
     if(line.find("/external") == std::string::npos || !Ready() || !g_str_has_suffix(webkit_web_view_get_uri(Ready()),"/script")) throw std::runtime_error("external dispatch changed current document");
     std::puts("engine-marked gesture dispatched to isolated URI handler and preserved document");
-    open("/delayed"); announcement_window_close(announcement); open("/notice");
+    open("/delayed");
+    if (!ShowingStatus("正在加载公告…", false)) throw std::runtime_error("loading status panel not shown");
+    announcement_window_close(announcement); open("/notice");
     Until([]{return Ready();});
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(6);
     Until([&]{return std::chrono::steady_clock::now()>deadline;},8);
