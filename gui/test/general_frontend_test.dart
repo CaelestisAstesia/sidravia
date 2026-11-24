@@ -19,7 +19,7 @@ const states = {
   'authenticating': ['正在认证', '取消连接', '连接与诊断', 'session.stop'],
   'waiting_for_network': ['等待网络', '取消等待', '连接与诊断', 'session.stop'],
   'waiting_before_retry': ['等待重试', '立即重试', '停止重试', 'session.restart'],
-  'blocked_by_error': ['认证失败', '重新连接', '更改配置', 'session.restart'],
+  'blocked_by_error': ['认证失败', '重新连接', '检查账号配置', 'session.restart'],
   'empty': ['尚未配置', '添加配置', '设置', 'configuration'],
 };
 
@@ -160,7 +160,7 @@ void main() {
       client.selectScenario('blocked_by_error');
       await controller.start();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('更改配置'));
+      await tester.tap(find.text('检查账号配置'));
       await tester.pumpAndSettle();
       expect(find.text('保存修改'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
