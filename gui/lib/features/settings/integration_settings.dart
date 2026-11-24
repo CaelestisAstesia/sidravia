@@ -45,7 +45,6 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
     setState(() {
       _busy = true;
       _error = null;
-      _serviceError = null;
     });
     try {
       if (change != null) await _manager.change(change);
@@ -58,6 +57,7 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
         setState(() {
           _status = next;
           _service = service;
+          if (service != null) _serviceError = null;
         });
       }
     } on Object catch (error) {
@@ -270,7 +270,8 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
         disabledValues: {
           if (!(status?.guiAvailable ?? false)) 'gui',
           if (status?.daemonAutostartSupported == false ||
-              service?.directory != null)
+              service?.directory != null ||
+              (service == null && _serviceError != null))
             'daemon',
         },
         onChanged: _busy || status == null || status.autostart == 'conflict'

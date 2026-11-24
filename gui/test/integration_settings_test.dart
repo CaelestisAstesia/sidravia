@@ -15,12 +15,14 @@ class FakeUserServiceManager extends FakeManager implements UserServiceManager {
   Completer<UserServiceStatus?>? pendingChange;
   int statusReads = 0;
   bool failStatus = false;
+  bool statusUnavailable = false;
 
   @override
   Future<UserServiceStatus?> userService(String action) async {
     if (action == 'status') {
       statusReads++;
       if (closed || failStatus) throw const IntegrationFailure('无法读取状态');
+      if (statusUnavailable) return null;
     } else {
       actions.add(action);
       final pending = pendingChange;
@@ -89,6 +91,70 @@ void main() {
       }
     });
   }
+
+  testWidgets('unavailable service retry retains action failure and guard', (
+    tester,
+  ) async {
+    final change = Completer<UserServiceStatus?>();
+    final manager = FakeUserServiceManager()
+      ..registered = true
+      ..pendingChange = change;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: IntegrationSettings(manager: manager)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final autostart = find.byKey(const ValueKey('autostart-selector'));
+    Future<bool> daemonAutostartEnabled() async {
+      await tester.tap(autostart);
+      await tester.pumpAndSettle();
+      final enabled =
+          tester
+              .widget<MenuItemButton>(
+                find.widgetWithText(MenuItemButton, '仅后台'),
+              )
+              .onPressed !=
+          null;
+      await tester.tap(autostart);
+      await tester.pumpAndSettle();
+      return enabled;
+    }
+
+    expect(await daemonAutostartEnabled(), isFalse);
+    await tester.tap(find.byKey(const ValueKey('user-service-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(MenuItemButton, '停止后台'));
+    await tester.pumpAndSettle();
+    expect(manager.actions, ['stop']);
+
+    const message = '后台服务操作失败，请检查实际状态。';
+    manager.statusUnavailable = true;
+    change.completeError(const IntegrationFailure(message));
+    await tester.pumpAndSettle();
+    final retry = find.widgetWithText(TextButton, '重试');
+    expect(find.text(shortUiText(message)), findsOneWidget);
+    expect(await daemonAutostartEnabled(), isFalse);
+
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(manager.statusReads, 3);
+    expect(find.text(shortUiText(message)), findsOneWidget);
+    expect(retry, findsOneWidget);
+    expect(await daemonAutostartEnabled(), isFalse);
+    expect(manager.lastChange, isNull);
+
+    manager
+      ..registered = false
+      ..statusUnavailable = false;
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(manager.statusReads, 4);
+    expect(find.text('应用管理'), findsOneWidget);
+    expect(retry, findsNothing);
+    expect(await daemonAutostartEnabled(), isTrue);
+  });
 
   testWidgets('background dropdown confirms changes and reports current mode', (
     tester,
