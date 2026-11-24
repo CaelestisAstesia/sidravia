@@ -3,22 +3,22 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'tools/developer'))
 import release_artifacts as release
-import test_verify_distribution as fixture_support
-VERSION, SHA = fixture_support.VERSION, fixture_support.SHA
+from distribution_fixture import DistributionFixture, SHA, VERSION
 
 
 class ReleaseArtifactContracts(unittest.TestCase):
     def setUp(self):
-        self.fixture = fixture_support.DistributionContract()
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        self.root = self.fixture.root
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.fixture = DistributionFixture(self.root)
         self.key = self.root / 'public.txt'
         self.key.write_bytes(base64.b64encode(bytes(range(32))))
         self.request = self.root / 'request.json'
