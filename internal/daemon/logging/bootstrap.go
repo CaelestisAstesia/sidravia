@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"sidravia/internal/daemon/logging/protection"
 )
 
 const daemonLogRotateThreshold int64 = 10 * 1024 * 1024
@@ -12,16 +14,11 @@ const daemonLogRotateThreshold int64 = 10 * 1024 * 1024
 // PrepareBootstrap retains startup and raw stderr output with the existing
 // startup-only backup policy. Structured diagnostics use Writer instead.
 func PrepareBootstrap(logPath string) (*os.File, error) {
-	protection, err := newDaemonLogProtection()
+	policy, err := protection.New()
 	if err != nil {
 		return nil, fmt.Errorf("准备 sidraviad 日志保护: %w", err)
 	}
-	return prepareDaemonLogWith(logPath, defaultDaemonLogOperations(protection))
-}
-
-type daemonLogProtection interface {
-	protectDirectory(string) error
-	protectFile(string) error
+	return prepareDaemonLogWith(logPath, defaultDaemonLogOperations(policy))
 }
 
 type daemonLogOperations struct {
@@ -30,13 +27,13 @@ type daemonLogOperations struct {
 	remove     func(string) error
 	rename     func(string, string) error
 	openFile   func(string, int, os.FileMode) (*os.File, error)
-	protection daemonLogProtection
+	protection protection.Policy
 }
 
-func defaultDaemonLogOperations(protection daemonLogProtection) daemonLogOperations {
+func defaultDaemonLogOperations(policy protection.Policy) daemonLogOperations {
 	return daemonLogOperations{
 		mkdirAll: os.MkdirAll, stat: os.Lstat, remove: os.Remove, rename: os.Rename,
-		openFile: os.OpenFile, protection: protection,
+		openFile: os.OpenFile, protection: policy,
 	}
 }
 
@@ -47,7 +44,7 @@ func prepareDaemonLogWith(logPath string, operations daemonLogOperations) (*os.F
 	if err := operations.mkdirAll(logDir, 0o700); err != nil {
 		return nil, fmt.Errorf("创建 sidraviad 日志目录: %w", err)
 	}
-	if err := operations.protection.protectDirectory(logDir); err != nil {
+	if err := operations.protection.Directory(logDir); err != nil {
 		return nil, fmt.Errorf("保护 sidraviad 日志目录: %w", err)
 	}
 	info, err := operations.stat(logPath)
@@ -68,12 +65,12 @@ func prepareDaemonLogWith(logPath string, operations daemonLogOperations) (*os.F
 		return nil, fmt.Errorf("sidraviad 日志备份不是普通文件")
 	}
 	if currentExists {
-		if err := operations.protection.protectFile(logPath); err != nil {
+		if err := operations.protection.File(logPath); err != nil {
 			return nil, fmt.Errorf("保护 sidraviad 当前日志: %w", err)
 		}
 	}
 	if backupExists {
-		if err := operations.protection.protectFile(backupPath); err != nil {
+		if err := operations.protection.File(backupPath); err != nil {
 			return nil, fmt.Errorf("保护 sidraviad 日志备份: %w", err)
 		}
 	}
@@ -89,7 +86,7 @@ func prepareDaemonLogWith(logPath string, operations daemonLogOperations) (*os.F
 	if err != nil {
 		return nil, fmt.Errorf("打开 sidraviad 日志: %w", err)
 	}
-	if err := operations.protection.protectFile(logPath); err != nil {
+	if err := operations.protection.File(logPath); err != nil {
 		_ = file.Close()
 		return nil, fmt.Errorf("保护 sidraviad 新日志: %w", err)
 	}

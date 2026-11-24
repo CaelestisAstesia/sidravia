@@ -12,11 +12,11 @@ type daemonLogProtectionFunc struct {
 	file      func(string) error
 }
 
-func (protection daemonLogProtectionFunc) protectDirectory(path string) error {
+func (protection daemonLogProtectionFunc) Directory(path string) error {
 	return protection.directory(path)
 }
 
-func (protection daemonLogProtectionFunc) protectFile(path string) error {
+func (protection daemonLogProtectionFunc) File(path string) error {
 	return protection.file(path)
 }
 

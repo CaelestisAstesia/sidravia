@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"sidravia/internal/daemon/logging/protection"
 )
 
 // Writer owns the daemon's dated diagnostics, independently of inherited
@@ -20,21 +22,21 @@ type Writer struct {
 	closed, warned bool
 	policy         retentionPolicy
 	now            func() time.Time
-	protection     daemonLogProtection
+	protection     protection.Policy
 	fallback       io.Writer
 }
 
 // NewWriter protects the directory before accepting any diagnostic records.
 // Only exact owned filenames are eligible for retention cleanup.
 func NewWriter(dir string, fallback io.Writer) (*Writer, error) {
-	p, err := newDaemonLogProtection()
+	p, err := protection.New()
 	if err != nil {
 		return nil, err
 	}
 	return newWriter(dir, fallback, p, retentionPolicy{10 * 1024 * 1024, 100 * 1024 * 1024, 7}, time.Now)
 }
 
-func newWriter(dir string, fallback io.Writer, protection daemonLogProtection, policy retentionPolicy, now func() time.Time) (*Writer, error) {
+func newWriter(dir string, fallback io.Writer, fs protection.Policy, policy retentionPolicy, now func() time.Time) (*Writer, error) {
 	if policy.fileBytes <= 0 || policy.totalBytes < policy.fileBytes || policy.days < 1 {
 		return nil, errors.New("invalid diagnostic retention policy")
 	}
@@ -48,10 +50,10 @@ func newWriter(dir string, fallback io.Writer, protection daemonLogProtection, p
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("diagnostic directory is not a regular directory")
 	}
-	if err := protection.protectDirectory(dir); err != nil {
+	if err := fs.Directory(dir); err != nil {
 		return nil, err
 	}
-	w := &Writer{dir: dir, policy: policy, now: now, protection: protection, fallback: fallback}
+	w := &Writer{dir: dir, policy: policy, now: now, protection: fs, fallback: fallback}
 	// Retention runs on the first startup record. A retention failure must
 	// degrade diagnostics rather than prevent authentication startup.
 	return w, nil
@@ -139,7 +141,7 @@ func (w *Writer) open(date string, incoming int64) error {
 		if !info.Mode().IsRegular() {
 			return errors.New("diagnostic segment is not a regular file")
 		}
-		if err := w.protection.protectFile(path); err != nil {
+		if err := w.protection.File(path); err != nil {
 			return err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -149,7 +151,7 @@ func (w *Writer) open(date string, incoming int64) error {
 	if err != nil {
 		return err
 	}
-	if err := w.protection.protectFile(path); err != nil {
+	if err := w.protection.File(path); err != nil {
 		_ = file.Close()
 		return err
 	}

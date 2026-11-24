@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"sidravia/internal/daemon/logging/protection"
 )
 
 func checkLogMode(t *testing.T, path string, mode os.FileMode) {
@@ -138,11 +140,11 @@ func TestLinuxLogRefusesRedirectedObjects(t *testing.T) {
 			}
 			// Avoid blocking the baseline FIFO open; known protection entry is tested directly.
 			if kind == "fifo" {
-				p, e := newDaemonLogProtection()
+				p, e := protection.New()
 				if e != nil {
 					t.Fatal(e)
 				}
-				if e := p.protectFile(path); e == nil {
+				if e := p.File(path); e == nil {
 					t.Fatal("FIFO accepted")
 				}
 			} else {

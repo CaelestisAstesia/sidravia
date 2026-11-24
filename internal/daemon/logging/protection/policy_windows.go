@@ -1,6 +1,6 @@
 //go:build windows
 
-package logging
+package protection
 
 import (
 	"fmt"
@@ -8,13 +8,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const daemonLogLocalSystemSID = "S-1-5-18"
+const localSystemSID = "S-1-5-18"
 
-type windowsDaemonLogProtection struct {
+type policy struct {
 	ownerSID *windows.SID
 }
 
-func newDaemonLogProtection() (daemonLogProtection, error) {
+// New prepares the log protection policy for the current process owner.
+func New() (Policy, error) {
 	token, err := windows.OpenCurrentProcessToken()
 	if err != nil {
 		return nil, err
@@ -24,21 +25,21 @@ func newDaemonLogProtection() (daemonLogProtection, error) {
 	if err != nil {
 		return nil, err
 	}
-	if user.User.Sid.String() == daemonLogLocalSystemSID {
+	if user.User.Sid.String() == localSystemSID {
 		return nil, fmt.Errorf("LocalSystem 不能作为 sidraviad 日志所有者")
 	}
-	return windowsDaemonLogProtection{ownerSID: user.User.Sid}, nil
+	return policy{ownerSID: user.User.Sid}, nil
 }
 
-func (protection windowsDaemonLogProtection) protectDirectory(path string) error {
+func (protection policy) Directory(path string) error {
 	return protection.apply(path, true)
 }
 
-func (protection windowsDaemonLogProtection) protectFile(path string) error {
+func (protection policy) File(path string) error {
 	return protection.apply(path, false)
 }
 
-func (protection windowsDaemonLogProtection) apply(path string, directory bool) error {
+func (protection policy) apply(path string, directory bool) error {
 	owner := protection.ownerSID.String()
 	inheritance := ""
 	if directory {

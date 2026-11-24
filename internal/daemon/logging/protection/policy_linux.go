@@ -1,6 +1,6 @@
 //go:build linux
 
-package logging
+package protection
 
 import (
 	"errors"
@@ -9,17 +9,18 @@ import (
 	"syscall"
 )
 
-type linuxDaemonLogProtection struct{ ownerUID uint32 }
+type policy struct{ ownerUID uint32 }
 
-func newDaemonLogProtection() (daemonLogProtection, error) {
-	return linuxDaemonLogProtection{uint32(os.Geteuid())}, nil
+// New prepares the log protection policy for the current process owner.
+func New() (Policy, error) {
+	return policy{uint32(os.Geteuid())}, nil
 }
-func (p linuxDaemonLogProtection) protectDirectory(path string) error { return p.apply(path, true) }
-func (p linuxDaemonLogProtection) protectFile(path string) error      { return p.apply(path, false) }
+func (p policy) Directory(path string) error { return p.apply(path, true) }
+func (p policy) File(path string) error      { return p.apply(path, false) }
 
 // Open without following the final link or blocking on a FIFO; validate the
 // owned object before changing permissions. Ancestors must not redirect it.
-func (p linuxDaemonLogProtection) apply(path string, directory bool) (result error) {
+func (p policy) apply(path string, directory bool) (result error) {
 	absolute, e := filepath.Abs(path)
 	if e != nil {
 		return e

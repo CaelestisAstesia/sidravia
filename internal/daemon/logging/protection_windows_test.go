@@ -11,6 +11,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const localSystemSID = "S-1-5-18"
+
 func TestWindowsDaemonLogsUseProtectedOwnerAndSystemDACL(t *testing.T) {
 	token, err := windows.OpenCurrentProcessToken()
 	if err != nil {
@@ -21,7 +23,7 @@ func TestWindowsDaemonLogsUseProtectedOwnerAndSystemDACL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.User.Sid.String() == daemonLogLocalSystemSID {
+	if user.User.Sid.String() == localSystemSID {
 		t.Skip("current process is LocalSystem")
 	}
 
@@ -90,7 +92,7 @@ func assertWindowsDaemonLogDACL(t *testing.T, path, owner string, directory bool
 	if directory {
 		wantFlags = windows.OBJECT_INHERIT_ACE | windows.CONTAINER_INHERIT_ACE
 	}
-	want := map[string]bool{owner: false, daemonLogLocalSystemSID: false}
+	want := map[string]bool{owner: false, localSystemSID: false}
 	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, index, &ace); err != nil {

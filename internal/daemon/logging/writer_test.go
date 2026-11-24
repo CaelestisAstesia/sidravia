@@ -10,11 +10,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"sidravia/internal/daemon/logging/protection"
 )
 
 func testWriter(t *testing.T, dir string, now *time.Time, policy retentionPolicy, fallback *bytes.Buffer) *Writer {
 	t.Helper()
-	p, err := newDaemonLogProtection()
+	p, err := protection.New()
 	if err != nil {
 		t.Fatal(err)
 	}
