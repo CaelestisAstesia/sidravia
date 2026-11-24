@@ -4,10 +4,7 @@ from dataclasses import replace
 from ipaddress import IPv4Address
 
 from drcom520d_mock_server.models import (
-    Account,
-    ApplicationConfig,
     AuthErrorCode,
-    ServerSettings,
 )
 from drcom520d_mock_server.models import Operation
 from drcom520d_mock_server.scenarios import (
@@ -17,6 +14,11 @@ from drcom520d_mock_server.scenarios import (
     builtin_scenario,
 )
 from drcom520d_mock_server.server import ServerCore
+from tools.drcom520d_mock_server.tests.server_fixtures import (
+    FakeClock,
+    fictional_account,
+    server_config,
+)
 from tools.drcom520d_mock_server.tests.packet_factory import (
     build_ka1_request,
     build_ka2_request,
@@ -26,48 +28,12 @@ from tools.drcom520d_mock_server.tests.packet_factory import (
 )
 
 
-class FakeClock:
-    def __init__(self, value: float = 1000.0):
-        self.value = value
-
-    def __call__(self) -> float:
-        return self.value
-
-    def advance(self, seconds: float) -> None:
-        self.value += seconds
-
-
 class ServerCoreTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.clock = FakeClock()
         self.endpoint = ("127.0.0.1", 50000)
-        self.account = Account(
-            username="student-test",
-            password="local-test-password",
-            enabled=True,
-            frozen=False,
-            require_dhcp=False,
-            expected_ipv4=IPv4Address("10.0.0.2"),
-            expected_mac=bytes.fromhex("020000000001"),
-            bind_ipv4_and_mac=True,
-            max_sessions=1,
-            balance_cents=10000,
-        )
-        self.config = ApplicationConfig(
-            server=ServerSettings(
-                challenge_ttl_seconds=10,
-                session_ttl_seconds=90,
-                max_sessions_per_account=1,
-                auth_version=bytes.fromhex("2c00"),
-                keep_alive_version=bytes.fromhex("dc02"),
-                control_check_status=bytes.fromhex("20"),
-                ipdog=bytes.fromhex("01"),
-                initial_month_traffic_kib=14208,
-                initial_balance_cents=10000,
-                server_secret=b"s" * 32,
-            ),
-            accounts={"student-test": self.account},
-        )
+        self.account = fictional_account()
+        self.config = server_config(self.account)
         self.core = self.make_core()
 
     def make_core(self, scenario=None, config=None, random_bytes=None):
