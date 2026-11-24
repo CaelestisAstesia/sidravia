@@ -6,27 +6,21 @@ import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/application/preferences/gui_settings.dart';
 
 void main() {
-  test(
-    'log preferences default to Debug, restore explicit Info and save Trace',
-    () async {
-      expect(const GuiSettings().logLevel, 'debug');
-      final fresh = GuiPreferences(store: MemoryGuiSettingsStore());
-      await fresh.initialize();
-      expect(fresh.logLevel, 'debug');
-      fresh.dispose();
-      final explicit = decodeGuiSettings(
-        encodeGuiSettings(const GuiSettings(logLevel: 'info')),
-      );
-      final store = MemoryGuiSettingsStore()..settings = explicit;
-      final restored = GuiPreferences(store: store);
-      await restored.initialize();
-      expect(restored.logLevel, 'info');
-      restored.logLevel = 'trace';
-      await restored.settled;
-      expect(store.settings!.logLevel, 'trace');
-      restored.dispose();
-    },
-  );
+  test('fresh preferences use Debug and explicit Info remains saved', () async {
+    expect(const GuiSettings().logLevel, 'debug');
+    final fresh = GuiPreferences(store: MemoryGuiSettingsStore());
+    await fresh.initialize();
+    expect(fresh.logLevel, 'debug');
+    fresh.dispose();
+    final explicit = decodeGuiSettings(
+      encodeGuiSettings(const GuiSettings(logLevel: 'info')),
+    );
+    final store = MemoryGuiSettingsStore()..settings = explicit;
+    final restored = GuiPreferences(store: store);
+    await restored.initialize();
+    expect(restored.logLevel, 'info');
+    restored.dispose();
+  });
   test(
     'mode changed during load wins and queued writes preserve other prefs',
     () async {

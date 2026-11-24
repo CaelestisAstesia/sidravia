@@ -93,6 +93,15 @@ void main() {
           jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
       expect(upgraded['schemaVersion'], 6);
       expect(upgraded['logLevel'], 'debug');
+      final migratedStore = MemoryGuiSettingsStore()..settings = restored;
+      final owner = GuiPreferences(store: migratedStore);
+      addTearDown(owner.dispose);
+      await owner.initialize();
+      owner.logLevel = 'trace';
+      await owner.settled;
+      expect(migratedStore.settings!.logLevel, 'trace');
+      expect(migratedStore.settings!.startHidden, true);
+      expect(migratedStore.settings!.diagnosticsExpanded, true);
     },
   );
 
