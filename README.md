@@ -8,11 +8,11 @@ Sidravia 是一个开源的网络认证客户端，提供图形界面和命令�
 
 Sidravia 使用共享的 Go 认证核心与 Flutter 桌面界面，面向 Windows 和 Linux。Linux GUI 当前适配 Fedora 45 x86_64、KDE Plasma / Wayland。
 
-[下载](https://github.com/CaelestisAstesia/sidravia/releases) · [快速开始](docs/quick-start.md) · [使用指南](docs/guide.md) · [变更日志](CHANGELOG.md)
+[下载](https://github.com/CaelestisAstesia/sidravia/releases) · [预发布版快速开始][release-quick-start] · [当前开发版使用指南](docs/guide.md) · [变更日志](CHANGELOG.md)
 
 ## 使用
 
-当前公开预发布版为 **[0.5.0-alpha.2](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)**。下表对应此版本。下载后按[快速开始](docs/quick-start.md)安装。当前源码新增的功能及构建方式见[开发指南](docs/development.md)。
+当前公开预发布版为 **[0.5.0-alpha.2](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)**。下表对应此版本。下载后按[该版本的快速开始][release-quick-start]安装。排障与数据位置请查阅该版本的[常见问题][release-troubleshooting]和[数据与隐私][release-privacy]。
 
 ### 选择下载包
 
@@ -29,9 +29,12 @@ Sidravia 使用共享的 Go 认证核心与 Flutter 桌面界面，面向 Window
 
 预发布版本可能调整配置格式和命令。升级前请阅读发行说明并备份配置。
 
-## 文档
+[release-quick-start]: https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/quick-start.md
+[release-troubleshooting]: https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/troubleshooting.md
+[release-privacy]: https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/privacy.md
 
-- [快速开始](docs/quick-start.md)：安装与首次连接。
+## 当前源码文档
+
 - [Linux 便携版](docs/linux-portable.md) · [Fedora RPM](docs/linux-rpm.md)：运行依赖、系统集成和包管理。
 - [使用指南](docs/guide.md)：连接设置、托盘、自启和公告。
 - [常见问题](docs/troubleshooting.md)：连不上、断线与问题反馈。
