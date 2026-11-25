@@ -1,4 +1,5 @@
 """Upstream binary RPM producer/consumer; no host install command is exposed."""
+import contextlib
 import hashlib
 import json
 import os
@@ -30,6 +31,30 @@ def maintenance_scripts(root):
 def digest(path):
     with path.open('rb') as payload:
         return hashlib.file_digest(payload, 'sha256').hexdigest()
+
+
+def publish_rpm(package, receipt, output, check_source):
+    # Assemble beside the destination so moving the completed set is atomic.
+    with tempfile.TemporaryDirectory(prefix='.sidravia-rpm-', dir=output.parent) as temporary:
+        complete = Path(temporary) / 'complete'
+        complete.mkdir()
+        payload = complete / package.name
+        shutil.copy2(package, payload)
+        if digest(payload) != receipt['sha256']:
+            raise ValueError('RPM changed before publication')
+        (complete / (package.name + '.json')).write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
+        (complete / 'SHA256SUMS').write_text(receipt['sha256'] + '  ' + package.name + '\n', encoding='ascii')
+        check_source()
+        # An exclusive reservation refuses even an existing empty directory.
+        output.mkdir()
+        reserved = output.lstat()
+        try:
+            complete.replace(output)
+        except OSError:
+            with contextlib.suppress(OSError):
+                if os.path.samestat(output.lstat(), reserved):
+                    output.rmdir()
+            raise
 
 
 def same_source(before, after):
@@ -204,12 +229,10 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
                    'package': package.name, 'unsigned': True, 'maintenanceScripts': scripts}
         receipt['kind'] = 'core' if core else 'gui'
         receipt['requires'] = verify(package, receipt)
-        if not same_source(current_source(), source):
-            raise ValueError('source changed during RPM build')
-        output.mkdir()
-        shutil.copy2(package, output / package.name)
-        (output / (package.name + '.json')).write_text(json.dumps(receipt, indent=2) + '\n')
-        (output / 'SHA256SUMS').write_text(receipt['sha256'] + '  ' + package.name + '\n')
+        def check_source():
+            if not same_source(current_source(), source):
+                raise ValueError('source changed during RPM build')
+        publish_rpm(package, receipt, output, check_source)
     print('Verified unsigned RPM: ' + str(output / receipt['package']))
     return 0
 

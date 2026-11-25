@@ -110,7 +110,7 @@ func newFakeTool(cfg config, repoRoot string, fb *fakeBuilder) *tool {
 		repoRoot:         repoRoot,
 		build:            fb.build,
 		packageArtifacts: writeArtifacts,
-		publish:          os.Rename,
+		publish:          publishDirectory,
 		runtimeVersion:   func() string { return requiredGoVersion },
 		probeGoVersion:   func(string) (string, error) { return requiredGoVersion, nil },
 	}

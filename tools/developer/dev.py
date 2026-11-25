@@ -361,22 +361,42 @@ def main(argv=None):
             if (args.mode == "prepare" and (not args.output or args.manifest or args.signature)) or (args.mode == "verify" and (args.output or not args.manifest or not args.signature)):
                 raise ValueError("prepare requires only --output; verify requires --manifest and --signature")
             before = metadata(args.go, env)
-            result = release_artifacts.run(args, ROOT, before)
-            after = metadata(args.go, env)
-            result.update(source=before, source_after=after, source_unchanged=same_source(before, after))
+            def check_source_before_publish():
+                if not same_source(before, metadata(args.go, env)):
+                    raise ValueError("source changed before manifest publication")
+            result = release_artifacts.run(args, ROOT, before, before_publish=check_source_before_publish)
+            try:
+                after = metadata(args.go, env)
+            except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                result.update(source=before, source_after=None, source_unchanged=False,
+                              status="failed", error=f"could not recheck source: {error}")
+            else:
+                result.update(source=before, source_after=after, source_unchanged=same_source(before, after))
             if not result['source_unchanged']:
-                raise ValueError("source changed during release validation")
-            directory = Path(args.reports).resolve()
-            directory.mkdir(parents=True, exist_ok=True)
-            directory = Path(tempfile.mkdtemp(prefix="release-" + args.mode + "-", dir=directory))
-            report = directory / "report.json"
-            report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+                result["status"] = "failed"
+                result.setdefault("error", "source changed during release validation")
+                if args.mode == "prepare":
+                    result["unsigned_manifest_published"] = True
+            try:
+                directory = Path(args.reports).resolve()
+                directory.mkdir(parents=True, exist_ok=True)
+                directory = Path(tempfile.mkdtemp(prefix="release-" + args.mode + "-", dir=directory))
+                report = directory / "report.json"
+                report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+            except OSError as error:
+                if args.mode == "prepare":
+                    raise ValueError(f"unsigned manifest published at {result['manifest']}; could not write release report: {error}") from error
+                raise
             if args.format == "json":
                 print(json.dumps(dict(result, report=str(report)), ensure_ascii=False))
             else:
-                print(f"Release {args.mode}: PASS; artifacts {result['assets']}; signature {result['signature']}")
+                print(f"Release {args.mode}: {result['status']}; artifacts {result['assets']}; signature {result['signature']}")
+                if error := result.get("error"):
+                    print(error, file=sys.stderr)
+                    if result.get("unsigned_manifest_published"):
+                        print(f"Published unsigned manifest retained at {result['manifest']}", file=sys.stderr)
                 print(f"Report: {report}")
-            return 0
+            return 0 if result['status'] == 'passed' else 1
         if args.command == "preview":
             from verification_commands import worktree_lock
             with worktree_lock(ROOT):

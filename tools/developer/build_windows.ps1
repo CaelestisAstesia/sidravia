@@ -169,7 +169,7 @@ try {
         $next[$item.path] = $item.sha256
         $null = Get-OwnedPath $repo $item.path
     }
-    foreach ($required in @('go.mod', 'gui/pubspec.yaml', 'gui/pubspec.lock', 'gui/lib/main.dart', 'tools/build/main.go', 'tools/developer/verify_distribution.py')) {
+    foreach ($required in @('go.mod', 'gui/.flutter-version', 'gui/pubspec.yaml', 'gui/pubspec.lock', 'gui/lib/main.dart', 'tools/build/main.go', 'tools/developer/verify_distribution.py')) {
         if (!$next.ContainsKey($required)) { throw ('Source manifest missing ' + $required) }
     }
     $previousFiles = @()
@@ -213,6 +213,10 @@ try {
     Invoke-Stage 'flutter-version' $Flutter @('--version','--machine')
     $report.go_version = (Get-Content -LiteralPath (Join-Path $runRoot 'go-version.log') -Raw).Trim()
     $report.flutter_version = Get-Content -LiteralPath (Join-Path $runRoot 'flutter-version.log') -Raw | ConvertFrom-Json
+    $expectedFlutter = [IO.File]::ReadAllText((Join-Path $repo 'gui/.flutter-version')).Trim()
+    if (!$expectedFlutter -or $report.flutter_version.frameworkVersion -cne $expectedFlutter) {
+        throw ('Flutter SDK version mismatch: expected ' + $expectedFlutter + ', got ' + $report.flutter_version.frameworkVersion)
+    }
     Push-Location (Join-Path $repo 'gui')
     try {
         Invoke-Stage 'dependencies' $Flutter @('pub','get','--enforce-lockfile')

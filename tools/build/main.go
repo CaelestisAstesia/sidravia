@@ -478,7 +478,7 @@ func newDefaultTool(cfg config, repoRoot string) *tool {
 		repoRoot:         repoRoot,
 		build:            realBuildFunc(repoRoot),
 		packageArtifacts: writeArtifacts,
-		publish:          os.Rename,
+		publish:          publishDirectory,
 		runtimeVersion:   func() string { return runtime.Version() },
 		probeGoVersion:   realProbeGoVersion,
 	}

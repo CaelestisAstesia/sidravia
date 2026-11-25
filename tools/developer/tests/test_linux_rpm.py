@@ -12,6 +12,35 @@ import dev
 
 
 class RPMContracts(unittest.TestCase):
+    def test_publication_preserves_the_previous_output_and_keeps_failed_copies_private(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            package = root / 'candidate.rpm'
+            package.write_bytes(b'synthetic RPM')
+            receipt = {'sha256': linux_rpm.digest(package)}
+            output = root / 'candidate'
+            check_source = mock.Mock()
+            with mock.patch.object(linux_rpm.shutil, 'copy2', side_effect=OSError('disk full')):
+                with self.assertRaisesRegex(OSError, 'disk full'):
+                    linux_rpm.publish_rpm(package, receipt, output, check_source)
+            check_source.assert_not_called()
+            self.assertFalse(output.exists())
+            self.assertEqual(list(root.glob('.sidravia-rpm-*')), [])
+            def changed_during_copy():
+                copied, = root.glob('.sidravia-rpm-*/complete/candidate.rpm')
+                self.assertEqual(copied.read_bytes(), package.read_bytes())
+                raise ValueError('source changed during RPM build')
+            with self.assertRaisesRegex(ValueError, 'source changed'):
+                linux_rpm.publish_rpm(package, receipt, output, changed_during_copy)
+            self.assertFalse(output.exists())
+            linux_rpm.publish_rpm(package, receipt, output, check_source)
+            self.assertEqual((output / package.name).read_bytes(), package.read_bytes())
+            self.assertEqual(json.loads((output / 'candidate.rpm.json').read_bytes()), receipt)
+            self.assertEqual((output / 'SHA256SUMS').read_text(), receipt['sha256'] + '  candidate.rpm\n')
+            with self.assertRaises(FileExistsError):
+                linux_rpm.publish_rpm(package, receipt, output, check_source)
+            self.assertEqual((output / package.name).read_bytes(), package.read_bytes())
+
     def test_acceptance_uses_explicit_tools_and_only_gui_probes_flutter(self):
         for kind in ('gui', 'core'):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:

@@ -6,6 +6,7 @@ product execution or installation. Preparation is not a release approval.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import os
@@ -172,7 +173,7 @@ def encoding_compatibility(manifest, path):
         require(len(matches) == 1 and matches[0]['name'] == asset['name'][:-3] + '.gz' and all(matches[0].get(k) == asset[k] for k in ('filesSha256', 'payloadKind')), 'xz_legacy_ownership_mismatch')
 
 
-def prepare(repo, go, request_path, public_key, output, *, request_snapshot=None):
+def prepare(repo, go, request_path, public_key, output, *, request_snapshot=None, before_publish=None):
     output = Path(os.path.abspath(output))
     require(not output.exists() and not output.is_symlink(), 'output_already_exists')
     plain_path(output.parent, directory=True)
@@ -184,10 +185,25 @@ def prepare(repo, go, request_path, public_key, output, *, request_snapshot=None
     encoding_compatibility(expected, output)
     data = (json.dumps(expected, ensure_ascii=True, indent=2) + '\n').encode('utf-8')
     public_check(repo, go, 'inspect', data, public_data)
-    with output.open('xb') as handle:
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
+    with tempfile.TemporaryDirectory(prefix='.sidravia-manifest-', dir=output.parent) as temporary:
+        complete = Path(temporary) / 'complete.json'
+        with complete.open('xb') as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if before_publish is not None:
+            before_publish()
+        # Reserve without overwriting a previous candidate, then publish
+        # only the fully written bytes. An interrupted reservation is empty.
+        with output.open('xb') as reservation:
+            reserved = os.fstat(reservation.fileno())
+        try:
+            complete.replace(output)
+        except OSError:
+            with contextlib.suppress(OSError):
+                if os.path.samestat(output.lstat(), reserved):
+                    output.unlink()
+            raise
     return summary(expected, receipts, 'not_checked', output)
 
 
@@ -216,15 +232,19 @@ def summary(manifest, receipts, signature, output):
             'nativeUpgrade': 'not_run', 'publicDownload': 'not_run', 'publication': 'not_run'}
 
 
-def run(args, repo, source):
+def run(args, repo, source, *, before_publish=None):
     request_path = plain_path(args.request)
     request = request_document(request_path)
     require(not source['dirty'] and source['commit'] == request['buildId'], 'clean_source_commit_required')
     public_key = plain_path(args.public_key)
     if args.mode == 'prepare':
-        result = prepare(repo, args.go, request_path, public_key, Path(args.output), request_snapshot=request)
-    else:
-        result = verify(repo, args.go, request_path, public_key, Path(args.manifest), Path(args.signature), request_snapshot=request)
+        def recheck():
+            if before_publish is not None:
+                before_publish()
+            require(request_document(request_path) == request, 'request_changed_during_validation')
+        return prepare(repo, args.go, request_path, public_key, Path(args.output),
+                       request_snapshot=request, before_publish=recheck)
+    result = verify(repo, args.go, request_path, public_key, Path(args.manifest), Path(args.signature), request_snapshot=request)
     require(result['buildId'] == source['commit'], 'release_source_commit_mismatch')
     require(request_document(request_path) == request, 'request_changed_during_validation')
     return result

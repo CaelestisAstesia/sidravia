@@ -8,12 +8,13 @@ $workspace = Join-Path $root 'workspace'
 $manifestPath = Join-Path $root 'manifest.json'
 $fake = Join-Path $root 'compiler.cmd'
 [IO.File]::WriteAllText($fake, "@echo off`r`nexit /b 7`r`n")
-$required = @('go.mod','gui/pubspec.yaml','gui/pubspec.lock','gui/lib/main.dart','tools/build/main.go','tools/developer/verify_distribution.py')
+$required = @('go.mod','gui/.flutter-version','gui/pubspec.yaml','gui/pubspec.lock','gui/lib/main.dart','tools/build/main.go','tools/developer/verify_distribution.py')
 $items = @()
 foreach ($name in ($required + @('stale.go','zz-invalid.go'))) {
     $path = Join-Path $source $name
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) | Out-Null
-    [IO.File]::WriteAllText($path,'fixture')
+    $content = if ($name -eq 'gui/.flutter-version') { '3.47.0' } else { 'fixture' }
+    [IO.File]::WriteAllText($path,$content)
     $items += @{path=$name;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 function Save-Manifest($Files) {
@@ -43,6 +44,15 @@ try {
     Invoke-Helper $workspace
     if (Test-Path -LiteralPath (Join-Path $workspace 'source/stale.go')) { throw 'Failed sync leaked stale source into next run' }
     Write-Output 'PASS failed-sync stale source recovery'
+
+    [IO.File]::WriteAllLines($fake, @('@echo off', 'if "%~1"=="version" exit /b 0', 'echo {"frameworkVersion":"0.0.0"}'))
+    $wrongSdkWorkspace = Join-Path $root 'wrong-sdk'
+    Invoke-Helper $wrongSdkWorkspace
+    $run = Get-ChildItem -LiteralPath (Join-Path $wrongSdkWorkspace 'runs') -Directory
+    $result = Get-Content -LiteralPath (Join-Path $run.FullName 'report.json') -Raw | ConvertFrom-Json
+    if ($result.error -ne 'Flutter SDK version mismatch: expected 3.47.0, got 0.0.0' -or
+        @($result.stages.name) -contains 'dependencies') { throw ('Wrong Flutter SDK did not stop the build: ' + $result.error) }
+    Write-Output 'PASS wrong Flutter SDK refused before dependencies'
 
     foreach ($fixture in @('timeout','inherited-pipe')) {
         $childPid = Join-Path $root ($fixture + '.pid')

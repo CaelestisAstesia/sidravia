@@ -223,13 +223,15 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return err
 	}
 	if err := t.publish(final, out); err != nil {
-		return err
+		return fmt.Errorf("publish distribution to %s: %w", out, err)
 	}
 	published = true
 	// Stage is owned by this invocation and contains only generated build files.
 	if err := os.RemoveAll(stage); err != nil {
-		return err
+		return fmt.Errorf("distribution published at %s; remove staging directory %s: %w", out, stage, err)
 	}
-	_, err = io.WriteString(stdout, sums.String())
-	return err
+	if _, err := io.WriteString(stdout, sums.String()); err != nil {
+		return fmt.Errorf("distribution published at %s; write checksum summary: %w", out, err)
+	}
+	return nil
 }

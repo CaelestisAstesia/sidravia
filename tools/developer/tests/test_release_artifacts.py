@@ -174,6 +174,28 @@ class ReleaseArtifactContracts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'clean_source_commit_required'):
                 release.run(args, ROOT, source)
 
+    def test_changed_request_or_source_does_not_publish_manifest(self):
+        output = self.root / 'candidate.json'
+        args = mock.Mock(mode='prepare', request=self.request, public_key=self.key, output=output, go='go')
+        source = {'dirty': False, 'commit': SHA}
+        changed = json.dumps(dict(self.data, version='9.8.7'))
+        with mock.patch.object(release, 'public_check', side_effect=lambda *_: self.request.write_text(changed)):
+            with self.assertRaisesRegex(ValueError, 'request_changed_during_validation'):
+                release.run(args, self.fixture.repo, source)
+        self.assertFalse(output.exists())
+        self.assertEqual(list(self.root.glob('.sidravia-manifest-*')), [])
+        self.save()
+        with mock.patch.object(release, 'public_check'):
+            with self.assertRaisesRegex(ValueError, 'source changed'):
+                release.run(args, self.fixture.repo, source,
+                            before_publish=mock.Mock(side_effect=ValueError('source changed')))
+        self.assertFalse(output.exists())
+        with mock.patch.object(release, 'public_check'):
+            with self.assertRaisesRegex(ValueError, 'request_changed_during_validation'):
+                release.run(args, self.fixture.repo, source,
+                            before_publish=lambda: self.request.write_text(changed))
+        self.assertFalse(output.exists())
+
     def test_public_verifier_uses_exact_owned_byte_snapshots(self):
         captured = {}
         def invoke(argv, **kwargs):
@@ -202,7 +224,7 @@ class ReleaseArtifactContracts(unittest.TestCase):
         args=type('Args',(),{'request':str(self.request),'public_key':str(self.key),'mode':'prepare','go':'go','output':str(self.root/'manifest.json')})()
         original=json.loads(self.request.read_text())
         seen={}
-        def prepare(repo,go,path,public_key,output,*,request_snapshot):
+        def prepare(repo,go,path,public_key,output,*,request_snapshot,before_publish):
             changed=dict(original,buildId='b'*40)
             self.request.write_text(json.dumps(changed))
             seen.update(request_snapshot)
@@ -210,6 +232,7 @@ class ReleaseArtifactContracts(unittest.TestCase):
             # not the changed B request from the ignored local path.
             manifest,_=release.collect(repo,path,public_key,go,request_snapshot=request_snapshot)
             self.assertEqual(manifest['buildId'],SHA)
+            before_publish()
             return {'buildId':manifest['buildId']}
         with mock.patch.object(release,'prepare',side_effect=prepare):
             with self.assertRaisesRegex(ValueError,'request_changed_during_validation'):

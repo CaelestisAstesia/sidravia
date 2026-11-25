@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,41 @@ import (
 
 	"sidravia/internal/update/packagefiles"
 )
+
+type closedOutput struct{}
+
+func (closedOutput) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func TestDistributionReportsPublishedOutputWhenChecksumSummaryFails(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "dist")
+	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: "linux-amd64", output: out}
+	err := newFakeTool(cfg, setupRepoRoot(t), &fakeBuilder{}).execute(closedOutput{}, io.Discard)
+	if !errors.Is(err, io.ErrClosedPipe) || !strings.Contains(err.Error(), "distribution published at "+out) {
+		t.Fatalf("expected error identifying the published distribution, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "SHA256SUMS.txt")); err != nil {
+		t.Fatalf("published checksum file missing: %v", err)
+	}
+}
+
+func TestDistributionPreservesAnEmptyDestinationCreatedDuringBuild(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "dist")
+	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: "linux-amd64", output: out}
+	distribution := newFakeTool(cfg, setupRepoRoot(t), &fakeBuilder{})
+	distribution.publish = func(stage, destination string) error {
+		if err := os.Mkdir(destination, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return publishDirectory(stage, destination)
+	}
+	if err := distribution.execute(io.Discard, io.Discard); err == nil {
+		t.Fatal("replaced an empty output created by another caller")
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("contending directory did not remain intact: %v, %v", entries, err)
+	}
+}
 
 func TestDistributionFlags(t *testing.T) {
 	base := []string{"--version", "0.3.0-alpha.1", "--build-id", "test", "--output", "out"}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import io
 import json
 import sys
@@ -12,9 +13,43 @@ from unittest import mock
 DIRECTORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DIRECTORY))
 import dev
+import release_artifacts
 
 
 class DeveloperCommands(unittest.TestCase):
+    def test_release_reports_if_a_published_manifest_cannot_be_rechecked_or_reported(self):
+        for failure in ('source', 'report'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                output = root / 'manifest.json'
+                reports = root / 'reports'
+                argv = ['release', 'prepare', '--request', str(root / 'request.json'),
+                        '--public-key', str(root / 'key.txt'), '--output', str(output),
+                        '--reports', str(reports), '--format', 'json']
+                before = {'commit': 'fixture', 'status': '', 'source_fingerprint': 'fixture'}
+                after = OSError('metadata read failed') if failure == 'source' else before
+                if failure == 'report':
+                    reports.write_text('not a report directory')
+
+                def publish(*_args, **_kwargs):
+                    output.write_text('{}')
+                    return {'status': 'passed', 'manifest': str(output)}
+
+                stdout = io.StringIO()
+                with (mock.patch.object(dev, 'metadata', side_effect=[before, after]),
+                      mock.patch.object(release_artifacts, 'run', side_effect=publish),
+                      contextlib.redirect_stdout(stdout)):
+                    self.assertEqual(dev.main(argv), 1)
+                result = json.loads(stdout.getvalue())
+                self.assertEqual(result['status'], 'failed')
+                self.assertTrue(output.exists())
+                if failure == 'source':
+                    self.assertTrue(result['unsigned_manifest_published'])
+                    self.assertEqual(result['manifest'], str(output))
+                    self.assertTrue(Path(result['report']).is_file())
+                else:
+                    self.assertIn(f'unsigned manifest published at {output}', result['error'])
+
     def test_linux_package_does_not_build_discarded_development_core(self):
         class ReachedFlutter(Exception):
             pass

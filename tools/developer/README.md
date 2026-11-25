@@ -104,7 +104,8 @@ keeps Flutter/CMake and Go caches on the native Windows filesystem. Interrupted
 syncs retain ownership of partly copied files for the next run. Source must have
 no untracked, nonignored files; build-only runs may be dirty and say so.
 
-Every GUI request executes locked dependency resolution and incremental Release
+Every GUI request first matches the SDK's framework version against
+`gui/.flutter-version`, then executes locked dependency resolution and incremental Release
 compilation; there is no routine `flutter clean`, fresh source copy, or skip based
 on EXE existence. `--check-gui` additionally runs analyze and GUI tests, stopping
 on failure. Plain build-only success is not test acceptance. The package path
@@ -474,6 +475,9 @@ python3 tools/developer/dev.py linux --verify-rpm-upgrade .local/rpm-r1/sidravia
 
 Every RPM has a sibling `.rpm.json` producer/consumer receipt binding source,
 input SHA256, output SHA256, exact file digests/modes/links and dependencies.
+The producer assembles the RPM, receipt and checksum before publishing the
+directory. An interrupted destination reservation is empty and remains
+reserved. Retry with a new output directory.
 Wrapping an already verified portable payload does not probe or build Flutter.
 Prereleases map to RPM `~`, sorting before the final version. No signing or
 repository upload is performed. The candidate is an upstream binary package;
@@ -858,6 +862,8 @@ or rewrites signed metadata. JSON and the normal report directory preserve
 source identity, each distribution receipt, and explicit `not_run` native,
 public-download and publication boundaries. The existing trimpath embedded-Go
 identity limitation remains visible in each consumer receipt.
+If the source changes after unsigned manifest publication, the failure report
+identifies the retained file.
 
 Private key custody and manual signing remain separate authorized operations.
 For this development round, A/B packages are local acceptance fixtures only;
