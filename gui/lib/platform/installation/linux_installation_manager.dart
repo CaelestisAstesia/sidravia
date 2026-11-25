@@ -16,10 +16,16 @@ import '../update/update_check_response.dart';
 import '../update/update_release_version.dart';
 import 'installation_manager.dart';
 
+part 'linux_launch_settings.dart';
+
 /// Owns explicit user integration only. Autostart changes do not stop or adopt
 /// a running daemon. PATH publishes exact executable links, never shell code.
 class LinuxInstallationManager
-    implements InstallationManager, UserServiceManager, PackageUpdateChecker {
+    implements
+        InstallationManager,
+        UserServiceManager,
+        StartupMigration,
+        PackageUpdateChecker {
   LinuxInstallationManager({
     required String executable,
     required this.environment,
@@ -30,10 +36,24 @@ class LinuxInstallationManager
   final Map<String, String> environment;
   final UpdateCheckProcess _updateCheck;
   bool _closed = false;
+  Future<void>? _startupWork;
 
   @override
-  Future<UserServiceStatus?> userService(String action) async {
+  Future<UserServiceStatus?> userService(String action) {
     _checkOpen();
+    if (action == 'status') return _runService(action);
+    return _withStartupWork(() {
+      if (action == 'takeover' || action == 'release') {
+        return _switchManagement(action);
+      }
+      return _runService(action);
+    });
+  }
+
+  @override
+  Future<void> migrateStartup() => _withStartupWork(_migrateStartup);
+
+  Future<UserServiceStatus?> _runService(String action) async {
     if (_namespace.isNotEmpty) return null;
     try {
       final result = await Process.run(
@@ -54,9 +74,11 @@ class LinuxInstallationManager
         throw const IntegrationFailure('后台服务操作失败，请检查实际状态。');
       }
       final value = jsonDecode(result.stdout as String);
-      if (value is! Map<String, dynamic>) return null;
+      if (value is! Map<String, dynamic>) {
+        if (action == 'status') return UserServiceStatus.unknown;
+        throw const IntegrationFailure('无法取得用户服务状态。');
+      }
       final available = result.exitCode == 0 && value['supported'] == true;
-      if (!available && value['recoveryBlocked'] != true) return null;
       return UserServiceStatus(
         available: available,
         directory: value['registered'] == true
@@ -70,11 +92,12 @@ class LinuxInstallationManager
         recoveryBlocked: value['recoveryBlocked'] == true,
         canDiscardDamaged: value['canDiscardDamaged'] == true,
         canDiscardReplacement: value['canDiscardReplacement'] == true,
+        registrationKnown: available || value['registrationKnown'] == true,
       );
     } on IntegrationFailure {
       rethrow;
     } on Object {
-      if (action == 'status') return null;
+      if (action == 'status') return UserServiceStatus.unknown;
       throw const IntegrationFailure('无法取得用户服务状态。');
     }
   }
@@ -211,7 +234,7 @@ class LinuxInstallationManager
   String _header() =>
       '[Desktop Entry]\nType=Application\nName=Sidravia\n'
       'Comment=Sidravia session autostart\nIcon=${_iconDirectory.replaceAll('\\', '\\\\')}/data/icons/sidravia.png\nTerminal=false\n';
-  String _entry(String mode, {bool guarded = true}) {
+  String _entry(String mode, {bool guarded = true, bool legacyHidden = false}) {
     final name = mode == 'gui' ? executable.split('/').last : 'sidraviactl';
     // GNU env treats any NAME=VALUE operand as an assignment, even when it
     // contains '/'. Use a chdir argument so '=' in a portable directory is safe.
@@ -219,12 +242,12 @@ class LinuxInstallationManager
       throw const IntegrationFailure('自启程序文件名不能含等号，请恢复程序原名。');
     }
     final args = mode == 'gui'
-        ? '--start-hidden'
-        : 'daemon start --log-level info';
+        ? (legacyHidden ? ' --start-hidden' : '')
+        : ' daemon start --log-level info';
     final tryExec = guarded && _rpmManaged
         ? 'TryExec=${_directory.replaceAll('\\', '\\\\')}/$name\n'
         : '';
-    return '${_header()}${tryExec}Exec=${_quote('/usr/bin/env')} --chdir ${_quote(_directory)} ${_quote('SIDRAVIA_NAMESPACE=$_namespace')} ${_quote('./$name')} $args\n'
+    return '${_header()}${tryExec}Exec=${_quote('/usr/bin/env')} --chdir ${_quote(_directory)} ${_quote('SIDRAVIA_NAMESPACE=$_namespace')} ${_quote('./$name')}$args\n'
         'X-Sidravia-Owner=linux-desktop-v2\n';
   }
 
@@ -254,6 +277,8 @@ class LinuxInstallationManager
     if (existing == null) return 'disabled';
     if (existing == _entry('gui') ||
         existing == _entry('gui', guarded: false) ||
+        existing == _entry('gui', legacyHidden: true) ||
+        existing == _entry('gui', guarded: false, legacyHidden: true) ||
         existing == _legacyGui) {
       return 'gui';
     }
@@ -418,6 +443,7 @@ class LinuxInstallationManager
   @override
   Future<IntegrationStatus> status() async {
     _checkOpen();
+    await _startupWork;
     try {
       var pathSupported = true;
       var pathEnabled = false;
@@ -436,16 +462,36 @@ class LinuxInstallationManager
         pathSupported = false;
         pathNotice = error.message;
       }
+      final service = await _runService('status');
+      String? startupError;
+      var desktop = 'conflict';
+      try {
+        desktop = _mode(_existing());
+      } on IntegrationFailure catch (error) {
+        startupError = error.message;
+      } on Object {
+        startupError = '无法读取桌面自启登记。';
+      }
       return IntegrationStatus(
         pathEnabled: pathEnabled,
         guiAvailable: _available(executable),
-        autostart: _mode(_existing()),
+        autostart: _startupMode(desktop, service),
         userPathSupported: pathSupported,
         daemonAutostartSupported: _available('$_directory/sidraviactl'),
         pathNotice: pathNotice,
-        autostartNotice: _available('$_directory/sidraviactl')
-            ? '登录桌面会话后启动；仅后台模式没有托盘，可通过 CTL 停止。'
-            : '包内 CTL 不存在或不可执行，无法设置仅后台自启。',
+        userService: service,
+        autostartNeedsRepair:
+            service?.canControl == true &&
+            (desktop == 'daemon' || (desktop == 'gui' && !service!.enabled)),
+        autostartNotice:
+            startupError ??
+            (service?.registrationKnown == false
+                ? '无法确认后台管理方式，请检查高级排障或重新读取。'
+                : service?.canControl == true
+                ? 'systemd 启动后台。选用图形界面时，登录桌面后也会打开界面。'
+                : _available('$_directory/sidraviactl')
+                ? '登录桌面会话后启动；仅后台模式没有托盘，可通过 CTL 停止。'
+                : '包内 CTL 不存在或不可执行，无法设置仅后台自启。'),
       );
     } on IntegrationFailure {
       rethrow;
@@ -466,105 +512,126 @@ class LinuxInstallationManager
         _changePath(change == IntegrationChange.pathEnable);
         return;
       }
-      final disabling = change == IntegrationChange.startDisable;
-      final mode = change == IntegrationChange.startGui ? 'gui' : 'daemon';
-      final target = mode == 'gui' ? executable : '$_directory/sidraviactl';
-      if (!disabling && !_available(target)) {
-        throw const IntegrationFailure('启动程序不存在或不可执行。');
-      }
-      final rpm = _rpmManaged;
-      _locked(File(_path).parent.path, () {
-        try {
-          final file = File(_path);
-          final prefix = rpm
-              ? '.sidravia-autostart-rpm-'
-              : '.sidravia-autostart-app-';
-          final stagePrefix = '$prefix${file.uri.pathSegments.last}-';
-          final noncePattern = RegExp(r'^[0-9a-f]{32}$');
-          for (final candidate in file.parent.listSync(followLinks: false)) {
-            final name = candidate.path.substring(file.parent.path.length + 1);
-            if (!name.startsWith(stagePrefix) ||
-                !noncePattern.hasMatch(name.substring(stagePrefix.length))) {
-              continue;
-            }
-            final result = Process.runSync(
-              '$_directory/sidraviactl',
-              ['linux-recover-autostart-stage', '--', candidate.path],
-              environment: environment,
-              includeParentEnvironment: false,
-            );
-            if (result.exitCode != 0) {
-              throw const IntegrationFailure('无法清理桌面自启暂存目录。');
-            }
-          }
-          final existing = _existing();
-          if (_mode(existing) == 'conflict') {
-            throw const IntegrationFailure('自启项属于其他程序或安装，未修改。');
-          }
-          if (disabling) {
-            if (existing != null) file.deleteSync();
-            if (rpm) _trackRPMAutostart(false);
-            return;
-          }
-          final contents = _entry(mode);
-          if (rpm) _trackRPMAutostart(true);
-          if (existing == contents) return;
-          // A surviving no-clobber mv can only consume this operation's entry.
-          final random = Random.secure();
-          final nonce = List.generate(
-            16,
-            (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-          ).join();
-          final stage = Directory('${file.parent.path}/$stagePrefix$nonce');
-          final created = Process.runSync('/usr/bin/mkdir', [
-            '-m',
-            '700',
-            '--',
-            stage.path,
-          ]);
-          if (created.exitCode != 0) {
-            throw const IntegrationFailure('无法创建桌面自启暂存目录。');
-          }
-          final marker = File('${stage.path}/.sidravia-stage-v1');
-          try {
-            marker.createSync(exclusive: true);
-            final staged = File('${stage.path}/entry');
-            staged.writeAsStringSync(contents, flush: true);
-            if (existing == null) {
-              // Keep publication on the same filesystem, with no replacement
-              // or traversal if another writer created the destination.
-              final result = Process.runSync('/usr/bin/mv', [
-                '--no-clobber',
-                '-T',
-                '--',
-                staged.path,
-                _path,
-              ]);
-              if (result.exitCode != 0 || staged.existsSync()) {
-                throw const IntegrationFailure('自启项已变化，未覆盖原文件。');
-              }
-            } else {
-              if (_existing() != existing) {
-                throw const IntegrationFailure('自启项已变化，未覆盖原文件。');
-              }
-              staged.renameSync(_path);
-            }
-          } finally {
-            final staged = File('${stage.path}/entry');
-            if (staged.existsSync()) staged.deleteSync();
-            if (marker.existsSync()) marker.deleteSync();
-            stage.deleteSync();
-          }
-        } on Object {
-          if (rpm && !disabling) _trackRPMAutostart(false);
-          rethrow;
-        }
-      });
+      final mode = switch (change) {
+        IntegrationChange.startGui => 'gui',
+        IntegrationChange.startDaemon => 'daemon',
+        _ => 'disabled',
+      };
+      await _withStartupWork(() => _setStartup(mode));
     } on IntegrationFailure {
       rethrow;
     } on Object {
       throw const IntegrationFailure('Linux 系统集成修改失败，请刷新确认当前状态。');
     }
+  }
+
+  void _setDesktopStartup(
+    String mode, {
+    String? expected,
+    bool checkExpected = false,
+    String? restoreEntry,
+  }) {
+    final disabling = mode == 'disabled';
+    final target = mode == 'gui' ? executable : '$_directory/sidraviactl';
+    if (!disabling && !_available(target)) {
+      throw const IntegrationFailure('启动程序不存在或不可执行。');
+    }
+    final rpm = _rpmManaged;
+    _locked(File(_path).parent.path, () {
+      var removeNewTrackingOnError = false;
+      try {
+        final file = File(_path);
+        final prefix = rpm
+            ? '.sidravia-autostart-rpm-'
+            : '.sidravia-autostart-app-';
+        final stagePrefix = '$prefix${file.uri.pathSegments.last}-';
+        final noncePattern = RegExp(r'^[0-9a-f]{32}$');
+        for (final candidate in file.parent.listSync(followLinks: false)) {
+          final name = candidate.path.substring(file.parent.path.length + 1);
+          if (!name.startsWith(stagePrefix) ||
+              !noncePattern.hasMatch(name.substring(stagePrefix.length))) {
+            continue;
+          }
+          final result = Process.runSync(
+            '$_directory/sidraviactl',
+            ['linux-recover-autostart-stage', '--', candidate.path],
+            environment: environment,
+            includeParentEnvironment: false,
+          );
+          if (result.exitCode != 0) {
+            throw const IntegrationFailure('无法清理桌面自启暂存目录。');
+          }
+        }
+        final existing = _existing();
+        if (checkExpected && existing != expected) {
+          throw const IntegrationFailure('自启登记已变化，请重新选择。');
+        }
+        if (_mode(existing) == 'conflict') {
+          throw const IntegrationFailure('自启项属于其他程序或安装，未修改。');
+        }
+        if (disabling) {
+          if (existing != null) file.deleteSync();
+          if (rpm) _trackRPMAutostart(false);
+          return;
+        }
+        final contents = restoreEntry ?? _entry(mode);
+        if (rpm) {
+          _trackRPMAutostart(true);
+          removeNewTrackingOnError = existing == null;
+        }
+        if (existing == contents) return;
+        // A surviving no-clobber mv can only consume this operation's entry.
+        final random = Random.secure();
+        final nonce = List.generate(
+          16,
+          (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+        ).join();
+        final stage = Directory('${file.parent.path}/$stagePrefix$nonce');
+        final created = Process.runSync('/usr/bin/mkdir', [
+          '-m',
+          '700',
+          '--',
+          stage.path,
+        ]);
+        if (created.exitCode != 0) {
+          throw const IntegrationFailure('无法创建桌面自启暂存目录。');
+        }
+        final marker = File('${stage.path}/.sidravia-stage-v1');
+        try {
+          marker.createSync(exclusive: true);
+          final staged = File('${stage.path}/entry');
+          staged.writeAsStringSync(contents, flush: true);
+          if (existing == null) {
+            // Keep publication on the same filesystem, with no replacement
+            // or traversal if another writer created the destination.
+            final result = Process.runSync('/usr/bin/mv', [
+              '--no-clobber',
+              '-T',
+              '--',
+              staged.path,
+              _path,
+            ]);
+            if (result.exitCode != 0 || staged.existsSync()) {
+              throw const IntegrationFailure('自启项已变化，未覆盖原文件。');
+            }
+            removeNewTrackingOnError = false;
+          } else {
+            if (_existing() != existing) {
+              throw const IntegrationFailure('自启项已变化，未覆盖原文件。');
+            }
+            staged.renameSync(_path);
+          }
+        } finally {
+          final staged = File('${stage.path}/entry');
+          if (staged.existsSync()) staged.deleteSync();
+          if (marker.existsSync()) marker.deleteSync();
+          stage.deleteSync();
+        }
+      } on Object {
+        if (removeNewTrackingOnError) _trackRPMAutostart(false);
+        rethrow;
+      }
+    });
   }
 
   void _trackRPMAutostart(bool enable) {
@@ -593,5 +660,6 @@ class LinuxInstallationManager
   Future<void> close() async {
     _closed = true;
     await _updateCheck.cancel();
+    await _startupWork;
   }
 }

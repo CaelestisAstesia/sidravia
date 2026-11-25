@@ -104,6 +104,10 @@ abstract interface class GuiBootstrapper {
   Future<GuiBootstrapResult> bootstrap();
 }
 
+abstract interface class GuiManagedBootstrapper {
+  Future<GuiBootstrapResult> connectManagedBackend();
+}
+
 abstract interface class GuiCoreRestarter {
   Future<GuiBootstrapResult> restartCore(String logLevel);
 }

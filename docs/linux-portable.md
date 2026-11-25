@@ -44,7 +44,7 @@ tar -xf "$archive" -C "$HOME/Applications"
 
 默认数据位于本副本的 `config/`、`runtime/` 和 `logs/`，GUI 设置为 `config/gui-settings.json`。指定 `SIDRAVIA_NAMESPACE` 的隔离实例使用 `namespaces/<namespace>/`。密码以明文保存，权限和备份要求见[数据与隐私](privacy.md)。
 
-GUI 设置支持登录桌面会话后启动 GUI 或仅后台，两种登记互斥。自启文件位于 `$XDG_CONFIG_HOME/autostart`，未设置或不是绝对路径时使用 `~/.config/autostart`。GUI 模式启动到托盘；没有托盘服务时保留主窗口。仅后台模式运行本包的 `sidraviactl daemon start --log-level info`。需要登录后自动认证时，另行开启自动登录。
+「自动启动」可选关闭、仅后台或图形界面和后台。是否在 GUI 启动时隐藏到托盘是独立设置。桌面自启文件位于 `$XDG_CONFIG_HOME/autostart`，未设置或不是绝对路径时使用 `~/.config/autostart`。应用管理模式的「仅后台」会运行本包的 `sidraviactl daemon start --log-level info`，systemd 模式由用户服务启动后台。需要后台启动后自动认证时，另行开启「启动时自动登录」。
 
 改变自启设置只影响未来启动，不会接管或停止现有后台。从仅后台切回 GUI 时，先用本包的 `./sidraviactl daemon stop` 正常停止后台。
 
@@ -91,7 +91,7 @@ GUI 包的名称含 `-linux-amd64-gui-portable`，仅核心包以 `-core-portabl
 `./sidraviactl integration service start`。
 更换中断后可从任一参与安装运行 `sidraviactl integration service recover`，恢复原登记和原启用状态。若旧安装已移除，可用 `sidraviactl integration service discard --yes` 停止后台、解除登记并清除中断记录。各安装的数据会保留。
 
-如果状态提示切换记录损坏，在设置的「后台管理方式」中清除损坏的切换记录，或运行 `sidraviactl integration service discard-damaged --yes`。这会保留当前后台、登记和账号配置。清除后可按实际状态继续管理或解除登记。
+如果状态提示切换记录损坏，在「连接与诊断 → 高级排障」清除损坏的切换记录，或运行 `sidraviactl integration service discard-damaged --yes`。这会保留当前后台、登记和账号配置。清除后可按实际状态继续管理或解除登记。
 
 桌面自启和用户 PATH 操作使用目录锁。若旧版本留下 `.sidravia-integration.lock`，可先退出所有旧版 GUI，再删除自己确认由旧版 Sidravia 生成的锁文件。该文件可能位于对应用户配置目录的 `autostart` 或 `~/.local/bin`。
 `unregister` 停止服务、撤销自启及登记，保留账号配置和 linger。

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -32,6 +33,11 @@ func TestRPMDesktopScanSkipsUnownedHardLink(t *testing.T) {
 	files, err := rpmAutostartFiles(root)
 	if err != nil || !slices.Equal(files, []string{owned}) {
 		t.Fatalf("owned entries = %v, error = %v", files, err)
+	}
+	modern := strings.Replace(entry, " --start-hidden", "", 1)
+	if !ownsRPMDesktopEntry(modern, "") ||
+		ownsRPMDesktopEntry(strings.Replace(modern, "\"./sidravia_gui\"", "\"./sidravia_gui\" --vendor-option", 1), "") {
+		t.Fatal("modern GUI autostart must use exact no-argument ownership")
 	}
 }
 

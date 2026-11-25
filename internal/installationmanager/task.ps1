@@ -29,7 +29,7 @@ function Classify-Task($Task, [string]$Directory, [string]$SID) {
     if ($actual.Equals($ctl, [StringComparison]::OrdinalIgnoreCase) -and
         [string]$Task.Actions[0].Arguments -in @('daemon start --log-level info', 'daemon start --log-level debug', 'daemon start --log-level trace')) { return 'daemon' }
     if ($actual.Equals($gui, [StringComparison]::OrdinalIgnoreCase) -and
-        [string]$Task.Actions[0].Arguments -eq '--start-hidden') { return 'gui' }
+        [string]$Task.Actions[0].Arguments -in @('', '--start-hidden')) { return 'gui' }
     return 'conflict'
 }
 
@@ -80,12 +80,14 @@ try {
             if ($null -ne (Read-Task)) { throw 'scheduled_task_verify_failed' }
             $response.mode = 'disabled'
         } else {
-            if ($op -eq 'autostart set gui') { $desired = 'gui'; $exe = Join-Path $dir 'Sidravia.exe'; $arguments = '--start-hidden' }
+            if ($op -eq 'autostart set gui') { $desired = 'gui'; $exe = Join-Path $dir 'Sidravia.exe'; $arguments = '' }
             elseif ($op -eq 'autostart set daemon') { $desired = 'daemon'; $exe = Join-Path $dir 'sidraviactl.exe'; $arguments = 'daemon start --log-level debug' }
             else { throw 'invalid_arguments' }
             if (-not [IO.File]::Exists($exe)) { throw 'autostart_target_missing' }
             if ($mode -ne $desired -or -not (Startup-SettingsMatch $task) -or [string]$task.Actions[0].Arguments -ne $arguments) {
-                $action = New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $dir
+                $actionParameters = @{Execute = $exe; WorkingDirectory = $dir}
+                if ($arguments) { $actionParameters.Argument = $arguments }
+                $action = New-ScheduledTaskAction @actionParameters
                 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $sid
                 $principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
                 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)

@@ -23,12 +23,16 @@ class IntegrationStatus {
     this.daemonAutostartSupported = true,
     this.pathNotice,
     this.autostartNotice,
+    this.userService,
+    this.autostartNeedsRepair = false,
   });
   final bool pathEnabled;
   final String autostart;
   final bool guiAvailable;
   final bool userPathSupported, daemonAutostartSupported;
   final String? pathNotice, autostartNotice;
+  final UserServiceStatus? userService;
+  final bool autostartNeedsRepair;
 
   factory IntegrationStatus.decode(String text) {
     final result = decodeManagerResponse(text);
@@ -93,6 +97,20 @@ InstallationManager createInstallationManager({
 }) => platform.createManager(updateCheck: updateCheck);
 
 class UserServiceStatus {
+  static const unknown = UserServiceStatus(
+    available: false,
+    directory: null,
+    running: false,
+    enabled: false,
+    linger: false,
+    matchesInstallation: false,
+    recoveryPending: false,
+    canDiscardReplacement: false,
+    recoveryBlocked: false,
+    canDiscardDamaged: false,
+    registrationKnown: false,
+  );
+
   const UserServiceStatus({
     required this.available,
     required this.directory,
@@ -104,6 +122,7 @@ class UserServiceStatus {
     required this.canDiscardReplacement,
     required this.recoveryBlocked,
     required this.canDiscardDamaged,
+    this.registrationKnown = true,
   });
   final String? directory;
   final bool available,
@@ -115,8 +134,16 @@ class UserServiceStatus {
       canDiscardReplacement,
       recoveryBlocked,
       canDiscardDamaged;
+  final bool registrationKnown;
+
+  bool get canControl =>
+      available && matchesInstallation && !recoveryPending && !recoveryBlocked;
 }
 
 abstract interface class UserServiceManager {
   Future<UserServiceStatus?> userService(String action);
+}
+
+abstract interface class StartupMigration {
+  Future<void> migrateStartup();
 }

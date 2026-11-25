@@ -29,6 +29,23 @@ func BootstrapDesktop(identity Identity, ownerPID int) (DesktopBootstrapResult, 
 	return bootstrapDesktopWithNamespace(identity, ownerPID, ns, deps)
 }
 
+// BootstrapManagedDesktop is read-only, even if systemd registration has
+// disappeared since the GUI observed it.
+func BootstrapManagedDesktop(identity Identity, _ int) (DesktopBootstrapResult, error) {
+	ns, err := defaultDependencies().namespace()
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	layout, registered, err := serviceLayout(ns)
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	if !registered {
+		return DesktopBootstrapResult{}, ErrDaemonStopped
+	}
+	return bootstrapService(identity, layout)
+}
+
 func bootstrapDesktopWithDependencies(identity Identity, ownerPID int, deps dependencies) (DesktopBootstrapResult, error) {
 	ns, err := deps.namespace()
 	if err != nil {

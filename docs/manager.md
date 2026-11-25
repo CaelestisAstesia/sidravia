@@ -74,7 +74,7 @@ PATH 写入保留其他条目和原有字符串类型，目录匹配忽略大小
 .\sidraviamgr.exe autostart disable
 ```
 
-MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录触发、使用普通用户权限。GUI 模式执行 `Sidravia.exe --start-hidden`；后台模式执行 `sidraviactl.exe daemon start --log-level debug`，没有自定义自启日志等级参数。只有保存配置启用了自动登录，后台启动后才会按该配置自动认证。
+MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录触发、使用普通用户权限。GUI 模式执行 `Sidravia.exe`，窗口可见性按 GUI 的启动偏好决定。旧的托盘启动任务仍可识别，重新选择 GUI 自启会按当前方式登记。后台模式执行 `sidraviactl.exe daemon start --log-level debug`。只有保存配置启用了自动登录，后台启动后才会按该配置自动认证。
 
 已有同名任务若无法确认属于当前用户、本目录及预期动作，会显示 `conflict`。查询 `status` 可以成功返回这一冲突状态；设置、禁用和安装器卸载检查会拒绝冲突。不要靠覆盖或删除未知任务来消除提示。移动便携目录前，应从旧目录正常撤销自启和 PATH，移动后再从新目录设置。
 

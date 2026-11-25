@@ -36,6 +36,7 @@ function Expect($task, $want) {
 Expect $null 'disabled'
 Expect (Fixture) 'daemon'
 $x=Fixture; $x.Actions[0].Execute=Join-Path $dir 'Sidravia.exe'; $x.Actions[0].Arguments='--start-hidden'; Expect $x 'gui'
+$x=Fixture; $x.Actions[0].Execute=Join-Path $dir 'Sidravia.exe'; $x.Actions[0].Arguments=''; Expect $x 'gui'
 $x=Fixture; $x.Actions[0].Execute='C:\Other\sidraviactl.exe'; Expect $x 'conflict'
 $x=Fixture; $x.Actions[0].Arguments='daemon start --log-level debug --other'; Expect $x 'conflict'
 $x=Fixture; $x.Triggers[0].UserId=''; Expect $x 'conflict'

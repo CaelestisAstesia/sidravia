@@ -1,12 +1,59 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sidravia_gui/application/connection_presentation.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/ipc/ipc_models.dart';
 import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 
 void main() {
+  test(
+    'homepage starts only a confirmed stopped service from this installation',
+    () async {
+      final service = _ManagedService();
+      final controller = GuiController(
+        bootstrapper: _ManagedBootstrapper(service),
+        connector: (_) async => _Client(),
+        reconnectDelay: const Duration(days: 1),
+        pollDelay: const Duration(days: 1),
+      );
+      addTearDown(() async {
+        await controller.close();
+        controller.dispose();
+      });
+      controller.bindUserService(service);
+      await controller.start();
+      await controller.refreshUserService();
+      expect(
+        controller.connectionPresentation.primaryAction.kind,
+        GuiConnectionActionKind.retryIpc,
+      );
+      service.owned = true;
+      await controller.refreshUserService();
+      final action = controller.connectionPresentation.primaryAction;
+      expect(action.kind, GuiConnectionActionKind.startManagedBackend);
+      expect(controller.connectionPresentation.primaryLabel, '启动后台');
+      expect(
+        service.started,
+        0,
+        reason: 'read-only discovery does not start the service',
+      );
+      service.owned = false;
+      expect(await controller.performConnectionAction(action), isFalse);
+      expect(
+        service.started,
+        0,
+        reason: 'an earlier confirmation cannot start another installation',
+      );
+      service.owned = true;
+      await controller.refreshUserService();
+      expect(await controller.performConnectionAction(action), isTrue);
+      expect(controller.state, GuiConnectionState.ready);
+      expect(service.started, 1);
+    },
+  );
   for (final nextPid in [100, 200]) {
     test(
       'outdated marker follows daemon identity on stale reconnect pid=$nextPid',
@@ -742,6 +789,46 @@ class _Bootstrapper implements GuiBootstrapper {
       mode: 'desktop',
     ),
   );
+}
+
+class _ManagedService implements UserServiceManager {
+  var owned = false;
+  var running = false;
+  var started = 0;
+
+  @override
+  Future<UserServiceStatus> userService(String action) async {
+    if (action == 'start') {
+      expect(owned && !running, isTrue);
+      running = true;
+      started++;
+    }
+    return UserServiceStatus(
+      available: true,
+      directory: '/fixture',
+      running: running,
+      enabled: false,
+      linger: false,
+      matchesInstallation: owned,
+      recoveryPending: false,
+      canDiscardReplacement: false,
+      recoveryBlocked: false,
+      canDiscardDamaged: false,
+    );
+  }
+}
+
+class _ManagedBootstrapper implements GuiBootstrapper, GuiManagedBootstrapper {
+  const _ManagedBootstrapper(this.service);
+  final _ManagedService service;
+
+  @override
+  Future<GuiBootstrapResult> bootstrap() async => service.running
+      ? _Bootstrapper().bootstrap()
+      : const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
+
+  @override
+  Future<GuiBootstrapResult> connectManagedBackend() => bootstrap();
 }
 
 class _PendingBootstrapper implements GuiBootstrapper {

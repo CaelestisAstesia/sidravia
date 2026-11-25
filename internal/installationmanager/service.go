@@ -18,6 +18,7 @@ var ErrServiceConflict = errors.New("user service registration conflicts with ex
 // registration can survive the disappearance of a portable installation.
 type ServiceState struct {
 	Supported             bool   `json:"supported"`
+	RegistrationKnown     bool   `json:"registrationKnown"`
 	Directory             string `json:"directory,omitempty"`
 	Registered            bool   `json:"registered"`
 	Enabled               bool   `json:"enabled"`

@@ -83,6 +83,13 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     _appearance.addListener(_syncDesktopPreferences);
     _syncDesktopPreferences();
     widget.controller.addListener(_handleControllerChanged);
+    final manager = _installationManager;
+    if (manager is UserServiceManager) {
+      widget.controller.bindUserService(manager as UserServiceManager);
+    }
+    if (manager is StartupMigration) {
+      unawaited(_migrateStartup(manager as StartupMigration));
+    }
     _announcements =
         widget.announcements ??
         SchoolAnnouncementController(
@@ -126,6 +133,21 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
           _connectionNotifications.reportTrayUnavailable;
       _handleControllerChanged();
     }
+  }
+
+  Future<void> _migrateStartup(StartupMigration manager) async {
+    try {
+      await manager.migrateStartup();
+    } on Object {
+      if (mounted && !_exiting) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _messengerKey.currentState?.showSnackBar(
+            const SnackBar(content: Text('自启设置需要确认，请前往设置查看当前状态。')),
+          );
+        });
+      }
+    }
+    if (mounted && !_exiting) await widget.controller.refreshUserService();
   }
 
   @override

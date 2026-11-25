@@ -213,10 +213,11 @@ func ownsRPMDesktopEntry(content, namespace string) bool {
 			rpmAppDirectory + "/" + icon + "/icons/sidravia.png\nTerminal=false\n"
 		env := "\"SIDRAVIA_NAMESPACE=" + namespace + "\""
 		for _, mode := range []struct{ program, args string }{
-			{"sidravia_gui", "--start-hidden"}, {"sidraviactl", "daemon start --log-level info"},
+			{"sidravia_gui", ""}, {"sidravia_gui", " --start-hidden"},
+			{"sidraviactl", " daemon start --log-level info"},
 		} {
 			entry := "Exec=\"/usr/bin/env\" --chdir \"" + rpmAppDirectory + "\" " + env +
-				" \"./" + mode.program + "\" " + mode.args + "\nX-Sidravia-Owner=linux-desktop-v2\n"
+				" \"./" + mode.program + "\"" + mode.args + "\nX-Sidravia-Owner=linux-desktop-v2\n"
 			if content == header+entry || content == header+"TryExec="+rpmAppDirectory+"/"+mode.program+"\n"+entry {
 				return true
 			}

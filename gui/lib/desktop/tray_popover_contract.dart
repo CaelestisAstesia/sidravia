@@ -190,6 +190,7 @@ class TrayIntent {
         GuiConnectionActionKind.start ||
         GuiConnectionActionKind.reconnect ||
         GuiConnectionActionKind.stop ||
+        GuiConnectionActionKind.startManagedBackend ||
         GuiConnectionActionKind.retryIpc => TrayIntent.connection(action),
         GuiConnectionActionKind.addConfiguration => const TrayIntent(
           TrayIntentKind.addConfiguration,
@@ -234,11 +235,17 @@ class TrayIntent {
         GuiConnectionActionKind.reconnect,
         GuiConnectionActionKind.stop,
         GuiConnectionActionKind.retryIpc,
+        GuiConnectionActionKind.startManagedBackend,
       };
       if (action == null ||
           !connectionActions.contains(action) ||
           (id != null && id is! String) ||
-          (action != GuiConnectionActionKind.retryIpc && id == null)) {
+          (const {
+                GuiConnectionActionKind.retryIpc,
+                GuiConnectionActionKind.startManagedBackend,
+              }.contains(action)
+              ? id != null
+              : id == null)) {
         return null;
       }
       return TrayIntent(

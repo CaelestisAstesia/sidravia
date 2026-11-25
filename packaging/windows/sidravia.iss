@@ -1228,8 +1228,8 @@ begin
     '登录 Windows 后，如何启动 Sidravia？',
     '选择适合你的启动方式。', True, False);
 #if IncludeGUI
-  StartupPage.Add('启动到托盘' + #13#10 +
-    '启动图形界面并隐藏主窗口，可通过托盘图标管理连接');
+  StartupPage.Add('启动图形界面和后台' + #13#10 +
+    '是否隐藏主窗口由图形界面的启动设置决定');
 #endif
   StartupPage.Add('仅启动后台' + #13#10 +
     '不显示窗口和托盘图标，通过命令行管理连接');
@@ -1313,7 +1313,7 @@ begin
   if HasSelectedGUI then Components := Components + '、图形界面';
   Startup := '关闭';
   if WizardIsTaskSelected('autostart') then begin
-    if EffectiveStartupMode = 'gui' then Startup := '启动到托盘'
+    if EffectiveStartupMode = 'gui' then Startup := '启动图形界面和后台'
     else Startup := '仅启动后台';
     if not HasSelectedGUI then
       Startup := Startup + NewLine + Space + '启用前，建议关闭其他认证器及其开机自启';

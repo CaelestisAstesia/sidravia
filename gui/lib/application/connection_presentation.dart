@@ -13,6 +13,7 @@ enum GuiConnectionActionKind {
   reconnect,
   stop,
   retryIpc,
+  startManagedBackend,
   showDetails,
   showSettings,
 }
@@ -66,6 +67,7 @@ class ConnectionPresentation {
   static ConnectionPresentation project(
     GuiCapabilities caps, {
     bool sessionNeedsReset = false,
+    bool managedBackendStopped = false,
     String? notice,
     DateTime? now,
   }) {
@@ -187,12 +189,18 @@ class ConnectionPresentation {
               glyph = '!';
               tone = HomeTone.warning;
               primaryLabel = '取消等待';
-              secondaryLabel = s.stateReason?.code == 'network_binding_unavailable'
+              secondaryLabel =
+                  s.stateReason?.code == 'network_binding_unavailable'
                   ? '检查网卡设置'
                   : '连接与诊断';
               secondary = s.stateReason?.code == 'network_binding_unavailable'
-                  ? GuiConnectionAction(GuiConnectionActionKind.editConfiguration, s.configurationId)
-                  : const GuiConnectionAction(GuiConnectionActionKind.showDetails);
+                  ? GuiConnectionAction(
+                      GuiConnectionActionKind.editConfiguration,
+                      s.configurationId,
+                    )
+                  : const GuiConnectionAction(
+                      GuiConnectionActionKind.showDetails,
+                    );
             case SessionState.waitingBeforeRetry:
               title = '等待重试';
               detail = '认证未成功 · 将自动重试';
@@ -271,8 +279,16 @@ class ConnectionPresentation {
     }
     if (caps.state == GuiConnectionState.failed ||
         caps.state == GuiConnectionState.stale) {
-      primary = const GuiConnectionAction(GuiConnectionActionKind.retryIpc);
-      primaryLabel = '重试连接';
+      primary = managedBackendStopped
+          ? const GuiConnectionAction(
+              GuiConnectionActionKind.startManagedBackend,
+            )
+          : const GuiConnectionAction(GuiConnectionActionKind.retryIpc);
+      primaryLabel = managedBackendStopped ? '启动后台' : '重试连接';
+      if (managedBackendStopped) {
+        title = '后台已停止';
+        detail = '启动后台后可以继续连接';
+      }
       enabled = !caps.busy;
     }
     String? error = notice;
@@ -282,7 +298,7 @@ class ConnectionPresentation {
           GuiConnectionState.bootstrapping => '正在初始化连接服务…',
           GuiConnectionState.unsupported => '此平台暂不支持真实认证。',
           GuiConnectionState.stale => '连接服务失联，当前信息可能已过期。',
-          _ => '连接服务不可用，请重试。',
+          _ => managedBackendStopped ? null : '连接服务不可用，请重试。',
         };
       } else if (sessionNeedsReset) {
         error = '请先在连接与诊断中移除旧会话。';

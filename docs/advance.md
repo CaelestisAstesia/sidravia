@@ -342,7 +342,7 @@ Windows 包通过同目录的 `sidraviamgr.exe`（MGR）维护当前 Windows 用
 .\sidraviactl.exe integration autostart disable
 ```
 
-- `set gui`：下次登录 Windows 时启动到托盘，需要同目录包含 GUI 组件。
+- `set gui`：下次登录 Windows 时启动图形界面和后台，需要同目录包含 GUI 组件。是否隐藏主窗口沿用 GUI 设置。
 - `set daemon`：下次登录 Windows 时仅启动独立后台。
 - `disable`：关闭下次登录自启，当前程序继续运行。
 

@@ -51,6 +51,33 @@ open(${jsonEncode('${root.path}/observed')},"w").write(json.dumps([os.environ.ge
     executable: executable,
     environment: environment,
   );
+  File get serviceState => File('${root.path}/service.json');
+
+  void simulateUserService() {
+    environment.remove('SIDRAVIA_NAMESPACE');
+    serviceState.writeAsStringSync('{}');
+    File('${product.path}/sidraviactl').writeAsStringSync('''#!/usr/bin/python3
+import json, pathlib, sys
+state_file = pathlib.Path(${jsonEncode(serviceState.path)})
+state = json.loads(state_file.read_text())
+assert sys.argv[1:3] == ['integration', 'service']
+action = sys.argv[3]
+if action == state.get('failure'):
+    sys.exit(1)
+if action in ('takeover', 'release'):
+    state['registered'] = action == 'takeover'
+    state['enabled'] = False
+if action in ('enable', 'disable'):
+    assert state.get('registered')
+    state['enabled'] = action == 'enable'
+state_file.write_text(json.dumps(state))
+registered = state.get('registered', False)
+print(json.dumps(dict(supported=True, registered=registered,
+    directory=${jsonEncode(product.path)} if registered else '',
+    enabled=state.get('enabled', False), running=False, linger=False)))
+''');
+  }
+
   File get desktop =>
       Directory('${root.path}/config/autostart')
           .listSync()
@@ -73,6 +100,104 @@ open(${jsonEncode('${root.path}/observed')},"w").write(json.dumps([os.environ.ge
 }
 
 void main() {
+  for (final takeoverFirst in [false, true]) {
+    test(
+      'systemd and desktop intent agree in either setting order: $takeoverFirst',
+      () async {
+        final f = _Fixture();
+        f.simulateUserService();
+        final manager = f.manager;
+        addTearDown(manager.close);
+        if (takeoverFirst) await manager.userService('takeover');
+        await manager.change(IntegrationChange.startDaemon);
+        expect((await manager.status()).autostart, 'daemon');
+        if (!takeoverFirst) await manager.userService('takeover');
+        var status = await manager.status();
+        expect(status.autostart, 'daemon');
+        expect(status.userService?.enabled, isTrue);
+        expect(
+          Directory('${f.root.path}/config/autostart').listSync(),
+          isEmpty,
+        );
+        await manager.change(IntegrationChange.startGui);
+        status = await manager.status();
+        expect(status.autostart, 'gui');
+        expect(status.userService?.enabled, isTrue);
+        expect(f.desktop.readAsStringSync(), isNot(contains('--start-hidden')));
+        await manager.change(IntegrationChange.startDaemon);
+        await manager.userService('release');
+        status = await manager.status();
+        expect(status.autostart, 'daemon');
+        expect(status.userService?.directory, isNull);
+        expect(f.desktop.readAsStringSync(), contains('daemon start'));
+        await manager.change(IntegrationChange.startDisable);
+        expect((await manager.status()).autostart, 'disabled');
+      },
+      skip: !Platform.isLinux,
+    );
+  }
+
+  test(
+    'migrates owned legacy GUI startup without forcing startup visibility',
+    () async {
+      final f = _Fixture(productLeaf: 'simple');
+      f.simulateUserService();
+      final manager = f.manager;
+      addTearDown(manager.close);
+      await manager.change(IntegrationChange.startGui);
+      final desktop = f.desktop;
+      final before = desktop.readAsStringSync().replaceFirst(
+        './sidravia_gui"\n',
+        './sidravia_gui" --start-hidden\n',
+      );
+      desktop.writeAsStringSync(before);
+      f.serviceState.writeAsStringSync('{"registered":true,"enabled":false}');
+      expect((await manager.status()).autostartNeedsRepair, isTrue);
+      await manager.migrateStartup();
+      final after = await manager.status();
+      expect(after.autostart, 'gui');
+      expect(after.userService?.enabled, isTrue);
+      expect(after.autostartNeedsRepair, isFalse);
+      expect(desktop.readAsStringSync(), isNot(contains('--start-hidden')));
+
+      f.serviceState.writeAsStringSync(
+        '{"registered":true,"enabled":true,"failure":"disable"}',
+      );
+      await expectLater(
+        manager.change(IntegrationChange.startDisable),
+        throwsA(isA<IntegrationFailure>()),
+      );
+      expect(
+        (await manager.status()).autostart,
+        'gui',
+        reason: 'failed disable restores the owned desktop entry',
+      );
+    },
+    skip: !Platform.isLinux,
+  );
+
+  test(
+    'unknown user-service ownership leaves the desktop registration intact',
+    () async {
+      final f = _Fixture(productLeaf: 'simple');
+      f.simulateUserService();
+      final manager = f.manager;
+      addTearDown(manager.close);
+      await manager.change(IntegrationChange.startGui);
+      final original = f.desktop.readAsStringSync();
+      f.serviceState.writeAsStringSync('{"failure":"status"}');
+      final status = await manager.status();
+      expect(status.autostart, 'conflict');
+      expect(status.userService?.registrationKnown, isFalse);
+      await expectLater(
+        manager.change(IntegrationChange.startDisable),
+        throwsA(isA<IntegrationFailure>()),
+      );
+      expect(f.desktop.readAsStringSync(), original);
+    },
+    skip: !Platform.isLinux,
+  );
+
   test(
     'portable and RPM checks use bundled CTL and close a pending query',
     () async {
@@ -208,7 +333,7 @@ sys.stdout.write('x' * ((2 << 20) + 1))
       );
       expect(await f.launchEntry(), [
         'fixture-a',
-        ['./sidravia_gui', '--start-hidden'],
+        ['./sidravia_gui'],
       ]);
       await m.change(IntegrationChange.startDaemon);
       expect((await m.status()).autostart, 'daemon');
@@ -396,7 +521,8 @@ sys.stdout.write('x' * ((2 << 20) + 1))
     final f = _Fixture();
     f.environment['XDG_CONFIG_HOME'] = 'relative-xdg';
     f.environment['HOME'] = '${f.home.path}/';
-    File('${f.product.path}/sidravia.rpm').writeAsStringSync('sidravia-rpm-v1\n');
+    File('${f.product.path}/sidravia.rpm')
+        .writeAsStringSync('sidravia-rpm-v1\n');
     final m = f.manager;
     await m.change(IntegrationChange.startDaemon);
     final another = LinuxInstallationManager(

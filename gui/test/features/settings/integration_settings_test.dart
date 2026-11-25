@@ -124,10 +124,10 @@ void main() {
       return enabled;
     }
 
-    expect(await daemonAutostartEnabled(), isFalse);
-    await tester.tap(find.byKey(const ValueKey('user-service-selector')));
+    expect(await daemonAutostartEnabled(), isTrue);
+    await tester.tap(find.widgetWithText(OutlinedButton, '停止后台'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, '停止后台'));
+    await tester.tap(find.text('确认'));
     await tester.pumpAndSettle();
     expect(manager.actions, ['stop']);
 
@@ -204,7 +204,7 @@ void main() {
     );
     expect(find.textContaining('/fixture'), findsNothing);
 
-    await select('切回应用管理');
+    await select('应用管理');
     await tester.tap(find.text('确认'));
     await tester.pumpAndSettle();
     expect(manager.actions, ['takeover', 'release']);
@@ -223,11 +223,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('图形程序不可用，无法启动到托盘'), findsOneWidget);
+    expect(find.textContaining('当前安装没有可启动的图形界面'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('autostart-selector')));
     await tester.pumpAndSettle();
     final option = tester.widget<MenuItemButton>(
-      find.widgetWithText(MenuItemButton, '启动到托盘'),
+      find.widgetWithText(MenuItemButton, '图形界面和后台'),
     );
     expect(option.onPressed, isNull);
     expect(manager.lastChange, isNull);

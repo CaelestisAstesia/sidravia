@@ -16,6 +16,7 @@ import 'package:sidravia_gui/ipc/sidravia_ipc_client.dart';
 import 'package:sidravia_gui/ipc/web_socket_ipc_client.dart';
 import 'package:sidravia_gui/ipc/state_models.dart';
 import 'package:sidravia_gui/ipc/state_subscription.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 
 // Retain the controller entrypoint's public lifecycle type for tool clients.
 export 'gui_connection_state.dart';
@@ -61,6 +62,11 @@ class GuiController extends ChangeNotifier {
   Timer? _timer;
   Future<void>? _transition;
   bool _userBusy = false;
+  UserServiceManager? _userService;
+  UserServiceStatus? _userServiceStatus;
+  Future<bool>? _userServiceAction;
+  int _userServiceRevision = 0;
+  bool _managedReconnect = false;
   bool _disposed = false;
   int _generation = 0;
   GuiConnectionState _state = GuiConnectionState.bootstrapping;
@@ -119,7 +125,10 @@ class GuiController extends ChangeNotifier {
     _notify();
   }
 
-  bool get busy => _userBusy || _maintenanceFrozen;
+  bool get busy =>
+      _userBusy || _userServiceAction != null || _maintenanceFrozen;
+  bool get _managedBackendStopped =>
+      _userServiceStatus?.canControl == true && !_userServiceStatus!.running;
   GuiCapabilities get capabilities =>
       GuiCapabilities(state: _state, snapshot: _snapshot, busy: busy);
 
@@ -127,12 +136,21 @@ class GuiController extends ChangeNotifier {
       ConnectionPresentation.project(
         capabilities,
         sessionNeedsReset: sessionNeedsReset,
+        managedBackendStopped: _managedBackendStopped,
         notice: notice,
         now: presentationClock.now,
       );
 
   Future<bool> performConnectionAction(GuiConnectionAction action) {
     if (action.kind == GuiConnectionActionKind.retryIpc) return _retryAction();
+    if (action.kind == GuiConnectionActionKind.startManagedBackend) {
+      if (!_managedBackendStopped ||
+          (state != GuiConnectionState.failed &&
+              state != GuiConnectionState.stale)) {
+        return Future.value(false);
+      }
+      return performManagedServiceAction('start');
+    }
     if (!const {
       GuiConnectionActionKind.start,
       GuiConnectionActionKind.reconnect,
@@ -159,12 +177,103 @@ class GuiController extends ChangeNotifier {
     );
   }
 
+  void bindUserService(UserServiceManager manager) {
+    _userService = manager;
+    unawaited(refreshUserService());
+  }
+
+  Future<void> refreshUserService() async {
+    final manager = _userService;
+    if (manager == null || _disposed || _exitRequested) return;
+    final revision = ++_userServiceRevision;
+    UserServiceStatus? status;
+    try {
+      status = await manager.userService('status');
+    } on Object {
+      // Unknown state must not authorize a startup.
+    }
+    if (_disposed || _exitRequested || revision != _userServiceRevision) return;
+    _userServiceStatus = status;
+    if (status?.canControl == true) _managedReconnect = true;
+    _notify();
+  }
+
+  Future<void> refreshManagedMode(String? action) async {
+    await refreshUserService();
+    if (action == 'release' && _hasNoManagedRegistration) {
+      _managedReconnect = false;
+    }
+    if (action == 'takeover' || action == 'release') await retry();
+  }
+
+  bool get _hasNoManagedRegistration => switch (_userServiceStatus) {
+    UserServiceStatus(
+      registrationKnown: true,
+      directory: null,
+      recoveryPending: false,
+      recoveryBlocked: false,
+    ) =>
+      true,
+    _ => false,
+  };
+
+  Future<bool> performManagedServiceAction(String action) {
+    final manager = _userService;
+    if (manager == null ||
+        busy ||
+        _disposed ||
+        _exitRequested ||
+        !const {'start', 'stop', 'restart'}.contains(action)) {
+      return Future.value(false);
+    }
+    final work = _changeManagedService(manager, action);
+    _userServiceAction = work;
+    _notify();
+    return work;
+  }
+
+  Future<bool> _changeManagedService(
+    UserServiceManager manager,
+    String action,
+  ) async {
+    try {
+      final actual = await manager.userService('status');
+      if (_disposed ||
+          _exitRequested ||
+          actual?.canControl != true ||
+          actual!.running == (action == 'start')) {
+        _notice = '后台状态已变化，请检查当前状态。';
+        return false;
+      }
+      await manager.userService(action);
+      _managedReconnect = true;
+      await _transition;
+      if (_disposed || _exitRequested) return false;
+      _coreRestartFailed = false;
+      await start();
+      if (action == 'stop') return true;
+      if (state != GuiConnectionState.ready) {
+        _notice = '后台操作已完成，但图形界面尚未连接到后台。';
+        return false;
+      }
+      return true;
+    } on Object {
+      _notice = '后台操作失败，请检查当前状态。';
+      return false;
+    } finally {
+      _userServiceAction = null;
+      await refreshUserService();
+      _notify();
+    }
+  }
+
   Future<bool> _retryAction() async {
     if (busy ||
         (state != GuiConnectionState.failed &&
             state != GuiConnectionState.stale)) {
       return false;
     }
+    if (_hasNoManagedRegistration) _managedReconnect = false;
     await retry();
     return state == GuiConnectionState.ready;
   }
@@ -656,13 +765,20 @@ class GuiController extends ChangeNotifier {
       _failure = null;
       _notice = null;
       _notify();
-      final boot = await bootstrapper.bootstrap();
+      final source = bootstrapper;
+      final boot = _managedReconnect
+          ? (source is GuiManagedBootstrapper
+                ? await (source as GuiManagedBootstrapper)
+                      .connectManagedBackend()
+                : const GuiBootstrapResult.failure(GuiBootstrapFailure.failed))
+          : await source.bootstrap();
       if (!_canContinue(generation)) return;
       if (!boot.isSuccess) {
         _setFailure(boot.failure!);
         return;
       }
       _serviceManaged = boot.value!.mode == 'systemd';
+      if (_serviceManaged) _managedReconnect = true;
       final client = await connector(boot.value!);
       if (!_canContinue(generation)) {
         await _closeQuietly(client);
@@ -805,6 +921,7 @@ class GuiController extends ChangeNotifier {
     // callbacks and any completion of an old RPC are now inert.
     final releasing = _releaseResources();
     _notify();
+    unawaited(refreshUserService());
     await releasing;
     if (_canContinue(generation)) _scheduleReconnect();
   }
@@ -826,7 +943,7 @@ class GuiController extends ChangeNotifier {
     _timer = Timer(delay, () {
       _timer = null;
       if (_disposed || _exitRequested) return;
-      if (_transition != null) {
+      if (_transition != null || _userServiceAction != null) {
         _scheduleReconnect();
         return;
       }
@@ -915,6 +1032,7 @@ class GuiController extends ChangeNotifier {
         ? GuiConnectionState.unsupported
         : GuiConnectionState.failed;
     _notify();
+    unawaited(refreshUserService());
   }
 
   void _notify() {
@@ -934,11 +1052,13 @@ class GuiController extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     final transition = _transition;
+    final serviceAction = _userServiceAction;
     final businessClosing = business.close();
     final releasing = _releaseResources();
     return _closed = () async {
       await releasing;
       await transition;
+      await serviceAction;
       await businessClosing;
       await _releaseResources();
     }();

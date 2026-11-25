@@ -58,7 +58,7 @@ RPM 卸载后保留用户配置与日志。需要清理时，先按[数据位置
 
 ## systemd 用户服务
 
-以普通用户使用 `sidraviactl integration service` 管理登记、启停、自启和 linger。
+GUI 可在设置选择「应用管理」或「systemd」，再独立选择自动启动内容及登入前运行所需的 linger。systemd 后台的启停有自己的操作。如确认本安装的后台停止，首页也提供「启动后台」。仅核心版可使用 `sidraviactl integration service` 管理登记、启停、自启和 linger。
 RPM 与便携安装共用一个登记。通过目标安装的 `sidraviactl integration service replace`
 更换登记，两边配置各自保留。
 

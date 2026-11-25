@@ -100,11 +100,11 @@ class SettingsPage extends StatelessWidget {
             ...startupRows,
             DesignRow(
               key: const ValueKey('start-hidden-row'),
-              title: '启动时隐藏到托盘',
+              title: '图形界面启动时隐藏到托盘',
               subtitle: desktopEnabled ? null : trayReason,
               trailing: DesignSwitch(
                 key: const ValueKey('start-hidden-switch'),
-                label: '启动时隐藏到托盘',
+                label: '图形界面启动时隐藏到托盘',
                 value: appearance?.startHidden ?? false,
                 onChanged: desktopEnabled
                     ? (v) => appearance.startHidden = v
@@ -351,6 +351,8 @@ class SettingsPage extends StatelessWidget {
           if (showIntegration || (desktopPresence?.supported ?? false))
             IntegrationSettings(
               manager: integrationManager,
+              onManagedAction: controller.performManagedServiceAction,
+              onServiceChanged: controller.refreshManagedMode,
               createManager:
                   createIntegrationManager ??
                   () => createInstallationManager(updateCheck: updateCheck),

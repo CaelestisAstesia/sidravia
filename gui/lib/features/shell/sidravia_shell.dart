@@ -9,6 +9,7 @@ import 'package:sidravia_gui/features/announcements/school_announcement_controll
 import 'package:sidravia_gui/features/configuration/configuration_page.dart';
 import 'package:sidravia_gui/features/home/home_page.dart';
 import 'package:sidravia_gui/features/settings/settings_page.dart';
+import 'package:sidravia_gui/features/settings/integration_settings.dart';
 import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/platform/update/update_check_process.dart';
 
@@ -152,7 +153,17 @@ class SidraviaShellState extends State<SidraviaShell> {
                   websiteLatencyEnabled: widget.websiteLatencyEnabled,
                   onOpenLogDirectory: widget.onOpenLogDirectory,
                   controller: widget.controller,
-
+                  userServiceMaintenance:
+                      widget.integrationManager is UserServiceManager
+                      ? IntegrationSettings(
+                          manager: widget.integrationManager,
+                          advancedOnly: true,
+                          onManagedAction:
+                              widget.controller.performManagedServiceAction,
+                          onServiceChanged:
+                              widget.controller.refreshManagedMode,
+                        )
+                      : null,
                   onBack: _back,
                 ),
               },

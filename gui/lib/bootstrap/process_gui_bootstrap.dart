@@ -7,7 +7,8 @@ import '../platform/paths/linux_product_executable.dart';
 
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 
-class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
+class ProcessGuiBootstrap
+    implements GuiBootstrapper, GuiManagedBootstrapper, GuiCoreRestarter {
   ProcessGuiBootstrap({
     this.logLevel,
     this.skipAutoLogin = false,
@@ -52,9 +53,16 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
   @override
   Future<GuiBootstrapResult> bootstrap() => _run('bootstrap', logLevel?.call());
   @override
+  Future<GuiBootstrapResult> connectManagedBackend() =>
+      _run('bootstrap', null, systemdOnly: true);
+  @override
   Future<GuiBootstrapResult> restartCore(String level) =>
       _run('restart', level);
-  Future<GuiBootstrapResult> _run(String operation, String? level) async {
+  Future<GuiBootstrapResult> _run(
+    String operation,
+    String? level, {
+    bool systemdOnly = false,
+  }) async {
     if (!_isWindows() && !_isLinux()) {
       return const GuiBootstrapResult.failure(
         GuiBootstrapFailure.unsupportedPlatform,
@@ -75,7 +83,9 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
       child = await _launch(executable, [
         'gui',
         operation,
-        if (skipAutoLogin && operation == 'bootstrap') '--skip-auto-login',
+        if (systemdOnly) '--systemd-only',
+        if (!systemdOnly && skipAutoLogin && operation == 'bootstrap')
+          '--skip-auto-login',
         if (level != null) ...['--log-level', level],
         '--owner-pid',
         '${_ownerPid()}',

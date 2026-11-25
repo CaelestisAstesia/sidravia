@@ -49,6 +49,13 @@ func readServiceState(ctx context.Context, path string, layout productlayout.Lay
 	state := serviceSwitchStatus(path, ServiceState{Registered: owned, Directory: layout.ExecutableDirectory})
 	out, err := control(ctx, "show", "--property=LoadState,ActiveState,UnitFileState,FragmentPath,DropInPaths", userUnitName)
 	if err != nil {
+		// With no systemd instance and with no unit or switch record on
+		// disk, the application can still own its ordinary XDG startup.
+		if !owned && !state.RecoveryBlocked && !state.RecoveryPending {
+			if _, statErr := os.Stat("/run/systemd/system"); errors.Is(statErr, os.ErrNotExist) {
+				state.RegistrationKnown = true
+			}
+		}
 		return state, errors.Join(ErrServiceUnavailable, err)
 	}
 	fields := make(map[string]string)
@@ -69,6 +76,7 @@ func readServiceState(ctx context.Context, path string, layout productlayout.Lay
 	default:
 		return state, ErrServiceConflict
 	}
+	state.RegistrationKnown = true
 	state.Enabled = fields["UnitFileState"] == "enabled"
 	linger, err := managerCommand(ctx, "/usr/bin/loginctl", "show-user", strconv.Itoa(os.Geteuid()), "--property=Linger", "--value")
 	if err != nil {

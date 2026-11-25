@@ -19,12 +19,14 @@ class ConnectionDiagnosticsPage extends StatefulWidget {
     required this.controller,
     required this.onBack,
     this.onOpenLogDirectory,
+    this.userServiceMaintenance,
     this.websiteLatencyEnabled = true,
   });
   final GuiController controller;
   final bool websiteLatencyEnabled;
   final VoidCallback onBack;
   final Future<bool> Function()? onOpenLogDirectory;
+  final Widget? userServiceMaintenance;
   @override
   State<ConnectionDiagnosticsPage> createState() =>
       _ConnectionDiagnosticsPageState();
@@ -215,6 +217,7 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
             ),
           ],
         ),
+        ?widget.userServiceMaintenance,
       ],
     );
   }
