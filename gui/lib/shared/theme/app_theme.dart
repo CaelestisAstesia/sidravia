@@ -42,11 +42,46 @@ TextStyle _systemFont() {
 }
 
 abstract final class AppButtonStyles {
+  static const _actionShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(DesignMetrics.actionRadius)),
+  );
+
+  static const inlineActionHorizontalPadding = 10.0;
+
+  static TextStyle get inlineActionText => _systemFont().copyWith(
+    fontSize: DesignMetrics.valueFont,
+    fontWeight: FontWeight.w600,
+    height: 1.35,
+    letterSpacing: 0,
+    leadingDistribution: TextLeadingDistribution.even,
+  );
+
+  static ButtonStyle inlineAction(BuildContext context) {
+    final touch = DesignMetrics.isTouchPlatform(Theme.of(context).platform);
+    return ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(
+        Size(0, DesignMetrics.choiceMinHeight),
+      ),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(
+          horizontal: inlineActionHorizontalPadding,
+          vertical: 4,
+        ),
+      ),
+      tapTargetSize: touch
+          ? MaterialTapTargetSize.padded
+          : MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.standard,
+      alignment: Alignment.center,
+      textStyle: WidgetStatePropertyAll(inlineActionText),
+    );
+  }
+
   static ButtonStyle get primary => FilledButton.styleFrom(
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    shape: const StadiumBorder(),
+    shape: _actionShape,
     textStyle: _systemFont().copyWith(
       fontSize: DesignMetrics.bodyFont,
       fontWeight: FontWeight.w600,
@@ -59,7 +94,7 @@ abstract final class AppButtonStyles {
     minimumSize: const Size(0, DesignMetrics.buttonMinHeight),
     visualDensity: VisualDensity.standard,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    shape: const StadiumBorder(),
+    shape: _actionShape,
     side: const BorderSide(color: AppColors.lineLight),
     backgroundColor: AppColors.surfaceLight,
     foregroundColor: AppColors.inkLight,
@@ -172,7 +207,7 @@ abstract final class AppTheme {
             fontWeight: FontWeight.w500,
             height: 20 / 13,
           ),
-          shape: const StadiumBorder(),
+          shape: AppButtonStyles._actionShape,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

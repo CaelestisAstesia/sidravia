@@ -49,15 +49,13 @@ class _LogLevelSettingRow extends StatelessWidget {
       final titleWidth = title.width;
       title.dispose();
       final restart = TextPainter(
-        text: TextSpan(
-          text: '重启核心',
-          style: Theme.of(context).textTheme.bodyMedium!
-              .copyWith(fontSize: DesignMetrics.captionFont),
-        ),
+        text: TextSpan(text: '重启核心', style: AppButtonStyles.inlineActionText),
         textDirection: Directionality.of(context),
         textScaler: scaler,
       )..layout();
-      final restartWidth = (restart.width + 32).clamp(64, double.infinity);
+      final restartWidth =
+          restart.width.ceilToDouble() +
+          2 * AppButtonStyles.inlineActionHorizontalPadding;
       restart.dispose();
       final dropdownWidth = DesignMetrics.choiceWidth(
         MediaQuery.sizeOf(context).width,

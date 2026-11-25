@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sidravia_gui/platform/integration_failure.dart';
 import 'package:sidravia_gui/platform/update/package_update_checker.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 class UpdateSettings extends StatefulWidget {
@@ -71,6 +72,7 @@ class _UpdateSettingsState extends State<UpdateSettings> {
           title: '软件更新',
           subtitle: message,
           trailing: OutlinedButton(
+            style: AppButtonStyles.inlineAction(context),
             onPressed: _checking ? null : _check,
             child: const Text('检查更新'),
           ),

@@ -54,6 +54,11 @@ class SettingsDropdown<T> extends StatelessWidget {
           double.infinity,
         )
         .toDouble();
+    const shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(
+        Radius.circular(DesignMetrics.actionRadius),
+      ),
+    );
     final buttonStyle = TextButton.styleFrom(
       fixedSize: Size(width, height),
       minimumSize: Size.zero,
@@ -64,7 +69,7 @@ class SettingsDropdown<T> extends StatelessWidget {
       alignment: AlignmentDirectional.centerStart,
       textStyle: style,
       foregroundColor: scheme.onSurface,
-      shape: const StadiumBorder(),
+      shape: shape,
     );
     return SizedBox(
       key: frameKey,
@@ -109,7 +114,7 @@ class SettingsDropdown<T> extends StatelessWidget {
         builder: (context, menu, _) => DecoratedBox(
           decoration: ShapeDecoration(
             color: scheme.surfaceContainerHighest,
-            shape: StadiumBorder(side: BorderSide(color: scheme.outline)),
+            shape: shape.copyWith(side: BorderSide(color: scheme.outline)),
             shadows: DesignEffects.subtleShadow(scheme),
           ),
           child: TextButton(

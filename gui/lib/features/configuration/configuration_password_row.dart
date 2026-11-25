@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 
 /// Owns only editing/reveal presentation; the page owns the password draft.
@@ -63,6 +64,7 @@ class _ConfigurationPasswordRowState extends State<ConfigurationPasswordRow> {
                   ),
                 ),
                 OutlinedButton(
+                  style: AppButtonStyles.inlineAction(context),
                   onPressed: widget.enabled
                       ? () => setState(() => _editing = true)
                       : null,
@@ -104,6 +106,7 @@ class _ConfigurationPasswordRowState extends State<ConfigurationPasswordRow> {
             child: Padding(
               padding: const EdgeInsets.only(right: 12, bottom: 4),
               child: TextButton(
+                style: AppButtonStyles.inlineAction(context),
                 onPressed: widget.enabled ? _cancel : null,
                 child: const Text('取消更改'),
               ),

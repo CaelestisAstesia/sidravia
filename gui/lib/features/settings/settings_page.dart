@@ -1,4 +1,5 @@
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
+import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/features/settings/about_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
@@ -145,17 +146,7 @@ class SettingsPage extends StatelessWidget {
                       message:
                           coreRestartUnavailableReason(controller) ?? '重启核心',
                       child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context)
-                              .colorScheme
-                              .onSurface,
-                          side: BorderSide(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          textStyle: Theme.of(context).textTheme.bodyMedium!
-                              .copyWith(fontSize: DesignMetrics.captionFont),
-                        ),
+                        style: AppButtonStyles.inlineAction(context),
                         onPressed: controller.canRestartCore
                             ? () => confirmCoreRestart(
                                 context,
