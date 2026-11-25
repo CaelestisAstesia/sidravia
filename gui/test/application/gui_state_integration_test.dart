@@ -178,7 +178,7 @@ void main() {
     expect(await c.restartSession('s'), false);
     expect(c.connectionPresentation.primaryEnabled, true);
     expect(await c.stopSession('s'), true);
-    expect(await c.resetSession('s'), true);
+    expect(await c.resetSession('s', generation: c.connectionGeneration), true);
     expect(c.sessionNeedsReset, false);
     await c.close();
     c.dispose();
@@ -198,7 +198,14 @@ void main() {
       await c.start();
       client.committedFailure = true;
 
-      expect(await c.deleteConfiguration('demo-config'), false);
+      expect(
+        await c.deleteConfiguration(
+          'demo-config',
+          expectedVersion:
+              c.capabilities.configuration?.version ?? 'fixture-version',
+        ),
+        false,
+      );
       expect(c.snapshot!.configurations, isEmpty);
       expect(c.capabilities.canCreate, false);
       expect(c.capabilities.canManage, false);
@@ -206,8 +213,14 @@ void main() {
       expect(c.capabilities.resettableSession?.id, 's');
       expect(c.connectionPresentation.statusTitle, '旧会话待清理');
       expect(c.connectionPresentation.secondaryLabel, '连接与诊断');
-      expect(await c.resetSession('other'), false);
-      expect(await c.resetSession('s'), true);
+      expect(
+        await c.resetSession('other', generation: c.connectionGeneration),
+        false,
+      );
+      expect(
+        await c.resetSession('s', generation: c.connectionGeneration),
+        true,
+      );
       expect(c.snapshot!.sessions, isEmpty);
       expect(c.capabilities.canCreate, true);
     },
@@ -226,6 +239,7 @@ void main() {
       reconnectDelay: const Duration(milliseconds: 20),
     );
     await c.start();
+    final oldGeneration = c.connectionGeneration;
     var retainedStaleDisplay = false;
     c.addListener(() {
       if (c.state == GuiConnectionState.stale &&
@@ -253,6 +267,10 @@ void main() {
     expect(c.snapshot!.sessions.single.revision, BigInt.one);
     expect(c.snapshot!.network!.revision, BigInt.two);
     expect(attempts, 2);
+    expect(await c.resetSession('s', generation: oldGeneration), false);
+    expect(c.snapshot!.sessions.single.id, 's');
+    expect(await c.resetSession('s', generation: c.connectionGeneration), true);
+    expect(c.snapshot!.sessions, isEmpty);
     await c.close();
     c.dispose();
     first.dispose();
@@ -538,10 +556,12 @@ class _LiveClient extends OfflineDemoClient implements SidraviaStateClient {
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   }) async {
     final removed = await super.configurationRemove(
       configurationId,
+      expectedVersion: expectedVersion,
       allowInsecureStorage: allowInsecureStorage,
     );
     if (committedFailure) {

@@ -614,8 +614,10 @@ class ConfigurationPageState extends State<ConfigurationPage> {
 
   Future<void> _confirmDelete() async {
     final c = widget.controller.capabilities.configuration;
+    final version = c?.version;
     if (!widget.controller.capabilities.canDeleteConfiguration ||
         c == null ||
+        version == null ||
         _targetChanged ||
         c.id != _boundConfigurationId) {
       return;
@@ -628,6 +630,7 @@ class ConfigurationPageState extends State<ConfigurationPage> {
     if (confirmed != true || !mounted) return;
     final ok = await widget.controller.deleteConfiguration(
       c.id,
+      expectedVersion: version,
       onInsecureStorageConfirmation: (operation) => mounted
           ? confirmInsecureStorage(context, operation)
           : Future.value(false),

@@ -74,6 +74,7 @@ class GuiController extends ChangeNotifier {
       _outdatedSessionId != null &&
           _snapshot?.sessions.any((s) => s.id == _outdatedSessionId) == true;
 
+  int get connectionGeneration => _generation;
   GuiConnectionState get state => _state;
   GuiBootstrapFailure? get failure => _failure;
   GuiSnapshot? get snapshot => _snapshot;
@@ -454,18 +455,23 @@ class GuiController extends ChangeNotifier {
         caps.canConnect && caps.matchesSession(sessionId) && !sessionNeedsReset,
   );
 
-  Future<bool> resetSession(String sessionId) => _mutate(
-    (client, allow) => client.sessionRemove(sessionId),
-    fallback: '重置会话失败，请重试。',
-    allowed: (capabilities) => capabilities.resettableSession?.id == sessionId,
-  );
+  Future<bool> resetSession(String sessionId, {required int generation}) =>
+      _mutate(
+        (client, allow) => client.sessionRemove(sessionId),
+        fallback: '重置会话失败，请重试。',
+        allowed: (capabilities) =>
+            generation == _generation &&
+            capabilities.resettableSession?.id == sessionId,
+      );
 
   Future<bool> deleteConfiguration(
     String configurationId, {
+    required String expectedVersion,
     InsecureStorageConfirmation? onInsecureStorageConfirmation,
   }) => _mutate(
     (client, allow) => client.configurationRemove(
       configurationId,
+      expectedVersion: expectedVersion,
       allowInsecureStorage: allow,
     ),
     operation: GuiOperation.deleteConfiguration,

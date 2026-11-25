@@ -34,10 +34,10 @@ func (application *Application) retireConfigurationSession(ctx context.Context, 
 	return nil
 }
 
-func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID, allow ...bool) error {
+func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID, expectedVersion string, allow ...bool) error {
 	application.operationMu.Lock()
 	defer application.operationMu.Unlock()
-	if err := application.catalog.Delete(ctx, id, allow...); err != nil {
+	if err := application.catalog.Delete(ctx, id, expectedVersion, allow...); err != nil {
 		return err
 	}
 	return application.retireConfigurationSession(ctx, id)

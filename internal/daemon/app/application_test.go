@@ -212,7 +212,7 @@ func TestStartConfigurationEnsuresSameSessionAndRemoveStopsIt(t *testing.T) {
 	if err != nil || firstResult.SessionID != secondResult.SessionID || secondResult.Outcome != SessionStartAlreadyRunning {
 		t.Fatalf("second = %#v %v, first %#v", secondResult, err, firstResult)
 	}
-	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err != nil {
+	if err := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.catalog.Get(ctx, "configuration-1"); err == nil {
@@ -357,7 +357,7 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	setup.store.mu.Lock()
 	setup.store.fail = true
 	setup.store.mu.Unlock()
-	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err == nil {
+	if err := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1")); err == nil {
 		t.Fatal("remove succeeded during replacement failure")
 	}
 	if _, err := setup.supervisor.Get(ctx, started.SessionID); err != nil {
@@ -379,7 +379,7 @@ func TestRemoveConfigurationPersistenceFailureKeepsAggregateAndRetryDeletes(t *t
 	setup.store.mu.Lock()
 	setup.store.fail = false
 	setup.store.mu.Unlock()
-	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err != nil {
+	if err := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1")); err != nil {
 		t.Fatalf("retry remove: %v", err)
 	}
 	if _, err := setup.catalog.Get(ctx, "configuration-1"); err == nil {
@@ -580,4 +580,13 @@ func waitForApplicationSessionState(t *testing.T, application *Application, id s
 
 func (store *controlledAppStore) PreserveSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
 	return store.ReplaceSensitive(ctx, path, data, maximum, allow)
+}
+
+func currentConfigurationVersion(t *testing.T, catalog *config.Catalog, id config.ConfigurationID) string {
+	t.Helper()
+	version, err := catalog.Version(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return version
 }

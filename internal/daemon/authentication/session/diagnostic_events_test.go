@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -133,5 +134,71 @@ func TestSessionDiagnosticsRecordsCommandAndGeneration(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("apply_network_snapshot command not recorded; commands=%v", commands)
+	}
+}
+
+type blockedCommandDiagnostics struct {
+	NoopDiagnostics
+	command string
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (d *blockedCommandDiagnostics) SessionCommand(command string) {
+	if command == d.command {
+		close(d.entered)
+		<-d.release
+	}
+}
+
+func TestAdmissionMutationReturnsOutcomeAfterCallerCancels(t *testing.T) {
+	for name, operation := range map[string]func(*AuthenticationSession, context.Context) (Snapshot, error){
+		"activate": (*AuthenticationSession).Activate,
+		"restart":  (*AuthenticationSession).Restart,
+	} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				capture := &blockedCommandDiagnostics{
+					command: name, entered: make(chan struct{}), release: make(chan struct{}),
+				}
+				authSession := newDiagnosticsSession(t, &controlledFactory{}, capture)
+				defer func() { _ = authSession.Shutdown(context.Background()) }()
+				ctx := testContext(t)
+				if _, err := authSession.Suspend(ctx); err != nil {
+					t.Fatal(err)
+				}
+				waitForState(t, ctx, authSession, Suspended)
+				request, cancel := context.WithCancel(ctx)
+				defer cancel()
+				result := make(chan error, 1)
+				go func() {
+					_, err := operation(authSession, request)
+					result <- err
+				}()
+				select {
+				case <-capture.entered:
+				case <-ctx.Done():
+					close(capture.release)
+					t.Fatal("operation did not reach the actor")
+				}
+				cancel()
+				synctest.Wait()
+				select {
+				case err := <-result:
+					close(capture.release)
+					t.Fatalf("accepted operation returned before the actor processed it: %v", err)
+				default:
+				}
+				close(capture.release)
+				select {
+				case err := <-result:
+					if err != nil {
+						t.Fatalf("accepted operation lost its outcome: %v", err)
+					}
+				case <-ctx.Done():
+					t.Fatal("operation did not finish")
+				}
+			})
+		})
 	}
 }

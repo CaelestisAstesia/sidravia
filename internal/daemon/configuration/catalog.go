@@ -325,7 +325,7 @@ func (catalog *Catalog) SetPassword(ctx context.Context, id ConfigurationID, pas
 	return record.configuration.Clone(), nil
 }
 
-func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, allow ...bool) error {
+func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, expectedVersion string, allow ...bool) error {
 	if err := validateCatalogContext(ctx); err != nil {
 		return err
 	}
@@ -337,8 +337,12 @@ func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, allow ..
 	if err := validateCatalogContext(ctx); err != nil {
 		return err
 	}
-	if _, exists := catalog.records[id]; !exists {
+	record, exists := catalog.records[id]
+	if !exists {
 		return persistence.NewFailure(persistence.FailureNotFound, nil)
+	}
+	if record.version != expectedVersion {
+		return ErrVersionConflict
 	}
 	candidate := cloneRecords(catalog.records)
 	delete(candidate, id)

@@ -224,11 +224,13 @@ class WebSocketIpcClient
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   }) async => _call(
     'configuration.remove',
     {
       'configurationId': configurationId,
+      'expectedVersion': expectedVersion,
       if (allowInsecureStorage) 'allowInsecureStorage': true,
     },
     (result) => decodeConfigurationRemove(

@@ -71,8 +71,10 @@ class OfflineDemoClient extends ChangeNotifier
       clientHeight: 460,
     ),
   );
+  int _configurationRevision = 0;
   ConfigurationSummary? _configuration = const ConfigurationSummary(
     id: 'demo-config',
+    version: '0',
     displayName: '吉林大学',
     institutionProfileId: 'jlu',
     institutionDisplayName: '吉林大学',
@@ -101,8 +103,9 @@ class OfflineDemoClient extends ChangeNotifier
       _configuration = null;
       _session = null;
     } else {
-      _configuration ??= const ConfigurationSummary(
+      _configuration ??= ConfigurationSummary(
         id: 'demo-config',
+        version: '${++_configurationRevision}',
         displayName: '吉林大学',
         institutionProfileId: 'jlu',
         institutionDisplayName: '吉林大学',
@@ -217,6 +220,7 @@ class OfflineDemoClient extends ChangeNotifier
     final c = _configuration!;
     return _configuration = ConfigurationSummary(
       id: c.id,
+      version: '${++_configurationRevision}',
       displayName: c.displayName,
       institutionProfileId: institutionProfileId ?? c.institutionProfileId,
       institutionDisplayName: c.institutionDisplayName,
@@ -268,6 +272,7 @@ class OfflineDemoClient extends ChangeNotifier
     }
     _configuration = ConfigurationSummary(
       id: 'demo-config',
+      version: '${++_configurationRevision}',
       displayName: profile.displayName,
       institutionProfileId: profile.id,
       institutionDisplayName: profile.displayName,
@@ -356,9 +361,12 @@ class OfflineDemoClient extends ChangeNotifier
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   }) async {
-    _requireConfiguration(configurationId);
+    if (_requireConfiguration(configurationId).version != expectedVersion) {
+      throw const IpcRequestFailure('configuration_version_conflict');
+    }
     _configuration = null;
     _session = null;
     _record('configuration.remove', '已模拟删除配置');

@@ -26,7 +26,13 @@ void main() {
       );
       expect(controller.sessionNeedsReset, isTrue);
       expect(controller.notice, contains('配置已提交'));
-      expect(await controller.resetSession(id), isTrue);
+      expect(
+        await controller.resetSession(
+          id,
+          generation: controller.connectionGeneration,
+        ),
+        isTrue,
+      );
       expect(controller.sessionNeedsReset, isFalse);
     },
   );

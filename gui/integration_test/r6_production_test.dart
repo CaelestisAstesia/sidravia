@@ -188,7 +188,10 @@ void main() {
       expect(await c.restartSession(sessionId), isTrue);
       expect(c.snapshot!.sessions.single.id, sessionId);
       expect(await c.stopSession(sessionId), isTrue);
-      expect(await c.resetSession(sessionId), isTrue);
+      expect(
+        await c.resetSession(sessionId, generation: c.connectionGeneration),
+        isTrue,
+      );
       expect(c.snapshot!.sessions, isEmpty);
       expect(
         await c.setAutoReconnect(
@@ -298,7 +301,13 @@ void main() {
       expect(c.snapshot!.configurations.single.autoReconnect, isFalse);
       expect(c.snapshot!.configurations.single.autoLogin, isFalse);
       events.add('false-preferences-persist-across-real-daemon-generation');
-      expect(await c.deleteConfiguration(configurationId), isTrue);
+      expect(
+        await c.deleteConfiguration(
+          configurationId,
+          expectedVersion: c.snapshot!.configurations.single.version!,
+        ),
+        isTrue,
+      );
       expect(c.snapshot!.configurations, isEmpty);
       expect(c.capabilities.canCreate, isTrue);
       events.add('configuration-remove/round-trip');

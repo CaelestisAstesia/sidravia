@@ -130,7 +130,7 @@ func (fake *fakeConfigurationApplication) SetConfigurationPassword(_ context.Con
 	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationSetPassword, id, password, allow
 	return fake.result, fake.err
 }
-func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id config.ConfigurationID, allow ...bool) error {
+func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id config.ConfigurationID, _ string, allow ...bool) error {
 	fake.method, fake.id = contract.MethodConfigurationRemove, id
 	if len(allow) > 0 {
 		fake.allow = allow[0]
@@ -161,7 +161,7 @@ func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
 		{contract.MethodConfigurationCreate, `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`, ""},
 		{contract.MethodConfigurationUpdate, `{"configurationId":"campus","displayName":""}`, ""},
 		{contract.MethodConfigurationSetPassword, `{"configurationId":"campus","password":"","allowInsecureStorage":false}`, ""},
-		{contract.MethodConfigurationRemove, `{"configurationId":"campus"}`, `{"configurationId":"campus","status":"removed"}`},
+		{contract.MethodConfigurationRemove, `{"configurationId":"campus","expectedVersion":"v1"}`, `{"configurationId":"campus","status":"removed"}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.method, func(t *testing.T) {
@@ -242,7 +242,7 @@ func TestConfigurationHandlerForwardsAtomicPasswordAndRemoveConsent(t *testing.T
 	if fake.update.Password == nil || *fake.update.Password != "private" || !fake.update.AllowInsecureStorage {
 		t.Fatal("atomic password/consent lost")
 	}
-	if _, err := h(context.Background(), contract.MethodConfigurationRemove, []byte(`{"configurationId":"campus","allowInsecureStorage":true}`)); err != nil {
+	if _, err := h(context.Background(), contract.MethodConfigurationRemove, []byte(`{"configurationId":"campus","expectedVersion":"v1","allowInsecureStorage":true}`)); err != nil {
 		t.Fatal(err)
 	}
 	if !fake.allow || fake.method != contract.MethodConfigurationRemove {
@@ -340,7 +340,12 @@ func TestConfigurationHandlerRealMissingProfileRemainsManageable(t *testing.T) {
 	if publicErr == nil || publicErr.Code != contract.ErrorCodeProfileNotFound {
 		t.Fatalf("strict write changed: %#v", publicErr)
 	}
-	if _, publicErr := handler(ctx, contract.MethodConfigurationRemove, []byte(`{"configurationId":"unavailable-profile"}`)); publicErr != nil {
+	payload := contract.ConfigurationRemovePayload{ConfigurationID: fetched.ConfigurationID, ExpectedVersion: fetched.Version}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, publicErr := handler(ctx, contract.MethodConfigurationRemove, encoded); publicErr != nil {
 		t.Fatal("missing profile row unmanageable", publicErr)
 	}
 }

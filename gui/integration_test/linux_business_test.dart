@@ -51,7 +51,8 @@ void main() {
       expect(first.statistics!.balanceCents, 12345);
       expect(first.messages.single.text, 'Synthetic server notice');
       await tester.pump();
-      expect(find.text('余额：123.45 元'), findsOneWidget);
+      expect(find.text('余额 ·'), findsOneWidget);
+      expect(find.text('123.45\u00a0元'), findsOneWidget);
       expect(find.text('Synthetic server notice'), findsOneWidget);
       expect(await c.restartSession(c.snapshot!.sessions.single.id), isTrue);
       await waitNative(

@@ -121,8 +121,17 @@ void main() {
           c.snapshot!.sessions.single.intent,
           SessionIntent.suspendAuthentication,
         );
-        expect(await c.resetSession(session.id), isTrue);
-        expect(await c.deleteConfiguration(id), isTrue);
+        expect(
+          await c.resetSession(session.id, generation: c.connectionGeneration),
+          isTrue,
+        );
+        expect(
+          await c.deleteConfiguration(
+            id,
+            expectedVersion: c.snapshot!.configurations.single.version!,
+          ),
+          isTrue,
+        );
         expect(c.snapshot!.configurations, isEmpty);
         final appearance = app.appearance!;
         appearance.value = ThemeMode.dark;

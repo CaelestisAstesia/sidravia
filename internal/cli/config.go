@@ -437,21 +437,31 @@ func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) 
 			return wrapSafeOperation("写入存储警告", err)
 		}
 	}
-	if !yes {
-		if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
-			return errors.New("非交互式删除需要 --yes")
-		}
-		prompt := "确认删除配置 “" + sanitizeDynamicText(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
-		confirmed, err := readConfirmation(deps.stdin, deps.stderr, prompt)
+	if !yes && (deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin)) {
+		return errors.New("非交互式删除需要 --yes")
+	}
+	return withAuthClient(deps, func(connection daemonClient) error {
+		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationGet, contract.ConfigurationIDPayload{ConfigurationID: id})
 		if err != nil {
 			return err
 		}
-		if !confirmed {
-			return errors.New("操作已取消")
+		current, err := decodeConfiguration(raw)
+		if err != nil {
+			return wrapSafeOperation("解码配置", err)
 		}
-	}
-	return withAuthClient(deps, func(connection daemonClient) error {
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationRemove, contract.ConfigurationRemovePayload{ConfigurationID: id, AllowInsecureStorage: permitted})
+		if !yes {
+			prompt := "确认删除配置 “" + sanitizeDynamicText(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
+			confirmed, err := readConfirmation(deps.stdin, deps.stderr, prompt)
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return errors.New("操作已取消")
+			}
+		}
+		raw, err = callConfiguration(deps, connection, contract.MethodConfigurationRemove, contract.ConfigurationRemovePayload{
+			ConfigurationID: id, ExpectedVersion: current.Version, AllowInsecureStorage: permitted,
+		})
 		if err != nil {
 			return err
 		}

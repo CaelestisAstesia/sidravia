@@ -16,7 +16,7 @@ func TestRequestIntegrityCanonicalNames(t *testing.T) {
 		{"configuration create", `{"configurationId":"a","institutionProfileId":"p","username":"u","password":"s","allowInsecureStorage":false,"autoLogin":false,"autoReconnect":true,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`, "username", func(b []byte) error { _, e := DecodeConfigurationCreatePayload(b); return e }},
 		{"configuration update", `{"configurationId":"a","displayName":"new"}`, "configurationId", func(b []byte) error { _, e := DecodeConfigurationUpdatePayload(b); return e }},
 		{"configuration password", `{"configurationId":"a","password":"s","allowInsecureStorage":false}`, "password", func(b []byte) error { _, e := DecodeConfigurationSetPasswordPayload(b); return e }},
-		{"configuration remove", `{"configurationId":"a","allowInsecureStorage":false}`, "allowInsecureStorage", func(b []byte) error { _, e := DecodeConfigurationRemovePayload(b); return e }},
+		{"configuration remove", `{"configurationId":"a","expectedVersion":"v1","allowInsecureStorage":false}`, "allowInsecureStorage", func(b []byte) error { _, e := DecodeConfigurationRemovePayload(b); return e }},
 		{"session start", string(validStartJSON()), "username", func(b []byte) error { _, e := DecodeSessionStartOneShotPayload(b); return e }},
 		{"session stop", `{"sessionId":"a"}`, "sessionId", func(b []byte) error { _, e := DecodeSessionStopPayload(b); return e }},
 		{"session get", `{"sessionId":"a"}`, "sessionId", func(b []byte) error { _, e := DecodeSessionGetPayload(b); return e }},

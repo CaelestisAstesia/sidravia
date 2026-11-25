@@ -98,7 +98,7 @@ func TestCatalogLifecycleAndRestart(t *testing.T) {
 	if _, err := catalog.Update(ctx, second.ConfigurationID, Update{DisplayName: &second.DisplayName}); err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
-	if err := catalog.Delete(ctx, "configuration-a"); err != nil {
+	if err := catalog.Delete(ctx, "configuration-a", currentCatalogVersion(t, catalog, "configuration-a")); err != nil {
 		t.Fatalf("Delete(configuration-a) error = %v", err)
 	}
 	reopened, err := OpenCatalog(ctx, store, path)
@@ -130,7 +130,7 @@ func TestCatalogRejectsInvalidCallsAndReportsMissingIDs(t *testing.T) {
 	if _, err := catalog.Get(ctx, "missing"); configurationPersistenceFailureCode(t, err) != persistence.FailureNotFound {
 		t.Fatalf("Get(missing) error = %v", err)
 	}
-	if err := catalog.Delete(ctx, "missing"); configurationPersistenceFailureCode(t, err) != persistence.FailureNotFound {
+	if err := catalog.Delete(ctx, "missing", "missing-version"); configurationPersistenceFailureCode(t, err) != persistence.FailureNotFound {
 		t.Fatalf("Delete(missing) error = %v", err)
 	}
 	if _, err := catalog.Create(ctx, Configuration{}, "", false); configurationPersistenceFailureCode(t, err) != persistence.FailureInvalidArgument {
@@ -182,7 +182,7 @@ func TestCatalogFailedReplacePreservesMemoryState(t *testing.T) {
 	if err != nil || got.DisplayName != "Original" {
 		t.Fatalf("Get() after failed Save = %#v, %v", got, err)
 	}
-	if err := catalog.Delete(ctx, original.ConfigurationID); configurationPersistenceFailureCode(t, err) != persistence.FailureAtomicWrite {
+	if err := catalog.Delete(ctx, original.ConfigurationID, currentCatalogVersion(t, catalog, original.ConfigurationID)); configurationPersistenceFailureCode(t, err) != persistence.FailureAtomicWrite {
 		t.Fatalf("Delete error = %v", err)
 	}
 	if _, err := catalog.Get(ctx, original.ConfigurationID); err != nil {
@@ -572,7 +572,7 @@ func TestCatalogFollowsCommittedWritesWithDiagnostics(t *testing.T) {
 		t.Fatal("failed write changed memory")
 	}
 	store.replaceErr = nil
-	if err := catalog.Delete(ctx, value.ConfigurationID); err != nil {
+	if err := catalog.Delete(ctx, value.ConfigurationID, currentCatalogVersion(t, catalog, value.ConfigurationID)); err != nil {
 		t.Fatal(err)
 	}
 	// Failed attempt increased the call counter, but emitted no diagnostic.
@@ -591,4 +591,13 @@ func TestCatalogFollowsCommittedWritesWithDiagnostics(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatal("durable removal missing")
 	}
+}
+
+func currentCatalogVersion(t *testing.T, catalog *Catalog, id ConfigurationID) string {
+	t.Helper()
+	version, err := catalog.Version(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return version
 }

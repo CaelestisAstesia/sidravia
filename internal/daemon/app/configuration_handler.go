@@ -19,7 +19,7 @@ type configurationApplication interface {
 	CreateConfiguration(context.Context, config.Configuration, string, bool) (ConfigurationResult, error)
 	UpdateConfiguration(context.Context, config.ConfigurationID, config.Update) (ConfigurationResult, error)
 	SetConfigurationPassword(context.Context, config.ConfigurationID, string, bool) (ConfigurationResult, error)
-	RemoveConfiguration(context.Context, config.ConfigurationID, ...bool) error
+	RemoveConfiguration(context.Context, config.ConfigurationID, string, ...bool) error
 }
 
 func ConfigurationHandler(application configurationApplication) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
@@ -99,7 +99,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			if err != nil {
 				return nil, configurationInvalid()
 			}
-			if err := application.RemoveConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), request.AllowInsecureStorage); err != nil {
+			if err := application.RemoveConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), request.ExpectedVersion, request.AllowInsecureStorage); err != nil {
 				return nil, configurationError(err)
 			}
 			result, err := contract.MarshalConfigurationRemoveResult(contract.ConfigurationRemoveResult{ConfigurationID: request.ConfigurationID, Status: "removed"})

@@ -249,7 +249,7 @@ sidraviactl config remove ID [--yes] [--allow-insecure-storage]
 
 **修改密码**：`config set-password ID` 交互式读取新密码；非交互调用必须使用 `--password-stdin`。改密码会清理关联旧会话，即使输入与原来相同的密码，也需要按需重新连接。
 
-**删除配置**：`config remove ID` 会要求确认，删除持久配置及其中的账号密码，并结束关联会话。脚本使用 `--yes` 明确确认删除；它与只移除运行会话的 `auth remove ID` 不同。
+**删除配置**：`config remove ID` 会要求确认，删除持久配置及其中的账号密码，并结束关联会话。脚本使用 `--yes` 明确确认删除。命令会在开始时读取配置版本，期间若配置被其他入口修改，删除会失败，可重新检查配置后再执行。只移除运行会话可使用 `auth remove ID`。
 
 ```powershell
 .\sidraviactl.exe config remove daily

@@ -170,6 +170,8 @@ func ipcErrorText(code string) string {
 		return "找不到指定的认证配置；请运行 sidraviactl config list 查看可用配置"
 	case "configuration_conflict":
 		return "认证配置已存在；请运行 sidraviactl config list 查看现有配置，再运行 sidraviactl help config update 查看更新方法"
+	case contract.ErrorCodeConfigurationVersionConflict:
+		return "配置已变化，请重新查看后再执行"
 	case "configuration_operation_failed":
 		return "认证配置操作失败"
 	case "configuration_auto_login_conflict":

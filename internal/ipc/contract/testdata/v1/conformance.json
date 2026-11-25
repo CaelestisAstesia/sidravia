@@ -225,7 +225,7 @@
     {
       "name": "configuration-remove-explicit-id",
       "method": "configuration.remove",
-      "request": "{\"kind\":\"request\",\"id\":\"v1-16\",\"method\":\"configuration.remove\",\"payload\":{\"configurationId\":\"fixture-configuration\"}}",
+      "request": "{\"kind\":\"request\",\"id\":\"v1-16\",\"method\":\"configuration.remove\",\"payload\":{\"configurationId\":\"fixture-configuration\",\"expectedVersion\":\"remove-v1\"}}",
       "successResponse": "{\"kind\":\"response\",\"id\":\"v1-16\",\"ok\":true,\"result\":{\"configurationId\":\"fixture-configuration\",\"status\":\"removed\"}}",
       "errorResponse": "{\"kind\":\"response\",\"id\":\"v1-16\",\"ok\":false,\"error\":{\"code\":\"configuration_not_found\",\"message\":\"configuration not found\"}}"
     },

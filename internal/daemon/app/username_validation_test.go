@@ -241,7 +241,7 @@ func TestUsernameCandidateUsesNewProfileAndLegacyRemainsReadable(t *testing.T) {
 	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Username: &long}); err != nil {
 		t.Fatal(err)
 	}
-	if err := setup.application.RemoveConfiguration(ctx, "configuration-1"); err != nil {
+	if err := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1")); err != nil {
 		t.Fatal("legacy invalid row not removable")
 	}
 }

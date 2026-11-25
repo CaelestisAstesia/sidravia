@@ -356,6 +356,9 @@ func TestSupervisorRemovalDrainsQueuedFinalRevisionBeforeTerminal(t *testing.T) 
 			if current != managed {
 				t.Fatal("deleted before forwarder drain")
 			}
+			if err := sup.deliverNetworkSnapshot(ctx, testNetworkSnapshot(2), []networkSnapshotTarget{{id: "drain", actor: actor}}); err != nil {
+				t.Fatalf("network delivery interrupted by retiring actor: %v", err)
+			}
 			select {
 			case <-managed.stopForwarding:
 				t.Fatal("normal removal stopped forwarder before drain")

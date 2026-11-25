@@ -146,16 +146,17 @@ func DecodeConfigurationCreatePayload(data []byte) (ConfigurationCreatePayload, 
 
 type ConfigurationRemovePayload struct {
 	ConfigurationID      string `json:"configurationId"`
+	ExpectedVersion      string `json:"expectedVersion"`
 	AllowInsecureStorage bool   `json:"allowInsecureStorage,omitempty"`
 }
 
 func DecodeConfigurationRemovePayload(data []byte) (ConfigurationRemovePayload, error) {
 	var value ConfigurationRemovePayload
-	if err := decodeRequestPayload(data, &value, "configurationId", "allowInsecureStorage"); err != nil {
+	if err := decodeRequestPayload(data, &value, "configurationId", "expectedVersion", "allowInsecureStorage"); err != nil {
 		return value, err
 	}
-	if value.ConfigurationID == "" {
-		return value, fmt.Errorf("missing configurationId")
+	if value.ConfigurationID == "" || value.ExpectedVersion == "" {
+		return value, fmt.Errorf("missing configurationId or expectedVersion")
 	}
 	if err := rejectNullFields(data, "allowInsecureStorage"); err != nil {
 		return value, err

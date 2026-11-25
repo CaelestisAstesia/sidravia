@@ -165,7 +165,9 @@ func (session *AuthenticationSession) Activate(ctx context.Context) (Snapshot, e
 	if err := session.send(ctx, activateCommand{reply: reply}); err != nil {
 		return Snapshot{}, err
 	}
-	return receiveSnapshotReply(ctx, session.done, reply)
+	// Once enqueued, the actor may start authentication even if the caller
+	// disconnects. Its supervisor needs the outcome before releasing admission.
+	return receiveSnapshotReply(context.WithoutCancel(ctx), session.done, reply)
 }
 
 func (session *AuthenticationSession) Suspend(ctx context.Context) (Snapshot, error) {
@@ -181,7 +183,7 @@ func (session *AuthenticationSession) Restart(ctx context.Context) (Snapshot, er
 	if err := session.send(ctx, restartCommand{reply: reply}); err != nil {
 		return Snapshot{}, err
 	}
-	return receiveSnapshotReply(ctx, session.done, reply)
+	return receiveSnapshotReply(context.WithoutCancel(ctx), session.done, reply)
 }
 
 func (session *AuthenticationSession) Shutdown(ctx context.Context) error {

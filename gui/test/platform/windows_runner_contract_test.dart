@@ -227,9 +227,10 @@ void main() {
     expect(
       flutterWindow,
       contains(
-        'if (!(desktop_presence_initialized_ && start_hidden_)) this->Show()',
+        'if (!(desktop_presence_initialized_ && startup_hidden_.value_or(false)))',
       ),
     );
+    expect(flutterWindow, contains('if (!startup_hidden_.has_value())'));
 
     // Native channel is declared on the window.
     expect(header, contains('desktop_channel_'));

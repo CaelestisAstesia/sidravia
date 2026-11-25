@@ -75,7 +75,8 @@ class GuiCapabilities {
 
   bool get canEditAutoReconnect => canManage;
 
-  bool get canDeleteConfiguration => canManage;
+  bool get canDeleteConfiguration =>
+      canManage && configuration!.version?.isNotEmpty == true;
 
   bool get canResetSession => resettableSession != null;
 

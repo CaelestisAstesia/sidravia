@@ -633,7 +633,7 @@ func TestRemoveWithoutCurrentConsentKeepsSession(t *testing.T) {
 	store.mu.Lock()
 	before := append([]byte(nil), store.data[path]...)
 	store.mu.Unlock()
-	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", false); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1"), false); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
 		t.Errorf("unexpected unconsented removal: %v", e)
 	}
 	afterSession, e := setup.application.GetSession(ctx, started.SessionID)
@@ -649,7 +649,7 @@ func TestRemoveWithoutCurrentConsentKeepsSession(t *testing.T) {
 	if _, cred, e := catalog.Resolve(ctx, "configuration-1"); e != nil || cred.Password != "test-password" {
 		t.Error("rejected deletion changed credentials")
 	}
-	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", true); e != nil {
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1"), true); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := setup.application.GetSession(ctx, started.SessionID); !errors.Is(e, supervisor.ErrSessionNotFound) {

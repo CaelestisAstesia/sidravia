@@ -126,6 +126,7 @@ class ConsentClient extends OfflineDemoClient {
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   }) async {
     reject(
@@ -135,6 +136,7 @@ class ConsentClient extends OfflineDemoClient {
     );
     return super.configurationRemove(
       configurationId,
+      expectedVersion: expectedVersion,
       allowInsecureStorage: allowInsecureStorage,
     );
   }
@@ -174,6 +176,7 @@ Future<bool> invoke(
   ),
   GuiOperation.deleteConfiguration => c.deleteConfiguration(
     'demo-config',
+    expectedVersion: c.capabilities.configuration!.version!,
     onInsecureStorageConfirmation: confirm,
   ),
   _ => Future.value(false),
@@ -204,11 +207,13 @@ class DelayedConsentClient extends ConsentClient {
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   }) async {
     await gate.future;
     return super.configurationRemove(
       configurationId,
+      expectedVersion: expectedVersion,
       allowInsecureStorage: allowInsecureStorage,
     );
   }

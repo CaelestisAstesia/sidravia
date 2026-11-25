@@ -60,6 +60,7 @@ type managedSession struct {
 	state                 sessionState
 	operationMu           sync.Mutex
 	reserved              bool
+	retiring              bool // shutdown started; network delivery no longer needs this actor
 	stateChange           chan struct{}
 	stopForwarding        chan struct{}
 	stopForwardingOnce    sync.Once
@@ -176,11 +177,21 @@ func (s *Supervisor) StartResolved(
 // rollbackNewSession preserves the start cause and retains the resource when
 // shutdown fails. A successful shutdown drains publications before removal.
 func (s *Supervisor) rollbackNewSession(id ID, ms *managedSession, cause error) error {
-	if shutdownErr := ms.actor.Shutdown(context.Background()); shutdownErr != nil {
+	if shutdownErr := s.shutdownAndRemove(id, ms); shutdownErr != nil {
 		return errors.Join(cause, fmt.Errorf("shutdown after failed start: %w", shutdownErr))
 	}
-	s.finishRemoval(id, ms)
 	return cause
+}
+
+func (s *Supervisor) shutdownAndRemove(id ID, ms *managedSession) error {
+	s.mu.Lock()
+	ms.retiring = true
+	s.mu.Unlock()
+	if err := ms.actor.Shutdown(context.Background()); err != nil {
+		return err
+	}
+	s.finishRemoval(id, ms)
+	return nil
 }
 
 // finishRemoval waits without the map lock. Close may stop the forwarder before
@@ -370,10 +381,9 @@ func (s *Supervisor) Remove(ctx context.Context, id ID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := ms.actor.Shutdown(context.Background()); err != nil {
+	if err := s.shutdownAndRemove(id, ms); err != nil {
 		return fmt.Errorf("shutdown session %q: %w", id, err)
 	}
-	s.finishRemoval(id, ms)
 	return nil
 }
 
@@ -421,11 +431,7 @@ func (s *Supervisor) ForgetStopped(id ID) error {
 	ms.reserved = true
 	s.mu.Unlock()
 	defer s.releaseReservation(id, ms)
-	if err := ms.actor.Shutdown(context.Background()); err != nil {
-		return err
-	}
-	s.finishRemoval(id, ms)
-	return nil
+	return s.shutdownAndRemove(id, ms)
 }
 
 // Get returns the latest snapshot for the given session.

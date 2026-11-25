@@ -104,7 +104,7 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 			store.unsupported = true
 			name, password := "new", "new-private"
 			if remove {
-				err = catalog.Delete(ctx, "a")
+				err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"))
 			} else {
 				_, err = catalog.Update(ctx, "a", Update{DisplayName: &name, Password: &password})
 			}
@@ -115,7 +115,7 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 				t.Fatal("rejection changed memory")
 			}
 			if remove {
-				err = catalog.Delete(ctx, "a", true)
+				err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"), true)
 			} else {
 				_, err = catalog.Update(ctx, "a", Update{DisplayName: &name, Password: &password, AllowInsecureStorage: true})
 			}
@@ -158,7 +158,7 @@ func TestProtectionRecoveryRevokesEarlierDowngradeConsent(t *testing.T) {
 	}
 	before := append([]byte(nil), store.data...)
 	store.unsupported = true
-	if err = catalog.Delete(ctx, "a"); !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) {
+	if err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a")); !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) {
 		t.Fatal("old consent authorized a new downgrade")
 	}
 	if !bytes.Equal(before, store.data) {
@@ -188,7 +188,7 @@ func TestDeleteRequiresCurrentConsent(t *testing.T) {
 	}
 	before := append([]byte(nil), store.data...)
 	for _, allow := range [][]bool{nil, {false}} {
-		if e := catalog.Delete(ctx, "a", allow...); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
+		if e := catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"), allow...); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
 			t.Errorf("missing current consent: %v", e)
 		}
 		if !bytes.Equal(before, store.data) {
@@ -198,7 +198,7 @@ func TestDeleteRequiresCurrentConsent(t *testing.T) {
 			t.Error("rejected delete changed record/credential")
 		}
 	}
-	if e := catalog.Delete(ctx, "a", true); e != nil {
+	if e := catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"), true); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := catalog.Get(ctx, "a"); e == nil {
@@ -206,5 +206,31 @@ func TestDeleteRequiresCurrentConsent(t *testing.T) {
 	}
 	if _, cred, e := catalog.Resolve(ctx, "b"); e != nil || cred.Password != "original-password" {
 		t.Fatal("delete altered remaining credential")
+	}
+}
+
+func TestDeleteRejectsVersionAfterCredentialChanges(t *testing.T) {
+	ctx := context.Background()
+	store := &consentCatalogStore{status: jsonfile.ProtectionProtected}
+	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = catalog.Create(ctx, catalogTestConfiguration("a", "user"), "first-password", false); err != nil {
+		t.Fatal(err)
+	}
+	confirmed := currentCatalogVersion(t, catalog, "a")
+	if _, err = catalog.SetPassword(ctx, "a", "second-password", false); err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), store.data...)
+	if err = catalog.Delete(ctx, "a", confirmed); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("delete with stale version: %v", err)
+	}
+	if !bytes.Equal(before, store.data) {
+		t.Fatal("stale confirmation changed durable data")
+	}
+	if err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a")); err != nil {
+		t.Fatal(err)
 	}
 }

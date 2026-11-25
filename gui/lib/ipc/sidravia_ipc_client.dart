@@ -47,6 +47,7 @@ abstract interface class SidraviaIpcClient {
   });
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   });
   Future<void> close();

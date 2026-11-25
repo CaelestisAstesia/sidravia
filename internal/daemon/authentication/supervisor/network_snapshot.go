@@ -103,6 +103,16 @@ func (s *Supervisor) deliverNetworkSnapshot(
 	var errs []error
 	for _, target := range targets {
 		if _, err := target.actor.ApplySystemNetworkSnapshot(ctx, snapshot); err != nil {
+			if errors.Is(err, session.ErrAuthenticationSessionClosed) {
+				s.mu.Lock()
+				current := s.sessions[target.id]
+				retiring := s.closed.Load() || current == nil ||
+					current.actor != target.actor || current.retiring
+				s.mu.Unlock()
+				if retiring {
+					continue
+				}
+			}
 			errs = append(errs, fmt.Errorf("deliver network snapshot to session %q: %w", target.id, err))
 		}
 	}

@@ -110,7 +110,7 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 		if id == "configuration-1" {
 			continue
 		}
-		if err := setup.application.RemoveConfiguration(ctx, id); err != nil {
+		if err := setup.application.RemoveConfiguration(ctx, id, currentConfigurationVersion(t, setup.catalog, id)); err != nil {
 			t.Fatal("broken row cannot be removed")
 		}
 	}
@@ -193,7 +193,7 @@ func TestConfigurationReadValidationOwnsInputAndPropagatesUnexpectedErrors(t *te
 		}
 	}
 	for _, id := range []config.ConfigurationID{"configuration-1", "invalid-profile"} {
-		if err := setup.catalog.Delete(ctx, id); err != nil {
+		if err := setup.catalog.Delete(ctx, id, currentConfigurationVersion(t, setup.catalog, id)); err != nil {
 			t.Fatal(err)
 		}
 	}

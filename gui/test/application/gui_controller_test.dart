@@ -380,7 +380,13 @@ void main() {
     await controller.start();
     client.calls.clear();
 
-    expect(await controller.resetSession('s-a'), isTrue);
+    expect(
+      await controller.resetSession(
+        's-a',
+        generation: controller.connectionGeneration,
+      ),
+      isTrue,
+    );
 
     expect(client.calls, [
       'session.remove',
@@ -402,7 +408,15 @@ void main() {
       await controller.start();
       client.calls.clear();
 
-      expect(await controller.deleteConfiguration('cfg-a'), isTrue);
+      expect(
+        await controller.deleteConfiguration(
+          'cfg-a',
+          expectedVersion:
+              controller.capabilities.configuration?.version ??
+              'fixture-version',
+        ),
+        isTrue,
+      );
 
       expect(client.calls, [
         'configuration.remove',
@@ -448,12 +462,20 @@ void main() {
           in <(String, Future<bool> Function(GuiController), String)>[
             (
               'reset',
-              (controller) => controller.resetSession('s-a'),
+              (controller) => controller.resetSession(
+                's-a',
+                generation: controller.connectionGeneration,
+              ),
               'session.remove',
             ),
             (
               'delete',
-              (controller) => controller.deleteConfiguration('cfg-a'),
+              (controller) => controller.deleteConfiguration(
+                'cfg-a',
+                expectedVersion:
+                    controller.capabilities.configuration?.version ??
+                    'fixture-version',
+              ),
               'configuration.remove',
             ),
             (
@@ -499,13 +521,18 @@ void main() {
         (
           'reset',
           const IpcRequestFailure('session_not_found'),
-          (GuiController c) => c.resetSession('s-a'),
+          (GuiController c) =>
+              c.resetSession('s-a', generation: c.connectionGeneration),
           '会话已不存在，请刷新。',
         ),
         (
           'delete',
           const IpcRequestFailure('configuration_not_found'),
-          (GuiController c) => c.deleteConfiguration('cfg-a'),
+          (GuiController c) => c.deleteConfiguration(
+            'cfg-a',
+            expectedVersion:
+                c.capabilities.configuration?.version ?? 'fixture-version',
+          ),
           '登录配置已不存在，请刷新。',
         ),
         (
@@ -518,13 +545,18 @@ void main() {
         (
           'reset fallback',
           const IpcRequestFailure('unknown_code'),
-          (GuiController c) => c.resetSession('s-a'),
+          (GuiController c) =>
+              c.resetSession('s-a', generation: c.connectionGeneration),
           '重置会话失败，请重试。',
         ),
         (
           'deletion fallback',
           const IpcRequestFailure('unknown_code'),
-          (GuiController c) => c.deleteConfiguration('cfg-a'),
+          (GuiController c) => c.deleteConfiguration(
+            'cfg-a',
+            expectedVersion:
+                c.capabilities.configuration?.version ?? 'fixture-version',
+          ),
           '删除配置失败，请重试。',
         ),
         (
@@ -553,8 +585,12 @@ void main() {
     'protocol failures on new lifecycle operations invalidate the client',
     () async {
       for (final action in <Future<bool> Function(GuiController)>[
-        (c) => c.resetSession('s-a'),
-        (c) => c.deleteConfiguration('cfg-a'),
+        (c) => c.resetSession('s-a', generation: c.connectionGeneration),
+        (c) => c.deleteConfiguration(
+          'cfg-a',
+          expectedVersion:
+              c.capabilities.configuration?.version ?? 'fixture-version',
+        ),
         (c) => c.setAutoLogin(configurationId: 'cfg-a', autoLogin: true),
       ]) {
         final client = _Client();
@@ -579,8 +615,22 @@ void main() {
       expect(await controller.exitAndDisconnect(), isTrue);
       client.calls.clear();
 
-      expect(await controller.resetSession('s-a'), isFalse);
-      expect(await controller.deleteConfiguration('cfg-a'), isFalse);
+      expect(
+        await controller.resetSession(
+          's-a',
+          generation: controller.connectionGeneration,
+        ),
+        isFalse,
+      );
+      expect(
+        await controller.deleteConfiguration(
+          'cfg-a',
+          expectedVersion:
+              controller.capabilities.configuration?.version ??
+              'fixture-version',
+        ),
+        isFalse,
+      );
       expect(
         await controller.setAutoLogin(
           configurationId: 'cfg-a',
@@ -884,6 +934,7 @@ class _Client implements SidraviaDesktopClient {
   @override
   Future<ConfigurationRemoveResult> configurationRemove(
     String configurationId, {
+    required String expectedVersion,
     bool allowInsecureStorage = false,
   }) async {
     configurationRemoveCalls++;
@@ -938,6 +989,7 @@ const _profile = InstitutionProfile(
   protocolId: 'drcom-5.2.0-d',
 );
 const _configuration = ConfigurationSummary(
+  version: 'fixture-version',
   id: 'cfg-a',
   displayName: '',
   institutionProfileId: 'jlu',

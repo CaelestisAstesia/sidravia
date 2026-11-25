@@ -224,6 +224,7 @@ const _profile = InstitutionProfile(
   protocolId: 'drcom-5.2.0-d',
 );
 const _configuration = ConfigurationSummary(
+  version: 'fixture-version',
   id: 'cfg-a',
   displayName: '',
   institutionProfileId: 'jlu',
@@ -250,6 +251,7 @@ ConfigurationSummary _configurationWith({
   required ConfigurationRuntimeAvailability availability,
   required bool credentialStored,
 }) => ConfigurationSummary(
+  version: 'fixture-version',
   id: _configuration.id,
   displayName: '',
   institutionProfileId: 'jlu',

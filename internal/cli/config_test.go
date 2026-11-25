@@ -120,7 +120,20 @@ func TestConfigRemoveStrictlyDecodesResponse(t *testing.T) {
 		{"trailing garbage", valid + ` !`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+				if method == contract.MethodConfigurationGet {
+					raw, err := json.Marshal(contract.ConfigurationResult{
+						ConfigurationID: "campus", Version: "current-version", RuntimeAvailability: "available",
+						NetworkBindingPolicy:   contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+						InstitutionDisplayName: "吉林大学", InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
+						Username: "user", CredentialStored: true, StorageProtection: "protected",
+					})
+					return contract.Response{OK: true, Result: raw}, err
+				}
+				request, err := contract.DecodeConfigurationRemovePayload(payload)
+				if err != nil || request.ExpectedVersion != "current-version" {
+					t.Fatalf("remove version: %+v %v", request, err)
+				}
 				if method != contract.MethodConfigurationRemove {
 					t.Fatalf("unexpected method: %s", method)
 				}

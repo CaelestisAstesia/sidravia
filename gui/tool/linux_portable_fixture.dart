@@ -161,6 +161,7 @@ Future<void> main(List<String> args) async {
         await client.sessionRemove(session.id);
         await client.configurationRemove(
           configs.single.id,
+          expectedVersion: configs.single.version!,
           allowInsecureStorage: true,
         );
       } else if (args[0] != 'verify') {

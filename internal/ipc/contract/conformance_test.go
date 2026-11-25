@@ -218,8 +218,10 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 		_, err = contract.DecodeSessionRemovePayload(payload)
 	case contract.MethodSessionGet:
 		_, err = contract.DecodeSessionGetPayload(payload)
-	case contract.MethodSessionStartConfiguration, contract.MethodConfigurationGet, contract.MethodConfigurationRemove:
+	case contract.MethodSessionStartConfiguration, contract.MethodConfigurationGet:
 		_, err = contract.DecodeConfigurationIDPayload(payload)
+	case contract.MethodConfigurationRemove:
+		_, err = contract.DecodeConfigurationRemovePayload(payload)
 	case contract.MethodConfigurationCreate:
 		_, err = contract.DecodeConfigurationCreatePayload(payload)
 	case contract.MethodConfigurationUpdate:

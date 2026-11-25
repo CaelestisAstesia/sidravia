@@ -582,6 +582,7 @@ void main() {
       );
       await c.configurationRemove(
         'fixture-configuration',
+        expectedVersion: 'remove-v1',
         allowInsecureStorage: true,
       );
       expect(received.map((r) => r['payload']), [
@@ -602,6 +603,7 @@ void main() {
         },
         {
           'configurationId': 'fixture-configuration',
+          'expectedVersion': 'remove-v1',
           'allowInsecureStorage': true,
         },
       ]);
@@ -946,7 +948,10 @@ void main() {
       autoLogin: true,
     );
     await client.sessionRemove('session-retained');
-    await client.configurationRemove('fixture-configuration');
+    await client.configurationRemove(
+      'fixture-configuration',
+      expectedVersion: 'remove-v1',
+    );
     await client.close();
 
     expect(received.map((value) => value['method']), [
@@ -1009,7 +1014,10 @@ void main() {
       received.lastWhere(
         (value) => value['method'] == 'configuration.remove',
       )['payload'],
-      {'configurationId': 'fixture-configuration'},
+      {
+        'configurationId': 'fixture-configuration',
+        'expectedVersion': 'remove-v1',
+      },
     );
     expect(
       received.every((value) => (value['id'] as String).startsWith('gui-')),

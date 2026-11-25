@@ -433,3 +433,24 @@ func TestEqualNetworkReplayFeedsActorsWithoutDuplicateNetworkEvent(t *testing.T)
 		t.Fatal("equal replay duplicated network event", networkCount)
 	}
 }
+
+func TestNetworkDeliverySkipsSessionRemovedAfterSelection(t *testing.T) {
+	ctx := context.Background()
+	supervisor := New(testSupervisorDeps())
+	defer closeTestSupervisor(supervisor)
+	id, _, err := supervisor.StartResolved(ctx, testRuntimeDefinition(), session.SuspendAuthentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed, err := supervisor.managed(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := []networkSnapshotTarget{{id: id, actor: managed.actor}}
+	if err := supervisor.Remove(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := supervisor.deliverNetworkSnapshot(ctx, testNetworkSnapshot(1), targets); err != nil {
+		t.Fatalf("retired actor interrupted network delivery: %v", err)
+	}
+}
