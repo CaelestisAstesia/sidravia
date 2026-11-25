@@ -78,39 +78,57 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 			return emit(false, "invalid_arguments", "更新包类型无效。", nil)
 		}
 	}
+	// Setup recovery reconciles a local, signed execution record. Release
+	// query cache availability and GitHub backoff are irrelevant here.
+	if operation == "recover" && runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
+		result, err := recoverOperation(ctx, layout, version, buildID, options.operationID, nil)
+		if err != nil {
+			return emit(false, applyErrorCode(err), applyErrorMessage(err), result)
+		}
+		return emit(true, "ok", "中断协调已结束，未重复启动或恢复连接", result)
+	}
+	var execution *operationView
+	if operation == "status" {
+		operationRoot, err := operations.DefaultRoot()
+		if err != nil {
+			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
+		}
+		execution, err = executionStatus(ctx, operationRoot, layout.ExecutableDirectory)
+		if err != nil {
+			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
+		}
+	}
+	cacheFailure := func(code, message string) int {
+		if execution != nil {
+			return emit(true, "ok", message, composeStatus(cached{}, false, execution))
+		}
+		return emit(false, code, message, nil)
+	}
 	selection := releases.Selection{OS: runtime.GOOS, Arch: runtime.GOARCH, Kind: options.kind, Channel: options.channel, CurrentVersion: version}
 	cacheBase, err := operations.CacheRoot()
 	if err != nil {
-		return emit(false, "cache_unavailable", "更新缓存不可用。", nil)
+		return cacheFailure("cache_unavailable", "更新缓存不可用。")
 	}
 	identity := sha256.Sum256([]byte(layout.ExecutableDirectory + "\x00" + options.kind + "\x00" + options.channel))
 	root := filepath.Join(cacheBase, hex.EncodeToString(identity[:16]))
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
 	if err != nil {
-		return emit(false, "cache_unavailable", "更新缓存保护不可用。", nil)
+		return cacheFailure("cache_unavailable", "更新缓存保护不可用。")
 	}
 	statePath := filepath.Join(root, "state.json")
 	// SecureStore creates/protects the cache directory even for a missing file.
 	data, exists, err := store.Read(ctx, statePath, 2<<20)
 	if err != nil {
-		return emit(false, "cache_unavailable", "无法安全读取更新缓存。", nil)
+		return cacheFailure("cache_unavailable", "无法安全读取更新缓存。")
 	}
 	var previous cached
 	if exists {
 		if err = jsonfile.DecodeStrict(data, &previous); err != nil || previous.SchemaVersion != 1 {
-			return emit(false, "cache_invalid", "更新缓存无效。", nil)
+			return cacheFailure("cache_invalid", "更新缓存无效。")
 		}
 	}
 	if operation == "status" {
 		previous = projectInstalledVersion(previous, version)
-		operationRoot, err := operations.DefaultRoot()
-		if err != nil {
-			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
-		}
-		execution, err := executionStatus(ctx, operationRoot, layout.ExecutableDirectory)
-		if err != nil {
-			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
-		}
 		if execution != nil {
 			return emit(true, "ok", "", composeStatus(previous, exists, execution))
 		}
@@ -139,6 +157,14 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	if exists {
 		if err = jsonfile.DecodeStrict(data, &previous); err != nil || previous.SchemaVersion != 1 {
 			return emit(false, "cache_invalid", "更新缓存无效。", nil)
+		}
+	}
+	if previous.Retired != nil {
+		if previous.Retired.Path == previous.Downloaded {
+			return emit(false, "cache_invalid", "更新缓存无效。", nil)
+		}
+		if err = removeCached(root, previous.Retired.Path, previous.Retired.Candidate); err != nil {
+			return emit(false, "cache_cleanup_failed", "旧更新缓存仍无法清理，请检查缓存。", nil)
 		}
 	}
 	if b, exists, e := store.Read(ctx, backoffPath, 1024); e != nil {
@@ -219,13 +245,6 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		}
 		return emit(true, "ok", "更新已安装，恢复结果见返回状态", outcome)
 	}
-	// Keep one verified package per target/type/channel. Clear the old owned
-	// leaf before obtaining a replacement; failed downloads can be retried.
-	if previous.Downloaded != "" && previous.Downloaded != state.Downloaded {
-		if err = removeCached(root, previous.Downloaded, previous.Check.Candidate); err != nil {
-			return emit(false, "cache_cleanup_failed", "旧更新缓存无法清理；不会继续下载或安装。", nil)
-		}
-	}
 	newDownload := ""
 	if operation == "download" {
 		if state.Downloaded == "" {
@@ -236,6 +255,9 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 			state.Downloaded = path
 			newDownload = path
 		}
+	}
+	if previous.Downloaded != "" && previous.Downloaded != state.Downloaded {
+		state.Retired = &retiredPackage{Path: previous.Downloaded, Candidate: previous.Check.Candidate}
 	}
 	b, err := json.Marshal(state)
 	if err != nil {
@@ -248,6 +270,14 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 			}
 		}
 		return emit(false, "cache_write_failed", "更新结果无法保存；不会启动安装。", nil)
+	}
+	// The old state stays valid if the replacement download or state write
+	// fails. Only unlink the old owned package after the new state commits.
+	if state.Retired != nil {
+		if err = removeCached(root, state.Retired.Path, state.Retired.Candidate); err != nil {
+			return emit(false, "cache_cleanup_failed", "更新状态已保存，但旧更新缓存无法清理。", state)
+		}
+		state.Retired = nil
 	}
 	return emit(true, "ok", "", state)
 }

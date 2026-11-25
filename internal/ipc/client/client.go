@@ -106,12 +106,15 @@ func (c *Client) exchange(ctx context.Context, method string, payload json.RawMe
 		c.discontinue()
 		return contract.Response{}, transportError(ctx, "call: write", err)
 	}
+	limit := contract.ResponseFrameLimit(method)
+	c.conn.SetReadLimit(int64(limit))
+	defer c.conn.SetReadLimit(contract.StateFrameLimit)
 	kind, data, err := c.conn.Read(ctx)
 	if err != nil {
 		c.discontinue()
 		return contract.Response{}, transportError(ctx, "call: read", err)
 	}
-	if kind != websocket.MessageText || len(data) > contract.StateFrameLimit {
+	if kind != websocket.MessageText || len(data) > limit {
 		c.discontinue()
 		return contract.Response{}, errors.New("call: invalid response frame")
 	}

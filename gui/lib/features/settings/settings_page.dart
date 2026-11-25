@@ -27,11 +27,13 @@ class SettingsPage extends StatelessWidget {
     required this.onBack,
     this.desktopPresence,
     this.createIntegrationManager,
+    this.integrationManager,
     this.updateCheck,
   });
   final GuiController controller;
   final DesktopPresence? desktopPresence;
   final InstallationManager Function()? createIntegrationManager;
+  final InstallationManager? integrationManager;
   final UpdateCheckProcess? updateCheck;
   final ValueChanged<AppPage> onNavigate;
   final VoidCallback onBack;
@@ -357,6 +359,7 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 24),
           if (showIntegration || (desktopPresence?.supported ?? false))
             IntegrationSettings(
+              manager: integrationManager,
               createManager:
                   createIntegrationManager ??
                   () => createInstallationManager(updateCheck: updateCheck),

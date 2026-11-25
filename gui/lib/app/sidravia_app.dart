@@ -24,6 +24,7 @@ import 'package:sidravia_gui/features/shell/sidravia_shell.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 import 'package:sidravia_gui/application/preferences/gui_preferences.dart';
 import 'package:sidravia_gui/window/sidravia_window_frame.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
 import 'package:sidravia_gui/platform/update/update_check_process.dart';
 
 class SidraviaApp extends StatefulWidget {
@@ -54,6 +55,9 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
   final _shellKey = GlobalKey<SidraviaShellState>();
   final _logDirectory = DesktopLogDirectory();
   final _updateCheck = UpdateCheckProcess();
+  late final _installationManager = createInstallationManager(
+    updateCheck: _updateCheck,
+  );
   late final SchoolAnnouncementController _announcements;
   late final _systemNotifications =
       widget.systemNotifications ?? SystemNotifications.disabled();
@@ -279,6 +283,13 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     return (accepted: approved && mounted, visible: visible);
   }
 
+  Future<void> _closeInstallation() async {
+    await Future.wait<void>([
+      _installationManager.close(),
+      _updateCheck.close(),
+    ]);
+  }
+
   Future<void> _commitMaintenance() async {
     final desktop = widget.desktopPresence;
     if (!mounted || _exiting || desktop == null) return;
@@ -287,7 +298,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       _exiting = false;
       return;
     }
-    await _updateCheck.close();
+    await _closeInstallation();
     await _connectionNotifications.close();
     await widget.controller.exitAndDisconnect();
     await _announcements.close();
@@ -351,7 +362,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
         return;
       }
       begun = true;
-      await _updateCheck.close();
+      await _closeInstallation();
       await _connectionNotifications.close();
       await widget.controller.exitAndDisconnect();
       await _announcements.close();
@@ -373,7 +384,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
     _connectionNotifications.dispose();
     unawaited(_closeNotifications());
     unawaited(_logDirectory.close());
-    unawaited(_updateCheck.close());
+    unawaited(_closeInstallation());
     final desktop = widget.desktopPresence;
     if (desktop != null) {
       desktop.removeListener(_syncBusinessWindowVisibility);
@@ -433,7 +444,7 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
                   controller: widget.controller,
                   announcements: _announcements,
                   connectionNotifications: _connectionNotifications,
-                  updateCheck: _updateCheck,
+                  integrationManager: _installationManager,
                   onOpenLogDirectory: _logDirectory.supported
                       ? _logDirectory.open
                       : null,

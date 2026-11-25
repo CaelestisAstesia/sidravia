@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -397,5 +398,58 @@ func TestConfigurationHandlerRejectsUnrepresentableUsernameSafely(t *testing.T) 
 		if strings.Contains(publicErr.Message, username) || strings.Contains(publicErr.Message, password) || strings.Contains(publicErr.Message, "encoded username") {
 			t.Fatal("private validation data leaked")
 		}
+	}
+}
+
+func TestConfigurationPaginationKeepsSnapshotAndBoundsFrames(t *testing.T) {
+	values := make([]contract.ConfigurationResult, 7)
+	for i := range values {
+		values[i] = toConfigurationResult(completeConfigurationResult())
+		values[i].ConfigurationID = fmt.Sprintf("campus-%d", i)
+		values[i].Version = "v1"
+		values[i].DisplayName = strings.Repeat("a", 15000)
+	}
+	var seen []string
+	cursor := ""
+	for {
+		raw, err := configurationPage(values, jsonfile.ProtectionProtected, cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(raw) >= contract.StateFrameLimit {
+			t.Fatalf("ordinary page exceeds the frame budget: %d", len(raw))
+		}
+		page, err := contract.DecodeConfigurationListResult(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range page.Configurations {
+			seen = append(seen, entry.ConfigurationID)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(seen) != len(values) || cursor == "" {
+		t.Fatalf("configuration pagination returned %v", seen)
+	}
+	for i, id := range seen {
+		if id != values[i].ConfigurationID {
+			t.Fatalf("row %d = %s", i, id)
+		}
+	}
+	values[0].Version = "changed"
+	if _, err := configurationPage(values, jsonfile.ProtectionProtected, cursor); !errors.Is(err, config.ErrVersionConflict) {
+		t.Fatalf("changed snapshot did not reject continuation: %v", err)
+	}
+	values[0].DisplayName = strings.Repeat("b", contract.StateFrameLimit)
+	raw, err := configurationPage(values, jsonfile.ProtectionProtected, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := contract.DecodeConfigurationListResult(raw)
+	if err != nil || len(page.Configurations) != 1 || len(raw) <= contract.StateFrameLimit || len(raw) >= contract.ResponseFrameLimit(contract.MethodConfigurationList) {
+		t.Fatalf("large legacy configuration not isolated: %d bytes, %v", len(raw), err)
 	}
 }

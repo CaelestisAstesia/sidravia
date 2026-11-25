@@ -70,7 +70,35 @@ type ConfigurationResult struct {
 type ConfigurationListResult struct {
 	StorageProtection string                `json:"storageProtection"`
 	Configurations    []ConfigurationResult `json:"configurations"`
+	NextCursor        string                `json:"nextCursor,omitempty"`
 }
+type ConfigurationListPayload struct {
+	Cursor string `json:"cursor,omitempty"`
+}
+
+func DecodeConfigurationListPayload(data []byte) (ConfigurationListPayload, error) {
+	var value ConfigurationListPayload
+	if err := decodeRequestPayload(data, &value, "cursor"); err != nil {
+		return value, err
+	}
+	if err := rejectNullFields(data, "cursor"); err != nil || len(value.Cursor) > 96 {
+		return value, fmt.Errorf("invalid configuration list cursor")
+	}
+	return value, nil
+}
+
+// ResponseFrameLimit retains the small request and event limit. One legacy
+// configuration may itself contain a large display name or Profile label.
+func ResponseFrameLimit(method string) int {
+	switch method {
+	case MethodConfigurationList, MethodConfigurationGet, MethodConfigurationCreate,
+		MethodConfigurationUpdate, MethodConfigurationSetPassword:
+		return 16 * 1024 * 1024
+	default:
+		return StateFrameLimit
+	}
+}
+
 type ConfigurationRemoveResult struct {
 	ConfigurationID string `json:"configurationId"`
 	Status          string `json:"status"`

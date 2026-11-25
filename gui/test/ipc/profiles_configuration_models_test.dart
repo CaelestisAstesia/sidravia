@@ -155,9 +155,9 @@ void main() {
         final row = decodeConfiguration(source);
         expect(row.runtimeAvailability.wireValue, status);
         expect(
-          decodeConfigurations(
+          decodeConfigurationPage(
             '{"storageProtection":"protected","configurations":[$source]}',
-          ).single.runtimeAvailability,
+          ).configurations.single.runtimeAvailability,
           row.runtimeAvailability,
         );
         final bad = status == 'profile_unavailable'

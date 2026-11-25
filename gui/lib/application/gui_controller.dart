@@ -247,6 +247,11 @@ class GuiController extends ChangeNotifier {
         _notice = '核心重启失败，请检查状态后手动重试。';
         return;
       }
+      // The core launch committed. Subsequent failures belong to IPC or
+      // connection restoration, so retry must not issue another restart.
+      _coreRestartFailed = false;
+      final restore = _restoreConfiguration;
+      _restoreConfiguration = null;
       final client = await connector(boot.value!);
       if (!_canContinue(generation)) {
         await _closeQuietly(client);
@@ -258,19 +263,30 @@ class GuiController extends ChangeNotifier {
       if (!_canContinue(generation) || _state != GuiConnectionState.ready) {
         return;
       }
-      if (_restoreConfiguration != null) {
-        await client.sessionStartConfiguration(_restoreConfiguration!);
+      if (restore != null) {
+        try {
+          await client.sessionStartConfiguration(restore);
+        } on IpcRequestFailure catch (error) {
+          if (_canUseClient(generation, client)) {
+            _notice =
+                '核心已重启，但未能恢复原连接：${_guidance(GuiOperation.connection, error.code, '请手动连接。')}';
+          }
+          return;
+        } on Object catch (error) {
+          await _invalidate(generation, client, error);
+          return;
+        }
         if (!_canContinue(generation)) return;
         await _refresh(generation, client);
       }
       if (_state != GuiConnectionState.ready) return;
-      _coreRestartFailed = false;
-      _restoreConfiguration = null;
       _notice = '核心已重启。';
     } on Object catch (error) {
       if (_current(generation)) {
         _failure = _ipcFailure(error);
-        _notice = '核心重启或恢复连接失败：${_failure!.message}';
+        _notice = _coreRestartFailed
+            ? '核心重启失败：${_failure!.message}'
+            : '核心已重启，但通信暂不可用：${_failure!.message}';
         _state = GuiConnectionState.failed;
       }
     } finally {
@@ -281,6 +297,8 @@ class GuiController extends ChangeNotifier {
           _timer?.cancel();
           _timer = null;
           await _releaseResources();
+        } else if (_client == null) {
+          _scheduleReconnect();
         }
       }
       _notify();

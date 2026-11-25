@@ -126,8 +126,22 @@ class WebSocketIpcClient
       _call('profile.list', const {}, decodeProfiles);
 
   @override
-  Future<List<ConfigurationSummary>> configurationList() async =>
-      _call('configuration.list', const {}, decodeConfigurations);
+  Future<List<ConfigurationSummary>> configurationList() async {
+    final configurations = <ConfigurationSummary>[];
+    final cursors = <String>{};
+    String? cursor;
+    do {
+      final page = await _call('configuration.list', {
+        'cursor': ?cursor,
+      }, decodeConfigurationPage);
+      configurations.addAll(page.configurations);
+      cursor = page.nextCursor;
+      if (cursor != null && !cursors.add(cursor)) {
+        throw const IpcProtocolException();
+      }
+    } while (cursor != null);
+    return configurations;
+  }
 
   @override
   Future<MaintenanceStatus> updateStatus() =>
@@ -393,10 +407,20 @@ class WebSocketIpcClient
   void _receive(dynamic message) {
     if (_closed) return;
     try {
-      if (message is! String ||
-          utf8.encode(message).length > _maximumMessageBytes) {
-        throw const IpcProtocolException();
-      }
+      if (message is! String) throw const IpcProtocolException();
+      final bytes = utf8.encode(message).length;
+      final method = _pending?.method;
+      final responseLimit =
+          const {
+            'configuration.list',
+            'configuration.get',
+            'configuration.create',
+            'configuration.update',
+            'configuration.setPassword',
+          }.contains(method)
+          ? 16 * 1024 * 1024
+          : _maximumMessageBytes;
+      if (bytes > responseLimit) throw const IpcProtocolException();
       final raw = decodeBindingCheckedJson(
         message,
         preserveUnsignedRevision: true,
@@ -405,6 +429,7 @@ class WebSocketIpcClient
       );
       if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
       if (raw['kind'] == 'event') {
+        if (bytes > _maximumMessageBytes) throw const IpcProtocolException();
         final event = decodeStateEventValue(raw);
         final owner = _owner;
         if (owner == null) throw const IpcProtocolException();

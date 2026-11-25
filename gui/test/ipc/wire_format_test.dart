@@ -68,7 +68,7 @@ void main() {
     const configuration =
         r'{"storageProtection":"protected","configurations":[{"configurationId":"cfg-a","displayName":"d","institutionProfileId":"i","institutionDisplayName":"n","authenticationProtocolId":"p","username":"u","username":"u","credentialStored":true,"runtimeAvailability":"available","storageProtection":"protected","autoLogin":false,"autoReconnect":true,"networkBindingPolicy":{"mode":"automatically_select_latest_available"}}]}';
     expect(
-      () => decodeConfigurations(configuration),
+      () => decodeConfigurationPage(configuration),
       throwsA(isA<IpcProtocolException>()),
     );
     expect(

@@ -85,4 +85,10 @@ type cached struct {
 	CheckedAt     time.Time            `json:"checkedAt"`
 	Check         releases.CheckResult `json:"check"`
 	Downloaded    string               `json:"downloaded,omitempty"`
+	Retired       *retiredPackage      `json:"retired,omitempty"`
+}
+
+type retiredPackage struct {
+	Path      string              `json:"path"`
+	Candidate *releases.Candidate `json:"candidate"`
 }

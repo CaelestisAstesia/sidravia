@@ -225,7 +225,7 @@ func (c *stateConnection) prepareSubscription(id string) (contract.Response, con
 // Only an actually written original success is committed.
 func (c *stateConnection) respond(resp contract.Response, method string) (bool, error) {
 	data, err := contract.EncodeResponse(resp)
-	if err == nil && len(data) > contract.StateFrameLimit {
+	if err == nil && len(data) > contract.ResponseFrameLimit(method) {
 		err = contract.ErrStateFrameLimit
 	}
 	if err != nil {
@@ -240,7 +240,7 @@ func (c *stateConnection) respond(resp contract.Response, method string) (bool, 
 		}
 		return false, nil
 	}
-	if err = c.write(data); err != nil {
+	if err = c.writeFrame(data); err != nil {
 		return false, err
 	}
 	if !resp.OK {
@@ -262,6 +262,10 @@ func (c *stateConnection) write(data []byte) error {
 	if len(data) > contract.StateFrameLimit {
 		return contract.ErrStateFrameLimit
 	}
+	return c.writeFrame(data)
+}
+
+func (c *stateConnection) writeFrame(data []byte) error {
 	ctx, cancel := context.WithTimeout(c.ctx, stateWriteTimeout)
 	defer cancel()
 	if err := c.socket.Write(ctx, websocket.MessageText, data); err != nil {

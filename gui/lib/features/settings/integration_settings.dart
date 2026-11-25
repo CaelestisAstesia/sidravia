@@ -46,8 +46,18 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       _busy = true;
       _error = null;
     });
+    String? mutationFailure;
     try {
-      if (change != null) await _manager.change(change);
+      if (change != null) {
+        try {
+          await _manager.change(change);
+        } on Object catch (error) {
+          mutationFailure = error is IntegrationFailure
+              ? error.message
+              : '系统集成操作失败。';
+        }
+      }
+      if (!mounted) return;
       final next = await _manager.status();
       final services = _manager;
       final service = services is UserServiceManager
@@ -56,6 +66,7 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       if (mounted) {
         setState(() {
           _status = next;
+          if (mutationFailure != null) _error = '$mutationFailure 已重新读取当前状态。';
           _service = service;
           if (service != null) _serviceError = null;
         });
@@ -64,7 +75,9 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
       if (mounted) {
         setState(() {
           _status = null;
-          _error = error is IntegrationFailure ? error.message : '无法读取系统集成状态。';
+          _error = mutationFailure == null
+              ? (error is IntegrationFailure ? error.message : '无法读取系统集成状态。')
+              : '$mutationFailure 当前状态尚未确认，请重试查询。';
         });
       }
     } finally {
@@ -194,7 +207,7 @@ class _IntegrationSettingsState extends State<IntegrationSettings> {
 
   @override
   void dispose() {
-    unawaited(_manager.close());
+    if (widget.manager == null) unawaited(_manager.close());
     super.dispose();
   }
 

@@ -471,7 +471,10 @@ begin
   ReleaseInstaller;
   if ManagedUpdater <> 0 then begin CloseNativeHandle(ManagedUpdater); ManagedUpdater := 0; end;
   if (ManagedOperation <> '') and ManagedStarted and not UpdateFilesStarted then begin
-    if not ManagedStage('abort') then Log('Managed update cancellation recovery unconfirmed.');
+    if not ManagedStage('abort') then begin
+      Log('Managed update cancellation recovery unconfirmed; program files were not changed.');
+      if not WizardSilent then MsgBox('程序文件尚未修改，但未能确认恢复原运行状态。请检查 Sidravia 是否需要手动启动或重新连接。', mbError, MB_OK);
+    end;
   end else if UpdatePrepared and not UpdateFilesStarted then AbortApplicationUpdate;
 end;
 

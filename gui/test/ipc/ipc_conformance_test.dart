@@ -228,7 +228,7 @@ void main() {
         case 'profile.list':
           expect(decodeProfiles(result), isEmpty);
         case 'configuration.list':
-          expect(decodeConfigurations(result), isEmpty);
+          expect(decodeConfigurationPage(result).configurations, isEmpty);
         case 'session.list':
           expect(decodeSessions(result), isEmpty);
         case 'network.interfaces':

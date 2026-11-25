@@ -21,6 +21,7 @@ class SidraviaShell extends StatefulWidget {
     this.desktopPresence,
     this.onOpenLogDirectory,
     this.createIntegrationManager,
+    this.integrationManager,
     this.updateCheck,
     this.websiteLatencyEnabled = true,
   });
@@ -31,6 +32,7 @@ class SidraviaShell extends StatefulWidget {
   final DesktopPresence? desktopPresence;
   final Future<bool> Function()? onOpenLogDirectory;
   final InstallationManager Function()? createIntegrationManager;
+  final InstallationManager? integrationManager;
   final UpdateCheckProcess? updateCheck;
 
   @override
@@ -133,6 +135,7 @@ class SidraviaShellState extends State<SidraviaShell> {
                 ),
                 AppPage.settings => SettingsPage(
                   createIntegrationManager: widget.createIntegrationManager,
+                  integrationManager: widget.integrationManager,
                   updateCheck: widget.updateCheck,
                   desktopPresence: widget.desktopPresence,
                   controller: widget.controller,

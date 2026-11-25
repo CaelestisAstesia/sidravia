@@ -207,15 +207,29 @@ func callConfiguration(deps authDependencies, connection daemonClient, method st
 
 func runConfigList(deps authDependencies) error {
 	return withAuthClient(deps, func(connection daemonClient) error {
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationList, struct{}{})
-		if err != nil {
-			return err
+		var result contract.ConfigurationListResult
+		cursors := make(map[string]bool)
+		cursor := ""
+		for {
+			raw, err := callConfiguration(deps, connection, contract.MethodConfigurationList, contract.ConfigurationListPayload{Cursor: cursor})
+			if err != nil {
+				return err
+			}
+			page, err := decodeConfigurationList(raw)
+			if err != nil {
+				return wrapSafeOperation("解码配置列表", err)
+			}
+			result.StorageProtection = page.StorageProtection
+			result.Configurations = append(result.Configurations, page.Configurations...)
+			cursor = page.NextCursor
+			if cursor == "" {
+				return writeConfigurationList(deps.stdout, result)
+			}
+			if cursors[cursor] {
+				return errors.New("配置列表分页结果无效")
+			}
+			cursors[cursor] = true
 		}
-		result, err := decodeConfigurationList(raw)
-		if err != nil {
-			return wrapSafeOperation("解码配置列表", err)
-		}
-		return writeConfigurationList(deps.stdout, result)
 	})
 }
 func runConfigShow(id string, deps authDependencies) error {

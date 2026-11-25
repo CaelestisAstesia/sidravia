@@ -71,15 +71,29 @@ ConfigurationRemoveResult decodeConfigurationRemove(
   );
 }
 
-List<ConfigurationSummary> decodeConfigurations(String source) {
-  final root = decodeObjectValue(
-    decodeBindingCheckedJson(source, preserveUnsignedRevision: true),
-    const {'storageProtection', 'configurations'},
+({List<ConfigurationSummary> configurations, String? nextCursor})
+decodeConfigurationPage(String source) {
+  final decoded = decodeBindingCheckedJson(
+    source,
+    preserveUnsignedRevision: true,
   );
+  if (decoded is! Map<String, dynamic>) throw const IpcProtocolException();
+  final root = decodeObjectValue(decoded, {
+    'storageProtection',
+    'configurations',
+    if (decoded.containsKey('nextCursor')) 'nextCursor',
+  });
   _protection(root['storageProtection']);
-  return _list(root['configurations'])
+  final configurations = _list(root['configurations'])
       .map(_configuration)
       .toList(growable: false);
+  final cursor = root.containsKey('nextCursor')
+      ? _text(root['nextCursor'])
+      : null;
+  if (cursor != null && (cursor.length > 96 || configurations.isEmpty)) {
+    throw const IpcProtocolException();
+  }
+  return (configurations: configurations, nextCursor: cursor);
 }
 
 ConfigurationSummary decodeConfiguration(String source) => _configuration(
@@ -179,7 +193,10 @@ ConfigurationOverride decodeConfigurationOverride(String source) {
 OverrideValidation decodeOverrideValidation(String source) {
   final raw = decodeBindingCheckedJson(source);
   if (raw is! Map<String, dynamic>) throw const IpcProtocolException();
-  final v = decodeObjectValue(raw, {'valid', if (raw.containsKey('field')) 'field'});
+  final v = decodeObjectValue(raw, {
+    'valid',
+    if (raw.containsKey('field')) 'field',
+  });
   return (
     valid: _bool(v['valid']),
     field: v.containsKey('field') ? _text(v['field']) : null,

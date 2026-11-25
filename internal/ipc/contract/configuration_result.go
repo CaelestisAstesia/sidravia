@@ -37,7 +37,7 @@ func (value *ConfigurationResult) UnmarshalJSON(data []byte) error {
 }
 func resultProtection(value string) bool { return value == "protected" || value == "unprotected" }
 func (value *ConfigurationListResult) UnmarshalJSON(data []byte) error {
-	if err := networkObject(data, []string{"storageProtection", "configurations"}); err != nil {
+	if err := networkObject(data, []string{"storageProtection", "configurations"}, "nextCursor"); err != nil {
 		return err
 	}
 	type plain ConfigurationListResult
@@ -45,7 +45,8 @@ func (value *ConfigurationListResult) UnmarshalJSON(data []byte) error {
 	if err := decodeStrict(data, &wire); err != nil {
 		return err
 	}
-	if !resultProtection(wire.StorageProtection) || wire.Configurations == nil {
+	if !resultProtection(wire.StorageProtection) || wire.Configurations == nil ||
+		len(wire.NextCursor) > 96 || wire.NextCursor != "" && len(wire.Configurations) == 0 {
 		return errors.New("invalid configuration list")
 	}
 	*value = ConfigurationListResult(wire)

@@ -26,7 +26,8 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 		switch method {
 		case contract.MethodConfigurationList:
-			if err := contract.DecodeEmptyPayload(payload); err != nil {
+			request, err := contract.DecodeConfigurationListPayload(payload)
+			if err != nil {
 				return nil, configurationInvalid()
 			}
 			values, protection, err := application.ListConfigurations(ctx)
@@ -37,7 +38,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			for _, value := range values {
 				results = append(results, toConfigurationResult(value))
 			}
-			result, err := contract.MarshalConfigurationListResult(contract.ConfigurationListResult{StorageProtection: string(protection), Configurations: results})
+			result, err := configurationPage(results, protection, request.Cursor)
 			if err != nil {
 				return nil, configurationError(err)
 			}

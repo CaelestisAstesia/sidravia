@@ -53,7 +53,9 @@ void main() {
       final manager = FakeUserServiceManager()..pendingChange = change;
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: IntegrationSettings(manager: manager)),
+          home: Scaffold(
+            body: IntegrationSettings(createManager: () => manager),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -101,7 +103,7 @@ void main() {
       ..pendingChange = change;
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: IntegrationSettings(manager: manager)),
+        home: Scaffold(body: IntegrationSettings(createManager: () => manager)),
       ),
     );
     await tester.pumpAndSettle();
@@ -168,7 +170,7 @@ void main() {
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: 320,
-              child: IntegrationSettings(manager: manager),
+              child: IntegrationSettings(createManager: () => manager),
             ),
           ),
         ),
@@ -217,7 +219,7 @@ void main() {
     final manager = FakeManager()..guiAvailable = false;
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: IntegrationSettings(manager: manager)),
+        home: Scaffold(body: IntegrationSettings(createManager: () => manager)),
       ),
     );
     await tester.pumpAndSettle();
@@ -251,7 +253,7 @@ void main() {
     final manager = FakeManager();
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: IntegrationSettings(manager: manager)),
+        home: Scaffold(body: IntegrationSettings(createManager: () => manager)),
       ),
     );
     await tester.pumpAndSettle();
@@ -283,7 +285,7 @@ void main() {
     final manager = FakeManager()..pending = Completer<IntegrationStatus>();
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: IntegrationSettings(manager: manager)),
+        home: Scaffold(body: IntegrationSettings(createManager: () => manager)),
       ),
     );
     expect(find.byType(DesignSwitch), findsNothing);
@@ -299,5 +301,19 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(manager.closed, true);
+  });
+  testWidgets('app-owned manager stays open after leaving settings', (
+    tester,
+  ) async {
+    final manager = FakeManager();
+    addTearDown(manager.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: IntegrationSettings(manager: manager)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    expect(manager.closed, false);
   });
 }

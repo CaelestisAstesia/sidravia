@@ -204,8 +204,10 @@ func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
 		err = contract.DecodeEmptyPayload(payload)
 	case contract.MethodDiagnosticsExport:
 		err = contract.DecodeDiagnosticsExportPayload(payload)
-	case contract.MethodNetworkInterfaces, contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList, contract.MethodConfigurationList:
+	case contract.MethodNetworkInterfaces, contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList:
 		err = contract.DecodeEmptyPayload(payload)
+	case contract.MethodConfigurationList:
+		_, err = contract.DecodeConfigurationListPayload(payload)
 	case contract.MethodSessionStartOneShot:
 		_, err = contract.DecodeSessionStartOneShotPayload(payload)
 	case contract.MethodSessionStop:
