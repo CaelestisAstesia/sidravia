@@ -288,6 +288,11 @@ class ConnectionPresentation {
       if (managedBackendStopped) {
         title = '后台已停止';
         detail = '启动后台后可以继续连接';
+        context = '';
+        secondaryLabel = '连接与诊断';
+        secondary = const GuiConnectionAction(
+          GuiConnectionActionKind.showDetails,
+        );
       }
       enabled = !caps.busy;
     }
