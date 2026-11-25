@@ -476,6 +476,8 @@ class ConfigurationPageState extends State<ConfigurationPage> {
           '检测到多个连接配置，当前 GUI 暂不支持选择。请使用 sidraviactl 管理。',
         GuiCapabilityState.ambiguousSessions =>
           '配置或会话关系不明确，当前 GUI 无法安全编辑。请使用 sidraviactl 管理。',
+        GuiCapabilityState.pendingSessionCleanup =>
+          widget.controller.capabilities.settingsDisabledReason!,
         GuiCapabilityState.daemonUnavailable => '核心服务未运行，暂时无法读取连接配置。',
         GuiCapabilityState.unsupported => '当前平台暂不支持连接配置。',
         GuiCapabilityState.createOnly => '正在准备机构信息，请稍后再试。',

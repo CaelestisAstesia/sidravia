@@ -144,10 +144,12 @@ class ConnectionPresentation {
         secondary = const GuiConnectionAction(
           GuiConnectionActionKind.showDetails,
         );
-      case GuiCapabilityState.ambiguousSessions:
-        title = '会话关系不明确';
-        detail = '检测到当前 GUI 无法管理的会话';
-        context = '请使用 sidraviactl 管理';
+      case GuiCapabilityState.pendingSessionCleanup ||
+          GuiCapabilityState.ambiguousSessions:
+        final cleanup = topology == GuiCapabilityState.pendingSessionCleanup;
+        title = cleanup ? '旧会话待清理' : '会话关系不明确';
+        detail = cleanup ? '移除旧会话后可添加配置' : '检测到当前 GUI 无法管理的会话';
+        context = cleanup ? '请前往连接与诊断' : '请使用 sidraviactl 管理';
         glyph = '!';
         tone = HomeTone.warning;
         enabled = false;

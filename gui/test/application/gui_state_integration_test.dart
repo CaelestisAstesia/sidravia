@@ -185,6 +185,34 @@ void main() {
     client.dispose();
   });
 
+  test(
+    'a committed deletion still allows explicit cleanup of its session',
+    () async {
+      final client = _LiveClient(initialSessions: [_session(BigInt.one)]);
+      final c = _controller(client);
+      addTearDown(() async {
+        await c.close();
+        c.dispose();
+        client.dispose();
+      });
+      await c.start();
+      client.committedFailure = true;
+
+      expect(await c.deleteConfiguration('demo-config'), false);
+      expect(c.snapshot!.configurations, isEmpty);
+      expect(c.capabilities.canCreate, false);
+      expect(c.capabilities.canManage, false);
+      expect(c.capabilities.canStop, false);
+      expect(c.capabilities.resettableSession?.id, 's');
+      expect(c.connectionPresentation.statusTitle, '旧会话待清理');
+      expect(c.connectionPresentation.secondaryLabel, '连接与诊断');
+      expect(await c.resetSession('other'), false);
+      expect(await c.resetSession('s'), true);
+      expect(c.snapshot!.sessions, isEmpty);
+      expect(c.capabilities.canCreate, true);
+    },
+  );
+
   test('stream loss retains stale display, closes epoch and automatically recovers full state', () async {
     final first = _LiveClient(initialSessions: [_session(BigInt.from(9))]);
     final second = _LiveClient(
@@ -505,6 +533,24 @@ class _LiveClient extends OfflineDemoClient implements SidraviaStateClient {
       );
     }
     return saved;
+  }
+
+  @override
+  Future<ConfigurationRemoveResult> configurationRemove(
+    String configurationId, {
+    bool allowInsecureStorage = false,
+  }) async {
+    final removed = await super.configurationRemove(
+      configurationId,
+      allowInsecureStorage: allowInsecureStorage,
+    );
+    if (committedFailure) {
+      owner.emit(SessionChanged(_session(BigInt.one, cleanup: true)));
+      throw const IpcRequestFailure(
+        'configuration_session_invalidation_failed',
+      );
+    }
+    return removed;
   }
 
   @override

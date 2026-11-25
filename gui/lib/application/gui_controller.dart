@@ -457,9 +457,7 @@ class GuiController extends ChangeNotifier {
   Future<bool> resetSession(String sessionId) => _mutate(
     (client, allow) => client.sessionRemove(sessionId),
     fallback: '重置会话失败，请重试。',
-    allowed: (capabilities) =>
-        capabilities.canResetSession &&
-        capabilities.retainedSession?.id == sessionId,
+    allowed: (capabilities) => capabilities.resettableSession?.id == sessionId,
   );
 
   Future<bool> deleteConfiguration(

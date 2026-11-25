@@ -61,8 +61,9 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
       );
     }
     GuiBootstrapProcess? child;
-    Future<List<int>>? out;
-    Future<List<int>>? err;
+    StreamIterator<List<int>>? out;
+    StreamIterator<List<int>>? err;
+    Future<int>? exitCode;
     var exited = false;
     try {
       final executable = desktopCtlPath(
@@ -79,14 +80,21 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
         '--owner-pid',
         '${_ownerPid()}',
       ]);
-      out = _readBounded(child.stdout);
-      err = _readBounded(child.stderr);
-      final exit = await child.exitCode.timeout(
-        operation == 'restart' ? const Duration(seconds: 30) : timeout,
-      );
-      exited = true;
-      final stdout = await out;
-      final stderr = await err;
+      out = StreamIterator(child.stdout);
+      err = StreamIterator(child.stderr);
+      exitCode = child.exitCode.then((code) {
+        exited = true;
+        return code;
+      });
+      // Observe all three futures immediately. Either pipe may fail while the
+      // process is alive, and its exit alone does not guarantee both pipes end.
+      final result = await Future.wait<Object>(
+        [exitCode, _readBounded(out), _readBounded(err)],
+        eagerError: true,
+      ).timeout(operation == 'restart' ? const Duration(seconds: 30) : timeout);
+      final exit = result[0] as int;
+      final stdout = result[1] as List<int>;
+      final stderr = result[2] as List<int>;
       if (exit != 0) {
         return GuiBootstrapResult.failure(
           decodeGuiBootstrapFailure(
@@ -98,27 +106,23 @@ class ProcessGuiBootstrap implements GuiBootstrapper, GuiCoreRestarter {
       return decodeGuiBootstrap(utf8.decode(stdout, allowMalformed: false));
     } on Object {
       if (child != null && !exited) child.kill();
-      if (child != null) {
-        await child.exitCode.catchError((_) => -1);
+      try {
+        await Future.wait<void>([
+          if (out != null) out.cancel(),
+          if (err != null) err.cancel(),
+          if (exitCode != null) exitCode.then<void>((_) {}),
+        ]).timeout(const Duration(seconds: 2));
+      } on Object {
+        // Cleanup errors must not replace the safe failure or stall the UI.
       }
-      await _settle(out);
-      await _settle(err);
       return const GuiBootstrapResult.failure(GuiBootstrapFailure.failed);
     }
   }
 
-  Future<void> _settle(Future<List<int>>? value) async {
-    if (value == null) return;
-    try {
-      await value;
-    } on Object {
-      // A reader can fail only after the fixed safe failure is selected.
-    }
-  }
-
-  Future<List<int>> _readBounded(Stream<List<int>> stream) async {
+  Future<List<int>> _readBounded(StreamIterator<List<int>> reader) async {
     final bytes = <int>[];
-    await for (final chunk in stream) {
+    while (await reader.moveNext()) {
+      final chunk = reader.current;
       if (bytes.length + chunk.length > maximumOutputBytes) {
         throw const FormatException();
       }

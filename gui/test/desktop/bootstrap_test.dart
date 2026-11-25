@@ -134,6 +134,44 @@ void main() {
     expect((await pending).isSuccess, isTrue);
   });
 
+  for (final overflow in [true, false]) {
+    test(
+      'reader failure ends a live bootstrap child: overflow=$overflow',
+      () async {
+        final child = _Process.pending();
+        final pending = ProcessGuiBootstrap(
+          isWindows: () => true,
+          maximumOutputBytes: 4,
+          launch: (_, _) async => child,
+        ).bootstrap();
+        if (overflow) {
+          child.stdoutController.add([1, 2, 3, 4, 5]);
+        } else {
+          child.stderrController.addError(StateError('fixture stream error'));
+        }
+        final result = await pending.timeout(const Duration(seconds: 2));
+        expect(result.failure?.code, 'bootstrap_failed');
+        expect(child.killed, isTrue);
+        expect(await child.exitCode, -1);
+        expect(child.readersClosed, isTrue);
+      },
+    );
+  }
+
+  test('bootstrap deadline still applies after process exit', () async {
+    final child = _Process.pending()..exits.complete(0);
+    addTearDown(child.closeReaders);
+    final result = await ProcessGuiBootstrap(
+      isWindows: () => true,
+      timeout: Duration.zero,
+      launch: (_, _) async => child,
+    ).bootstrap().timeout(const Duration(seconds: 2));
+    expect(result.failure?.code, 'bootstrap_failed');
+    expect(child.killed, isFalse);
+    expect(child.stdoutController.hasListener, isFalse);
+    expect(child.stderrController.hasListener, isFalse);
+  });
+
   test('nonzero exit discards stdout and decodes only strict stderr', () async {
     final child = _Process.completed(
       12,

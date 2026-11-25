@@ -45,12 +45,16 @@ class WindowsInstallationManager
 
   @override
   Future<void> openReleasePage(String version) async {
+    const failure = IntegrationFailure('无法打开浏览器。');
+    if (_closed) throw failure;
     final url = releasePageUrl(version);
-    if (url == null) {
-      throw const IntegrationFailure('无法打开浏览器。');
+    if (url == null) throw failure;
+    try {
+      final result = await Process.run('cmd.exe', ['/c', 'start', '', url]);
+      if (result.exitCode != 0) throw failure;
+    } on ProcessException {
+      throw failure;
     }
-    final result = await Process.run('cmd.exe', ['/c', 'start', '', url]);
-    if (result.exitCode != 0) throw const IntegrationFailure('无法打开浏览器。');
   }
 
   @override

@@ -52,6 +52,7 @@ bool FlutterWindow::OnCreate() {
   exit_armed_ = false;
   exit_request_pending_ = false;
   visibility_message_queued_ = false;
+  startup_hidden_.reset();
   last_published_visibility_.reset();
   maximize_hovered_ = false;
   maximize_pressed_ = false;
@@ -217,7 +218,9 @@ bool FlutterWindow::OnCreate() {
             result->Error("invalid_preferences", "Expected bool preferences."); return;
           }
           close_to_tray_ = *close_value;
-          start_hidden_ = *hidden_value;
+          // The first configuration includes the one-shot launch arguments.
+          // Later preference updates can arrive before the first frame.
+          if (!startup_hidden_.has_value()) startup_hidden_ = *hidden_value;
           result->Success(); return;
         }
         if (call.method_name() == "beginUpdateExit") {
@@ -260,7 +263,9 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    if (!(desktop_presence_initialized_ && start_hidden_)) this->Show();
+    if (!(desktop_presence_initialized_ && startup_hidden_.value_or(false))) {
+      this->Show();
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is

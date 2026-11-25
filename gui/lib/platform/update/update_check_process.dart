@@ -9,9 +9,8 @@ import '../integration_failure.dart';
 class UpdateCheckProcess {
   static const _outputLimit = 2 << 20;
 
-  Process? _child;
   Future<({int code, String output})>? _pending;
-  bool _cancelled = false;
+  Completer<void>? _cancellation;
   bool _closed = false;
 
   Future<({int code, String output})> run(
@@ -22,74 +21,101 @@ class UpdateCheckProcess {
     if (_pending != null) {
       throw const IntegrationFailure('正在执行另一项更新操作，请稍后重试。');
     }
-    _cancelled = false;
-    final operation = _run(executable, environment);
+    final cancellation = Completer<void>();
+    _cancellation = cancellation;
+    final operation = _run(executable, environment, cancellation);
     _pending = operation;
     try {
       return await operation;
     } finally {
       _pending = null;
+      _cancellation = null;
     }
   }
 
   Future<({int code, String output})> _run(
     String executable,
     Map<String, String>? environment,
+    Completer<void> cancellation,
   ) async {
-    Timer? timer;
+    Process? child;
+    StreamIterator<List<int>>? stdout;
+    StreamIterator<List<int>>? stderr;
+    Future<int>? exitCode;
+    var exited = false;
     try {
-      final child = await Process.start(
+      child = await Process.start(
         executable,
         const ['update', 'check'],
         environment: environment,
         includeParentEnvironment: environment == null,
       );
-      _child = child;
-      if (_cancelled) child.kill();
-      var timedOut = false;
-      var tooLarge = false;
-      final bytes = BytesBuilder(copy: false);
-      timer = Timer(const Duration(seconds: 50), () {
-        timedOut = true;
-        child.kill();
+      stdout = StreamIterator(child.stdout);
+      stderr = StreamIterator(child.stderr);
+      exitCode = child.exitCode.then((code) {
+        exited = true;
+        return code;
       });
-      final (code, _, _, _) = await (
-        child.exitCode,
-        child.stdin.close(),
-        child.stdout.forEach((chunk) {
-          if (tooLarge) return;
-          if (bytes.length + chunk.length > _outputLimit) {
-            tooLarge = true;
-            child.kill();
-            return;
-          }
-          bytes.add(chunk);
+      final bytes = BytesBuilder(copy: false);
+      await Future.any<void>([
+        cancellation.future.then<void>((_) {
+          throw const IntegrationFailure('检查更新已取消。');
         }),
-        child.stderr.drain<void>(),
-      ).wait;
-      if (_cancelled) throw const IntegrationFailure('检查更新已取消。');
-      if (timedOut) throw const IntegrationFailure('检查更新超时，请重试。');
-      if (tooLarge) throw const IntegrationFailure('更新检查返回了过大的结果。');
-      return (code: code, output: utf8.decode(bytes.takeBytes()));
+        Future.wait<void>([
+          exitCode.then<void>((_) {}),
+          child.stdin.close().then<void>((_) {}),
+          _readOutput(stdout, bytes),
+          _discardOutput(stderr),
+        ], eagerError: true),
+      ]).timeout(
+        const Duration(seconds: 50),
+        onTimeout: () => throw const IntegrationFailure('检查更新超时，请重试。'),
+      );
+      return (code: await exitCode, output: utf8.decode(bytes.takeBytes()));
     } on IntegrationFailure {
       rethrow;
     } on Object {
       throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
     } finally {
-      timer?.cancel();
-      _child = null;
+      if (!exited) child?.kill();
+      try {
+        await Future.wait<void>([
+          if (stdout != null) stdout.cancel(),
+          if (stderr != null) stderr.cancel(),
+          if (exitCode != null) exitCode.then<void>((_) {}),
+        ]).timeout(const Duration(seconds: 2));
+      } on Object {
+        // Keep the original result and bound the wait for process cleanup.
+      }
     }
+  }
+
+  Future<void> _readOutput(
+    StreamIterator<List<int>> stream,
+    BytesBuilder bytes,
+  ) async {
+    while (await stream.moveNext()) {
+      final chunk = stream.current;
+      if (bytes.length + chunk.length > _outputLimit) {
+        throw const IntegrationFailure('更新检查返回了过大的结果。');
+      }
+      bytes.add(chunk);
+    }
+  }
+
+  Future<void> _discardOutput(StreamIterator<List<int>> stream) async {
+    while (await stream.moveNext()) {}
   }
 
   Future<void> cancel() async {
     final operation = _pending;
-    if (operation == null) return;
-    _cancelled = true;
-    _child?.kill();
+    final cancellation = _cancellation;
+    if (operation == null || cancellation == null) return;
+    if (!cancellation.isCompleted) cancellation.complete();
     try {
       await operation;
     } on IntegrationFailure {
-      // The caller of run receives the result. Cancellation waits for exit.
+      // The caller of run receives the result after bounded cleanup.
     }
   }
 

@@ -220,8 +220,8 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
   }
 
   Future<void> _confirmReset() async {
-    final session = controller.capabilities.retainedSession;
-    if (session == null || !controller.capabilities.canResetSession) return;
+    final session = controller.capabilities.resettableSession;
+    if (session == null) return;
     final confirmed = await showDesignConfirmation(
       context,
       title: const Text('移除当前会话？'),

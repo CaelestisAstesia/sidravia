@@ -62,7 +62,7 @@ class FlutterWindow : public Win32Window {
   bool maximize_pressed_ = false;
   bool exit_armed_ = false;
   bool close_to_tray_ = true;
-  bool start_hidden_ = false;
+  std::optional<bool> startup_hidden_;
   bool desktop_presence_initialized_ = false;
   bool visibility_message_queued_ = false;
   bool destroying_ = false;

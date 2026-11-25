@@ -6,7 +6,7 @@ import 'package:sidravia_gui/ipc/ipc_models.dart';
 /// Configuration. Neither page guesses Configuration/Session relationships
 /// anymore; an actionable target exists only when the state is ready, exactly
 /// one Configuration is retained, every observed Session belongs to it and at
-/// most one related Session exists. Zero Configuration remains create-only.
+/// most one related Session exists. Explicit cleanup has a separate target.
 enum GuiCapabilityState {
   bootstrapping,
   stale,
@@ -16,6 +16,7 @@ enum GuiCapabilityState {
   createOnly,
   manageable,
   multipleConfigurations,
+  pendingSessionCleanup,
   ambiguousSessions,
 }
 
@@ -48,9 +49,11 @@ class GuiCapabilities {
     final configurations = snapshot!.configurations;
     final sessions = snapshot!.sessions;
     if (configurations.isEmpty) {
-      return sessions.isEmpty
-          ? GuiCapabilityState.createOnly
-          : GuiCapabilityState.ambiguousSessions;
+      if (sessions.isEmpty) return GuiCapabilityState.createOnly;
+      if (sessions.length == 1 && sessions.single.cleanupRequired) {
+        return GuiCapabilityState.pendingSessionCleanup;
+      }
+      return GuiCapabilityState.ambiguousSessions;
     }
     if (configurations.length > 1) {
       return GuiCapabilityState.multipleConfigurations;
@@ -74,7 +77,15 @@ class GuiCapabilities {
 
   bool get canDeleteConfiguration => canManage;
 
-  bool get canResetSession => canManage && snapshot!.sessions.isNotEmpty;
+  bool get canResetSession => resettableSession != null;
+
+  SessionSummary? get resettableSession {
+    if (busy) return null;
+    if (capability == GuiCapabilityState.pendingSessionCleanup) {
+      return snapshot!.sessions.single;
+    }
+    return retainedSession;
+  }
 
   bool matchesConfiguration(String id) => canManage && configuration?.id == id;
   bool matchesSession(String id) => canManage && retainedSession?.id == id;
@@ -117,6 +128,7 @@ class GuiCapabilities {
       GuiCapabilityState.createOnly => '请先添加连接配置',
       GuiCapabilityState.multipleConfigurations =>
         '存在多个连接配置 · 请使用 sidraviactl 管理',
+      GuiCapabilityState.pendingSessionCleanup => '请先在连接与诊断中移除旧会话。',
       GuiCapabilityState.ambiguousSessions => '配置或会话关系不明确，暂时无法修改连接设置。',
     };
   }
@@ -127,6 +139,7 @@ class GuiCapabilities {
     GuiCapabilityState.createOnly => '尚未配置 · 点击添加',
     GuiCapabilityState.multipleConfigurations =>
       '存在多个连接配置 · 请使用 sidraviactl 管理',
+    GuiCapabilityState.pendingSessionCleanup => '旧会话待清理',
     GuiCapabilityState.ambiguousSessions => '会话关系不明确 · 请使用 sidraviactl 管理',
     _ => '配置状态暂不可用',
   };
