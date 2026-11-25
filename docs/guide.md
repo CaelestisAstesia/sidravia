@@ -72,6 +72,8 @@
 
 手动更新前，先查看新版发行说明，正常退出图形界面和后台，再备份账号配置及需要保留的 GUI 设置。关闭窗口默认只是隐藏到托盘，请从托盘菜单选择「退出 Sidravia」。
 
+从未提供自动安装的版本（例如 0.4.0-alpha.1）也可直接走下面的手动更新流程。RPM 由系统包管理器升级，Windows 安装版运行目标准确安装器，便携版在新目录解包后迁移配置。旧版能检查或下载更新时，也可能需要手动安装。旧版二进制、鉴权用运行记录和机构资源应留在旧目录。
+
 如果 Linux 便携版由 systemd 托管，手动更新或移动前先在旧目录运行 `./sidraviactl integration service stop`。按下文解压并复制需要保留的数据，或移动整个便携目录。再到目标目录运行 `./sidraviactl integration service replace` 更新登记，需要继续运行时执行 `./sidraviactl integration service start`。移除前用 `./sidraviactl integration service unregister` 解除登记。见 [systemd 用户服务](linux-portable.md#systemd-用户服务)。
 
 - **Windows 安装版更新**：使用原 Windows 账户运行新版安装器，直接覆盖原安装目录，无需先卸载。安装 GUI 时，完成页默认勾选「启动 Sidravia」，可取消；纯核心和静默安装不自动启动。0.5 安装器保留组件与实际自启/PATH 设置，兼容配置继续沿用；同版重跑用于修复，普通降级会拒绝。

@@ -68,11 +68,15 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
   Future<void> _copySnapshot() async {
     final text = _captured;
     if (text == null) return;
+    await _copyText(text, '快照已复制');
+  }
+
+  Future<void> _copyText(String text, String feedback) async {
     try {
       await Clipboard.setData(ClipboardData(text: text));
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('快照已复制')));
+            .showSnackBar(SnackBar(content: Text(feedback)));
       }
     } on Object {
       if (mounted) {
@@ -80,6 +84,36 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
             .showSnackBar(const SnackBar(content: Text('复制失败，请重试')));
       }
     }
+  }
+
+  Future<void> _showSystemdLogs() async {
+    const command = 'journalctl --user -u sidravia.service';
+    final copy = await showDialog<bool>(
+      context: context,
+      builder: (context) => DesignConfirmationDialog(
+        title: const Text('后台日志'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('systemd 将后台日志写入用户日志。可在终端运行：'),
+            SizedBox(height: 8),
+            SelectableText(command),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('复制命令'),
+          ),
+        ],
+      ),
+    );
+    if (copy == true && mounted) await _copyText(command, '命令已复制');
   }
 
   bool _openingLogs = false;
@@ -183,15 +217,22 @@ class _ConnectionDiagnosticsPageState extends State<ConnectionDiagnosticsPage> {
         const DesignSectionTitle('高级排障'),
         DesignGroup(
           children: [
-            DesignRow(
-              title: _openingLogs ? '正在打开日志目录…' : '打开日志目录',
-              subtitle: widget.onOpenLogDirectory == null
-                  ? (kIsWeb ? '浏览器无法打开本机目录' : '当前环境无法打开本机目录')
-                  : '查看当前实例日志',
-              onTap: widget.onOpenLogDirectory == null || _openingLogs
-                  ? null
-                  : _openLogs,
-            ),
+            if (controller.usesSystemdLogs)
+              DesignRow(
+                title: '查看后台日志',
+                subtitle: 'systemd 用户日志',
+                onTap: _showSystemdLogs,
+              )
+            else
+              DesignRow(
+                title: _openingLogs ? '正在打开日志目录…' : '打开日志目录',
+                subtitle: widget.onOpenLogDirectory == null
+                    ? (kIsWeb ? '浏览器无法打开本机目录' : '当前环境无法打开本机目录')
+                    : '查看当前实例日志',
+                onTap: widget.onOpenLogDirectory == null || _openingLogs
+                    ? null
+                    : _openLogs,
+              ),
             DesignRow(
               title: '重启核心',
               subtitle:

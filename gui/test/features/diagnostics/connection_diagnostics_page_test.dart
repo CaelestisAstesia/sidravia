@@ -9,8 +9,59 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/application/gui_controller.dart';
 import 'package:sidravia_gui/bootstrap/gui_bootstrap.dart';
 import 'package:sidravia_gui/features/diagnostics/connection_diagnostics_page.dart';
+import 'package:sidravia_gui/platform/installation/installation_manager.dart';
+
+class _ManagedLogs implements UserServiceManager {
+  @override
+  Future<UserServiceStatus> userService(String action) async =>
+      const UserServiceStatus(
+        available: true,
+        directory: '/fixture',
+        running: true,
+        enabled: true,
+        linger: false,
+        matchesInstallation: true,
+        recoveryPending: false,
+        canDiscardReplacement: false,
+        recoveryBlocked: false,
+        canDiscardDamaged: false,
+      );
+}
 
 void main() {
+  testWidgets('systemd diagnostics direct the user to the journal', (
+    tester,
+  ) async {
+    final controller = GuiController(
+      bootstrapper: const UnsupportedGuiBootstrapper(),
+    );
+    controller.bindUserService(_ManagedLogs());
+    await controller.refreshUserService();
+    var opened = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConnectionDiagnosticsPage(
+            controller: controller,
+            onBack: () {},
+            onOpenLogDirectory: () async {
+              opened = true;
+              return true;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('查看后台日志'));
+    await tester.tap(find.text('查看后台日志'));
+    await tester.pumpAndSettle();
+    expect(find.text('journalctl --user -u sidravia.service'), findsOneWidget);
+    expect(find.text('打开日志目录'), findsNothing);
+    expect(opened, isFalse);
+    controller.dispose();
+  });
+
   testWidgets('diagnostics show unavailable facts without inventing values', (
     tester,
   ) async {

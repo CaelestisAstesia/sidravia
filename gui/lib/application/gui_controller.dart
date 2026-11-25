@@ -295,6 +295,8 @@ class GuiController extends ChangeNotifier {
   String? _restoreConfiguration;
   String? get runningLogLevel => snapshot?.daemon.logLevel;
   bool _serviceManaged = false;
+  bool get usesSystemdLogs =>
+      _serviceManaged || _userServiceStatus?.canControl == true;
 
   bool get supportsCoreRestart =>
       !_serviceManaged && bootstrapper is GuiCoreRestarter;
