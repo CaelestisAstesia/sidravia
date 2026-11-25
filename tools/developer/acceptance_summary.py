@@ -54,6 +54,11 @@ def native(path, kind):
         result.update(status='failed' if counts['FAIL'] or counts['BLOCK'] else 'incomplete' if not counts or counts['SKIP'] or counts['MANUAL'] else 'passed',
                       checkpoint=report['Stage'], candidate_build=report['ExpectedBuildID'].lower(),
                       candidate_manifest_sha256=report['ManifestHash'].lower())
+        installer_hash = report.get('InstallerSHA256')
+        if installer_hash is not None:
+            if not isinstance(installer_hash, str) or not re.fullmatch('[a-fA-F0-9]{64}', installer_hash):
+                raise ValueError('invalid Windows installer hash')
+            result['installer_sha256'] = installer_hash.lower()
     else:
         required = {'linux-desktop': ('namespace', 'events', 'campusAuthentication', 'realAccountAutostart'),
                     'linux-announcement': ('nativeLog', 'realSchoolRequests', 'realAccountIntegration'),
@@ -66,6 +71,17 @@ def native(path, kind):
         result['source'] = {key: source[key] for key in ('commit', 'dirty', 'source_fingerprint') if key in source}
         result['facts']['source_unchanged'] = report['source_unchanged']
         result['status'] = 'passed' if report['passed'] else 'failed'
+        cleanup = report.get('cleanup')
+        if cleanup is not None:
+            if cleanup not in ('passed', 'failed') or cleanup == 'failed' and report['passed']:
+                raise ValueError('inconsistent native cleanup outcome')
+            result['facts']['cleanup'] = cleanup
+        if 'portableArchiveSHA256' in report:
+            digest = report['portableArchiveSHA256']
+            if not isinstance(digest, str) or not re.fullmatch('[a-fA-F0-9]{64}', digest):
+                raise ValueError('invalid portable archive hash')
+            result['portable_archive_sha256'] = digest.lower()
+
         # Preserve explicit fixture boundaries without dumping events/logs/paths.
         keys = ('campusAuthentication', 'realAccountAutostart', 'realSchoolRequests',
                 'realAccountIntegration', 'hostInstallation', 'campusTraffic',
@@ -110,8 +126,9 @@ def dimensions(result):
         row['candidate_build'] = result['candidate_build']
         row['candidate_manifest_sha256'] = result['candidate_manifest_sha256']
         row['checkpoint'] = result['checkpoint']
-    if 'rpm_sha256' in result:
-        row['rpm_sha256'] = result['rpm_sha256']
+    for key in ('rpm_sha256', 'portable_archive_sha256', 'installer_sha256'):
+        if key in result:
+            row[key] = result[key]
     if result.get('counts') is not None:
         counts = result['counts']
         row['execution']['stage_counts'] = counts
@@ -135,7 +152,7 @@ def dimensions(result):
         row['execution']['checks'] = result['checks']
         if result.get('limits'):
             row['limits'] = result['limits']
-        if kind != 'windows-field':
+        if kind != 'windows-field' and 'cleanup' not in facts:
             gaps.append('Final fixture/process cleanup is not recorded by this legacy receipt; passed may precede finally cleanup.')
         if kind == 'linux-rpm':
             gaps.append('Isolated RPM acceptance does not prove host installation, host plugins or desktop tray delivery.')
@@ -174,13 +191,13 @@ def combine(primary, attachments):
         or row['execution'].get('stage_status') == 'failed' or row.get('errors')
         or any(row.get(key) is False for key in ('source_unchanged', 'host_source_unchanged', 'guest_source_unchanged'))
         or row['evidence']['collection'] == 'incomplete'
-        or row['cleanup']['status'] == 'unknown' for row in receipts)
+        or row['cleanup']['status'] in ('unknown', 'failed') for row in receipts)
     incomplete = comparison == 'unknown' or any(
         row['execution']['reported_status'] != 'passed'
         or row['execution'].get('stage_status') == 'incomplete'
         or row.get('source_unchanged') is not True
         or row['evidence']['collection'] != 'collected'
-        or row['cleanup']['status'] != 'task_removed' for row in receipts)
+        or row['cleanup']['status'] not in ('task_removed', 'passed') for row in receipts)
     return {'receipts': receipts, 'source_comparison': comparison,
             'review_status': 'attention_required' if attention else 'incomplete' if incomplete else 'recorded_checks_only',
             'not_covered': ['Receipts are independent observations, not a merged acceptance PASS.',

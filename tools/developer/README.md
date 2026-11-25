@@ -413,10 +413,13 @@ declared font must also be present. Runtime data and license directories still
 follow Flutter/plugin contracts rather than an exhaustive product allowlist.
 Source identity is checked across compilation and consumption. Flutter 3.47 Linux
 forwards the compiled Dart build name but omits it from asset assembly; packaging
-stamps version.json and both producer/consumer check its actual version. The local receipt
-is `.local/linux-portable-package-result.json`. No installation, account autostart,
+stamps version.json and both producer/consumer check its actual version. For
+`--output <directory>`, the sibling `<directory>.producer/` retains `gui/`
+(the exact release request `guiDirectory`) and `receipt.json`. Keep this evidence
+with its candidate locally. Upload only the distribution assets. No installation, account autostart,
 release upload or signing is performed. Runtime requirements and movement rules
 are shipped in `data/linux-portable.md` from `docs/linux-portable.md`.
+Supplemental links in that copy point to the exact producer revision and need network access.
 
 After producing the archive, accept that exact clean-source package on the
 current KDE/Wayland desktop with:

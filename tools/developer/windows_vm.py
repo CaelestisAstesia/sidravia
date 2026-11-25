@@ -369,6 +369,8 @@ Unregister-ScheduledTask -TaskName {ps_quote(task)} -Confirm:$false}}
                     receipt.update(stages=collected['stages'], guest_duration_seconds=collected.get('duration_seconds'))
                     if not any(k in receipt for k in ('error', 'cleanup_error')):
                         receipt['status'] = 'interrupted' if collected['status'] == 'running' else collected['status']
+                        if receipt['status'] == 'passed' and receipt.get('task_result') != 0:
+                            receipt.update(status='failed', error='guest task exit code disagrees with the passed report')
                     total = 0
                     for row in receipt['stages']:
                         if row['status'] == 'running':

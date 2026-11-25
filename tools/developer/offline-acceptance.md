@@ -19,6 +19,7 @@
 ```powershell
 $sha = '替换为40位BuildID'
 $manifest = Join-Path $PWD 'candidate-manifest.json'
+$installer = Join-Path $PWD '<实际交付的 Setup EXE 文件名>'
 $target = Join-Path $env:LOCALAPPDATA ('Programs\Sidravia-Acceptance-' + $sha.Substring(0,8))
 $ns = 'accept-installed-' + $sha.Substring(0,8)
 $portable = Join-Path $PWD 'portable'
@@ -46,7 +47,7 @@ $evDelete = Join-Path $PWD 'evidence-delete'
 不需要另建用户、虚拟机或删除现有数据。先从托盘明确退出旧版及其后台，用户自己撤销旧PATH/自启（若有）；脚本不会代替你停止进程或修改集成。首个Before命令增加 `-KeepDataOnly`，后续Installed/AfterKeep自动继承该基线模式。
 
 ```powershell
-.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest -KeepDataOnly
+.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer -KeepDataOnly
 ```
 
 此模式允许已有默认数据，保存原文件路径/hash；安装后允许新增测试namespace，但原有文件不得改变。卸载后再次核对原有数据和整个卸载前数据清单。记录hash不等于备份，脚本也无法替你控制卸载器选项：卸载时必须选“不删除数据/否”。该基线拒绝AfterDelete；误选删除即使后续清理检查通过也会报告数据变化。
@@ -60,7 +61,7 @@ $evDelete = Join-Path $PWD 'evidence-delete'
 以下是无默认数据账户的严格模板；当前账户本轮已执行上面的KeepDataOnly Before，跳过此重复步骤。严格模板先退出所有 Sidravia 进程，再执行：
 
 ```powershell
-.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest
+.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer
 ```
 
 只在无 BLOCK 时手动运行候选安装 exe，安装目录明确填 `$target`。记录安装类型、GUI 组件、自启选择（GUI 或后台）、用户 PATH、桌面图标。建议完整 GUI，勾用户 PATH 和桌面图标，自启可以关闭；实际选择与 JSON 对照。安装器结束出现“系统集成未完成”即失败，不能仅凭文件存在判通过。
@@ -72,7 +73,7 @@ $evDelete = Join-Path $PWD 'evidence-delete'
 完成上面的窗口/托盘/缩放检查。GUI 仍运行时尝试卸载，应明确拒绝且程序文件仍在；不要强杀或删除文件来绕过。随后从托盘正常退出并等待后台退出。若仍有进程，停止并记录。此时可在安装目录手动新建无秘密的 `keep-me.txt`，观察未知文件保留；不要修改 payload。然后采集稳定的卸载前状态：
 
 ```powershell
-.\offline_acceptance.ps1 -Stage Installed -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest
+.\offline_acceptance.ps1 -Stage Installed -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer
 ```
 
 Installed 自动核对 BUILD-INFO BuildID。手工确认任务动作指向本安装、快捷方式目标正确、PATH 仅新增本安装目录（JSON 同时给出 Before/Current 的精确 token 序列，保留空项、重复项和顺序）。任务是否实际在下次登录运行、当前用户 PATH 是否在新终端生效均需人工，不由快照自动证明。真实登录自启通常运行默认 namespace；隔离 GUI 启动成功不能证明它安全，干净验收账户且不含真实配置才做这项。
@@ -80,34 +81,34 @@ Installed 自动核对 BUILD-INFO BuildID。手工确认任务动作指向本安
 手动卸载，删除数据问题选“否”。
 
 ```powershell
-.\offline_acceptance.ps1 -Stage AfterKeep -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest
+.\offline_acceptance.ps1 -Stage AfterKeep -Directory $target -Namespace $ns -EvidenceRoot $evKeep -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer
 ```
 
 预期程序 payload、注册项、任务和快捷方式移除；自动 Installed 按交付 candidate-manifest.json 核对完整 payload/hash，卸载后按同清单及实际观测的 uninsNNN 文件检查消失；清单 SHA256 固定在 Before，后续阶段不允许换清单；用户 PATH 与 Before 原文及注册值类型一致；namespace 文件与 Installed 相同。未知 keep-me.txt/未知目录和 namespace 数据应保留；安装目录非空不自动等于卸载失败。无观测数据时 KeepData 为 SKIP，不能说保留已证明。卸载后不要删除保留现场。
 
-## 第二轮：安装 → 删除默认白名单数据（本轮暂缓）
+## 第二轮：安装 → 完整清除测试数据
 
-**仅在干净测试用户做**。namespace 数据从来不属于删除对象。为本轮使用不同目标目录、namespace 和全新证据 root：
+**仅在干净测试用户做**。完整清除也会删除有效 namespace 内的受管文件。为本轮使用不同目标目录、namespace 和全新证据 root：
 
 ```powershell
 $target = $target + '-delete'
 $ns = $ns + '-delete'
-.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evDelete -ExpectedBuildID $sha -CandidateManifest $manifest
+.\offline_acceptance.ps1 -Stage Before -Directory $target -Namespace $ns -EvidenceRoot $evDelete -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer
 ```
 
-若第一轮留下默认数据/其他共享状态导致 BLOCK，换另一个干净 Windows 用户，不自动清理。重复安装与隔离 GUI 检查，退出所有实例。要证明默认数据删除，必须人工在此干净用户用默认实例创建**假测试数据**（无真实账号/凭据、不认证），然后退出；同时可以放一个不在白名单的无害测试文件，证明它保留。使用默认实例会写默认用户目录，这是此轮现场人工操作，辅助脚本不会替你做。没有观察到默认白名单文件，可以继续卸载但该证明只能 SKIP。
+若第一轮留下默认数据、任何 namespace 数据或其他共享状态导致 BLOCK，换另一个干净 Windows 用户，不自动清理。重复安装与隔离 GUI 检查，退出所有实例。要证明默认数据删除，必须人工在此干净用户用默认实例创建**假测试数据**（无真实账号/凭据、不认证），然后退出；同时可以放一个不在白名单的无害测试文件，证明它保留。使用默认实例会写默认用户目录，这是此轮现场人工操作，辅助脚本不会替你做。没有观察到默认白名单文件，可以继续卸载但该证明只能 SKIP。
 
 ```powershell
-.\offline_acceptance.ps1 -Stage Installed -Directory $target -Namespace $ns -EvidenceRoot $evDelete -ExpectedBuildID $sha -CandidateManifest $manifest
+.\offline_acceptance.ps1 -Stage Installed -Directory $target -Namespace $ns -EvidenceRoot $evDelete -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer
 ```
 
 手动卸载，删除数据问题选“是”，再执行：
 
 ```powershell
-.\offline_acceptance.ps1 -Stage AfterDelete -Directory $target -Namespace $ns -EvidenceRoot $evDelete -ExpectedBuildID $sha -CandidateManifest $manifest
+.\offline_acceptance.ps1 -Stage AfterDelete -Directory $target -Namespace $ns -EvidenceRoot $evDelete -ExpectedBuildID $sha -CandidateManifest $manifest -CandidateInstaller $installer
 ```
 
-自动比较 Installed 中观测到的默认白名单：`%APPDATA%\Sidravia\configurations.json`、`gui-settings.json`，`%LOCALAPPDATA%\Sidravia\runtime.json`，logs 中 sidraviad.log、sidraviad.log.1、sidraviad-YYYY-MM-DD-HHMMSS.log。它们应消失；其他文件和所有 namespace 文件应保留。检查器不生成默认配置、也不证明未观测文件曾被删除。SKIP/MANUAL 不是 PASS。
+完整清除后，检查器核对默认目录和有效 namespace 中的受管配置、运行记录、日志和事务临时文件已删除，未知文件仍保留。测试可同时在默认目录和隔离 namespace 留下无秘密的受管文件与未知文件。已有的受管公告 WebView 缓存也纳入检查。没有观察到受管文件时，删除项记为 SKIP。每个检查点都会记录安装器 EXE 和载荷清单的 SHA-256，阶段间禁止更换。
 
 ## 可选与未验项
 

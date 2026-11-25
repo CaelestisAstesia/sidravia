@@ -5,7 +5,7 @@ $scriptPath = Join-Path $PSScriptRoot 'offline_acceptance.ps1'
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'Parse failed.' }
-foreach ($name in @('Assert-SafePath','Inventory','Equal-Json','Same-Inventory','Payload-Mismatches','Existing-FilesMatch')) {
+foreach ($name in @('Result','Assert-SafePath','Inventory','Equal-Json','Same-Inventory','Payload-Mismatches','Existing-FilesMatch','Managed-DataFile','Managed-Namespace','Managed-RemovalFile')) {
     $node=$ast.Find({param($a) $a -is [Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq $name},$true)
     . ([scriptblock]::Create($node.Extent.Text))
 }
@@ -22,6 +22,7 @@ $keepOnly=$true; $Stage='AfterDelete'; $refused=$false
 try { . ([scriptblock]::Create($deleteGuard.Extent.Text)) } catch { $refused=$true }
 if (!$refused) { throw 'Keep-only baseline accepted deletion stage.' }
 $Stage='AfterKeep'; . ([scriptblock]::Create($deleteGuard.Extent.Text))
+$keepOnly=$false
 $root=Join-Path ([IO.Path]::GetTempPath()) ('sidravia-offline-test-'+[guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $root | Out-Null
@@ -33,16 +34,27 @@ try {
     $manifest=@([pscustomobject]@{Path=$file;SHA256=($first | Where-Object Kind -eq 'File').Hash})
     if (@(Payload-Mismatches $manifest $first).Count) { throw 'Valid payload rejected.' }
     if (@(Payload-Mismatches $manifest @()).Count -ne 1) { throw 'Missing payload accepted.' }
-    # Exercise the real namespace filtering statements with Windows paths,
-    # including a user name that itself contains a namespaces component.
+    # A distinct valid namespace must also block strict preflight.
     $config='C:\Users\namespaces\AppData\Roaming\Sidravia'
     $cache='C:\Users\namespaces\AppData\Local\Sidravia'
-    $data=@([pscustomobject]@{Path=($config+'\gui-settings.json')},[pscustomobject]@{Path=($config+'\namespaces\old\gui-settings.json')})
-    foreach ($variable in @('$namespaceParents','$default')) {
-        $node=$ast.Find({param($a) $a -is [Management.Automation.Language.AssignmentStatementAst] -and $a.Left.Extent.Text -eq $variable},$true)
-        . ([scriptblock]::Create($node.Extent.Text))
+    $data=@([pscustomobject]@{Path=($config+'\namespaces\old\gui-settings.json');Kind='File'})
+    $Stage='Before'; $ns=@()
+    $registration=@(); $tasks=@(); $shortcuts=@(); $target=@(); $processes=@()
+    $before=$ast.Find({param($a) $a -is [Management.Automation.Language.IfStatementAst] -and $a.Extent.Text.Contains("@('ExistingProductData',")},$true)
+    $beforeBody=$before.Clauses[0].Item2.Extent.Text
+    . ([scriptblock]::Create($beforeBody.Substring(1,$beforeBody.Length-2)))
+    if (!@($results | Where-Object { $_.Check -eq 'ExistingProductData' -and $_.Status -eq 'BLOCK' }).Count) { throw 'Strict preflight accepted another existing namespace.' }
+    foreach ($known in @("$config\configurations.json","$cache\logs\sidraviad.log",
+            "$config\namespaces\fixture\gui-settings.json","$config\namespaces\fixture\runtime.json",
+            "$cache\announcement-webview\ns-fixture\EBWebView\known.bin",
+            "$config\namespaces\fixture\.sidravia-migration-0123456789abcdef0123456789abcdef.json")) {
+        if (!(Managed-RemovalFile $known $config $cache)) { throw "Missed managed path: $known" }
     }
-    if ($default.Count -ne 1 -or $default[0].Path -cne ($config+'\gui-settings.json')) { throw 'Default data/namespace boundary mismatch.' }
+    foreach ($unknown in @("$config\namespaces\fixture\keep-me.txt","$config\namespaces\default\runtime.json",
+            "$config\namespaces\fixture\nested\gui-settings.json","$cache\announcement-webview\ns-fixture\unknown.txt",
+            "$config\gui-settings.json.4294967296.1.tmp")) {
+        if (Managed-RemovalFile $unknown $config $cache) { throw "Unknown file classified as managed: $unknown" }
+    }
     $other=Join-Path $root 'unknown.txt'; Set-Content -LiteralPath $other -Value 'keep'
     if (@(Payload-Mismatches $manifest @(Inventory $root)).Count) { throw 'Unknown file rejected.' }
     $unknownBefore=@(Inventory $other)

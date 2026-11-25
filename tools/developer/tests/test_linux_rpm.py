@@ -32,6 +32,7 @@ class RPMContracts(unittest.TestCase):
                 source = dict(commit='fixture', dirty=False, status='', source_fingerprint='fixture')
                 packages = [root / 'old.rpm', root / 'new.rpm']
                 for release, pkg in enumerate(packages, start=1):
+                    pkg.write_text(f'synthetic RPM {release}')
                     pkg.with_suffix('.rpm.json').write_text(json.dumps({
                         'kind': kind, 'version': '1.0.0', 'release': str(release), 'source': source,
                     }))
@@ -41,7 +42,7 @@ class RPMContracts(unittest.TestCase):
                 with (mock.patch.object(dev, 'ROOT', root),
                       mock.patch.object(dev.platform, 'system', return_value='Linux'),
                       mock.patch.object(dev, 'metadata', return_value=source) as metadata,
-                      mock.patch.object(linux_rpm, 'verify'),
+                      mock.patch.object(linux_rpm, 'verify') as verify,
                       mock.patch.object(dev.subprocess, 'check_output', return_value=probe_result) as probe,
                       mock.patch.object(dev.subprocess, 'run', return_value=mock.Mock(returncode=19)) as run):
                     self.assertEqual(dev.linux_command(args, env), 19)
@@ -58,7 +59,12 @@ class RPMContracts(unittest.TestCase):
                 else:
                     probe.assert_not_called()
                     self.assertNotIn('WAYLAND_DISPLAY', run.call_args.kwargs['env'])
-                self.assertEqual(argv[index + 1:], [*expected, str(root), *map(str, packages)])
+                self.assertEqual(argv[index + 1:-2], [*expected, str(root)])
+                staged = list(map(pathlib.Path, argv[-2:]))
+                self.assertEqual([p.name for p in staged], [p.name for p in packages])
+                self.assertEqual([call.args[0] for call in verify.call_args_list], staged)
+                self.assertTrue(all((root / '.local') in p.parents for p in staged))
+                self.assertTrue(all(not p.exists() for p in staged))
 
     def test_query_retains_empty_file_inventory_columns(self):
         with mock.patch.object(linux_rpm.subprocess, 'check_output', return_value='/usr/share/licenses/sidravia/LICENSE\t100644\tabc\t\n'):

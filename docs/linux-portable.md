@@ -38,7 +38,7 @@ tar -xf "$archive" -C "$HOME/Applications"
 
 无法启动时可用 `ldd ./gui-runtime/sidravia_gui` 查找缺失系统库。不要以 root 运行 GUI，也不要在不互信的账户间共用可写便携目录。仅解压或打开 GUI 不会登记自启。
 
-首次连接见[快速开始](quick-start.md)。核心包从 `./sidraviactl daemon start` 开始，后续配置与连接步骤见[命令行指南](advance.md)。
+首次连接时，打开「设置 → 连接配置」，选择机构，填写账号与密码，保存并连接。核心包先从包根运行 `./sidraviactl daemon start`，再使用 `./sidraviactl config create` 创建配置，并运行 `./sidraviactl auth start --config <配置 ID>`。详细选项见[快速开始](quick-start.md)和[命令行指南](advance.md)。随包说明中的扩展阅读链接需要联网。
 
 ## 数据与系统集成
 
@@ -103,5 +103,5 @@ GUI 包的名称含 `-linux-amd64-gui-portable`，仅核心包以 `-core-portabl
 确认已移除。账号数据与日志仍在原便携目录，由用户决定是否删除。
 
 如需降级，先取得并核对原发行的完整旧包，将它解压到独立目录。
-在旧包目录执行 `./sidraviactl integration service replace`，确认旧版报告的版本和运行状态。
+如果目标版本支持用户服务，从旧包目录执行 `./sidraviactl integration service replace`，再确认旧版的版本和运行状态。目标版本缺少用户服务命令时（例如 0.5.0-alpha.2），先从仍可用的当前安装运行 `./sidraviactl integration service unregister`，停止并解除当前托管，再通过旧包入口启动。
 各目录保留各自的数据。如果需要继续使用已有配置，请先确认旧版兼容，再自行选择要迁移的文件。

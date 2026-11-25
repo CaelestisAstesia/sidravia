@@ -229,6 +229,9 @@ def run(root, packages, receipts, environment, source, current_source, *, dart):
         wait_for(runtime.exists, 'installed GUI desktop daemon')
         events.append('installed-GUI-bootstrap')
 
+    result = {'passed': False, 'scenarioPassed': False, 'source': source, 'source_unchanged': False,
+              'events': events, 'rpmSHA256': [r['sha256'] for r in receipts],
+              'hostInstallation': False, 'campusTraffic': False}
     try:
         command(rpm + ['-ivh', str(packages[0])], 'rpm-install')
         installed = True
@@ -282,13 +285,11 @@ def run(root, packages, receipts, environment, source, current_source, *, dart):
             command([str(bystander / 'sidraviactl'), 'daemon', 'status'], 'independent-portable-survived')
             if not same_source(current_source(), source):
                 raise RuntimeError('source changed during core RPM acceptance')
-            result = {'passed': True, 'kind': 'core', 'source': source, 'source_unchanged': True,
+            result.update({'passed': True, 'scenarioPassed': True, 'kind': 'core', 'source': source, 'source_unchanged': True,
                       'events': events, 'rpmSHA256': [r['sha256'] for r in receipts],
                       'dependencyChecks': 'enabled against host inventory snapshot',
                       'hostInstallation': False, 'realAccountIntegration': False, 'campusTraffic': False,
-                      'signatures': 'unsigned local candidate; digest checks enabled'}
-            (owned / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
-            print('Core RPM isolated install/upgrade/erase PASS: ' + str(owned / 'result.json'))
+                      'signatures': 'unsigned local candidate; digest checks enabled'})
             return 0
         for cache in ('usr/share/applications/mimeinfo.cache', 'usr/share/icons/hicolor/icon-theme.cache'):
             if not (sysroot / cache).is_file():
@@ -384,18 +385,16 @@ def run(root, packages, receipts, environment, source, current_source, *, dart):
         command([str(bystander / 'sidraviactl'), 'daemon', 'status'], 'independent-portable-survived')
         if not same_source(current_source(), source):
             raise RuntimeError('source changed during RPM acceptance')
-        result = {'passed': True, 'source': source, 'source_unchanged': True, 'events': events,
+        result.update({'passed': True, 'scenarioPassed': True, 'source': source, 'source_unchanged': True, 'events': events,
                   'rpmSHA256': [r['sha256'] for r in receipts], 'dependencyChecks': 'enabled against read-only host inventory snapshot',
                   'hostInstallation': False, 'realAccountIntegration': False, 'campusTraffic': False,
                   'rpmPlugins': 'disabled in user namespace; host SELinux/inhibit plugins not accepted',
                   'signatures': 'unsigned local candidate; all digest checks enabled',
                   'isolation': 'private root/RPM DB, shared private user+PID namespace, private session bus, host libraries read-only',
-                  'trayAcceptance': 'private bus has no KDE tray host; lifecycle and Wayland window only'}
-        (owned / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
-        print('RPM isolated install/upgrade/erase PASS: ' + str(owned / 'result.json'))
+                  'trayAcceptance': 'private bus has no KDE tray host; lifecycle and Wayland window only'})
         return 0
     finally:
-        try:
+        def stop_gui():
             if gui_pidfd is not None:
                 with contextlib.suppress(ProcessLookupError): signal.pidfd_send_signal(gui_pidfd, signal.SIGCONT)
             if gui is not None and gui.poll() is None:
@@ -407,18 +406,35 @@ def run(root, packages, receipts, environment, source, current_source, *, dart):
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(gui.pid, signal.SIGKILL)
                     gui.wait(timeout=5)
-            # GUI death triggers the owned daemon's bounded owner observation.
+
+        def stop_core():
             if core and runtime.exists():
                 command(sandbox() + ['/usr/bin/sidraviactl', 'daemon', 'stop'], 'core-finally-stop')
-            if runtime.exists():
-                wait_for(lambda: not runtime.exists(), 'failed fixture owner cleanup')
-            if installed:
-                command(rpm + ['-e', package_name], 'rpm-finally-erase')
-        finally:
+
+        def stop_bystander():
             if bystander_runtime is not None and bystander_runtime.exists():
                 command([str(bystander / 'sidraviactl'), 'daemon', 'stop'], 'independent-portable-stop')
-            if gui_pidfd is not None:
-                os.close(gui_pidfd)
+
+        try:
+            with contextlib.ExitStack() as cleanup:
+                if gui_pidfd is not None:
+                    cleanup.callback(os.close, gui_pidfd)
+                cleanup.callback(stop_bystander)
+                if installed:
+                    cleanup.callback(command, rpm + ['-e', package_name], 'rpm-finally-erase')
+                cleanup.callback(wait_for, lambda: not runtime.exists(), 'failed fixture owner cleanup')
+                cleanup.callback(stop_core)
+                cleanup.callback(stop_gui)
+        except BaseException:
+            result.update(cleanup="failed", passed=False)
+            raise
+        else:
+            result["cleanup"] = "passed"
+        finally:
+            receipt_path = owned / "result.json"
+            receipt_path.write_text(json.dumps(result, indent=2) + "\n")
+            if result["passed"]:
+                print(f"RPM isolated install/upgrade/erase PASS: {receipt_path}")
 
 
 if __name__ == '__main__':

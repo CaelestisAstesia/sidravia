@@ -102,13 +102,16 @@ jobs:
         env:
           CORE_TARGET: ${{ matrix.target }}
         run: |
-          python tools/developer/dev.py package --target "$CORE_TARGET" --version "$BUILD_VERSION" --output dist
+          go run -mod=readonly ./tools/build --version "$BUILD_VERSION" --build-id "$BUILD_ID" --artifact distribution --target "$CORE_TARGET" --output dist --go go
           python tools/developer/verify_distribution.py --directory dist --target "$CORE_TARGET" --version "$BUILD_VERSION" --build-id "$BUILD_ID" --go go > verification.json
       - name: Summarize verified candidate
         shell: bash
         run: |
           printf '\n```json\n' >> "$GITHUB_STEP_SUMMARY"
           cat verification.json >> "$GITHUB_STEP_SUMMARY"
+          if test -f core-verification.json; then
+            cat core-verification.json >> "$GITHUB_STEP_SUMMARY"
+          fi
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:

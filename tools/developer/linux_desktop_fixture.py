@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 import signal
+import shutil
 import socket
 import struct
 import subprocess
@@ -102,7 +103,7 @@ class DesktopEntryChild:
         os.kill(self.pid, signal.SIGKILL)
 
 
-def run(root, flutter, environment, source_before, source_metadata, portable_archive=None):
+def run(root, flutter, environment, source_before, source_metadata, portable_archive=None, *, expected_sha256=None):
     from gi.repository import Gio, GLib
     owned = Path(tempfile.mkdtemp(prefix="linux-desktop-fixture-", dir=root / ".local"))
     namespace = "linux-gui-test-" + uuid.uuid4().hex[:12]
@@ -114,7 +115,8 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         env[key] = str(owned / folder)
         (owned / folder).mkdir()
     business = env.get("SIDRAVIA_GUI_BUSINESS_FIXTURE") == "1"
-    business_port, close_business = business_peer() if business else (9, lambda: None)
+    if business and portable_archive is not None:
+        raise ValueError("business integration tests source, not a portable archive")
     home = owned / 'home'
     home.mkdir()
     env['HOME'] = str(home)
@@ -122,17 +124,27 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
     env['PUB_CACHE'] = environment.get('PUB_CACHE', str(Path(environment['HOME']) / '.pub-cache'))
     state = Path(env["XDG_CONFIG_HOME"]) / "Sidravia" / "namespaces" / namespace
     package_root = None
+    archive_sha256 = None
     if portable_archive is not None:
         # Input has already passed the distribution consumer; still reject links
         # and traversal at extraction. Keep this fixture under the project.
         extracted = owned / 'extracted with spaces'
         extracted.mkdir()
-        with tarfile.open(portable_archive, 'r:*') as archive:
-            archive.extractall(extracted, filter='data')
+        with tempfile.TemporaryFile(dir=owned) as snapshot:
+            with portable_archive.open('rb') as incoming:
+                shutil.copyfileobj(incoming, snapshot)
+            snapshot.seek(0)
+            archive_sha256 = hashlib.file_digest(snapshot, 'sha256').hexdigest()
+            if archive_sha256 != expected_sha256:
+                raise ValueError('package does not match the verified producer receipt')
+            snapshot.seek(0)
+            with tarfile.open(fileobj=snapshot, mode='r:*') as archive:
+                archive.extractall(extracted, filter='data')
         package_root, = extracted.iterdir()
         if not (package_root / 'sidravia.portable').is_file():
             raise RuntimeError('missing portable marker')
         state = package_root / 'namespaces' / namespace
+    business_port, close_business = business_peer() if business else (9, lambda: None)
     profiles = state / "institution-profiles"
     profiles.mkdir(parents=True)
     # Use the public protocol shape, replace every network endpoint before use.
@@ -254,6 +266,12 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         if not launched or len(children)!=1: raise RuntimeError('owned XDG desktop launch failed')
         return DesktopEntryChild(children[0])
 
+    receipt = {"source": source_before, "source_unchanged": False, "scenarioPassed": False, "passed": False,
+               "namespace": namespace, "events": events, "campusAuthentication": False,
+               "realAccountAutostart": False, "wayland": env.get("WAYLAND_DISPLAY"),
+               "portableArchive": str(portable_archive) if portable_archive else None}
+    if archive_sha256 is not None:
+        receipt["portableArchiveSHA256"] = archive_sha256
     try:
         if business:
             command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_business_test.dart"], "business-real-chain")
@@ -262,9 +280,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             unchanged = all(source_before[key] == source_after[key] for key in ("commit", "status", "source_fingerprint"))
             if not unchanged:
                 raise RuntimeError("source changed during business verification")
-            receipt = {"source": source_before, "source_unchanged": True, "passed": True, "namespace": namespace, "events": events, "campusAuthentication": False, "realAccountAutostart": False}
-            (owned / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
-            print(f"Linux business fixture PASS: {owned / 'result.json'}")
+            receipt.update(source_unchanged=True, scenarioPassed=True, passed=True)
             return 0
         if portable_archive is None:
             command([flutter, "test", "--no-pub", "-d", "linux", "integration_test/linux_desktop_test.dart"], "production-main-integration")
@@ -409,28 +425,53 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         unchanged = all(source_before[key] == source_after[key] for key in ("commit", "status", "source_fingerprint"))
         if not unchanged:
             raise RuntimeError("source changed during native verification; rerun with stable source")
-        receipt = {"waylandProtocolEvidence": protocol_evidence, "source": source_before, "source_unchanged": unchanged, "passed": True, "namespace": namespace, "events": events, "wayland": env.get("WAYLAND_DISPLAY"), "campusAuthentication": False, "realAccountAutostart": False, "portableArchive": str(portable_archive) if portable_archive else None}
-        (owned / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
-        print(f"Linux native fixture PASS: {owned / 'result.json'}")
+        receipt.update(waylandProtocolEvidence=protocol_evidence, source_unchanged=True, scenarioPassed=True, passed=True)
         return 0
     finally:
-        if gui is not None and gui.poll() is None:
-            gui.terminate()
-            try:
-                gui.wait(timeout=5)
-            except (subprocess.TimeoutExpired, RuntimeError):
-                gui.kill()
-                gui.wait(timeout=5)
-        if headless_attempted and runtime.exists():
-            with (owned / 'headless-finally-stop.log').open('w') as log:
-                subprocess.run([str(binary.parent/'sidraviactl'),'daemon','stop'],env=env,stdout=log,stderr=subprocess.STDOUT,timeout=15,check=False)
-        if portable_archive is not None and 'driver' in locals():
-            for operation in ('autostart-disable','path-disable'):
-                with (owned / (operation+'-finally.log')).open('w') as log:
-                    subprocess.run([dart,'run','tool/linux_portable_fixture.dart',operation,str(runtime)],cwd=root/'gui',env=env,stdout=log,stderr=subprocess.STDOUT,timeout=30,check=False)
-        wait_for(lambda: not runtime.exists(), "fixture owner cleanup", timeout=10)
-        close_business()
-        server.shutdown()
-        worker.join(timeout=3)
-        server.server_close()
-        # Retain synthetic files and logs as evidence, never clean by directory name.
+        def stop_gui():
+            if gui is not None and gui.poll() is None:
+                gui.terminate()
+                try:
+                    gui.wait(timeout=5)
+                except (subprocess.TimeoutExpired, RuntimeError):
+                    gui.kill()
+                    gui.wait(timeout=5)
+
+        def stop_headless():
+            if headless_attempted and runtime.exists():
+                with (owned / 'headless-finally-stop.log').open('w') as log:
+                    subprocess.run([str(binary.parent/'sidraviactl'),'daemon','stop'],env=env,stdout=log,stderr=subprocess.STDOUT,timeout=15,check=True)
+
+        def clear_registration(operation):
+            with (owned / (operation+'-finally.log')).open('w') as log:
+                subprocess.run([dart,'run','tool/linux_portable_fixture.dart',operation,str(runtime)],cwd=root/'gui',env=env,stdout=log,stderr=subprocess.STDOUT,timeout=30,check=True)
+
+        def join_server():
+            worker.join(timeout=3)
+            if worker.is_alive():
+                raise RuntimeError("fixture server did not finish")
+
+        try:
+            # Callbacks run in reverse order; every independent resource
+            # still gets a cleanup attempt when an earlier callback fails.
+            with contextlib.ExitStack() as cleanup:
+                cleanup.callback(server.server_close)
+                cleanup.callback(join_server)
+                cleanup.callback(server.shutdown)
+                cleanup.callback(close_business)
+                cleanup.callback(wait_for, lambda: not runtime.exists(), "fixture owner cleanup", timeout=10)
+                if portable_archive is not None and 'driver' in locals():
+                    cleanup.callback(clear_registration, 'path-disable')
+                    cleanup.callback(clear_registration, 'autostart-disable')
+                cleanup.callback(stop_headless)
+                cleanup.callback(stop_gui)
+        except BaseException:
+            receipt.update(cleanup="failed", passed=False)
+            raise
+        else:
+            receipt["cleanup"] = "passed"
+        finally:
+            receipt_path = owned / "result.json"
+            receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
+            if receipt["passed"]:
+                print(f"Linux native fixture PASS: {receipt_path}")

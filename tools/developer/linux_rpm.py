@@ -28,7 +28,8 @@ def maintenance_scripts(root):
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    with path.open('rb') as payload:
+        return hashlib.file_digest(payload, 'sha256').hexdigest()
 
 
 def same_source(before, after):
@@ -121,8 +122,10 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
         portable = verify_distribution.verify(archive.parent, root, 'linux-amd64', version, source['commit'], go=go)
         portable['source'] = source
     else:
-        portable = json.loads((root / '.local/linux-portable-package-result.json').read_text())
-    if not same_source(portable['source'], source) or portable['artifactHashes'].get(archive.name) != digest(archive):
+        from linux_development import read_portable_receipt
+        portable = read_portable_receipt(archive)
+    expected_archive_hash = portable['artifactHashes'].get(archive.name)
+    if not same_source(portable['source'], source) or expected_archive_hash is None:
         raise ValueError('RPM input must be the exact clean-source verified portable')
     version = portable['version']
     rpmver = rpm_version(version)
@@ -133,7 +136,12 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
         for name in ('SOURCES', 'SPECS', 'BUILD', 'BUILDROOT', 'RPMS', 'SRPMS'):
             (top / name).mkdir()
         extracted = top / 'input'
-        with tarfile.open(archive) as tar:
+        staged_archive = top / archive.name
+        shutil.copyfile(archive, staged_archive)
+        archive_hash = digest(staged_archive)
+        if archive_hash != expected_archive_hash:
+            raise ValueError('RPM input must be the exact clean-source verified portable')
+        with tarfile.open(staged_archive) as tar:
             # The producer hash is checked first; still reject links and traversal.
             if any(not (m.isfile() or m.isdir()) or m.name.startswith('/') or '..' in Path(m.name).parts for m in tar):
                 raise ValueError('unsafe portable RPM input')
@@ -192,7 +200,7 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
         subprocess.run(['rpmbuild', '-bb', '--define', '_topdir ' + str(top), str(specpath)], env=env, check=True)
         package, = (top / 'RPMS/x86_64').glob('*.rpm')
         receipt = {'version': version, 'release': release, 'source': source, 'source_unchanged': True,
-                   'portableSHA256': digest(archive), 'sha256': digest(package), 'files': files,
+                   'portableSHA256': archive_hash, 'sha256': digest(package), 'files': files,
                    'package': package.name, 'unsigned': True, 'maintenanceScripts': scripts}
         receipt['kind'] = 'core' if core else 'gui'
         receipt['requires'] = verify(package, receipt)
@@ -213,7 +221,6 @@ def accept(root, packages, env, source, *, go, flutter):
     for package, receipt in zip(packages, receipts):
         if not same_source(receipt['source'], source):
             raise ValueError('RPM acceptance requires its exact clean producer source')
-        verify(package, receipt)
     if receipts[0]['version'] != receipts[1]['version'] or int(receipts[0]['release']) >= int(receipts[1]['release']):
         raise ValueError('acceptance requires the same product version and increasing packaging revisions')
     core = receipts[0].get('kind') == 'core'
@@ -230,6 +237,15 @@ def accept(root, packages, env, source, *, go, flutter):
     local.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='linux-rpm-session-', dir=local) as tmp:
         session = Path(tmp)
+        verified_packages = []
+        for index, (package, receipt) in enumerate(zip(packages, receipts, strict=True)):
+            directory = session / f'package-{index}'
+            directory.mkdir()
+            staged = directory / package.name
+            shutil.copyfile(package, staged)
+            verify(staged, receipt)
+            Path(str(staged) + '.json').write_text(json.dumps(receipt))
+            verified_packages.append(staged)
         runtime = session / 'runtime'
         runtime.mkdir(mode=0o700)
         config = session / 'bus.conf'
@@ -247,5 +263,5 @@ def accept(root, packages, env, source, *, go, flutter):
             str(root / 'tools/developer/linux_rpm_fixture.py'), '--go', go]
         if dart is not None:
             command.extend(['--dart', str(dart)])
-        command.extend([str(root), *map(str, packages)])
+        command.extend([str(root), *map(str, verified_packages)])
         return subprocess.run(command, env=child_env, check=False).returncode

@@ -7,6 +7,7 @@ param(
     [Parameter(Mandatory=$true)][string]$EvidenceRoot,
     [Parameter(Mandatory=$true)][ValidatePattern('^[a-fA-F0-9]{40}$')][string]$ExpectedBuildID,
     [Parameter(Mandatory=$true)][string]$CandidateManifest,
+    [Parameter(Mandatory=$true)][string]$CandidateInstaller,
     [switch]$KeepDataOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -56,6 +57,46 @@ function Equal-Json($A,$B) { (ConvertTo-Json -Depth 20 -Compress -InputObject $A
 function Same-Inventory($A,$B) {
     Equal-Json @($A | Sort-Object Path | Select-Object Path,Kind,Hash,Length) @($B | Sort-Object Path | Select-Object Path,Kind,Hash,Length)
 }
+function Managed-DataFile([string]$Path,[string]$Config,[string]$Cache) {
+    $name = [IO.Path]::GetFileName($Path)
+    $parent = [IO.Path]::GetDirectoryName($Path)
+    $logRoot = Join-Path $Cache 'logs'
+    if ($parent -ieq $Config) {
+        if ($name -in @('configurations.json','gui-settings.json')) { return $true }
+        if ($name -cmatch '^\.sidravia-(?:gui-)?migration-[a-f0-9]{32}\.json$|^\.sidravia-upgrade-[a-f0-9]{32}\.txt$') { return $true }
+        if ($name -cmatch '^gui-settings\.json\.([1-9][0-9]{0,9})\.(0|[1-9][0-9]{0,9})\.tmp$') {
+            return [uint64]$Matches[1] -le [uint32]::MaxValue -and [uint64]$Matches[2] -le [uint32]::MaxValue
+        }
+    }
+    if ($parent -ieq $Cache -and $name -ieq 'runtime.json') { return $true }
+    if ($parent -ieq $logRoot -and $name -cmatch '^sidraviad(?:\.log(?:\.1)?|-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.log)$') { return $true }
+    return $parent -in @($Config,$Cache,$logRoot) -and $name -cmatch '^\.sidravia-[a-f0-9]{32}\.tmp$'
+}
+function Managed-Namespace([string]$Name) {
+    $Name -match '^[a-z0-9._-]{1,64}$' -and !$Name.StartsWith('.') -and !$Name.EndsWith('.') -and
+        !$Name.Contains('..') -and $Name -notin @('production','default','prod')
+}
+function Managed-RemovalFile([string]$Path,[string]$Config,[string]$Cache) {
+    if (Managed-DataFile $Path $Config $Cache) { return $true }
+    $nsPrefix = (Join-Path $Config 'namespaces') + '\'
+    if ($Path.StartsWith($nsPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+        $name = $Path.Substring($nsPrefix.Length).Split('\')[0]
+        if (Managed-Namespace $name) {
+            $root = Join-Path $nsPrefix $name
+            return (Managed-DataFile $Path $root $root)
+        }
+    }
+    $cachePrefix = (Join-Path $Cache 'announcement-webview') + '\'
+    if ($Path.StartsWith($cachePrefix,[StringComparison]::OrdinalIgnoreCase)) {
+        $segments = $Path.Substring($cachePrefix.Length).Split('\')
+        if ($segments.Count -ge 3 -and $segments[1] -ceq 'EBWebView') {
+            $identity = $segments[0]
+            return $identity -ceq 'production' -or ($identity.StartsWith('ns-',[StringComparison]::Ordinal) -and
+                $identity -ceq $identity.ToLowerInvariant() -and (Managed-Namespace $identity.Substring(3)))
+        }
+    }
+    return $false
+}
 function Existing-FilesMatch($Before,$After) {
     $priorFiles = @($Before | Where-Object Kind -eq 'File')
     $priorPaths = @($priorFiles | ForEach-Object Path)
@@ -74,6 +115,9 @@ foreach ($p in @($config,$cache)) {
     if ($EvidenceRoot -eq $p -or $EvidenceRoot.StartsWith($p+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Evidence must be outside product data.' }
 }
 Assert-SafePath $CandidateManifest
+Assert-SafePath $CandidateInstaller
+if (![IO.Path]::GetExtension($CandidateInstaller).Equals('.exe',[StringComparison]::OrdinalIgnoreCase)) { throw 'Candidate installer must be an EXE.' }
+$installerHash = (Get-FileHash -LiteralPath $CandidateInstaller -Algorithm SHA256).Hash
 $manifestHash = (Get-FileHash -LiteralPath $CandidateManifest -Algorithm SHA256).Hash
 $manifest = Get-Content -Raw -LiteralPath $CandidateManifest | ConvertFrom-Json
 if ($manifest.Schema -ne 1 -or $manifest.BuildID -cne $ExpectedBuildID -or @($manifest.Payload).Count -eq 0) { throw 'Invalid candidate manifest.' }
@@ -93,7 +137,7 @@ if ($Stage -eq 'Before') {
     New-Item -ItemType Directory -Path $EvidenceRoot | Out-Null
 } else {
     $baseline = Get-Content -Raw -LiteralPath (Join-Path $EvidenceRoot 'Before.json') | ConvertFrom-Json
-    if ($baseline.Directory -ine $Directory -or $baseline.Namespace -cne $Namespace -or $baseline.ExpectedBuildID -cne $ExpectedBuildID -or $baseline.ManifestHash -cne $manifestHash -or $baseline.User -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Baseline directory/namespace/user mismatch.' }
+    if ($baseline.Directory -ine $Directory -or $baseline.Namespace -cne $Namespace -or $baseline.ExpectedBuildID -cne $ExpectedBuildID -or $baseline.ManifestHash -cne $manifestHash -or $baseline.InstallerSHA256 -cne $installerHash -or $baseline.User -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Baseline directory/namespace/user mismatch.' }
     if (@($baseline.Results | Where-Object Status -eq 'BLOCK').Count) { throw 'Baseline was blocked; use a clean Windows account and a new evidence root.' }
     $keepOnly = $null -ne $baseline.PSObject.Properties['KeepDataOnly'] -and [bool]$baseline.KeepDataOnly
     if ($KeepDataOnly -and !$keepOnly) { throw 'Keep-only mode must be selected in a new Before checkpoint.' }
@@ -124,14 +168,9 @@ $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { 
 $target = @(Inventory $Directory)
 $data = @(); foreach ($p in @($config,$cache) | Select-Object -Unique) { $data += @(Inventory $p) }
 $ns = @($data | Where-Object { $_.Path -ieq $nsRoot -or $_.Path.StartsWith($nsRoot+'\',[StringComparison]::OrdinalIgnoreCase) })
-$namespaceParents = @((Join-Path $config 'namespaces'),(Join-Path $cache 'namespaces'))
-$default = @($data | Where-Object {
-    $itemPath = $_.Path
-    @($namespaceParents | Where-Object { $itemPath -ieq $_ -or $itemPath.StartsWith($_+'\',[StringComparison]::OrdinalIgnoreCase) }).Count -eq 0
-})
 if ($Stage -eq 'Before') {
-    foreach ($pair in @(@('AppId',$registration.Count),@('SharedTask',$tasks.Count),@('Shortcuts',$shortcuts.Count),@('Target',$target.Count),@('DefaultData',@($default | Where-Object Kind -eq 'File').Count),@('Namespace',$ns.Count),@('ProductProcesses',$processes.Count))) {
-        if ($pair[0] -eq 'DefaultData' -and $keepOnly) { Result 'DefaultData' 'PASS' 'Existing data recorded as protected baseline. Uninstall must keep data; deletion stage is prohibited.' }
+    foreach ($pair in @(@('AppId',$registration.Count),@('SharedTask',$tasks.Count),@('Shortcuts',$shortcuts.Count),@('Target',$target.Count),@('ExistingProductData',@($data | Where-Object Kind -eq 'File').Count),@('Namespace',$ns.Count),@('ProductProcesses',$processes.Count))) {
+        if ($pair[0] -eq 'ExistingProductData' -and $keepOnly) { Result 'DefaultData' 'PASS' 'Existing data recorded as protected baseline. Uninstall must keep data; deletion stage is prohibited.' }
         elseif ($pair[1] -gt 0) { Result $pair[0] 'BLOCK' 'Existing state: stop and resolve the conflict; never migrate or delete automatically.' } else { Result $pair[0] 'PASS' 'Absent.' }
     }
 } elseif ($Stage -eq 'Installed') {
@@ -157,7 +196,7 @@ if ($Stage -eq 'Before') {
     $installedPath = Join-Path $EvidenceRoot 'Installed.json'
     if (!(Test-Path -LiteralPath $installedPath)) { throw 'Installed evidence required for uninstall comparison.' }
     $installed = Get-Content -Raw -LiteralPath $installedPath | ConvertFrom-Json
-    if ($installed.Schema -ne 1 -or $installed.Stage -cne 'Installed' -or $installed.Directory -ine $Directory -or $installed.Namespace -cne $Namespace -or $installed.ExpectedBuildID -cne $ExpectedBuildID -or $installed.ManifestHash -cne $manifestHash -or $installed.User -cne $baseline.User) {
+    if ($installed.Schema -ne 1 -or $installed.Stage -cne 'Installed' -or $installed.Directory -ine $Directory -or $installed.Namespace -cne $Namespace -or $installed.ExpectedBuildID -cne $ExpectedBuildID -or $installed.ManifestHash -cne $manifestHash -or $installed.InstallerSHA256 -cne $installerHash -or $installed.User -cne $baseline.User) {
         throw 'Installed checkpoint identity/manifest mismatch.'
     }
     if ($keepOnly -and (!(Existing-FilesMatch @($baseline.Data) @($installed.Data)) -or !(Existing-FilesMatch @($baseline.Data) $data))) {
@@ -173,7 +212,6 @@ if ($Stage -eq 'Before') {
     $remaining = @($owned | Where-Object { Test-Path -LiteralPath $_.Path })
     if ($remaining.Count) { Result 'ProgramResidue' 'FAIL' 'Installed payload files remain; inspect Target inventory.' } else { Result 'ProgramResidue' 'PASS' 'Manifest payload and observed installer uninstaller files absent; unknown user files may remain.' }
 
-    if (@($installed.NamespaceData | Where-Object Kind -eq 'File').Count -eq 0) { Result 'NamespacePreserved' 'SKIP' 'No namespace files observed before uninstall.' } elseif (!(Same-Inventory @($installed.NamespaceData) $ns)) { Result 'NamespacePreserved' 'FAIL' 'Namespace changed since Installed.' } else { Result 'NamespacePreserved' 'PASS' 'Namespace inventory retained (expected for both uninstall choices).' }
     $ownedPaths = @($owned | ForEach-Object Path)
     $unknownBefore = @($installed.Target | Where-Object { $_.Kind -eq 'File' -and $_.Path -notin $ownedPaths })
     $unknownNow = @($target | Where-Object { $_.Kind -eq 'File' -and $_.Path -notin $ownedPaths })
@@ -181,19 +219,22 @@ if ($Stage -eq 'Before') {
     if ($Stage -eq 'AfterKeep') {
         if (!(Same-Inventory @($installed.Data) $data)) { Result 'KeepData' 'FAIL' 'Data inventory changed since Installed.' } elseif (@($installed.Data | Where-Object Kind -eq 'File').Count -eq 0) { Result 'KeepData' 'SKIP' 'No data files observed before uninstall; retention not proved.' } else { Result 'KeepData' 'PASS' 'Observed data files unchanged.' }
     } else {
-        $allowed = @((Join-Path $config 'configurations.json'),(Join-Path $config 'gui-settings.json'),(Join-Path $cache 'runtime.json'))
-        $logRoot = Join-Path $cache 'logs'
-        $victims = @($installed.Data | Where-Object { $_.Kind -eq 'File' -and ($_.Path -in $allowed -or ([IO.Path]::GetDirectoryName($_.Path) -ieq $logRoot -and [IO.Path]::GetFileName($_.Path) -match '^sidraviad(?:\.log(?:\.1)?|-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.log)$')) })
-        if ($victims.Count -eq 0) { Result 'DeleteDefaultData' 'SKIP' 'No default whitelist files observed; deletion not proved.' } elseif (@($victims | Where-Object { Test-Path -LiteralPath $_.Path }).Count) { Result 'DeleteDefaultData' 'FAIL' 'Observed whitelist files remain.' } else { Result 'DeleteDefaultData' 'PASS' 'Observed whitelist files removed.' }
-        $protected = @($installed.Data | Where-Object { $_.Kind -eq 'File' -and $_.Path -notin @($victims | ForEach-Object Path) })
-        $nowProtected = @($data | Where-Object { $_.Kind -eq 'File' -and $_.Path -notin @($victims | ForEach-Object Path) })
-        if (!(Same-Inventory $protected $nowProtected)) { Result 'NonWhitelistPreserved' 'FAIL' 'Unrelated/namespace files changed.' } elseif ($protected.Count -eq 0) { Result 'NonWhitelistPreserved' 'SKIP' 'No protected files observed.' } else { Result 'NonWhitelistPreserved' 'PASS' 'Observed non-whitelist files unchanged.' }
+        $victims = @($installed.Data | Where-Object { $_.Kind -eq 'File' -and (Managed-RemovalFile $_.Path $config $cache) })
+        $nowVictims = @($data | Where-Object { $_.Kind -eq 'File' -and (Managed-RemovalFile $_.Path $config $cache) })
+        if ($nowVictims.Count) { Result 'DeleteManagedData' 'FAIL' 'Managed files remain.' }
+        elseif (!$victims.Count) { Result 'DeleteManagedData' 'SKIP' 'No managed files observed before uninstall.' }
+        else { Result 'DeleteManagedData' 'PASS' 'Observed managed files removed.' }
+        $protected = @($installed.Data | Where-Object { $_.Kind -eq 'File' -and !(Managed-RemovalFile $_.Path $config $cache) })
+        $nowProtected = @($data | Where-Object { $_.Kind -eq 'File' -and !(Managed-RemovalFile $_.Path $config $cache) })
+        if (!(Same-Inventory $protected $nowProtected)) { Result 'NonWhitelistPreserved' 'FAIL' 'Unrelated file inventory changed.' }
+        elseif (!$protected.Count) { Result 'NonWhitelistPreserved' 'SKIP' 'No unrelated files observed.' }
+        else { Result 'NonWhitelistPreserved' 'PASS' 'Unrelated files unchanged.' }
     }
 }
 # Exact token sequence delta, retaining duplicates and empty PATH elements.
 $beforeTokens = @(); if ($null -ne $baseline -and $baseline.PathExists) { $beforeTokens = @(([string]$baseline.UserPath).Split(';')) }
 $tokens = @(); if ($pathExists) { $tokens = @($path.Split(';')) }
-$snapshot = [ordered]@{Schema=1;ExpectedBuildID=$ExpectedBuildID;ManifestHash=$manifestHash;Stage=$Stage;KeepDataOnly=$keepOnly;Time=(Get-Date).ToString('o');User=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Directory=$Directory;Namespace=$Namespace;PathExists=$pathExists;UserPath=$path;PathKind=$pathKind;BeforePathTokens=$beforeTokens;CurrentPathTokens=$tokens;Registration=$registration;Tasks=$tasks;Shortcuts=$shortcuts;Processes=$processes;Target=$target;Data=$data;NamespaceData=$ns;Results=$results.ToArray()}
+$snapshot = [ordered]@{Schema=1;ExpectedBuildID=$ExpectedBuildID;ManifestHash=$manifestHash;InstallerSHA256=$installerHash;Stage=$Stage;KeepDataOnly=$keepOnly;Time=(Get-Date).ToString('o');User=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Directory=$Directory;Namespace=$Namespace;PathExists=$pathExists;UserPath=$path;PathKind=$pathKind;BeforePathTokens=$beforeTokens;CurrentPathTokens=$tokens;Registration=$registration;Tasks=$tasks;Shortcuts=$shortcuts;Processes=$processes;Target=$target;Data=$data;NamespaceData=$ns;Results=$results.ToArray()}
 $snapshot | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $out -Encoding UTF8
 $results | Format-Table -AutoSize
 Write-Host "Evidence: $out (contains file names/hashes and user PATH; review before sharing)"
