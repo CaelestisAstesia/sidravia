@@ -257,7 +257,7 @@ def parse_args(argv=None):
         if command == "vm":
             sub.add_argument("--request", required=True, help="schema-1 JSON command sequence")
             sub.add_argument("--uri", default="qemu:///session")
-            sub.add_argument("--domain", default="windows11-sidravia")
+            sub.add_argument("--domain", required=True, help="exact authorized Windows VM domain")
             sub.add_argument("--native-update-fixtures", action="store_true", help="isolated Windows update acceptance with scoped breakaway and process cleanup")
             sub.add_argument("--guest-root", required=True, help="dedicated owned directory below the test user's profile")
             sub.add_argument("--guest-user", required=True, help="existing logged-in Windows user (no password)")

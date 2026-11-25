@@ -154,7 +154,7 @@ class TranscriptTests(unittest.TestCase):
         mismatch = align_transcripts(client, reversed_server)[0]
         self.assertEqual(
             (mismatch.record_type, mismatch.index, mismatch.field_path),
-            ("decision", 0, "outcome"),
+            ("decision", 0, "operation"),
         )
 
     def test_endpoint_objects_and_arrays_normalize_and_ignore_only_client_port(self):
@@ -220,6 +220,7 @@ class TranscriptTests(unittest.TestCase):
     def test_decision_fields_are_strict_outside_explicit_mapping(self):
         client, server = success_decisions("login")
         changes = {
+            "operation": "challenge",
             "outcome": "failure",
             "wire_error_code": 3,
             "drop_reason": "wrong_password",
@@ -243,6 +244,7 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(align_transcripts([client], [server]), [])
 
         invalid_servers = (
+            dict(server, operation="challenge"),
             dict(server, drop_reason=None),
             dict(server, drop_reason=""),
             dict(server, wire_error_code=3),

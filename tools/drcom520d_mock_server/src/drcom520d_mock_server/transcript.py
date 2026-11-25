@@ -425,6 +425,10 @@ def _compare_decision(
         invalid = _validate_record("decision", index, label, row, side, other)
         if invalid is not None:
             return invalid
+    if client["operation"] != server["operation"]:
+        return _field_mismatch(
+            "decision", index, "operation", client, server,
+            client["operation"], server["operation"])
     if _is_drop_timeout_mapping(client, server):
         return []
     for field_path in ("outcome", "wire_error_code", "drop_reason"):

@@ -20,7 +20,9 @@ Requires(preun): /usr/bin/python3
 %description
 Sidravia command-line client, daemon and institution profiles without a GUI.
 Updates are managed by RPM. Package maintenance stops only this installation,
-never enables autostart or starts user processes, and preserves user data.
+preserves user data and never enables autostart. First installation starts no
+user processes. An upgrade can restore a running registered user service
+stopped by the same transaction.
 This package and the full sidravia desktop package cannot be installed together.
 
 %install

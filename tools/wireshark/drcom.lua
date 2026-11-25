@@ -4,6 +4,9 @@
 local drcom = Proto("drcom", "Dr.COM")
 local f = {}
 
+drcom.prefs.client_ipv4 = Pref.string("Client IPv4", "", "Observed client IPv4 for captures using UDP 61440 at both endpoints")
+drcom.prefs.server_ipv4 = Pref.string("Server IPv4", "", "Observed server IPv4 for captures using UDP 61440 at both endpoints")
+
 f.schema_version = ProtoField.uint8("drcom.schema_version", "Schema version", base.DEC)
 f.opcode = ProtoField.uint8("drcom.opcode", "Opcode", base.HEX)
 f.packet_kind = ProtoField.string("drcom.packet_kind", "Packet kind")
@@ -540,6 +543,18 @@ function drcom.dissector(tvb, pinfo, tree)
         state.direction = "client_to_server"
     elseif source_port == 61440 and destination_port ~= 61440 then
         state.direction = "server_to_client"
+    elseif source_port == 61440 and destination_port == 61440 then
+        local client = drcom.prefs.client_ipv4
+        local server = drcom.prefs.server_ipv4
+        local source = tostring(pinfo.net_src)
+        local destination = tostring(pinfo.net_dst)
+        if client ~= "" and server ~= "" and client ~= server then
+            if source == client and destination == server then
+                state.direction = "client_to_server"
+            elseif source == server and destination == client then
+                state.direction = "server_to_client"
+            end
+        end
     end
 
     if state.captured_length < state.reported_length then

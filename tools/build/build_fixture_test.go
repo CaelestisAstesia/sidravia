@@ -25,7 +25,7 @@ const (
 	testCLISmokeScript  = "# cli-smoke.ps1\n"
 	testInstallScript   = "\xEF\xBB\xBF# install.ps1\n"
 	testUninstallScript = "\xEF\xBB\xBF# uninstall.ps1\n"
-	testGettingStarted  = "# Sidravia package guide\n"
+	testGettingStarted  = "# Sidravia package guide\n[More commands](advance.md)\n"
 )
 
 // testProfileJSON is a representative non-secret institution Profile the fake

@@ -89,7 +89,6 @@ function Get-SanitizedHarnessError {
         'package_checksum_mismatch',
         'temporary_parent_is_reparse_point',
         'sandbox_path_escape',
-        'stale_cleanup_required',
         'preexisting_daemon',
         'conflicting_integration_mode',
         'integration_consent_unavailable'
@@ -415,14 +414,14 @@ function Test-OwnedSandbox {
     param([string]$Path)
     if (-not $Path -or -not (Test-PathUnderRoot -Path $Path -Root $TempParent)) { return $false }
     $leaf = Split-Path -Leaf $Path
-    if ($leaf -notmatch '^SidraviaField-([0-9a-f]{32})$') { return $false }
+    if (-not $script:SandboxNonce -or $leaf -cne ('SidraviaField-' + $script:SandboxNonce)) { return $false }
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if ($null -eq $item -or -not $item.PSIsContainer) { return $false }
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
     $marker = Join-Path $Path $MarkerName
     if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $false }
     $value = [IO.File]::ReadAllText($marker).Trim()
-    return $value -eq ($MarkerPrefix + $Matches[1])
+    return $value -ceq ($MarkerPrefix + $script:SandboxNonce)
 }
 
 function Remove-OwnedSandbox {
@@ -471,26 +470,6 @@ function Remove-OwnedSandbox {
         Start-Sleep -Milliseconds 500
     }
     return $false
-}
-
-function Remove-StaleSandboxes {
-    if (-not (Test-Path -LiteralPath $TempParent)) { return $true }
-    $ok = $true
-    foreach ($directory in (Get-ChildItem -LiteralPath $TempParent -Directory -Force -ErrorAction SilentlyContinue)) {
-        if (-not (Test-OwnedSandbox -Path $directory.FullName)) { continue }
-        $staleCli = Join-Path $directory.FullName 'sidraviactl.exe'
-        if (Test-Path -LiteralPath $staleCli -PathType Leaf) {
-            try {
-                $stop = Invoke-CapturedProcess -FilePath $staleCli -Arguments @('daemon', 'stop') -StdinValue $null
-                if ($stop.ExitCode -ne 0) { $ok = $false; continue }
-            } catch {
-                $ok = $false
-                continue
-            }
-        }
-        if (-not (Remove-OwnedSandbox -Path $directory.FullName)) { $ok = $false }
-    }
-    return $ok
 }
 
 function Resolve-ReportDirectory {
@@ -1232,12 +1211,6 @@ try {
         throw $_.Exception.Message
     }
 
-    if (-not (Remove-StaleSandboxes)) {
-        Add-Check -ID 'preflight.stale_cleanup' -Status BLOCKED -ReasonCode 'stale_cleanup_required' -Category cleanup
-        throw 'stale_cleanup_required'
-    }
-    Add-Check -ID 'preflight.stale_cleanup' -Status PASS -ReasonCode 'no_owned_stale_state' -Category cleanup
-
     if (@(Get-Process -Name 'sidraviad' -ErrorAction SilentlyContinue).Count -gt 0) {
         Add-Check -ID 'preflight.daemon' -Status BLOCKED -ReasonCode 'preexisting_daemon' -Category windows_native
         throw 'preexisting_daemon'
@@ -1295,7 +1268,6 @@ $script:StatusLabels = @{
 $script:CheckLabels = @{
     'preflight.package' = '验证测试包'
     'preflight.release_host' = '解析正式发行脚本宿主'
-    'preflight.stale_cleanup' = '检查并清理测试残留'
     'preflight.daemon' = '检查既有后台服务'
     'preflight.sandbox' = '创建一次性便携沙箱'
     'local.cli_surface' = '完整 CLI 命令面'
@@ -1332,8 +1304,6 @@ $script:ReasonLabels = @{
     'release_powershell_resolved' = '已解析并验证系统 Windows PowerShell 5.1'
     'release_powershell_not_found' = '未找到系统 Windows PowerShell 5.1'
     'release_powershell_unavailable' = '无法解析正式发行脚本宿主'
-    'no_owned_stale_state' = '不存在测试器拥有的残留状态'
-    'stale_cleanup_required' = '残留状态无法安全清理，需要人工检查'
     'no_preexisting_daemon' = '运行前不存在 Sidravia 后台服务'
     'preexisting_daemon' = '检测到运行前已存在的 Sidravia 后台服务'
     'owned_portable_sandbox' = '已创建并标记测试器拥有的便携沙箱'

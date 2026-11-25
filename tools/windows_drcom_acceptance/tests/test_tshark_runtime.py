@@ -14,7 +14,7 @@ from sidravia_drcom_acceptance.pcap_fixture import (
 
 
 def find_tshark():
-    resolved = shutil.which("tshark.exe")
+    resolved = shutil.which("tshark.exe") or shutil.which("tshark")
     if resolved:
         return resolved
     for variable in ("ProgramFiles", "ProgramFiles(x86)"):
@@ -30,7 +30,7 @@ TSHARK = find_tshark()
 
 
 class TsharkRuntimeTests(unittest.TestCase):
-    @unittest.skipUnless(TSHARK, "tshark.exe is not installed")
+    @unittest.skipUnless(TSHARK, "tshark is not installed")
     def test_real_tshark_loads_lua_for_valid_unknown_malformed_and_truncated(self):
         client = Endpoint("192.0.2.10", 49152)
         server = Endpoint("192.0.2.20", 61440)
@@ -93,7 +93,40 @@ class TsharkRuntimeTests(unittest.TestCase):
             self.assertIn("drcom", layers)
             self.assertIn("drcom.schema_version", layers["drcom"])
 
-    @unittest.skipUnless(TSHARK, "tshark.exe is not installed")
+    @unittest.skipUnless(TSHARK, "tshark is not installed")
+    def test_same_port_direction_requires_both_observed_endpoints(self):
+        client = Endpoint("192.0.2.10", 61440)
+        server = Endpoint("192.0.2.20", 61440)
+        other = Endpoint("192.0.2.30", 61440)
+        request = bytes.fromhex("0102341209") + b"\0" * 15
+        response = bytes.fromhex("02003412") + b"\0" * 4
+        pcap = build_ethernet_ipv4_udp_pcap((
+            FixtureDatagram(client, server, request),
+            FixtureDatagram(server, client, response),
+            FixtureDatagram(other, server, request),
+        ))
+        lua = Path(__file__).resolve().parents[2] / "wireshark" / "drcom.lua"
+        with tempfile.TemporaryDirectory(prefix="sidravia-tshark-same-port-") as directory:
+            capture = Path(directory) / "synthetic.pcap"
+            capture.write_bytes(pcap)
+            command = (
+                TSHARK, "-n", "-r", str(capture), "-X", f"lua_script:{lua}",
+                "-T", "fields", "-e", "drcom.direction",
+            )
+            for options, expected in (
+                ((), ["unknown", "unknown", "unknown"]),
+                (("-o", "drcom.server_ipv4:192.0.2.20"), ["unknown", "unknown", "unknown"]),
+                (("-o", "drcom.client_ipv4:192.0.2.10", "-o", "drcom.server_ipv4:192.0.2.20"),
+                 ["client_to_server", "server_to_client", "unknown"]),
+            ):
+                with self.subTest(options=options):
+                    result = subprocess.run(
+                        command + options, capture_output=True, text=True, timeout=20,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), expected, result.stderr)
+
+    @unittest.skipUnless(TSHARK, "tshark is not installed")
     def test_real_tshark_executes_all_jlu_branches_and_legacy_classifiers(self):
         client = Endpoint("192.0.2.10", 49152)
         server = Endpoint("192.0.2.20", 61440)

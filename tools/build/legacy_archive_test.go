@@ -43,6 +43,23 @@ func TestShippedGuideHasOrderedFirstUseJourney(t *testing.T) {
 	}
 }
 
+func TestLegacyPortableGuidePreservesLocalRecoveryAndPinsSupplementalLinks(t *testing.T) {
+	guide := []byte("[恢复](#恢复)\n[命令](advance.md#更新检查与下载)\n[已有版本](https://example.invalid/guide.md)\n")
+	commit := strings.Repeat("a", 40)
+	for _, tc := range []struct{ buildID, ref string }{
+		{commit, commit}, {"local-build", "v0.6.0-alpha.1"},
+	} {
+		t.Run(tc.ref, func(t *testing.T) {
+			got := string(legacyPortableGuide(guide, "0.6.0-alpha.1", tc.buildID))
+			want := "[恢复](#恢复)\n[命令](https://github.com/CaelestisAstesia/sidravia/blob/" + tc.ref +
+				"/docs/advance.md#更新检查与下载)\n[已有版本](https://example.invalid/guide.md)\n"
+			if got != want {
+				t.Fatalf("packaged guide = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func portableName(version string) string {
 	return artifactFileName(version, "release")
 }
@@ -158,8 +175,9 @@ func TestZipManifest(t *testing.T) {
 		if string(contents["LICENSE"]) != "LICENSE TEXT\n" {
 			t.Errorf("%s: LICENSE wrong", tc.artifact)
 		}
-		if string(contents["GETTING-STARTED.md"]) != testGettingStarted {
-			t.Errorf("%s: GETTING-STARTED.md must equal docs/guide.md", tc.artifact)
+		wantGuide := "# Sidravia package guide\n[More commands](https://github.com/CaelestisAstesia/sidravia/blob/v" + version + "/docs/advance.md)\n"
+		if got := string(contents["GETTING-STARTED.md"]); got != wantGuide {
+			t.Errorf("%s: GETTING-STARTED.md = %q, want %q", tc.artifact, got, wantGuide)
 		}
 		if string(contents["institution-profiles/jlu.json"]) != testProfileJSON {
 			t.Errorf("%s: profile wrong", tc.artifact)

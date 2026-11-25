@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 )
 
@@ -109,6 +110,21 @@ func artifactFileName(version, artifact string) string {
 	return name + ".zip"
 }
 
+var (
+	legacyGuideSiblingLink = regexp.MustCompile(`\]\(([a-z0-9-]+\.md(?:#[^\s)]+)?)\)`)
+	legacyGuideCommit      = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+)
+
+func legacyPortableGuide(guide []byte, version, buildID string) []byte {
+	ref := "v" + version
+	if legacyGuideCommit.MatchString(buildID) {
+		ref = buildID
+	}
+	// The legacy archive includes the guide but not its sibling pages.
+	origin := "https://github.com/CaelestisAstesia/sidravia/blob/" + ref + "/docs/"
+	return legacyGuideSiblingLink.ReplaceAll(guide, []byte("]("+origin+"${1})"))
+}
+
 // writeArtifacts builds one selected portable zip and SHA256SUMS.txt in staging.
 func writeArtifacts(repoRoot, staging, version, buildID, artifact string, profiles []archiveEntry, cliBytes, daemonBytes []byte) error {
 	zipName := artifactFileName(version, artifact)
@@ -145,7 +161,8 @@ func writeArtifacts(repoRoot, staging, version, buildID, artifact string, profil
 	internalSums := []byte(sha256Hex(cliBytes) + "  sidraviactl.exe\n" +
 		sha256Hex(daemonBytes) + "  sidraviad.exe\n")
 
-	entries := assembleEntries(artifact, license, gettingStarted, profiles, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
+	guide := legacyPortableGuide(gettingStarted, version, buildID)
+	entries := assembleEntries(artifact, license, guide, profiles, fieldTestScript, cliSmokeScript, installScript, uninstallScript, internalSums, cliBytes, daemonBytes, version, buildID)
 	if err := writeZip(filepath.Join(staging, zipName), entries); err != nil {
 		return fmt.Errorf("write %s: %w", zipName, err)
 	}

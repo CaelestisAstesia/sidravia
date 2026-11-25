@@ -25,8 +25,10 @@ Requires(preun): /usr/bin/python3
 %description
 Sidravia Flutter desktop client with the shared CTL, daemon and read-only
 institution profiles. Authentication state remains owned by the per-user
-daemon. Package maintenance quiesces only this installation with pidfds. It
-never enables autostart or starts user processes and preserves user data.
+daemon. Package maintenance quiesces only this installation with pidfds,
+preserves user data and never enables autostart. First installation starts no
+user processes. An upgrade can restore a running registered user service
+stopped by the same transaction.
 
 %install
 mkdir -p %{buildroot}

@@ -32,6 +32,29 @@ function Get-ExtractedFunction {
 
 . ([scriptblock]::Create((Get-ExtractedFunction -Name 'Get-SanitizedHarnessError')))
 . ([scriptblock]::Create((Get-ExtractedFunction -Name 'Resolve-IntegrationMode')))
+. ([scriptblock]::Create((Get-ExtractedFunction -Name 'Test-PathUnderRoot')))
+. ([scriptblock]::Create((Get-ExtractedFunction -Name 'Test-OwnedSandbox')))
+. ([scriptblock]::Create((Get-ExtractedFunction -Name 'Remove-OwnedSandbox')))
+
+$TempParent = Join-Path ([IO.Path]::GetTempPath()) ('SidraviaOwnershipContract-' + [guid]::NewGuid().ToString('N'))
+$MarkerName = '.sidravia-field-validation'
+$MarkerPrefix = 'sidravia-field-validation-v1:'
+$script:SandboxNonce = [guid]::NewGuid().ToString('N')
+$otherNonce = [guid]::NewGuid().ToString('N')
+$ownSandbox = Join-Path $TempParent ('SidraviaField-' + $script:SandboxNonce)
+$otherSandbox = Join-Path $TempParent ('SidraviaField-' + $otherNonce)
+try {
+    $null = New-Item -ItemType Directory -Path $TempParent, $ownSandbox, $otherSandbox
+    [IO.File]::WriteAllText((Join-Path $ownSandbox $MarkerName), $MarkerPrefix + $script:SandboxNonce)
+    $otherMarker = Join-Path $otherSandbox $MarkerName
+    [IO.File]::WriteAllText($otherMarker, $MarkerPrefix + $otherNonce)
+    Assert-True (-not (Remove-OwnedSandbox -Path $otherSandbox)) 'another run must not be removed'
+    Assert-True (Remove-OwnedSandbox -Path $ownSandbox) 'this run must be cleaned'
+    Assert-True (-not (Test-Path -LiteralPath $ownSandbox)) 'this run directory should be gone'
+    Assert-Equal ([IO.File]::ReadAllText($otherMarker)) ($MarkerPrefix + $otherNonce) 'another run marker should survive'
+} finally {
+    if (Test-Path -LiteralPath $TempParent) { Remove-Item -LiteralPath $TempParent -Recurse -Force }
+}
 
 $script:PromptCalls = 0
 function script:Read-Host {
