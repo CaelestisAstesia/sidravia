@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 	"strconv"
 	"strings"
 )
@@ -29,7 +30,11 @@ func renderDaemonStatus(p *presentation, result *contract.StatusResult) string {
 	b.WriteString(p.label("模式："))
 	b.WriteString(sanitizeDynamicText(result.Mode))
 	b.WriteString("\n")
-	b.WriteString("日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n")
+	if result.Mode == string(launchcontract.ModeSystemd) {
+		b.WriteString("日志：运行 journalctl --user -u sidravia.service 查看后台日志。\n")
+	} else {
+		b.WriteString("日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n")
+	}
 	return b.String()
 }
 

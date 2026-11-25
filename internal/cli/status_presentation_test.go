@@ -97,19 +97,25 @@ func TestDaemonStatusLineContract(t *testing.T) {
 }
 
 func TestDaemonStatusIncludesLogLocationGuidance(t *testing.T) {
-	var buf bytes.Buffer
-	p := newTestPresentation(&buf, termenv.Ascii)
-	defer p.close()
-	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: "headless"}))
-	wantStatus := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42 | 模式：headless\n"
-	wantLog := "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
-	if got := buf.String(); got != wantStatus+wantLog {
-		t.Fatalf("daemon status guidance = %q, want %q", got, wantStatus+wantLog)
-	}
-	for _, private := range []string{"ws://", "runtime.json", "AppData", "/home/", "endpoint"} {
-		if strings.Contains(buf.String(), private) {
-			t.Errorf("daemon status leaked private implementation text %q: %q", private, buf.String())
-		}
+	for _, tc := range []struct{ mode, wantLog string }{
+		{"desktop", "日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"},
+		{"systemd", "日志：运行 journalctl --user -u sidravia.service 查看后台日志。\n"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			var buf bytes.Buffer
+			p := newTestPresentation(&buf, termenv.Ascii)
+			defer p.close()
+			_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: tc.mode}))
+			wantStatus := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42 | 模式：" + tc.mode + "\n"
+			if got := buf.String(); got != wantStatus+tc.wantLog {
+				t.Fatalf("daemon status guidance = %q, want %q", got, wantStatus+tc.wantLog)
+			}
+			for _, private := range []string{"ws://", "runtime.json", "AppData", "/home/", "endpoint"} {
+				if strings.Contains(buf.String(), private) {
+					t.Errorf("daemon status leaked private implementation text %q: %q", private, buf.String())
+				}
+			}
+		})
 	}
 }
 
