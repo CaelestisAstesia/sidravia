@@ -1,4 +1,4 @@
-"""Embedded in RPM scriptlets; never imports product code or reads user data."""
+"""Shared Linux package maintenance and RPM-specific transaction callbacks."""
 import fcntl
 import os
 import pwd
@@ -12,6 +12,12 @@ import time
 APP = Path('/usr/lib64/sidravia')
 GATE = Path('/run/sidravia/rpm.lock')
 NAMES = ('sidravia_gui', 'sidraviad', 'sidraviactl', 'sidraviaupdater')
+MANAGER = 'rpm'
+
+
+def marker_matches(suffix=''):
+    marker = APP / f'sidravia.{MANAGER}{suffix}'
+    return marker.is_file() and marker.read_text() == f'sidravia-{MANAGER}{suffix}-v1\n'
 
 
 def identity(path):
@@ -28,7 +34,7 @@ def alive(fd):
 def targets():
     if not APP.exists():
         return []
-    if (APP / 'sidravia.rpm').read_text() != 'sidravia-rpm-v1\n':
+    if not marker_matches():
         raise RuntimeError('installed package identity unavailable')
     directory = identity(APP)
     paths = [APP / name for name in NAMES]
@@ -42,9 +48,8 @@ def targets():
         except FileNotFoundError:
             # Old RPMs carried the portable updater. New RPMs omit it, while
             # every present process still has to match its exact old inode.
-            core_marker = APP / 'sidravia.rpm-core'
             if path.name != 'sidraviaupdater' and not (path.name == 'sidravia_gui'
-                    and core_marker.is_file() and core_marker.read_text() == 'sidravia-rpm-core-v1\n'):
+                    and marker_matches('-core')):
                 raise
     found = []
     try:
@@ -52,12 +57,10 @@ def targets():
             if not proc.name.isdigit():
                 continue
             fd = None
-            candidate = False
             try:
                 exe = os.readlink(proc / 'exe').removesuffix(' (deleted)')
                 if exe not in candidate_paths:
                     continue
-                candidate = True
                 # Another mount/root may have the same pathname. Match the
                 # installation directory and executable object, never the name.
                 if identity(proc / 'root' / APP.relative_to('/')) != directory:
@@ -121,7 +124,7 @@ def wait_for_service_ipc(uid):
         if observed.get('ActiveState') in ('inactive', 'failed'):
             return False
         if observed.get('ActiveState') == 'active' and pid.isdigit() and int(pid) > 0 and invocation:
-            probe = account_command(uid, [str(APP / 'sidraviactl'), 'rpm-user-service-ready', pid],
+            probe = account_command(uid, [str(APP / 'sidraviactl'), f'{MANAGER}-user-service-ready', pid],
                                     2, stdout=subprocess.DEVNULL)
             if probe.returncode == 0 and state() == observed:
                 return True
@@ -129,7 +132,16 @@ def wait_for_service_ipc(uid):
     return False
 
 
-def stop_managed_daemons(stopped, leases):
+def service_registration(uid):
+    return Path(pwd.getpwuid(uid).pw_dir) / '.config/systemd/user/sidravia.service'
+
+
+def service_uses_installation(values, expected):
+    return (values.get('FragmentPath') == str(expected)
+            and values.get('ExecStart', '').startswith(f'{{ path={APP / "sidraviad"} ;'))
+
+
+def stop_managed_daemons(stopped, leases, before_stop=None):
     entries = targets()
     try:
         for name, fd in entries:
@@ -145,8 +157,7 @@ def stop_managed_daemons(stopped, leases):
             uid = proc.stat().st_uid
             if uid == 0:
                 raise RuntimeError('invalid Sidravia user service owner')
-            home = Path(pwd.getpwuid(uid).pw_dir)
-            expected = home / '.config/systemd/user/sidravia.service'
+            expected = service_registration(uid)
             lease = os.open(expected.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
             try:
                 info = os.fstat(lease)
@@ -160,12 +171,13 @@ def stop_managed_daemons(stopped, leases):
             observed = user_service(uid, 'show', '-p', 'MainPID,FragmentPath,DropInPaths,ExecStart')
             values = dict(line.split('=', 1) for line in observed.splitlines())
             if (values.get('MainPID') != str(pid)
-                    or values.get('FragmentPath') != str(expected)
-                    or not values.get('ExecStart', '').startswith('{ path=/usr/lib64/sidravia/sidraviad ;')
+                    or not service_uses_installation(values, expected)
                     or any(Path(path).parent != Path('/usr/lib/systemd/user/service.d')
                            for path in values.get('DropInPaths', '').split())
                     or not alive(fd)):
                 raise RuntimeError('could not establish registered service ownership')
+            if before_stop is not None:
+                before_stop(uid, expected)
             user_service(uid, 'stop')
             stopped.append(uid)
             if alive(fd):
@@ -180,6 +192,17 @@ def stop_managed_daemons(stopped, leases):
     finally:
         for _, fd in entries:
             os.close(fd)
+
+
+def start_and_probe_user_service(uid):
+    try:
+        user_service(uid, 'start')
+    except RuntimeError:
+        if user_service(uid, 'show', '-p', 'Result', '--value') != 'start-limit-hit':
+            raise
+        user_service(uid, 'reset-failed')
+        user_service(uid, 'start')
+    return wait_for_service_ipc(uid)
 
 
 def resume_verified_package(uids):
@@ -198,22 +221,12 @@ def resume_verified_package(uids):
         return
     for uid in uids:
         try:
-            home = Path(pwd.getpwuid(uid).pw_dir)
-            expected = home / '.config/systemd/user/sidravia.service'
             observed = user_service(uid, 'show', '-p', 'ExecStart,FragmentPath')
             values = dict(line.split('=', 1) for line in observed.splitlines())
-            if (values.get('FragmentPath') != str(expected)
-                    or not values.get('ExecStart', '').startswith('{ path=/usr/lib64/sidravia/sidraviad ;')):
+            if not service_uses_installation(values, service_registration(uid)):
                 report_user_failure(uid, 'recovery skipped because the registration changed')
                 continue
-            try:
-                user_service(uid, 'start')
-            except RuntimeError:
-                if user_service(uid, 'show', '-p', 'Result', '--value') != 'start-limit-hit':
-                    raise
-                user_service(uid, 'reset-failed')
-                user_service(uid, 'start')
-            if not wait_for_service_ipc(uid):
+            if not start_and_probe_user_service(uid):
                 report_user_failure(uid, 'user service did not reach IPC readiness after the package transaction')
         except (RuntimeError, OSError, subprocess.SubprocessError):
             report_user_failure(uid, 'could not restore or verify the user service after the package transaction')
@@ -233,7 +246,7 @@ def cleanup_erased_registration(binary):
             break
         try:
             result = subprocess.run(
-                [f'/proc/self/fd/{binary}', 'rpm-erase-user-registration'],
+                [f'/proc/self/fd/{binary}', f'{MANAGER}-erase-user-registration'],
                 user=account.pw_uid, group=account.pw_gid, extra_groups=[],
                 cwd='/', pass_fds=(binary,), timeout=remaining,
                 env={'HOME': account.pw_dir, 'PATH': '/usr/bin', 'LC_ALL': 'C',
@@ -251,7 +264,7 @@ def report_erase_failure(uid):
 
 def report_user_failure(uid, reason):
     try:
-        subprocess.run(['/usr/bin/logger', '-t', 'sidravia-rpm',
+        subprocess.run(['/usr/bin/logger', '-t', 'sidravia-' + MANAGER,
                         f'Sidravia UID {uid}: {reason}'],
                        timeout=2, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -278,8 +291,7 @@ def stop_group(gui, timeout):
 
 
 def require_cooperative_installation():
-    capability = APP / 'sidravia.rpm-lifecycle'
-    if capability.exists() and capability.read_text() == 'sidravia-rpm-lifecycle-v1\n':
+    if marker_matches('-lifecycle'):
         return
     entries = targets()
     for _, fd in entries:

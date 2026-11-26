@@ -1,0 +1,30 @@
+Source: sidravia
+Section: net
+Priority: optional
+Maintainer: Sidravia maintainers <CaelestisAstesia@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13), desktop-file-utils <!pkg.sidravia.core-only>
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/CaelestisAstesia/Sidravia
+
+Package: sidravia
+Architecture: amd64 arm64
+Build-Profiles: <!pkg.sidravia.core-only>
+Pre-Depends: python3 (>= 3.11)
+Depends: ${shlibs:Depends}, ${misc:Depends}, ca-certificates, hicolor-icon-theme, xdg-utils
+Conflicts: sidravia-core
+Description: Campus network authentication desktop client
+ Flutter desktop client, command line tools, per-user daemon, and read-only
+ institution profiles. A user can optionally register a systemd user service.
+ Install and update this package through APT or dpkg.
+
+Package: sidravia-core
+Architecture: amd64 arm64
+Build-Profiles: <!pkg.sidravia.gui-only>
+Pre-Depends: python3 (>= 3.11)
+Depends: ${shlibs:Depends}, ${misc:Depends}, ca-certificates
+Conflicts: sidravia
+Description: Campus network authentication command line client and daemon
+ Command line tools, per-user daemon, and read-only institution profiles.
+ A user can optionally register a systemd user service.
+ Install and update this package through APT or dpkg.

@@ -1,0 +1,25 @@
+#!/usr/bin/make -f
+
+package = $(shell dh_listpackages)
+stage = debian/$(package)
+
+%:
+	dh $@
+
+# The native producer assembles the pinned Flutter bundle and verified Go
+# payload before dpkg-buildpackage. Keep the reviewed payload bytes intact.
+override_dh_auto_configure override_dh_auto_build override_dh_auto_test:
+override_dh_dwz override_dh_strip:
+
+override_dh_auto_install:
+	test "$(words $(package))" = 1
+	mkdir -p "$(stage)"
+	cp -a payload/. "$(stage)/"
+	if [ "$(package)" = sidravia ]; then desktop-file-validate "$(stage)/usr/share/applications/io.github.CaelestisAstesia.Sidravia.desktop"; fi
+
+override_dh_shlibdeps:
+	if [ "$(package)" = sidravia ]; then \
+		dh_shlibdeps -l"$(stage)/usr/lib/sidravia/gui-runtime/lib"; \
+	else \
+		dh_shlibdeps; \
+	fi
