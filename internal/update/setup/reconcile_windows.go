@@ -5,14 +5,13 @@ package setup
 import (
 	"context"
 	"errors"
-	"os"
+	"sidravia/internal/update/setup/internal/receiptstate"
 	"time"
 
-	"sidravia/internal/launchcontract"
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 func Reconcile(ctx context.Context, layout productlayout.Layout, version, build, id string) error {
@@ -20,18 +19,18 @@ func Reconcile(ctx context.Context, layout productlayout.Layout, version, build,
 	if e != nil {
 		return e
 	}
-	s, e := ReadSession(ctx, layout.ExecutableDirectory, id)
+	s, e := receiptstate.Read(ctx, layout.ExecutableDirectory, id)
 	if e != nil {
 		return e
 	}
 	if s.Source != r.Source {
 		return ErrInvalid
 	}
-	for _, owner := range []ProcessID{s.Finalizer, s.Coordinator, s.Updater} {
+	for _, owner := range []receiptstate.ProcessID{s.Finalizer, s.Coordinator, s.Updater} {
 		if owner.PID == 0 {
 			continue
 		}
-		running, e := windowsplatform.GenerationRunning(owner.PID, owner.Created)
+		running, e := winproc.GenerationRunning(owner.PID, owner.Created)
 		if e != nil {
 			return e
 		}
@@ -108,30 +107,4 @@ func Reconcile(ctx context.Context, layout productlayout.Layout, version, build,
 		return removeSeal(r.Source.ID, id)
 	}
 	return nil
-}
-
-func AuthorizeRecovery(ctx context.Context, target, version, build string) error {
-	id, token := os.Getenv(launchcontract.EnvRecoveryOperation), os.Getenv(launchcontract.EnvRecoveryToken)
-	store, r, e := openOperation(ctx, target, id)
-	_ = store
-	if e != nil {
-		return e
-	}
-	rec := r.Recovery
-	if r.Phase != transaction.Resuming || rec == nil || token != rec.Nonce || r.Target.Version != version || r.Target.BuildID != build || rec.Namespace != os.Getenv(launchcontract.EnvNamespace) || rec.Intent.ConfigurationID != os.Getenv(launchcontract.EnvRecoveryConfiguration) || !time.Now().Before(rec.ExpiresAt) {
-		return transaction.ErrConflict
-	}
-	s, e := ReadSession(ctx, target, id)
-	if e != nil {
-		return e
-	}
-	if s.Source != r.Source || s.Finalizer.PID == 0 || s.Finalizer.Created == 0 {
-		return transaction.ErrConflict
-	}
-	parent, e := windowsplatform.ObserveParent()
-	if e != nil {
-		return e
-	}
-	defer parent.Close()
-	return windowsplatform.DescendsFrom(parent.PID, s.Finalizer.PID, s.Finalizer.Created)
 }

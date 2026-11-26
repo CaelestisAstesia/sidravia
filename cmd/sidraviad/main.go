@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sidravia/internal/daemon/host"
-	"sidravia/internal/installationgate"
+	"sidravia/internal/installation/startgate"
 
 	"sidravia/internal/daemon/logging"
 	"sidravia/internal/launchcontract"
@@ -25,7 +25,7 @@ var (
 func main() { os.Exit(runProcess()) }
 
 func runProcess() (code int) {
-	releaseStart, startErr := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
+	releaseStart, startErr := startgate.AcquireRunIdentity(ProductVersion, BuildID)
 	if startErr != nil {
 		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
 		return 1

@@ -4,15 +4,15 @@ package app
 
 import (
 	"os"
-	"sidravia/internal/update/windowsplatform"
+	"sidravia/internal/process/winproc"
 )
 
 func openMaintenanceCoordinator(pid uint32) (func() bool, func(), error) {
-	peer, err := windowsplatform.Observe(pid)
+	peer, err := winproc.Observe(pid)
 	if err != nil {
 		return nil, nil, err
 	}
-	self, err := windowsplatform.Observe(uint32(os.Getpid()))
+	self, err := winproc.Observe(uint32(os.Getpid()))
 	if err != nil {
 		peer.Close()
 		return nil, nil, err
@@ -20,7 +20,7 @@ func openMaintenanceCoordinator(pid uint32) (func() bool, func(), error) {
 	defer self.Close()
 	if peer.SID != self.SID || peer.Integrity != self.Integrity {
 		peer.Close()
-		return nil, nil, windowsplatform.ErrPeer
+		return nil, nil, winproc.ErrPeer
 	}
 	return peer.Running, func() { peer.Close() }, nil
 }

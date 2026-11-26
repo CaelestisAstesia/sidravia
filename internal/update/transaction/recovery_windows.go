@@ -7,7 +7,7 @@ import (
 	"golang.org/x/sys/windows"
 	"io"
 	"os"
-	"sidravia/internal/update/windowsplatform"
+	"sidravia/internal/process/winproc"
 	"strconv"
 	"time"
 )
@@ -33,12 +33,12 @@ func (s *Store) AcquireRecoveryStart(ctx context.Context, id, nonce, version, bu
 	if err != nil {
 		return nil, ErrInvalid
 	}
-	parent, err := windowsplatform.ObserveParent()
+	parent, err := winproc.ObserveParent()
 	if err != nil {
 		return nil, err
 	}
 	defer parent.Close()
-	if err = windowsplatform.DescendsFrom(parent.PID, uint32(rec.CoordinatorPID), created); err != nil {
+	if err = winproc.DescendsFrom(parent.PID, uint32(rec.CoordinatorPID), created); err != nil {
 		return nil, err
 	}
 	return func() {}, nil

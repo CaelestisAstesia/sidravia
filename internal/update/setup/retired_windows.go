@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/setup/internal/receiptstate"
 	"strings"
 	"unsafe"
 
@@ -22,7 +23,7 @@ import (
 // Retired executable code is not a user file merely because the new installer
 // stopped listing it. Authenticate BOTH ownership indices and every new byte
 // before removing only unchanged old exe/DLL leaves. Other unknown files remain.
-func retireInstalled(ctx context.Context, r transaction.Record, s Session) error {
+func retireInstalled(ctx context.Context, r transaction.Record, s receiptstate.Session) error {
 	next, c, index, e := targetEvidence(r)
 	if e != nil {
 		return e

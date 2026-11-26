@@ -5,24 +5,23 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sidravia/internal/productlayout"
 	"strconv"
 	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
-	"sidravia/internal/installationgate"
-	"sidravia/internal/release"
-	"sidravia/internal/update/transaction"
+	"sidravia/internal/installation/startgate"
+	"sidravia/internal/launchcontract"
 )
 
 var ProductVersion = "0.5.0-alpha.1"
 var BuildID = "dev"
+
+var errLaunchFile = errors.New("invalid GUI runtime path")
 
 const gateFD = "SIDRAVIA_GUI_GATE_FD"
 
@@ -43,19 +42,19 @@ func main() {
 func launch(directory string, args, env []string) error {
 	physical, err := filepath.EvalSymlinks(directory)
 	if err != nil || physical != directory {
-		return errors.Join(transaction.ErrInvalid, err)
+		return errors.Join(errLaunchFile, err)
 	}
 	runtime := filepath.Join(directory, "gui-runtime", "sidravia_gui")
 	actual, err := filepath.EvalSymlinks(runtime)
 	if err != nil || actual != runtime {
-		return errors.Join(transaction.ErrInvalid, err)
+		return errors.Join(errLaunchFile, err)
 	}
 	info, err := os.Lstat(runtime)
 	if err != nil {
 		return err
 	}
 	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return transaction.ErrInvalid
+		return errLaunchFile
 	}
 	cleanEnv := make([]string, 0, len(env)+1)
 	for _, value := range env {
@@ -63,39 +62,23 @@ func launch(directory string, args, env []string) error {
 			cleanEnv = append(cleanEnv, value)
 		}
 	}
-	if directory == "/usr/lib64/sidravia" {
-		release, err := installationgate.AcquireStart()
-		if err != nil {
-			return err
-		}
-		release()
-	} else {
-		root, err := productlayout.OperationRoot()
-		if err != nil {
-			return err
-		}
-		store, err := transaction.Open(root, directory, release.PublisherTrust())
-		if err != nil {
-			return err
-		}
-		lease, err := store.AcquireInheritedStart(context.Background())
-		if err != nil {
-			lease, err = store.AcquireInheritedRecoveryStart(context.Background(), os.Getenv(transaction.EnvRecoveryOperation), os.Getenv(transaction.EnvRecoveryToken), ProductVersion, BuildID, os.Getenv("SIDRAVIA_NAMESPACE"), os.Getenv(transaction.EnvRecoveryConfiguration))
-		} else {
+	lease, recovery, err := startgate.ForGUIExec(directory, ProductVersion, BuildID)
+	if err != nil {
+		return err
+	}
+	if lease != nil {
+		defer lease.Close()
+		if !recovery {
 			// Later core restarts must not reuse a completed restoration capability.
 			filtered := cleanEnv[:0]
 			for _, entry := range cleanEnv {
 				key, _, _ := strings.Cut(entry, "=")
-				if key != transaction.EnvRecoveryOperation && key != transaction.EnvRecoveryToken && key != transaction.EnvRecoveryConfiguration {
+				if key != launchcontract.EnvRecoveryOperation && key != launchcontract.EnvRecoveryToken && key != launchcontract.EnvRecoveryConfiguration {
 					filtered = append(filtered, entry)
 				}
 			}
 			cleanEnv = filtered
 		}
-		if err != nil {
-			return err
-		}
-		defer lease.Close()
 		if _, err = unix.FcntlInt(lease.Fd(), unix.F_SETFD, 0); err != nil {
 			return err
 		}

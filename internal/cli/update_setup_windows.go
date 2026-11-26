@@ -6,7 +6,7 @@ import (
 	"context"
 	"github.com/spf13/cobra"
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/installationgate"
+	"sidravia/internal/installation/startgate"
 	"sidravia/internal/update/setup"
 	"time"
 )
@@ -15,7 +15,7 @@ func addSetupStages(root *cobra.Command, identity clientbootstrap.Identity) {
 	root.AddCommand(&cobra.Command{Use: "setup-admission", Hidden: true, Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		release, e := installationgate.AcquireRunIdentityContext(ctx, identity.ProductVersion, identity.BuildID)
+		release, e := startgate.AcquireRunIdentityContext(ctx, identity.ProductVersion, identity.BuildID)
 		if e != nil {
 			return e
 		}

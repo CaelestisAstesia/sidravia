@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"io"
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/update/lifecycle"
+	"sidravia/internal/installation/inno"
 	"time"
 )
 
@@ -24,7 +24,7 @@ func newUpdateInternalCommand(identity clientbootstrap.Identity, out io.Writer) 
 		cmd := &cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 80*time.Second)
 			defer cancel()
-			if err := lifecycle.Run(ctx, action, operation, coordinator, interactive, identity); err != nil {
+			if err := inno.Run(ctx, action, operation, coordinator, interactive, identity); err != nil {
 				return wrapCommandOperation(integrationFailure("更新生命周期操作未完成；程序文件不会由此命令修改。", err))
 			}
 			_, err := fmt.Fprintln(out, `{"schemaVersion":1,"ok":true}`)

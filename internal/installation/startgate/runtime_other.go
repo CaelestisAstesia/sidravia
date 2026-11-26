@@ -1,6 +1,6 @@
 //go:build !linux && !windows
 
-package installationgate
+package startgate
 
 // AcquireRun preserves installed-platform short startup admission. Those
 // installers coordinate normal process exit separately from this gate.

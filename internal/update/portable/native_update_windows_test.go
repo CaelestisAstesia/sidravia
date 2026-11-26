@@ -16,12 +16,12 @@ import (
 	"sidravia/internal/installation/change"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/portable/internal/filetxn"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 	"strconv"
 	"strings"
 	"testing"
@@ -61,7 +61,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		s = strings.Replace(s, "\ts, dir, err := readWindowsSession(ctx, target, id)", "\tdefer func(){if resultErr!=nil{os.WriteFile("+strconv.Quote(filepath.Join(owned, "runner-cause.txt"))+",[]byte(resultErr.Error()),0600)}}()\n\ts, dir, err := readWindowsSession(ctx, target, id)", 1)
 		s = strings.Replace(s, "\tpayload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_ARCHIVE_CHANGED\")==\"1\"{if err:=os.Rename(s.Archive,s.Archive+\".old\");err!=nil{return err};if err:=os.WriteFile(s.Archive,[]byte(strings.Repeat(\"x\",int(c.Size))),0600);err!=nil{return err}}\n\tpayload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)", 1)
 		s = strings.Replace(s, "\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", 1)
-		return strings.Replace(s, "\tcmd, err := windowsplatform.StartIndependent(", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\tcmd, err := windowsplatform.StartIndependent(", 1)
+		return strings.Replace(s, "\tcmd, err := winproc.StartIndependent(", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\tcmd, err := winproc.StartIndependent(", 1)
 	})
 	overlay.Replace("internal/update/portable/internal/filetxn/apply.go", func(s string) string {
 		return strings.Replace(s, "\t_, changed, err := store.Advance(work, id, transaction.Quiescent,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"quiescent\"{os.Exit(17)}\n\t_, changed, err := store.Advance(work, id, transaction.Quiescent,", 1)
@@ -326,7 +326,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 					if e == nil {
 						var ready runnerID
 						if readPrivate(context.Background(), filepath.Join(dir, "ready.json"), &ready) == nil {
-							alive, e := windowsplatform.GenerationRunning(ready.PID, ready.Created)
+							alive, e := winproc.GenerationRunning(ready.PID, ready.Created)
 							if e == nil && !alive {
 								break
 							}

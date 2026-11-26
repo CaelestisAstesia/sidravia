@@ -9,18 +9,20 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/setup/internal/receiptstate"
 	"strconv"
 	"time"
 
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/installation/change"
+	"sidravia/internal/installation/inno"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
-	"sidravia/internal/update/lifecycle"
+	"sidravia/internal/update/setup/internal/innopeer"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 func openOperation(ctx context.Context, target, id string) (*transaction.Store, transaction.Record, error) {
@@ -41,16 +43,16 @@ func openOperation(ctx context.Context, target, id string) (*transaction.Store, 
 	}
 	return store, r, nil
 }
-func boundParent(s Session, pid uint32) (*windowsplatform.Process, error) {
-	parent, e := windowsplatform.ObserveParent()
+func boundParent(s receiptstate.Session, pid uint32) (*winproc.Process, error) {
+	parent, e := winproc.ObserveParent()
 	if e != nil {
 		return nil, e
 	}
 	if parent.PID != pid || parent.PID != s.Coordinator.PID || parent.Created != s.Coordinator.Created || !parent.Running() {
 		parent.Close()
-		return nil, windowsplatform.ErrPeer
+		return nil, winproc.ErrPeer
 	}
-	self, e := windowsplatform.Observe(uint32(os.Getpid()))
+	self, e := winproc.Observe(uint32(os.Getpid()))
 	if e != nil {
 		parent.Close()
 		return nil, e
@@ -58,7 +60,7 @@ func boundParent(s Session, pid uint32) (*windowsplatform.Process, error) {
 	defer self.Close()
 	if self.SID != parent.SID || self.Integrity != parent.Integrity {
 		parent.Close()
-		return nil, windowsplatform.ErrPeer
+		return nil, winproc.ErrPeer
 	}
 	return parent, nil
 }
@@ -82,7 +84,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		return e
 	}
 	target := layout.ExecutableDirectory
-	s, e := ReadSession(ctx, target, id)
+	s, e := receiptstate.Read(ctx, target, id)
 	if e != nil {
 		return e
 	}
@@ -97,7 +99,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		return ErrInvalid
 	}
 	if stage == "accept" {
-		parent, e := windowsplatform.ObserveParent()
+		parent, e := winproc.ObserveParent()
 		if e != nil {
 			return e
 		}
@@ -112,7 +114,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if _, e = VerifyInstalled(ctx, target, source, c, s.SourceIndex, s.HasGUI); e != nil {
 			return e
 		}
-		return windowsplatform.Acknowledge(ctx, id, updater, coordinator)
+		return innopeer.Acknowledge(ctx, id, updater, coordinator)
 	}
 	parent, e := boundParent(s, coordinator)
 	if e != nil {
@@ -134,12 +136,12 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 			return ErrInvalid
 		}
 		for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
-			current, e := ReadSession(ctx, target, id)
+			current, e := receiptstate.Read(ctx, target, id)
 			if e != nil {
 				return e
 			}
 			if current.Finalizer.PID != 0 {
-				if e := windowsplatform.DescendsFrom(current.Finalizer.PID, parent.PID, parent.Created); e != nil {
+				if e := winproc.DescendsFrom(current.Finalizer.PID, parent.PID, parent.Created); e != nil {
 					return e
 				}
 				return nil
@@ -158,7 +160,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if !oldIdentity || r.Phase != transaction.Verified || s.HasGUI != hasGUI {
 			return ErrInvalid
 		}
-		if running, e := windowsplatform.GenerationRunning(s.Updater.PID, s.Updater.Created); e != nil || running {
+		if running, e := winproc.GenerationRunning(s.Updater.PID, s.Updater.Created); e != nil || running {
 			return errors.Join(transaction.ErrConflict, e)
 		}
 		proof, c, e := s.SourceProof(release.PublisherTrust())
@@ -168,10 +170,10 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if _, e = VerifyInstalled(ctx, target, proof, c, s.SourceIndex, s.HasGUI); e != nil {
 			return e
 		}
-		if e = lifecycle.Run(ctx, "prepare", id, coordinator, false, identity); e != nil {
+		if e = inno.Run(ctx, "prepare", id, coordinator, false, identity); e != nil {
 			return e
 		}
-		intent, level, e := lifecycle.PreparedSnapshot(ctx, id, coordinator, identity)
+		intent, level, e := inno.PreparedSnapshot(ctx, id, coordinator, identity)
 		if e != nil {
 			return e
 		}
@@ -189,7 +191,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if !oldIdentity || r.Phase != transaction.Preparing {
 			return ErrInvalid
 		}
-		if e = lifecycle.Run(ctx, "stop", id, coordinator, false, identity); e != nil {
+		if e = inno.Run(ctx, "stop", id, coordinator, false, identity); e != nil {
 			return e
 		}
 		return advance(transaction.Preparing, transaction.Quiescent, "")
@@ -250,7 +252,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if e = advance(r.Phase, transaction.Aborted, "preparation_failed"); e != nil {
 			return e
 		}
-		return lifecycle.Run(ctx, "abort", id, coordinator, false, identity)
+		return inno.Run(ctx, "abort", id, coordinator, false, identity)
 	}
 	return ErrInvalid
 }
@@ -280,7 +282,7 @@ func targetEvidence(r transaction.Record) (release.VerifiedRelease, release.Cand
 	closeErr := f.Close()
 	return proof, c, b, errors.Join(e, closeErr)
 }
-func verifyTarget(ctx context.Context, r transaction.Record, s Session) error {
+func verifyTarget(ctx context.Context, r transaction.Record, s receiptstate.Session) error {
 	proof, c, index, e := targetEvidence(r)
 	if e != nil {
 		return e

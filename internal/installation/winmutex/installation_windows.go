@@ -1,7 +1,7 @@
 //go:build windows
 
 // Current-user exclusion is shared by Inno, portable publication and startup.
-package windowsplatform
+package winmutex
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 
 var ErrInstallationBusy = errors.New("安装或更新正在进行，请完成或取消后再启动程序")
 
-// AcquireStart serializes creation with the installer's mutex. Release must be
+// AcquireInstallation serializes creation with the installer's mutex. Release must be
 // called on the same goroutine; Windows mutex ownership is thread-affine.
 func AcquireInstallation() (func(), error) {
 	runtime.LockOSThread()

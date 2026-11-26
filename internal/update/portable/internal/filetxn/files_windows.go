@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sidravia/internal/update/windowsplatform"
+	"sidravia/internal/installation/winmutex"
 	"strings"
 	"unsafe"
 )
@@ -69,7 +69,7 @@ func availableSpace(root *os.Root, required int64) error {
 // The staged and target trees share a Canonical parent; reparse mounts are
 // refused separately. The handle-relative kernel rename is the volume check.
 func sameDevice(os.FileInfo, os.FileInfo) bool { return true }
-func applyGuard() (func(), error)              { return windowsplatform.AcquireInstallation() }
+func applyGuard() (func(), error)              { return winmutex.AcquireInstallation() }
 func holdStartupSeal() bool                    { return true }
 
 func ensureQuiescent(target string) error {

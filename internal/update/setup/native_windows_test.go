@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sidravia/internal/persistence"
+	"sidravia/internal/update/setup/internal/receiptstate"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,12 +24,12 @@ import (
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
 	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 // Native production hooks and real CTL/updater binaries. Private build overlays
@@ -81,9 +82,9 @@ func TestNativeInstalledUpdate(t *testing.T) {
 	})
 	overlay.Replace("internal/update/setup/begin_windows.go", func(s string) string {
 		s = strings.Replace(s, "\tabort := func(cause error)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tabort := func(cause error)", 1)
-		return strings.Replace(s, "\toffer, err := windowsplatform.NewOffer", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\toffer, err := windowsplatform.NewOffer", 1)
+		return strings.Replace(s, "\toffer, err := innopeer.NewOffer", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\toffer, err := innopeer.NewOffer", 1)
 	})
-	overlay.Replace("internal/update/windowsplatform/process_windows.go", func(s string) string {
+	overlay.Replace("internal/process/winproc/process_windows.go", func(s string) string {
 		return strings.Replace(s, "func StartIndependent(path string, args ...string) (*exec.Cmd, error) {", "func StartIndependent(path string, args ...string) (*exec.Cmd, error) {\nargs=append(args,\"/VERYSILENT\",\"/SUPPRESSMSGBOXES\",\"/TASKS=\",\"/LOG=\"+"+strconv.Quote(filepath.Join(owned, "setup.log"))+")", 1)
 	})
 	overlayPath := overlay.Write()
@@ -418,7 +419,7 @@ begin Result := True; end;
 			t.Error(e)
 			return
 		}
-		peer, e := windowsplatform.Observe(uint32(info.PID))
+		peer, e := winproc.Observe(uint32(info.PID))
 		if e != nil {
 			t.Error(e)
 			return
@@ -447,13 +448,13 @@ begin Result := True; end;
 			return
 		}
 		var r contract.Response
-		var guiPeer *windowsplatform.Process
+		var guiPeer *winproc.Process
 		if status.Mode == "desktop" {
 			if status.DesktopOwnerPID == nil {
 				t.Error("owned GUI PID absent")
 				return
 			}
-			guiPeer, e = windowsplatform.Observe(uint32(*status.DesktopOwnerPID))
+			guiPeer, e = winproc.Observe(uint32(*status.DesktopOwnerPID))
 			if e != nil {
 				t.Error(e)
 				return
@@ -682,13 +683,13 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 	if e = child.Start(); e != nil {
 		t.Fatal(e)
 	}
-	peer, e := windowsplatform.Observe(uint32(child.Process.Pid))
+	peer, e := winproc.Observe(uint32(child.Process.Pid))
 	if e != nil {
 		child.Process.Kill()
 		child.Wait()
 		t.Fatal(e)
 	}
-	dead := ProcessID{peer.PID, peer.Created}
+	dead := receiptstate.ProcessID{peer.PID, peer.Created}
 	child.Wait()
 	peer.Close()
 	root, e := productlayout.OperationRoot()
@@ -733,8 +734,8 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 		if _, e := os.Stat(filepath.Join(target, "Sidravia.exe")); e == nil {
 			hasGUI = true
 		}
-		session := Session{SchemaVersion: 1, OperationID: id, HasGUI: hasGUI, Source: record.Source, Updater: dead, Coordinator: dead, Finalizer: dead, Namespace: os.Getenv(launchcontract.EnvNamespace), Expires: time.Now().Add(20 * time.Minute), SourceManifest: oldManifest, SourceSignature: oldSignature, SourceIndex: oldIndex, Integration: "pending"}
-		if e = SaveSession(context.Background(), session); e != nil {
+		session := receiptstate.Session{SchemaVersion: 1, OperationID: id, HasGUI: hasGUI, Source: record.Source, Updater: dead, Coordinator: dead, Finalizer: dead, Namespace: os.Getenv(launchcontract.EnvNamespace), Expires: time.Now().Add(20 * time.Minute), SourceManifest: oldManifest, SourceSignature: oldSignature, SourceIndex: oldIndex, Integration: "pending"}
+		if e = saveSession(context.Background(), session); e != nil {
 			t.Fatal(e)
 		}
 		seal := filepath.Join(target, transaction.StartupSeal)

@@ -10,7 +10,7 @@ import (
 
 	"sidravia/internal/cli"
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/installationgate"
+	"sidravia/internal/installation/startgate"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/update/invocation"
 )
@@ -33,7 +33,7 @@ func main() {
 	}
 	releaseRun := func() {}
 	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && invocation.ControlEntry(os.Args[2:])) {
-		release, err := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
+		release, err := startgate.AcquireRunIdentity(ProductVersion, BuildID)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "安装或更新正在进行，请完成或取消后再运行命令。")
 			os.Exit(1)

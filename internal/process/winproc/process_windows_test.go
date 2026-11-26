@@ -1,6 +1,6 @@
 //go:build windows
 
-package windowsplatform
+package winproc
 
 import (
 	"io"
@@ -40,6 +40,13 @@ func TestGenerationRunningWithRetainedExitedProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer windows.CloseHandle(handle)
+	retained := &Process{handle: handle}
+	if exited, e := retained.PollExit(); e != nil || exited {
+		t.Fatalf("observing live process: exited=%v, err=%v", exited, e)
+	}
+	if exited, e := (&Process{}).PollExit(); e == nil || exited {
+		t.Fatalf("observation failure reported as exit: exited=%v, err=%v", exited, e)
+	}
 	var start, exit, kernel, user windows.Filetime
 	if err = windows.GetProcessTimes(handle, &start, &exit, &kernel, &user); err != nil {
 		t.Fatal(err)
@@ -60,6 +67,9 @@ func TestGenerationRunningWithRetainedExitedProcess(t *testing.T) {
 	stdin.Close()
 	if err = child.Wait(); err != nil {
 		t.Fatal(err)
+	}
+	if exited, e := retained.PollExit(); e != nil || !exited {
+		t.Fatalf("observing exited process: exited=%v, err=%v", exited, e)
 	}
 	if running, e := GenerationRunning(pid, created); e != nil || running {
 		t.Fatalf("retained exited generation: running=%v, err=%v", running, e)

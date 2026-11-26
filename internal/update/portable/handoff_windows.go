@@ -20,10 +20,10 @@ import (
 	"sidravia/internal/installation/change"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 var ErrHandoff = errors.New("portable update handoff unavailable")
@@ -204,7 +204,7 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	if err != nil {
 		return r, err
 	}
-	self, err := windowsplatform.Observe(uint32(os.Getpid()))
+	self, err := winproc.Observe(uint32(os.Getpid()))
 	if err != nil {
 		return r, err
 	}
@@ -217,7 +217,7 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	if _, err = productlayout.NewNamespace(s.Namespace); err != nil {
 		return r, err
 	}
-	caller, e := windowsplatform.ObserveParent()
+	caller, e := winproc.ObserveParent()
 	if e == nil {
 		defer caller.Close()
 		if strings.EqualFold(caller.Path, filepath.Join(layout.ExecutableDirectory, "sidraviactl.exe")) {
@@ -281,11 +281,11 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 		_, _, e := store.Advance(context.WithoutCancel(ctx), id, transaction.Verified, transaction.Aborted, "preparation_failed", time.Now())
 		return r, errors.Join(cause, e)
 	}
-	cmd, err := windowsplatform.StartIndependent(path, "portable-execute", "--target", layout.ExecutableDirectory, "--operation", id, "--updater", strconv.Itoa(os.Getpid()))
+	cmd, err := winproc.StartIndependent(path, "portable-execute", "--target", layout.ExecutableDirectory, "--operation", id, "--updater", strconv.Itoa(os.Getpid()))
 	if err != nil {
 		return abort(errors.Join(ErrHandoff, err))
 	}
-	child, err := windowsplatform.Observe(uint32(cmd.Process.Pid))
+	child, err := winproc.Observe(uint32(cmd.Process.Pid))
 	cmd.Process.Release()
 	if err != nil {
 		return r, err
@@ -316,8 +316,8 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 		if !os.IsNotExist(err) {
 			return r, err
 		}
-		if !child.Running() {
-			return abort(ErrHandoff)
+		if exited, err := child.PollExit(); exited || err != nil {
+			return abort(errors.Join(ErrHandoff, err))
 		}
 		if err = pause(wait); err != nil {
 			return r, err
@@ -333,15 +333,18 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 	if updater != s.Updater.PID || s.Namespace != os.Getenv(launchcontract.EnvNamespace) || !time.Now().Before(s.Expires) || version != s.Source.Version || build != s.Source.BuildID {
 		return ErrInvalid
 	}
-	parent, err := windowsplatform.ObserveParent()
+	parent, err := winproc.ObserveParent()
 	if err != nil {
 		return err
 	}
 	defer parent.Close()
-	if (runnerID{parent.PID, parent.Created}) != s.Updater || !strings.EqualFold(parent.Path, filepath.Join(target, "sidraviaupdater.exe")) || !parent.Running() {
+	if (runnerID{parent.PID, parent.Created}) != s.Updater || !strings.EqualFold(parent.Path, filepath.Join(target, "sidraviaupdater.exe")) {
 		return ErrInvalid
 	}
-	self, err := windowsplatform.Observe(uint32(os.Getpid()))
+	if exited, err := parent.PollExit(); exited || err != nil {
+		return errors.Join(ErrInvalid, err)
+	}
+	self, err := winproc.Observe(uint32(os.Getpid()))
 	if err != nil {
 		return err
 	}
@@ -389,9 +392,9 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 		}
 		resultErr = errors.Join(resultErr, e)
 	}()
-	var caller *windowsplatform.Process
+	var caller *winproc.Process
 	if s.Caller.PID != 0 {
-		caller, err = windowsplatform.Observe(s.Caller.PID)
+		caller, err = winproc.Observe(s.Caller.PID)
 		if err != nil {
 			return err
 		}
@@ -417,8 +420,8 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 		if !os.IsNotExist(err) {
 			return err
 		}
-		if !parent.Running() {
-			return ErrHandoff
+		if exited, err := parent.PollExit(); exited || err != nil {
+			return errors.Join(ErrHandoff, err)
 		}
 		if err = pause(accepted); err != nil {
 			return err
@@ -463,7 +466,7 @@ func cleanupWindowsRunner(ctx context.Context, r transaction.Record) error {
 	}
 	var ready runnerID
 	if err = readPrivate(ctx, filepath.Join(dir, "ready.json"), &ready); err == nil {
-		running, e := windowsplatform.GenerationRunning(ready.PID, ready.Created)
+		running, e := winproc.GenerationRunning(ready.PID, ready.Created)
 		if e != nil {
 			return e
 		}

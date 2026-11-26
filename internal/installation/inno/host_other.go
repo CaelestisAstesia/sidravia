@@ -1,6 +1,6 @@
 //go:build !windows
 
-package lifecycle
+package inno
 
 import (
 	"context"
