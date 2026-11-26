@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import sys
 import shutil
+from itertools import product
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -43,8 +44,9 @@ class RPMContracts(unittest.TestCase):
             self.assertEqual((output / package.name).read_bytes(), package.read_bytes())
 
     def test_acceptance_uses_explicit_tools_and_only_gui_probes_flutter(self):
-        for kind in ('gui', 'core'):
-            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+        architectures = (('amd64', 'x86_64'), ('arm64', 'aarch64'))
+        for kind, (host_arch, rpm_arch) in product(('gui', 'core'), architectures):
+            with self.subTest(kind=kind, host_arch=host_arch), tempfile.TemporaryDirectory() as tmp:
                 workspace = pathlib.Path(tmp)
                 root = workspace / 'checkout'
                 root.mkdir()
@@ -64,13 +66,15 @@ class RPMContracts(unittest.TestCase):
                 for release, pkg in enumerate(packages, start=1):
                     pkg.write_text(f'synthetic RPM {release}')
                     pkg.with_suffix('.rpm.json').write_text(json.dumps({
-                        'kind': kind, 'version': '1.0.0', 'release': str(release), 'source': source,
+                        'kind': kind, 'version': '1.0.0', 'release': str(release),
+                        'architecture': rpm_arch, 'source': source,
                     }))
                 probe_result = json.dumps({'frameworkVersion': '3.47.0', 'flutterRoot': str(sdk)})
                 args = dev.parse_args(['linux', '--go', go, '--flutter', str(flutter),
                                        '--verify-rpm-upgrade', *map(str, packages)])
                 with (mock.patch.object(dev, 'ROOT', root),
                       mock.patch.object(dev.platform, 'system', return_value='Linux'),
+                      mock.patch.object(linux_rpm, 'native_arch', return_value=host_arch),
                       mock.patch.object(dev, 'metadata', return_value=source) as metadata,
                       mock.patch.object(linux_rpm, 'verify') as verify,
                       mock.patch.object(dev.subprocess, 'check_output', return_value=probe_result) as probe,
