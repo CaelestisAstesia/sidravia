@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/app"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
@@ -21,7 +22,6 @@ import (
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update/operations"

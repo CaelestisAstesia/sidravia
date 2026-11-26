@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 )
 
 const commandUsage = "用法错误，请运行 sidraviactl help 查看帮助"
@@ -67,15 +67,15 @@ func classifyGUIBootstrapFailure(cause error) error {
 		return existing
 	}
 	switch {
-	case errors.Is(cause, clientbootstrap.ErrInvalidIdentity):
+	case errors.Is(cause, daemonctl.ErrInvalidIdentity):
 		return newGUIBootstrapFailure(guiBootstrapInvalidIdentityCode, "GUI bootstrap 客户端身份无效", 10, cause)
-	case errors.Is(cause, clientbootstrap.ErrDesktopUnsupported):
+	case errors.Is(cause, daemonctl.ErrDesktopUnsupported):
 		return newGUIBootstrapFailure(guiBootstrapUnsupportedCode, "当前平台不支持 GUI bootstrap", 11, cause)
-	case errors.Is(cause, clientbootstrap.ErrModeConflict):
+	case errors.Is(cause, daemonctl.ErrModeConflict):
 		return newGUIBootstrapFailure(guiBootstrapModeConflictCode, "另一运行模式正在使用 daemon", 12, cause)
-	case errors.Is(cause, clientbootstrap.ErrIncompatibleGeneration):
+	case errors.Is(cause, daemonctl.ErrIncompatibleGeneration):
 		return newGUIBootstrapFailure(guiBootstrapIncompatibleCode, "客户端与 daemon 构建不兼容", 13, cause)
-	case clientbootstrap.IsReadinessUnconfirmed(cause):
+	case daemonctl.IsReadinessUnconfirmed(cause):
 		return newGUIBootstrapFailure(guiBootstrapUnconfirmedCode, "daemon 启动状态尚未确认", 14, cause)
 	default:
 		return newGUIBootstrapFailure(guiBootstrapFailedCode, "GUI bootstrap 失败", 15, cause)
@@ -98,7 +98,7 @@ func Run(args []string) error {
 // RunWithIdentity executes the CLI using the immutable identity compiled into
 // this client binary.
 func RunWithIdentity(args []string, productVersion, buildID string) error {
-	identity, err := clientbootstrap.NewIdentity(productVersion, buildID)
+	identity, err := daemonctl.NewIdentity(productVersion, buildID)
 	if err != nil {
 		if isGUIBootstrapPath(args) {
 			return classifyGUIBootstrapFailure(err)
@@ -155,7 +155,7 @@ func ExitCode(err error) int {
 }
 
 type commandDependencies struct {
-	identity          clientbootstrap.Identity
+	identity          daemonctl.Identity
 	daemonStatus      func() error
 	daemonStart       func(logLevel string) error
 	daemonStop        func() error
@@ -182,7 +182,7 @@ type commandDependencies struct {
 	output            io.Writer
 }
 
-func defaultCommandDependencies(identity clientbootstrap.Identity) commandDependencies {
+func defaultCommandDependencies(identity daemonctl.Identity) commandDependencies {
 	return commandDependencies{
 		identity:      identity,
 		daemonStatus:  func() error { return daemonStatus(identity) },

@@ -6,7 +6,7 @@ import (
 	"context"
 	"flag"
 	"io"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/update/setup"
 	"time"
 )
@@ -24,7 +24,7 @@ func setupFinish(args []string) (bool, int) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 31*time.Minute)
 	defer cancel()
-	if err := setup.Finish(ctx, *op, uint32(*pid), clientbootstrap.Identity{ProductVersion: ProductVersion, BuildID: BuildID}); err != nil {
+	if err := setup.Finish(ctx, *op, uint32(*pid), daemonctl.Identity{ProductVersion: ProductVersion, BuildID: BuildID}); err != nil {
 		return true, 1
 	}
 	return true, 0

@@ -10,7 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"sidravia/internal/launchcontract"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/productlayout"
 )
 

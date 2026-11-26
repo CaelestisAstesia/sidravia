@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 )
 

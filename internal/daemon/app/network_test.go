@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 )
 
 func TestNetworkQueryProjectsAllFactsAndCurrentEligibility(t *testing.T) {

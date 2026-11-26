@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/credentialinput"
 	"sidravia/internal/ipc/contract"
 )
@@ -153,28 +153,28 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	return root
 }
 
-func configList(identity clientbootstrap.Identity) error {
+func configList(identity daemonctl.Identity) error {
 	return runConfigList(defaultReadOnlyAuthDependencies(identity))
 }
-func configShow(identity clientbootstrap.Identity, id string) error {
+func configShow(identity daemonctl.Identity, id string) error {
 	return runConfigShow(id, defaultReadOnlyAuthDependencies(identity))
 }
 
-func defaultReadOnlyAuthDependencies(identity clientbootstrap.Identity) authDependencies {
+func defaultReadOnlyAuthDependencies(identity daemonctl.Identity) authDependencies {
 	deps := defaultAuthDependencies(identity)
 	deps.connection = defaultReadOnlyDaemonConnectionDependencies(identity)
 	return deps
 }
-func configCreate(identity clientbootstrap.Identity, options configCreateOptions) error {
+func configCreate(identity daemonctl.Identity, options configCreateOptions) error {
 	return runConfigCreate(options, defaultAuthDependencies(identity))
 }
-func configUpdate(identity clientbootstrap.Identity, options configUpdateOptions) error {
+func configUpdate(identity daemonctl.Identity, options configUpdateOptions) error {
 	return runConfigUpdate(options, defaultAuthDependencies(identity))
 }
-func configSetPassword(identity clientbootstrap.Identity, options configPasswordOptions) error {
+func configSetPassword(identity daemonctl.Identity, options configPasswordOptions) error {
 	return runConfigSetPassword(options, defaultAuthDependencies(identity))
 }
-func configRemove(identity clientbootstrap.Identity, id string, yes, allow bool) error {
+func configRemove(identity daemonctl.Identity, id string, yes, allow bool) error {
 	return runConfigRemove(id, yes, defaultAuthDependencies(identity), allow)
 }
 

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 )
 
 func TestIPCHandlerRoutesRetainedMethods(t *testing.T) {

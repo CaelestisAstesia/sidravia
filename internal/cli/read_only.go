@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 )
 
 type readOnlyCommandDependencies struct {
@@ -16,7 +16,7 @@ type readOnlyCommandDependencies struct {
 	stdout     io.Writer
 }
 
-func defaultReadOnlyCommandDependencies(identity clientbootstrap.Identity) readOnlyCommandDependencies {
+func defaultReadOnlyCommandDependencies(identity daemonctl.Identity) readOnlyCommandDependencies {
 	return readOnlyCommandDependencies{
 		connection: defaultReadOnlyDaemonConnectionDependencies(identity),
 		stdout:     os.Stdout,

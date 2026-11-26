@@ -5,13 +5,13 @@ package cli
 import (
 	"context"
 	"github.com/spf13/cobra"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/update/setup"
 	"time"
 )
 
-func addSetupStages(root *cobra.Command, identity clientbootstrap.Identity) {
+func addSetupStages(root *cobra.Command, identity daemonctl.Identity) {
 	root.AddCommand(&cobra.Command{Use: "setup-admission", Hidden: true, Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

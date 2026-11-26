@@ -12,10 +12,10 @@ import (
 
 	"github.com/coder/websocket"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
-	"sidravia/internal/launchcontract"
 )
 
 const statusTestToken = "test-token-0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab"

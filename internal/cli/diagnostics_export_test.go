@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"testing"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -69,7 +69,7 @@ func TestDiagnosticsExportCommandValidatesArgumentsBeforeDispatch(t *testing.T) 
 }
 
 func TestDiagnosticsExportDefaultDependencyIsWired(t *testing.T) {
-	identity, err := clientbootstrap.NewIdentity("0.1.0-dev", "cli-build")
+	identity, err := daemonctl.NewIdentity("0.1.0-dev", "cli-build")
 	if err != nil {
 		t.Fatal(err)
 	}

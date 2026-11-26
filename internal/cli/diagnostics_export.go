@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -64,7 +64,7 @@ func runDiagnosticsExport(deps readOnlyCommandDependencies, path string) error {
 	})
 }
 
-func diagnosticsExport(identity clientbootstrap.Identity, path string) error {
+func diagnosticsExport(identity daemonctl.Identity, path string) error {
 	return runDiagnosticsExport(defaultReadOnlyCommandDependencies(identity), path)
 }
 

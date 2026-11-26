@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
-	"sidravia/internal/launchcontract"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"

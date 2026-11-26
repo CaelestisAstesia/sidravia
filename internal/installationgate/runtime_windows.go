@@ -6,7 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sidravia/internal/launchcontract"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"

@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -49,13 +49,13 @@ func daemonCommandError(command string, err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, clientbootstrap.ErrModeConflict) {
-		return wrapSafeOperation(clientbootstrap.ErrModeConflict.Error(), err)
+	if errors.Is(err, daemonctl.ErrModeConflict) {
+		return wrapSafeOperation(daemonctl.ErrModeConflict.Error(), err)
 	}
-	if errors.Is(err, clientbootstrap.ErrIncompatibleGeneration) {
+	if errors.Is(err, daemonctl.ErrIncompatibleGeneration) {
 		return wrapSafeOperation(daemonIncompatibleMessage, err)
 	}
-	if clientbootstrap.IsReadinessUnconfirmed(err) {
+	if daemonctl.IsReadinessUnconfirmed(err) {
 		return wrapSafeOperation(daemonReadinessMessage, err)
 	}
 	var safe safeOperationError
@@ -75,21 +75,21 @@ func daemonCommandError(command string, err error) error {
 }
 
 type daemonOperations struct {
-	inspect   func() (clientbootstrap.ProbeResult, error)
+	inspect   func() (daemonctl.ProbeResult, error)
 	connect   func(context.Context, contract.RuntimeInfo) (daemonClient, error)
 	reachable func(contract.RuntimeInfo) bool
-	start     func(string) (clientbootstrap.StartOutcome, error)
+	start     func(string) (daemonctl.StartOutcome, error)
 }
 
-func defaultDaemonOperations(identity clientbootstrap.Identity) daemonOperations {
+func defaultDaemonOperations(identity daemonctl.Identity) daemonOperations {
 	return daemonOperations{
-		inspect: func() (clientbootstrap.ProbeResult, error) { return clientbootstrap.Probe(identity) },
+		inspect: func() (daemonctl.ProbeResult, error) { return daemonctl.Probe(identity) },
 		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonClient, error) {
-			return clientbootstrap.Connect(ctx, identity, info)
+			return daemonctl.Connect(ctx, identity, info)
 		},
-		reachable: func(info contract.RuntimeInfo) bool { return clientbootstrap.GenerationReachable(identity, info) },
-		start: func(logLevel string) (clientbootstrap.StartOutcome, error) {
-			return clientbootstrap.EnsureHeadless(identity, logLevel)
+		reachable: func(info contract.RuntimeInfo) bool { return daemonctl.GenerationReachable(identity, info) },
+		start: func(logLevel string) (daemonctl.StartOutcome, error) {
+			return daemonctl.EnsureHeadless(identity, logLevel)
 		},
 	}
 }
@@ -102,12 +102,12 @@ func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 		return err
 	}
 	switch result.State {
-	case clientbootstrap.ProbeStopped:
+	case daemonctl.ProbeStopped:
 		return writeDaemonStopped(output)
-	case clientbootstrap.ProbeReachable:
+	case daemonctl.ProbeReachable:
 		p := newPresentation(output)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStatus(p, result.Status)))
-	case clientbootstrap.ProbeIncompatible:
+	case daemonctl.ProbeIncompatible:
 		return writeDaemonIncompatible(output)
 	default:
 		return daemonUnknownError()
@@ -144,7 +144,7 @@ type stopDependencies struct {
 	pollInterval time.Duration
 }
 
-func defaultStopDependencies(identity clientbootstrap.Identity) stopDependencies {
+func defaultStopDependencies(identity daemonctl.Identity) stopDependencies {
 	return stopDependencies{ops: defaultDaemonOperations(identity), totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}
 }
 
@@ -161,13 +161,13 @@ func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) 
 		return "", err
 	}
 	switch result.State {
-	case clientbootstrap.ProbeStopped:
+	case daemonctl.ProbeStopped:
 		return daemonAlreadyStopped, nil
-	case clientbootstrap.ProbeMalformed, clientbootstrap.ProbeUnreachable:
+	case daemonctl.ProbeMalformed, daemonctl.ProbeUnreachable:
 		return "", daemonUnknownError()
-	case clientbootstrap.ProbeReachable:
+	case daemonctl.ProbeReachable:
 		if !isExplicitHeadless(result.Status) {
-			return "", clientbootstrap.ErrModeConflict
+			return "", daemonctl.ErrModeConflict
 		}
 		if err := stopGeneration(deps, result.Info); err != nil {
 			return "", err
@@ -226,7 +226,7 @@ type restartDependencies struct {
 	stop stopDependencies
 }
 
-func defaultRestartDependencies(identity clientbootstrap.Identity) restartDependencies {
+func defaultRestartDependencies(identity daemonctl.Identity) restartDependencies {
 	ops := defaultDaemonOperations(identity)
 	return restartDependencies{ops: ops, stop: stopDependencies{ops: ops, totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}}
 }
@@ -241,9 +241,9 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 	if err != nil {
 		return "", err
 	}
-	if result.State == clientbootstrap.ProbeReachable {
+	if result.State == daemonctl.ProbeReachable {
 		if !isExplicitHeadless(result.Status) {
-			return "", clientbootstrap.ErrModeConflict
+			return "", daemonctl.ErrModeConflict
 		}
 		if err := stopGeneration(deps.stop, result.Info); err != nil {
 			return "", err
@@ -252,7 +252,7 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 	if _, err := deps.ops.start(logLevel); err != nil {
 		return "", err
 	}
-	if result.State == clientbootstrap.ProbeStopped {
+	if result.State == daemonctl.ProbeStopped {
 		return daemonStartedFromStopped, nil
 	}
 	return daemonRestarted, nil
@@ -262,36 +262,36 @@ func isExplicitHeadless(status *contract.StatusResult) bool {
 	return status != nil && status.Mode == "headless" && status.DesktopOwnerPID == nil
 }
 
-func daemonStart(identity clientbootstrap.Identity, logLevel string) error {
-	if registered, err := clientbootstrap.HasService(); registered || err != nil {
+func daemonStart(identity daemonctl.Identity, logLevel string) error {
+	if registered, err := daemonctl.HasService(); registered || err != nil {
 		if err != nil {
 			return err
 		}
 		// Existing XDG login entries also use daemon start. Keep an
 		// automatic login entry from overriding systemd enablement.
-		return wrapSafeOperation("托管后台请使用 sidraviactl integration service start", clientbootstrap.ErrModeConflict)
+		return wrapSafeOperation("托管后台请使用 sidraviactl integration service start", daemonctl.ErrModeConflict)
 	}
-	outcome, err := clientbootstrap.EnsureHeadless(identity, logLevel)
+	outcome, err := daemonctl.EnsureHeadless(identity, logLevel)
 	if err != nil {
 		return err
 	}
-	if outcome == clientbootstrap.AlreadyRunning {
+	if outcome == daemonctl.AlreadyRunning {
 		p := newPresentation(os.Stdout)
 		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonAlreadyRunning()))
 	}
 	return writeDaemonStarted(os.Stdout)
 }
 
-func daemonStatus(identity clientbootstrap.Identity) error {
+func daemonStatus(identity daemonctl.Identity) error {
 	return runDaemonStatus(defaultDaemonOperations(identity), os.Stdout)
 }
 
-func daemonStop(identity clientbootstrap.Identity) error {
-	if registered, err := clientbootstrap.HasService(); registered || err != nil {
+func daemonStop(identity daemonctl.Identity) error {
+	if registered, err := daemonctl.HasService(); registered || err != nil {
 		if err != nil {
 			return err
 		}
-		if _, err := clientbootstrap.ServiceOperation(context.Background(), identity, "stop"); err != nil {
+		if _, err := daemonctl.ServiceOperation(context.Background(), identity, "stop"); err != nil {
 			return err
 		}
 		return writeDaemonStopped(os.Stdout)
@@ -307,12 +307,12 @@ func daemonStop(identity clientbootstrap.Identity) error {
 	return writeDaemonStopped(os.Stdout)
 }
 
-func daemonRestart(identity clientbootstrap.Identity, logLevel string) error {
-	if registered, err := clientbootstrap.HasService(); registered || err != nil {
+func daemonRestart(identity daemonctl.Identity, logLevel string) error {
+	if registered, err := daemonctl.HasService(); registered || err != nil {
 		if err != nil {
 			return err
 		}
-		if _, err := clientbootstrap.ServiceOperation(context.Background(), identity, "restart"); err != nil {
+		if _, err := daemonctl.ServiceOperation(context.Background(), identity, "restart"); err != nil {
 			return err
 		}
 		return writeDaemonRestarted(os.Stdout)

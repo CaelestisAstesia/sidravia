@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"io"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/update/lifecycle"
 	"time"
 )
 
 // Fixed stages only; no URL, script, command or arbitrary output path.
-func newUpdateInternalCommand(identity clientbootstrap.Identity, out io.Writer) *cobra.Command {
+func newUpdateInternalCommand(identity daemonctl.Identity, out io.Writer) *cobra.Command {
 	root := &cobra.Command{Use: "update-internal", Hidden: true}
 	root.AddCommand(&cobra.Command{Use: "capabilities", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		_, err := fmt.Fprintln(out, `{"schemaVersion":1,"lifecycleProtocol":1}`)

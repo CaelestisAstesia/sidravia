@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sidravia/internal/update/linuxplatform"
+	"sidravia/internal/process/linuxproc"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +74,7 @@ func TestAbandonedRecoveryCanBeReconciledWithoutLaunchingAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { child.Process.Kill(); child.Wait() }()
-	owner, err := linuxplatform.Observe(child.Process.Pid)
+	owner, err := linuxproc.Observe(child.Process.Pid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestReconcileCannotUseCoreInventoryToUnlockGUIOperation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { owner.Process.Kill(); owner.Wait() }()
-			peer, err := linuxplatform.Observe(owner.Process.Pid)
+			peer, err := linuxproc.Observe(owner.Process.Pid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -211,7 +211,7 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { child.Process.Kill(); child.Wait() }()
-			peer, err := linuxplatform.Observe(child.Process.Pid)
+			peer, err := linuxproc.Observe(child.Process.Pid)
 			if err != nil {
 				t.Fatal(err)
 			}

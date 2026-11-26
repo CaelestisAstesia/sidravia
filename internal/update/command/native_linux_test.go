@@ -33,12 +33,12 @@ import (
 	"testing"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
+	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/internal/testfixture"
-	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/packagefiles"
 	"sidravia/internal/update/releases"
@@ -355,7 +355,7 @@ func nativeCLIUpdate(t *testing.T, useXZ bool) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { dead.Process.Kill(); dead.Wait() })
-	peer, err := linuxplatform.Observe(dead.Process.Pid)
+	peer, err := linuxproc.Observe(dead.Process.Pid)
 	if err != nil {
 		dead.Process.Kill()
 		dead.Wait()

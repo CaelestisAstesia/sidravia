@@ -9,7 +9,7 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/installationmanager"
 )
 
@@ -24,7 +24,7 @@ func integrationFailure(message string, cause error) error {
 	return &integrationOperationError{message: message, cause: cause}
 }
 
-func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error), identities ...clientbootstrap.Identity) *cobra.Command {
+func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error), identities ...daemonctl.Identity) *cobra.Command {
 	group := &cobra.Command{Use: "integration", Short: "管理当前用户的系统集成"}
 	run := func(args []string) func(*cobra.Command, []string) error {
 		return func(cmd *cobra.Command, _ []string) error {
@@ -72,9 +72,9 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 				var state installationmanager.ServiceState
 				var err error
 				if changesMode {
-					state, err = clientbootstrap.SwitchService(cmd.Context(), identities[0], action, owner, interrupt)
+					state, err = daemonctl.SwitchService(cmd.Context(), identities[0], action, owner, interrupt)
 				} else {
-					state, err = clientbootstrap.ServiceOperation(cmd.Context(), identities[0], action)
+					state, err = daemonctl.ServiceOperation(cmd.Context(), identities[0], action)
 				}
 				if outputErr := json.NewEncoder(out).Encode(state); outputErr != nil {
 					return outputErr
@@ -90,7 +90,7 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 						message = "后台管理切换需要恢复，请运行 sidraviactl integration service recover。"
 					case errors.Is(err, installationmanager.ErrServiceStop):
 						message = "后台未正常退出。请检查用户服务的实际状态和日志。"
-					case errors.Is(err, installationmanager.ErrServiceConflict), errors.Is(err, clientbootstrap.ErrModeConflict):
+					case errors.Is(err, installationmanager.ErrServiceConflict), errors.Is(err, daemonctl.ErrModeConflict):
 						message = "用户服务状态或运行身份冲突，请检查原后台状态后再重试。"
 					}
 					return wrapCommandOperation(integrationFailure(message, err))

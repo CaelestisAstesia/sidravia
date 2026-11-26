@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 )
 
 // Use the real D520 override validator with the existing offline session factory.

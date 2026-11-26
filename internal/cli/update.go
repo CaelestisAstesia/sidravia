@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update/command"
 	"sidravia/internal/update/entry"
@@ -27,7 +27,7 @@ func (b *updateOutput) Write(p []byte) (int, error) {
 	b.data = append(b.data, p...)
 	return len(p), nil
 }
-func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.Identity) ([]byte, error) {
+func invokeUpdater(ctx context.Context, args []string, identity daemonctl.Identity) ([]byte, error) {
 	if entry.CheckInCTL(args) {
 		ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 		defer stop()
@@ -70,7 +70,7 @@ func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.
 }
 
 // RPM updates belong to the system package manager; no downloader is needed.
-func rpmUpdateOutput(args []string, identity clientbootstrap.Identity) ([]byte, error) {
+func rpmUpdateOutput(args []string, identity daemonctl.Identity) ([]byte, error) {
 	if len(args) == 1 && args[0] == "version" {
 		return json.Marshal(map[string]any{"schemaVersion": 1, "ok": true, "code": "ok", "result": map[string]string{"productVersion": identity.ProductVersion, "buildId": identity.BuildID}})
 	}

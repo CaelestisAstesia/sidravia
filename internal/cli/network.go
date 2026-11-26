@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"net/netip"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
 )
 
-func networkInterfaces(identity clientbootstrap.Identity) error {
+func networkInterfaces(identity daemonctl.Identity) error {
 	return runNetworkInterfaces(defaultReadOnlyCommandDependencies(identity))
 }
 func runNetworkInterfaces(deps readOnlyCommandDependencies) error {

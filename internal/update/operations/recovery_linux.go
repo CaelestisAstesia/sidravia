@@ -7,7 +7,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
-	"sidravia/internal/update/linuxplatform"
+	"sidravia/internal/process/linuxproc"
 	"time"
 )
 
@@ -33,7 +33,7 @@ func (s *Store) recoveryAdmission(ctx context.Context, id, nonce, version, build
 	}
 	// A copied token in a terminal/sibling process is insufficient. Only the
 	// exact live coordinator's descendants may form this cold-start tree.
-	if err := linuxplatform.DescendsFrom(os.Getppid(), recovery.CoordinatorPID, recovery.CoordinatorStart); err != nil {
+	if err := linuxproc.DescendsFrom(os.Getppid(), recovery.CoordinatorPID, recovery.CoordinatorStart); err != nil {
 		return reject(err)
 	}
 	return file, nil

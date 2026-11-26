@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 )
 
 func TestNetworkQueryWindowsRealObserverLoopback(t *testing.T) {

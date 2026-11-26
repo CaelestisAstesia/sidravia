@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/desktopowner"
-	"sidravia/internal/launchcontract"
 )
 
 const windowsDesktopOwnerHelperEnv = "SIDRAVIA_TEST_DESKTOP_OWNER_HELPER_7E1A9C2F"

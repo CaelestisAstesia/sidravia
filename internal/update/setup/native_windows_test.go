@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/internal/testfixture"

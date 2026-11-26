@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"os"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 )
 
 func StatusHandler(productVersion string, buildID string, options launchcontract.Options) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {

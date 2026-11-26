@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/update"
-	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/releases"
 )
 
@@ -47,7 +47,7 @@ func TestRecoveryBoundToPhaseIdentityNonceAndCoordinatorTree(t *testing.T) {
 	if _, _, err := s.Advance(ctx, r.ID, Created, Verified, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	owner, err := linuxplatform.Observe(os.Getpid())
+	owner, err := linuxproc.Observe(os.Getpid())
 	if err != nil {
 		t.Fatal(err)
 	}

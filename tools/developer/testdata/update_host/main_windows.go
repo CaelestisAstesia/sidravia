@@ -12,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/ipc/contract"
 	"strconv"
@@ -393,7 +393,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 			}
 		}
 	}
-	identity, err := clientbootstrap.NewIdentity(version, buildID)
+	identity, err := daemonctl.NewIdentity(version, buildID)
 	if err != nil {
 		return err
 	}
@@ -408,7 +408,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 		for {
 			info, e := readInfo()
 			if e == nil {
-				conn, e := clientbootstrap.Connect(ctx, identity, info)
+				conn, e := daemonctl.Connect(ctx, identity, info)
 				if e == nil {
 					conn.Close()
 					return info, nil
@@ -452,7 +452,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 	if err = stage("prepare", id); err != nil {
 		return err
 	}
-	conn, err := clientbootstrap.Connect(ctx, identity, info)
+	conn, err := daemonctl.Connect(ctx, identity, info)
 	if err != nil {
 		return err
 	}
@@ -524,7 +524,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 		}
 		return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "desktop": true, "namespace": ns, "productVersion": version, "buildId": buildID})
 	}
-	conn, err = clientbootstrap.Connect(ctx, identity, restored)
+	conn, err = daemonctl.Connect(ctx, identity, restored)
 	if err != nil {
 		return err
 	}

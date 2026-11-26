@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update"
 )

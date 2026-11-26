@@ -11,8 +11,8 @@ import (
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/installationgate"
 
-	"sidravia/internal/daemon/logging"
-	"sidravia/internal/launchcontract"
+	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/background/logging"
 	"sidravia/internal/productlayout"
 )
 

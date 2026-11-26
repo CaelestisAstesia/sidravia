@@ -1,0 +1,270 @@
+//go:build windows
+
+package daemonctl
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"golang.org/x/sys/windows"
+
+	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/productlayout"
+)
+
+func TestWindowsLaunchObservesOneWait(t *testing.T) {
+	log, err := os.CreateTemp(t.TempDir(), "log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("wait")
+	starts, waits := 0, 0
+	got, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
+		resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) {
+			return productlayout.Layout{ExecutableDirectory: `C:\\Sidravia`, DaemonLogPath: log.Name()}, nil
+		},
+		prepareLog: func(string) (*os.File, error) { return log, nil }, parentEnv: func() []string { return nil },
+		start: func(*exec.Cmd) error { starts++; return nil }, wait: func(*exec.Cmd) error { waits++; return cause },
+	})
+	if err != nil || got.exited == nil {
+		t.Fatalf("launch = %#v, %v", got, err)
+	}
+	if cap(got.exited) != 1 {
+		t.Fatalf("exit observation capacity = %d, want 1", cap(got.exited))
+	}
+	if gotErr := <-got.exited; !errors.Is(gotErr, cause) || starts != 1 || waits != 1 {
+		t.Fatalf("start=%d wait=%d err=%v", starts, waits, gotErr)
+	}
+	if _, err := log.Write([]byte("closed")); err == nil {
+		t.Fatal("parent log remains open after successful start")
+	}
+}
+
+func TestWindowsLaunchFailuresPreserveOwnership(t *testing.T) {
+	t.Run("layout", func(t *testing.T) {
+		cause := errors.New("layout")
+		_, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
+			resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) { return productlayout.Layout{}, cause },
+		})
+		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "解析 sidravia 运行目录") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("log", func(t *testing.T) {
+		cause := errors.New("log")
+		_, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
+			resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) { return productlayout.Layout{}, nil },
+			prepareLog:    func(string) (*os.File, error) { return nil, cause },
+		})
+		if !errors.Is(err, cause) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("start", func(t *testing.T) {
+		log, err := os.CreateTemp(t.TempDir(), "log")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cause := errors.New("start")
+		waits := 0
+		launch, err := launchDaemonProcessWith(launchcontract.Headless(), "info", windowsDaemonLauncherDeps{
+			resolveLayout: func(productlayout.Namespace) (productlayout.Layout, error) {
+				return productlayout.Layout{DaemonLogPath: log.Name()}, nil
+			},
+			prepareLog: func(string) (*os.File, error) { return log, nil },
+			parentEnv:  func() []string { return nil },
+			start:      func(*exec.Cmd) error { return cause },
+			wait:       func(*exec.Cmd) error { waits++; return nil },
+		})
+		if launch.exited != nil || !errors.Is(err, cause) || waits != 0 {
+			t.Fatalf("launch=%#v error=%v waits=%d", launch, err, waits)
+		}
+		if _, err := log.Write([]byte("closed")); err == nil {
+			t.Fatal("parent log remains open after failed start")
+		}
+	})
+}
+
+// TestDaemonEnvForLevelSetsChildLogLevel proves a non-empty log level appends
+// exactly one SIDRAVIA_LOG_LEVEL entry to the child environment without
+// mutating the parent environment.
+func TestDaemonEnvForLevelSetsChildLogLevel(t *testing.T) {
+	parentCount := countLogLevel(os.Environ())
+	env, err := launchcontract.ChildEnvironment(os.Environ(), launchcontract.Headless(), "trace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := countLogLevel(env); got != 1 {
+		t.Errorf("child SIDRAVIA_LOG_LEVEL count = %d, want 1", got)
+	}
+	found := false
+	for _, e := range env {
+		if e == "SIDRAVIA_LOG_LEVEL=trace" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("child env missing SIDRAVIA_LOG_LEVEL=trace: %v", env)
+	}
+	// Parent environment must be unchanged.
+	if got := countLogLevel(os.Environ()); got != parentCount {
+		t.Errorf("parent SIDRAVIA_LOG_LEVEL count changed: got %d, want %d", got, parentCount)
+	}
+}
+
+func TestDaemonProcessCommandOwnsBackgroundOutput(t *testing.T) {
+	logFile, err := os.OpenFile(filepath.Join(t.TempDir(), "daemon.log"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logFile.Close()
+	cmd, err := daemonProcessCommand(`C:\Sidravia\sidraviad.exe`, logFile, []string{"PATH=value", "sidravia_log_level=debug"}, launchcontract.Headless(), "trace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Stdin != nil {
+		t.Fatal("child inherited stdin")
+	}
+	if cmd.Stdout != logFile || cmd.Stderr != logFile {
+		t.Fatal("child output is not owned by the background log")
+	}
+	if countLogLevel(cmd.Env) != 1 || !containsEnvironmentEntry(cmd.Env, "SIDRAVIA_LOG_LEVEL=trace") {
+		t.Fatalf("child environment = %v", cmd.Env)
+	}
+	if cmd.SysProcAttr == nil || cmd.SysProcAttr.CreationFlags != windows.CREATE_NO_WINDOW {
+		t.Fatalf("creation flags = %#v", cmd.SysProcAttr)
+	}
+}
+
+// TestDaemonEnvForLevelEmptyLeavesDefault proves an empty log level resolves
+// to Debug without inheriting a sensitive parent level.
+func TestDaemonEnvForLevelEmptyLeavesDefault(t *testing.T) {
+	env, err := launchcontract.ChildEnvironment(os.Environ(), launchcontract.Headless(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := countLogLevel(env); got != 1 {
+		t.Errorf("empty logLevel SIDRAVIA_LOG_LEVEL count = %d, want 1", got)
+	}
+	if !containsEnvironmentEntry(env, "SIDRAVIA_LOG_LEVEL=debug") {
+		t.Errorf("empty logLevel did not resolve to debug: %v", env)
+	}
+}
+
+func countLogLevel(env []string) int {
+	count := 0
+	for _, e := range env {
+		if strings.HasPrefix(e, "SIDRAVIA_LOG_LEVEL=") {
+			count++
+		}
+	}
+	return count
+}
+
+func containsEnvironmentEntry(env []string, want string) bool {
+	for _, entry := range env {
+		if entry == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSingletonOwnedExitHelper(t *testing.T) {
+	if name := os.Getenv("SIDRAVIA_OWNED_TEST_MUTEX"); name != "" {
+		ptr, err := windows.UTF16PtrFromString(name)
+		if err != nil {
+			os.Exit(3)
+		}
+		handle, err := windows.CreateMutex(nil, false, ptr)
+		if handle != 0 {
+			windows.CloseHandle(handle)
+		}
+		if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			os.Exit(launchcontract.ExitSingletonContention)
+		}
+		if err != nil {
+			os.Exit(3)
+		}
+		os.Exit(0)
+	}
+	if os.Getenv("SIDRAVIA_OWNED_TEST_EXIT") == "singleton" {
+		os.Exit(launchcontract.ExitSingletonContention)
+	}
+}
+func TestWindowsSingletonExitClassification(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestSingletonOwnedExitHelper$")
+	cmd.Env = append(os.Environ(), "SIDRAVIA_OWNED_TEST_EXIT=singleton")
+	cause := cmd.Run()
+	if cause == nil {
+		t.Fatal("owned helper did not exit")
+	}
+	classified := classifyDaemonExit(cause)
+	if !errors.Is(classified, errDaemonSingletonContention) || !errors.Is(classified, cause) {
+		t.Fatalf("singleton classification=%v", classified)
+	}
+	ordinary := errors.New("private failure")
+	if classifyDaemonExit(ordinary) != ordinary {
+		t.Fatal("ordinary failure reclassified")
+	}
+}
+
+// A real Windows child observes an owned shutting-down singleton. Its reserved
+// exit is retried after release without probing or touching a production host.
+func TestWindowsRestartHandoffAfterSingletonRelease(t *testing.T) {
+	name := fmt.Sprintf(`Local\Sidravia-debug-handoff-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	ptr, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := windows.CreateMutex(nil, false, ptr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if held != 0 {
+			windows.CloseHandle(held)
+		}
+	}()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func() error {
+		cmd := exec.Command(executable, "-test.run=^TestSingletonOwnedExitHelper$")
+		cmd.Env = append(os.Environ(), "SIDRAVIA_OWNED_TEST_MUTEX="+name)
+		return classifyDaemonExit(cmd.Run())
+	}
+	first := run()
+	if !errors.Is(first, errDaemonSingletonContention) {
+		t.Fatalf("first exit=%v", first)
+	}
+	exited := make(chan error, 1)
+	exited <- first
+	ready, attempts := false, 0
+	err = waitForReadinessWithRelaunch(5*time.Second, 10*time.Millisecond, exited, func() (bool, error) { return ready, nil }, func() (daemonLaunch, error) {
+		attempts++
+		if e := windows.CloseHandle(held); e != nil {
+			return daemonLaunch{}, e
+		}
+		held = 0
+		if e := run(); e != nil {
+			return daemonLaunch{}, e
+		}
+		ready = true
+		return daemonLaunch{}, nil
+	})
+	if err != nil || !ready || attempts != 1 {
+		t.Fatalf("handoff ready=%v attempts=%d error=%v", ready, attempts, err)
+	}
+}

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update/lifecycle"
 	"sidravia/internal/update/operations"
@@ -20,7 +20,7 @@ import (
 // Finish runs the newly installed updater after file publication. It retains an
 // exact handle to its authenticated parent, then waits outside Inno's synchronous
 // hooks. Its result never substitutes installer exit for a complete byte check.
-func Finish(ctx context.Context, id string, pid uint32, identity clientbootstrap.Identity) error {
+func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Identity) error {
 	layout, e := localLayout()
 	if e != nil {
 		return e

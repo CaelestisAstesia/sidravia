@@ -73,7 +73,7 @@ python3 tools/developer/dev.py package --version 0.6.0-alpha.1 --output dist/lin
 | `cmd/sidraviactl`、`internal/cli` | 命令行入口与呈现 |
 | `cmd/sidraviad`、`internal/daemon` | 后台组合、配置、会话、网络与协议 |
 | `internal/ipc` | 本机通信契约、客户端与服务端 |
-| `internal/clientbootstrap` | 后台探测、启动与连接 |
+| `internal/background/daemonctl` | 后台探测、启动与连接 |
 | `cmd/sidraviamgr`、`internal/installationmanager` | Windows 当前用户 PATH 与登录自启，Linux systemd 用户服务 |
 | `cmd/sidraviaupdater`、`internal/update` | 更新候选选择、下载、校验与受限生命周期协作 |
 | `gui/lib` | Flutter 应用、通信与界面 |

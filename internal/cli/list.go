@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"io"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 )
 
-func authList(identity clientbootstrap.Identity) error {
+func authList(identity daemonctl.Identity) error {
 	return runAuthList(defaultReadOnlyCommandDependencies(identity))
 }
 
-func profileList(identity clientbootstrap.Identity) error {
+func profileList(identity daemonctl.Identity) error {
 	return runProfileList(defaultReadOnlyCommandDependencies(identity))
 }
 

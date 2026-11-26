@@ -9,14 +9,14 @@ import (
 	"os"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/credentialinput"
 	"sidravia/internal/ipc/contract"
 )
 
 const automaticNetworkBindingPolicy = "automatically_select_latest_available"
 
-type daemonClient = clientbootstrap.Client
+type daemonClient = daemonctl.Client
 
 type daemonConnectionDependencies struct {
 	acquire     func(context.Context) (daemonClient, error)
@@ -44,25 +44,25 @@ type authStartOptions struct {
 
 // defaultDaemonConnectionDependencies delegates all discovery, launch and
 // readiness work to bootstrap. Auth owns only operation deadlines and cleanup.
-func defaultDaemonConnectionDependencies(identity clientbootstrap.Identity) daemonConnectionDependencies {
+func defaultDaemonConnectionDependencies(identity daemonctl.Identity) daemonConnectionDependencies {
 	return daemonConnectionDependencies{
 		acquire: func(ctx context.Context) (daemonClient, error) {
-			return clientbootstrap.AcquireHeadless(ctx, identity, "")
+			return daemonctl.AcquireHeadless(ctx, identity, "")
 		},
 		callTimeout: 2 * time.Second,
 	}
 }
 
-func defaultReadOnlyDaemonConnectionDependencies(identity clientbootstrap.Identity) daemonConnectionDependencies {
+func defaultReadOnlyDaemonConnectionDependencies(identity daemonctl.Identity) daemonConnectionDependencies {
 	return daemonConnectionDependencies{
 		acquire: func(ctx context.Context) (daemonClient, error) {
-			return clientbootstrap.ConnectExistingHeadless(ctx, identity)
+			return daemonctl.ConnectExistingHeadless(ctx, identity)
 		},
 		callTimeout: 2 * time.Second,
 	}
 }
 
-func defaultAuthDependencies(identity clientbootstrap.Identity) authDependencies {
+func defaultAuthDependencies(identity daemonctl.Identity) authDependencies {
 	return authDependencies{
 		connection:              defaultDaemonConnectionDependencies(identity),
 		stdin:                   os.Stdin,
@@ -74,23 +74,23 @@ func defaultAuthDependencies(identity clientbootstrap.Identity) authDependencies
 	}
 }
 
-func authStart(identity clientbootstrap.Identity, options authStartOptions) error {
+func authStart(identity daemonctl.Identity, options authStartOptions) error {
 	return runAuthStart(options, defaultAuthDependencies(identity))
 }
 
-func authStatus(identity clientbootstrap.Identity, sessionID string) error {
+func authStatus(identity daemonctl.Identity, sessionID string) error {
 	return runAuthStatus(sessionID, defaultReadOnlyAuthDependencies(identity))
 }
 
-func authStop(identity clientbootstrap.Identity, sessionID string) error {
+func authStop(identity daemonctl.Identity, sessionID string) error {
 	return runAuthStop(sessionID, defaultAuthDependencies(identity))
 }
 
-func authRestart(identity clientbootstrap.Identity, sessionID string) error {
+func authRestart(identity daemonctl.Identity, sessionID string) error {
 	return runAuthRestart(sessionID, defaultAuthDependencies(identity))
 }
 
-func authRemove(identity clientbootstrap.Identity, sessionID string) error {
+func authRemove(identity daemonctl.Identity, sessionID string) error {
 	return runAuthRemove(sessionID, defaultAuthDependencies(identity))
 }
 
@@ -215,7 +215,7 @@ func withAuthClient(deps authDependencies, operation func(daemonClient) error) e
 func withDaemonClient(deps daemonConnectionDependencies, operation func(daemonClient) error) error {
 	connection, err := acquireDaemonClient(deps)
 	if err != nil {
-		if clientbootstrap.IsReadinessUnconfirmed(err) {
+		if daemonctl.IsReadinessUnconfirmed(err) {
 			return err
 		}
 		return wrapSafeOperation("无法连接 sidraviad（请确认 daemon 已启动；若刚增删过 sidravia.portable 标记，请先停止并重启 daemon）", err)

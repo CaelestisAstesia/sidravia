@@ -2,7 +2,7 @@
 
 package main
 
-import "sidravia/internal/launchcontract"
+import launchcontract "sidravia/internal/background/launch"
 
 func acquireUserInstance() (func() error, error) {
 	return func() error { return nil }, nil

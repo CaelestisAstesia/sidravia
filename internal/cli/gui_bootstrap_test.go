@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -37,19 +37,19 @@ func TestGUIBootstrapInvalidPIDWritesNoSuccessBytes(t *testing.T) {
 	}
 }
 
-func fakeUnsupportedBootstrap(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-	return clientbootstrap.DesktopBootstrapResult{}, clientbootstrap.ErrDesktopUnsupported
+func fakeUnsupportedBootstrap(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+	return daemonctl.DesktopBootstrapResult{}, daemonctl.ErrDesktopUnsupported
 }
 
 func TestGUIBootstrapRendersExactMachineJSON(t *testing.T) {
 	identity := mustTestIdentity(t)
 	owner := 42
 	var output bytes.Buffer
-	err := guiBootstrap(identity, owner, &output, func(got clientbootstrap.Identity, pid int) (clientbootstrap.DesktopBootstrapResult, error) {
+	err := guiBootstrap(identity, owner, &output, func(got daemonctl.Identity, pid int) (daemonctl.DesktopBootstrapResult, error) {
 		if got != identity || pid != owner {
 			t.Fatalf("identity=%+v pid=%d", got, pid)
 		}
-		return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -71,26 +71,26 @@ func TestGUIBootstrapFailureNeverWritesSuccessJSON(t *testing.T) {
 		exitCode  int
 	}{
 		{"unsupported", fakeUnsupportedBootstrap, &bytes.Buffer{}, guiBootstrapUnsupportedCode, 11},
-		{"mode conflict", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{}, clientbootstrap.ErrModeConflict
+		{"mode conflict", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{}, daemonctl.ErrModeConflict
 		}, &bytes.Buffer{}, guiBootstrapModeConflictCode, 12},
-		{"incompatible", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{}, clientbootstrap.ErrIncompatibleGeneration
+		{"incompatible", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{}, daemonctl.ErrIncompatibleGeneration
 		}, &bytes.Buffer{}, guiBootstrapIncompatibleCode, 13},
-		{"unconfirmed owner", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: "other", BuildID: "build", PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		{"unconfirmed owner", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: "other", BuildID: "build", PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		}, &bytes.Buffer{}, guiBootstrapUnconfirmedCode, 14},
-		{"unconfirmed zero status PID", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 0, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		{"unconfirmed zero status PID", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 0, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		}, &bytes.Buffer{}, guiBootstrapUnconfirmedCode, 14},
-		{"unconfirmed mismatched daemon PID", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 8, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		{"unconfirmed mismatched daemon PID", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 8, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		}, &bytes.Buffer{}, guiBootstrapUnconfirmedCode, 14},
-		{"underlying", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{}, errors.New("private-token-marker")
+		{"underlying", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{}, errors.New("private-token-marker")
 		}, &bytes.Buffer{}, guiBootstrapFailedCode, 15},
-		{"write", func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		{"write", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		}, zeroWriter{err: errors.New("private-write-marker")}, guiBootstrapOutputFailedCode, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestGUIBootstrapInvalidIdentityHasMachineContractOnlyOnHiddenPath(t *testin
 	assertGUIBootstrapFailureDocument(t, err, guiBootstrapInvalidIdentityCode)
 
 	err = RunWithIdentity([]string{"daemon", "status"}, "", "build")
-	if !errors.Is(err, clientbootstrap.ErrInvalidIdentity) || ExitCode(err) != 1 {
+	if !errors.Is(err, daemonctl.ErrInvalidIdentity) || ExitCode(err) != 1 {
 		t.Fatalf("ordinary invalid identity err=%v exit=%d", err, ExitCode(err))
 	}
 }
@@ -151,9 +151,9 @@ func assertGUIBootstrapFailureDocument(t *testing.T, err error, wantCode string)
 	}
 }
 
-func mustTestIdentity(t *testing.T) clientbootstrap.Identity {
+func mustTestIdentity(t *testing.T) daemonctl.Identity {
 	t.Helper()
-	identity, err := clientbootstrap.NewIdentity("1.0.0", "build")
+	identity, err := daemonctl.NewIdentity("1.0.0", "build")
 	if err != nil {
 		t.Fatal(err)
 	}

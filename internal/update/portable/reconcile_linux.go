@@ -13,8 +13,8 @@ import (
 	"sidravia/internal/update/releases"
 	"time"
 
+	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/update"
-	"sidravia/internal/update/linuxplatform"
 	"sidravia/internal/update/operations"
 )
 
@@ -87,7 +87,7 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 		return ErrInvalid
 	}
 	if record.Recovery != nil {
-		alive, err := linuxplatform.GenerationRunning(record.Recovery.CoordinatorPID, record.Recovery.CoordinatorStart)
+		alive, err := linuxproc.GenerationRunning(record.Recovery.CoordinatorPID, record.Recovery.CoordinatorStart)
 		if err != nil {
 			return err
 		}

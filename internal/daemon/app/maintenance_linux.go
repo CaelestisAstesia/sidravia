@@ -2,10 +2,10 @@
 
 package app
 
-import "sidravia/internal/update/linuxplatform"
+import "sidravia/internal/process/linuxproc"
 
 func openMaintenanceCoordinator(pid uint32) (func() bool, func(), error) {
-	peer, err := linuxplatform.Observe(int(pid))
+	peer, err := linuxproc.Observe(int(pid))
 	if err != nil {
 		return nil, nil, err
 	}

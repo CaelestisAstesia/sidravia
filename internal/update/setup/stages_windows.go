@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/launchcontract"
+	"sidravia/internal/background/daemonctl"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
@@ -73,7 +73,7 @@ func localLayout() (productlayout.Layout, error) {
 // RunStage is a bounded direct child of the authenticated Inno worker. External
 // flags cannot authorize a different target or turn a normal installer into an
 // update. Both the immutable signed operation and the exact worker must match.
-func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32, hasGUI bool, identity clientbootstrap.Identity) error {
+func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32, hasGUI bool, identity daemonctl.Identity) error {
 	if !update.ValidOperationID(id) {
 		return ErrInvalid
 	}

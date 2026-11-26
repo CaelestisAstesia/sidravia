@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/desktopowner"
-	"sidravia/internal/launchcontract"
 )
 
 type fakeDesktopOwner struct {

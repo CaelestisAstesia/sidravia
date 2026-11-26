@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/app"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
 )
 

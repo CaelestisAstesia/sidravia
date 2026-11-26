@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/update"
 )
 

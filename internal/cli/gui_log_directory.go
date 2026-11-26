@@ -7,7 +7,7 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
-	"sidravia/internal/launchcontract"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/productlayout"
 )
 

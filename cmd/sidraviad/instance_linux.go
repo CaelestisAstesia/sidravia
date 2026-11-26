@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/update/linuxplatform"
+	"sidravia/internal/process/linuxproc"
 	"strconv"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/background/userlease"
 	"sidravia/internal/daemon/host"
-	"sidravia/internal/launchcontract"
-	"sidravia/internal/useradmission"
 )
 
 // acquireUserInstance holds the cross-installation lease until the entire
@@ -29,8 +29,8 @@ func acquireUserInstance() (func() error, error) {
 	if options.Namespace != "" {
 		return noop, nil
 	}
-	release, err := useradmission.Acquire()
-	if errors.Is(err, useradmission.ErrBusy) {
+	release, err := userlease.Acquire()
+	if errors.Is(err, userlease.ErrBusy) {
 		return nil, host.ErrAlreadyRunning
 	}
 	if err != nil {
@@ -91,7 +91,7 @@ func configureServiceSwitch(options *launchcontract.Options, paths defaultPaths)
 		if ownerStart == 0 {
 			return installationmanager.ErrServiceRecovery
 		}
-		alive, err := linuxplatform.GenerationRunning(options.DesktopOwnerPID, strconv.FormatUint(ownerStart, 10))
+		alive, err := linuxproc.GenerationRunning(options.DesktopOwnerPID, strconv.FormatUint(ownerStart, 10))
 		if err != nil || !alive {
 			return errors.Join(installationmanager.ErrServiceRecovery, err)
 		}

@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/update"
 	"testing"
 )

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"testing"
 )
 
@@ -66,7 +66,7 @@ func TestUpdateForwardsConfirmationAndRecoveryIdentity(t *testing.T) {
 }
 
 func TestRPMUpdatesUsePackageManagerAndCompiledIdentity(t *testing.T) {
-	identity := clientbootstrap.Identity{ProductVersion: "1.2.3", BuildID: "rpm-build"}
+	identity := daemonctl.Identity{ProductVersion: "1.2.3", BuildID: "rpm-build"}
 	for _, operation := range []string{"download", "status", "apply", "recover", "version"} {
 		t.Run(operation, func(t *testing.T) {
 			var out bytes.Buffer

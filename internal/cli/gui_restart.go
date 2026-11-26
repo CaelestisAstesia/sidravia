@@ -3,12 +3,12 @@ package cli
 import (
 	"github.com/spf13/cobra"
 	"io"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"strconv"
 )
 
 // runGUIRestart refuses a foreign owner before sending any stop request.
-func runGUIRestart(owner int, level string, deps stopDependencies, start guiBootstrapper, identity clientbootstrap.Identity, output io.Writer) error {
+func runGUIRestart(owner int, level string, deps stopDependencies, start guiBootstrapper, identity daemonctl.Identity, output io.Writer) error {
 	if owner <= 0 || (level != "info" && level != "debug" && level != "trace") {
 		return invalidGUIBootstrapArguments(errCommandUsage)
 	}
@@ -16,26 +16,26 @@ func runGUIRestart(owner int, level string, deps stopDependencies, start guiBoot
 	if err != nil {
 		return classifyGUIBootstrapFailure(err)
 	}
-	if result.State == clientbootstrap.ProbeStopped {
+	if result.State == daemonctl.ProbeStopped {
 		return guiBootstrap(identity, owner, output, start)
 	}
-	if result.State != clientbootstrap.ProbeReachable || result.Status == nil || result.Status.Mode != "desktop" || result.Status.DesktopOwnerPID == nil || *result.Status.DesktopOwnerPID != owner {
-		return classifyGUIBootstrapFailure(clientbootstrap.ErrModeConflict)
+	if result.State != daemonctl.ProbeReachable || result.Status == nil || result.Status.Mode != "desktop" || result.Status.DesktopOwnerPID == nil || *result.Status.DesktopOwnerPID != owner {
+		return classifyGUIBootstrapFailure(daemonctl.ErrModeConflict)
 	}
 	if err := stopGeneration(deps, result.Info); err != nil {
 		return classifyGUIBootstrapFailure(err)
 	}
 	return guiBootstrap(identity, owner, output, start)
 }
-func newGUIRestartCommand(identity clientbootstrap.Identity, output io.Writer) *cobra.Command {
+func newGUIRestartCommand(identity daemonctl.Identity, output io.Writer) *cobra.Command {
 	var ownerText, level string
 	c := &cobra.Command{Use: "restart", Hidden: true, Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
 		owner, err := strconv.Atoi(ownerText)
 		if err != nil {
 			return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 		}
-		start := func(id clientbootstrap.Identity, pid int) (clientbootstrap.DesktopBootstrapResult, error) {
-			return clientbootstrap.BootstrapDesktopWithLogLevel(id, pid, level, true)
+		start := func(id daemonctl.Identity, pid int) (daemonctl.DesktopBootstrapResult, error) {
+			return daemonctl.BootstrapDesktopWithLogLevel(id, pid, level, true)
 		}
 		return wrapCommandOperation(runGUIRestart(owner, level, defaultStopDependencies(identity), start, identity, output))
 	}}

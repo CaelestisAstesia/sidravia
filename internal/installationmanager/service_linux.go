@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"sidravia/internal/background/userlease"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/useradmission"
 )
 
 func managerCommand(ctx context.Context, binary string, args ...string) (string, error) {
@@ -301,7 +301,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 		}
 		apply := func() (err error) {
 			if !before.Registered && next != nil {
-				release, err := useradmission.Acquire()
+				release, err := userlease.Acquire()
 				if err != nil {
 					return errors.Join(ErrServiceConflict, err)
 				}

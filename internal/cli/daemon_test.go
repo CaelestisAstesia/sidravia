@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -22,39 +22,39 @@ func daemonStatusResponse(t *testing.T) contract.Response {
 	return contract.NewSuccessResponse("1", data)
 }
 
-func testDaemonOperations(result clientbootstrap.ProbeResult, inspectErr error) daemonOperations {
+func testDaemonOperations(result daemonctl.ProbeResult, inspectErr error) daemonOperations {
 	return daemonOperations{
-		inspect: func() (clientbootstrap.ProbeResult, error) { return result, inspectErr },
+		inspect: func() (daemonctl.ProbeResult, error) { return result, inspectErr },
 		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
 			return nil, errors.New("unexpected connect")
 		},
 		reachable: func(contract.RuntimeInfo) bool { return false },
-		start:     func(string) (clientbootstrap.StartOutcome, error) { return clientbootstrap.Started, nil },
+		start:     func(string) (daemonctl.StartOutcome, error) { return daemonctl.Started, nil },
 	}
 }
 
 func TestDaemonStatusPresentationUsesBootstrapInspection(t *testing.T) {
 	t.Run("stopped", func(t *testing.T) {
 		var output strings.Builder
-		if err := runDaemonStatus(testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeStopped}, nil), &output); err != nil || output.String() != "守护进程：已停止（stopped）\n" {
+		if err := runDaemonStatus(testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeStopped}, nil), &output); err != nil || output.String() != "守护进程：已停止（stopped）\n" {
 			t.Fatalf("err=%v output=%q", err, output.String())
 		}
 	})
 	t.Run("running", func(t *testing.T) {
 		var output strings.Builder
-		result := clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Status: &contract.StatusResult{ProductVersion: "1", BuildID: "b", PID: 7, Status: "running"}}
+		result := daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Status: &contract.StatusResult{ProductVersion: "1", BuildID: "b", PID: 7, Status: "running"}}
 		if err := runDaemonStatus(testDaemonOperations(result, nil), &output); err != nil || !strings.Contains(output.String(), "守护进程：运行中（running）") {
 			t.Fatalf("err=%v output=%q", err, output.String())
 		}
 	})
 	t.Run("unknown", func(t *testing.T) {
-		if err := runDaemonStatus(testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeMalformed}, nil), &strings.Builder{}); err == nil || err.Error() != daemonUnknownError().Error() {
+		if err := runDaemonStatus(testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeMalformed}, nil), &strings.Builder{}); err == nil || err.Error() != daemonUnknownError().Error() {
 			t.Fatalf("err=%v", err)
 		}
 	})
 	t.Run("incompatible", func(t *testing.T) {
 		var output strings.Builder
-		result := clientbootstrap.ProbeResult{Info: contract.RuntimeInfo{ProductVersion: "secret-version", BuildID: "secret-build", Token: "secret-token"}, State: clientbootstrap.ProbeIncompatible}
+		result := daemonctl.ProbeResult{Info: contract.RuntimeInfo{ProductVersion: "secret-version", BuildID: "secret-build", Token: "secret-token"}, State: daemonctl.ProbeIncompatible}
 		if err := runDaemonStatus(testDaemonOperations(result, nil), &output); err != nil {
 			t.Fatalf("err=%v", err)
 		}
@@ -74,7 +74,7 @@ func TestRunDaemonStatusSuccessAuthoritative(t *testing.T) {
 		Mode:           "headless",
 	}
 	var output strings.Builder
-	if err := runDaemonStatus(testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Status: result}, nil), &output); err != nil {
+	if err := runDaemonStatus(testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Status: result}, nil), &output); err != nil {
 		t.Fatalf("runDaemonStatus = %v, want nil", err)
 	}
 	expected := fmt.Sprintf("守护进程：运行中（%s） | 版本：%s | 构建：%s | PID：%d | 模式：%s\n",
@@ -88,7 +88,7 @@ func TestRunDaemonStatusSuccessAuthoritative(t *testing.T) {
 func TestDaemonStopTargetsContactedGeneration(t *testing.T) {
 	info := testRuntimeInfo(100)
 	stopped, stopCalls := false, 0
-	ops := testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: &contract.StatusResult{Mode: "headless"}}, nil)
+	ops := testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: info, Status: &contract.StatusResult{Mode: "headless"}}, nil)
 	ops.connect = func(_ context.Context, got contract.RuntimeInfo) (daemonClient, error) {
 		if got.PID != info.PID {
 			t.Fatalf("PID=%d", got.PID)
@@ -115,17 +115,17 @@ func TestDaemonStopAndRestartRejectNonHeadlessBeforeDispatch(t *testing.T) {
 	for name, status := range map[string]*contract.StatusResult{"nil": nil, "desktop": &contract.StatusResult{Mode: "desktop"}, "unknown": &contract.StatusResult{Mode: "unknown"}, "headless-owner": &contract.StatusResult{Mode: "headless", DesktopOwnerPID: intPointer(42)}} {
 		t.Run(name, func(t *testing.T) {
 			connects, starts := 0, 0
-			ops := testDaemonOperations(clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: info, Status: status}, nil)
+			ops := testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: info, Status: status}, nil)
 			ops.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
 				connects++
 				return nil, errors.New("unexpected")
 			}
-			ops.start = func(string) (clientbootstrap.StartOutcome, error) { starts++; return clientbootstrap.Started, nil }
+			ops.start = func(string) (daemonctl.StartOutcome, error) { starts++; return daemonctl.Started, nil }
 			stop := stopDependencies{ops: ops, totalWait: time.Second, pollInterval: time.Millisecond}
-			if err := runDaemonStop(stop); !errors.Is(err, clientbootstrap.ErrModeConflict) {
+			if err := runDaemonStop(stop); !errors.Is(err, daemonctl.ErrModeConflict) {
 				t.Fatalf("stop err=%v", err)
 			}
-			if err := runDaemonRestart(restartDependencies{ops: ops, stop: stop}, ""); !errors.Is(err, clientbootstrap.ErrModeConflict) {
+			if err := runDaemonRestart(restartDependencies{ops: ops, stop: stop}, ""); !errors.Is(err, daemonctl.ErrModeConflict) {
 				t.Fatalf("restart err=%v", err)
 			}
 			if connects != 0 || starts != 0 {
@@ -140,13 +140,13 @@ func intPointer(value int) *int { return &value }
 func TestDaemonRestartPreservesStoppedAndRunningPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		state clientbootstrap.ProbeState
+		state daemonctl.ProbeState
 		want  daemonRestartOutcome
-	}{{"stopped", clientbootstrap.ProbeStopped, daemonStartedFromStopped}, {"stale", clientbootstrap.ProbeUnreachable, daemonRestarted}} {
+	}{{"stopped", daemonctl.ProbeStopped, daemonStartedFromStopped}, {"stale", daemonctl.ProbeUnreachable, daemonRestarted}} {
 		t.Run(tc.name, func(t *testing.T) {
 			starts := 0
-			ops := testDaemonOperations(clientbootstrap.ProbeResult{State: tc.state}, nil)
-			ops.start = func(string) (clientbootstrap.StartOutcome, error) { starts++; return clientbootstrap.Started, nil }
+			ops := testDaemonOperations(daemonctl.ProbeResult{State: tc.state}, nil)
+			ops.start = func(string) (daemonctl.StartOutcome, error) { starts++; return daemonctl.Started, nil }
 			deps := restartDependencies{ops: ops, stop: stopDependencies{ops: ops, totalWait: time.Second, pollInterval: time.Millisecond}}
 			outcome, err := runDaemonRestartWithOutcome(deps, "debug")
 			if err != nil || outcome != tc.want || starts != 1 {

@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/launchcontract"
+	"sidravia/internal/background/daemonctl"
+	launchcontract "sidravia/internal/background/launch"
 )
 
 type guiBootstrapSuccess struct {
@@ -24,13 +24,13 @@ type guiBootstrapSuccess struct {
 	Mode           string `json:"mode"`
 }
 
-type guiBootstrapper func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error)
+type guiBootstrapper func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error)
 
-func defaultGUIBootstrap(identity clientbootstrap.Identity, ownerPID int) (clientbootstrap.DesktopBootstrapResult, error) {
-	return clientbootstrap.BootstrapDesktop(identity, ownerPID)
+func defaultGUIBootstrap(identity daemonctl.Identity, ownerPID int) (daemonctl.DesktopBootstrapResult, error) {
+	return daemonctl.BootstrapDesktop(identity, ownerPID)
 }
 
-func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Writer, bootstrap guiBootstrapper) error {
+func guiBootstrap(identity daemonctl.Identity, ownerPID int, output io.Writer, bootstrap guiBootstrapper) error {
 	if ownerPID <= 0 {
 		return invalidGUIBootstrapArguments(errCommandUsage)
 	}
@@ -61,7 +61,7 @@ func guiBootstrap(identity clientbootstrap.Identity, ownerPID int, output io.Wri
 	return nil
 }
 
-func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer, bootstrap guiBootstrapper) *cobra.Command {
+func newGUIBootstrapCommand(identity daemonctl.Identity, output io.Writer, bootstrap guiBootstrapper) *cobra.Command {
 	var ownerPID string
 	var logLevel string
 	var skipAutoLogin bool
@@ -80,7 +80,7 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 				if logLevel != "" || skipAutoLogin {
 					return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 				}
-				selected = clientbootstrap.BootstrapManagedDesktop
+				selected = daemonctl.BootstrapManagedDesktop
 			} else if logLevel != "" || skipAutoLogin {
 				if logLevel == "" {
 					logLevel = "debug"
@@ -88,11 +88,11 @@ func newGUIBootstrapCommand(identity clientbootstrap.Identity, output io.Writer,
 				if logLevel != "info" && logLevel != "debug" && logLevel != "trace" {
 					return wrapCommandOperation(invalidGUIBootstrapArguments(errCommandUsage))
 				}
-				selected = func(id clientbootstrap.Identity, owner int) (clientbootstrap.DesktopBootstrapResult, error) {
+				selected = func(id daemonctl.Identity, owner int) (daemonctl.DesktopBootstrapResult, error) {
 					if skipAutoLogin && os.Getenv(launchcontract.EnvRecoveryOperation) != "" {
-						return clientbootstrap.BootstrapDesktopForUpdate(id, owner, logLevel, os.Getenv(launchcontract.EnvRecoveryOperation), os.Getenv(launchcontract.EnvRecoveryToken), os.Getenv(launchcontract.EnvRecoveryConfiguration))
+						return daemonctl.BootstrapDesktopForUpdate(id, owner, logLevel, os.Getenv(launchcontract.EnvRecoveryOperation), os.Getenv(launchcontract.EnvRecoveryToken), os.Getenv(launchcontract.EnvRecoveryConfiguration))
 					}
-					return clientbootstrap.BootstrapDesktopWithLogLevel(id, owner, logLevel, skipAutoLogin)
+					return daemonctl.BootstrapDesktopWithLogLevel(id, owner, logLevel, skipAutoLogin)
 				}
 			}
 			return wrapCommandOperation(guiBootstrap(identity, pid, output, selected))

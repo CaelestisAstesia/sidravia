@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
@@ -46,7 +46,7 @@ type record struct {
 	RecoveryToken string               `json:"recoveryToken,omitempty"`
 }
 
-func Run(ctx context.Context, action, op string, coordinator uint32, interactive bool, identity clientbootstrap.Identity) error {
+func Run(ctx context.Context, action, op string, coordinator uint32, interactive bool, identity daemonctl.Identity) error {
 	if !update.ValidOperationID(op) || coordinator == 0 {
 		return update.ErrInvalid
 	}
@@ -117,15 +117,15 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			}
 			state.Hashes[name] = hash
 		}
-		probe, e := clientbootstrap.Probe(identity)
+		probe, e := daemonctl.Probe(identity)
 		if e != nil {
 			return e
 		}
-		if probe.State == clientbootstrap.ProbeStopped {
+		if probe.State == daemonctl.ProbeStopped {
 			state.Stage = "prepared"
 			return save()
 		}
-		if probe.State != clientbootstrap.ProbeReachable || probe.Status == nil {
+		if probe.State != daemonctl.ProbeReachable || probe.Status == nil {
 			return update.ErrInvalid
 		}
 		daemon, e := observeTarget(uint32(probe.Status.PID), 0, source.ID, "sidraviad.exe", peer.SID)
@@ -149,7 +149,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			defer gui.Close()
 			state.GUI = processID{gui.PID, gui.Created}
 		}
-		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
+		conn, e := daemonctl.Connect(ctx, identity, probe.Info)
 		if e != nil {
 			return e
 		}
@@ -212,11 +212,11 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			}
 			defer gui.Close()
 		}
-		probe, e := clientbootstrap.Probe(identity)
+		probe, e := daemonctl.Probe(identity)
 		if e != nil || probe.Info.PID != int(daemon.PID) {
 			return update.ErrInvalid
 		}
-		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
+		conn, e := daemonctl.Connect(ctx, identity, probe.Info)
 		if e != nil {
 			return e
 		}
@@ -249,14 +249,14 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	}
 	if state.Stage == "preparing" || state.Stage == "prepared" {
 		if state.Daemon.PID != 0 {
-			probe, e := clientbootstrap.Probe(identity)
+			probe, e := daemonctl.Probe(identity)
 			if e != nil {
 				return e
 			}
-			if probe.State != clientbootstrap.ProbeReachable || probe.Info.PID != int(state.Daemon.PID) {
+			if probe.State != daemonctl.ProbeReachable || probe.Info.PID != int(state.Daemon.PID) {
 				return update.ErrInvalid
 			}
-			conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
+			conn, e := daemonctl.Connect(ctx, identity, probe.Info)
 			if e != nil {
 				return e
 			}
@@ -298,7 +298,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	state.Stage = "aborted"
 	return save()
 }
-func call(ctx context.Context, conn clientbootstrap.Client, method string, value any) (update.MaintenanceView, error) {
+func call(ctx context.Context, conn daemonctl.Client, method string, value any) (update.MaintenanceView, error) {
 	b, e := json.Marshal(value)
 	if e != nil {
 		return update.MaintenanceView{}, e
@@ -349,7 +349,7 @@ func observeTarget(pid uint32, created uint64, directory, name, sid string) (*wi
 
 // PreparedSnapshot exports only the application-owned saved-config intent to
 // the signed setup coordinator. It never exports runtime tokens or credentials.
-func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identity clientbootstrap.Identity) (update.RestoreIntent, string, error) {
+func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identity daemonctl.Identity) (update.RestoreIntent, string, error) {
 	parent, err := windowsplatform.ObserveParent()
 	if err != nil {
 		return update.RestoreIntent{}, "", err
@@ -393,11 +393,11 @@ func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identi
 
 // RestoreInstalled is called only after the signed coordinator has verified the
 // complete new installation and claimed its durable Resuming transition.
-func RestoreInstalled(ctx context.Context, op string, target update.Target, intent update.RestoreIntent, expires time.Time, level, directory string, identity clientbootstrap.Identity, sid, nonce string) error {
+func RestoreInstalled(ctx context.Context, op string, target update.Target, intent update.RestoreIntent, expires time.Time, level, directory string, identity daemonctl.Identity, sid, nonce string) error {
 	state := record{OperationID: op, Source: target, Intent: intent, Expires: expires, LogLevel: level, RecoveryToken: nonce}
 	return restore(ctx, state, identity, sid, directory)
 }
-func restore(ctx context.Context, state record, identity clientbootstrap.Identity, sid, directory string) error {
+func restore(ctx context.Context, state record, identity daemonctl.Identity, sid, directory string) error {
 	op := state.OperationID
 	source := state.Source
 	ticket := update.ResumeTicket{OperationID: op, Target: source, ExpiresAt: state.Expires, Intent: state.Intent}
@@ -408,9 +408,9 @@ func restore(ctx context.Context, state record, identity clientbootstrap.Identit
 	if state.Intent.Mode == "headless" {
 		var e error
 		if state.RecoveryToken != "" {
-			restored, e = clientbootstrap.StartHeadlessForUpdate(identity, state.LogLevel, op, state.RecoveryToken, state.Intent.ConfigurationID)
+			restored, e = daemonctl.StartHeadlessForUpdate(identity, state.LogLevel, op, state.RecoveryToken, state.Intent.ConfigurationID)
 		} else {
-			restored, e = clientbootstrap.StartHeadlessForRecovery(identity, state.LogLevel)
+			restored, e = daemonctl.StartHeadlessForRecovery(identity, state.LogLevel)
 		}
 		if e != nil {
 			return e
@@ -447,8 +447,8 @@ func restore(ctx context.Context, state record, identity clientbootstrap.Identit
 		}
 		ready := false
 		for until := time.Now().Add(15 * time.Second); time.Now().Before(until); {
-			probe, e := clientbootstrap.Probe(identity)
-			if e == nil && probe.State == clientbootstrap.ProbeReachable && probe.Status != nil && probe.Status.DesktopOwnerPID != nil && *probe.Status.DesktopOwnerPID == pid && gui.Running() {
+			probe, e := daemonctl.Probe(identity)
+			if e == nil && probe.State == daemonctl.ProbeReachable && probe.Status != nil && probe.Status.DesktopOwnerPID != nil && *probe.Status.DesktopOwnerPID == pid && gui.Running() {
 				restored = probe.Info
 				ready = true
 				break
@@ -464,11 +464,11 @@ func restore(ctx context.Context, state record, identity clientbootstrap.Identit
 		}
 	}
 	if state.Intent.Maintain {
-		probe, e := clientbootstrap.Probe(identity)
-		if e != nil || probe.State != clientbootstrap.ProbeReachable || probe.Info != restored {
+		probe, e := daemonctl.Probe(identity)
+		if e != nil || probe.State != daemonctl.ProbeReachable || probe.Info != restored {
 			return update.ErrInvalid
 		}
-		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
+		conn, e := daemonctl.Connect(ctx, identity, probe.Info)
 		if e != nil {
 			return e
 		}

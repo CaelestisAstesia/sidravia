@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"

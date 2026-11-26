@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
 )
 
 // IPCHandler returns a transport-neutral handler that routes a fixed set of IPC

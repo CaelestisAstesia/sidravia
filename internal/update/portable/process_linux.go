@@ -7,21 +7,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/update/linuxplatform"
+	"sidravia/internal/process/linuxproc"
 	"strconv"
 	"strings"
 	"syscall"
 )
 
-type applicationProcess = linuxplatform.Process
+type applicationProcess = linuxproc.Process
 
-func observeProcess(pid int) (*applicationProcess, error) { return linuxplatform.Observe(pid) }
+func observeProcess(pid int) (*applicationProcess, error) { return linuxproc.Observe(pid) }
 func daemonName() string                                  { return "sidraviad" }
 func guiRuntime(target string) string                     { return filepath.Join(target, "gui-runtime", "sidravia_gui") }
 func guiEntry(target string) string                       { return filepath.Join(target, "sidravia_gui") }
 func finishApplication(string, string) error              { return nil }
 func observeExecutable(pid int, path string) (*applicationProcess, error) {
-	process, err := linuxplatform.Observe(pid)
+	process, err := linuxproc.Observe(pid)
 	if err != nil {
 		return nil, err
 	}

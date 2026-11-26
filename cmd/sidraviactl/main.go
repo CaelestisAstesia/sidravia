@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/cli"
-	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/update/entry"
@@ -59,7 +59,7 @@ func run(args []string, stderr io.Writer) int {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		if err := clientbootstrap.CheckRPMServiceIPC(ctx, clientbootstrap.Identity{ProductVersion: ProductVersion, BuildID: BuildID}, pid); err != nil {
+		if err := daemonctl.CheckRPMServiceIPC(ctx, daemonctl.Identity{ProductVersion: ProductVersion, BuildID: BuildID}, pid); err != nil {
 			return 1
 		}
 		return 0

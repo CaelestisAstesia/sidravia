@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/ipc/contract"
 	"testing"
 	"time"
@@ -23,8 +23,8 @@ func TestGUIRestartChecksOwnerBeforeStopAndAwaitBeforeStart(t *testing.T) {
 			stops, starts := 0, 0
 			reachable := true
 			deps := stopDependencies{totalWait: time.Second, pollInterval: time.Millisecond, ops: daemonOperations{
-				inspect: func() (clientbootstrap.ProbeResult, error) {
-					return clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &actual}}, nil
+				inspect: func() (daemonctl.ProbeResult, error) {
+					return daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &actual}}, nil
 				},
 				connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
 					return &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
@@ -38,12 +38,12 @@ func TestGUIRestartChecksOwnerBeforeStopAndAwaitBeforeStart(t *testing.T) {
 				},
 				reachable: func(contract.RuntimeInfo) bool { return reachable },
 			}}
-			start := func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
+			start := func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
 				starts++
 				if reachable {
 					t.Fatal("started before stopped")
 				}
-				return clientbootstrap.DesktopBootstrapResult{Info: testRuntimeInfo(8), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 8, Mode: "desktop", DesktopOwnerPID: &owner, LogLevel: "debug"}}, nil
+				return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(8), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 8, Mode: "desktop", DesktopOwnerPID: &owner, LogLevel: "debug"}}, nil
 			}
 			var out bytes.Buffer
 			err := runGUIRestart(owner, "debug", deps, start, identity, &out)
@@ -63,17 +63,17 @@ func TestGUIRestartStopFailureNeverStartsReplacement(t *testing.T) {
 	owner := 42
 	started := false
 	deps := stopDependencies{ops: daemonOperations{
-		inspect: func() (clientbootstrap.ProbeResult, error) {
-			return clientbootstrap.ProbeResult{State: clientbootstrap.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &owner}}, nil
+		inspect: func() (daemonctl.ProbeResult, error) {
+			return daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		},
 		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
 			return nil, errors.New("stop unavailable")
 		},
 	}}
 	var out bytes.Buffer
-	err := runGUIRestart(owner, "info", deps, func(clientbootstrap.Identity, int) (clientbootstrap.DesktopBootstrapResult, error) {
+	err := runGUIRestart(owner, "info", deps, func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
 		started = true
-		return clientbootstrap.DesktopBootstrapResult{}, nil
+		return daemonctl.DesktopBootstrapResult{}, nil
 	}, mustTestIdentity(t), &out)
 	if err == nil || started || out.Len() != 0 {
 		t.Fatal("failed stop launched replacement")

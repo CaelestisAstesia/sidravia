@@ -4,7 +4,7 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
-	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/background/daemonctl"
 )
 
-func addSetupStages(*cobra.Command, clientbootstrap.Identity) {}
+func addSetupStages(*cobra.Command, daemonctl.Identity) {}
