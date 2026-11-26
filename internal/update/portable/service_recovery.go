@@ -15,7 +15,7 @@ import (
 
 // RecoverManagedService resumes an interrupted product rollback. Both indexes
 // are revalidated independently of the installed tree before it is touched.
-func RecoverManagedService(ctx context.Context, store *transaction.Store, id, target string) (resultErr error) {
+func RecoverManagedService(ctx context.Context, store *transaction.Store, id, target string) error {
 	if store == nil || !canonical(target) {
 		return ErrInvalid
 	}
@@ -31,12 +31,12 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 	if record.Phase == transaction.Completed || record.Phase == transaction.Aborted {
 		return cleanRollbackSnapshot(record, nil)
 	}
-	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-	ctx = locked
+	return installationmanager.WithServiceRegistration(ctx, func(lease *installationmanager.RegistrationLease) error {
+		return recoverManagedServiceWithRegistration(ctx, lease, store, id, target, record)
+	})
+}
+
+func recoverManagedServiceWithRegistration(ctx context.Context, lease *installationmanager.RegistrationLease, store *transaction.Store, id, target string, record transaction.Record) (resultErr error) {
 	layout, found, err := installationmanager.RegisteredService()
 	if err != nil || !found || layout.ExecutableDirectory != target || layout.Mode != productlayout.ModePortable {
 		return errors.Join(ErrChanged, err)
@@ -49,7 +49,7 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 		// The old tree was authenticated before publishing RolledBack.
 		// Cleanup can already have removed the new index and backup files.
 		if record.Recovery.Intent.Mode == "systemd" {
-			if err := startManagedService(ctx, layout, record.Source, true); err != nil {
+			if err := startManagedService(ctx, lease, layout, record.Source, true); err != nil {
 				return err
 			}
 		}
@@ -68,7 +68,7 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 		}
 	}()
 	if record.Phase != transaction.RolledBack {
-		if _, err := installationmanager.Service(ctx, "stop", layout, nil); err != nil {
+		if _, err := lease.Service(ctx, "stop", layout, nil); err != nil {
 			return err
 		}
 		if record.Phase != transaction.RollingBack {
@@ -82,7 +82,7 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 		}
 	}
 	if record.Recovery.Intent.Mode == "systemd" {
-		if err := startManagedService(ctx, layout, record.Source, true); err != nil {
+		if err := startManagedService(ctx, lease, layout, record.Source, true); err != nil {
 			return err
 		}
 	}

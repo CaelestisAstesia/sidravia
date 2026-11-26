@@ -21,13 +21,13 @@ import (
 
 var ErrRolledBack = errors.New("managed portable update was rolled back")
 
-func executeManaged(ctx context.Context, input Execution, record transaction.Record, layout, registration productlayout.Layout, peer *applicationPeer) (resultErr error) {
-	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-	ctx = locked
+func executeManaged(ctx context.Context, input Execution, record transaction.Record, layout, registration productlayout.Layout, peer *applicationPeer) error {
+	return installationmanager.WithServiceRegistration(ctx, func(lease *installationmanager.RegistrationLease) error {
+		return executeManagedWithRegistration(ctx, lease, input, record, layout, registration, peer)
+	})
+}
+
+func executeManagedWithRegistration(ctx context.Context, lease *installationmanager.RegistrationLease, input Execution, record transaction.Record, layout, registration productlayout.Layout, peer *applicationPeer) (resultErr error) {
 	actual, found, err := installationmanager.RegisteredService()
 	if err != nil || !found || actual != registration {
 		return errors.Join(ErrChanged, err)
@@ -39,7 +39,7 @@ func executeManaged(ctx context.Context, input Execution, record transaction.Rec
 		return errors.Join(ErrChanged, err)
 	}
 	service := func(ctx context.Context, action string, ready func(context.Context, productlayout.Layout) error) (installationmanager.ServiceState, error) {
-		return installationmanager.Service(ctx, action, layout, ready)
+		return lease.Service(ctx, action, layout, ready)
 	}
 	before, err := service(ctx, "status", nil)
 	if err != nil {
@@ -62,7 +62,7 @@ func executeManaged(ctx context.Context, input Execution, record transaction.Rec
 		}
 	}
 	start := func(ctx context.Context, target change.Target) error {
-		return startManagedService(ctx, layout, target, target == record.Source)
+		return startManagedService(ctx, lease, layout, target, target == record.Source)
 	}
 	owner, err := observeProcess(os.Getpid())
 	if err != nil {
@@ -220,12 +220,12 @@ func executeManaged(ctx context.Context, input Execution, record transaction.Rec
 	return err
 }
 
-func startManagedService(ctx context.Context, layout productlayout.Layout, target change.Target, restore bool) error {
+func startManagedService(ctx context.Context, lease *installationmanager.RegistrationLease, layout productlayout.Layout, target change.Target, restore bool) error {
 	action := "start"
 	if restore {
 		action = "recover-start"
 	}
-	_, err := installationmanager.Service(ctx, action, layout, func(ctx context.Context, layout productlayout.Layout) error {
+	_, err := lease.Service(ctx, action, layout, func(ctx context.Context, layout productlayout.Layout) error {
 		wait, cancel := context.WithTimeout(ctx, 12*time.Second)
 		defer cancel()
 		for {

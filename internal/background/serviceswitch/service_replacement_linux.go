@@ -17,12 +17,17 @@ import (
 )
 
 func replaceService(ctx context.Context, identity daemonctl.Identity, layout productlayout.Layout) (installationmanager.ServiceState, error) {
+	var result installationmanager.ServiceState
+	err := installationmanager.WithServiceSwitch(ctx, func(lease *installationmanager.SwitchLease) error {
+		var operationErr error
+		result, operationErr = replaceRegistration(ctx, lease, identity, layout)
+		return operationErr
+	})
+	return result, err
+}
+
+func replaceRegistration(ctx context.Context, lease *installationmanager.SwitchLease, identity daemonctl.Identity, layout productlayout.Layout) (installationmanager.ServiceState, error) {
 	var empty installationmanager.ServiceState
-	ctx, unlock, err := installationmanager.BeginServiceSwitch(ctx)
-	if err != nil {
-		return empty, err
-	}
-	defer unlock()
 	if _, pending, err := installationmanager.PendingServiceSwitch(); err != nil || pending {
 		return empty, errors.Join(installationmanager.ErrServiceRecovery, err)
 	}
@@ -30,7 +35,7 @@ func replaceService(ctx context.Context, identity daemonctl.Identity, layout pro
 	if err != nil {
 		return empty, err
 	}
-	before, err := installationmanager.Service(ctx, "status", layout, nil)
+	before, err := lease.Service(ctx, "status", layout, nil)
 	if err != nil {
 		return before, err
 	}
@@ -38,7 +43,7 @@ func replaceService(ctx context.Context, identity daemonctl.Identity, layout pro
 		return daemonctl.WaitForService(ctx, identity, chosen)
 	}
 	if !found || old.ExecutableDirectory == layout.ExecutableDirectory {
-		return installationmanager.Service(ctx, "replace", layout, ready)
+		return lease.Service(ctx, "replace", layout, ready)
 	}
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
@@ -74,21 +79,28 @@ func replaceService(ctx context.Context, identity daemonctl.Identity, layout pro
 			return daemonctl.WaitForService(ctx, identity, chosen)
 		}
 	}
-	if err := installationmanager.SaveServiceSwitch(ctx, state); err != nil {
+	if err := lease.Save(ctx, state); err != nil {
 		return before, err
 	}
-	actual, err := installationmanager.Service(ctx, "replace", layout, ready)
+	actual, err := lease.Service(ctx, "replace", layout, ready)
 	if err != nil {
 		if actual.Directory != before.Directory || actual.Enabled != before.Enabled || actual.Running != before.Running {
 			return actual, errors.Join(installationmanager.ErrServiceRecovery, err)
 		}
+		recover, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
 		if before.Running {
-			if readyErr := ready(ctx, old); readyErr != nil {
+			if readyErr := ready(recover, old); readyErr != nil {
 				return actual, errors.Join(installationmanager.ErrServiceRecovery, err, readyErr)
 			}
 		}
+		return clearReplacement(recover, lease, actual, err)
 	}
-	if clearErr := installationmanager.ClearServiceSwitch(ctx); clearErr != nil {
+	return clearReplacement(ctx, lease, actual, nil)
+}
+
+func clearReplacement(ctx context.Context, lease *installationmanager.SwitchLease, actual installationmanager.ServiceState, err error) (installationmanager.ServiceState, error) {
+	if clearErr := lease.Clear(ctx); clearErr != nil {
 		return actual, errors.Join(installationmanager.ErrServiceRecovery, err, clearErr)
 	}
 	actual.RecoveryPending = false
@@ -96,9 +108,9 @@ func replaceService(ctx context.Context, identity daemonctl.Identity, layout pro
 	return actual, err
 }
 
-func recoverReplacement(ctx context.Context, state installationmanager.ServiceSwitch) (installationmanager.ServiceState, error) {
+func recoverReplacement(ctx context.Context, lease *installationmanager.SwitchLease, state installationmanager.ServiceSwitch) (installationmanager.ServiceState, error) {
 	var empty installationmanager.ServiceState
-	if err := installationmanager.ReloadServiceSwitch(ctx); err != nil {
+	if err := lease.Reload(ctx); err != nil {
 		return empty, err
 	}
 	current, found, err := installationmanager.RegisteredService()
@@ -109,12 +121,12 @@ func recoverReplacement(ctx context.Context, state installationmanager.ServiceSw
 		return daemonctl.WaitForService(ctx, daemonctl.Identity{ProductVersion: state.SourceVersion, BuildID: state.SourceBuild}, layout)
 	}
 	if found {
-		if actual, err := installationmanager.Service(ctx, "stop", current, nil); err != nil {
+		if actual, err := lease.Service(ctx, "stop", current, nil); err != nil {
 			return actual, err
 		}
 	}
 	if !found || current != state.Layout {
-		if actual, err := installationmanager.Service(ctx, "replace", state.Layout, nil); err != nil {
+		if actual, err := lease.Service(ctx, "replace", state.Layout, nil); err != nil {
 			return actual, err
 		}
 	}
@@ -122,17 +134,17 @@ func recoverReplacement(ctx context.Context, state installationmanager.ServiceSw
 	if state.Enabled {
 		enablement = "enable"
 	}
-	actual, err := installationmanager.Service(ctx, enablement, state.Layout, nil)
+	actual, err := lease.Service(ctx, enablement, state.Layout, nil)
 	if err != nil {
 		return actual, err
 	}
 	if state.RuntimePID != 0 {
-		actual, err = installationmanager.Service(ctx, "recover-start", state.Layout, ready)
+		actual, err = lease.Service(ctx, "recover-start", state.Layout, ready)
 		if err != nil {
 			return actual, err
 		}
 	}
-	err = installationmanager.ClearServiceSwitch(ctx)
+	err = lease.Clear(ctx)
 	if err == nil {
 		actual.RecoveryPending = false
 		actual.CanDiscardReplacement = false
@@ -142,9 +154,9 @@ func recoverReplacement(ctx context.Context, state installationmanager.ServiceSw
 
 // Discard stops and removes only the recorded registration. It leaves both
 // installations and their data in place and retires the journal last.
-func discardReplacement(ctx context.Context, state installationmanager.ServiceSwitch) (installationmanager.ServiceState, error) {
+func discardReplacement(ctx context.Context, lease *installationmanager.SwitchLease, state installationmanager.ServiceSwitch) (installationmanager.ServiceState, error) {
 	var empty installationmanager.ServiceState
-	if err := installationmanager.ReloadServiceSwitch(ctx); err != nil {
+	if err := lease.Reload(ctx); err != nil {
 		return empty, err
 	}
 	current, found, err := installationmanager.RegisteredService()
@@ -155,11 +167,11 @@ func discardReplacement(ctx context.Context, state installationmanager.ServiceSw
 	if found {
 		layout = current
 	}
-	actual, err := installationmanager.Service(ctx, "unregister", layout, nil)
+	actual, err := lease.Service(ctx, "unregister", layout, nil)
 	if err != nil || actual.Registered || actual.Running || actual.Enabled {
 		return actual, errors.Join(installationmanager.ErrServiceRecovery, err)
 	}
-	err = installationmanager.ClearServiceSwitch(ctx)
+	err = lease.Clear(ctx)
 	if err == nil {
 		actual.RecoveryPending = false
 		actual.CanDiscardReplacement = false

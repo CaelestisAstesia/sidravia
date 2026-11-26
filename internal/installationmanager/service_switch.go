@@ -1,7 +1,6 @@
 package installationmanager
 
 import (
-	"context"
 	"time"
 
 	productlayout "sidravia/internal/installation/layout"
@@ -26,20 +25,6 @@ type ServiceSwitch struct {
 	SourceBuild      string               `json:"sourceBuild,omitempty"`
 }
 
-func BeginServiceSwitch(ctx context.Context) (context.Context, func(), error) {
-	return beginServiceSwitch(ctx)
-}
-
 func PendingServiceSwitch() (ServiceSwitch, bool, error) {
 	return pendingServiceSwitch()
 }
-
-func SaveServiceSwitch(ctx context.Context, state ServiceSwitch) error {
-	return saveServiceSwitch(ctx, &state)
-}
-
-func ClearServiceSwitch(ctx context.Context) error {
-	return saveServiceSwitch(ctx, nil)
-}
-
-func ReloadServiceSwitch(ctx context.Context) error { return reloadServiceSwitch(ctx) }

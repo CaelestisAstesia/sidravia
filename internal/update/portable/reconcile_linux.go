@@ -129,20 +129,17 @@ func recoverManagedPreparation(ctx context.Context, store *transaction.Store, re
 		return err
 	}
 	defer unlock()
-	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-	ctx = locked
-	layout, found, err := installationmanager.RegisteredService()
-	if err != nil || !found || layout.Mode != productlayout.ModePortable || layout.ExecutableDirectory != record.Source.ID {
-		return errors.Join(ErrChanged, err)
-	}
-	if err := cleanRollbackSnapshot(record, &installed); err != nil {
-		return err
-	}
-	return resumeManagedPreparation(ctx, store, record, func(ctx context.Context, target change.Target) error {
-		return startManagedService(ctx, layout, target, true)
+	return installationmanager.WithServiceRegistration(ctx, func(lease *installationmanager.RegistrationLease) error {
+		layout, found, err := installationmanager.RegisteredService()
+		if err != nil || !found || layout.Mode != productlayout.ModePortable || layout.ExecutableDirectory != record.Source.ID {
+			return errors.Join(ErrChanged, err)
+		}
+		if err := cleanRollbackSnapshot(record, &installed); err != nil {
+			return err
+		}
+		return resumeManagedPreparation(ctx, store, record, func(ctx context.Context, target change.Target) error {
+			return startManagedService(ctx, lease, layout, target, true)
+		})
 	})
+
 }

@@ -17,23 +17,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type serviceSwitchKey struct{}
-
-func beginServiceSwitch(ctx context.Context) (context.Context, func(), error) {
-	path, err := registration.UnitPath()
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return nil, nil, err
-	}
-	ctx, release, err := holdServiceRegistration(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	return context.WithValue(ctx, serviceSwitchKey{}, path), release, nil
-}
-
 func switchPath(unit string) string {
 	return filepath.Join(filepath.Dir(unit), ".sidravia-switch.json")
 }
@@ -131,11 +114,7 @@ func validServiceSwitch(state ServiceSwitch) bool {
 	return false
 }
 
-func saveServiceSwitch(ctx context.Context, state *ServiceSwitch) error {
-	unit, err := registration.UnitPath()
-	if err != nil || ctx.Value(serviceSwitchKey{}) != unit {
-		return errors.Join(ErrServiceConflict, err)
-	}
+func saveServiceSwitchAt(unit string, state *ServiceSwitch) error {
 	path := switchPath(unit)
 	var data []byte
 	if state != nil {
@@ -145,10 +124,11 @@ func saveServiceSwitch(ctx context.Context, state *ServiceSwitch) error {
 		if _, exists, err := loadServiceSwitch(path); exists || err != nil {
 			return errors.Join(ErrServiceConflict, err)
 		}
-		data, err = json.Marshal(state)
+		encoded, err := json.Marshal(state)
 		if err != nil {
 			return err
 		}
+		data = encoded
 	}
 	if err := saveUnit(path, data); err != nil {
 		return err
@@ -160,14 +140,10 @@ func saveServiceSwitch(ctx context.Context, state *ServiceSwitch) error {
 	return errors.Join(dir.Sync(), dir.Close())
 }
 
-func reloadServiceSwitch(ctx context.Context) error {
-	unit, err := registration.UnitPath()
-	if err != nil || ctx.Value(serviceSwitchKey{}) != unit {
-		return errors.Join(ErrServiceConflict, err)
-	}
+func reloadServiceSwitchAt(ctx context.Context, unit string) error {
 	if _, found, err := loadServiceSwitch(switchPath(unit)); err != nil || !found {
 		return errors.Join(ErrServiceRecovery, err)
 	}
-	_, err = control(ctx, "daemon-reload")
+	_, err := control(ctx, "daemon-reload")
 	return err
 }
