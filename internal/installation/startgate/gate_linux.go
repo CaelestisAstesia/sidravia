@@ -37,7 +37,7 @@ func AcquireStart() (func(), error) {
 
 func acquirePackageStart(directory, path, manager, block string) (func(), error) {
 	marker, err := os.ReadFile(filepath.Join(directory, "sidravia."+manager))
-	if (err != nil && !os.IsNotExist(err)) || (err == nil && string(marker) != "sidravia-"+manager+"-v1\n") {
+	if (err != nil && (manager != "rpm" || !os.IsNotExist(err))) || (err == nil && string(marker) != "sidravia-"+manager+"-v1\n") {
 		return nil, ErrBusy
 	}
 	var owner unix.Stat_t

@@ -39,7 +39,7 @@ bool sidravia_can_start() {
   g_autoptr(GError) error = nullptr;
   g_autofree gchar* marker_path = g_build_filename(directory, deb ? "sidravia.deb" : "sidravia.rpm", nullptr);
   if (!g_file_get_contents(marker_path, &marker, nullptr, &error)) {
-    if (!g_error_matches(error, G_FILE_ERROR, G_FILE_ERROR_NOENT)) return false;
+    if (deb || !g_error_matches(error, G_FILE_ERROR, G_FILE_ERROR_NOENT)) return false;
   } else if (strcmp(marker, deb ? "sidravia-deb-v1\n" : "sidravia-rpm-v1\n") != 0) return false;
   const char* gate_directory = deb ? "/var/lib/sidravia/deb-maintenance" : "/run/sidravia";
   g_autofree gchar* gate = g_build_filename(gate_directory, deb ? "lock" : "rpm.lock", nullptr);

@@ -75,6 +75,10 @@ func TestDebianStartupRequiresPersistentGateAndUnblockedTransaction(t *testing.T
 	if err := os.WriteFile(lock, nil, 0644); err != nil {
 		t.Fatal(err)
 	}
+	check(true) // A missing package marker must not admit a partial DEB install.
+	if err := os.WriteFile(filepath.Join(root, "sidravia.deb"), []byte("sidravia-deb-v1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	check(false)
 	if err := os.WriteFile(block, nil, 0644); err != nil {
 		t.Fatal(err)
