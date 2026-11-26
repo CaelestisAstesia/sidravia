@@ -57,6 +57,12 @@ func clearRetiredRecords(ctx context.Context, root string, layout productlayout.
 	// Reject a reparse point in any parent before creating a scoped root. No
 	// ancestor or sibling of this one installation's family is ever removed.
 	for path := family; ; path = filepath.Dir(path) {
+		last := filepath.Dir(path) == path
+		if last && strings.HasPrefix(finalUninstallPath(path), `\\`) {
+			// GetFileAttributesW accepts a directory on a network share, but
+			// can reject the share root itself with ERROR_BAD_NETPATH.
+			break
+		}
 		name, err := windows.UTF16PtrFromString(path)
 		if err != nil {
 			return err
@@ -71,7 +77,7 @@ func clearRetiredRecords(ctx context.Context, root string, layout productlayout.
 		if attributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 || attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 			return change.ErrInvalid
 		}
-		if filepath.Dir(path) == path {
+		if last {
 			break
 		}
 	}
@@ -137,7 +143,7 @@ func retireRecord(scope *os.Root, op string, layout productlayout.Layout) (bool,
 	}
 	var actual [32768]uint16
 	length, err := windows.GetFinalPathNameByHandle(handle, &actual[0], uint32(len(actual)), 0)
-	if err != nil || length >= uint32(len(actual)) || !strings.EqualFold(strings.TrimPrefix(windows.UTF16ToString(actual[:length]), `\\?\`), name) {
+	if err != nil || length >= uint32(len(actual)) || !strings.EqualFold(finalUninstallPath(windows.UTF16ToString(actual[:length])), finalUninstallPath(name)) {
 		return false, errors.Join(change.ErrInvalid, err, file.Close())
 	}
 	data, err := jsondoc.ReadLimited(file, 16<<10)
@@ -166,6 +172,13 @@ func retireRecord(scope *os.Root, op string, layout productlayout.Layout) (bool,
 		return false, err
 	}
 	return true, removeEmptyRecordDirectory(filepath.Join(scope.Name(), op))
+}
+
+func finalUninstallPath(path string) string {
+	if unc, ok := strings.CutPrefix(path, `\\?\UNC\`); ok {
+		return `\\` + unc
+	}
+	return strings.TrimPrefix(path, `\\?\`)
 }
 
 func ownsManualRecord(state record, op string, layout productlayout.Layout) bool {

@@ -16,6 +16,18 @@ import (
 	productlayout "sidravia/internal/installation/layout"
 )
 
+func TestUninstallFinalPathNormalization(t *testing.T) {
+	for input, expected := range map[string]string{
+		`\\?\C:\Users\test\state.json`:    `C:\Users\test\state.json`,
+		`\\?\UNC\server\share\state.json`: `\\server\share\state.json`,
+		`\\server\share\state.json`:       `\\server\share\state.json`,
+	} {
+		if result := finalUninstallPath(input); result != expected {
+			t.Fatalf("normalizing %q, got %q, expected %q", input, result, expected)
+		}
+	}
+}
+
 func TestClearRetiredOperationsPreservesUnownedFiles(t *testing.T) {
 	root := t.TempDir()
 	namespace, err := productlayout.NewNamespace("uninstall-fixture")
