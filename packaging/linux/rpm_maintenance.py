@@ -31,21 +31,27 @@ def alive(fd):
     return not p.poll(0)
 
 
-def targets():
+def targets(executables=None):
     if not APP.exists():
         return []
     if not marker_matches():
         raise RuntimeError('installed package identity unavailable')
     directory = identity(APP)
-    paths = [APP / name for name in NAMES]
-    if (APP / 'gui-runtime/sidravia_gui').is_file():
-        paths.append(APP / 'gui-runtime/sidravia_gui')
+    paths = executables
+    if paths is None:
+        paths = [APP / name for name in NAMES]
+        if (APP / 'gui-runtime/sidravia_gui').is_file():
+            paths.append(APP / 'gui-runtime/sidravia_gui')
     candidate_paths = {str(path) for path in paths}
     expected = {}
     for path in paths:
         try:
             expected[str(path)] = identity(path)
         except FileNotFoundError:
+            if executables is not None:
+                # Package-owned paths remain candidates after deletion. An
+                # executable still running from an absent inode blocks removal.
+                continue
             # Old RPMs carried the portable updater. New RPMs omit it, while
             # every present process still has to match its exact old inode.
             if path.name != 'sidraviaupdater' and not (path.name == 'sidravia_gui'
@@ -154,8 +160,8 @@ def acquire_service_lease(uid, unit):
     return lease
 
 
-def stop_managed_daemons(stopped, leases, before_stop=None):
-    entries = targets()
+def stop_managed_daemons(stopped, leases, before_stop=None, executables=None):
+    entries = targets(executables)
     try:
         for name, fd in entries:
             if name != 'sidraviad' or not alive(fd):
@@ -236,17 +242,20 @@ def resume_verified_package(uids):
             report_user_failure(uid, 'could not restore or verify the user service after the package transaction')
 
 
-def cleanup_erased_registration(binary):
+def cleanup_erased_registration(binary, retry_uids=None):
     # Run the verified old CLI from an open descriptor under each owning UID.
     # The transaction root never reads or unlinks a user's home directory.
+    accounts = [account for account in pwd.getpwall()
+                if account.pw_uid != 0 and account.pw_dir.startswith('/')
+                and (retry_uids is None or account.pw_uid in retry_uids)]
+    pending = set()
     deadline = time.monotonic() + 30
-    for account in pwd.getpwall():
-        if account.pw_uid == 0 or not account.pw_dir.startswith('/'):
-            continue
+    for index, account in enumerate(accounts):
         runtime = f'/run/user/{account.pw_uid}'
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             report_erase_failure(account.pw_uid)
+            pending.update(account.pw_uid for account in accounts[index:])
             break
         try:
             result = subprocess.run(
@@ -257,9 +266,12 @@ def cleanup_erased_registration(binary):
                      'XDG_RUNTIME_DIR': runtime, 'DBUS_SESSION_BUS_ADDRESS': f'unix:path={runtime}/bus'},
                 check=False)
             if result.returncode:
+                pending.add(account.pw_uid)
                 report_erase_failure(account.pw_uid)
         except (OSError, subprocess.SubprocessError):
+            pending.add(account.pw_uid)
             report_erase_failure(account.pw_uid)
+    return pending
 
 
 def report_erase_failure(uid):
@@ -275,8 +287,8 @@ def report_user_failure(uid, reason):
         pass
 
 
-def stop_group(gui, timeout):
-    entries = targets()
+def stop_group(gui, timeout, executables=None):
+    entries = targets(executables)
     selected = [(name, fd) for name, fd in entries if (name == 'sidravia_gui') == gui]
     try:
         for _, fd in selected:

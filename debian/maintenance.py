@@ -108,6 +108,22 @@ def verify_payload():
         raise RuntimeError('installed Debian package identity unavailable')
 
 
+def verify_retirement():
+    # A damaged resource must not prevent repair or erasure. Authenticate the
+    # installation and limit process discovery to this package's executable paths.
+    trusted(APP, stat.S_ISDIR)
+    for suffix in ('', '-lifecycle'):
+        trusted(APP / ('sidravia.deb' + suffix), stat.S_ISREG)
+        if not marker_matches(suffix):
+            raise RuntimeError('installed Debian package identity unavailable')
+    executables = [APP / name for name in (*NAMES, 'gui-runtime/sidravia_gui') if name in DEB_FILES]
+    for path in executables:
+        with contextlib.suppress(FileNotFoundError):
+            trusted(path.parent, stat.S_ISDIR)
+            trusted(path, stat.S_ISREG)
+    return executables
+
+
 def load_state():
     try:
         trusted(JOURNAL, stat.S_ISREG)
@@ -145,11 +161,19 @@ def unit_token(uid, path):
 
 
 def stage_erase_program():
+    try:
+        trusted(APP / 'sidraviactl', stat.S_ISREG)
+        content = (APP / 'sidraviactl').read_bytes()
+    except FileNotFoundError:
+        content = b''
+    if hashlib.sha256(content).hexdigest() != DEB_FILES['sidraviactl'][1]:
+        print('Sidravia Debian maintenance: user integration kept because the verified cleanup program is unavailable.',
+              file=sys.stderr)
+        return
     owned_directory(ERASE.parent, 0o700)
     if ERASE.parent.stat().st_mode & 0o077:
         raise RuntimeError('invalid access mode of the Debian cleanup directory')
-    with (APP / 'sidraviactl').open('rb') as installed:
-        atomic_write(ERASE, installed.read(), 0o755)
+    atomic_write(ERASE, content, 0o755)
 
 
 def quiesce_deb(action):
@@ -160,7 +184,7 @@ def quiesce_deb(action):
         if (previous and previous['phase'] == 'quiesced'
                 and previous['action'] == action == 'remove' and BLOCK.is_file()):
             return
-        verify_payload()
+        executables = verify_retirement()
         state = create_state(action, previous)
         leases = []
 
@@ -169,10 +193,10 @@ def quiesce_deb(action):
             save_state(state)
 
         try:
-            stop_managed_daemons([], leases, before_stop=remember)
-            stop_group(True, 15)
-            stop_group(False, 10)
-            remaining = targets()
+            stop_managed_daemons([], leases, before_stop=remember, executables=executables)
+            stop_group(True, 15, executables)
+            stop_group(False, 10, executables)
+            remaining = targets(executables)
             for _, fd in remaining:
                 os.close(fd)
             if remaining:
@@ -301,7 +325,12 @@ def finish_remove(action):
                     with os.fdopen(os.dup(fd), 'rb') as binary:
                         if hashlib.file_digest(binary, 'sha256').hexdigest() != DEB_FILES['sidraviactl'][1]:
                             raise RuntimeError('Debian cleanup program differs from its package manifest')
-                    cleanup_erased_registration(fd)
+                    retry = state.get('cleanupUIDs')
+                    pending = cleanup_erased_registration(fd, set(retry) if retry is not None else None)
+                    if pending:
+                        state['cleanupUIDs'] = sorted(pending)
+                        save_state(state)
+                        raise RuntimeError('user integration cleanup is pending; retry Debian removal or purge')
                 finally:
                     os.close(fd)
         remove_state_file(ERASE)
