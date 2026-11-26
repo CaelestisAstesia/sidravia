@@ -33,10 +33,10 @@ type fixtureTransport struct{fallback http.RoundTripper}
 func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
  var file string
  if r.URL.Scheme=="http" && r.URL.Hostname()=="127.0.0.1" && r.URL.Path=="/ipc" {return f.fallback.RoundTrip(r)}
- if r.URL.Scheme!="https"{return nil,releases.ErrMetadata}
- if r.URL.Host=="api.github.com" && r.URL.Path=="/repos/"+releases.Repository+"/releases"{file="api.json"}else if r.URL.Host=="github.com" && strings.HasPrefix(r.URL.Path,"/"+releases.Repository+"/releases/download/v"){
-  tail:=strings.TrimPrefix(r.URL.Path,"/"+releases.Repository+"/releases/download/v");parts:=strings.Split(tail,"/");if len(parts)!=2 || strings.Contains(tail,"..") || strings.Contains(tail,"\\"){return nil,releases.ErrMetadata};file=filepath.Join(parts[0],parts[1])
- }else{return nil,releases.ErrMetadata}
+ if r.URL.Scheme!="https"{return nil,release.ErrMetadata}
+ if r.URL.Host=="api.github.com" && r.URL.Path=="/repos/"+release.Repository+"/releases"{file="api.json"}else if r.URL.Host=="github.com" && strings.HasPrefix(r.URL.Path,"/"+release.Repository+"/releases/download/v"){
+  tail:=strings.TrimPrefix(r.URL.Path,"/"+release.Repository+"/releases/download/v");parts:=strings.Split(tail,"/");if len(parts)!=2 || strings.Contains(tail,"..") || strings.Contains(tail,"\\"){return nil,release.ErrMetadata};file=filepath.Join(parts[0],parts[1])
+ }else{return nil,release.ErrMetadata}
  data,e:=os.ReadFile(filepath.Join(%s,file));status:=200;if os.IsNotExist(e){data=nil;status=404}else if e!=nil{return nil,e}
  return &http.Response{StatusCode:status,Header:make(http.Header),ContentLength:int64(len(data)),Body:io.NopCloser(bytes.NewReader(data)),Request:r},nil
 }
