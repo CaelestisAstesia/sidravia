@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package registration
 
 import (
 	"errors"
@@ -14,7 +14,8 @@ import (
 	"sidravia/internal/productlayout"
 )
 
-const userUnitName = "sidravia.service"
+// UnitName is the one systemd unit name managed by Sidravia.
+const UnitName = "sidravia.service"
 
 // renderUserUnit builds the unit for one resolved package instance. It captures
 // the installed XDG roots so a boot-time user manager can use the same data as

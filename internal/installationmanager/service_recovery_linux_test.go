@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sidravia/internal/installation/userservice/registration"
 	"testing"
 )
 
@@ -49,7 +50,7 @@ func TestSocketListening(t *testing.T) {
 
 func TestDiscardDamagedServiceSwitchProtectsForeignRecord(t *testing.T) {
 	dir := t.TempDir()
-	path := switchPath(filepath.Join(dir, userUnitName))
+	path := switchPath(filepath.Join(dir, registration.UnitName))
 	if err := os.WriteFile(path, []byte("{broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -80,18 +81,18 @@ func TestRemoveRPMEnableLink(t *testing.T) {
 		target string
 		remove bool
 	}{
-		{name: "owned", target: "../" + userUnitName, remove: true},
-		{name: "foreign", target: "../other/" + userUnitName},
+		{name: "owned", target: "../" + registration.UnitName, remove: true},
+		{name: "foreign", target: "../other/" + registration.UnitName},
 		{name: "regular file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			unit := filepath.Join(dir, userUnitName)
+			unit := filepath.Join(dir, registration.UnitName)
 			wants := filepath.Join(dir, "default.target.wants")
 			if err := os.Mkdir(wants, 0700); err != nil {
 				t.Fatal(err)
 			}
-			link := filepath.Join(wants, userUnitName)
+			link := filepath.Join(wants, registration.UnitName)
 			var err error
 			if tc.target != "" {
 				err = os.Symlink(tc.target, link)

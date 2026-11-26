@@ -3,16 +3,17 @@ package installationmanager
 import (
 	"context"
 	"errors"
+	"sidravia/internal/installation/userservice/registration"
 
 	"sidravia/internal/productlayout"
 )
 
-var ErrServiceUnavailable = errors.New("user service manager unavailable")
+var ErrServiceUnavailable = registration.ErrUnavailable
 var ErrServiceJournal = errors.New("user service switch record could not be read")
 var ErrServiceJournalDamaged = errors.New("user service switch record is damaged")
 var ErrServiceRecovery = errors.New("user service switch needs recovery")
 var ErrServiceStop = errors.New("user service did not exit normally")
-var ErrServiceConflict = errors.New("user service registration conflicts with existing state")
+var ErrServiceConflict = registration.ErrConflict
 
 // ServiceState describes the effective registration and manager status. A
 // registration can survive the disappearance of a portable installation.
@@ -38,7 +39,7 @@ func Service(ctx context.Context, action string, layout productlayout.Layout, re
 
 // RegisteredService reads the owned registration without starting the manager.
 func RegisteredService() (productlayout.Layout, bool, error) {
-	return registeredService()
+	return registration.Lookup()
 }
 
 // HoldServiceRegistration excludes registration mutations while a package

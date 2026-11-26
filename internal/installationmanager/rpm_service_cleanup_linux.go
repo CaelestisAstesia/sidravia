@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sidravia/internal/installation/userservice/registration"
 	"strconv"
 	"syscall"
 	"time"
@@ -81,7 +82,7 @@ func cleanupErasedRPM(ctx context.Context) (resultErr error) {
 			resultErr = errors.Join(resultErr, cleanupRPMAutostart(desktopLayout))
 		}
 	}()
-	path, err := unitLocation()
+	path, err := registration.UnitPath()
 	if err != nil {
 		return err
 	}
@@ -93,7 +94,7 @@ func cleanupErasedRPM(ctx context.Context) (resultErr error) {
 		return err
 	}
 	defer release()
-	layout, data, err := readRegistration(path)
+	layout, data, err := registration.Read(path)
 	if err != nil {
 		return err
 	}
@@ -149,7 +150,7 @@ func removeRPMEnableLink(path string) error {
 		return nil
 	}
 
-	link := filepath.Join(wants, userUnitName)
+	link := filepath.Join(wants, registration.UnitName)
 	target, err := os.Readlink(link)
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.EINVAL) {
 		return nil
@@ -157,7 +158,7 @@ func removeRPMEnableLink(path string) error {
 	if err != nil {
 		return err
 	}
-	if target != path && target != filepath.Join("..", userUnitName) {
+	if target != path && target != filepath.Join("..", registration.UnitName) {
 		return nil
 	}
 	err = os.Remove(link)

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sidravia/internal/installation/userservice/registration"
 	"strconv"
 	"strings"
 	"syscall"
@@ -47,7 +48,7 @@ func serviceSwitchStatus(path string, state ServiceState) ServiceState {
 
 func readServiceState(ctx context.Context, path string, layout productlayout.Layout, owned bool) (ServiceState, error) {
 	state := serviceSwitchStatus(path, ServiceState{Registered: owned, Directory: layout.ExecutableDirectory})
-	out, err := control(ctx, "show", "--property=LoadState,ActiveState,UnitFileState,FragmentPath,DropInPaths", userUnitName)
+	out, err := control(ctx, "show", "--property=LoadState,ActiveState,UnitFileState,FragmentPath,DropInPaths", registration.UnitName)
 	if err != nil {
 		// With no systemd instance and with no unit or switch record on
 		// disk, the application can still own its ordinary XDG startup.
@@ -89,29 +90,29 @@ func readServiceState(ctx context.Context, path string, layout productlayout.Lay
 // Explicit starts can retry once when systemd rejected the job before
 // spawning a process. Automatic restarts still use the unit's normal limit.
 func startService(ctx context.Context) error {
-	_, err := control(ctx, "start", userUnitName)
+	_, err := control(ctx, "start", registration.UnitName)
 	if err == nil {
 		return nil
 	}
-	result, inspectErr := control(ctx, "show", "--property=Result", "--value", userUnitName)
+	result, inspectErr := control(ctx, "show", "--property=Result", "--value", registration.UnitName)
 	if inspectErr != nil || result != "start-limit-hit" {
 		return errors.Join(err, inspectErr)
 	}
-	if _, resetErr := control(ctx, "reset-failed", userUnitName); resetErr != nil {
+	if _, resetErr := control(ctx, "reset-failed", registration.UnitName); resetErr != nil {
 		return errors.Join(err, resetErr)
 	}
-	_, err = control(ctx, "start", userUnitName)
+	_, err = control(ctx, "start", registration.UnitName)
 	return err
 }
 
 func stopService(ctx context.Context, wasRunning bool) error {
-	if _, err := control(ctx, "stop", userUnitName); err != nil {
+	if _, err := control(ctx, "stop", registration.UnitName); err != nil {
 		return err
 	}
 	if !wasRunning {
 		return nil
 	}
-	out, err := control(ctx, "show", "--property=ActiveState,Result,ExecMainCode,ExecMainStatus", userUnitName)
+	out, err := control(ctx, "show", "--property=ActiveState,Result,ExecMainCode,ExecMainStatus", registration.UnitName)
 	if err != nil {
 		return errors.Join(ErrServiceStop, err)
 	}
@@ -180,7 +181,7 @@ func saveUnit(path string, contents []byte) error {
 type serviceLeaseKey struct{}
 
 func holdServiceRegistration(ctx context.Context) (context.Context, func(), error) {
-	path, err := unitLocation()
+	path, err := registration.UnitPath()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -202,7 +203,7 @@ func holdServiceRegistration(ctx context.Context) (context.Context, func(), erro
 }
 
 func userService(ctx context.Context, action string, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (state ServiceState, resultErr error) {
-	path, err := unitLocation()
+	path, err := registration.UnitPath()
 	if err != nil || !layout.Namespace.IsProduction() {
 		return state, errors.Join(ErrServiceUnavailable, err)
 	}
@@ -256,7 +257,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 		}
 		return actual, nil
 	}
-	oldLayout, oldData, err := readRegistration(path)
+	oldLayout, oldData, err := registration.Read(path)
 	if err != nil {
 		return serviceSwitchStatus(path, state), err
 	}
@@ -293,7 +294,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 			if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 				return before, ErrServiceUnavailable
 			}
-			next, err = registrationBytes(layout)
+			next, err = registration.Encode(layout)
 			if err != nil {
 				return before, err
 			}
@@ -311,7 +312,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 		if err := apply(); err != nil {
 			observe, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			lastLayout, lastData, _ := readRegistration(path)
+			lastLayout, lastData, _ := registration.Read(path)
 			actual, observationErr := readServiceState(observe, path, lastLayout, lastData != nil)
 			return actual, errors.Join(err, observationErr)
 		}
@@ -343,14 +344,14 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 			startedHere = err == nil
 		}
 	default:
-		_, err = control(ctx, action, userUnitName)
+		_, err = control(ctx, action, registration.UnitName)
 	}
 	if err == nil && ready != nil && (action == "start" || action == "restart" || action == "recover-start") {
 		err = ready(ctx, oldLayout)
 		if err != nil && startedHere {
 			finish, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			_, stopErr := control(finish, "stop", userUnitName)
+			_, stopErr := control(finish, "stop", registration.UnitName)
 			err = errors.Join(err, stopErr)
 		}
 	}
@@ -372,7 +373,7 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 			}
 		}
 		if data != nil && enabled {
-			_, err := control(ctx, "enable", userUnitName)
+			_, err := control(ctx, "enable", registration.UnitName)
 			return err
 		}
 		return nil
@@ -388,13 +389,13 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 		}
 		restore, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
-		_, observed, err := readRegistration(path)
+		_, observed, err := registration.Read(path)
 		if err != nil || (!bytes.Equal(observed, oldData) && !bytes.Equal(observed, next)) {
 			resultErr = errors.Join(resultErr, ErrServiceConflict, err)
 			return
 		}
 		if observed != nil {
-			if _, err := control(restore, "disable", "--now", userUnitName); err != nil {
+			if _, err := control(restore, "disable", "--now", registration.UnitName); err != nil {
 				resultErr = errors.Join(resultErr, err)
 				return
 			}
@@ -404,9 +405,9 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 			return
 		}
 		if before.Running {
-			_, err := control(restore, "reset-failed", userUnitName)
+			_, err := control(restore, "reset-failed", registration.UnitName)
 			if err == nil {
-				_, err = control(restore, "start", userUnitName)
+				_, err = control(restore, "start", registration.UnitName)
 			}
 			if err == nil && ready != nil {
 				err = ready(restore, oldLayout)
@@ -415,7 +416,7 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 		}
 	}()
 	if before.Registered {
-		if _, err := control(ctx, "disable", userUnitName); err != nil {
+		if _, err := control(ctx, "disable", registration.UnitName); err != nil {
 			return err
 		}
 	}

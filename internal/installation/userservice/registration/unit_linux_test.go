@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package registration
 
 import (
 	"os"

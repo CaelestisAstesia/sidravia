@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sidravia/internal/installation/userservice/registration"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -19,7 +20,7 @@ import (
 type serviceSwitchKey struct{}
 
 func beginServiceSwitch(ctx context.Context) (context.Context, func(), error) {
-	path, err := unitLocation()
+	path, err := registration.UnitPath()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -41,7 +42,7 @@ func pendingServiceSwitch() (ServiceSwitch, bool, error) {
 	if os.Geteuid() == 0 {
 		return ServiceSwitch{}, false, nil
 	}
-	path, err := unitLocation()
+	path, err := registration.UnitPath()
 	if err != nil {
 		return ServiceSwitch{}, false, err
 	}
@@ -131,7 +132,7 @@ func validServiceSwitch(state ServiceSwitch) bool {
 }
 
 func saveServiceSwitch(ctx context.Context, state *ServiceSwitch) error {
-	unit, err := unitLocation()
+	unit, err := registration.UnitPath()
 	if err != nil || ctx.Value(serviceSwitchKey{}) != unit {
 		return errors.Join(ErrServiceConflict, err)
 	}
@@ -160,7 +161,7 @@ func saveServiceSwitch(ctx context.Context, state *ServiceSwitch) error {
 }
 
 func reloadServiceSwitch(ctx context.Context) error {
-	unit, err := unitLocation()
+	unit, err := registration.UnitPath()
 	if err != nil || ctx.Value(serviceSwitchKey{}) != unit {
 		return errors.Join(ErrServiceConflict, err)
 	}

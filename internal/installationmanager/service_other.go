@@ -11,9 +11,6 @@ import (
 func userService(context.Context, string, productlayout.Layout, func(context.Context, productlayout.Layout) error) (ServiceState, error) {
 	return ServiceState{}, ErrServiceUnavailable
 }
-func registeredService() (productlayout.Layout, bool, error) {
-	return productlayout.Layout{}, false, nil
-}
 
 func holdServiceRegistration(context.Context) (context.Context, func(), error) {
 	return nil, nil, ErrServiceUnavailable
