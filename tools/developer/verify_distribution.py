@@ -291,10 +291,12 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             embedded_identities.append(binary_identity(path, role, target, version, build_id, go))
             if smoke and role != 'sidraviad':
                 path.chmod(0o700)
-                result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True, check=False, timeout=30, env=smoke_env)
-                if result.returncode:
-                    detail = result.stderr.decode('utf-8', errors='replace')[:400].strip()
-                    raise VerificationError(f'help_smoke_failed: {name}: exit {result.returncode}: {detail}')
+                try:
+                    result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True,
+                                            check=True, timeout=30, env=smoke_env)
+                except subprocess.CalledProcessError as exc:
+                    detail = (exc.stderr or b'').decode('utf-8', errors='replace')[:400].strip()
+                    raise VerificationError(f'help_smoke_failed: {name}: exit {exc.returncode}: {detail}') from exc
                 require(bool(result.stdout.strip()), 'empty_help_smoke')
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
