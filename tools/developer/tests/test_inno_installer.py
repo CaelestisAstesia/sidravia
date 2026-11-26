@@ -55,13 +55,12 @@ $sourceFile = Join-Path $Root 'protected-original.json'
 $backupFile = Join-Path $Root 'protected-copy.json'
 if ($Mode -eq 'create') {
  [IO.File]::WriteAllText($sourceFile, '{"synthetic":"fixture"}')
- $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
- $acl = New-Object Security.AccessControl.FileSecurity
- $acl.SetOwner($ownerSid)
- $acl.SetAccessRuleProtection($true, $false)
- $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($ownerSid,'FullControl','Allow')))
- $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('S-1-5-18')),'FullControl','Allow')))
- Set-Acl -LiteralPath $sourceFile -AclObject $acl
+ # Set only the DACL. The test must not need permission to take
+ # ownership or update auditing on a hosted runner.
+ $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+ & "$env:WINDIR\System32\icacls.exe" $sourceFile /inheritance:r /grant:r "*${ownerSid}:F" '*S-1-5-18:F'
+ if ($LASTEXITCODE -ne 0) { throw 'cannot create fixture DACL' }
+ if (-not (Get-Acl -LiteralPath $sourceFile).AreAccessRulesProtected) { throw 'fixture DACL inherits rules' }
 } else {
  $sourceAcl = Get-Acl -LiteralPath $sourceFile
  $backupAcl = Get-Acl -LiteralPath $backupFile
@@ -74,10 +73,13 @@ if ($Mode -eq 'create') {
 
 }
 ''')
-            subprocess.run([powershell, '-NoProfile', '-File', windows_path(acl_script), native, 'create'],
-                           check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+            acl_command = [powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                           '-File', windows_path(acl_script), native]
+            created = subprocess.run([*acl_command, 'create'], stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, timeout=30)
+            self.assertEqual(created.returncode, 0, created.stdout.decode(errors='replace'))
 
-            template = (REPO / 'packaging/windows/sidravia.iss').read_text()
+            template = (REPO / 'packaging/windows/sidravia.iss').read_text(encoding='utf-8')
             preamble = template.split('[Setup]', 1)[0]
             source = template.split('[Code]\n', 1)[1]
             # Rename entry points; no production wizard/uninstall event executes.
@@ -97,7 +99,7 @@ if ($Mode -eq 'create') {
             source = source.replace('io.github.astesia.Sidravia.Announcements', identity)
             for name in ('Sidravia.exe', 'sidraviad.exe', 'sidraviactl.exe', 'sidraviaupdater.exe'):
                 source = source.replace('Name="' + name + '"', 'Name="inno-fixture-unused-' + name + '"')
-            cases = (REPO / 'packaging/windows/testdata/contracts.iss').read_text().replace('@ROOT@', native).replace('io.github.astesia.Sidravia.InnoTest.FIXTURE', identity)
+            cases = (REPO / 'packaging/windows/testdata/contracts.iss').read_text(encoding='utf-8').replace('@ROOT@', native).replace('io.github.astesia.Sidravia.InnoTest.FIXTURE', identity)
             script = root / 'contracts.iss'
             cases = cases.replace('@OPPOSITE_KEY@', registry_prefix + '\\{#OppositeAppId}_is1')
             script.write_text('#define ProductVersion "0.3.0-alpha.2"\n'
@@ -112,8 +114,8 @@ if ($Mode -eq 'create') {
             result = subprocess.run([str(root / 'contracts.exe'), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'],
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
             receipt = state / 'result.txt'
-            self.assertTrue(receipt.exists(), f'no fixture receipt, exit {result.returncode}')
-            self.assertEqual(receipt.read_text(), 'passed')
-            checked = subprocess.run([powershell, '-NoProfile', '-File', windows_path(acl_script), native, 'compare'],
+            self.assertTrue(receipt.exists(), f'no fixture receipt, exit {result.returncode}: {result.stdout.decode(errors="replace")}')
+            self.assertEqual(receipt.read_text(encoding='utf-8'), 'passed')
+            checked = subprocess.run([*acl_command, 'compare'],
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
             self.assertEqual(checked.returncode, 0, checked.stdout.decode(errors='replace'))
