@@ -12,6 +12,7 @@ import dev
 
 
 class RPMContracts(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'linux', 'requires Linux directory replacement semantics')
     def test_publication_preserves_the_previous_output_and_keeps_failed_copies_private(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
