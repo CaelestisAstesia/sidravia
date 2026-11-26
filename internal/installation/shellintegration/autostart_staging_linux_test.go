@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestRPMDesktopScanSkipsUnownedHardLink(t *testing.T) {
@@ -85,5 +87,50 @@ func TestInterruptedAutostartStageIsRemovedWithoutDeletingUnexpectedFiles(t *tes
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("staging remains: %v", err)
+	}
+}
+
+func TestPackageAutostartEraseRetriesAfterWriterReleasesDirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "autostart")
+	stage := filepath.Join(dir, packageAutostartStage("deb")+desktopEntryName+".desktop-0123456789abcdef0123456789abcdef")
+	if err := os.MkdirAll(stage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	owned := filepath.Join(dir, desktopEntryName+".desktop")
+	entry := "[Desktop Entry]\nType=Application\nName=Sidravia\nComment=Sidravia session autostart\nIcon=/usr/lib/sidravia/gui-runtime/data/icons/sidravia.png\nTerminal=false\nTryExec=/usr/lib/sidravia/sidravia_gui\nExec=\"/usr/bin/env\" --chdir \"/usr/lib/sidravia\" \"SIDRAVIA_NAMESPACE=\" \"./sidravia_gui\"\nX-Sidravia-Owner=linux-desktop-v2\n"
+	marker := filepath.Join(stage, autostartStageMarker)
+	for path, content := range map[string]string{owned: entry, marker: "", filepath.Join(stage, "entry"): "incomplete"} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Simulate Flutter's independent descriptor for the same directory inode.
+	writer, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if err := unix.Flock(int(writer.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanupPackageAutostartRoot(root, "deb"); !errors.Is(err, unix.EWOULDBLOCK) {
+		t.Fatalf("cleanup must report contention for retry, got %v", err)
+	}
+	for _, path := range []string{owned, marker, stage} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("cleaned files while writer still held the lock: %v", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanupPackageAutostartRoot(root, "deb"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{owned, stage} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("owned path remains after retry: %s %v", path, err)
+		}
 	}
 }

@@ -27,7 +27,7 @@ func main() {
 		err := cleanupErasedPackage(ctx, strings.TrimSuffix(os.Args[1], "-erase-user-registration"))
 		cancel()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "无法清理已卸载软件包 的用户服务登记。")
+			fmt.Fprintln(os.Stderr, "无法清理已卸载软件包的用户登记。")
 			os.Exit(1)
 		}
 		return

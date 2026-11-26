@@ -36,19 +36,11 @@ func lockPackageAutostart(create bool, manager string) (string, string, []string
 			return "", "", nil, nil, err
 		}
 	}
-	if err := plainDirectory(dir); err != nil {
-		if errors.Is(err, os.ErrNotExist) && !create {
-			return root, "", nil, noop, nil
-		}
-		return "", "", nil, nil, err
+	unlock, err := lockAutostartDirectory(dir)
+	if errors.Is(err, os.ErrNotExist) && !create {
+		return root, "", nil, noop, nil
 	}
-	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return "", "", nil, nil, err
-	}
-	unlock := func() { _ = unix.Close(fd) }
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		unlock()
 		return "", "", nil, nil, err
 	}
 	if err := integrationfile.ClearScratch(index + ".sidravia-tmp"); err != nil {
@@ -71,6 +63,24 @@ func lockPackageAutostart(create bool, manager string) (string, string, []string
 		}
 	}
 	return root, index, roots, unlock, nil
+}
+
+// Flutter locks this same directory inode while inspecting or changing an
+// autostart entry. Both locks are nonblocking because the Flutter writer
+// acquires the autostart directory before updating the package's root index.
+func lockAutostartDirectory(dir string) (func(), error) {
+	if err := plainDirectory(dir); err != nil {
+		return nil, err
+	}
+	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		_ = unix.Close(fd)
+		return nil, err
+	}
+	return func() { _ = unix.Close(fd) }, nil
 }
 
 func validAutostartRoot(root string) bool {
@@ -260,13 +270,7 @@ func CleanupErasedPackage(registered productlayout.Layout, manager string) error
 	var remaining []string
 	resultErr := lockErr
 	for _, root := range slices.Compact(roots) {
-		paths, scanErr := packageAutostartFiles(root, manager)
-		rootErr := errors.Join(scanErr, cleanupPackageAutostartStages(root, manager))
-		for _, path := range paths {
-			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				rootErr = errors.Join(rootErr, err)
-			}
-		}
+		rootErr := cleanupPackageAutostartRoot(root, manager)
 		if rootErr != nil && slices.Contains(recorded, root) {
 			remaining = append(remaining, root)
 		}
@@ -278,6 +282,27 @@ func CleanupErasedPackage(registered productlayout.Layout, manager string) error
 			data, _ = json.Marshal(remaining) // A slice of strings is always encodable.
 		}
 		resultErr = errors.Join(resultErr, integrationfile.Save(index, data))
+	}
+	return resultErr
+}
+
+// Cleanup and the Flutter writer share the same lease for the entire scan and
+// removal. A busy indexed root remains recorded for the next package callback.
+func cleanupPackageAutostartRoot(root, manager string) error {
+	unlock, err := lockAutostartDirectory(filepath.Join(root, "autostart"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	paths, scanErr := packageAutostartFiles(root, manager)
+	resultErr := errors.Join(scanErr, cleanupPackageAutostartStages(root, manager))
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			resultErr = errors.Join(resultErr, err)
+		}
 	}
 	return resultErr
 }
