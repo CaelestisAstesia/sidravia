@@ -70,7 +70,11 @@ func TestNativeInstalledUpdate(t *testing.T) {
 	overlay := testfixture.NewWindowsOverlay(t, repo, owned, source, pub)
 	overlay.Replace("internal/update/run.go", func(s string) string {
 		s = strings.Replace(s, "\"io\"", "\"io\"\n\"os\"", 1)
-		return strings.Replace(s, "failSource := func(err error, result any, applying bool) int {", "failSource := func(err error, result any, applying bool) int {\nif applying{os.WriteFile("+strconv.Quote(filepath.Join(owned, "apply-cause.txt"))+",[]byte(err.Error()),0600)}", 1)
+		const failure = "return m.SourceFailure(ctx, err, applyErrorCode(err), applyErrorMessage(err), outcome)"
+		if strings.Count(s, failure) != 1 {
+			t.Fatal("apply failure overlay no longer matches updater")
+		}
+		return strings.Replace(s, failure, "os.WriteFile("+strconv.Quote(filepath.Join(owned, "apply-cause.txt"))+",[]byte(err.Error()),0600)\n"+failure, 1)
 	})
 	overlay.Replace("cmd/sidraviactl/main.go", func(s string) string {
 		return strings.Replace(s, "fmt.Fprintln(os.Stderr, \"安装或更新正在进行，请完成或取消后再运行命令。\")", "fmt.Fprintln(os.Stderr, \"fixture startup cause:\",err)\n fmt.Fprintln(os.Stderr, \"安装或更新正在进行，请完成或取消后再运行命令。\")", 1)
