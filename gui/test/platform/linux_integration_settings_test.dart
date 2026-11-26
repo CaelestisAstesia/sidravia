@@ -298,6 +298,11 @@ sys.stdout.write('x' * ((2 << 20) + 1))
           0,
           reason: '${missing.stdout}${missing.stderr}',
         );
+        backup.renameSync(ctl.path);
+        final workingCtl = ctl.readAsStringSync();
+        // A failed exec can leave a child holding the inherited lock until
+        // exit. Exercise the tracking failure with a helper that did execute.
+        ctl.writeAsStringSync('#!/usr/bin/python3\nraise SystemExit(1)\n');
         await expectLater(
           manager.change(IntegrationChange.startDisable),
           throwsA(
@@ -309,7 +314,7 @@ sys.stdout.write('x' * ((2 << 20) + 1))
           ),
         );
         expect((await manager.status()).autostart, 'disabled');
-        backup.renameSync(ctl.path);
+        ctl.writeAsStringSync(workingCtl);
         await manager.change(IntegrationChange.startDisable);
         await manager.close();
       },
