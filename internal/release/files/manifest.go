@@ -66,7 +66,7 @@ func Decode(data []byte) (Manifest, error) {
 func (m Manifest) Validate() error {
 	if m.SchemaVersion != 1 || !safeIdentity(m.Version) || !safeIdentity(m.BuildID) ||
 		(m.OS != "linux" && m.OS != "windows") || (m.Arch != "amd64" && m.Arch != "arm64") ||
-		(m.PayloadKind != "core" && m.PayloadKind != "gui") || (m.PayloadKind == "gui" && m.Arch != "amd64") ||
+		(m.PayloadKind != "core" && m.PayloadKind != "gui") ||
 		len(m.Files) == 0 || len(m.Files) > MaximumFiles {
 		return ErrInvalid
 	}

@@ -91,3 +91,48 @@ func TestHelpNeverReadsPrivateInput(t *testing.T) {
 		t.Fatal("help failed", code)
 	}
 }
+
+func TestExtendedSigningRejectsLegacyAndPreservesExtendedBytes(t *testing.T) {
+	legacy, legacySignature, public, raw, seed := fixture(t)
+	var m release.ReleaseManifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	old := m.Assets[0]
+	m.Assets[0].Kind, m.Assets[0].PayloadKind, m.Assets[0].Arch = "gui-portable", "gui", "arm64"
+	m.Assets[0].Name = "sidravia-v1.0.0-linux-arm64-gui-portable.tar.gz"
+	xz := m.Assets[0]
+	xz.Name = strings.TrimSuffix(xz.Name, ".gz") + ".xz"
+	m.Assets = append(m.Assets, xz)
+	extended := filepath.Join(filepath.Dir(legacy), release.ExtendedReleaseManifestName)
+	signature := filepath.Join(filepath.Dir(legacy), release.ExtendedReleaseSignatureName)
+	for _, tc := range []struct {
+		manifest, output string
+		assets           []release.ReleaseAsset
+		wantSuccess      bool
+	}{
+		{legacy, legacySignature, m.Assets, false},
+		{extended, signature, append([]release.ReleaseAsset{old}, m.Assets...), false},
+		{extended, legacySignature, m.Assets, false},
+		{extended, signature, m.Assets, true},
+	} {
+		m.Assets = tc.assets
+		data, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(tc.manifest, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		var out, stderr bytes.Buffer
+		code := run([]string{"--manifest", tc.manifest, "--output", tc.output}, bytes.NewReader(seed), &out, &stderr)
+		sig, err := os.ReadFile(tc.output)
+		if tc.wantSuccess {
+			if code != 0 || err != nil || !ed25519.Verify(public, data, sig) {
+				t.Fatalf("exact extended bytes not signed: %d %s %v", code, stderr.String(), err)
+			}
+		} else if code == 0 || !os.IsNotExist(err) {
+			t.Fatalf("wrong metadata location was signed: %s", tc.manifest)
+		}
+	}
+}

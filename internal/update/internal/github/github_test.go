@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -183,7 +185,73 @@ func TestLinuxGUISelectionNeverFallsBackToCoreOrLegacyPortable(t *testing.T) {
 		t.Fatalf("%+v %v", result, err)
 	}
 	selection.Arch = "arm64"
+	result, err = source.Check(context.Background(), selection)
+	if err != nil || result.State != "no_compatible_release" || result.Candidate != nil {
+		t.Fatalf("%+v %v", result, err)
+	}
+	selection.Arch = "386"
 	if _, err = source.Check(context.Background(), selection); err != release.ErrUnsupported {
 		t.Fatalf("unsupported arch: %v", err)
+	}
+}
+
+func TestSystemPackageDiscoveryBindsArchitectureFlavorAndLocation(t *testing.T) {
+	item := fixtureRelease("1.0.0-dev.audit.6", 1)
+	names := []string{
+		"sidravia_1.0.0~dev.audit.6-1_amd64.deb",
+		"sidravia_1.0.0~dev.audit.6-10_amd64.deb",
+		"sidravia_1.0.0~dev.audit.6-9_arm64.deb",
+		"sidravia-core_1.0.0~dev.audit.6-2_arm64.deb",
+		"sidravia-core_1.0.0~dev.audit.6-8_amd64.deb",
+		"sidravia-core_1.0.0~dev.audit.6-23_amd64.deb.bak",
+		"sidravia-core_1.0.0~dev.audit.60-30_amd64.deb",
+		"sidravia-1.0.0~dev.audit.6-3.aarch64.rpm",
+		"sidravia-1.0.0~dev.audit.6-30.x86_64.rpm",
+	}
+	for i, name := range names {
+		a := item.Assets[0]
+		a.ID = int64(i + 2)
+		a.Name = name
+		a.URL = "https://github.com/" + release.Repository + "/releases/download/" + item.Tag + "/" + name
+		item.Assets = append(item.Assets, a)
+	}
+	for _, tt := range []struct {
+		arch, kind string
+		want       string
+	}{
+		{"amd64", "gui-deb", names[1]},
+		{"arm64", "gui-deb", names[2]},
+		{"amd64", "core-deb", names[4]},
+		{"arm64", "core-deb", names[3]},
+		{"arm64", "gui-rpm", names[7]},
+	} {
+		t.Run(tt.kind+"/"+tt.arch, func(t *testing.T) {
+			for _, corruptURL := range []bool{false, true} {
+				changed := item
+				changed.Assets = append([]asset(nil), item.Assets...)
+				if corruptURL {
+					for i := range changed.Assets {
+						if changed.Assets[i].Name == tt.want {
+							changed.Assets[i].URL = strings.Replace(changed.Assets[i].URL, "github.com", "example.invalid", 1)
+						}
+					}
+				}
+				source := NewGitHub(&http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
+					if req.URL.Host != "api.github.com" {
+						t.Fatal("system package triggered portable metadata lookup", req.URL)
+					}
+					raw, _ := json.Marshal([]githubRelease{changed})
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(raw)))}, nil
+				})})
+				got, err := source.Check(context.Background(), release.Selection{OS: "linux", Arch: tt.arch, Kind: tt.kind, Channel: "preview", CurrentVersion: "0.9.0"})
+				if corruptURL {
+					if !errors.Is(err, release.ErrMetadata) || got.Candidate != nil {
+						t.Fatalf("invalid URL offered: %+v %v", got, err)
+					}
+				} else if err != nil || got.State != "available" || got.Candidate == nil || got.Candidate.Name != tt.want || got.PublisherVerified || got.Candidate.CanApply {
+					t.Fatalf("%+v %v", got, err)
+				}
+			}
+		})
 	}
 }

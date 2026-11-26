@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -133,7 +134,12 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		manifest, sig := img.verified.Proof()
 		releaseDir := filepath.Join(source, v.version)
 		os.MkdirAll(releaseDir, 0700)
-		for name, data := range map[string][]byte{release.ReleaseManifestName: manifest, release.ReleaseSignatureName: sig, img.Candidate.Name: img.archive} {
+		kind := "core-portable"
+		if _, ok := files["Sidravia.exe"]; ok {
+			kind = "gui-portable"
+		}
+		manifestName, signatureName := release.ManifestNames(runtime.GOARCH, kind, false)
+		for name, data := range map[string][]byte{manifestName: manifest, signatureName: sig, img.Candidate.Name: img.archive} {
 			if e = os.WriteFile(filepath.Join(releaseDir, name), data, 0600); e != nil {
 				t.Fatal(e)
 			}

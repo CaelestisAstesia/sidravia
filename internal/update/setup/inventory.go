@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"sidravia/internal/update/setup/internal/receiptstate"
@@ -46,7 +47,7 @@ func verifyInstalled(ctx context.Context, target string, v release.VerifiedRelea
 		return m, err
 	}
 	a, err := v.Asset(c)
-	if err != nil || a.OS != "windows" || a.Arch != "amd64" || a.Kind != "setup" || (hasGUI && m.PayloadKind != "gui") {
+	if err != nil || a.OS != "windows" || a.Arch != runtime.GOARCH || a.Kind != "setup" || (hasGUI && m.PayloadKind != "gui") {
 		return m, ErrInvalid
 	}
 	root, err := os.OpenRoot(target)

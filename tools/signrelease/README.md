@@ -65,7 +65,7 @@ embedding and publication remain separate authorized operations.
 
 ## Signing an exact release manifest
 
-This developer tool signs the exact reviewed `sidravia-release.json` v2 bytes.
+This developer tool signs exact, reviewed v2 release metadata.
 It does not generate or store private keys, rewrite the manifest, access the
 network, upload a release or authorize installation. Run the fixed distribution
 producer/consumer first: a signature approves release bytes; it is not a substitute
@@ -76,6 +76,22 @@ Use the pinned Go toolchain to run:
 ```
 go run ./tools/signrelease --manifest /path/to/sidravia-release.json --output /path/to/sidravia-release.sig
 ```
+
+Prepare one request per published metadata pair. The request's `expectedAssets`
+lists the portable archives and Setup executables for that pair.
+
+| Published manifests and signatures | Assets |
+| --- | --- |
+| `sidravia-release.json`, `sidravia-release.sig` | Existing gzip/ZIP portable and AMD64 Windows Setup, including ARM64 core portable |
+| `sidravia-release-xz.json`, `sidravia-release-xz.sig` | Linux XZ assets for existing targets, with matching gzip ownership in the primary manifest |
+| `sidravia-release-extended.json`, `sidravia-release-extended.sig` | ARM64 Linux GUI portable (gzip and/or XZ), ARM64 Windows GUI portable and ARM64 Windows Setup |
+
+When publishing both encodings for the ARM64 Linux GUI, prepare each producer
+output in its own directory and list both in the extended request. Both archives
+must carry the same ownership index. Verify each metadata pair with
+`dev.py release verify` against its own request. System-managed RPM and DEB
+packages are discovered by package name and architecture, then installed by the
+system package manager.
 
 Standard input must contain a base64-encoded 32-byte Ed25519 seed supplied by the
 local key-unlocking process. Keep the encrypted private key local; do not put the

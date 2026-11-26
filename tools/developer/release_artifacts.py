@@ -159,8 +159,20 @@ def public_check(repo, go, mode, manifest_data, public_data, signature_data=None
 
 
 def encoding_compatibility(manifest, path):
+    extended_name = 'sidravia-release-extended.json'
+    extended = [a for a in manifest['assets'] if a['arch'] == 'arm64' and a['kind'] in ('gui-portable', 'setup')]
+    if extended or path.name == extended_name:
+        require(len(extended) == len(manifest['assets']), 'mixed_legacy_and_extended_manifest')
+        require(path.name == extended_name, 'extended_manifest_requires_separate_name')
+        legacy_path = path.parent / 'sidravia-release.json'
+        if os.path.lexists(legacy_path):
+            legacy = document(legacy_path)
+            require(isinstance(legacy, dict) and all(legacy.get(k) == manifest[k] for k in
+                    ('schemaVersion', 'version', 'buildId', 'keyId', 'minimumProtocol')), 'extended_legacy_identity_mismatch')
+        return
     xz_assets = [a for a in manifest['assets'] if a['name'].endswith('.tar.xz')]
     if not xz_assets:
+        require(path.name != 'sidravia-release-xz.json', 'xz_manifest_requires_xz_assets')
         return
     require(len(xz_assets) == len(manifest['assets']), 'mixed_legacy_and_xz_manifest')
     require(path.name == 'sidravia-release-xz.json', 'xz_manifest_requires_separate_name')
@@ -211,6 +223,8 @@ def verify(repo, go, request_path, public_key, manifest, signature, *, request_s
     data = read_public(manifest, 256 << 10)
     public_data = read_public(public_key,256)
     signature_data = read_public(signature,64)
+    if Path(manifest).name == 'sidravia-release-extended.json':
+        require(Path(signature).name == 'sidravia-release-extended.sig', 'extended_signature_requires_separate_name')
     expected, receipts = collect(repo, request_path, public_key, go, request_snapshot=request_snapshot)
     encoding_compatibility(expected, Path(manifest))
     require(expected['keyId'] == public_identity_bytes(public_data), 'public_key_changed')

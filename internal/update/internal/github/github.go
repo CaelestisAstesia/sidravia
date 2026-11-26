@@ -73,10 +73,16 @@ type asset struct {
 }
 
 func (g *GitHub) Check(ctx context.Context, s release.Selection) (release.CheckResult, error) {
-	rpm := s.Kind == "gui-rpm" || s.Kind == "core-rpm"
+	manager := ""
+	switch s.Kind {
+	case "gui-rpm", "core-rpm":
+		manager = "rpm"
+	case "gui-deb", "core-deb":
+		manager = "deb"
+	}
 	var suffixes []string
-	if rpm {
-		if s.OS != "linux" || s.Arch != "amd64" || (s.Channel != "stable" && s.Channel != "preview") {
+	if manager != "" {
+		if s.OS != "linux" || !release.DesktopArchitecture(s.Arch) || (s.Channel != "stable" && s.Channel != "preview") {
 			return release.CheckResult{}, release.ErrUnsupported
 		}
 	} else {
@@ -120,8 +126,8 @@ func (g *GitHub) Check(ctx context.Context, s release.Selection) (release.CheckR
 				continue
 			}
 			var matches []asset
-			if rpm {
-				matches = rpmAssets(r.Assets, v.String(), s.Kind)
+			if manager != "" {
+				matches = systemPackageAssets(r.Assets, v.String(), s, manager)
 			} else {
 				for _, suffix := range suffixes {
 					name := "sidravia-v" + v.String() + "-" + s.OS + "-" + s.Arch + "-" + suffix
@@ -150,7 +156,7 @@ func (g *GitHub) Check(ctx context.Context, s release.Selection) (release.CheckR
 			}
 			u, err := url.Parse(a.URL)
 			expectedPath := "/" + release.Repository + "/releases/download/" + r.Tag + "/" + name
-			if err != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.Path != expectedPath || u.RawQuery != "" || u.Fragment != "" {
+			if err != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.Path != expectedPath || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" {
 				return release.CheckResult{}, release.ErrMetadata
 			}
 			if selected == nil || v.Compare(selectedVersion) > 0 || v.Compare(selectedVersion) == 0 && strings.HasSuffix(a.Name, ".tar.xz") && !strings.HasSuffix(selected.Name, ".tar.xz") {
@@ -164,9 +170,11 @@ func (g *GitHub) Check(ctx context.Context, s release.Selection) (release.CheckR
 		return release.CheckResult{State: "no_compatible_release"}, nil
 	}
 	verified := false
-	if !rpm && g.publisherKeys.Configured() {
+	manifest, _ := release.ManifestNames(s.Arch, s.Kind, strings.HasSuffix(selected.Name, ".tar.xz"))
+	mustVerify := manifest == release.ExtendedReleaseManifestName
+	if manager == "" && (g.publisherKeys.Configured() || mustVerify) {
 		_, err := g.AuthenticateCandidate(ctx, *selected)
-		if err != nil && !errors.Is(err, ErrSignatureMissing) {
+		if err != nil && (errors.Is(err, release.ErrUntrusted) || !errors.Is(err, ErrSignatureMissing)) {
 			return release.CheckResult{}, err
 		}
 		verified = err == nil
@@ -178,42 +186,6 @@ func (g *GitHub) Check(ctx context.Context, s release.Selection) (release.CheckR
 		state = "ahead_of_channel"
 	}
 	return release.CheckResult{State: state, Candidate: selected, PublisherVerified: verified}, nil
-}
-
-// RPM releases are numbered independently of the product version. Within a
-// tag, select the highest package revision for the exact installed flavor.
-func rpmAssets(assets []asset, version, kind string) []asset {
-	packageName := "sidravia"
-	if kind == "core-rpm" {
-		packageName = "sidravia-core"
-	}
-	publishedPrefix := packageName + "-" + version + "-"
-	nativePrefix := packageName + "-" + strings.Replace(version, "-", "~", 1) + "-"
-	var matches []asset
-	var highest uint64
-	for _, a := range assets {
-		revision, ok := strings.CutPrefix(a.Name, publishedPrefix)
-		if !ok {
-			revision, ok = strings.CutPrefix(a.Name, nativePrefix)
-		}
-		if !ok {
-			continue
-		}
-		revision, ok = strings.CutSuffix(revision, ".x86_64.rpm")
-		if !ok {
-			continue
-		}
-		n, err := strconv.ParseUint(revision, 10, 64)
-		if err != nil || n == 0 || strconv.FormatUint(n, 10) != revision || n < highest {
-			continue
-		}
-		if n > highest {
-			highest = n
-			matches = matches[:0]
-		}
-		matches = append(matches, a)
-	}
-	return matches
 }
 
 func (g *GitHub) page(ctx context.Context, endpoint string) ([]githubRelease, string, error) {

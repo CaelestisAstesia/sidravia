@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -78,6 +79,41 @@ class ReleaseArtifactContracts(unittest.TestCase):
         sidecar['assets'][0]['filesSha256'] = 'a' * 64
         with self.assertRaisesRegex(ValueError, 'ownership_mismatch'):
             release.encoding_compatibility(sidecar, path)
+
+    def test_extended_prepare_sign_and_verify_for_windows_arm64(self):
+        self.fixture.clear_output()
+        for path in self.fixture.gui.rglob('*'):
+            if path.suffix in ('.exe', '.dll'):
+                binary = bytearray(path.read_bytes())
+                binary[68:70] = (0xaa64).to_bytes(2, 'little')
+                path.write_bytes(binary)
+            if path.suffix == '.so':
+                binary = bytearray(path.read_bytes())
+                binary[18:20] = (183).to_bytes(2, 'little')
+                path.write_bytes(binary)
+        self.write_group('windows-arm64', gui=True)
+        # Synthetic Ed25519 seed is all zero bytes. Its public key is the fixed
+        # test vector used here and has no relationship to product trust.
+        self.key.write_bytes(base64.b64encode(bytes.fromhex(
+            '3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29')))
+        legacy = self.root / 'sidravia-release.json'
+        extended = self.root / 'sidravia-release-extended.json'
+        signature = self.root / 'sidravia-release-extended.sig'
+        with self.assertRaisesRegex(ValueError, 'extended_manifest_requires_separate_name'):
+            release.prepare(self.fixture.repo, 'go', self.request, self.key, legacy)
+        actual_public_check = release.public_check
+        with mock.patch.object(release, 'public_check',
+                               side_effect=lambda _, *args: actual_public_check(ROOT, *args)):
+            result = release.prepare(self.fixture.repo, 'go', self.request, self.key, extended)
+            self.assertEqual(result['assets'], 2)
+            signing = subprocess.run(
+                ['go', 'run', '-mod=readonly', './tools/signrelease', '--manifest', str(extended),
+                 '--output', str(signature)], cwd=ROOT, input=base64.b64encode(bytes(32)),
+                capture_output=True, timeout=120)
+            self.assertEqual(signing.returncode, 0, signing.stderr)
+            verified = release.verify(self.fixture.repo, 'go', self.request, self.key, extended, signature)
+        self.assertEqual(verified['signature'], 'passed')
+        self.assertFalse(legacy.exists())
 
     def test_existing_consumer_binds_exact_archive_and_ownership(self):
         manifest, receipts = self.collect()

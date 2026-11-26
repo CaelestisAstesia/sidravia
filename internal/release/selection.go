@@ -44,24 +44,26 @@ type CheckResult struct {
 	PublisherVerified bool `json:"-"`
 }
 
+func DesktopArchitecture(arch string) bool { return arch == "amd64" || arch == "arm64" }
+
 // PackageSuffix defines the supported distribution names used by discovery and signed metadata.
 func PackageSuffix(s Selection) (string, error) {
 	if s.Channel != "stable" && s.Channel != "preview" {
 		return "", ErrUnsupported
 	}
-	if s.Arch != "amd64" && s.Arch != "arm64" {
+	if !DesktopArchitecture(s.Arch) {
 		return "", ErrUnsupported
 	}
 	switch s.Kind {
 	case "setup":
-		if s.OS == "windows" && s.Arch == "amd64" {
+		if s.OS == "windows" {
 			return "setup.exe", nil
 		}
 	case "gui-portable":
-		if s.OS == "windows" && s.Arch == "amd64" {
+		if s.OS == "windows" {
 			return "gui-portable.zip", nil
 		}
-		if s.OS == "linux" && s.Arch == "amd64" {
+		if s.OS == "linux" {
 			return "gui-portable.tar.gz", nil
 		}
 	case "core-portable":

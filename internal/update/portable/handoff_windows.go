@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -118,7 +119,7 @@ func sourceInventory(s windowsSession) (filetxn.Inventory, error) {
 	if json.Unmarshal(s.OldIndex, &m) != nil {
 		return filetxn.Inventory{}, ErrInvalid
 	}
-	c, err := proof.InstalledAsset("windows", "amd64", m.PayloadKind+"-portable")
+	c, err := proof.InstalledAsset("windows", runtime.GOARCH, m.PayloadKind+"-portable")
 	if err != nil {
 		return filetxn.Inventory{}, err
 	}

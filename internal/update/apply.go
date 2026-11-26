@@ -86,7 +86,8 @@ func readIndex(target string) ([]byte, error) {
 	return data, nil
 }
 func installedProof(ctx context.Context, source *github.GitHub, layout productlayout.Layout, version, buildID string) (release.VerifiedRelease, release.Candidate, []byte, error) {
-	proof, err := source.AuthenticateVersion(ctx, version)
+	kind := request.DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
+	proof, err := source.AuthenticateVersion(ctx, version, runtime.GOARCH, kind)
 	if err != nil {
 		if errors.Is(err, github.ErrSignatureMissing) || errors.Is(err, release.ErrUntrusted) || errors.Is(err, release.ErrMetadata) {
 			err = errors.Join(errSourceProof, err)
@@ -96,7 +97,7 @@ func installedProof(ctx context.Context, source *github.GitHub, layout productla
 	if proof.BuildID() != buildID {
 		return release.VerifiedRelease{}, release.Candidate{}, nil, errSourceProof
 	}
-	asset, err := proof.InstalledAsset(runtime.GOOS, runtime.GOARCH, request.DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout))
+	asset, err := proof.InstalledAsset(runtime.GOOS, runtime.GOARCH, kind)
 	if err != nil {
 		return release.VerifiedRelease{}, release.Candidate{}, nil, errors.Join(errSourceProof, err)
 	}

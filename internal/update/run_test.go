@@ -83,12 +83,20 @@ func TestDefaultPackageKindPreservesGUIIdentity(t *testing.T) {
 	if got := request.DefaultPackageKind("linux", "amd64", layout); got != "gui-portable" {
 		t.Fatal(got)
 	}
-	if got := request.DefaultPackageKind("linux", "arm64", layout); got != "core-portable" {
-		t.Fatal("unsupported GUI arch")
+	if got := request.DefaultPackageKind("linux", "arm64", layout); got != "gui-portable" {
+		t.Fatal("ARM64 GUI portable selected", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Sidravia.exe"), []byte("fixture"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := request.DefaultPackageKind("windows", "arm64", layout); got != "gui-portable" {
+		t.Fatal("ARM64 Windows GUI portable selected", got)
 	}
 	layout.Mode = productlayout.ModeInstalled
-	if got := request.DefaultPackageKind("windows", "amd64", layout); got != "setup" {
-		t.Fatal(got)
+	for _, arch := range []string{"amd64", "arm64"} {
+		if got := request.DefaultPackageKind("windows", arch, layout); got != "setup" {
+			t.Fatal(arch, got)
+		}
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"sidravia/internal/installation/winmutex"
+	"sidravia/internal/release"
 )
 
 func SingleFile(f *os.File, _ os.FileInfo) error {
@@ -27,7 +28,7 @@ func SingleFile(f *os.File, _ os.FileInfo) error {
 }
 func matchesMode(info os.FileInfo, _ uint32) bool { return info.Mode().IsRegular() }
 func applicationPlatform(i Inventory) error {
-	if i.manifest.OS != "windows" || i.manifest.Arch != runtime.GOARCH || runtime.GOARCH != "amd64" || (i.manifest.PayloadKind != "core" && i.manifest.PayloadKind != "gui") {
+	if i.manifest.OS != "windows" || i.manifest.Arch != runtime.GOARCH || !release.DesktopArchitecture(runtime.GOARCH) || (i.manifest.PayloadKind != "core" && i.manifest.PayloadKind != "gui") {
 		return ErrUnsupported
 	}
 	return nil

@@ -30,7 +30,17 @@ func (g *GitHub) AuthenticateCandidate(ctx context.Context, c release.Candidate)
 		return release.VerifiedRelease{}, release.ErrUntrusted
 	}
 
-	verified, err := g.authenticateVersion(ctx, c.Version, strings.HasSuffix(c.Name, ".tar.xz"))
+	// ValidateCandidate guarantees the exact version prefix, so prerelease
+	// components cannot be interpreted as part of the target.
+	target := strings.TrimPrefix(c.Name, "sidravia-v"+c.Version+"-")
+	osName, target, _ := strings.Cut(target, "-")
+	arch, suffix, _ := strings.Cut(target, "-")
+	kind, _, _ := strings.Cut(suffix, ".")
+	if !release.AssetNameValid(c.Version, release.Selection{OS: osName, Arch: arch, Kind: kind, Channel: "preview"}, c.Name) {
+		return release.VerifiedRelease{}, release.ErrMetadata
+	}
+	manifest, signature := release.ManifestNames(arch, kind, strings.HasSuffix(suffix, ".tar.xz"))
+	verified, err := g.authenticateVersion(ctx, c.Version, manifest, signature)
 	if err != nil {
 		return release.VerifiedRelease{}, err
 	}
@@ -42,11 +52,12 @@ func (g *GitHub) AuthenticateCandidate(ctx context.Context, c release.Candidate)
 
 // AuthenticateVersion retrieves only fixed publisher metadata for this exact
 // canonical version. It is also used to prove the installed source inventory.
-func (g *GitHub) AuthenticateVersion(ctx context.Context, version string) (release.VerifiedRelease, error) {
-	return g.authenticateVersion(ctx, version, false)
+func (g *GitHub) AuthenticateVersion(ctx context.Context, version, arch, kind string) (release.VerifiedRelease, error) {
+	manifest, signature := release.ManifestNames(arch, kind, false)
+	return g.authenticateVersion(ctx, version, manifest, signature)
 }
 
-func (g *GitHub) authenticateVersion(ctx context.Context, version string, useXZ bool) (release.VerifiedRelease, error) {
+func (g *GitHub) authenticateVersion(ctx context.Context, version, manifestName, signatureName string) (release.VerifiedRelease, error) {
 	if _, err := release.ParseVersion(version); err != nil {
 		return release.VerifiedRelease{}, release.ErrMetadata
 	}
@@ -55,19 +66,29 @@ func (g *GitHub) authenticateVersion(ctx context.Context, version string, useXZ 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	manifestName, signatureName := release.ReleaseManifestName, release.ReleaseSignatureName
-	if useXZ {
-		manifestName, signatureName = release.XZReleaseManifestName, release.XZReleaseSignatureName
-	}
 	data, err := g.releaseMetadata(ctx, version, manifestName, release.ReleaseManifestLimit)
 	if err != nil {
-		return release.VerifiedRelease{}, err
+		return release.VerifiedRelease{}, metadataError(err, manifestName)
 	}
 	signature, err := g.releaseMetadata(ctx, version, signatureName, ed25519.SignatureSize)
 	if err != nil {
+		return release.VerifiedRelease{}, metadataError(err, manifestName)
+	}
+	proof, err := g.publisherKeys.Verify(data, signature, version)
+	if err != nil {
 		return release.VerifiedRelease{}, err
 	}
-	return g.publisherKeys.Verify(data, signature, version)
+	if err := proof.ValidateLocation(manifestName); err != nil {
+		return release.VerifiedRelease{}, err
+	}
+	return proof, nil
+}
+
+func metadataError(err error, manifestName string) error {
+	if manifestName == release.ExtendedReleaseManifestName && errors.Is(err, ErrSignatureMissing) {
+		return errors.Join(release.ErrUntrusted, err)
+	}
+	return err
 }
 
 func (g *GitHub) releaseMetadata(ctx context.Context, version, name string, maximum int64) ([]byte, error) {

@@ -42,17 +42,21 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 	if err != nil {
 		return layout, "", false, &Failure{"invalid_target", "无法确认当前程序布局。", nil}
 	}
-	rpm := runtime.GOOS == "linux" && productlayout.RPMManaged(layout)
-	if rpm {
+	manager, core := productlayout.SystemPackage(layout)
+	if manager != "" {
+		label := "RPM"
+		if manager == "deb" {
+			label = "DEB"
+		}
 		if !check {
-			return layout, "", true, &Failure{"system_package_managed", "此安装由 RPM 管理，请使用系统包管理器更新。", nil}
+			return layout, "", true, &Failure{"system_package_managed", "此安装由 " + label + " 管理，请使用系统包管理器更新。", nil}
 		}
 		if kind != "" {
-			return layout, "", true, &Failure{"invalid_arguments", "RPM 的更新包类型由当前安装确定。", nil}
+			return layout, "", true, &Failure{"invalid_arguments", label + " 的更新包类型由当前安装确定。", nil}
 		}
-		kind = "gui-rpm"
-		if productlayout.RPMCore(layout) {
-			kind = "core-rpm"
+		kind = "gui-" + manager
+		if core {
+			kind = "core-" + manager
 		}
 	} else {
 		if kind == "" {
@@ -62,12 +66,11 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 			return layout, "", false, &Failure{"invalid_arguments", "更新包类型无效。", nil}
 		}
 	}
-	return layout, kind, rpm, nil
+	return layout, kind, manager != "", nil
 }
 
 func ApplyPlatformSupported() bool {
-	return runtime.GOOS == "linux" && (runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64") ||
-		runtime.GOOS == "windows" && runtime.GOARCH == "amd64"
+	return release.DesktopArchitecture(runtime.GOARCH) && (runtime.GOOS == "linux" || runtime.GOOS == "windows")
 }
 
 func ValidApplyTarget(layout productlayout.Layout, kind string) bool {

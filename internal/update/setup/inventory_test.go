@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"sidravia/internal/release"
@@ -18,7 +19,7 @@ func signedInventory(t *testing.T) (release.VerifiedRelease, release.Candidate, 
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	id, _ := release.PublisherKeyID(key.Public().(ed25519.PublicKey))
 	files := map[string][]byte{"sidraviactl.exe": []byte("ctl"), "sidraviad.exe": []byte("daemon"), "sidraviaupdater.exe": []byte("updater"), "sidraviamgr.exe": []byte("manager"), "Sidravia.exe": []byte("gui"), "flutter_windows.dll": []byte("flutter")}
-	m := packagefiles.Manifest{SchemaVersion: 1, Version: "1.0.0", BuildID: "test", OS: "windows", Arch: "amd64", PayloadKind: "gui"}
+	m := packagefiles.Manifest{SchemaVersion: 1, Version: "1.0.0", BuildID: "test", OS: "windows", Arch: runtime.GOARCH, PayloadKind: "gui"}
 	for path, data := range files {
 		m.Files = append(m.Files, packagefiles.File{Path: path, Size: int64(len(data)), SHA256: sum(data), Mode: 0644})
 	}
@@ -26,8 +27,8 @@ func signedInventory(t *testing.T) (release.VerifiedRelease, release.Candidate, 
 	if e != nil {
 		t.Fatal(e)
 	}
-	c := release.Candidate{ID: "1:2", Version: m.Version, Name: "sidravia-v1.0.0-windows-amd64-setup.exe", Size: 1, SHA256: sum([]byte("x"))}
-	manifest, _ := json.Marshal(release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: "gui"}}})
+	c := release.Candidate{ID: "1:2", Version: m.Version, Name: "sidravia-v1.0.0-windows-" + runtime.GOARCH + "-setup.exe", Size: 1, SHA256: sum([]byte("x"))}
+	manifest, _ := json.Marshal(release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: runtime.GOARCH, Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: "gui"}}})
 	roots, _ := release.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
 	proof, e := roots.Verify(manifest, ed25519.Sign(key, manifest), m.Version)
 	if e != nil {

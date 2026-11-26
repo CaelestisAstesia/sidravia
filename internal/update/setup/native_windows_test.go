@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,7 +94,7 @@ func TestNativeInstalledUpdate(t *testing.T) {
 		if bundle != "" {
 			copyNativeTree(t, bundle, v.dir)
 		}
-		info := []byte("ProductVersion: " + v.version + "\nBuildID: " + v.build + "\n")
+		info := []byte("ProductVersion: " + v.version + "\nBuildID: " + v.build + "\nTarget: windows-" + runtime.GOARCH + "\n")
 		if e = os.WriteFile(filepath.Join(v.dir, "BUILD-INFO.txt"), info, 0644); e != nil {
 			t.Fatal(e)
 		}
@@ -129,8 +130,16 @@ func TestNativeInstalledUpdate(t *testing.T) {
 		t.Fatal("installer section shape changed")
 	}
 	script = script[:iconsStart] + script[runStart:]
-	script = strings.Replace(script, "AppId={{EB2663BD-8DEB-446A-958E-43DF637C1F53}", "Uninstallable=no\nCreateUninstallRegKey=no", 1)
-	script = strings.Replace(script, "DefaultDirName={localappdata}\\Programs\\Sidravia", "DefaultDirName="+oldDir, 1)
+	lines := strings.Split(script, "\n")
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "AppId="):
+			lines[i] = "Uninstallable=no\nCreateUninstallRegKey=no"
+		case strings.HasPrefix(line, "DefaultDirName="):
+			lines[i] = "DefaultDirName=" + oldDir
+		}
+	}
+	script = strings.Join(lines, "\n")
 	script = strings.Replace(script, "function QueryManager(", "function RealQueryManager(", 1)
 	script = strings.Replace(script, "function RunManager(", "function RealRunManager(", 1)
 	script = strings.Replace(script, "function PreserveUpgradeData:", "function RealPreserveUpgradeData:", 1)
@@ -185,11 +194,13 @@ begin Result := True; end;
 	if bundle != "" {
 		hasGUI = "1"
 	}
-	compile := exec.Command(compiler, "/DProductVersion=1.1.0", "/DHasGUI="+hasGUI, "/O"+source, "/Fsidravia-v1.1.0-windows-amd64-setup", filepath.Join(owned, "sidravia.iss"))
+	target := "windows-" + runtime.GOARCH
+	baseName := "sidravia-v1.1.0-" + target + "-setup"
+	compile := exec.Command(compiler, "/DProductVersion=1.1.0", "/DPayloadTarget="+target, "/DHasGUI="+hasGUI, "/O"+source, "/F"+baseName, filepath.Join(owned, "sidravia.iss"))
 	if out, e := compile.CombinedOutput(); e != nil {
 		t.Fatalf("compile Inno: %s %v", out, e)
 	}
-	installer := filepath.Join(source, "sidravia-v1.1.0-windows-amd64-setup.exe")
+	installer := filepath.Join(source, baseName+".exe")
 	installerBytes, e := os.ReadFile(installer)
 	if e != nil {
 		t.Fatal(e)
@@ -573,7 +584,7 @@ func nativeIndex(t *testing.T, dir, version, build string) []byte {
 	if _, e := os.Stat(filepath.Join(dir, "Sidravia.exe")); e == nil {
 		kind = "gui"
 	}
-	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: kind}
+	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: runtime.GOARCH, PayloadKind: kind}
 	e := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -607,20 +618,21 @@ func nativeIndex(t *testing.T, dir, version, build string) []byte {
 }
 func nativeProof(t *testing.T, root, version, build string, index, archive []byte, key ed25519.PrivateKey) release.Candidate {
 	t.Helper()
-	c := release.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-setup.exe", Size: int64(len(archive)), SHA256: sum(archive)}
+	c := release.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-" + runtime.GOARCH + "-setup.exe", Size: int64(len(archive)), SHA256: sum(archive)}
 	c.DownloadURL = "https://github.com/CaelestisAstesia/sidravia/releases/download/v" + version + "/" + c.Name
 	id, _ := release.PublisherKeyID(key.Public().(ed25519.PublicKey))
 	ownership, e := packagefiles.Decode(index)
 	if e != nil {
 		t.Fatal(e)
 	}
-	m := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: ownership.PayloadKind}}}
+	m := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: runtime.GOARCH, Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: ownership.PayloadKind}}}
 	b, _ := json.Marshal(m)
 	dir := filepath.Join(root, version)
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		t.Fatal(e)
 	}
-	for name, data := range map[string][]byte{release.ReleaseManifestName: b, release.ReleaseSignatureName: ed25519.Sign(key, b)} {
+	manifestName, signatureName := release.ManifestNames(runtime.GOARCH, "setup", false)
+	for name, data := range map[string][]byte{manifestName: b, signatureName: ed25519.Sign(key, b)} {
 		if e := os.WriteFile(filepath.Join(dir, name), data, 0600); e != nil {
 			t.Fatal(e)
 		}
@@ -654,11 +666,12 @@ func copyNativeTree(t *testing.T, from, to string) {
 func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, key ed25519.PrivateKey) {
 	t.Helper()
 	roots, _ := release.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
-	manifest, e := os.ReadFile(filepath.Join(source, "1.1.0", release.ReleaseManifestName))
+	manifestName, signatureName := release.ManifestNames(runtime.GOARCH, "setup", false)
+	manifest, e := os.ReadFile(filepath.Join(source, "1.1.0", manifestName))
 	if e != nil {
 		t.Fatal(e)
 	}
-	signature, e := os.ReadFile(filepath.Join(source, "1.1.0", release.ReleaseSignatureName))
+	signature, e := os.ReadFile(filepath.Join(source, "1.1.0", signatureName))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -666,16 +679,16 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 	if e != nil {
 		t.Fatal(e)
 	}
-	c, e := proof.InstalledAsset("windows", "amd64", "setup")
+	c, e := proof.InstalledAsset("windows", runtime.GOARCH, "setup")
 	if e != nil {
 		t.Fatal(e)
 	}
 	c.ID = "2:22"
-	oldManifest, e := os.ReadFile(filepath.Join(source, "1.0.0", release.ReleaseManifestName))
+	oldManifest, e := os.ReadFile(filepath.Join(source, "1.0.0", manifestName))
 	if e != nil {
 		t.Fatal(e)
 	}
-	oldSignature, e := os.ReadFile(filepath.Join(source, "1.0.0", release.ReleaseSignatureName))
+	oldSignature, e := os.ReadFile(filepath.Join(source, "1.0.0", signatureName))
 	if e != nil {
 		t.Fatal(e)
 	}

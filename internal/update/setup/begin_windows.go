@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -53,7 +54,7 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 	if e != nil {
 		return transaction.Record{}, e
 	}
-	if asset.OS != "windows" || asset.Arch != "amd64" || asset.Kind != "setup" || hasGUI && asset.PayloadKind != "gui" {
+	if asset.OS != "windows" || asset.Arch != runtime.GOARCH || asset.Kind != "setup" || hasGUI && asset.PayloadKind != "gui" {
 		return transaction.Record{}, release.ErrUnsupported
 	}
 	root, err := productlayout.OperationRoot()

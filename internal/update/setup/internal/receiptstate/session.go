@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -88,6 +89,6 @@ func (s Session) SourceProof(keys *release.PublisherKeys) (release.VerifiedRelea
 	if proof.BuildID() != s.Source.BuildID {
 		return proof, release.Candidate{}, ErrInvalid
 	}
-	c, e := proof.InstalledAsset("windows", "amd64", "setup")
+	c, e := proof.InstalledAsset("windows", runtime.GOARCH, "setup")
 	return proof, c, e
 }

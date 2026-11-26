@@ -23,7 +23,7 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 	if options.CandidateID != "" || options.OperationID != "" || options.Confirmed {
 		return request.Fail("invalid_arguments", "更新参数或编号无效", nil).Write(out)
 	}
-	layout, kind, rpm, failure := request.Resolve(options.Kind, true)
+	layout, kind, systemManaged, failure := request.Resolve(options.Kind, true)
 	if failure != nil {
 		return failure.Write(out)
 	}
@@ -36,8 +36,8 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 		return failure.Write(out)
 	}
 	return store.WithMutation(ctx, func(m candidatecache.Mutation) request.Outcome {
-		state, outcome := Check(ctx, github.NewGitHub(nil), selection, layout, rpm, m)
-		if !outcome.OK || rpm {
+		state, outcome := Check(ctx, github.NewGitHub(nil), selection, layout, systemManaged, m)
+		if !outcome.OK || systemManaged {
 			return outcome
 		}
 		return m.Commit(ctx, state, "")
@@ -46,13 +46,13 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 
 // Check shares selection and cache projection with updater's download/apply
 // path. It runs while the caller owns the candidate cache mutation.
-func Check(ctx context.Context, source *github.GitHub, selection release.Selection, layout productlayout.Layout, rpm bool, m candidatecache.Mutation) (candidatecache.State, request.Outcome) {
+func Check(ctx context.Context, source *github.GitHub, selection release.Selection, layout productlayout.Layout, systemManaged bool, m candidatecache.Mutation) (candidatecache.State, request.Outcome) {
 	result, err := source.Check(ctx, selection)
 	if err != nil {
 		return candidatecache.State{}, m.SourceFailure(ctx, err, request.SourceCode(err), request.SourceMessage(err), nil)
 	}
 	state := candidatecache.State{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result}
-	if rpm {
+	if systemManaged {
 		if result.Candidate != nil {
 			result.Candidate.ApplyReason = "system_package_managed"
 		}
