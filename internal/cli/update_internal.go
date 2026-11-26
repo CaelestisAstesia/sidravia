@@ -37,6 +37,18 @@ func newUpdateInternalCommand(identity daemonctl.Identity, out io.Writer) *cobra
 		cmd.Flags().BoolVar(&interactive, "interactive", false, "")
 		root.AddCommand(cmd)
 	}
+	var uninstallCoordinator uint32
+	clear := &cobra.Command{Use: "uninstall-clear-records", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		defer cancel()
+		if err := inno.ClearUninstallRecords(ctx, uninstallCoordinator); err != nil {
+			return wrapCommandOperation(integrationFailure("未能清理此安装的更新事务。", err))
+		}
+		_, err := fmt.Fprintln(out, `{"schemaVersion":1,"ok":true}`)
+		return err
+	}}
+	clear.Flags().Uint32Var(&uninstallCoordinator, "coordinator", 0, "")
+	root.AddCommand(clear)
 	addSetupStages(root, identity)
 	return root
 }

@@ -48,25 +48,40 @@ type record struct {
 	RecoveryToken string             `json:"recoveryToken,omitempty"`
 }
 
+func operationFamily(directory string, namespace productlayout.Namespace) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(directory) + "\x00" + namespace.String()))
+	return hex.EncodeToString(sum[:16])
+}
+
+func observeInstaller(coordinator uint32) (*winproc.Process, error) {
+	peer, err := winproc.Observe(coordinator)
+	if err != nil {
+		return nil, err
+	}
+	parent, err := winproc.ObserveParent()
+	if err != nil {
+		peer.Close()
+		return nil, err
+	}
+	defer parent.Close()
+	if parent.PID != peer.PID || parent.Created != peer.Created || parent.SID != peer.SID {
+		peer.Close()
+		return nil, winproc.ErrPeer
+	}
+	return peer, nil
+}
+
 func Run(ctx context.Context, action, op string, coordinator uint32, interactive bool, identity daemonctl.Identity) error {
 	if !change.ValidID(op) || coordinator == 0 {
 		return change.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
-	peer, err := winproc.Observe(coordinator)
+	peer, err := observeInstaller(coordinator)
 	if err != nil {
 		return err
 	}
 	defer peer.Close()
-	parent, err := winproc.ObserveParent()
-	if err != nil {
-		return err
-	}
-	defer parent.Close()
-	if parent.PID != peer.PID || parent.Created != peer.Created || parent.SID != peer.SID {
-		return winproc.ErrPeer
-	}
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil {
 		return err
@@ -80,8 +95,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
-	directory := filepath.Join(root, hex.EncodeToString(sum[:16]), op)
+	directory := filepath.Join(root, operationFamily(layout.ExecutableDirectory, ns), op)
 	statePath := filepath.Join(directory, "state.json")
 	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {

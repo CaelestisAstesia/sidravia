@@ -12,3 +12,7 @@ import (
 func Run(context.Context, string, string, uint32, bool, daemonctl.Identity) error {
 	return errors.New("此平台尚不支持安装生命周期协调")
 }
+
+func ClearUninstallRecords(context.Context, uint32) error {
+	return errors.New("此平台尚不支持安装生命周期协调")
+}

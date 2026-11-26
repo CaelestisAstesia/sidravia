@@ -1533,6 +1533,7 @@ end;
 procedure CurUninstallStepChanged(Step: TUninstallStep);
 var
   DeleteData: Boolean;
+  Code: Integer;
 begin
   if Step = usUninstall then begin
     DeleteData := False;
@@ -1548,6 +1549,12 @@ begin
       RaiseException('撤销自启失败；程序和数据尚未删除。请核实当前状态后重试。');
     if not RunManager('path disable') then
       RaiseException('撤销 PATH 失败；程序和数据尚未删除。自启可能已撤销，请重试。');
+    if DeleteData then begin
+      if not Exec(ExpandConstant('{app}\sidraviactl.exe'),
+        'update-internal uninstall-clear-records --coordinator ' + IntToStr(CurrentPID),
+        '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+        RaiseException('未能清除此安装的更新事务，程序和卸载入口保留。请处理占用后重跑完整清理。');
+    end;
     if DeleteData and not ClearExtraData(False) then
       RaiseException('完整清理未完成，程序和卸载入口保留。部分数据/系统集成可能已移除；请处理占用或未知归属后重跑完整清理。');
   end;
