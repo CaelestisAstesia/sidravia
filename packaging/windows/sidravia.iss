@@ -464,10 +464,9 @@ function OpenUpdateProcess(Access: LongWord; Inherit: Boolean; PID: LongWord): N
   external 'OpenProcess@kernel32.dll stdcall';
 
 function OppositeSetupRegistered: Boolean;
-const
-  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#OppositeAppId}_is1';
 begin
-  Result := RegKeyExists(HKCU64, UninstallKey);
+  Result := RegKeyExists(HKCU64,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#OppositeAppId}_is1');
 end;
 
 function InitializeSetup: Boolean;
