@@ -7,7 +7,7 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-// DaemonHandler returns an IPC handler for daemon lifecycle methods. It only
+// dispatchDaemon handles daemon lifecycle requests. It only
 // acknowledges a stop request with the typed result {"status":"stopping"}; the
 // actual runtime cancellation happens after the success response is written,
 // via the server's responseCommitted hook mapped by the composition root. The

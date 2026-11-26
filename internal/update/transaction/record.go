@@ -1,4 +1,4 @@
-// Package operations owns update execution records, not installation or Session
+// Package transaction owns update execution records, not installation or Session
 // state. A record never authorizes skipping signature or on-disk byte checks.
 package transaction
 

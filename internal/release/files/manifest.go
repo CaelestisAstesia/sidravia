@@ -1,4 +1,4 @@
-// Package packagefiles defines the product-file ownership boundary shared by
+// Package files defines the product-file ownership boundary shared by
 // distribution production and update verification. It performs no filesystem I/O.
 package files
 

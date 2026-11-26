@@ -1,4 +1,4 @@
-// Package productlayout resolves the explicit installed or portable runtime
+// Package layout resolves the explicit installed or portable runtime
 // layout shared by the Sidravia CLI and daemon. Both processes call Resolve to
 // obtain the same absolute paths for configurations, institution
 // profiles, runtime info and the daemon log. Resolution only stat-checks the

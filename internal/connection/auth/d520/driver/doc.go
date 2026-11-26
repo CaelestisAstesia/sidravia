@@ -1,4 +1,4 @@
-// Package d520 implements the Dr.COM 5.2.0(D) wire codec and cancellable Run.
+// Package driver implements the Dr.COM 5.2.0(D) wire codec and cancellable Run.
 //
 // The codec owns no runtime state, time, randomness, retries, sockets,
 // contexts, logging or goroutines. Every value that varies at runtime — the

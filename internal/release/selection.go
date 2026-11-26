@@ -1,4 +1,4 @@
-// Package releases owns local release metadata and publisher trust without network I/O.
+// Package release owns local release metadata and publisher trust without network I/O.
 package release
 
 import (

@@ -7,7 +7,7 @@ import (
 	productlayout "sidravia/internal/installation/layout"
 )
 
-// Package identity follows the current layout, never a release fallback: a GUI
+// Package request follows the current layout, never a release fallback: a GUI
 // installation must not silently lose its GUI by selecting a core-only asset.
 func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	if goos == "windows" && arch == "amd64" {

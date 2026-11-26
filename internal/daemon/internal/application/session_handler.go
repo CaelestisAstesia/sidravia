@@ -32,7 +32,7 @@ type sessionApplication interface {
 
 var _ sessionApplication = (*Application)(nil)
 
-// SessionHandler returns an IPC handler for one-shot Session operations. It
+// dispatchSession handles one-shot Session requests. It
 // strictly decodes the typed payload selected by the method, converts it into
 // existing app/session domain types, calls only the narrow application boundary,
 // and converts the returned Snapshot into the contract result. Methods other

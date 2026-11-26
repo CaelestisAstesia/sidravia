@@ -1,4 +1,4 @@
-// Package credentialinput defines the character policy for newly supplied
+// Package input defines the character policy for newly supplied
 // account/password text. Stored legacy credentials are not input to this rule.
 package input
 

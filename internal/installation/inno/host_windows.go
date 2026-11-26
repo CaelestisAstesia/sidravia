@@ -1,6 +1,6 @@
 //go:build windows
 
-// Package lifecycle is the bounded CTL host for application-owned update
+// Package inno is the bounded CTL host for application-owned update
 // preparation. It does not download, replace files or infer installer success.
 package inno
 

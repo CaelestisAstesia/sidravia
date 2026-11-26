@@ -1,6 +1,6 @@
 //go:build windows
 
-// Package windowsplatform implements Windows mechanisms, not update policy.
+// Package winproc implements Windows mechanisms, not update policy.
 package winproc
 
 import (

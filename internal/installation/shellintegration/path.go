@@ -1,4 +1,4 @@
-// Package installationmanager owns short-lived operating-system integration operations.
+// Package shellintegration owns short-lived operating-system integration operations.
 package shellintegration
 
 import (

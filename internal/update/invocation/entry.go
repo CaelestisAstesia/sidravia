@@ -1,4 +1,4 @@
-// Package entry classifies updater process admission without loading updater implementations.
+// Package invocation classifies updater process admission without loading updater implementations.
 package invocation
 
 import "runtime"
