@@ -10,18 +10,18 @@ import (
 	"path/filepath"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
 	"time"
 
-	"sidravia/internal/update"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/update/linuxplatform"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 )
 
 // ReconcileInterrupted releases a stranded, byte-verified admission after its
 // exact coordinator has died. It NEVER retries a launch or authentication. A
 // pending write/seal, unverified tree or live/unknown owner remains blocked.
-func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, target string, installed Inventory) error {
+func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, target string, installed Inventory) error {
 	if store == nil || !canonical(target) {
 		return ErrInvalid
 	}
@@ -30,33 +30,33 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 		return err
 	}
 	if !exists || record.ID != id || record.Source.ID != target {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	expected := record.Source
-	next := operations.Aborted
+	next := transaction.Aborted
 	code := "preparation_failed"
 	switch record.Phase {
-	case operations.Created, operations.Verified:
-		if record.Phase == operations.Verified {
+	case transaction.Created, transaction.Verified:
+		if record.Phase == transaction.Verified {
 			release, e := store.AcquireCoordinator(ctx, id)
 			if e != nil {
 				return e
 			}
 			defer release()
 		}
-	case operations.Preparing, operations.Quiescent, operations.SourceStarting:
+	case transaction.Preparing, transaction.Quiescent, transaction.SourceStarting:
 		if record.Recovery == nil {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
-	case operations.Applied, operations.Resuming, operations.ServiceStarting:
+	case transaction.Applied, transaction.Resuming, transaction.ServiceStarting:
 		if record.Recovery == nil {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
 		expected = record.Target
-		next = operations.ResumeFailed
+		next = transaction.ResumeFailed
 		code = "resume_failed"
 	default:
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	if installed.manifest.Version != expected.Version || installed.manifest.BuildID != expected.BuildID {
 		return ErrInvalid
@@ -64,7 +64,7 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	// Read() already authenticates this exact release proof and package. Keep
 	// platform/payload boundaries for source verification, and exact asset identity
 	// for target verification; a smaller core index cannot unlock a GUI tree.
-	var manifest releases.ReleaseManifest
+	var manifest release.ReleaseManifest
 	if err := json.Unmarshal(record.Manifest, &manifest); err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	if !matched {
 		return ErrInvalid
 	}
-	if record.Phase == operations.Resuming || record.Phase == operations.Applied || record.Phase == operations.ServiceStarting {
+	if record.Phase == transaction.Resuming || record.Phase == transaction.Applied || record.Phase == transaction.ServiceStarting {
 		c := installed.candidate
 		if c.ID != record.Package.CandidateID || c.Name != record.Package.Name || c.Size != record.Package.Size || c.SHA256 != record.Package.SHA256 {
 			return ErrInvalid
@@ -92,10 +92,10 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 			return err
 		}
 		if alive {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
 	}
-	if _, err := os.Lstat(filepath.Join(target, operations.StartupSeal)); !os.IsNotExist(err) {
+	if _, err := os.Lstat(filepath.Join(target, transaction.StartupSeal)); !os.IsNotExist(err) {
 		return errors.Join(ErrChanged, err)
 	}
 	root, err := os.OpenRoot(target)
@@ -110,7 +110,7 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 		return err
 	}
 	if record.Recovery != nil && record.Recovery.ManagedService &&
-		(record.Phase == operations.Preparing || record.Phase == operations.Quiescent || record.Phase == operations.SourceStarting) {
+		(record.Phase == transaction.Preparing || record.Phase == transaction.Quiescent || record.Phase == transaction.SourceStarting) {
 		return recoverManagedPreparation(ctx, store, record, installed)
 	}
 	_, changed, err := store.Advance(ctx, id, record.Phase, next, code, time.Now())
@@ -118,12 +118,12 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 		return err
 	}
 	if !changed {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	return nil
 }
 
-func recoverManagedPreparation(ctx context.Context, store *operations.Store, record operations.Record, installed Inventory) error {
+func recoverManagedPreparation(ctx context.Context, store *transaction.Store, record transaction.Record, installed Inventory) error {
 	unlock, err := store.AcquireRollbackCoordinator(ctx, record.ID)
 	if err != nil {
 		return err
@@ -142,7 +142,7 @@ func recoverManagedPreparation(ctx context.Context, store *operations.Store, rec
 	if err := cleanRollbackSnapshot(record, &installed); err != nil {
 		return err
 	}
-	return resumeManagedPreparation(ctx, store, record, func(ctx context.Context, target update.Target) error {
+	return resumeManagedPreparation(ctx, store, record, func(ctx context.Context, target change.Target) error {
 		return startManagedService(ctx, layout, target, true)
 	})
 }

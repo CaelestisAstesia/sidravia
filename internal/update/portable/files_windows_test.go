@@ -15,17 +15,17 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/installation/change"
+	"sidravia/internal/release"
+	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/update/transaction"
 )
 
 type winImage struct {
 	inventory Inventory
-	verified  releases.VerifiedRelease
+	verified  release.VerifiedRelease
 	archive   []byte
-	keys      *releases.PublisherKeys
+	keys      *release.PublisherKeys
 	files     map[string][]byte
 }
 
@@ -63,14 +63,14 @@ func windowsImage(t *testing.T, version, build string, files map[string][]byte) 
 	if err = w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	c := releases.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-" + kind + "-portable.zip", Size: int64(buf.Len()), SHA256: digest(buf.Bytes())}
+	c := release.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-" + kind + "-portable.zip", Size: int64(buf.Len()), SHA256: digest(buf.Bytes())}
 	c.DownloadURL = "https://github.com/CaelestisAstesia/sidravia/releases/download/v" + version + "/" + c.Name
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	pub := key.Public().(ed25519.PublicKey)
-	id, _ := releases.PublisherKeyID(pub)
-	manifest := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: kind + "-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(raw), PayloadKind: kind}}}
+	id, _ := release.PublisherKeyID(pub)
+	manifest := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: "amd64", Kind: kind + "-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(raw), PayloadKind: kind}}}
 	b, _ := json.Marshal(manifest)
-	keys, _ := releases.NewPublisherKeys([]ed25519.PublicKey{pub})
+	keys, _ := release.NewPublisherKeys([]ed25519.PublicKey{pub})
 	v, e := keys.Verify(b, ed25519.Sign(key, b), version)
 	if e != nil {
 		t.Fatal(e)
@@ -129,18 +129,18 @@ func TestWindowsSharedPublication(t *testing.T) {
 					t.Error(e)
 				}
 			}()
-			store, e := operations.Open(filepath.Join(base, "cache"), target, next.keys)
+			store, e := transaction.Open(filepath.Join(base, "cache"), target, next.keys)
 			if e != nil {
 				t.Fatal(e)
 			}
-			record, e := operations.New(strings.Repeat("a", 32), update.Target{ID: target, Layout: "portable", Version: "1.0.0", BuildID: "old"}, next.inventory.candidate, next.verified, time.Now())
+			record, e := transaction.New(strings.Repeat("a", 32), change.Target{ID: target, Layout: "portable", Version: "1.0.0", BuildID: "old"}, next.inventory.candidate, next.verified, time.Now())
 			if e != nil {
 				t.Fatal(e)
 			}
 			if _, e = store.Create(ctx, record); e != nil {
 				t.Fatal(e)
 			}
-			for _, step := range [][2]operations.Phase{{operations.Created, operations.Verified}, {operations.Verified, operations.Preparing}, {operations.Preparing, operations.Quiescent}} {
+			for _, step := range [][2]transaction.Phase{{transaction.Created, transaction.Verified}, {transaction.Verified, transaction.Preparing}, {transaction.Preparing, transaction.Quiescent}} {
 				if _, _, e = store.Advance(ctx, record.ID, step[0], step[1], "", time.Now()); e != nil {
 					t.Fatal(e)
 				}
@@ -181,13 +181,13 @@ func TestWindowsSharedPublication(t *testing.T) {
 					t.Fatal(e)
 				}
 				if scenario == "occupied" {
-					if r.Phase != operations.RepairRequired {
+					if r.Phase != transaction.RepairRequired {
 						t.Fatalf("occupied phase %s %v", r.Phase, err)
 					}
-					if _, e = os.Stat(filepath.Join(target, operations.StartupSeal)); e != nil {
+					if _, e = os.Stat(filepath.Join(target, transaction.StartupSeal)); e != nil {
 						t.Fatal("missing repair seal", e)
 					}
-				} else if r.Phase != operations.Quiescent {
+				} else if r.Phase != transaction.Quiescent {
 					t.Fatalf("prewrite refusal changed phase: %s", r.Phase)
 				}
 				return
@@ -210,10 +210,10 @@ func TestWindowsSharedPublication(t *testing.T) {
 			if b, e := os.ReadFile(user); e != nil || string(b) != "keep" {
 				t.Fatal("user file changed", e)
 			}
-			if _, e = os.Stat(filepath.Join(target, operations.StartupSeal)); e != nil {
+			if _, e = os.Stat(filepath.Join(target, transaction.StartupSeal)); e != nil {
 				t.Fatal("recovery seal absent", e)
 			}
-			if _, _, e = store.Advance(ctx, record.ID, operations.Applied, operations.Completed, "", time.Now()); e != nil {
+			if _, _, e = store.Advance(ctx, record.ID, transaction.Applied, transaction.Completed, "", time.Now()); e != nil {
 				t.Fatal(e)
 			}
 			if e = finishApplication(target, record.ID); e != nil {

@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	"sidravia/internal/update/transaction"
 )
 
 func TestLauncherChild(t *testing.T) {
@@ -110,7 +110,7 @@ func TestExecKeepsPIDAndRuntimeLease(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("exec timed out")
 	}
-	s, err := operations.Open(filepath.Join(cache, "Sidravia/updates/operations"), target, releases.PublisherTrust())
+	s, err := transaction.Open(filepath.Join(cache, "Sidravia/updates/operations"), target, release.PublisherTrust())
 	if err != nil {
 		t.Fatal(err)
 	}

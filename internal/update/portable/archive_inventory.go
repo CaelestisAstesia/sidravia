@@ -8,14 +8,14 @@ import (
 	"io"
 	"os"
 
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	packagefiles "sidravia/internal/release/files"
 )
 
 // ExtractRelease authenticates the ownership index before the existing full
 // extractor validates every archive byte and leaf. No index is trusted merely
 // because it was found in a downloaded archive.
-func ExtractRelease(ctx context.Context, target, archive string, v releases.VerifiedRelease, c releases.Candidate) (*Payload, error) {
+func ExtractRelease(ctx context.Context, target, archive string, v release.VerifiedRelease, c release.Candidate) (*Payload, error) {
 	asset, err := v.Asset(c)
 	if err != nil {
 		return nil, err

@@ -16,12 +16,12 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -40,7 +40,7 @@ type runnerID struct {
 }
 type windowsSession struct {
 	Operation    string        `json:"operation"`
-	Source       update.Target `json:"source"`
+	Source       change.Target `json:"source"`
 	Updater      runnerID      `json:"updater"`
 	Caller       runnerID      `json:"caller"`
 	Namespace    string        `json:"namespace"`
@@ -52,10 +52,10 @@ type windowsSession struct {
 }
 
 func runnerDirectory(target, id string) (string, error) {
-	if !update.ValidOperationID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
+	if !change.ValidID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
 		return "", ErrInvalid
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.OperationRoot()
 	if err != nil {
 		return "", err
 	}
@@ -101,7 +101,7 @@ func readWindowsSession(ctx context.Context, target, id string) (windowsSession,
 	return s, dir, nil
 }
 func sourceInventory(s windowsSession) (Inventory, error) {
-	proof, err := releases.PublisherTrust().Verify(s.OldManifest, s.OldSignature, s.Source.Version)
+	proof, err := release.PublisherTrust().Verify(s.OldManifest, s.OldSignature, s.Source.Version)
 	if err != nil {
 		return Inventory{}, err
 	}
@@ -154,52 +154,52 @@ func pinnedRunner(path string, entrySize int64, hash string) (*os.File, error) {
 // BeginWindows verifies both inventories and the complete archive before it
 // hands execution to an authenticated temporary copy outside the target. The
 // helper does not touch the product until the exact updater/calling CTL exit.
-func BeginWindows(ctx context.Context, layout productlayout.Layout, version, build string, oldProof releases.VerifiedRelease, oldAsset releases.Candidate, oldIndex []byte, next releases.VerifiedRelease, c releases.Candidate, archive string) (record operations.Record, resultErr error) {
+func BeginWindows(ctx context.Context, layout productlayout.Layout, version, build string, oldProof release.VerifiedRelease, oldAsset release.Candidate, oldIndex []byte, next release.VerifiedRelease, c release.Candidate, archive string) (record transaction.Record, resultErr error) {
 	if layout.Mode != productlayout.ModePortable {
-		return operations.Record{}, ErrInvalid
+		return transaction.Record{}, ErrInvalid
 	}
 	old, err := Authenticate(oldProof, oldAsset, oldIndex)
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	if old.manifest.Version != version || old.manifest.BuildID != build {
-		return operations.Record{}, ErrInvalid
+		return transaction.Record{}, ErrInvalid
 	}
 	payload, err := ExtractRelease(ctx, layout.ExecutableDirectory, archive, next, c)
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	err = Preflight(ctx, layout.ExecutableDirectory, old, payload)
 	err = errors.Join(err, payload.Close())
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.OperationRoot()
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
-	store, err := operations.Open(root, layout.ExecutableDirectory, releases.PublisherTrust())
+	store, err := transaction.Open(root, layout.ExecutableDirectory, release.PublisherTrust())
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	previous, exists, err := store.Read(ctx)
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	if exists {
-		if previous.Phase != operations.Completed && previous.Phase != operations.Aborted && previous.Phase != operations.ResumeFailed {
-			return operations.Record{}, operations.ErrConflict
+		if previous.Phase != transaction.Completed && previous.Phase != transaction.Aborted && previous.Phase != transaction.ResumeFailed {
+			return transaction.Record{}, transaction.ErrConflict
 		}
 		if err = cleanupWindowsRunner(ctx, previous); err != nil {
-			return operations.Record{}, err
+			return transaction.Record{}, err
 		}
 	}
 	idBytes := make([]byte, 16)
 	if _, err = rand.Read(idBytes); err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	id := hex.EncodeToString(idBytes)
-	r, err := operations.New(id, update.Target{ID: layout.ExecutableDirectory, Layout: "portable", Version: version, BuildID: build}, c, next, time.Now())
+	r, err := transaction.New(id, change.Target{ID: layout.ExecutableDirectory, Layout: "portable", Version: version, BuildID: build}, c, next, time.Now())
 	if err != nil {
 		return r, err
 	}
@@ -263,7 +263,7 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	if _, err = store.Create(ctx, r); err != nil {
 		return r, err
 	}
-	if _, _, err = store.Advance(ctx, id, operations.Created, operations.Verified, "", time.Now()); err != nil {
+	if _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 		return r, err
 	}
 	commitStarted := false
@@ -273,11 +273,11 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 		}
 		cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		_, _, e := store.Advance(cleanup, id, operations.Verified, operations.Aborted, "preparation_failed", time.Now())
+		_, _, e := store.Advance(cleanup, id, transaction.Verified, transaction.Aborted, "preparation_failed", time.Now())
 		resultErr = errors.Join(resultErr, e)
 	}()
-	abort := func(cause error) (operations.Record, error) {
-		_, _, e := store.Advance(context.WithoutCancel(ctx), id, operations.Verified, operations.Aborted, "preparation_failed", time.Now())
+	abort := func(cause error) (transaction.Record, error) {
+		_, _, e := store.Advance(context.WithoutCancel(ctx), id, transaction.Verified, transaction.Aborted, "preparation_failed", time.Now())
 		return r, errors.Join(cause, e)
 	}
 	cmd, err := windowsplatform.StartIndependent(path, "portable-execute", "--target", layout.ExecutableDirectory, "--operation", id, "--updater", strconv.Itoa(os.Getpid()))
@@ -361,11 +361,11 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 		return err
 	}
 	defer pin.Close()
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.OperationRoot()
 	if err != nil {
 		return err
 	}
-	store, err := operations.Open(root, target, releases.PublisherTrust())
+	store, err := transaction.Open(root, target, release.PublisherTrust())
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 	if err != nil {
 		return err
 	}
-	if !exists || r.ID != id || r.Source != s.Source || r.Phase != operations.Verified {
+	if !exists || r.ID != id || r.Source != s.Source || r.Phase != transaction.Verified {
 		return ErrInvalid
 	}
 	defer func() {
@@ -383,8 +383,8 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 		cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		current, exists, e := store.Read(cleanup)
-		if e == nil && exists && current.ID == id && current.Phase == operations.Verified {
-			_, _, e = store.Advance(cleanup, id, operations.Verified, operations.Aborted, "preparation_failed", time.Now())
+		if e == nil && exists && current.ID == id && current.Phase == transaction.Verified {
+			_, _, e = store.Advance(cleanup, id, transaction.Verified, transaction.Aborted, "preparation_failed", time.Now())
 		}
 		resultErr = errors.Join(resultErr, e)
 	}()
@@ -433,11 +433,11 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 			return err
 		}
 	}
-	proof, err := releases.PublisherTrust().Verify(r.Manifest, r.Signature, r.Target.Version)
+	proof, err := release.PublisherTrust().Verify(r.Manifest, r.Signature, r.Target.Version)
 	if err != nil {
 		return err
 	}
-	c := releases.Candidate{ID: r.Package.CandidateID, Version: r.Target.Version, Name: r.Package.Name, Size: r.Package.Size, SHA256: r.Package.SHA256}
+	c := release.Candidate{ID: r.Package.CandidateID, Version: r.Target.Version, Name: r.Package.Name, Size: r.Package.Size, SHA256: r.Package.SHA256}
 	payload, err := ExtractRelease(ctx, target, s.Archive, proof, c)
 	if err != nil {
 		return err
@@ -449,7 +449,7 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 // A running Windows image cannot delete itself. The next update removes only
 // the previous exact, signed helper after its generation is confirmed dead.
 // Unknown files/receipts are retained; there is no recursive cache deletion.
-func cleanupWindowsRunner(ctx context.Context, r operations.Record) error {
+func cleanupWindowsRunner(ctx context.Context, r transaction.Record) error {
 	if r.Source.Layout != "portable" {
 		return nil
 	}
@@ -467,7 +467,7 @@ func cleanupWindowsRunner(ctx context.Context, r operations.Record) error {
 			return e
 		}
 		if running {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
 	} else if !os.IsNotExist(err) {
 		return err

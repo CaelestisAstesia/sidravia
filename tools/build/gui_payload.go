@@ -7,7 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 	"strings"
 )
 

@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"sidravia/internal/background/maintenance"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/update"
 	"testing"
 )
 
@@ -22,11 +22,11 @@ func TestApplicationMaintenanceBlocksMutationsAndRestoresOnAbort(t *testing.T) {
 	}, func(uint32) (func() bool, func(), error) {
 		return func() bool { return live }, func() { closed++ }, nil
 	})
-	invoke := func(method string, value any) (update.MaintenanceView, *contract.Error) {
+	invoke := func(method string, value any) (maintenance.View, *contract.Error) {
 		t.Helper()
 		payload, _ := json.Marshal(value)
 		b, e := handler(context.Background(), method, payload)
-		var v update.MaintenanceView
+		var v maintenance.View
 		if e == nil {
 			json.Unmarshal(b, &v)
 		}

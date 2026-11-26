@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/update/transaction"
 )
 
 // Apply replaces only unchanged, authenticated product files. The lifecycle
@@ -18,7 +18,7 @@ import (
 // processes. It stops at Applied, leaving restart/intent recovery to that owner.
 // Failure after entering Applying leaves a durable repair requirement, never an
 // automatic downgrade or restart of partly replaced programs.
-func Apply(ctx context.Context, store *operations.Store, id, target string, old Inventory, p *Payload) error {
+func Apply(ctx context.Context, store *transaction.Store, id, target string, old Inventory, p *Payload) error {
 	if store == nil || p == nil || p.root == nil || len(old.data) == 0 || !canonical(target) || filepath.Dir(p.directory) != filepath.Dir(target) {
 		return ErrInvalid
 	}
@@ -146,15 +146,15 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if err != nil {
 		return err
 	}
-	_, changed, err := store.Advance(work, id, operations.Quiescent, operations.Applying, "", time.Now())
+	_, changed, err := store.Advance(work, id, transaction.Quiescent, transaction.Applying, "", time.Now())
 	if err != nil {
 		return err
 	}
 	if !changed {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	fail := func(cause error) error {
-		_, _, recordErr := store.Advance(work, id, operations.Applying, operations.RepairRequired, "apply_failed", time.Now())
+		_, _, recordErr := store.Advance(work, id, transaction.Applying, transaction.RepairRequired, "apply_failed", time.Now())
 		return errors.Join(cause, recordErr)
 	}
 	names := make([]string, 0, len(after))
@@ -241,12 +241,12 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if err := sameTarget(); err != nil {
 		return fail(err)
 	}
-	_, changed, err = store.Advance(work, id, operations.Applying, operations.Applied, "", time.Now())
+	_, changed, err = store.Advance(work, id, transaction.Applying, transaction.Applied, "", time.Now())
 	if err != nil {
 		return err
 	}
 	if !changed {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	if holdStartupSeal() {
 		return nil
@@ -256,14 +256,14 @@ func Apply(ctx context.Context, store *operations.Store, id, target string, old 
 	if err := sameTarget(); err != nil {
 		return err
 	}
-	currentSeal, err := root.Lstat(operations.StartupSeal)
+	currentSeal, err := root.Lstat(transaction.StartupSeal)
 	if err != nil {
 		return err
 	}
 	if !os.SameFile(sealInfo, currentSeal) {
 		return ErrChanged
 	}
-	if err := root.Remove(operations.StartupSeal); err != nil {
+	if err := root.Remove(transaction.StartupSeal); err != nil {
 		return err
 	}
 	return syncDirectory(root, ".")

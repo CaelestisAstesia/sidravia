@@ -13,7 +13,7 @@ import (
 	"io"
 	"os"
 
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
@@ -47,13 +47,13 @@ func run(args []string, input io.Reader, out, stderr io.Writer) int {
 		return fail("unable to open release manifest")
 	}
 	info, statErr := file.Stat()
-	if statErr != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > releases.ReleaseManifestLimit {
+	if statErr != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > release.ReleaseManifestLimit {
 		file.Close()
 		return fail("invalid release manifest file")
 	}
-	data, readErr := io.ReadAll(io.LimitReader(file, releases.ReleaseManifestLimit+1))
+	data, readErr := io.ReadAll(io.LimitReader(file, release.ReleaseManifestLimit+1))
 	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > releases.ReleaseManifestLimit {
+	if readErr != nil || closeErr != nil || len(data) > release.ReleaseManifestLimit {
 		return fail("unable to read bounded release manifest")
 	}
 	encoded, err := io.ReadAll(io.LimitReader(input, 257))
@@ -71,7 +71,7 @@ func run(args []string, input io.Reader, out, stderr io.Writer) int {
 	private := ed25519.NewKeyFromSeed(seed[:n])
 	defer clear(private)
 	signature := ed25519.Sign(private, data)
-	roots, err := releases.NewPublisherKeys([]ed25519.PublicKey{private.Public().(ed25519.PublicKey)})
+	roots, err := release.NewPublisherKeys([]ed25519.PublicKey{private.Public().(ed25519.PublicKey)})
 	if err != nil {
 		return fail("invalid signing key")
 	}

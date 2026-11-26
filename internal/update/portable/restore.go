@@ -11,17 +11,18 @@ import (
 	"strings"
 	"time"
 
+	"sidravia/internal/installation/change"
+	"sidravia/internal/installation/resume"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 )
 
 // restoreApplication launches one exact child with auto-login suppressed. The
 // runtime generation and optional saved-configuration dispatch are separate
 // from file installation; a successful dispatch is not authentication success.
-func restoreApplication(ctx context.Context, layout productlayout.Layout, target update.Target, recovery operations.Recovery, operation, nonce string) (contract.RuntimeInfo, error) {
+func restoreApplication(ctx context.Context, layout productlayout.Layout, target change.Target, recovery transaction.Recovery, operation, nonce string) (contract.RuntimeInfo, error) {
 	if recovery.Intent.Mode == "systemd" {
 		return contract.RuntimeInfo{}, ErrRestore
 	}
@@ -32,7 +33,7 @@ func restoreApplication(ctx context.Context, layout productlayout.Layout, target
 	if ticketID == "" {
 		ticketID = strings.Repeat("0", 32)
 	}
-	plan, err := update.PlanRestore(update.ResumeTicket{OperationID: ticketID, Target: target, Intent: recovery.Intent, ExpiresAt: recovery.ExpiresAt}, target, true, time.Now())
+	plan, err := resume.Plan(resume.Ticket{OperationID: ticketID, Target: target, Intent: recovery.Intent, ExpiresAt: recovery.ExpiresAt}, target, true, time.Now())
 	if err != nil {
 		return contract.RuntimeInfo{}, err
 	}
@@ -46,14 +47,14 @@ func restoreApplication(ctx context.Context, layout productlayout.Layout, target
 			key = strings.ToUpper(key)
 		}
 		switch key {
-		case operations.EnvRecoveryOperation, operations.EnvRecoveryToken, operations.EnvRecoveryConfiguration, launchcontract.EnvNamespace, launchcontract.EnvMode, launchcontract.EnvDesktopOwnerPID, launchcontract.EnvDesktopOwnerStart, launchcontract.EnvSkipAutoLogin, launchcontract.EnvLogLevel:
+		case transaction.EnvRecoveryOperation, transaction.EnvRecoveryToken, transaction.EnvRecoveryConfiguration, launchcontract.EnvNamespace, launchcontract.EnvMode, launchcontract.EnvDesktopOwnerPID, launchcontract.EnvDesktopOwnerStart, launchcontract.EnvSkipAutoLogin, launchcontract.EnvLogLevel:
 			continue
 		}
 		env = append(env, entry)
 	}
 	env = append(env, launchcontract.EnvNamespace+"="+recovery.Namespace, launchcontract.EnvSkipAutoLogin+"=1", launchcontract.EnvLogLevel+"="+recovery.LogLevel)
 	if operation != "" {
-		env = append(env, operations.EnvRecoveryOperation+"="+operation, operations.EnvRecoveryToken+"="+nonce, operations.EnvRecoveryConfiguration+"="+plan.ConfigurationID)
+		env = append(env, transaction.EnvRecoveryOperation+"="+operation, transaction.EnvRecoveryToken+"="+nonce, transaction.EnvRecoveryConfiguration+"="+plan.ConfigurationID)
 	}
 	executable := filepath.Join(target.ID, daemonName())
 	var args []string

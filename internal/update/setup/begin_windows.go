@@ -15,65 +15,65 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
 // Begin validates all bytes before launching Inno. Inno must authenticate its
 // short trusted source CTL and wait for this updater and its caller to exit
 // before stopping the application or publishing files.
-func Begin(ctx context.Context, layout productlayout.Layout, version, build string, old releases.VerifiedRelease, oldAsset releases.Candidate, index []byte, next releases.VerifiedRelease, c releases.Candidate, archive string) (operations.Record, error) {
+func Begin(ctx context.Context, layout productlayout.Layout, version, build string, old release.VerifiedRelease, oldAsset release.Candidate, index []byte, next release.VerifiedRelease, c release.Candidate, archive string) (transaction.Record, error) {
 	if layout.Mode != productlayout.ModeInstalled {
-		return operations.Record{}, ErrInvalid
+		return transaction.Record{}, ErrInvalid
 	}
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	hasGUI := false
 	if i, e := os.Lstat(filepath.Join(layout.ExecutableDirectory, "Sidravia.exe")); e == nil {
 		if !i.Mode().IsRegular() {
-			return operations.Record{}, ErrChanged
+			return transaction.Record{}, ErrChanged
 		}
 		hasGUI = true
 	} else if !os.IsNotExist(e) {
-		return operations.Record{}, e
+		return transaction.Record{}, e
 	}
 	if _, err = VerifyInstalled(ctx, layout.ExecutableDirectory, old, oldAsset, index, hasGUI); err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	asset, e := next.Asset(c)
 	if e != nil {
-		return operations.Record{}, e
+		return transaction.Record{}, e
 	}
 	if asset.OS != "windows" || asset.Arch != "amd64" || asset.Kind != "setup" || hasGUI && asset.PayloadKind != "gui" {
-		return operations.Record{}, releases.ErrUnsupported
+		return transaction.Record{}, release.ErrUnsupported
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.OperationRoot()
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
-	store, err := operations.Open(root, layout.ExecutableDirectory, releases.PublisherTrust())
+	store, err := transaction.Open(root, layout.ExecutableDirectory, release.PublisherTrust())
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	if previous, exists, e := store.Read(ctx); e != nil {
-		return operations.Record{}, e
-	} else if exists && previous.Phase != operations.Completed && previous.Phase != operations.Aborted && previous.Phase != operations.ResumeFailed {
-		return operations.Record{}, operations.ErrConflict
+		return transaction.Record{}, e
+	} else if exists && previous.Phase != transaction.Completed && previous.Phase != transaction.Aborted && previous.Phase != transaction.ResumeFailed {
+		return transaction.Record{}, transaction.ErrConflict
 	}
 	pinned, err := pin(archive, c.Size, c.SHA256)
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	defer pinned.Close()
 	m, err := old.VerifyFiles(oldAsset, index)
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	var helperHash string
 	var helperSize int64
@@ -84,19 +84,19 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 		}
 	}
 	if helperHash == "" {
-		return operations.Record{}, ErrInvalid
+		return transaction.Record{}, ErrInvalid
 	}
 	helper, err := pin(filepath.Join(layout.ExecutableDirectory, "sidraviactl.exe"), helperSize, helperHash)
 	if err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	defer helper.Close()
 	token := make([]byte, 16)
 	if _, err = rand.Read(token); err != nil {
-		return operations.Record{}, err
+		return transaction.Record{}, err
 	}
 	id := hex.EncodeToString(token)
-	record, err := operations.New(id, update.Target{ID: layout.ExecutableDirectory, Version: version, BuildID: build, Layout: "installed"}, c, next, time.Now())
+	record, err := transaction.New(id, change.Target{ID: layout.ExecutableDirectory, Version: version, BuildID: build, Layout: "installed"}, c, next, time.Now())
 	if err != nil {
 		return record, err
 	}
@@ -113,11 +113,11 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 	if _, err = store.Create(ctx, record); err != nil {
 		return record, err
 	}
-	abort := func(cause error) (operations.Record, error) {
-		_, _, e := store.Advance(context.WithoutCancel(ctx), id, operations.Verified, operations.Aborted, "preparation_failed", time.Now())
+	abort := func(cause error) (transaction.Record, error) {
+		_, _, e := store.Advance(context.WithoutCancel(ctx), id, transaction.Verified, transaction.Aborted, "preparation_failed", time.Now())
 		return record, errors.Join(cause, e)
 	}
-	if _, _, err = store.Advance(ctx, id, operations.Created, operations.Verified, "", time.Now()); err != nil {
+	if _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 		return record, err
 	}
 	offer, err := windowsplatform.NewOffer(id, helperHash)

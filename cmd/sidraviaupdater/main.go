@@ -7,8 +7,8 @@ import (
 	"os/signal"
 
 	"sidravia/internal/installationgate"
-	"sidravia/internal/update/command"
-	"sidravia/internal/update/entry"
+	"sidravia/internal/update"
+	"sidravia/internal/update/invocation"
 )
 
 var ProductVersion = "0.5.0-alpha.1"
@@ -23,7 +23,7 @@ func main() {
 	}
 	release := func() {}
 	var err error
-	if !entry.ControlEntry(os.Args[1:]) {
+	if !invocation.ControlEntry(os.Args[1:]) {
 		release, err = installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 	}
 	if err != nil {
@@ -32,7 +32,7 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	code := command.RunWithAdmission(ctx, os.Args[1:], ProductVersion, BuildID, os.Stdout, release)
+	code := update.RunWithAdmission(ctx, os.Args[1:], ProductVersion, BuildID, os.Stdout, release)
 	release()
 	os.Exit(code)
 }

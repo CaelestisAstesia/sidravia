@@ -11,13 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
+	"sidravia/internal/release"
 	"sidravia/internal/update/internal/testfixture"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 	"strconv"
 	"strings"
@@ -56,11 +57,11 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		s = strings.Replace(s, "\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_DELAY_READY\")==\"1\"{time.Sleep(600*time.Millisecond)}\n\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", 1)
 
 		s = strings.Replace(s, "\ts, dir, err := readWindowsSession(ctx, target, id)", "\tdefer func(){if resultErr!=nil{os.WriteFile("+strconv.Quote(filepath.Join(owned, "runner-cause.txt"))+",[]byte(resultErr.Error()),0600)}}()\n\ts, dir, err := readWindowsSession(ctx, target, id)", 1)
-		s = strings.Replace(s, "\tif _, _, err = store.Advance(ctx, id, operations.Created, operations.Verified,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tif _, _, err = store.Advance(ctx, id, operations.Created, operations.Verified,", 1)
+		s = strings.Replace(s, "\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", 1)
 		return strings.Replace(s, "\tcmd, err := windowsplatform.StartIndependent(", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\tcmd, err := windowsplatform.StartIndependent(", 1)
 	})
 	overlay.Replace("internal/update/portable/apply.go", func(s string) string {
-		return strings.Replace(s, "\t_, changed, err := store.Advance(work, id, operations.Quiescent,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"quiescent\"{os.Exit(17)}\n\t_, changed, err := store.Advance(work, id, operations.Quiescent,", 1)
+		return strings.Replace(s, "\t_, changed, err := store.Advance(work, id, transaction.Quiescent,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"quiescent\"{os.Exit(17)}\n\t_, changed, err := store.Advance(work, id, transaction.Quiescent,", 1)
 	})
 	overlay.Replace("internal/update/portable/coordinator.go", func(s string) string {
 		s = strings.Replace(s, "\t// Cancellation after writing starts", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"applied\"{os.Exit(17)}\n\t// Cancellation after writing starts", 1)
@@ -128,7 +129,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		manifest, sig := img.verified.Proof()
 		releaseDir := filepath.Join(source, v.version)
 		os.MkdirAll(releaseDir, 0700)
-		for name, data := range map[string][]byte{releases.ReleaseManifestName: manifest, releases.ReleaseSignatureName: sig, img.inventory.candidate.Name: img.archive} {
+		for name, data := range map[string][]byte{release.ReleaseManifestName: manifest, release.ReleaseSignatureName: sig, img.inventory.candidate.Name: img.archive} {
 			if e = os.WriteFile(filepath.Join(releaseDir, name), data, 0600); e != nil {
 				t.Fatal(e)
 			}
@@ -177,7 +178,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			identity := update.Target{ID: target, Version: "1.0.0", BuildID: "portable-old", Layout: "portable"}
+			identity := change.Target{ID: target, Version: "1.0.0", BuildID: "portable-old", Layout: "portable"}
 			var original *applicationPeer
 			t.Cleanup(func() { stopPortableFixture(t, layout, target) })
 			if mode != "stopped" {
@@ -298,12 +299,12 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			if !bytes.Contains(result, []byte(`"handedOver":true`)) || bytes.Contains(result, []byte(`"filesApplied":true`)) {
 				t.Fatal("handoff falsely claimed installation", string(result))
 			}
-			root, _ := operations.DefaultRoot()
-			store, e := operations.Open(root, target, next.keys)
+			root, _ := productlayout.OperationRoot()
+			store, e := transaction.Open(root, target, next.keys)
 			if e != nil {
 				t.Fatal(e)
 			}
-			var record operations.Record
+			var record transaction.Record
 			for until := time.Now().Add(60 * time.Second); time.Now().Before(until); time.Sleep(100 * time.Millisecond) {
 				r, exists, e := store.Read(context.Background())
 				if e != nil || !exists {
@@ -322,7 +323,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 						}
 					}
 				}
-				if r.Phase == operations.Completed || r.Phase == operations.Aborted || r.Phase == operations.ResumeFailed || r.Phase == operations.RepairRequired {
+				if r.Phase == transaction.Completed || r.Phase == transaction.Aborted || r.Phase == transaction.ResumeFailed || r.Phase == transaction.RepairRequired {
 					break
 				}
 			}
@@ -358,18 +359,18 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				run("ok", "recover", "--operation", record.ID, "--confirm")
 				run("ok", "recover", "--operation", record.ID, "--confirm")
 				r, _, e := store.Read(context.Background())
-				if e != nil || r.Phase != func() operations.Phase {
+				if e != nil || r.Phase != func() transaction.Phase {
 					if fault == "quiescent" {
-						return operations.Aborted
+						return transaction.Aborted
 					}
-					return operations.ResumeFailed
+					return transaction.ResumeFailed
 				}() {
 					t.Fatal("recovery terminal", r.Phase, e)
 				}
 				if _, e = os.Stat(layout.RuntimeInfoPath); !os.IsNotExist(e) {
 					t.Fatal("recovery repeated a launch", e)
 				}
-				if _, e = os.Stat(filepath.Join(target, operations.StartupSeal)); !os.IsNotExist(e) {
+				if _, e = os.Stat(filepath.Join(target, transaction.StartupSeal)); !os.IsNotExist(e) {
 					t.Fatal("verified recovery retained seal", e)
 				}
 				receipt := map[string]any{"interruptedPhase": fault, "terminal": r.Phase, "corruptTargetRefused": true, "startupBlocked": true, "repeatedRecoveryDidNotLaunch": true}
@@ -378,7 +379,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				}
 				return
 			}
-			if record.Phase != operations.Completed {
+			if record.Phase != transaction.Completed {
 				t.Fatalf("update phase %s", record.Phase)
 			}
 			rr, e := os.OpenRoot(target)
@@ -393,7 +394,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			if e != nil {
 				t.Fatal("target inventory mismatch", e)
 			}
-			if _, e = os.Stat(filepath.Join(target, operations.StartupSeal)); !os.IsNotExist(e) {
+			if _, e = os.Stat(filepath.Join(target, transaction.StartupSeal)); !os.IsNotExist(e) {
 				t.Fatal("terminal seal retained", e)
 			}
 			if b, e := os.ReadFile(filepath.Join(target, "user-notes.txt")); e != nil || string(b) != "keep" {
@@ -455,7 +456,7 @@ func stopPortableFixture(t *testing.T, layout productlayout.Layout, target strin
 		t.Error(e)
 		return
 	}
-	identity := update.Target{ID: target, Version: info.ProductVersion, BuildID: info.BuildID, Layout: "portable"}
+	identity := change.Target{ID: target, Version: info.ProductVersion, BuildID: info.BuildID, Layout: "portable"}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	peer, e := probeApplication(ctx, layout, identity)
@@ -469,7 +470,7 @@ func stopPortableFixture(t *testing.T, layout productlayout.Layout, target strin
 	} else {
 		op := strings.Repeat("f", 32)
 		interactive := false
-		var view update.MaintenanceView
+		var view maintenance.View
 		e = call(ctx, peer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: op, CoordinatorPID: uint32(os.Getpid()), Interactive: &interactive}, &view)
 		for e == nil && view.Phase == "requested" && ctx.Err() == nil {
 			time.Sleep(50 * time.Millisecond)

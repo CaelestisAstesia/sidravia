@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
 )
 
 func TestExtractReleaseAuthenticatesDiscoveredIndex(t *testing.T) {
@@ -25,7 +25,7 @@ func TestExtractReleaseAuthenticatesDiscoveredIndex(t *testing.T) {
 			proof := i.verified
 			if mismatch {
 				data, _ := proof.Proof()
-				var m releases.ReleaseManifest
+				var m release.ReleaseManifest
 				if err := json.Unmarshal(data, &m); err != nil {
 					t.Fatal(err)
 				}
@@ -82,7 +82,7 @@ func TestXZReleaseUsesAuthenticatedIndexAndFullArchiveValidation(t *testing.T) {
 	}
 	for _, badProof := range []bool{false, true} {
 		raw, _ := original.verified.Proof()
-		var m releases.ReleaseManifest
+		var m release.ReleaseManifest
 		json.Unmarshal(raw, &m)
 		a := &m.Assets[0]
 		a.Name = strings.TrimSuffix(a.Name, ".gz") + ".xz"

@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update/command"
-	"sidravia/internal/update/entry"
+	"sidravia/internal/update"
+	"sidravia/internal/update/invocation"
 )
 
 type updateOutput struct{ data []byte }
@@ -28,13 +28,13 @@ func (b *updateOutput) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.Identity) ([]byte, error) {
-	if entry.CheckInCTL(args) {
+	if invocation.CheckInCTL(args) {
 		ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 		defer stop()
 		ctx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 		defer cancel()
 		var output updateOutput
-		command.Run(ctx, args, identity.ProductVersion, identity.BuildID, &output)
+		update.Run(ctx, args, identity.ProductVersion, identity.BuildID, &output)
 		return output.data, nil
 	}
 	if runtime.GOOS == "linux" {

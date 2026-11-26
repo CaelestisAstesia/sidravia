@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 )
 
 var ErrPreparation = errors.New("application did not approve update preparation")
@@ -26,7 +26,7 @@ var ErrRestore = errors.New("updated files are installed but application recover
 // retains check/download/user-consent ownership. ReleaseRuntime transfers only
 // its own startup lease after Preparing is durable; it never stops another app.
 type Execution struct {
-	Store          *operations.Store
+	Store          *transaction.Store
 	OperationID    string
 	Target         string
 	Old            Inventory
@@ -91,7 +91,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return err
 	}
-	recovery := operations.Recovery{SourceFilesSHA256: digest(input.Old.data), Intent: update.RestoreIntent{Mode: "none"}, Namespace: input.Namespace, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: hex.EncodeToString(nonce), ExpiresAt: time.Now().Add(30 * time.Minute), LogLevel: "info"}
+	recovery := transaction.Recovery{SourceFilesSHA256: digest(input.Old.data), Intent: maintenance.Intent{Mode: "none"}, Namespace: input.Namespace, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: hex.EncodeToString(nonce), ExpiresAt: time.Now().Add(30 * time.Minute), LogLevel: "info"}
 	prepared := false
 	committed := false
 	// Before commit, cancelling preparation thaws the live generation. This
@@ -105,7 +105,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	}()
 	if peer != nil {
 		interactive := false
-		var view update.MaintenanceView
+		var view maintenance.View
 		prepared = true
 		if err := call(ctx, peer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: record.ID, CoordinatorPID: uint32(owner.PID), Interactive: &interactive}, &view); err != nil {
 			return err
@@ -139,10 +139,10 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 		if readErr != nil {
 			return errors.Join(cause, readErr)
 		}
-		if current.Phase != operations.Verified && current.Phase != operations.Preparing && current.Phase != operations.Quiescent {
+		if current.Phase != transaction.Verified && current.Phase != transaction.Preparing && current.Phase != transaction.Quiescent {
 			return cause
 		}
-		if _, err := os.Lstat(filepath.Join(input.Target, operations.StartupSeal)); !os.IsNotExist(err) {
+		if _, err := os.Lstat(filepath.Join(input.Target, transaction.StartupSeal)); !os.IsNotExist(err) {
 			return cause
 		}
 		root, openErr := os.OpenRoot(input.Target)
@@ -162,7 +162,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 				prepared = false
 			}
 		}
-		_, changed, e := input.Store.Advance(cleanup, record.ID, current.Phase, operations.Aborted, "preparation_failed", time.Now())
+		_, changed, e := input.Store.Advance(cleanup, record.ID, current.Phase, transaction.Aborted, "preparation_failed", time.Now())
 		if e != nil || !changed {
 			return errors.Join(cause, e)
 		}
@@ -198,7 +198,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	if err := input.Store.SetRecovery(ctx, record.ID, recovery, time.Now()); err != nil {
 		return abort(err)
 	}
-	if _, _, err := input.Store.Advance(ctx, record.ID, operations.Verified, operations.Preparing, "", time.Now()); err != nil {
+	if _, _, err := input.Store.Advance(ctx, record.ID, transaction.Verified, transaction.Preparing, "", time.Now()); err != nil {
 		return abort(err)
 	}
 	if input.ReleaseRuntime != nil {
@@ -220,7 +220,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 			return abort(err)
 		}
 	}
-	if _, _, err := input.Store.Advance(ctx, record.ID, operations.Preparing, operations.Quiescent, "", time.Now()); err != nil {
+	if _, _, err := input.Store.Advance(ctx, record.ID, transaction.Preparing, transaction.Quiescent, "", time.Now()); err != nil {
 		return abort(err)
 	}
 	if err := Apply(ctx, input.Store, record.ID, input.Target, input.Old, input.Payload); err != nil {
@@ -230,24 +230,24 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	work, cancel := context.WithTimeout(context.WithoutCancel(ctx), 40*time.Second)
 	defer cancel()
 	if recovery.Intent.Mode == "none" {
-		_, _, err := input.Store.Advance(work, record.ID, operations.Applied, operations.Completed, "", time.Now())
+		_, _, err := input.Store.Advance(work, record.ID, transaction.Applied, transaction.Completed, "", time.Now())
 		if err != nil {
 			return err
 		}
 		return finishApplication(input.Target, record.ID)
 	}
-	if _, changed, err := input.Store.Advance(work, record.ID, operations.Applied, operations.Resuming, "", time.Now()); err != nil || !changed {
-		return errors.Join(operations.ErrConflict, err)
+	if _, changed, err := input.Store.Advance(work, record.ID, transaction.Applied, transaction.Resuming, "", time.Now()); err != nil || !changed {
+		return errors.Join(transaction.ErrConflict, err)
 	}
 	_, err = restoreApplication(work, layout, record.Target, recovery, record.ID, recovery.Nonce)
 	if err != nil {
-		_, _, stateErr := input.Store.Advance(work, record.ID, operations.Resuming, operations.ResumeFailed, "resume_failed", time.Now())
+		_, _, stateErr := input.Store.Advance(work, record.ID, transaction.Resuming, transaction.ResumeFailed, "resume_failed", time.Now())
 		if stateErr != nil {
 			return errors.Join(ErrRestore, err, stateErr)
 		}
 		return errors.Join(ErrRestore, err, finishApplication(input.Target, record.ID))
 	}
-	_, _, err = input.Store.Advance(work, record.ID, operations.Resuming, operations.Completed, "", time.Now())
+	_, _, err = input.Store.Advance(work, record.ID, transaction.Resuming, transaction.Completed, "", time.Now())
 	if err != nil {
 		return err
 	}

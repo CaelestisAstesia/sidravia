@@ -7,14 +7,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 	"time"
 )
 
 // ReconcileInterrupted verifies complete signed bytes and dead exact owners.
 // It never retries launch, intent dispatch or a partial file replacement.
-func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, target string, installed Inventory) error {
+func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, target string, installed Inventory) error {
 	if store == nil || !canonical(target) {
 		return ErrInvalid
 	}
@@ -23,10 +23,10 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 		return err
 	}
 	if !exists || r.ID != id || r.Source.ID != target || r.Source.Layout != "portable" {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
-	if r.Phase == operations.Applying || r.Phase == operations.RepairRequired {
-		return operations.ErrConflict
+	if r.Phase == transaction.Applying || r.Phase == transaction.RepairRequired {
+		return transaction.ErrConflict
 	}
 	s, dir, err := readWindowsSession(ctx, target, id)
 	if err != nil {
@@ -51,29 +51,29 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 			return e
 		}
 		if alive {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
 	}
 	expected := r.Source
-	next := operations.Aborted
+	next := transaction.Aborted
 	code := "preparation_failed"
 	targetBytes := false
 	terminal := false
 	switch r.Phase {
-	case operations.Created, operations.Verified, operations.Preparing, operations.Quiescent:
-	case operations.Applied, operations.Resuming:
+	case transaction.Created, transaction.Verified, transaction.Preparing, transaction.Quiescent:
+	case transaction.Applied, transaction.Resuming:
 		expected = r.Target
 		targetBytes = true
-		next = operations.ResumeFailed
+		next = transaction.ResumeFailed
 		code = "resume_failed"
-	case operations.Completed, operations.ResumeFailed:
+	case transaction.Completed, transaction.ResumeFailed:
 		expected = r.Target
 		targetBytes = true
 		terminal = true
-	case operations.Aborted:
+	case transaction.Aborted:
 		terminal = true
 	default:
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	old, err := sourceInventory(s)
 	if err != nil {
@@ -105,12 +105,12 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	if err != nil {
 		return err
 	}
-	if sealed && !targetBytes && r.Phase != operations.Quiescent && r.Phase != operations.Aborted {
+	if sealed && !targetBytes && r.Phase != transaction.Quiescent && r.Phase != transaction.Aborted {
 		return ErrChanged
 	}
 	if !terminal {
 		if _, changed, e := store.Advance(ctx, id, r.Phase, next, code, time.Now()); e != nil || !changed {
-			return errors.Join(operations.ErrConflict, e)
+			return errors.Join(transaction.ErrConflict, e)
 		}
 	}
 	if sealed {
@@ -119,14 +119,14 @@ func ReconcileInterrupted(ctx context.Context, store *operations.Store, id, targ
 	return nil
 }
 func ownPortableSeal(root *os.Root, id string) (bool, error) {
-	_, err := root.Lstat(operations.StartupSeal)
+	_, err := root.Lstat(transaction.StartupSeal)
 	if os.IsNotExist(err) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if err = operations.VerifyPortableSeal(root.Name(), id); err != nil {
+	if err = transaction.VerifyPortableSeal(root.Name(), id); err != nil {
 		return false, err
 	}
 	return true, nil

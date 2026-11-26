@@ -25,7 +25,7 @@ type WindowsOverlay struct {
 func NewWindowsOverlay(t testing.TB, repo, owned, source string, pub ed25519.PublicKey) *WindowsOverlay {
 	t.Helper()
 	overlay := &WindowsOverlay{newPublisherOverlay(t, repo, owned, pub)}
-	overlay.Replace("internal/update/github/github.go", func(s string) string {
+	overlay.Replace("internal/update/internal/github/github.go", func(s string) string {
 		s = strings.Replace(s, "\"context\"", "\"context\"\n\"os\"\n\"bytes\"\n\"path/filepath\"", 1)
 		return s + fmt.Sprintf(`
 func init(){http.DefaultTransport=fixtureTransport{fallback:http.DefaultTransport}}

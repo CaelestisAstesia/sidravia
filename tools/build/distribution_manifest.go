@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 func installerManifest(root string, entries, gui []archiveEntry) string {

@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	packagefiles "sidravia/internal/release/files"
 )
 
 var (
@@ -27,10 +27,10 @@ var (
 type Inventory struct {
 	manifest  packagefiles.Manifest
 	data      []byte
-	candidate releases.Candidate
+	candidate release.Candidate
 }
 
-func Authenticate(v releases.VerifiedRelease, c releases.Candidate, data []byte) (Inventory, error) {
+func Authenticate(v release.VerifiedRelease, c release.Candidate, data []byte) (Inventory, error) {
 	m, err := v.VerifyFiles(c, data)
 	if err != nil {
 		return Inventory{}, err

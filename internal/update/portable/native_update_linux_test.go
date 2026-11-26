@@ -26,12 +26,13 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
+	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/update/internal/testfixture"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
+	"sidravia/internal/update/transaction"
 )
 
 // Opt-in production-chain fixture. The ONLY source overlay supplies a synthetic
@@ -204,14 +205,14 @@ func TestNativePortableUpdate(t *testing.T) {
 					t.Cleanup(func() { _ = command.Process.Kill() })
 				}
 			}
-			source := update.Target{ID: oldDir, Version: "1.0.0", BuildID: "native-old", Layout: "portable"}
+			source := change.Target{ID: oldDir, Version: "1.0.0", BuildID: "native-old", Layout: "portable"}
 			oldPeer := waitFixturePeer(t, layout, source)
 			t.Cleanup(func() {
 				if managed {
 					oldPeer.close()
 					return
 				}
-				for _, identity := range []update.Target{{ID: oldDir, Version: "1.1.0", BuildID: "native-new", Layout: "portable"}, source} {
+				for _, identity := range []change.Target{{ID: oldDir, Version: "1.1.0", BuildID: "native-new", Layout: "portable"}, source} {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					peer, _ := probeApplication(ctx, layout, identity)
 					if peer != nil {
@@ -248,7 +249,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				for {
 					attempts++
 					id := fmt.Sprintf("%032x", attempts)
-					var view update.MaintenanceView
+					var view maintenance.View
 					interactive := false
 					err := call(ready, oldPeer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: id, CoordinatorPID: uint32(os.Getpid()), Interactive: &interactive}, &view)
 					for err == nil && view.Phase == "requested" {
@@ -313,7 +314,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					t.Fatal(err)
 				}
 				yes := false
-				var view update.MaintenanceView
+				var view maintenance.View
 				if err := call(context.Background(), oldPeer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: strings.Repeat("f", 32), CoordinatorPID: uint32(owner.Process.Pid), Interactive: &yes}, &view); err != nil {
 					t.Fatal(err)
 				}
@@ -327,22 +328,22 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 			}
 
-			root, err := operations.DefaultRoot()
+			root, err := productlayout.OperationRoot()
 			if err != nil {
 				t.Fatal(err)
 			}
-			store, err := operations.Open(root, oldDir, next.keys)
+			store, err := transaction.Open(root, oldDir, next.keys)
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := operations.New(strings.Repeat("e", 32), source, next.inventory.candidate, next.verified, time.Now())
+			r, err := transaction.New(strings.Repeat("e", 32), source, next.inventory.candidate, next.verified, time.Now())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Create(context.Background(), r); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := store.Advance(context.Background(), r.ID, operations.Created, operations.Verified, "", time.Now()); err != nil {
+			if _, _, err := store.Advance(context.Background(), r.ID, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 				t.Fatal(err)
 			}
 			p, err := Extract(context.Background(), oldDir, archive, next.inventory)
@@ -351,7 +352,7 @@ func TestNativePortableUpdate(t *testing.T) {
 			}
 			defer p.Close()
 			if scenario == "coordinator-death" {
-				_, _, err := store.Advance(context.Background(), r.ID, operations.Verified, operations.Aborted, "cancelled", time.Now())
+				_, _, err := store.Advance(context.Background(), r.ID, transaction.Verified, transaction.Aborted, "cancelled", time.Now())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -392,14 +393,14 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 				_ = interrupted.Wait()
 				now := time.Now()
-				if err := store.SetRecovery(ctx, r.ID, operations.Recovery{
-					SourceFilesSHA256: digest(old.inventory.data), Intent: update.RestoreIntent{Mode: "systemd"},
+				if err := store.SetRecovery(ctx, r.ID, transaction.Recovery{
+					SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "systemd"},
 					CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("d", 32),
 					ExpiresAt: now.Add(15 * time.Minute), LogLevel: "info", ManagedService: true,
 				}, now); err != nil {
 					t.Fatal(err)
 				}
-				for _, phases := range [][2]operations.Phase{{operations.Verified, operations.Preparing}, {operations.Preparing, operations.Quiescent}} {
+				for _, phases := range [][2]transaction.Phase{{transaction.Verified, transaction.Preparing}, {transaction.Preparing, transaction.Quiescent}} {
 					if _, _, err := store.Advance(ctx, r.ID, phases[0], phases[1], "", time.Now()); err != nil {
 						t.Fatal(err)
 					}
@@ -423,7 +424,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					if err := Apply(ctx, store, r.ID, oldDir, old.inventory, p); err != nil {
 						t.Fatal(err)
 					}
-					if _, _, err := store.Advance(ctx, r.ID, operations.Applied, operations.RollingBack, "", time.Now()); err != nil {
+					if _, _, err := store.Advance(ctx, r.ID, transaction.Applied, transaction.RollingBack, "", time.Now()); err != nil {
 						t.Fatal(err)
 					}
 					// No in-memory snapshot is available to this entrance.
@@ -490,7 +491,7 @@ func TestNativePortableUpdate(t *testing.T) {
 			}
 			if scenario == "systemd-new-failed" {
 				current, _, err := store.Read(context.Background())
-				if err != nil || executeErr == nil || current.Phase != operations.RolledBack {
+				if err != nil || executeErr == nil || current.Phase != transaction.RolledBack {
 					t.Fatalf("managed post-write rollback failed: %v %v %v", current.Phase, err, executeErr)
 				}
 				rolledBack := waitFixturePeer(t, layout, source)
@@ -505,7 +506,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				if err != nil || len(dirs) != 0 {
 					t.Fatal("rollback retained a temporary snapshot", dirs, err)
 				}
-				if _, err := os.Stat(filepath.Join(oldDir, operations.StartupSeal)); !os.IsNotExist(err) {
+				if _, err := os.Stat(filepath.Join(oldDir, transaction.StartupSeal)); !os.IsNotExist(err) {
 					t.Fatal("rollback retained startup seal", err)
 				}
 				t.Log("failed new executable was replaced with verified old package, old IPC is reachable")
@@ -513,7 +514,7 @@ func TestNativePortableUpdate(t *testing.T) {
 			}
 			if scenario == "systemd-cancel" || scenario == "systemd-apply-conflict" {
 				current, _, err := store.Read(context.Background())
-				if err != nil || executeErr == nil || current.Phase != operations.Aborted {
+				if err != nil || executeErr == nil || current.Phase != transaction.Aborted {
 					t.Fatalf("managed cancellation failed: %v %v %v", current.Phase, err, executeErr)
 				}
 				running := waitFixturePeer(t, layout, source)
@@ -541,9 +542,9 @@ func TestNativePortableUpdate(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				expectedPhase := operations.Aborted
+				expectedPhase := transaction.Aborted
 				if scenario == "failed-new-start" {
-					expectedPhase = operations.ResumeFailed
+					expectedPhase = transaction.ResumeFailed
 				}
 				if record.Phase != expectedPhase {
 					t.Fatal(record.Phase)
@@ -570,7 +571,7 @@ func TestNativePortableUpdate(t *testing.T) {
 						t.Fatal("fault wrote product bytes", err)
 					}
 					if scenario == "cancel-after-prepare" {
-						var view update.MaintenanceView
+						var view maintenance.View
 						if err := call(context.Background(), oldPeer.connection, contract.MethodUpdateStatus, struct{}{}, &view); err != nil || view.Phase != "idle" {
 							t.Fatal("cancel did not thaw old generation", err)
 						}
@@ -595,7 +596,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 			}
 			record, _, err := store.Read(ctx)
-			if err != nil || record.Phase != operations.Completed {
+			if err != nil || record.Phase != transaction.Completed {
 				t.Fatal(record.Phase, err)
 			}
 			expectedMode := "headless"
@@ -665,7 +666,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				downgraded := waitFixturePeer(t, downgradedLayout, update.Target{ID: downgradeDir, Version: source.Version, BuildID: source.BuildID, Layout: "portable"})
+				downgraded := waitFixturePeer(t, downgradedLayout, change.Target{ID: downgradeDir, Version: source.Version, BuildID: source.BuildID, Layout: "portable"})
 				defer downgraded.close()
 				if downgraded.status.Mode != "systemd" {
 					t.Fatal("downgraded daemon escaped systemd")
@@ -805,7 +806,7 @@ func fixtureArchive(t *testing.T, directory, version, build, kind string) testIm
 	}
 	return signImage(t, m, data, buffer.Bytes(), contents)
 }
-func waitFixturePeer(t *testing.T, layout productlayout.Layout, identity update.Target) *applicationPeer {
+func waitFixturePeer(t *testing.T, layout productlayout.Layout, identity change.Target) *applicationPeer {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

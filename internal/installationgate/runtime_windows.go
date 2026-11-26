@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	publisher "sidravia/internal/release"
 	"sidravia/internal/update/setup"
+	"sidravia/internal/update/transaction"
 )
 
 func AcquireRun() (func(), error) { return AcquireRunIdentity("", "") }
@@ -27,13 +27,13 @@ func AcquireRunIdentityContext(ctx context.Context, version, build string) (func
 	if e != nil {
 		return nil, e
 	}
-	_, sealErr := os.Lstat(filepath.Join(layout.ExecutableDirectory, operations.StartupSeal))
+	_, sealErr := os.Lstat(filepath.Join(layout.ExecutableDirectory, transaction.StartupSeal))
 	sealed := !os.IsNotExist(sealErr)
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.OperationRoot()
 	if e != nil {
 		return nil, e
 	}
-	store, e := operations.Open(root, layout.ExecutableDirectory, releases.PublisherTrust())
+	store, e := transaction.Open(root, layout.ExecutableDirectory, publisher.PublisherTrust())
 	if e != nil {
 		return nil, e
 	}

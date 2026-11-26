@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	packagefiles "sidravia/internal/release/files"
 )
 
 var ErrInvalid = errors.New("invalid signed setup operation")
@@ -34,10 +34,10 @@ func CoreFile(name string) bool {
 	return strings.HasPrefix(name, "institution-profiles/")
 }
 
-func VerifyInstalled(ctx context.Context, target string, v releases.VerifiedRelease, c releases.Candidate, index []byte, hasGUI bool) (packagefiles.Manifest, error) {
+func VerifyInstalled(ctx context.Context, target string, v release.VerifiedRelease, c release.Candidate, index []byte, hasGUI bool) (packagefiles.Manifest, error) {
 	return verifyInstalled(ctx, target, v, c, index, hasGUI, nil)
 }
-func verifyInstalled(ctx context.Context, target string, v releases.VerifiedRelease, c releases.Candidate, index []byte, hasGUI bool, retired map[string]bool) (packagefiles.Manifest, error) {
+func verifyInstalled(ctx context.Context, target string, v release.VerifiedRelease, c release.Candidate, index []byte, hasGUI bool, retired map[string]bool) (packagefiles.Manifest, error) {
 	m, err := v.VerifyFiles(c, index)
 	if err != nil {
 		return m, err

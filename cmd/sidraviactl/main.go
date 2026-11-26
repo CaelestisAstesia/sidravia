@@ -12,7 +12,7 @@ import (
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/update/entry"
+	"sidravia/internal/update/invocation"
 )
 
 var (
@@ -32,7 +32,7 @@ func main() {
 		return
 	}
 	releaseRun := func() {}
-	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && entry.ControlEntry(os.Args[2:])) {
+	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && invocation.ControlEntry(os.Args[2:])) {
 		release, err := installationgate.AcquireRunIdentity(ProductVersion, BuildID)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "安装或更新正在进行，请完成或取消后再运行命令。")
@@ -40,7 +40,7 @@ func main() {
 		}
 		// An updater child takes over coordination; retaining this caller's
 		// lease would prevent that child from ever obtaining execution admission.
-		if len(os.Args) > 1 && os.Args[1] == "update" && !entry.CheckInCTL(os.Args[2:]) {
+		if len(os.Args) > 1 && os.Args[1] == "update" && !invocation.CheckInCTL(os.Args[2:]) {
 			release()
 		} else {
 			releaseRun = release

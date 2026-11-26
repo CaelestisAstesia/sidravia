@@ -16,13 +16,14 @@ import (
 	"strings"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/installation/change"
+	"sidravia/internal/installation/resume"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -31,24 +32,24 @@ type processID struct {
 	Created uint64 `json:"created"`
 }
 type record struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	OperationID   string               `json:"operationId"`
-	Source        update.Target        `json:"source"`
-	Namespace     string               `json:"namespace"`
-	Coordinator   processID            `json:"coordinator"`
-	Daemon        processID            `json:"daemon"`
-	GUI           processID            `json:"gui"`
-	Intent        update.RestoreIntent `json:"intent"`
-	Hashes        map[string]string    `json:"hashes"`
-	Expires       time.Time            `json:"expires"`
-	Stage         string               `json:"stage"`
-	LogLevel      string               `json:"logLevel"`
-	RecoveryToken string               `json:"recoveryToken,omitempty"`
+	SchemaVersion int                `json:"schemaVersion"`
+	OperationID   string             `json:"operationId"`
+	Source        change.Target      `json:"source"`
+	Namespace     string             `json:"namespace"`
+	Coordinator   processID          `json:"coordinator"`
+	Daemon        processID          `json:"daemon"`
+	GUI           processID          `json:"gui"`
+	Intent        maintenance.Intent `json:"intent"`
+	Hashes        map[string]string  `json:"hashes"`
+	Expires       time.Time          `json:"expires"`
+	Stage         string             `json:"stage"`
+	LogLevel      string             `json:"logLevel"`
+	RecoveryToken string             `json:"recoveryToken,omitempty"`
 }
 
 func Run(ctx context.Context, action, op string, coordinator uint32, interactive bool, identity clientbootstrap.Identity) error {
-	if !update.ValidOperationID(op) || coordinator == 0 {
-		return update.ErrInvalid
+	if !change.ValidID(op) || coordinator == 0 {
+		return change.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
@@ -73,8 +74,8 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	if err != nil {
 		return err
 	}
-	source := update.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
-	root, err := operations.DefaultRoot()
+	source := change.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
+	root, err := productlayout.OperationRoot()
 	if err != nil {
 		return err
 	}
@@ -99,9 +100,9 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	}
 	if action == "prepare" {
 		if exists {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
-		state = record{SchemaVersion: 1, OperationID: op, Source: source, Namespace: ns.String(), Coordinator: processID{peer.PID, peer.Created}, Hashes: map[string]string{}, Expires: time.Now().Add(30 * time.Minute), Stage: "preparing", LogLevel: "debug", Intent: update.RestoreIntent{Mode: "none"}}
+		state = record{SchemaVersion: 1, OperationID: op, Source: source, Namespace: ns.String(), Coordinator: processID{peer.PID, peer.Created}, Hashes: map[string]string{}, Expires: time.Now().Add(30 * time.Minute), Stage: "preparing", LogLevel: "debug", Intent: maintenance.Intent{Mode: "none"}}
 		for _, name := range []string{"sidraviactl.exe", "sidraviad.exe", "Sidravia.exe"} {
 			path := filepath.Join(source.ID, name)
 			if _, e := os.Lstat(path); errors.Is(e, os.ErrNotExist) && name == "Sidravia.exe" {
@@ -109,7 +110,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			}
 			info, e := os.Lstat(path)
 			if e != nil || !info.Mode().IsRegular() {
-				return update.ErrInvalid
+				return change.ErrInvalid
 			}
 			hash, e := windowsplatform.FileHash(path)
 			if e != nil {
@@ -126,7 +127,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			return save()
 		}
 		if probe.State != clientbootstrap.ProbeReachable || probe.Status == nil {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		daemon, e := observeTarget(uint32(probe.Status.PID), 0, source.ID, "sidraviad.exe", peer.SID)
 		if e != nil {
@@ -140,7 +141,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		}
 		if probe.Status.Mode == "desktop" {
 			if probe.Status.DesktopOwnerPID == nil {
-				return update.ErrInvalid
+				return change.ErrInvalid
 			}
 			gui, e := observeTarget(uint32(*probe.Status.DesktopOwnerPID), 0, source.ID, "Sidravia.exe", peer.SID)
 			if e != nil {
@@ -176,7 +177,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			}
 		}
 		if view.OperationID != op || view.Phase != "prepared" {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		state.Intent = view.Intent
 		state.Stage = "prepared"
@@ -186,14 +187,14 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		return nil
 	}
 	if !exists || jsonfile.DecodeStrict(raw, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != source || state.Namespace != ns.String() || state.Coordinator != (processID{peer.PID, peer.Created}) || !time.Now().Before(state.Expires) {
-		return update.ErrInvalid
+		return change.ErrInvalid
 	}
 	if err = verifySource(state); err != nil {
 		return err
 	}
 	if action == "stop" {
 		if state.Stage != "prepared" {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		if state.Daemon.PID == 0 {
 			state.Stage = "stopped"
@@ -214,7 +215,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		}
 		probe, e := clientbootstrap.Probe(identity)
 		if e != nil || probe.Info.PID != int(daemon.PID) {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
 		if e != nil {
@@ -242,7 +243,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		return save()
 	}
 	if action != "abort" {
-		return update.ErrInvalid
+		return change.ErrInvalid
 	}
 	if state.Stage == "aborted" {
 		return nil
@@ -254,7 +255,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 				return e
 			}
 			if probe.State != clientbootstrap.ProbeReachable || probe.Info.PID != int(state.Daemon.PID) {
-				return update.ErrInvalid
+				return change.ErrInvalid
 			}
 			conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
 			if e != nil {
@@ -275,7 +276,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		return save()
 	}
 	if state.Stage != "stopped" && state.Stage != "committing" {
-		return update.ErrInvalid
+		return change.ErrInvalid
 	}
 	// A committed-but-incomplete stop must not start a duplicate or override a
 	// surviving generation. This recovery path is only for unchanged old bytes.
@@ -288,7 +289,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			return e
 		}
 		if running {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 	}
 	if err = restore(ctx, state, identity, peer.SID, directory); err != nil {
@@ -298,40 +299,40 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	state.Stage = "aborted"
 	return save()
 }
-func call(ctx context.Context, conn clientbootstrap.Client, method string, value any) (update.MaintenanceView, error) {
+func call(ctx context.Context, conn clientbootstrap.Client, method string, value any) (maintenance.View, error) {
 	b, e := json.Marshal(value)
 	if e != nil {
-		return update.MaintenanceView{}, e
+		return maintenance.View{}, e
 	}
 	result, e := conn.Call(ctx, method, b)
 	if e != nil {
-		return update.MaintenanceView{}, e
+		return maintenance.View{}, e
 	}
 	if !result.OK {
-		return update.MaintenanceView{}, update.ErrInvalid
+		return maintenance.View{}, change.ErrInvalid
 	}
-	var view update.MaintenanceView
+	var view maintenance.View
 	if e = jsonfile.DecodeStrict(result.Result, &view); e != nil || view.SchemaVersion != 1 {
-		return view, update.ErrInvalid
+		return view, change.ErrInvalid
 	}
 	return view, nil
 }
 func verifySource(state record) error {
 	for name, hash := range state.Hashes {
 		if name != "sidraviactl.exe" && name != "sidraviad.exe" && name != "Sidravia.exe" {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		info, e := os.Lstat(filepath.Join(state.Source.ID, name))
 		if e != nil || !info.Mode().IsRegular() {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		actual, e := windowsplatform.FileHash(filepath.Join(state.Source.ID, name))
 		if e != nil || actual != hash {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 	}
 	if len(state.Hashes) < 2 {
-		return update.ErrInvalid
+		return change.ErrInvalid
 	}
 	return nil
 }
@@ -342,66 +343,66 @@ func observeTarget(pid uint32, created uint64, directory, name, sid string) (*wi
 	}
 	if (created != 0 && p.Created != created) || !strings.EqualFold(p.Path, filepath.Join(directory, name)) || p.SID != sid || !p.Running() {
 		p.Close()
-		return nil, fmt.Errorf("target process identity: %w", update.ErrInvalid)
+		return nil, fmt.Errorf("target process identity: %w", change.ErrInvalid)
 	}
 	return p, nil
 }
 
 // PreparedSnapshot exports only the application-owned saved-config intent to
 // the signed setup coordinator. It never exports runtime tokens or credentials.
-func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identity clientbootstrap.Identity) (update.RestoreIntent, string, error) {
+func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identity clientbootstrap.Identity) (maintenance.Intent, string, error) {
 	parent, err := windowsplatform.ObserveParent()
 	if err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
 	defer parent.Close()
 	if parent.PID != coordinator || !parent.Running() {
-		return update.RestoreIntent{}, "", update.ErrInvalid
+		return maintenance.Intent{}, "", change.ErrInvalid
 	}
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
 	layout, err := productlayout.ResolveNamespace(ns)
 	if err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.OperationRoot()
 	if err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
 	hash := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
 	path := filepath.Join(root, hex.EncodeToString(hash[:16]), op, "state.json")
 	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
 	if err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
 	data, exists, err := store.Read(ctx, path, 16<<10)
 	if err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
 	var state record
-	expected := update.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
+	expected := change.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
 	if !exists || jsonfile.DecodeStrict(data, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != expected || state.Namespace != ns.String() || state.Coordinator != (processID{parent.PID, parent.Created}) || state.Stage != "prepared" || !time.Now().Before(state.Expires) {
-		return update.RestoreIntent{}, "", update.ErrInvalid
+		return maintenance.Intent{}, "", change.ErrInvalid
 	}
 	if err := verifySource(state); err != nil {
-		return update.RestoreIntent{}, "", err
+		return maintenance.Intent{}, "", err
 	}
 	return state.Intent, state.LogLevel, nil
 }
 
 // RestoreInstalled is called only after the signed coordinator has verified the
 // complete new installation and claimed its durable Resuming transition.
-func RestoreInstalled(ctx context.Context, op string, target update.Target, intent update.RestoreIntent, expires time.Time, level, directory string, identity clientbootstrap.Identity, sid, nonce string) error {
+func RestoreInstalled(ctx context.Context, op string, target change.Target, intent maintenance.Intent, expires time.Time, level, directory string, identity clientbootstrap.Identity, sid, nonce string) error {
 	state := record{OperationID: op, Source: target, Intent: intent, Expires: expires, LogLevel: level, RecoveryToken: nonce}
 	return restore(ctx, state, identity, sid, directory)
 }
 func restore(ctx context.Context, state record, identity clientbootstrap.Identity, sid, directory string) error {
 	op := state.OperationID
 	source := state.Source
-	ticket := update.ResumeTicket{OperationID: op, Target: source, ExpiresAt: state.Expires, Intent: state.Intent}
-	if _, err := update.ClaimRestore(directory, ticket, source, true, time.Now()); err != nil {
+	ticket := resume.Ticket{OperationID: op, Target: source, ExpiresAt: state.Expires, Intent: state.Intent}
+	if _, err := resume.Claim(directory, ticket, source, true, time.Now()); err != nil {
 		return err
 	}
 	var restored contract.RuntimeInfo
@@ -460,13 +461,13 @@ func restore(ctx context.Context, state record, identity clientbootstrap.Identit
 			}
 		}
 		if !ready {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 	}
 	if state.Intent.Maintain {
 		probe, e := clientbootstrap.Probe(identity)
 		if e != nil || probe.State != clientbootstrap.ProbeReachable || probe.Info != restored {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 		conn, e := clientbootstrap.Connect(ctx, identity, probe.Info)
 		if e != nil {
@@ -479,7 +480,7 @@ func restore(ctx context.Context, state record, identity clientbootstrap.Identit
 			return e
 		}
 		if !result.OK {
-			return update.ErrInvalid
+			return change.ErrInvalid
 		}
 	}
 	return nil

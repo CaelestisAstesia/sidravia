@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 	"sidravia/internal/persistence/jsonfile"
-	"sidravia/internal/update"
 )
 
 type ipcHandler func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error)
@@ -22,7 +23,7 @@ func withMaintenance(application *Application, options launchcontract.Options, n
 func maintenanceWithCoordinator(application *Application, options launchcontract.Options, next ipcHandler, open func(uint32) (func() bool, func(), error)) ipcHandler {
 	restoreAvailable := options.SkipAutoLogin
 	var mu sync.Mutex
-	var state update.Maintenance
+	var state maintenance.Maintenance
 	var alive func() bool
 	var closeOwner func()
 	resetOwner := func() {
@@ -66,7 +67,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			return output()
 		case contract.MethodUpdateResume:
 			var input contract.UpdateResumePayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.ConfigurationID == "" || !restoreAvailable || state.Status().Phase != "idle" {
+			if jsonfile.DecodeStrict(payload, &input) != nil || !change.ValidID(input.OperationID) || input.ConfigurationID == "" || !restoreAvailable || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeMaintenance)
 			}
 			if options.SwitchOperation != "" && (input.OperationID != options.SwitchOperation || input.ConfigurationID != options.SwitchConfiguration) {
@@ -80,7 +81,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			return next(ctx, contract.MethodSessionStartConfiguration, data)
 		case contract.MethodUpdatePrepare:
 			var input contract.UpdatePreparePayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.CoordinatorPID == 0 || input.Interactive == nil || state.Status().Phase != "idle" {
+			if jsonfile.DecodeStrict(payload, &input) != nil || !change.ValidID(input.OperationID) || input.CoordinatorPID == 0 || input.Interactive == nil || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeInvalidArgument)
 			}
 			if (options.Mode == launchcontract.ModeSystemd && !input.ServiceSwitch && !input.ManagedGUIUpdate) ||
