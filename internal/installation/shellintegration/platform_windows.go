@@ -16,6 +16,47 @@ import (
 
 type registryPath struct{}
 
+const pathOwnershipKey = `Software\CaelestisAstesia\Sidravia\PathOwnership`
+
+func (registryPath) owns(directory string) (bool, error) {
+	key, err := registry.OpenKey(registry.CURRENT_USER, pathOwnershipKey, registry.QUERY_VALUE)
+	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer key.Close()
+	value, kind, err := key.GetIntegerValue(directory)
+	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if value != 1 || kind != registry.DWORD {
+		return false, errors.New("unrecognized PATH ownership record")
+	}
+	return true, nil
+}
+
+func (registryPath) setOwnership(directory string, owned bool) error {
+	if owned {
+		key, _, err := registry.CreateKey(registry.CURRENT_USER, pathOwnershipKey, registry.SET_VALUE)
+		if err != nil {
+			return err
+		}
+		defer key.Close()
+		return key.SetDWordValue(directory, 1)
+	}
+	key, err := registry.OpenKey(registry.CURRENT_USER, pathOwnershipKey, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+	return key.DeleteValue(directory)
+}
+
 func (registryPath) read() (pathValue, error) {
 	k, err := registry.OpenKey(registry.CURRENT_USER, "Environment", registry.QUERY_VALUE)
 	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {

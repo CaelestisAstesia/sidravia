@@ -11,6 +11,8 @@ type memoryPath struct {
 	readErr, writeErr, notifyErr error
 	verifyErr                    bool
 	tamper                       bool
+	owned                        bool
+	beforeWrite                  *pathValue
 }
 
 func (m *memoryPath) read() (pathValue, error) {
@@ -24,6 +26,9 @@ func (m *memoryPath) read() (pathValue, error) {
 	if m.reads > 1 && m.tamper {
 		return pathValue{text: "changed externally", kind: 1, exists: true}, nil
 	}
+	if m.reads == 2 && m.beforeWrite != nil {
+		m.value = *m.beforeWrite
+	}
 	return m.value, nil
 }
 func (m *memoryPath) write(v pathValue) error {
@@ -34,7 +39,9 @@ func (m *memoryPath) write(v pathValue) error {
 	m.value = v
 	return nil
 }
-func (m *memoryPath) notify() error { m.notifications++; return m.notifyErr }
+func (m *memoryPath) notify() error                           { m.notifications++; return m.notifyErr }
+func (m *memoryPath) owns(string) (bool, error)               { return m.owned, nil }
+func (m *memoryPath) setOwnership(_ string, owned bool) error { m.owned = owned; return nil }
 
 func TestExactPATHTransitions(t *testing.T) {
 	dir := `C:\Apps\Sidravia`
@@ -46,13 +53,13 @@ func TestExactPATHTransitions(t *testing.T) {
 		{"append", `%SystemRoot%;C:\Other`, `%SystemRoot%;C:\Other;C:\Apps\Sidravia`, EnablePath, true, true},
 		{"existing", `c:\apps\sidravia\;C:\Other`, `c:\apps\sidravia\;C:\Other`, EnablePath, true, false},
 		{"prefix", `C:\Apps\SidraviaOther`, `C:\Apps\SidraviaOther;C:\Apps\Sidravia`, EnablePath, true, true},
-		{"remove duplicates", `;C:\Apps\Sidravia;C:\Other;;c:\apps\sidravia\;`, `;C:\Other;;`, DisablePath, false, true},
+		{"keep equivalent user entry", `;C:\Apps\Sidravia;C:\Other;;c:\apps\sidravia\;`, `;C:\Other;;c:\apps\sidravia\;`, DisablePath, true, true},
 		{"missing", `C:\Other;;`, `C:\Other;;`, DisablePath, false, false},
-		{"trailing separator", `C:\Other;`, `C:\Other;C:\Apps\Sidravia`, EnablePath, true, true},
+		{"trailing separator", `C:\Other;`, `C:\Other;C:\Apps\Sidravia;`, EnablePath, true, true},
 		{"status", `C:\Apps\Sidravia`, `C:\Apps\Sidravia`, Status, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := &memoryPath{value: pathValue{text: tc.before, kind: 1, exists: true}}
+			m := &memoryPath{value: pathValue{text: tc.before, kind: 1, exists: true}, owned: tc.op == DisablePath}
 			r, err := operate(m, dir, tc.op)
 			if err != nil || !r.OK || r.PathEnabled != tc.enabled || r.Changed != tc.changed || m.value.text != tc.after || m.value.kind != 1 {
 				t.Fatalf("result=%+v value=%+v err=%v", r, m.value, err)
@@ -62,6 +69,34 @@ func TestExactPATHTransitions(t *testing.T) {
 				t.Fatalf("not idempotent: %v", err)
 			}
 		})
+	}
+}
+
+func TestPathDisablePreservesExistingAndLaterEdits(t *testing.T) {
+	dir := `C:\Apps\Sidravia`
+	for _, initial := range []string{"", ";", ";;", `C:\Other`, `C:\Other;`, `%SystemRoot%;;`} {
+		if got := edit(edit(initial, dir, true), dir, false); got != initial {
+			t.Fatalf("PATH round trip for %q returned %q", initial, got)
+		}
+	}
+	for _, kind := range []uint32{1, 2} {
+		m := &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;;C:\Added;`, kind: kind, exists: true}, owned: true}
+		if _, err := operate(m, dir, DisablePath); err != nil || m.value.text != `C:\Other;;C:\Added;` || m.value.kind != kind || m.owned {
+			t.Fatalf("disable changed a later PATH edit or lost type: %+v, %v", m, err)
+		}
+	}
+	m := &memoryPath{value: pathValue{text: dir + `;C:\Other;`, kind: 2, exists: true}}
+	if _, err := operate(m, dir, EnablePath); err != nil || m.owned {
+		t.Fatalf("pre-existing matching entry was adopted: %+v, %v", m, err)
+	}
+	r, err := operate(m, dir, DisablePath)
+	if err != nil || !r.PathEnabled || r.Changed || r.Warning != "path_entry_not_owned" || m.writes != 0 {
+		t.Fatalf("pre-existing matching entry was removed: %+v, %v", r, err)
+	}
+	late := pathValue{text: `C:\Other;` + dir + `;C:\Added;`, kind: 2, exists: true}
+	m = &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;`, kind: 2, exists: true}, owned: true, beforeWrite: &late}
+	if _, err := operate(m, dir, DisablePath); Code(err) != "path_verify_failed" || m.value != late || !m.owned || m.writes != 0 {
+		t.Fatalf("concurrent PATH append was lost: %+v, %v", m, err)
 	}
 }
 
