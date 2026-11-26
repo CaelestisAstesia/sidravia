@@ -19,11 +19,9 @@ func cleanupErasedPackage(ctx context.Context, manager string) error {
 		return userservice.ErrServiceConflict
 	}
 	if manager == "deb" {
-		release, err := admitDebErase(root)
-		if err != nil {
+		if err := admitDebErase(root); err != nil {
 			return err
 		}
-		defer release()
 	}
 	marker := filepath.Join(root, "sidravia."+manager)
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {

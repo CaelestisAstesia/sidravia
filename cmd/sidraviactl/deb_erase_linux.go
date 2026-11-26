@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -17,46 +14,71 @@ import (
 )
 
 const debEraseState = "/var/lib/sidravia/deb-maintenance"
+const debEraseMessagePrefix = "sidravia-deb-erase-v1"
 
-func admitDebErase(packageRoot string) (func(), error) {
-	parent := os.Getppid()
-	uid := os.Geteuid()
+func admitDebErase(packageRoot string) error {
+	parent, uid := os.Getppid(), os.Geteuid()
 	if parent <= 1 || uid == 0 {
-		return nil, userservice.ErrServiceConflict
+		return userservice.ErrServiceConflict
 	}
-	parentInfo, err := os.Stat(filepath.Join("/proc", strconv.Itoa(parent)))
-	if err != nil || !ownedDebEraseNode(parentInfo, 0) {
-		return nil, userservice.ErrServiceConflict
+	fd, err := strconv.Atoi(os.Getenv("SIDRAVIA_DEB_ERASE_AUTH_FD"))
+	if err != nil || fd < 3 {
+		return userservice.ErrServiceConflict
 	}
-	journalFD, journalErr := strconv.Atoi(os.Getenv("SIDRAVIA_DEB_ERASE_JOURNAL_FD"))
-	lockFD, lockErr := strconv.Atoi(os.Getenv("SIDRAVIA_DEB_ERASE_LOCK_FD"))
-	if journalErr != nil || lockErr != nil || journalFD < 3 || lockFD < 3 || journalFD == lockFD {
-		return nil, userservice.ErrServiceConflict
-	}
-	journal := os.NewFile(uintptr(journalFD), "Debian removal journal")
-	lock := os.NewFile(uintptr(lockFD), "Debian maintenance lock")
-	unix.CloseOnExec(journalFD)
-	unix.CloseOnExec(lockFD)
-	release := func() {
-		_ = journal.Close()
-		_ = lock.Close()
-	}
+	unix.CloseOnExec(fd)
+	defer unix.Close(fd)
 
+	if err := readDebEraseAuthorization(fd, parent, uid, 0); err != nil {
+		return err
+	}
 	executable, err := os.Readlink("/proc/self/exe")
 	if err != nil {
-		release()
-		return nil, err
+		return err
 	}
 	executableInfo, err := os.Stat("/proc/self/exe")
 	if err != nil {
-		release()
-		return nil, err
+		return err
 	}
-	if err := verifyDebErase(packageRoot, debEraseState, executable, executableInfo, journal, lock, parent, uid, 0); err != nil {
-		release()
-		return nil, err
+	if os.Getppid() != parent {
+		return userservice.ErrServiceConflict
 	}
-	return release, nil
+	return verifyDebErase(packageRoot, debEraseState, executable, executableInfo, 0)
+}
+
+func readDebEraseAuthorization(fd, parent, uid int, rootUID uint32) error {
+	domain, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_DOMAIN)
+	if err != nil || domain != unix.AF_UNIX {
+		return userservice.ErrServiceConflict
+	}
+	kind, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TYPE)
+	if err != nil || kind != unix.SOCK_SEQPACKET {
+		return userservice.ErrServiceConflict
+	}
+	peer, err := unix.GetsockoptUcred(fd, unix.SOL_SOCKET, unix.SO_PEERCRED)
+	if err != nil || peer.Uid != rootUID || int(peer.Pid) != parent {
+		return userservice.ErrServiceConflict
+	}
+
+	// The root parent attests that this account is eligible for the active
+	// removal. The packet conveys only the package and this UID.
+	var packet [64]byte
+	n, _, flags, _, err := unix.Recvmsg(fd, packet[:], nil, unix.MSG_DONTWAIT)
+	if err != nil || n == 0 || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
+		return userservice.ErrServiceConflict
+	}
+	version, tail, found := strings.Cut(string(packet[:n]), "\x00")
+	pkg, account, delimited := strings.Cut(tail, "\x00")
+	if !found || !delimited || version != debEraseMessagePrefix ||
+		(pkg != "sidravia" && pkg != "sidravia-core") || account != strconv.Itoa(uid)+"\x00" {
+		return userservice.ErrServiceConflict
+	}
+	// A pre-authorized endpoint has no further packets and its write half is
+	// already closed. Do not let a malformed peer block a dpkg callback.
+	n, _, flags, _, err = unix.Recvmsg(fd, packet[:], nil, unix.MSG_DONTWAIT)
+	if err != nil || n != 0 || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
+		return userservice.ErrServiceConflict
+	}
+	return nil
 }
 
 func ownedDebEraseNode(info os.FileInfo, owner uint32) bool {
@@ -69,7 +91,7 @@ func trustedDebEraseFile(info os.FileInfo, owner uint32) bool {
 	return ok && stat.Nlink == 1 && info.Mode().IsRegular() && ownedDebEraseNode(info, owner)
 }
 
-func verifyDebErase(root, state, executable string, exe os.FileInfo, journal, lock *os.File, parent, uid int, owner uint32) error {
+func verifyDebErase(root, state, executable string, exe os.FileInfo, owner uint32) error {
 	erase := filepath.Join(state, "erase")
 	if executable != filepath.Join(erase, "sidraviactl") || !trustedDebEraseFile(exe, owner) || exe.Mode().Perm() != 0755 {
 		return userservice.ErrServiceConflict
@@ -98,67 +120,25 @@ func verifyDebErase(root, state, executable string, exe os.FileInfo, journal, lo
 		}
 	}
 
-	if !currentDebEraseFile(journal, filepath.Join(state, "transaction.json"), owner, 0600) ||
-		!currentDebEraseFile(lock, filepath.Join(state, "lock"), owner, 0644) ||
-		!holdsDebEraseLock(lock, parent) {
+	// The journal remains root-private. The sender verifies its contents and
+	// holds the lock throughout cleanup. Only the durable files' identity
+	// and permissions are checked here.
+	if !trustedDebEraseStateFile(filepath.Join(state, "transaction.json"), owner, 0600, -1) ||
+		!trustedDebEraseStateFile(filepath.Join(state, "lock"), owner, 0644, 0) {
 		return userservice.ErrServiceConflict
 	}
 	block := filepath.Join(state, "block")
-	info, err := os.Lstat(block)
-	if err != nil || !trustedDebEraseFile(info, owner) || info.Mode().Perm() != 0644 || info.Size() != 5 {
+	if !trustedDebEraseStateFile(block, owner, 0644, 5) {
 		return userservice.ErrServiceConflict
 	}
 	if content, err := os.ReadFile(block); err != nil || string(content) != "dpkg\n" {
 		return userservice.ErrServiceConflict
 	}
-
-	var removal struct {
-		Package     string `json:"package"`
-		Action      string `json:"action"`
-		Phase       string `json:"phase"`
-		CleanupUIDs []int  `json:"cleanupUIDs"`
-	}
-	// Each UID child inherits the same open file description. Read the
-	// journal independently of its shared offset.
-	section := io.NewSectionReader(journal, 0, 256<<10)
-	data, err := io.ReadAll(section)
-	if err != nil || len(data) == 256<<10 || json.Unmarshal(data, &removal) != nil ||
-		(removal.Package != "sidravia" && removal.Package != "sidravia-core") ||
-		removal.Action != "remove" || removal.Phase != "quiesced" ||
-		(removal.CleanupUIDs != nil && !slices.Contains(removal.CleanupUIDs, uid)) {
-		return userservice.ErrServiceConflict
-	}
 	return nil
 }
 
-func currentDebEraseFile(f *os.File, path string, owner uint32, mode os.FileMode) bool {
-	current, err := os.Lstat(path)
-	if err != nil || !trustedDebEraseFile(current, owner) || current.Mode().Perm() != mode {
-		return false
-	}
-	inherited, err := f.Stat()
-	return err == nil && os.SameFile(current, inherited)
-}
-
-func holdsDebEraseLock(lock *os.File, parent int) bool {
-	info, err := lock.Stat()
-	if err != nil || info.Size() != 0 {
-		return false
-	}
-	// fdinfo reports locks attached to this open file description, including
-	// the owning PID. Testing contention alone would also accept another
-	// caller's unrelated flock on the readable lock file.
-	data, err := os.ReadFile(filepath.Join("/proc/self/fdinfo", strconv.FormatUint(uint64(lock.Fd()), 10)))
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 9 && fields[0] == "lock:" && fields[2] == "FLOCK" &&
-			fields[3] == "ADVISORY" && fields[4] == "WRITE" && fields[5] == strconv.Itoa(parent) &&
-			fields[7] == "0" && fields[8] == "EOF" {
-			return true
-		}
-	}
-	return false
+func trustedDebEraseStateFile(path string, owner uint32, mode os.FileMode, size int64) bool {
+	info, err := os.Lstat(path)
+	return err == nil && trustedDebEraseFile(info, owner) && info.Mode().Perm() == mode &&
+		(size < 0 || info.Size() == size)
 }
