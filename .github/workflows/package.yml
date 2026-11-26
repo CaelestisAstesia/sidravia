@@ -124,14 +124,25 @@ jobs:
             cat core-verification.json >> "$GITHUB_STEP_SUMMARY"
           fi
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Stage verified Windows artifacts
+        shell: pwsh
+        run: |
+          $base = "sidravia-v$env:BUILD_VERSION-$env:BUILD_TARGET"
+          foreach ($file in @("dist/$base-gui-portable.zip", "dist/$base-setup.exe", 'dist/SHA256SUMS.txt',
+                              "dist-core/$base-core-portable.zip", 'dist-core/SHA256SUMS.txt',
+                              'verification.json', 'core-verification.json')) {
+            $item = Get-Item -LiteralPath $file
+            if ($item.PSIsContainer -or $item.Length -eq 0) { throw "Missing Windows artifact: $file" }
+          }
+          New-Item -ItemType Directory -Path windows-candidate | Out-Null
+          Move-Item -LiteralPath dist -Destination windows-candidate/gui
+          Move-Item -LiteralPath dist-core -Destination windows-candidate/core
+          Move-Item -LiteralPath verification.json -Destination windows-candidate/gui/
+          Move-Item -LiteralPath core-verification.json -Destination windows-candidate/core/
       - uses: actions/upload-artifact@v7
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.target }}
-          path: |
-            dist/*
-            dist-core/*
-            verification.json
-            core-verification.json
+          path: windows-candidate
           if-no-files-found: error
 
   linux:
@@ -187,30 +198,47 @@ jobs:
       - name: Build and verify native Linux packages
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          out="$RUNNER_TEMP/sidravia-artifacts"
-          mkdir "$out"
+          out="$GITHUB_WORKSPACE/.local/ci-artifacts"
+          mkdir -p "$out/work" "$out/system/gui" "$out/system/core" "$out/portable/gui" "$out/portable/core"
+          work="$out/work"
           python3 tools/developer/dev.py linux --package --version "$BUILD_VERSION" \
-            --flutter "$(command -v flutter)" --output "$out/gui"
+            --flutter "$(command -v flutter)" --output "$work/gui"
           python3 tools/developer/dev.py package --target "$BUILD_TARGET" --version "$BUILD_VERSION" \
-            --output "$out/core" --reports "$out/checks"
+            --output "$work/core" --reports "$work/checks"
           tarname="sidravia-v$BUILD_VERSION-$BUILD_TARGET"
-          python3 tools/developer/dev.py linux "--$PACKAGE_TYPE" "$out/gui/$tarname-gui-portable.tar.gz" \
-            --output "$out/system-gui"
-          python3 tools/developer/dev.py linux "--$PACKAGE_TYPE-core" "$out/core/$tarname-core-portable.tar.gz" \
-            --version "$BUILD_VERSION" --output "$out/system-core"
-          cp "$out/gui.producer/receipt.json" "$out/gui/verification.json"
+          for kind in gui core; do
+            archive="$work/$kind/$tarname-$kind-portable.tar.gz"
+            test -s "$archive"
+            test -s "$work/$kind/SHA256SUMS.txt"
+            cp "$archive" "$work/$kind/SHA256SUMS.txt" "$out/portable/$kind/"
+          done
+          test -s "$work/gui.producer/receipt.json"
+          cp "$work/gui.producer/receipt.json" "$out/portable/gui/verification.json"
+          python3 tools/developer/dev.py linux "--$PACKAGE_TYPE" "$work/gui/$tarname-gui-portable.tar.gz" \
+            --output "$work/system-gui"
+          python3 tools/developer/dev.py linux "--$PACKAGE_TYPE-core" "$work/core/$tarname-core-portable.tar.gz" \
+            --version "$BUILD_VERSION" --output "$work/system-core"
+          for kind in gui core; do
+            packages=("$work/system-$kind/"*."$PACKAGE_TYPE")
+            test "${#packages[@]}" -eq 1
+            package="${packages[0]}"
+            test -s "$package"
+            test -s "$package.json"
+            test -s "$work/system-$kind/SHA256SUMS"
+            cp "$package" "$package.json" "$work/system-$kind/SHA256SUMS" "$out/system/$kind/"
+            test -s "$out/system/$kind/${package##*/}"
+            test -s "$out/portable/$kind/$tarname-$kind-portable.tar.gz"
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.platform.target }}-${{ matrix.distribution.package }}
-          path: |
-            ${{ runner.temp }}/sidravia-artifacts/system-gui/*
-            ${{ runner.temp }}/sidravia-artifacts/system-core/*
+          path: .local/ci-artifacts/system
+          include-hidden-files: true
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: matrix.distribution.package == 'rpm'
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.platform.target }}
-          path: |
-            ${{ runner.temp }}/sidravia-artifacts/gui/*
-            ${{ runner.temp }}/sidravia-artifacts/core/*
+          path: .local/ci-artifacts/portable
+          include-hidden-files: true
           if-no-files-found: error
