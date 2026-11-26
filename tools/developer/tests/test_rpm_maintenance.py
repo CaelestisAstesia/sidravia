@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -27,6 +28,27 @@ def load():
 
 @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'pidfd_open'), 'requires Linux pidfds')
 class MaintenanceContracts(unittest.TestCase):
+    def test_cleanup_child_inherits_only_explicit_maintenance_descriptors(self):
+        m = load()
+        account = SimpleNamespace(pw_uid=1000, pw_gid=1000, pw_dir='/home/fixture')
+        with mock.patch.object(m.pwd, 'getpwall', return_value=[account]), \
+                mock.patch.object(m.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as child:
+            self.assertEqual(m.cleanup_erased_registration(10), set())
+            args, options = child.call_args
+            self.assertEqual(args[0], ['/proc/self/fd/10', 'rpm-erase-user-registration'])
+            self.assertEqual(options['pass_fds'], (10,))
+            self.assertNotIn('SIDRAVIA_DEB_ERASE_JOURNAL_FD', options['env'])
+
+            m.MANAGER = 'deb'
+            descriptors = {'SIDRAVIA_DEB_ERASE_JOURNAL_FD': 11, 'SIDRAVIA_DEB_ERASE_LOCK_FD': 12}
+            self.assertEqual(m.cleanup_erased_registration(10, {1000}, descriptors=descriptors), set())
+            args, options = child.call_args
+            self.assertEqual(args[0], ['/proc/self/fd/10', 'deb-erase-user-registration'])
+            self.assertEqual(options['pass_fds'], (10, 11, 12))
+            self.assertEqual(options['user'], account.pw_uid)
+            self.assertEqual({name: options['env'][name] for name in descriptors},
+                             {name: str(fd) for name, fd in descriptors.items()})
+
     def test_core_payload_allows_missing_gui_only_with_exact_marker(self):
         m = load()
         with tempfile.TemporaryDirectory() as tmp:

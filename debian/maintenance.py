@@ -2,7 +2,6 @@
 import contextlib
 import hashlib
 import json
-import shutil
 import sys
 import tempfile
 
@@ -86,7 +85,7 @@ def transaction_gate():
                     for leftover in directory.glob(f'.{name}-*'):
                         trusted(leftover, stat.S_ISREG)
                         remove_state_file(leftover)
-        yield
+        yield fd
     finally:
         os.close(fd)
 
@@ -304,7 +303,7 @@ def finish_remove(action):
     # conflicting variant. Its purge must leave the other variant's lock intact.
     if not STATE.exists():
         return
-    with transaction_gate():
+    with transaction_gate() as lease:
         state = load_state()
         if state and state['package'] != DEB_PACKAGE:
             return
@@ -326,7 +325,13 @@ def finish_remove(action):
                         if hashlib.file_digest(binary, 'sha256').hexdigest() != DEB_FILES['sidraviactl'][1]:
                             raise RuntimeError('Debian cleanup program differs from its package manifest')
                     retry = state.get('cleanupUIDs')
-                    pending = cleanup_erased_registration(fd, set(retry) if retry is not None else None)
+                    journal = os.open(JOURNAL, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+                    try:
+                        pending = cleanup_erased_registration(fd, set(retry) if retry is not None else None,
+                            descriptors={'SIDRAVIA_DEB_ERASE_JOURNAL_FD': journal,
+                                         'SIDRAVIA_DEB_ERASE_LOCK_FD': lease})
+                    finally:
+                        os.close(journal)
                     if pending:
                         state['cleanupUIDs'] = sorted(pending)
                         save_state(state)
