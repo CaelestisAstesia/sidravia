@@ -1,4 +1,5 @@
 """Shared Linux package maintenance and RPM-specific transaction callbacks."""
+import contextlib
 import fcntl
 import os
 import pwd
@@ -242,16 +243,18 @@ def resume_verified_package(uids):
             report_user_failure(uid, 'could not restore or verify the user service after the package transaction')
 
 
-def cleanup_erased_registration(binary, retry_uids=None, *, descriptors=None):
+def cleanup_accounts(retry_uids=None):
+    return [account for account in pwd.getpwall()
+            if account.pw_uid != 0 and account.pw_dir.startswith('/')
+            and (retry_uids is None or account.pw_uid in retry_uids)]
+
+
+def cleanup_erased_registration(binary, accounts=None, *, authorization=None):
     # Run the verified old CLI from an open descriptor under each owning UID.
     # The transaction root never reads or unlinks a user's home directory.
-    accounts = [account for account in pwd.getpwall()
-                if account.pw_uid != 0 and account.pw_dir.startswith('/')
-                and (retry_uids is None or account.pw_uid in retry_uids)]
+    if accounts is None:
+        accounts = cleanup_accounts()
     pending = set()
-    descriptors = descriptors or {}
-    pass_fds = (binary, *descriptors.values())
-    descriptor_env = {name: str(fd) for name, fd in descriptors.items()}
     deadline = time.monotonic() + 30
     for index, account in enumerate(accounts):
         runtime = f'/run/user/{account.pw_uid}'
@@ -261,14 +264,17 @@ def cleanup_erased_registration(binary, retry_uids=None, *, descriptors=None):
             pending.update(account.pw_uid for account in accounts[index:])
             break
         try:
-            result = subprocess.run(
-                [f'/proc/self/fd/{binary}', f'{MANAGER}-erase-user-registration'],
-                user=account.pw_uid, group=account.pw_gid, extra_groups=[],
-                cwd='/', pass_fds=pass_fds, timeout=remaining,
-                env={'HOME': account.pw_dir, 'PATH': '/usr/bin', 'LC_ALL': 'C',
-                     'XDG_RUNTIME_DIR': runtime, 'DBUS_SESSION_BUS_ADDRESS': f'unix:path={runtime}/bus',
-                     **descriptor_env},
-                check=False)
+            admission = (authorization(account.pw_uid) if authorization is not None
+                         else contextlib.nullcontext({}))
+            with admission as descriptors:
+                result = subprocess.run(
+                    [f'/proc/self/fd/{binary}', f'{MANAGER}-erase-user-registration'],
+                    user=account.pw_uid, group=account.pw_gid, extra_groups=[],
+                    cwd='/', pass_fds=(binary, *descriptors.values()), timeout=remaining,
+                    env={'HOME': account.pw_dir, 'PATH': '/usr/bin', 'LC_ALL': 'C',
+                         'XDG_RUNTIME_DIR': runtime, 'DBUS_SESSION_BUS_ADDRESS': f'unix:path={runtime}/bus',
+                         **{name: str(fd) for name, fd in descriptors.items()}},
+                    check=False)
             if result.returncode:
                 pending.add(account.pw_uid)
                 report_erase_failure(account.pw_uid)

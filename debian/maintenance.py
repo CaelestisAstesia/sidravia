@@ -1,7 +1,7 @@
 """dpkg callbacks, embedded together with the shared Linux maintenance actions."""
-import contextlib
 import hashlib
 import json
+import socket
 import sys
 import tempfile
 
@@ -85,7 +85,7 @@ def transaction_gate():
                     for leftover in directory.glob(f'.{name}-*'):
                         trusted(leftover, stat.S_ISREG)
                         remove_state_file(leftover)
-        yield fd
+        yield
     finally:
         os.close(fd)
 
@@ -298,12 +298,31 @@ def remove_empty_directory(path):
         pass
 
 
+@contextlib.contextmanager
+def authorize_erase(uid, state):
+    # The caller retains the root-only journal and its exclusive maintenance
+    # flock. The child learns only the package identity and its own allowlist
+    # decision from a fresh socket created by this root parent.
+    info = trusted(JOURNAL, stat.S_ISREG)
+    if (stat.S_IMODE(info.st_mode) != 0o600 or load_state() != state
+            or state['package'] != DEB_PACKAGE or state['action'] != 'remove'
+            or state['phase'] != 'quiesced' or uid not in state['cleanupUIDs']):
+        raise RuntimeError('user integration cleanup lacks an active Debian authorization')
+    server, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    with server, child:
+        message = f'sidravia-deb-erase-v1\0{DEB_PACKAGE}\0{uid}\0'.encode('ascii')
+        if server.send(message) != len(message):
+            raise RuntimeError('user integration cleanup authorization could not be sent')
+        server.shutdown(socket.SHUT_WR)
+        yield {'SIDRAVIA_DEB_ERASE_AUTH_FD': child.fileno()}
+
+
 def finish_remove(action):
     # The old binary package's postrm may survive alongside a configured
     # conflicting variant. Its purge must leave the other variant's lock intact.
     if not STATE.exists():
         return
-    with transaction_gate() as lease:
+    with transaction_gate():
         state = load_state()
         if state and state['package'] != DEB_PACKAGE:
             return
@@ -325,13 +344,12 @@ def finish_remove(action):
                         if hashlib.file_digest(binary, 'sha256').hexdigest() != DEB_FILES['sidraviactl'][1]:
                             raise RuntimeError('Debian cleanup program differs from its package manifest')
                     retry = state.get('cleanupUIDs')
-                    journal = os.open(JOURNAL, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-                    try:
-                        pending = cleanup_erased_registration(fd, set(retry) if retry is not None else None,
-                            descriptors={'SIDRAVIA_DEB_ERASE_JOURNAL_FD': journal,
-                                         'SIDRAVIA_DEB_ERASE_LOCK_FD': lease})
-                    finally:
-                        os.close(journal)
+                    accounts = cleanup_accounts(set(retry) if retry is not None else None)
+                    if retry is None:
+                        state['cleanupUIDs'] = sorted({account.pw_uid for account in accounts})
+                        save_state(state)
+                    pending = cleanup_erased_registration(fd, accounts,
+                                                          authorization=lambda uid: authorize_erase(uid, state))
                     if pending:
                         state['cleanupUIDs'] = sorted(pending)
                         save_state(state)

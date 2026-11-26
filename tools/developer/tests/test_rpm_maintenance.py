@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ if sys.platform == 'linux':
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE = ROOT / 'packaging/linux/rpm_maintenance.py'
+DEBIAN_CALLBACKS = ROOT / 'debian/maintenance.py'
 
 
 def load():
@@ -37,17 +39,36 @@ class MaintenanceContracts(unittest.TestCase):
             args, options = child.call_args
             self.assertEqual(args[0], ['/proc/self/fd/10', 'rpm-erase-user-registration'])
             self.assertEqual(options['pass_fds'], (10,))
-            self.assertNotIn('SIDRAVIA_DEB_ERASE_JOURNAL_FD', options['env'])
+            self.assertNotIn('SIDRAVIA_DEB_ERASE_AUTH_FD', options['env'])
 
             m.MANAGER = 'deb'
-            descriptors = {'SIDRAVIA_DEB_ERASE_JOURNAL_FD': 11, 'SIDRAVIA_DEB_ERASE_LOCK_FD': 12}
-            self.assertEqual(m.cleanup_erased_registration(10, {1000}, descriptors=descriptors), set())
+            authorization = mock.Mock(return_value=contextlib.nullcontext({'SIDRAVIA_DEB_ERASE_AUTH_FD': 11}))
+            self.assertEqual(m.cleanup_erased_registration(10, [account], authorization=authorization), set())
+            authorization.assert_called_once_with(account.pw_uid)
             args, options = child.call_args
             self.assertEqual(args[0], ['/proc/self/fd/10', 'deb-erase-user-registration'])
-            self.assertEqual(options['pass_fds'], (10, 11, 12))
+            self.assertEqual(options['pass_fds'], (10, 11))
             self.assertEqual(options['user'], account.pw_uid)
-            self.assertEqual({name: options['env'][name] for name in descriptors},
-                             {name: str(fd) for name, fd in descriptors.items()})
+            self.assertEqual(options['env']['SIDRAVIA_DEB_ERASE_AUTH_FD'], '11')
+
+    def test_debian_erase_authorization_is_one_packet_for_one_pending_uid(self):
+        m = load()
+        exec(compile(DEBIAN_CALLBACKS.read_text(), str(DEBIAN_CALLBACKS), 'exec'), vars(m))
+        m.DEB_PACKAGE = 'sidravia-core'
+        state = {'package': m.DEB_PACKAGE, 'action': 'remove', 'phase': 'quiesced', 'cleanupUIDs': [1000, 1001]}
+        with mock.patch.object(m, 'trusted', return_value=SimpleNamespace(st_mode=0o100600)), \
+                mock.patch.object(m, 'load_state', return_value=state):
+            with m.authorize_erase(1000, state) as descriptors:
+                self.assertEqual(set(descriptors), {'SIDRAVIA_DEB_ERASE_AUTH_FD'})
+                fd = descriptors['SIDRAVIA_DEB_ERASE_AUTH_FD']
+                with socket.socket(fileno=os.dup(fd)) as peer:
+                    peer.settimeout(1)
+                    self.assertEqual(peer.type, socket.SOCK_SEQPACKET)
+                    self.assertEqual(peer.recv(256), b'sidravia-deb-erase-v1\0sidravia-core\0' + b'1000\0')
+                    self.assertEqual(peer.recv(256), b'')
+            with self.assertRaisesRegex(RuntimeError, 'lacks an active Debian authorization'):
+                with m.authorize_erase(1002, state):
+                    self.fail('non-pending account received a socket')
 
     def test_core_payload_allows_missing_gui_only_with_exact_marker(self):
         m = load()
