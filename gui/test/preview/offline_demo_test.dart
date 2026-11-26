@@ -41,14 +41,14 @@ void main() {
     final point = tester.getCenter(find.byTooltip('最小化'));
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('关于 Sidravia'));
-    await tester.tap(find.text('关于 Sidravia'));
+    await tester.ensureVisible(find.text('许可信息'));
+    await tester.tap(find.text('许可信息'));
     await tester.pumpAndSettle();
-    expect(find.text('许可'), findsOneWidget);
+    expect(find.text('开源许可'), findsOneWidget);
     await tester.tapAt(point);
     await tester.pumpAndSettle();
     expect(calls, isNot(contains('minimize')));
-    expect(find.text('许可'), findsNothing);
+    expect(find.text('开源许可'), findsNothing);
     await tester.tapAt(point);
     await tester.pumpAndSettle();
     expect(calls.where((call) => call == 'minimize'), hasLength(1));

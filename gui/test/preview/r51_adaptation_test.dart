@@ -197,12 +197,9 @@ void main() {
       expect(position.pixels, greaterThan(0));
       expect(find.byType(Scrollbar), findsNothing);
       expect(find.byType(RawScrollbar), findsNothing);
-      await tester.ensureVisible(find.text('关于 Sidravia'));
+      await tester.ensureVisible(find.text('项目地址'));
       await tester.pumpAndSettle();
-      expect(
-        tester.getRect(find.text('关于 Sidravia')).bottom,
-        lessThanOrEqualTo(220),
-      );
+      expect(tester.getRect(find.text('项目地址')).bottom, lessThanOrEqualTo(220));
       await tester.pumpWidget(const SizedBox.shrink());
       controller.dispose();
       client.dispose();

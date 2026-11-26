@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/features/settings/about_dialog.dart';
+import 'package:sidravia_gui/features/settings/project_settings.dart';
 import 'package:sidravia_gui/shared/widgets/design_widgets.dart';
 import 'package:sidravia_gui/shared/widgets/feedback_pill.dart';
 
@@ -87,9 +87,7 @@ void main() {
       expect(find.text('修改已保存'), findsOneWidget);
     },
   );
-  testWidgets('about and license detail return through each nested dialog', (
-    tester,
-  ) async {
+  testWidgets('license detail returns to the settings rows', (tester) async {
     LicenseRegistry.addLicense(
       () => Stream.value(
         const LicenseEntryWithLineBreaks([
@@ -101,18 +99,15 @@ void main() {
       MaterialApp(
         home: Builder(
           builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => showSidraviaAbout(context, version: '1.2.3'),
-              child: const Text('打开关于'),
+            body: Column(
+              children: projectSettingsRows(context, version: '1.2.3'),
             ),
           ),
         ),
       ),
     );
-    await tester.tap(find.text('打开关于'));
-    await tester.pumpAndSettle();
     expect(find.text('1.2.3'), findsOneWidget);
-    await tester.tap(find.text('许可'));
+    await tester.tap(find.text('许可信息'));
     await tester.pumpAndSettle();
     expect(find.text('开源许可'), findsOneWidget);
     await tester.tap(find.text('field-ui-test-package'));
@@ -124,9 +119,7 @@ void main() {
     expect(find.text('开源许可'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('design-back-button')).last);
     await tester.pumpAndSettle();
-    expect(find.text('关于 Sidravia'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('design-back-button')).last);
-    await tester.pumpAndSettle();
+    expect(find.text('软件版本'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
     expect(tester.takeException(), isNull);
   });

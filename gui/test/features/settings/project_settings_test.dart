@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sidravia_gui/features/settings/about_dialog.dart';
+import 'package:sidravia_gui/features/settings/project_settings.dart';
 
 void main() {
   const channel = MethodChannel('sidravia/window');
@@ -24,29 +24,24 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showSidraviaAbout(context, version: 'test'),
-                child: const Text('关于'),
+              builder: (context) => Column(
+                children: projectSettingsRows(context, version: '1.2.3'),
               ),
             ),
           ),
         ),
       );
-      await tester.tap(find.text('关于'));
-      await tester.pumpAndSettle();
-      expect(find.text('Sidravia 网络认证客户端'), findsOneWidget);
-      expect(find.text('Sidravia 校园网客户端'), findsNothing);
+      expect(find.text('软件版本'), findsOneWidget);
+      expect(find.text('1.2.3'), findsOneWidget);
+      expect(find.text('许可信息'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
       expect(calls, isEmpty);
-      expect(
-        tester.widget<SelectableText>(find.byType(SelectableText)).onTap,
-        isNotNull,
-      );
-      await tester.tap(find.text(address));
+      await tester.tap(find.text('项目地址'));
       await tester.pumpAndSettle();
       expect(calls.single.method, 'openProjectPage');
       expect(calls.single.arguments, isNull);
       expect(
-        find.text('无法打开浏览器，请选择并复制项目地址后访问。'),
+        find.text('无法打开浏览器\n$address'),
         outcome == 'opened' ? findsNothing : findsOneWidget,
       );
       expect(tester.takeException(), isNull);

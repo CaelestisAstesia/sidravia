@@ -1,6 +1,6 @@
 import 'package:sidravia_gui/shared/theme/design_metrics.dart';
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
-import 'package:sidravia_gui/features/settings/about_dialog.dart';
+import 'package:sidravia_gui/features/settings/project_settings.dart';
 import 'package:sidravia_gui/shared/widgets/core_restart_dialog.dart';
 import 'package:sidravia_gui/shared/widgets/insecure_storage_confirmation.dart';
 import 'package:flutter/material.dart';
@@ -207,13 +207,9 @@ class SettingsPage extends StatelessWidget {
               onTap: () => onNavigate(AppPage.diagnostics),
             ),
             ?update,
-            DesignRow(
-              title: '关于 Sidravia',
-              subtitle: '版本、许可与项目链接',
-              onTap: () => showSidraviaAbout(
-                context,
-                version: controller.snapshot?.daemon.productVersion ?? '暂不可用',
-              ),
+            ...projectSettingsRows(
+              context,
+              version: controller.snapshot?.daemon.productVersion ?? '暂不可用',
             ),
           ],
         ),

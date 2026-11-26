@@ -86,6 +86,9 @@ void main() {
           call,
         ) async {
           if (call.method == 'configureFrame') return {'customFrame': true};
+          if (call.method == 'openProjectPage') {
+            throw PlatformException(code: 'project_page_open_failed');
+          }
           return null;
         });
     await fonts.loadCaptureFonts(forCapture: true);
@@ -190,12 +193,14 @@ void main() {
           await shot(t, '$prefix-12-settings-menu');
           await t.sendKeyEvent(LogicalKeyboardKey.escape);
           await t.pumpAndSettle();
-          await t.ensureVisible(find.text('关于 Sidravia'));
+          await t.ensureVisible(find.text('项目地址'));
           await t.pumpAndSettle();
           await shot(t, '$prefix-13-settings-bottom');
-          await tap(t, find.text('关于 Sidravia'));
-          await shot(t, '$prefix-14-about');
-          await tap(t, find.text('许可'));
+          await tap(t, find.text('项目地址'));
+          await shot(t, '$prefix-14-project-link-failure');
+          await t.pump(const Duration(seconds: 5));
+          await t.pumpAndSettle();
+          await tap(t, find.text('许可信息'));
           await shot(t, '$prefix-15-licenses');
           await t.enterText(find.byType(TextField).last, 'not-a-component');
           await t.pumpAndSettle();
@@ -204,7 +209,6 @@ void main() {
           await t.pumpAndSettle();
           await tap(t, find.text('Flutter'));
           await shot(t, '$prefix-16-license-detail');
-          await back(t);
           await back(t);
           await back(t);
           await tap(t, find.text('连接与诊断'));
