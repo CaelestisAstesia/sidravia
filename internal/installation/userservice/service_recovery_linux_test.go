@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package userservice
 
 import (
 	"context"
@@ -8,8 +8,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sidravia/internal/installation/userservice/registration"
 	"testing"
+
+	"sidravia/internal/installation/userservice/registration"
 )
 
 func TestSocketListening(t *testing.T) {

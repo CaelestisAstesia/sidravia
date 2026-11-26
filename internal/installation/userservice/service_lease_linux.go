@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package userservice
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"sidravia/internal/installation/internal/integrationfile"
 	"sidravia/internal/installation/userservice/registration"
 	productlayout "sidravia/internal/installation/layout"
 )
@@ -75,8 +76,8 @@ func openServiceLease(path string) (*serviceLease, error) {
 		return nil, errors.Join(ErrServiceConflict, err, unix.Close(fd))
 	}
 	for _, scratch := range []string{path + ".sidravia-tmp", switchPath(path) + ".sidravia-tmp"} {
-		if err := clearRegistrationScratch(scratch); err != nil {
-			return nil, errors.Join(err, unix.Close(fd))
+		if err := integrationfile.ClearScratch(scratch); err != nil {
+			return nil, errors.Join(registrationFileError(err), unix.Close(fd))
 		}
 	}
 	return &serviceLease{unit: path, fd: fd}, nil

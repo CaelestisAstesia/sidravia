@@ -1,4 +1,4 @@
-package installationmanager
+package shellintegration
 
 import (
 	"errors"

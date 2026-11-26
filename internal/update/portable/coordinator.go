@@ -13,7 +13,8 @@ import (
 
 	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/installationmanager"
+
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/update/transaction"
 )
@@ -71,7 +72,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	}
 	defer peer.close()
 	if ns.IsProduction() {
-		registered, found, err := installationmanager.RegisteredService()
+		registered, found, err := registration.Lookup()
 		if err != nil {
 			return err
 		}

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/shellintegration"
 )
 
 var ProductVersion = "0.5.0-alpha.1"
@@ -16,9 +16,9 @@ var BuildID = "dev"
 
 const usage = "sidraviamgr: status [--directory absolute-path] | path enable | path disable | autostart set gui | autostart set daemon | autostart disable\nResults: UTF-8 JSON version 1. Exit codes: 0 success, 1 operation failed, 2 invalid arguments.\nOnly current-user PATH and login startup are managed here. Installation, upgrade, uninstall and data cleanup belong to the installer.\n"
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Executable, installationmanager.Run)) }
+func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Executable, shellintegration.Run)) }
 
-func run(args []string, out io.Writer, executable func() (string, error), execute func(string, installationmanager.Operation) (installationmanager.Result, error)) int {
+func run(args []string, out io.Writer, executable func() (string, error), execute func(string, shellintegration.Operation) (shellintegration.Result, error)) int {
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help")) {
 		if _, err := io.WriteString(out, usage); err != nil {
 			return 1
@@ -30,29 +30,29 @@ func run(args []string, out io.Writer, executable func() (string, error), execut
 		queryDirectory = filepath.Clean(args[2])
 		args = args[:1]
 	}
-	var operation installationmanager.Operation
+	var operation shellintegration.Operation
 	if len(args) == 1 && args[0] == "status" {
-		operation = installationmanager.Status
+		operation = shellintegration.Status
 	} else if len(args) == 2 && args[0] == "path" && args[1] == "enable" {
-		operation = installationmanager.EnablePath
+		operation = shellintegration.EnablePath
 	} else if len(args) == 2 && args[0] == "path" && args[1] == "disable" {
-		operation = installationmanager.DisablePath
+		operation = shellintegration.DisablePath
 	} else if len(args) == 2 && args[0] == "autostart" && args[1] == "disable" {
-		operation = installationmanager.DisableAutostart
+		operation = shellintegration.DisableAutostart
 	} else if len(args) == 3 && args[0] == "autostart" && args[1] == "set" && args[2] == "gui" {
-		operation = installationmanager.StartGUI
+		operation = shellintegration.StartGUI
 	} else if len(args) == 3 && args[0] == "autostart" && args[1] == "set" && args[2] == "daemon" {
-		operation = installationmanager.StartDaemon
+		operation = shellintegration.StartDaemon
 
 	}
-	write := func(r installationmanager.Result, code int) int {
+	write := func(r shellintegration.Result, code int) int {
 		if err := json.NewEncoder(out).Encode(r); err != nil {
 			return 1
 		}
 		return code
 	}
 	if operation == "" {
-		return write(installationmanager.Result{Version: 1, Code: "invalid_arguments", Capabilities: []string{}}, 2)
+		return write(shellintegration.Result{Version: 1, Code: "invalid_arguments", Capabilities: []string{}}, 2)
 	}
 	path := filepath.Join(queryDirectory, "sidraviamgr.exe")
 	var err error
@@ -60,15 +60,15 @@ func run(args []string, out io.Writer, executable func() (string, error), execut
 		path, err = executable()
 	}
 	if err != nil {
-		return write(installationmanager.Result{Version: 1, Code: "executable_path_failed", Capabilities: []string{}}, 1)
+		return write(shellintegration.Result{Version: 1, Code: "executable_path_failed", Capabilities: []string{}}, 1)
 	}
 	if !filepath.IsAbs(path) {
-		return write(installationmanager.Result{Version: 1, Code: "executable_path_failed", Capabilities: []string{}}, 1)
+		return write(shellintegration.Result{Version: 1, Code: "executable_path_failed", Capabilities: []string{}}, 1)
 	}
 	r, err := execute(filepath.Dir(path), operation)
 	if err != nil {
 		r.OK = false
-		r.Code = installationmanager.Code(err)
+		r.Code = shellintegration.Code(err)
 		return write(r, 1)
 	}
 	if !r.OK {

@@ -14,31 +14,33 @@ import (
 	"sidravia/internal/background/maintenance"
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/installationmanager"
+
+	"sidravia/internal/installation/userservice"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/update/transaction"
 )
 
 var ErrRolledBack = errors.New("managed portable update was rolled back")
 
-func executeManaged(ctx context.Context, input Execution, record transaction.Record, layout, registration productlayout.Layout, peer *applicationPeer) error {
-	return installationmanager.WithServiceRegistration(ctx, func(lease *installationmanager.RegistrationLease) error {
-		return executeManagedWithRegistration(ctx, lease, input, record, layout, registration, peer)
+func executeManaged(ctx context.Context, input Execution, record transaction.Record, layout, registeredLayout productlayout.Layout, peer *applicationPeer) error {
+	return userservice.WithServiceRegistration(ctx, func(lease *userservice.RegistrationLease) error {
+		return executeManagedWithRegistration(ctx, lease, input, record, layout, registeredLayout, peer)
 	})
 }
 
-func executeManagedWithRegistration(ctx context.Context, lease *installationmanager.RegistrationLease, input Execution, record transaction.Record, layout, registration productlayout.Layout, peer *applicationPeer) (resultErr error) {
-	actual, found, err := installationmanager.RegisteredService()
-	if err != nil || !found || actual != registration {
+func executeManagedWithRegistration(ctx context.Context, lease *userservice.RegistrationLease, input Execution, record transaction.Record, layout, registeredLayout productlayout.Layout, peer *applicationPeer) (resultErr error) {
+	actual, found, err := registration.Lookup()
+	if err != nil || !found || actual != registeredLayout {
 		return errors.Join(ErrChanged, err)
 	}
 	cache, err := os.UserCacheDir()
-	if err != nil || registration.Mode != productlayout.ModePortable ||
-		registration.ServiceCacheRoot != filepath.Clean(cache) ||
-		registration.RuntimeInfoPath != layout.RuntimeInfoPath {
+	if err != nil || registeredLayout.Mode != productlayout.ModePortable ||
+		registeredLayout.ServiceCacheRoot != filepath.Clean(cache) ||
+		registeredLayout.RuntimeInfoPath != layout.RuntimeInfoPath {
 		return errors.Join(ErrChanged, err)
 	}
-	service := func(ctx context.Context, action string, ready func(context.Context, productlayout.Layout) error) (installationmanager.ServiceState, error) {
+	service := func(ctx context.Context, action string, ready func(context.Context, productlayout.Layout) error) (userservice.ServiceState, error) {
 		return lease.Service(ctx, action, layout, ready)
 	}
 	before, err := service(ctx, "status", nil)
@@ -220,7 +222,7 @@ func executeManagedWithRegistration(ctx context.Context, lease *installationmana
 	return err
 }
 
-func startManagedService(ctx context.Context, lease *installationmanager.RegistrationLease, layout productlayout.Layout, target change.Target, restore bool) error {
+func startManagedService(ctx context.Context, lease *userservice.RegistrationLease, layout productlayout.Layout, target change.Target, restore bool) error {
 	action := "start"
 	if restore {
 		action = "recover-start"

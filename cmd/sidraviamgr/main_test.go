@@ -8,21 +8,21 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/shellintegration"
 )
 
 func TestArgumentsAndJSON(t *testing.T) {
 	for _, tc := range []struct {
 		args []string
-		op   installationmanager.Operation
+		op   shellintegration.Operation
 		exit int
 	}{
-		{[]string{"status"}, installationmanager.Status, 0},
-		{[]string{"path", "enable"}, installationmanager.EnablePath, 0},
-		{[]string{"path", "disable"}, installationmanager.DisablePath, 0},
-		{[]string{"autostart", "set", "gui"}, installationmanager.StartGUI, 0},
-		{[]string{"autostart", "set", "daemon"}, installationmanager.StartDaemon, 0},
-		{[]string{"autostart", "disable"}, installationmanager.DisableAutostart, 0},
+		{[]string{"status"}, shellintegration.Status, 0},
+		{[]string{"path", "enable"}, shellintegration.EnablePath, 0},
+		{[]string{"path", "disable"}, shellintegration.DisablePath, 0},
+		{[]string{"autostart", "set", "gui"}, shellintegration.StartGUI, 0},
+		{[]string{"autostart", "set", "daemon"}, shellintegration.StartDaemon, 0},
+		{[]string{"autostart", "disable"}, shellintegration.DisableAutostart, 0},
 		{[]string{"uninstall-prepare"}, "", 2},
 		{[]string{"uninstall-check"}, "", 2},
 		{[]string{"data", "delete"}, "", 2},
@@ -34,17 +34,17 @@ func TestArgumentsAndJSON(t *testing.T) {
 			calls := 0
 			resolved := false
 			exe := filepath.Join(t.TempDir(), "中文 directory", "sidraviamgr")
-			code := run(tc.args, &out, func() (string, error) { resolved = true; return exe, nil }, func(dir string, op installationmanager.Operation) (installationmanager.Result, error) {
+			code := run(tc.args, &out, func() (string, error) { resolved = true; return exe, nil }, func(dir string, op shellintegration.Operation) (shellintegration.Result, error) {
 				calls++
 				if dir != filepath.Dir(exe) || op != tc.op {
 					t.Fatal("wrong dispatch")
 				}
-				return installationmanager.Result{Version: 1, OK: true, Code: "ok", Capabilities: []string{"user_path"}, Directory: dir}, nil
+				return shellintegration.Result{Version: 1, OK: true, Code: "ok", Capabilities: []string{"user_path"}, Directory: dir}, nil
 			})
 			if code != tc.exit {
 				t.Fatalf("exit=%d", code)
 			}
-			var result installationmanager.Result
+			var result shellintegration.Result
 			if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.Version != 1 {
 				t.Fatalf("JSON %s %v", out.Bytes(), err)
 			}
@@ -62,8 +62,8 @@ func TestHelpAndSafeFailure(t *testing.T) {
 		}
 	}
 	var out bytes.Buffer
-	code := run([]string{"status"}, &out, func() (string, error) { return filepath.Join(t.TempDir(), "mgr"), nil }, func(string, installationmanager.Operation) (installationmanager.Result, error) {
-		return installationmanager.Result{Version: 1, Capabilities: []string{}}, &installationmanager.Failure{Code: "path_read_failed", Cause: errors.New("SECRET native path")}
+	code := run([]string{"status"}, &out, func() (string, error) { return filepath.Join(t.TempDir(), "mgr"), nil }, func(string, shellintegration.Operation) (shellintegration.Result, error) {
+		return shellintegration.Result{Version: 1, Capabilities: []string{}}, &shellintegration.Failure{Code: "path_read_failed", Cause: errors.New("SECRET native path")}
 	})
 	if code != 1 || strings.Contains(out.String(), "SECRET") || !strings.Contains(out.String(), "path_read_failed") {
 		t.Fatalf("%d %s", code, out.String())
@@ -73,21 +73,21 @@ func TestHelpAndSafeFailure(t *testing.T) {
 func TestStatusDirectoryIsReadOnlyAndUsesSameJSON(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer
-	code := run([]string{"status", "--directory", dir}, &out, func() (string, error) { t.Fatal("must use query context"); return "", nil }, func(got string, op installationmanager.Operation) (installationmanager.Result, error) {
-		if got != dir || op != installationmanager.Status {
+	code := run([]string{"status", "--directory", dir}, &out, func() (string, error) { t.Fatal("must use query context"); return "", nil }, func(got string, op shellintegration.Operation) (shellintegration.Result, error) {
+		if got != dir || op != shellintegration.Status {
 			t.Fatal("wrong query")
 		}
-		return installationmanager.Result{Version: 1, OK: true, Code: "ok", Capabilities: []string{"user_path", "user_autostart"}, Autostart: "daemon"}, nil
+		return shellintegration.Result{Version: 1, OK: true, Code: "ok", Capabilities: []string{"user_path", "user_autostart"}, Autostart: "daemon"}, nil
 	})
-	var result installationmanager.Result
+	var result shellintegration.Result
 	if code != 0 || json.Unmarshal(out.Bytes(), &result) != nil || result.Autostart != "daemon" {
 		t.Fatal("status contract changed")
 	}
 	for _, args := range [][]string{{"status", "--directory", "relative"}, {"path", "enable", "--directory", dir}, {"--setup-state", dir}} {
 		out.Reset()
-		if run(args, &out, nil, func(string, installationmanager.Operation) (installationmanager.Result, error) {
+		if run(args, &out, nil, func(string, shellintegration.Operation) (shellintegration.Result, error) {
 			t.Fatal("invalid query/write ran")
-			return installationmanager.Result{}, nil
+			return shellintegration.Result{}, nil
 		}) != 2 {
 			t.Fatal("invalid arguments accepted")
 		}

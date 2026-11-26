@@ -6,10 +6,10 @@ import (
 	"context"
 	"errors"
 	"time"
-
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/userservice"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/update/transaction"
 )
 
@@ -31,13 +31,13 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 	if record.Phase == transaction.Completed || record.Phase == transaction.Aborted {
 		return cleanRollbackSnapshot(record, nil)
 	}
-	return installationmanager.WithServiceRegistration(ctx, func(lease *installationmanager.RegistrationLease) error {
+	return userservice.WithServiceRegistration(ctx, func(lease *userservice.RegistrationLease) error {
 		return recoverManagedServiceWithRegistration(ctx, lease, store, id, target, record)
 	})
 }
 
-func recoverManagedServiceWithRegistration(ctx context.Context, lease *installationmanager.RegistrationLease, store *transaction.Store, id, target string, record transaction.Record) (resultErr error) {
-	layout, found, err := installationmanager.RegisteredService()
+func recoverManagedServiceWithRegistration(ctx context.Context, lease *userservice.RegistrationLease, store *transaction.Store, id, target string, record transaction.Record) (resultErr error) {
+	layout, found, err := registration.Lookup()
 	if err != nil || !found || layout.ExecutableDirectory != target || layout.Mode != productlayout.ModePortable {
 		return errors.Join(ErrChanged, err)
 	}

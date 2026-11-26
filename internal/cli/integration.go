@@ -12,7 +12,8 @@ import (
 
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/serviceswitch"
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/shellintegration"
+	"sidravia/internal/installation/userservice"
 )
 
 type integrationOperationError struct {
@@ -37,7 +38,7 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 				}
 				return errors.New("维护工具返回了空结果。")
 			}
-			var r installationmanager.Result
+			var r shellintegration.Result
 			if err := json.Unmarshal(data, &r); err != nil || r.Version != 1 || r.Code == "" {
 				return integrationFailure("维护工具返回了无效结果。", err)
 			}
@@ -71,7 +72,7 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 			var interrupt bool
 			changesMode := action == "takeover" || action == "release" || action == "recover" || action == "discard" || action == "discard-damaged"
 			command := &cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-				var state installationmanager.ServiceState
+				var state userservice.ServiceState
 				var err error
 				if changesMode {
 					state, err = serviceswitch.SwitchService(cmd.Context(), identities[0], action, owner, interrupt)
@@ -84,15 +85,15 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 				if err != nil {
 					message := "用户服务操作失败，请刷新并检查实际状态。"
 					switch {
-					case errors.Is(err, installationmanager.ErrServiceJournalDamaged):
+					case errors.Is(err, userservice.ErrServiceJournalDamaged):
 						message = "切换记录已损坏，无法自动恢复。确认放弃后运行 sidraviactl integration service discard-damaged --yes 清除记录。"
-					case errors.Is(err, installationmanager.ErrServiceJournal):
+					case errors.Is(err, userservice.ErrServiceJournal):
 						message = "无法读取或确认切换记录，请检查状态和用户服务目录后重试。"
-					case errors.Is(err, installationmanager.ErrServiceRecovery):
+					case errors.Is(err, userservice.ErrServiceRecovery):
 						message = "后台管理切换需要恢复，请运行 sidraviactl integration service recover。"
-					case errors.Is(err, installationmanager.ErrServiceStop):
+					case errors.Is(err, userservice.ErrServiceStop):
 						message = "后台未正常退出。请检查用户服务的实际状态和日志。"
-					case errors.Is(err, installationmanager.ErrServiceConflict), errors.Is(err, daemonctl.ErrModeConflict):
+					case errors.Is(err, userservice.ErrServiceConflict), errors.Is(err, daemonctl.ErrModeConflict):
 						message = "用户服务状态或运行身份冲突，请检查原后台状态后再重试。"
 					}
 					return wrapCommandOperation(integrationFailure(message, err))

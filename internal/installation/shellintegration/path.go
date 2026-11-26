@@ -1,5 +1,5 @@
 // Package installationmanager owns short-lived operating-system integration operations.
-package installationmanager
+package shellintegration
 
 import (
 	"errors"

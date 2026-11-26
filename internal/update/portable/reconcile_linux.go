@@ -8,11 +8,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"time"
-
-	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/userservice"
+	"sidravia/internal/installation/userservice/registration"
+	"time"
+	"sidravia/internal/installation/change"
 	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/release"
 	"sidravia/internal/update/transaction"
@@ -129,8 +129,8 @@ func recoverManagedPreparation(ctx context.Context, store *transaction.Store, re
 		return err
 	}
 	defer unlock()
-	return installationmanager.WithServiceRegistration(ctx, func(lease *installationmanager.RegistrationLease) error {
-		layout, found, err := installationmanager.RegisteredService()
+	return userservice.WithServiceRegistration(ctx, func(lease *userservice.RegistrationLease) error {
+		layout, found, err := registration.Lookup()
 		if err != nil || !found || layout.Mode != productlayout.ModePortable || layout.ExecutableDirectory != record.Source.ID {
 			return errors.Join(ErrChanged, err)
 		}

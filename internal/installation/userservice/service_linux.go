@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package userservice
 
 import (
 	"bytes"
@@ -12,12 +12,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"sidravia/internal/background/userlease"
+	"sidravia/internal/installation/internal/integrationfile"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installation/userservice/registration"
 )
@@ -136,46 +134,6 @@ func hasCustomDropIns(paths string) bool {
 		}
 	}
 	return false
-}
-
-func clearRegistrationScratch(path string) error {
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 ||
-		!info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-		return ErrServiceConflict
-	}
-	return os.Remove(path)
-}
-
-func saveUnit(path string, contents []byte) error {
-	staging := path + ".sidravia-tmp"
-	if err := clearRegistrationScratch(staging); err != nil {
-		return err
-	}
-	if contents == nil {
-		err := os.Remove(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	file, err := os.OpenFile(staging, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, 0600)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(staging)
-	_, writeErr := file.Write(contents)
-	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
-		return err
-	}
-	return os.Rename(staging, path)
 }
 
 func userService(ctx context.Context, action string, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (state ServiceState, resultErr error) {
@@ -353,8 +311,8 @@ func applyService(ctx context.Context, path, action string, layout productlayout
 
 func replaceRegistration(ctx context.Context, path string, before ServiceState, oldLayout productlayout.Layout, oldData, next []byte, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (resultErr error) {
 	apply := func(ctx context.Context, data []byte, enabled bool) error {
-		if err := saveUnit(path, data); err != nil {
-			return err
+		if err := integrationfile.Save(path, data); err != nil {
+			return registrationFileError(err)
 		}
 		if _, err := control(ctx, "daemon-reload"); err != nil {
 			return err
@@ -424,4 +382,11 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 		}
 	}
 	return nil
+}
+
+func registrationFileError(err error) error {
+	if errors.Is(err, integrationfile.ErrUnsafeScratch) {
+		return errors.Join(ErrServiceConflict, err)
+	}
+	return err
 }

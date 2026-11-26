@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package shellintegration
 
 import (
 	"encoding/hex"
@@ -22,7 +22,7 @@ const autostartStageMarker = ".sidravia-stage-v1"
 // The desktop writer reserves a unique path for each publication.
 // Its contents can be retired after a crash without reading the
 // partially written entry. Any unexpected object is kept intact.
-func recoverAutostartStaging(path string) error {
+func RecoverAutostartStaging(path string) error {
 	layout, err := productlayout.Resolve()
 	if err != nil {
 		return err
@@ -33,11 +33,11 @@ func recoverAutostartStaging(path string) error {
 	}
 	root, err := productlayout.LinuxUserConfigDir()
 	if err != nil || !filepath.IsAbs(root) {
-		return errors.Join(ErrServiceConflict, err)
+		return errors.Join(errRPMDesktopConflict, err)
 	}
 	parent := filepath.Join(filepath.Clean(root), "autostart")
 	if !autostartStageName(filepath.Base(path), prefix) || filepath.Join(parent, filepath.Base(path)) != path {
-		return ErrServiceConflict
+		return errRPMDesktopConflict
 	}
 	return removeAutostartStage(path)
 }
@@ -65,7 +65,7 @@ func removeAutostartStage(path string) error {
 		return err
 	}
 	if stat.Uid != uint32(os.Geteuid()) || stat.Mode&(unix.S_IFMT|07777) != unix.S_IFDIR|0700 {
-		return ErrServiceConflict
+		return errRPMDesktopConflict
 	}
 	dir, err := os.OpenRoot(path)
 	if err != nil {
@@ -77,7 +77,7 @@ func removeAutostartStage(path string) error {
 		return err
 	}
 	if native, ok := original.Sys().(*syscall.Stat_t); !ok || native.Ino != stat.Ino || native.Dev != stat.Dev {
-		return ErrServiceConflict
+		return errRPMDesktopConflict
 	}
 	handle, err := dir.Open(".")
 	if err != nil {
@@ -92,7 +92,7 @@ func removeAutostartStage(path string) error {
 	// atomically before the payload can identify a partial write as ours.
 	for _, entry := range entries {
 		if entry.Name() != "entry" && entry.Name() != autostartStageMarker {
-			return ErrServiceConflict
+			return errRPMDesktopConflict
 		}
 		info, err := dir.Lstat(entry.Name())
 		if entry.Name() == "entry" && errors.Is(err, os.ErrNotExist) {
@@ -103,11 +103,11 @@ func removeAutostartStage(path string) error {
 		}
 		fileStat, ok := info.Sys().(*syscall.Stat_t)
 		if !ok || !info.Mode().IsRegular() || fileStat.Uid != stat.Uid || fileStat.Nlink != 1 {
-			return ErrServiceConflict
+			return errRPMDesktopConflict
 		}
 		if entry.Name() == autostartStageMarker {
 			if info.Size() != 0 {
-				return ErrServiceConflict
+				return errRPMDesktopConflict
 			}
 			marker = true
 		} else {
@@ -116,7 +116,7 @@ func removeAutostartStage(path string) error {
 	}
 	if staged {
 		if !marker {
-			return ErrServiceConflict
+			return errRPMDesktopConflict
 		}
 		if err := dir.Remove("entry"); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -129,7 +129,7 @@ func removeAutostartStage(path string) error {
 	}
 	current, err := os.Lstat(path)
 	if err != nil || !os.SameFile(original, current) {
-		return errors.Join(ErrServiceConflict, err)
+		return errors.Join(errRPMDesktopConflict, err)
 	}
 	return os.Remove(path)
 }

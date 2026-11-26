@@ -1,6 +1,6 @@
 //go:build windows
 
-package installationmanager
+package shellintegration
 
 import (
 	"bytes"
