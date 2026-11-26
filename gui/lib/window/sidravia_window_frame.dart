@@ -230,7 +230,7 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
