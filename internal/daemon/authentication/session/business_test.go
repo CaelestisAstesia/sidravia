@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
 )
 
 type businessFactory struct{ *controlledFactory }

@@ -42,7 +42,7 @@ def run(root, packages, receipts, environment, source, current_source, *, dart):
     state = Path(env['XDG_CONFIG_HOME']) / 'Sidravia/namespaces' / namespace
     profiles = state / 'institution-profiles'
     profiles.mkdir(parents=True)
-    profile = json.loads((root / 'internal/daemon/configuration/profiles/jlu.json').read_text())
+    profile = json.loads((root / 'internal/connection/profile/data/jlu.json').read_text())
     profile.update(institutionProfileId='linux-loopback', displayName='RPM loopback fixture')
     profile.pop('announcement', None)
     profile['institutionProtocolConfiguration'].update(serverAddress='127.0.0.1', serverPort=9, localPort={'mode': 'system_assigned'})

@@ -7,11 +7,13 @@ import (
 	"reflect"
 	"testing"
 
+	d520description "sidravia/internal/connection/auth/d520"
+	d520 "sidravia/internal/connection/auth/d520/driver"
+	"sidravia/internal/connection/auth/protocol"
 	"sidravia/internal/connection/binding"
 	connectionconfig "sidravia/internal/connection/config"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/document"
@@ -24,8 +26,8 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 	missingProtocol := appTestProfile("missing-protocol")
 	missingProtocol.AuthenticationProtocolID = "unregistered"
 	d520Profile := appTestProfile("d520-profile")
-	d520Profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), missingProtocol, d520Profile})
+	d520Profile.AuthenticationProtocolID = d520description.ProtocolID
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), missingProtocol, d520Profile})
 	if err != nil {
 		t.Fatal(err)
 	}

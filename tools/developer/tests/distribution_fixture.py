@@ -30,7 +30,7 @@ class DistributionFixture:
 
         repo_files = (
             'LICENSE',
-            'internal/daemon/configuration/profiles/jlu.json',
+            'internal/connection/profile/data/jlu.json',
             'gui/windows/runner/resources/app_icon.ico',
         )
         for name in repo_files:
@@ -60,7 +60,7 @@ class DistributionFixture:
         contents = {
             'LICENSE': b'LICENSE',
             'sidravia.portable': b'',
-            'institution-profiles/jlu.json': b'internal/daemon/configuration/profiles/jlu.json',
+            'institution-profiles/jlu.json': b'internal/connection/profile/data/jlu.json',
             'BUILD-INFO.txt': (
                 f'ProductVersion: {VERSION}\nBuildID: {SHA}\n'
                 f'Target: {target}\nArtifactKind: distribution\n'

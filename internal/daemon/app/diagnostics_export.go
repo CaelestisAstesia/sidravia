@@ -8,11 +8,11 @@ import (
 	"runtime"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	"sidravia/internal/connection/binding"
 	connectionconfig "sidravia/internal/connection/config"
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
 )
 

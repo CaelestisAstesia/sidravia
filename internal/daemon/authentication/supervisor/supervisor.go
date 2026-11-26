@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	environment "sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	environment "sidravia/internal/daemon/environment"
 )
 
 // ID aliases session.AuthenticationSessionID for ergonomic supervisor API.

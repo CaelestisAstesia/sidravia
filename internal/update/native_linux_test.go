@@ -455,7 +455,7 @@ func nativeCLIUpdate(t *testing.T, useXZ bool) {
 	if err := os.MkdirAll(layout.InstitutionProfilesDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	profile, err := os.ReadFile(filepath.Join(repo, "internal/daemon/configuration/profiles/jlu.json"))
+	profile, err := os.ReadFile(filepath.Join(repo, "internal/connection/profile/data/jlu.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

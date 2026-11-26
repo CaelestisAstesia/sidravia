@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 
+	"sidravia/internal/connection/auth/protocol"
 	credential "sidravia/internal/connection/credential"
+	environment "sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
-	environment "sidravia/internal/daemon/environment"
 )
 
 type RuntimeDefinition struct {

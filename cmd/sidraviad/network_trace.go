@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 const networkTraceInterval = 30 * time.Second

@@ -105,7 +105,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			readTree(bundle)
 		}
 		// No announcement request or real campus endpoint is available to the fixture.
-		raw, e := os.ReadFile(filepath.Join(repo, "internal/daemon/configuration/profiles/jlu.json"))
+		raw, e := os.ReadFile(filepath.Join(repo, "internal/connection/profile/data/jlu.json"))
 		if e != nil {
 			t.Fatal(e)
 		}

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
-	environment "sidravia/internal/daemon/environment"
+	"sidravia/internal/connection/auth/protocol"
+	environment "sidravia/internal/connection/environment"
 )
 
 const (

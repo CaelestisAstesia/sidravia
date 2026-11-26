@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	connectionconfig "sidravia/internal/connection/config"
+	"sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/document/securefile"
 )
 
@@ -113,7 +114,7 @@ func newApplicationTestSetup(t *testing.T) *applicationTestSetup {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	if err != nil {
 		t.Fatal(err)
 	}

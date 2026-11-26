@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	environment "sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	environment "sidravia/internal/daemon/environment"
 )
 
 func subscribeForTest(t *testing.T, sup *Supervisor) *Subscription {

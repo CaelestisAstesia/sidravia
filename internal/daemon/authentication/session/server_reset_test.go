@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 func serverResetFailure() *protocol.AuthenticationProtocolRunFailure {

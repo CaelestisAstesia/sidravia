@@ -135,7 +135,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { socket.Close() })
-				data, err := os.ReadFile(filepath.Join(repo, "internal/daemon/configuration/profiles/jlu.json"))
+				data, err := os.ReadFile(filepath.Join(repo, "internal/connection/profile/data/jlu.json"))
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
+	environment "sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	environment "sidravia/internal/daemon/environment"
 )
 
 type StateEventKind string

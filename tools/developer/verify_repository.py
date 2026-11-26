@@ -301,8 +301,8 @@ def run_cross_checks(
         ("windows", "windows-amd64-internal-cli.test.exe", "./internal/cli"),
         (
             "windows",
-            "windows-amd64-internal-daemon-environment.test.exe",
-            "./internal/daemon/environment",
+            "windows-amd64-internal-connection-environment.test.exe",
+            "./internal/connection/environment",
         ),
         (
             "windows",
@@ -312,8 +312,8 @@ def run_cross_checks(
         ("darwin", "darwin-amd64-internal-cli.test", "./internal/cli"),
         (
             "darwin",
-            "darwin-amd64-internal-daemon-environment.test",
-            "./internal/daemon/environment",
+            "darwin-amd64-internal-connection-environment.test",
+            "./internal/connection/environment",
         ),
         (
             "darwin",

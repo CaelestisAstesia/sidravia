@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	environment "sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	environment "sidravia/internal/daemon/environment"
 )
 
 // testNetworkSnapshotWithInterface builds an environment.Snapshot containing

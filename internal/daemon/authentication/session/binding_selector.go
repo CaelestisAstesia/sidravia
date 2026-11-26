@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	environment "sidravia/internal/daemon/environment"
+	environment "sidravia/internal/connection/environment"
 )
 
 type bindingKey struct {

@@ -110,6 +110,6 @@ DNS 和 DHCP 字段还拒绝组播及 `255.255.255.255`，但允许 `0.0.0.0`。
 2. **配置已提交，旧会话清理失败：** 新配置已经保存；先处理旧会话，再决定是否连接，**不要当成保存失败连续提交**。
 3. **通信中断、结果未知：** 先恢复通信，核对配置和会话。`config show` 不展示原始覆写，因此不能仅凭该命令判断特定 JSON 是否已被保存。只有确认目标配置、接受可能中断当前连接后，才考虑重新提交明确的文件或清除操作。
 
-实现与校验规则可参阅 [D520 override 源码](../internal/daemon/authentication/protocol/drcom/d520/override.go)。
+实现与校验规则可参阅 [D520 override 源码](../internal/connection/auth/d520/internal/settings/override.go)。
 
 返回：[命令行高级使用](advance.md) · [协议支持与适配](protocols.md) · [数据与隐私](privacy.md)

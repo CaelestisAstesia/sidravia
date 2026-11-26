@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
-
 	"sidravia/internal/installation/change"
 	"sidravia/internal/release"
+	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/update/transaction"
 )
 
@@ -35,15 +35,15 @@ func windowsImage(t *testing.T, version, build string, files map[string][]byte) 
 	if _, ok := files["Sidravia.exe"]; ok {
 		kind = "gui"
 	}
-	m := files.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: kind}
+	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "windows", Arch: "amd64", PayloadKind: kind}
 	for name, data := range files {
-		m.Files = append(m.Files, files.File{Path: name, Size: int64(len(data)), SHA256: digest(data), Mode: 0644})
+		m.Files = append(m.Files, packagefiles.File{Path: name, Size: int64(len(data)), SHA256: digest(data), Mode: 0644})
 	}
-	raw, err := files.Encode(m)
+	raw, err := packagefiles.Encode(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	contents := map[string][]byte{files.Name: raw, "sidravia.portable": {}}
+	contents := map[string][]byte{packagefiles.Name: raw, "sidravia.portable": {}}
 	for k, v := range files {
 		contents[k] = v
 	}
@@ -156,7 +156,7 @@ func TestWindowsSharedPublication(t *testing.T) {
 			case "hard-link", "index-link":
 				name := "sidraviad.exe"
 				if scenario == "index-link" {
-					name = files.Name
+					name = packagefiles.Name
 				}
 				if e = os.Link(filepath.Join(target, name), filepath.Join(base, "alias")); e != nil {
 					t.Fatal(e)

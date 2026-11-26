@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	connectionconfig "sidravia/internal/connection/config"
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
 )
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 	"sidravia/internal/daemon/authentication/session"
 )
 

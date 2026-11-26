@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/daemon/environment"
+	"sidravia/internal/connection/environment"
 )
 
 type runtimeActivity uint8

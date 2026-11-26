@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/environment"
+	"sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/host"
 )
 

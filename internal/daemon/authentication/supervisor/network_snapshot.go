@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	environment "sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	environment "sidravia/internal/daemon/environment"
 )
 
 // networkSnapshotTarget pairs a SessionID with its actor for deterministic

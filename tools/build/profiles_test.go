@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/document/jsondoc"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 )
 
 func syntheticProfile(id string) string {
@@ -19,7 +19,7 @@ func syntheticProfile(id string) string {
 func buildWithProfileOrder(t *testing.T, artifact string, order []string) []byte {
 	t.Helper()
 	root := setupRepoRoot(t)
-	profileDir := filepath.Join(root, "internal", "daemon", "configuration", "profiles")
+	profileDir := filepath.Join(root, "internal", "connection", "profile", "data")
 	if err := os.Remove(filepath.Join(profileDir, "jlu.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestOfficialProfilesUseValidatedSnapshot(t *testing.T) {
 			cfg := config{version: "0.1.0", buildID: "abc", output: output, goBin: "go", artifact: artifact}
 			tool := newFakeTool(cfg, root, fb)
 			tool.build = func(env, argv []string) ([]byte, error) {
-				writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json"), "invalid after snapshot")
+				writeTestFile(t, filepath.Join(root, "internal", "connection", "profile", "data", "jlu.json"), "invalid after snapshot")
 				return fb.build(env, argv)
 			}
 			if err := tool.execute(io.Discard, io.Discard); err != nil {
@@ -113,7 +113,7 @@ func TestInvalidOfficialProfileSetFailsWithoutPublishing(t *testing.T) {
 		{name: "duplicate JSON field", file: "jlu.json", data: strings.Replace(testProfileJSON, `"schemaVersion": 1,`, `"schemaVersion": 1, "schemaVersion": 1,`, 1)},
 		{name: "unknown JSON field", file: "jlu.json", data: strings.Replace(testProfileJSON, `"schemaVersion": 1,`, `"schemaVersion": 1, "unknown": true,`, 1)},
 		{name: "trailing JSON", file: "jlu.json", data: testProfileJSON + `{}`},
-		{name: "oversized input", file: "jlu.json", data: strings.Repeat(" ", int(jsondoc.ProfileFileSizeLimit)+1)},
+		{name: "oversized input", file: "jlu.json", data: strings.Repeat(" ", int(profilecatalog.FileSizeLimit)+1)},
 	} {
 		for _, artifact := range []string{"release", "field-validation"} {
 			for _, existing := range []bool{false, true} {
@@ -123,7 +123,7 @@ func TestInvalidOfficialProfileSetFailsWithoutPublishing(t *testing.T) {
 				}
 				t.Run(tc.name+"/"+artifact+"/"+state, func(t *testing.T) {
 					root := setupRepoRoot(t)
-					writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", tc.file), tc.data)
+					writeTestFile(t, filepath.Join(root, "internal", "connection", "profile", "data", tc.file), tc.data)
 					parent := t.TempDir()
 					output := filepath.Join(parent, "dist")
 					marker := filepath.Join(output, "keep.txt")
@@ -169,7 +169,7 @@ func TestOfficialProfileSourceRejectsAbsentEmptyAndNonregularInputs(t *testing.T
 	for _, kind := range []string{"absent directory", "empty directory", "directory with JSON suffix", "symlink JSON"} {
 		t.Run(kind, func(t *testing.T) {
 			root := setupRepoRoot(t)
-			profileDir := filepath.Join(root, "internal", "daemon", "configuration", "profiles")
+			profileDir := filepath.Join(root, "internal", "connection", "profile", "data")
 			switch kind {
 			case "absent directory":
 				if err := os.RemoveAll(profileDir); err != nil {

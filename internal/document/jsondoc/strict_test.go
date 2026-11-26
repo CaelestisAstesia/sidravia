@@ -86,7 +86,7 @@ func TestStrictJSONValidationRejectsInvalidUTF8(t *testing.T) {
 	}{
 		{name: "decode strict", err: DecodeStrict(invalidDocument, &destination)},
 		{name: "require fields", err: RequireObjectFields(invalidFieldDocument, "field")},
-		{name: "require schema", err: RequireSchemaVersion(invalidSchemaDocument, SchemaVersion1)},
+		{name: "require schema", err: RequireSchemaVersion(invalidSchemaDocument, 1)},
 		{name: "validate opaque", err: ValidateOpaqueObjectOrNull(invalidOpaque)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestRequireSchemaVersionAcceptsOnlyIntegerOne(t *testing.T) {
 		{name: "two", data: `{"schemaVersion":2}`, code: document.FailureUnsupportedSchemaVersion},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := RequireSchemaVersion([]byte(test.data), SchemaVersion1)
+			err := RequireSchemaVersion([]byte(test.data), 1)
 			if test.code == "" && err != nil {
 				t.Fatalf("RequireSchemaVersion(%s) = %v, want nil", test.data, err)
 			}
@@ -173,7 +173,7 @@ func TestMarshalDeterministicUsesOwnedStructOrderWithoutNewline(t *testing.T) {
 	value := struct {
 		SchemaVersion uint64 `json:"schemaVersion"`
 		DisplayName   string `json:"displayName"`
-	}{SchemaVersion: SchemaVersion1, DisplayName: "Example"}
+	}{SchemaVersion: 1, DisplayName: "Example"}
 	got, err := MarshalDeterministic(value)
 	if err != nil {
 		t.Fatalf("MarshalDeterministic() error = %v", err)

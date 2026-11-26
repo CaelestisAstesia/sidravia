@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	environment "sidravia/internal/daemon/environment"
+	environment "sidravia/internal/connection/environment"
 )
 
 func TestAutomaticBindingSelectorPrefersWiredAtStartup(t *testing.T) {

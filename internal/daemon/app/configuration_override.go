@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 
+	"sidravia/internal/connection/auth/protocol"
 	connectionconfig "sidravia/internal/connection/config"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -93,7 +93,7 @@ func (application *Application) handleConfigurationOverride(ctx context.Context,
 		validation := contract.ConfigurationOverrideValidationResult{Valid: err == nil}
 		var field protocol.OverrideFieldError
 		if errors.As(err, &field) {
-			validation.Field = field.Field
+			validation.Field = field.FieldName()
 		}
 		result = validation
 	}

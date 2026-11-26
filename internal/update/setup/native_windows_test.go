@@ -372,7 +372,7 @@ begin Result := True; end;
 	if e = os.MkdirAll(layout.InstitutionProfilesDirectory, 0700); e != nil {
 		t.Fatal(e)
 	}
-	raw, e := os.ReadFile(filepath.Join(repo, "internal/daemon/configuration/profiles/jlu.json"))
+	raw, e := os.ReadFile(filepath.Join(repo, "internal/connection/profile/data/jlu.json"))
 	if e != nil {
 		t.Fatal(e)
 	}
