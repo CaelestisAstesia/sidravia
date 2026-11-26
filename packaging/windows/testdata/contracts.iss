@@ -18,7 +18,7 @@ end;
 
 function InitializeSetup: Boolean;
 var
-  R, L, A, Key, Token, Backup: String;
+  R, L, A, Key, Token, Backup, OppositeTarget: String;
   Comparison: Integer;
   Find: TFindRec;
   Occupied: NativeUInt;
@@ -62,14 +62,22 @@ begin
     Put(R + '\.sidravia-foreign.tmp', 'keep');
     Put(R + '\gui-settings.json.123.4294967296.tmp', 'keep');
     Put(R + '\namespaces\interrupted\.sidravia-' + Token + '.tmp', 'synthetic secret');
-    Put(A + '\BUILD-INFO.txt', 'ProductVersion: 0.3.0-alpha.1' + #13#10);
+    AssertContract(not OppositeSetupRegistered, 'absent opposite registration');
+    AssertContract(RegWriteStringValue(HKCU64, '@OPPOSITE_KEY@', 'InstallLocation', A), 'synthetic opposite registration');
+    AssertContract(OppositeSetupRegistered, 'existing opposite registration blocks setup');
+    AssertContract(RegDeleteKeyIncludingSubkeys(HKCU64, '@OPPOSITE_KEY@'), 'remove opposite fixture registration');
+    Put(A + '\BUILD-INFO.txt', 'ProductVersion: 0.3.0-alpha.1' + #13#10 + 'Target: {#PayloadTarget}' + #13#10);
     AssertContract(PreserveUpgradeData, 'protected upgrade snapshots');
     AssertContract(FirstEntry(R + '\.sidravia-migration-*.json', Find), 'raw backup exists');
     Backup := R + '\' + Find.Name;
     FindClose(Find);
     AssertContract(GetSHA256OfFile(Backup) = GetSHA256OfFile(R + '\configurations.json'), 'snapshot exact bytes');
     AssertContract(CheckUpgrade = '', 'supported upgrade');
-    Put(A + '\BUILD-INFO.txt', 'ProductVersion: 0.4.0' + #13#10);
+    if '{#PayloadTarget}' = 'windows-arm64' then OppositeTarget := 'windows-amd64'
+    else OppositeTarget := 'windows-arm64';
+    Put(A + '\BUILD-INFO.txt', 'ProductVersion: 0.3.0-alpha.1' + #13#10 + 'Target: ' + OppositeTarget + #13#10);
+    AssertContract(CheckUpgrade <> '', 'other architecture cannot reuse this directory');
+    Put(A + '\BUILD-INFO.txt', 'ProductVersion: 0.4.0' + #13#10 + 'Target: {#PayloadTarget}' + #13#10);
     AssertContract(CheckUpgrade <> '', 'downgrade blocked');
     Put(R + '\namespaces\test-A\configurations.json', '{}');
     Put(R + '\namespaces\test-A\foreign.txt', 'keep');
@@ -116,4 +124,5 @@ begin
   end;
   { Exact random test identity only, never product registry. }
   RegDeleteKeyIncludingSubkeys(HKCU, Key);
+  RegDeleteKeyIncludingSubkeys(HKCU64, ExtractFileDir('@OPPOSITE_KEY@'));
 end;

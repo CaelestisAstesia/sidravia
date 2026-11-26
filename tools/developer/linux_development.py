@@ -10,6 +10,15 @@ import subprocess
 from pathlib import Path
 
 from verification_commands import resolve_flutter_sdk
+from verify_distribution import native_arch
+
+
+def linux_gui_bundle(root):
+    arch = native_arch()
+    if arch not in ('amd64', 'arm64'):
+        raise ValueError('Flutter Linux desktop requires an AMD64 or ARM64 host')
+    flutter_arch = 'x64' if arch == 'amd64' else 'arm64'
+    return root / 'gui/build/linux' / flutter_arch / 'release/bundle'
 
 
 def producer_directory(output):
@@ -53,8 +62,8 @@ def run(root, args, env, *, metadata, same_source):
     if args.package:
         if source_before["dirty"]:
             raise ValueError("package requires a clean tracked and untracked source tree")
-        if args.integration or platform.machine().lower() not in ("amd64", "x86_64"):
-            raise ValueError("GUI package requires native Linux AMD64 and a separate integration run")
+        if args.integration:
+            raise ValueError("GUI package requires a separate integration run")
         if not args.version or not args.output:
             raise ValueError("linux --package requires --version and --output")
         output = Path(args.output).resolve()
@@ -65,6 +74,8 @@ def run(root, args, env, *, metadata, same_source):
             raise ValueError("--verify-package is a separate acceptance run")
         archive = Path(args.verify_package).resolve()
         receipt = read_portable_receipt(archive)
+        if receipt["target"] != f"linux-{native_arch()}":
+            raise ValueError("GUI package acceptance requires a matching native host")
         if source_before["dirty"] or receipt["buildId"] != source_before["commit"] or receipt["source"]["source_fingerprint"] != source_before["source_fingerprint"]:
             raise ValueError("package acceptance requires its exact clean producer source")
         expected = receipt["artifactHashes"].get(archive.name)
@@ -105,13 +116,14 @@ def run(root, args, env, *, metadata, same_source):
             env = dict(env, SIDRAVIA_GUI_BUSINESS_FIXTURE="1")
         import linux_desktop_fixture
         return linux_desktop_fixture.run(root, flutter, env, source_before, lambda: metadata(args.go, env))
+    bundle = linux_gui_bundle(root)
+    target = f"linux-{native_arch()}"
     build = ["build", "linux", "--release", "--no-pub"]
     if args.package:
         build += ["--build-name", args.version]
     flutter_run(build)
     if args.package:
         # Exclude developer copies of core/profiles. The producer owns those.
-        bundle = root / "gui/build/linux/x64/release/bundle"
         native_assets = (bundle / 'data/flutter_assets/NativeAssetsManifest.json').read_text()
         if 'jni' in native_assets.lower() or (bundle / 'lib/libdartjni.so').exists():
             raise ValueError('Linux JNI native assets require an explicit runtime integration; no developer JDK payload is accepted')
@@ -140,17 +152,18 @@ def run(root, args, env, *, metadata, same_source):
         shutil.copytree(root / "gui/linux/protocols", licenses / "wayland-protocols")
         if not same_source(source_before, metadata(args.go, env)):
             raise ValueError("source changed during GUI build")
-        producer = [args.go, "run", "-mod=readonly", "./tools/build", "--artifact", "distribution", "--target", "linux-amd64", "--version", args.version, "--build-id", source_before["commit"], "--go", args.go, "--gui-directory", str(stage), "--output", str(output)]
+        producer = [args.go, "run", "-mod=readonly", "./tools/build", "--artifact", "distribution", "--target", target, "--version", args.version, "--build-id", source_before["commit"], "--go", args.go, "--gui-directory", str(stage), "--output", str(output)]
         if getattr(args, "compression", "gzip") == "xz":
             producer += ["--compression", "xz"]
         subprocess.run(producer, cwd=root, env=env, check=True)
         import verify_distribution
-        receipt = verify_distribution.verify(output, root, "linux-amd64", args.version, source_before["commit"], stage, args.go, smoke=True)
+        receipt = verify_distribution.verify(output, root, target, args.version, source_before["commit"], stage, args.go, smoke=True)
         if not same_source(source_before, metadata(args.go, env)):
             raise ValueError("source changed during packaging; candidate not accepted")
-        receipt.update(source=source_before, source_unchanged=True, flutter=sdk["frameworkVersion"], guiBuildName=args.version)
+        receipt.update(source=source_before, source_unchanged=True, flutter=sdk["frameworkVersion"],
+                       guiBuildName=args.version, linuxBuildBaseline=platform.freedesktop_os_release())
         (evidence / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(f"Verified Linux GUI portable: {output}; producer input and receipt: {evidence}")
         return 0
-    print("Development bundle: gui/build/linux/x64/release/bundle (not installed or started)")
+    print(f"Development bundle: {bundle.relative_to(root)} (not installed or started)")
     return 0

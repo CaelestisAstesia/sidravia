@@ -11,7 +11,7 @@ Summary: Campus network authentication command-line client and daemon
 License: AGPL-3.0-only
 URL: https://github.com/CaelestisAstesia/Sidravia
 Source0: payload.tar.gz
-BuildArch: x86_64
+BuildArch: @ARCH@
 Conflicts: sidravia
 Requires: /usr/bin/getent
 Requires(pre): /usr/bin/python3

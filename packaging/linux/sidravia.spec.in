@@ -14,7 +14,7 @@ Summary: Campus network authentication client
 License: AGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND OFL-1.1
 URL: https://github.com/CaelestisAstesia/Sidravia
 Source0: payload.tar.gz
-BuildArch: x86_64
+BuildArch: @ARCH@
 Requires: gtk3, libayatana-appindicator-gtk3, webkit2gtk4.1
 Requires: /usr/bin/env, /usr/bin/xdg-open
 Requires: desktop-file-utils, hicolor-icon-theme

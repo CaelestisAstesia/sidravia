@@ -5,16 +5,35 @@
   #define HasGUI 0
 #endif
 #define IncludeGUI Int(HasGUI)
+#ifndef PayloadTarget
+  #define PayloadTarget "windows-amd64"
+#endif
+#if PayloadTarget == "windows-arm64"
+  #define OppositeAppId "{EB2663BD-8DEB-446A-958E-43DF637C1F53}"
+#elif PayloadTarget == "windows-amd64"
+  #define OppositeAppId "{63DB10A2-AC2C-4739-9DCA-2DF55C735150}"
+#else
+  #error Unsupported Sidravia Windows payload target
+#endif
 
 [Setup]
+#if PayloadTarget == "windows-arm64"
+AppId={{63DB10A2-AC2C-4739-9DCA-2DF55C735150}
+DefaultDirName={localappdata}\Programs\Sidravia ARM64
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+#else
 AppId={{EB2663BD-8DEB-446A-958E-43DF637C1F53}
-AppName=Sidravia
-AppVersion={#ProductVersion}
 DefaultDirName={localappdata}\Programs\Sidravia
-DefaultGroupName=Sidravia
-PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
+AppName=Sidravia
+AppVersion={#ProductVersion}
+DefaultGroupName=Sidravia
+PrivilegesRequired=lowest
+; Inno 7.1.0 only emits x86/x64 Setup. Keep the 64-bit ABI for native
+; calls and run Setup under x64 emulation on Windows ARM64.
 SetupArchitecture=x64
 Compression=lzma2
 SolidCompression=yes
@@ -213,7 +232,7 @@ begin
   if FileSecurity(Source, 1, 4, Owner, Group, DACL, SACL, Descriptor) <> 0 then Exit;
   try
     if not ProtectDescriptor(Descriptor, $1000, $1000) then Exit;
-    Attributes.Size := 24; { pinned x64 Setup }
+    Attributes.Size := 24; { SECURITY_ATTRIBUTES for the x64 Setup process }
     Attributes.Padding := 0;
     Attributes.Descriptor := Descriptor;
     Attributes.InheritHandle := 0;
@@ -444,11 +463,24 @@ function HexToken(Value: String): Boolean; forward;
 function OpenUpdateProcess(Access: LongWord; Inherit: Boolean; PID: LongWord): NativeUInt;
   external 'OpenProcess@kernel32.dll stdcall';
 
+function OppositeSetupRegistered: Boolean;
+const
+  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#OppositeAppId}_is1';
+begin
+  Result := RegKeyExists(HKCU64, UninstallKey);
+end;
+
 function InitializeSetup: Boolean;
 begin
   Result := HoldInstaller;
   if not Result then MsgBox('另一个安装/卸载操作正在进行，或无法核实当前账户。请稍后重试。', mbError, MB_OK);
   if not Result then Exit;
+  if OppositeSetupRegistered then begin
+    Result := False;
+    if not WizardSilent then
+      MsgBox('当前账户已安装另一架构的 Sidravia。请先退出并卸载旧版，保留需要的数据，再运行此安装程序。', mbError, MB_OK);
+    Exit;
+  end;
   ManagedOperation := ExpandConstant('{param:SIDRAVIAUPDATE|}');
   if ManagedOperation = '' then Exit;
   Result := False;
@@ -1009,6 +1041,10 @@ begin
       PathPresent(ExpandConstant('{app}\sidraviactl.exe')) or
       PathPresent(ExpandConstant('{app}\Sidravia.exe')) then
       Result := '目录中有无法确认版本的程序，请先核实来源或选择空目录。';
+    Exit;
+  end;
+  if InfoValue(ExpandConstant('{app}\BUILD-INFO.txt'), 'Target') <> '{#PayloadTarget}' then begin
+    Result := '安装目录中的 Sidravia 架构与此安装包不匹配，或无法确认架构。请使用匹配的安装包。';
     Exit;
   end;
   Version := InfoValue(ExpandConstant('{app}\BUILD-INFO.txt'), 'ProductVersion');

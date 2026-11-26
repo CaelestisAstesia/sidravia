@@ -292,7 +292,8 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             if preferences["appearanceMode"] != "dark":
                 raise RuntimeError("persisted appearance mismatch")
             command([flutter, "build", "linux", "--release", "--no-pub"], "release-build")
-            binary = root / "gui/build/linux/x64/release/bundle/sidravia_gui"
+            from linux_development import linux_gui_bundle
+            binary = linux_gui_bundle(root) / "sidravia_gui"
         else:
             binary = package_root / 'sidravia_gui'
             dart = str(Path(flutter).resolve().with_name('dart'))

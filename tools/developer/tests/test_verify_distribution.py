@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from distribution_fixture import DistributionFixture, SHA, VERSION
+from distribution_fixture import DistributionFixture, SHA, VERSION, elf, pe
 
 ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('verify_distribution', ROOT / 'tools/developer/verify_distribution.py')
@@ -46,7 +46,7 @@ class DistributionContract(unittest.TestCase):
             self.verify('windows-amd64')
 
     def verify(self, target='linux-amd64', smoke=False, gui=True):
-        return module.verify(self.fixture.out, self.fixture.repo, target, VERSION, SHA, self.fixture.gui if target == 'windows-amd64' and gui else None, smoke=smoke)
+        return module.verify(self.fixture.out, self.fixture.repo, target, VERSION, SHA, self.fixture.gui if target.startswith('windows-') and gui else None, smoke=smoke)
 
     def test_xz_consumes_the_same_exact_payload_and_rejects_ambiguous_formats(self):
         import gzip, lzma
@@ -66,9 +66,9 @@ class DistributionContract(unittest.TestCase):
         for target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'):
             with self.subTest(target=target):
                 self.fixture.clear_output()
-                self.fixture.package(target, self.fixture.payload(target))
+                self.fixture.package(target, self.fixture.payload(target, gui=False), gui=False)
                 with mock.patch.object(module, 'binary_identity') as identity:
-                    result = self.verify(target)
+                    result = self.verify(target, gui=False)
                 self.assertEqual(identity.call_count, 4 if target.startswith('windows') else 3)
                 self.assertEqual(result['helpSmoke'], 'not_run')
                 self.assertEqual(result['installation'], 'not_run')
@@ -108,7 +108,7 @@ class DistributionContract(unittest.TestCase):
 
     def test_stale_gui_bytes_rejected(self):
         self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64'))
-        (self.fixture.gui / 'Sidravia.exe').write_bytes(b'different candidate')
+        (self.fixture.gui / 'Sidravia.exe').write_bytes(pe('amd64', b'different candidate'))
         with self.assertRaisesRegex(module.VerificationError, 'archive_source_mismatch'): self.verify('windows-amd64')
 
     def test_replaced_binary_rejected_by_producer_manifest(self):
@@ -179,9 +179,23 @@ class DistributionContract(unittest.TestCase):
                         else:
                             self.assertFalse(module.binary_identity(Path('inert'), 'sidraviactl', target, VERSION, SHA, 'go'))
 
-    def test_windows_arm_gui_rejected(self):
-        with self.assertRaisesRegex(module.VerificationError, 'gui_target_mismatch'):
-            module.verify(self.fixture.out, self.fixture.repo, 'windows-arm64', VERSION, SHA, self.fixture.gui)
+    def test_windows_arm_gui_requires_arm_runner_engine_plugins_and_snapshot(self):
+        names = ('Sidravia.exe', 'flutter_windows.dll', 'valid_plugin.dll', 'data/app.so')
+        for name in names:
+            (self.fixture.gui / name).write_bytes((elf if name.endswith('.so') else pe)('arm64'))
+        target = 'windows-arm64'
+        self.fixture.package(target, self.fixture.payload(target))
+        with mock.patch.object(module, 'binary_identity'):
+            self.assertEqual(self.verify(target)['installerArchitecture'], 'amd64')
+        for name in names:
+            with self.subTest(name=name):
+                self.fixture.clear_output()
+                image = elf if name.endswith('.so') else pe
+                (self.fixture.gui / name).write_bytes(image('amd64'))
+                self.fixture.package(target, self.fixture.payload(target))
+                with self.assertRaisesRegex(module.VerificationError, 'gui_(pe|elf)_target_mismatch'):
+                    self.verify(target)
+                (self.fixture.gui / name).write_bytes(image('arm64'))
 
     def test_arm_smoke_rejects_amd64_host_before_execution(self):
         for target in ('windows-arm64', 'linux-arm64'):
@@ -206,7 +220,7 @@ class DistributionContract(unittest.TestCase):
             if name == 'sidravia_gui' or name.endswith('.so'):
                 path.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\0')
             payload['gui-runtime/' + name] = path.read_bytes()
-        payload['sidravia_gui'] = b'static launcher'
+        payload['sidravia_gui'] = elf('amd64', b'static launcher')
         payload['BUILD-INFO.txt'] += f'BinarySHA256: {module.digest(payload["sidravia_gui"])}  sidravia_gui\n'.encode()
         payload['sidravia-files.json'] = self.fixture.ownership('linux-amd64', payload, 'gui')
         self.fixture.package('linux-amd64', payload)

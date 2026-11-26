@@ -62,7 +62,21 @@ def validate_product_ownership(document: dict) -> None:
         require(all('/'.join(parts[:i]) not in paths for i in range(1, len(parts))), 'ownership_parent_alias')
 
 
-def verify_gui_runtime(files: dict[str, bytes], windows: bool) -> None:
+def matches_elf(data: bytes, arch: str) -> bool:
+    return (len(data) >= 20 and data[:6] == b'\x7fELF\x02\x01'
+            and int.from_bytes(data[18:20], 'little') == {'amd64': 62, 'arm64': 183}[arch])
+
+
+def matches_pe(data: bytes, arch: str) -> bool:
+    if len(data) < 64 or data[:2] != b'MZ':
+        return False
+    offset = int.from_bytes(data[60:64], 'little')
+    return (64 <= offset <= len(data) - 26 and data[offset:offset + 4] == b'PE\x00\x00'
+            and int.from_bytes(data[offset + 4:offset + 6], 'little') == {'amd64': 0x8664, 'arm64': 0xaa64}[arch]
+            and data[offset + 24:offset + 26] == b'\x0b\x02')
+
+
+def verify_gui_runtime(files: dict[str, bytes], windows: bool, arch: str) -> None:
     fonts = json.loads(files.get('data/flutter_assets/FontManifest.json', b'[]'))
     require(isinstance(fonts, list), 'invalid_gui_font_manifest')
     declared = set()
@@ -88,6 +102,10 @@ def verify_gui_runtime(files: dict[str, bytes], windows: bool) -> None:
         else:
             allowed |= lower in ('sidravia_gui', 'flutter-license', 'lib/native_assets.json') or lower.startswith('lib/') and lower.endswith('.so')
         require(allowed, 'unexpected_gui_runtime_path: ' + name)
+        if windows and path.suffix in ('.dll', '.exe'):
+            require(matches_pe(files[name], arch), 'gui_pe_target_mismatch: ' + name)
+        if path.suffix == '.so' or not windows and lower == 'sidravia_gui':
+            require(matches_elf(files[name], arch), 'gui_elf_target_mismatch: ' + name)
 
 
 def canonical_ownership(document: dict) -> bytes:
@@ -155,8 +173,8 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?', version) is not None, 'invalid_version')
     require(re.fullmatch(r'[0-9a-f]{40}', build_id) is not None, 'invalid_build_id')
     require(target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'), 'invalid_target')
-    windows = target.startswith('windows-')
-    require(gui is None or target in ('windows-amd64', 'linux-amd64'), 'gui_target_mismatch')
+    os_name, arch = target.split('-')
+    windows = os_name == 'windows'
     base = f'sidravia-v{version}-{target}'
     kind = 'gui-portable' if gui is not None else 'core-portable'
     archive_name = base + '-' + kind + ('.zip' if windows else '.tar.gz')
@@ -180,7 +198,9 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         checksums[name] = hash_value
     require(set(checksums) == outputs, 'missing_checksum')
     if windows and gui is not None:
-        require((directory / (base + '-setup.exe')).read_bytes().startswith(b'MZ'), 'installer_not_pe')
+        # Inno 7.1.0 generates x64 installers. On Windows ARM64, Setup runs
+        # under emulation and installs an entirely ARM64 application payload.
+        require(matches_pe((directory / (base + '-setup.exe')).read_bytes(), 'amd64'), 'installer_not_pe_x64')
     contents = read_archive(directory / archive_name, target, base)
     expected = {'LICENSE': (repo / 'LICENSE').read_bytes(), 'sidravia.portable': b'',
                 'BUILD-INFO.txt': (f'ProductVersion: {version}\nBuildID: {build_id}\nTarget: {target}\nArtifactKind: distribution\n').encode()}
@@ -200,14 +220,11 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                 data = path.read_bytes()
                 expected[name if windows else 'gui-runtime/' + name] = data
                 gui_files[name] = data
-        verify_gui_runtime(gui_files, windows)
+        verify_gui_runtime(gui_files, windows, arch)
         runtime_required = ('Sidravia.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
         required_gui = runtime_required if windows else tuple('gui-runtime/' + name for name in runtime_required)
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')
         if not windows:
-            for name, data in expected.items():
-                if name == 'gui-runtime/sidravia_gui' or name.startswith('gui-runtime/lib/') and name.endswith('.so'):
-                    require(len(data) >= 20 and data[:6] == b'\x7fELF\x02\x01' and int.from_bytes(data[18:20], 'little') == 62, 'gui_not_elf_amd64: ' + name)
             gui_version = json.loads(expected['gui-runtime/data/flutter_assets/version.json'])
             require(gui_version.get('version') == version and gui_version.get('app_name') == 'sidravia_gui', 'gui_version_mismatch')
             require(all(p.relative_to(gui).as_posix() == 'sidravia_gui' or p.relative_to(gui).as_posix() == 'FLUTTER-LICENSE' or p.relative_to(gui).parts[0] in ('lib', 'data') for p in gui.rglob('*') if p.is_file()), 'unexpected_linux_gui_source')
@@ -252,12 +269,13 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
 
     if smoke:
         host = {'Windows': 'windows', 'Linux': 'linux'}.get(platform.system())
-        require(host == target.split('-')[0] and native_arch() == target.split('-')[1], 'smoke_requires_matching_native_host')
+        require(host == os_name and native_arch() == arch, 'smoke_requires_matching_native_host')
     embedded_identities = []
     with tempfile.TemporaryDirectory(prefix='sidravia-distribution-check-') as temporary:
         root = Path(temporary)
         for name, role in binaries.items():
             path = root / name
+            require((matches_pe if windows else matches_elf)(contents[name], arch), 'binary_image_target_mismatch: ' + name)
             path.write_bytes(contents[name])
             embedded_identities.append(binary_identity(path, role, target, version, build_id, go))
             if smoke and role != 'sidraviad':
@@ -268,6 +286,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
             'productOwnershipSha256': digest(ownership_bytes), 'payloadKind': ownership['payloadKind'],
             'installerOwnershipSha256': installer_ownership_sha256,
+            'installerArchitecture': 'amd64' if windows and gui is not None else None,
             'installerPayload': 'requires_native_acceptance' if windows and gui is not None else 'not_applicable',
             'productOwnership': 'passed', 'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
             'embeddedGoIdentity': 'passed' if all(embedded_identities) else 'not_recorded',

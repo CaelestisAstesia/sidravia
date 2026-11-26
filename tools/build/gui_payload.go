@@ -84,7 +84,7 @@ func checkGUIRuntime(entries []archiveEntry, windows bool) error {
 	return nil
 }
 
-func readGUI(root string, existing []archiveEntry) ([]archiveEntry, error) {
+func readGUI(root string, existing []archiveEntry, arch string) ([]archiveEntry, error) {
 	if root == "" {
 		return nil, nil
 	}
@@ -124,6 +124,9 @@ func readGUI(root string, existing []archiveEntry) ([]archiveEntry, error) {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		if !matchesWindowsGUI(strings.ToLower(name), data, arch) {
+			return fmt.Errorf("Windows GUI image does not match %s: %s", arch, name)
 		}
 		entries = append(entries, archiveEntry{name, data, metadata.Mode().Perm()})
 		return nil

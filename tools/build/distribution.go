@@ -39,16 +39,17 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		}
 		entries = append(entries, archiveEntry{"app_icon.ico", icon, 0644})
 	}
+	targetOS, arch, _ := strings.Cut(t.cfg.target, "-")
 	var gui []archiveEntry
-	if t.cfg.target == "linux-amd64" {
-		gui, err = readLinuxGUI(t.cfg.guiDirectory, entries)
+	if targetOS == "linux" {
+		gui, err = readLinuxGUI(t.cfg.guiDirectory, entries, arch)
 	} else {
-		gui, err = readGUI(t.cfg.guiDirectory, entries)
+		gui, err = readGUI(t.cfg.guiDirectory, entries, arch)
 	}
 	if err != nil {
 		return err
 	}
-	if t.cfg.target == "linux-amd64" && len(gui) > 0 {
+	if targetOS == "linux" && len(gui) > 0 {
 		var version map[string]interface{}
 		for _, entry := range gui {
 			if entry.name == "gui-runtime/data/flutter_assets/version.json" {
@@ -80,28 +81,27 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			_ = os.RemoveAll(stage)
 		}
 	}()
-	target := strings.Split(t.cfg.target, "-")
 	env := buildEnv(os.Environ())
 	for i, value := range env {
 		if strings.HasPrefix(value, "GOOS=") {
-			env[i] = "GOOS=" + target[0]
+			env[i] = "GOOS=" + targetOS
 		}
 		if strings.HasPrefix(value, "GOARCH=") {
-			env[i] = "GOARCH=" + target[1]
+			env[i] = "GOARCH=" + arch
 		}
 	}
-	if target[1] == "arm64" {
+	if arch == "arm64" {
 		env = append(env, "GOARM64=v8.0")
 	}
 	suffix := ".exe"
-	if target[0] == "linux" {
+	if targetOS == "linux" {
 		suffix = ""
 	}
 	programs := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}
-	if target[0] == "linux" && len(gui) > 0 {
+	if targetOS == "linux" && len(gui) > 0 {
 		programs = append(programs, "sidravia_gui")
 	}
-	if strings.HasPrefix(t.cfg.target, "windows-") {
+	if targetOS == "windows" {
 		programs = append(programs, "sidraviamgr")
 	}
 	var binarySums strings.Builder
@@ -125,10 +125,10 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if len(gui) > 0 {
 		payloadKind = "gui"
 	}
-	owned := packagefiles.Manifest{SchemaVersion: 1, Version: t.cfg.version, BuildID: t.cfg.buildID, OS: target[0], Arch: target[1], PayloadKind: payloadKind}
+	owned := packagefiles.Manifest{SchemaVersion: 1, Version: t.cfg.version, BuildID: t.cfg.buildID, OS: targetOS, Arch: arch, PayloadKind: payloadKind}
 	for _, entry := range entries {
 		mode := uint32(entry.mode.Perm())
-		if target[0] == "windows" {
+		if targetOS == "windows" {
 			mode = 0644
 		} // Windows ignores Unix executable bits.
 		owned.Files = append(owned.Files, packagefiles.File{Path: entry.name, Size: int64(len(entry.data)), SHA256: sha256Hex(entry.data), Mode: mode})
@@ -163,7 +163,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		kind = "gui-portable"
 	}
 	archive := base + "-" + kind + ".zip"
-	if strings.HasPrefix(t.cfg.target, "linux-") {
+	if targetOS == "linux" {
 		archive = base + "-" + kind + ".tar.gz"
 		if t.cfg.compression == "xz" {
 			archive = base + "-" + kind + ".tar.xz"
@@ -195,7 +195,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		if len(gui) > 0 {
 			hasGUI = "1"
 		}
-		cmd := exec.Command(t.cfg.iscc, "/DProductVersion="+t.cfg.version, "/DHasGUI="+hasGUI, "/O"+stage, "/F"+base+"-setup", filepath.Join(stage, "sidravia.iss"))
+		cmd := exec.Command(t.cfg.iscc, "/DProductVersion="+t.cfg.version, "/DHasGUI="+hasGUI, "/DPayloadTarget="+t.cfg.target, "/O"+stage, "/F"+base+"-setup", filepath.Join(stage, "sidravia.iss"))
 		cmd.Stdout = stderr
 		cmd.Stderr = stderr
 		if err := cmd.Run(); err != nil {

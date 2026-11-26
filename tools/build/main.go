@@ -1,7 +1,7 @@
 // Command build is the single reproducible Sidravia package builder.
 //
 // It uses the fixed Go 1.26.4 toolchain and shared project codecs. Distribution
-// mode builds target-bound Windows/Linux core tools and optional AMD64 GUI
+// mode builds target-bound Windows/Linux core tools and optional native GUI
 // archives/installers. Legacy release/field-validation modes build a Windows
 // amd64 CLI pair. Each mode writes SHA256SUMS.txt. The tool does not run Git,
 // derive versions, sign, tag, upload or publish a release.
@@ -171,11 +171,8 @@ func parseFlags(args []string) (config, error) {
 		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
 			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
 		}
-		if c.target != "windows-amd64" && c.iscc != "" {
-			return c, errors.New("installer requires windows-amd64")
-		}
-		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.guiDirectory != "" {
-			return c, errors.New("GUI requires windows-amd64 or linux-amd64")
+		if !strings.HasPrefix(c.target, "windows-") && c.iscc != "" {
+			return c, errors.New("installer requires a Windows target")
 		}
 	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
@@ -201,11 +198,11 @@ Optional flags:
                distribution: Windows archive/optional installer or Linux archive
   --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
-  --gui-directory  optional fresh Windows or Linux AMD64 Flutter Release directory
+  --gui-directory  optional fresh Flutter Release directory for the chosen target
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --help       show this help and exit without building
 
-Distribution mode builds the target's core tools, optional AMD64 GUI payload,
+Distribution mode builds the target's core tools, optional native GUI payload,
 and Windows installer when --iscc is supplied. Archives use gui-portable or
 core-portable suffixes and include the selected version and build identifier.
 

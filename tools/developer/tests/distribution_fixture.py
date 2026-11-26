@@ -18,6 +18,21 @@ LINUX_EXECUTABLES = {
 }
 
 
+def pe(arch, tail=b''):
+    head = bytearray(90)
+    head[:2] = b'MZ'
+    head[60] = 64
+    head[64:68] = b'PE\0\0'
+    head[68:70] = {'amd64': 0x8664, 'arm64': 0xaa64}[arch].to_bytes(2, 'little')
+    head[88:90] = b'\x0b\x02'
+    return bytes(head) + tail
+
+
+def elf(arch, tail=b''):
+    return (b'\x7fELF\x02\x01' + b'\0' * 12
+            + {'amd64': 62, 'arm64': 183}[arch].to_bytes(2, 'little') + tail)
+
+
 class DistributionFixture:
     """Own fixture paths and construct archives independently of the verifier."""
 
@@ -50,7 +65,14 @@ class DistributionFixture:
         for name in gui_files:
             path = self.gui / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b'[]' if name.endswith('FontManifest.json') else name.encode())
+            data = name.encode()
+            if name.endswith(('.exe', '.dll')):
+                data = pe('amd64', data)
+            if name.endswith('.so'):
+                data = elf('amd64', data)
+            if name.endswith('FontManifest.json'):
+                data = b'[]'
+            path.write_bytes(data)
 
     def clear_output(self):
         for path in self.out.iterdir():
@@ -67,11 +89,14 @@ class DistributionFixture:
             ).encode(),
         }
         programs = {'sidraviactl': b'ctl', 'sidraviad': b'daemon', 'sidraviaupdater': b'updater'}
-        windows = target.startswith('windows-')
-        gui = gui and target == 'windows-amd64'
+        os_name, arch = target.split('-')
+        windows = os_name == 'windows'
+        gui = gui and windows
         if windows:
-            programs = {name + '.exe': data for name, data in programs.items()}
-            programs['sidraviamgr.exe'] = b'manager'
+            programs = {name + '.exe': pe(arch, data) for name, data in programs.items()}
+            programs['sidraviamgr.exe'] = pe(arch, b'manager')
+        else:
+            programs = {name: elf(arch, data) for name, data in programs.items()}
         contents.update(programs)
         if gui:
             contents.update({
@@ -114,8 +139,8 @@ class DistributionFixture:
             with zipfile.ZipFile(self.out / f'{base}-{kind}.zip', 'w') as archive:
                 for name, data in contents.items():
                     archive.writestr(name, data)
-            if gui and target == 'windows-amd64':
-                (self.out / f'{base}-setup.exe').write_bytes(b'MZinert installer')
+            if gui:
+                (self.out / f'{base}-setup.exe').write_bytes(pe('amd64', b'inert installer'))
         else:
             with tarfile.open(self.out / f'{base}-{kind}.tar.gz', 'w:gz') as archive:
                 for name, data in contents.items():

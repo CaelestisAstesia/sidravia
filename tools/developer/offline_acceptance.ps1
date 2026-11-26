@@ -152,8 +152,16 @@ $pathExists = $envKey.GetValueNames() -contains 'Path'
 $path = if ($pathExists) { [string]$envKey.GetValue('Path',$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) } else { $null }
 $pathKind = if ($pathExists) { [string]$envKey.GetValueKind('Path') } else { $null }
 $registration = @()
-foreach ($key in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{EB2663BD-8DEB-446A-958E-43DF637C1F53}_is1','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{EB2663BD-8DEB-446A-958E-43DF637C1F53}_is1','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{EB2663BD-8DEB-446A-958E-43DF637C1F53}_is1')) {
-    if (Test-Path -LiteralPath $key) { $v = Get-ItemProperty -LiteralPath $key; $registration += [pscustomobject]@{Key=$key; InstallLocation=$v.InstallLocation; DisplayVersion=$v.DisplayVersion} }
+$appIDs = @{ 'windows-amd64' = '{EB2663BD-8DEB-446A-958E-43DF637C1F53}'
+             'windows-arm64' = '{63DB10A2-AC2C-4739-9DCA-2DF55C735150}' }
+foreach ($targetArch in $appIDs.Keys) {
+    foreach ($base in @('HKCU:\Software','HKLM:\Software','HKLM:\Software\WOW6432Node')) {
+        $key = Join-Path $base ('Microsoft\Windows\CurrentVersion\Uninstall\' + $appIDs[$targetArch] + '_is1')
+        if (Test-Path -LiteralPath $key) {
+            $v = Get-ItemProperty -LiteralPath $key
+            $registration += [pscustomobject]@{Target=$targetArch;Key=$key;InstallLocation=$v.InstallLocation;DisplayVersion=$v.DisplayVersion}
+        }
+    }
 }
 # Enumerate all folders: a same-name task outside root is also a shared-name conflict.
 $tasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object TaskName -eq 'SidraviaDaemon' | Sort-Object TaskPath | ForEach-Object {
@@ -179,7 +187,7 @@ if ($Stage -eq 'Before') {
     $buildText = if (Test-Path -LiteralPath $buildFile -PathType Leaf) { Get-Content -Raw -LiteralPath $buildFile } else { '' }
     if ($buildText -notmatch ('(?m)^BuildID[:= ]+\s*' + [regex]::Escape($ExpectedBuildID) + '\s*$')) { Result 'BuildID' 'FAIL' 'Installed BUILD-INFO.txt does not match candidate BuildID.' } else { Result 'BuildID' 'PASS' 'Candidate build matches.' }
 
-    if (!(Test-Path -LiteralPath (Join-Path $Directory 'sidraviamgr.exe')) -or $registration.Count -ne 1 -or $registration[0].InstallLocation.TrimEnd('\') -ine $Directory) { Result 'Installation' 'FAIL' 'Expected manager and matching AppId installation location.' } else { Result 'Installation' 'PASS' 'Files and registration observed.' }
+    if (!(Test-Path -LiteralPath (Join-Path $Directory 'sidraviamgr.exe')) -or $registration.Count -ne 1 -or $buildText -notmatch ('(?m)^Target: ' + $registration[0].Target + '\s*$') -or $registration[0].InstallLocation.TrimEnd('\') -ine $Directory) { Result 'Installation' 'FAIL' 'Expected manager and matching AppId installation location.' } else { Result 'Installation' 'PASS' 'Files and registration observed.' }
     $payloadBad = @(Payload-Mismatches $payload $target)
     if ($payloadBad.Count) { Result 'CandidatePayload' 'FAIL' 'Manifest payload missing or hash mismatch.' } else { Result 'CandidatePayload' 'PASS' 'All manifest payload files and hashes match.' }
     if ($keepOnly) {

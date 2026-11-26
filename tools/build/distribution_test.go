@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -52,12 +53,15 @@ func TestDistributionPreservesAnEmptyDestinationCreatedDuringBuild(t *testing.T)
 func TestDistributionFlags(t *testing.T) {
 	base := []string{"--version", "0.3.0-alpha.1", "--build-id", "test", "--output", "out"}
 	for _, target := range []string{"windows-amd64", "linux-amd64", "windows-arm64", "linux-arm64"} {
-		tail := []string{"--artifact", "distribution", "--target", target}
+		tail := []string{"--artifact", "distribution", "--target", target, "--gui-directory", "gui"}
+		if strings.HasPrefix(target, "windows-") {
+			tail = append(tail, "--iscc", "iscc")
+		}
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "windows-arm64", "--gui-directory", "x"}, {"--artifact", "distribution", "--target", "windows-arm64", "--iscc", "x"}, {"--artifact", "distribution", "--target", "linux-arm64", "--iscc", "x"}} {
+	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-arm64", "--iscc", "x"}} {
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err == nil {
 			t.Fatal("accepted invalid target combination")
 		}
@@ -171,29 +175,49 @@ func TestDistributionContents(t *testing.T) {
 }
 func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), "gui")
-	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), "dll")
-	for _, name := range []string{"data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/NOTICES.Z"} {
+	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0x8664))
+	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0x8664))
+	for _, name := range []string{"data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/NOTICES.Z"} {
 		writeTestFile(t, filepath.Join(root, name), "runtime")
 	}
+	writeTestFile(t, filepath.Join(root, "data/app.so"), testELF(62))
 	writeTestFile(t, filepath.Join(root, "data/flutter_assets/FontManifest.json"), "[]")
-	gui, err := readGUI(root, nil)
+	gui, err := readGUI(root, nil, "amd64")
 	if err != nil || len(gui) != 7 {
 		t.Fatal(err)
 	}
+	if _, err := readGUI(root, nil, "arm64"); err == nil {
+		t.Fatal("accepted x64 GUI in an ARM64 distribution")
+	}
+	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0xaa64))
+	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0xaa64))
+	writeTestFile(t, filepath.Join(root, "data/app.so"), testELF(183))
+	if _, err := readGUI(root, nil, "arm64"); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(root, "incompatible_plugin.dll"), testPE(0x8664))
+	if _, err := readGUI(root, nil, "arm64"); err == nil {
+		t.Fatal("accepted x64 plugin in an ARM64 distribution")
+	}
+	if err := os.Remove(filepath.Join(root, "incompatible_plugin.dll")); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0x8664))
+	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0x8664))
+	writeTestFile(t, filepath.Join(root, "data/app.so"), testELF(62))
 	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]archiveEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
 	if !strings.Contains(manifest, "Components: core") || !strings.Contains(manifest, "Components: gui") || !strings.Contains(manifest, "Check: RemoveGUIComponent") {
 		t.Fatal("component ownership missing")
 	}
 	writeTestFile(t, filepath.Join(root, "sidraviactl.exe"), "collision")
-	if _, err := readGUI(root, nil); err == nil {
+	if _, err := readGUI(root, nil, "amd64"); err == nil {
 		t.Fatal("accepted collision")
 	}
 	if err := os.Remove(filepath.Join(root, "sidraviactl.exe")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(root, "Sidravia.exe"), filepath.Join(root, "link.exe")); err == nil {
-		if _, err := readGUI(root, nil); err == nil {
+		if _, err := readGUI(root, nil, "amd64"); err == nil {
 			t.Fatal("accepted link")
 		}
 	}
@@ -248,19 +272,33 @@ func TestGUIPayloadRejectsUnusedBuildAndWebContent(t *testing.T) {
 	}
 }
 
+func testPE(machine uint16) string {
+	header := make([]byte, 90)
+	copy(header, "MZ")
+	header[60] = 64
+	copy(header[64:], "PE\x00\x00")
+	binary.LittleEndian.PutUint16(header[68:], machine)
+	binary.LittleEndian.PutUint16(header[88:], 0x20b)
+	return string(header)
+}
+
+func testELF(machine uint16) string {
+	header := make([]byte, 20)
+	copy(header, []byte{0x7f, 'E', 'L', 'F', 2, 1})
+	binary.LittleEndian.PutUint16(header[18:], machine)
+	return string(header)
+}
+
 func TestLinuxGUIBoundary(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"sidravia_gui", "lib/libflutter_linux_gtk.so", "lib/libapp.so", "data/icudtl.dat", "data/flutter_assets/NOTICES.Z", "data/flutter_assets/version.json", "data/icons/sidravia.png", "FLUTTER-LICENSE"} {
 		data := name
 		if name == "sidravia_gui" || strings.HasSuffix(name, ".so") {
-			header := make([]byte, 20)
-			copy(header, []byte{0x7f, 'E', 'L', 'F', 2, 1})
-			header[18] = 62
-			data = string(header)
+			data = testELF(62)
 		}
 		writeTestFile(t, filepath.Join(root, name), data)
 	}
-	entries, err := readLinuxGUI(root, nil)
+	entries, err := readLinuxGUI(root, nil, "amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,8 +307,21 @@ func TestLinuxGUIBoundary(t *testing.T) {
 			t.Fatal("GUI not executable")
 		}
 	}
+	if _, err := readLinuxGUI(root, nil, "arm64"); err == nil {
+		t.Fatal("accepted x64 ELF runner in ARM64 distribution")
+	}
+	armPaths := []string{"sidravia_gui", "lib/libflutter_linux_gtk.so", "lib/libapp.so"}
+	for _, name := range armPaths {
+		writeTestFile(t, filepath.Join(root, name), testELF(183))
+	}
+	if _, err := readLinuxGUI(root, nil, "arm64"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range armPaths {
+		writeTestFile(t, filepath.Join(root, name), testELF(62))
+	}
 	writeTestFile(t, filepath.Join(root, "config/configurations.json"), "private")
-	if _, err := readLinuxGUI(root, nil); err == nil {
+	if _, err := readLinuxGUI(root, nil, "amd64"); err == nil {
 		t.Fatal("accepted user state")
 	}
 	if err := os.RemoveAll(filepath.Join(root, "config")); err != nil {
@@ -279,7 +330,7 @@ func TestLinuxGUIBoundary(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "lib/libapp.so")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readLinuxGUI(root, nil); err == nil {
+	if _, err := readLinuxGUI(root, nil, "amd64"); err == nil {
 		t.Fatal("accepted incomplete release")
 	}
 }

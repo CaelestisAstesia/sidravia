@@ -210,6 +210,17 @@ try {
     $env:PYTHONDONTWRITEBYTECODE = '1'
     $report.go_cache = $env:GOCACHE
     Invoke-Stage 'go-version' $Go @('version')
+    # Flutter 3.47 chooses the desktop architecture from its Dart host ABI.
+    # Derive the expected bundle and payload from the native host and reject
+    # a mismatched SDK instead of consuming any x64 cache on an ARM64 host.
+    $nativeArch = [Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITEW6432')
+    if (!$nativeArch) { $nativeArch = [Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITECTURE') }
+    switch ($nativeArch) {
+        'AMD64' { $payloadTarget = 'windows-amd64'; $flutterArch = 'x64' }
+        'ARM64' { $payloadTarget = 'windows-arm64'; $flutterArch = 'arm64' }
+        default { throw ('Unsupported native Windows architecture: ' + $nativeArch) }
+    }
+    $report.target = $payloadTarget
     Invoke-Stage 'flutter-version' $Flutter @('--version','--machine')
     $report.go_version = (Get-Content -LiteralPath (Join-Path $runRoot 'go-version.log') -Raw).Trim()
     $report.flutter_version = Get-Content -LiteralPath (Join-Path $runRoot 'flutter-version.log') -Raw | ConvertFrom-Json
@@ -217,6 +228,16 @@ try {
     if (!$expectedFlutter -or $report.flutter_version.frameworkVersion -cne $expectedFlutter) {
         throw ('Flutter SDK version mismatch: expected ' + $expectedFlutter + ', got ' + $report.flutter_version.frameworkVersion)
     }
+    $dart = Join-Path (Split-Path -Parent $Flutter) 'cache\dart-sdk\bin\dart.exe'
+    $expectedMachine = if ($flutterArch -eq 'arm64') { 0xaa64 } else { 0x8664 }
+    $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($dart))
+    try {
+        $reader.BaseStream.Position = 60
+        $reader.BaseStream.Position = [long]$reader.ReadUInt32()
+        if ($reader.ReadUInt32() -ne 0x00004550 -or $reader.ReadUInt16() -ne $expectedMachine) {
+            throw ('Flutter Dart SDK does not match ' + $payloadTarget)
+        }
+    } finally { $reader.Dispose() }
     Push-Location (Join-Path $repo 'gui')
     try {
         Invoke-Stage 'dependencies' $Flutter @('pub','get','--enforce-lockfile')
@@ -226,7 +247,7 @@ try {
         }
         Invoke-Stage 'gui-release' $Flutter @('build','windows','--release','--no-pub','--target','lib/main.dart','--build-name',$Version,'--build-number','1')
     } finally { Pop-Location }
-    $gui = Join-Path $repo 'gui\build\windows\x64\runner\Release'
+    $gui = Join-Path $repo ('gui\build\windows\' + $flutterArch + '\runner\Release')
     $exe = Join-Path $gui 'Sidravia.exe'
     if (!(Test-Path -LiteralPath $exe)) { throw 'GUI executable missing after successful build' }
     if ((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -cne ($Version + '+1')) { throw 'GUI product version mismatch' }
@@ -241,10 +262,10 @@ try {
         $coreOut = Join-Path $runRoot 'core-distribution'
         Push-Location $repo
         try {
-            Invoke-Stage 'package' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target','windows-amd64','--output',$out,'--go',$Go,'--gui-directory',$gui,'--iscc',$ISCC)
-            Invoke-Stage 'consume' $Python @('tools/developer/verify_distribution.py','--directory',$out,'--target','windows-amd64','--version',$Version,'--build-id',$manifest.source_commit,'--gui-directory',$gui,'--go',$Go,'--smoke')
-            Invoke-Stage 'package-core' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target','windows-amd64','--output',$coreOut,'--go',$Go)
-            Invoke-Stage 'consume-core' $Python @('tools/developer/verify_distribution.py','--directory',$coreOut,'--target','windows-amd64','--version',$Version,'--build-id',$manifest.source_commit,'--go',$Go,'--smoke')
+            Invoke-Stage 'package' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target',$payloadTarget,'--output',$out,'--go',$Go,'--gui-directory',$gui,'--iscc',$ISCC)
+            Invoke-Stage 'consume' $Python @('tools/developer/verify_distribution.py','--directory',$out,'--target',$payloadTarget,'--version',$Version,'--build-id',$manifest.source_commit,'--gui-directory',$gui,'--go',$Go,'--smoke')
+            Invoke-Stage 'package-core' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target',$payloadTarget,'--output',$coreOut,'--go',$Go)
+            Invoke-Stage 'consume-core' $Python @('tools/developer/verify_distribution.py','--directory',$coreOut,'--target',$payloadTarget,'--version',$Version,'--build-id',$manifest.source_commit,'--go',$Go,'--smoke')
         } finally { Pop-Location }
         $report.distribution = $out
         $report.core_distribution = $coreOut

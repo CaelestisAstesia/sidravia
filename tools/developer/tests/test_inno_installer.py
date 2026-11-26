@@ -25,7 +25,13 @@ def windows_path(path):
 @unittest.skipUnless(os.environ.get('SIDRAVIA_ISCC') and os.environ.get('SIDRAVIA_INNO_TEST_ROOT'),
                      'native Inno compiler/scratch root not configured')
 class InnoContracts(unittest.TestCase):
-    def test_native_script_contracts(self):
+    def test_native_amd64_payload_script_contracts(self):
+        self.check_native_script_contracts('windows-amd64')
+
+    def test_native_arm64_payload_script_contracts(self):
+        self.check_native_script_contracts('windows-arm64')
+
+    def check_native_script_contracts(self, payload_target):
         compiler = os.environ['SIDRAVIA_ISCC']
         with tempfile.TemporaryDirectory(prefix='inno-contract-', dir=os.environ['SIDRAVIA_INNO_TEST_ROOT']) as directory:
             root = Path(directory)
@@ -71,7 +77,9 @@ if ($Mode -eq 'create') {
             subprocess.run([powershell, '-NoProfile', '-File', windows_path(acl_script), native, 'create'],
                            check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
 
-            source = (REPO / 'packaging/windows/sidravia.iss').read_text().split('[Code]\n', 1)[1]
+            template = (REPO / 'packaging/windows/sidravia.iss').read_text()
+            preamble = template.split('[Setup]', 1)[0]
+            source = template.split('[Code]\n', 1)[1]
             # Rename entry points; no production wizard/uninstall event executes.
             events = ('InitializeSetup', 'DeinitializeSetup', 'DeinitializeUninstall', 'InitializeWizard', 'RegisterPreviousData', 'ShouldSkipPage', 'CurPageChanged',
                       'UpdateReadyMemo', 'NextButtonClick', 'PrepareToInstall', 'CurStepChanged',
@@ -80,6 +88,10 @@ if ($Mode -eq 'create') {
                 source = re.sub(r'\b' + event + r'\b', 'Unused' + event, source)
             for constant, leaf in (('{userappdata}', 'roaming'), ('{localappdata}', 'local'), ('{app}', 'app')):
                 source = source.replace(constant, native + '\\' + leaf)
+            # Use the real OppositeSetupRegistered implementation against a
+            # unique test key. A deployed AppId never reaches the registry.
+            registry_prefix = 'Software\\SidraviaInnoTest-' + uuid.uuid4().hex
+            source = source.replace('Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', registry_prefix)
             # Fixed real AUMIDs/process names never reach test calls.
             identity = 'io.github.astesia.Sidravia.InnoTest.' + uuid.uuid4().hex
             source = source.replace('io.github.astesia.Sidravia.Announcements', identity)
@@ -87,7 +99,9 @@ if ($Mode -eq 'create') {
                 source = source.replace('Name="' + name + '"', 'Name="inno-fixture-unused-' + name + '"')
             cases = (REPO / 'packaging/windows/testdata/contracts.iss').read_text().replace('@ROOT@', native).replace('io.github.astesia.Sidravia.InnoTest.FIXTURE', identity)
             script = root / 'contracts.iss'
-            script.write_text('#define ProductVersion "0.3.0-alpha.2"\n#define IncludeGUI 0\n'
+            cases = cases.replace('@OPPOSITE_KEY@', registry_prefix + '\\{#OppositeAppId}_is1')
+            script.write_text('#define ProductVersion "0.3.0-alpha.2"\n'
+                              f'#define PayloadTarget "{payload_target}"\n' + preamble +
                               '[Setup]\nAppName=Sidravia isolated contracts\nAppVersion=1\n'
                               'DefaultDirName={tmp}\\never-installed\nPrivilegesRequired=lowest\n'
                               'SetupArchitecture=x64\nUninstallable=no\nCreateAppDir=no\n'

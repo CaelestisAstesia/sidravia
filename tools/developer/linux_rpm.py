@@ -14,6 +14,7 @@ import tempfile
 import uuid
 
 from verification_commands import resolve_flutter_sdk
+from verify_distribution import native_arch
 
 
 APP = Path('/usr/lib64/sidravia')
@@ -86,13 +87,25 @@ def tree_manifest(stage):
     return result
 
 
+RPM_ARCH = {'amd64': 'x86_64', 'arm64': 'aarch64'}
+
+
+def receipt_architecture(receipt):
+    # Earlier RPM receipts were produced exclusively on x86_64.
+    arch = receipt.get('architecture', 'x86_64')
+    if arch not in RPM_ARCH.values():
+        raise ValueError('unsupported RPM architecture')
+    return arch
+
+
 def verify(package, receipt):
     if digest(package) != receipt['sha256']:
         raise ValueError('RPM differs from producer hash')
     identity = query(package, '--qf', '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}')
     core = receipt.get('kind') == 'core'
     name = 'sidravia-core' if core else 'sidravia'
-    if identity != f"{name}|{rpm_version(receipt['version'])}|{receipt['release']}|x86_64":
+    arch = receipt_architecture(receipt)
+    if identity != f"{name}|{rpm_version(receipt['version'])}|{receipt['release']}|{arch}":
         raise ValueError('RPM identity mismatch')
     scripts = receipt['maintenanceScripts']
     for tag in ('PREIN', 'PREUN'):
@@ -142,13 +155,20 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
     output = Path(output).resolve()
     if output.exists() or not output.parent.is_dir():
         raise ValueError('RPM output must not exist and its parent must exist')
+    arch = native_arch()
+    if arch not in RPM_ARCH:
+        raise ValueError('RPM requires a native AMD64 or ARM64 build host')
+    target = f'linux-{arch}'
+    rpm_arch = RPM_ARCH[arch]
     if core:
         import verify_distribution
-        portable = verify_distribution.verify(archive.parent, root, 'linux-amd64', version, source['commit'], go=go)
+        portable = verify_distribution.verify(archive.parent, root, target, version, source['commit'], go=go)
         portable['source'] = source
     else:
         from linux_development import read_portable_receipt
         portable = read_portable_receipt(archive)
+    if portable['target'] != target or portable['payloadKind'] != ('core' if core else 'gui'):
+        raise ValueError('RPM input target or package kind mismatch')
     expected_archive_hash = portable['artifactHashes'].get(archive.name)
     if not same_source(portable['source'], source) or expected_archive_hash is None:
         raise ValueError('RPM input must be the exact clean-source verified portable')
@@ -218,15 +238,15 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
             for path in sorted(stage.rglob('*')):
                 tar.add(path, arcname=str(path.relative_to(stage)), recursive=False)
         scripts = maintenance_scripts(root)
-        spec = (root / ('packaging/linux/sidravia-core.spec.in' if core else 'packaging/linux/sidravia.spec.in')).read_text().replace('@VERSION@', rpmver).replace('@RELEASE@', release)
+        spec = (root / ('packaging/linux/sidravia-core.spec.in' if core else 'packaging/linux/sidravia.spec.in')).read_text().replace('@VERSION@', rpmver).replace('@RELEASE@', release).replace('@ARCH@', rpm_arch)
         spec = spec.replace('@PREIN@', scripts['PREIN'].replace('%', '%%')).replace('@PREUN@', scripts['PREUN'].replace('%', '%%'))
         specpath = top / 'SPECS/sidravia.spec'
         specpath.write_text(spec)
         subprocess.run(['rpmbuild', '-bb', '--define', '_topdir ' + str(top), str(specpath)], env=env, check=True)
-        package, = (top / 'RPMS/x86_64').glob('*.rpm')
+        package, = (top / 'RPMS' / rpm_arch).glob('*.rpm')
         receipt = {'version': version, 'release': release, 'source': source, 'source_unchanged': True,
                    'portableSHA256': archive_hash, 'sha256': digest(package), 'files': files,
-                   'package': package.name, 'unsigned': True, 'maintenanceScripts': scripts}
+                   'package': package.name, 'architecture': rpm_arch, 'unsigned': True, 'maintenanceScripts': scripts}
         receipt['kind'] = 'core' if core else 'gui'
         receipt['requires'] = verify(package, receipt)
         def check_source():
@@ -241,6 +261,8 @@ def accept(root, packages, env, source, *, go, flutter):
     receipts = [json.loads(Path(str(p) + '.json').read_text()) for p in packages]
     if receipts[0].get('kind', 'gui') != receipts[1].get('kind', 'gui'):
         raise ValueError('RPM acceptance requires matching package kinds')
+    if any(receipt_architecture(receipt) != RPM_ARCH.get(native_arch()) for receipt in receipts):
+        raise ValueError('RPM acceptance requires a matching native host')
     for package, receipt in zip(packages, receipts):
         if not same_source(receipt['source'], source):
             raise ValueError('RPM acceptance requires its exact clean producer source')

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io/fs"
 	"os"
@@ -14,7 +12,7 @@ import (
 
 // Only a fresh release GUI input is accepted. Core tools, public profiles and
 // portable state belong to the distribution producer, never this input.
-func readLinuxGUI(root string, existing []archiveEntry) ([]archiveEntry, error) {
+func readLinuxGUI(root string, existing []archiveEntry, arch string) ([]archiveEntry, error) {
 	if root == "" {
 		return nil, nil
 	}
@@ -56,10 +54,8 @@ func readLinuxGUI(root string, existing []archiveEntry) ([]archiveEntry, error) 
 		if err != nil {
 			return err
 		}
-		if name == "sidravia_gui" || strings.HasSuffix(name, ".so") {
-			if len(data) < 20 || !bytes.Equal(data[:4], []byte{0x7f, 'E', 'L', 'F'}) || data[4] != 2 || data[5] != 1 || binary.LittleEndian.Uint16(data[18:20]) != 62 {
-				return fmt.Errorf("Linux GUI is not ELF AMD64: %s", name)
-			}
+		if (name == "sidravia_gui" || strings.HasSuffix(strings.ToLower(name), ".so")) && !matchesELF(data, arch) {
+			return fmt.Errorf("Linux GUI is not ELF %s: %s", arch, name)
 		}
 		mode := os.FileMode(0644)
 		if name == "sidravia_gui" {
