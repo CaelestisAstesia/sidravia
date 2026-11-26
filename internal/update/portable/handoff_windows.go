@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"strconv"
 	"strings"
 	"time"
@@ -100,29 +101,29 @@ func readWindowsSession(ctx context.Context, target, id string) (windowsSession,
 	}
 	return s, dir, nil
 }
-func sourceInventory(s windowsSession) (Inventory, error) {
+func sourceInventory(s windowsSession) (filetxn.Inventory, error) {
 	proof, err := release.PublisherTrust().Verify(s.OldManifest, s.OldSignature, s.Source.Version)
 	if err != nil {
-		return Inventory{}, err
+		return filetxn.Inventory{}, err
 	}
 	if proof.BuildID() != s.Source.BuildID {
-		return Inventory{}, ErrInvalid
+		return filetxn.Inventory{}, ErrInvalid
 	}
 	// The signed source payload kind determines its portable channel.
 	var m struct {
 		PayloadKind string `json:"payloadKind"`
 	}
 	if json.Unmarshal(s.OldIndex, &m) != nil {
-		return Inventory{}, ErrInvalid
+		return filetxn.Inventory{}, ErrInvalid
 	}
 	c, err := proof.InstalledAsset("windows", "amd64", m.PayloadKind+"-portable")
 	if err != nil {
-		return Inventory{}, err
+		return filetxn.Inventory{}, err
 	}
-	return Authenticate(proof, c, s.OldIndex)
+	return filetxn.Authenticate(proof, c, s.OldIndex)
 }
 func pinnedRunner(path string, entrySize int64, hash string) (*os.File, error) {
-	if !plainPlatformPath(path) {
+	if !filetxn.PlainPlatformPath(path) {
 		return nil, ErrChanged
 	}
 	name, err := windows.UTF16PtrFromString(path)
@@ -139,7 +140,7 @@ func pinnedRunner(path string, entrySize int64, hash string) (*os.File, error) {
 		f.Close()
 		return nil, ErrChanged
 	}
-	if err = singleFile(f, info); err != nil {
+	if err = filetxn.SingleFile(f, info); err != nil {
 		f.Close()
 		return nil, err
 	}
@@ -158,18 +159,18 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	if layout.Mode != productlayout.ModePortable {
 		return transaction.Record{}, ErrInvalid
 	}
-	old, err := Authenticate(oldProof, oldAsset, oldIndex)
+	old, err := filetxn.Authenticate(oldProof, oldAsset, oldIndex)
 	if err != nil {
 		return transaction.Record{}, err
 	}
-	if old.manifest.Version != version || old.manifest.BuildID != build {
+	if old.Identity().Version != version || old.Identity().BuildID != build {
 		return transaction.Record{}, ErrInvalid
 	}
-	payload, err := ExtractRelease(ctx, layout.ExecutableDirectory, archive, next, c)
+	payload, err := filetxn.ExtractRelease(ctx, layout.ExecutableDirectory, archive, next, c)
 	if err != nil {
 		return transaction.Record{}, err
 	}
-	err = Preflight(ctx, layout.ExecutableDirectory, old, payload)
+	err = filetxn.Preflight(ctx, layout.ExecutableDirectory, old, payload)
 	err = errors.Join(err, payload.Close())
 	if err != nil {
 		return transaction.Record{}, err
@@ -230,7 +231,7 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	if err = savePrivate(ctx, filepath.Join(dir, "session.json"), s); err != nil {
 		return r, err
 	}
-	entry, ok := index(old)["sidraviaupdater.exe"]
+	entry, ok := old.Entry("sidraviaupdater.exe")
 	if !ok {
 		return r, ErrInvalid
 	}
@@ -352,7 +353,7 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 	if err != nil {
 		return err
 	}
-	entry, ok := index(old)["sidraviaupdater.exe"]
+	entry, ok := old.Entry("sidraviaupdater.exe")
 	if !ok {
 		return ErrInvalid
 	}
@@ -438,12 +439,12 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 		return err
 	}
 	c := release.Candidate{ID: r.Package.CandidateID, Version: r.Target.Version, Name: r.Package.Name, Size: r.Package.Size, SHA256: r.Package.SHA256}
-	payload, err := ExtractRelease(ctx, target, s.Archive, proof, c)
+	payload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)
 	if err != nil {
 		return err
 	}
 	defer func() { resultErr = errors.Join(resultErr, payload.Close()) }()
-	return Execute(ctx, Execution{Store: store, OperationID: id, Target: target, Old: old, Payload: payload, Namespace: s.Namespace})
+	return execute(ctx, execution{Store: store, OperationID: id, Target: target, Old: old, Payload: payload, Namespace: s.Namespace})
 }
 
 // A running Windows image cannot delete itself. The next update removes only
@@ -476,7 +477,7 @@ func cleanupWindowsRunner(ctx context.Context, r transaction.Record) error {
 	if err != nil {
 		return err
 	}
-	entry, ok := index(old)["sidraviaupdater.exe"]
+	entry, ok := old.Entry("sidraviaupdater.exe")
 	if !ok {
 		return ErrInvalid
 	}

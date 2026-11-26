@@ -117,9 +117,5 @@ func recoverPortableWindows(ctx context.Context, layout productlayout.Layout, ve
 	if expected == r.Target {
 		c.ID = r.Package.CandidateID
 	}
-	inventory, err := portable.Authenticate(proof, c, index)
-	if err != nil {
-		return result(err)
-	}
-	return result(portable.ReconcileInterrupted(ctx, store, id, layout.ExecutableDirectory, inventory))
+	return result(portable.ReconcileRelease(ctx, store, id, layout.ExecutableDirectory, portable.ReleaseInput{Proof: proof, Candidate: c, Index: index}))
 }

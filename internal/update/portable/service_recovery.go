@@ -5,6 +5,7 @@ package portable
 import (
 	"context"
 	"errors"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"time"
 
 	"sidravia/internal/installation/change"
@@ -16,7 +17,7 @@ import (
 // RecoverManagedService resumes an interrupted product rollback. Both indexes
 // are revalidated independently of the installed tree before it is touched.
 func RecoverManagedService(ctx context.Context, store *transaction.Store, id, target string) (resultErr error) {
-	if store == nil || !canonical(target) {
+	if store == nil || !filetxn.Canonical(target) {
 		return ErrInvalid
 	}
 	releaseCoordinator, err := store.AcquireRollbackCoordinator(ctx, id)
@@ -29,7 +30,7 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 		return errors.Join(ErrChanged, err)
 	}
 	if record.Phase == transaction.Completed || record.Phase == transaction.Aborted {
-		return cleanRollbackSnapshot(record, nil)
+		return filetxn.CleanRollbackSnapshot(record, nil)
 	}
 	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
 	if err != nil {
@@ -42,7 +43,7 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 		return errors.Join(ErrChanged, err)
 	}
 	if record.Phase == transaction.RolledBack {
-		pending, err := ManagedRollbackPending(target, id)
+		pending, err := filetxn.ManagedRollbackPending(target, id)
 		if err != nil || !pending {
 			return err
 		}
@@ -53,18 +54,18 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 				return err
 			}
 		}
-		return cleanRollbackSnapshot(record, nil)
+		return filetxn.CleanRollbackSnapshot(record, nil)
 	}
-	backup, next, dirs, err := loadRollback(ctx, store, record)
+	backup, err := filetxn.OpenRollback(ctx, store, record)
 	if err != nil {
 		return err
 	}
 	clean := false
 	defer func() {
 		if clean {
-			resultErr = errors.Join(resultErr, backup.root.Close(), cleanRollbackSnapshot(record, &backup.inventory))
+			resultErr = errors.Join(resultErr, backup.Retire(record))
 		} else {
-			resultErr = errors.Join(resultErr, backup.root.Close())
+			resultErr = errors.Join(resultErr, backup.Close())
 		}
 	}()
 	if record.Phase != transaction.RolledBack {
@@ -76,8 +77,7 @@ func RecoverManagedService(ctx context.Context, store *transaction.Store, id, ta
 				return errors.Join(transaction.ErrConflict, err)
 			}
 		}
-		input := Execution{Store: store, OperationID: id, Target: target, Old: backup.inventory, Payload: &Payload{inventory: next}}
-		if err := restoreServiceFiles(ctx, input, backup, dirs); err != nil {
+		if err := backup.Restore(ctx, store, record); err != nil {
 			return err
 		}
 	}

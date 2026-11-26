@@ -1,4 +1,4 @@
-package portable
+package filetxn
 
 import (
 	"context"
@@ -99,7 +99,7 @@ func sealApplication(ctx context.Context, root *os.Root, id string) (context.Con
 	return context.WithoutCancel(ctx), info, nil
 }
 
-func boundExecution(record transaction.Record, target string, old Inventory, p *Payload) bool {
+func BoundExecution(record transaction.Record, target string, old Inventory, p *Payload) bool {
 	if p == nil {
 		return false
 	}

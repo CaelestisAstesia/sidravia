@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sidravia/internal/update/internal/candidatecache"
+	"sidravia/internal/update/portable"
 	"sidravia/internal/update/query"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestApplyErrorsPreserveSafeDomainAndRateLimitPriority(t *testing.T) {
 		{errors.Join(errSourceProof, context.Canceled), "cancelled"},
 		{errManualRepair, "manual_repair_required"},
 		{transaction.ErrConflict, "update_busy"},
-		{errStagingCleanup, "staging_cleanup_failed"},
+		{portable.ErrStagingCleanup, "staging_cleanup_failed"},
 	} {
 		if got := applyErrorCode(item.err); got != item.code {
 			t.Fatalf("%v: %s want %s", item.err, got, item.code)

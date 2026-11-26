@@ -1,6 +1,6 @@
 //go:build windows
 
-package portable
+package filetxn
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	"unsafe"
 )
 
-func singleFile(f *os.File, _ os.FileInfo) error {
+func SingleFile(f *os.File, _ os.FileInfo) error {
 	var info windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(windows.Handle(f.Fd()), &info); err != nil {
 		return err
@@ -66,7 +66,7 @@ func availableSpace(root *os.Root, required int64) error {
 	return nil
 }
 
-// The staged and target trees share a canonical parent; reparse mounts are
+// The staged and target trees share a Canonical parent; reparse mounts are
 // refused separately. The handle-relative kernel rename is the volume check.
 func sameDevice(os.FileInfo, os.FileInfo) bool { return true }
 func applyGuard() (func(), error)              { return windowsplatform.AcquireInstallation() }
@@ -170,7 +170,7 @@ func publish(root *os.Root, old, new string, replace bool) error {
 	return windows.NtSetInformationFile(handle, &io, &buf[0], uint32(size), windows.FileRenameInformation)
 }
 
-func plainPlatformPath(path string) bool {
+func PlainPlatformPath(path string) bool {
 	for {
 		p, e := windows.UTF16PtrFromString(path)
 		if e != nil {

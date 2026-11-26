@@ -19,6 +19,7 @@ import (
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/testfixture"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 	"strconv"
@@ -58,11 +59,11 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		s = strings.Replace(s, "\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_DELAY_READY\")==\"1\"{time.Sleep(600*time.Millisecond)}\n\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", 1)
 
 		s = strings.Replace(s, "\ts, dir, err := readWindowsSession(ctx, target, id)", "\tdefer func(){if resultErr!=nil{os.WriteFile("+strconv.Quote(filepath.Join(owned, "runner-cause.txt"))+",[]byte(resultErr.Error()),0600)}}()\n\ts, dir, err := readWindowsSession(ctx, target, id)", 1)
-		s = strings.Replace(s, "\tpayload, err := ExtractRelease(ctx, target, s.Archive, proof, c)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_ARCHIVE_CHANGED\")==\"1\"{if err:=os.Rename(s.Archive,s.Archive+\".old\");err!=nil{return err};if err:=os.WriteFile(s.Archive,[]byte(strings.Repeat(\"x\",int(c.Size))),0600);err!=nil{return err}}\n\tpayload, err := ExtractRelease(ctx, target, s.Archive, proof, c)", 1)
+		s = strings.Replace(s, "\tpayload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_ARCHIVE_CHANGED\")==\"1\"{if err:=os.Rename(s.Archive,s.Archive+\".old\");err!=nil{return err};if err:=os.WriteFile(s.Archive,[]byte(strings.Repeat(\"x\",int(c.Size))),0600);err!=nil{return err}}\n\tpayload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)", 1)
 		s = strings.Replace(s, "\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", 1)
 		return strings.Replace(s, "\tcmd, err := windowsplatform.StartIndependent(", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\tcmd, err := windowsplatform.StartIndependent(", 1)
 	})
-	overlay.Replace("internal/update/portable/apply.go", func(s string) string {
+	overlay.Replace("internal/update/portable/internal/filetxn/apply.go", func(s string) string {
 		return strings.Replace(s, "\t_, changed, err := store.Advance(work, id, transaction.Quiescent,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"quiescent\"{os.Exit(17)}\n\t_, changed, err := store.Advance(work, id, transaction.Quiescent,", 1)
 	})
 	overlay.Replace("internal/update/portable/coordinator.go", func(s string) string {
@@ -131,14 +132,14 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		manifest, sig := img.verified.Proof()
 		releaseDir := filepath.Join(source, v.version)
 		os.MkdirAll(releaseDir, 0700)
-		for name, data := range map[string][]byte{release.ReleaseManifestName: manifest, release.ReleaseSignatureName: sig, img.inventory.candidate.Name: img.archive} {
+		for name, data := range map[string][]byte{release.ReleaseManifestName: manifest, release.ReleaseSignatureName: sig, img.Candidate.Name: img.archive} {
 			if e = os.WriteFile(filepath.Join(releaseDir, name), data, 0600); e != nil {
 				t.Fatal(e)
 			}
 		}
 	}
 	old, next := images[0], images[1]
-	c := next.inventory.candidate
+	c := next.Candidate
 	api, _ := json.Marshal([]any{map[string]any{"id": 2, "tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": []any{map[string]any{"id": 22, "name": c.Name, "size": c.Size, "digest": "sha256:" + c.SHA256, "browser_download_url": c.DownloadURL, "state": "uploaded"}}}})
 	if e = os.WriteFile(filepath.Join(source, "api.json"), api, 0600); e != nil {
 		t.Fatal(e)
@@ -282,7 +283,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-				e = verifyInventory(context.Background(), rr, old.inventory)
+				e = filetxn.VerifyInventory(context.Background(), rr, old.inventory)
 				rr.Close()
 				if e != nil {
 					t.Fatal("cancelled handoff changed files", e)
@@ -347,7 +348,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = errors.Join(verifyInventory(context.Background(), rr, old.inventory), rr.Close())
+				err = errors.Join(filetxn.VerifyInventory(context.Background(), rr, old.inventory), rr.Close())
 				if err != nil {
 					t.Fatal("altered archive changed the target", err)
 				}
@@ -416,9 +417,9 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			e = verifyInventory(context.Background(), rr, next.inventory)
+			e = filetxn.VerifyInventory(context.Background(), rr, next.inventory)
 			if e == nil {
-				e = verifyGUI(rr, next.inventory)
+				e = filetxn.VerifyGUI(rr, next.inventory)
 			}
 			rr.Close()
 			if e != nil {

@@ -1,6 +1,6 @@
 //go:build windows
 
-package portable
+package filetxn
 
 import (
 	"bytes"
@@ -15,6 +15,9 @@ func TestArchiveSnapshotUsesOnlyTheAuthenticatedBytes(t *testing.T) {
 	ctx := context.Background()
 	directory := t.TempDir()
 	target := filepath.Join(directory, "target")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
 	image := windowsImage(t, "1.1.0", "new", winFiles("new"))
 	candidate := image.inventory.candidate
 	archive := filepath.Join(directory, candidate.Name)

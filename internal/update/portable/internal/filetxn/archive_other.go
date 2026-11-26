@@ -1,6 +1,6 @@
 //go:build !windows
 
-package portable
+package filetxn
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package portable
+package filetxn
 
 import (
 	"archive/tar"
@@ -28,6 +28,9 @@ type Payload struct {
 // Extract accepts the producer's exact portable format, not arbitrary archives.
 // Staging is beside the target for same-filesystem publication; no scripts run.
 func Extract(ctx context.Context, target, archive string, i Inventory) (*Payload, error) {
+	if len(i.data) == 0 || !Canonical(target) {
+		return nil, ErrInvalid
+	}
 	f, size, err := openArchive(ctx, filepath.Dir(target), archive, i.candidate.Size)
 	if err != nil {
 		return nil, err
@@ -40,7 +43,7 @@ func Extract(ctx context.Context, target, archive string, i Inventory) (*Payload
 }
 
 func extractPayload(ctx context.Context, target string, f *os.File, size int64, i Inventory) (result *Payload, err error) {
-	if len(i.data) == 0 || !canonical(target) {
+	if len(i.data) == 0 || !Canonical(target) {
 		return nil, ErrInvalid
 	}
 	parent := filepath.Dir(target)
@@ -171,7 +174,7 @@ func extractPayload(ctx context.Context, target string, f *os.File, size int64, 
 	if len(seen) != len(expected)+2 {
 		return nil, ErrInvalid
 	}
-	if err = verifyInventory(ctx, root, i); err != nil {
+	if err = VerifyInventory(ctx, root, i); err != nil {
 		return nil, err
 	}
 	return p, nil

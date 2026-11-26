@@ -1,4 +1,4 @@
-package portable
+package filetxn
 
 import (
 	"archive/tar"
@@ -22,6 +22,9 @@ func ExtractRelease(ctx context.Context, target, archive string, v release.Verif
 	asset, err := v.Asset(c)
 	if err != nil {
 		return nil, err
+	}
+	if !Canonical(target) {
+		return nil, ErrInvalid
 	}
 	if (asset.OS != "linux" && asset.OS != "windows") || (asset.Kind != "core-portable" && asset.Kind != "gui-portable") {
 		return nil, ErrUnsupported

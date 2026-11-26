@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 	"time"
@@ -14,8 +15,8 @@ import (
 
 // ReconcileInterrupted verifies complete signed bytes and dead exact owners.
 // It never retries launch, intent dispatch or a partial file replacement.
-func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, target string, installed Inventory) error {
-	if store == nil || !canonical(target) {
+func reconcileInterrupted(ctx context.Context, store *transaction.Store, id, target string, installed filetxn.Inventory) error {
+	if store == nil || !filetxn.Canonical(target) {
 		return ErrInvalid
 	}
 	r, exists, err := store.Read(ctx)
@@ -79,15 +80,14 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 	if err != nil {
 		return err
 	}
-	if installed.manifest.Version != expected.Version || installed.manifest.BuildID != expected.BuildID || installed.manifest.OS != old.manifest.OS || installed.manifest.Arch != old.manifest.Arch || installed.manifest.PayloadKind != old.manifest.PayloadKind {
+	if installed.Identity().Version != expected.Version || installed.Identity().BuildID != expected.BuildID || installed.Identity().OS != old.Identity().OS || installed.Identity().Arch != old.Identity().Arch || installed.Identity().PayloadKind != old.Identity().PayloadKind {
 		return ErrInvalid
 	}
 	if targetBytes {
-		c := installed.candidate
-		if c.ID != r.Package.CandidateID || c.Name != r.Package.Name || c.Size != r.Package.Size || c.SHA256 != r.Package.SHA256 {
+		if !installed.MatchesPackage(r.Package) {
 			return ErrInvalid
 		}
-	} else if string(installed.data) != string(s.OldIndex) {
+	} else if !installed.MatchesIndex(s.OldIndex) {
 		return ErrInvalid
 	}
 	root, err := os.OpenRoot(target)
@@ -95,10 +95,10 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 		return err
 	}
 	defer root.Close()
-	if err = verifyInventory(ctx, root, installed); err != nil {
+	if err = filetxn.VerifyInventory(ctx, root, installed); err != nil {
 		return err
 	}
-	if err = verifyGUI(root, installed); err != nil {
+	if err = filetxn.VerifyGUI(root, installed); err != nil {
 		return err
 	}
 	sealed, err := ownPortableSeal(root, id)
@@ -114,7 +114,7 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 		}
 	}
 	if sealed {
-		return finishApplication(target, id)
+		return filetxn.RemoveSeal(target, id)
 	}
 	return nil
 }

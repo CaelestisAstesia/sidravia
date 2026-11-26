@@ -11,6 +11,7 @@ import (
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"time"
 
 	"sidravia/internal/installation/change"
@@ -21,8 +22,8 @@ import (
 // ReconcileInterrupted releases a stranded, byte-verified admission after its
 // exact coordinator has died. It NEVER retries a launch or authentication. A
 // pending write/seal, unverified tree or live/unknown owner remains blocked.
-func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, target string, installed Inventory) error {
-	if store == nil || !canonical(target) {
+func reconcileInterrupted(ctx context.Context, store *transaction.Store, id, target string, installed filetxn.Inventory) error {
+	if store == nil || !filetxn.Canonical(target) {
 		return ErrInvalid
 	}
 	record, exists, err := store.Read(ctx)
@@ -58,7 +59,7 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 	default:
 		return transaction.ErrConflict
 	}
-	if installed.manifest.Version != expected.Version || installed.manifest.BuildID != expected.BuildID {
+	if installed.Identity().Version != expected.Version || installed.Identity().BuildID != expected.BuildID {
 		return ErrInvalid
 	}
 	// Read() already authenticates this exact release proof and package. Keep
@@ -71,7 +72,7 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 	matched := false
 	for _, asset := range manifest.Assets {
 		if asset.Name == record.Package.Name && asset.Size == record.Package.Size && asset.SHA256 == record.Package.SHA256 {
-			matched = installed.manifest.OS == asset.OS && installed.manifest.Arch == asset.Arch && installed.manifest.PayloadKind == asset.PayloadKind
+			matched = installed.Identity().OS == asset.OS && installed.Identity().Arch == asset.Arch && installed.Identity().PayloadKind == asset.PayloadKind
 			break
 		}
 	}
@@ -79,11 +80,10 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 		return ErrInvalid
 	}
 	if record.Phase == transaction.Resuming || record.Phase == transaction.Applied || record.Phase == transaction.ServiceStarting {
-		c := installed.candidate
-		if c.ID != record.Package.CandidateID || c.Name != record.Package.Name || c.Size != record.Package.Size || c.SHA256 != record.Package.SHA256 {
+		if !installed.MatchesPackage(record.Package) {
 			return ErrInvalid
 		}
-	} else if record.Recovery != nil && digest(installed.data) != record.Recovery.SourceFilesSHA256 {
+	} else if record.Recovery != nil && installed.IndexSHA256() != record.Recovery.SourceFilesSHA256 {
 		return ErrInvalid
 	}
 	if record.Recovery != nil {
@@ -103,10 +103,10 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 		return err
 	}
 	defer root.Close()
-	if err := verifyInventory(ctx, root, installed); err != nil {
+	if err := filetxn.VerifyInventory(ctx, root, installed); err != nil {
 		return err
 	}
-	if err := verifyGUI(root, installed); err != nil {
+	if err := filetxn.VerifyGUI(root, installed); err != nil {
 		return err
 	}
 	if record.Recovery != nil && record.Recovery.ManagedService &&
@@ -123,7 +123,7 @@ func ReconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 	return nil
 }
 
-func recoverManagedPreparation(ctx context.Context, store *transaction.Store, record transaction.Record, installed Inventory) error {
+func recoverManagedPreparation(ctx context.Context, store *transaction.Store, record transaction.Record, installed filetxn.Inventory) error {
 	unlock, err := store.AcquireRollbackCoordinator(ctx, record.ID)
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func recoverManagedPreparation(ctx context.Context, store *transaction.Store, re
 	if err != nil || !found || layout.Mode != productlayout.ModePortable || layout.ExecutableDirectory != record.Source.ID {
 		return errors.Join(ErrChanged, err)
 	}
-	if err := cleanRollbackSnapshot(record, &installed); err != nil {
+	if err := filetxn.CleanRollbackSnapshot(record, &installed); err != nil {
 		return err
 	}
 	return resumeManagedPreparation(ctx, store, record, func(ctx context.Context, target change.Target) error {

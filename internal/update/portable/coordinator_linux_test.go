@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sidravia/internal/update/linuxplatform"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func verifiedOperation(t *testing.T, target string, old, next testImage) (*trans
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := transaction.New(strings.Repeat("d", 32), change.Target{ID: target, Version: old.inventory.manifest.Version, BuildID: old.inventory.manifest.BuildID, Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
+	r, err := transaction.New(strings.Repeat("d", 32), change.Target{ID: target, Version: old.Manifest.Version, BuildID: old.Manifest.BuildID, Layout: "portable"}, next.Candidate, next.verified, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestExecuteStoppedApplicationTransfersLeaseAndNeverStartsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	if err := Execute(context.Background(), Execution{Store: store, OperationID: id, Target: target, Old: old.inventory, Payload: payload, ReleaseRuntime: release}); err != nil {
+	if err := execute(context.Background(), execution{Store: store, OperationID: id, Target: target, Old: old.inventory, Payload: payload, ReleaseRuntime: release}); err != nil {
 		t.Fatal(err)
 	}
 	r, _, err := store.Read(context.Background())
@@ -59,7 +60,7 @@ func TestExecuteStoppedApplicationTransfersLeaseAndNeverStartsIt(t *testing.T) {
 	if data, _ := os.ReadFile(filepath.Join(target, "program")); string(data) != "new" {
 		t.Fatal("file application missing")
 	}
-	if err := Execute(context.Background(), Execution{Store: store, OperationID: id, Target: target, Old: old.inventory, Payload: payload}); err == nil {
+	if err := execute(context.Background(), execution{Store: store, OperationID: id, Target: target, Old: old.inventory, Payload: payload}); err == nil {
 		t.Fatal("replayed operation admitted")
 	}
 }
@@ -81,7 +82,7 @@ func TestAbandonedRecoveryCanBeReconciledWithoutLaunchingAgain(t *testing.T) {
 	}
 	defer owner.Close()
 	record, _, _ := store.Read(context.Background())
-	recovery := transaction.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "headless"}, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: record.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
+	recovery := transaction.Recovery{SourceFilesSHA256: digest(old.Index), Intent: maintenance.Intent{Mode: "headless"}, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: record.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
 	if err := store.SetRecovery(context.Background(), id, recovery, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -92,21 +93,21 @@ func TestAbandonedRecoveryCanBeReconciledWithoutLaunchingAgain(t *testing.T) {
 		}
 		phase = nextPhase
 	}
-	if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+	if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
 		t.Fatal("live owner reconciled")
 	}
 	if err := child.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 	child.Wait()
-	if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err != nil {
+	if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err != nil {
 		t.Fatal(err)
 	}
 	record, _, err = store.Read(context.Background())
 	if err != nil || record.Phase != transaction.ResumeFailed {
 		t.Fatal(record.Phase, err)
 	}
-	if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+	if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
 		t.Fatal("orphan recovery replayed")
 	}
 }
@@ -122,7 +123,7 @@ func TestWaitingVerifiedRecordGetsFreshFiniteRecoveryWindow(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := transaction.New(strings.Repeat("c", 32), change.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now().Add(-age))
+			r, err := transaction.New(strings.Repeat("c", 32), change.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.Candidate, next.verified, time.Now().Add(-age))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -134,7 +135,7 @@ func TestWaitingVerifiedRecordGetsFreshFiniteRecoveryWindow(t *testing.T) {
 			}
 			before := time.Now()
 			p := extract(t, target, next)
-			if err := Execute(context.Background(), Execution{Store: store, OperationID: r.ID, Target: target, Old: old.inventory, Payload: p}); err != nil {
+			if err := execute(context.Background(), execution{Store: store, OperationID: r.ID, Target: target, Old: old.inventory, Payload: p}); err != nil {
 				t.Fatal(err)
 			}
 			current, _, err := store.Read(context.Background())
@@ -171,7 +172,7 @@ func TestReconcileCannotUseCoreInventoryToUnlockGUIOperation(t *testing.T) {
 			}
 			defer peer.Close()
 			r, _, _ := store.Read(context.Background())
-			rec := transaction.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "desktop"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: r.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
+			rec := transaction.Recovery{SourceFilesSHA256: digest(old.Index), Intent: maintenance.Intent{Mode: "desktop"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: r.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
 			if err := store.SetRecovery(context.Background(), id, rec, time.Now()); err != nil {
 				t.Fatal(err)
 			}
@@ -188,7 +189,7 @@ func TestReconcileCannotUseCoreInventoryToUnlockGUIOperation(t *testing.T) {
 			}
 			owner.Process.Signal(os.Interrupt)
 			owner.Wait()
-			if err := ReconcileInterrupted(context.Background(), store, id, target, core.inventory); err == nil {
+			if err := reconcileInterrupted(context.Background(), store, id, target, core.inventory); err == nil {
 				t.Fatal("core inventory unlocked a GUI tree")
 			}
 			r, _, err = store.Read(context.Background())
@@ -217,7 +218,7 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer peer.Close()
-			recovery := transaction.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "headless"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
+			recovery := transaction.Recovery{SourceFilesSHA256: digest(old.Index), Intent: maintenance.Intent{Mode: "headless"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
 			if err := store.SetRecovery(context.Background(), id, recovery, time.Now()); err != nil {
 				t.Fatal(err)
 			}
@@ -231,7 +232,7 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 					break
 				}
 			}
-			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+			if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
 				t.Fatal("live coordinator reconciled")
 			}
 			child.Process.Signal(os.Interrupt)
@@ -239,25 +240,29 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(target, "program"), []byte("bad"), 0755); err != nil {
 				t.Fatal(err)
 			}
-			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+			if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
 				t.Fatal("changed target reconciled")
 			}
 			if err := os.WriteFile(filepath.Join(target, "program"), []byte("new"), 0755); err != nil {
 				t.Fatal(err)
 			}
-			wrong := next.inventory
-			wrong.candidate.ID = "99:99"
-			if err := ReconcileInterrupted(context.Background(), store, id, target, wrong); err == nil {
+			wrongCandidate := next.Candidate
+			wrongCandidate.ID = "99:99"
+			wrong, err := filetxn.Authenticate(next.verified, wrongCandidate, next.Index)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := reconcileInterrupted(context.Background(), store, id, target, wrong); err == nil {
 				t.Fatal("wrong candidate reconciled")
 			}
-			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err != nil {
+			if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err != nil {
 				t.Fatal(err)
 			}
 			r, _, err := store.Read(context.Background())
 			if err != nil || r.Phase != transaction.ResumeFailed || r.RequiresStartupBlock() {
 				t.Fatalf("%+v %v", r, err)
 			}
-			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
+			if err := reconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
 				t.Fatal("terminal recovery replayed")
 			}
 		})
@@ -275,7 +280,7 @@ func TestUnstartedOperationReconciliationHonorsCoordinatorLease(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := transaction.New(strings.Repeat("a", 32), change.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
+			r, err := transaction.New(strings.Repeat("a", 32), change.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.Candidate, next.verified, time.Now())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -291,13 +296,13 @@ func TestUnstartedOperationReconciliationHonorsCoordinatorLease(t *testing.T) {
 					t.Fatal(err)
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-				if err := ReconcileInterrupted(ctx, store, r.ID, target, old.inventory); err == nil {
+				if err := reconcileInterrupted(ctx, store, r.ID, target, old.inventory); err == nil {
 					t.Fatal("active unstarted coordinator reconciled")
 				}
 				cancel()
 				release()
 			}
-			if err := ReconcileInterrupted(context.Background(), store, r.ID, target, old.inventory); err != nil {
+			if err := reconcileInterrupted(context.Background(), store, r.ID, target, old.inventory); err != nil {
 				t.Fatal(err)
 			}
 			current, _, err := store.Read(context.Background())

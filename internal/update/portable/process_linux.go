@@ -19,7 +19,6 @@ func observeProcess(pid int) (*applicationProcess, error) { return linuxplatform
 func daemonName() string                                  { return "sidraviad" }
 func guiRuntime(target string) string                     { return filepath.Join(target, "gui-runtime", "sidravia_gui") }
 func guiEntry(target string) string                       { return filepath.Join(target, "sidravia_gui") }
-func finishApplication(string, string) error              { return nil }
 func observeExecutable(pid int, path string) (*applicationProcess, error) {
 	process, err := linuxplatform.Observe(pid)
 	if err != nil {

@@ -1,4 +1,4 @@
-package portable
+package filetxn
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 // Failure after entering Applying leaves a durable repair requirement, never an
 // automatic downgrade or restart of partly replaced programs.
 func Apply(ctx context.Context, store *transaction.Store, id, target string, old Inventory, p *Payload) error {
-	if store == nil || p == nil || p.root == nil || len(old.data) == 0 || !canonical(target) || filepath.Dir(p.directory) != filepath.Dir(target) {
+	if store == nil || p == nil || p.root == nil || len(old.data) == 0 || !Canonical(target) || filepath.Dir(p.directory) != filepath.Dir(target) {
 		return ErrInvalid
 	}
 	if err := applicationPlatform(old); err != nil {
@@ -43,7 +43,7 @@ func Apply(ctx context.Context, store *transaction.Store, id, target string, old
 		return err
 	}
 	next := p.inventory
-	if !exists || !boundExecution(record, target, old, p) {
+	if !exists || !BoundExecution(record, target, old, p) {
 		return ErrInvalid
 	}
 	parent, err := os.OpenRoot(filepath.Dir(target))
@@ -76,7 +76,7 @@ func Apply(ctx context.Context, store *transaction.Store, id, target string, old
 		if e != nil {
 			return e
 		}
-		if !canonical(target) || !os.SameFile(parentIdentity, absoluteParent) {
+		if !Canonical(target) || !os.SameFile(parentIdentity, absoluteParent) {
 			return ErrChanged
 		}
 		info, e := parent.Lstat(filepath.Base(target))
@@ -92,16 +92,16 @@ func Apply(ctx context.Context, store *transaction.Store, id, target string, old
 		}
 		return nil
 	}
-	if err := verifyInventory(ctx, root, old); err != nil {
+	if err := VerifyInventory(ctx, root, old); err != nil {
 		return err
 	}
-	if err := verifyInventory(ctx, p.root, next); err != nil {
+	if err := VerifyInventory(ctx, p.root, next); err != nil {
 		return err
 	}
-	if err := verifyGUI(root, old); err != nil {
+	if err := VerifyGUI(root, old); err != nil {
 		return err
 	}
-	if err := verifyGUI(p.root, next); err != nil {
+	if err := VerifyGUI(p.root, next); err != nil {
 		return err
 	}
 	marker, err := openRegular(root, "sidravia.portable")
@@ -235,7 +235,7 @@ func Apply(ctx context.Context, store *transaction.Store, id, target string, old
 	if err := rename(packagefiles.Name); err != nil {
 		return fail(err)
 	}
-	if err := verifyInventory(work, root, next); err != nil {
+	if err := VerifyInventory(work, root, next); err != nil {
 		return fail(err)
 	}
 	if err := sameTarget(); err != nil {

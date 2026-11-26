@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"time"
 
 	"sidravia/internal/background/maintenance"
@@ -22,15 +23,15 @@ var ErrPreparation = errors.New("application did not approve update preparation"
 
 var ErrRestore = errors.New("updated files are installed but application recovery was not confirmed")
 
-// Execution is a finite, already authenticated portable operation. The host
+// execution is a finite, already authenticated portable operation. The host
 // retains check/download/user-consent ownership. ReleaseRuntime transfers only
 // its own startup lease after Preparing is durable; it never stops another app.
-type Execution struct {
+type execution struct {
 	Store          *transaction.Store
 	OperationID    string
 	Target         string
-	Old            Inventory
-	Payload        *Payload
+	Old            filetxn.Inventory
+	Payload        *filetxn.Payload
 	Namespace      string
 	ReleaseRuntime func()
 }
@@ -38,7 +39,7 @@ type Execution struct {
 // Execute negotiates normal exit, applies bytes and restores at most one cold
 // generation. No process is forcibly killed and no authentication secret enters
 // its record. An absent original application remains absent.
-func Execute(ctx context.Context, input Execution) (resultErr error) {
+func execute(ctx context.Context, input execution) (resultErr error) {
 	if input.Store == nil {
 		return ErrInvalid
 	}
@@ -51,7 +52,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	if !exists || !boundExecution(record, input.Target, input.Old, input.Payload) {
+	if !exists || !filetxn.BoundExecution(record, input.Target, input.Old, input.Payload) {
 		return ErrInvalid
 	}
 	ns, err := productlayout.NewNamespace(input.Namespace)
@@ -62,7 +63,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	if err != nil || layout.Mode != productlayout.ModePortable {
 		return errors.Join(ErrInvalid, err)
 	}
-	if err := Preflight(ctx, input.Target, input.Old, input.Payload); err != nil {
+	if err := filetxn.Preflight(ctx, input.Target, input.Old, input.Payload); err != nil {
 		return err
 	}
 	peer, err := probeApplication(ctx, layout, record.Source)
@@ -91,7 +92,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return err
 	}
-	recovery := transaction.Recovery{SourceFilesSHA256: digest(input.Old.data), Intent: maintenance.Intent{Mode: "none"}, Namespace: input.Namespace, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: hex.EncodeToString(nonce), ExpiresAt: time.Now().Add(30 * time.Minute), LogLevel: "info"}
+	recovery := transaction.Recovery{SourceFilesSHA256: input.Old.IndexSHA256(), Intent: maintenance.Intent{Mode: "none"}, Namespace: input.Namespace, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: hex.EncodeToString(nonce), ExpiresAt: time.Now().Add(30 * time.Minute), LogLevel: "info"}
 	prepared := false
 	committed := false
 	// Before commit, cancelling preparation thaws the live generation. This
@@ -149,9 +150,9 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 		if openErr != nil {
 			return errors.Join(cause, openErr)
 		}
-		checkErr := verifyInventory(cleanup, root, input.Old)
+		checkErr := filetxn.VerifyInventory(cleanup, root, input.Old)
 		if checkErr == nil {
-			checkErr = verifyGUI(root, input.Old)
+			checkErr = filetxn.VerifyGUI(root, input.Old)
 		}
 		root.Close()
 		if checkErr != nil {
@@ -223,7 +224,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	if _, _, err := input.Store.Advance(ctx, record.ID, transaction.Preparing, transaction.Quiescent, "", time.Now()); err != nil {
 		return abort(err)
 	}
-	if err := Apply(ctx, input.Store, record.ID, input.Target, input.Old, input.Payload); err != nil {
+	if err := filetxn.Apply(ctx, input.Store, record.ID, input.Target, input.Old, input.Payload); err != nil {
 		return abort(err)
 	}
 	// Cancellation after writing starts cannot skip bounded recovery accounting.
@@ -234,7 +235,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 		if err != nil {
 			return err
 		}
-		return finishApplication(input.Target, record.ID)
+		return filetxn.RemoveSeal(input.Target, record.ID)
 	}
 	if _, changed, err := input.Store.Advance(work, record.ID, transaction.Applied, transaction.Resuming, "", time.Now()); err != nil || !changed {
 		return errors.Join(transaction.ErrConflict, err)
@@ -245,13 +246,13 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 		if stateErr != nil {
 			return errors.Join(ErrRestore, err, stateErr)
 		}
-		return errors.Join(ErrRestore, err, finishApplication(input.Target, record.ID))
+		return errors.Join(ErrRestore, err, filetxn.RemoveSeal(input.Target, record.ID))
 	}
 	_, _, err = input.Store.Advance(work, record.ID, transaction.Resuming, transaction.Completed, "", time.Now())
 	if err != nil {
 		return err
 	}
-	return finishApplication(input.Target, record.ID)
+	return filetxn.RemoveSeal(input.Target, record.ID)
 }
 func pause(ctx context.Context) error {
 	timer := time.NewTimer(75 * time.Millisecond)

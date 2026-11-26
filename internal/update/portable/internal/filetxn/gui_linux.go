@@ -1,6 +1,6 @@
 //go:build linux
 
-package portable
+package filetxn
 
 import (
 	"debug/elf"
@@ -12,7 +12,7 @@ import (
 	packagefiles "sidravia/internal/release/files"
 )
 
-func verifyGUI(root *os.Root, i Inventory) error {
+func VerifyGUI(root *os.Root, i Inventory) error {
 	if i.manifest.PayloadKind != "gui" {
 		return nil
 	}

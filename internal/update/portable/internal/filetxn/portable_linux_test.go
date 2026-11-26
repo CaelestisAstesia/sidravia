@@ -1,22 +1,18 @@
 //go:build linux
 
-package portable
+package filetxn
 
 import (
 	"archive/tar"
 	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/ed25519"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"sort"
+	"sidravia/internal/update/portable/internal/fixture"
 	"strings"
 	"testing"
 	"time"
@@ -28,121 +24,31 @@ import (
 )
 
 type testImage struct {
+	fixture.Linux
 	inventory Inventory
 	verified  release.VerifiedRelease
 	archive   []byte
 	keys      *release.PublisherKeys
-	contents  map[string]string
 }
 
+func signedImage(t *testing.T, i fixture.Linux) testImage {
+	t.Helper()
+	inventory, err := Authenticate(i.Verified, i.Candidate, i.Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return testImage{i, inventory, i.Verified, i.Archive, i.Keys}
+}
 func image(t *testing.T, version, build string, contents map[string]string, alter func(*tar.Header)) testImage {
 	return imageKind(t, version, build, contents, alter, "core")
 }
 func imageKind(t *testing.T, version, build string, contents map[string]string, alter func(*tar.Header), kind string) testImage {
-	t.Helper()
-	m := packagefiles.Manifest{SchemaVersion: 1, Version: version, BuildID: build, OS: "linux", Arch: runtime.GOARCH, PayloadKind: kind}
-	for name, data := range contents {
-		m.Files = append(m.Files, packagefiles.File{Path: name, Size: int64(len(data)), SHA256: digest([]byte(data)), Mode: func() uint32 {
-			if kind == "gui" && (name == "sidravia_gui" || name == "gui-runtime/sidravia_gui") {
-				return 0755
-			}
-			return 0644
-		}()})
-	}
-	data, err := packagefiles.Encode(m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files := map[string]string{}
-	for k, v := range contents {
-		files[k] = v
-	}
-	files[packagefiles.Name] = string(data)
-	files["sidravia.portable"] = ""
-	names := []string{}
-	for k := range files {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	var archive bytes.Buffer
-	gz := gzip.NewWriter(&archive)
-	tw := tar.NewWriter(gz)
-	for _, name := range names {
-		h := &tar.Header{Name: "sidravia-v" + version + "-linux-" + runtime.GOARCH + "/" + name, Size: int64(len(files[name])), Mode: 0644, Typeflag: tar.TypeReg}
-		if kind == "gui" && (name == "sidravia_gui" || name == "gui-runtime/sidravia_gui") {
-			h.Mode = 0755
-		}
-		if alter != nil {
-			alter(h)
-		}
-		if err := tw.WriteHeader(h); err != nil {
-			t.Fatal(err)
-		}
-		if h.Typeflag == tar.TypeReg {
-			if _, err := tw.Write([]byte(files[name])); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return signImage(t, m, data, archive.Bytes(), contents)
+	return signedImage(t, fixture.LinuxImage(t, version, build, contents, alter, kind))
 }
 func signImage(t *testing.T, m packagefiles.Manifest, data, archive []byte, contents map[string]string) testImage {
-	t.Helper()
-	key := ed25519.NewKeyFromSeed(make([]byte, 32))
-	pub := key.Public().(ed25519.PublicKey)
-	id, _ := release.PublisherKeyID(pub)
-	name := "sidravia-v" + m.Version + "-" + m.OS + "-" + m.Arch + "-" + m.PayloadKind + "-portable.tar.gz"
-	if m.OS == "windows" {
-		name = strings.TrimSuffix(name, ".tar.gz") + ".zip"
-	}
-	c := release.Candidate{ID: "1:2", Version: m.Version, Name: name, Size: int64(len(archive)), SHA256: digest(archive)}
-	manifest := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: m.OS, Arch: m.Arch, Kind: m.PayloadKind + "-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(data), PayloadKind: m.PayloadKind}}}
-	raw, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys, _ := release.NewPublisherKeys([]ed25519.PublicKey{pub})
-	v, err := keys.Verify(raw, ed25519.Sign(key, raw), m.Version)
-	if err != nil {
-		t.Fatal(err)
-	}
-	i, err := Authenticate(v, c, data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return testImage{i, v, append([]byte(nil), archive...), keys, contents}
+	return signedImage(t, fixture.SignLinuxImage(t, m, data, archive, contents))
 }
-func install(t *testing.T, target string, i testImage) {
-	t.Helper()
-	for name, data := range i.contents {
-		path := filepath.Join(target, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(data), func() os.FileMode {
-			for _, f := range i.inventory.manifest.Files {
-				if f.Path == name {
-					return os.FileMode(f.Mode)
-				}
-			}
-			return 0644
-		}()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(target, packagefiles.Name), i.inventory.data, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(target, "sidravia.portable"), nil, 0644); err != nil {
-		t.Fatal(err)
-	}
-}
+func install(t *testing.T, target string, i testImage) { fixture.InstallLinux(t, target, i.Linux) }
 func extract(t *testing.T, target string, i testImage) *Payload {
 	t.Helper()
 	archive := filepath.Join(t.TempDir(), i.inventory.candidate.Name)
@@ -205,7 +111,7 @@ func TestApplyPreservesDataAndUnknownFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	if err := verifyInventory(context.Background(), root, next.inventory); err != nil {
+	if err := VerifyInventory(context.Background(), root, next.inventory); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "obsolete")); !os.IsNotExist(err) {

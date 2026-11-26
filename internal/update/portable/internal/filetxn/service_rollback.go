@@ -1,6 +1,6 @@
 //go:build linux || windows
 
-package portable
+package filetxn
 
 import (
 	"bytes"
@@ -60,7 +60,7 @@ func stageServiceRollback(ctx context.Context, target string, old Inventory, dir
 			return nil, err
 		}
 	}
-	return staged, errors.Join(verifyInventory(ctx, snapshot, old), syncDirectory(snapshot, "."))
+	return staged, errors.Join(VerifyInventory(ctx, snapshot, old), syncDirectory(snapshot, "."))
 }
 
 func persistRollbackInputs(ctx context.Context, backup *Payload, next Inventory, directories []string) error {
@@ -97,7 +97,7 @@ func loadRollback(ctx context.Context, store *transaction.Store, record transact
 	if err != nil {
 		return nil, next, nil, err
 	}
-	if !info.IsDir() || info.Mode().Perm() != 0700 || !canonical(directory) {
+	if !info.IsDir() || info.Mode().Perm() != 0700 || !Canonical(directory) {
 		return nil, next, nil, ErrChanged
 	}
 	root, err := os.OpenRoot(directory)
@@ -156,7 +156,7 @@ func loadRollback(ctx context.Context, store *transaction.Store, record transact
 		}
 	}
 	known := &Payload{directory: directory, root: root, inventory: oldInventory, owned: make(map[string]os.FileInfo), directories: make(map[string]os.FileInfo)}
-	if err := verifyInventory(ctx, root, oldInventory); err != nil {
+	if err := VerifyInventory(ctx, root, oldInventory); err != nil {
 		return nil, next, nil, err
 	}
 	paths := []string{packagefiles.Name, rollbackNextIndex, rollbackDirectories}
@@ -209,48 +209,54 @@ func newProductDirectories(target string, next Inventory) ([]string, error) {
 // restoreServiceFiles only removes or replaces authenticated product bytes.
 // If either package can no longer account for a path, keep the seal and backup
 // so remediation can proceed without destroying the unknown file.
-func restoreServiceFiles(ctx context.Context, input Execution, backup *Payload, dirs []string) error {
-	release, err := input.Store.AcquireExecution(ctx, input.OperationID)
+func (b *Rollback) Restore(ctx context.Context, store *transaction.Store, record transaction.Record) error {
+	target, id := record.Source.ID, record.ID
+	backup, next, dirs := b.backup, b.next, b.dirs
+	old := backup.inventory
+	if backup.directory != rollbackDirectory(target, id) {
+		return ErrInvalid
+	}
+	release, err := store.AcquireExecution(ctx, id)
 	if err != nil {
 		return err
 	}
 	defer release()
-	if err := ensureQuiescent(input.Target); err != nil {
+	if err := ensureQuiescent(target); err != nil {
 		return err
 	}
-	parent, err := os.OpenRoot(filepath.Dir(input.Target))
+	parent, err := os.OpenRoot(filepath.Dir(target))
 	if err != nil {
 		return err
 	}
 	defer parent.Close()
-	root, err := parent.OpenRoot(filepath.Base(input.Target))
+	root, err := parent.OpenRoot(filepath.Base(target))
 	if err != nil {
 		return err
 	}
 	defer root.Close()
-	if err := verifyInventory(ctx, backup.root, input.Old); err != nil {
+	if err := VerifyInventory(ctx, backup.root, old); err != nil {
 		return err
 	}
 	seal, err := openRegular(root, transaction.StartupSeal)
 	if errors.Is(err, os.ErrNotExist) {
-		_, _, err = sealApplication(ctx, root, input.OperationID)
+		_, _, err = sealApplication(ctx, root, id)
 	} else if err == nil {
 		data, readErr := io.ReadAll(io.LimitReader(seal, 34))
 		err = errors.Join(readErr, seal.Close())
-		if err == nil && string(data) != input.OperationID+"\n" {
+		if err == nil && string(data) != id+"\n" {
 			err = ErrChanged
 		}
 	}
 	if err != nil {
 		return err
 	}
-	oldFiles, nextFiles := index(input.Old), index(input.Payload.inventory)
+	oldFiles, nextFiles := index(old), index(next)
 	// Treat the inventory like a product file but publish it last.
 	catalog := func(i Inventory) packagefiles.File {
 		return packagefiles.File{Path: packagefiles.Name, SHA256: digest(i.data), Size: int64(len(i.data)), Mode: 0644}
 	}
-	oldFiles[packagefiles.Name] = catalog(input.Old)
-	nextFiles[packagefiles.Name] = catalog(input.Payload.inventory)
+	oldFiles[packagefiles.Name] = catalog(old)
+	nextFiles[packagefiles.Name] = catalog(next)
 	names := make([]string, 0, len(oldFiles)+len(nextFiles))
 	for name := range oldFiles {
 		if name != packagefiles.Name {
@@ -282,7 +288,7 @@ func restoreServiceFiles(ctx context.Context, input Execution, backup *Payload, 
 			if err := makeProductParents(root, name); err != nil {
 				return err
 			}
-			if err := publishRollbackFile(ctx, parent, root, backup, oldEntry, exists, input.OperationID); err != nil {
+			if err := publishRollbackFile(ctx, parent, root, backup, oldEntry, exists, id); err != nil {
 				return err
 			}
 		} else if exists {
@@ -310,7 +316,7 @@ func restoreServiceFiles(ctx context.Context, input Execution, backup *Payload, 
 			return err
 		}
 	}
-	if err := errors.Join(verifyInventory(ctx, root, input.Old), verifyGUI(root, input.Old)); err != nil {
+	if err := errors.Join(VerifyInventory(ctx, root, old), VerifyGUI(root, old)); err != nil {
 		return err
 	}
 	if err := root.Remove(transaction.StartupSeal); err != nil {
@@ -319,7 +325,7 @@ func restoreServiceFiles(ctx context.Context, input Execution, backup *Payload, 
 	if err := syncDirectory(root, "."); err != nil {
 		return err
 	}
-	_, changed, err := input.Store.Advance(ctx, input.OperationID, transaction.RollingBack, transaction.RolledBack, "update_rolled_back", time.Now())
+	_, changed, err := store.Advance(ctx, id, transaction.RollingBack, transaction.RolledBack, "update_rolled_back", time.Now())
 	if err == nil && !changed {
 		err = transaction.ErrConflict
 	}
@@ -369,13 +375,13 @@ func ManagedRollbackPending(target, id string) (bool, error) {
 // Only an exact, operation-bound private snapshot is eligible for cleanup.
 // While recovering preparation, the caller supplies the verified source
 // inventory, so even a truncated snapshot index can be retired safely.
-func cleanRollbackSnapshot(record transaction.Record, source *Inventory) error {
+func CleanRollbackSnapshot(record transaction.Record, source *Inventory) error {
 	directory := rollbackDirectory(record.Source.ID, record.ID)
 	info, err := os.Lstat(directory)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 || !canonical(directory) {
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 || !Canonical(directory) {
 		return errors.Join(ErrChanged, err)
 	}
 	root, err := os.OpenRoot(directory)
@@ -467,4 +473,41 @@ func cleanRollbackSnapshot(record transaction.Record, source *Inventory) error {
 		return errors.Join(ErrChanged, err)
 	}
 	return os.Remove(directory)
+}
+
+// Rollback retains the old files and the exact next inventory under a single
+// handle. Closing the handle leaves the durable copy available to recovery.
+type Rollback struct {
+	backup *Payload
+	next   Inventory
+	dirs   []string
+}
+
+func (b *Rollback) Close() error { return b.backup.root.Close() }
+func (b *Rollback) Retire(record transaction.Record) error {
+	return errors.Join(b.Close(), CleanRollbackSnapshot(record, &b.backup.inventory))
+}
+
+func PrepareRollback(ctx context.Context, record transaction.Record, old Inventory, next *Payload) (*Rollback, error) {
+	target := record.Source.ID
+	dirs, err := newProductDirectories(target, next.inventory)
+	if err != nil {
+		return nil, err
+	}
+	backup, err := stageServiceRollback(ctx, target, old, rollbackDirectory(target, record.ID))
+	if err != nil {
+		return nil, err
+	}
+	if err := persistRollbackInputs(ctx, backup, next.inventory, dirs); err != nil {
+		return nil, errors.Join(err, backup.root.Close(), CleanRollbackSnapshot(record, &old))
+	}
+	return &Rollback{backup: backup, next: next.inventory, dirs: dirs}, nil
+}
+
+func OpenRollback(ctx context.Context, store *transaction.Store, record transaction.Record) (*Rollback, error) {
+	backup, next, dirs, err := loadRollback(ctx, store, record)
+	if err != nil {
+		return nil, err
+	}
+	return &Rollback{backup: backup, next: next, dirs: dirs}, nil
 }
