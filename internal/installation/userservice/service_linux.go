@@ -18,6 +18,7 @@ import (
 	"sidravia/internal/installation/internal/integrationfile"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installation/userservice/registration"
+	"sidravia/internal/process/linuxproc"
 )
 
 func managerCommand(ctx context.Context, binary string, args ...string) (string, error) {
@@ -103,8 +104,49 @@ func startService(ctx context.Context) error {
 	return err
 }
 
+// stopUnit pins the manager's current main process before asking systemd to
+// stop it. A successful systemd job and the pinned generation's OS exit are
+// separate facts. Registration changes and compensation require both.
+func stopUnit(ctx context.Context, running bool, args ...string) (resultErr error) {
+	mainPID := func() (int, error) {
+		text, err := control(ctx, "show", "--property=MainPID", "--value", registration.UnitName)
+		if err != nil {
+			return 0, err
+		}
+		return strconv.Atoi(text)
+	}
+	pid, err := mainPID()
+	if err != nil || pid < 0 || (running && pid == 0) {
+		return errors.Join(ErrServiceStop, err)
+	}
+	var proc *linuxproc.Process
+	if pid != 0 {
+		proc, err = linuxproc.Observe(pid)
+		if err != nil {
+			return errors.Join(ErrServiceStop, err)
+		}
+		defer func() { resultErr = errors.Join(resultErr, proc.Close()) }()
+		current, err := mainPID()
+		if err != nil || current != pid {
+			return errors.Join(ErrServiceStop, err)
+		}
+	}
+	if _, err := control(ctx, args...); err != nil {
+		return err
+	}
+	if proc == nil {
+		return nil
+	}
+	wait, cancel := context.WithTimeout(ctx, 17*time.Second)
+	defer cancel()
+	if err := proc.Wait(wait); err != nil {
+		return errors.Join(ErrServiceStop, err)
+	}
+	return nil
+}
+
 func stopService(ctx context.Context, wasRunning bool) error {
-	if _, err := control(ctx, "stop", registration.UnitName); err != nil {
+	if err := stopUnit(ctx, wasRunning, "stop", registration.UnitName); err != nil {
 		return err
 	}
 	if !wasRunning {
@@ -301,7 +343,7 @@ func applyService(ctx context.Context, path, action string, layout productlayout
 		if err != nil && startedHere {
 			finish, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			_, stopErr := control(finish, "stop", registration.UnitName)
+			stopErr := stopUnit(finish, false, "stop", registration.UnitName)
 			err = errors.Join(err, stopErr)
 		}
 	}
@@ -350,7 +392,7 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 			return
 		}
 		if observed != nil {
-			if _, err := control(restore, "disable", "--now", registration.UnitName); err != nil {
+			if err := stopUnit(restore, false, "disable", "--now", registration.UnitName); err != nil {
 				resultErr = errors.Join(resultErr, err)
 				return
 			}
