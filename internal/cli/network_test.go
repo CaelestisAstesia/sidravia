@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestNetworkInterfacesUsesOnlyExistingConnectionAndSafePresentation(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	client := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodNetworkInterfaces || string(payload) != `{}` {
 			t.Fatalf("unexpected call %s %s", method, payload)
 		}
@@ -33,7 +34,7 @@ func TestNetworkInterfacesUsesOnlyExistingConnectionAndSafePresentation(t *testi
 	if err := runNetworkInterfaces(deps); err != nil {
 		t.Fatal(err)
 	}
-	if client.callCount != 1 || client.closeCount != 1 {
+	if client.CallCount != 1 || client.CloseCount != 1 {
 		t.Fatal("query did not finish single connection")
 	}
 	for _, want := range []string{"名称：Friendly��[31m", "ID：" + id, "IPv4：127.0.0.1/8 | 仅可显式绑定", "--interface-id 'exact''$`id' --local-ipv4 '127.0.0.1'", "接口已 Down，当前不可绑定", "使用时会重新核对绑定"} {
@@ -47,7 +48,7 @@ func TestNetworkInterfacesUsesOnlyExistingConnectionAndSafePresentation(t *testi
 }
 func TestNetworkInterfacesUnavailableAndReadFailures(t *testing.T) {
 	var output bytes.Buffer
-	client := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+	client := &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 		return contract.NewSuccessResponse("1", json.RawMessage(`{"available":false,"revision":0,"interfaces":[]}`)), nil
 	}}
 	deps := hotListDependencies(t, client, &output)
@@ -60,14 +61,14 @@ func TestNetworkInterfacesUnavailableAndReadFailures(t *testing.T) {
 	if err := runNetworkInterfaces(deps); !errors.Is(err, cause) {
 		t.Fatal("connection cause lost")
 	}
-	client.call = func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, cause }
+	client.CallFunc = func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, cause }
 	deps = hotListDependencies(t, client, &output)
 	deps.connection.Timeout = time.Second
 	if err := runNetworkInterfaces(deps); !errors.Is(err, cause) || strings.Contains(err.Error(), cause.Error()) {
 		t.Fatal("call cause/safe error violated")
 	}
 	deps.stdout = failingOutputWriter{}
-	client.call = func(string, json.RawMessage) (contract.Response, error) {
+	client.CallFunc = func(string, json.RawMessage) (contract.Response, error) {
 		return contract.NewSuccessResponse("1", json.RawMessage(`{"available":false,"revision":0,"interfaces":[]}`)), nil
 	}
 	if err := runNetworkInterfaces(deps); err == nil {

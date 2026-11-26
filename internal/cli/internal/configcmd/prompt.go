@@ -1,4 +1,4 @@
-package cli
+package configcmd
 
 import (
 	"errors"
@@ -14,12 +14,12 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-func selectProfile(deps authDependencies, connection daemonconn.Client) (string, error) {
-	raw, err := callConfiguration(deps, connection, contract.MethodProfileList, struct{}{})
+func selectProfile(deps dependencies, connection daemonconn.Client) (string, error) {
+	raw, err := callConfiguration(connection, contract.MethodProfileList, struct{}{})
 	if err != nil {
 		return "", err
 	}
-	result, err := decodeProfileListResult(raw)
+	result, err := contract.DecodeProfileListResult(raw)
 	if err != nil {
 		return "", terminal.Failure("解码 Profile 列表", err)
 	}
@@ -27,11 +27,11 @@ func selectProfile(deps authDependencies, connection daemonconn.Client) (string,
 		return "", errors.New("没有可用的机构 Profile")
 	}
 	for index, profile := range result.Profiles {
-		if err := terminal.Write(deps.stderr, fmt.Sprintf("%d. %s\n", index+1, sanitizeDynamicText(institutionDisplayName(profile.InstitutionProfileID, profile.DisplayName)))); err != nil {
+		if err := terminal.Write(deps.Stderr, fmt.Sprintf("%d. %s\n", index+1, terminal.Sanitize(terminal.InstitutionDisplayName(profile.InstitutionProfileID, profile.DisplayName)))); err != nil {
 			return "", terminal.Failure("写入 Profile 选择", err)
 		}
 	}
-	value, err := terminal.ReadPrompt(deps.stdin, deps.stderr, "选择 Profile：")
+	value, err := terminal.ReadPrompt(deps.Stdin, deps.Stderr, "选择 Profile：")
 	if err != nil {
 		return "", err
 	}
@@ -50,8 +50,8 @@ type networkBindingChoice struct {
 	automatic   bool
 }
 
-func selectNetworkBinding(deps authDependencies, connection daemonconn.Client) (contract.NetworkBindingPolicy, error) {
-	raw, err := callConfiguration(deps, connection, contract.MethodNetworkInterfaces, struct{}{})
+func selectNetworkBinding(deps dependencies, connection daemonconn.Client) (contract.NetworkBindingPolicy, error) {
+	raw, err := callConfiguration(connection, contract.MethodNetworkInterfaces, struct{}{})
 	if err != nil {
 		return contract.NetworkBindingPolicy{}, err
 	}
@@ -105,15 +105,15 @@ func selectNetworkBinding(deps authDependencies, connection daemonconn.Client) (
 			return left.Less(right)
 		})
 	}
-	if err := terminal.Write(deps.stderr, "0. 自动绑定（使用时由 Session 按当前观察重新选择）\n"); err != nil {
+	if err := terminal.Write(deps.Stderr, "0. 自动绑定（使用时由 Session 按当前观察重新选择）\n"); err != nil {
 		return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定选择", err)
 	}
 	if !snapshot.Available {
-		if err := terminal.Write(deps.stderr, "当前没有已接受的网络观察；本次将使用自动绑定。\n"); err != nil {
+		if err := terminal.Write(deps.Stderr, "当前没有已接受的网络观察；本次将使用自动绑定。\n"); err != nil {
 			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定说明", err)
 		}
 	} else if len(choices) == 0 {
-		if err := terminal.Write(deps.stderr, "当前观察中没有可显式绑定的 Up 接口 IPv4 地址；本次将使用自动绑定。\n"); err != nil {
+		if err := terminal.Write(deps.Stderr, "当前观察中没有可显式绑定的 Up 接口 IPv4 地址；本次将使用自动绑定。\n"); err != nil {
 			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定说明", err)
 		}
 	}
@@ -122,15 +122,15 @@ func selectNetworkBinding(deps authDependencies, connection daemonconn.Client) (
 		if choice.automatic {
 			category = "自动候选，也可显式绑定"
 		}
-		line := fmt.Sprintf("%d. %s | ID：%s | IPv4：%s/%d | %s\n", index+1, sanitizeDynamicText(choice.displayName), sanitizeDynamicText(choice.interfaceID), choice.address, choice.prefix, category)
-		if err := terminal.Write(deps.stderr, line); err != nil {
+		line := fmt.Sprintf("%d. %s | ID：%s | IPv4：%s/%d | %s\n", index+1, terminal.Sanitize(choice.displayName), terminal.Sanitize(choice.interfaceID), choice.address, choice.prefix, category)
+		if err := terminal.Write(deps.Stderr, line); err != nil {
 			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定选择", err)
 		}
 	}
-	if err := terminal.Write(deps.stderr, "网卡事实来自最近一次已接受观察；Session 使用时会重新核对，选择不保证届时仍可用。\n"); err != nil {
+	if err := terminal.Write(deps.Stderr, "网卡事实来自最近一次已接受观察；Session 使用时会重新核对，选择不保证届时仍可用。\n"); err != nil {
 		return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定说明", err)
 	}
-	value, err := readChoiceLine(deps.stdin, deps.stderr, "选择绑定方式 [0]：")
+	value, err := readChoiceLine(deps.Stdin, deps.Stderr, "选择绑定方式 [0]：")
 	if err != nil {
 		return contract.NetworkBindingPolicy{}, err
 	}
@@ -142,7 +142,7 @@ func selectNetworkBinding(deps authDependencies, connection daemonconn.Client) (
 		return contract.NetworkBindingPolicy{}, errors.New("网卡绑定选择无效")
 	}
 	if index == 0 {
-		return contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy}, nil
+		return contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"}, nil
 	}
 	choice := choices[index-1]
 	return contract.NetworkBindingPolicy{Mode: "explicit_interface_and_local_ipv4", InterfaceID: choice.interfaceID, LocalIPv4Address: choice.address}, nil

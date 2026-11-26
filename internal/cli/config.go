@@ -1,112 +1,79 @@
 package cli
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
-	"time"
+	"strings"
 
 	"github.com/spf13/cobra"
 
-	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/cli/internal/daemonconn"
-	"sidravia/internal/cli/internal/terminal"
-	"sidravia/internal/connection/credential/input"
-	"sidravia/internal/ipc/contract"
+	"sidravia/internal/cli/internal/configcmd"
 )
-
-const insecureStorageWarning = "警告：可访问便携目录的用户可能读取或修改认证配置和密码、daemon 运行 token，以及敏感 Trace 日志。\n"
-
-type configCreateOptions struct {
-	binding                                  bindingFlags
-	id, name, profile, username              string
-	protocolOverrideFile                     string
-	protocolOverrideFileSet                  bool
-	passwordStdin, allowInsecure             bool
-	autoLogin, autoReconnect                 bool
-	autoLoginExplicit, autoReconnectExplicit bool
-}
-type configUpdateOptions struct {
-	binding                  bindingFlags
-	allowInsecure            bool
-	id                       string
-	protocolOverrideFile     string
-	protocolOverrideFileSet  bool
-	clearProtocolOverride    bool
-	name, profile, username  *string
-	autoLogin, autoReconnect *bool
-}
-
-type configPasswordOptions struct {
-	id                           string
-	passwordStdin, allowInsecure bool
-}
 
 func newConfigCommand(deps commandDependencies) *cobra.Command {
 	root := &cobra.Command{Use: "config", Short: "管理认证配置", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return wrapCommandOperation(renderHelpCompletion(cmd)) }}
 	root.AddCommand(newNoArgsCommand("list", "列出认证配置", deps.configList))
 	root.AddCommand(&cobra.Command{Use: "show <configuration-id>", Short: "显示认证配置", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error { return wrapCommandOperation(deps.configShow(args[0])) }})
 
-	var create configCreateOptions
+	var create configcmd.CreateOptions
 	createCommand := &cobra.Command{Use: "create", Short: "创建认证配置", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		create.protocolOverrideFileSet = cmd.Flags().Changed("protocol-override-file")
-		if create.protocolOverrideFileSet && (create.protocolOverrideFile == "" || containsNUL(create.protocolOverrideFile)) {
+		create.ProtocolOverrideFileSet = cmd.Flags().Changed("protocol-override-file")
+		if create.ProtocolOverrideFileSet && (create.ProtocolOverrideFile == "" || strings.ContainsRune(create.ProtocolOverrideFile, 0)) {
 			return errCommandUsage
 		}
-		create.binding.interfaceSet = cmd.Flags().Changed("interface-id")
-		create.binding.addressSet = cmd.Flags().Changed("local-ipv4")
-		if _, err := create.binding.policy(false); err != nil {
+		create.Binding.InterfaceSet = cmd.Flags().Changed("interface-id")
+		create.Binding.AddressSet = cmd.Flags().Changed("local-ipv4")
+		if _, err := create.Binding.Policy(false); err != nil {
 			return err
 		}
-		create.autoLoginExplicit = cmd.Flags().Changed("auto-login")
-		create.autoReconnectExplicit = cmd.Flags().Changed("auto-reconnect")
+		create.AutoLoginExplicit = cmd.Flags().Changed("auto-login")
+		create.AutoReconnectExplicit = cmd.Flags().Changed("auto-reconnect")
 		return wrapCommandOperation(deps.configCreate(create))
 	}}
-	createCommand.Flags().StringVar(&create.binding.interfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
-	createCommand.Flags().StringVar(&create.binding.localIPv4, "local-ipv4", "", "本地 IPv4（须同时提供 --interface-id）")
-	createCommand.Flags().StringVar(&create.id, "id", "", "配置 ID")
-	createCommand.Flags().StringVar(&create.name, "name", "", "显示名称")
-	createCommand.Flags().StringVar(&create.profile, "profile", "", "Profile ID")
-	createCommand.Flags().StringVar(&create.username, "username", "", "账号")
-	createCommand.Flags().BoolVar(&create.passwordStdin, "password-stdin", false, "从 stdin 读取密码")
-	createCommand.Flags().BoolVar(&create.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
-	createCommand.Flags().BoolVar(&create.autoLogin, "auto-login", false, "自动登录")
-	createCommand.Flags().BoolVar(&create.autoReconnect, "auto-reconnect", true, "自动重连")
-	addProtocolOverrideFileFlag(createCommand.Flags(), &create.protocolOverrideFile, &create.protocolOverrideFileSet)
+	createCommand.Flags().StringVar(&create.Binding.InterfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
+	createCommand.Flags().StringVar(&create.Binding.LocalIPv4, "local-ipv4", "", "本地 IPv4（须同时提供 --interface-id）")
+	createCommand.Flags().StringVar(&create.ID, "id", "", "配置 ID")
+	createCommand.Flags().StringVar(&create.Name, "name", "", "显示名称")
+	createCommand.Flags().StringVar(&create.Profile, "profile", "", "Profile ID")
+	createCommand.Flags().StringVar(&create.Username, "username", "", "账号")
+	createCommand.Flags().BoolVar(&create.PasswordStdin, "password-stdin", false, "从 stdin 读取密码")
+	createCommand.Flags().BoolVar(&create.AllowInsecure, "allow-insecure-storage", false, "允许未保护存储")
+	createCommand.Flags().BoolVar(&create.AutoLogin, "auto-login", false, "自动登录")
+	createCommand.Flags().BoolVar(&create.AutoReconnect, "auto-reconnect", true, "自动重连")
+	addProtocolOverrideFileFlag(createCommand.Flags(), &create.ProtocolOverrideFile, &create.ProtocolOverrideFileSet)
 
-	var update configUpdateOptions
+	var update configcmd.UpdateOptions
 	updateCommand := &cobra.Command{Use: "update <configuration-id>", Short: "更新认证配置", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		update.id = args[0]
-		update.protocolOverrideFileSet = cmd.Flags().Changed("protocol-override-file")
-		update.clearProtocolOverride = cmd.Flags().Changed("clear-protocol-override") && update.clearProtocolOverride
-		if cmd.Flags().Changed("clear-protocol-override") && !update.clearProtocolOverride || update.protocolOverrideFileSet && (update.protocolOverrideFile == "" || containsNUL(update.protocolOverrideFile)) || update.clearProtocolOverride && update.protocolOverrideFileSet {
+		update.ID = args[0]
+		update.ProtocolOverrideFileSet = cmd.Flags().Changed("protocol-override-file")
+		update.ClearProtocolOverride = cmd.Flags().Changed("clear-protocol-override") && update.ClearProtocolOverride
+		if cmd.Flags().Changed("clear-protocol-override") && !update.ClearProtocolOverride || update.ProtocolOverrideFileSet && (update.ProtocolOverrideFile == "" || strings.ContainsRune(update.ProtocolOverrideFile, 0)) || update.ClearProtocolOverride && update.ProtocolOverrideFileSet {
 			return errCommandUsage
 		}
-		update.binding.interfaceSet = cmd.Flags().Changed("interface-id")
-		update.binding.addressSet = cmd.Flags().Changed("local-ipv4")
-		if _, err := update.binding.policy(true); err != nil {
+		update.Binding.InterfaceSet = cmd.Flags().Changed("interface-id")
+		update.Binding.AddressSet = cmd.Flags().Changed("local-ipv4")
+		if _, err := update.Binding.Policy(true); err != nil {
 			return err
 		}
 		if cmd.Flags().Changed("name") {
 			value, _ := cmd.Flags().GetString("name")
-			update.name = &value
+			update.Name = &value
 		}
 		if cmd.Flags().Changed("profile") {
 			value, _ := cmd.Flags().GetString("profile")
-			update.profile = &value
+			update.Profile = &value
 		}
 		if cmd.Flags().Changed("username") {
 			value, _ := cmd.Flags().GetString("username")
-			update.username = &value
+			update.Username = &value
 		}
 		if cmd.Flags().Changed("auto-login") {
 			value, _ := cmd.Flags().GetString("auto-login")
 			if value == "true" {
 				b := true
-				update.autoLogin = &b
+				update.AutoLogin = &b
 			} else if value == "false" {
 				b := false
-				update.autoLogin = &b
+				update.AutoLogin = &b
 			} else {
 				return errors.New("--auto-login 需要 true 或 false")
 			}
@@ -115,35 +82,35 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 			value, _ := cmd.Flags().GetString("auto-reconnect")
 			if value == "true" {
 				b := true
-				update.autoReconnect = &b
+				update.AutoReconnect = &b
 			} else if value == "false" {
 				b := false
-				update.autoReconnect = &b
+				update.AutoReconnect = &b
 			} else {
 				return errors.New("--auto-reconnect 需要 true 或 false")
 			}
 		}
 		return wrapCommandOperation(deps.configUpdate(update))
 	}}
-	updateCommand.Flags().StringVar(&update.binding.interfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
-	updateCommand.Flags().StringVar(&update.binding.localIPv4, "local-ipv4", "", "本地 IPv4（须同时提供 --interface-id）")
-	updateCommand.Flags().BoolVar(&update.binding.automatic, "automatic-binding", false, "恢复自动绑定")
-	updateCommand.Flags().BoolVar(&update.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
+	updateCommand.Flags().StringVar(&update.Binding.InterfaceID, "interface-id", "", "真实网卡 ID（须同时提供 --local-ipv4）")
+	updateCommand.Flags().StringVar(&update.Binding.LocalIPv4, "local-ipv4", "", "本地 IPv4（须同时提供 --interface-id）")
+	updateCommand.Flags().BoolVar(&update.Binding.Automatic, "automatic-binding", false, "恢复自动绑定")
+	updateCommand.Flags().BoolVar(&update.AllowInsecure, "allow-insecure-storage", false, "允许未保护存储")
 	updateCommand.Flags().String("name", "", "显示名称")
 	updateCommand.Flags().String("profile", "", "Profile ID")
 	updateCommand.Flags().String("username", "", "账号")
 	updateCommand.Flags().String("auto-login", "", "自动登录（true 或 false）")
 	updateCommand.Flags().String("auto-reconnect", "", "自动重连（true 或 false）")
-	addProtocolOverrideFileFlag(updateCommand.Flags(), &update.protocolOverrideFile, &update.protocolOverrideFileSet)
-	updateCommand.Flags().BoolVar(&update.clearProtocolOverride, "clear-protocol-override", false, "清除已保存的协议上下文 Override；保存后结束旧 Session，不会自动连接")
+	addProtocolOverrideFileFlag(updateCommand.Flags(), &update.ProtocolOverrideFile, &update.ProtocolOverrideFileSet)
+	updateCommand.Flags().BoolVar(&update.ClearProtocolOverride, "clear-protocol-override", false, "清除已保存的协议上下文 Override；保存后结束旧 Session，不会自动连接")
 
-	var password configPasswordOptions
+	var password configcmd.PasswordOptions
 	passwordCommand := &cobra.Command{Use: "set-password <configuration-id>", Short: "更新认证密码", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error {
-		password.id = args[0]
+		password.ID = args[0]
 		return wrapCommandOperation(deps.configSetPassword(password))
 	}}
-	passwordCommand.Flags().BoolVar(&password.passwordStdin, "password-stdin", false, "从 stdin 读取密码")
-	passwordCommand.Flags().BoolVar(&password.allowInsecure, "allow-insecure-storage", false, "允许未保护存储")
+	passwordCommand.Flags().BoolVar(&password.PasswordStdin, "password-stdin", false, "从 stdin 读取密码")
+	passwordCommand.Flags().BoolVar(&password.AllowInsecure, "allow-insecure-storage", false, "允许未保护存储")
 
 	var yes, allowRemove bool
 	removeCommand := &cobra.Command{Use: "remove <configuration-id>", Short: "删除认证配置", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error {
@@ -153,345 +120,4 @@ func newConfigCommand(deps commandDependencies) *cobra.Command {
 	removeCommand.Flags().BoolVar(&yes, "yes", false, "确认删除")
 	root.AddCommand(createCommand, updateCommand, passwordCommand, removeCommand)
 	return root
-}
-
-func configList(identity daemonctl.Identity) error {
-	return runConfigList(defaultReadOnlyAuthDependencies(identity))
-}
-func configShow(identity daemonctl.Identity, id string) error {
-	return runConfigShow(id, defaultReadOnlyAuthDependencies(identity))
-}
-
-func defaultReadOnlyAuthDependencies(identity daemonctl.Identity) authDependencies {
-	deps := defaultAuthDependencies(identity)
-	deps.connection = daemonconn.Existing(identity)
-	return deps
-}
-func configCreate(identity daemonctl.Identity, options configCreateOptions) error {
-	return runConfigCreate(options, defaultAuthDependencies(identity))
-}
-func configUpdate(identity daemonctl.Identity, options configUpdateOptions) error {
-	return runConfigUpdate(options, defaultAuthDependencies(identity))
-}
-func configSetPassword(identity daemonctl.Identity, options configPasswordOptions) error {
-	return runConfigSetPassword(options, defaultAuthDependencies(identity))
-}
-func configRemove(identity daemonctl.Identity, id string, yes, allow bool) error {
-	return runConfigRemove(id, yes, defaultAuthDependencies(identity), allow)
-}
-
-func callConfiguration(deps authDependencies, connection daemonconn.Client, method string, payload any) (json.RawMessage, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, terminal.Failure("编码配置请求", err)
-	}
-	// Clear the CLI-owned wire bytes after the synchronous call on all exits.
-	// This does not erase immutable password strings or transport copies.
-	defer clear(data)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	response, err := connection.Call(ctx, method, data)
-	if err != nil {
-		return nil, terminal.Failure("调用配置操作", err)
-	}
-	if !response.OK {
-		code := ""
-		if response.Error != nil {
-			code = response.Error.Code
-		}
-		if code == contract.ErrorCodeInsecureStorageConfirmationRequired {
-			return nil, errors.New("存储未受保护；请确认警告后使用 --allow-insecure-storage")
-		}
-		return nil, errors.New(ipcErrorText(code))
-	}
-	return response.Result, nil
-}
-
-func runConfigList(deps authDependencies) error {
-	return withAuthClient(deps, func(connection daemonconn.Client) error {
-		var result contract.ConfigurationListResult
-		cursors := make(map[string]bool)
-		cursor := ""
-		for {
-			raw, err := callConfiguration(deps, connection, contract.MethodConfigurationList, contract.ConfigurationListPayload{Cursor: cursor})
-			if err != nil {
-				return err
-			}
-			page, err := decodeConfigurationList(raw)
-			if err != nil {
-				return terminal.Failure("解码配置列表", err)
-			}
-			result.StorageProtection = page.StorageProtection
-			result.Configurations = append(result.Configurations, page.Configurations...)
-			cursor = page.NextCursor
-			if cursor == "" {
-				return writeConfigurationList(deps.stdout, result)
-			}
-			if cursors[cursor] {
-				return errors.New("配置列表分页结果无效")
-			}
-			cursors[cursor] = true
-		}
-	})
-}
-func runConfigShow(id string, deps authDependencies) error {
-	return withAuthClient(deps, func(connection daemonconn.Client) error {
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationGet, contract.ConfigurationIDPayload{ConfigurationID: id})
-		if err != nil {
-			return err
-		}
-		result, err := decodeConfiguration(raw)
-		if err != nil {
-			return terminal.Failure("解码配置", err)
-		}
-		return writeConfiguration(deps.stdout, result)
-	})
-}
-func runConfigCreate(options configCreateOptions, deps authDependencies) error {
-	if options.username != "" {
-		if err := input.ValidateNewText(options.username); err != nil {
-			return err
-		}
-	}
-	protocolOverride, err := loadProtocolContextOverride(options.protocolOverrideFile, options.protocolOverrideFileSet)
-	if err != nil {
-		return err
-	}
-	policy, err := options.binding.policy(false)
-	if err != nil {
-		return err
-	}
-	interactive := deps.inputIsConsole != nil && deps.inputIsConsole(deps.stdin)
-	if !interactive && (options.id == "" || options.profile == "" || options.username == "" || !options.passwordStdin) {
-		return errors.New("非交互式创建需要 --id、--profile、--username 和 --password-stdin")
-	}
-	if options.allowInsecure {
-		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
-			return terminal.Failure("写入存储警告", err)
-		}
-	}
-	return withAuthClient(deps, func(connection daemonconn.Client) error {
-		var err error
-		if interactive {
-			if options.id == "" {
-				options.id, err = terminal.ReadPrompt(deps.stdin, deps.stderr, "配置 ID：")
-			}
-			if err == nil && options.profile == "" {
-				options.profile, err = selectProfile(deps, connection)
-			}
-			if err == nil && options.username == "" {
-				options.username, err = terminal.ReadCredential(deps.stdin, deps.stderr, "账号：")
-			}
-			if err == nil && !options.autoLoginExplicit {
-				options.autoLogin, err = terminal.Confirm(deps.stdin, deps.stderr, "自动登录？[y/N] ")
-			}
-			if err == nil && !options.autoReconnectExplicit {
-				options.autoReconnect, err = terminal.ReadBool(deps.stdin, deps.stderr, "自动重连？[Y/n] ", true)
-			}
-		}
-		if err != nil {
-			return err
-		}
-		if options.id == "" || options.profile == "" || options.username == "" {
-			return errors.New("配置输入不能为空")
-		}
-		if err := input.ValidateNewText(options.username); err != nil {
-			return err
-		}
-		if interactive && !options.binding.supplied() {
-			selected, err := selectNetworkBinding(deps, connection)
-			if err != nil {
-				return err
-			}
-			policy = &selected
-		}
-		password, err := deps.readValidatedPassword(options.passwordStdin)
-		if err != nil {
-			return err
-		}
-		if interactive && !options.allowInsecure {
-			raw, listErr := callConfiguration(deps, connection, contract.MethodConfigurationList, struct{}{})
-			if listErr != nil {
-				return listErr
-			}
-			list, decodeErr := decodeConfigurationList(raw)
-			if decodeErr != nil {
-				return terminal.Failure("解码配置列表", decodeErr)
-			}
-			if list.StorageProtection == "unprotected" {
-				if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
-					return terminal.Failure("写入存储警告", err)
-				}
-				options.allowInsecure, err = terminal.Confirm(deps.stdin, deps.stderr, "仍要保存？[y/N] ")
-				if err != nil || !options.allowInsecure {
-					if err != nil {
-						return err
-					}
-					return errors.New("操作已取消")
-				}
-			}
-		}
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationCreate, contract.ConfigurationCreatePayload{
-			NetworkBindingPolicy: *policy, ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile,
-			Username: options.username, Password: password, AllowInsecureStorage: options.allowInsecure,
-			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect,
-			ProtocolContextOverride: protocolOverride,
-		})
-		if err != nil {
-			return err
-		}
-		result, err := decodeConfiguration(raw)
-		if err != nil {
-			return terminal.Failure("解码配置", err)
-		}
-		return writeConfiguration(deps.stdout, result)
-	})
-}
-func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
-	if options.username != nil {
-		if err := input.ValidateNewText(*options.username); err != nil {
-			return err
-		}
-	}
-	if options.clearProtocolOverride && options.protocolOverrideFileSet {
-		return errors.New("协议上下文 Override 文件与清除选项不能同时使用")
-	}
-	protocolOverride, err := loadProtocolContextOverride(options.protocolOverrideFile, options.protocolOverrideFileSet)
-	if err != nil {
-		return err
-	}
-	if options.clearProtocolOverride {
-		protocolOverride = json.RawMessage("null")
-	}
-	policy, err := options.binding.policy(true)
-	if err != nil {
-		return err
-	}
-	if options.allowInsecure {
-		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
-			return terminal.Failure("写入存储警告", err)
-		}
-	}
-	return withAuthClient(deps, func(connection daemonconn.Client) error {
-		// Bare updates prompt only after the persisted record is read and validated.
-		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil && policy == nil && !options.protocolOverrideFileSet && !options.clearProtocolOverride {
-			if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
-				return errors.New("非交互式更新需要至少一个更新选项")
-			}
-			raw, err := callConfiguration(deps, connection, contract.MethodConfigurationGet, contract.ConfigurationIDPayload{ConfigurationID: options.id})
-			if err != nil {
-				return err
-			}
-			current, err := decodeConfiguration(raw)
-			if err != nil {
-				return terminal.Failure("解码配置", err)
-			}
-			name, err := terminal.ReadPrompt(deps.stdin, deps.stderr, "显示名称（空=保留，-=清除）：")
-			if err != nil {
-				return err
-			}
-			if name == "-" {
-				empty := ""
-				options.name = &empty
-			} else if name != "" && name != current.DisplayName {
-				options.name = &name
-			}
-			if options.name == nil {
-				return errors.New("没有要更新的字段")
-			}
-		}
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationUpdate, contract.ConfigurationUpdatePayload{
-			NetworkBindingPolicy: policy, ConfigurationID: options.id, DisplayName: options.name, InstitutionProfileID: options.profile, Username: options.username, AllowInsecureStorage: options.allowInsecure,
-			AutoLogin: options.autoLogin, AutoReconnect: options.autoReconnect, ProtocolContextOverride: protocolOverride,
-		})
-		if err != nil {
-			return err
-		}
-		result, err := decodeConfiguration(raw)
-		if err != nil {
-			return terminal.Failure("解码配置", err)
-		}
-		if err := writeConfiguration(deps.stdout, result); err != nil {
-			return err
-		}
-		return terminal.Write(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
-	})
-}
-func runConfigSetPassword(options configPasswordOptions, deps authDependencies) error {
-	interactive := deps.inputIsConsole != nil && deps.inputIsConsole(deps.stdin)
-	if !options.passwordStdin && !interactive {
-		return errors.New("非交互式设置密码需要 --password-stdin")
-	}
-	if options.allowInsecure {
-		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
-			return terminal.Failure("写入存储警告", err)
-		}
-	}
-	password, err := deps.readValidatedPassword(options.passwordStdin)
-	if err != nil {
-		return err
-	}
-	return withAuthClient(deps, func(connection daemonconn.Client) error {
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationSetPassword, contract.ConfigurationSetPasswordPayload{ConfigurationID: options.id, Password: password, AllowInsecureStorage: options.allowInsecure})
-		if err != nil {
-			return err
-		}
-		result, err := decodeConfiguration(raw)
-		if err != nil {
-			return terminal.Failure("解码配置", err)
-		}
-		if err := writeConfiguration(deps.stdout, result); err != nil {
-			return err
-		}
-		return terminal.Write(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
-	})
-}
-func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) error {
-	permitted := len(allow) > 0 && allow[0]
-	if permitted {
-		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
-			return terminal.Failure("写入存储警告", err)
-		}
-	}
-	if !yes && (deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin)) {
-		return errors.New("非交互式删除需要 --yes")
-	}
-	return withAuthClient(deps, func(connection daemonconn.Client) error {
-		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationGet, contract.ConfigurationIDPayload{ConfigurationID: id})
-		if err != nil {
-			return err
-		}
-		current, err := decodeConfiguration(raw)
-		if err != nil {
-			return terminal.Failure("解码配置", err)
-		}
-		if !yes {
-			prompt := "确认删除配置 “" + sanitizeDynamicText(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
-			confirmed, err := terminal.Confirm(deps.stdin, deps.stderr, prompt)
-			if err != nil {
-				return err
-			}
-			if !confirmed {
-				return errors.New("操作已取消")
-			}
-		}
-		raw, err = callConfiguration(deps, connection, contract.MethodConfigurationRemove, contract.ConfigurationRemovePayload{
-			ConfigurationID: id, ExpectedVersion: current.Version, AllowInsecureStorage: permitted,
-		})
-		if err != nil {
-			return err
-		}
-		result, err := contract.DecodeConfigurationRemoveResult(raw, id)
-		if err != nil {
-			return terminal.Failure("解码配置删除结果", err)
-		}
-		return terminal.Write(deps.stdout, "配置已删除："+sanitizeDynamicText(result.ConfigurationID)+"\n")
-	})
-}
-
-func decodeConfiguration(data []byte) (contract.ConfigurationResult, error) {
-	return contract.DecodeConfigurationResult(data)
-}
-func decodeConfigurationList(data []byte) (contract.ConfigurationListResult, error) {
-	return contract.DecodeConfigurationListResult(data)
 }

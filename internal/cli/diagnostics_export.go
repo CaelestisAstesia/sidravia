@@ -33,7 +33,7 @@ func newDiagnosticsExportCommand(operation func(string) error) *cobra.Command {
 
 func runDiagnosticsExport(deps readOnlyCommandDependencies, path string) error {
 	return daemonconn.With(deps.connection, func(connection daemonconn.Client) error {
-		response, err := callReadOnlyQuery(connection, deps.connection.Timeout, contract.MethodDiagnosticsExport)
+		response, err := daemonconn.CallQuery(connection, deps.connection.Timeout, contract.MethodDiagnosticsExport)
 		if err != nil {
 			return terminal.Failure("导出诊断信息失败", err)
 		}
@@ -58,8 +58,8 @@ func runDiagnosticsExport(deps readOnlyCommandDependencies, path string) error {
 			return terminal.Failure("诊断文件写入失败，文件可能不完整", err)
 		}
 
-		message := "诊断信息已写入：" + sanitizeDynamicText(path) + "\n"
-		if err := newPresentation(deps.stdout).complete(message); err != nil {
+		message := "诊断信息已写入：" + terminal.Sanitize(path) + "\n"
+		if err := terminal.NewPresentation(deps.stdout).Complete(message); err != nil {
 			return terminal.Failure("文件已写入，但提示输出失败", err)
 		}
 		return nil

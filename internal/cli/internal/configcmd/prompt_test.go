@@ -1,4 +1,4 @@
-package cli
+package configcmd
 
 import (
 	"bytes"
@@ -58,12 +58,12 @@ func TestSelectProfileUsesOneBasedValidatedSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := authDependencies{stdin: strings.NewReader("2\n"), stderr: &bytes.Buffer{}}
+	deps := dependencies{IO: terminal.IO{Stdin: strings.NewReader("2\n"), Stderr: &bytes.Buffer{}}}
 	got, err := selectProfile(deps, promptClient{response: contract.NewSuccessResponse("1", raw)})
 	if err != nil || got != "other" {
 		t.Fatalf("selection = %q, %v", got, err)
 	}
-	deps.stdin = strings.NewReader("0\n")
+	deps.Stdin = strings.NewReader("0\n")
 	if _, err := selectProfile(deps, promptClient{response: contract.NewSuccessResponse("1", raw)}); err == nil {
 		t.Fatal("out-of-range profile accepted")
 	}
@@ -111,12 +111,12 @@ func TestSelectNetworkBindingDefaultsWhenNoObservedFactsExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, selection := range []string{"\n", "0\n"} {
-		deps := authDependencies{stdin: strings.NewReader(selection + "password\n"), stderr: &bytes.Buffer{}}
+		deps := dependencies{IO: terminal.IO{Stdin: strings.NewReader(selection + "password\n"), Stderr: &bytes.Buffer{}}}
 		policy, err := selectNetworkBinding(deps, promptClient{response: contract.NewSuccessResponse("1", raw)})
-		if err != nil || policy.Mode != automaticNetworkBindingPolicy {
+		if err != nil || policy.Mode != "automatically_select_latest_available" {
 			t.Fatalf("selection %q = %#v, %v", selection, policy, err)
 		}
-		password, err := terminal.ReadLine(deps.stdin)
+		password, err := terminal.ReadLine(deps.Stdin)
 		if err != nil || password != "password" {
 			t.Fatalf("following password = %q, %v", password, err)
 		}
@@ -147,7 +147,7 @@ func TestSelectNetworkBindingUsesSortedExactBindablePairs(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	deps := authDependencies{stdin: strings.NewReader("2\npassword\n"), stderr: &output}
+	deps := dependencies{IO: terminal.IO{Stdin: strings.NewReader("2\npassword\n"), Stderr: &output}}
 	policy, err := selectNetworkBinding(deps, promptClient{response: contract.NewSuccessResponse("1", raw)})
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestSelectNetworkBindingUsesSortedExactBindablePairs(t *testing.T) {
 	if first < 0 || second <= first || third <= second || strings.Contains(text, "ID：down") || strings.Contains(text, "ID：unbound") || strings.Contains(text, "127.0.0.1/32") {
 		t.Fatalf("choices are not filtered, sorted and deduplicated: %q", text)
 	}
-	password, err := terminal.ReadLine(deps.stdin)
+	password, err := terminal.ReadLine(deps.Stdin)
 	if err != nil || password != "password" {
 		t.Fatalf("following password = %q, %v", password, err)
 	}

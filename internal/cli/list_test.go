@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/clitest"
 	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
@@ -49,7 +51,7 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodSessionList {
 			t.Errorf("method = %q, want %q", method, contract.MethodSessionList)
 		}
@@ -68,8 +70,8 @@ func TestAuthListCallsExactMethodAndRendersAllSessions(t *testing.T) {
 	if output.String() != want {
 		t.Errorf("output = %q, want %q", output.String(), want)
 	}
-	if connection.callCount != 1 || connection.closeCount != 1 {
-		t.Errorf("calls/close = %d/%d, want 1/1", connection.callCount, connection.closeCount)
+	if connection.CallCount != 1 || connection.CloseCount != 1 {
+		t.Errorf("calls/close = %d/%d, want 1/1", connection.CallCount, connection.CloseCount)
 	}
 }
 
@@ -107,7 +109,7 @@ func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodSessionList {
 			t.Errorf("method = %q, want %q", method, contract.MethodSessionList)
 		}
@@ -132,8 +134,8 @@ func TestAuthListGuidesBlockedAndRetryingSessionsToStatus(t *testing.T) {
 	if strings.Contains(got, "sidraviactl auth status session-normal") {
 		t.Errorf("normal Session received a status command: %q", got)
 	}
-	if connection.callCount != 1 || connection.closeCount != 1 {
-		t.Errorf("calls/close = %d/%d, want 1/1", connection.callCount, connection.closeCount)
+	if connection.CallCount != 1 || connection.CloseCount != 1 {
+		t.Errorf("calls/close = %d/%d, want 1/1", connection.CallCount, connection.CloseCount)
 	}
 }
 
@@ -144,7 +146,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 			DisplayName:              "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
 		}}})
-		connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 			if method != contract.MethodProfileList || string(payload) != `{}` {
 				t.Errorf("call = %q %s", method, payload)
 			}
@@ -171,7 +173,7 @@ func TestProfileListRendersProfilesAndEmptyLists(t *testing.T) {
 		{"profiles", contract.MethodProfileList, json.RawMessage(`{"profiles":[]}`), runProfileList, "没有可用的机构 Profile。请检查完整 portable 包中的 institution-profiles，并重启 daemon。\n"},
 	} {
 		t.Run("empty "+test.name, func(t *testing.T) {
-			connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 				return contract.NewSuccessResponse("1", test.data), nil
 			}}
 			var output bytes.Buffer
@@ -200,7 +202,7 @@ func TestListRejectsMalformedResponsesWithoutWriting(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 				return contract.NewSuccessResponse("1", test.data), nil
 			}}
 			var output bytes.Buffer
@@ -220,7 +222,7 @@ func TestListRejectsMalformedResponsesWithoutWriting(t *testing.T) {
 
 func TestListErrorsAreSafeAndPreserveWriterCause(t *testing.T) {
 	t.Run("daemon error omits message", func(t *testing.T) {
-		connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		connection := &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 			return contract.NewErrorResponse(
 				"1",
 				contract.ErrorCodeProfileOperationFailed,
@@ -236,7 +238,7 @@ func TestListErrorsAreSafeAndPreserveWriterCause(t *testing.T) {
 
 	t.Run("writer cause", func(t *testing.T) {
 		data := json.RawMessage(`{"cleanupRequiredSessionIds":[],"sessions":[]}`)
-		connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+		connection := &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 			return contract.NewSuccessResponse("1", data), nil
 		}}
 		cause := errors.New("injected list writer failure")
@@ -260,7 +262,7 @@ func (writer listErrorWriter) Write([]byte) (int, error) {
 // TestListCommandsDoNotCallDaemonStop proves list commands never invoke the
 // daemon.stop lifecycle method.
 func TestListCommandsDoNotCallDaemonStop(t *testing.T) {
-	connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, _ json.RawMessage) (contract.Response, error) {
 		if method == contract.MethodDaemonStop {
 			t.Errorf("list command must not call daemon.stop")
 		}
@@ -275,7 +277,7 @@ func TestListCommandsDoNotCallDaemonStop(t *testing.T) {
 
 func TestReadOnlyListAcquisitionFailureWritesNothing(t *testing.T) {
 	var output bytes.Buffer
-	deps := hotListDependencies(t, &fakeDaemonClient{}, &output)
+	deps := hotListDependencies(t, &clitest.FakeDaemonClient{}, &output)
 	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) { return nil, errors.New("stopped") }
 	if err := runAuthList(deps); err == nil {
 		t.Fatal("stopped list returned nil")
@@ -283,4 +285,8 @@ func TestReadOnlyListAcquisitionFailureWritesNothing(t *testing.T) {
 	if output.Len() != 0 {
 		t.Fatalf("output=%q", output.String())
 	}
+}
+
+func runAuthList(deps readOnlyCommandDependencies) error {
+	return authcmd.List(deps.connection, deps.stdout)
 }

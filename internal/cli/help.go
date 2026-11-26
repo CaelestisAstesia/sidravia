@@ -40,7 +40,7 @@ type helpChild struct {
 }
 
 // helpNode describes one command's deterministic Chinese help. The
-// presentation layer renders this specification instead of Cobra defaults.
+// terminal.Presentation layer renders this specification instead of Cobra defaults.
 type helpNode struct {
 	description string
 	usage       []string
@@ -255,7 +255,7 @@ var helpSpecs = map[string]helpNode{
 // help specification. It uses only the canonical command tree and the Chinese
 // headings 用法 / 可用命令 / 参数 / 选项 / 示例. It never contains Cobra’s
 // default English headings and never dispatches an operation.
-func renderHelp(p *presentation, c *cobra.Command) string {
+func renderHelp(p *terminal.Presentation, c *cobra.Command) string {
 	node, ok := helpSpecs[c.CommandPath()]
 	if !ok {
 		node = helpNode{usage: []string{c.CommandPath()}}
@@ -326,29 +326,29 @@ func registeredHelpNode(c *cobra.Command) helpNode {
 // Only applicable sections appear, in the fixed order description, 用法,
 // 可用命令, 参数, 选项, 示例. Each heading is styled; child commands and
 // examples use one line per entry.
-func renderHelpNode(p *presentation, node helpNode) string {
+func renderHelpNode(p *terminal.Presentation, node helpNode) string {
 	var sections [][]string
 	if node.description != "" {
 		sections = append(sections, []string{node.description})
 	}
 	if len(node.usage) > 0 {
-		sections = append(sections, p.helpUsageLines(node.usage))
+		sections = append(sections, p.HelpUsageLines(node.usage))
 	}
 	if len(node.children) > 0 {
-		lines := []string{p.label("可用命令：")}
+		lines := []string{p.Label("可用命令：")}
 		for _, child := range node.children {
 			lines = append(lines, "  "+child.name+"  "+child.short)
 		}
 		sections = append(sections, lines)
 	}
 	if len(node.args) > 0 {
-		sections = append(sections, append([]string{p.label("参数：")}, node.args...))
+		sections = append(sections, append([]string{p.Label("参数：")}, node.args...))
 	}
 	if len(node.options) > 0 {
-		sections = append(sections, append([]string{p.label("选项：")}, node.options...))
+		sections = append(sections, append([]string{p.Label("选项：")}, node.options...))
 	}
 	if len(node.examples) > 0 {
-		sections = append(sections, append([]string{p.label("示例：")}, node.examples...))
+		sections = append(sections, append([]string{p.Label("示例：")}, node.examples...))
 	}
 	var b strings.Builder
 	for index, section := range sections {
@@ -364,6 +364,6 @@ func renderHelpNode(p *presentation, node helpNode) string {
 }
 
 func renderHelpCompletion(cmd *cobra.Command) error {
-	p := newPresentation(cmd.OutOrStdout())
-	return terminal.Failure("显示帮助", p.complete(renderHelp(p, cmd)))
+	p := terminal.NewPresentation(cmd.OutOrStdout())
+	return terminal.Failure("显示帮助", p.Complete(renderHelp(p, cmd)))
 }

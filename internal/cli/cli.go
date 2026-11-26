@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/configcmd"
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/cli/internal/terminal"
 )
 
@@ -110,7 +113,7 @@ func RunWithIdentity(args []string, productVersion, buildID string) error {
 }
 
 // WriteError writes a safe Chinese error line for err to w through the
-// presentation boundary and returns the presentation write/restore error. The
+// terminal.Presentation boundary and returns the terminal.Presentation write/restore error. The
 // static prefix is followed by the error's own sanitized message; an
 // underlying cause is never printed. Callers that already own a nonzero exit
 // may ignore the returned reporting error so it cannot replace the business
@@ -137,8 +140,8 @@ func WriteError(w io.Writer, err error) error {
 		}
 		return nil
 	}
-	p := newPresentation(w)
-	return p.complete(writeErrorLine(err))
+	p := terminal.NewPresentation(w)
+	return p.Complete(terminal.ErrorLine(err))
 }
 
 // ExitCode returns the process exit code for a CLI result. Only the private
@@ -161,7 +164,7 @@ type commandDependencies struct {
 	daemonStart       func(logLevel string) error
 	daemonStop        func() error
 	daemonRestart     func(logLevel string) error
-	authStart         func(authStartOptions) error
+	authStart         func(authcmd.StartOptions) error
 	authStatus        func(string) error
 	authBusiness      func(string) error
 	authStop          func(string) error
@@ -175,9 +178,9 @@ type commandDependencies struct {
 	diagnosticsExport func(string) error
 	configList        func() error
 	configShow        func(string) error
-	configCreate      func(configCreateOptions) error
-	configUpdate      func(configUpdateOptions) error
-	configSetPassword func(configPasswordOptions) error
+	configCreate      func(configcmd.CreateOptions) error
+	configUpdate      func(configcmd.UpdateOptions) error
+	configSetPassword func(configcmd.PasswordOptions) error
 	configRemove      func(string, bool, bool) error
 	guiBootstrap      guiBootstrapper
 	output            io.Writer
@@ -190,29 +193,29 @@ func defaultCommandDependencies(identity daemonctl.Identity) commandDependencies
 		daemonStart:   func(logLevel string) error { return daemonStart(identity, logLevel) },
 		daemonStop:    func() error { return daemonStop(identity) },
 		daemonRestart: func(logLevel string) error { return daemonRestart(identity, logLevel) },
-		authStart:     func(options authStartOptions) error { return authStart(identity, options) },
-		authStatus:    func(sessionID string) error { return authStatus(identity, sessionID) },
+		authStart:     func(options authcmd.StartOptions) error { return authcmd.Start(identity, options) },
+		authStatus:    func(sessionID string) error { return authcmd.Status(identity, sessionID) },
 		authBusiness: func(sessionID string) error {
-			return runAuthBusiness(sessionID, defaultReadOnlyAuthDependencies(identity))
+			return authcmd.Business(identity, sessionID)
 		},
-		authStop:    func(sessionID string) error { return authStop(identity, sessionID) },
-		authRestart: func(sessionID string) error { return authRestart(identity, sessionID) },
-		authRemove:  func(sessionID string) error { return authRemove(identity, sessionID) },
-		authList:    func() error { return authList(identity) },
+		authStop:    func(sessionID string) error { return authcmd.Stop(identity, sessionID) },
+		authRestart: func(sessionID string) error { return authcmd.Restart(identity, sessionID) },
+		authRemove:  func(sessionID string) error { return authcmd.Remove(identity, sessionID) },
+		authList:    func() error { return authcmd.List(daemonconn.Existing(identity), os.Stdout) },
 		authWatch: func(ctx context.Context) error {
-			return runAuthWatch(ctx, defaultReadOnlyCommandDependencies(identity))
+			return authcmd.Watch(ctx, daemonconn.Existing(identity), os.Stdout)
 		},
 		profileList:       func() error { return profileList(identity) },
 		networkInterfaces: func() error { return networkInterfaces(identity) },
 		diagnosticsExport: func(path string) error {
 			return diagnosticsExport(identity, path)
 		},
-		configList:        func() error { return configList(identity) },
-		configShow:        func(id string) error { return configShow(identity, id) },
-		configCreate:      func(options configCreateOptions) error { return configCreate(identity, options) },
-		configUpdate:      func(options configUpdateOptions) error { return configUpdate(identity, options) },
-		configSetPassword: func(options configPasswordOptions) error { return configSetPassword(identity, options) },
-		configRemove:      func(id string, yes, allow bool) error { return configRemove(identity, id, yes, allow) },
+		configList:        func() error { return configcmd.List(identity) },
+		configShow:        func(id string) error { return configcmd.Show(identity, id) },
+		configCreate:      func(options configcmd.CreateOptions) error { return configcmd.Create(identity, options) },
+		configUpdate:      func(options configcmd.UpdateOptions) error { return configcmd.Update(identity, options) },
+		configSetPassword: func(options configcmd.PasswordOptions) error { return configcmd.SetPassword(identity, options) },
+		configRemove:      func(id string, yes, allow bool) error { return configcmd.Remove(identity, id, yes, allow) },
 		guiBootstrap:      defaultGUIBootstrap,
 		output:            os.Stdout,
 	}
@@ -413,8 +416,8 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	}), newUpdateInternalCommand(deps.identity, output))
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
-		p := newPresentation(c.OutOrStdout())
-		*helpErr = p.complete(renderHelp(p, c))
+		p := terminal.NewPresentation(c.OutOrStdout())
+		*helpErr = p.Complete(renderHelp(p, c))
 	})
 	return root
 }
@@ -480,6 +483,6 @@ func isHelpRequest(args []string) bool {
 }
 
 // renderHelpCompletion renders the deterministic Chinese help block for cmd
-// through the presentation completion path and wraps its write/restore error
+// through the terminal.Presentation completion path and wraps its write/restore error
 // with the safe help operation label. It is used by DisableFlagParsing leaves
 // whose --help/-h tokens bypass Cobra's help flag.

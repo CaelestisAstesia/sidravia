@@ -3,13 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -24,22 +21,19 @@ func TestGUIRestartChecksOwnerBeforeStopAndAwaitBeforeStart(t *testing.T) {
 			identity := mustTestIdentity(t)
 			stops, starts := 0, 0
 			reachable := true
-			deps := stopDependencies{totalWait: time.Second, pollInterval: time.Millisecond, ops: daemonOperations{
+			deps := daemonOperations{
 				inspect: func() (daemonctl.ProbeResult, error) {
 					return daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &actual}}, nil
 				},
-				connect: func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
-					return &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
-						stops++
-						reachable = false
-						if method != contract.MethodDaemonStop {
-							t.Fatal(method)
-						}
-						return contract.NewSuccessResponse("1", json.RawMessage(`{"status":"stopping"}`)), nil
-					}}, nil
+				stop: func(_ context.Context, info contract.RuntimeInfo) error {
+					if info.PID != 7 {
+						t.Fatalf("stop targeted PID %d", info.PID)
+					}
+					stops++
+					reachable = false
+					return nil
 				},
-				reachable: func(contract.RuntimeInfo) bool { return reachable },
-			}}
+			}
 			start := func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
 				starts++
 				if reachable {
@@ -64,14 +58,14 @@ func TestGUIRestartChecksOwnerBeforeStopAndAwaitBeforeStart(t *testing.T) {
 func TestGUIRestartStopFailureNeverStartsReplacement(t *testing.T) {
 	owner := 42
 	started := false
-	deps := stopDependencies{ops: daemonOperations{
+	deps := daemonOperations{
 		inspect: func() (daemonctl.ProbeResult, error) {
 			return daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		},
-		connect: func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
-			return nil, errors.New("stop unavailable")
+		stop: func(context.Context, contract.RuntimeInfo) error {
+			return errors.New("stop unavailable")
 		},
-	}}
+	}
 	var out bytes.Buffer
 	err := runGUIRestart(owner, "info", deps, func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
 		started = true

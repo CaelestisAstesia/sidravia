@@ -7,12 +7,15 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/clitest"
 )
 
 func TestCommandHelpShowsCanonicalTree(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
-		authStart:    func(authStartOptions) error { return nil },
+		authStart:    func(authcmd.StartOptions) error { return nil },
 		authStatus:   func(string) error { return nil },
 		authStop:     func(string) error { return nil },
 	}
@@ -66,7 +69,7 @@ func TestUnifiedHelpEntrypointsAreIdenticalAndNeverDispatch(t *testing.T) {
 		daemonStatus: func() error { dispatched++; return nil },
 		daemonStart:  func(string) error { dispatched++; return nil },
 		daemonStop:   func() error { dispatched++; return nil },
-		authStart:    func(authStartOptions) error { dispatched++; return nil },
+		authStart:    func(authcmd.StartOptions) error { dispatched++; return nil },
 		authList:     func() error { dispatched++; return nil },
 		profileList:  func() error { dispatched++; return nil },
 	}
@@ -190,7 +193,7 @@ func TestLeafHelpDoesNotDispatch(t *testing.T) {
 			dispatched := false
 			deps := commandDependencies{
 				daemonStatus: func() error { dispatched = true; return nil },
-				authStart:    func(authStartOptions) error { dispatched = true; return nil },
+				authStart:    func(authcmd.StartOptions) error { dispatched = true; return nil },
 				authStatus:   func(string) error { dispatched = true; return nil },
 				authStop:     func(string) error { dispatched = true; return nil },
 				authList:     func() error { dispatched = true; return nil },
@@ -220,7 +223,7 @@ func TestLeafHelpDoesNotDispatch(t *testing.T) {
 func TestHelpDoesNotAdvertiseCobraHelpCommand(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
-		authStart:    func(authStartOptions) error { return nil },
+		authStart:    func(authcmd.StartOptions) error { return nil },
 		authStatus:   func(string) error { return nil },
 		authStop:     func(string) error { return nil },
 	}
@@ -250,10 +253,10 @@ func TestHelpWriterFailureIsObservable(t *testing.T) {
 			cause := errors.New("injected help writer failure")
 			deps := commandDependencies{
 				daemonStatus: func() error { return nil },
-				authStart:    func(authStartOptions) error { return nil },
+				authStart:    func(authcmd.StartOptions) error { return nil },
 				authStatus:   func(string) error { return nil },
 				authStop:     func(string) error { return nil },
-				output:       zeroWriter{err: cause},
+				output:       clitest.ZeroWriter{Err: cause},
 			}
 			if err := runCommand(tc.args, deps); !errors.Is(err, cause) {
 				t.Errorf("help writer failure = %v, want cause", err)
@@ -268,7 +271,7 @@ func TestHelpWriterFailureIsObservable(t *testing.T) {
 func TestHelpRendersCompleteSpacedSections(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
-		authStart:    func(authStartOptions) error { return nil },
+		authStart:    func(authcmd.StartOptions) error { return nil },
 		authStatus:   func(string) error { return nil },
 		authStop:     func(string) error { return nil },
 		authList:     func() error { return nil },

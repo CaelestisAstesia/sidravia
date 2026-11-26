@@ -2,6 +2,8 @@ package daemonconn
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -68,4 +70,23 @@ func Connect(deps Connection) (Client, error) {
 		return nil, fmt.Errorf("无法连接 daemon（未找到运行中的 daemon）")
 	}
 	return acquired, nil
+}
+
+// CallQuery sends the canonical empty object for read-only queries.
+// Its callers never acquire or start a new daemon generation.
+func CallQuery(connection Client, timeout time.Duration, method string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	response, err := connection.Call(ctx, method, json.RawMessage(`{}`))
+	if err != nil {
+		return nil, err
+	}
+	if !response.OK {
+		code := ""
+		if response.Error != nil {
+			code = response.Error.Code
+		}
+		return nil, errors.New(terminal.IPCErrorText(code))
+	}
+	return response.Result, nil
 }

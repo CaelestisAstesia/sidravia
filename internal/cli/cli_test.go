@@ -9,23 +9,25 @@ import (
 	"testing"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/configcmd"
 	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
 func TestParseAuthStartRetainedMode(t *testing.T) {
-	got, err := parseAuthStart([]string{"--session", "session-1"})
-	if err != nil || got.sessionID != "session-1" {
+	got, err := authcmd.ParseStart([]string{"--session", "session-1"})
+	if err != nil || got.SessionID != "session-1" {
 		t.Fatalf("parse retained = %#v, %v", got, err)
 	}
-	if _, err := parseAuthStart([]string{"--session", "session-1", "--profile", "jlu"}); err == nil {
+	if _, err := authcmd.ParseStart([]string{"--session", "session-1", "--profile", "jlu"}); err == nil {
 		t.Fatal("mixed retained and one-shot mode accepted")
 	}
 }
 
 func TestParseAuthStartConfigurationModeIsExclusive(t *testing.T) {
-	got, err := parseAuthStart([]string{"--config", "campus"})
-	if err != nil || got.configurationID != "campus" {
+	got, err := authcmd.ParseStart([]string{"--config", "campus"})
+	if err != nil || got.ConfigurationID != "campus" {
 		t.Fatalf("parse configuration = %#v, %v", got, err)
 	}
 	for _, args := range [][]string{
@@ -34,7 +36,7 @@ func TestParseAuthStartConfigurationModeIsExclusive(t *testing.T) {
 		{"--config", "campus", "--profile", "jlu", "--username", "user"},
 		{"--config", "campus", "--password-stdin"},
 	} {
-		if _, err := parseAuthStart(args); err == nil {
+		if _, err := authcmd.ParseStart(args); err == nil {
 			t.Fatalf("accepted mixed configuration start: %q", args)
 		}
 	}
@@ -49,7 +51,7 @@ func TestParseAuthStartProtocolOverrideFileIsRejected(t *testing.T) {
 		{"--session", "s", "--protocol-override-file", "override.json"},
 		{"--config", "c", "--protocol-override-file", "override.json"},
 	} {
-		if _, err := parseAuthStart(args); err == nil {
+		if _, err := authcmd.ParseStart(args); err == nil {
 			t.Fatalf("accepted invalid override arguments %q", args)
 		}
 	}
@@ -58,8 +60,8 @@ func TestParseAuthStartProtocolOverrideFileIsRejected(t *testing.T) {
 func TestConfigOverrideFlagsRejectInvalidCombinationsBeforeDispatch(t *testing.T) {
 	calls := 0
 	deps := commandDependencies{
-		configCreate: func(configCreateOptions) error { calls++; return nil },
-		configUpdate: func(configUpdateOptions) error { calls++; return nil },
+		configCreate: func(configcmd.CreateOptions) error { calls++; return nil },
+		configUpdate: func(configcmd.UpdateOptions) error { calls++; return nil },
 		output:       io.Discard,
 	}
 	for _, args := range [][]string{
@@ -82,11 +84,14 @@ func TestConfigOverrideFlagsRejectInvalidCombinationsBeforeDispatch(t *testing.T
 func TestConfigurationCommandsDispatchAndHelpNeverDispatch(t *testing.T) {
 	var calls []string
 	deps := commandDependencies{
-		configList:        func() error { calls = append(calls, "list"); return nil },
-		configShow:        func(id string) error { calls = append(calls, "show:"+id); return nil },
-		configCreate:      func(options configCreateOptions) error { calls = append(calls, "create:"+options.id); return nil },
-		configUpdate:      func(options configUpdateOptions) error { calls = append(calls, "update:"+options.id); return nil },
-		configSetPassword: func(options configPasswordOptions) error { calls = append(calls, "password:"+options.id); return nil },
+		configList:   func() error { calls = append(calls, "list"); return nil },
+		configShow:   func(id string) error { calls = append(calls, "show:"+id); return nil },
+		configCreate: func(options configcmd.CreateOptions) error { calls = append(calls, "create:"+options.ID); return nil },
+		configUpdate: func(options configcmd.UpdateOptions) error { calls = append(calls, "update:"+options.ID); return nil },
+		configSetPassword: func(options configcmd.PasswordOptions) error {
+			calls = append(calls, "password:"+options.ID)
+			return nil
+		},
 		configRemove: func(id string, yes, allow bool) error {
 			calls = append(calls, fmt.Sprintf("remove:%s:%t", id, yes))
 			return nil
@@ -163,17 +168,17 @@ func TestParseAuthStartRetainedRejectsMissingMixedAndDuplicateForms(t *testing.T
 		{"--username"},
 		{"--unknown"},
 	} {
-		if _, err := parseAuthStart(args); err == nil {
+		if _, err := authcmd.ParseStart(args); err == nil {
 			t.Fatalf("accepted invalid retained start args: %q", args)
 		}
 	}
 }
 
 func TestRetainedCommandsDispatchAndHelpDoesNotDispatch(t *testing.T) {
-	var starts []authStartOptions
+	var starts []authcmd.StartOptions
 	var restarts, removes []string
 	deps := commandDependencies{
-		authStart:   func(options authStartOptions) error { starts = append(starts, options); return nil },
+		authStart:   func(options authcmd.StartOptions) error { starts = append(starts, options); return nil },
 		authRestart: func(id string) error { restarts = append(restarts, id); return nil },
 		authRemove:  func(id string) error { removes = append(removes, id); return nil },
 		output:      io.Discard,
@@ -187,7 +192,7 @@ func TestRetainedCommandsDispatchAndHelpDoesNotDispatch(t *testing.T) {
 			t.Fatalf("%q: %v", args, err)
 		}
 	}
-	if len(starts) != 1 || starts[0].sessionID != "session-1" || len(restarts) != 1 || restarts[0] != "session-1" || len(removes) != 1 || removes[0] != "session-1" {
+	if len(starts) != 1 || starts[0].SessionID != "session-1" || len(restarts) != 1 || restarts[0] != "session-1" || len(removes) != 1 || removes[0] != "session-1" {
 		t.Fatalf("dispatch starts=%#v restarts=%v removes=%v", starts, restarts, removes)
 	}
 	for _, help := range []struct {
@@ -293,8 +298,8 @@ func TestRunDispatchesAcceptedCommands(t *testing.T) {
 					got = "status"
 					return nil
 				},
-				authStart: func(options authStartOptions) error {
-					got = fmt.Sprintf("start:%s:%s:%t", options.profileID, options.username, options.passwordStdin)
+				authStart: func(options authcmd.StartOptions) error {
+					got = fmt.Sprintf("start:%s:%s:%t", options.ProfileID, options.Username, options.PasswordStdin)
 					return nil
 				},
 				authStatus: func(sessionID string) error {
@@ -331,7 +336,7 @@ func TestRetiredStatusReturnsMigrationWithoutDispatch(t *testing.T) {
 			dispatched = true
 			return nil
 		},
-		authStart:  func(authStartOptions) error { return nil },
+		authStart:  func(authcmd.StartOptions) error { return nil },
 		authStatus: func(string) error { return nil },
 		authStop:   func(string) error { return nil },
 	}
@@ -352,7 +357,7 @@ func TestCommandOperationErrorPreservesCause(t *testing.T) {
 	cause := errors.New("injected status failure")
 	deps := commandDependencies{
 		daemonStatus: func() error { return cause },
-		authStart:    func(authStartOptions) error { return nil },
+		authStart:    func(authcmd.StartOptions) error { return nil },
 		authStatus:   func(string) error { return nil },
 		authStop:     func(string) error { return nil },
 	}
@@ -477,7 +482,7 @@ func TestAuthStartRejectsInvalidArgumentsSafely(t *testing.T) {
 
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
-		authStart:    func(authStartOptions) error { t.Fatal("invalid start dispatched"); return nil },
+		authStart:    func(authcmd.StartOptions) error { t.Fatal("invalid start dispatched"); return nil },
 		authStatus:   func(string) error { return nil },
 		authStop:     func(string) error { return nil },
 	}
@@ -511,7 +516,7 @@ func TestAuthStatusAndStopRejectInvalidSessionArguments(t *testing.T) {
 	}
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
-		authStart:    func(authStartOptions) error { return nil },
+		authStart:    func(authcmd.StartOptions) error { return nil },
 		authStatus:   func(string) error { t.Fatal("invalid status dispatched"); return nil },
 		authStop:     func(string) error { t.Fatal("invalid stop dispatched"); return nil },
 	}
@@ -536,7 +541,7 @@ func TestNoSettingsCommandExists(t *testing.T) {
 		daemonStart:       func(string) error { return nil },
 		daemonStop:        func() error { return nil },
 		daemonRestart:     func(string) error { return nil },
-		authStart:         func(authStartOptions) error { return nil },
+		authStart:         func(authcmd.StartOptions) error { return nil },
 		authStatus:        func(string) error { return nil },
 		authStop:          func(string) error { return nil },
 		authRestart:       func(string) error { return nil },
@@ -545,9 +550,9 @@ func TestNoSettingsCommandExists(t *testing.T) {
 		profileList:       func() error { return nil },
 		configList:        func() error { return nil },
 		configShow:        func(string) error { return nil },
-		configCreate:      func(configCreateOptions) error { return nil },
-		configUpdate:      func(configUpdateOptions) error { return nil },
-		configSetPassword: func(configPasswordOptions) error { return nil },
+		configCreate:      func(configcmd.CreateOptions) error { return nil },
+		configUpdate:      func(configcmd.UpdateOptions) error { return nil },
+		configSetPassword: func(configcmd.PasswordOptions) error { return nil },
 		configRemove:      func(string, bool, bool) error { return nil },
 		output:            io.Discard,
 	}

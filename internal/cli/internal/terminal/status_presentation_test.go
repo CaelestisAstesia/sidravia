@@ -1,4 +1,4 @@
-package cli
+package terminal
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 )
 
 func TestRenderSessionRemovedSanitizesID(t *testing.T) {
-	got := renderSessionRemoved(&contract.SessionRemoveResult{SessionID: "session-1\nescape"})
+	got := RenderSessionRemoved(&contract.SessionRemoveResult{SessionID: "session-1\nescape"})
 	if got != "Session 已删除：session-1�escape\n" {
 		t.Fatalf("removed output = %q", got)
 	}
@@ -19,7 +19,7 @@ func TestRenderSessionRemovedSanitizesID(t *testing.T) {
 
 func TestSessionRemovedPlainAndForcedColorContracts(t *testing.T) {
 	result := &contract.SessionRemoveResult{SessionID: "session-1\x1b[2J\ninjected"}
-	block := renderSessionRemoved(result)
+	block := RenderSessionRemoved(result)
 	if block != "Session 已删除：session-1�[2J�injected\n" {
 		t.Fatalf("plain remove output=%q", block)
 	}
@@ -28,7 +28,7 @@ func TestSessionRemovedPlainAndForcedColorContracts(t *testing.T) {
 	}
 	var output bytes.Buffer
 	p := newTestPresentation(&output, termenv.ANSI)
-	if err := p.complete(block); err != nil {
+	if err := p.Complete(block); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != block {
@@ -46,8 +46,8 @@ func TestSessionDetailExplainsAutoReconnectDisabled(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := writeSessionResult(&output, result); err != nil {
-		t.Fatalf("writeSessionResult = %v", err)
+	if err := WriteSessionResult(&output, result); err != nil {
+		t.Fatalf("WriteSessionResult = %v", err)
 	}
 	got := output.String()
 	for _, want := range []string{
@@ -68,7 +68,7 @@ func TestSessionDetailExplainsAutoReconnectDisabled(t *testing.T) {
 func TestRenderSessionDetailSanitizesDynamicValues(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
-	defer p.close()
+	defer p.Close()
 	result := &contract.SessionResult{
 		AuthenticationSessionID:  "evil\x1b[2J\nsession",
 		InstitutionProfileID:     "p",
@@ -77,7 +77,7 @@ func TestRenderSessionDetailSanitizesDynamicValues(t *testing.T) {
 		State:                    "authenticated",
 		UpdatedAt:                "2026-07-26T10:11:12.123456789+08:00",
 	}
-	block := renderSessionDetail(p, result)
+	block := RenderSessionDetail(p, result)
 	if strings.Contains(block, "\x1b[2J") {
 		t.Errorf("dynamic ANSI sequence survived into block: %q", block)
 	}
@@ -89,8 +89,8 @@ func TestRenderSessionDetailSanitizesDynamicValues(t *testing.T) {
 func TestDaemonStatusLineContract(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
-	defer p.close()
-	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: "headless"}))
+	defer p.Close()
+	_ = p.Write(RenderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: "headless"}))
 	want := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42 | 模式：headless\n" +
 		"日志：portable 模式为程序目录下 logs/sidraviad.log；安装版为当前用户缓存目录下 Sidravia/logs/sidraviad.log。\n"
 	if buf.String() != want {
@@ -106,8 +106,8 @@ func TestDaemonStatusIncludesLogLocationGuidance(t *testing.T) {
 		t.Run(tc.mode, func(t *testing.T) {
 			var buf bytes.Buffer
 			p := newTestPresentation(&buf, termenv.Ascii)
-			defer p.close()
-			_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: tc.mode}))
+			defer p.Close()
+			_ = p.Write(RenderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1.0.0", BuildID: "build-1", PID: 42, Status: "running", Mode: tc.mode}))
 			wantStatus := "守护进程：运行中（running） | 版本：1.0.0 | 构建：build-1 | PID：42 | 模式：" + tc.mode + "\n"
 			if got := buf.String(); got != wantStatus+tc.wantLog {
 				t.Fatalf("daemon status guidance = %q, want %q", got, wantStatus+tc.wantLog)
@@ -124,8 +124,8 @@ func TestDaemonStatusIncludesLogLocationGuidance(t *testing.T) {
 func TestDaemonStatusUnknownCodeContract(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
-	defer p.close()
-	_ = p.write(renderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1", BuildID: "b", PID: 1, Status: "weird"}))
+	defer p.Close()
+	_ = p.Write(RenderDaemonStatus(p, &contract.StatusResult{ProductVersion: "1", BuildID: "b", PID: 1, Status: "weird"}))
 	if !strings.Contains(buf.String(), "未知状态（weird）") {
 		t.Errorf("unknown daemon status = %q, want fallback with sanitized code", buf.String())
 	}
@@ -139,8 +139,8 @@ func TestSessionListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 	}}
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.ANSI)
-	defer p.close()
-	if err := p.write(renderSessionList(p, result)); err != nil {
+	defer p.Close()
+	if err := p.Write(RenderSessionList(p, result)); err != nil {
 		t.Fatalf("write = %v", err)
 	}
 	out := buf.String()
@@ -172,8 +172,8 @@ func TestSessionListDiagnosticGuidanceSanitizesSessionIDAndSkipsUnknownState(t *
 		},
 	}}
 	var output bytes.Buffer
-	if err := writeSessionList(&output, result); err != nil {
-		t.Fatalf("writeSessionList = %v", err)
+	if err := WriteSessionList(&output, result); err != nil {
+		t.Fatalf("WriteSessionList = %v", err)
 	}
 	got := output.String()
 	if strings.ContainsRune(got, '\x1b') {
@@ -193,7 +193,7 @@ func TestSessionListDiagnosticGuidanceSanitizesSessionIDAndSkipsUnknownState(t *
 func TestUnknownCodesRenderedOnce(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
-	defer p.close()
+	defer p.Close()
 	result := &contract.SessionResult{
 		AuthenticationSessionID:   "s",
 		InstitutionProfileID:      "p",
@@ -204,7 +204,7 @@ func TestUnknownCodesRenderedOnce(t *testing.T) {
 		StateReason:               &contract.SessionStateReason{Code: "bogus-reason"},
 		LastAuthenticationFailure: &contract.SessionAuthenticationFailure{Code: "bogus-failure", HandlingRecommendation: "bogus-recommendation"},
 	}
-	if err := p.write(renderSessionDetail(p, result)); err != nil {
+	if err := p.Write(RenderSessionDetail(p, result)); err != nil {
 		t.Fatalf("write = %v", err)
 	}
 	out := buf.String()
@@ -230,7 +230,7 @@ func TestUnknownCodesRenderedOnce(t *testing.T) {
 func TestSessionDetailNetworkLineSeparator(t *testing.T) {
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.Ascii)
-	defer p.close()
+	defer p.Close()
 	result := &contract.SessionResult{
 		AuthenticationSessionID:  "s",
 		InstitutionProfileID:     "p",
@@ -244,7 +244,7 @@ func TestSessionDetailNetworkLineSeparator(t *testing.T) {
 			LocalIPv4Address: "192.0.2.25",
 		},
 	}
-	if err := p.write(renderSessionDetail(p, result)); err != nil {
+	if err := p.Write(RenderSessionDetail(p, result)); err != nil {
 		t.Fatalf("write = %v", err)
 	}
 	want := "网络：Campus Ethernet — 192.0.2.25\n"
@@ -254,22 +254,22 @@ func TestSessionDetailNetworkLineSeparator(t *testing.T) {
 }
 
 func TestDaemonLifecycleRenderers(t *testing.T) {
-	if got := renderDaemonStarted(); got != "守护进程：已启动（started）\n" {
+	if got := RenderDaemonStarted(); got != "守护进程：已启动（started）\n" {
 		t.Errorf("started = %q", got)
 	}
-	if got := renderDaemonStopped(); got != "守护进程：已停止（stopped）\n" {
+	if got := RenderDaemonStopped(); got != "守护进程：已停止（stopped）\n" {
 		t.Errorf("stopped = %q", got)
 	}
-	if got := renderDaemonRestarted(); got != "守护进程：已重启（restarted）\n" {
+	if got := RenderDaemonRestarted(); got != "守护进程：已重启（restarted）\n" {
 		t.Errorf("restarted = %q", got)
 	}
 }
 
 func TestProtocolRecoveryPresentation(t *testing.T) {
-	if got := sessionStateReasonText("protocol_recovery_exhausted"); got != "已尝试 3 次自动恢复，请手动重新连接" {
+	if got := SessionStateReasonText("protocol_recovery_exhausted"); got != "已尝试 3 次自动恢复，请手动重新连接" {
 		t.Fatalf("reason=%q", got)
 	}
-	if got := recommendationText("retry_after_bounded_recovery"); got != "将有限次数重新认证，连续失败后停止自动恢复" {
+	if got := RecommendationText("retry_after_bounded_recovery"); got != "将有限次数重新认证，连续失败后停止自动恢复" {
 		t.Fatalf("recommendation=%q", got)
 	}
 }

@@ -1,4 +1,4 @@
-package cli
+package terminal
 
 import (
 	"bytes"
@@ -20,11 +20,11 @@ func TestSessionStateMappings(t *testing.T) {
 		"stopping":             "正在停止",
 	}
 	for code, want := range cases {
-		if got := sessionStateText(code); got != want {
-			t.Errorf("sessionStateText(%q) = %q, want %q", code, got, want)
+		if got := SessionStateText(code); got != want {
+			t.Errorf("SessionStateText(%q) = %q, want %q", code, got, want)
 		}
 	}
-	if got := sessionStateText("bogus"); got != "未知状态" {
+	if got := SessionStateText("bogus"); got != "未知状态" {
 		t.Errorf("unknown state = %q, want plain fallback", got)
 	}
 }
@@ -39,11 +39,11 @@ func TestStateReasonMappings(t *testing.T) {
 		"automatic_reconnect_disabled":   "自动重连已关闭",
 	}
 	for code, want := range cases {
-		if got := sessionStateReasonText(code); got != want {
-			t.Errorf("sessionStateReasonText(%q) = %q, want %q", code, got, want)
+		if got := SessionStateReasonText(code); got != want {
+			t.Errorf("SessionStateReasonText(%q) = %q, want %q", code, got, want)
 		}
 	}
-	if got := sessionStateReasonText("bogus"); got != "未知原因" {
+	if got := SessionStateReasonText("bogus"); got != "未知原因" {
 		t.Errorf("unknown reason = %q, want plain fallback", got)
 	}
 }
@@ -75,11 +75,11 @@ func TestFailureMappings(t *testing.T) {
 		"protocol_run_creation_failed": "无法创建认证协议运行",
 	}
 	for code, want := range cases {
-		if got := failureText(code); got != want {
-			t.Errorf("failureText(%q) = %q, want %q", code, got, want)
+		if got := FailureText(code); got != want {
+			t.Errorf("FailureText(%q) = %q, want %q", code, got, want)
 		}
 	}
-	if got := failureText("bogus"); got != "未知失败" {
+	if got := FailureText("bogus"); got != "未知失败" {
 		t.Errorf("unknown failure = %q, want plain fallback", got)
 	}
 }
@@ -91,11 +91,11 @@ func TestRecommendationMappings(t *testing.T) {
 		"block_until_explicit_restart_or_relevant_input_change": "请检查账号、机构配置和网络后停止并重新启动该 Session",
 	}
 	for code, want := range cases {
-		if got := recommendationText(code); got != want {
-			t.Errorf("recommendationText(%q) = %q, want %q", code, got, want)
+		if got := RecommendationText(code); got != want {
+			t.Errorf("RecommendationText(%q) = %q, want %q", code, got, want)
 		}
 	}
-	if got := recommendationText("bogus"); got != "未知建议" {
+	if got := RecommendationText("bogus"); got != "未知建议" {
 		t.Errorf("unknown recommendation = %q, want plain fallback", got)
 	}
 }
@@ -125,14 +125,14 @@ func TestIPCErrorMappings(t *testing.T) {
 		"insecure_storage_confirmation_required": "需要确认不安全存储",
 	}
 	for code, want := range cases {
-		if got := ipcErrorText(code); got != want {
-			t.Errorf("ipcErrorText(%q) = %q, want %q", code, got, want)
+		if got := IPCErrorText(code); got != want {
+			t.Errorf("IPCErrorText(%q) = %q, want %q", code, got, want)
 		}
 	}
-	if got := ipcErrorText("bogus"); got != "daemon 返回了无法识别的错误" {
+	if got := IPCErrorText("bogus"); got != "daemon 返回了无法识别的错误" {
 		t.Errorf("unknown ipc error = %q, want fallback", got)
 	}
-	if got := ipcErrorText(""); got != "daemon 返回了无法识别的错误" {
+	if got := IPCErrorText(""); got != "daemon 返回了无法识别的错误" {
 		t.Errorf("missing ipc error = %q, want fallback", got)
 	}
 }
@@ -143,20 +143,20 @@ func TestIPCConfigurationErrorsHaveRecoveryCommands(t *testing.T) {
 		"configuration_conflict":  "认证配置已存在；请运行 sidraviactl config list 查看现有配置，再运行 sidraviactl help config update 查看更新方法",
 	}
 	for code, want := range cases {
-		if got := ipcErrorText(code); got != want {
-			t.Errorf("ipcErrorText(%q) = %q, want %q", code, got, want)
+		if got := IPCErrorText(code); got != want {
+			t.Errorf("IPCErrorText(%q) = %q, want %q", code, got, want)
 		}
 	}
 }
 
 func TestActionableSessionErrorGuidanceAndEmptyStates(t *testing.T) {
-	if got := ipcErrorText("session_not_found"); got != "找不到指定的认证 Session；请运行 sidraviactl auth list 查看可用 Session" {
+	if got := IPCErrorText("session_not_found"); got != "找不到指定的认证 Session；请运行 sidraviactl auth list 查看可用 Session" {
 		t.Fatalf("session_not_found guidance = %q", got)
 	}
 
 	var sessions bytes.Buffer
 	p := newTestPresentation(&sessions, termenv.Ascii)
-	if err := p.complete(renderSessionList(p, &contract.SessionListResult{})); err != nil {
+	if err := p.Complete(RenderSessionList(p, &contract.SessionListResult{})); err != nil {
 		t.Fatal(err)
 	}
 	if got := sessions.String(); got != "没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n" {

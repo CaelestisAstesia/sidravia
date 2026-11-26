@@ -2,15 +2,12 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -26,11 +23,8 @@ func daemonStatusResponse(t *testing.T) contract.Response {
 func testDaemonOperations(result daemonctl.ProbeResult, inspectErr error) daemonOperations {
 	return daemonOperations{
 		inspect: func() (daemonctl.ProbeResult, error) { return result, inspectErr },
-		connect: func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
-			return nil, errors.New("unexpected connect")
-		},
-		reachable: func(contract.RuntimeInfo) bool { return false },
-		start:     func(string) (daemonctl.StartOutcome, error) { return daemonctl.Started, nil },
+		stop:    func(context.Context, contract.RuntimeInfo) error { return errors.New("unexpected stop") },
+		start:   func(string) (daemonctl.StartOutcome, error) { return daemonctl.Started, nil },
 	}
 }
 
@@ -88,25 +82,16 @@ func TestRunDaemonStatusSuccessAuthoritative(t *testing.T) {
 
 func TestDaemonStopTargetsContactedGeneration(t *testing.T) {
 	info := testRuntimeInfo(100)
-	stopped, stopCalls := false, 0
+	stopCalls := 0
 	ops := testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: info, Status: &contract.StatusResult{Mode: "headless"}}, nil)
-	ops.connect = func(_ context.Context, got contract.RuntimeInfo) (daemonconn.Client, error) {
-		if got.PID != info.PID {
-			t.Fatalf("PID=%d", got.PID)
+	ops.stop = func(_ context.Context, got contract.RuntimeInfo) error {
+		if got != info {
+			t.Fatalf("wrong selected generation: %+v", got)
 		}
-		return &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
-			if method != contract.MethodDaemonStop {
-				t.Fatalf("method=%s", method)
-			}
-			stopCalls++
-			stopped = true
-			data, _ := contract.MarshalDaemonStopResult(contract.DaemonStopResult{Status: "stopping"})
-			return contract.NewSuccessResponse("1", data), nil
-		}}, nil
+		stopCalls++
+		return nil
 	}
-	ops.reachable = func(got contract.RuntimeInfo) bool { return got.PID == info.PID && !stopped }
-	deps := stopDependencies{ops: ops, totalWait: time.Second, pollInterval: time.Millisecond}
-	if err := runDaemonStop(deps); err != nil || stopCalls != 1 {
+	if err := runDaemonStop(ops); err != nil || stopCalls != 1 {
 		t.Fatalf("err=%v calls=%d", err, stopCalls)
 	}
 }
@@ -117,16 +102,15 @@ func TestDaemonStopAndRestartRejectNonHeadlessBeforeDispatch(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			connects, starts := 0, 0
 			ops := testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: info, Status: status}, nil)
-			ops.connect = func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
+			ops.stop = func(context.Context, contract.RuntimeInfo) error {
 				connects++
-				return nil, errors.New("unexpected")
+				return errors.New("unexpected")
 			}
 			ops.start = func(string) (daemonctl.StartOutcome, error) { starts++; return daemonctl.Started, nil }
-			stop := stopDependencies{ops: ops, totalWait: time.Second, pollInterval: time.Millisecond}
-			if err := runDaemonStop(stop); !errors.Is(err, daemonctl.ErrModeConflict) {
+			if err := runDaemonStop(ops); !errors.Is(err, daemonctl.ErrModeConflict) {
 				t.Fatalf("stop err=%v", err)
 			}
-			if err := runDaemonRestart(restartDependencies{ops: ops, stop: stop}, ""); !errors.Is(err, daemonctl.ErrModeConflict) {
+			if err := runDaemonRestart(ops, ""); !errors.Is(err, daemonctl.ErrModeConflict) {
 				t.Fatalf("restart err=%v", err)
 			}
 			if connects != 0 || starts != 0 {
@@ -148,8 +132,7 @@ func TestDaemonRestartPreservesStoppedAndRunningPolicy(t *testing.T) {
 			starts := 0
 			ops := testDaemonOperations(daemonctl.ProbeResult{State: tc.state}, nil)
 			ops.start = func(string) (daemonctl.StartOutcome, error) { starts++; return daemonctl.Started, nil }
-			deps := restartDependencies{ops: ops, stop: stopDependencies{ops: ops, totalWait: time.Second, pollInterval: time.Millisecond}}
-			outcome, err := runDaemonRestartWithOutcome(deps, "debug")
+			outcome, err := runDaemonRestartWithOutcome(ops, "debug")
 			if err != nil || outcome != tc.want || starts != 1 {
 				t.Fatalf("outcome=%q err=%v starts=%d", outcome, err, starts)
 			}
