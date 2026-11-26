@@ -4,9 +4,12 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
 
 	"sidravia/internal/release"
 	packagefiles "sidravia/internal/release/files"
@@ -23,31 +26,31 @@ func ExtractRelease(ctx context.Context, target, archive string, v release.Verif
 	if (asset.OS != "linux" && asset.OS != "windows") || (asset.Kind != "core-portable" && asset.Kind != "gui-portable") {
 		return nil, ErrUnsupported
 	}
-	f, err := os.Open(archive)
+	f, size, err := openArchive(ctx, filepath.Dir(target), archive, c.Size)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
+	return extractRelease(ctx, target, f, size, v, c, asset)
+}
+
+func extractRelease(ctx context.Context, target string, f *os.File, size int64, v release.VerifiedRelease, c release.Candidate, asset release.ReleaseAsset) (*Payload, error) {
+	if err := verifyArchive(ctx, f, c); err != nil {
 		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() != c.Size {
-		return nil, ErrChanged
 	}
 	if asset.OS == "windows" {
 		var footer [22]byte
-		if info.Size() < 22 {
+		if size < 22 {
 			return nil, ErrInvalid
 		}
-		if _, err = f.ReadAt(footer[:], info.Size()-22); err != nil {
+		if _, err := f.ReadAt(footer[:], size-22); err != nil {
 			return nil, err
 		}
 		count := int(binary.LittleEndian.Uint16(footer[10:]))
-		if err = validateZIPDirectory(f, info.Size(), count); err != nil {
+		if err := validateZIPDirectory(f, size, count); err != nil {
 			return nil, err
 		}
-		zr, err := zip.NewReader(f, info.Size())
+		zr, err := zip.NewReader(f, size)
 		if err != nil {
 			return nil, err
 		}
@@ -76,7 +79,7 @@ func ExtractRelease(ctx context.Context, target, archive string, v release.Verif
 		if err != nil {
 			return nil, err
 		}
-		return Extract(ctx, target, archive, inventory)
+		return extractPayload(ctx, target, f, size, inventory)
 	}
 	gz, err := openTarStream(ctx, f, c.Name)
 	if err != nil {
@@ -107,7 +110,41 @@ func ExtractRelease(ctx context.Context, target, archive string, v release.Verif
 		if err != nil {
 			return nil, err
 		}
-		return Extract(ctx, target, archive, inventory)
+		return extractPayload(ctx, target, f, size, inventory)
 	}
 	return nil, ErrInvalid
+}
+
+func verifyArchive(ctx context.Context, f *os.File, candidate release.Candidate) error {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	hash := sha256.New()
+	size, err := io.Copy(hash, &contextReader{ctx: ctx, r: io.LimitReader(f, candidate.Size+1)})
+	if err != nil {
+		return err
+	}
+	if size != candidate.Size || hex.EncodeToString(hash.Sum(nil)) != candidate.SHA256 {
+		return ErrChanged
+	}
+	_, err = f.Seek(0, io.SeekStart)
+	return err
+}
+
+func openArchiveSource(path string, size int64) (*os.File, error) {
+	if size <= 0 || size > 2<<30 {
+		return nil, ErrInvalid
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return nil, errorsJoinClose(err, f)
+	}
+	if !info.Mode().IsRegular() || info.Size() != size {
+		return nil, errorsJoinClose(ErrChanged, f)
+	}
+	return f, nil
 }

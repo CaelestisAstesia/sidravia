@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -57,6 +58,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		s = strings.Replace(s, "\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_DELAY_READY\")==\"1\"{time.Sleep(600*time.Millisecond)}\n\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", 1)
 
 		s = strings.Replace(s, "\ts, dir, err := readWindowsSession(ctx, target, id)", "\tdefer func(){if resultErr!=nil{os.WriteFile("+strconv.Quote(filepath.Join(owned, "runner-cause.txt"))+",[]byte(resultErr.Error()),0600)}}()\n\ts, dir, err := readWindowsSession(ctx, target, id)", 1)
+		s = strings.Replace(s, "\tpayload, err := ExtractRelease(ctx, target, s.Archive, proof, c)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_ARCHIVE_CHANGED\")==\"1\"{if err:=os.Rename(s.Archive,s.Archive+\".old\");err!=nil{return err};if err:=os.WriteFile(s.Archive,[]byte(strings.Repeat(\"x\",int(c.Size))),0600);err!=nil{return err}}\n\tpayload, err := ExtractRelease(ctx, target, s.Archive, proof, c)", 1)
 		s = strings.Replace(s, "\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", 1)
 		return strings.Replace(s, "\tcmd, err := windowsplatform.StartIndependent(", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"verified\"{os.Exit(17)}\n\tcmd, err := windowsplatform.StartIndependent(", 1)
 	})
@@ -149,13 +151,17 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 		t.Setenv(name, path)
 	}
 	t.Setenv(launchcontract.EnvSkipAutoLogin, "1")
-	modes := []string{"stopped", "headless", "interrupted-applied", "interrupted-resuming", "interrupted-quiescent"}
+	modes := []string{"stopped", "headless", "archive-changed", "interrupted-applied", "interrupted-resuming", "interrupted-quiescent"}
 	if bundle != "" {
 		modes = append(modes, "desktop")
 	}
 	for _, scenario := range modes {
 		mode := scenario
 		fault := ""
+		archiveChanged := scenario == "archive-changed"
+		if archiveChanged {
+			mode = "stopped"
+		}
 		if strings.HasPrefix(scenario, "interrupted-") {
 			fault = strings.TrimPrefix(scenario, "interrupted-")
 			mode = "stopped"
@@ -242,7 +248,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			if e = json.Unmarshal(downloaded, &cache); e != nil {
 				t.Fatal(e)
 			}
-			if mode == "stopped" && fault == "" {
+			if mode == "stopped" && fault == "" && !archiveChanged {
 				if e = os.WriteFile(cache.Downloaded, bytes.Repeat([]byte{'x'}, len(next.archive)), 0600); e != nil {
 					t.Fatal(e)
 				}
@@ -267,7 +273,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 					run("ok", "recover", "--operation", view.Operation.ID, "--confirm")
 				}
 			}
-			if fault == "" {
+			if fault == "" && !archiveChanged {
 				t.Setenv("SIDRAVIA_FIXTURE_DELAY_READY", "1")
 				run("timeout", "apply", "--candidate", "2:22", "--confirm")
 				t.Setenv("SIDRAVIA_FIXTURE_DELAY_READY", "")
@@ -294,6 +300,9 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			}
 			if fault != "" {
 				t.Setenv("SIDRAVIA_FIXTURE_EXIT_STAGE", fault)
+			}
+			if archiveChanged {
+				t.Setenv("SIDRAVIA_FIXTURE_ARCHIVE_CHANGED", "1")
 			}
 			result := run("handed_over", "apply", "--candidate", "2:22", "--confirm")
 			if !bytes.Contains(result, []byte(`"handedOver":true`)) || bytes.Contains(result, []byte(`"filesApplied":true`)) {
@@ -326,6 +335,27 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				if r.Phase == transaction.Completed || r.Phase == transaction.Aborted || r.Phase == transaction.ResumeFailed || r.Phase == transaction.RepairRequired {
 					break
 				}
+			}
+			if archiveChanged {
+				if record.Phase != transaction.Aborted || record.FailureCode != "preparation_failed" {
+					t.Fatalf("altered archive published or missing rejection: %+v", record)
+				}
+				if _, e = os.Stat(cache.Downloaded + ".old"); e != nil {
+					t.Fatal("runner did not exercise archive replacement after handoff", e)
+				}
+				rr, err := os.OpenRoot(target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = errors.Join(verifyInventory(context.Background(), rr, old.inventory), rr.Close())
+				if err != nil {
+					t.Fatal("altered archive changed the target", err)
+				}
+				receipt := map[string]any{"handoff": "confirmed", "files": "source_preserved", "applicationRecovery": "not_requested", "authenticationRecovery": "not_applicable"}
+				if e = savePrivate(context.Background(), filepath.Join(owned, scenario+"-receipt.json"), receipt); e != nil {
+					t.Fatal(e)
+				}
+				return
 			}
 			if fault != "" {
 				if string(record.Phase) != fault {
