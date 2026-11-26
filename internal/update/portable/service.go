@@ -14,22 +14,22 @@ import (
 	"sidravia/internal/background/maintenance"
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
-
 	"sidravia/internal/installation/userservice"
 	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/ipc/contract"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"sidravia/internal/update/transaction"
 )
 
 var ErrRolledBack = errors.New("managed portable update was rolled back")
 
-func executeManaged(ctx context.Context, input Execution, record transaction.Record, layout, registeredLayout productlayout.Layout, peer *applicationPeer) error {
+func executeManaged(ctx context.Context, input execution, record transaction.Record, layout, registeredLayout productlayout.Layout, peer *applicationPeer) error {
 	return userservice.WithServiceRegistration(ctx, func(lease *userservice.RegistrationLease) error {
 		return executeManagedWithRegistration(ctx, lease, input, record, layout, registeredLayout, peer)
 	})
 }
 
-func executeManagedWithRegistration(ctx context.Context, lease *userservice.RegistrationLease, input Execution, record transaction.Record, layout, registeredLayout productlayout.Layout, peer *applicationPeer) (resultErr error) {
+func executeManagedWithRegistration(ctx context.Context, lease *userservice.RegistrationLease, input execution, record transaction.Record, layout, registeredLayout productlayout.Layout, peer *applicationPeer) (resultErr error) {
 	actual, found, err := registration.Lookup()
 	if err != nil || !found || actual != registeredLayout {
 		return errors.Join(ErrChanged, err)
@@ -51,7 +51,7 @@ func executeManagedWithRegistration(ctx context.Context, lease *userservice.Regi
 		return ErrChanged
 	}
 	var gui *applicationProcess
-	if input.Old.manifest.PayloadKind == "gui" {
+	if input.Old.Identity().PayloadKind == "gui" {
 		gui, err = observeManagedGUI(input.Target)
 		if err != nil {
 			return err
@@ -81,7 +81,7 @@ func executeManagedWithRegistration(ctx context.Context, lease *userservice.Regi
 	}
 	now := time.Now()
 	recovery := transaction.Recovery{
-		SourceFilesSHA256: digest(input.Old.data), Intent: intent, CoordinatorPID: owner.PID, ManagedService: true,
+		SourceFilesSHA256: input.Old.IndexSHA256(), Intent: intent, CoordinatorPID: owner.PID, ManagedService: true,
 		CoordinatorStart: owner.Start, Nonce: hex.EncodeToString(nonce), ExpiresAt: now.Add(25 * time.Minute), LogLevel: "info",
 	}
 	if err := input.Store.SetRecovery(ctx, record.ID, recovery, now); err != nil {
@@ -109,7 +109,7 @@ func executeManagedWithRegistration(ctx context.Context, lease *userservice.Regi
 			resultErr = errors.Join(resultErr, err)
 			return
 		}
-		err = errors.Join(verifyInventory(recover, root, input.Old), verifyGUI(root, input.Old), root.Close())
+		err = errors.Join(filetxn.VerifyInventory(recover, root, input.Old), filetxn.VerifyGUI(root, input.Old), root.Close())
 		if err != nil {
 			resultErr = errors.Join(resultErr, err)
 			return
@@ -147,25 +147,18 @@ func executeManagedWithRegistration(ctx context.Context, lease *userservice.Regi
 	if _, _, err := input.Store.Advance(ctx, record.ID, transaction.Preparing, transaction.Quiescent, "", time.Now()); err != nil {
 		return err
 	}
-	dirs, err := newProductDirectories(input.Target, input.Payload.inventory)
-	if err != nil {
-		return err
-	}
-	backup, err := stageServiceRollback(ctx, input.Target, input.Old, rollbackDirectory(input.Target, record.ID))
+	backup, err := filetxn.PrepareRollback(ctx, record, input.Old, input.Payload)
 	if err != nil {
 		return err
 	}
 	keepBackup := false
 	defer func() {
 		if keepBackup {
-			resultErr = errors.Join(resultErr, backup.root.Close())
+			resultErr = errors.Join(resultErr, backup.Close())
 		} else {
-			resultErr = errors.Join(resultErr, backup.root.Close(), cleanRollbackSnapshot(record, &input.Old))
+			resultErr = errors.Join(resultErr, backup.Retire(record))
 		}
 	}()
-	if err := persistRollbackInputs(ctx, backup, input.Payload.inventory, dirs); err != nil {
-		return err
-	}
 	rollback := func(cause error, phase transaction.Phase) error {
 		keepBackup = true
 		recover, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
@@ -173,7 +166,7 @@ func executeManagedWithRegistration(ctx context.Context, lease *userservice.Regi
 		if _, changed, err := input.Store.Advance(recover, record.ID, phase, transaction.RollingBack, "", time.Now()); err != nil || !changed {
 			return errors.Join(cause, transaction.ErrConflict, err)
 		}
-		if err := restoreServiceFiles(recover, input, backup, dirs); err != nil {
+		if err := backup.Restore(recover, input.Store, record); err != nil {
 			return errors.Join(cause, err)
 		}
 		if before.Running {
@@ -184,7 +177,7 @@ func executeManagedWithRegistration(ctx context.Context, lease *userservice.Regi
 		keepBackup = false
 		return errors.Join(ErrRolledBack, cause)
 	}
-	if err := Apply(ctx, input.Store, record.ID, input.Target, input.Old, input.Payload); err != nil {
+	if err := filetxn.Apply(ctx, input.Store, record.ID, input.Target, input.Old, input.Payload); err != nil {
 		after, _, observeErr := input.Store.Read(context.WithoutCancel(ctx))
 		if observeErr == nil && (after.Phase == transaction.RepairRequired || after.Phase == transaction.Applying || after.Phase == transaction.Applied) {
 			return rollback(err, after.Phase)

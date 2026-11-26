@@ -1,6 +1,6 @@
 //go:build linux
 
-package portable
+package filetxn
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	"syscall"
 )
 
-func singleFile(_ *os.File, info os.FileInfo) error {
+func SingleFile(_ *os.File, info os.FileInfo) error {
 	s, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || s.Nlink != 1 {
 		return ErrChanged
@@ -145,4 +145,4 @@ func publish(root *os.Root, old, new string, replace bool) error {
 func holdStartupSeal() bool       { return false }
 func applyGuard() (func(), error) { return func() {}, nil }
 
-func plainPlatformPath(string) bool { return true }
+func PlainPlatformPath(string) bool { return true }

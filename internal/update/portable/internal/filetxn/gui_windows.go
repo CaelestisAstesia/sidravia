@@ -1,6 +1,6 @@
 //go:build windows
 
-package portable
+package filetxn
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 
 // Windows keeps GUI/DLL names and layout. Unknown loadable code, and unknown
 // GUI data, cannot safely remain active after a signed product replacement.
-func verifyGUI(root *os.Root, i Inventory) error {
+func VerifyGUI(root *os.Root, i Inventory) error {
 	files := index(i)
 	required := []string{"sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe", "sidraviaupdater.exe"}
 	if i.manifest.PayloadKind == "gui" {
@@ -49,7 +49,7 @@ func verifyGUI(root *os.Root, i Inventory) error {
 				}
 				code := strings.EqualFold(filepath.Ext(name), ".exe") || strings.EqualFold(filepath.Ext(name), ".dll")
 				data := strings.EqualFold(name, "data") || strings.HasPrefix(strings.ToLower(name), "data/")
-				if !plainPlatformPath(filepath.Join(root.Name(), filepath.FromSlash(name))) {
+				if !PlainPlatformPath(filepath.Join(root.Name(), filepath.FromSlash(name))) {
 					handle.Close()
 					return ErrChanged
 				}

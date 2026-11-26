@@ -1,4 +1,4 @@
-package portable
+package filetxn
 
 import (
 	"archive/tar"
@@ -27,31 +27,26 @@ type Payload struct {
 
 // Extract accepts the producer's exact portable format, not arbitrary archives.
 // Staging is beside the target for same-filesystem publication; no scripts run.
-func Extract(ctx context.Context, target, archive string, i Inventory) (result *Payload, err error) {
-	if len(i.data) == 0 || !canonical(target) {
+func Extract(ctx context.Context, target, archive string, i Inventory) (*Payload, error) {
+	if len(i.data) == 0 || !Canonical(target) {
 		return nil, ErrInvalid
 	}
-	parent := filepath.Dir(target)
-	f, err := os.Open(archive)
+	f, size, err := openArchive(ctx, filepath.Dir(target), archive, i.candidate.Size)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
+	if err := verifyArchive(ctx, f, i.candidate); err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() != i.candidate.Size {
-		return nil, ErrChanged
+	return extractPayload(ctx, target, f, size, i)
+}
+
+func extractPayload(ctx context.Context, target string, f *os.File, size int64, i Inventory) (result *Payload, err error) {
+	if len(i.data) == 0 || !Canonical(target) {
+		return nil, ErrInvalid
 	}
-	hash := sha256.New()
-	n, err := io.Copy(hash, &contextReader{ctx: ctx, r: io.LimitReader(f, i.candidate.Size+1)})
-	if err != nil {
-		return nil, err
-	}
-	if n != i.candidate.Size || hex.EncodeToString(hash.Sum(nil)) != i.candidate.SHA256 {
-		return nil, ErrChanged
-	}
+	parent := filepath.Dir(target)
 	if _, err = f.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
@@ -149,10 +144,10 @@ func Extract(ctx context.Context, target, archive string, i Inventory) (result *
 			return nil, e
 		}
 	case strings.HasSuffix(i.candidate.Name, ".zip"):
-		if e := validateZIPDirectory(f, info.Size(), len(expected)+2); e != nil {
+		if e := validateZIPDirectory(f, size, len(expected)+2); e != nil {
 			return nil, e
 		}
-		zr, e := zip.NewReader(f, info.Size())
+		zr, e := zip.NewReader(f, size)
 		if e != nil {
 			return nil, e
 		}
@@ -179,7 +174,7 @@ func Extract(ctx context.Context, target, archive string, i Inventory) (result *
 	if len(seen) != len(expected)+2 {
 		return nil, ErrInvalid
 	}
-	if err = verifyInventory(ctx, root, i); err != nil {
+	if err = VerifyInventory(ctx, root, i); err != nil {
 		return nil, err
 	}
 	return p, nil

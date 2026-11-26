@@ -31,9 +31,9 @@ import (
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
-
 	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/update/internal/testfixture"
+	"sidravia/internal/update/portable/internal/filetxn"
 	"sidravia/internal/update/transaction"
 )
 
@@ -104,13 +104,13 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 			}
 			next := fixtureArchive(t, newDir, "1.1.0", "native-new", kind)
-			if err := os.WriteFile(filepath.Join(oldDir, packagefiles.Name), old.inventory.data, 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(oldDir, packagefiles.Name), old.Index, 0644); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(filepath.Join(oldDir, "sidravia.portable"), nil, 0644); err != nil {
 				t.Fatal(err)
 			}
-			archive := filepath.Join(owned, next.inventory.candidate.Name)
+			archive := filepath.Join(owned, next.Candidate.Name)
 			if err := os.WriteFile(archive, next.archive, 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -338,7 +338,7 @@ func TestNativePortableUpdate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := transaction.New(strings.Repeat("e", 32), source, next.inventory.candidate, next.verified, time.Now())
+			r, err := transaction.New(strings.Repeat("e", 32), source, next.Candidate, next.verified, time.Now())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -348,7 +348,7 @@ func TestNativePortableUpdate(t *testing.T) {
 			if _, _, err := store.Advance(context.Background(), r.ID, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 				t.Fatal(err)
 			}
-			p, err := Extract(context.Background(), oldDir, archive, next.inventory)
+			p, err := filetxn.Extract(context.Background(), oldDir, archive, next.inventory)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -396,7 +396,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				_ = interrupted.Wait()
 				now := time.Now()
 				if err := store.SetRecovery(ctx, r.ID, transaction.Recovery{
-					SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "systemd"},
+					SourceFilesSHA256: digest(old.Index), Intent: maintenance.Intent{Mode: "systemd"},
 					CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("d", 32),
 					ExpiresAt: now.Add(15 * time.Minute), LogLevel: "info", ManagedService: true,
 				}, now); err != nil {
@@ -407,23 +407,19 @@ func TestNativePortableUpdate(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				dirs, err := newProductDirectories(oldDir, next.inventory)
+				backup, err := filetxn.PrepareRollback(ctx, r, old.inventory, p)
 				if err != nil {
 					t.Fatal(err)
 				}
-				backup, err := stageServiceRollback(ctx, oldDir, old.inventory, rollbackDirectory(oldDir, r.ID))
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := errors.Join(persistRollbackInputs(ctx, backup, next.inventory, dirs), backup.root.Close()); err != nil {
+				if err := backup.Close(); err != nil {
 					t.Fatal(err)
 				}
 				if scenario == "systemd-before-write-recovery" {
-					if err := ReconcileInterrupted(ctx, store, r.ID, oldDir, old.inventory); err != nil {
+					if err := reconcileInterrupted(ctx, store, r.ID, oldDir, old.inventory); err != nil {
 						t.Fatal(err)
 					}
 				} else {
-					if err := Apply(ctx, store, r.ID, oldDir, old.inventory, p); err != nil {
+					if err := filetxn.Apply(ctx, store, r.ID, oldDir, old.inventory, p); err != nil {
 						t.Fatal(err)
 					}
 					if _, _, err := store.Advance(ctx, r.ID, transaction.Applied, transaction.RollingBack, "", time.Now()); err != nil {
@@ -445,12 +441,18 @@ func TestNativePortableUpdate(t *testing.T) {
 				if scenario == "systemd-interrupted-rollback" {
 					// Simulate interruption after terminal cleanup deleted the
 					// next index and some no-longer-needed backup product bytes.
-					partial, err := stageServiceRollback(ctx, oldDir, old.inventory, rollbackDirectory(oldDir, r.ID))
+					partial, err := filetxn.PrepareRollback(ctx, r, old.inventory, p)
 					if err != nil {
 						t.Fatal(err)
 					}
-					name := old.inventory.manifest.Files[0].Path
-					if err := errors.Join(partial.root.Remove(name), partial.root.Close()); err != nil {
+					if err := partial.Close(); err != nil {
+						t.Fatal(err)
+					}
+					name := old.Manifest.Files[0].Path
+					if err := os.Remove(filepath.Join(rollbackDirectory(oldDir, r.ID), name)); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Remove(filepath.Join(rollbackDirectory(oldDir, r.ID), ".next-index.json")); err != nil {
 						t.Fatal(err)
 					}
 					if err := RecoverManagedService(ctx, store, r.ID, oldDir); err != nil {
@@ -485,7 +487,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					}
 				}
 			}
-			executeErr := Execute(ctx, Execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String(), ReleaseRuntime: handoff})
+			executeErr := execute(ctx, execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String(), ReleaseRuntime: handoff})
 			if scenario == "unconfirmed-exit" {
 				if err := command.Process.Signal(syscall.SIGCONT); err != nil {
 					t.Fatal(err)
@@ -556,7 +558,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					if err != nil || string(data) != "started\n" {
 						t.Fatalf("new generation attempt count %q %v", data, err)
 					}
-					if err := Execute(context.Background(), Execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String()}); err == nil {
+					if err := execute(context.Background(), execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String()}); err == nil {
 						t.Fatal("failed cold launch replayed")
 					}
 				} else {
@@ -567,7 +569,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					err = verifyInventory(context.Background(), root, old.inventory)
+					err = filetxn.VerifyInventory(context.Background(), root, old.inventory)
 					root.Close()
 					if err != nil {
 						t.Fatal("fault wrote product bytes", err)
@@ -636,7 +638,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 			}
 			restored.close()
-			if err := Execute(ctx, Execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String()}); err == nil {
+			if err := execute(ctx, execution{Store: store, OperationID: r.ID, Target: oldDir, Old: old.inventory, Payload: p, Namespace: ns.String()}); err == nil {
 				t.Fatal("duplicate execution admitted")
 			}
 			if managed {
@@ -646,7 +648,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				if err := os.Mkdir(downgradeDir, 0700); err != nil {
 					t.Fatal(err)
 				}
-				archive := filepath.Join(owned, old.inventory.candidate.Name)
+				archive := filepath.Join(owned, old.Candidate.Name)
 				if err := os.WriteFile(archive, old.archive, 0600); err != nil {
 					t.Fatal(err)
 				}
@@ -657,7 +659,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := errors.Join(verifyInventory(ctx, root, old.inventory), root.Close()); err != nil {
+				if err := errors.Join(filetxn.VerifyInventory(ctx, root, old.inventory), root.Close()); err != nil {
 					t.Fatal("old package inventory", err)
 				}
 				ctl := filepath.Join(downgradeDir, "sidraviactl")
@@ -821,4 +823,8 @@ func waitFixturePeer(t *testing.T, layout productlayout.Layout, identity change.
 			t.Fatal("fixture readiness", err)
 		}
 	}
+}
+
+func rollbackDirectory(target, id string) string {
+	return filepath.Join(filepath.Dir(target), ".sidravia-service-rollback-"+id)
 }

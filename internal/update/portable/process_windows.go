@@ -4,14 +4,12 @@ package portable
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"golang.org/x/sys/windows"
 
-	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -62,16 +60,4 @@ func startApplication(path string, args, env []string) (int, error) {
 	pid := cmd.Process.Pid
 	return pid, cmd.Process.Release()
 }
-func finishApplication(target, id string) error {
-	root, err := os.OpenRoot(target)
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	if err = transaction.VerifyPortableSeal(target, id); err != nil {
-		return err
-	}
-	return root.Remove(transaction.StartupSeal)
-}
-
 func observeManagedGUI(string) (*applicationProcess, error) { return nil, ErrUnsupported }

@@ -1,8 +1,9 @@
-// Package portable owns authenticated product-file application. It neither
+// Package filetxn owns authenticated product-file application. It neither
 // chooses user data nor owns application shutdown/recovery or release policy.
-package portable
+package filetxn
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sidravia/internal/update/transaction"
 	"strings"
 
 	"sidravia/internal/release"
@@ -40,11 +42,11 @@ func Authenticate(v release.VerifiedRelease, c release.Candidate, data []byte) (
 }
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
-func canonical(path string) bool {
+func Canonical(path string) bool {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return false
 	}
-	if !plainPlatformPath(path) {
+	if !PlainPlatformPath(path) {
 		return false
 	}
 	actual, err := filepath.EvalSymlinks(path)
@@ -60,7 +62,7 @@ func checkParents(root *os.Root, name string) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !sameDevice(base, info) || !plainPlatformPath(filepath.Join(root.Name(), p)) {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !sameDevice(base, info) || !PlainPlatformPath(filepath.Join(root.Name(), p)) {
 			return ErrChanged
 		}
 	}
@@ -86,7 +88,7 @@ func openRegular(root *os.Root, name string) (*os.File, error) {
 		f.Close()
 		return nil, ErrChanged
 	}
-	if err := singleFile(f, info); err != nil {
+	if err := SingleFile(f, info); err != nil {
 		f.Close()
 		return nil, err
 	}
@@ -119,7 +121,7 @@ func verifyFile(ctx context.Context, root *os.Root, f packagefiles.File) error {
 	}
 	return nil
 }
-func verifyInventory(ctx context.Context, root *os.Root, i Inventory) error {
+func VerifyInventory(ctx context.Context, root *os.Root, i Inventory) error {
 	if len(i.data) == 0 {
 		return ErrInvalid
 	}
@@ -168,3 +170,31 @@ func modeFor(i Inventory, mode uint32) os.FileMode {
 	return os.FileMode(mode)
 }
 func pathKey(path string) string { return strings.ToLower(path) }
+
+// Identity is the immutable, verified package identity without file ownership.
+type Identity struct {
+	Version, BuildID, OS, Arch, PayloadKind string
+}
+
+func (i Inventory) Identity() Identity {
+	m := i.manifest
+	return Identity{m.Version, m.BuildID, m.OS, m.Arch, m.PayloadKind}
+}
+
+func (i Inventory) IndexSHA256() string { return digest(i.data) }
+
+func (i Inventory) MatchesIndex(data []byte) bool { return bytes.Equal(i.data, data) }
+
+func (i Inventory) MatchesPackage(p transaction.Package) bool {
+	c := i.candidate
+	return c.ID == p.CandidateID && c.Name == p.Name && c.Size == p.Size && c.SHA256 == p.SHA256
+}
+
+func (i Inventory) Entry(name string) (packagefiles.File, bool) {
+	for _, f := range i.manifest.Files {
+		if f.Path == name {
+			return f, true
+		}
+	}
+	return packagefiles.File{}, false
+}

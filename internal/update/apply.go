@@ -10,17 +10,17 @@ import (
 
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/release"
-
 	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
 	"sidravia/internal/update/internal/request"
+	"sidravia/internal/update/portable"
 	"sidravia/internal/update/transaction"
 )
 
 var errSourceProof = errors.New("installed source publisher proof unavailable or mismatched")
 var errManualRepair = errors.New("partial installation requires manual repair")
-var errStagingCleanup = errors.New("update staging cleanup failed")
+
 var errOperation = errors.New("update operation unavailable or busy")
 
 type applyResult struct {
@@ -134,7 +134,7 @@ func applyErrorCode(err error) string {
 	if errors.As(err, &remote) {
 		return "source_unavailable"
 	}
-	if errors.Is(err, errStagingCleanup) {
+	if errors.Is(err, portable.ErrStagingCleanup) {
 		return "staging_cleanup_failed"
 	}
 	return platformApplyErrorCode(err)

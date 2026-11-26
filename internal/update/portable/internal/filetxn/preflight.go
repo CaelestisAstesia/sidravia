@@ -1,6 +1,6 @@
 //go:build linux || windows
 
-package portable
+package filetxn
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 // Preflight checks the still-running source and the complete staged payload
 // before asking the application to stop. Apply repeats the checks after exit.
 func Preflight(ctx context.Context, target string, old Inventory, p *Payload) error {
-	if p == nil || p.root == nil || !canonical(target) {
+	if p == nil || p.root == nil || !Canonical(target) {
 		return ErrInvalid
 	}
 	if old.manifest.OS != p.inventory.manifest.OS || old.manifest.Arch != p.inventory.manifest.Arch || old.manifest.PayloadKind != p.inventory.manifest.PayloadKind {
@@ -30,16 +30,16 @@ func Preflight(ctx context.Context, target string, old Inventory, p *Payload) er
 	if err := availableSpace(root, 1<<20); err != nil {
 		return err
 	}
-	if err := verifyInventory(ctx, root, old); err != nil {
+	if err := VerifyInventory(ctx, root, old); err != nil {
 		return err
 	}
-	if err := verifyGUI(root, old); err != nil {
+	if err := VerifyGUI(root, old); err != nil {
 		return err
 	}
-	if err := verifyInventory(ctx, p.root, p.inventory); err != nil {
+	if err := VerifyInventory(ctx, p.root, p.inventory); err != nil {
 		return err
 	}
-	if err := verifyGUI(p.root, p.inventory); err != nil {
+	if err := VerifyGUI(p.root, p.inventory); err != nil {
 		return err
 	}
 	before := index(old)

@@ -4,17 +4,13 @@ package update
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"os"
-	"time"
 
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/release"
-
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
 	"sidravia/internal/update/portable"
@@ -74,41 +70,19 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	if err != nil {
 		return nil, err
 	}
-	old, err := portable.Authenticate(oldProof, oldAsset, oldIndex)
-	if err != nil {
-		return nil, errors.Join(errSourceProof, err)
-	}
 	proof, err := source.AuthenticateCandidate(ctx, candidate)
 	if err != nil {
 		return nil, err
 	}
-	payload, err := portable.ExtractRelease(ctx, layout.ExecutableDirectory, path, proof, candidate)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if cleanup := payload.Close(); cleanup != nil {
-			err = errors.Join(err, errStagingCleanup, cleanup)
-		}
-	}()
-	id := make([]byte, 16)
-	if _, err := rand.Read(id); err != nil {
-		return nil, err
-	}
-	record, err := transaction.New(hex.EncodeToString(id), change.Target{ID: layout.ExecutableDirectory, Version: version, BuildID: build, Layout: "portable"}, candidate, proof, time.Now())
-	if err != nil {
-		return nil, err
-	}
-	if _, err = store.Create(ctx, record); err != nil {
+	installed := portable.ReleaseInput{Proof: oldProof, Candidate: oldAsset, Index: oldIndex}
+	target := change.Target{ID: layout.ExecutableDirectory, Version: version, BuildID: build, Layout: "portable"}
+	inspect, err := portable.ApplyRelease(ctx, store, target, installed, proof, candidate, path, ns.String(), releaseRuntime)
+	if inspect {
 		return operationResult(context.WithoutCancel(ctx), store), err
 	}
-	defer func() { outcome = operationResult(context.WithoutCancel(ctx), store) }()
-	if _, _, err = store.Advance(ctx, record.ID, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
-		return nil, err
-	}
-	err = portable.Execute(ctx, portable.Execution{Store: store, OperationID: record.ID, Target: layout.ExecutableDirectory, Old: old, Payload: payload, Namespace: ns.String(), ReleaseRuntime: releaseRuntime})
 	return nil, err
 }
+
 func recoverOperation(ctx context.Context, layout productlayout.Layout, version, build, id string, source *github.GitHub) (*applyResult, error) {
 	if layout.Mode != productlayout.ModePortable || !change.ValidID(id) {
 		return nil, transaction.ErrInvalid
@@ -181,9 +155,5 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 			return result(err)
 		}
 	}
-	inventory, err := portable.Authenticate(proof, c, index)
-	if err != nil {
-		return result(err)
-	}
-	return result(portable.ReconcileInterrupted(ctx, store, id, layout.ExecutableDirectory, inventory))
+	return result(portable.ReconcileRelease(ctx, store, id, layout.ExecutableDirectory, portable.ReleaseInput{Proof: proof, Candidate: c, Index: index}))
 }
