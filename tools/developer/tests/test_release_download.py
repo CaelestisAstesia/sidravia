@@ -78,11 +78,11 @@ class PublicDownload(unittest.TestCase):
         signature = self.root/'signature.bin'
         subprocess.run(['openssl','pkeyutl','-sign','-rawin','-inkey',str(private),'-keyform','DER',
                         '-in',str(self.manifest),'-out',str(signature)],check=True,capture_output=True)
-        self.data = {self.name:payload,'manifest.json':self.manifest.read_bytes(), 'signature.bin':signature.read_bytes(), 'extra.rpm':b'RPM hash-only fixture'}
+        self.data = {self.name:payload,'sidravia-release.json':self.manifest.read_bytes(), 'sidravia-release.sig':signature.read_bytes(), 'extra.rpm':b'RPM hash-only fixture'}
         type(self).routes = {'/'+name:(200, {'Content-Length':str(len(body))},body) for name,body in self.data.items()}
         type(self).delays = {}
         self.request = self.root/'request.json'
-        self.inventory = {'schemaVersion':1,'version':'1.0.0','manifest':'manifest.json','signature':'signature.bin',
+        self.inventory = {'schemaVersion':1,'version':'1.0.0','manifest':'sidravia-release.json','signature':'sidravia-release.sig',
                           'assets':[{'name':name,'url':self.base+'/'+name,'size':len(body),'sha256':hashlib.sha256(body).hexdigest()}
                                     for name,body in self.data.items()]}
         self.save()
@@ -103,9 +103,37 @@ class PublicDownload(unittest.TestCase):
         self.assertEqual(result['signature'],'passed')
         self.assertEqual(result['signedAssets'],[self.name])
         self.assertEqual(result['hashOnlyAssets'],['extra.rpm'])
-        self.assertEqual(result['verifiedMetadata'],['manifest.json','signature.bin'])
+        self.assertEqual(result['verifiedMetadata'],['sidravia-release.json','sidravia-release.sig'])
         self.assertEqual((out/'files'/self.name).read_bytes(),self.data[self.name])
         self.assertEqual(result['nativeUpgrade'],'not_run')
+
+    def use_published_metadata_names(self, manifest, signature):
+        for field, name in (('manifest', manifest), ('signature', signature)):
+            previous = self.inventory[field]
+            asset = next(asset for asset in self.inventory['assets'] if asset['name'] == previous)
+            type(self).routes['/' + name] = type(self).routes['/' + previous]
+            asset.update(name=name, url=self.base + '/' + name)
+            self.inventory[field] = name
+        self.save()
+
+    def test_rejects_two_unrecognized_published_metadata_names(self):
+        self.use_published_metadata_names('manifest.json', 'signature.bin')
+        code, result, _ = self.consume()
+        self.assertEqual(code, 1, result)
+        self.assertEqual(result['verifiedMetadata'], [])
+
+    def test_rejects_valid_signature_at_wrong_published_location(self):
+        self.use_published_metadata_names('sidravia-release-extended.json', 'sidravia-release-extended.sig')
+        code, result, _ = self.consume()
+        self.assertEqual(code, 1, result)
+        self.assertEqual(result['signature'], 'failed')
+        self.assertEqual(result['verifiedMetadata'], [])
+
+    def test_rejects_metadata_from_different_published_pairs(self):
+        self.use_published_metadata_names('sidravia-release.json', 'sidravia-release-xz.sig')
+        code, result, _ = self.consume()
+        self.assertEqual(code, 1, result)
+        self.assertEqual(result['verifiedMetadata'], [])
 
     def test_truncated_and_hash_mismatched_downloads_preserve_partial_evidence(self):
         type(self).routes['/'+self.name]=(200,{},b'short')
@@ -140,7 +168,7 @@ class PublicDownload(unittest.TestCase):
 
     def test_bad_signature_is_rejected_even_when_inventory_hash_matches(self):
         body=bytes(64)
-        type(self).routes['/signature.bin']=(200,{'Content-Length':'64'},body)
+        type(self).routes['/sidravia-release.sig']=(200,{'Content-Length':'64'},body)
         self.inventory['assets'][2]['sha256']=hashlib.sha256(body).hexdigest();self.save()
         code,result,_=self.consume()
         self.assertEqual(code,1)
@@ -157,8 +185,8 @@ class PublicDownload(unittest.TestCase):
 
     def test_final_rehash_catches_local_mutation_after_signature(self):
         original=release.public_check
-        def mutate(*args):
-            result=original(*args)
+        def mutate(*args, **kwargs):
+            result=original(*args, **kwargs)
             (self.root/'output/files'/self.name).write_bytes(b'changed locally')
             return result
         with mock.patch.object(release,'public_check',side_effect=mutate):

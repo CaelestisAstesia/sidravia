@@ -134,20 +134,28 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
     return result, receipts
 
 
-def public_check(repo, go, mode, manifest_data, public_data, signature_data=None):
+def public_check(repo, go, mode, manifest_data, public_data, signature_data=None, *, published_names=None):
     # Go verifies these exact captured bytes, never a second lookup of mutable
     # source paths. The private temporary directory contains public data only.
     with tempfile.TemporaryDirectory(prefix='sidravia-release-public-') as temporary:
         root = Path(temporary)
         manifest, public_key = root / 'manifest.json', root / 'public.txt'
+        signature = root / 'signature.bin'
+        if published_names is not None:
+            manifest_name, signature_name = published_names
+            (root / 'manifest').mkdir()
+            (root / 'signature').mkdir()
+            manifest = root / 'manifest' / Path(manifest_name).name
+            signature = root / 'signature' / Path(signature_name).name
         manifest.write_bytes(manifest_data)
         public_key.write_bytes(public_data)
         command = [go, 'run', '-mod=readonly', './tools/signrelease', mode,
                    '--manifest', str(manifest), '--public-key', str(public_key), '--json']
         if signature_data is not None:
-            signature = root / 'signature.bin'
             signature.write_bytes(signature_data)
             command += ['--signature', str(signature)]
+            if published_names is not None:
+                command.append('--published')
         result = subprocess.run(command, cwd=repo, env=dict(os.environ, GOTOOLCHAIN='local'), capture_output=True, encoding='utf-8', timeout=120)
     require(result.returncode == 0, 'manifest_structure_or_signature_rejected')
     try:

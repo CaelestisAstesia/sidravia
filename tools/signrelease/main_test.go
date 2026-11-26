@@ -136,3 +136,56 @@ func TestExtendedSigningRejectsLegacyAndPreservesExtendedBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicVerificationOfPublishedMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		manifest, signature, arch, kind, payload, name string
+	}{
+		{release.ReleaseManifestName, release.ReleaseSignatureName, "amd64", "core-portable", "core",
+			"sidravia-v1.0.0-linux-amd64-core-portable.tar.gz"},
+		{release.XZReleaseManifestName, release.XZReleaseSignatureName, "amd64", "core-portable", "core",
+			"sidravia-v1.0.0-linux-amd64-core-portable.tar.xz"},
+		{release.ExtendedReleaseManifestName, release.ExtendedReleaseSignatureName, "arm64", "gui-portable", "gui",
+			"sidravia-v1.0.0-linux-arm64-gui-portable.tar.gz"},
+		{"manifest.json", "signature.bin", "arm64", "gui-portable", "gui",
+			"sidravia-v1.0.0-linux-arm64-gui-portable.tar.gz"},
+	} {
+		t.Run(tc.manifest, func(t *testing.T) {
+			path, _, public, raw, encodedSeed := fixture(t)
+			var m release.ReleaseManifest
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			asset := &m.Assets[0]
+			asset.Arch, asset.Kind, asset.PayloadKind, asset.Name = tc.arch, tc.kind, tc.payload, tc.name
+			raw, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seed, err := base64.StdEncoding.DecodeString(string(encodedSeed))
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Dir(path)
+			manifest := filepath.Join(dir, tc.manifest)
+			signature := filepath.Join(dir, tc.signature)
+			key := filepath.Join(dir, "public.txt")
+			for path, content := range map[string][]byte{
+				manifest: raw, signature: ed25519.Sign(ed25519.NewKeyFromSeed(seed), raw),
+				key: []byte(base64.StdEncoding.EncodeToString(public)),
+			} {
+				if err := os.WriteFile(path, content, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			args := []string{"verify", "--manifest", manifest, "--signature", signature, "--public-key", key}
+			if tc.manifest != "manifest.json" {
+				args = append(args, "--published")
+			}
+			var out, stderr bytes.Buffer
+			if code := run(args, forbiddenInput{}, &out, &stderr); code != 0 {
+				t.Fatal(code, stderr.String())
+			}
+		})
+	}
+}

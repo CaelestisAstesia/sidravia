@@ -94,7 +94,8 @@ def consume(repo, go, request_path, key_path, output):
         manifest = release.read_public(files/inventory['manifest'], 256 << 10)
         signature = release.read_public(files/inventory['signature'], 64)
         result['signature'] = 'checking'
-        release.public_check(repo, go, 'verify', manifest, public, signature)
+        release.public_check(repo, go, 'verify', manifest, public, signature,
+                             published_names=(inventory['manifest'], inventory['signature']))
         result['signature'] = 'passed'
         parsed = json.loads(manifest, object_pairs_hook=release.unique_object)
         release.require(parsed['version'] == inventory['version'], 'download_manifest_version_mismatch')

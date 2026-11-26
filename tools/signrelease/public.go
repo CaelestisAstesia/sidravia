@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"sidravia/internal/release"
@@ -22,6 +23,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	manifest := flags.String("manifest", "", "exact v2 manifest")
 	public := flags.String("public-key", "", "base64 Ed25519 public key file")
 	signature := flags.String("signature", "", "raw detached signature (verify only)")
+	published := flags.Bool("published", false, "verify the published manifest and signature filenames")
 	machine := flags.Bool("json", false, "JSON result")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -29,7 +31,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") {
+	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") || (*published && mode != "verify") {
 		fmt.Fprintln(stderr, "manifest/public-key and verify signature required")
 		return 2
 	}
@@ -67,8 +69,12 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		if err != nil {
 			return fail("invalid public key")
 		}
-		if _, err = keys.Verify(data, sig, m.Version); err != nil {
+		proof, err := keys.Verify(data, sig, m.Version)
+		if err != nil {
 			return fail("release signature or metadata rejected")
+		}
+		if *published && !validPublishedNames(proof, filepath.Base(*manifest), filepath.Base(*signature)) {
+			return fail("release metadata does not match its published names")
 		}
 		status = "passed"
 	}
@@ -82,6 +88,20 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	}
 	return 0
 }
+
+func validPublishedNames(proof release.VerifiedRelease, manifest, signature string) bool {
+	for _, pair := range [][2]string{
+		{release.ReleaseManifestName, release.ReleaseSignatureName},
+		{release.XZReleaseManifestName, release.XZReleaseSignatureName},
+		{release.ExtendedReleaseManifestName, release.ExtendedReleaseSignatureName},
+	} {
+		if manifest == pair[0] && signature == pair[1] {
+			return proof.ValidateLocation(manifest) == nil
+		}
+	}
+	return false
+}
+
 func readPublicFile(path string, limit int64) ([]byte, error) {
 	before, err := os.Lstat(path)
 	if err != nil {
