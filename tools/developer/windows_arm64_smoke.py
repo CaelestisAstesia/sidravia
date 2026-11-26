@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+import unicodedata
 import uuid
 import zipfile
 
@@ -122,7 +123,8 @@ def smoke_runtime(processes, directory, evidence, label, version, build, *, port
         for _ in range(20):
             code = invoke(ctl, ['daemon', 'status'], status, timeout=8, env=env, check=False)
             output = status.read_text(encoding='utf-8', errors='replace')
-            if not code and all(token in output for token in ('(running)', version, build, mode)):
+            running = '(running)' in unicodedata.normalize('NFKC', output)
+            if not code and running and all(token in output for token in (version, build, mode)):
                 break
             if child is not None and child.poll() is not None:
                 raise RuntimeError('GUI exited before live Build ID and mode were confirmed')
