@@ -197,7 +197,7 @@ def prepare_deb(action):
             if not state or state['phase'] != 'quiesced' or not BLOCK.is_file():
                 raise RuntimeError('Debian upgrade lacks confirmed quiescence; finish pending configuration first')
         else:
-            if APP.exists() and (APP.is_symlink() or any(APP.iterdir())):
+            if APP.is_symlink() or (APP.exists() and any(APP.iterdir())):
                 raise RuntimeError('the Debian installation directory already contains files')
             state = create_state('install', state)
             state['phase'] = 'quiesced'
@@ -212,24 +212,37 @@ def service_available(uid):
 def restore_user(uid, token):
     try:
         expected = service_registration(uid)
-        unchanged = unit_token(uid, expected) == token
+        lease = acquire_service_lease(uid, expected)
     except (FileNotFoundError, KeyError):
-        unchanged = False
-    if not unchanged:
         report_user_failure(uid, 'recovery skipped because the registration changed')
         return
-    if not service_available(uid):
-        report_user_failure(uid, 'user manager is offline; existing login registration was preserved')
-        return
-    observed = user_service(uid, 'show', '-p', 'ExecStart,FragmentPath,DropInPaths')
-    values = dict(line.split('=', 1) for line in observed.splitlines())
-    if (not service_uses_installation(values, expected)
-            or any(Path(path).parent != Path('/usr/lib/systemd/user/service.d')
-                   for path in values.get('DropInPaths', '').split())):
-        report_user_failure(uid, 'recovery skipped because the loaded service changed')
-        return
-    if not start_and_probe_user_service(uid):
-        raise RuntimeError('restored Debian user service did not reach IPC readiness')
+    except BlockingIOError as error:
+        raise RuntimeError('user service registration is busy; retry Debian configuration') from error
+    try:
+        directory = os.fstat(lease)
+        if identity(expected.parent) != (directory.st_dev, directory.st_ino):
+            raise RuntimeError('user service directory changed during Debian recovery')
+        try:
+            unchanged = unit_token(uid, expected) == token
+        except FileNotFoundError:
+            unchanged = False
+        if not unchanged:
+            report_user_failure(uid, 'recovery skipped because the registration changed')
+            return
+        if not service_available(uid):
+            report_user_failure(uid, 'user manager is offline; existing login registration was preserved')
+            return
+        observed = user_service(uid, 'show', '-p', 'ExecStart,FragmentPath,DropInPaths')
+        values = dict(line.split('=', 1) for line in observed.splitlines())
+        if (not service_uses_installation(values, expected)
+                or any(Path(path).parent != Path('/usr/lib/systemd/user/service.d')
+                       for path in values.get('DropInPaths', '').split())):
+            report_user_failure(uid, 'recovery skipped because the loaded service changed')
+            return
+        if not start_and_probe_user_service(uid):
+            raise RuntimeError('restored Debian user service did not reach IPC readiness')
+    finally:
+        os.close(lease)
 
 
 def complete_deb():

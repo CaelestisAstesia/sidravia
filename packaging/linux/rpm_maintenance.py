@@ -141,6 +141,19 @@ def service_uses_installation(values, expected):
             and values.get('ExecStart', '').startswith(f'{{ path={APP / "sidraviad"} ;'))
 
 
+def acquire_service_lease(uid, unit):
+    lease = os.open(unit.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(lease)
+        if info.st_uid != uid or info.st_mode & 0o022:
+            raise RuntimeError('invalid user service directory ownership')
+        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        os.close(lease)
+        raise
+    return lease
+
+
 def stop_managed_daemons(stopped, leases, before_stop=None):
     entries = targets()
     try:
@@ -158,16 +171,7 @@ def stop_managed_daemons(stopped, leases, before_stop=None):
             if uid == 0:
                 raise RuntimeError('invalid Sidravia user service owner')
             expected = service_registration(uid)
-            lease = os.open(expected.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-            try:
-                info = os.fstat(lease)
-                if info.st_uid != uid or info.st_mode & 0o022:
-                    raise RuntimeError('invalid user service directory ownership')
-                fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BaseException:
-                os.close(lease)
-                raise
-            leases.append(lease)
+            leases.append(acquire_service_lease(uid, expected))
             observed = user_service(uid, 'show', '-p', 'MainPID,FragmentPath,DropInPaths,ExecStart')
             values = dict(line.split('=', 1) for line in observed.splitlines())
             if (values.get('MainPID') != str(pid)
