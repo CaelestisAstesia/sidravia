@@ -1,0 +1,605 @@
+package configstore
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/netip"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	binding "sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
+)
+
+type catalogMemoryStore struct {
+	data                   []byte
+	exists                 bool
+	readErr                error
+	replaceErr             error
+	readMaximum            int64
+	replaceCalls           int
+	postCommitCause        error
+	onPostCommitDiagnostic func(error)
+}
+
+func (store *catalogMemoryStore) Read(_ context.Context, _ string, maximum int64) ([]byte, bool, error) {
+	store.readMaximum = maximum
+	return append([]byte(nil), store.data...), store.exists, store.readErr
+}
+
+func (store *catalogMemoryStore) Replace(_ context.Context, _ string, data []byte) error {
+	return store.ReplaceSensitive(context.Background(), "", data, 0, true)
+}
+
+func (store *catalogMemoryStore) ReplaceSensitive(_ context.Context, _ string, data []byte, maximum int64, _ bool) error {
+	// Model the jsonfile contract: the persisted document is one byte longer
+	// than the caller's data, and a maximum applies to those bytes.
+	if maximum > 0 && int64(len(data))+1 > maximum {
+		return document.NewFailure(document.FailureSizeLimitExceeded, nil)
+	}
+	store.replaceCalls++
+	if store.replaceErr != nil {
+		return store.replaceErr
+	}
+	store.data = append([]byte(nil), data...)
+	store.exists = true
+	if store.postCommitCause != nil && store.onPostCommitDiagnostic != nil {
+		store.onPostCommitDiagnostic(store.postCommitCause)
+	}
+	return nil
+}
+
+func (store *catalogMemoryStore) PreserveSensitive(_ context.Context, _ string, _ []byte, _ int64, _ bool) error {
+	return store.replaceErr
+}
+
+func (store *catalogMemoryStore) ProtectionStatus() securefile.ProtectionStatus {
+	return securefile.ProtectionProtected
+}
+
+func TestCatalogLifecycleAndRestart(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatalf("OpenCatalog() error = %v", err)
+	}
+	if configurations, err := catalog.List(ctx); err != nil || len(configurations) != 0 {
+		t.Fatalf("initial List() = %#v, %v", configurations, err)
+	}
+
+	second := catalogTestConfiguration("configuration-b", "Second")
+	second.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"server":"b"}`)
+	first := catalogTestConfiguration("configuration-a", "First")
+	if _, err := catalog.Create(ctx, second, "second-password", false); err != nil {
+		t.Fatalf("Create(second) error = %v", err)
+	}
+	if _, err := catalog.Create(ctx, first, "", false); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+
+	listed, err := catalog.List(ctx)
+	if err != nil || len(listed) != 2 || listed[0].ConfigurationID != "configuration-a" || listed[1].ConfigurationID != "configuration-b" {
+		t.Fatalf("List() = %#v, %v", listed, err)
+	}
+	listed[1].ProtocolContextOverride[0] = '['
+	got, err := catalog.Get(ctx, "configuration-b")
+	if err != nil || string(got.ProtocolContextOverride) != `{"server":"b"}` {
+		t.Fatalf("Get(configuration-b) = %#v, %v", got, err)
+	}
+
+	second.DisplayName = "Updated"
+	if _, err := catalog.Update(ctx, second.ConfigurationID, Update{Patch: connectionconfig.Patch{DisplayName: &second.DisplayName}}); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if err := catalog.Delete(ctx, "configuration-a", currentCatalogVersion(t, catalog, "configuration-a")); err != nil {
+		t.Fatalf("Delete(configuration-a) error = %v", err)
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatalf("reopen error = %v", err)
+	}
+	listed, err = reopened.List(ctx)
+	if err != nil || len(listed) != 1 || listed[0].ConfigurationID != "configuration-b" || listed[0].DisplayName != "Updated" {
+		t.Fatalf("reopened List() = %#v, %v", listed, err)
+	}
+	if store.readMaximum != catalogFileSizeLimit || store.replaceCalls != 4 {
+		t.Fatalf("store maximum = %d, replace calls = %d", store.readMaximum, store.replaceCalls)
+	}
+}
+
+func TestCatalogRejectsInvalidCallsAndReportsMissingIDs(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	if _, err := OpenCatalog(ctx, nil, path); configurationPersistenceFailureCode(t, err) != document.FailureInvalidArgument {
+		t.Fatalf("OpenCatalog(nil store) error = %v", err)
+	}
+	if _, err := OpenCatalog(ctx, &catalogMemoryStore{}, "relative.json"); configurationPersistenceFailureCode(t, err) != document.FailureInvalidArgument {
+		t.Fatalf("OpenCatalog(relative path) error = %v", err)
+	}
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.Get(ctx, "missing"); configurationPersistenceFailureCode(t, err) != document.FailureNotFound {
+		t.Fatalf("Get(missing) error = %v", err)
+	}
+	if err := catalog.Delete(ctx, "missing", "missing-version"); configurationPersistenceFailureCode(t, err) != document.FailureNotFound {
+		t.Fatalf("Delete(missing) error = %v", err)
+	}
+	if _, err := catalog.Create(ctx, connectionconfig.Configuration{}, "", false); configurationPersistenceFailureCode(t, err) != document.FailureInvalidArgument {
+		t.Fatalf("Create(invalid) error = %v", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := catalog.List(canceled); configurationPersistenceFailureCode(t, err) != document.FailureInvalidArgument {
+		t.Fatalf("List(canceled) error = %v", err)
+	}
+}
+
+func TestCatalogHasRecordDoesNotDependOnPasswordContents(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := catalog.HasRecord(ctx, "configuration-a"); err != nil || stored {
+		t.Fatalf("missing HasRecord = %v, %v", stored, err)
+	}
+	value := catalogTestConfiguration("configuration-a", "A")
+	if _, err := catalog.Create(ctx, value, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := catalog.HasRecord(ctx, value.ConfigurationID); err != nil || !stored {
+		t.Fatalf("empty-password HasRecord = %v, %v", stored, err)
+	}
+}
+
+func TestCatalogFailedReplacePreservesMemoryState(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := catalogTestConfiguration("configuration-1", "Original")
+	if _, err := catalog.Create(ctx, original, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	store.replaceErr = document.NewFailure(document.FailureAtomicWrite, errors.New("write failed"))
+	replacement := "Replacement"
+	if _, err := catalog.Update(ctx, original.ConfigurationID, Update{Patch: connectionconfig.Patch{DisplayName: &replacement}}); configurationPersistenceFailureCode(t, err) != document.FailureAtomicWrite {
+		t.Fatalf("Update replacement error = %v", err)
+	}
+	got, err := catalog.Get(ctx, original.ConfigurationID)
+	if err != nil || got.DisplayName != "Original" {
+		t.Fatalf("Get() after failed Save = %#v, %v", got, err)
+	}
+	if err := catalog.Delete(ctx, original.ConfigurationID, currentCatalogVersion(t, catalog, original.ConfigurationID)); configurationPersistenceFailureCode(t, err) != document.FailureAtomicWrite {
+		t.Fatalf("Delete error = %v", err)
+	}
+	if _, err := catalog.Get(ctx, original.ConfigurationID); err != nil {
+		t.Fatalf("Get() after failed Delete error = %v", err)
+	}
+}
+
+func TestCatalogCommitEnforcesReadableSizeLimit(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	configuration := catalogTestConfiguration("configuration-size-limit", "Size limit")
+	candidate := map[connectionconfig.ID]catalogRecord{
+		configuration.ConfigurationID: {configuration: configuration, password: ""},
+	}
+	emptyData, err := encodeCatalogDocument(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The store persists the document plus one trailing newline, so the largest
+	// document that can still be read back is one byte below the limit.
+	atLimitLength := int(catalogFileSizeLimit) - len(emptyData)
+	if atLimitLength < 1 {
+		t.Fatalf("empty encoded catalog size = %d, limit = %d", len(emptyData), catalogFileSizeLimit)
+	}
+	atLimitPassword := strings.Repeat("x", atLimitLength)
+	candidate[configuration.ConfigurationID] = catalogRecord{configuration: configuration, password: atLimitPassword}
+	atLimitData, err := encodeCatalogDocument(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(atLimitData) != int(catalogFileSizeLimit) {
+		t.Fatalf("at-limit encoded catalog size = %d, limit = %d", len(atLimitData), catalogFileSizeLimit)
+	}
+	underPassword := strings.Repeat("x", atLimitLength-1)
+	candidate[configuration.ConfigurationID] = catalogRecord{configuration: configuration, password: underPassword}
+	underData, err := encodeCatalogDocument(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(underData) != int(catalogFileSizeLimit)-1 {
+		t.Fatalf("under-limit encoded catalog size = %d, want %d", len(underData), catalogFileSizeLimit-1)
+	}
+
+	store := &catalogMemoryStore{}
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.Create(ctx, configuration, atLimitPassword, false); configurationPersistenceFailureCode(t, err) != document.FailureSizeLimitExceeded {
+		t.Fatalf("Create(at persisted limit) error = %v", err)
+	}
+	if store.replaceCalls != 0 {
+		t.Fatalf("ReplaceSensitive calls after rejected candidate = %d, want 0", store.replaceCalls)
+	}
+	if _, err := catalog.Create(ctx, configuration, underPassword, false); err != nil {
+		t.Fatalf("Create(one byte under) error = %v", err)
+	}
+	if _, err := OpenCatalog(ctx, store, path); err != nil {
+		t.Fatalf("OpenCatalog() after one-byte-under create error = %v", err)
+	}
+	if store.readMaximum != catalogFileSizeLimit {
+		t.Fatalf("read maximum = %d, want %d", store.readMaximum, catalogFileSizeLimit)
+	}
+
+	replaceCalls := store.replaceCalls
+	if _, err := catalog.SetPassword(ctx, configuration.ConfigurationID, atLimitPassword, false); configurationPersistenceFailureCode(t, err) != document.FailureSizeLimitExceeded {
+		t.Fatalf("SetPassword(at persisted limit) error = %v", err)
+	}
+	if store.replaceCalls != replaceCalls {
+		t.Fatalf("ReplaceSensitive calls after oversized candidate = %d, want %d", store.replaceCalls, replaceCalls)
+	}
+	_, credential, err := catalog.Resolve(ctx, configuration.ConfigurationID)
+	if err != nil || credential.Password != underPassword {
+		t.Fatalf("Resolve() after rejected candidate = %#v, %v", credential, err)
+	}
+}
+
+func TestOpenCatalogPreservesReadFailure(t *testing.T) {
+	want := document.NewFailure(document.FailurePermissionDenied, errors.New("read denied"))
+	_, err := OpenCatalog(context.Background(), &catalogMemoryStore{readErr: want}, filepath.Join(t.TempDir(), "configurations.json"))
+	if !errors.Is(err, want) {
+		t.Fatalf("OpenCatalog() error = %v, want original failure", err)
+	}
+}
+
+func catalogTestConfiguration(id connectionconfig.ID, displayName string) connectionconfig.Configuration {
+	return connectionconfig.Configuration{
+		ConfigurationID:      id,
+		DisplayName:          displayName,
+		InstitutionProfileID: profilevalue.ID("profile-" + id),
+		Username:             "user-" + string(id),
+		NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
+	}
+}
+
+func TestCatalogCreateRejectsSecondAutoLogin(t *testing.T) {
+	ctx := context.Background()
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("configuration-a", "First")
+	first.AutoLogin = true
+	if _, err := catalog.Create(ctx, first, "password", false); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+	second := catalogTestConfiguration("configuration-b", "Second")
+	second.AutoLogin = true
+	_, err = catalog.Create(ctx, second, "password", false)
+	if _, ok := err.(AutoLoginConflict); !ok {
+		t.Fatalf("Create(second) error = %v, want AutoLoginConflict", err)
+	}
+}
+
+func TestCatalogCreateGeneratesAndPersistsOpaqueIdentity(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("", "First")
+	second := catalogTestConfiguration("", "Second")
+	first.InstitutionProfileID, second.InstitutionProfileID = "profile-first", "profile-second"
+	first.Username, second.Username = "first", "second"
+	persistedFirst, err := catalog.Create(ctx, first, "first-password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedSecond, err := catalog.Create(ctx, second, "second-password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	format := regexp.MustCompile(`^cfg-[0-9a-f]{32}$`)
+	if !format.MatchString(string(persistedFirst.ConfigurationID)) || !format.MatchString(string(persistedSecond.ConfigurationID)) || persistedFirst.ConfigurationID == persistedSecond.ConfigurationID {
+		t.Fatalf("generated identities = %q, %q", persistedFirst.ConfigurationID, persistedSecond.ConfigurationID)
+	}
+	got, credential, err := catalog.Resolve(ctx, persistedFirst.ConfigurationID)
+	if err != nil || got.ConfigurationID != persistedFirst.ConfigurationID || credential.Password != "first-password" {
+		t.Fatalf("Resolve(generated) = %#v, %#v, %v", got, credential, err)
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reopened.Get(ctx, persistedSecond.ConfigurationID); err != nil || got.ConfigurationID != persistedSecond.ConfigurationID {
+		t.Fatalf("reopened generated Configuration = %#v, %v", got, err)
+	}
+}
+
+func TestCatalogUpdateRejectsSecondAutoLogin(t *testing.T) {
+	ctx := context.Background()
+	catalog, err := OpenCatalog(ctx, &catalogMemoryStore{}, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("configuration-a", "First")
+	first.AutoLogin = true
+	if _, err := catalog.Create(ctx, first, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	second := catalogTestConfiguration("configuration-b", "Second")
+	if _, err := catalog.Create(ctx, second, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	enable := true
+	_, err = catalog.Update(ctx, second.ConfigurationID, Update{Patch: connectionconfig.Patch{AutoLogin: &enable}})
+	if _, ok := err.(AutoLoginConflict); !ok {
+		t.Fatalf("Update() error = %v, want AutoLoginConflict", err)
+	}
+	got, err := catalog.Get(ctx, second.ConfigurationID)
+	if err != nil || got.AutoLogin {
+		t.Fatalf("Get() after failed update = %#v, %v", got, err)
+	}
+}
+
+func TestCatalogUpdateAutoLoginAtomicCommit(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := catalogTestConfiguration("configuration-a", "First")
+	first.AutoLogin = true
+	if _, err := catalog.Create(ctx, first, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	second := catalogTestConfiguration("configuration-b", "Second")
+	if _, err := catalog.Create(ctx, second, "password", false); err != nil {
+		t.Fatal(err)
+	}
+	store.replaceErr = document.NewFailure(document.FailureAtomicWrite, errors.New("write failed"))
+	enable := true
+	if _, err := catalog.Update(ctx, second.ConfigurationID, Update{Patch: connectionconfig.Patch{AutoLogin: &enable}}); err == nil {
+		t.Fatal("Update() unexpectedly succeeded")
+	}
+	got, err := catalog.Get(ctx, first.ConfigurationID)
+	if err != nil || !got.AutoLogin {
+		t.Fatalf("first configuration after failed update = %#v, %v", got, err)
+	}
+	gotSecond, err := catalog.Get(ctx, second.ConfigurationID)
+	if err != nil || gotSecond.AutoLogin {
+		t.Fatalf("second configuration after failed update = %#v, %v", gotSecond, err)
+	}
+}
+
+func TestCatalogBindingOnlyUpdatePreservationAndRejectedWrite(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	c, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Create(ctx, catalogTestConfiguration("bound", "Bound"), "private", false); err != nil {
+		t.Fatal(err)
+	}
+	policy := binding.Policy{Mode: binding.ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+	if _, err = c.Update(ctx, "bound", Update{Patch: connectionconfig.Patch{NetworkBindingPolicy: &policy}}); err != nil {
+		t.Fatal(err)
+	}
+	name := "Renamed"
+	if _, err = c.Update(ctx, "bound", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err != nil {
+		t.Fatal(err)
+	}
+	got, cred, err := c.Resolve(ctx, "bound")
+	if err != nil || got.NetworkBindingPolicy != policy || cred.Password != "private" {
+		t.Fatal("metadata update lost binding or credential")
+	}
+	before := append([]byte(nil), store.data...)
+	bad := policy
+	bad.InterfaceID = ""
+	calls := store.replaceCalls
+	if _, err = c.Update(ctx, "bound", Update{Patch: connectionconfig.Patch{NetworkBindingPolicy: &bad}}); err == nil || !bytes.Equal(before, store.data) || calls != store.replaceCalls {
+		t.Fatal("invalid policy mutated persistent state")
+	}
+	automatic := binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable}
+	store.replaceErr = errors.New("rejected write")
+	if _, err = c.Update(ctx, "bound", Update{Patch: connectionconfig.Patch{NetworkBindingPolicy: &automatic}}); err == nil || !bytes.Equal(before, store.data) {
+		t.Fatal("failed persistence committed binding")
+	}
+	got, err = c.Get(ctx, "bound")
+	if err != nil || got.NetworkBindingPolicy != policy {
+		t.Fatal("failed persistence mutated memory")
+	}
+}
+
+func TestCatalogOverrideReplaceOmitClearCloneAndFailedCommit(t *testing.T) {
+	ctx := context.Background()
+	store := &catalogMemoryStore{}
+	path := filepath.Join(t.TempDir(), "config.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := catalogTestConfiguration("a", "label")
+	value.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"old":1}`)
+	if _, err = catalog.Create(ctx, value, "private-password", false); err != nil {
+		t.Fatal(err)
+	}
+	replacement := profilevalue.ProtocolOverride(`{"new":{"opaque":true}}`)
+	got, err := catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement[0] = '['
+	got.ProtocolContextOverride[0] = '['
+	stored, err := catalog.Get(ctx, "a")
+	if err != nil || string(stored.ProtocolContextOverride) != `{"new":{"opaque":true}}` {
+		t.Fatal("committed override aliases caller/result")
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundtrip, err := reopened.Get(ctx, "a")
+	if err != nil || !bytes.Equal(roundtrip.ProtocolContextOverride, stored.ProtocolContextOverride) {
+		t.Fatal("override not durable")
+	}
+	name := "metadata"
+	if _, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err != nil {
+		t.Fatal(err)
+	}
+	retained, _ := catalog.Get(ctx, "a")
+	if !bytes.Equal(retained.ProtocolContextOverride, stored.ProtocolContextOverride) {
+		t.Fatal("omission cleared override")
+	}
+	before := bytes.Clone(store.data)
+	cause := errors.New("private-store-failure")
+	store.replaceErr = cause
+	next := profilevalue.ProtocolOverride(`{"next":1}`)
+	if _, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &next}}); !errors.Is(err, cause) {
+		t.Fatal("write cause lost")
+	}
+	retained, _ = catalog.Get(ctx, "a")
+	if !bytes.Equal(store.data, before) || !bytes.Equal(retained.ProtocolContextOverride, stored.ProtocolContextOverride) {
+		t.Fatal("failed commit altered override")
+	}
+	store.replaceErr = nil
+	var clear profilevalue.ProtocolOverride
+	if _, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &clear}}); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, credentials, err := reopened.Resolve(ctx, "a")
+	if err != nil || len(retained.ProtocolContextOverride) != 0 || credentials.Password != "private-password" || retained.DisplayName != name {
+		t.Fatal("clear did not persist independently")
+	}
+	var doc struct {
+		SchemaVersion  int `json:"schemaVersion"`
+		Configurations []struct {
+			Override json.RawMessage `json:"protocolContextOverride"`
+		} `json:"configurations"`
+	}
+	if err := json.Unmarshal(store.data, &doc); err != nil || doc.SchemaVersion != 4 || len(doc.Configurations) != 1 || string(doc.Configurations[0].Override) != "null" {
+		t.Fatal("existing schema/null persistence changed")
+	}
+}
+
+// This fake models the Store's known-commit contract, not an OS flush failure.
+func TestCatalogFollowsCommittedWritesWithDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	cause := errors.New("password-marker /private/path post-commit-marker")
+	var received []error
+	store := &catalogMemoryStore{postCommitCause: cause, onPostCommitDiagnostic: func(err error) { received = append(received, err) }}
+	path := filepath.Join(t.TempDir(), "configurations.json")
+	catalog, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := catalogTestConfiguration("configuration-a", "First")
+	if _, err := catalog.Create(ctx, value, "old-password", false); err != nil {
+		t.Fatal(err)
+	}
+	assertState := func(wantPassword string, exists bool, count int) {
+		t.Helper()
+		if store.replaceCalls != count || len(received) != count {
+			t.Fatal("repeated/missing writes or diagnostics")
+		}
+		for _, err := range received {
+			if err != cause {
+				t.Fatal("cause lost")
+			}
+		}
+		reopened, err := OpenCatalog(ctx, store, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, current := range []*Catalog{catalog, reopened} {
+			rows, err := current.List(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !exists {
+				if len(rows) != 0 {
+					t.Fatal("removal not committed")
+				}
+				continue
+			}
+			_, credential, err := current.Resolve(ctx, value.ConfigurationID)
+			if err != nil || len(rows) != 1 || credential.Password != wantPassword {
+				t.Fatal("memory differs from committed state")
+			}
+		}
+	}
+	assertState("old-password", true, 1)
+	password := "new-password"
+	if _, err := catalog.Update(ctx, value.ConfigurationID, Update{Password: &password}); err != nil {
+		t.Fatal(err)
+	}
+	assertState(password, true, 2)
+	before := bytes.Clone(store.data)
+	store.replaceErr = document.NewFailure(document.FailureAtomicWrite, cause)
+	rejected := "rejected-password"
+	if _, err := catalog.Update(ctx, value.ConfigurationID, Update{Password: &rejected}); err != store.replaceErr {
+		t.Fatal("uncommitted error changed")
+	}
+	if store.replaceCalls != 3 || len(received) != 2 || !bytes.Equal(before, store.data) {
+		t.Fatal("failed write changed data or emitted post-commit diagnostic")
+	}
+	_, credential, err := catalog.Resolve(ctx, value.ConfigurationID)
+	if err != nil || credential.Password != password {
+		t.Fatal("failed write changed memory")
+	}
+	store.replaceErr = nil
+	if err := catalog.Delete(ctx, value.ConfigurationID, currentCatalogVersion(t, catalog, value.ConfigurationID)); err != nil {
+		t.Fatal(err)
+	}
+	// Failed attempt increased the call counter, but emitted no diagnostic.
+	if store.replaceCalls != 4 || len(received) != 3 {
+		t.Fatal("removal repeated or diagnostic missing")
+	}
+	rows, err := catalog.List(ctx)
+	if err != nil || len(rows) != 0 {
+		t.Fatal("diagnostic prevented in-memory removal")
+	}
+	reopened, err := OpenCatalog(ctx, store, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err = reopened.List(ctx)
+	if err != nil || len(rows) != 0 {
+		t.Fatal("durable removal missing")
+	}
+}
+
+func currentCatalogVersion(t *testing.T, catalog *Catalog, id connectionconfig.ID) string {
+	t.Helper()
+	version, err := catalog.Version(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return version
+}

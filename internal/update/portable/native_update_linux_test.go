@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
@@ -249,7 +250,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				for {
 					attempts++
 					id := fmt.Sprintf("%032x", attempts)
-					var view update.MaintenanceView
+					var view maintenance.View
 					interactive := false
 					err := call(ready, oldPeer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: id, CoordinatorPID: uint32(os.Getpid()), Interactive: &interactive}, &view)
 					for err == nil && view.Phase == "requested" {
@@ -314,7 +315,7 @@ func TestNativePortableUpdate(t *testing.T) {
 					t.Fatal(err)
 				}
 				yes := false
-				var view update.MaintenanceView
+				var view maintenance.View
 				if err := call(context.Background(), oldPeer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: strings.Repeat("f", 32), CoordinatorPID: uint32(owner.Process.Pid), Interactive: &yes}, &view); err != nil {
 					t.Fatal(err)
 				}
@@ -571,7 +572,7 @@ func TestNativePortableUpdate(t *testing.T) {
 						t.Fatal("fault wrote product bytes", err)
 					}
 					if scenario == "cancel-after-prepare" {
-						var view update.MaintenanceView
+						var view maintenance.View
 						if err := call(context.Background(), oldPeer.connection, contract.MethodUpdateStatus, struct{}{}, &view); err != nil || view.Phase != "idle" {
 							t.Fatal("cancel did not thaw old generation", err)
 						}

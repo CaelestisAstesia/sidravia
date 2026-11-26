@@ -1,0 +1,527 @@
+package application
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+
+	"sidravia/internal/daemon/internal/session"
+	"sidravia/internal/document/securefile"
+	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
+)
+
+const fixturePath = "../../../ipc/contract/testdata/v1/conformance.json"
+
+type conformanceFixture struct {
+	StateCases            []json.RawMessage          `json:"stateCases"`
+	DiagnosticExportCases []diagnosticProjectionCase `json:"diagnosticExportCases"`
+	SchemaVersion         int                        `json:"schemaVersion"`
+	Enums                 fixtureEnums               `json:"enums"`
+	Cases                 []fixtureCase              `json:"cases"`
+}
+
+type diagnosticProjectionCase struct {
+	Name         string `json:"name"`
+	Payload      string `json:"payload"`
+	Result       string `json:"result"`
+	ValidPayload *bool  `json:"validPayload"`
+	ValidResult  *bool  `json:"validResult"`
+}
+type fixtureEnums struct {
+	ConfigurationRuntimeAvailabilities []string `json:"configurationRuntimeAvailabilities"`
+	DiagnosticFailureCategories        []string `json:"diagnosticFailureCategories"`
+	DiagnosticRecoveryRecommendations  []string `json:"diagnosticRecoveryRecommendations"`
+	DiagnosticOperatingSystems         []string `json:"diagnosticOperatingSystems"`
+	DiagnosticArchitectures            []string `json:"diagnosticArchitectures"`
+	DiagnosticSessionStates            []string `json:"diagnosticSessionStates"`
+	DiagnosticSessionIntents           []string `json:"diagnosticSessionIntents"`
+	DiagnosticReasonCodes              []string `json:"diagnosticReasonCodes"`
+	DiagnosticSocketStates             []string `json:"diagnosticSocketStates"`
+	NetworkSocketStates                []string `json:"networkSocketStates"`
+
+	DaemonModes               []string `json:"daemonModes"`
+	SessionStartOutcomes      []string `json:"sessionStartOutcomes"`
+	SessionIntents            []string `json:"sessionIntents"`
+	SessionStates             []string `json:"sessionStates"`
+	StorageProtections        []string `json:"storageProtections"`
+	NetworkBindingPolicyModes []string `json:"networkBindingPolicyModes"`
+}
+
+type fixtureCase struct {
+	Name            string `json:"name"`
+	Method          string `json:"method"`
+	Request         string `json:"request"`
+	SuccessResponse string `json:"successResponse"`
+	ErrorResponse   string `json:"errorResponse"`
+}
+
+func TestV1ConformanceFixture(t *testing.T) {
+	fixture := loadFixture(t)
+	if fixture.SchemaVersion != 1 {
+		t.Fatalf("schemaVersion = %d, want 1", fixture.SchemaVersion)
+	}
+	assertEnums(t, fixture.Enums)
+
+	expectedMethods := map[string]struct{}{
+		contract.MethodStateSubscribe:            {},
+		contract.MethodStateUnsubscribe:          {},
+		contract.MethodDiagnosticsExport:         {},
+		contract.MethodDaemonStatus:              {},
+		contract.MethodNetworkInterfaces:         {},
+		contract.MethodDaemonStop:                {},
+		contract.MethodSessionStartOneShot:       {},
+		contract.MethodSessionStop:               {},
+		contract.MethodSessionEnsureRunning:      {},
+		contract.MethodSessionRestart:            {},
+		contract.MethodSessionRemove:             {},
+		contract.MethodSessionGet:                {},
+		contract.MethodSessionList:               {},
+		contract.MethodProfileList:               {},
+		contract.MethodConfigurationList:         {},
+		contract.MethodConfigurationGet:          {},
+		contract.MethodConfigurationCreate:       {},
+		contract.MethodConfigurationUpdate:       {},
+		contract.MethodConfigurationSetPassword:  {},
+		contract.MethodConfigurationRemove:       {},
+		contract.MethodSessionStartConfiguration: {},
+	}
+	if len(fixture.Cases) != len(expectedMethods) {
+		t.Fatalf("fixture case count = %d, want %d", len(fixture.Cases), len(expectedMethods))
+	}
+
+	seenNames := make(map[string]struct{}, len(fixture.Cases))
+	seenMethods := make(map[string]struct{}, len(fixture.Cases))
+	for _, item := range fixture.Cases {
+		if item.Name == "" || item.Method == "" || item.Request == "" || item.SuccessResponse == "" || item.ErrorResponse == "" {
+			t.Fatalf("fixture case %q has an empty required field", item.Name)
+		}
+		if _, duplicate := seenNames[item.Name]; duplicate {
+			t.Fatalf("duplicate fixture case name %q", item.Name)
+		}
+		seenNames[item.Name] = struct{}{}
+		if _, known := expectedMethods[item.Method]; !known {
+			t.Fatalf("fixture case %q has unknown method %q", item.Name, item.Method)
+		}
+		if _, duplicate := seenMethods[item.Method]; duplicate {
+			t.Fatalf("fixture method %q appears more than once", item.Method)
+		}
+		seenMethods[item.Method] = struct{}{}
+
+		t.Run(item.Name, func(t *testing.T) {
+			request, err := contract.DecodeRequest([]byte(item.Request))
+			if err != nil {
+				t.Fatalf("request envelope does not decode: %v", err)
+			}
+			if request.Method != item.Method {
+				t.Fatalf("request method = %q, want %q", request.Method, item.Method)
+			}
+			decodeMethodPayload(t, request.Method, request.Payload)
+			assertSuccessResponse(t, item, request)
+			assertErrorResponse(t, item, request.ID)
+		})
+	}
+	if !reflect.DeepEqual(seenMethods, expectedMethods) {
+		t.Fatal("fixture method set differs from the current v1 method constants")
+	}
+	assertSecretNegativeSpace(t, fixture)
+}
+
+func loadFixture(t *testing.T) conformanceFixture {
+	t.Helper()
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var fixture conformanceFixture
+	decodeStrictJSON(t, data, &fixture)
+	return fixture
+}
+
+func decodeStrictJSON(t *testing.T, data []byte, target any) {
+	t.Helper()
+	if len(bytes.TrimSpace(data)) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		t.Fatal("JSON value is missing")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		t.Fatalf("strict JSON decode: %v", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		t.Fatal("JSON has trailing data")
+	}
+}
+
+func assertEnums(t *testing.T, enums fixtureEnums) {
+	assertEnum(t, "configurationRuntimeAvailabilities", enums.ConfigurationRuntimeAvailabilities, []string{"available", "profile_unavailable", "protocol_unavailable", "override_invalid"})
+	assertEnum(t, "diagnosticFailureCategories", enums.DiagnosticFailureCategories, []string{"none", "network_timeout", "network_io_failure", "server_busy", "authentication_rejected", "binding_rejected", "protocol_incompatible", "protocol_response_invalid", "protocol_contract_violated", "logout_cleanup_failed", "run_creation_failed", "runtime_definition_unavailable", "other"})
+	assertEnum(t, "diagnosticRecoveryRecommendations", enums.DiagnosticRecoveryRecommendations, []string{"none", "retry_after_standard_delay", "retry_after_extended_delay", "retry_after_bounded_recovery", "block_until_explicit_restart_or_relevant_input_change", "other"})
+	assertEnum(t, "diagnosticOperatingSystems", enums.DiagnosticOperatingSystems, []string{"windows", "linux", "darwin", "other"})
+	assertEnum(t, "diagnosticArchitectures", enums.DiagnosticArchitectures, []string{"amd64", "arm64", "386", "other"})
+	assertEnum(t, "diagnosticSessionStates", enums.DiagnosticSessionStates, []string{"suspended", "waiting_for_network", "authenticating", "authenticated", "waiting_before_retry", "blocked_by_error", "stopping", "other"})
+	assertEnum(t, "diagnosticSessionIntents", enums.DiagnosticSessionIntents, []string{"maintain_authentication", "suspend_authentication", "other"})
+	assertEnum(t, "diagnosticReasonCodes", enums.DiagnosticReasonCodes, []string{"network_binding_unavailable", "network_unavailable", "runtime_definition_unavailable", "protocol_run_creation_failed", "protocol_run_failed", "protocol_contract_violated", "automatic_reconnect_disabled", "protocol_recovery_exhausted", "none", "other"})
+	assertEnum(t, "diagnosticSocketStates", enums.DiagnosticSocketStates, []string{"not_observed", "open", "closed", "close_failed", "close_unconfirmed", "other"})
+	assertEnum(t, "networkSocketStates", enums.NetworkSocketStates, []string{"not_observed", "open", "closed", "close_failed", "close_unconfirmed"})
+	t.Helper()
+	assertEnum(t, "daemonModes", enums.DaemonModes, []string{string(launchcontract.ModeHeadless), string(launchcontract.ModeDesktop), string(launchcontract.ModeSystemd)})
+	assertEnum(t, "sessionStartOutcomes", enums.SessionStartOutcomes, []string{SessionStartCreated, SessionStartAlreadyRunning, SessionStartResumed})
+	assertEnum(t, "sessionIntents", enums.SessionIntents, []string{string(session.MaintainAuthentication), string(session.SuspendAuthentication)})
+	assertEnum(t, "sessionStates", enums.SessionStates, []string{
+		string(session.Suspended), string(session.WaitingForNetwork), string(session.Authenticating), string(session.Authenticated),
+		string(session.WaitingBeforeRetry), string(session.BlockedByError), string(session.Stopping),
+	})
+	assertEnum(t, "storageProtections", enums.StorageProtections, []string{string(securefile.ProtectionProtected), string(securefile.ProtectionUnprotected)})
+	assertEnum(t, "networkBindingPolicyModes", enums.NetworkBindingPolicyModes, []string{string(session.AutomaticallySelectLatestAvailable), string(session.ExplicitInterfaceAndLocalIPv4)})
+}
+
+func assertEnum(t *testing.T, name string, got, want []string) {
+	t.Helper()
+	seen := make(map[string]struct{}, len(got))
+	for _, value := range got {
+		if _, duplicate := seen[value]; duplicate {
+			t.Fatalf("enum %s contains duplicate %q", name, value)
+		}
+		seen[value] = struct{}{}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("enum %s differs from its canonical order", name)
+	}
+}
+
+func decodeMethodPayload(t *testing.T, method string, payload json.RawMessage) {
+	t.Helper()
+	var err error
+	switch method {
+	case contract.MethodStateSubscribe, contract.MethodStateUnsubscribe:
+		err = contract.DecodeEmptyPayload(payload)
+	case contract.MethodDiagnosticsExport:
+		err = contract.DecodeDiagnosticsExportPayload(payload)
+	case contract.MethodNetworkInterfaces, contract.MethodDaemonStatus, contract.MethodDaemonStop, contract.MethodSessionList, contract.MethodProfileList:
+		err = contract.DecodeEmptyPayload(payload)
+	case contract.MethodConfigurationList:
+		_, err = contract.DecodeConfigurationListPayload(payload)
+	case contract.MethodSessionStartOneShot:
+		_, err = contract.DecodeSessionStartOneShotPayload(payload)
+	case contract.MethodSessionStop:
+		_, err = contract.DecodeSessionStopPayload(payload)
+	case contract.MethodSessionEnsureRunning:
+		_, err = contract.DecodeSessionEnsureRunningPayload(payload)
+	case contract.MethodSessionRestart:
+		_, err = contract.DecodeSessionRestartPayload(payload)
+	case contract.MethodSessionRemove:
+		_, err = contract.DecodeSessionRemovePayload(payload)
+	case contract.MethodSessionGet:
+		_, err = contract.DecodeSessionGetPayload(payload)
+	case contract.MethodSessionStartConfiguration, contract.MethodConfigurationGet:
+		_, err = contract.DecodeConfigurationIDPayload(payload)
+	case contract.MethodConfigurationRemove:
+		_, err = contract.DecodeConfigurationRemovePayload(payload)
+	case contract.MethodConfigurationCreate:
+		_, err = contract.DecodeConfigurationCreatePayload(payload)
+	case contract.MethodConfigurationUpdate:
+		_, err = contract.DecodeConfigurationUpdatePayload(payload)
+	case contract.MethodConfigurationSetPassword:
+		_, err = contract.DecodeConfigurationSetPasswordPayload(payload)
+	default:
+		t.Fatalf("no payload decoder for %q", method)
+	}
+	if err != nil {
+		t.Fatalf("method payload does not decode: %v", err)
+	}
+}
+
+func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Request) {
+	t.Helper()
+	response, err := contract.DecodeResponse([]byte(item.SuccessResponse))
+	if err != nil {
+		t.Fatalf("success envelope does not decode: %v", err)
+	}
+	if !response.OK || response.ID != request.ID || response.Error != nil || response.Result == nil {
+		t.Fatal("success response does not match its request")
+	}
+	requireObjectKeys(t, []byte(item.SuccessResponse), "kind", "id", "ok", "result")
+
+	switch item.Method {
+	case contract.MethodStateSubscribe:
+		value, err := contract.DecodeStateBootstrap(response.Result)
+		if err != nil || len(value.Sessions.Sessions) != 1 || value.Sessions.Sessions[0].Revision != ^uint64(0) || len(value.Sessions.CleanupRequiredSessionIDs) != 1 {
+			t.Fatal("invalid state bootstrap fixture", err)
+		}
+		assertSessionResult(t, value.Sessions.Sessions[0], true, true)
+	case contract.MethodStateUnsubscribe:
+		if _, err := contract.DecodeStateUnsubscribeResult(response.Result); err != nil {
+			t.Fatal(err)
+		}
+	case contract.MethodDiagnosticsExport:
+		if _, err := contract.DecodeDiagnosticsExportResult(response.Result); err != nil {
+			t.Fatal(err)
+		}
+	case contract.MethodNetworkInterfaces:
+		result, err := contract.DecodeNetworkInterfacesResult(response.Result)
+		if err != nil || !result.Available || result.Revision != 1 || len(result.Interfaces) != 1 {
+			t.Fatal("network query fixture invalid")
+		}
+
+	case contract.MethodDaemonStatus:
+		var result contract.StatusResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.ProductVersion == "" || result.BuildID == "" || result.PID <= 0 || result.Status != "running" || result.Mode != string(launchcontract.ModeHeadless) || result.DesktopOwnerPID != nil {
+			t.Fatal("headless status result is incomplete or exposes a desktop owner")
+		}
+	case contract.MethodDaemonStop:
+		var result contract.DaemonStopResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.Status != "stopping" {
+			t.Fatal("daemon stop result is not stopping")
+		}
+	case contract.MethodSessionStartOneShot, contract.MethodSessionEnsureRunning, contract.MethodSessionStartConfiguration:
+		var result contract.SessionStartResult
+		decodeStrictJSON(t, response.Result, &result)
+		assertSessionResult(t, result.Session, item.Method != contract.MethodSessionStartOneShot, item.Method == contract.MethodSessionStartConfiguration)
+		if result.Outcome == "" {
+			t.Fatal("session start result has no outcome")
+		}
+		if item.Method == contract.MethodSessionStartConfiguration {
+			payload, err := contract.DecodeConfigurationIDPayload(request.Payload)
+			if err != nil {
+				t.Fatalf("configuration start payload does not decode: %v", err)
+			}
+			if result.Session.ConfigurationID != payload.ConfigurationID {
+				t.Fatal("configuration start response does not retain the requested configurationId")
+			}
+		}
+	case contract.MethodSessionStop, contract.MethodSessionRestart, contract.MethodSessionGet:
+		var result contract.SessionResult
+		decodeStrictJSON(t, response.Result, &result)
+		assertSessionResult(t, result, true, item.Method == contract.MethodSessionGet)
+	case contract.MethodSessionRemove:
+		var result contract.SessionRemoveResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.SessionID == "" || result.Status != "removed" {
+			t.Fatal("session remove result is incomplete")
+		}
+	case contract.MethodSessionList:
+		var result contract.SessionListResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.Sessions == nil || len(result.Sessions) != 0 {
+			t.Fatal("session list must be an empty, non-null array")
+		}
+	case contract.MethodProfileList:
+		var result contract.ProfileListResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.Profiles == nil || len(result.Profiles) != 0 {
+			t.Fatal("profile list must be an empty, non-null array")
+		}
+	case contract.MethodConfigurationList:
+		var result contract.ConfigurationListResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.StorageProtection != string(securefile.ProtectionProtected) || result.Configurations == nil || len(result.Configurations) != 0 {
+			t.Fatal("configuration list must retain protection and an empty, non-null array")
+		}
+	case contract.MethodConfigurationGet, contract.MethodConfigurationCreate, contract.MethodConfigurationUpdate, contract.MethodConfigurationSetPassword:
+		var result contract.ConfigurationResult
+		decodeStrictJSON(t, response.Result, &result)
+		assertConfigurationResult(t, result, item.Method == contract.MethodConfigurationCreate)
+	case contract.MethodConfigurationRemove:
+		var result contract.ConfigurationRemoveResult
+		decodeStrictJSON(t, response.Result, &result)
+		if result.ConfigurationID == "" || result.Status != "removed" {
+			t.Fatal("configuration remove result is incomplete")
+		}
+	default:
+		t.Fatalf("no success result decoder for %q", item.Method)
+	}
+}
+
+func assertSessionResult(t *testing.T, result contract.SessionResult, requireConfiguration, requireAllOptional bool) {
+	t.Helper()
+	if result.AuthenticationSessionID == "" || result.DisplayName == "" || result.InstitutionProfileID == "" || result.InstitutionDisplayName == "" || result.AuthenticationProtocolID == "" || result.AccountName == "" || result.Intent == "" || result.State == "" || result.UpdatedAt == "" {
+		t.Fatal("session result omits a required public field")
+	}
+	if requireConfiguration && result.ConfigurationID == "" {
+		t.Fatal("retained session omits configurationId")
+	}
+	if !requireConfiguration && result.ConfigurationID != "" {
+		t.Fatal("one-shot session includes configurationId")
+	}
+	if requireAllOptional && (result.StateReason == nil || result.SelectedNetworkBinding == nil || result.AuthenticationEstablishedAt == nil || result.NextRetryAt == nil || result.LastAuthenticationFailure == nil) {
+		t.Fatal("full retained session omits an optional public field")
+	}
+}
+
+func assertConfigurationResult(t *testing.T, result contract.ConfigurationResult, generatedID bool) {
+	t.Helper()
+	if result.ConfigurationID == "" || result.DisplayName == "" || result.InstitutionProfileID == "" || result.InstitutionDisplayName == "" || result.AuthenticationProtocolID == "" || result.Username == "" || result.StorageProtection == "" {
+		t.Fatal("configuration result omits a required public field")
+	}
+	if generatedID && result.ConfigurationID != "cfg-0123456789abcdef0123456789abcdef" {
+		t.Fatal("configuration create result does not freeze the generated ID shape")
+	}
+}
+
+func assertErrorResponse(t *testing.T, item fixtureCase, requestID string) {
+	t.Helper()
+	response, err := contract.DecodeResponse([]byte(item.ErrorResponse))
+	if err != nil {
+		t.Fatalf("error envelope does not decode: %v", err)
+	}
+	if response.OK || response.ID != requestID || response.Error == nil || response.Result != nil {
+		t.Fatal("error response does not contain only its public error")
+	}
+	requireObjectKeys(t, []byte(item.ErrorResponse), "kind", "id", "ok", "error")
+	want := reachableError(item.Method)
+	if response.Error.Code != want.Code || response.Error.Message != want.Message {
+		t.Fatalf("error fixture for %q is not a reachable public error", item.Method)
+	}
+}
+
+func reachableError(method string) contract.Error {
+	switch method {
+	case contract.MethodStateSubscribe:
+		return contract.Error{Code: contract.ErrorCodeStateSnapshotUnavailable, Message: "state snapshot unavailable"}
+	case contract.MethodStateUnsubscribe:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid state request"}
+	case contract.MethodDiagnosticsExport:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed diagnostic payload"}
+	case contract.MethodNetworkInterfaces:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
+	case contract.MethodDaemonStatus, contract.MethodDaemonStop:
+		return contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed daemon payload"}
+	case contract.MethodSessionStartOneShot:
+		return contract.Error{Code: contract.ErrorCodeProfileNotFound, Message: "institution profile not found"}
+	case contract.MethodSessionStop, contract.MethodSessionEnsureRunning, contract.MethodSessionRemove, contract.MethodSessionGet:
+		return contract.Error{Code: contract.ErrorCodeSessionNotFound, Message: "session not found"}
+	case contract.MethodSessionRestart:
+		return contract.Error{Code: contract.ErrorCodeSessionStateConflict, Message: "session state does not allow operation"}
+	case contract.MethodSessionList:
+		return contract.Error{Code: contract.ErrorCodeSessionOperationFailed, Message: "session operation failed"}
+	case contract.MethodProfileList:
+		return contract.Error{Code: contract.ErrorCodeProfileOperationFailed, Message: "profile operation failed"}
+	case contract.MethodConfigurationList:
+		return contract.Error{Code: contract.ErrorCodeConfigurationOperationFailed, Message: "configuration operation failed"}
+	case contract.MethodConfigurationGet, contract.MethodConfigurationRemove, contract.MethodSessionStartConfiguration:
+		return contract.Error{Code: contract.ErrorCodeConfigurationNotFound, Message: "configuration not found"}
+	case contract.MethodConfigurationCreate:
+		return contract.Error{Code: contract.ErrorCodeConfigurationConflict, Message: "configuration already exists"}
+	case contract.MethodConfigurationUpdate:
+		return contract.Error{Code: contract.ErrorCodeConfigurationAutoLoginConflict, Message: "another configuration already enables automatic login"}
+	case contract.MethodConfigurationSetPassword:
+		return contract.Error{Code: contract.ErrorCodeInsecureStorageConfirmationRequired, Message: "insecure storage confirmation required"}
+	default:
+		return contract.Error{}
+	}
+}
+
+func requireObjectKeys(t *testing.T, data []byte, keys ...string) {
+	t.Helper()
+	var object map[string]json.RawMessage
+	decodeStrictJSON(t, data, &object)
+	if len(object) != len(keys) {
+		t.Fatal("wire object has an unexpected field count")
+	}
+	for _, key := range keys {
+		if _, present := object[key]; !present {
+			t.Fatalf("wire object omits %q", key)
+		}
+	}
+}
+
+func assertSecretNegativeSpace(t *testing.T, fixture conformanceFixture) {
+	t.Helper()
+	const oneShotMarker = "fixture-one-shot-password"
+	const configurationMarker = "fixture-configuration-password"
+	requests := make([]string, 0, len(fixture.Cases))
+	for _, item := range fixture.Cases {
+		requests = append(requests, item.Request)
+		if strings.Contains(item.SuccessResponse, oneShotMarker) || strings.Contains(item.SuccessResponse, configurationMarker) || strings.Contains(item.ErrorResponse, oneShotMarker) || strings.Contains(item.ErrorResponse, configurationMarker) {
+			t.Fatal("fixture response contains a request secret marker")
+		}
+		for _, forbidden := range []string{"diagnosticCause", "credentialId", "protocolContextOverride", "password"} {
+			if strings.Contains(item.SuccessResponse, `"`+forbidden+`"`) || strings.Contains(item.ErrorResponse, `"`+forbidden+`"`) {
+				t.Fatal("fixture response contains a forbidden secret or diagnostic field")
+			}
+		}
+		if strings.Contains(item.Name, oneShotMarker) || strings.Contains(item.Name, configurationMarker) || strings.Contains(item.Method, oneShotMarker) || strings.Contains(item.Method, configurationMarker) {
+			t.Fatal("fixture secret marker escaped the request strings")
+		}
+	}
+	if strings.Count(strings.Join(requests, ""), oneShotMarker) != 1 || strings.Count(strings.Join(requests, ""), configurationMarker) != 1 {
+		t.Fatal("fixture request secret markers must each occur exactly once")
+	}
+	enums, err := json.Marshal(fixture.Enums)
+	if err != nil {
+		t.Fatalf("marshal enums: %v", err)
+	}
+	if strings.Contains(string(enums), oneShotMarker) || strings.Contains(string(enums), configurationMarker) {
+		t.Fatal("fixture enum contains a request secret marker")
+	}
+}
+
+func TestDiagnosticExportSharedStrictCases(t *testing.T) {
+	fixture := loadFixture(t)
+	if len(fixture.DiagnosticExportCases) == 0 {
+		t.Fatal("missing export cases")
+	}
+	seen := map[string]bool{}
+	for _, item := range fixture.DiagnosticExportCases {
+		if item.Name == "" || seen[item.Name] || item.ValidPayload == nil || item.ValidResult == nil {
+			t.Fatal("invalid export case metadata")
+		}
+		seen[item.Name] = true
+		t.Run(item.Name, func(t *testing.T) {
+			err := contract.DecodeDiagnosticsExportPayload([]byte(item.Payload))
+			if (err == nil) != *item.ValidPayload {
+				t.Fatalf("payload accept=%t expected=%t: %v", err == nil, *item.ValidPayload, err)
+			}
+			_, err = contract.DecodeDiagnosticsExportResult([]byte(item.Result))
+			if (err == nil) != *item.ValidResult {
+				t.Fatalf("result accept=%t expected=%t: %v", err == nil, *item.ValidResult, err)
+			}
+		})
+	}
+}
+
+func TestSharedStateCases(t *testing.T) {
+	fixture := loadFixture(t)
+	if len(fixture.StateCases) == 0 {
+		t.Fatal("missing state cases")
+	}
+	seen := map[string]bool{}
+	for _, raw := range fixture.StateCases {
+		requireObjectKeys(t, raw, "name", "type", "data", "valid")
+		var item struct {
+			Name  string `json:"name"`
+			Type  string `json:"type"`
+			Data  string `json:"data"`
+			Valid *bool  `json:"valid"`
+		}
+		decodeStrictJSON(t, raw, &item)
+		if item.Name == "" || seen[item.Name] || item.Data == "" || item.Valid == nil {
+			t.Fatal("invalid state case metadata")
+		}
+		seen[item.Name] = true
+		t.Run(item.Name, func(t *testing.T) {
+			var err error
+			switch item.Type {
+			case "bootstrap":
+				_, err = contract.DecodeStateBootstrap([]byte(item.Data))
+			case "event":
+				_, err = contract.DecodeStateEvent([]byte(item.Data))
+			case "unsubscribe":
+				_, err = contract.DecodeStateUnsubscribeResult([]byte(item.Data))
+			default:
+				t.Fatal("invalid state case type")
+			}
+			if (err == nil) != *item.Valid {
+				t.Fatalf("state accept=%t expected=%t: %v", err == nil, *item.Valid, err)
+			}
+		})
+	}
+}

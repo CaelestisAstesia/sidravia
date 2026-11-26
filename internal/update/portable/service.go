@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
@@ -251,7 +252,7 @@ func closeManagedGUI(ctx context.Context, operation string, pid int, peer *appli
 	wait, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	interactive := false
-	var view update.MaintenanceView
+	var view maintenance.View
 	if err := call(wait, peer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{
 		OperationID: operation, CoordinatorPID: uint32(pid), Interactive: &interactive, ManagedGUIUpdate: true,
 	}, &view); err != nil {

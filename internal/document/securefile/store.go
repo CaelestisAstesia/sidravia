@@ -17,6 +17,14 @@ type Store interface {
 	Replace(context.Context, string, []byte) error
 }
 
+// SensitiveStore exposes the protected aggregate operations needed by a document owner.
+type SensitiveStore interface {
+	Store
+	ReplaceSensitive(context.Context, string, []byte, int64, bool) error
+	PreserveSensitive(context.Context, string, []byte, int64, bool) error
+	ProtectionStatus() ProtectionStatus
+}
+
 type SecureStoreOptions struct {
 	IntendedOwnerSID                   string
 	AllowUnsupportedProtectionFallback bool

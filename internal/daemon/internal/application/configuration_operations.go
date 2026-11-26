@@ -1,0 +1,209 @@
+package application
+
+import (
+	"context"
+	"errors"
+	"reflect"
+
+	connectionconfig "sidravia/internal/connection/config"
+	"sidravia/internal/connection/credential/input"
+	profilevalue "sidravia/internal/connection/profile"
+	config "sidravia/internal/daemon/internal/application/internal/configstore"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
+)
+
+type ConfigurationResult struct {
+	Version                  string
+	OverrideSchemaVersion    int
+	RuntimeAvailability      ConfigurationRuntimeAvailability
+	Configuration            connectionconfig.Configuration
+	InstitutionDisplayName   string
+	AuthenticationProtocolID string
+	CredentialStored         bool
+	StorageProtection        securefile.ProtectionStatus
+}
+
+func (application *Application) ListConfigurations(ctx context.Context) ([]ConfigurationResult, securefile.ProtectionStatus, error) {
+	if err := readModelContextError(ctx); err != nil {
+		return nil, "", err
+	}
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
+	if err := readModelContextError(ctx); err != nil {
+		return nil, "", err
+	}
+	values, err := application.catalog.List(ctx)
+	if err != nil {
+		if contextErr := readModelContextError(ctx); contextErr != nil {
+			err = errors.Join(err, contextErr)
+		}
+		return nil, "", err
+	}
+	results := make([]ConfigurationResult, 0, len(values))
+	for _, value := range values {
+		result, err := application.describeConfiguration(ctx, value)
+		if err != nil {
+			return nil, "", err
+		}
+		results = append(results, result)
+	}
+	if err := readModelContextError(ctx); err != nil {
+		return nil, "", err
+	}
+	return results, application.catalog.StorageProtection(), nil
+}
+
+func (application *Application) GetConfiguration(ctx context.Context, id connectionconfig.ID) (ConfigurationResult, error) {
+	if err := readModelContextError(ctx); err != nil {
+		return ConfigurationResult{}, err
+	}
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
+	if err := readModelContextError(ctx); err != nil {
+		return ConfigurationResult{}, err
+	}
+	value, err := application.catalog.Get(ctx, id)
+	if err != nil {
+		if contextErr := readModelContextError(ctx); contextErr != nil {
+			err = errors.Join(err, contextErr)
+		}
+		return ConfigurationResult{}, err
+	}
+	return application.describeConfiguration(ctx, value)
+}
+
+func (application *Application) CreateConfiguration(ctx context.Context, value connectionconfig.Configuration, password string, allow bool) (ConfigurationResult, error) {
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
+	value = value.Clone()
+	if err := input.ValidateNewText(value.Username); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	if err := input.ValidateNewText(password); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	receipt, err := application.prepareConfigurationWrite(ctx, value)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	persisted, err := application.catalog.Create(ctx, value, password, allow)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	return application.completeConfigurationWrite(ctx, receipt, persisted)
+}
+
+func (application *Application) UpdateConfiguration(ctx context.Context, id connectionconfig.ID, update config.Update) (ConfigurationResult, error) {
+	application.operationMu.Lock()
+	defer application.operationMu.Unlock()
+	current, err := application.catalog.Get(ctx, id)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	if update.ExpectedVersion != "" {
+		version, err := application.catalog.Version(ctx, id)
+		if err != nil {
+			return ConfigurationResult{}, err
+		}
+		if version != update.ExpectedVersion {
+			return ConfigurationResult{}, config.ErrVersionConflict
+		}
+	}
+	// Only newly changed credentials are validated; unrelated edits retain a
+	// legacy username verbatim, including an unchanged value sent by older GUIs.
+	if update.Username != nil && *update.Username != current.Username {
+		if err := input.ValidateNewText(*update.Username); err != nil {
+			return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+		}
+	}
+	if update.Password != nil {
+		if err := input.ValidateNewText(*update.Password); err != nil {
+			return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+		}
+	}
+	clearOnly := update.ProtocolContextOverride != nil && len(*update.ProtocolContextOverride) == 0 &&
+		update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil &&
+		update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil && update.NetworkBindingPolicy == nil
+	if clearOnly && len(current.ProtocolContextOverride) == 0 {
+		return application.describeConfiguration(ctx, current)
+	}
+	candidate := update.Patch.Apply(current)
+	// Removing only an override is a recovery operation even if the saved
+	// Profile or protocol cannot be resolved. The catalog still validates and
+	// commits the configuration using its ordinary storage protections.
+	var receipt ConfigurationResult
+	if clearOnly {
+		receipt, err = application.describeConfiguration(ctx, candidate)
+	} else {
+		receipt, err = application.prepareConfigurationWrite(ctx, candidate)
+	}
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	value, err := application.catalog.Update(ctx, id, update)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	// Display labels, logon and reconnect policy do not affect the current
+	// immutable runtime. Reconnect policy is captured at the next manual
+	// resume or restart instead.
+	current.DisplayName, candidate.DisplayName = "", ""
+	current.AutoLogin, candidate.AutoLogin = false, false
+	current.AutoReconnect, candidate.AutoReconnect = false, false
+	if update.Password != nil || !reflect.DeepEqual(current, candidate) {
+		if err := application.retireConfigurationSession(ctx, id); err != nil {
+			return ConfigurationResult{}, err
+		}
+	}
+	return application.completeConfigurationWrite(ctx, receipt, value)
+}
+
+func (application *Application) SetConfigurationPassword(ctx context.Context, id connectionconfig.ID, password string, allow bool) (ConfigurationResult, error) {
+	return application.UpdateConfiguration(ctx, id, config.Update{Password: &password, AllowInsecureStorage: allow})
+}
+
+// prepareConfigurationWrite validates the public candidate and resolves the
+// receipt metadata before committing. It never reads credentials or starts a Run;
+// stored-row inspection uses the tolerant describeConfiguration path.
+func (application *Application) prepareConfigurationWrite(ctx context.Context, value connectionconfig.Configuration) (ConfigurationResult, error) {
+	profile, err := application.profiles.Get(ctx, value.InstitutionProfileID)
+	if err != nil {
+		var failure *document.Failure
+		if errors.As(err, &failure) && failure.Code() == document.FailureNotFound {
+			return ConfigurationResult{}, NewResolutionFailure(ProfileNotFound, err)
+		}
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	factory, err := application.authenticationResolver.protocols.GetFactory(profile.AuthenticationProtocolID)
+	if err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(ProtocolNotFound, err)
+	}
+	if err := factory.ValidateUsername(value.Username); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	if err := factory.ValidateProtocolContextOverride(append(profilevalue.ProtocolOverride(nil), value.ProtocolContextOverride...)); err != nil {
+		return ConfigurationResult{}, NewResolutionFailure(InvalidConfiguration, err)
+	}
+	return ConfigurationResult{
+		OverrideSchemaVersion:    overrideSchemaVersion(factory),
+		RuntimeAvailability:      ConfigurationRuntimeAvailable,
+		InstitutionDisplayName:   profile.DisplayName,
+		AuthenticationProtocolID: string(profile.AuthenticationProtocolID),
+	}, nil
+}
+
+// completeConfigurationWrite only reads in-memory metadata under operationMu.
+// Cancellation after persistence must not turn a committed edit into a
+// validation failure. A disconnected client can still miss the receipt.
+func (application *Application) completeConfigurationWrite(ctx context.Context, receipt ConfigurationResult, value connectionconfig.Configuration) (ConfigurationResult, error) {
+	version, err := application.catalog.Version(context.WithoutCancel(ctx), value.ConfigurationID)
+	if err != nil {
+		return ConfigurationResult{}, err
+	}
+	receipt.Configuration = value
+	receipt.Version = version
+	receipt.CredentialStored = true
+	receipt.StorageProtection = application.catalog.StorageProtection()
+	return receipt, nil
+}

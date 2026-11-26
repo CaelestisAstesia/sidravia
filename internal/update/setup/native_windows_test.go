@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	"sidravia/internal/document"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/client"
@@ -462,7 +463,7 @@ begin Result := True; end;
 			payload, _ := json.Marshal(contract.UpdatePreparePayload{OperationID: op, CoordinatorPID: uint32(os.Getpid()), Interactive: new(bool)})
 			r, e = conn.Call(ctx, contract.MethodUpdatePrepare, payload)
 			for until := time.Now().Add(10 * time.Second); e == nil && r.OK && time.Now().Before(until); time.Sleep(50 * time.Millisecond) {
-				var view update.MaintenanceView
+				var view maintenance.View
 				if json.Unmarshal(r.Result, &view) == nil && view.Phase == "prepared" {
 					break
 				}

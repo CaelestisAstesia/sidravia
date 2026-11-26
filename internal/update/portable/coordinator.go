@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
@@ -105,7 +106,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	}()
 	if peer != nil {
 		interactive := false
-		var view update.MaintenanceView
+		var view maintenance.View
 		prepared = true
 		if err := call(ctx, peer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: record.ID, CoordinatorPID: uint32(owner.PID), Interactive: &interactive}, &view); err != nil {
 			return err

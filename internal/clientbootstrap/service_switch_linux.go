@@ -13,11 +13,11 @@ import (
 	"strconv"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/update"
 	"sidravia/internal/update/linuxplatform"
 )
 
@@ -297,7 +297,7 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 		return before, err
 	}
 	id := hex.EncodeToString(idBytes)
-	var intent update.MaintenanceView
+	var intent maintenance.View
 	interactive := false
 	err = callServiceIPC(ctx, peer, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{
 		OperationID: id, CoordinatorPID: uint32(os.Getpid()), Interactive: &interactive,

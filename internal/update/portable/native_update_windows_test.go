@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
@@ -470,7 +471,7 @@ func stopPortableFixture(t *testing.T, layout productlayout.Layout, target strin
 	} else {
 		op := strings.Repeat("f", 32)
 		interactive := false
-		var view update.MaintenanceView
+		var view maintenance.View
 		e = call(ctx, peer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{OperationID: op, CoordinatorPID: uint32(os.Getpid()), Interactive: &interactive}, &view)
 		for e == nil && view.Phase == "requested" && ctx.Err() == nil {
 			time.Sleep(50 * time.Millisecond)

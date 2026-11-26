@@ -1,0 +1,457 @@
+package application
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
+	config "sidravia/internal/daemon/internal/application/internal/configstore"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
+	"sidravia/internal/ipc/contract"
+)
+
+func TestConfigurationHandlerListAndPasswordSecrecy(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	handler := ConfigurationHandler(setup.application)
+	result, publicErr := handler(context.Background(), contract.MethodConfigurationList, json.RawMessage(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	var list contract.ConfigurationListResult
+	if err := json.Unmarshal(result, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Configurations) != 1 || list.Configurations[0].ConfigurationID != "configuration-1" {
+		t.Fatalf("list = %#v", list)
+	}
+	if string(result) == "secret" {
+		t.Fatal("password leaked")
+	}
+}
+
+func TestConfigurationHandlerCompletesReceiptAfterCanceledWrite(t *testing.T) {
+	for _, tc := range []struct {
+		method, payload, id string
+	}{
+		{
+			contract.MethodConfigurationCreate,
+			`{"displayName":"new","institutionProfileId":"profile-1","username":"test","password":"fixture-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`,
+			"",
+		},
+		{contract.MethodConfigurationUpdate, `{"configurationId":"configuration-1","displayName":"changed"}`, "configuration-1"},
+		{contract.MethodConfigurationSetPassword, `{"configurationId":"configuration-1","password":"fixture-password","allowInsecureStorage":false}`, "configuration-1"},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			t.Cleanup(setup.cleanup)
+			before := context.Background()
+			var oldVersion string
+			if tc.id != "" {
+				var err error
+				oldVersion, err = setup.catalog.Version(before, connectionconfig.ID(tc.id))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(before)
+			t.Cleanup(cancel)
+			setup.store.cancelAfterReplace = cancel
+			handler := ConfigurationHandler(setup.application)
+			raw, failure := handler(ctx, tc.method, json.RawMessage(tc.payload))
+			if ctx.Err() != context.Canceled || failure != nil {
+				t.Fatalf("write context = %v, receipt error = %v", ctx.Err(), failure)
+			}
+			receipt, err := contract.DecodeConfigurationResult(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if receipt.ConfigurationID == "" || tc.id != "" && receipt.ConfigurationID != tc.id ||
+				receipt.Version == "" || receipt.Version == oldVersion || !receipt.CredentialStored ||
+				strings.Contains(string(raw), "fixture-password") {
+				t.Fatal("receipt did not identify the committed record safely")
+			}
+			query, err := json.Marshal(contract.ConfigurationIDPayload{ConfigurationID: receipt.ConfigurationID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fresh, failure := handler(before, contract.MethodConfigurationGet, query)
+			if failure != nil || string(raw) != string(fresh) {
+				t.Fatalf("write and read receipts differ: %s, %s, error %v", raw, fresh, failure)
+			}
+		})
+	}
+}
+
+func TestConfigurationHandlerRejectsUnknownCreateFields(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	_, publicErr := ConfigurationHandler(setup.application)(context.Background(), contract.MethodConfigurationCreate, json.RawMessage(`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"secret","allowInsecureStorage":false,"extra":true}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument {
+		t.Fatalf("error = %#v", publicErr)
+	}
+}
+
+type fakeConfigurationApplication struct {
+	created    connectionconfig.Configuration
+	result     ConfigurationResult
+	list       []ConfigurationResult
+	protection securefile.ProtectionStatus
+	err        error
+	method     string
+	id         connectionconfig.ID
+	password   string
+	allow      bool
+	update     config.Update
+}
+
+func (fake *fakeConfigurationApplication) ListConfigurations(context.Context) ([]ConfigurationResult, securefile.ProtectionStatus, error) {
+	fake.method = contract.MethodConfigurationList
+	return fake.list, fake.protection, fake.err
+}
+func (fake *fakeConfigurationApplication) GetConfiguration(_ context.Context, id connectionconfig.ID) (ConfigurationResult, error) {
+	fake.method, fake.id = contract.MethodConfigurationGet, id
+	return fake.result, fake.err
+}
+func (fake *fakeConfigurationApplication) CreateConfiguration(_ context.Context, value connectionconfig.Configuration, password string, allow bool) (ConfigurationResult, error) {
+	fake.created = value
+	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationCreate, value.ConfigurationID, password, allow
+	return fake.result, fake.err
+}
+func (fake *fakeConfigurationApplication) UpdateConfiguration(_ context.Context, id connectionconfig.ID, update config.Update) (ConfigurationResult, error) {
+	fake.method, fake.id, fake.update = contract.MethodConfigurationUpdate, id, update
+	return fake.result, fake.err
+}
+func (fake *fakeConfigurationApplication) SetConfigurationPassword(_ context.Context, id connectionconfig.ID, password string, allow bool) (ConfigurationResult, error) {
+	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationSetPassword, id, password, allow
+	return fake.result, fake.err
+}
+func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id connectionconfig.ID, _ string, allow ...bool) error {
+	fake.method, fake.id = contract.MethodConfigurationRemove, id
+	if len(allow) > 0 {
+		fake.allow = allow[0]
+	}
+	return fake.err
+}
+
+func completeConfigurationResult() ConfigurationResult {
+	return ConfigurationResult{
+		RuntimeAvailability: ConfigurationRuntimeAvailable,
+		Configuration: connectionconfig.Configuration{
+			ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
+			Username: "user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
+		},
+		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
+		CredentialStored: true, StorageProtection: securefile.ProtectionProtected,
+	}
+}
+
+func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
+	tests := []struct {
+		method  string
+		payload string
+		want    string
+	}{
+		{contract.MethodConfigurationList, `{}`, `{"storageProtection":"protected","configurations":[]}`},
+		{contract.MethodConfigurationGet, `{"configurationId":"campus"}`, ""},
+		{contract.MethodConfigurationCreate, `{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`, ""},
+		{contract.MethodConfigurationUpdate, `{"configurationId":"campus","displayName":""}`, ""},
+		{contract.MethodConfigurationSetPassword, `{"configurationId":"campus","password":"","allowInsecureStorage":false}`, ""},
+		{contract.MethodConfigurationRemove, `{"configurationId":"campus","expectedVersion":"v1"}`, `{"configurationId":"campus","status":"removed"}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.method, func(t *testing.T) {
+			fake := &fakeConfigurationApplication{result: completeConfigurationResult(), protection: securefile.ProtectionProtected}
+			result, publicErr := ConfigurationHandler(fake)(context.Background(), tc.method, []byte(tc.payload))
+			if publicErr != nil {
+				t.Fatal(publicErr)
+			}
+			if fake.method != tc.method {
+				t.Fatalf("routed to %q", fake.method)
+			}
+			if tc.want != "" && string(result) != tc.want {
+				t.Fatalf("result = %s", result)
+			}
+			if strings.Contains(string(result), "password") {
+				t.Fatalf("result exposed password field: %s", result)
+			}
+		})
+	}
+	fake := &fakeConfigurationApplication{}
+	_, publicErr := ConfigurationHandler(fake)(context.Background(), "configuration.unknown", []byte(`{}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeUnknownMethod || fake.method != "" {
+		t.Fatalf("unknown route = %#v, method=%q", publicErr, fake.method)
+	}
+}
+
+func TestConfigurationHandlerMapsStableErrorsWithoutIdentifiersOrCauses(t *testing.T) {
+	const causeMarker = "wrapped-cause-marker"
+	const idMarker = "private-configuration-id"
+	tests := []struct {
+		name string
+		err  error
+		code string
+		msg  string
+	}{
+		{"not found", document.NewFailure(document.FailureNotFound, errors.New(causeMarker)), contract.ErrorCodeConfigurationNotFound, "configuration not found"},
+		{"conflict", document.NewFailure(document.FailureConflict, errors.New(causeMarker)), contract.ErrorCodeConfigurationConflict, "configuration already exists"},
+		{"confirmation", document.NewFailure(document.FailurePermissionDenied, securefile.ErrInsecureStorageConfirmationRequired), contract.ErrorCodeInsecureStorageConfirmationRequired, "insecure storage confirmation required"},
+		{"generic", errors.New(causeMarker), contract.ErrorCodeConfigurationOperationFailed, "configuration operation failed"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeConfigurationApplication{err: tc.err}
+			_, publicErr := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationGet, []byte(`{"configurationId":"`+idMarker+`"}`))
+			if publicErr == nil || publicErr.Code != tc.code || publicErr.Message != tc.msg {
+				t.Fatalf("error = %#v", publicErr)
+			}
+			if strings.Contains(publicErr.Message, causeMarker) || strings.Contains(publicErr.Message, idMarker) {
+				t.Fatalf("public error leaked private material: %#v", publicErr)
+			}
+		})
+	}
+}
+
+func TestConfigurationHandlerMapsResolutionFailures(t *testing.T) {
+	for _, tc := range []struct {
+		failure ResolutionFailureCode
+		code    string
+	}{
+		{ProfileNotFound, contract.ErrorCodeProfileNotFound},
+		{ProtocolNotFound, contract.ErrorCodeProtocolNotFound},
+		{InvalidConfiguration, contract.ErrorCodeInvalidArgument},
+	} {
+		fake := &fakeConfigurationApplication{err: NewResolutionFailure(tc.failure, errors.New("private-cause"))}
+		_, got := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationCreate, []byte(`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+		if got == nil || got.Code != tc.code || strings.Contains(got.Message, "private-cause") {
+			t.Fatalf("failure %q = %#v", tc.failure, got)
+		}
+	}
+}
+
+func TestConfigurationHandlerForwardsAtomicPasswordAndRemoveConsent(t *testing.T) {
+	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
+	h := ConfigurationHandler(fake)
+	if _, err := h(context.Background(), contract.MethodConfigurationUpdate, []byte(`{"configurationId":"campus","username":"new","password":"private","allowInsecureStorage":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if fake.update.Password == nil || *fake.update.Password != "private" || !fake.update.AllowInsecureStorage {
+		t.Fatal("atomic password/consent lost")
+	}
+	if _, err := h(context.Background(), contract.MethodConfigurationRemove, []byte(`{"configurationId":"campus","expectedVersion":"v1","allowInsecureStorage":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !fake.allow || fake.method != contract.MethodConfigurationRemove {
+		t.Fatal("remove consent lost")
+	}
+}
+
+func TestConfigurationHandlerOverrideTypedMappingAndPrivacy(t *testing.T) {
+	ctx := context.Background()
+	private := `{"schemaVersion":1,"hostName":"private-override-marker"}`
+	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
+	fake.result.Configuration.ProtocolContextOverride = profilevalue.ProtocolOverride(private)
+	handler := ConfigurationHandler(fake)
+	create := `{"institutionProfileId":"jlu","username":"u","password":"private-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false,"protocolContextOverride":` + private + `}`
+	raw, publicErr := handler(ctx, contract.MethodConfigurationCreate, []byte(create))
+	if publicErr != nil || string(fake.created.ProtocolContextOverride) != private {
+		t.Fatal("create override not forwarded")
+	}
+	if strings.Contains(string(raw), "private-") || strings.Contains(string(raw), "protocolContextOverride") {
+		t.Fatal("raw override echoed")
+	}
+	for _, input := range []string{`{"configurationId":"campus","displayName":"label"}`, `{"configurationId":"campus","protocolContextOverride":` + private + `}`, `{"configurationId":"campus","protocolContextOverride":null}`} {
+		fake.update = config.Update{}
+		_, publicErr := handler(ctx, contract.MethodConfigurationUpdate, []byte(input))
+		if publicErr != nil {
+			t.Fatal(publicErr)
+		}
+		switch {
+		case strings.Contains(input, "displayName"):
+			if fake.update.ProtocolContextOverride != nil {
+				t.Fatal("omission replaced override")
+			}
+		case strings.Contains(input, ":null"):
+			if fake.update.ProtocolContextOverride == nil || len(*fake.update.ProtocolContextOverride) != 0 {
+				t.Fatal("null not mapped to typed clear")
+			}
+		default:
+			if fake.update.ProtocolContextOverride == nil || string(*fake.update.ProtocolContextOverride) != private {
+				t.Fatal("object not mapped to replacement")
+			}
+		}
+	}
+	for _, input := range []string{strings.Replace(create, private, "null", 1), `{"configurationId":"campus","protocolContextOverride":[]}`, `{"configurationId":"campus","protocolContextOverride":{"private":1,"private":2}}`} {
+		fake.method = ""
+		_, publicErr := handler(ctx, map[bool]string{true: contract.MethodConfigurationCreate, false: contract.MethodConfigurationUpdate}[strings.Contains(input, "institutionProfileId")], []byte(input))
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "malformed configuration payload" || fake.method != "" {
+			t.Fatal("invalid override reached application or leaked error")
+		}
+	}
+	fake.err = NewResolutionFailure(InvalidConfiguration, errors.New("private-cause-marker"))
+	_, publicErr = handler(ctx, contract.MethodConfigurationUpdate, []byte(`{"configurationId":"campus","protocolContextOverride":{}}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "invalid configuration" {
+		t.Fatal("selected Factory error boundary changed")
+	}
+}
+
+func TestConfigurationHandlerRealMissingProfileRemainsManageable(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	value := connectionconfig.Configuration{ConfigurationID: "unavailable-profile", InstitutionProfileID: "missing-profile", Username: "saved-user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable}}
+	if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
+		t.Fatal(err)
+	}
+	handler := ConfigurationHandler(setup.application)
+	raw, publicErr := handler(ctx, contract.MethodConfigurationList, []byte(`{}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	list, err := contract.DecodeConfigurationListResult(raw)
+	if err != nil || len(list.Configurations) != 2 {
+		t.Fatalf("list: %v %s", err, raw)
+	}
+	var row contract.ConfigurationResult
+	for _, item := range list.Configurations {
+		if item.ConfigurationID == "unavailable-profile" {
+			row = item
+		}
+	}
+	if row.RuntimeAvailability != "profile_unavailable" || row.InstitutionProfileID != "missing-profile" || row.InstitutionDisplayName != "" || row.AuthenticationProtocolID != "" || !row.CredentialStored {
+		t.Fatalf("missing profile row: %#v", row)
+	}
+	raw, publicErr = handler(ctx, contract.MethodConfigurationGet, []byte(`{"configurationId":"unavailable-profile"}`))
+	if publicErr != nil {
+		t.Fatal(publicErr)
+	}
+	fetched, err := contract.DecodeConfigurationResult(raw)
+	if err != nil || fetched != row {
+		t.Fatalf("get disagrees: %#v %v", fetched, err)
+	}
+	if strings.Contains(string(raw), "private-password") || strings.Contains(string(raw), "protocolContextOverride") {
+		t.Fatal("private fields leaked")
+	}
+	_, publicErr = handler(ctx, contract.MethodConfigurationUpdate, []byte(`{"configurationId":"unavailable-profile","displayName":"edited"}`))
+	if publicErr == nil || publicErr.Code != contract.ErrorCodeProfileNotFound {
+		t.Fatalf("strict write changed: %#v", publicErr)
+	}
+	payload := contract.ConfigurationRemovePayload{ConfigurationID: fetched.ConfigurationID, ExpectedVersion: fetched.Version}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, publicErr := handler(ctx, contract.MethodConfigurationRemove, encoded); publicErr != nil {
+		t.Fatal("missing profile row unmanageable", publicErr)
+	}
+}
+
+func TestConfigurationHandlerRejectsAmbiguous(t *testing.T) {
+	for _, tc := range []struct{ method, payload string }{
+		{contract.MethodConfigurationUpdate, `{"configurationId":"a","ConfigurationId":"b","displayName":"new"}`},
+		{contract.MethodConfigurationSetPassword, `{"configurationId":"a","password":"PRIVATE-SECRET-\ud800","allowInsecureStorage":false}`},
+		{contract.MethodConfigurationUpdate, `{"configurationId":"a","password":"PRIVATE-SECRET-\udc00"}`},
+	} {
+		fake := &fakeConfigurationApplication{password: "unchanged"}
+		result, e := ConfigurationHandler(fake)(context.Background(), tc.method, json.RawMessage(tc.payload))
+		if e == nil || e.Code != contract.ErrorCodeInvalidArgument || result != nil {
+			t.Fatalf("invalid request result=%s error=%#v", result, e)
+		}
+		if fake.method != "" || fake.id != "" || fake.password != "unchanged" {
+			t.Fatal("invalid request reached application")
+		}
+		if strings.Contains(e.Message, "PRIVATE-SECRET") {
+			t.Fatal("public error leaked secret")
+		}
+	}
+}
+
+func TestConfigurationHandlerRejectsUnrepresentableUsernameSafely(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	usernameTestFactory(t, setup)
+	username, password := strings.Repeat("a", 37), "private-password"
+	for _, method := range []string{contract.MethodConfigurationCreate, contract.MethodConfigurationUpdate} {
+		payload := map[string]any{"configurationId": "configuration-1", "username": username, "password": password}
+		if method == contract.MethodConfigurationCreate {
+			payload["configurationId"] = "new-configuration"
+			payload["displayName"] = ""
+			payload["institutionProfileId"] = "profile-1"
+			payload["networkBindingPolicy"] = map[string]string{"mode": "automatically_select_latest_available"}
+			payload["autoLogin"] = false
+			payload["autoReconnect"] = false
+			payload["allowInsecureStorage"] = false
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, publicErr := ConfigurationHandler(setup.application)(context.Background(), method, raw)
+		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "invalid configuration" || len(result) != 0 {
+			t.Fatalf("public rejection=%#v", publicErr)
+		}
+		if strings.Contains(publicErr.Message, username) || strings.Contains(publicErr.Message, password) || strings.Contains(publicErr.Message, "encoded username") {
+			t.Fatal("private validation data leaked")
+		}
+	}
+}
+
+func TestConfigurationPaginationKeepsSnapshotAndBoundsFrames(t *testing.T) {
+	values := make([]contract.ConfigurationResult, 7)
+	for i := range values {
+		values[i] = toConfigurationResult(completeConfigurationResult())
+		values[i].ConfigurationID = fmt.Sprintf("campus-%d", i)
+		values[i].Version = "v1"
+		values[i].DisplayName = strings.Repeat("a", 15000)
+	}
+	var seen []string
+	cursor := ""
+	for {
+		raw, err := configurationPage(values, securefile.ProtectionProtected, cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(raw) >= contract.StateFrameLimit {
+			t.Fatalf("ordinary page exceeds the frame budget: %d", len(raw))
+		}
+		page, err := contract.DecodeConfigurationListResult(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range page.Configurations {
+			seen = append(seen, entry.ConfigurationID)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(seen) != len(values) || cursor == "" {
+		t.Fatalf("configuration pagination returned %v", seen)
+	}
+	for i, id := range seen {
+		if id != values[i].ConfigurationID {
+			t.Fatalf("row %d = %s", i, id)
+		}
+	}
+	values[0].Version = "changed"
+	if _, err := configurationPage(values, securefile.ProtectionProtected, cursor); !errors.Is(err, config.ErrVersionConflict) {
+		t.Fatalf("changed snapshot did not reject continuation: %v", err)
+	}
+	values[0].DisplayName = strings.Repeat("b", contract.StateFrameLimit)
+	raw, err := configurationPage(values, securefile.ProtectionProtected, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := contract.DecodeConfigurationListResult(raw)
+	if err != nil || len(page.Configurations) != 1 || len(raw) <= contract.StateFrameLimit || len(raw) >= contract.ResponseFrameLimit(contract.MethodConfigurationList) {
+		t.Fatalf("large legacy configuration not isolated: %d bytes, %v", len(raw), err)
+	}
+}

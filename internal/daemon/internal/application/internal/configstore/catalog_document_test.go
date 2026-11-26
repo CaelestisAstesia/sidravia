@@ -1,0 +1,259 @@
+package configstore
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	binding "sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/document"
+)
+
+func TestCatalogDocumentRoundTripIsDeterministic(t *testing.T) {
+	records := map[connectionconfig.ID]catalogRecord{
+		"configuration-b": {
+			configuration: connectionconfig.Configuration{
+				ConfigurationID:         "configuration-b",
+				DisplayName:             "Second",
+				InstitutionProfileID:    "profile-b",
+				Username:                "user-b",
+				NetworkBindingPolicy:    binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
+				ProtocolContextOverride: profilevalue.ProtocolOverride(`{"server":"b"}`),
+			},
+			password: "password-b",
+		},
+		"configuration-a": {
+			configuration: connectionconfig.Configuration{
+				ConfigurationID:      "configuration-a",
+				DisplayName:          "First",
+				InstitutionProfileID: "profile-a",
+				Username:             "user-a",
+				NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
+			},
+			password: "",
+		},
+	}
+	data, err := encodeCatalogDocument(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schemaVersion":4,"configurations":[{"configurationId":"configuration-a","displayName":"First","institutionProfileId":"profile-a","username":"user-a","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null,"autoLogin":false,"autoReconnect":false},{"configurationId":"configuration-b","displayName":"Second","institutionProfileId":"profile-b","username":"user-b","password":"password-b","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"server":"b"},"autoLogin":false,"autoReconnect":false}]}`
+	if string(data) != want {
+		t.Fatalf("encoded document differs: %s", data)
+	}
+	decoded, err := decodeCatalogDocument(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded["configuration-a"].password != "" || decoded["configuration-b"].password != "password-b" {
+		t.Fatal("passwords did not round trip")
+	}
+	if got := string(decoded["configuration-b"].configuration.ProtocolContextOverride); got != `{"server":"b"}` {
+		t.Fatalf("override = %s", got)
+	}
+}
+
+func TestDecodeCatalogDocumentAcceptsOpaqueObjectInternals(t *testing.T) {
+	data := []byte(`{"schemaVersion":2,"configurations":[{"configurationId":"configuration-1","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":{"token":"one","token":"two"}}]}`)
+	records, err := decodeCatalogDocument(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(records["configuration-1"].configuration.ProtocolContextOverride); got != `{"token":"one","token":"two"}` {
+		t.Fatalf("opaque override = %s", got)
+	}
+}
+
+func TestDecodeCatalogDocumentRejectsInvalidDocuments(t *testing.T) {
+	valid := `{"configurationId":"configuration-1","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}`
+	tests := []struct {
+		name string
+		data string
+		code document.FailureCode
+	}{
+		{"unknown root", `{"schemaVersion":2,"configurations":[],"extra":true}`, document.FailureInvalidDocument},
+		{"missing field", `{"schemaVersion":2,"configurations":[{"configurationId":"configuration-1"}]}`, document.FailureInvalidDocument},
+		{"old schema", `{"schemaVersion":1,"configurations":[]}`, document.FailureUnsupportedSchemaVersion},
+		{"future schema", `{"schemaVersion":5,"configurations":[]}`, document.FailureUnsupportedSchemaVersion},
+		{"duplicate id", `{"schemaVersion":2,"configurations":[` + valid + `,` + valid + `]}`, document.FailureInvalidDocument},
+		{"invalid id", `{"schemaVersion":2,"configurations":[{"configurationId":"Invalid","displayName":"","institutionProfileId":"p","username":"u","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}]}`, document.FailureInvalidDocument},
+		{"trailing", `{"schemaVersion":2,"configurations":[]} {}`, document.FailureInvalidDocument},
+		{"null", `null`, document.FailureInvalidDocument},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := decodeCatalogDocument([]byte(test.data))
+			if got := configurationPersistenceFailureCode(t, err); got != test.code {
+				t.Fatalf("code = %q, want %q", got, test.code)
+			}
+		})
+	}
+}
+
+func configurationPersistenceFailureCode(t *testing.T, err error) document.FailureCode {
+	t.Helper()
+	var failure *document.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("error %T does not expose document.Failure", err)
+	}
+	return failure.Code()
+}
+
+func TestDecodeCatalogDocumentSchemaV2DefaultsAutoLoginFalseAutoReconnectTrue(t *testing.T) {
+	data := []byte(`{"schemaVersion":2,"configurations":[{"configurationId":"configuration-1","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}]}`)
+	records, err := decodeCatalogDocument(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := records["configuration-1"].configuration
+	if got.AutoLogin || !got.AutoReconnect {
+		t.Fatalf("schema-2 defaults: autoLogin=%v, autoReconnect=%v", got.AutoLogin, got.AutoReconnect)
+	}
+}
+
+func TestDecodeCatalogDocumentSchemaV3RequiresBothBooleans(t *testing.T) {
+	base := `{"schemaVersion":3,"configurations":[{"configurationId":"configuration-1","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null`
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"missing autoLogin", base + `,"autoReconnect":false}]}`},
+		{"missing autoReconnect", base + `,"autoLogin":false}]}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := decodeCatalogDocument([]byte(test.data)); err == nil {
+				t.Fatal("accepted schema-3 document with missing boolean")
+			}
+		})
+	}
+}
+
+func TestEncodeCatalogDocumentSchemaV3RoundTrip(t *testing.T) {
+	records := map[connectionconfig.ID]catalogRecord{
+		"configuration-1": {
+			configuration: connectionconfig.Configuration{
+				ConfigurationID:      "configuration-1",
+				DisplayName:          "Campus",
+				InstitutionProfileID: "profile-1",
+				Username:             "user",
+				NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
+				AutoLogin:            true,
+				AutoReconnect:        false,
+			},
+			password: "secret",
+		},
+	}
+	data, err := encodeCatalogDocument(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeCatalogDocument(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded["configuration-1"].configuration
+	if !got.AutoLogin || got.AutoReconnect {
+		t.Fatalf("round-trip: autoLogin=%v, autoReconnect=%v", got.AutoLogin, got.AutoReconnect)
+	}
+}
+
+func TestDecodeCatalogDocumentRejectsMultipleAutoLoginTrue(t *testing.T) {
+	makeEntry := func(id string) string {
+		return `{"configurationId":"` + id + `","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null,"autoLogin":true,"autoReconnect":false}`
+	}
+	data := []byte(`{"schemaVersion":3,"configurations":[` + makeEntry("configuration-a") + `,` + makeEntry("configuration-b") + `]}`)
+	if _, err := decodeCatalogDocument(data); err == nil {
+		t.Fatal("accepted document with more than one autoLogin=true")
+	}
+}
+
+func TestCatalogStrictPolicyMigrationAndSchema4(t *testing.T) {
+	base := `{"schemaVersion":3,"configurations":[{"configurationId":"configuration-1","displayName":"Campus","institutionProfileId":"profile-1","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null,"autoLogin":false,"autoReconnect":true}]}`
+	explicit := `{"mode":"explicit_interface_and_local_ipv4","interfaceId":"lo","localIpv4Address":"127.0.0.1"}`
+	for _, schema := range []string{"2", "3", "4"} {
+		data := strings.Replace(base, `"schemaVersion":3`, `"schemaVersion":`+schema, 1)
+		if schema == "2" {
+			data = strings.Replace(data, `,"autoLogin":false,"autoReconnect":true`, "", 1)
+		}
+		records, err := decodeCatalogDocument([]byte(data))
+		if err != nil || records["configuration-1"].configuration.NetworkBindingPolicy.Mode != binding.AutomaticallySelectLatestAvailable {
+			t.Fatal("automatic migration failed", err)
+		}
+		changed := strings.Replace(data, `{"mode":"automatically_select_latest_available"}`, explicit, 1)
+		_, err = decodeCatalogDocument([]byte(changed))
+		if (err == nil) != (schema == "4") {
+			t.Fatal("schema-specific explicit policy contract differs")
+		}
+		nullTarget := strings.Replace(data, `{"mode":"automatically_select_latest_available"}`, `{"mode":"automatically_select_latest_available","interfaceId":null}`, 1)
+		if _, err = decodeCatalogDocument([]byte(nullTarget)); err == nil {
+			t.Fatal("mixed old policy accepted")
+		}
+	}
+}
+
+func catalogIntegrityJSON(version int, password string) string {
+	optional, binding := ``, `{"mode":"automatically_select_latest_available"}`
+	if version >= 3 {
+		optional = `,"autoLogin":false,"autoReconnect":true`
+	}
+	return fmt.Sprintf(`{"schemaVersion":%d,"configurations":[{"configurationId":"configuration-1","displayName":"校园","institutionProfileId":"profile-1","username":"user","password":"%s","networkBindingPolicy":%s,"protocolContextOverride":{"x":1,"X":2}%s}]}`, version, password, binding, optional)
+}
+func TestCatalogRejectsCaseAliases(t *testing.T) {
+	base := catalogIntegrityJSON(4, "secret")
+	for _, data := range []string{
+		strings.Replace(base, `"schemaVersion":`, `"SchemaVersion":`, 1),
+		strings.Replace(base, `"configurations":`, `"Configurations":`, 1),
+		strings.Replace(base, `"configurationId":`, `"ConfigurationId":`, 1),
+		strings.Replace(base, `"configurationId":`, `"\u0043onfigurationId":`, 1),
+		strings.Replace(base, `"configurationId":"configuration-1"`, `"configurationId":"configuration-1","ConfigurationId":"configuration-2"`, 1),
+		strings.Replace(base, `"autoLogin":false`, `"autoLogin":false,"AutoLogin":true`, 1),
+		strings.Replace(base, `"mode":`, `"Mode":`, 1),
+		strings.Replace(base, `"mode":"automatically_select_latest_available"`, `"mode":"automatically_select_latest_available","Mode":"automatically_select_latest_available"`, 1),
+		catalogIntegrityJSON(4, `PRIVATE-SECRET-\ud800`), catalogIntegrityJSON(3, `\udc00`),
+		strings.Replace(base, `"displayName":"校园"`, `"displayName":"\ud800"`, 1),
+	} {
+		store := &catalogMemoryStore{exists: true, data: []byte(data)}
+		before := append([]byte(nil), store.data...)
+		c, e := OpenCatalog(context.Background(), store, filepath.Join(t.TempDir(), "config.json"))
+		if e == nil || c != nil {
+			t.Error("accepted corrupt/ambiguous persisted catalog")
+			continue
+		}
+		if configurationPersistenceFailureCode(t, e) != document.FailureInvalidDocument || strings.Contains(e.Error(), "PRIVATE-SECRET") {
+			t.Fatal("unsafe/wrong persistence failure")
+		}
+		if store.replaceCalls != 0 || !bytes.Equal(before, store.data) {
+			t.Fatal("invalid catalog was rewritten")
+		}
+	}
+}
+func TestCatalogValidUnicodeAndSchema(t *testing.T) {
+	for _, version := range []int{2, 3, 4} {
+		for _, tc := range []struct{ wire, want string }{{"中文", "中文"}, {`\ud83d\ude00`, "😀"}, {"�", "�"}, {`\ufffd`, "�"}, {`\\ud800`, `\ud800`}} {
+			raw := []byte(catalogIntegrityJSON(version, tc.wire))
+			store := &catalogMemoryStore{exists: true, data: raw}
+			c, e := OpenCatalog(context.Background(), store, filepath.Join(t.TempDir(), "config.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			_, cred, e := c.Resolve(context.Background(), "configuration-1")
+			if e != nil || cred.Password != tc.want {
+				t.Fatal("valid password changed")
+			}
+			if store.replaceCalls != 0 || !bytes.Equal(raw, store.data) {
+				t.Fatal("valid old schema rewritten")
+			}
+		}
+	}
+	raw := []byte(strings.Replace(catalogIntegrityJSON(4, "secret"), `"configurationId":`, `"\u0063onfigurationId":`, 1))
+	if _, e := decodeCatalogDocument(raw); e != nil {
+		t.Fatal("escaped canonical key rejected")
+	}
+}

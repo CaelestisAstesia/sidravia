@@ -3,34 +3,25 @@
 package update
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
 )
 
 var (
-	ErrInvalid    = errors.New("invalid update operation")
+	ErrInvalid    = change.ErrInvalid
 	ErrNotApplied = errors.New("update is not confirmed applied")
 	ErrExpired    = errors.New("update recovery intent expired")
 	ErrConsumed   = errors.New("update recovery intent already claimed")
 )
 
-type Target struct {
-	ID      string `json:"id"`
-	Version string `json:"version"`
-	BuildID string `json:"buildId"`
-	Layout  string `json:"layout"`
-}
-
-type RestoreIntent struct {
-	Mode            string `json:"mode"` // none, desktop, headless
-	Visible         bool   `json:"visible"`
-	Maintain        bool   `json:"maintain"`
-	ConfigurationID string `json:"configurationId,omitempty"`
-}
+type Target = change.Target
+type RestoreIntent = maintenance.Intent
 
 type ResumeTicket struct {
 	OperationID string        `json:"operationId"`
@@ -46,17 +37,7 @@ type RestorePlan struct {
 	ConfigurationID string `json:"configurationId,omitempty"`
 }
 
-func ValidOperationID(id string) bool {
-	b, err := hex.DecodeString(id)
-	return err == nil && len(b) == 16 && hex.EncodeToString(b) == id
-}
-
-func (t Target) Validate() error {
-	if t.ID == "" || t.Version == "" || t.BuildID == "" || (t.Layout != "installed" && t.Layout != "portable") {
-		return ErrInvalid
-	}
-	return nil
-}
+func ValidOperationID(id string) bool { return change.ValidID(id) }
 
 // PlanRestore never chooses a configuration or infers an intent from autostart
 // preferences. Applied is supplied only after the executor verifies its work.

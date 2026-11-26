@@ -2,12 +2,11 @@ package cli
 
 import (
 	"fmt"
-
+	"net/netip"
 	"strings"
 
-	"net/netip"
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/daemon/authentication/session"
+	"sidravia/internal/connection/binding"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -52,7 +51,7 @@ func renderNetworkInterfaces(result contract.NetworkInterfacesResult) string {
 				category = "仅可显式绑定"
 			}
 			fmt.Fprintf(&output, "  IPv4：%s/%d | %s\n", assignment.Address, assignment.PrefixLength, category)
-			if assignment.ExplicitBindable && (session.NetworkBindingPolicy{Mode: session.ExplicitInterfaceAndLocalIPv4, InterfaceID: iface.InterfaceID, LocalIPv4Address: netip.MustParseAddr(assignment.Address)}).Validate() == nil {
+			if assignment.ExplicitBindable && (binding.Policy{Mode: binding.ExplicitInterfaceAndLocalIPv4, InterfaceID: iface.InterfaceID, LocalIPv4Address: netip.MustParseAddr(assignment.Address)}).Validate() == nil {
 				fmt.Fprintf(&output, "  PowerShell 绑定参数：--interface-id %s --local-ipv4 %s\n", powerShellLiteral(iface.InterfaceID), powerShellLiteral(assignment.Address))
 			}
 		}

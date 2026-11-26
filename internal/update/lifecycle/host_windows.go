@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"sidravia/internal/background/maintenance"
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/document/securefile"
@@ -298,19 +299,19 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	state.Stage = "aborted"
 	return save()
 }
-func call(ctx context.Context, conn clientbootstrap.Client, method string, value any) (update.MaintenanceView, error) {
+func call(ctx context.Context, conn clientbootstrap.Client, method string, value any) (maintenance.View, error) {
 	b, e := json.Marshal(value)
 	if e != nil {
-		return update.MaintenanceView{}, e
+		return maintenance.View{}, e
 	}
 	result, e := conn.Call(ctx, method, b)
 	if e != nil {
-		return update.MaintenanceView{}, e
+		return maintenance.View{}, e
 	}
 	if !result.OK {
-		return update.MaintenanceView{}, update.ErrInvalid
+		return maintenance.View{}, update.ErrInvalid
 	}
-	var view update.MaintenanceView
+	var view maintenance.View
 	if e = jsondoc.DecodeStrict(result.Result, &view); e != nil || view.SchemaVersion != 1 {
 		return view, update.ErrInvalid
 	}

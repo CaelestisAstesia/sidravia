@@ -317,8 +317,8 @@ def run_cross_checks(
         ),
         (
             "darwin",
-            "darwin-amd64-internal-daemon-host.test",
-            "./internal/daemon/host",
+            "darwin-amd64-internal-daemon-internal-endpoint.test",
+            "./internal/daemon/internal/endpoint",
         ),
     ]
     for goos, binary_name, package_path in platform_test_packages:

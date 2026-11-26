@@ -212,7 +212,7 @@ class TestRunGoChecks(unittest.TestCase):
             ("windows", "windows-amd64-internal-document-securefile.test.exe", "./internal/document/securefile"),
             ("darwin", "darwin-amd64-internal-cli.test", "./internal/cli"),
             ("darwin", "darwin-amd64-internal-connection-environment.test", "./internal/connection/environment"),
-            ("darwin", "darwin-amd64-internal-daemon-host.test", "./internal/daemon/host"),
+            ("darwin", "darwin-amd64-internal-daemon-internal-endpoint.test", "./internal/daemon/internal/endpoint"),
         ]
         for index, (goos, binary_name, package) in enumerate(expected_platform_checks, start=9):
             check = mock_run_and_print.call_args_list[index][0][0]
