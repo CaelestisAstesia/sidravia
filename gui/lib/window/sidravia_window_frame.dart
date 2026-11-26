@@ -179,7 +179,7 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
             height: 46,
             child: Stack(
               children: [
-                // Native hit testing owns drag/resize/double-click in this blank area.
+                // Native hit testing owns drag, resize, and double-click.
                 Positioned(
                   top: 10,
                   right: 10,
@@ -209,7 +209,29 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
                     ],
                   ),
                 ),
-                if (_error != null)
+                if (_error == null)
+                  Positioned(
+                    left: 14,
+                    right: 128,
+                    top: 10,
+                    height: 32,
+                    child: IgnorePointer(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Sidravia',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                else
                   Positioned(
                     left: 8,
                     top: 4,

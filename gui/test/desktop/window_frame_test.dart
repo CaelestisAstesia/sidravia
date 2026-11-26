@@ -72,6 +72,18 @@ void main() {
               tester.getSize(find.byKey(const ValueKey('window-top'))).height,
               46,
             );
+            final title = find.text('Sidravia');
+            expect(title, findsOneWidget);
+            expect(
+              find.ancestor(of: title, matching: find.byType(IgnorePointer)),
+              findsWidgets,
+            );
+            final titleRect = tester.getRect(title);
+            expect(titleRect.left, 14);
+            expect(
+              titleRect.right,
+              lessThan(tester.getRect(find.byTooltip('最小化')).left),
+            );
             for (final label in ['最小化', '最大化', '关闭']) {
               final button = find.ancestor(
                 of: find.byTooltip(label),
@@ -98,6 +110,7 @@ void main() {
               ]),
             );
           } else {
+            expect(find.text('Sidravia'), findsNothing);
             expect(find.byKey(const ValueKey('window-outline')), findsNothing);
             expect(calls, isEmpty);
           }
@@ -249,6 +262,7 @@ void main() {
       expect(find.byKey(const ValueKey('content')), findsOneWidget);
       expect(find.byKey(const ValueKey('window-top')), findsNothing);
       expect(find.byTooltip('关闭'), findsNothing);
+      expect(find.text('Sidravia'), findsNothing);
       expect(find.text('窗口初始化失败：不可用'), findsOneWidget);
     },
     variant: TargetPlatformVariant({
