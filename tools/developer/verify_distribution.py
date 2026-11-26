@@ -273,15 +273,16 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(host == os_name and native_arch() == arch, 'smoke_requires_matching_native_host')
     embedded_identities = []
     with tempfile.TemporaryDirectory(prefix='sidravia-distribution-check-') as temporary:
-        root = Path(temporary)
+        scratch = Path(temporary)
+        root = scratch
         smoke_env = None
         if smoke and windows:
-            # Go's help entry still acquires startup admission. Keep its
-            # locks in this fixture without changing the Windows shell's
-            # known folders or any subsequent native Setup invocation.
-            local, roaming = root / 'local', root / 'roaming'
-            local.mkdir()
-            roaming.mkdir()
+            # Startup admission requires its operation store outside the
+            # installation tree. Sibling directories also keep these locks
+            # out of the runner's real user data without changing Setup.
+            root, local, roaming = scratch / 'payload', scratch / 'local', scratch / 'roaming'
+            for folder in (root, local, roaming):
+                folder.mkdir()
             smoke_env = dict(os.environ, LOCALAPPDATA=str(local), APPDATA=str(roaming))
         for name, role in binaries.items():
             path = root / name
@@ -290,7 +291,10 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             embedded_identities.append(binary_identity(path, role, target, version, build_id, go))
             if smoke and role != 'sidraviad':
                 path.chmod(0o700)
-                result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True, check=True, timeout=30, env=smoke_env)
+                result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True, check=False, timeout=30, env=smoke_env)
+                if result.returncode:
+                    detail = result.stderr.decode('utf-8', errors='replace')[:400].strip()
+                    raise VerificationError(f'help_smoke_failed: {name}: exit {result.returncode}: {detail}')
                 require(bool(result.stdout.strip()), 'empty_help_smoke')
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',

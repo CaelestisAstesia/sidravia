@@ -82,8 +82,8 @@ class DistributionContract(unittest.TestCase):
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
         for call in run.call_args_list:
             cwd, env = call.kwargs['cwd'], call.kwargs['env']
-            self.assertEqual(Path(env['LOCALAPPDATA']), cwd / 'local')
-            self.assertEqual(Path(env['APPDATA']), cwd / 'roaming')
+            self.assertEqual(Path(env['LOCALAPPDATA']), cwd.parent / 'local')
+            self.assertEqual(Path(env['APPDATA']), cwd.parent / 'roaming')
 
     def test_windows_core_rejects_gui_missing_manager_and_installer(self):
         for change in ('gui', 'missing-manager', 'installer'):
