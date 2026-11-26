@@ -260,56 +260,62 @@ sys.stdout.write('x' * ((2 << 20) + 1))
     await manager.close();
   }, skip: !Platform.isLinux);
 
-  test(
-    'RPM commands are package managed while autostart remains explicit',
-    () async {
-      final f = _Fixture();
-      File('${f.product.path}/sidravia.rpm')
-          .writeAsStringSync('sidravia-rpm-v1\n');
-      final manager = f.manager;
-      final status = await manager.status();
-      expect(status.userPathSupported, isFalse);
-      expect(status.pathEnabled, isTrue);
-      expect(status.pathNotice, contains('RPM'));
-      for (final action in [
-        IntegrationChange.pathEnable,
-        IntegrationChange.pathDisable,
-      ]) {
-        await expectLater(
-          manager.change(action),
-          throwsA(isA<IntegrationFailure>()),
+  for (final format in ['rpm', 'deb']) {
+    test(
+      '$format commands are package managed while autostart remains explicit',
+      () async {
+        final f = _Fixture();
+        File('${f.product.path}/sidravia.$format')
+            .writeAsStringSync('sidravia-$format-v1\n');
+        final manager = f.manager;
+        final status = await manager.status();
+        expect(status.userPathSupported, isFalse);
+        expect(status.pathEnabled, isTrue);
+        expect(status.pathNotice, contains('系统包管理器'));
+        for (final action in [
+          IntegrationChange.pathEnable,
+          IntegrationChange.pathDisable,
+        ]) {
+          await expectLater(
+            manager.change(action),
+            throwsA(isA<IntegrationFailure>()),
+          );
+        }
+        expect(Directory('${f.home.path}/.local/bin').existsSync(), isFalse);
+        await manager.change(IntegrationChange.startDaemon);
+        expect((await manager.status()).autostart, 'daemon');
+        expect(f.desktop.readAsStringSync(), contains('TryExec='));
+        await f.launchEntry();
+        final ctl = File('${f.product.path}/sidraviactl');
+        final backup = ctl.renameSync('${ctl.path}.missing');
+        final missing = await Process.run('/usr/bin/python3', [
+          '-c',
+          'from gi.repository import Gio\nimport sys\ntry:\n app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1])\nexcept TypeError:\n pass\nelse:\n assert app is None',
+          f.desktop.path,
+        ]);
+        expect(
+          missing.exitCode,
+          0,
+          reason: '${missing.stdout}${missing.stderr}',
         );
-      }
-      expect(Directory('${f.home.path}/.local/bin').existsSync(), isFalse);
-      await manager.change(IntegrationChange.startDaemon);
-      expect((await manager.status()).autostart, 'daemon');
-      expect(f.desktop.readAsStringSync(), contains('TryExec='));
-      await f.launchEntry();
-      final ctl = File('${f.product.path}/sidraviactl');
-      final backup = ctl.renameSync('${ctl.path}.missing');
-      final missing = await Process.run('/usr/bin/python3', [
-        '-c',
-        'from gi.repository import Gio\nimport sys\ntry:\n app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1])\nexcept TypeError:\n pass\nelse:\n assert app is None',
-        f.desktop.path,
-      ]);
-      expect(missing.exitCode, 0, reason: '${missing.stdout}${missing.stderr}');
-      await expectLater(
-        manager.change(IntegrationChange.startDisable),
-        throwsA(
-          isA<IntegrationFailure>().having(
-            (error) => error.message,
-            'message',
-            contains('重试关闭'),
+        await expectLater(
+          manager.change(IntegrationChange.startDisable),
+          throwsA(
+            isA<IntegrationFailure>().having(
+              (error) => error.message,
+              'message',
+              contains('重试关闭'),
+            ),
           ),
-        ),
-      );
-      expect((await manager.status()).autostart, 'disabled');
-      backup.renameSync(ctl.path);
-      await manager.change(IntegrationChange.startDisable);
-      await manager.close();
-    },
-    skip: !Platform.isLinux,
-  );
+        );
+        expect((await manager.status()).autostart, 'disabled');
+        backup.renameSync(ctl.path);
+        await manager.change(IntegrationChange.startDisable);
+        await manager.close();
+      },
+      skip: !Platform.isLinux,
+    );
+  }
   test(
     'session GUI/daemon switching is isolated, idempotent and reversible',
     () async {
