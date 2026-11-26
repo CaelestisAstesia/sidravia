@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"sidravia/internal/clientbootstrap"
 	"sidravia/internal/productlayout"
-	"sidravia/internal/update"
 	"sidravia/internal/update/invocation"
+	"sidravia/internal/update/query"
 )
 
 type updateOutput struct{ data []byte }
@@ -34,7 +34,7 @@ func invokeUpdater(ctx context.Context, args []string, identity clientbootstrap.
 		ctx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 		defer cancel()
 		var output updateOutput
-		update.Run(ctx, args, identity.ProductVersion, identity.BuildID, &output)
+		query.Run(ctx, args[1:], identity.ProductVersion, &output)
 		return output.data, nil
 	}
 	if runtime.GOOS == "linux" {

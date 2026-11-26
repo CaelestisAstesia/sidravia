@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"sidravia/internal/update/internal/candidatecache"
 	"strings"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func TestExecutionStatusProjectsVerifiedRecordWithoutProofOrPath(t *testing.T) {
 	if err != nil || view.ID != r.ID || view.Phase != transaction.Created {
 		t.Fatal("execution status lost its state", err)
 	}
-	status := composeStatus(cached{}, false, view)
+	status := composeStatus(candidatecache.State{}, false, view)
 	if status.SchemaVersion != 1 || status.Check.State != "not_checked" {
 		t.Fatal("absent check cache was mistaken for completed checking")
 	}

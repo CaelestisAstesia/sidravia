@@ -1,6 +1,6 @@
 //go:build windows
 
-package update
+package candidatecache
 
 import "golang.org/x/sys/windows"
 

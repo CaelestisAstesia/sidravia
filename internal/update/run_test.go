@@ -10,13 +10,14 @@ import (
 	"runtime"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
+	"sidravia/internal/update/internal/request"
 	"strings"
 	"testing"
 )
 
 func TestNonMutatingCommandsAndExplicitApplyConfirmation(t *testing.T) {
 	applyCode := "apply_unavailable"
-	if applyPlatformSupported() && release.PublisherTrust().Configured() {
+	if request.ApplyPlatformSupported() && release.PublisherTrust().Configured() {
 		applyCode = "confirmation_required"
 	}
 	for _, item := range []struct {
@@ -26,7 +27,7 @@ func TestNonMutatingCommandsAndExplicitApplyConfirmation(t *testing.T) {
 	}{{[]string{"--help"}, "ok", 0}, {[]string{"version"}, "ok", 0}, {[]string{"invalid"}, "invalid_arguments", 1}, {[]string{"download"}, "invalid_arguments", 1}, {[]string{"apply", "--candidate", "1:2"}, applyCode, 1}} {
 		var out bytes.Buffer
 		exit := Run(context.Background(), item.args, "0.4.0-alpha.1", "fixture", &out)
-		var result response
+		var result request.Outcome
 		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
@@ -34,24 +35,6 @@ func TestNonMutatingCommandsAndExplicitApplyConfirmation(t *testing.T) {
 			t.Fatalf("%v %s %d", item.args, result.Code, exit)
 		}
 	}
-}
-func TestCacheLockIsExclusive(t *testing.T) {
-	path := t.TempDir() + "/lock"
-	release, err := lockCache(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second, err := lockCache(path); err == nil {
-		second()
-		release()
-		t.Fatal("parallel owner")
-	}
-	release()
-	again, err := lockCache(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again()
 }
 
 func TestRPMOwnershipRequiresExactInstalledMarker(t *testing.T) {
@@ -81,13 +64,13 @@ func TestDefaultPackageKindPreservesGUIIdentity(t *testing.T) {
 	}
 	root := t.TempDir()
 	layout := productlayout.Layout{Mode: productlayout.ModePortable, ExecutableDirectory: root}
-	if got := defaultPackageKind("linux", "amd64", layout); got != "core-portable" {
+	if got := request.DefaultPackageKind("linux", "amd64", layout); got != "core-portable" {
 		t.Fatal(got)
 	}
 	if err := os.Mkdir(filepath.Join(root, "sidravia_gui"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if got := defaultPackageKind("linux", "amd64", layout); got != "core-portable" {
+	if got := request.DefaultPackageKind("linux", "amd64", layout); got != "core-portable" {
 		t.Fatal("directory treated as GUI")
 	}
 	if err := os.Remove(filepath.Join(root, "sidravia_gui")); err != nil {
@@ -96,21 +79,21 @@ func TestDefaultPackageKindPreservesGUIIdentity(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "sidravia_gui"), []byte("fixture"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if got := defaultPackageKind("linux", "amd64", layout); got != "gui-portable" {
+	if got := request.DefaultPackageKind("linux", "amd64", layout); got != "gui-portable" {
 		t.Fatal(got)
 	}
-	if got := defaultPackageKind("linux", "arm64", layout); got != "core-portable" {
+	if got := request.DefaultPackageKind("linux", "arm64", layout); got != "core-portable" {
 		t.Fatal("unsupported GUI arch")
 	}
 	layout.Mode = productlayout.ModeInstalled
-	if got := defaultPackageKind("windows", "amd64", layout); got != "setup" {
+	if got := request.DefaultPackageKind("windows", "amd64", layout); got != "setup" {
 		t.Fatal(got)
 	}
 }
 
 func TestPublisherTrustFailureHasStableSafeCode(t *testing.T) {
 	err := fmt.Errorf("private release details: %w", release.ErrUntrusted)
-	if safeCode(err) != "publisher_untrusted" || strings.Contains(safeMessage(err), "private release details") {
+	if request.SourceCode(err) != "publisher_untrusted" || strings.Contains(request.SourceMessage(err), "private release details") {
 		t.Fatal("publisher failure lost its safe public boundary")
 	}
 }

@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"errors"
+	"sidravia/internal/update/internal/candidatecache"
+	"sidravia/internal/update/query"
 	"testing"
 
 	"sidravia/internal/release"
@@ -30,13 +32,13 @@ func TestApplyErrorsPreserveSafeDomainAndRateLimitPriority(t *testing.T) {
 }
 
 func TestInstalledStatusDoesNotMutateCachedCandidateOrOfferReinstall(t *testing.T) {
-	original := cached{Check: release.CheckResult{State: "available", Candidate: &release.Candidate{Version: "1.1.0", CanApply: true}}}
+	original := candidatecache.State{Check: release.CheckResult{State: "available", Candidate: &release.Candidate{Version: "1.1.0", CanApply: true}}}
 	current := projectInstalledVersion(original, "1.1.0")
 	if current.Check.State != "up_to_date" || current.Check.Candidate.CanApply || current.Check.Candidate.ApplyReason != "not_newer" {
 		t.Fatal(current)
 	}
 	if original.Check.State != "available" || !original.Check.Candidate.CanApply {
-		t.Fatal("projection rewrote cached source evidence")
+		t.Fatal("projection rewrote candidatecache.State source evidence")
 	}
 	if ahead := projectInstalledVersion(original, "1.2.0"); ahead.Check.State != "ahead_of_channel" || ahead.Check.Candidate.CanApply {
 		t.Fatal(ahead)
@@ -59,7 +61,7 @@ func TestApplyOfferRetainsReasonPriority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate := &release.Candidate{CanApply: true}
 			result := release.CheckResult{State: tc.state, Candidate: candidate, PublisherVerified: tc.verified}
-			projectApplyOffer(result, tc.layoutEligible, tc.platformEligible)
+			query.ProjectApplyOffer(result, tc.layoutEligible, tc.platformEligible)
 			if candidate.CanApply != tc.canApply || candidate.ApplyReason != tc.reason {
 				t.Fatalf("canApply=%v, reason=%q", candidate.CanApply, candidate.ApplyReason)
 			}

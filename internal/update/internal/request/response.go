@@ -1,4 +1,4 @@
-package update
+package request
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type response struct {
 	Result        any    `json:"result,omitempty"`
 }
 
-func safeCode(err error) string {
+func SourceCode(err error) string {
 	switch {
 	case errors.Is(err, context.Canceled):
 		return "cancelled"
@@ -41,8 +41,8 @@ func safeCode(err error) string {
 	}
 	return "source_unavailable"
 }
-func safeMessage(err error) string {
-	switch safeCode(err) {
+func SourceMessage(err error) string {
+	switch SourceCode(err) {
 	case "cancelled":
 		return "更新操作已取消。"
 	case "timeout":
@@ -65,7 +65,7 @@ func safeMessage(err error) string {
 	return "更新来源暂时不可用，请稍后重试。"
 }
 
-func responseWriter(out io.Writer) func(bool, string, string, any) int {
+func Writer(out io.Writer) func(bool, string, string, any) int {
 	return func(ok bool, code, message string, result any) int {
 		err := json.NewEncoder(out).Encode(response{1, ok, code, message, result})
 		if err != nil {
@@ -76,4 +76,33 @@ func responseWriter(out io.Writer) func(bool, string, string, any) int {
 		}
 		return 0
 	}
+}
+
+type Failure struct {
+	Code    string
+	Message string
+	Result  any
+}
+
+func (f *Failure) Write(out io.Writer) int {
+	return Writer(out)(false, f.Code, f.Message, f.Result)
+}
+
+type Outcome struct {
+	OK      bool
+	Code    string
+	Message string
+	Result  any
+}
+
+func (o Outcome) Write(out io.Writer) int {
+	return Writer(out)(o.OK, o.Code, o.Message, o.Result)
+}
+
+func Fail(code, message string, result any) Outcome {
+	return Outcome{false, code, message, result}
+}
+
+func Success(result any) Outcome {
+	return Outcome{true, "ok", "", result}
 }

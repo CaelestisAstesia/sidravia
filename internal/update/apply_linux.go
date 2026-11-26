@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"runtime"
+	"sidravia/internal/update/internal/candidatecache"
 	"time"
 
 	"sidravia/internal/installation/change"
@@ -20,7 +20,6 @@ import (
 	"sidravia/internal/update/transaction"
 )
 
-func applyPlatformSupported() bool { return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" }
 func platformApplyErrorCode(err error) string {
 	switch {
 	case errors.Is(err, portable.ErrRolledBack):
@@ -43,7 +42,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	if err != nil {
 		return nil, err
 	}
-	exists, err := inspectCached(root, path, &candidate)
+	exists, err := candidatecache.Inspect(root, path, &candidate)
 	if err != nil {
 		return nil, err
 	}
@@ -186,8 +185,4 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 		return result(err)
 	}
 	return result(portable.ReconcileInterrupted(ctx, store, id, layout.ExecutableDirectory, inventory))
-}
-
-func validApplyTarget(l productlayout.Layout, kind string) bool {
-	return l.Mode == productlayout.ModePortable && kind == defaultPackageKind(runtime.GOOS, runtime.GOARCH, l)
 }

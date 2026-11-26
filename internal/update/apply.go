@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sidravia/internal/update/internal/candidatecache"
+	"sidravia/internal/update/internal/request"
 
 	"sidravia/internal/productlayout"
 	"sidravia/internal/release"
@@ -93,7 +95,7 @@ func installedProof(ctx context.Context, source *github.GitHub, layout productla
 	if proof.BuildID() != buildID {
 		return release.VerifiedRelease{}, release.Candidate{}, nil, errSourceProof
 	}
-	asset, err := proof.InstalledAsset(runtime.GOOS, runtime.GOARCH, defaultPackageKind(runtime.GOOS, runtime.GOARCH, layout))
+	asset, err := proof.InstalledAsset(runtime.GOOS, runtime.GOARCH, request.DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout))
 	if err != nil {
 		return release.VerifiedRelease{}, release.Candidate{}, nil, errors.Join(errSourceProof, err)
 	}
@@ -125,7 +127,7 @@ func applyErrorCode(err error) string {
 	case errors.Is(err, transaction.ErrConflict), errors.Is(err, errOperation):
 		return "update_busy"
 	}
-	if code := safeCode(err); code != "source_unavailable" {
+	if code := request.SourceCode(err); code != "source_unavailable" {
 		return code
 	}
 	if errors.As(err, &remote) {
@@ -165,33 +167,10 @@ func applyErrorMessage(err error) string {
 	case "timeout":
 		return "更新操作超时，执行结果请查看 status"
 	}
-	return safeMessage(err)
+	return request.SourceMessage(err)
 }
 
-// projectApplyOffer sets the public hint. Apply independently checks admission,
-// confirmation, and proofs for both the installed source and the candidate.
-func projectApplyOffer(result release.CheckResult, layoutEligible, platformEligible bool) {
-	candidate := result.Candidate
-	if candidate == nil {
-		return
-	}
-	candidate.CanApply = false
-	switch {
-	case !layoutEligible:
-		candidate.ApplyReason = "portable_layout_required"
-	case !result.PublisherVerified:
-		candidate.ApplyReason = "publisher_signature_required"
-	case result.State != "available":
-		candidate.ApplyReason = "not_newer"
-	case !platformEligible:
-		candidate.ApplyReason = "platform_not_supported"
-	default:
-		candidate.CanApply = true
-		candidate.ApplyReason = "source_verification_and_confirmation_required"
-	}
-}
-
-func projectInstalledVersion(state cached, version string) cached {
+func projectInstalledVersion(state candidatecache.State, version string) candidatecache.State {
 	state.Selection.CurrentVersion = version
 	if state.Check.Candidate != nil {
 		c := *state.Check.Candidate

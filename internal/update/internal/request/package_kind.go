@@ -1,4 +1,4 @@
-package update
+package request
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 
 // Package identity follows the current layout, never a release fallback: a GUI
 // installation must not silently lose its GUI by selecting a core-only asset.
-func defaultPackageKind(goos, arch string, layout productlayout.Layout) string {
+func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	if goos == "windows" && arch == "amd64" {
 		if layout.Mode == productlayout.ModeInstalled {
 			return "setup"

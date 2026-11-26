@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-package update
+package candidatecache
 
 import (
 	"golang.org/x/sys/unix"

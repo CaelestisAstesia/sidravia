@@ -5,7 +5,7 @@ package update
 import (
 	"context"
 	"errors"
-	"runtime"
+	"sidravia/internal/update/internal/candidatecache"
 
 	"sidravia/internal/installation/change"
 	"sidravia/internal/productlayout"
@@ -16,10 +16,6 @@ import (
 	"sidravia/internal/update/transaction"
 )
 
-func applyPlatformSupported() bool { return runtime.GOARCH == "amd64" }
-func validApplyTarget(l productlayout.Layout, kind string) bool {
-	return l.Mode == productlayout.ModeInstalled && kind == "setup" || l.Mode == productlayout.ModePortable && kind == defaultPackageKind(runtime.GOOS, runtime.GOARCH, l)
-}
 func platformApplyErrorCode(err error) string {
 	var commitErr *portable.HandoffCommitError
 	switch {
@@ -41,7 +37,7 @@ func platformApplyErrorCode(err error) string {
 	return "apply_failed"
 }
 func applyDownloaded(ctx context.Context, root string, layout productlayout.Layout, version, build string, source *github.GitHub, c release.Candidate, path string, _ func()) (*applyResult, error) {
-	valid, err := inspectCached(root, path, &c)
+	valid, err := candidatecache.Inspect(root, path, &c)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-package update
+package candidatecache
 
 import (
 	"crypto/sha256"
@@ -16,7 +16,7 @@ import (
 
 // Cache records only authorize a single leaf in a private package directory.
 // Unexpected paths, links or changed bytes require explicit cache repair.
-func inspectCached(root, path string, candidate *release.Candidate) (bool, error) {
+func Inspect(root, path string, candidate *release.Candidate) (bool, error) {
 	if candidate == nil || path == "" {
 		return false, release.ErrMetadata
 	}
@@ -60,7 +60,7 @@ func inspectCached(root, path string, candidate *release.Candidate) (bool, error
 	return true, nil
 }
 func removeCached(root, path string, candidate *release.Candidate) error {
-	exists, err := inspectCached(root, path, candidate)
+	exists, err := Inspect(root, path, candidate)
 	if err != nil || !exists {
 		return err
 	}
@@ -70,7 +70,7 @@ func removeCached(root, path string, candidate *release.Candidate) error {
 	// Never remove unrecognized files inside this directory.
 	return os.Remove(filepath.Dir(path))
 }
-func samePackage(a, b *release.Candidate) bool {
+func SamePackage(a, b *release.Candidate) bool {
 	return a != nil && b != nil && a.ID == b.ID && a.Version == b.Version && a.Name == b.Name && a.Size == b.Size && a.SHA256 == b.SHA256 && a.DownloadURL == b.DownloadURL
 }
 
@@ -79,7 +79,7 @@ type backoff struct {
 	Until         time.Time `json:"until"`
 }
 
-type cached struct {
+type State struct {
 	SchemaVersion int                 `json:"schemaVersion"`
 	Selection     release.Selection   `json:"selection"`
 	CheckedAt     time.Time           `json:"checkedAt"`

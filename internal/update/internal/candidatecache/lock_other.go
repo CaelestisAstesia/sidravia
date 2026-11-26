@@ -1,6 +1,6 @@
 //go:build !linux && !darwin && !windows
 
-package update
+package candidatecache
 
 import "errors"
 

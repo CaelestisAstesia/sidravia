@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"sidravia/internal/update/internal/candidatecache"
 	"time"
 
 	"sidravia/internal/release"
@@ -27,7 +28,7 @@ type operationView struct {
 	FailureCode          string            `json:"failureCode,omitempty"`
 }
 type statusResult struct {
-	cached
+	candidatecache.State
 	Operation *operationView `json:"operation,omitempty"`
 }
 
@@ -50,9 +51,9 @@ func readExecutionStatus(ctx context.Context, store *transaction.Store) (*operat
 	return &operationView{Installer: installer, ID: r.ID, Phase: r.Phase, SourceVersion: r.Source.Version, TargetVersion: r.Target.Version, RequiresStartupBlock: r.RequiresStartupBlock(), UpdatedAt: r.UpdatedAt, FailureCode: r.FailureCode}, nil
 }
 
-func composeStatus(previous cached, hasCheck bool, execution *operationView) statusResult {
+func composeStatus(previous candidatecache.State, hasCheck bool, execution *operationView) statusResult {
 	if !hasCheck {
-		previous = cached{SchemaVersion: 1, Check: release.CheckResult{State: "not_checked"}}
+		previous = candidatecache.State{SchemaVersion: 1, Check: release.CheckResult{State: "not_checked"}}
 	}
-	return statusResult{cached: previous, Operation: execution}
+	return statusResult{State: previous, Operation: execution}
 }

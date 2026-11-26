@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sidravia/internal/update/internal/candidatecache"
 	"sort"
 	"strings"
 	"sync"
@@ -245,7 +246,7 @@ func nativeCLIUpdate(t *testing.T, useXZ bool) {
 	}
 	run("confirmation_required", "apply", "--candidate", "2:22")
 	checked := run("ok", "check")
-	var state cached
+	var state candidatecache.State
 	if err := json.Unmarshal(checked, &state); err != nil {
 		t.Fatal(err)
 	}
