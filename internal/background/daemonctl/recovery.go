@@ -50,8 +50,8 @@ func startHeadlessRecoveryPolicy(identity Identity, level string, deps dependenc
 	}
 	var ready contract.RuntimeInfo
 	err = waitForReadiness(deps.totalWait, deps.pollInterval, launched.exited, func() (bool, error) {
-		if !launched.alive() {
-			return false, ErrModeConflict
+		if err := confirmLaunchedProcess(launched); err != nil {
+			return false, err
 		}
 		result, e := probeWithNamespace(identity, ns, deps)
 		if e != nil {
@@ -61,8 +61,8 @@ func startHeadlessRecoveryPolicy(identity Identity, level string, deps dependenc
 			if result.Info.PID != launched.pid || !matchesOptions(result.Status, options) {
 				return false, ErrModeConflict
 			}
-			if !launched.alive() {
-				return false, ErrModeConflict
+			if err := confirmLaunchedProcess(launched); err != nil {
+				return false, err
 			}
 			ready = result.Info
 			return true, nil
@@ -73,4 +73,15 @@ func startHeadlessRecoveryPolicy(identity Identity, level string, deps dependenc
 		return false, nil
 	})
 	return ready, err
+}
+
+func confirmLaunchedProcess(process daemonLaunch) error {
+	alive, err := process.alive()
+	if err != nil {
+		return wrapSafeOperation("观察 sidraviad 启动", err)
+	}
+	if !alive {
+		return ErrModeConflict
+	}
+	return nil
 }

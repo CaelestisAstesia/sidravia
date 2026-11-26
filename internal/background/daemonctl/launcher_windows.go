@@ -8,11 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/background/logging"
 
 	"golang.org/x/sys/windows"
 
 	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/background/logging"
 	"sidravia/internal/productlayout"
 )
 
@@ -71,9 +71,19 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 			var h windows.Handle
 			h, observeErr = windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(cmd.Process.Pid))
 			if observeErr == nil {
-				launch.alive = func() bool {
-					result, e := windows.WaitForSingleObject(h, 0)
-					return e == nil && result == uint32(windows.WAIT_TIMEOUT)
+				launch.alive = func() (bool, error) {
+					result, err := windows.WaitForSingleObject(h, 0)
+					if err != nil {
+						return false, err
+					}
+					switch result {
+					case windows.WAIT_OBJECT_0:
+						return false, nil
+					case uint32(windows.WAIT_TIMEOUT):
+						return true, nil
+					default:
+						return false, fmt.Errorf("unexpected process observation result: %d", result)
+					}
 				}
 				launch.release = func() { windows.CloseHandle(h) }
 			}

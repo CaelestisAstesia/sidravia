@@ -7,12 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/background/logging"
 	"syscall"
 
-	"golang.org/x/sys/unix"
-
 	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/background/logging"
+	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/productlayout"
 )
 
@@ -105,15 +104,11 @@ func launchDaemonProcessWith(options launchcontract.Options, logLevel string, de
 			if launch.pid <= 0 {
 				observationErr = errors.New("launched process identity is unavailable")
 			} else {
-				var fd int
-				fd, observationErr = unix.PidfdOpen(launch.pid, 0)
+				var process *linuxproc.Process
+				process, observationErr = linuxproc.Observe(launch.pid)
 				if observationErr == nil {
-					launch.alive = func() bool {
-						fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-						_, err := unix.Poll(fds, 0)
-						return err == nil && fds[0].Revents == 0
-					}
-					launch.release = func() { _ = unix.Close(fd) }
+					launch.alive = process.Running
+					launch.release = func() { _ = process.Close() }
 				}
 			}
 		}
