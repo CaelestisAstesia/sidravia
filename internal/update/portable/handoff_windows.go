@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/document"
 	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/document/securefile"
 	"sidravia/internal/installation/change"
@@ -93,13 +94,26 @@ func readPrivate(ctx context.Context, path string, value any) error {
 func readRunnerReady(ctx context.Context, path string) (runnerID, error) {
 	var ready runnerID
 	err := readPrivate(ctx, path, &ready)
-	// The secure store intentionally exposes persistence errors without
-	// unwrapping diagnostic causes. The handoff wait owns its cancellation
-	// and a readiness receipt arriving after that deadline cannot be used.
-	if stopped := ctx.Err(); stopped != nil {
-		return runnerID{}, stopped
+	if err := runnerReadyError(err, ctx.Err()); err != nil {
+		return runnerID{}, err
 	}
-	return ready, err
+	return ready, nil
+}
+
+func runnerReadyError(readErr, stopped error) error {
+	if stopped == nil {
+		return readErr
+	}
+	if readErr == nil || os.IsNotExist(readErr) || errors.Is(readErr, stopped) {
+		return stopped
+	}
+	// The secure store keeps diagnostic causes private. Recognize the
+	// wait's cancellation without relabeling an unrelated read failure.
+	var failure *document.Failure
+	if errors.As(readErr, &failure) && errors.Is(failure.DiagnosticCause(), stopped) {
+		return stopped
+	}
+	return readErr
 }
 
 func readWindowsSession(ctx context.Context, target, id string) (windowsSession, string, error) {
