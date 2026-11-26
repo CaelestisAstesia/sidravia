@@ -25,7 +25,7 @@ func (lease *RegistrationLease) Service(ctx context.Context, action string, layo
 	}
 	switch action {
 	case "status", "start", "stop", "recover-start":
-		return lease.core.service(ctx, action, layout, ready, false)
+		return lease.core.service(ctx, action, layout, ready, nil, false)
 	default:
 		return ServiceState{}, ErrServiceConflict
 	}
@@ -35,7 +35,17 @@ func (lease *SwitchLease) Service(ctx context.Context, action string, layout pro
 	if lease == nil {
 		return ServiceState{}, ErrLeaseClosed
 	}
-	return lease.core.service(ctx, action, layout, ready, true)
+	return lease.core.service(ctx, action, layout, ready, nil, true)
+}
+
+// Replace verifies the previously observed source exited before changing its
+// registration. waitStopped runs after the manager stops the source and before
+// the first write. The lease stays held for the complete operation.
+func (lease *SwitchLease) Replace(ctx context.Context, layout productlayout.Layout, waitStopped func(context.Context) error, ready serviceReadiness) (ServiceState, error) {
+	if lease == nil {
+		return ServiceState{}, ErrLeaseClosed
+	}
+	return lease.core.service(ctx, "replace", layout, ready, waitStopped, true)
 }
 
 func (lease *SwitchLease) Save(ctx context.Context, state ServiceSwitch) error {

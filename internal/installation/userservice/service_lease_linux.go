@@ -107,7 +107,7 @@ func (core *serviceLease) run(ctx context.Context, operation func(string) error)
 	return operation(core.unit)
 }
 
-func (core *serviceLease) service(ctx context.Context, action string, layout productlayout.Layout, ready serviceReadiness, switching bool) (ServiceState, error) {
+func (core *serviceLease) service(ctx context.Context, action string, layout productlayout.Layout, ready serviceReadiness, waitStopped func(context.Context) error, switching bool) (ServiceState, error) {
 	var state ServiceState
 	err := core.run(ctx, func(path string) error {
 		if !layout.Namespace.IsProduction() {
@@ -119,7 +119,7 @@ func (core *serviceLease) service(ctx context.Context, action string, layout pro
 		}
 		ctx, cancel := context.WithTimeout(ctx, 50*time.Second)
 		defer cancel()
-		state, err = applyService(ctx, path, action, target, ready, switching)
+		state, err = applyService(ctx, path, action, target, ready, waitStopped, switching)
 		return err
 	})
 	return state, err

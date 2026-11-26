@@ -18,7 +18,7 @@ func WithServiceSwitch(context.Context, func(*SwitchLease) error) error {
 	return ErrServiceUnavailable
 }
 
-func (*serviceLease) service(context.Context, string, productlayout.Layout, serviceReadiness, bool) (ServiceState, error) {
+func (*serviceLease) service(context.Context, string, productlayout.Layout, serviceReadiness, func(context.Context) error, bool) (ServiceState, error) {
 	return ServiceState{}, ErrLeaseClosed
 }
 

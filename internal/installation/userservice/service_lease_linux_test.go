@@ -182,3 +182,22 @@ func TestCanceledOperationCanCompensateBeforeLeaseCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRegistrationReplacementDoesNotWriteWithoutObservedExit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), registration.UnitName)
+	initial := []byte("existing unit")
+	if err := os.WriteFile(path, initial, 0600); err != nil {
+		t.Fatal(err)
+	}
+	observationFailed := errors.New("process wait unavailable")
+	err := replaceRegistration(t.Context(), path, ServiceState{}, productlayout.Layout{}, initial, []byte("replacement"), productlayout.Layout{}, nil, func(context.Context) error {
+		return observationFailed
+	})
+	if !errors.Is(err, ErrServiceStop) || !errors.Is(err, observationFailed) {
+		t.Fatalf("exit-observation failure: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, initial) {
+		t.Fatalf("registration changed without exit evidence: %q %v", after, err)
+	}
+}
