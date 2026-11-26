@@ -6,7 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/userservice"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/process/linuxproc"
 	"strconv"
 	"time"
@@ -42,7 +43,7 @@ func acquireUserInstance() (func() error, error) {
 			_ = release()
 		}
 	}()
-	registered, exists, err := installationmanager.RegisteredService()
+	registered, exists, err := registration.Lookup()
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +65,7 @@ func configureServiceSwitch(options *launchcontract.Options, paths defaultPaths)
 	if options.Namespace != "" {
 		return nil
 	}
-	state, pending, err := installationmanager.PendingServiceSwitch()
+	state, pending, err := userservice.PendingServiceSwitch()
 	if err != nil || !pending {
 		return err
 	}
@@ -78,7 +79,7 @@ func configureServiceSwitch(options *launchcontract.Options, paths defaultPaths)
 	if filepath.Dir(executable) != state.Layout.ExecutableDirectory ||
 		paths.configurations != state.Layout.ConfigurationsPath || paths.runtimeInfo != state.Layout.RuntimeInfoPath ||
 		options.RecoveryOperation != "" {
-		return installationmanager.ErrServiceRecovery
+		return userservice.ErrServiceRecovery
 	}
 	if options.Mode == launchcontract.ModeDesktop {
 		ownerStart := uint64(0)
@@ -89,16 +90,16 @@ func configureServiceSwitch(options *launchcontract.Options, paths defaultPaths)
 			ownerStart = state.TargetOwnerStart
 		}
 		if ownerStart == 0 {
-			return installationmanager.ErrServiceRecovery
+			return userservice.ErrServiceRecovery
 		}
 		alive, err := linuxproc.GenerationRunning(options.DesktopOwnerPID, strconv.FormatUint(ownerStart, 10))
 		if err != nil || !alive {
-			return errors.Join(installationmanager.ErrServiceRecovery, err)
+			return errors.Join(userservice.ErrServiceRecovery, err)
 		}
 	} else if options.Mode == launchcontract.ModeHeadless &&
 		(state.Mode == string(launchcontract.ModeDesktop) ||
 			state.Mode == string(launchcontract.ModeSystemd) && state.TargetOwnerPID != 0) {
-		return installationmanager.ErrServiceRecovery
+		return userservice.ErrServiceRecovery
 	}
 	// On every generation during the handoff, including supervisor retries,
 	// the saved intent wins over the normal boot policy.

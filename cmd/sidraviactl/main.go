@@ -10,8 +10,8 @@ import (
 
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/cli"
+	"sidravia/internal/installation/shellintegration"
 	"sidravia/internal/installationgate"
-	"sidravia/internal/installationmanager"
 	"sidravia/internal/update/entry"
 )
 
@@ -23,7 +23,7 @@ var (
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "rpm-erase-user-registration" {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-		err := installationmanager.CleanupErasedRPM(ctx)
+		err := cleanupErasedRPM(ctx)
 		cancel()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "无法清理已卸载 RPM 的用户服务登记。")
@@ -65,14 +65,14 @@ func run(args []string, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) == 3 && args[0] == "linux-recover-autostart-stage" && args[1] == "--" {
-		if err := installationmanager.RecoverAutostartStaging(args[2]); err != nil {
+		if err := shellintegration.RecoverAutostartStaging(args[2]); err != nil {
 			fmt.Fprintln(stderr, "无法清理桌面自启暂存目录。")
 			return 1
 		}
 		return 0
 	}
 	if len(args) == 3 && (args[0] == "rpm-track-autostart" || args[0] == "rpm-untrack-autostart") && args[1] == "--" {
-		if err := installationmanager.TrackRPMAutostart(args[2], args[0] == "rpm-track-autostart"); err != nil {
+		if err := shellintegration.TrackRPMAutostart(args[2], args[0] == "rpm-track-autostart"); err != nil {
 			fmt.Fprintln(stderr, "无法登记 RPM 桌面自启目录。")
 			return 1
 		}

@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package userservice
 
 import (
 	"bytes"
@@ -11,10 +11,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sidravia/internal/installation/userservice/registration"
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"sidravia/internal/installation/internal/integrationfile"
+	"sidravia/internal/installation/userservice/registration"
 )
 
 func switchPath(unit string) string {
@@ -130,8 +132,8 @@ func saveServiceSwitchAt(unit string, state *ServiceSwitch) error {
 		}
 		data = encoded
 	}
-	if err := saveUnit(path, data); err != nil {
-		return err
+	if err := integrationfile.Save(path, data); err != nil {
+		return registrationFileError(err)
 	}
 	dir, err := os.Open(filepath.Dir(path))
 	if err != nil {

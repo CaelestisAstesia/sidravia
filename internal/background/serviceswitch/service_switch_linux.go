@@ -15,27 +15,28 @@ import (
 	"time"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/userservice"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 )
 
-func SwitchService(ctx context.Context, identity daemonctl.Identity, action string, owner int, interruptOneShot bool) (installationmanager.ServiceState, error) {
-	var empty installationmanager.ServiceState
+func SwitchService(ctx context.Context, identity daemonctl.Identity, action string, owner int, interruptOneShot bool) (userservice.ServiceState, error) {
+	var empty userservice.ServiceState
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil || !ns.IsProduction() {
-		return empty, errors.Join(installationmanager.ErrServiceUnavailable, err)
+		return empty, errors.Join(userservice.ErrServiceUnavailable, err)
 	}
 	layout, err := productlayout.ResolveNamespace(ns)
 	if err != nil {
 		return empty, err
 	}
-	var result installationmanager.ServiceState
-	err = installationmanager.WithServiceSwitch(ctx, func(lease *installationmanager.SwitchLease) error {
+	var result userservice.ServiceState
+	err = userservice.WithServiceSwitch(ctx, func(lease *userservice.SwitchLease) error {
 		var operationErr error
 		result, operationErr = switchService(ctx, lease, identity, layout, ns, action, owner, interruptOneShot)
 		return operationErr
@@ -43,23 +44,23 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 	return result, err
 }
 
-func switchService(ctx context.Context, lease *installationmanager.SwitchLease, identity daemonctl.Identity,
+func switchService(ctx context.Context, lease *userservice.SwitchLease, identity daemonctl.Identity,
 	layout productlayout.Layout, ns productlayout.Namespace, action string, owner int, interruptOneShot bool,
-) (installationmanager.ServiceState, error) {
-	var empty installationmanager.ServiceState
-	state, pending, err := installationmanager.PendingServiceSwitch()
+) (userservice.ServiceState, error) {
+	var empty userservice.ServiceState
+	state, pending, err := userservice.PendingServiceSwitch()
 	if err != nil {
-		if action == "discard-damaged" && errors.Is(err, installationmanager.ErrServiceJournalDamaged) {
+		if action == "discard-damaged" && errors.Is(err, userservice.ErrServiceJournalDamaged) {
 			return lease.Service(ctx, "discard-damaged", layout, nil)
 		}
-		return empty, errors.Join(installationmanager.ErrServiceJournal, err)
+		return empty, errors.Join(userservice.ErrServiceJournal, err)
 	}
 	if action == "discard-damaged" {
-		return empty, installationmanager.ErrServiceJournal
+		return empty, userservice.ErrServiceJournal
 	}
 	if pending && state.Mode == "replacement" {
 		if state.Layout.ExecutableDirectory != layout.ExecutableDirectory && state.TargetDirectory != layout.ExecutableDirectory {
-			return empty, installationmanager.ErrServiceRecovery
+			return empty, userservice.ErrServiceRecovery
 		}
 		switch action {
 		case "recover":
@@ -67,13 +68,13 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 		case "discard":
 			return discardReplacement(ctx, lease, state)
 		default:
-			return empty, installationmanager.ErrServiceRecovery
+			return empty, userservice.ErrServiceRecovery
 		}
 	}
 	if action == "discard" {
-		return empty, installationmanager.ErrServiceRecovery
+		return empty, userservice.ErrServiceRecovery
 	}
-	registered, found, err := installationmanager.RegisteredService()
+	registered, found, err := registration.Lookup()
 	if err != nil {
 		return empty, err
 	}
@@ -83,7 +84,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 			return empty, daemonctl.ErrModeConflict
 		}
 	}
-	service := func(ctx context.Context, action string) (installationmanager.ServiceState, error) {
+	service := func(ctx context.Context, action string) (userservice.ServiceState, error) {
 		return lease.Service(ctx, action, layout, func(ctx context.Context, layout productlayout.Layout) error {
 			return daemonctl.WaitForService(ctx, identity, layout)
 		})
@@ -148,7 +149,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 		}
 		return nil
 	}
-	launchTarget := func(ctx context.Context, systemd bool, owner int, state installationmanager.ServiceSwitch, restoring bool) error {
+	launchTarget := func(ctx context.Context, systemd bool, owner int, state userservice.ServiceSwitch, restoring bool) error {
 		if systemd {
 			action := "start"
 			if restoring {
@@ -201,7 +202,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 	}
 	takeover := action == "takeover"
 	restore := func(ctx context.Context) error {
-		_, current, err := installationmanager.RegisteredService()
+		_, current, err := registration.Lookup()
 		if err != nil {
 			return err
 		}
@@ -250,7 +251,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 		}
 		return launchTarget(ctx, originalWasSystemd, originalOwner, state, true)
 	}
-	result := func(err error) (installationmanager.ServiceState, error) {
+	result := func(err error) (userservice.ServiceState, error) {
 		statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 4*time.Second)
 		defer cancel()
 		actual, statusErr := service(statusCtx, "status")
@@ -259,7 +260,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 	if pending {
 		if action != "recover" || state.Layout.ExecutableDirectory != layout.ExecutableDirectory ||
 			state.Layout.ConfigurationsPath != layout.ConfigurationsPath || state.Layout.RuntimeInfoPath != layout.RuntimeInfoPath {
-			return before, installationmanager.ErrServiceRecovery
+			return before, userservice.ErrServiceRecovery
 		}
 		return result(restore(ctx))
 	}
@@ -318,7 +319,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 			_ = callServiceIPC(abort, peer, contract.MethodUpdateAbort, operation, nil)
 		}
 	}()
-	state = installationmanager.ServiceSwitch{
+	state = userservice.ServiceSwitch{
 		ID: id, Layout: layout, Mode: observed.Status.Mode, ConfigurationID: intent.Intent.ConfigurationID,
 		Enabled: before.Enabled, RuntimePID: observed.Info.PID, Expires: time.Now().Add(15 * time.Minute).UTC(),
 	}
@@ -386,7 +387,7 @@ func switchService(ctx context.Context, lease *installationmanager.SwitchLease, 
 		return launchTarget(ctx, takeover, owner, state, false)
 	}
 	if err := perform(); err != nil {
-		if _, pending, readErr := installationmanager.PendingServiceSwitch(); !pending || readErr != nil {
+		if _, pending, readErr := userservice.PendingServiceSwitch(); !pending || readErr != nil {
 			return result(errors.Join(err, readErr))
 		}
 		// Leave the durable record if undo is unsafe or fails. Explicit recover

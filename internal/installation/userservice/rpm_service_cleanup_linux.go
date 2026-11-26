@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package userservice
 
 import (
 	"context"
@@ -8,11 +8,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sidravia/internal/installation/userservice/registration"
 	"strconv"
 	"syscall"
 	"time"
 
+	"sidravia/internal/installation/internal/integrationfile"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/productlayout"
 )
 
@@ -68,38 +69,31 @@ func socketListening(ctx context.Context, path string) (bool, error) {
 	}
 }
 
-// cleanupErasedRPM is called as the owning user after RPM has finished an
-// erase. The registration, switch record, and desktop entries each require
-// their own proof of RPM ownership.
-func cleanupErasedRPM(ctx context.Context) (resultErr error) {
-	root := rpmAppDirectory
+// CleanupErasedRPM removes only a verified RPM registration and its related
+// service switch record. The prior layout lets the caller clean desktop state.
+func CleanupErasedRPM(ctx context.Context) (layout productlayout.Layout, resultErr error) {
+	root := productlayout.RPMExecutableDirectory
 	if _, err := os.Lstat(filepath.Join(root, "sidravia.rpm")); !errors.Is(err, os.ErrNotExist) {
-		return errors.Join(ErrServiceConflict, err)
+		return layout, errors.Join(ErrServiceConflict, err)
 	}
-	var desktopLayout productlayout.Layout
-	defer func() {
-		if _, err := os.Lstat(filepath.Join(root, "sidravia.rpm")); errors.Is(err, os.ErrNotExist) {
-			resultErr = errors.Join(resultErr, cleanupRPMAutostart(desktopLayout))
-		}
-	}()
 	path, err := registration.UnitPath()
 	if err != nil {
-		return err
+		return layout, err
 	}
 	core, err := openServiceLease(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return layout, nil
 	}
 	if err != nil {
-		return err
+		return layout, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, core.close()) }()
-	return core.run(ctx, func(path string) error {
-		layout, data, err := registration.Read(path)
+	err = core.run(ctx, func(path string) error {
+		observed, data, err := registration.Read(path)
 		if err != nil {
 			return err
 		}
-		desktopLayout = layout
+		layout = observed
 		if data != nil && layout.Mode == productlayout.ModeInstalled && layout.ExecutableDirectory == root {
 			if err := removeRPMRegistration(ctx, path, layout); err != nil {
 				return err
@@ -114,6 +108,7 @@ func cleanupErasedRPM(ctx context.Context) (resultErr error) {
 		}
 		return nil
 	})
+	return layout, err
 }
 
 func removeRPMRegistration(ctx context.Context, path string, layout productlayout.Layout) error {
@@ -132,7 +127,7 @@ func removeRPMRegistration(ctx context.Context, path string, layout productlayou
 	}
 
 	linkErr := removeRPMEnableLink(path)
-	unitErr := saveUnit(path, nil)
+	unitErr := registrationFileError(integrationfile.Save(path, nil))
 	if online {
 		_, err = control(ctx, "daemon-reload")
 	}

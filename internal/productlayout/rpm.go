@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 )
 
+// RPMExecutableDirectory is the fixed installation directory shared by Sidravia RPM variants.
+const RPMExecutableDirectory = "/usr/lib64/sidravia"
+
 // RPMManaged recognizes only an exact marker in an installed layout.
 func RPMManaged(layout Layout) bool {
 	return layout.Mode == ModeInstalled && rpmMarker(layout, "sidravia.rpm", "sidravia-rpm-v1\n")

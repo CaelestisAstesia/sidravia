@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package shellintegration
 
 import (
 	"encoding/base64"
@@ -13,18 +13,19 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	"sidravia/internal/installation/internal/integrationfile"
 	"sidravia/internal/productlayout"
 )
 
 const desktopEntryName = "io.github.CaelestisAstesia.Sidravia"
-const rpmAppDirectory = "/usr/lib64/sidravia"
 
 // Use the NSS home for the index so RPM can find custom XDG roots when their
 // user has logged out. The index contains only directory names.
 func lockRPMAutostart(create bool) (string, string, []string, func(), error) {
 	home, err := productlayout.AccountHome(os.Geteuid())
 	if err != nil || os.Geteuid() == 0 || !filepath.IsAbs(home) {
-		return "", "", nil, nil, errors.Join(ErrServiceUnavailable, err)
+		return "", "", nil, nil, errors.Join(errRPMDesktopUnavailable, err)
 	}
 	root := filepath.Join(home, ".config")
 	dir := filepath.Join(root, "Sidravia")
@@ -50,7 +51,7 @@ func lockRPMAutostart(create bool) (string, string, []string, func(), error) {
 		unlock()
 		return "", "", nil, nil, err
 	}
-	if err := clearRegistrationScratch(index + ".sidravia-tmp"); err != nil {
+	if err := integrationfile.ClearScratch(index + ".sidravia-tmp"); err != nil {
 		unlock()
 		return "", "", nil, nil, err
 	}
@@ -61,12 +62,12 @@ func lockRPMAutostart(create bool) (string, string, []string, func(), error) {
 	var roots []string
 	if err != nil || json.Unmarshal(data, &roots) != nil || len(roots) > 128 {
 		unlock()
-		return "", "", nil, nil, errors.Join(ErrServiceConflict, err)
+		return "", "", nil, nil, errors.Join(errRPMDesktopConflict, err)
 	}
 	for _, root := range roots {
 		if !validAutostartRoot(root) {
 			unlock()
-			return "", "", nil, nil, ErrServiceConflict
+			return "", "", nil, nil, errRPMDesktopConflict
 		}
 	}
 	return root, index, roots, unlock, nil
@@ -79,7 +80,7 @@ func validAutostartRoot(root string) bool {
 func plainDirectory(path string) error {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err == nil && resolved != path {
-		err = ErrServiceConflict
+		err = errRPMDesktopConflict
 	}
 	return err
 }
@@ -96,15 +97,15 @@ func readAutostartFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	if stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Mode&0022 != 0 || stat.Size > 65536 {
-		return nil, ErrServiceConflict
+		return nil, errRPMDesktopConflict
 	}
 	return io.ReadAll(io.LimitReader(f, 65537))
 }
 
-func trackRPMAutostart(root string, enable bool) error {
+func TrackRPMAutostart(root string, enable bool) error {
 	layout, err := productlayout.Resolve()
-	if err != nil || layout.ExecutableDirectory != rpmAppDirectory || !productlayout.RPMManaged(layout) || !validAutostartRoot(root) {
-		return errors.Join(ErrServiceUnavailable, err)
+	if err != nil || layout.ExecutableDirectory != productlayout.RPMExecutableDirectory || !productlayout.RPMManaged(layout) || !validAutostartRoot(root) {
+		return errors.Join(errRPMDesktopUnavailable, err)
 	}
 	defaultRoot, index, roots, unlock, err := lockRPMAutostart(enable)
 	if err != nil {
@@ -136,13 +137,13 @@ func trackRPMAutostart(root string, enable bool) error {
 		roots = slices.DeleteFunc(roots, func(item string) bool { return item == root })
 	}
 	if len(roots) == 0 {
-		return saveUnit(index, nil)
+		return integrationfile.Save(index, nil)
 	}
 	data, err := json.Marshal(roots)
 	if err != nil || len(roots) > 128 || len(data) > 65536 {
-		return errors.Join(ErrServiceConflict, err)
+		return errors.Join(errRPMDesktopConflict, err)
 	}
-	if err := saveUnit(index, data); err != nil {
+	if err := integrationfile.Save(index, data); err != nil {
 		return err
 	}
 	dir, err := os.Open(filepath.Dir(index))
@@ -193,7 +194,7 @@ func rpmAutostartFiles(root string) ([]string, error) {
 		}
 		path := filepath.Join(dir, entry.Name())
 		data, err := readAutostartFile(path)
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, ErrServiceConflict) || errors.Is(err, unix.ELOOP) {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, errRPMDesktopConflict) || errors.Is(err, unix.ELOOP) {
 			continue
 		}
 		if err != nil {
@@ -210,26 +211,26 @@ func rpmAutostartFiles(root string) ([]string, error) {
 func ownsRPMDesktopEntry(content, namespace string) bool {
 	for _, icon := range []string{"gui-runtime/data", "data"} {
 		header := "[Desktop Entry]\nType=Application\nName=Sidravia\nComment=Sidravia session autostart\nIcon=" +
-			rpmAppDirectory + "/" + icon + "/icons/sidravia.png\nTerminal=false\n"
+			productlayout.RPMExecutableDirectory + "/" + icon + "/icons/sidravia.png\nTerminal=false\n"
 		env := "\"SIDRAVIA_NAMESPACE=" + namespace + "\""
 		for _, mode := range []struct{ program, args string }{
 			{"sidravia_gui", ""}, {"sidravia_gui", " --start-hidden"},
 			{"sidraviactl", " daemon start --log-level info"},
 		} {
-			entry := "Exec=\"/usr/bin/env\" --chdir \"" + rpmAppDirectory + "\" " + env +
+			entry := "Exec=\"/usr/bin/env\" --chdir \"" + productlayout.RPMExecutableDirectory + "\" " + env +
 				" \"./" + mode.program + "\"" + mode.args + "\nX-Sidravia-Owner=linux-desktop-v2\n"
-			if content == header+entry || content == header+"TryExec="+rpmAppDirectory+"/"+mode.program+"\n"+entry {
+			if content == header+entry || content == header+"TryExec="+productlayout.RPMExecutableDirectory+"/"+mode.program+"\n"+entry {
 				return true
 			}
 		}
-		if content == header+"Exec=\"/usr/bin/env\" "+env+" \""+rpmAppDirectory+"/sidravia_gui\" --start-hidden\nX-Sidravia-Owner=linux-gui-v1\n" {
+		if content == header+"Exec=\"/usr/bin/env\" "+env+" \""+productlayout.RPMExecutableDirectory+"/sidravia_gui\" --start-hidden\nX-Sidravia-Owner=linux-gui-v1\n" {
 			return true
 		}
 	}
 	return false
 }
 
-func cleanupRPMAutostart(registered productlayout.Layout) error {
+func CleanupErasedRPM(registered productlayout.Layout) error {
 	root, index, roots, unlock, lockErr := lockRPMAutostart(false)
 	if lockErr != nil {
 		home, err := productlayout.AccountHome(os.Geteuid())
@@ -244,7 +245,7 @@ func cleanupRPMAutostart(registered productlayout.Layout) error {
 	}
 	recorded := slices.Clone(roots)
 	roots = append(roots, root)
-	if registered.Mode == productlayout.ModeInstalled && registered.ExecutableDirectory == rpmAppDirectory {
+	if registered.Mode == productlayout.ModeInstalled && registered.ExecutableDirectory == productlayout.RPMExecutableDirectory {
 		config := filepath.Dir(filepath.Dir(registered.ConfigurationsPath))
 		if validAutostartRoot(config) {
 			roots = append(roots, config)
@@ -271,7 +272,7 @@ func cleanupRPMAutostart(registered productlayout.Layout) error {
 		if len(remaining) > 0 {
 			data, _ = json.Marshal(remaining) // A slice of strings is always encodable.
 		}
-		resultErr = errors.Join(resultErr, saveUnit(index, data))
+		resultErr = errors.Join(resultErr, integrationfile.Save(index, data))
 	}
 	return resultErr
 }

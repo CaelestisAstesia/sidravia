@@ -1,4 +1,4 @@
-package installationmanager
+package userservice
 
 import (
 	"context"

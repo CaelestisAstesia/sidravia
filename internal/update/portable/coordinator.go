@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
@@ -71,7 +71,7 @@ func Execute(ctx context.Context, input Execution) (resultErr error) {
 	}
 	defer peer.close()
 	if ns.IsProduction() {
-		registered, found, err := installationmanager.RegisteredService()
+		registered, found, err := registration.Lookup()
 		if err != nil {
 			return err
 		}

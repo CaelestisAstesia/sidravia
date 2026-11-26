@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationmanager
+package shellintegration
 
 import (
 	"errors"
@@ -60,7 +60,7 @@ func TestInterruptedAutostartStageIsRemovedWithoutDeletingUnexpectedFiles(t *tes
 		t.Fatal(err)
 	}
 	// Inspect the complete directory before unlinking any known entry.
-	if err := removeAutostartStage(dir); !errors.Is(err, ErrServiceConflict) {
+	if err := removeAutostartStage(dir); !errors.Is(err, errRPMDesktopConflict) {
 		t.Fatalf("unexpected object: got %v", err)
 	}
 	for _, path := range []string{extra, staged} {
@@ -71,7 +71,7 @@ func TestInterruptedAutostartStageIsRemovedWithoutDeletingUnexpectedFiles(t *tes
 	if err := os.Remove(extra); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeAutostartStage(dir); !errors.Is(err, ErrServiceConflict) {
+	if err := removeAutostartStage(dir); !errors.Is(err, errRPMDesktopConflict) {
 		t.Fatalf("unmarked payload: got %v", err)
 	}
 	if _, err := os.Stat(staged); err != nil {

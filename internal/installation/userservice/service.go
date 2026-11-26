@@ -1,10 +1,10 @@
-package installationmanager
+package userservice
 
 import (
 	"context"
 	"errors"
-	"sidravia/internal/installation/userservice/registration"
 
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/productlayout"
 )
 
@@ -36,19 +36,3 @@ type ServiceState struct {
 func Service(ctx context.Context, action string, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (ServiceState, error) {
 	return userService(ctx, action, layout, ready)
 }
-
-// RegisteredService reads the owned registration without starting the manager.
-func RegisteredService() (productlayout.Layout, bool, error) {
-	return registration.Lookup()
-}
-
-// CleanupErasedRPM removes this user's obsolete RPM registration after erase.
-func CleanupErasedRPM(ctx context.Context) error {
-	return cleanupErasedRPM(ctx)
-}
-
-// TrackRPMAutostart indexes custom XDG roots for offline RPM erase cleanup.
-func TrackRPMAutostart(root string, enable bool) error { return trackRPMAutostart(root, enable) }
-
-// RecoverAutostartStaging removes a private staging directory left by the GUI.
-func RecoverAutostartStaging(path string) error { return recoverAutostartStaging(path) }

@@ -1,6 +1,6 @@
 //go:build !linux
 
-package installationmanager
+package userservice
 
 import (
 	"context"
