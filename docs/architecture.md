@@ -53,9 +53,9 @@ GUI 与 CTL 通过本机回环 WebSocket 调用后台。客户端不直接改写
 
 ## 源码入口
 
-1. [后台组合与生命周期](../cmd/sidraviad/runtime.go)。
-2. [应用编排](../internal/daemon/app)和 [IPC 契约](../internal/ipc/contract)。
-3. [认证会话](../internal/daemon/authentication/session)与[协议契约](../internal/connection/auth/protocol)。
+1. [后台组合与生命周期](../internal/daemon/runtime.go)。
+2. [应用编排](../internal/daemon/internal/application)和 [IPC 契约](../internal/ipc/contract)。
+3. [认证会话](../internal/daemon/internal/session)与[协议契约](../internal/connection/auth/protocol)。
 4. [命令行](../internal/cli)与 [Flutter 应用层](../gui/lib/application)。
 5. [Windows 维护工具](../internal/installation/shellintegration)与[独立更新器](../internal/update/command)。
 

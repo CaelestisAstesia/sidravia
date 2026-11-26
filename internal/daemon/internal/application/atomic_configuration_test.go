@@ -1,0 +1,664 @@
+package application
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"net/netip"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	d520description "sidravia/internal/connection/auth/d520"
+	d520 "sidravia/internal/connection/auth/d520/driver"
+	"sidravia/internal/connection/auth/protocol"
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
+	config "sidravia/internal/daemon/internal/application/internal/configstore"
+	"sidravia/internal/daemon/internal/session"
+	"sidravia/internal/daemon/internal/supervisor"
+	"sidravia/internal/document/securefile"
+)
+
+type editFactory struct {
+	appTestProtocolFactory
+	blocked     bool
+	credentials chan protocol.AuthenticationProtocolRunCreationInputs
+}
+
+func (f *editFactory) CreateAuthenticationProtocolRun(input protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	f.credentials <- input
+	return editRun{blocked: f.blocked}, nil
+}
+
+type editRun struct{ blocked bool }
+
+func (r editRun) Execute(ctx context.Context, o protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	if r.blocked {
+		return &protocol.AuthenticationProtocolRunFailure{Code: "credential_invalid", Description: "Invalid credentials.", HandlingRecommendation: protocol.BlockUntilExplicitRestartOrRelevantInputChange}
+	}
+	o.AuthenticationEstablished()
+	<-ctx.Done()
+	return nil
+}
+func TestApplicationAtomicEditRetiresSessionAndResolvesNewCredentials(t *testing.T) {
+	for _, state := range []session.State{session.Authenticated, session.Suspended, session.BlockedByError} {
+		t.Run(string(state), func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			defer setup.cleanup()
+			ctx := context.Background()
+			factory := &editFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}, blocked: state == session.BlockedByError, credentials: make(chan protocol.AuthenticationProtocolRunCreationInputs, 4)}
+			registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			setup.application.authenticationResolver.protocols = registry
+			if err = setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
+				t.Fatal(err)
+			}
+			a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := state
+			if state == session.Suspended {
+				expected = session.Authenticated
+			}
+			waitForApplicationSessionState(t, setup.application, a.SessionID, expected)
+			<-factory.credentials
+			if state == session.Suspended {
+				if _, err = setup.application.StopSession(ctx, a.SessionID); err != nil {
+					t.Fatal(err)
+				}
+				waitForApplicationSessionState(t, setup.application, a.SessionID, state)
+			}
+			username, password := "new-account", "new-password"
+			if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}, Password: &password}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = setup.application.GetSession(ctx, a.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
+				t.Fatal("old Session retained")
+			}
+			b, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+			if err != nil || b.SessionID == a.SessionID || b.Snapshot.AccountName != username {
+				t.Fatalf("new session = %#v %v", b, err)
+			}
+			select {
+			case input := <-factory.credentials:
+				if input.AuthenticationCredential.Username != username || input.AuthenticationCredential.Password != password {
+					t.Fatal("resolver reused old credentials")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("no new run")
+			}
+		})
+	}
+}
+func TestAtomicEditPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.store.mu.Lock()
+	before := make(map[string][]byte)
+	for k, v := range setup.store.data {
+		before[k] = append([]byte(nil), v...)
+	}
+	setup.store.fail = true
+	setup.store.mu.Unlock()
+	username, password := "new", "new-password"
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}, Password: &password}); err == nil {
+		t.Fatal("write failure succeeded")
+	}
+	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
+	if err != nil || got.Username != "user" || cred.Password != "secret" {
+		t.Fatal("partial edit")
+	}
+	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
+		t.Fatal("failed edit retired Session")
+	}
+	setup.store.mu.Lock()
+	defer setup.store.mu.Unlock()
+	for k, v := range before {
+		if !bytes.Equal(v, setup.store.data[k]) {
+			t.Fatal("disk changed")
+		}
+	}
+}
+func TestReconnectPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.store.mu.Lock()
+	before := make(map[string][]byte)
+	for k, v := range setup.store.data {
+		before[k] = append([]byte(nil), v...)
+	}
+	setup.store.fail = true
+	setup.store.mu.Unlock()
+	reconnect := true
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &reconnect}}); err == nil {
+		t.Fatal("write failure succeeded")
+	}
+	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
+	if err != nil || got.Username != "user" || cred.Password != "secret" || got.AutoReconnect {
+		t.Fatal("partial edit")
+	}
+	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
+		t.Fatal("failed edit retired Session")
+	}
+	setup.store.mu.Lock()
+	defer setup.store.mu.Unlock()
+	for k, v := range before {
+		if !bytes.Equal(v, setup.store.data[k]) {
+			t.Fatal("disk changed")
+		}
+	}
+}
+func TestNoSessionAndNoopMetadataEdits(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	username := "user"
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "label"
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{DisplayName: &name, Username: &username}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
+		t.Fatal("no-op/label edit retired Session")
+	}
+	if _, err = setup.application.SetConfigurationPassword(ctx, "configuration-1", "new-password", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = setup.application.GetSession(ctx, a.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
+		t.Fatal("password-only did not retire")
+	}
+}
+func TestCleanupFailureQuarantinesOldRuntime(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A closed supervisor exposes a deterministic cleanup failure after persistence.
+	if err = setup.supervisor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	username := "new"
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}})
+	if !errors.Is(err, ErrConfigurationSessionInvalidation) {
+		t.Fatalf("cleanup failure = %v", err)
+	}
+	if _, err = setup.application.EnsureSessionRunning(ctx, a.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+		t.Fatal("old ID can ensure")
+	}
+	if _, err = setup.application.RestartSession(ctx, a.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+		t.Fatal("old ID can restart")
+	}
+	if _, err = setup.application.StartConfigurationAuthentication(ctx, "configuration-1"); !errors.Is(err, ErrConfigurationSessionInvalidation) {
+		t.Fatal("old association can start")
+	}
+	result := configurationError(errors.Join(ErrConfigurationSessionInvalidation, errors.New("secret-cause")))
+	if result.Code != "configuration_session_invalidation_failed" || result.Message != "configuration committed; session cleanup required" {
+		t.Fatal("unsafe partial-commit boundary")
+	}
+}
+
+func TestRuntimeMetadataChangesRetireButAutoLoginAndReconnectDoNot(t *testing.T) {
+	for _, field := range []string{"profile", "autoLogin", "binding", "autoReconnect"} {
+		t.Run(field, func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			defer setup.cleanup()
+			ctx := context.Background()
+			profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), appTestProfile("profile-2")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			setup.application.profiles = profiles
+			setup.application.authenticationResolver.profiles = profiles
+			started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			update := config.Update{}
+			switch field {
+			case "binding":
+				policy := binding.Policy{Mode: binding.ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+				update.NetworkBindingPolicy = &policy
+			case "profile":
+				id := profilevalue.ID("profile-2")
+				update.InstitutionProfileID = &id
+			case "autoReconnect":
+				value, _ := setup.catalog.Get(ctx, "configuration-1")
+				flag := !value.AutoReconnect
+				update.AutoReconnect = &flag
+			case "autoLogin":
+				flag := true
+				update.AutoLogin = &flag
+			}
+			if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", update); err != nil {
+				t.Fatal(err)
+			}
+			_, err = setup.application.GetSession(ctx, started.SessionID)
+			if field == "autoLogin" || field == "autoReconnect" {
+				if err != nil {
+					t.Fatalf("%s preference retired runtime", field)
+				}
+				if field == "autoReconnect" {
+					snapshot, err := setup.application.RestartSession(ctx, started.SessionID)
+					if err != nil || snapshot.AuthenticationSessionID == started.SessionID {
+						t.Fatalf("manual restart did not apply reconnect policy: %#v, %v", snapshot, err)
+					}
+				}
+				return
+			}
+			if !errors.Is(err, supervisor.ErrSessionNotFound) {
+				t.Fatal("runtime metadata retained old Session")
+			}
+			next, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+			if err != nil || next.SessionID == started.SessionID {
+				t.Fatalf("next session: %v", err)
+			}
+		})
+	}
+}
+
+// The transport Run remains controlled; override validation is delegated to
+// the real selected protocol boundary without producing authentication traffic.
+type overrideEditFactory struct{ editFactory }
+
+func (*overrideEditFactory) ValidateProtocolContextOverride(raw profilevalue.ProtocolOverride) error {
+	return d520.NewFactory().ValidateProtocolContextOverride(raw)
+}
+
+func TestOverrideSaveRetiresOnlyAfterCommitAndExplicitConnectUsesNewBytes(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	factory := &overrideEditFactory{editFactory: editFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}, credentials: make(chan protocol.AuthenticationProtocolRunCreationInputs, 4)}}
+	registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	if err := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	old, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, old.SessionID, session.Authenticated)
+	<-factory.credentials
+	invalid := profilevalue.ProtocolOverride(`{"schemaVersion":2,"private-marker":"secret"}`)
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &invalid}}); err == nil {
+		t.Fatal("invalid override saved")
+	}
+	unchanged, err := setup.catalog.Get(ctx, "configuration-1")
+	if err != nil || string(unchanged.ProtocolContextOverride) != `{}` {
+		t.Fatal("invalid override partially changed durable data")
+	}
+	if _, err := setup.application.GetSession(ctx, old.SessionID); err != nil {
+		t.Fatal("invalid override retired existing Session")
+	}
+	select {
+	case <-factory.credentials:
+		t.Fatal("invalid override created Run")
+	default:
+	}
+
+	replacement := profilevalue.ProtocolOverride(`{"schemaVersion":1,"hostName":"new-reported-host"}`)
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetSession(ctx, old.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
+		t.Fatal("save retained immutable old Session")
+	}
+	if list, err := setup.application.ListSessions(ctx); err != nil || len(list) != 0 {
+		t.Fatal("save auto-connected")
+	}
+	select {
+	case <-factory.credentials:
+		t.Fatal("save created Run")
+	default:
+	}
+	persisted, err := setup.catalog.Get(ctx, "configuration-1")
+	if err != nil || !bytes.Equal(persisted.ProtocolContextOverride, replacement) {
+		t.Fatal("save not durable")
+	}
+	next, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil || next.SessionID == old.SessionID {
+		t.Fatalf("explicit new connection: %v", err)
+	}
+	waitForApplicationSessionState(t, setup.application, next.SessionID, session.Authenticated)
+	select {
+	case input := <-factory.credentials:
+		if !bytes.Equal(input.ProtocolContextOverride, replacement) {
+			t.Fatal("next Run used old override")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("next explicit Run absent")
+	}
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetSession(ctx, next.SessionID); err != nil {
+		t.Fatal("same runtime bytes retired Session")
+	}
+	var clear profilevalue.ProtocolOverride
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &clear}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetSession(ctx, next.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
+		t.Fatal("clear retained old runtime")
+	}
+	select {
+	case <-factory.credentials:
+		t.Fatal("clear auto-created Run")
+	default:
+	}
+	cleared, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, cleared.SessionID, session.Authenticated)
+	select {
+	case input := <-factory.credentials:
+		if len(input.ProtocolContextOverride) != 0 {
+			t.Fatal("clear not used by next Run")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("clear explicit Run absent")
+	}
+}
+
+func TestRealD520OverrideWriteValidationPreservesLegacyReadAndOldSession(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	old, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d520Profile := appTestProfile("d520-profile")
+	d520Profile.AuthenticationProtocolID = d520description.ProtocolID
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), d520Profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.profiles = profiles
+	setup.application.authenticationResolver.profiles = profiles
+	registry, err := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"}, d520.NewFactory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	value := appTestConfiguration("candidate")
+	value.InstitutionProfileID = "d520-profile"
+	setup.store.mu.Lock()
+	disk := make(map[string][]byte)
+	for k, v := range setup.store.data {
+		disk[k] = bytes.Clone(v)
+	}
+	setup.store.mu.Unlock()
+	for _, raw := range []string{`{"schemaVersion":2}`, `{"schemaVersion":1,"private-secret-marker":"private-value"}`, `{"schemaVersion":1,"reportedIPv4":"224.0.0.1"}`} {
+		value.ProtocolContextOverride = profilevalue.ProtocolOverride(raw)
+		_, err := setup.application.CreateConfiguration(ctx, value, "private-password", false)
+		var failure *ResolutionFailure
+		if !errors.As(err, &failure) || failure.Code() != InvalidConfiguration || failure.Unwrap() == nil {
+			t.Fatalf("selected D520 validation missing: %v", err)
+		}
+		public := configurationError(err)
+		if public.Code != "invalid_argument" || strings.Contains(public.Message, "private") {
+			t.Fatal("raw override cause leaked")
+		}
+		if _, err := setup.application.GetSession(ctx, old.SessionID); err != nil {
+			t.Fatal("invalid create retired existing Session")
+		}
+	}
+	setup.store.mu.Lock()
+	unchanged := reflect.DeepEqual(disk, setup.store.data)
+	setup.store.mu.Unlock()
+	if !unchanged {
+		t.Fatal("invalid selected override wrote store")
+	}
+	value.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"schemaVersion":1,"hostName":"reported"}`)
+	if _, err := setup.application.CreateConfiguration(ctx, value, "private-password", false); err != nil {
+		t.Fatal(err)
+	}
+	// Catalog remains protocol-opaque; legacy read-only paths stay readable.
+	opaque := profilevalue.ProtocolOverride(`{"private-old-key":true}`)
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &opaque}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setup.application.GetConfiguration(ctx, "configuration-1"); err != nil {
+		t.Fatal("legacy read-only enrichment newly validates override")
+	}
+	profileID := profilevalue.ID("d520-profile")
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{InstitutionProfileID: &profileID}}); err == nil {
+		t.Fatal("candidate Profile failed to validate retained override")
+	}
+	current, _ := setup.catalog.Get(ctx, "configuration-1")
+	if current.InstitutionProfileID != "profile-1" || !bytes.Equal(current.ProtocolContextOverride, opaque) {
+		t.Fatal("invalid candidate mutated committed record")
+	}
+	if _, err := setup.application.GetSession(ctx, old.SessionID); err != nil {
+		t.Fatal("invalid candidate retired old Session")
+	}
+}
+
+func TestOverrideWriteFailureAndCleanupFailureRetainExistingAtomicRules(t *testing.T) {
+	for _, cleanupFailure := range []bool{false, true} {
+		t.Run(map[bool]string{false: "store failure", true: "cleanup failure"}[cleanupFailure], func(t *testing.T) {
+			setup := newApplicationTestSetup(t)
+			defer setup.cleanup()
+			ctx := context.Background()
+			started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			replacement := profilevalue.ProtocolOverride(`{"schemaVersion":1,"hostName":"saved"}`)
+			if cleanupFailure {
+				_ = setup.supervisor.Close()
+			} else {
+				setup.store.mu.Lock()
+				setup.store.fail = true
+				setup.store.mu.Unlock()
+			}
+			_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}})
+			current, readErr := setup.catalog.Get(ctx, "configuration-1")
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if !cleanupFailure {
+				if err == nil || string(current.ProtocolContextOverride) != `{}` {
+					t.Fatal("failed store partially saved")
+				}
+				if _, err := setup.application.GetSession(ctx, started.SessionID); err != nil {
+					t.Fatal("failed store retired Session")
+				}
+				return
+			}
+			if !errors.Is(err, ErrConfigurationSessionInvalidation) || !bytes.Equal(current.ProtocolContextOverride, replacement) {
+				t.Fatal("cleanup failure lost durable replacement")
+			}
+			if _, err := setup.application.EnsureSessionRunning(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+				t.Fatal("quarantined runtime can ensure")
+			}
+			if _, err := setup.application.RestartSession(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+				t.Fatal("quarantined runtime can restart")
+			}
+		})
+	}
+}
+
+// This Run models a genuine in-progress owned cleanup: cancellation is observed
+// promptly, but completion remains controlled until the test releases it.
+type cleanupDeadlineFactory struct {
+	appTestProtocolFactory
+	canceled chan struct{}
+	release  <-chan struct{}
+}
+
+func (f *cleanupDeadlineFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
+	return cleanupDeadlineRun{canceled: f.canceled, release: f.release}, nil
+}
+
+type cleanupDeadlineRun struct {
+	canceled chan struct{}
+	release  <-chan struct{}
+}
+
+func (r cleanupDeadlineRun) Execute(ctx context.Context, observer protocol.AuthenticationProtocolRunObserver) *protocol.AuthenticationProtocolRunFailure {
+	observer.AuthenticationEstablished()
+	<-ctx.Done()
+	close(r.canceled)
+	<-r.release
+	return nil
+}
+func TestRealCleanupDeadlineIsQueryableOnFirstFullSessionView(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseRun := func() { releaseOnce.Do(func() { close(release) }) }
+	// Registered before any fatal assertion: unblock owned cleanup before Close.
+	defer func() { releaseRun(); setup.cleanup() }()
+	canceled := make(chan struct{})
+	factory := &cleanupDeadlineFactory{appTestProtocolFactory: appTestProtocolFactory{id: "drcom"}, canceled: canceled, release: release}
+	registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup.application.authenticationResolver.protocols = registry
+	ctx := context.Background()
+	if err := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	started, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForApplicationSessionState(t, setup.application, started.SessionID, session.Authenticated)
+	username := "durably-saved-new-user"
+	began := time.Now()
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}})
+	if !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) || time.Since(began) < 3900*time.Millisecond {
+		t.Fatalf("real four-second cleanup boundary missing: %v", err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("owned Run cancellation not observed")
+	}
+	value, err := setup.catalog.Get(ctx, "configuration-1")
+	if err != nil || value.Username != username {
+		t.Fatal("cleanup failure lost durable edit")
+	}
+	query, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	view, err := setup.application.ListSessionView(query)
+	if err != nil || len(view.Sessions) != 1 || view.Sessions[0].AuthenticationSessionID != started.SessionID || view.Sessions[0].State != session.Stopping || len(view.CleanupRequiredSessionIDs) != 1 || view.CleanupRequiredSessionIDs[0] != started.SessionID {
+		t.Fatalf("first complete readonly query lost stopping/quarantine: %#v %v", view, err)
+	}
+	if _, err := setup.application.EnsureSessionRunning(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+		t.Fatal("quarantined ID can ensure")
+	}
+	if _, err := setup.application.RestartSession(ctx, started.SessionID); !errors.Is(err, supervisor.ErrSessionStateConflict) {
+		t.Fatal("quarantined ID can restart")
+	}
+	releaseRun()
+	remove, cancelRemove := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelRemove()
+	if err := setup.application.RemoveSession(remove, started.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := setup.application.ListSessionView(ctx)
+	if err != nil || fresh.Sessions == nil || fresh.CleanupRequiredSessionIDs == nil || len(fresh.Sessions) != 0 || len(fresh.CleanupRequiredSessionIDs) != 0 {
+		t.Fatal("explicit Remove did not clear owner projections")
+	}
+}
+
+type unprotectedApplicationStore struct{ *controlledAppStore }
+
+func (*unprotectedApplicationStore) ProtectionStatus() securefile.ProtectionStatus {
+	return securefile.ProtectionUnprotected
+}
+func (s *unprotectedApplicationStore) ReplaceSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
+	if !allow {
+		return securefile.ErrInsecureStorageConfirmationRequired
+	}
+	return s.controlledAppStore.ReplaceSensitive(ctx, path, data, maximum, allow)
+}
+func TestRemoveWithoutCurrentConsentKeepsSession(t *testing.T) {
+	setup := newApplicationTestSetup(t)
+	defer setup.cleanup()
+	ctx := context.Background()
+	store := &unprotectedApplicationStore{setup.store}
+	path := filepath.Join(t.TempDir(), "unprotected.json")
+	catalog, e := config.OpenCatalog(ctx, store, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	setup.catalog = catalog
+	setup.application.catalog = catalog
+	setup.application.authenticationResolver.configurations = catalog
+	for _, id := range []connectionconfig.ID{"configuration-1", "configuration-b"} {
+		if _, e := setup.application.CreateConfiguration(ctx, appTestConfiguration(id), "test-password", true); e != nil {
+			t.Fatal(e)
+		}
+	}
+	started, e := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
+	if e != nil {
+		t.Fatal(e)
+	}
+	beforeSession, e := setup.application.GetSession(ctx, started.SessionID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	store.mu.Lock()
+	before := append([]byte(nil), store.data[path]...)
+	store.mu.Unlock()
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1"), false); !errors.Is(e, securefile.ErrInsecureStorageConfirmationRequired) {
+		t.Errorf("unexpected unconsented removal: %v", e)
+	}
+	afterSession, e := setup.application.GetSession(ctx, started.SessionID)
+	if e != nil || afterSession.AuthenticationSessionID != beforeSession.AuthenticationSessionID || afterSession.State != beforeSession.State {
+		t.Error("rejected deletion retired Session")
+	}
+	store.mu.Lock()
+	same := bytes.Equal(before, store.data[path])
+	store.mu.Unlock()
+	if !same {
+		t.Error("rejected deletion changed store")
+	}
+	if _, cred, e := catalog.Resolve(ctx, "configuration-1"); e != nil || cred.Password != "test-password" {
+		t.Error("rejected deletion changed credentials")
+	}
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1"), true); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := setup.application.GetSession(ctx, started.SessionID); !errors.Is(e, supervisor.ErrSessionNotFound) {
+		t.Fatal("consented removal did not retire Session")
+	}
+}
