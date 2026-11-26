@@ -1,6 +1,6 @@
 //go:build linux
 
-// Package linuxproc pins local update peers by pidfd. It never signals by
+// Package linuxproc pins same-user local processes by pidfd. It never signals by
 // numeric PID, chooses user intent, or owns product execution state.
 package linuxproc
 

@@ -156,7 +156,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 	// without requiring a writable registration directory.
 	switch action {
 	case "status", "linger-on", "linger-off":
-		return applyService(ctx, path, action, layout, ready, false)
+		return applyService(ctx, path, action, layout, ready, nil, false)
 	}
 	core, err := openServiceLease(path)
 	if errors.Is(err, os.ErrNotExist) && action == "unregister" {
@@ -167,7 +167,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 	}
 	defer func() { resultErr = errors.Join(resultErr, core.close()) }()
 	err = core.run(ctx, func(path string) error {
-		state, err = applyService(ctx, path, action, layout, ready, false)
+		state, err = applyService(ctx, path, action, layout, ready, nil, false)
 		return err
 	})
 	return state, err
@@ -184,7 +184,7 @@ func serviceTarget(layout productlayout.Layout, action string) (productlayout.La
 	return layout, nil
 }
 
-func applyService(ctx context.Context, path, action string, layout productlayout.Layout, ready serviceReadiness, switching bool) (state ServiceState, resultErr error) {
+func applyService(ctx context.Context, path, action string, layout productlayout.Layout, ready serviceReadiness, waitStopped func(context.Context) error, switching bool) (state ServiceState, resultErr error) {
 	if !switching && action != "status" {
 		if _, pending, err := loadServiceSwitch(switchPath(path)); err != nil {
 			return state, errors.Join(ErrServiceJournal, err)
@@ -201,7 +201,7 @@ func applyService(ctx context.Context, path, action string, layout productlayout
 		}
 		// Clearing a local record does not require an online manager or a
 		// usable registration. Report unavailable observation separately.
-		actual, err := applyService(ctx, path, "status", layout, nil, switching)
+		actual, err := applyService(ctx, path, "status", layout, nil, nil, switching)
 		if err != nil {
 			actual.Supported = false
 		}
@@ -257,7 +257,7 @@ func applyService(ctx context.Context, path, action string, layout productlayout
 				}
 				defer func() { err = errors.Join(err, release()) }()
 			}
-			return replaceRegistration(ctx, path, before, oldLayout, oldData, next, layout, ready)
+			return replaceRegistration(ctx, path, before, oldLayout, oldData, next, layout, ready, waitStopped)
 		}
 		if err := apply(); err != nil {
 			observe, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -309,7 +309,7 @@ func applyService(ctx context.Context, path, action string, layout productlayout
 	return actual, errors.Join(err, observeErr)
 }
 
-func replaceRegistration(ctx context.Context, path string, before ServiceState, oldLayout productlayout.Layout, oldData, next []byte, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (resultErr error) {
+func replaceRegistration(ctx context.Context, path string, before ServiceState, oldLayout productlayout.Layout, oldData, next []byte, layout productlayout.Layout, ready serviceReadiness, waitStopped func(context.Context) error) (resultErr error) {
 	apply := func(ctx context.Context, data []byte, enabled bool) error {
 		if err := integrationfile.Save(path, data); err != nil {
 			return registrationFileError(err)
@@ -331,6 +331,11 @@ func replaceRegistration(ctx context.Context, path string, before ServiceState, 
 	if before.Registered {
 		if err := stopService(ctx, before.Running); err != nil {
 			return err
+		}
+	}
+	if waitStopped != nil {
+		if err := waitStopped(ctx); err != nil {
+			return errors.Join(ErrServiceStop, err)
 		}
 	}
 	defer func() {

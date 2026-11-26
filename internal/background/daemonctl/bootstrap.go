@@ -61,7 +61,7 @@ func (identity Identity) validate() error {
 type daemonLaunch struct {
 	exited  <-chan error
 	pid     int
-	alive   func() bool
+	alive   func() (bool, error)
 	release func()
 }
 

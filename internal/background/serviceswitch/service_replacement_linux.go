@@ -55,6 +55,7 @@ func replaceRegistration(ctx context.Context, lease *userservice.SwitchLease, id
 		ID: hex.EncodeToString(id), Layout: old, Mode: "replacement", Enabled: before.Enabled,
 		TargetDirectory: layout.ExecutableDirectory, Expires: time.Now().Add(15 * time.Minute).UTC(),
 	}
+	var waitStopped func(context.Context) error
 	if before.Running {
 		info, err := daemonctl.ReadRuntimeInfo(old.RuntimeInfoPath)
 		if err != nil {
@@ -65,12 +66,21 @@ func replaceRegistration(ctx context.Context, lease *userservice.SwitchLease, id
 			return before, err
 		}
 		defer proc.Close()
+		waitStopped = func(ctx context.Context) error {
+			wait, cancel := context.WithTimeout(ctx, 17*time.Second)
+			defer cancel()
+			return proc.Wait(wait)
+		}
 		if proc.Executable != filepath.Join(old.ExecutableDirectory, "sidraviad") {
 			return before, daemonctl.ErrModeConflict
 		}
 		oldIdentity := daemonctl.Identity{ProductVersion: info.ProductVersion, BuildID: info.BuildID}
 		probe, err := daemonctl.ProbeRegisteredService(ctx, oldIdentity, old)
-		if err != nil || probe.State != daemonctl.ProbeReachable || probe.Info.PID != info.PID {
+		if err != nil || probe.State != daemonctl.ProbeReachable || probe.Info.PID != info.PID || probe.Info.Token != info.Token {
+			return before, errors.Join(daemonctl.ErrModeConflict, err)
+		}
+		alive, err := proc.Running()
+		if err != nil || !alive {
 			return before, errors.Join(daemonctl.ErrModeConflict, err)
 		}
 		state.RuntimePID, state.SourceVersion, state.SourceBuild = info.PID, info.ProductVersion, info.BuildID
@@ -84,7 +94,7 @@ func replaceRegistration(ctx context.Context, lease *userservice.SwitchLease, id
 	if err := lease.Save(ctx, state); err != nil {
 		return before, err
 	}
-	actual, err := lease.Service(ctx, "replace", layout, ready)
+	actual, err := lease.Replace(ctx, layout, waitStopped, ready)
 	if err != nil {
 		if actual.Directory != before.Directory || actual.Enabled != before.Enabled || actual.Running != before.Running {
 			return actual, errors.Join(userservice.ErrServiceRecovery, err)

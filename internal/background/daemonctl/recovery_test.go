@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"testing"
+
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/ipc/contract"
-	"testing"
 )
 
 func TestRecoveryNeverAdoptsAConcurrentGeneration(t *testing.T) {
-	for _, mode := range []string{"own", "foreign", "own-exited", "hot"} {
+	for _, mode := range []string{"own", "foreign", "own-exited", "observation-error", "hot"} {
 		t.Run(mode, func(t *testing.T) {
 			reads, launched, released := 0, 0, 0
+			observationErr := errors.New("process observation unavailable")
 			pid := 1
 			if mode == "foreign" || mode == "hot" {
 				pid = 2
@@ -34,12 +36,21 @@ func TestRecoveryNeverAdoptsAConcurrentGeneration(t *testing.T) {
 				if !options.SkipAutoLogin {
 					t.Fatal("default auto-login not suppressed")
 				}
-				return daemonLaunch{pid: 1, alive: func() bool { return mode != "own-exited" }, release: func() { released++ }}, nil
+				return daemonLaunch{pid: 1, alive: func() (bool, error) {
+					if mode == "observation-error" {
+						return false, observationErr
+					}
+					return mode != "own-exited", nil
+				}, release: func() { released++ }}, nil
 			}
 			info, err := startHeadlessForRecovery(testIdentity(t), "debug", deps)
 			if mode == "own" {
 				if err != nil || info.PID != 1 {
 					t.Fatalf("%+v %v", info, err)
+				}
+			} else if mode == "observation-error" {
+				if !errors.Is(err, observationErr) || errors.Is(err, ErrModeConflict) || info.PID != 0 {
+					t.Fatalf("observation error was not preserved: %+v %v", info, err)
 				}
 			} else if !errors.Is(err, ErrModeConflict) {
 				t.Fatalf("adopted %s: %+v %v", mode, info, err)
