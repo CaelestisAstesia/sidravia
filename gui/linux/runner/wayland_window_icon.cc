@@ -4,6 +4,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <cstring>
+#include <dlfcn.h>
 #include <cstdint>
 #include <string>
 #include "xdg-shell-client-protocol.h"
@@ -24,6 +25,15 @@ struct WaylandWindowIcon {
   bool registry_ready = false, manager_ready = false;
   const char* status = "pending";
 };
+
+// Some GTK 3 distributions expose the toplevel handle for optional protocols.
+// GTK's normal window icon and desktop identity stay available without it.
+using GetToplevel = xdg_toplevel* (*)(GdkWindow*);
+static GetToplevel get_toplevel() {
+  static const auto function = reinterpret_cast<GetToplevel>(
+      dlsym(RTLD_DEFAULT, "gdk_wayland_window_get_xdg_toplevel"));
+  return function;
+}
 
 static bool create_pixels(WaylandWindowIcon* s) {
   g_autoptr(GdkPixbuf) image = gdk_pixbuf_new_from_file(s->path.c_str(), nullptr);
@@ -63,7 +73,7 @@ static bool create_pixels(WaylandWindowIcon* s) {
 static void apply_icon(WaylandWindowIcon* s) {
   if (!s->surface || !s->registry_ready || !s->manager_ready || !s->manager || !s->shm ||
       std::strcmp(s->status, "failed") == 0) return;
-  auto* toplevel = gdk_wayland_window_get_xdg_toplevel(s->surface);
+  auto* toplevel = get_toplevel()(s->surface);
   if (!toplevel) return;
   if (!s->icon) {
     if (!create_pixels(s)) { s->status = "failed"; return; }
@@ -127,6 +137,11 @@ static void clear_protocol(WaylandWindowIcon* s) {
 static void realize_icon(WaylandWindowIcon* s) {
   auto* surface = gtk_widget_get_window(GTK_WIDGET(s->window));
   if (!surface || !GDK_IS_WAYLAND_WINDOW(surface)) { s->status = "not-wayland"; return; }
+  if (!get_toplevel() ||
+      !g_signal_lookup("xdg-toplevel-realized", G_OBJECT_TYPE(surface))) {
+    s->status = "unsupported";
+    return;
+  }
   s->status = "pending";
   s->surface = GDK_WINDOW(g_object_ref(surface));
   g_signal_connect(surface, "xdg-toplevel-realized", G_CALLBACK(+[](GdkWindow*, gpointer data) {
