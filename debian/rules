@@ -9,7 +9,7 @@ stage = debian/$(package)
 # The native producer assembles the pinned Flutter bundle and verified Go
 # payload before dpkg-buildpackage. Keep the reviewed payload bytes intact.
 override_dh_auto_configure override_dh_auto_build override_dh_auto_test:
-override_dh_dwz override_dh_strip:
+override_dh_dwz override_dh_strip override_dh_strip_nondeterminism:
 
 override_dh_auto_install:
 	test "$(words $(package))" = 1

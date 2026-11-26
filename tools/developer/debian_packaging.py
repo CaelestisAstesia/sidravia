@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 from datetime import datetime, timezone
 from email.utils import format_datetime
+import gzip
 import hashlib
 import json
 import os
@@ -162,22 +163,36 @@ def deb_tar(package, option):
                 yield path, member, data
 
 
-def verify(package, receipt, scripts):
+def verify(package, receipt, scripts, changelog):
     for field, expected in (('Package', receipt['name']), ('Version', receipt['debianVersion']),
                             ('Architecture', receipt['architecture']), ('Conflicts', receipt['conflicts'])):
         if deb_field(package, field) != expected:
             raise ValueError(f'DEB {field} disagrees with the verified stage')
     payload = {}
+    documentation = {
+        'copyright': receipt['files'][(APP / 'LICENSE').as_posix()]['sha256'],
+        'changelog.Debian.gz': hashlib.sha256(changelog.encode()).hexdigest(),
+    }
     for path, member, data in deb_tar(package, '--fsys-tarfile'):
         if path in payload:
             raise ValueError('duplicate Debian payload member')
-        if path.startswith('usr/share/doc/' + receipt['name'] + '/') and path.split('/')[-1] in (
-                'changelog.gz', 'copyright'):
+        doc = path.removeprefix(f"usr/share/doc/{receipt['name']}/")
+        if doc in documentation and doc != path:
+            expected = documentation.pop(doc)
+            if member.mode != 0o644 or data is None:
+                raise ValueError('invalid Debian documentation permissions or type')
+            content = gzip.decompress(data) if doc.endswith('.gz') else data
+            if hashlib.sha256(content).hexdigest() != expected:
+                raise ValueError('Debian documentation differs from the packaging source')
             continue
         payload[path] = {'mode': member.mode, **({'link': member.linkname} if member.issym()
                                                  else {'sha256': hashlib.sha256(data).hexdigest()})}
+    if documentation:
+        raise ValueError('DEB documentation is missing: ' + ', '.join(documentation))
     if payload != receipt['files']:
-        raise ValueError('DEB payload paths, permissions or bytes differ from the verified stage')
+        paths = sorted(name for name in payload.keys() | receipt['files'].keys()
+                       if payload.get(name) != receipt['files'].get(name))
+        raise ValueError('DEB payload paths, permissions or bytes differ for: ' + ', '.join(paths[:10]))
     actual_scripts = {path: data for path, member, data in deb_tar(package, '--ctrl-tarfile')
                       if path in SCRIPTS and member.mode == 0o755}
     if actual_scripts != {name: contents.encode() for name, contents in scripts.items()}:
@@ -268,7 +283,7 @@ def build(root, archive, output, revision, env, source, current_source, *, core=
                    'baseline': BASELINE, 'source': source, 'source_unchanged': True,
                    'portableSHA256': portable_hash, 'sha256': digest(package), 'files': files,
                    'unsigned': True}
-        receipt['depends'] = verify(package, receipt, scripts)
+        receipt['depends'] = verify(package, receipt, scripts, changelog)
 
         def check_source():
             if current_source() != source:

@@ -22,7 +22,7 @@ Package: sidravia-core
 Architecture: amd64 arm64
 Build-Profiles: <!pkg.sidravia.gui-only>
 Pre-Depends: python3 (>= 3.11)
-Depends: ${shlibs:Depends}, ${misc:Depends}, ca-certificates
+Depends: ${misc:Depends}, ca-certificates
 Conflicts: sidravia
 Description: Campus network authentication command line client and daemon
  Command line tools, per-user daemon, and read-only institution profiles.
