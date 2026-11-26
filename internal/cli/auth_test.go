@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sidravia/internal/cli/internal/clitest"
+	"sidravia/internal/cli/internal/terminal"
 	"strings"
 	"testing"
 	"time"
@@ -14,20 +16,12 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-type fakeDaemonClient struct {
-	callCount   int
-	closeCount  int
-	call        func(string, json.RawMessage) (contract.Response, error)
-	callContext func(context.Context)
-	closeErr    error
-}
-
 func TestSessionStartClearsOwnedWireBytesOnEveryExit(t *testing.T) {
 	cause := errors.New("fictional transport failure")
 	for _, outcome := range []string{"success", "transport", "typed error", "decode error"} {
 		t.Run(outcome, func(t *testing.T) {
 			var retained json.RawMessage
-			connection := &fakeDaemonClient{call: func(method string, buffer json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(method string, buffer json.RawMessage) (contract.Response, error) {
 				retained = buffer
 				value, err := contract.DecodeSessionStartOneShotPayload(buffer)
 				if method != contract.MethodSessionStartOneShot || err != nil || value.Password != "fictional" {
@@ -41,7 +35,7 @@ func TestSessionStartClearsOwnedWireBytesOnEveryExit(t *testing.T) {
 				case "decode error":
 					return contract.NewSuccessResponse("1", json.RawMessage(`invalid`)), nil
 				default:
-					return successSessionStartResponse(t, "created", minimalSessionResult("authenticated")), nil
+					return clitest.SuccessSessionStartResponse(t, "created", clitest.MinimalSessionResult("authenticated")), nil
 				}
 			}}
 			deps := hotAuthDependencies(t, connection)
@@ -58,11 +52,11 @@ func TestSessionStartClearsOwnedWireBytesOnEveryExit(t *testing.T) {
 }
 
 func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodSessionEnsureRunning || string(payload) != `{"sessionId":"session-1"}` {
 			t.Fatalf("call = %s %s", method, payload)
 		}
-		return successSessionStartResponse(t, "already_running", minimalSessionResult("authenticated")), nil
+		return clitest.SuccessSessionStartResponse(t, "already_running", clitest.MinimalSessionResult("authenticated")), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
 	deps.readStdinPassword = func(io.Reader) (string, error) { t.Fatal("stdin password read"); return "", nil }
@@ -74,11 +68,11 @@ func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 
 func TestRunAuthStartRetainedRejectsRetiredBareSessionResult(t *testing.T) {
 	var output bytes.Buffer
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodSessionEnsureRunning {
 			t.Fatalf("method = %q", method)
 		}
-		return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+		return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult("authenticated")), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
 	deps.stdout = &output
@@ -92,8 +86,8 @@ func TestRunAuthStartRetainedRejectsRetiredBareSessionResult(t *testing.T) {
 
 func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordRead(t *testing.T) {
 	var output bytes.Buffer
-	connection := &fakeDaemonClient{
-		callContext: func(ctx context.Context) {
+	connection := &clitest.FakeDaemonClient{
+		CallContext: func(ctx context.Context) {
 			deadline, ok := ctx.Deadline()
 			if !ok {
 				t.Fatal("configuration start has no deadline")
@@ -103,15 +97,15 @@ func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordR
 				t.Fatalf("configuration start deadline = %v", remaining)
 			}
 		},
-		call: func(method string, payload json.RawMessage) (contract.Response, error) {
+		CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 			if method != contract.MethodSessionStartConfiguration ||
 				string(payload) != `{"configurationId":"campus"}` {
 				t.Fatalf("call = %s %s", method, payload)
 			}
-			result := minimalSessionResult("authenticated")
+			result := clitest.MinimalSessionResult("authenticated")
 			result.AuthenticationSessionID = "configuration-session"
 			result.InstitutionDisplayName = "Campus"
-			return successSessionStartResponse(t, "created", result), nil
+			return clitest.SuccessSessionStartResponse(t, "created", result), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
@@ -134,18 +128,6 @@ func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordR
 	}
 }
 
-func (client *fakeDaemonClient) Call(
-	ctx context.Context,
-	method string,
-	payload json.RawMessage,
-) (contract.Response, error) {
-	client.callCount++
-	if client.callContext != nil {
-		client.callContext(ctx)
-	}
-	return client.call(method, payload)
-}
-
 func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -156,10 +138,10 @@ func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
 		{"ensure", contract.MethodSessionEnsureRunning, func(id string, deps authDependencies) error {
 			return runAuthStart(authStartOptions{sessionID: id}, deps)
 		}, func(t *testing.T) contract.Response {
-			return successSessionStartResponse(t, "already_running", minimalSessionResult("authenticated"))
+			return clitest.SuccessSessionStartResponse(t, "already_running", clitest.MinimalSessionResult("authenticated"))
 		}},
 		{"restart", contract.MethodSessionRestart, runAuthRestart, func(t *testing.T) contract.Response {
-			return successSessionResponse(t, minimalSessionResult("authenticating"))
+			return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult("authenticating"))
 		}},
 		{"remove", contract.MethodSessionRemove, runAuthRemove, func(t *testing.T) contract.Response {
 			return contract.NewSuccessResponse("1", json.RawMessage(`{"sessionId":"session-1","status":"removed"}`))
@@ -167,13 +149,13 @@ func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 				if method != test.method || string(payload) != `{"sessionId":"session-1"}` {
 					t.Fatalf("call=%s %s", method, payload)
 				}
 				return test.result(t), nil
 			}}
-			connection.callContext = func(ctx context.Context) {
+			connection.CallContext = func(ctx context.Context) {
 				deadline, ok := ctx.Deadline()
 				if !ok {
 					t.Fatal("operation context has no deadline")
@@ -201,7 +183,7 @@ func TestRunAuthRemoveRejectsInvalidReceipts(t *testing.T) {
 		`{"sessionId":"session-1","status":"removed","extra":true}`,
 		`{"sessionId":"session-1","status":"removed"}{}`,
 	} {
-		connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+		connection := &clitest.FakeDaemonClient{CallFunc: func(method string, _ json.RawMessage) (contract.Response, error) {
 			if method != contract.MethodSessionRemove {
 				t.Fatalf("unexpected method %s", method)
 			}
@@ -218,7 +200,7 @@ func TestRunAuthRemoveRejectsInvalidReceipts(t *testing.T) {
 
 func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 	transportCause := errors.New("transport-cause")
-	connection := &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 		return contract.Response{}, transportCause
 	}}
 	if err := runAuthRemove("session-1", hotAuthDependencies(t, connection)); !errors.Is(err, transportCause) {
@@ -226,18 +208,18 @@ func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 	}
 
 	writeCause := errors.New("write-cause")
-	connection = &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+	connection = &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 		return contract.NewSuccessResponse("1", json.RawMessage(`{"sessionId":"session-1","status":"removed"}`)), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
-	deps.stdout = zeroWriter{err: writeCause}
+	deps.stdout = clitest.ZeroWriter{Err: writeCause}
 	if err := runAuthRemove("session-1", deps); !errors.Is(err, writeCause) {
 		t.Fatalf("write cause not preserved: %v", err)
 	}
 
 	const publicMarker = "daemon-public-marker"
 	const wrappedMarker = "daemon-wrapped-marker"
-	connection = &fakeDaemonClient{call: func(string, json.RawMessage) (contract.Response, error) {
+	connection = &clitest.FakeDaemonClient{CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 		return contract.NewErrorResponse("1", contract.ErrorCodeSessionOperationFailed, publicMarker), errors.New(wrappedMarker)
 	}}
 	var output bytes.Buffer
@@ -251,42 +233,6 @@ func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 		strings.Contains(output.String(), publicMarker) || strings.Contains(output.String(), wrappedMarker) {
 		t.Fatalf("daemon failure leaked markers: err=%q output=%q", err, output.String())
 	}
-}
-
-func (client *fakeDaemonClient) Close() error {
-	client.closeCount++
-	return client.closeErr
-}
-
-func minimalSessionResult(state string) contract.SessionResult {
-	return contract.SessionResult{
-		ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"},
-		Revision:       1, Intent: "maintain_authentication", InstitutionDisplayName: "Profile",
-		AuthenticationSessionID:  "session-1",
-		InstitutionProfileID:     "profile-1",
-		AuthenticationProtocolID: "protocol-1",
-		AccountName:              "account-name",
-		State:                    state,
-		UpdatedAt:                "2026-07-26T10:11:12.123456789+08:00",
-	}
-}
-
-func successSessionResponse(t *testing.T, result contract.SessionResult) contract.Response {
-	t.Helper()
-	payload, err := contract.MarshalSessionResult(result)
-	if err != nil {
-		t.Fatalf("MarshalSessionResult = %v", err)
-	}
-	return contract.NewSuccessResponse("1", payload)
-}
-
-func successSessionStartResponse(t *testing.T, outcome string, result contract.SessionResult) contract.Response {
-	t.Helper()
-	payload, err := contract.MarshalSessionStartResult(contract.SessionStartResult{Outcome: outcome, Session: result})
-	if err != nil {
-		t.Fatalf("MarshalSessionStartResult = %v", err)
-	}
-	return contract.NewSuccessResponse("1", payload)
 }
 
 func hotAuthDependencies(t *testing.T, connection daemonconn.Client) authDependencies {
@@ -313,12 +259,12 @@ func hotAuthDependencies(t *testing.T, connection daemonconn.Client) authDepende
 }
 
 func TestAuthDiscoveryReturnsHotClientAndClosesIt(t *testing.T) {
-	connection := &fakeDaemonClient{
-		call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{
+		CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 			if method != contract.MethodSessionGet {
 				t.Errorf("method = %q, want session.get", method)
 			}
-			return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+			return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult("authenticated")), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
@@ -334,17 +280,17 @@ func TestAuthDiscoveryReturnsHotClientAndClosesIt(t *testing.T) {
 	if acquires != 1 {
 		t.Errorf("acquire calls = %d, want 1", acquires)
 	}
-	if connection.callCount != 1 {
-		t.Errorf("Session calls = %d, want 1", connection.callCount)
+	if connection.CallCount != 1 {
+		t.Errorf("Session calls = %d, want 1", connection.CallCount)
 	}
-	if connection.closeCount != 1 {
-		t.Errorf("Close calls = %d, want 1", connection.closeCount)
+	if connection.CloseCount != 1 {
+		t.Errorf("Close calls = %d, want 1", connection.CloseCount)
 	}
 }
 
 func TestAuthBootstrapFailureDoesNotDispatchSession(t *testing.T) {
-	freshClient := &fakeDaemonClient{
-		call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	freshClient := &clitest.FakeDaemonClient{
+		CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 			if method != contract.MethodSessionStop {
 				t.Errorf("method = %q, want session.stop", method)
 			}
@@ -355,7 +301,7 @@ func TestAuthBootstrapFailureDoesNotDispatchSession(t *testing.T) {
 			if decoded.SessionID != "session-1" {
 				t.Error("fresh client received different SessionID")
 			}
-			return successSessionResponse(t, minimalSessionResult("stopping")), nil
+			return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult("stopping")), nil
 		},
 	}
 
@@ -372,8 +318,8 @@ func TestAuthBootstrapFailureDoesNotDispatchSession(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "无法连接 sidraviad") || errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v", err)
 	}
-	if freshClient.callCount != 0 {
-		t.Fatalf("session call count=%d", freshClient.callCount)
+	if freshClient.CallCount != 0 {
+		t.Fatalf("session call count=%d", freshClient.CallCount)
 	}
 }
 
@@ -382,11 +328,11 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 	password := "password-secret-marker"
 	var method string
 	var rawPayload json.RawMessage
-	connection := &fakeDaemonClient{
-		call: func(gotMethod string, gotPayload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{
+		CallFunc: func(gotMethod string, gotPayload json.RawMessage) (contract.Response, error) {
 			method = gotMethod
 			rawPayload = append(json.RawMessage(nil), gotPayload...)
-			return successSessionStartResponse(t, "created", minimalSessionResult("authenticating")), nil
+			return clitest.SuccessSessionStartResponse(t, "created", clitest.MinimalSessionResult("authenticating")), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
@@ -413,11 +359,11 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 	if method != contract.MethodSessionStartOneShot {
 		t.Errorf("method = %q, want session.startOneShot", method)
 	}
-	if connection.callCount != 1 {
-		t.Errorf("Call count = %d, want 1", connection.callCount)
+	if connection.CallCount != 1 {
+		t.Errorf("Call count = %d, want 1", connection.CallCount)
 	}
-	if connection.closeCount != 1 {
-		t.Errorf("Close count = %d, want 1", connection.closeCount)
+	if connection.CloseCount != 1 {
+		t.Errorf("Close count = %d, want 1", connection.CloseCount)
 	}
 	if interactiveReads != 1 || stdinReads != 0 {
 		t.Errorf("password reader calls = interactive %d, stdin %d; want 1, 0", interactiveReads, stdinReads)
@@ -435,7 +381,7 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 	if decoded.Username != username || decoded.Password != password {
 		t.Error("start payload credential fields differ from accepted input")
 	}
-	for _, visible := range []string{stdout.String(), stderr.String(), errorString(err)} {
+	for _, visible := range []string{stdout.String(), stderr.String(), clitest.ErrorString(err)} {
 		if strings.Contains(visible, username) || strings.Contains(visible, password) {
 			t.Error("interactive start exposed a credential marker")
 		}
@@ -446,13 +392,13 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 	username := "stdin-username-marker"
 	password := "stdin-password-marker"
 	var rawPayload json.RawMessage
-	connection := &fakeDaemonClient{
-		call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{
+		CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 			if method != contract.MethodSessionStartOneShot {
 				t.Errorf("method = %q, want session.startOneShot", method)
 			}
 			rawPayload = append(json.RawMessage(nil), payload...)
-			return successSessionStartResponse(t, "created", minimalSessionResult("waiting_for_network")), nil
+			return clitest.SuccessSessionStartResponse(t, "created", clitest.MinimalSessionResult("waiting_for_network")), nil
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
@@ -477,8 +423,8 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runAuthStart = %v, want nil", err)
 	}
-	if connection.callCount != 1 {
-		t.Errorf("Call count = %d, want 1", connection.callCount)
+	if connection.CallCount != 1 {
+		t.Errorf("Call count = %d, want 1", connection.CallCount)
 	}
 	if stdinReads != 1 || interactiveReads != 0 {
 		t.Errorf("password reader calls = stdin %d, interactive %d; want 1, 0", stdinReads, interactiveReads)
@@ -495,7 +441,7 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 		decoded.NetworkBindingPolicy.Mode != automaticNetworkBindingPolicy {
 		t.Error("stdin start payload differs from accepted input")
 	}
-	for _, visible := range []string{stdout.String(), stderr.String(), errorString(err)} {
+	for _, visible := range []string{stdout.String(), stderr.String(), clitest.ErrorString(err)} {
 		if strings.Contains(visible, username) || strings.Contains(visible, password) {
 			t.Error("stdin start exposed a credential marker")
 		}
@@ -535,13 +481,13 @@ func TestAuthStatusAndStopTypedRequestsWithoutPasswordRead(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var rawPayload json.RawMessage
-			connection := &fakeDaemonClient{
-				call: func(method string, payload json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{
+				CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 					if method != test.method {
 						t.Errorf("method = %q, want %q", method, test.method)
 					}
 					rawPayload = append(json.RawMessage(nil), payload...)
-					return successSessionResponse(t, minimalSessionResult(test.resultState)), nil
+					return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult(test.resultState)), nil
 				},
 			}
 			deps := hotAuthDependencies(t, connection)
@@ -565,11 +511,11 @@ func TestAuthStatusAndStopTypedRequestsWithoutPasswordRead(t *testing.T) {
 			if sessionID != "session-request-id" {
 				t.Error("typed payload contains different SessionID")
 			}
-			if connection.callCount != 1 {
-				t.Errorf("Call count = %d, want 1", connection.callCount)
+			if connection.CallCount != 1 {
+				t.Errorf("Call count = %d, want 1", connection.CallCount)
 			}
-			if connection.closeCount != 1 {
-				t.Errorf("Close count = %d, want 1", connection.closeCount)
+			if connection.CloseCount != 1 {
+				t.Errorf("Close count = %d, want 1", connection.CloseCount)
 			}
 			if passwordReads != 0 {
 				t.Errorf("password reads = %d, want 0", passwordReads)
@@ -581,7 +527,7 @@ func TestAuthStatusAndStopTypedRequestsWithoutPasswordRead(t *testing.T) {
 func TestWriteSessionResultCompleteOutput(t *testing.T) {
 	authenticatedAt := "2026-07-26T10:11:12.123456789+08:00"
 	retryAt := "2026-07-26T10:11:17.123456789+08:00"
-	result := minimalSessionResult("waiting_before_retry")
+	result := clitest.MinimalSessionResult("waiting_before_retry")
 	result.InstitutionDisplayName = "Example University"
 	result.StateReason = &contract.SessionStateReason{
 		Code:        "network_unavailable",
@@ -601,8 +547,8 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := writeSessionResult(&output, result); err != nil {
-		t.Fatalf("writeSessionResult = %v, want nil", err)
+	if err := terminal.WriteSessionResult(&output, result); err != nil {
+		t.Fatalf("terminal.WriteSessionResult = %v, want nil", err)
 	}
 	want := "" +
 		"会话：session-1\n" +
@@ -624,8 +570,8 @@ func TestWriteSessionResultCompleteOutput(t *testing.T) {
 
 func TestWriteSessionResultMinimalOutput(t *testing.T) {
 	var output bytes.Buffer
-	if err := writeSessionResult(&output, minimalSessionResult("authenticated")); err != nil {
-		t.Fatalf("writeSessionResult = %v, want nil", err)
+	if err := terminal.WriteSessionResult(&output, clitest.MinimalSessionResult("authenticated")); err != nil {
+		t.Fatalf("terminal.WriteSessionResult = %v, want nil", err)
 	}
 	want := "" +
 		"会话：session-1\n" +
@@ -660,8 +606,8 @@ func TestSessionResponseFailuresProduceNoSuccessBlock(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			connection := &fakeDaemonClient{
-				call: func(string, json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{
+				CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 					return test.response, nil
 				},
 			}
@@ -676,8 +622,8 @@ func TestSessionResponseFailuresProduceNoSuccessBlock(t *testing.T) {
 			if output.Len() != 0 {
 				t.Error("failed response produced a success block")
 			}
-			if connection.closeCount != 1 {
-				t.Errorf("Close count = %d, want 1", connection.closeCount)
+			if connection.CloseCount != 1 {
+				t.Errorf("Close count = %d, want 1", connection.CloseCount)
 			}
 		})
 	}
@@ -697,11 +643,11 @@ func TestMalformedRequiredSessionFieldsProduceNoOutput(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := minimalSessionResult("authenticated")
+			result := clitest.MinimalSessionResult("authenticated")
 			test.mutate(&result)
 			var output bytes.Buffer
-			if err := writeSessionResult(&output, result); err == nil {
-				t.Fatal("writeSessionResult = nil, want validation error")
+			if err := terminal.WriteSessionResult(&output, result); err == nil {
+				t.Fatal("terminal.WriteSessionResult = nil, want validation error")
 			}
 			if output.Len() != 0 {
 				t.Error("malformed result produced partial success output")
@@ -712,12 +658,12 @@ func TestMalformedRequiredSessionFieldsProduceNoOutput(t *testing.T) {
 
 func TestSessionWriterFailureIsReturned(t *testing.T) {
 	cause := errors.New("injected writer failure")
-	err := writeSessionResult(zeroWriter{err: cause}, minimalSessionResult("authenticated"))
+	err := terminal.WriteSessionResult(clitest.ZeroWriter{Err: cause}, clitest.MinimalSessionResult("authenticated"))
 	if err == nil {
-		t.Fatal("writeSessionResult = nil, want error")
+		t.Fatal("terminal.WriteSessionResult = nil, want error")
 	}
 	if !errors.Is(err, cause) {
-		t.Error("writeSessionResult did not preserve writer cause")
+		t.Error("terminal.WriteSessionResult did not preserve writer cause")
 	}
 }
 
@@ -733,9 +679,9 @@ func TestAllPublicSessionStatesAreSuccessfulCommandData(t *testing.T) {
 	}
 	for _, state := range states {
 		t.Run(state, func(t *testing.T) {
-			connection := &fakeDaemonClient{
-				call: func(string, json.RawMessage) (contract.Response, error) {
-					return successSessionResponse(t, minimalSessionResult(state)), nil
+			connection := &clitest.FakeDaemonClient{
+				CallFunc: func(string, json.RawMessage) (contract.Response, error) {
+					return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult(state)), nil
 				},
 			}
 			deps := hotAuthDependencies(t, connection)
@@ -753,8 +699,8 @@ func TestAllPublicSessionStatesAreSuccessfulCommandData(t *testing.T) {
 
 func TestTransportFailureClosesClientAndPreservesCauseSafely(t *testing.T) {
 	cause := errors.New("injected transport failure")
-	connection := &fakeDaemonClient{
-		call: func(string, json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{
+		CallFunc: func(string, json.RawMessage) (contract.Response, error) {
 			return contract.Response{}, cause
 		},
 	}
@@ -769,35 +715,20 @@ func TestTransportFailureClosesClientAndPreservesCauseSafely(t *testing.T) {
 	if err.Error() != "调用 Session 操作" {
 		t.Errorf("transport error = %q, want static operation label", err)
 	}
-	if connection.closeCount != 1 {
-		t.Errorf("Close count = %d, want 1", connection.closeCount)
+	if connection.CloseCount != 1 {
+		t.Errorf("Close count = %d, want 1", connection.CloseCount)
 	}
-}
-
-func errorString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}
-
-type zeroWriter struct {
-	err error
-}
-
-func (writer zeroWriter) Write([]byte) (int, error) {
-	return 0, writer.err
 }
 
 // TestAuthCommandsDoNotCallDaemonStop proves auth commands never invoke the
 // daemon.stop lifecycle method, which would stop the daemon out from under an
 // active Session.
 func TestAuthCommandsDoNotCallDaemonStop(t *testing.T) {
-	connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, _ json.RawMessage) (contract.Response, error) {
 		if method == contract.MethodDaemonStop {
 			t.Errorf("auth command must not call daemon.stop")
 		}
-		return successSessionResponse(t, minimalSessionResult("authenticated")), nil
+		return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult("authenticated")), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
 	if err := runAuthStatus("session-1", deps); err != nil {
@@ -807,14 +738,14 @@ func TestAuthCommandsDoNotCallDaemonStop(t *testing.T) {
 
 func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing.T) {
 	var output bytes.Buffer
-	deps := hotAuthDependencies(t, &fakeDaemonClient{})
+	deps := hotAuthDependencies(t, &clitest.FakeDaemonClient{})
 	deps.stdout = &output
 	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) {
 		return nil, errors.New("private-runtime-marker")
 	}
 	err := runAuthStatus("session-1", deps)
 	if err == nil || err.Error() != "无法连接 sidraviad（请确认 daemon 已启动；若刚增删过 sidravia.portable 标记，请先停止并重启 daemon）" {
-		t.Fatalf("error=%q", errorString(err))
+		t.Fatalf("error=%q", clitest.ErrorString(err))
 	}
 	if output.Len() != 0 || strings.Contains(err.Error(), "private-runtime-marker") {
 		t.Fatalf("output=%q error=%q", output.String(), err.Error())
@@ -850,7 +781,7 @@ func TestBindingFlagsRejectBeforeDaemonOrPassword(t *testing.T) {
 }
 
 func TestSessionCLIDecodersUseExactCompleteContract(t *testing.T) {
-	value := minimalSessionResult("suspended")
+	value := clitest.MinimalSessionResult("suspended")
 	value.Revision = ^uint64(0)
 	raw, err := contract.MarshalSessionResult(value)
 	if err != nil {

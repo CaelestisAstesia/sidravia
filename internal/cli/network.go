@@ -17,7 +17,7 @@ func networkInterfaces(identity daemonctl.Identity) error {
 }
 func runNetworkInterfaces(deps readOnlyCommandDependencies) error {
 	return daemonconn.With(deps.connection, func(connection daemonconn.Client) error {
-		response, err := callReadOnlyQuery(connection, deps.connection.Timeout, contract.MethodNetworkInterfaces)
+		response, err := daemonconn.CallQuery(connection, deps.connection.Timeout, contract.MethodNetworkInterfaces)
 		if err != nil {
 			return terminal.Failure("查询网卡", err)
 		}
@@ -25,8 +25,8 @@ func runNetworkInterfaces(deps readOnlyCommandDependencies) error {
 		if err != nil {
 			return terminal.Failure("解码网卡列表", err)
 		}
-		p := newPresentation(deps.stdout)
-		return terminal.Failure("写入网卡列表", p.complete(renderNetworkInterfaces(result)))
+		p := terminal.NewPresentation(deps.stdout)
+		return terminal.Failure("写入网卡列表", p.Complete(renderNetworkInterfaces(result)))
 	})
 }
 func powerShellLiteral(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
@@ -41,7 +41,7 @@ func renderNetworkInterfaces(result contract.NetworkInterfacesResult) string {
 		output.WriteString("已观察到空网卡列表。\n")
 	}
 	for _, iface := range result.Interfaces {
-		fmt.Fprintf(&output, "- 名称：%s | ID：%s | 状态：%s | 介质：%s | 硬件：%t | 物理连接器：%t | 过滤接口：%t | 端点接口：%t | 地址分配：%s\n", sanitizeDynamicText(iface.DisplayName), sanitizeDynamicText(iface.InterfaceID), iface.OperationalState, iface.PhysicalMedium, iface.HardwareBacked, iface.PhysicalConnectorPresent, iface.FilterInterface, iface.EndpointInterface, iface.AddressAssignmentMethod)
+		fmt.Fprintf(&output, "- 名称：%s | ID：%s | 状态：%s | 介质：%s | 硬件：%t | 物理连接器：%t | 过滤接口：%t | 端点接口：%t | 地址分配：%s\n", terminal.Sanitize(iface.DisplayName), terminal.Sanitize(iface.InterfaceID), iface.OperationalState, iface.PhysicalMedium, iface.HardwareBacked, iface.PhysicalConnectorPresent, iface.FilterInterface, iface.EndpointInterface, iface.AddressAssignmentMethod)
 		if len(iface.IPv4Assignments) == 0 {
 			output.WriteString("  无 IPv4 地址；当前不可绑定。\n")
 		}

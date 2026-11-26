@@ -1,13 +1,13 @@
-package cli
+package terminal
 
 import (
 	"sidravia/internal/ipc/contract"
 )
 
-// sessionStateText maps a Session state code to Simplified Chinese. Unknown
+// SessionStateText maps a Session state code to Simplified Chinese. Unknown
 // nonempty codes use the safe plain fallback; the renderer appends the
 // sanitized machine code in full-width parentheses exactly once.
-func sessionStateText(code string) string {
+func SessionStateText(code string) string {
 	switch code {
 	case "suspended":
 		return "已暂停"
@@ -28,8 +28,8 @@ func sessionStateText(code string) string {
 	}
 }
 
-// sessionStateReasonText maps a Session state reason code to Simplified Chinese.
-func sessionStateReasonText(code string) string {
+// SessionStateReasonText maps a Session state reason code to Simplified Chinese.
+func SessionStateReasonText(code string) string {
 	switch code {
 	case "network_binding_unavailable":
 		return "指定网卡或 IPv4 地址不可用"
@@ -52,8 +52,8 @@ func sessionStateReasonText(code string) string {
 	}
 }
 
-// failureText maps a D520/Session authentication failure code to Simplified Chinese.
-func failureText(code string) string {
+// FailureText maps a D520/Session authentication failure code to Simplified Chinese.
+func FailureText(code string) string {
 	switch code {
 	case "quota_exceeded":
 		return "账号时间或流量配额已耗尽"
@@ -110,8 +110,8 @@ func failureText(code string) string {
 	}
 }
 
-// recommendationText maps a failure handling recommendation code to Simplified Chinese.
-func recommendationText(code string) string {
+// RecommendationText maps a failure handling recommendation code to Simplified Chinese.
+func RecommendationText(code string) string {
 	switch code {
 	case "retry_after_standard_delay":
 		return "将自动稍后重试"
@@ -135,9 +135,9 @@ func daemonStatusText(code string) string {
 	return "未知状态"
 }
 
-// ipcErrorText maps an IPC error code to fixed Simplified Chinese guidance.
+// IPCErrorText maps an IPC error code to fixed Simplified Chinese guidance.
 // Unknown or missing codes use the safe generic message.
-func ipcErrorText(code string) string {
+func IPCErrorText(code string) string {
 	if code == contract.ErrorCodeConfigurationSessionInvalidationFailed {
 		return "配置已提交，旧会话清理未完成；请移除旧会话后重试连接"
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"runtime"
+	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 )
@@ -253,7 +254,7 @@ func TestHelpWriterFailureIsObservable(t *testing.T) {
 				authStart:    func(authStartOptions) error { return nil },
 				authStatus:   func(string) error { return nil },
 				authStop:     func(string) error { return nil },
-				output:       zeroWriter{err: cause},
+				output:       clitest.ZeroWriter{Err: cause},
 			}
 			if err := runCommand(tc.args, deps); !errors.Is(err, cause) {
 				t.Errorf("help writer failure = %v, want cause", err)

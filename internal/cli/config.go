@@ -202,7 +202,7 @@ func callConfiguration(deps authDependencies, connection daemonconn.Client, meth
 		if code == contract.ErrorCodeInsecureStorageConfirmationRequired {
 			return nil, errors.New("存储未受保护；请确认警告后使用 --allow-insecure-storage")
 		}
-		return nil, errors.New(ipcErrorText(code))
+		return nil, errors.New(terminal.IPCErrorText(code))
 	}
 	return response.Result, nil
 }
@@ -225,7 +225,7 @@ func runConfigList(deps authDependencies) error {
 			result.Configurations = append(result.Configurations, page.Configurations...)
 			cursor = page.NextCursor
 			if cursor == "" {
-				return writeConfigurationList(deps.stdout, result)
+				return terminal.WriteConfigurationList(deps.stdout, result)
 			}
 			if cursors[cursor] {
 				return errors.New("配置列表分页结果无效")
@@ -244,7 +244,7 @@ func runConfigShow(id string, deps authDependencies) error {
 		if err != nil {
 			return terminal.Failure("解码配置", err)
 		}
-		return writeConfiguration(deps.stdout, result)
+		return terminal.WriteConfiguration(deps.stdout, result)
 	})
 }
 func runConfigCreate(options configCreateOptions, deps authDependencies) error {
@@ -344,7 +344,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		if err != nil {
 			return terminal.Failure("解码配置", err)
 		}
-		return writeConfiguration(deps.stdout, result)
+		return terminal.WriteConfiguration(deps.stdout, result)
 	})
 }
 func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
@@ -411,7 +411,7 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		if err != nil {
 			return terminal.Failure("解码配置", err)
 		}
-		if err := writeConfiguration(deps.stdout, result); err != nil {
+		if err := terminal.WriteConfiguration(deps.stdout, result); err != nil {
 			return err
 		}
 		return terminal.Write(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
@@ -440,7 +440,7 @@ func runConfigSetPassword(options configPasswordOptions, deps authDependencies) 
 		if err != nil {
 			return terminal.Failure("解码配置", err)
 		}
-		if err := writeConfiguration(deps.stdout, result); err != nil {
+		if err := terminal.WriteConfiguration(deps.stdout, result); err != nil {
 			return err
 		}
 		return terminal.Write(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
@@ -466,7 +466,7 @@ func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) 
 			return terminal.Failure("解码配置", err)
 		}
 		if !yes {
-			prompt := "确认删除配置 “" + sanitizeDynamicText(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
+			prompt := "确认删除配置 “" + terminal.Sanitize(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
 			confirmed, err := terminal.Confirm(deps.stdin, deps.stderr, prompt)
 			if err != nil {
 				return err
@@ -485,7 +485,7 @@ func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) 
 		if err != nil {
 			return terminal.Failure("解码配置删除结果", err)
 		}
-		return terminal.Write(deps.stdout, "配置已删除："+sanitizeDynamicText(result.ConfigurationID)+"\n")
+		return terminal.Write(deps.stdout, "配置已删除："+terminal.Sanitize(result.ConfigurationID)+"\n")
 	})
 }
 

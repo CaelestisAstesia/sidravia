@@ -27,7 +27,7 @@ func selectProfile(deps authDependencies, connection daemonconn.Client) (string,
 		return "", errors.New("没有可用的机构 Profile")
 	}
 	for index, profile := range result.Profiles {
-		if err := terminal.Write(deps.stderr, fmt.Sprintf("%d. %s\n", index+1, sanitizeDynamicText(institutionDisplayName(profile.InstitutionProfileID, profile.DisplayName)))); err != nil {
+		if err := terminal.Write(deps.stderr, fmt.Sprintf("%d. %s\n", index+1, terminal.Sanitize(terminal.InstitutionDisplayName(profile.InstitutionProfileID, profile.DisplayName)))); err != nil {
 			return "", terminal.Failure("写入 Profile 选择", err)
 		}
 	}
@@ -122,7 +122,7 @@ func selectNetworkBinding(deps authDependencies, connection daemonconn.Client) (
 		if choice.automatic {
 			category = "自动候选，也可显式绑定"
 		}
-		line := fmt.Sprintf("%d. %s | ID：%s | IPv4：%s/%d | %s\n", index+1, sanitizeDynamicText(choice.displayName), sanitizeDynamicText(choice.interfaceID), choice.address, choice.prefix, category)
+		line := fmt.Sprintf("%d. %s | ID：%s | IPv4：%s/%d | %s\n", index+1, terminal.Sanitize(choice.displayName), terminal.Sanitize(choice.interfaceID), choice.address, choice.prefix, category)
 		if err := terminal.Write(deps.stderr, line); err != nil {
 			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定选择", err)
 		}

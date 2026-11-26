@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
@@ -91,7 +92,7 @@ func TestGUIBootstrapFailureNeverWritesSuccessJSON(t *testing.T) {
 		}, &bytes.Buffer{}, guiBootstrapFailedCode, 15},
 		{"write", func(daemonctl.Identity, int) (daemonctl.DesktopBootstrapResult, error) {
 			return daemonctl.DesktopBootstrapResult{Info: testRuntimeInfo(7), Status: contract.StatusResult{ProductVersion: identity.ProductVersion, BuildID: identity.BuildID, PID: 7, Mode: "desktop", DesktopOwnerPID: &owner}}, nil
-		}, zeroWriter{err: errors.New("private-write-marker")}, guiBootstrapOutputFailedCode, 16},
+		}, clitest.ZeroWriter{Err: errors.New("private-write-marker")}, guiBootstrapOutputFailedCode, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer

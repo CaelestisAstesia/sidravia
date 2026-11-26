@@ -1,4 +1,4 @@
-package cli
+package terminal
 
 import (
 	"fmt"
@@ -9,27 +9,27 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-// renderDaemonStatus renders a daemon.status result as one line. Field labels
+// RenderDaemonStatus renders a daemon.status result as one line. Field labels
 // are styled; the status value is plain because daemon status codes are not
 // Session states.
-func renderDaemonStatus(p *presentation, result *contract.StatusResult) string {
+func RenderDaemonStatus(p *Presentation, result *contract.StatusResult) string {
 	var b strings.Builder
-	b.WriteString(p.label("守护进程："))
+	b.WriteString(p.Label("守护进程："))
 	b.WriteString(daemonStatusText(result.Status))
 	b.WriteString("（")
-	b.WriteString(sanitizeDynamicText(result.Status))
+	b.WriteString(Sanitize(result.Status))
 	b.WriteString("） | ")
-	b.WriteString(p.label("版本："))
-	b.WriteString(sanitizeDynamicText(result.ProductVersion))
+	b.WriteString(p.Label("版本："))
+	b.WriteString(Sanitize(result.ProductVersion))
 	b.WriteString(" | ")
-	b.WriteString(p.label("构建："))
-	b.WriteString(sanitizeDynamicText(result.BuildID))
+	b.WriteString(p.Label("构建："))
+	b.WriteString(Sanitize(result.BuildID))
 	b.WriteString(" | ")
-	b.WriteString(p.label("PID："))
+	b.WriteString(p.Label("PID："))
 	b.WriteString(strconv.Itoa(result.PID))
 	b.WriteString(" | ")
-	b.WriteString(p.label("模式："))
-	b.WriteString(sanitizeDynamicText(result.Mode))
+	b.WriteString(p.Label("模式："))
+	b.WriteString(Sanitize(result.Mode))
 	b.WriteString("\n")
 	if result.Mode == string(launchcontract.ModeSystemd) {
 		b.WriteString("日志：运行 journalctl --user -u sidravia.service 查看后台日志。\n")
@@ -59,149 +59,149 @@ func sessionInstitutionText(session contract.SessionResult) string {
 		return jluHumanLabel
 	}
 	if session.InstitutionDisplayName == "" {
-		return sanitizeDynamicText(session.InstitutionProfileID)
+		return Sanitize(session.InstitutionProfileID)
 	}
-	return sanitizeDynamicText(session.InstitutionDisplayName) + "（" + sanitizeDynamicText(session.InstitutionProfileID) + "）"
+	return Sanitize(session.InstitutionDisplayName) + "（" + Sanitize(session.InstitutionProfileID) + "）"
 }
 
-// institutionDisplayName returns the human display name for an institution
+// InstitutionDisplayName returns the human display name for an institution
 // profile summary. The built-in JLU profile renders as its fixed human
 // identifier; other profiles use their safe display name unchanged.
-func institutionDisplayName(profileID, displayName string) string {
+func InstitutionDisplayName(profileID, displayName string) string {
 	if profileID == jluProfileID {
 		return jluHumanLabel
 	}
-	return sanitizeDynamicText(displayName)
+	return Sanitize(displayName)
 }
 
-// networkBindingText renders the selected network binding for humans: when a
+// NetworkBindingText renders the selected network binding for humans: when a
 // friendly display name is present it shows "<friendly name> — <IPv4>",
 // otherwise only "<IPv4>". The machine InterfaceID stays in the DTO for machine
 // consumers but never appears in ordinary output.
-func networkBindingText(binding *contract.SessionNetworkBinding) string {
-	ipv4 := sanitizeDynamicText(binding.LocalIPv4Address)
-	name := sanitizeDynamicText(binding.DisplayName)
+func NetworkBindingText(binding *contract.SessionNetworkBinding) string {
+	ipv4 := Sanitize(binding.LocalIPv4Address)
+	name := Sanitize(binding.DisplayName)
 	if name == "" {
 		return ipv4
 	}
 	return name + " — " + ipv4
 }
 
-// renderSessionDetail renders a complete Session detail block. Optional lines
+// RenderSessionDetail renders a complete Session detail block. Optional lines
 // are omitted under the same conditions as before. Only trusted mapped state
 // text is styled; all dynamic values are sanitized and descriptions are never
 // printed.
-func renderSessionDetail(p *presentation, result *contract.SessionResult) string {
+func RenderSessionDetail(p *Presentation, result *contract.SessionResult) string {
 	var b strings.Builder
-	b.WriteString(p.label("会话："))
-	b.WriteString(sanitizeDynamicText(result.AuthenticationSessionID))
+	b.WriteString(p.Label("会话："))
+	b.WriteString(Sanitize(result.AuthenticationSessionID))
 	b.WriteString("\n")
 	if result.DisplayName != "" {
-		b.WriteString(p.label("名称："))
-		b.WriteString(sanitizeDynamicText(result.DisplayName))
+		b.WriteString(p.Label("名称："))
+		b.WriteString(Sanitize(result.DisplayName))
 		b.WriteString("\n")
 	}
 
-	b.WriteString(p.label("状态："))
-	b.WriteString(p.state(sessionStateText(result.State), result.State))
+	b.WriteString(p.Label("状态："))
+	b.WriteString(p.State(SessionStateText(result.State), result.State))
 	b.WriteString("（")
-	b.WriteString(sanitizeDynamicText(result.State))
+	b.WriteString(Sanitize(result.State))
 	b.WriteString("）\n")
 
-	b.WriteString(p.label("机构："))
+	b.WriteString(p.Label("机构："))
 	b.WriteString(sessionInstitutionText(*result))
 	b.WriteString("\n")
 
-	b.WriteString(p.label("协议："))
-	b.WriteString(sanitizeDynamicText(result.AuthenticationProtocolID))
+	b.WriteString(p.Label("协议："))
+	b.WriteString(Sanitize(result.AuthenticationProtocolID))
 	b.WriteString("\n")
 
-	b.WriteString(p.label("账号："))
-	b.WriteString(sanitizeDynamicText(result.AccountName))
+	b.WriteString(p.Label("账号："))
+	b.WriteString(Sanitize(result.AccountName))
 	b.WriteString("\n")
 
 	if result.StateReason != nil {
-		b.WriteString(p.label("原因："))
-		b.WriteString(sessionStateReasonText(result.StateReason.Code))
+		b.WriteString(p.Label("原因："))
+		b.WriteString(SessionStateReasonText(result.StateReason.Code))
 		b.WriteString("（")
-		b.WriteString(sanitizeDynamicText(result.StateReason.Code))
+		b.WriteString(Sanitize(result.StateReason.Code))
 		b.WriteString("）\n")
 	}
 
 	if result.SelectedNetworkBinding != nil {
-		b.WriteString(p.label("网络："))
-		b.WriteString(networkBindingText(result.SelectedNetworkBinding))
+		b.WriteString(p.Label("网络："))
+		b.WriteString(NetworkBindingText(result.SelectedNetworkBinding))
 		b.WriteString("\n")
 	}
 
 	if result.AuthenticationEstablishedAt != nil {
-		b.WriteString(p.label("认证时间："))
-		b.WriteString(sanitizeDynamicText(*result.AuthenticationEstablishedAt))
+		b.WriteString(p.Label("认证时间："))
+		b.WriteString(Sanitize(*result.AuthenticationEstablishedAt))
 		b.WriteString("\n")
 	}
 
 	if result.NextRetryAt != nil {
-		b.WriteString(p.label("下次重试："))
-		b.WriteString(sanitizeDynamicText(*result.NextRetryAt))
+		b.WriteString(p.Label("下次重试："))
+		b.WriteString(Sanitize(*result.NextRetryAt))
 		b.WriteString("\n")
 	}
 
 	if result.LastAuthenticationFailure != nil {
 		failure := result.LastAuthenticationFailure
-		b.WriteString(p.label("最近失败："))
-		b.WriteString(failureText(failure.Code))
+		b.WriteString(p.Label("最近失败："))
+		b.WriteString(FailureText(failure.Code))
 		b.WriteString("（")
-		b.WriteString(sanitizeDynamicText(failure.Code))
+		b.WriteString(Sanitize(failure.Code))
 		b.WriteString("）\n")
 
-		b.WriteString(p.label("处理建议："))
-		b.WriteString(recommendationText(failure.HandlingRecommendation))
+		b.WriteString(p.Label("处理建议："))
+		b.WriteString(RecommendationText(failure.HandlingRecommendation))
 		b.WriteString("（")
-		b.WriteString(sanitizeDynamicText(failure.HandlingRecommendation))
+		b.WriteString(Sanitize(failure.HandlingRecommendation))
 		b.WriteString("）\n")
 	}
 
-	b.WriteString(p.label("更新时间："))
-	b.WriteString(sanitizeDynamicText(result.UpdatedAt))
+	b.WriteString(p.Label("更新时间："))
+	b.WriteString(Sanitize(result.UpdatedAt))
 	b.WriteString("\n")
 
 	return b.String()
 }
 
-// renderSessionList renders a complete Session list block. The heading and
+// RenderSessionList renders a complete Session list block. The heading and
 // fixed labels are styled with bold cyan; mapped Session state text uses the
 // same green/red/yellow/plain policy as the detail renderer; every dynamic
 // value is sanitized. An empty list renders the existing plain Chinese text.
-func renderSessionList(p *presentation, result *contract.SessionListResult) string {
+func RenderSessionList(p *Presentation, result *contract.SessionListResult) string {
 	var b strings.Builder
 	if len(result.Sessions) == 0 {
 		b.WriteString("没有 Session。\n下一步：运行 sidraviactl help auth start 开始认证。\n")
 		return b.String()
 	}
-	b.WriteString(p.label(fmt.Sprintf("会话（%d）：", len(result.Sessions))))
+	b.WriteString(p.Label(fmt.Sprintf("会话（%d）：", len(result.Sessions))))
 	b.WriteString("\n")
 	for _, session := range result.Sessions {
 		b.WriteString("- ")
-		b.WriteString(sanitizeDynamicText(session.AuthenticationSessionID))
+		b.WriteString(Sanitize(session.AuthenticationSessionID))
 		if session.DisplayName != "" {
 			b.WriteString(" | ")
-			b.WriteString(p.label("名称："))
-			b.WriteString(sanitizeDynamicText(session.DisplayName))
+			b.WriteString(p.Label("名称："))
+			b.WriteString(Sanitize(session.DisplayName))
 		}
 		b.WriteString(" | ")
-		b.WriteString(p.label("状态："))
-		b.WriteString(p.state(sessionStateText(session.State), session.State))
+		b.WriteString(p.Label("状态："))
+		b.WriteString(p.State(SessionStateText(session.State), session.State))
 		b.WriteString("（")
-		b.WriteString(sanitizeDynamicText(session.State))
+		b.WriteString(Sanitize(session.State))
 		b.WriteString("） | ")
-		b.WriteString(p.label("机构："))
+		b.WriteString(p.Label("机构："))
 		b.WriteString(sessionInstitutionText(session))
 		b.WriteString(" | ")
-		b.WriteString(p.label("账号："))
-		b.WriteString(sanitizeDynamicText(session.AccountName))
+		b.WriteString(p.Label("账号："))
+		b.WriteString(Sanitize(session.AccountName))
 		b.WriteString(" | ")
-		b.WriteString(p.label("更新时间："))
-		b.WriteString(sanitizeDynamicText(session.UpdatedAt))
+		b.WriteString(p.Label("更新时间："))
+		b.WriteString(Sanitize(session.UpdatedAt))
 		b.WriteString("\n")
 		for _, id := range result.CleanupRequiredSessionIDs {
 			if id == session.AuthenticationSessionID {
@@ -210,41 +210,41 @@ func renderSessionList(p *presentation, result *contract.SessionListResult) stri
 		}
 		if session.State == "blocked_by_error" || session.State == "waiting_before_retry" {
 			b.WriteString("  查看详情：sidraviactl auth status ")
-			b.WriteString(sanitizeDynamicText(session.AuthenticationSessionID))
+			b.WriteString(Sanitize(session.AuthenticationSessionID))
 			b.WriteString("\n")
 		}
 	}
 	return b.String()
 }
 
-// renderDaemonStarted renders the fixed daemon started confirmation line.
-func renderDaemonStarted() string {
+// RenderDaemonStarted renders the fixed daemon started confirmation line.
+func RenderDaemonStarted() string {
 	return "守护进程：已启动（started）\n"
 }
 
-func renderDaemonAlreadyRunning() string {
+func RenderDaemonAlreadyRunning() string {
 	return "守护进程：已经运行（already_running）\n"
 }
 
-// renderDaemonStopped renders the fixed daemon stopped confirmation line.
-func renderDaemonStopped() string {
+// RenderDaemonStopped renders the fixed daemon stopped confirmation line.
+func RenderDaemonStopped() string {
 	return "守护进程：已停止（stopped）\n"
 }
 
-func renderDaemonAlreadyStopped() string {
+func RenderDaemonAlreadyStopped() string {
 	return "守护进程：已经停止（already_stopped）\n"
 }
 
-// renderDaemonRestarted renders the fixed daemon restarted confirmation line.
-func renderDaemonRestarted() string {
+// RenderDaemonRestarted renders the fixed daemon restarted confirmation line.
+func RenderDaemonRestarted() string {
 	return "守护进程：已重启（restarted）\n"
 }
 
-func renderDaemonStartedFromStopped() string {
+func RenderDaemonStartedFromStopped() string {
 	return "守护进程：原先未运行，现已启动（started_from_stopped）\n"
 }
 
-func renderSessionStartResult(p *presentation, result *contract.SessionStartResult) string {
+func RenderSessionStartResult(p *Presentation, result *contract.SessionStartResult) string {
 	var b strings.Builder
 	switch result.Outcome {
 	case "created":
@@ -255,13 +255,13 @@ func renderSessionStartResult(p *presentation, result *contract.SessionStartResu
 		b.WriteString("认证 Session：已恢复运行。\n")
 	}
 	b.WriteString("以下是当前 Snapshot；认证可能仍在 daemon 中继续。\n")
-	b.WriteString(renderSessionDetail(p, &result.Session))
+	b.WriteString(RenderSessionDetail(p, &result.Session))
 	b.WriteString("查看状态：sidraviactl auth status ")
-	b.WriteString(sanitizeDynamicText(result.Session.AuthenticationSessionID))
+	b.WriteString(Sanitize(result.Session.AuthenticationSessionID))
 	b.WriteString("\n")
 	return b.String()
 }
 
-func renderSessionRemoved(result *contract.SessionRemoveResult) string {
-	return "Session 已删除：" + sanitizeDynamicText(result.SessionID) + "\n"
+func RenderSessionRemoved(result *contract.SessionRemoveResult) string {
+	return "Session 已删除：" + Sanitize(result.SessionID) + "\n"
 }

@@ -1,4 +1,4 @@
-package cli
+package terminal
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// presentation.go owns terminal output and is the only production file that
+// Presentation.go owns terminal output and is the only production file that
 // imports termenv. It resolves terminal capability, owns Windows
 // virtual-terminal enable/restore, styles trusted static labels and mapped
 // state text, sanitizes dynamic values, and writes complete rendered blocks.
@@ -36,11 +36,11 @@ func isControlRune(r rune) bool {
 	return r < 0x20 || (r >= 0x7f && r <= 0x9f)
 }
 
-// sanitizeDynamicText replaces every C0/C1 control character and DEL in s with
+// Sanitize replaces every C0/C1 control character and DEL in s with
 // the replacement rune. Ordinary Unicode, spaces, punctuation, IDs, timestamps
 // and Chinese text are preserved. Every value originating outside fixed CLI
 // literals passes through this before output.
-func sanitizeDynamicText(s string) string {
+func Sanitize(s string) string {
 	if !strings.ContainsFunc(s, isControlRune) {
 		return s
 	}
@@ -56,9 +56,9 @@ func sanitizeDynamicText(s string) string {
 	return b.String()
 }
 
-// presentation bundles the resolved terminal capability, the writer and the
+// Presentation bundles the resolved terminal capability, the writer and the
 // Windows virtual-terminal restore function.
-type presentation struct {
+type Presentation struct {
 	output  *termenv.Output
 	profile termenv.Profile
 	restore func() error
@@ -92,31 +92,31 @@ func resolveVTEnable(profile termenv.Profile, restore func() error, enableErr er
 	return profile, restore
 }
 
-// newPresentation resolves the terminal capability for w. It never forces
+// NewPresentation resolves the terminal capability for w. It never forces
 // ANSI in production: a redirected or non-interactive writer stays plain.
 // Virtual-terminal enablement is optional; when it fails the command continues
 // with plain text and a safe no-op restore, so no ANSI escape is emitted.
-func newPresentation(w io.Writer) *presentation {
+func NewPresentation(w io.Writer) *Presentation {
 	out := termenv.NewOutput(w)
 	profile := resolveColorProfile(out.ColorProfile(), out.EnvColorProfile())
 	restore, enableErr := termenv.EnableVirtualTerminalProcessing(out)
 	profile, restore = resolveVTEnable(profile, restore, enableErr)
-	return &presentation{output: out, profile: profile, restore: restore}
+	return &Presentation{output: out, profile: profile, restore: restore}
 }
 
-func newPlainPresentation() *presentation {
+func PlainPresentation() *Presentation {
 	out := termenv.NewOutput(io.Discard, termenv.WithProfile(termenv.Ascii), termenv.WithTTY(false))
-	return &presentation{output: out, profile: termenv.Ascii, restore: func() error { return nil }}
+	return &Presentation{output: out, profile: termenv.Ascii, restore: func() error { return nil }}
 }
 
 // close restores Windows virtual-terminal state if it was enabled. It must run
 // after command output.
-func (p *presentation) close() {
+func (p *Presentation) Close() {
 	_ = p.restore()
 }
 
 // write writes a fully rendered block to the writer. It rejects short writes.
-func (p *presentation) write(block string) error {
+func (p *Presentation) Write(block string) error {
 	written, err := io.WriteString(p.output, block)
 	if err != nil {
 		return err
@@ -131,23 +131,23 @@ func (p *presentation) write(block string) error {
 // virtual-terminal state. The restore always runs after the attempted write,
 // even when the write failed. It returns the write error, the restore error,
 // or both joined so errors.Is observes each cause.
-func (p *presentation) complete(block string) error {
-	writeErr := p.write(block)
+func (p *Presentation) Complete(block string) error {
+	writeErr := p.Write(block)
 	restoreErr := p.restore()
 	return errors.Join(writeErr, restoreErr)
 }
 
 // label styles a trusted static field label or section heading with bold cyan.
 // The argument must be a fixed CLI literal, never a dynamic value.
-func (p *presentation) label(text string) string {
+func (p *Presentation) Label(text string) string {
 	return p.profile.String(text).Foreground(p.profile.Color(cyanColor)).Bold().String()
 }
 
 // helpUsageLines renders the shared multi-line usage section. Every syntax is
 // trusted static specification text and occupies its own two-space-indented
 // line beneath the styled heading.
-func (p *presentation) helpUsageLines(usages []string) []string {
-	lines := []string{p.label("用法：")}
+func (p *Presentation) HelpUsageLines(usages []string) []string {
+	lines := []string{p.Label("用法：")}
 	for _, usage := range usages {
 		lines = append(lines, "  "+usage)
 	}
@@ -157,7 +157,7 @@ func (p *presentation) helpUsageLines(usages []string) []string {
 // state styles mapped Session-state text according to the stable state code.
 // The code only selects the style; only the trusted mapped text is styled.
 // suspended and unknown states render plain.
-func (p *presentation) state(mapped, code string) string {
+func (p *Presentation) State(mapped, code string) string {
 	styled := p.profile.String(mapped)
 	switch code {
 	case "authenticated":
@@ -172,9 +172,9 @@ func (p *presentation) state(mapped, code string) string {
 	return styled.String()
 }
 
-// writeErrorLine renders the fatal CLI error line: the static Chinese prefix
+// ErrorLine renders the fatal CLI error line: the static Chinese prefix
 // followed by the sanitized error message and one newline. An underlying
 // wrapped cause is never printed; only the error's own message text is used.
-func writeErrorLine(err error) string {
-	return "sidraviactl：错误：" + sanitizeDynamicText(err.Error()) + "\n"
+func ErrorLine(err error) string {
+	return "sidraviactl：错误：" + Sanitize(err.Error()) + "\n"
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestConfigurationPasswordCallsClearOwnedWireBytes(t *testing.T) {
 		for _, outcome := range []string{"success", "transport", "typed error"} {
 			t.Run(method+"/"+outcome, func(t *testing.T) {
 				var retained json.RawMessage
-				connection := &fakeDaemonClient{call: func(gotMethod string, buffer json.RawMessage) (contract.Response, error) {
+				connection := &clitest.FakeDaemonClient{CallFunc: func(gotMethod string, buffer json.RawMessage) (contract.Response, error) {
 					retained = buffer
 					var value struct {
 						Password string `json:"password"`
@@ -67,7 +68,7 @@ func TestConfigurationDecodersAndPresentationHidePassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	if err := writeConfiguration(&output, result); err != nil {
+	if err := terminal.WriteConfiguration(&output, result); err != nil {
 		t.Fatal(err)
 	}
 	if got := output.String(); !bytes.Contains([]byte(got), []byte("凭据：已保存")) || bytes.Contains([]byte(got), []byte("password")) {
@@ -122,7 +123,7 @@ func TestConfigRemoveStrictlyDecodesResponse(t *testing.T) {
 		{"trailing garbage", valid + ` !`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 				if method == contract.MethodConfigurationGet {
 					raw, err := json.Marshal(contract.ConfigurationResult{
 						ConfigurationID: "campus", Version: "current-version", RuntimeAvailability: "available",
@@ -191,7 +192,7 @@ func TestConfigCreateRejectsPasswordOnArgvShape(t *testing.T) {
 func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 	var capturedMethod string
 	var capturedPayload json.RawMessage
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedMethod = method
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
@@ -226,7 +227,7 @@ func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 
 func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
 	var capturedPayload json.RawMessage
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
@@ -261,7 +262,7 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 		Available: false, Interfaces: []contract.NetworkInterfaceResult{},
 	})
 	var capturedPayload json.RawMessage
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
@@ -284,9 +285,9 @@ func TestConfigCreateInteractivePromptsAutoLoginAutoReconnect(t *testing.T) {
 		{InstitutionProfileID: "jlu", DisplayName: "吉林大学", AuthenticationProtocolID: "drcom"},
 	}})
 
-	var callCount int
-	connection.call = func(method string, payload json.RawMessage) (contract.Response, error) {
-		callCount++
+	var CallCount int
+	connection.CallFunc = func(method string, payload json.RawMessage) (contract.Response, error) {
+		CallCount++
 		if method == contract.MethodNetworkInterfaces {
 			return contract.NewSuccessResponse("1", networkRaw), nil
 		}
@@ -380,7 +381,7 @@ func TestInteractiveBindingChooserFailuresStopBeforePasswordAndCreate(t *testing
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var methods []string
-			connection := &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(method string, _ json.RawMessage) (contract.Response, error) {
 				methods = append(methods, method)
 				if method != contract.MethodNetworkInterfaces {
 					t.Fatalf("unexpected daemon method %q", method)
@@ -435,7 +436,7 @@ func TestExplicitBindingAndNoninteractiveCreateSkipNetworkQuery(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var methods []string
-			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 				methods = append(methods, method)
 				if method == contract.MethodConfigurationList {
 					list, _ := contract.MarshalConfigurationListResult(contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}})
@@ -500,7 +501,7 @@ func TestInteractiveCreateSubmitsSelectedBindingAndFollowingPassword(t *testing.
 	}
 	var methods []string
 	var create contract.ConfigurationCreatePayload
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		methods = append(methods, method)
 		switch method {
 		case contract.MethodNetworkInterfaces:
@@ -550,7 +551,7 @@ func TestInteractiveCreateSubmitsSelectedBindingAndFollowingPassword(t *testing.
 
 func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 	var capturedPayload json.RawMessage
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
@@ -582,7 +583,7 @@ func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 
 func TestConfigUpdateSendsAutoLoginAutoReconnectFlags(t *testing.T) {
 	var capturedPayload json.RawMessage
-	connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		capturedPayload = append(json.RawMessage(nil), payload...)
 		result, _ := contract.MarshalConfigurationResult(contract.ConfigurationResult{RuntimeAvailability: "available",
 			NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
@@ -653,7 +654,7 @@ func TestConfigOverrideCreateReplaceAndClearPayloads(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var wire json.RawMessage
-			connection := &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+			connection := &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 				if method != test.method {
 					t.Fatalf("method = %q, want %q", method, test.method)
 				}
@@ -689,7 +690,7 @@ func writeOverrideFixture(t *testing.T, content string) string {
 
 func TestReadOnlyConfigAcquisitionFailureWritesNothing(t *testing.T) {
 	var output bytes.Buffer
-	deps := hotAuthDependencies(t, &fakeDaemonClient{})
+	deps := hotAuthDependencies(t, &clitest.FakeDaemonClient{})
 	deps.stdout = &output
 	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) { return nil, errors.New("stopped") }
 	if err := runConfigList(deps); err == nil {

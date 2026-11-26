@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"syscall"
 	"testing"
@@ -95,8 +96,8 @@ func TestRunDiagnosticsExportWritesCanonicalArtifactExclusively(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("artifact = %q, want canonical %q", got, want)
 	}
-	if connection.callCount != 1 || connection.closeCount != 1 {
-		t.Fatalf("calls/close = %d/%d", connection.callCount, connection.closeCount)
+	if connection.CallCount != 1 || connection.CloseCount != 1 {
+		t.Fatalf("calls/close = %d/%d", connection.CallCount, connection.CloseCount)
 	}
 	if !strings.Contains(output.String(), "诊断信息已写入：") || !strings.Contains(output.String(), "diagnostics-�-export.json") || strings.ContainsRune(output.String(), '\u0085') {
 		t.Fatalf("success presentation did not sanitize path: %q", output.String())
@@ -203,24 +204,24 @@ func TestWriteOwnedArtifactChecksWriteAndClosesExactlyOnce(t *testing.T) {
 		if err := writeOwnedArtifact(file, []byte("artifact")); err != nil {
 			t.Fatal(err)
 		}
-		if file.writeCount != 1 || file.closeCount != 1 || string(file.data) != "artifact" {
+		if file.writeCount != 1 || file.CloseCount != 1 || string(file.data) != "artifact" {
 			t.Fatalf("writer state = %+v", file)
 		}
 	})
 	t.Run("short write", func(t *testing.T) {
 		file := &testArtifactWriter{writeN: 2}
 		err := writeOwnedArtifact(file, []byte("artifact"))
-		if !errors.Is(err, io.ErrShortWrite) || file.closeCount != 1 {
-			t.Fatalf("short write error/close = %v/%d", err, file.closeCount)
+		if !errors.Is(err, io.ErrShortWrite) || file.CloseCount != 1 {
+			t.Fatalf("short write error/close = %v/%d", err, file.CloseCount)
 		}
 	})
 	t.Run("write and close errors", func(t *testing.T) {
 		writeErr := errors.New("private write cause")
-		closeErr := errors.New("private close cause")
-		file := &testArtifactWriter{writeN: 0, writeErr: writeErr, closeErr: closeErr}
+		CloseErr := errors.New("private close cause")
+		file := &testArtifactWriter{writeN: 0, writeErr: writeErr, CloseErr: CloseErr}
 		err := writeOwnedArtifact(file, []byte("artifact"))
-		if !errors.Is(err, writeErr) || !errors.Is(err, closeErr) || file.closeCount != 1 {
-			t.Fatalf("joined error/close = %v/%d", err, file.closeCount)
+		if !errors.Is(err, writeErr) || !errors.Is(err, CloseErr) || file.CloseCount != 1 {
+			t.Fatalf("joined error/close = %v/%d", err, file.CloseCount)
 		}
 	})
 }
@@ -253,9 +254,9 @@ func diagnosticsExportDependencies(connection daemonconn.Client, stdout io.Write
 	}
 }
 
-func diagnosticsExportClient(t *testing.T, result []byte, callErr error) *fakeDaemonClient {
+func diagnosticsExportClient(t *testing.T, result []byte, callErr error) *clitest.FakeDaemonClient {
 	t.Helper()
-	return &fakeDaemonClient{call: func(method string, payload json.RawMessage) (contract.Response, error) {
+	return &clitest.FakeDaemonClient{CallFunc: func(method string, payload json.RawMessage) (contract.Response, error) {
 		if method != contract.MethodDiagnosticsExport {
 			t.Errorf("method = %q, want %q", method, contract.MethodDiagnosticsExport)
 		}
@@ -302,9 +303,9 @@ type testArtifactWriter struct {
 	data       []byte
 	writeN     int
 	writeErr   error
-	closeErr   error
+	CloseErr   error
 	writeCount int
-	closeCount int
+	CloseCount int
 }
 
 func (writer *testArtifactWriter) Write(data []byte) (int, error) {
@@ -321,8 +322,8 @@ func (writer *testArtifactWriter) Write(data []byte) (int, error) {
 }
 
 func (writer *testArtifactWriter) Close() error {
-	writer.closeCount++
-	return writer.closeErr
+	writer.CloseCount++
+	return writer.CloseErr
 }
 
 type exportFailWriter struct {

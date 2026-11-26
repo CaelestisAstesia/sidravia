@@ -87,14 +87,14 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 			if err != nil {
 				return err
 			}
-			return writeSessionStartResult(deps.stdout, result)
+			return terminal.WriteSessionStartResult(deps.stdout, result)
 		}
 		if options.sessionID != "" {
 			result, err := callSessionStart(deps, connection, contract.MethodSessionEnsureRunning, contract.SessionEnsureRunningPayload{SessionID: options.sessionID})
 			if err != nil {
 				return err
 			}
-			return writeSessionStartResult(deps.stdout, result)
+			return terminal.WriteSessionStartResult(deps.stdout, result)
 		}
 		password, err := deps.readValidatedPassword(options.passwordStdin)
 		if err != nil {
@@ -111,7 +111,7 @@ func runAuthStart(options authStartOptions, deps authDependencies) error {
 		if err != nil {
 			return err
 		}
-		return writeSessionStartResult(deps.stdout, result)
+		return terminal.WriteSessionStartResult(deps.stdout, result)
 	})
 }
 
@@ -121,7 +121,7 @@ func runAuthRestart(sessionID string, deps authDependencies) error {
 		if err != nil {
 			return err
 		}
-		return writeSessionResult(deps.stdout, result)
+		return terminal.WriteSessionResult(deps.stdout, result)
 	})
 }
 
@@ -142,13 +142,13 @@ func runAuthRemove(sessionID string, deps authDependencies) error {
 			if response.Error != nil {
 				code = response.Error.Code
 			}
-			return errors.New(ipcErrorText(code))
+			return errors.New(terminal.IPCErrorText(code))
 		}
 		result, err := contract.DecodeSessionRemoveResult(response.Result, sessionID)
 		if err != nil {
 			return terminal.Failure("解码 Session 响应", err)
 		}
-		return writeSessionRemoveResult(deps.stdout, result)
+		return terminal.WriteSessionRemoveResult(deps.stdout, result)
 	})
 }
 
@@ -163,7 +163,7 @@ func runAuthStatus(sessionID string, deps authDependencies) error {
 		if err != nil {
 			return err
 		}
-		return writeSessionResult(deps.stdout, result)
+		return terminal.WriteSessionResult(deps.stdout, result)
 	})
 }
 
@@ -178,7 +178,7 @@ func runAuthStop(sessionID string, deps authDependencies) error {
 		if err != nil {
 			return err
 		}
-		return writeSessionResult(deps.stdout, result)
+		return terminal.WriteSessionResult(deps.stdout, result)
 	})
 }
 
@@ -212,7 +212,7 @@ func callSession(
 		if response.Error != nil {
 			code = response.Error.Code
 		}
-		return contract.SessionResult{}, errors.New(ipcErrorText(code))
+		return contract.SessionResult{}, errors.New(terminal.IPCErrorText(code))
 	}
 
 	result, err := decodeSessionResult(response.Result)
@@ -245,14 +245,9 @@ func callSessionStart(deps authDependencies, connection daemonconn.Client, metho
 		if response.Error != nil {
 			code = response.Error.Code
 		}
-		return contract.SessionStartResult{}, errors.New(ipcErrorText(code))
+		return contract.SessionStartResult{}, errors.New(terminal.IPCErrorText(code))
 	}
 	return decodeSessionStartResult(response.Result)
-}
-
-func writeSessionRemoveResult(output io.Writer, result contract.SessionRemoveResult) error {
-	p := newPresentation(output)
-	return terminal.Failure("写入 Session 删除响应", p.complete(renderSessionRemoved(&result)))
 }
 
 func decodeSessionResult(data []byte) (contract.SessionResult, error) {
@@ -260,26 +255,6 @@ func decodeSessionResult(data []byte) (contract.SessionResult, error) {
 }
 func decodeSessionStartResult(data []byte) (contract.SessionStartResult, error) {
 	return contract.DecodeSessionStartResult(data)
-}
-func validateSessionResult(value contract.SessionResult) error {
-	_, err := contract.MarshalSessionResult(value)
-	return err
-}
-
-func writeSessionResult(output io.Writer, result contract.SessionResult) error {
-	if err := validateSessionResult(result); err != nil {
-		return terminal.Failure("渲染 Session 响应", err)
-	}
-	p := newPresentation(output)
-	return terminal.Failure("写入 Session 响应", p.complete(renderSessionDetail(p, &result)))
-}
-
-func writeSessionStartResult(output io.Writer, result contract.SessionStartResult) error {
-	if err := validateSessionResult(result.Session); err != nil {
-		return terminal.Failure("渲染 Session 启动响应", err)
-	}
-	p := newPresentation(output)
-	return terminal.Failure("写入 Session 启动响应", p.complete(renderSessionStartResult(p, &result)))
 }
 
 // bindingFlags retains flag presence so an explicit empty value is invalid.
@@ -328,7 +303,7 @@ func runAuthBusiness(sessionID string, deps authDependencies) error {
 			if response.Error != nil {
 				code = response.Error.Code
 			}
-			return errors.New(ipcErrorText(code))
+			return errors.New(terminal.IPCErrorText(code))
 		}
 		value, err := contract.DecodeBusinessResult(response.Result)
 		if err != nil {

@@ -1,7 +1,8 @@
-package cli
+package terminal
 
 import (
 	"bytes"
+	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
@@ -18,8 +19,8 @@ func TestProfileListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 	}}}
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.ANSI)
-	defer p.close()
-	if err := p.write(renderProfileList(p, result)); err != nil {
+	defer p.Close()
+	if err := p.Write(RenderProfileList(p, result)); err != nil {
 		t.Fatalf("write = %v", err)
 	}
 	out := buf.String()
@@ -34,8 +35,8 @@ func TestProfileListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 func TestRedirectedListContainsNoESC(t *testing.T) {
 	t.Run("sessions", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := writeSessionList(&buf, contract.SessionListResult{Sessions: []contract.SessionResult{minimalSessionResult("authenticated")}}); err != nil {
-			t.Fatalf("writeSessionList = %v", err)
+		if err := WriteSessionList(&buf, contract.SessionListResult{Sessions: []contract.SessionResult{clitest.MinimalSessionResult("authenticated")}}); err != nil {
+			t.Fatalf("WriteSessionList = %v", err)
 		}
 		if strings.ContainsRune(buf.String(), '\x1b') {
 			t.Errorf("redirected session list contains ESC: %q", buf.String())
@@ -43,12 +44,12 @@ func TestRedirectedListContainsNoESC(t *testing.T) {
 	})
 	t.Run("profiles", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := writeProfileList(&buf, contract.ProfileListResult{Profiles: []contract.ProfileSummaryResult{{
+		if err := WriteProfileList(&buf, contract.ProfileListResult{Profiles: []contract.ProfileSummaryResult{{
 			InstitutionProfileID:     "jlu",
 			DisplayName:              "吉林大学",
 			AuthenticationProtocolID: "drcom-5.2.0-d",
 		}}}); err != nil {
-			t.Fatalf("writeProfileList = %v", err)
+			t.Fatalf("WriteProfileList = %v", err)
 		}
 		if strings.ContainsRune(buf.String(), '\x1b') {
 			t.Errorf("redirected profile list contains ESC: %q", buf.String())
@@ -58,24 +59,24 @@ func TestRedirectedListContainsNoESC(t *testing.T) {
 
 func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testing.T) {
 	base := contract.ConfigurationResult{RuntimeAvailability: "available",
-		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 		ConfigurationID:      "campus\x1b[2J\ninjected", DisplayName: "校园网",
 		InstitutionProfileID: "jlu", InstitutionDisplayName: "吉林大学",
 		AuthenticationProtocolID: "drcom", Username: "user\nmarker",
 		CredentialStored: true, StorageProtection: "protected",
 	}
-	protected := renderConfiguration(base)
+	protected := RenderConfiguration(base)
 	if !strings.Contains(protected, "已保护（protected）") || strings.ContainsAny(protected, "\x1b") ||
 		strings.Contains(protected, "\ninjected") || strings.Contains(protected, "\nmarker") ||
 		strings.Contains(strings.ToLower(protected), "password") {
 		t.Fatalf("protected configuration output unsafe: %q", protected)
 	}
 	base.StorageProtection = "unprotected"
-	if got := renderConfiguration(base); !strings.Contains(got, "未保护（unprotected）") {
+	if got := RenderConfiguration(base); !strings.Contains(got, "未保护（unprotected）") {
 		t.Fatalf("unprotected output = %q", got)
 	}
 	var empty bytes.Buffer
-	if err := writeConfigurationList(&empty, contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}}); err != nil {
+	if err := WriteConfigurationList(&empty, contract.ConfigurationListResult{StorageProtection: "protected", Configurations: []contract.ConfigurationResult{}}); err != nil {
 		t.Fatal(err)
 	}
 	if empty.String() != "尚未保存认证配置。\n下一步：运行 sidraviactl config create 创建认证配置。\n" {
@@ -85,15 +86,15 @@ func TestConfigurationPresentationProtectedUnprotectedEmptyAndSanitized(t *testi
 
 func TestConfigurationCredentialPresentationReflectsStorageAndSanitizesDynamicValues(t *testing.T) {
 	base := contract.ConfigurationResult{RuntimeAvailability: "available",
-		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 		ConfigurationID:      "config\x1b[2J\ninjected", InstitutionProfileID: "jlu",
 		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom",
 		Username: "user\nmarker", StorageProtection: "protected",
 	}
 	base.CredentialStored = true
-	saved := renderConfiguration(base)
+	saved := RenderConfiguration(base)
 	base.CredentialStored = false
-	missing := renderConfiguration(base)
+	missing := RenderConfiguration(base)
 
 	if !strings.Contains(saved, "凭据：已保存\n") || !strings.Contains(missing, "凭据：未保存\n") {
 		t.Fatalf("credential storage state was not presented truthfully: saved=%q missing=%q", saved, missing)
@@ -110,17 +111,17 @@ func TestConfigurationCredentialPresentationReflectsStorageAndSanitizesDynamicVa
 
 func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 	withName := contract.ConfigurationResult{RuntimeAvailability: "available",
-		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 		ConfigurationID:      "campus", DisplayName: "校园\x1b[2J\n配置",
 		InstitutionProfileID: "jlu", AuthenticationProtocolID: "drcom",
 		Username: "user", CredentialStored: true, StorageProtection: "protected",
 	}
-	if got := renderConfiguration(withName); !strings.Contains(got, "名称：校园�[2J�配置\n") {
+	if got := RenderConfiguration(withName); !strings.Contains(got, "名称：校园�[2J�配置\n") {
 		t.Fatalf("present optional name was not sanitized and rendered: %q", got)
 	}
 	withoutName := withName
 	withoutName.DisplayName = ""
-	got := renderConfiguration(withoutName)
+	got := RenderConfiguration(withoutName)
 	if strings.Contains(got, "名称：") {
 		t.Fatalf("unset optional name rendered an empty row: %q", got)
 	}
@@ -132,15 +133,15 @@ func TestConfigurationOmitsUnsetOptionalName(t *testing.T) {
 
 func TestConfigurationForcedColorDoesNotStyleDynamicValues(t *testing.T) {
 	result := contract.ConfigurationResult{RuntimeAvailability: "available",
-		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: automaticNetworkBindingPolicy},
+		NetworkBindingPolicy: contract.NetworkBindingPolicy{Mode: "automatically_select_latest_available"},
 		ConfigurationID:      "campus", InstitutionProfileID: "jlu",
 		AuthenticationProtocolID: "drcom", Username: "user",
 		CredentialStored: true, StorageProtection: "protected",
 	}
-	block := renderConfiguration(result)
+	block := RenderConfiguration(result)
 	var output bytes.Buffer
 	p := newTestPresentation(&output, termenv.ANSI)
-	if err := p.complete(block); err != nil {
+	if err := p.Complete(block); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != block || strings.ContainsRune(output.String(), '\x1b') {

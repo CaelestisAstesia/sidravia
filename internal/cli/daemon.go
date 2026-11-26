@@ -88,7 +88,7 @@ func defaultDaemonOperations(identity daemonctl.Identity) daemonOperations {
 }
 
 // runDaemonStatus remains strictly read-only; bootstrap owns discovery and the
-// typed status probe while CLI owns only Chinese presentation.
+// typed status probe while CLI owns only Chinese terminal.Presentation.
 func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 	result, err := ops.inspect()
 	if err != nil {
@@ -98,8 +98,8 @@ func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 	case daemonctl.ProbeStopped:
 		return writeDaemonStopped(output)
 	case daemonctl.ProbeReachable:
-		p := newPresentation(output)
-		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStatus(p, result.Status)))
+		p := terminal.NewPresentation(output)
+		return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonStatus(p, result.Status)))
 	case daemonctl.ProbeIncompatible:
 		return writeDaemonIncompatible(output)
 	default:
@@ -112,23 +112,23 @@ func daemonUnknownError() error {
 }
 
 func writeDaemonIncompatible(w io.Writer) error {
-	p := newPresentation(w)
-	return terminal.Failure("显示 daemon 状态", p.complete("守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
+	p := terminal.NewPresentation(w)
+	return terminal.Failure("显示 daemon 状态", p.Complete("守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
 }
 
 func writeDaemonStopped(w io.Writer) error {
-	p := newPresentation(w)
-	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStopped()))
+	p := terminal.NewPresentation(w)
+	return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonStopped()))
 }
 
 func writeDaemonStarted(w io.Writer) error {
-	p := newPresentation(w)
-	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStarted()))
+	p := terminal.NewPresentation(w)
+	return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonStarted()))
 }
 
 func writeDaemonRestarted(w io.Writer) error {
-	p := newPresentation(w)
-	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonRestarted()))
+	p := terminal.NewPresentation(w)
+	return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonRestarted()))
 }
 
 // runDaemonStop sends daemon.stop to the contacted generation and waits until
@@ -176,7 +176,7 @@ func stopGeneration(ops daemonOperations, info contract.RuntimeInfo) error {
 		}
 		return terminal.Failure("调用 daemon 停止", err)
 	case daemonctl.StopRejected:
-		return errors.New(ipcErrorText(failure.Code))
+		return errors.New(terminal.IPCErrorText(failure.Code))
 	case daemonctl.StopUnconfirmed:
 		return errors.New("等待 sidraviad 停止超时；停止结果尚未确认。请运行 sidraviactl daemon status 确认状态")
 	default:
@@ -229,8 +229,8 @@ func daemonStart(identity daemonctl.Identity, logLevel string) error {
 		return err
 	}
 	if outcome == daemonctl.AlreadyRunning {
-		p := newPresentation(os.Stdout)
-		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonAlreadyRunning()))
+		p := terminal.NewPresentation(os.Stdout)
+		return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonAlreadyRunning()))
 	}
 	return writeDaemonStarted(os.Stdout)
 }
@@ -254,8 +254,8 @@ func daemonStop(identity daemonctl.Identity) error {
 		return err
 	}
 	if outcome == daemonAlreadyStopped {
-		p := newPresentation(os.Stdout)
-		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonAlreadyStopped()))
+		p := terminal.NewPresentation(os.Stdout)
+		return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonAlreadyStopped()))
 	}
 	return writeDaemonStopped(os.Stdout)
 }
@@ -275,8 +275,8 @@ func daemonRestart(identity daemonctl.Identity, logLevel string) error {
 		return err
 	}
 	if outcome == daemonStartedFromStopped {
-		p := newPresentation(os.Stdout)
-		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStartedFromStopped()))
+		p := terminal.NewPresentation(os.Stdout)
+		return terminal.Failure("显示 daemon 状态", p.Complete(terminal.RenderDaemonStartedFromStopped()))
 	}
 	return writeDaemonRestarted(os.Stdout)
 }

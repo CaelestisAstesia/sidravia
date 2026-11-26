@@ -110,7 +110,7 @@ func RunWithIdentity(args []string, productVersion, buildID string) error {
 }
 
 // WriteError writes a safe Chinese error line for err to w through the
-// presentation boundary and returns the presentation write/restore error. The
+// terminal.Presentation boundary and returns the terminal.Presentation write/restore error. The
 // static prefix is followed by the error's own sanitized message; an
 // underlying cause is never printed. Callers that already own a nonzero exit
 // may ignore the returned reporting error so it cannot replace the business
@@ -137,8 +137,8 @@ func WriteError(w io.Writer, err error) error {
 		}
 		return nil
 	}
-	p := newPresentation(w)
-	return p.complete(writeErrorLine(err))
+	p := terminal.NewPresentation(w)
+	return p.Complete(terminal.ErrorLine(err))
 }
 
 // ExitCode returns the process exit code for a CLI result. Only the private
@@ -413,8 +413,8 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	}), newUpdateInternalCommand(deps.identity, output))
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
-		p := newPresentation(c.OutOrStdout())
-		*helpErr = p.complete(renderHelp(p, c))
+		p := terminal.NewPresentation(c.OutOrStdout())
+		*helpErr = p.Complete(renderHelp(p, c))
 	})
 	return root
 }
@@ -480,6 +480,6 @@ func isHelpRequest(args []string) bool {
 }
 
 // renderHelpCompletion renders the deterministic Chinese help block for cmd
-// through the presentation completion path and wraps its write/restore error
+// through the terminal.Presentation completion path and wraps its write/restore error
 // with the safe help operation label. It is used by DisableFlagParsing leaves
 // whose --help/-h tokens bypass Cobra's help flag.

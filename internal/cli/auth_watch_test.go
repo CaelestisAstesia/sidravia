@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sidravia/internal/cli/internal/terminal"
 	"strings"
 	"testing"
 	"time"
@@ -316,7 +317,7 @@ func TestRunAuthWatchMapsBusinessFailureWithoutPrivateMessage(t *testing.T) {
 				return contract.StateBootstrap{}, nil, fmt.Errorf("private response message marker: %w", private)
 			}}
 			err := runAuthWatch(context.Background(), authWatchTestDependencies(connection, io.Discard))
-			if err == nil || err.Error() != ipcErrorText(code) {
+			if err == nil || err.Error() != terminal.IPCErrorText(code) {
 				t.Fatalf("business failure = %v", err)
 			}
 			var got *client.RequestFailure

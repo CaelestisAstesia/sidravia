@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sidravia/internal/cli/internal/terminal"
 	"strconv"
 	"strings"
 
@@ -60,7 +61,7 @@ func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
 		cause := errors.Join(subscribeErr, ackContextErr, ackCause, context.Cause(ctx))
 		var requestFailure *client.RequestFailure
 		if errors.As(subscribeErr, &requestFailure) {
-			subscribeErr = safeAuthWatchFailure(ipcErrorText(requestFailure.Code), cause)
+			subscribeErr = safeAuthWatchFailure(terminal.IPCErrorText(requestFailure.Code), cause)
 		} else {
 			subscribeErr = safeAuthWatchFailure("订阅 daemon 状态失败", cause)
 		}
@@ -111,7 +112,7 @@ func watchAuthState(ctx context.Context, stream contract.StateEventStream, boots
 func renderAuthWatchBootstrap(bootstrap contract.StateBootstrap) string {
 	var output strings.Builder
 	if len(bootstrap.Sessions.Sessions) == 0 {
-		output.WriteString(renderSessionList(newPlainPresentation(), &bootstrap.Sessions))
+		output.WriteString(terminal.RenderSessionList(terminal.PlainPresentation(), &bootstrap.Sessions))
 	} else {
 		fmt.Fprintf(&output, "当前 Session 状态（%d）：\n", len(bootstrap.Sessions.Sessions))
 		for _, session := range bootstrap.Sessions.Sessions {
@@ -123,29 +124,29 @@ func renderAuthWatchBootstrap(bootstrap contract.StateBootstrap) string {
 }
 
 func renderAuthWatchSession(session contract.SessionResult, cleanupRequired bool) string {
-	p := newPlainPresentation()
+	p := terminal.PlainPresentation()
 	var output strings.Builder
-	output.WriteString(renderSessionDetail(p, &session))
-	output.WriteString(p.label("revision："))
+	output.WriteString(terminal.RenderSessionDetail(p, &session))
+	output.WriteString(p.Label("revision："))
 	output.WriteString(strconv.FormatUint(session.Revision, 10))
 	output.WriteString("\n")
-	output.WriteString(p.label("意图："))
-	output.WriteString(sanitizeDynamicText(session.Intent))
+	output.WriteString(p.Label("意图："))
+	output.WriteString(terminal.Sanitize(session.Intent))
 	output.WriteString("\n")
 	if session.ConfigurationID != "" {
-		output.WriteString(p.label("配置："))
-		output.WriteString(sanitizeDynamicText(session.ConfigurationID))
+		output.WriteString(p.Label("配置："))
+		output.WriteString(terminal.Sanitize(session.ConfigurationID))
 		output.WriteString("\n")
 	}
-	output.WriteString(p.label("协议 Socket："))
-	output.WriteString(sanitizeDynamicText(session.ProtocolSocket.State))
+	output.WriteString(p.Label("协议 Socket："))
+	output.WriteString(terminal.Sanitize(session.ProtocolSocket.State))
 	output.WriteString("\n")
-	output.WriteString(p.label("协议 Socket runGeneration："))
+	output.WriteString(p.Label("协议 Socket runGeneration："))
 	output.WriteString(strconv.FormatUint(session.ProtocolSocket.RunGeneration, 10))
 	output.WriteString("\n")
 	if session.ProtocolSocket.UpdatedAt != nil {
-		output.WriteString(p.label("协议 Socket 更新时间："))
-		output.WriteString(sanitizeDynamicText(*session.ProtocolSocket.UpdatedAt))
+		output.WriteString(p.Label("协议 Socket 更新时间："))
+		output.WriteString(terminal.Sanitize(*session.ProtocolSocket.UpdatedAt))
 		output.WriteString("\n")
 	}
 	appendAuthWatchEndpoint(&output, p, "本地", session.ProtocolSocket.LocalEndpoint)
@@ -156,12 +157,12 @@ func renderAuthWatchSession(session contract.SessionResult, cleanupRequired bool
 	return output.String()
 }
 
-func appendAuthWatchEndpoint(output *strings.Builder, p *presentation, label string, endpoint *contract.NetworkEndpoint) {
+func appendAuthWatchEndpoint(output *strings.Builder, p *terminal.Presentation, label string, endpoint *contract.NetworkEndpoint) {
 	if endpoint == nil {
 		return
 	}
-	output.WriteString(p.label("协议 Socket " + label + "端点："))
-	output.WriteString(sanitizeDynamicText(endpoint.Address))
+	output.WriteString(p.Label("协议 Socket " + label + "端点："))
+	output.WriteString(terminal.Sanitize(endpoint.Address))
 	output.WriteByte(':')
 	output.WriteString(strconv.FormatUint(uint64(endpoint.Port), 10))
 	output.WriteString("\n")
@@ -188,7 +189,7 @@ func renderAuthWatchEvent(event contract.StateEvent) (string, error) {
 			return "", errors.New("missing Session removed payload")
 		}
 		var output strings.Builder
-		fmt.Fprintf(&output, "Session 已移除：%s；revision：%s\n", sanitizeDynamicText(event.SessionRemoved.SessionID), strconv.FormatUint(event.SessionRemoved.Revision, 10))
+		fmt.Fprintf(&output, "Session 已移除：%s；revision：%s\n", terminal.Sanitize(event.SessionRemoved.SessionID), strconv.FormatUint(event.SessionRemoved.Revision, 10))
 		return output.String(), nil
 	case contract.EventMethodNetworkChanged:
 		if event.NetworkChanged == nil {
@@ -201,7 +202,7 @@ func renderAuthWatchEvent(event contract.StateEvent) (string, error) {
 }
 
 func writeAuthWatchBlock(output io.Writer, block string) error {
-	return newPresentation(output).complete(block)
+	return terminal.NewPresentation(output).Complete(block)
 }
 
 func closeAuthWatchStream(stream contract.StateEventStream) error {
