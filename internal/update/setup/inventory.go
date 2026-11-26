@@ -13,12 +13,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"sidravia/internal/update/setup/internal/receiptstate"
+
 	"sidravia/internal/release"
 
 	packagefiles "sidravia/internal/release/files"
 )
 
-var ErrInvalid = errors.New("invalid signed setup operation")
+var ErrInvalid = receiptstate.ErrInvalid
 var ErrChanged = errors.New("setup product files changed")
 var ErrHandoff = errors.New("installer handoff unavailable")
 var ErrRecovery = errors.New("installed program recovery unconfirmed")

@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 
-	"sidravia/internal/installationgate"
+	"sidravia/internal/installation/startgate"
 	"sidravia/internal/update"
 	"sidravia/internal/update/invocation"
 )
@@ -24,7 +24,7 @@ func main() {
 	release := func() {}
 	var err error
 	if !invocation.ControlEntry(os.Args[1:]) {
-		release, err = installationgate.AcquireRunIdentity(ProductVersion, BuildID)
+		release, err = startgate.AcquireRunIdentity(ProductVersion, BuildID)
 	}
 	if err != nil {
 		json.NewEncoder(os.Stdout).Encode(map[string]any{"schemaVersion": 1, "ok": false, "code": "maintenance_active", "message": "安装或更新正在进行，请稍后重试。"})

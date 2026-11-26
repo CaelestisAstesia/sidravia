@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationgate
+package startgate
 
 import (
 	"context"
@@ -10,9 +10,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/release"
-	"sidravia/internal/update/transaction"
+	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/update/transaction/admission"
 )
 
 var ErrBusy = errors.New("installation maintenance is active or its gate is unavailable")
@@ -62,15 +61,7 @@ func acquireLinuxStart(directory, path string) (func(), error) {
 func acquirePortableStart(directory string) (func(), error) {
 	// Check for records even if the portable marker has been removed or changed:
 	// a partial update must not turn into an unguarded installed launch.
-	root, err := productlayout.OperationRoot()
-	if err != nil {
-		return nil, errors.Join(ErrBusy, err)
-	}
-	store, err := transaction.Open(root, directory, release.PublisherTrust())
-	if err != nil {
-		return nil, errors.Join(ErrBusy, err)
-	}
-	release, err := store.AcquireStart(context.Background())
+	release, err := admission.Acquire(context.Background(), directory)
 	if err != nil {
 		return nil, errors.Join(ErrBusy, err)
 	}
@@ -108,18 +99,25 @@ func AcquireRunIdentity(version, build string) (func(), error) {
 	if exeErr != nil || filepath.Dir(exe) == "/usr/lib64/sidravia" {
 		return nil, err
 	}
-	root, rootErr := productlayout.OperationRoot()
-	if rootErr != nil {
-		return nil, errors.Join(err, rootErr)
-	}
-	store, openErr := transaction.Open(root, filepath.Dir(exe), release.PublisherTrust())
-	if openErr != nil {
-		return nil, errors.Join(err, openErr)
-	}
-	return store.AcquireRecoveryStart(context.Background(), os.Getenv(transaction.EnvRecoveryOperation), os.Getenv(transaction.EnvRecoveryToken), version, build, os.Getenv("SIDRAVIA_NAMESPACE"), os.Getenv(transaction.EnvRecoveryConfiguration))
+	return admission.AcquireRecovery(context.Background(), filepath.Dir(exe), err, admission.RecoveryFromEnvironment(version, build))
 }
+
+// ForGUIExec is the portable GUI's only route to inherited admission. RPM
+// keeps its short start gate so an RPM update can still stop the GUI later.
+func ForGUIExec(directory, version, build string) (lease *os.File, recovery bool, err error) {
+	if directory == "/usr/lib64/sidravia" {
+		release, err := AcquireStart()
+		if err != nil {
+			return nil, false, err
+		}
+		release()
+		return nil, false, nil
+	}
+	return admission.AcquireForExec(context.Background(), directory, admission.RecoveryFromEnvironment(version, build))
+}
+
 func clearRecoveryEnvironment() {
-	for _, name := range []string{transaction.EnvRecoveryOperation, transaction.EnvRecoveryToken, transaction.EnvRecoveryConfiguration} {
+	for _, name := range []string{launchcontract.EnvRecoveryOperation, launchcontract.EnvRecoveryToken, launchcontract.EnvRecoveryConfiguration} {
 		os.Unsetenv(name)
 	}
 }

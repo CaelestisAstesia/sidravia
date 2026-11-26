@@ -1,8 +1,10 @@
-package setup
+package receiptstate
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,8 @@ import (
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/release"
 )
+
+var ErrInvalid = errors.New("invalid signed setup operation")
 
 type ProcessID struct {
 	PID     uint32 `json:"pid"`
@@ -37,7 +41,7 @@ type Session struct {
 	RestartRequired bool          `json:"restartRequired"`
 }
 
-func sessionPath(target, id string) (string, error) {
+func Path(target, id string) (string, error) {
 	if !change.ValidID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
 		return "", ErrInvalid
 	}
@@ -48,28 +52,11 @@ func sessionPath(target, id string) (string, error) {
 	if filepath.Separator == '\\' {
 		target = strings.ToLower(target)
 	}
-	return filepath.Join(root, "setup", sum([]byte(target)), id+".json"), nil
+	digest := sha256.Sum256([]byte(target))
+	return filepath.Join(root, "setup", hex.EncodeToString(digest[:]), id+".json"), nil
 }
-func SaveSession(ctx context.Context, s Session) error {
-	path, e := sessionPath(s.Source.ID, s.OperationID)
-	if e != nil {
-		return e
-	}
-	if s.SchemaVersion != 1 || s.Source.Layout != "installed" || s.Source.Validate() != nil || s.Updater.PID == 0 || s.Updater.Created == 0 {
-		return ErrInvalid
-	}
-	store, e := securefile.NewSecureStore(securefile.SecureStoreOptions{})
-	if e != nil {
-		return e
-	}
-	b, e := json.Marshal(s)
-	if e != nil {
-		return e
-	}
-	return store.Replace(ctx, path, b)
-}
-func ReadSession(ctx context.Context, target, id string) (Session, error) {
-	path, e := sessionPath(target, id)
+func Read(ctx context.Context, target, id string) (Session, error) {
+	path, e := Path(target, id)
 	if e != nil {
 		return Session{}, e
 	}

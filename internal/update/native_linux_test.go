@@ -74,7 +74,7 @@ func TestNativeCLIXZUpdate(t *testing.T) {
 }
 
 func nativeCLIUpdate(t *testing.T, useXZ bool) {
-	repo, err := filepath.Abs("../../..")
+	repo, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,6 +322,23 @@ func nativeCLIUpdate(t *testing.T, useXZ bool) {
 	status := run("ok", "status")
 	if !bytes.Contains(status, []byte(`"phase":"verified"`)) {
 		t.Fatalf("no verified status: %s", status)
+	}
+	// The execution receipt must remain useful when a separate check cache
+	// cannot be decoded. Restore the fixture's cache before the next apply.
+	statePath := filepath.Join(filepath.Dir(filepath.Dir(state.Downloaded)), "state.json")
+	savedState, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	status = run("ok", "status")
+	if !bytes.Contains(status, []byte(`"phase":"verified"`)) || !bytes.Contains(status, []byte(`"state":"not_checked"`)) {
+		t.Fatalf("damaged cache invalidated the execution status: %s", status)
+	}
+	if err := os.WriteFile(statePath, savedState, 0600); err != nil {
+		t.Fatal(err)
 	}
 	run("confirmation_required", "recover", "--operation", record.ID)
 	reconciled := run("ok", "recover", "--operation", record.ID, "--confirm")

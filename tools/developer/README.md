@@ -1101,8 +1101,8 @@ integrity must remain identical. An ancestor such as Task Scheduler may retain
 its own Job; this mode does not change that ancestor. Run `test_validation_run.py` to prove that default Jobs still reject
 breakaway and retain existing descendant cleanup. Only then run the existing
 setup/portable native fixtures with synthetic keys. Use `go test -p 1` (or
-separate serial stages): setup, portable and installationgate intentionally
-share the current user's installation mutex and are not independent parallel
+separate serial stages): setup, portable, portable/internal/filetxn and installation/startgate
+intentionally share the current user's installation mutex and are not independent parallel
 acceptance jobs. Restore a VM started exclusively for acceptance to its prior
 state after evidence and cleanup have been checked.
 

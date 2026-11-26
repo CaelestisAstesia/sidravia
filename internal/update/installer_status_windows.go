@@ -5,7 +5,7 @@ package update
 import (
 	"context"
 
-	"sidravia/internal/update/setup"
+	"sidravia/internal/update/setup/receipt"
 	"sidravia/internal/update/transaction"
 )
 
@@ -13,9 +13,9 @@ func installerStatus(ctx context.Context, r transaction.Record) (*installerView,
 	if r.Source.Layout != "installed" {
 		return nil, nil
 	}
-	s, e := setup.ReadSession(ctx, r.Source.ID, r.ID)
+	s, e := receipt.Status(ctx, r.Source.ID, r.ID)
 	if e != nil {
 		return nil, e
 	}
-	return &installerView{ExitCode: s.InstallerExit, Integration: s.Integration, RestartRequired: s.RestartRequired}, nil
+	return &installerView{ExitCode: s.ExitCode, Integration: s.Integration, RestartRequired: s.RestartRequired}, nil
 }

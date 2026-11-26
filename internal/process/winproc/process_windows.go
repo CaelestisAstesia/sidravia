@@ -1,7 +1,7 @@
 //go:build windows
 
 // Package windowsplatform implements Windows mechanisms, not update policy.
-package windowsplatform
+package winproc
 
 import (
 	"context"
@@ -155,7 +155,7 @@ func FileHash(path string) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func parentPID(pid uint32) (uint32, error) {
+func ParentPID(pid uint32) (uint32, error) {
 	h, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return 0, err
@@ -198,15 +198,29 @@ func (p *Process) ExitCode() (uint32, error) {
 	return code, err
 }
 
-// Running observes the retained process identity, never a recycled PID.
-func (p *Process) Running() bool {
-	result, err := windows.WaitForSingleObject(p.handle, 0)
-	return err == nil && result == uint32(windows.WAIT_TIMEOUT)
+// PollExit observes the exact retained process and reports query failure.
+func (p *Process) PollExit() (bool, error) {
+	status, err := windows.WaitForSingleObject(p.handle, 0)
+	if err != nil {
+		return false, err
+	}
+	switch status {
+	case windows.WAIT_OBJECT_0:
+		return true, nil
+	case uint32(windows.WAIT_TIMEOUT):
+		return false, nil
+	default:
+		return false, fmt.Errorf("unexpected process wait result: %d", status)
+	}
 }
 
-// ObserveParent retains the exact process that launched the short host.
+// Running is for callers that can reject both exit and observation failure.
+func (p *Process) Running() bool {
+	exited, err := p.PollExit()
+	return err == nil && !exited
+}
 func ObserveParent() (*Process, error) {
-	pid, err := parentPID(uint32(os.Getpid()))
+	pid, err := ParentPID(uint32(os.Getpid()))
 	if err != nil {
 		return nil, err
 	}
@@ -222,15 +236,15 @@ func DescendsFrom(pid, owner uint32, created uint64) error {
 			return err
 		}
 		if p.PID == owner {
-			valid := p.Created == created && p.Running()
+			exited, waitErr := p.PollExit()
 			p.Close()
-			if valid {
+			if p.Created == created && !exited && waitErr == nil {
 				return nil
 			}
-			return ErrPeer
+			return errors.Join(ErrPeer, waitErr)
 		}
 		p.Close()
-		next, err := parentPID(pid)
+		next, err := ParentPID(pid)
 		if err != nil || next == pid {
 			return ErrPeer
 		}

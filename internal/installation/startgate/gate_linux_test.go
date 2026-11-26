@@ -1,6 +1,6 @@
 //go:build linux
 
-package installationgate
+package startgate
 
 import (
 	"crypto/sha256"
@@ -69,5 +69,26 @@ func TestPortableGateRejectsUnverifiableStateEvenWithoutMarker(t *testing.T) {
 	}
 	if _, err := acquirePortableStart(target); !errors.Is(err, ErrBusy) {
 		t.Fatalf("unverifiable partial update allowed startup: %v", err)
+	}
+}
+
+func TestGUIExecLeaseHoldsAdmissionAndStartsCloseOnExec(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	target := t.TempDir()
+	lease, recovery, err := ForGUIExec(target, "1.0.0", "dev")
+	if err != nil || recovery || lease == nil {
+		t.Fatalf("ordinary GUI startup: lease=%v recovery=%v err=%v", lease, recovery, err)
+	}
+	defer lease.Close()
+	flags, err := unix.FcntlInt(lease.Fd(), unix.F_GETFD, 0)
+	if err != nil || flags&unix.FD_CLOEXEC == 0 {
+		t.Fatalf("launcher lease leaked before explicit inheritance: flags=%d err=%v", flags, err)
+	}
+	if err := unix.Flock(int(lease.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		t.Fatalf("test could not simulate exclusive installation: %v", err)
+	}
+	if other, _, err := ForGUIExec(target, "1.0.0", "dev"); err == nil {
+		other.Close()
+		t.Fatal("GUI inherited without a compatible startup lease")
 	}
 }

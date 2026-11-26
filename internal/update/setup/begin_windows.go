@@ -19,9 +19,11 @@ import (
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/release"
+	"sidravia/internal/update/setup/internal/innopeer"
+	"sidravia/internal/update/setup/internal/receiptstate"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 // Begin validates all bytes before launching Inno. Inno must authenticate its
@@ -101,14 +103,14 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 	if err != nil {
 		return record, err
 	}
-	owner, err := windowsplatform.Observe(uint32(os.Getpid()))
+	owner, err := winproc.Observe(uint32(os.Getpid()))
 	if err != nil {
 		return record, err
 	}
 	defer owner.Close()
 	manifest, sig := old.Proof()
-	session := Session{SchemaVersion: 1, OperationID: id, Source: record.Source, Updater: ProcessID{owner.PID, owner.Created}, Namespace: ns.String(), HasGUI: hasGUI, Expires: time.Now().Add(30 * time.Minute), SourceManifest: manifest, SourceSignature: sig, SourceIndex: index, Integration: "not_started"}
-	if err = SaveSession(ctx, session); err != nil {
+	session := receiptstate.Session{SchemaVersion: 1, OperationID: id, Source: record.Source, Updater: receiptstate.ProcessID{owner.PID, owner.Created}, Namespace: ns.String(), HasGUI: hasGUI, Expires: time.Now().Add(30 * time.Minute), SourceManifest: manifest, SourceSignature: sig, SourceIndex: index, Integration: "not_started"}
+	if err = saveSession(ctx, session); err != nil {
 		return record, err
 	}
 	if _, err = store.Create(ctx, record); err != nil {
@@ -121,16 +123,16 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 	if _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 		return record, err
 	}
-	offer, err := windowsplatform.NewOffer(id, helperHash)
+	offer, err := innopeer.NewOffer(id, helperHash)
 	if err != nil {
 		return abort(err)
 	}
 	defer offer.Close()
-	cmd, err := windowsplatform.StartIndependent(archive, "/SP-", "/NORESTART", "/RESTARTEXITCODE=3010", "/DIR="+layout.ExecutableDirectory, "/SIDRAVIAUPDATE="+id, "/SIDRAVIAUPDATER="+strconv.Itoa(os.Getpid()))
+	cmd, err := winproc.StartIndependent(archive, "/SP-", "/NORESTART", "/RESTARTEXITCODE=3010", "/DIR="+layout.ExecutableDirectory, "/SIDRAVIAUPDATE="+id, "/SIDRAVIAUPDATER="+strconv.Itoa(os.Getpid()))
 	if err != nil {
 		return abort(errors.Join(ErrHandoff, err))
 	}
-	launched, err := windowsplatform.Observe(uint32(cmd.Process.Pid))
+	launched, err := winproc.Observe(uint32(cmd.Process.Pid))
 	cmd.Process.Release()
 	if err != nil {
 		return record, err
@@ -143,8 +145,8 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 		return record, err
 	}
 	defer coordinator.Close()
-	session.Coordinator = ProcessID{coordinator.PID, coordinator.Created}
-	if err = SaveSession(context.WithoutCancel(ctx), session); err != nil {
+	session.Coordinator = receiptstate.ProcessID{coordinator.PID, coordinator.Created}
+	if err = saveSession(context.WithoutCancel(ctx), session); err != nil {
 		return record, err
 	}
 	record, _, err = store.Read(context.WithoutCancel(ctx))

@@ -1,6 +1,6 @@
 //go:build windows
 
-package windowsplatform
+package innopeer
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 	"unsafe"
+
+	"sidravia/internal/process/winproc"
 
 	"golang.org/x/sys/windows"
 
@@ -19,14 +21,14 @@ type Offer struct {
 	handle     windows.Handle
 	id         string
 	helperHash string
-	owner      *Process
+	owner      *winproc.Process
 }
 
 func NewOffer(id, helperHash string) (*Offer, error) {
 	if !change.ValidID(id) || len(helperHash) != 64 {
 		return nil, change.ErrInvalid
 	}
-	owner, err := Observe(uint32(os.Getpid()))
+	owner, err := winproc.Observe(uint32(os.Getpid()))
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +63,9 @@ func pipeName(id string) string { return `\\.\pipe\Sidravia.Update.` + id }
 
 // Await authenticates a short-lived package host and its exact installer parent.
 // Callers still must verify signed artifacts and their target-bound operation.
-func (o *Offer) Await(ctx context.Context, launched *Process) (*Process, error) {
+func (o *Offer) Await(ctx context.Context, launched *winproc.Process) (*winproc.Process, error) {
 	if launched == nil {
-		return nil, ErrPeer
+		return nil, winproc.ErrPeer
 	}
 	for {
 		err := windows.ConnectNamedPipe(o.handle, nil)
@@ -81,47 +83,47 @@ func (o *Offer) Await(ctx context.Context, launched *Process) (*Process, error) 
 	if err := windows.GetNamedPipeClientProcessId(o.handle, &peerID); err != nil {
 		return nil, err
 	}
-	peer, err := Observe(peerID)
+	peer, err := winproc.Observe(peerID)
 	if err != nil {
 		return nil, err
 	}
 	defer peer.Close()
 	if peer.SID != o.owner.SID || peer.Integrity != o.owner.Integrity {
-		return nil, ErrPeer
+		return nil, winproc.ErrPeer
 	}
-	hash, err := FileHash(peer.Path)
+	hash, err := winproc.FileHash(peer.Path)
 	if err != nil || hash != o.helperHash {
-		return nil, ErrPeer
+		return nil, winproc.ErrPeer
 	}
 	msg, err := readMessage(ctx, o.handle)
 	if err != nil {
 		return nil, err
 	}
 	if len(msg) != 36 || string(msg[:32]) != o.id {
-		return nil, ErrPeer
+		return nil, winproc.ErrPeer
 	}
-	coordinator, err := Observe(binary.LittleEndian.Uint32(msg[32:]))
+	coordinator, err := winproc.Observe(binary.LittleEndian.Uint32(msg[32:]))
 	if err != nil {
 		return nil, err
 	}
-	fail := func(e error) (*Process, error) { coordinator.Close(); return nil, e }
-	parent, err := parentPID(peerID)
+	fail := func(e error) (*winproc.Process, error) { coordinator.Close(); return nil, e }
+	parent, err := winproc.ParentPID(peerID)
 	if err != nil || parent != coordinator.PID || coordinator.Created > peer.Created || coordinator.SID != o.owner.SID || coordinator.Integrity != o.owner.Integrity {
-		return fail(ErrPeer)
+		return fail(winproc.ErrPeer)
 	}
 	// Inno's loader may delegate to one worker. The worker must belong to
 	// the exact still-live process launched by this updater, not any host parent.
-	status, waitErr := windows.WaitForSingleObject(launched.handle, 0)
-	if waitErr != nil || status != uint32(windows.WAIT_TIMEOUT) || coordinator.Created < launched.Created {
-		return fail(ErrPeer)
+	exited, waitErr := launched.PollExit()
+	if waitErr != nil || exited || coordinator.Created < launched.Created {
+		return fail(errors.Join(winproc.ErrPeer, waitErr))
 	}
 	if coordinator.PID != launched.PID {
-		loader, parentErr := parentPID(coordinator.PID)
+		loader, parentErr := winproc.ParentPID(coordinator.PID)
 		if parentErr != nil || loader != launched.PID {
-			return fail(ErrPeer)
+			return fail(winproc.ErrPeer)
 		}
 	} else if coordinator.Created != launched.Created {
-		return fail(ErrPeer)
+		return fail(winproc.ErrPeer)
 	}
 	if err = writeMessage(ctx, o.handle, []byte("accepted")); err != nil {
 		return fail(err)
@@ -131,7 +133,7 @@ func (o *Offer) Await(ctx context.Context, launched *Process) (*Process, error) 
 		return fail(err)
 	}
 	if string(done) != "received" {
-		return fail(ErrPeer)
+		return fail(winproc.ErrPeer)
 	}
 	return coordinator, nil
 }
@@ -153,20 +155,20 @@ func Acknowledge(ctx context.Context, id string, serverID, coordinatorID uint32)
 		return err
 	}
 	if actual != serverID {
-		return ErrPeer
+		return winproc.ErrPeer
 	}
-	owner, err := Observe(serverID)
+	owner, err := winproc.Observe(serverID)
 	if err != nil {
 		return err
 	}
 	defer owner.Close()
-	self, err := Observe(uint32(os.Getpid()))
+	self, err := winproc.Observe(uint32(os.Getpid()))
 	if err != nil {
 		return err
 	}
 	defer self.Close()
 	if self.SID != owner.SID || self.Integrity != owner.Integrity {
-		return ErrPeer
+		return winproc.ErrPeer
 	}
 	mode := uint32(windows.PIPE_READMODE_MESSAGE | windows.PIPE_NOWAIT)
 	if err = windows.SetNamedPipeHandleState(h, &mode, nil, nil); err != nil {
@@ -182,7 +184,7 @@ func Acknowledge(ctx context.Context, id string, serverID, coordinatorID uint32)
 		return err
 	}
 	if string(reply) != "accepted" {
-		return ErrPeer
+		return winproc.ErrPeer
 	}
 	return writeMessage(ctx, h, []byte("received"))
 }
@@ -219,7 +221,7 @@ func writeMessage(ctx context.Context, h windows.Handle, b []byte) error {
 		return err
 	}
 	if int(n) != len(b) {
-		return ErrPeer
+		return winproc.ErrPeer
 	}
 	return nil
 }

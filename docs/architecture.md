@@ -57,6 +57,6 @@ GUI 与 CTL 通过本机回环 WebSocket 调用后台。客户端不直接改写
 2. [应用编排](../internal/daemon/internal/application)和 [IPC 契约](../internal/ipc/contract)。
 3. [认证会话](../internal/daemon/internal/session)与[协议契约](../internal/connection/auth/protocol)。
 4. [命令行](../internal/cli)与 [Flutter 应用层](../gui/lib/application)。
-5. [Windows 维护工具](../internal/installation/shellintegration)与[独立更新器](../internal/update/command)。
+5. [Windows 维护工具](../internal/installation/inno)与[独立更新器](../internal/update)。
 
 命名与领域术语见[命名与模块约定](code-conventions.md)。构建与验证见[开发指南](development.md)，协议扩展见[协议支持与适配](protocols.md)。

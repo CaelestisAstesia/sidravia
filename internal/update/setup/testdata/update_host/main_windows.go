@@ -25,9 +25,10 @@ import (
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installation/resume"
-	"sidravia/internal/installationgate"
+	"sidravia/internal/installation/startgate"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/update/windowsplatform"
+	"sidravia/internal/process/winproc"
+	"sidravia/internal/update/setup/internal/innopeer"
 )
 
 func main() {
@@ -119,7 +120,7 @@ func run() error {
 			windows.TerminateProcess(pi.Process, 1)
 			return err
 		}
-		var installer *windowsplatform.Process
+		var installer *winproc.Process
 		defer func() {
 			if installer != nil {
 				ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second)
@@ -145,7 +146,7 @@ func run() error {
 				if err = json.Unmarshal(data, &identity); err != nil {
 					return err
 				}
-				installer, err = windowsplatform.Observe(identity.PID)
+				installer, err = winproc.Observe(identity.PID)
 				if err != nil {
 					return err
 				}
@@ -210,16 +211,16 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		hash, err := windowsplatform.FileHash(exe)
+		hash, err := winproc.FileHash(exe)
 		if err != nil {
 			return err
 		}
-		offer, err := windowsplatform.NewOffer(id, hash)
+		offer, err := innopeer.NewOffer(id, hash)
 		if err != nil {
 			return err
 		}
 		defer offer.Close()
-		cmd, err := windowsplatform.StartIndependent(os.Args[4], "/VERYSILENT", "/SUPPRESSMSGBOXES", "/SP-", "/NORESTART", "/DIR="+filepath.Join(root, "target"), "/ROOT="+root, "/OP="+id, "/UPDATER="+strconv.Itoa(os.Getpid()), "/LOG="+filepath.Join(root, "setup.log"))
+		cmd, err := winproc.StartIndependent(os.Args[4], "/VERYSILENT", "/SUPPRESSMSGBOXES", "/SP-", "/NORESTART", "/DIR="+filepath.Join(root, "target"), "/ROOT="+root, "/OP="+id, "/UPDATER="+strconv.Itoa(os.Getpid()), "/LOG="+filepath.Join(root, "setup.log"))
 		if err != nil {
 			if os.Args[5] == "no-breakaway" && errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 				if e := write(root, "launch-rejected.json", map[string]any{"reason": "job_breakaway_denied"}); e != nil {
@@ -228,7 +229,7 @@ func run() error {
 			}
 			return err
 		}
-		launched, err := windowsplatform.Observe(uint32(cmd.Process.Pid))
+		launched, err := winproc.Observe(uint32(cmd.Process.Pid))
 		if err != nil {
 			return err
 		}
@@ -265,7 +266,7 @@ func run() error {
 		if len(os.Args) != 6 {
 			return errors.New("accept arguments")
 		}
-		return windowsplatform.Acknowledge(ctx, id, number(os.Args[4]), number(os.Args[5]))
+		return innopeer.Acknowledge(ctx, id, number(os.Args[4]), number(os.Args[5]))
 	case "inspect":
 		target := filepath.Join(root, "target")
 		layout, err := productlayout.ResolveTarget(target, productlayout.Namespace{})
@@ -430,13 +431,13 @@ func realLifecycle(ctx context.Context, root, id string) error {
 	originalDaemonPID := info.PID
 	// Retain dead process objects just as an external watcher may. Recovery
 	// must not need the image/token of an already exited generation.
-	originalObserver, err := windowsplatform.Observe(uint32(originalDaemonPID))
+	originalObserver, err := winproc.Observe(uint32(originalDaemonPID))
 	if err != nil {
 		return err
 	}
 	defer originalObserver.Close()
 	if guiMode {
-		originalGUI, e := windowsplatform.Observe(uint32(originalPID))
+		originalGUI, e := winproc.Observe(uint32(originalPID))
 		if e != nil {
 			return e
 		}
@@ -510,7 +511,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 	if err != nil || repeated.PID != restored.PID {
 		return errors.New("repeated abort replaced the recovered generation")
 	}
-	restoredProcess, err := windowsplatform.Observe(uint32(restored.PID))
+	restoredProcess, err := winproc.Observe(uint32(restored.PID))
 	if err != nil {
 		return err
 	}
@@ -524,7 +525,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 		if err = stage("stop", third); err != nil {
 			return err
 		}
-		return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "desktop": true, "namespace": ns, "productVersion": version, "buildId": buildID})
+		return write(root, "real-inno.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "desktop": true, "namespace": ns, "productVersion": version, "buildId": buildID})
 	}
 	conn, err = daemonctl.Connect(ctx, identity, restored)
 	if err != nil {
@@ -538,7 +539,7 @@ func realLifecycle(ctx context.Context, root, id string) error {
 	if err = restoredProcess.Wait(ctx); err != nil {
 		return err
 	}
-	return write(root, "real-lifecycle.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "namespace": ns, "productVersion": version, "buildId": buildID})
+	return write(root, "real-inno.json", map[string]any{"preparedAbortSamePID": true, "committedExitConfirmed": true, "coldResumeConfirmed": true, "namespace": ns, "productVersion": version, "buildId": buildID})
 }
 func mustNamespace(value string) productlayout.Namespace {
 	ns, _ := productlayout.NewNamespace(value)
@@ -548,7 +549,7 @@ func mustNamespace(value string) productlayout.Namespace {
 // New process admission must be bounded and non-modal while Inno owns the
 // account mutex. Internal short-host capabilities remain callable under it.
 func startupAdmission(ctx context.Context, target string, env []string, gui bool) error {
-	release, err := installationgate.AcquireStart()
+	release, err := startgate.AcquireStart()
 	if err != nil {
 		return err
 	}

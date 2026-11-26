@@ -1,6 +1,6 @@
 //go:build windows
 
-package windowsplatform
+package innopeer
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/process/winproc"
+
 	"golang.org/x/sys/windows"
 )
 
@@ -19,7 +21,7 @@ func TestOfferCannotBeReplacedAndCancelsWithoutClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash, err := FileHash(exe)
+	hash, err := winproc.FileHash(exe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +31,7 @@ func TestOfferCannotBeReplacedAndCancelsWithoutClient(t *testing.T) {
 		if first != nil {
 			first.Close()
 		}
-		if !errors.Is(err, ErrPeer) {
+		if !errors.Is(err, winproc.ErrPeer) {
 			t.Fatalf("elevated offer must be rejected: %v", err)
 		}
 		t.Skip("elevated refusal verified; handoff success requires medium integrity")
@@ -50,7 +52,7 @@ func TestOfferCannotBeReplacedAndCancelsWithoutClient(t *testing.T) {
 }
 
 func TestObserveRejectsNonexistentProcess(t *testing.T) {
-	if p, err := Observe(0); err == nil {
+	if p, err := winproc.Observe(0); err == nil {
 		p.Close()
 		t.Fatal("invalid process accepted")
 	}
@@ -61,7 +63,7 @@ func TestHandoffRejectsUnlaunchedCoordinator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash, err := FileHash(exe)
+	hash, err := winproc.FileHash(exe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +73,7 @@ func TestHandoffRejectsUnlaunchedCoordinator(t *testing.T) {
 		if offer != nil {
 			offer.Close()
 		}
-		if !errors.Is(err, ErrPeer) {
+		if !errors.Is(err, winproc.ErrPeer) {
 			t.Fatalf("elevated offer must be rejected: %v", err)
 		}
 		t.Skip("elevated refusal verified; coordinator test requires medium integrity")
@@ -85,7 +87,7 @@ func TestHandoffRejectsUnlaunchedCoordinator(t *testing.T) {
 	if err = cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	peer, err := Observe(uint32(cmd.Process.Pid))
+	peer, err := winproc.Observe(uint32(cmd.Process.Pid))
 	if err != nil {
 		cmd.Process.Kill()
 		cmd.Wait()
@@ -97,7 +99,7 @@ func TestHandoffRejectsUnlaunchedCoordinator(t *testing.T) {
 	// The helper is the updater's child, but it reports updater as coordinator.
 	// A trusted helper hash alone must not authorize this unrelated parent.
 	_, err = offer.Await(ctx, peer)
-	if !errors.Is(err, ErrPeer) {
+	if !errors.Is(err, winproc.ErrPeer) {
 		cmd.Process.Kill()
 		cmd.Wait()
 		t.Fatalf("foreign coordinator: %v", err)

@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/process/winproc"
 	"sidravia/internal/update/portable/internal/filetxn"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 // ReconcileInterrupted verifies complete signed bytes and dead exact owners.
@@ -48,7 +48,7 @@ func reconcileInterrupted(ctx context.Context, store *transaction.Store, id, tar
 		if owner.PID == 0 {
 			continue
 		}
-		alive, e := windowsplatform.GenerationRunning(owner.PID, owner.Created)
+		alive, e := winproc.GenerationRunning(owner.PID, owner.Created)
 		if e != nil {
 			return e
 		}

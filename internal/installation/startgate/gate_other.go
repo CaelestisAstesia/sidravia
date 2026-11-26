@@ -1,6 +1,6 @@
 //go:build !windows && !linux
 
-package installationgate
+package startgate
 
 import "errors"
 

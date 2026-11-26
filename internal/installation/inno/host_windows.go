@@ -2,7 +2,7 @@
 
 // Package lifecycle is the bounded CTL host for application-owned update
 // preparation. It does not download, replace files or infer installer success.
-package lifecycle
+package inno
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installation/resume"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/update/windowsplatform"
+	"sidravia/internal/process/winproc"
 )
 
 type processID struct {
@@ -54,18 +54,18 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	}
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
-	peer, err := windowsplatform.Observe(coordinator)
+	peer, err := winproc.Observe(coordinator)
 	if err != nil {
 		return err
 	}
 	defer peer.Close()
-	parent, err := windowsplatform.ObserveParent()
+	parent, err := winproc.ObserveParent()
 	if err != nil {
 		return err
 	}
 	defer parent.Close()
 	if parent.PID != peer.PID || parent.Created != peer.Created || parent.SID != peer.SID {
-		return windowsplatform.ErrPeer
+		return winproc.ErrPeer
 	}
 	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil {
@@ -113,7 +113,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			if e != nil || !info.Mode().IsRegular() {
 				return change.ErrInvalid
 			}
-			hash, e := windowsplatform.FileHash(path)
+			hash, e := winproc.FileHash(path)
 			if e != nil {
 				return e
 			}
@@ -206,7 +206,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 			return e
 		}
 		defer daemon.Close()
-		var gui *windowsplatform.Process
+		var gui *winproc.Process
 		if state.GUI.PID != 0 {
 			gui, e = observeTarget(state.GUI.PID, state.GUI.Created, source.ID, "Sidravia.exe", peer.SID)
 			if e != nil {
@@ -285,7 +285,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		if previous.PID == 0 {
 			continue
 		}
-		running, e := windowsplatform.GenerationRunning(previous.PID, previous.Created)
+		running, e := winproc.GenerationRunning(previous.PID, previous.Created)
 		if e != nil {
 			return e
 		}
@@ -327,7 +327,7 @@ func verifySource(state record) error {
 		if e != nil || !info.Mode().IsRegular() {
 			return change.ErrInvalid
 		}
-		actual, e := windowsplatform.FileHash(filepath.Join(state.Source.ID, name))
+		actual, e := winproc.FileHash(filepath.Join(state.Source.ID, name))
 		if e != nil || actual != hash {
 			return change.ErrInvalid
 		}
@@ -337,8 +337,8 @@ func verifySource(state record) error {
 	}
 	return nil
 }
-func observeTarget(pid uint32, created uint64, directory, name, sid string) (*windowsplatform.Process, error) {
-	p, e := windowsplatform.Observe(pid)
+func observeTarget(pid uint32, created uint64, directory, name, sid string) (*winproc.Process, error) {
+	p, e := winproc.Observe(pid)
 	if e != nil {
 		return nil, e
 	}
@@ -352,7 +352,7 @@ func observeTarget(pid uint32, created uint64, directory, name, sid string) (*wi
 // PreparedSnapshot exports only the application-owned saved-config intent to
 // the signed setup coordinator. It never exports runtime tokens or credentials.
 func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identity daemonctl.Identity) (maintenance.Intent, string, error) {
-	parent, err := windowsplatform.ObserveParent()
+	parent, err := winproc.ObserveParent()
 	if err != nil {
 		return maintenance.Intent{}, "", err
 	}
@@ -433,7 +433,7 @@ func restore(ctx context.Context, state record, identity daemonctl.Identity, sid
 			}
 			env = append(clean, launchcontract.EnvRecoveryOperation+"="+op, launchcontract.EnvRecoveryToken+"="+state.RecoveryToken, launchcontract.EnvRecoveryConfiguration+"="+state.Intent.ConfigurationID)
 		}
-		cmd, e := windowsplatform.StartApplicationEnvironment(filepath.Join(source.ID, "Sidravia.exe"), args, env)
+		cmd, e := winproc.StartApplicationEnvironment(filepath.Join(source.ID, "Sidravia.exe"), args, env)
 		if e != nil {
 			return e
 		}

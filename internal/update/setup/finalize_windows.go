@@ -13,10 +13,11 @@ import (
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/document/securefile"
+	"sidravia/internal/installation/inno"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/update/lifecycle"
+	"sidravia/internal/process/winproc"
+	"sidravia/internal/update/setup/internal/receiptstate"
 	"sidravia/internal/update/transaction"
-	"sidravia/internal/update/windowsplatform"
 )
 
 // Finish runs the newly installed updater after file publication. It retains an
@@ -27,7 +28,7 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 	if e != nil {
 		return e
 	}
-	s, e := ReadSession(ctx, layout.ExecutableDirectory, id)
+	s, e := receiptstate.Read(ctx, layout.ExecutableDirectory, id)
 	if e != nil {
 		return e
 	}
@@ -43,24 +44,16 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 	if r.Phase != transaction.Applied || r.Recovery == nil || identity.ProductVersion != r.Target.Version || identity.BuildID != r.Target.BuildID || s.Source != r.Source {
 		return ErrInvalid
 	}
-	claimPath, e := sessionPath(s.Source.ID, id)
+	if e = claimFinalization(s.Source.ID, id); e != nil {
+		return e
+	}
+	self, e := winproc.Observe(uint32(os.Getpid()))
 	if e != nil {
 		return e
 	}
-	claim, e := os.OpenFile(claimPath+".finish", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if e != nil {
-		return e
-	}
-	if e = claim.Close(); e != nil {
-		return e
-	}
-	self, e := windowsplatform.Observe(uint32(os.Getpid()))
-	if e != nil {
-		return e
-	}
-	s.Finalizer = ProcessID{self.PID, self.Created}
+	s.Finalizer = receiptstate.ProcessID{self.PID, self.Created}
 	self.Close()
-	if e = SaveSession(ctx, s); e != nil {
+	if e = saveSession(ctx, s); e != nil {
 		return e
 	}
 	if e = parent.Wait(ctx); e != nil {
@@ -82,7 +75,7 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 		s.Integration = "failed"
 	}
 	s.RestartRequired = code == 3010
-	if e = SaveSession(ctx, s); e != nil {
+	if e = saveSession(ctx, s); e != nil {
 		return e
 	}
 	if e = verifyTarget(ctx, r, s); e != nil {
@@ -106,7 +99,7 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 	if _, _, e = secure.Read(ctx, filepath.Join(directory, "admission"), 16); e != nil {
 		return e
 	}
-	recoveryErr := lifecycle.RestoreInstalled(ctx, id, r.Target, r.Recovery.Intent, r.Recovery.ExpiresAt, r.Recovery.LogLevel, directory, identity, parent.SID, r.Recovery.Nonce)
+	recoveryErr := inno.RestoreInstalled(ctx, id, r.Target, r.Recovery.Intent, r.Recovery.ExpiresAt, r.Recovery.LogLevel, directory, identity, parent.SID, r.Recovery.Nonce)
 	phase := transaction.Completed
 	failure := ""
 	if recoveryErr != nil {

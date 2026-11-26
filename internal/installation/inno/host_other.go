@@ -1,10 +1,11 @@
 //go:build !windows
 
-package lifecycle
+package inno
 
 import (
 	"context"
 	"errors"
+
 	"sidravia/internal/background/daemonctl"
 )
 

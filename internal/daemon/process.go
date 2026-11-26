@@ -13,12 +13,12 @@ import (
 	"sidravia/internal/background/logging"
 	host "sidravia/internal/daemon/internal/endpoint"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/installationgate"
+	"sidravia/internal/installation/startgate"
 )
 
 // Run starts one daemon with the version and build identity supplied by the command.
 func Run(productVersion, buildID string) (code int) {
-	releaseStart, startErr := installationgate.AcquireRunIdentity(productVersion, buildID)
+	releaseStart, startErr := startgate.AcquireRunIdentity(productVersion, buildID)
 	if startErr != nil {
 		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
 		return 1
