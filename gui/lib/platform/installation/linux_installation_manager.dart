@@ -107,21 +107,24 @@ class LinuxInstallationManager
     Directory(path).absolute.uri.normalizePath().resolve('__path_anchor__'),
   ).parent.path;
   String get _directory => _normalRoot(File(executable).parent.path);
-  bool get _rpmManaged {
-    const marker = 'sidravia-rpm-v1\n';
-    final path = '$_directory/sidravia.rpm';
-    return FileSystemEntity.typeSync(path, followLinks: false) ==
-            FileSystemEntityType.file &&
-        File(path).lengthSync() == marker.length &&
-        File(path).readAsStringSync() == marker;
+  String? get _packageManager {
+    for (final manager in const ['rpm', 'deb']) {
+      final marker = 'sidravia-$manager-v1\n';
+      final path = '$_directory/sidravia.$manager';
+      if (FileSystemEntity.typeSync(path, followLinks: false) ==
+              FileSystemEntityType.file &&
+          File(path).lengthSync() == marker.length &&
+          File(path).readAsStringSync() == marker) {
+        return manager;
+      }
+    }
+    return null;
   }
 
   @override
   bool get supportsUpdateCheck {
     try {
-      // RPM and GUI portable installations share the same updater contract.
-      // The presence of the sibling CTL is the package capability boundary;
-      // package-manager installation remains owned by RPM, not by this UI.
+      // The sibling CTL resolves the installation-specific update policy.
       return !_closed && File('$_directory/sidraviactl').existsSync();
     } on FileSystemException {
       return false;
@@ -131,7 +134,7 @@ class LinuxInstallationManager
   @override
   bool get usesSystemPackageManager {
     try {
-      return _rpmManaged;
+      return _packageManager != null;
     } on FileSystemException {
       return false;
     }
@@ -244,7 +247,7 @@ class LinuxInstallationManager
     final args = mode == 'gui'
         ? (legacyHidden ? ' --start-hidden' : '')
         : ' daemon start --log-level info';
-    final tryExec = guarded && _rpmManaged
+    final tryExec = guarded && (_packageManager != null)
         ? 'TryExec=${_directory.replaceAll('\\', '\\\\')}/$name\n'
         : '';
     return '${_header()}${tryExec}Exec=${_quote('/usr/bin/env')} --chdir ${_quote(_directory)} ${_quote('SIDRAVIA_NAMESPACE=$_namespace')} ${_quote('./$name')}$args\n'
@@ -449,10 +452,10 @@ class LinuxInstallationManager
       var pathEnabled = false;
       String pathNotice;
       try {
-        if (_rpmManaged) {
+        if (_packageManager != null) {
           pathSupported = false;
           pathEnabled = true;
-          pathNotice = '命令由 RPM 安装到 /usr/bin，请使用系统包管理器维护。';
+          pathNotice = '命令由系统软件包安装到 /usr/bin，请使用系统包管理器维护。';
         } else {
           final state = _pathState();
           pathEnabled = state.enabled;
@@ -506,8 +509,8 @@ class LinuxInstallationManager
     try {
       if (change == IntegrationChange.pathEnable ||
           change == IntegrationChange.pathDisable) {
-        if (_rpmManaged) {
-          throw const IntegrationFailure('RPM 安装的命令由系统包管理器维护。');
+        if (_packageManager != null) {
+          throw const IntegrationFailure('系统软件包安装的命令由系统包管理器维护。');
         }
         _changePath(change == IntegrationChange.pathEnable);
         return;
@@ -536,13 +539,13 @@ class LinuxInstallationManager
     if (!disabling && !_available(target)) {
       throw const IntegrationFailure('启动程序不存在或不可执行。');
     }
-    final rpm = _rpmManaged;
+    final manager = _packageManager;
     _locked(File(_path).parent.path, () {
       var removeNewTrackingOnError = false;
       try {
         final file = File(_path);
-        final prefix = rpm
-            ? '.sidravia-autostart-rpm-'
+        final prefix = manager != null
+            ? '.sidravia-autostart-$manager-'
             : '.sidravia-autostart-app-';
         final stagePrefix = '$prefix${file.uri.pathSegments.last}-';
         final noncePattern = RegExp(r'^[0-9a-f]{32}$');
@@ -571,12 +574,12 @@ class LinuxInstallationManager
         }
         if (disabling) {
           if (existing != null) file.deleteSync();
-          if (rpm) _trackRPMAutostart(false);
+          if (manager != null) _trackPackageAutostart(manager, false);
           return;
         }
         final contents = restoreEntry ?? _entry(mode);
-        if (rpm) {
-          _trackRPMAutostart(true);
+        if (manager != null) {
+          _trackPackageAutostart(manager, true);
           removeNewTrackingOnError = existing == null;
         }
         if (existing == contents) return;
@@ -628,22 +631,22 @@ class LinuxInstallationManager
           stage.deleteSync();
         }
       } on Object {
-        if (removeNewTrackingOnError) _trackRPMAutostart(false);
+        if (removeNewTrackingOnError) _trackPackageAutostart(manager!, false);
         rethrow;
       }
     });
   }
 
-  void _trackRPMAutostart(bool enable) {
+  void _trackPackageAutostart(String manager, bool enable) {
     if (_configRoot == '$_home/.config') return;
     final failure = IntegrationFailure(
-      enable ? '无法登记 RPM 桌面自启目录。' : '无法清理 RPM 桌面自启目录登记。修复安装后可重试关闭。',
+      enable ? '无法登记桌面自启目录。' : '无法清理桌面自启目录登记。修复安装后可重试关闭。',
     );
     try {
       final result = Process.runSync(
         '$_directory/sidraviactl',
         [
-          enable ? 'rpm-track-autostart' : 'rpm-untrack-autostart',
+          enable ? '$manager-track-autostart' : '$manager-untrack-autostart',
           '--',
           _configRoot,
         ],

@@ -11,11 +11,12 @@ import (
 	"sidravia/internal/process/linuxproc"
 )
 
-// CheckRPMServiceIPC is the read-only RPM recovery check for an observed main
+// CheckPackageServiceIPC is the read-only RPM recovery check for an observed main
 // process. The caller also checks that systemd still reports that invocation.
-func CheckRPMServiceIPC(ctx context.Context, identity Identity, pid int) error {
+func CheckPackageServiceIPC(ctx context.Context, identity Identity, pid int, manager string) error {
 	layout, found, err := serviceLayout(productlayout.Namespace{})
-	if err != nil || !found || !productlayout.RPMManaged(layout) {
+	owner, _ := productlayout.SystemPackage(layout)
+	if err != nil || !found || owner == "" || owner != manager || layout.ExecutableDirectory != productlayout.PackageDirectory(manager) {
 		return errors.Join(ErrModeConflict, err)
 	}
 	process, err := linuxproc.Observe(pid)

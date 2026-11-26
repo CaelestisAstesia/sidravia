@@ -81,8 +81,9 @@ def package_commands(args, env):
     info = metadata(args.go, env)
     if info["dirty"]:
         raise ValueError("package requires a clean tracked and untracked source tree")
-    if platform.system() != "Linux" or platform.machine().lower() not in ("amd64", "x86_64"):
-        raise ValueError("package requires native Linux amd64; use windows --package for Windows GUI provenance")
+    native = {"amd64": "amd64", "x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(platform.machine().lower())
+    if platform.system() != "Linux" or not native:
+        raise ValueError("package requires native Linux amd64 or arm64; use windows --package for Windows GUI provenance")
     target = getattr(args, "target", "linux-amd64")
     if target not in ("linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64"):
         raise ValueError("unsupported core target")
@@ -95,7 +96,7 @@ def package_commands(args, env):
             raise ValueError("xz compression requires a Linux target")
         producer += ["--compression", "xz"]
     consumer = [sys.executable, "tools/developer/verify_distribution.py", "--directory", str(output), "--target", target, "--version", args.version, "--build-id", info["commit"], "--go", args.go]
-    if target == "linux-amd64":
+    if target == f"linux-{native}":
         consumer.append("--smoke")
     return info, [producer, consumer]
 
@@ -157,6 +158,16 @@ def linux_command(args, env):
     import linux_development
     from verification_commands import worktree_lock
 
+    if getattr(args, "deb", None) or getattr(args, "deb_core", None):
+        import debian_packaging
+        if args.check_gui or not args.output or (args.deb_core and not args.version):
+            raise ValueError("DEB requires --output, core also requires --version; run --check-gui separately")
+        source = metadata(args.go, env)
+        if source["dirty"]:
+            raise ValueError("DEB candidates require clean source")
+        return debian_packaging.build(ROOT, Path(args.deb or args.deb_core).resolve(), args.output,
+                                      args.deb_revision, env, source, lambda: metadata(args.go, env),
+                                      core=bool(args.deb_core), version=args.version, go=args.go)
     # RPM producers wrap existing inputs without writing Flutter state.
     lock = contextlib.nullcontext() if args.rpm or args.rpm_core else worktree_lock(ROOT)
     with lock:
@@ -285,6 +296,9 @@ def parse_args(argv=None):
             mode = sub.add_mutually_exclusive_group()
             mode.add_argument("--package", action="store_true")
             mode.add_argument("--verify-package", help="owned native acceptance of a verified portable tar.gz")
+            mode.add_argument("--deb", metavar="PORTABLE", help="build a Debian GUI package from a verified portable archive")
+            mode.add_argument("--deb-core", metavar="PORTABLE", help="build a Debian core package; requires --version")
+            sub.add_argument("--deb-revision", default="1", help="positive Debian packaging revision")
             mode.add_argument("--rpm", metavar="PORTABLE", help="build RPM from the exact clean-source verified GUI portable")
             mode.add_argument("--rpm-core", metavar="PORTABLE", help="build core-only RPM from an exact clean-source verified core portable; requires --version")
             mode.add_argument("--verify-rpm-upgrade", nargs=2, metavar=("OLD_RPM", "NEW_RPM"), help="isolated RPM install/upgrade/erase and installed GUI acceptance")

@@ -104,7 +104,7 @@ func deriveLaunchPaths(namespace, packageMode string) (defaultPaths, error) {
 		return defaultPaths{}, fmt.Errorf("sidraviad: derive default paths: %w", err)
 	}
 	if packageMode != "" && (string(layout.Mode) != packageMode ||
-		(layout.Mode == productlayout.ModeInstalled && !productlayout.RPMManaged(layout))) {
+		(layout.Mode == productlayout.ModeInstalled && !productlayout.SystemManaged(layout))) {
 		return defaultPaths{}, errors.New("sidraviad: registered package layout changed")
 	}
 	return defaultPaths{

@@ -8,4 +8,4 @@ import (
 	"sidravia/internal/installation/userservice/registration"
 )
 
-func cleanupErasedRPM(context.Context) error { return registration.ErrUnavailable }
+func cleanupErasedPackage(context.Context, string) error { return registration.ErrUnavailable }

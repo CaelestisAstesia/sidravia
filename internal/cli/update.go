@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -43,8 +44,8 @@ func invokeUpdater(ctx context.Context, args []string, identity daemonctl.Identi
 		if err != nil {
 			return nil, err
 		}
-		if productlayout.RPMManaged(layout) {
-			return rpmUpdateOutput(args, identity)
+		if manager, _ := productlayout.SystemPackage(layout); manager != "" {
+			return systemPackageUpdateOutput(args, identity, manager)
 		}
 	}
 	path, err := siblingExecutable("sidraviaupdater")
@@ -71,11 +72,11 @@ func invokeUpdater(ctx context.Context, args []string, identity daemonctl.Identi
 }
 
 // RPM updates belong to the system package manager; no downloader is needed.
-func rpmUpdateOutput(args []string, identity daemonctl.Identity) ([]byte, error) {
+func systemPackageUpdateOutput(args []string, identity daemonctl.Identity, manager string) ([]byte, error) {
 	if len(args) == 1 && args[0] == "version" {
 		return json.Marshal(map[string]any{"schemaVersion": 1, "ok": true, "code": "ok", "result": map[string]string{"productVersion": identity.ProductVersion, "buildId": identity.BuildID}})
 	}
-	return json.Marshal(map[string]any{"schemaVersion": 1, "ok": false, "code": "system_package_managed", "message": "此安装由 RPM 管理，请使用系统包管理器更新。"})
+	return json.Marshal(map[string]any{"schemaVersion": 1, "ok": false, "code": "system_package_managed", "message": "此安装由 " + strings.ToUpper(manager) + " 管理，请使用系统包管理器更新。"})
 }
 
 func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]byte, error)) *cobra.Command {

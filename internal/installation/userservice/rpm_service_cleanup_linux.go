@@ -69,11 +69,14 @@ func socketListening(ctx context.Context, path string) (bool, error) {
 	}
 }
 
-// CleanupErasedRPM removes only a verified RPM registration and its related
+// CleanupErasedPackage removes only a verified RPM registration and its related
 // service switch record. The prior layout lets the caller clean desktop state.
-func CleanupErasedRPM(ctx context.Context) (layout productlayout.Layout, resultErr error) {
-	root := productlayout.RPMExecutableDirectory
-	if _, err := os.Lstat(filepath.Join(root, "sidravia.rpm")); !errors.Is(err, os.ErrNotExist) {
+func CleanupErasedPackage(ctx context.Context, manager string) (layout productlayout.Layout, resultErr error) {
+	root := productlayout.PackageDirectory(manager)
+	if root == "" {
+		return layout, ErrServiceConflict
+	}
+	if _, err := os.Lstat(filepath.Join(root, "sidravia."+manager)); !errors.Is(err, os.ErrNotExist) {
 		return layout, errors.Join(ErrServiceConflict, err)
 	}
 	path, err := registration.UnitPath()

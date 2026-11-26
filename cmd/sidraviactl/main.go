@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"sidravia/internal/background/daemonctl"
@@ -21,12 +22,12 @@ var (
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "rpm-erase-user-registration" {
+	if len(os.Args) == 2 && (os.Args[1] == "rpm-erase-user-registration" || os.Args[1] == "deb-erase-user-registration") {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-		err := cleanupErasedRPM(ctx)
+		err := cleanupErasedPackage(ctx, strings.TrimSuffix(os.Args[1], "-erase-user-registration"))
 		cancel()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "无法清理已卸载 RPM 的用户服务登记。")
+			fmt.Fprintln(os.Stderr, "无法清理已卸载软件包 的用户服务登记。")
 			os.Exit(1)
 		}
 		return
@@ -52,14 +53,14 @@ func main() {
 }
 
 func run(args []string, stderr io.Writer) int {
-	if len(args) == 2 && args[0] == "rpm-user-service-ready" {
+	if len(args) == 2 && (args[0] == "rpm-user-service-ready" || args[0] == "deb-user-service-ready") {
 		pid, err := strconv.Atoi(args[1])
 		if err != nil || pid <= 0 {
 			return 1
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		if err := daemonctl.CheckRPMServiceIPC(ctx, daemonctl.Identity{ProductVersion: ProductVersion, BuildID: BuildID}, pid); err != nil {
+		if err := daemonctl.CheckPackageServiceIPC(ctx, daemonctl.Identity{ProductVersion: ProductVersion, BuildID: BuildID}, pid, strings.TrimSuffix(args[0], "-user-service-ready")); err != nil {
 			return 1
 		}
 		return 0
@@ -71,9 +72,10 @@ func run(args []string, stderr io.Writer) int {
 		}
 		return 0
 	}
-	if len(args) == 3 && (args[0] == "rpm-track-autostart" || args[0] == "rpm-untrack-autostart") && args[1] == "--" {
-		if err := shellintegration.TrackRPMAutostart(args[2], args[0] == "rpm-track-autostart"); err != nil {
-			fmt.Fprintln(stderr, "无法登记 RPM 桌面自启目录。")
+	if len(args) == 3 && (args[0] == "rpm-track-autostart" || args[0] == "rpm-untrack-autostart" || args[0] == "deb-track-autostart" || args[0] == "deb-untrack-autostart") && args[1] == "--" {
+		manager, operation, _ := strings.Cut(args[0], "-")
+		if err := shellintegration.TrackPackageAutostart(args[2], operation == "track-autostart", manager); err != nil {
+			fmt.Fprintln(stderr, "无法登记软件包 桌面自启目录。")
 			return 1
 		}
 		return 0

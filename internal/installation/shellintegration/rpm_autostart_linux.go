@@ -22,14 +22,14 @@ const desktopEntryName = "io.github.CaelestisAstesia.Sidravia"
 
 // Use the NSS home for the index so RPM can find custom XDG roots when their
 // user has logged out. The index contains only directory names.
-func lockRPMAutostart(create bool) (string, string, []string, func(), error) {
+func lockPackageAutostart(create bool, manager string) (string, string, []string, func(), error) {
 	home, err := productlayout.AccountHome(os.Geteuid())
 	if err != nil || os.Geteuid() == 0 || !filepath.IsAbs(home) {
 		return "", "", nil, nil, errors.Join(errRPMDesktopUnavailable, err)
 	}
 	root := filepath.Join(home, ".config")
 	dir := filepath.Join(root, "Sidravia")
-	index := filepath.Join(dir, ".rpm-autostart-roots.json")
+	index := filepath.Join(dir, "."+manager+"-autostart-roots.json")
 	noop := func() {}
 	if create {
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -102,12 +102,13 @@ func readAutostartFile(path string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, 65537))
 }
 
-func TrackRPMAutostart(root string, enable bool) error {
+func TrackPackageAutostart(root string, enable bool, manager string) error {
 	layout, err := productlayout.Resolve()
-	if err != nil || layout.ExecutableDirectory != productlayout.RPMExecutableDirectory || !productlayout.RPMManaged(layout) || !validAutostartRoot(root) {
+	owner, _ := productlayout.SystemPackage(layout)
+	if err != nil || owner == "" || owner != manager || layout.ExecutableDirectory != productlayout.PackageDirectory(manager) || !validAutostartRoot(root) {
 		return errors.Join(errRPMDesktopUnavailable, err)
 	}
-	defaultRoot, index, roots, unlock, err := lockRPMAutostart(enable)
+	defaultRoot, index, roots, unlock, err := lockPackageAutostart(enable, manager)
 	if err != nil {
 		return err
 	}
@@ -121,7 +122,7 @@ func TrackRPMAutostart(root string, enable bool) error {
 		}
 		roots = append(roots, root)
 	} else {
-		owned, err := rpmAutostartFiles(root)
+		owned, err := packageAutostartFiles(root, manager)
 		if err != nil || len(owned) > 0 {
 			return err
 		}
@@ -130,7 +131,7 @@ func TrackRPMAutostart(root string, enable bool) error {
 			return err
 		}
 		for _, entry := range entries {
-			if entry.IsDir() && autostartStageName(entry.Name(), rpmAutostartStage) {
+			if entry.IsDir() && autostartStageName(entry.Name(), packageAutostartStage(manager)) {
 				return nil
 			}
 		}
@@ -173,7 +174,7 @@ func desktopEntryNamespace(name string) (string, bool) {
 	return ns.String(), err == nil && !ns.IsProduction()
 }
 
-func rpmAutostartFiles(root string) ([]string, error) {
+func packageAutostartFiles(root, manager string) ([]string, error) {
 	dir := filepath.Join(root, "autostart")
 	if err := plainDirectory(dir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -201,37 +202,41 @@ func rpmAutostartFiles(root string) ([]string, error) {
 			resultErr = errors.Join(resultErr, err)
 			continue
 		}
-		if ownsRPMDesktopEntry(string(data), namespace) {
+		if ownsPackageDesktopEntry(string(data), namespace, productlayout.PackageDirectory(manager)) {
 			owned = append(owned, path)
 		}
 	}
 	return owned, resultErr
 }
 
-func ownsRPMDesktopEntry(content, namespace string) bool {
+func ownsPackageDesktopEntry(content, namespace, directory string) bool {
 	for _, icon := range []string{"gui-runtime/data", "data"} {
 		header := "[Desktop Entry]\nType=Application\nName=Sidravia\nComment=Sidravia session autostart\nIcon=" +
-			productlayout.RPMExecutableDirectory + "/" + icon + "/icons/sidravia.png\nTerminal=false\n"
+			directory + "/" + icon + "/icons/sidravia.png\nTerminal=false\n"
 		env := "\"SIDRAVIA_NAMESPACE=" + namespace + "\""
 		for _, mode := range []struct{ program, args string }{
 			{"sidravia_gui", ""}, {"sidravia_gui", " --start-hidden"},
 			{"sidraviactl", " daemon start --log-level info"},
 		} {
-			entry := "Exec=\"/usr/bin/env\" --chdir \"" + productlayout.RPMExecutableDirectory + "\" " + env +
+			entry := "Exec=\"/usr/bin/env\" --chdir \"" + directory + "\" " + env +
 				" \"./" + mode.program + "\"" + mode.args + "\nX-Sidravia-Owner=linux-desktop-v2\n"
-			if content == header+entry || content == header+"TryExec="+productlayout.RPMExecutableDirectory+"/"+mode.program+"\n"+entry {
+			if content == header+entry || content == header+"TryExec="+directory+"/"+mode.program+"\n"+entry {
 				return true
 			}
 		}
-		if content == header+"Exec=\"/usr/bin/env\" "+env+" \""+productlayout.RPMExecutableDirectory+"/sidravia_gui\" --start-hidden\nX-Sidravia-Owner=linux-gui-v1\n" {
+		if content == header+"Exec=\"/usr/bin/env\" "+env+" \""+directory+"/sidravia_gui\" --start-hidden\nX-Sidravia-Owner=linux-gui-v1\n" {
 			return true
 		}
 	}
 	return false
 }
 
-func CleanupErasedRPM(registered productlayout.Layout) error {
-	root, index, roots, unlock, lockErr := lockRPMAutostart(false)
+func CleanupErasedPackage(registered productlayout.Layout, manager string) error {
+	directory := productlayout.PackageDirectory(manager)
+	if directory == "" {
+		return errRPMDesktopConflict
+	}
+	root, index, roots, unlock, lockErr := lockPackageAutostart(false, manager)
 	if lockErr != nil {
 		home, err := productlayout.AccountHome(os.Geteuid())
 		if err != nil || !filepath.IsAbs(home) || os.Geteuid() == 0 {
@@ -245,7 +250,7 @@ func CleanupErasedRPM(registered productlayout.Layout) error {
 	}
 	recorded := slices.Clone(roots)
 	roots = append(roots, root)
-	if registered.Mode == productlayout.ModeInstalled && registered.ExecutableDirectory == productlayout.RPMExecutableDirectory {
+	if registered.Mode == productlayout.ModeInstalled && registered.ExecutableDirectory == directory {
 		config := filepath.Dir(filepath.Dir(registered.ConfigurationsPath))
 		if validAutostartRoot(config) {
 			roots = append(roots, config)
@@ -255,8 +260,8 @@ func CleanupErasedRPM(registered productlayout.Layout) error {
 	var remaining []string
 	resultErr := lockErr
 	for _, root := range slices.Compact(roots) {
-		paths, scanErr := rpmAutostartFiles(root)
-		rootErr := errors.Join(scanErr, cleanupRPMAutostartStages(root))
+		paths, scanErr := packageAutostartFiles(root, manager)
+		rootErr := errors.Join(scanErr, cleanupPackageAutostartStages(root, manager))
 		for _, path := range paths {
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				rootErr = errors.Join(rootErr, err)

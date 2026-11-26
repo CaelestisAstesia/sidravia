@@ -13,14 +13,18 @@ import (
 	"sidravia/internal/installation/userservice"
 )
 
-func cleanupErasedRPM(ctx context.Context) error {
-	marker := filepath.Join(productlayout.RPMExecutableDirectory, "sidravia.rpm")
+func cleanupErasedPackage(ctx context.Context, manager string) error {
+	root := productlayout.PackageDirectory(manager)
+	if root == "" {
+		return userservice.ErrServiceConflict
+	}
+	marker := filepath.Join(root, "sidravia."+manager)
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		return errors.Join(userservice.ErrServiceConflict, err)
 	}
-	layout, serviceErr := userservice.CleanupErasedRPM(ctx)
+	layout, serviceErr := userservice.CleanupErasedPackage(ctx, manager)
 	if _, err := os.Lstat(marker); errors.Is(err, os.ErrNotExist) {
-		return errors.Join(serviceErr, shellintegration.CleanupErasedRPM(layout))
+		return errors.Join(serviceErr, shellintegration.CleanupErasedPackage(layout, manager))
 	}
 	return serviceErr
 }

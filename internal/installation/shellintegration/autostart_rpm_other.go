@@ -2,5 +2,5 @@
 
 package shellintegration
 
-func TrackRPMAutostart(string, bool) error { return errRPMDesktopUnavailable }
-func RecoverAutostartStaging(string) error { return errRPMDesktopUnavailable }
+func TrackPackageAutostart(string, bool, string) error { return errRPMDesktopUnavailable }
+func RecoverAutostartStaging(string) error             { return errRPMDesktopUnavailable }

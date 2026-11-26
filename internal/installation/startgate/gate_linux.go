@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/transaction/admission"
 )
 
@@ -23,15 +24,20 @@ func AcquireStart() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if filepath.Dir(exe) != "/usr/lib64/sidravia" {
-		return acquirePortableStart(filepath.Dir(exe))
+	directory := filepath.Dir(exe)
+	switch directory {
+	case productlayout.DEBExecutableDirectory:
+		return acquirePackageStart(directory, "/var/lib/sidravia/deb-maintenance/lock", "deb", "/var/lib/sidravia/deb-maintenance/block")
+	case productlayout.RPMExecutableDirectory:
+		return acquirePackageStart(directory, "/run/sidravia/rpm.lock", "rpm", "")
+	default:
+		return acquirePortableStart(directory)
 	}
-	return acquireLinuxStart(filepath.Dir(exe), "/run/sidravia/rpm.lock")
 }
 
-func acquireLinuxStart(directory, path string) (func(), error) {
-	marker, err := os.ReadFile(filepath.Join(directory, "sidravia.rpm"))
-	if (err != nil && !os.IsNotExist(err)) || (err == nil && string(marker) != "sidravia-rpm-v1\n") {
+func acquirePackageStart(directory, path, manager, block string) (func(), error) {
+	marker, err := os.ReadFile(filepath.Join(directory, "sidravia."+manager))
+	if (err != nil && !os.IsNotExist(err)) || (err == nil && string(marker) != "sidravia-"+manager+"-v1\n") {
 		return nil, ErrBusy
 	}
 	var owner unix.Stat_t
@@ -39,8 +45,8 @@ func acquireLinuxStart(directory, path string) (func(), error) {
 		return nil, ErrBusy
 	}
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-	if errors.Is(err, unix.ENOENT) {
-		return func() {}, nil // Before the first coordinating RPM transaction.
+	if errors.Is(err, unix.ENOENT) && manager == "rpm" {
+		return func() {}, nil
 	}
 	if err != nil {
 		return nil, ErrBusy
@@ -55,7 +61,23 @@ func acquireLinuxStart(directory, path string) (func(), error) {
 	if unix.Flock(fd, unix.LOCK_SH|unix.LOCK_NB) != nil {
 		return fail()
 	}
-	return func() { unix.Close(fd) }, nil
+	return checkMaintenanceBlock(block, func() { unix.Close(fd) })
+}
+
+// dpkg calls the package scripts in separate processes. The durable block
+// excludes ordinary starts between callbacks and after a host reboot.
+func checkMaintenanceBlock(path string, release func()) (func(), error) {
+	if path != "" {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			release()
+			return nil, ErrBusy
+		}
+	}
+	return release, nil
+}
+
+func systemDirectory(directory string) bool {
+	return directory == productlayout.RPMExecutableDirectory || directory == productlayout.DEBExecutableDirectory
 }
 
 func acquirePortableStart(directory string) (func(), error) {
@@ -79,7 +101,7 @@ func AcquireRun() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if filepath.Dir(exe) == "/usr/lib64/sidravia" {
+	if systemDirectory(filepath.Dir(exe)) {
 		release()
 		return func() {}, nil
 	}
@@ -96,7 +118,7 @@ func AcquireRunIdentity(version, build string) (func(), error) {
 		return releaseRun, nil
 	}
 	exe, exeErr := os.Executable()
-	if exeErr != nil || filepath.Dir(exe) == "/usr/lib64/sidravia" {
+	if exeErr != nil || systemDirectory(filepath.Dir(exe)) {
 		return nil, err
 	}
 	return admission.AcquireRecovery(context.Background(), filepath.Dir(exe), err, admission.RecoveryFromEnvironment(version, build))
@@ -105,7 +127,7 @@ func AcquireRunIdentity(version, build string) (func(), error) {
 // ForGUIExec is the portable GUI's only route to inherited admission. RPM
 // keeps its short start gate so an RPM update can still stop the GUI later.
 func ForGUIExec(directory, version, build string) (lease *os.File, recovery bool, err error) {
-	if directory == "/usr/lib64/sidravia" {
+	if systemDirectory(directory) {
 		release, err := AcquireStart()
 		if err != nil {
 			return nil, false, err

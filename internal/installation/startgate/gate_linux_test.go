@@ -33,11 +33,11 @@ func TestLinuxPackageGateBlocksStartupAndRecovers(t *testing.T) {
 	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := acquireLinuxStart(app, gate); !errors.Is(err, ErrBusy) {
+	if _, err := acquirePackageStart(app, gate, "rpm", ""); !errors.Is(err, ErrBusy) {
 		t.Fatalf("active transaction allowed startup: %v", err)
 	}
 	unix.Flock(fd, unix.LOCK_UN)
-	release, err := acquireLinuxStart(app, gate)
+	release, err := acquirePackageStart(app, gate, "rpm", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,9 +48,42 @@ func TestLinuxPackageGateBlocksStartupAndRecovers(t *testing.T) {
 	if err := os.Symlink(filepath.Join(app, "sidravia.rpm"), gate); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := acquireLinuxStart(app, gate); !errors.Is(err, ErrBusy) {
+	if _, err := acquirePackageStart(app, gate, "rpm", ""); !errors.Is(err, ErrBusy) {
 		t.Fatal("symlink gate accepted")
 	}
+}
+
+func TestDebianStartupRequiresPersistentGateAndUnblockedTransaction(t *testing.T) {
+	root := t.TempDir()
+	lock := filepath.Join(root, "lock")
+	block := filepath.Join(root, "block")
+	check := func(busy bool) {
+		t.Helper()
+		release, err := acquirePackageStart(root, lock, "deb", block)
+		if busy {
+			if !errors.Is(err, ErrBusy) {
+				t.Fatalf("unguarded dpkg transition: %v", err)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+	}
+	check(true)
+	if err := os.WriteFile(lock, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+	if err := os.WriteFile(block, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	if err := os.Remove(block); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
 }
 
 func TestPortableGateRejectsUnverifiableStateEvenWithoutMarker(t *testing.T) {

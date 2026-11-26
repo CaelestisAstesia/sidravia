@@ -30,22 +30,22 @@ func TestRPMDesktopScanSkipsUnownedHardLink(t *testing.T) {
 	if err := os.WriteFile(owned, []byte(entry), 0600); err != nil {
 		t.Fatal(err)
 	}
-	files, err := rpmAutostartFiles(root)
+	files, err := packageAutostartFiles(root, "rpm")
 	if err != nil || !slices.Equal(files, []string{owned}) {
 		t.Fatalf("owned entries = %v, error = %v", files, err)
 	}
 	modern := strings.Replace(entry, " --start-hidden", "", 1)
-	if !ownsRPMDesktopEntry(modern, "") ||
-		ownsRPMDesktopEntry(strings.Replace(modern, "\"./sidravia_gui\"", "\"./sidravia_gui\" --vendor-option", 1), "") {
+	if !ownsPackageDesktopEntry(modern, "", "/usr/lib64/sidravia") ||
+		ownsPackageDesktopEntry(strings.Replace(modern, "\"./sidravia_gui\"", "\"./sidravia_gui\" --vendor-option", 1), "", "/usr/lib64/sidravia") {
 		t.Fatal("modern GUI autostart must use exact no-argument ownership")
 	}
 }
 
 func TestInterruptedAutostartStageIsRemovedWithoutDeletingUnexpectedFiles(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), rpmAutostartStage+desktopEntryName+".desktop-0123456789abcdef0123456789abcdef")
-	if !autostartStageName(filepath.Base(dir), rpmAutostartStage) ||
+	dir := filepath.Join(t.TempDir(), packageAutostartStage("rpm")+desktopEntryName+".desktop-0123456789abcdef0123456789abcdef")
+	if !autostartStageName(filepath.Base(dir), packageAutostartStage("rpm")) ||
 		autostartStageName(filepath.Base(dir), portableAutostartStage) ||
-		autostartStageName(filepath.Base(dir)+"0", rpmAutostartStage) {
+		autostartStageName(filepath.Base(dir)+"0", packageAutostartStage("rpm")) {
 		t.Fatal("incorrect staging name validation")
 	}
 	if err := os.Mkdir(dir, 0700); err != nil {

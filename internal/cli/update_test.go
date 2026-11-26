@@ -71,7 +71,9 @@ func TestRPMUpdatesUsePackageManagerAndCompiledIdentity(t *testing.T) {
 	for _, operation := range []string{"download", "status", "apply", "recover", "version"} {
 		t.Run(operation, func(t *testing.T) {
 			var out bytes.Buffer
-			command := newUpdateCommand(&out, func(_ context.Context, args []string) ([]byte, error) { return rpmUpdateOutput(args, identity) })
+			command := newUpdateCommand(&out, func(_ context.Context, args []string) ([]byte, error) {
+				return systemPackageUpdateOutput(args, identity, "rpm")
+			})
 			command.SetArgs([]string{operation})
 			err := command.Execute()
 			var response struct {

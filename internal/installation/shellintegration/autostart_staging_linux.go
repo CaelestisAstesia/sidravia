@@ -15,7 +15,8 @@ import (
 	productlayout "sidravia/internal/installation/layout"
 )
 
-const rpmAutostartStage = ".sidravia-autostart-rpm-"
+func packageAutostartStage(manager string) string { return ".sidravia-autostart-" + manager + "-" }
+
 const portableAutostartStage = ".sidravia-autostart-app-"
 const autostartStageMarker = ".sidravia-stage-v1"
 
@@ -28,8 +29,8 @@ func RecoverAutostartStaging(path string) error {
 		return err
 	}
 	prefix := portableAutostartStage
-	if productlayout.RPMManaged(layout) {
-		prefix = rpmAutostartStage
+	if manager, _ := productlayout.SystemPackage(layout); manager != "" {
+		prefix = packageAutostartStage(manager)
 	}
 	root, err := productlayout.LinuxUserConfigDir()
 	if err != nil || !filepath.IsAbs(root) {
@@ -134,7 +135,7 @@ func removeAutostartStage(path string) error {
 	return os.Remove(path)
 }
 
-func cleanupRPMAutostartStages(root string) error {
+func cleanupPackageAutostartStages(root, manager string) error {
 	parent := filepath.Join(root, "autostart")
 	if err := plainDirectory(parent); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -148,7 +149,7 @@ func cleanupRPMAutostartStages(root string) error {
 	}
 	var resultErr error
 	for _, entry := range entries {
-		if autostartStageName(entry.Name(), rpmAutostartStage) {
+		if autostartStageName(entry.Name(), packageAutostartStage(manager)) {
 			resultErr = errors.Join(resultErr, removeAutostartStage(filepath.Join(parent, entry.Name())))
 		}
 	}

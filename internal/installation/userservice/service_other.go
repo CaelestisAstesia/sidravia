@@ -12,7 +12,7 @@ func userService(context.Context, string, productlayout.Layout, func(context.Con
 	return ServiceState{}, ErrServiceUnavailable
 }
 
-func CleanupErasedRPM(context.Context) (productlayout.Layout, error) {
+func CleanupErasedPackage(context.Context, string) (productlayout.Layout, error) {
 	return productlayout.Layout{}, ErrServiceUnavailable
 }
 

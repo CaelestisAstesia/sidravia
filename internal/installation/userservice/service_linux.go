@@ -279,7 +279,7 @@ func applyService(ctx context.Context, path, action string, layout productlayout
 		}
 		var next []byte
 		if action != "unregister" {
-			if layout.Mode != productlayout.ModePortable && !productlayout.RPMManaged(layout) {
+			if layout.Mode != productlayout.ModePortable && !productlayout.SystemManaged(layout) {
 				return before, ErrServiceUnavailable
 			}
 			info, err := os.Stat(filepath.Join(layout.ExecutableDirectory, "sidraviad"))

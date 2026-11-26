@@ -8,4 +8,6 @@ import (
 	"sidravia/internal/installation/userservice/registration"
 )
 
-func CheckRPMServiceIPC(context.Context, Identity, int) error { return registration.ErrUnavailable }
+func CheckPackageServiceIPC(context.Context, Identity, int, string) error {
+	return registration.ErrUnavailable
+}
