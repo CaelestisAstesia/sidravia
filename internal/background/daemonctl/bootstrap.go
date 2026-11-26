@@ -124,13 +124,7 @@ func defaultDependencies() dependencies {
 			}
 			return layout.RuntimeInfoPath, nil
 		},
-		readRuntimeInfo: func(path string) (contract.RuntimeInfo, error) {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return contract.RuntimeInfo{}, err
-			}
-			return contract.DecodeRuntimeInfo(data)
-		},
+		readRuntimeInfo: ReadRuntimeInfo,
 		connect: func(ctx context.Context, info contract.RuntimeInfo, identity Identity) (Client, error) {
 			return client.Connect(ctx, info.Endpoint, info.Token, identity.BuildID)
 		},
@@ -285,11 +279,16 @@ func acquireWithNamespace(ctx context.Context, identity Identity, options launch
 }
 
 func matchesOptions(status *contract.StatusResult, options launchcontract.Options) bool {
-	if status == nil || status.Mode != string(options.Mode) {
+	return MatchesMode(status, options.Mode, options.DesktopOwnerPID)
+}
+
+// MatchesMode confirms the reported mode and, for a desktop generation, its owner.
+func MatchesMode(status *contract.StatusResult, mode launchcontract.Mode, owner int) bool {
+	if status == nil || status.Mode != string(mode) {
 		return false
 	}
-	if options.Mode == launchcontract.ModeDesktop {
-		return status.DesktopOwnerPID != nil && *status.DesktopOwnerPID == options.DesktopOwnerPID
+	if mode == launchcontract.ModeDesktop {
+		return status.DesktopOwnerPID != nil && *status.DesktopOwnerPID == owner
 	}
 	return status.DesktopOwnerPID == nil
 }

@@ -193,3 +193,18 @@ func generationReachable(identity Identity, deps dependencies, info contract.Run
 	var status contract.StatusResult
 	return json.Unmarshal(response.Result, &status) == nil && validStatusFor(identity, info, &status)
 }
+
+// ProbeApplication observes the ordinary application-managed layout, including
+// during a switch while a distinct systemd registration still exists.
+func ProbeApplication(ctx context.Context, identity Identity, ns productlayout.Namespace) (ProbeResult, error) {
+	return probeInContext(ctx, identity, ns, defaultDependencies())
+}
+
+// ReadRuntimeInfo decodes the generation published at a known registration path.
+func ReadRuntimeInfo(path string) (contract.RuntimeInfo, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return contract.RuntimeInfo{}, err
+	}
+	return contract.DecodeRuntimeInfo(data)
+}

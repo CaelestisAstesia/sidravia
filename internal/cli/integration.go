@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/background/serviceswitch"
 	"sidravia/internal/installationmanager"
 )
 
@@ -72,9 +73,9 @@ func newIntegrationCommand(out io.Writer, invoke func(context.Context, []string)
 				var state installationmanager.ServiceState
 				var err error
 				if changesMode {
-					state, err = daemonctl.SwitchService(cmd.Context(), identities[0], action, owner, interrupt)
+					state, err = serviceswitch.SwitchService(cmd.Context(), identities[0], action, owner, interrupt)
 				} else {
-					state, err = daemonctl.ServiceOperation(cmd.Context(), identities[0], action)
+					state, err = serviceswitch.ServiceOperation(cmd.Context(), identities[0], action)
 				}
 				if outputErr := json.NewEncoder(out).Encode(state); outputErr != nil {
 					return outputErr

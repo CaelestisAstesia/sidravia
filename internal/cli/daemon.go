@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/background/serviceswitch"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -291,7 +292,7 @@ func daemonStop(identity daemonctl.Identity) error {
 		if err != nil {
 			return err
 		}
-		if _, err := daemonctl.ServiceOperation(context.Background(), identity, "stop"); err != nil {
+		if _, err := serviceswitch.ServiceOperation(context.Background(), identity, "stop"); err != nil {
 			return err
 		}
 		return writeDaemonStopped(os.Stdout)
@@ -312,7 +313,7 @@ func daemonRestart(identity daemonctl.Identity, logLevel string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := daemonctl.ServiceOperation(context.Background(), identity, "restart"); err != nil {
+		if _, err := serviceswitch.ServiceOperation(context.Background(), identity, "restart"); err != nil {
 			return err
 		}
 		return writeDaemonRestarted(os.Stdout)

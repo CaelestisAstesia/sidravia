@@ -144,3 +144,14 @@ func bootstrapDesktopPolicy(identity Identity, ownerPID int, level string, skipA
 	}
 	return bootstrapDesktop(identity, options, deps)
 }
+
+// BootstrapDesktopForServiceSwitch starts a desktop generation for the exact
+// owner observed by an in-progress registration switch.
+func BootstrapDesktopForServiceSwitch(identity Identity, owner int, ns productlayout.Namespace, ownerStart string) (DesktopBootstrapResult, error) {
+	options, err := desktopOptions(owner, ns)
+	if err != nil {
+		return DesktopBootstrapResult{}, err
+	}
+	options.DesktopOwnerStart = ownerStart
+	return bootstrapDesktop(identity, options, defaultDependencies())
+}

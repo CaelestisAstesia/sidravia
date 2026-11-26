@@ -1,6 +1,6 @@
 //go:build linux
 
-package daemonctl
+package serviceswitch
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"sidravia/internal/background/daemonctl"
 	"time"
 
 	"sidravia/internal/installationmanager"
@@ -15,7 +16,7 @@ import (
 	"sidravia/internal/productlayout"
 )
 
-func replaceService(ctx context.Context, identity Identity, layout productlayout.Layout) (installationmanager.ServiceState, error) {
+func replaceService(ctx context.Context, identity daemonctl.Identity, layout productlayout.Layout) (installationmanager.ServiceState, error) {
 	var empty installationmanager.ServiceState
 	ctx, unlock, err := installationmanager.BeginServiceSwitch(ctx)
 	if err != nil {
@@ -34,7 +35,7 @@ func replaceService(ctx context.Context, identity Identity, layout productlayout
 		return before, err
 	}
 	ready := func(ctx context.Context, chosen productlayout.Layout) error {
-		return WaitForService(ctx, identity, chosen)
+		return daemonctl.WaitForService(ctx, identity, chosen)
 	}
 	if !found || old.ExecutableDirectory == layout.ExecutableDirectory {
 		return installationmanager.Service(ctx, "replace", layout, ready)
@@ -48,9 +49,9 @@ func replaceService(ctx context.Context, identity Identity, layout productlayout
 		TargetDirectory: layout.ExecutableDirectory, Expires: time.Now().Add(15 * time.Minute).UTC(),
 	}
 	if before.Running {
-		info, err := defaultDependencies().readRuntimeInfo(old.RuntimeInfoPath)
+		info, err := daemonctl.ReadRuntimeInfo(old.RuntimeInfoPath)
 		if err != nil {
-			return before, errors.Join(ErrModeConflict, err)
+			return before, errors.Join(daemonctl.ErrModeConflict, err)
 		}
 		proc, err := linuxproc.Observe(info.PID)
 		if err != nil {
@@ -58,19 +59,19 @@ func replaceService(ctx context.Context, identity Identity, layout productlayout
 		}
 		defer proc.Close()
 		if proc.Executable != filepath.Join(old.ExecutableDirectory, "sidraviad") {
-			return before, ErrModeConflict
+			return before, daemonctl.ErrModeConflict
 		}
-		oldIdentity := Identity{ProductVersion: info.ProductVersion, BuildID: info.BuildID}
-		probe, err := serviceProbe(ctx, oldIdentity, old)
-		if err != nil || probe.State != ProbeReachable || probe.Info.PID != info.PID {
-			return before, errors.Join(ErrModeConflict, err)
+		oldIdentity := daemonctl.Identity{ProductVersion: info.ProductVersion, BuildID: info.BuildID}
+		probe, err := daemonctl.ProbeRegisteredService(ctx, oldIdentity, old)
+		if err != nil || probe.State != daemonctl.ProbeReachable || probe.Info.PID != info.PID {
+			return before, errors.Join(daemonctl.ErrModeConflict, err)
 		}
 		state.RuntimePID, state.SourceVersion, state.SourceBuild = info.PID, info.ProductVersion, info.BuildID
 		ready = func(ctx context.Context, chosen productlayout.Layout) error {
 			if chosen.ExecutableDirectory == old.ExecutableDirectory {
-				return WaitForService(ctx, oldIdentity, chosen)
+				return daemonctl.WaitForService(ctx, oldIdentity, chosen)
 			}
-			return WaitForService(ctx, identity, chosen)
+			return daemonctl.WaitForService(ctx, identity, chosen)
 		}
 	}
 	if err := installationmanager.SaveServiceSwitch(ctx, state); err != nil {
@@ -102,10 +103,10 @@ func recoverReplacement(ctx context.Context, state installationmanager.ServiceSw
 	}
 	current, found, err := installationmanager.RegisteredService()
 	if err != nil || (found && current != state.Layout && current.ExecutableDirectory != state.TargetDirectory) {
-		return empty, errors.Join(ErrModeConflict, err)
+		return empty, errors.Join(daemonctl.ErrModeConflict, err)
 	}
 	ready := func(ctx context.Context, layout productlayout.Layout) error {
-		return WaitForService(ctx, Identity{ProductVersion: state.SourceVersion, BuildID: state.SourceBuild}, layout)
+		return daemonctl.WaitForService(ctx, daemonctl.Identity{ProductVersion: state.SourceVersion, BuildID: state.SourceBuild}, layout)
 	}
 	if found {
 		if actual, err := installationmanager.Service(ctx, "stop", current, nil); err != nil {
@@ -148,7 +149,7 @@ func discardReplacement(ctx context.Context, state installationmanager.ServiceSw
 	}
 	current, found, err := installationmanager.RegisteredService()
 	if err != nil || (found && current != state.Layout && current.ExecutableDirectory != state.TargetDirectory) {
-		return empty, errors.Join(ErrModeConflict, err)
+		return empty, errors.Join(daemonctl.ErrModeConflict, err)
 	}
 	layout := state.Layout
 	if found {

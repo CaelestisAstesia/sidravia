@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/installationmanager"
+	"sidravia/internal/installation/userservice/registration"
 	"sidravia/internal/productlayout"
 )
 
@@ -14,7 +14,7 @@ func serviceLayout(ns productlayout.Namespace) (productlayout.Layout, bool, erro
 	if !ns.IsProduction() {
 		return productlayout.Layout{}, false, nil
 	}
-	layout, registered, err := installationmanager.RegisteredService()
+	layout, registered, err := registration.Lookup()
 	if err != nil || !registered {
 		return layout, registered, err
 	}
@@ -28,7 +28,8 @@ func serviceLayout(ns productlayout.Namespace) (productlayout.Layout, bool, erro
 	return layout, true, nil
 }
 
-func serviceProbe(ctx context.Context, identity Identity, layout productlayout.Layout) (ProbeResult, error) {
+// ProbeRegisteredService observes the daemon for a specific systemd registration.
+func ProbeRegisteredService(ctx context.Context, identity Identity, layout productlayout.Layout) (ProbeResult, error) {
 	deps := defaultDependencies()
 	deps.runtimeInfoPath = func(productlayout.Namespace) (string, error) { return layout.RuntimeInfoPath, nil }
 	result, err := probeInContext(ctx, identity, productlayout.Namespace{}, deps)
@@ -42,7 +43,7 @@ func serviceProbe(ctx context.Context, identity Identity, layout productlayout.L
 }
 
 func connectService(ctx context.Context, identity Identity, layout productlayout.Layout) (Client, error) {
-	result, err := serviceProbe(ctx, identity, layout)
+	result, err := ProbeRegisteredService(ctx, identity, layout)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +59,7 @@ func WaitForService(ctx context.Context, identity Identity, layout productlayout
 	ctx, cancel := context.WithTimeout(ctx, deps.totalWait)
 	defer cancel()
 	return waitForReadinessInContext(ctx, deps.totalWait, deps.pollInterval, nil, func() (bool, error) {
-		result, err := serviceProbe(ctx, identity, layout)
+		result, err := ProbeRegisteredService(ctx, identity, layout)
 		if err == nil && result.State == ProbeIncompatible {
 			err = ErrIncompatibleGeneration
 		}
@@ -66,27 +67,8 @@ func WaitForService(ctx context.Context, identity Identity, layout productlayout
 	}, nil)
 }
 
-// ServiceOperation executes an explicit user action, using the same registration
-// that bootstrap reads and the caller's expected IPC generation for readiness.
-func ServiceOperation(ctx context.Context, identity Identity, action string) (installationmanager.ServiceState, error) {
-	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
-	if err != nil {
-		return installationmanager.ServiceState{}, err
-	}
-	layout, err := productlayout.ResolveNamespace(ns)
-	if err != nil {
-		return installationmanager.ServiceState{}, err
-	}
-	if action == "replace" {
-		return replaceService(ctx, identity, layout)
-	}
-	return installationmanager.Service(ctx, action, layout, func(ctx context.Context, target productlayout.Layout) error {
-		return WaitForService(ctx, identity, target)
-	})
-}
-
 func bootstrapService(identity Identity, layout productlayout.Layout) (DesktopBootstrapResult, error) {
-	result, err := serviceProbe(context.Background(), identity, layout)
+	result, err := ProbeRegisteredService(context.Background(), identity, layout)
 	if err != nil {
 		return DesktopBootstrapResult{}, err
 	}
@@ -107,7 +89,7 @@ func probeDefault(identity Identity) (ProbeResult, error) {
 		return ProbeResult{}, err
 	}
 	if registered {
-		return serviceProbe(context.Background(), identity, layout)
+		return ProbeRegisteredService(context.Background(), identity, layout)
 	}
 	return probe(identity, deps)
 }

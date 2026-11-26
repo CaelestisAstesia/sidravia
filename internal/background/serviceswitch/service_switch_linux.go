@@ -1,6 +1,6 @@
 //go:build linux
 
-package daemonctl
+package serviceswitch
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sidravia/internal/background/daemonctl"
 	"strconv"
 	"time"
 
@@ -21,11 +22,11 @@ import (
 	"sidravia/internal/update"
 )
 
-func SwitchService(ctx context.Context, identity Identity, action string, owner int, interruptOneShot bool) (installationmanager.ServiceState, error) {
+func SwitchService(ctx context.Context, identity daemonctl.Identity, action string, owner int, interruptOneShot bool) (installationmanager.ServiceState, error) {
 	var empty installationmanager.ServiceState
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
-	ns, err := defaultDependencies().namespace()
+	ns, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
 	if err != nil || !ns.IsProduction() {
 		return empty, errors.Join(installationmanager.ErrServiceUnavailable, err)
 	}
@@ -71,12 +72,12 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 	if found {
 		layout.ServiceCacheRoot = registered.ServiceCacheRoot
 		if registered != layout {
-			return empty, ErrModeConflict
+			return empty, daemonctl.ErrModeConflict
 		}
 	}
 	service := func(ctx context.Context, action string) (installationmanager.ServiceState, error) {
 		return installationmanager.Service(ctx, action, layout, func(ctx context.Context, layout productlayout.Layout) error {
-			return WaitForService(ctx, identity, layout)
+			return daemonctl.WaitForService(ctx, identity, layout)
 		})
 	}
 	if pending && action == "recover" {
@@ -88,18 +89,17 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 	if err != nil {
 		return before, err
 	}
-	probeCurrent := func(ctx context.Context, inSystemd bool) (ProbeResult, error) {
+	probeCurrent := func(ctx context.Context, inSystemd bool) (daemonctl.ProbeResult, error) {
 		if inSystemd {
-			return serviceProbe(ctx, identity, layout)
+			return daemonctl.ProbeRegisteredService(ctx, identity, layout)
 		}
-		deps := defaultDependencies()
-		return probeInContext(ctx, identity, ns, deps)
+		return daemonctl.ProbeApplication(ctx, identity, ns)
 	}
-	stop := func(ctx context.Context, inSystemd bool, running ProbeResult) error {
-		if running.State == ProbeIncompatible {
-			return ErrIncompatibleGeneration
+	stop := func(ctx context.Context, inSystemd bool, running daemonctl.ProbeResult) error {
+		if running.State == daemonctl.ProbeIncompatible {
+			return daemonctl.ErrIncompatibleGeneration
 		}
-		if running.State != ProbeReachable {
+		if running.State != daemonctl.ProbeReachable {
 			if inSystemd {
 				_, err := service(ctx, "stop")
 				return err
@@ -112,19 +112,19 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 		}
 		defer proc.Close()
 		if proc.Executable != filepath.Join(layout.ExecutableDirectory, "sidraviad") {
-			return ErrModeConflict
+			return daemonctl.ErrModeConflict
 		}
 		if inSystemd {
 			_, err = service(ctx, "stop")
 		} else {
-			peer, connErr := Connect(ctx, identity, running.Info)
+			peer, connErr := daemonctl.Connect(ctx, identity, running.Info)
 			if connErr != nil {
 				return connErr
 			}
 			response, requestErr := peer.Call(ctx, contract.MethodDaemonStop, json.RawMessage("{}"))
 			_ = peer.Close()
 			if requestErr == nil && !response.OK {
-				return ErrModeConflict
+				return daemonctl.ErrModeConflict
 			}
 			// A fast shutdown can close the transport before the reply. The
 			// pinned process and the startup lease still prove it is gone.
@@ -150,24 +150,19 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 				return err
 			}
 		} else if owner > 0 {
-			options, err := desktopOptions(owner, ns)
-			if err != nil {
-				return err
-			}
 			start := state.TargetOwnerStart
 			if restoring {
 				start = state.OwnerStart
 			}
-			options.DesktopOwnerStart = strconv.FormatUint(start, 10)
-			if _, err := bootstrapDesktop(identity, options, defaultDependencies()); err != nil {
+			if _, err := daemonctl.BootstrapDesktopForServiceSwitch(identity, owner, ns, strconv.FormatUint(start, 10)); err != nil {
 				return err
 			}
-		} else if _, err := EnsureHeadless(identity, "info"); err != nil {
+		} else if _, err := daemonctl.EnsureHeadless(identity, "info"); err != nil {
 			return err
 		}
 		probe, err := probeCurrent(ctx, systemd)
-		if err != nil || probe.State != ProbeReachable {
-			return errors.Join(ErrConnectionUnavailable, err)
+		if err != nil || probe.State != daemonctl.ProbeReachable {
+			return errors.Join(daemonctl.ErrConnectionUnavailable, err)
 		}
 		expected := launchcontract.ModeHeadless
 		if systemd {
@@ -175,11 +170,11 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 		} else if owner > 0 {
 			expected = launchcontract.ModeDesktop
 		}
-		if !matchesOptions(probe.Status, launchcontract.Options{Mode: expected, DesktopOwnerPID: owner}) {
-			return ErrModeConflict
+		if !daemonctl.MatchesMode(probe.Status, expected, owner) {
+			return daemonctl.ErrModeConflict
 		}
 		if state.ConfigurationID != "" && time.Now().Before(state.Expires) {
-			peer, err := Connect(ctx, identity, probe.Info)
+			peer, err := daemonctl.Connect(ctx, identity, probe.Info)
 			if err != nil {
 				return err
 			}
@@ -191,8 +186,8 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 			}
 		}
 		confirmed, err := probeCurrent(ctx, systemd)
-		if err != nil || confirmed.State != ProbeReachable || confirmed.Info.PID != probe.Info.PID || confirmed.Info.Token != probe.Info.Token {
-			return errors.Join(ErrConnectionUnavailable, err)
+		if err != nil || confirmed.State != daemonctl.ProbeReachable || confirmed.Info.PID != probe.Info.PID || confirmed.Info.Token != probe.Info.Token {
+			return errors.Join(daemonctl.ErrConnectionUnavailable, err)
 		}
 		return installationmanager.ClearServiceSwitch(ctx)
 	}
@@ -206,8 +201,8 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 		if err != nil {
 			return err
 		}
-		if !current && observed.State == ProbeReachable && observed.Info.PID == state.RuntimePID {
-			peer, err := Connect(ctx, identity, observed.Info)
+		if !current && observed.State == daemonctl.ProbeReachable && observed.Info.PID == state.RuntimePID {
+			peer, err := daemonctl.Connect(ctx, identity, observed.Info)
 			if err != nil {
 				return err
 			}
@@ -267,17 +262,17 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 	if err != nil {
 		return before, err
 	}
-	if observed.State == ProbeStopped {
+	if observed.State == daemonctl.ProbeStopped {
 		if before.Running {
-			return before, ErrModeConflict
+			return before, daemonctl.ErrModeConflict
 		}
 		if takeover {
 			return service(ctx, "register")
 		}
 		return service(ctx, "unregister")
 	}
-	if observed.State != ProbeReachable {
-		return before, ErrModeConflict
+	if observed.State != daemonctl.ProbeReachable {
+		return before, daemonctl.ErrModeConflict
 	}
 	proc, err := linuxproc.Observe(observed.Info.PID)
 	if err != nil {
@@ -285,9 +280,9 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 	}
 	defer proc.Close()
 	if proc.Executable != filepath.Join(layout.ExecutableDirectory, "sidraviad") {
-		return before, ErrModeConflict
+		return before, daemonctl.ErrModeConflict
 	}
-	peer, err := Connect(ctx, identity, observed.Info)
+	peer, err := daemonctl.Connect(ctx, identity, observed.Info)
 	if err != nil {
 		return before, err
 	}
@@ -344,7 +339,7 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 		}
 	}
 	if intent.Phase != "prepared" || intent.OperationID != id {
-		return before, ErrModeConflict
+		return before, daemonctl.ErrModeConflict
 	}
 	if err := installationmanager.SaveServiceSwitch(ctx, state); err != nil {
 		return before, err
@@ -395,7 +390,7 @@ func SwitchService(ctx context.Context, identity Identity, action string, owner 
 	return result(nil)
 }
 
-func callServiceIPC(ctx context.Context, client Client, method string, value, result any) error {
+func callServiceIPC(ctx context.Context, client daemonctl.Client, method string, value, result any) error {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -408,36 +403,10 @@ func callServiceIPC(ctx context.Context, client Client, method string, value, re
 		if response.Error != nil {
 			return errors.New(response.Error.Code)
 		}
-		return ErrConnectionUnavailable
+		return daemonctl.ErrConnectionUnavailable
 	}
 	if result != nil {
 		return json.Unmarshal(response.Result, result)
-	}
-	return nil
-}
-
-// CheckRPMServiceIPC is the read-only RPM recovery check for an observed main
-// process. The caller also checks that systemd still reports that invocation.
-func CheckRPMServiceIPC(ctx context.Context, identity Identity, pid int) error {
-	layout, found, err := serviceLayout(productlayout.Namespace{})
-	if err != nil || !found || !productlayout.RPMManaged(layout) {
-		return errors.Join(ErrModeConflict, err)
-	}
-	process, err := linuxproc.Observe(pid)
-	if err != nil {
-		return err
-	}
-	defer process.Close()
-	if process.Executable != filepath.Join(layout.ExecutableDirectory, "sidraviad") {
-		return ErrModeConflict
-	}
-	probe, err := serviceProbe(ctx, identity, layout)
-	if err != nil || probe.State != ProbeReachable || probe.Info.PID != pid {
-		return errors.Join(ErrConnectionUnavailable, err)
-	}
-	alive, err := process.Running()
-	if err != nil || !alive {
-		return errors.Join(ErrConnectionUnavailable, err)
 	}
 	return nil
 }
