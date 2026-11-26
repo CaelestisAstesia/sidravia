@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/configcmd"
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/cli/internal/terminal"
 )
 
@@ -161,7 +164,7 @@ type commandDependencies struct {
 	daemonStart       func(logLevel string) error
 	daemonStop        func() error
 	daemonRestart     func(logLevel string) error
-	authStart         func(authStartOptions) error
+	authStart         func(authcmd.StartOptions) error
 	authStatus        func(string) error
 	authBusiness      func(string) error
 	authStop          func(string) error
@@ -175,9 +178,9 @@ type commandDependencies struct {
 	diagnosticsExport func(string) error
 	configList        func() error
 	configShow        func(string) error
-	configCreate      func(configCreateOptions) error
-	configUpdate      func(configUpdateOptions) error
-	configSetPassword func(configPasswordOptions) error
+	configCreate      func(configcmd.CreateOptions) error
+	configUpdate      func(configcmd.UpdateOptions) error
+	configSetPassword func(configcmd.PasswordOptions) error
 	configRemove      func(string, bool, bool) error
 	guiBootstrap      guiBootstrapper
 	output            io.Writer
@@ -190,29 +193,29 @@ func defaultCommandDependencies(identity daemonctl.Identity) commandDependencies
 		daemonStart:   func(logLevel string) error { return daemonStart(identity, logLevel) },
 		daemonStop:    func() error { return daemonStop(identity) },
 		daemonRestart: func(logLevel string) error { return daemonRestart(identity, logLevel) },
-		authStart:     func(options authStartOptions) error { return authStart(identity, options) },
-		authStatus:    func(sessionID string) error { return authStatus(identity, sessionID) },
+		authStart:     func(options authcmd.StartOptions) error { return authcmd.Start(identity, options) },
+		authStatus:    func(sessionID string) error { return authcmd.Status(identity, sessionID) },
 		authBusiness: func(sessionID string) error {
-			return runAuthBusiness(sessionID, defaultReadOnlyAuthDependencies(identity))
+			return authcmd.Business(identity, sessionID)
 		},
-		authStop:    func(sessionID string) error { return authStop(identity, sessionID) },
-		authRestart: func(sessionID string) error { return authRestart(identity, sessionID) },
-		authRemove:  func(sessionID string) error { return authRemove(identity, sessionID) },
-		authList:    func() error { return authList(identity) },
+		authStop:    func(sessionID string) error { return authcmd.Stop(identity, sessionID) },
+		authRestart: func(sessionID string) error { return authcmd.Restart(identity, sessionID) },
+		authRemove:  func(sessionID string) error { return authcmd.Remove(identity, sessionID) },
+		authList:    func() error { return authcmd.List(daemonconn.Existing(identity), os.Stdout) },
 		authWatch: func(ctx context.Context) error {
-			return runAuthWatch(ctx, defaultReadOnlyCommandDependencies(identity))
+			return authcmd.Watch(ctx, daemonconn.Existing(identity), os.Stdout)
 		},
 		profileList:       func() error { return profileList(identity) },
 		networkInterfaces: func() error { return networkInterfaces(identity) },
 		diagnosticsExport: func(path string) error {
 			return diagnosticsExport(identity, path)
 		},
-		configList:        func() error { return configList(identity) },
-		configShow:        func(id string) error { return configShow(identity, id) },
-		configCreate:      func(options configCreateOptions) error { return configCreate(identity, options) },
-		configUpdate:      func(options configUpdateOptions) error { return configUpdate(identity, options) },
-		configSetPassword: func(options configPasswordOptions) error { return configSetPassword(identity, options) },
-		configRemove:      func(id string, yes, allow bool) error { return configRemove(identity, id, yes, allow) },
+		configList:        func() error { return configcmd.List(identity) },
+		configShow:        func(id string) error { return configcmd.Show(identity, id) },
+		configCreate:      func(options configcmd.CreateOptions) error { return configcmd.Create(identity, options) },
+		configUpdate:      func(options configcmd.UpdateOptions) error { return configcmd.Update(identity, options) },
+		configSetPassword: func(options configcmd.PasswordOptions) error { return configcmd.SetPassword(identity, options) },
+		configRemove:      func(id string, yes, allow bool) error { return configcmd.Remove(identity, id, yes, allow) },
 		guiBootstrap:      defaultGUIBootstrap,
 		output:            os.Stdout,
 	}

@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"bytes"
-	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
@@ -35,7 +34,7 @@ func TestProfileListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 func TestRedirectedListContainsNoESC(t *testing.T) {
 	t.Run("sessions", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := WriteSessionList(&buf, contract.SessionListResult{Sessions: []contract.SessionResult{clitest.MinimalSessionResult("authenticated")}}); err != nil {
+		if err := WriteSessionList(&buf, contract.SessionListResult{Sessions: []contract.SessionResult{minimalSessionResult("authenticated")}}); err != nil {
 			t.Fatalf("WriteSessionList = %v", err)
 		}
 		if strings.ContainsRune(buf.String(), '\x1b') {

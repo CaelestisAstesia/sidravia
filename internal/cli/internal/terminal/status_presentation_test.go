@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"bytes"
-	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
@@ -38,7 +37,7 @@ func TestSessionRemovedPlainAndForcedColorContracts(t *testing.T) {
 }
 
 func TestSessionDetailExplainsAutoReconnectDisabled(t *testing.T) {
-	result := clitest.MinimalSessionResult("blocked_by_error")
+	result := minimalSessionResult("blocked_by_error")
 	result.StateReason = &contract.SessionStateReason{Code: "automatic_reconnect_disabled", Description: "automatic reconnect disabled"}
 	result.LastAuthenticationFailure = &contract.SessionAuthenticationFailure{
 		Code:                   "network_timeout",
@@ -134,9 +133,9 @@ func TestDaemonStatusUnknownCodeContract(t *testing.T) {
 
 func TestSessionListRenderingUsesANSIStylesUnderForcedProfile(t *testing.T) {
 	result := &contract.SessionListResult{Sessions: []contract.SessionResult{
-		clitest.MinimalSessionResult("authenticated"),
-		clitest.MinimalSessionResult("blocked_by_error"),
-		clitest.MinimalSessionResult("suspended"),
+		minimalSessionResult("authenticated"),
+		minimalSessionResult("blocked_by_error"),
+		minimalSessionResult("suspended"),
 	}}
 	var buf bytes.Buffer
 	p := newTestPresentation(&buf, termenv.ANSI)

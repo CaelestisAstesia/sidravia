@@ -3,17 +3,18 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/clitest"
 	"sidravia/internal/cli/internal/terminal"
 )
 
 func TestHelpUsesChineseHeadingsAndCanonicalTree(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
-		authStart:    func(authStartOptions) error { return nil },
+		authStart:    func(authcmd.StartOptions) error { return nil },
 		authStatus:   func(string) error { return nil },
 		authStop:     func(string) error { return nil },
 	}

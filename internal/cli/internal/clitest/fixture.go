@@ -4,8 +4,11 @@ package clitest
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -78,4 +81,32 @@ type ZeroWriter struct {
 
 func (writer ZeroWriter) Write([]byte) (int, error) {
 	return 0, writer.Err
+}
+
+func PromptIO(t *testing.T) terminal.IO {
+	t.Helper()
+	return terminal.IO{
+		Stdin:  strings.NewReader(""),
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+		ReadStdinPassword: func(io.Reader) (string, error) {
+			t.Fatal("unexpected stdin password read")
+			return "", nil
+		},
+		ReadInteractivePassword: func(io.Reader, io.Writer) (string, error) {
+			t.Fatal("unexpected interactive password read")
+			return "", nil
+		},
+	}
+}
+func AssertClearedBytes(t *testing.T, buffer []byte) {
+	t.Helper()
+	if len(buffer) == 0 {
+		t.Fatal("no owned buffer was observed")
+	}
+	for _, value := range buffer {
+		if value != 0 {
+			t.Fatal("owned buffer was not cleared")
+		}
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
@@ -174,7 +173,7 @@ func TestForcedANSIProfileStylesTrustedLabelsAndStates(t *testing.T) {
 
 func TestRenderedBlockWriterFailurePreservesCause(t *testing.T) {
 	cause := errors.New("injected writer failure")
-	err := WriteSessionResult(clitest.ZeroWriter{Err: cause}, clitest.MinimalSessionResult("authenticated"))
+	err := WriteSessionResult(zeroWriter{Err: cause}, minimalSessionResult("authenticated"))
 	if !errors.Is(err, cause) {
 		t.Errorf("WriteSessionResult did not preserve writer cause: %v", err)
 	}
@@ -263,7 +262,7 @@ func TestPresentationCompleteJoinsWriterAndRestoreFailures(t *testing.T) {
 	writeErr := errors.New("injected write failure")
 	restoreErr := errors.New("injected restore failure")
 	p := &Presentation{
-		output:  termenv.NewOutput(clitest.ZeroWriter{Err: writeErr}, termenv.WithProfile(termenv.Ascii), termenv.WithTTY(false)),
+		output:  termenv.NewOutput(zeroWriter{Err: writeErr}, termenv.WithProfile(termenv.Ascii), termenv.WithTTY(false)),
 		profile: termenv.Ascii,
 		restore: func() error { return restoreErr },
 	}
@@ -328,4 +327,25 @@ func TestCompleteReadHintsStayFixedAndSanitizeIdentifiers(t *testing.T) {
 	if !strings.Contains(output.String(), "需要清理：运行 sidraviactl auth remove 释放此 Session。") || strings.ContainsAny(output.String(), "\x1b") || strings.Contains(output.String(), "\ninjected") {
 		t.Fatalf("unsafe cleanup hint: %q", output.String())
 	}
+}
+
+func minimalSessionResult(state string) contract.SessionResult {
+	return contract.SessionResult{
+		ProtocolSocket: contract.NetworkProtocolSocket{State: "not_observed"},
+		Revision:       1, Intent: "maintain_authentication", InstitutionDisplayName: "Profile",
+		AuthenticationSessionID:  "session-1",
+		InstitutionProfileID:     "profile-1",
+		AuthenticationProtocolID: "protocol-1",
+		AccountName:              "account-name",
+		State:                    state,
+		UpdatedAt:                "2026-07-26T10:11:12.123456789+08:00",
+	}
+}
+
+type zeroWriter struct {
+	Err error
+}
+
+func (writer zeroWriter) Write([]byte) (int, error) {
+	return 0, writer.Err
 }

@@ -1,4 +1,4 @@
-package cli
+package authcmd
 
 import (
 	"bytes"
@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"sidravia/internal/cli/internal/clitest"
-	"sidravia/internal/cli/internal/terminal"
 	"strings"
 	"testing"
 	"time"
 
+	"sidravia/internal/cli/internal/bindingargs"
+	"sidravia/internal/cli/internal/clitest"
 	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -46,7 +47,7 @@ func TestSessionStartClearsOwnedWireBytesOnEveryExit(t *testing.T) {
 			if (err == nil) != (outcome == "success") || (outcome == "transport" && !errors.Is(err, cause)) {
 				t.Fatal("operation error behavior changed")
 			}
-			assertClearedBytes(t, retained)
+			clitest.AssertClearedBytes(t, retained)
 		})
 	}
 }
@@ -59,9 +60,9 @@ func TestRunAuthStartRetainedDoesNotReadPassword(t *testing.T) {
 		return clitest.SuccessSessionStartResponse(t, "already_running", clitest.MinimalSessionResult("authenticated")), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
-	deps.readStdinPassword = func(io.Reader) (string, error) { t.Fatal("stdin password read"); return "", nil }
-	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { t.Fatal("interactive password read"); return "", nil }
-	if err := runAuthStart(authStartOptions{sessionID: "session-1"}, deps); err != nil {
+	deps.ReadStdinPassword = func(io.Reader) (string, error) { t.Fatal("stdin password read"); return "", nil }
+	deps.ReadInteractivePassword = func(io.Reader, io.Writer) (string, error) { t.Fatal("interactive password read"); return "", nil }
+	if err := runAuthStart(StartOptions{SessionID: "session-1"}, deps); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -75,8 +76,8 @@ func TestRunAuthStartRetainedRejectsRetiredBareSessionResult(t *testing.T) {
 		return clitest.SuccessSessionResponse(t, clitest.MinimalSessionResult("authenticated")), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
-	deps.stdout = &output
-	if err := runAuthStart(authStartOptions{sessionID: "session-1"}, deps); err == nil {
+	deps.Stdout = &output
+	if err := runAuthStart(StartOptions{SessionID: "session-1"}, deps); err == nil {
 		t.Fatal("retired bare result succeeded")
 	}
 	if output.Len() != 0 {
@@ -109,16 +110,16 @@ func TestRunAuthStartConfigurationTypedRequestDeadlinePresentationAndNoPasswordR
 		},
 	}
 	deps := hotAuthDependencies(t, connection)
-	deps.stdout = &output
-	deps.readStdinPassword = func(io.Reader) (string, error) {
+	deps.Stdout = &output
+	deps.ReadStdinPassword = func(io.Reader) (string, error) {
 		t.Fatal("config start read stdin password")
 		return "", nil
 	}
-	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) {
+	deps.ReadInteractivePassword = func(io.Reader, io.Writer) (string, error) {
 		t.Fatal("config start read interactive password")
 		return "", nil
 	}
-	if err := runAuthStart(authStartOptions{configurationID: "campus"}, deps); err != nil {
+	if err := runAuthStart(StartOptions{ConfigurationID: "campus"}, deps); err != nil {
 		t.Fatal(err)
 	}
 	for _, text := range []string{"会话：configuration-session", "状态：已认证", "机构：Campus"} {
@@ -132,11 +133,11 @@ func TestRetainedLifecycleDispatchPayloadAndDeadline(t *testing.T) {
 	tests := []struct {
 		name   string
 		method string
-		run    func(string, authDependencies) error
+		run    func(string, dependencies) error
 		result func(t *testing.T) contract.Response
 	}{
-		{"ensure", contract.MethodSessionEnsureRunning, func(id string, deps authDependencies) error {
-			return runAuthStart(authStartOptions{sessionID: id}, deps)
+		{"ensure", contract.MethodSessionEnsureRunning, func(id string, deps dependencies) error {
+			return runAuthStart(StartOptions{SessionID: id}, deps)
 		}, func(t *testing.T) contract.Response {
 			return clitest.SuccessSessionStartResponse(t, "already_running", clitest.MinimalSessionResult("authenticated"))
 		}},
@@ -191,7 +192,7 @@ func TestRunAuthRemoveRejectsInvalidReceipts(t *testing.T) {
 		}}
 		deps := hotAuthDependencies(t, connection)
 		var output bytes.Buffer
-		deps.stdout = &output
+		deps.Stdout = &output
 		if err := runAuthRemove("session-1", deps); err == nil || err.Error() != "解码 Session 响应" || output.Len() != 0 {
 			t.Fatalf("invalid remove receipt %s produced output %q, error %v", data, &output, err)
 		}
@@ -212,7 +213,7 @@ func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 		return contract.NewSuccessResponse("1", json.RawMessage(`{"sessionId":"session-1","status":"removed"}`)), nil
 	}}
 	deps := hotAuthDependencies(t, connection)
-	deps.stdout = clitest.ZeroWriter{Err: writeCause}
+	deps.Stdout = clitest.ZeroWriter{Err: writeCause}
 	if err := runAuthRemove("session-1", deps); !errors.Is(err, writeCause) {
 		t.Fatalf("write cause not preserved: %v", err)
 	}
@@ -224,7 +225,7 @@ func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 	}}
 	var output bytes.Buffer
 	deps = hotAuthDependencies(t, connection)
-	deps.stdout = &output
+	deps.Stdout = &output
 	err := runAuthRemove("session-1", deps)
 	if err == nil {
 		t.Fatal("daemon error returned nil")
@@ -235,26 +236,16 @@ func TestRunAuthRemovePreservesTransportAndWriteCauses(t *testing.T) {
 	}
 }
 
-func hotAuthDependencies(t *testing.T, connection daemonconn.Client) authDependencies {
+func hotAuthDependencies(t *testing.T, connection daemonconn.Client) dependencies {
 	t.Helper()
-	return authDependencies{
+	return dependencies{
 		connection: daemonconn.Connection{
 			Acquire: func(context.Context) (daemonconn.Client, error) {
 				return connection, nil
 			},
 			Timeout: time.Second,
 		},
-		stdin:  strings.NewReader(""),
-		stdout: io.Discard,
-		stderr: io.Discard,
-		readStdinPassword: func(io.Reader) (string, error) {
-			t.Fatal("unexpected stdin password read")
-			return "", nil
-		},
-		readInteractivePassword: func(io.Reader, io.Writer) (string, error) {
-			t.Fatal("unexpected interactive password read")
-			return "", nil
-		},
+		IO: clitest.PromptIO(t),
 	}
 }
 
@@ -337,21 +328,21 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 	}
 	deps := hotAuthDependencies(t, connection)
 	var stdout, stderr bytes.Buffer
-	deps.stdout = &stdout
-	deps.stderr = &stderr
+	deps.Stdout = &stdout
+	deps.Stderr = &stderr
 	interactiveReads, stdinReads := 0, 0
-	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) {
+	deps.ReadInteractivePassword = func(io.Reader, io.Writer) (string, error) {
 		interactiveReads++
 		return password, nil
 	}
-	deps.readStdinPassword = func(io.Reader) (string, error) {
+	deps.ReadStdinPassword = func(io.Reader) (string, error) {
 		stdinReads++
 		return "", nil
 	}
 
-	err := runAuthStart(authStartOptions{
-		profileID: "profile-1",
-		username:  username,
+	err := runAuthStart(StartOptions{
+		ProfileID: "profile-1",
+		Username:  username,
 	}, deps)
 	if err != nil {
 		t.Fatalf("runAuthStart = %v, want nil", err)
@@ -375,7 +366,7 @@ func TestAuthStartInteractiveTypedRequestAndSecrecy(t *testing.T) {
 	}
 	if decoded.DisplayName != "profile-1" ||
 		decoded.InstitutionProfileID != "profile-1" ||
-		decoded.NetworkBindingPolicy.Mode != automaticNetworkBindingPolicy {
+		decoded.NetworkBindingPolicy.Mode != "automatically_select_latest_available" {
 		t.Error("start payload non-secret fields differ from accepted values")
 	}
 	if decoded.Username != username || decoded.Password != password {
@@ -403,22 +394,22 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 	}
 	deps := hotAuthDependencies(t, connection)
 	var stdout, stderr bytes.Buffer
-	deps.stdout = &stdout
-	deps.stderr = &stderr
+	deps.Stdout = &stdout
+	deps.Stderr = &stderr
 	stdinReads, interactiveReads := 0, 0
-	deps.readStdinPassword = func(io.Reader) (string, error) {
+	deps.ReadStdinPassword = func(io.Reader) (string, error) {
 		stdinReads++
 		return password, nil
 	}
-	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) {
+	deps.ReadInteractivePassword = func(io.Reader, io.Writer) (string, error) {
 		interactiveReads++
 		return "", nil
 	}
 
-	err := runAuthStart(authStartOptions{
-		profileID:     "profile-1",
-		username:      username,
-		passwordStdin: true,
+	err := runAuthStart(StartOptions{
+		ProfileID:     "profile-1",
+		Username:      username,
+		PasswordStdin: true,
 	}, deps)
 	if err != nil {
 		t.Fatalf("runAuthStart = %v, want nil", err)
@@ -438,7 +429,7 @@ func TestAuthStartStdinTypedRequestAndSecrecy(t *testing.T) {
 		decoded.InstitutionProfileID != "profile-1" ||
 		decoded.Username != username ||
 		decoded.Password != password ||
-		decoded.NetworkBindingPolicy.Mode != automaticNetworkBindingPolicy {
+		decoded.NetworkBindingPolicy.Mode != "automatically_select_latest_available" {
 		t.Error("stdin start payload differs from accepted input")
 	}
 	for _, visible := range []string{stdout.String(), stderr.String(), clitest.ErrorString(err)} {
@@ -452,7 +443,7 @@ func TestAuthStatusAndStopTypedRequestsWithoutPasswordRead(t *testing.T) {
 	tests := []struct {
 		name        string
 		method      string
-		run         func(string, authDependencies) error
+		run         func(string, dependencies) error
 		decodeID    func([]byte) (string, error)
 		resultState string
 	}{
@@ -492,11 +483,11 @@ func TestAuthStatusAndStopTypedRequestsWithoutPasswordRead(t *testing.T) {
 			}
 			deps := hotAuthDependencies(t, connection)
 			passwordReads := 0
-			deps.readStdinPassword = func(io.Reader) (string, error) {
+			deps.ReadStdinPassword = func(io.Reader) (string, error) {
 				passwordReads++
 				return "", nil
 			}
-			deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) {
+			deps.ReadInteractivePassword = func(io.Reader, io.Writer) (string, error) {
 				passwordReads++
 				return "", nil
 			}
@@ -613,7 +604,7 @@ func TestSessionResponseFailuresProduceNoSuccessBlock(t *testing.T) {
 			}
 			deps := hotAuthDependencies(t, connection)
 			var output bytes.Buffer
-			deps.stdout = &output
+			deps.Stdout = &output
 
 			err := runAuthStatus("session-1", deps)
 			if err == nil {
@@ -686,7 +677,7 @@ func TestAllPublicSessionStatesAreSuccessfulCommandData(t *testing.T) {
 			}
 			deps := hotAuthDependencies(t, connection)
 			var output bytes.Buffer
-			deps.stdout = &output
+			deps.Stdout = &output
 			if err := runAuthStatus("session-1", deps); err != nil {
 				t.Fatalf("runAuthStatus = %v, want nil for Session state", err)
 			}
@@ -739,7 +730,7 @@ func TestAuthCommandsDoNotCallDaemonStop(t *testing.T) {
 func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing.T) {
 	var output bytes.Buffer
 	deps := hotAuthDependencies(t, &clitest.FakeDaemonClient{})
-	deps.stdout = &output
+	deps.Stdout = &output
 	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) {
 		return nil, errors.New("private-runtime-marker")
 	}
@@ -753,29 +744,23 @@ func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing
 }
 
 func TestBindingFlagsRejectBeforeDaemonOrPassword(t *testing.T) {
-	deps := authDependencies{connection: daemonconn.Connection{Acquire: func(context.Context) (daemonconn.Client, error) {
+	deps := dependencies{connection: daemonconn.Connection{Acquire: func(context.Context) (daemonconn.Client, error) {
 		t.Fatal("invalid binding acquired daemon")
 		return nil, nil
-	}}, readStdinPassword: func(io.Reader) (string, error) { t.Fatal("invalid binding read password"); return "", nil }}
-	for _, binding := range []bindingFlags{{interfaceSet: true, interfaceID: "lo"}, {interfaceSet: true, addressSet: true, interfaceID: "", localIPv4: "127.0.0.1"}, {interfaceSet: true, addressSet: true, interfaceID: "lo", localIPv4: "::1"}} {
-		if runAuthStart(authStartOptions{binding: binding, profileID: "p", username: "u", passwordStdin: true}, deps) == nil {
+	}}, IO: terminal.IO{ReadStdinPassword: func(io.Reader) (string, error) { t.Fatal("invalid binding read password"); return "", nil }}}
+	for _, binding := range []bindingargs.Flags{{InterfaceSet: true, InterfaceID: "lo"}, {InterfaceSet: true, AddressSet: true, InterfaceID: "", LocalIPv4: "127.0.0.1"}, {InterfaceSet: true, AddressSet: true, InterfaceID: "lo", LocalIPv4: "::1"}} {
+		if runAuthStart(StartOptions{Binding: binding, ProfileID: "p", Username: "u", PasswordStdin: true}, deps) == nil {
 			t.Fatal("invalid one-shot accepted")
 		}
-		if runConfigCreate(configCreateOptions{binding: binding}, deps) == nil {
-			t.Fatal("invalid create accepted")
-		}
-		if runConfigUpdate(configUpdateOptions{binding: binding}, deps) == nil {
-			t.Fatal("invalid update accepted")
-		}
 	}
-	valid := bindingFlags{interfaceSet: true, addressSet: true, interfaceID: "lo", localIPv4: "127.0.0.1"}
-	if runAuthStart(authStartOptions{binding: valid, sessionID: "s"}, deps) == nil {
+	valid := bindingargs.Flags{InterfaceSet: true, AddressSet: true, InterfaceID: "lo", LocalIPv4: "127.0.0.1"}
+	if runAuthStart(StartOptions{Binding: valid, SessionID: "s"}, deps) == nil {
 		t.Fatal("bound ensure accepted")
 	}
-	if policy, err := (bindingFlags{}).policy(true); err != nil || policy != nil {
+	if policy, err := (bindingargs.Flags{}).Policy(true); err != nil || policy != nil {
 		t.Fatal("omitted update did not preserve")
 	}
-	if policy, err := (bindingFlags{automatic: true}).policy(true); err != nil || policy.Mode != automaticNetworkBindingPolicy {
+	if policy, err := (bindingargs.Flags{Automatic: true}).Policy(true); err != nil || policy.Mode != "automatically_select_latest_available" {
 		t.Fatal("automatic reset failed")
 	}
 }

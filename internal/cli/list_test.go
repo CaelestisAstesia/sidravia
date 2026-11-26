@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/authcmd"
+	"sidravia/internal/cli/internal/clitest"
 	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
@@ -284,4 +285,8 @@ func TestReadOnlyListAcquisitionFailureWritesNothing(t *testing.T) {
 	if output.Len() != 0 {
 		t.Fatalf("output=%q", output.String())
 	}
+}
+
+func runAuthList(deps readOnlyCommandDependencies) error {
+	return authcmd.List(deps.connection, deps.stdout)
 }

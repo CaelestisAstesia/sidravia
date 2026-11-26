@@ -1,15 +1,15 @@
-package cli
+package authcmd
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"sidravia/internal/cli/internal/terminal"
 	"strconv"
 	"strings"
 
 	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
@@ -31,12 +31,12 @@ func safeAuthWatchFailure(message string, cause error) error {
 	return &authWatchFailure{message: message, cause: cause}
 }
 
-func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
-	if deps.connection.Acquire == nil {
+func Watch(ctx context.Context, connectionDeps daemonconn.Connection, output io.Writer) error {
+	if connectionDeps.Acquire == nil {
 		return safeAuthWatchFailure("无法连接已有 daemon；请确认 daemon 已启动", errors.New("missing read-only acquisition"))
 	}
-	acquireCtx, cancelAcquire := context.WithTimeout(ctx, deps.connection.Timeout)
-	connection, err := deps.connection.Acquire(acquireCtx)
+	acquireCtx, cancelAcquire := context.WithTimeout(ctx, connectionDeps.Timeout)
+	connection, err := connectionDeps.Acquire(acquireCtx)
 	acquireContextErr := acquireCtx.Err()
 	acquireCause := context.Cause(acquireCtx)
 	cancelAcquire()
@@ -52,7 +52,7 @@ func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
 		return errors.Join(safeAuthWatchFailure("当前 daemon 不支持实时状态监听", errAuthWatchUnavailable), closeAuthWatchConnection(connection))
 	}
 
-	ackCtx, cancelAck := context.WithTimeout(ctx, deps.connection.Timeout)
+	ackCtx, cancelAck := context.WithTimeout(ctx, connectionDeps.Timeout)
 	bootstrap, stream, subscribeErr := source.SubscribeStateEvents(ackCtx)
 	ackContextErr := ackCtx.Err()
 	ackCause := context.Cause(ackCtx)
@@ -74,7 +74,7 @@ func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
 		)
 	}
 
-	operationErr := watchAuthState(ctx, stream, bootstrap, deps.stdout)
+	operationErr := watchAuthState(ctx, stream, bootstrap, output)
 	return errors.Join(operationErr, closeAuthWatchStream(stream), closeAuthWatchConnection(connection))
 }
 
@@ -92,9 +92,6 @@ func watchAuthState(ctx context.Context, stream contract.StateEventStream, boots
 				return nil
 			}
 			return safeAuthWatchFailure("daemon 状态连接已断开；请重新运行 sidraviactl auth watch", err)
-		}
-		if ctx.Err() != nil {
-			return nil
 		}
 		if ctx.Err() != nil {
 			return nil
@@ -119,7 +116,7 @@ func renderAuthWatchBootstrap(bootstrap contract.StateBootstrap) string {
 			output.WriteString(renderAuthWatchSession(session, containsSessionID(bootstrap.Sessions.CleanupRequiredSessionIDs, session.AuthenticationSessionID)))
 		}
 	}
-	output.WriteString(renderNetworkInterfaces(bootstrap.Network))
+	output.WriteString(terminal.RenderNetworkInterfaces(bootstrap.Network))
 	return output.String()
 }
 
@@ -195,7 +192,7 @@ func renderAuthWatchEvent(event contract.StateEvent) (string, error) {
 		if event.NetworkChanged == nil {
 			return "", errors.New("missing network changed payload")
 		}
-		return renderNetworkInterfaces(*event.NetworkChanged), nil
+		return terminal.RenderNetworkInterfaces(*event.NetworkChanged), nil
 	default:
 		return "", errors.New("unknown state event method")
 	}

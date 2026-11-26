@@ -1,12 +1,12 @@
-package cli
+package authcmd
 
 import (
 	"bytes"
 	"encoding/json"
-	"sidravia/internal/cli/internal/clitest"
 	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/clitest"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -20,7 +20,7 @@ func TestAuthBusinessReadOnlyAndTerminalSafe(t *testing.T) {
 	}}
 	deps := hotAuthDependencies(t, connection)
 	output := &bytes.Buffer{}
-	deps.stdout = output
+	deps.Stdout = output
 	if err := runAuthBusiness("s", deps); err != nil {
 		t.Fatal(err)
 	}
