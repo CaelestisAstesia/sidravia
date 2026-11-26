@@ -34,15 +34,23 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 	if err != nil {
 		return empty, err
 	}
-	ctx, unlock, err := installationmanager.BeginServiceSwitch(ctx)
-	if err != nil {
-		return empty, err
-	}
-	defer unlock()
+	var result installationmanager.ServiceState
+	err = installationmanager.WithServiceSwitch(ctx, func(lease *installationmanager.SwitchLease) error {
+		var operationErr error
+		result, operationErr = switchService(ctx, lease, identity, layout, ns, action, owner, interruptOneShot)
+		return operationErr
+	})
+	return result, err
+}
+
+func switchService(ctx context.Context, lease *installationmanager.SwitchLease, identity daemonctl.Identity,
+	layout productlayout.Layout, ns productlayout.Namespace, action string, owner int, interruptOneShot bool,
+) (installationmanager.ServiceState, error) {
+	var empty installationmanager.ServiceState
 	state, pending, err := installationmanager.PendingServiceSwitch()
 	if err != nil {
 		if action == "discard-damaged" && errors.Is(err, installationmanager.ErrServiceJournalDamaged) {
-			return installationmanager.Service(ctx, "discard-damaged", layout, nil)
+			return lease.Service(ctx, "discard-damaged", layout, nil)
 		}
 		return empty, errors.Join(installationmanager.ErrServiceJournal, err)
 	}
@@ -55,9 +63,9 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 		}
 		switch action {
 		case "recover":
-			return recoverReplacement(ctx, state)
+			return recoverReplacement(ctx, lease, state)
 		case "discard":
-			return discardReplacement(ctx, state)
+			return discardReplacement(ctx, lease, state)
 		default:
 			return empty, installationmanager.ErrServiceRecovery
 		}
@@ -76,12 +84,12 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 		}
 	}
 	service := func(ctx context.Context, action string) (installationmanager.ServiceState, error) {
-		return installationmanager.Service(ctx, action, layout, func(ctx context.Context, layout productlayout.Layout) error {
+		return lease.Service(ctx, action, layout, func(ctx context.Context, layout productlayout.Layout) error {
 			return daemonctl.WaitForService(ctx, identity, layout)
 		})
 	}
 	if pending && action == "recover" {
-		if err := installationmanager.ReloadServiceSwitch(ctx); err != nil {
+		if err := lease.Reload(ctx); err != nil {
 			return empty, err
 		}
 	}
@@ -189,7 +197,7 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 		if err != nil || confirmed.State != daemonctl.ProbeReachable || confirmed.Info.PID != probe.Info.PID || confirmed.Info.Token != probe.Info.Token {
 			return errors.Join(daemonctl.ErrConnectionUnavailable, err)
 		}
-		return installationmanager.ClearServiceSwitch(ctx)
+		return lease.Clear(ctx)
 	}
 	takeover := action == "takeover"
 	restore := func(ctx context.Context) error {
@@ -237,7 +245,7 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 			}
 			if !alive {
 				// Do not resurrect a desktop process after its owner has left.
-				return installationmanager.ClearServiceSwitch(ctx)
+				return lease.Clear(ctx)
 			}
 		}
 		return launchTarget(ctx, originalWasSystemd, originalOwner, state, true)
@@ -341,7 +349,7 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 	if intent.Phase != "prepared" || intent.OperationID != id {
 		return before, daemonctl.ErrModeConflict
 	}
-	if err := installationmanager.SaveServiceSwitch(ctx, state); err != nil {
+	if err := lease.Save(ctx, state); err != nil {
 		return before, err
 	}
 	perform := func() error {

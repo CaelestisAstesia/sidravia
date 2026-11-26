@@ -178,30 +178,6 @@ func saveUnit(path string, contents []byte) error {
 	return os.Rename(staging, path)
 }
 
-type serviceLeaseKey struct{}
-
-func holdServiceRegistration(ctx context.Context) (context.Context, func(), error) {
-	path, err := registration.UnitPath()
-	if err != nil {
-		return nil, nil, err
-	}
-	dir, err := unix.Open(filepath.Dir(path), unix.O_DIRECTORY|unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := unix.Flock(dir, unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		unix.Close(dir)
-		return nil, nil, errors.Join(ErrServiceConflict, err)
-	}
-	for _, scratch := range []string{path + ".sidravia-tmp", switchPath(path) + ".sidravia-tmp"} {
-		if err := clearRegistrationScratch(scratch); err != nil {
-			unix.Close(dir)
-			return nil, nil, err
-		}
-	}
-	return context.WithValue(ctx, serviceLeaseKey{}, path), func() { unix.Close(dir) }, nil
-}
-
 func userService(ctx context.Context, action string, layout productlayout.Layout, ready func(context.Context, productlayout.Layout) error) (state ServiceState, resultErr error) {
 	path, err := registration.UnitPath()
 	if err != nil || !layout.Namespace.IsProduction() {
@@ -209,33 +185,49 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 	}
 	ctx, cancel := context.WithTimeout(ctx, 50*time.Second)
 	defer cancel()
+	layout, err = serviceTarget(layout, action)
+	if err != nil {
+		return state, err
+	}
+	if action == "register" || action == "replace" {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return state, err
+		}
+	}
+	// The observer and login-manager actions keep their existing behavior
+	// without requiring a writable registration directory.
+	switch action {
+	case "status", "linger-on", "linger-off":
+		return applyService(ctx, path, action, layout, ready, false)
+	}
+	core, err := openServiceLease(path)
+	if errors.Is(err, os.ErrNotExist) && action == "unregister" {
+		return readServiceState(ctx, path, productlayout.Layout{}, false)
+	}
+	if err != nil {
+		return state, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, core.close()) }()
+	err = core.run(ctx, func(path string) error {
+		state, err = applyService(ctx, path, action, layout, ready, false)
+		return err
+	})
+	return state, err
+}
+
+func serviceTarget(layout productlayout.Layout, action string) (productlayout.Layout, error) {
 	if layout.Mode == productlayout.ModePortable && layout.ServiceCacheRoot == "" && (action == "register" || action == "replace") {
 		cache, err := os.UserCacheDir()
 		if err != nil || !filepath.IsAbs(cache) {
-			return state, errors.Join(ErrServiceUnavailable, err)
+			return productlayout.Layout{}, errors.Join(ErrServiceUnavailable, err)
 		}
 		layout.ServiceCacheRoot = filepath.Clean(cache)
 	}
-	parent := filepath.Dir(path)
-	if action == "register" || action == "replace" {
-		if err := os.MkdirAll(parent, 0700); err != nil {
-			return state, err
-		}
-	}
-	// Lock the existing unit directory for mutations, without creating a
-	// persistent lock file or placing a write requirement on status.
-	if action != "status" && action != "linger-on" && action != "linger-off" && ctx.Value(serviceLeaseKey{}) != path {
-		locked, release, err := holdServiceRegistration(ctx)
-		if errors.Is(err, os.ErrNotExist) && action == "unregister" {
-			return readServiceState(ctx, path, productlayout.Layout{}, false)
-		}
-		if err != nil {
-			return state, err
-		}
-		defer release()
-		ctx = locked
-	}
-	if ctx.Value(serviceSwitchKey{}) != path && action != "status" {
+	return layout, nil
+}
+
+func applyService(ctx context.Context, path, action string, layout productlayout.Layout, ready serviceReadiness, switching bool) (state ServiceState, resultErr error) {
+	if !switching && action != "status" {
 		if _, pending, err := loadServiceSwitch(switchPath(path)); err != nil {
 			return state, errors.Join(ErrServiceJournal, err)
 		} else if pending {
@@ -243,7 +235,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 		}
 	}
 	if action == "discard-damaged" {
-		if ctx.Value(serviceSwitchKey{}) != path {
+		if !switching {
 			return state, ErrServiceJournal
 		}
 		if err := discardDamagedServiceSwitch(switchPath(path)); err != nil {
@@ -251,7 +243,7 @@ func userService(ctx context.Context, action string, layout productlayout.Layout
 		}
 		// Clearing a local record does not require an online manager or a
 		// usable registration. Report unavailable observation separately.
-		actual, err := userService(ctx, "status", layout, nil)
+		actual, err := applyService(ctx, path, "status", layout, nil, switching)
 		if err != nil {
 			actual.Supported = false
 		}

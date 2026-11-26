@@ -42,12 +42,6 @@ func RegisteredService() (productlayout.Layout, bool, error) {
 	return registration.Lookup()
 }
 
-// HoldServiceRegistration excludes registration mutations while a package
-// transaction stops, replaces and restarts a registered daemon.
-func HoldServiceRegistration(ctx context.Context) (context.Context, func(), error) {
-	return holdServiceRegistration(ctx)
-}
-
 // CleanupErasedRPM removes this user's obsolete RPM registration after erase.
 func CleanupErasedRPM(ctx context.Context) error {
 	return cleanupErasedRPM(ctx)

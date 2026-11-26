@@ -86,32 +86,34 @@ func cleanupErasedRPM(ctx context.Context) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	locked, release, err := holdServiceRegistration(ctx)
+	core, err := openServiceLease(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	defer release()
-	layout, data, err := registration.Read(path)
-	if err != nil {
-		return err
-	}
-	desktopLayout = layout
-	if data != nil && layout.Mode == productlayout.ModeInstalled && layout.ExecutableDirectory == root {
-		if err := removeRPMRegistration(locked, path, layout); err != nil {
+	defer func() { resultErr = errors.Join(resultErr, core.close()) }()
+	return core.run(ctx, func(path string) error {
+		layout, data, err := registration.Read(path)
+		if err != nil {
 			return err
 		}
-	}
+		desktopLayout = layout
+		if data != nil && layout.Mode == productlayout.ModeInstalled && layout.ExecutableDirectory == root {
+			if err := removeRPMRegistration(ctx, path, layout); err != nil {
+				return err
+			}
+		}
 
-	// A damaged or unrelated switch record cannot authorize deleting it.
-	// The verified RPM unit above can still be removed under the same lease.
-	switchState, switching, err := loadServiceSwitch(switchPath(path))
-	if err == nil && switching && switchState.Layout.Mode == productlayout.ModeInstalled && switchState.Layout.ExecutableDirectory == root {
-		return ClearServiceSwitch(context.WithValue(locked, serviceSwitchKey{}, path))
-	}
-	return nil
+		// A damaged or unrelated switch record cannot authorize deleting it.
+		// The verified RPM unit above can still be removed under the same lease.
+		switchState, switching, err := loadServiceSwitch(switchPath(path))
+		if err == nil && switching && switchState.Layout.Mode == productlayout.ModeInstalled && switchState.Layout.ExecutableDirectory == root {
+			return saveServiceSwitchAt(path, nil)
+		}
+		return nil
+	})
 }
 
 func removeRPMRegistration(ctx context.Context, path string, layout productlayout.Layout) error {
