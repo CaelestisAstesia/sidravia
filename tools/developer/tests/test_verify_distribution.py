@@ -80,6 +80,10 @@ class DistributionContract(unittest.TestCase):
         self.assertEqual(result['helpSmoke'], 'passed')
         self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'])
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
+        for call in run.call_args_list:
+            cwd, env = call.kwargs['cwd'], call.kwargs['env']
+            self.assertEqual(Path(env['LOCALAPPDATA']), cwd / 'local')
+            self.assertEqual(Path(env['APPDATA']), cwd / 'roaming')
 
     def test_windows_core_rejects_gui_missing_manager_and_installer(self):
         for change in ('gui', 'missing-manager', 'installer'):

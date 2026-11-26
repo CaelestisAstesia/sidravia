@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import re
 import shlex
@@ -273,6 +274,15 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     embedded_identities = []
     with tempfile.TemporaryDirectory(prefix='sidravia-distribution-check-') as temporary:
         root = Path(temporary)
+        smoke_env = None
+        if smoke and windows:
+            # Go's help entry still acquires startup admission. Keep its
+            # locks in this fixture without changing the Windows shell's
+            # known folders or any subsequent native Setup invocation.
+            local, roaming = root / 'local', root / 'roaming'
+            local.mkdir()
+            roaming.mkdir()
+            smoke_env = dict(os.environ, LOCALAPPDATA=str(local), APPDATA=str(roaming))
         for name, role in binaries.items():
             path = root / name
             require((matches_pe if windows else matches_elf)(contents[name], arch), 'binary_image_target_mismatch: ' + name)
@@ -280,7 +290,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             embedded_identities.append(binary_identity(path, role, target, version, build_id, go))
             if smoke and role != 'sidraviad':
                 path.chmod(0o700)
-                result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True, check=True, timeout=30)
+                result = subprocess.run([str(path), '--help'], cwd=root, capture_output=True, check=True, timeout=30, env=smoke_env)
                 require(bool(result.stdout.strip()), 'empty_help_smoke')
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
