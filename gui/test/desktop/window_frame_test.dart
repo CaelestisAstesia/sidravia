@@ -79,12 +79,16 @@ void main() {
               findsWidgets,
             );
             final titleRect = tester.getRect(title);
-            expect(titleRect.left, 14);
+            expect(titleRect.left, 24);
             expect(
               titleRect.right,
               lessThan(tester.getRect(find.byTooltip('最小化')).left),
             );
             for (final label in ['最小化', '最大化', '关闭']) {
+              expect(
+                titleRect.center.dy,
+                tester.getRect(find.byTooltip(label)).center.dy,
+              );
               final button = find.ancestor(
                 of: find.byTooltip(label),
                 matching: find.byType(TextButton),

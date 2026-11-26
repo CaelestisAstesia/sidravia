@@ -50,6 +50,12 @@ class SidraviaWindowFrame extends StatefulWidget {
 }
 
 class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
+  static const double _controlTop = 10;
+  static const double _controlHeight = 32;
+  static const double _controlOuterInset = 10;
+  // The painted X ends 14 logical pixels inside its 36-pixel button.
+  static const double _titleInset = _controlOuterInset + 14;
+
   bool _maximized = false, _hovered = false, _pressed = false;
   String? _error;
   bool _configured = false;
@@ -181,8 +187,8 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
               children: [
                 // Native hit testing owns drag, resize, and double-click.
                 Positioned(
-                  top: 10,
-                  right: 10,
+                  top: _controlTop,
+                  right: _controlOuterInset,
                   child: Row(
                     children: [
                       _control(
@@ -211,10 +217,10 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
                 ),
                 if (_error == null)
                   Positioned(
-                    left: 14,
+                    left: _titleInset,
                     right: 128,
-                    top: 10,
-                    height: 32,
+                    top: _controlTop,
+                    height: _controlHeight,
                     child: IgnorePointer(
                       child: Align(
                         alignment: Alignment.centerLeft,
@@ -365,8 +371,8 @@ class _SidraviaWindowFrameState extends State<SidraviaWindowFrame> {
         visualDensity: VisualDensity.standard,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-        minimumSize: const WidgetStatePropertyAll(Size(36, 32)),
-        maximumSize: const WidgetStatePropertyAll(Size(36, 32)),
+        minimumSize: const WidgetStatePropertyAll(Size(36, _controlHeight)),
+        maximumSize: const WidgetStatePropertyAll(Size(36, _controlHeight)),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
