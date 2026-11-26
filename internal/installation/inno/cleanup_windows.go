@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
@@ -33,7 +34,11 @@ func ClearUninstallRecords(ctx context.Context, coordinator uint32) error {
 	if !strings.EqualFold(filepath.Base(peer.Path), "_unins.tmp") {
 		return winproc.ErrPeer
 	}
-	layout, err := productlayout.Resolve()
+	namespace, err := productlayout.NewNamespace(os.Getenv(launchcontract.EnvNamespace))
+	if err != nil {
+		return err
+	}
+	layout, err := productlayout.ResolveNamespace(namespace)
 	if err != nil {
 		return err
 	}
@@ -113,24 +118,38 @@ func retireRecord(scope *os.Root, op string, layout productlayout.Layout) (bool,
 	if !info.Mode().IsRegular() {
 		return false, nil
 	}
-	file, err := scope.Open(path)
+	name := filepath.Join(scope.Name(), path)
+	nativeName, err := windows.UTF16PtrFromString(name)
 	if err != nil {
 		return false, err
 	}
+	// Refuse concurrent file writes or replacement until the same validated
+	// handle is marked for deletion, without granting DELETE sharing.
+	handle, err := windows.CreateFile(nativeName, windows.GENERIC_READ|windows.DELETE, windows.FILE_SHARE_READ,
+		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return false, err
+	}
+	file := os.NewFile(uintptr(handle), name)
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
 		return false, errors.Join(change.ErrInvalid, err, file.Close())
 	}
-	data, readErr := jsondoc.ReadLimited(file, 16<<10)
-	if err = errors.Join(readErr, file.Close()); err != nil {
-		return false, err
+	var actual [32768]uint16
+	length, err := windows.GetFinalPathNameByHandle(handle, &actual[0], uint32(len(actual)), 0)
+	if err != nil || length >= uint32(len(actual)) || !strings.EqualFold(strings.TrimPrefix(windows.UTF16ToString(actual[:length]), `\\?\`), name) {
+		return false, errors.Join(change.ErrInvalid, err, file.Close())
+	}
+	data, err := jsondoc.ReadLimited(file, 16<<10)
+	if err != nil {
+		return false, errors.Join(err, file.Close())
 	}
 	var state record
 	if jsondoc.DecodeStrict(data, &state) != nil || !ownsManualRecord(state, op, layout) {
-		return false, nil
+		return false, file.Close()
 	}
 	if state.Stage != "stopped" && state.Stage != "aborted" {
-		return false, change.ErrInvalid
+		return false, errors.Join(change.ErrInvalid, file.Close())
 	}
 	for _, generation := range []processID{state.Coordinator, state.Daemon, state.GUI} {
 		if generation.PID == 0 && generation.Created == 0 {
@@ -138,21 +157,15 @@ func retireRecord(scope *os.Root, op string, layout productlayout.Layout) (bool,
 		}
 		running, err := winproc.GenerationRunning(generation.PID, generation.Created)
 		if err != nil || running {
-			return false, errors.Join(change.ErrInvalid, err)
+			return false, errors.Join(change.ErrInvalid, err, file.Close())
 		}
 	}
-	current, err := scope.Lstat(path)
-	if err != nil || !os.SameFile(current, info) {
-		return false, errors.Join(change.ErrInvalid, err)
-	}
-	if err = scope.Remove(path); err != nil {
+	deleteFile := byte(1) // FILE_DISPOSITION_INFO.DeleteFile.
+	err = windows.SetFileInformationByHandle(handle, windows.FileDispositionInfo, &deleteFile, 1)
+	if err = errors.Join(err, file.Close()); err != nil {
 		return false, err
 	}
-	err = scope.Remove(op)
-	if errors.Is(err, windows.ERROR_DIR_NOT_EMPTY) || errors.Is(err, fs.ErrNotExist) {
-		return true, nil
-	}
-	return true, err
+	return true, removeEmptyRecordDirectory(filepath.Join(scope.Name(), op))
 }
 
 func ownsManualRecord(state record, op string, layout productlayout.Layout) bool {
@@ -175,7 +188,11 @@ func ownsManualRecord(state record, op string, layout productlayout.Layout) bool
 }
 
 func removeEmptyRecordDirectory(path string) error {
-	err := os.Remove(path)
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	err = windows.RemoveDirectory(name)
 	if errors.Is(err, windows.ERROR_DIR_NOT_EMPTY) || errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}

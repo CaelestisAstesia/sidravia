@@ -18,7 +18,11 @@ import (
 
 func TestClearRetiredOperationsPreservesUnownedFiles(t *testing.T) {
 	root := t.TempDir()
-	layout := productlayout.Layout{Mode: productlayout.ModeInstalled, ExecutableDirectory: filepath.Join(root, "installed")}
+	namespace, err := productlayout.NewNamespace("uninstall-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout := productlayout.Layout{Mode: productlayout.ModeInstalled, ExecutableDirectory: filepath.Join(root, "installed"), Namespace: namespace}
 	family := filepath.Join(root, operationFamily(layout.ExecutableDirectory, layout.Namespace))
 	ownedID := strings.Repeat("1", 32)
 	foreignID := strings.Repeat("2", 32)
@@ -29,11 +33,12 @@ func TestClearRetiredOperationsPreservesUnownedFiles(t *testing.T) {
 	unknownPath := filepath.Join(family, unknownID, "state.json")
 	retiredPath := filepath.Join(family, retiredID, "state.json")
 	sibling := filepath.Join(family, ownedID, "notes.txt")
-	skippedFamily := filepath.Join(root, strings.Repeat("5", 32), ownedID, "state.json")
+	skippedFamily := filepath.Join(root, operationFamily(layout.ExecutableDirectory, productlayout.Namespace{}), ownedID, "state.json")
 
 	state := record{
 		SchemaVersion: 1, OperationID: ownedID,
 		Source:      change.Target{ID: layout.ExecutableDirectory, Version: "0.6.0-dev.d2.1", BuildID: strings.Repeat("a", 40), Layout: string(layout.Mode)},
+		Namespace:   namespace.String(),
 		Coordinator: processID{PID: uint32(os.Getpid()), Created: 1},
 		Hashes:      map[string]string{"sidraviactl.exe": strings.Repeat("0", 64), "sidraviad.exe": strings.Repeat("1", 64)},
 		Stage:       "stopped",
@@ -58,7 +63,9 @@ func TestClearRetiredOperationsPreservesUnownedFiles(t *testing.T) {
 	writeRecord(ownedPath, state)
 	write(sibling, []byte("user document"))
 	write(unknownPath, []byte("unknown data"))
-	writeRecord(skippedFamily, state)
+	production := state
+	production.Namespace = ""
+	writeRecord(skippedFamily, production)
 	retired := state
 	retired.OperationID = retiredID
 	retired.Stage = "aborted"
