@@ -53,6 +53,7 @@ class InnoContracts(unittest.TestCase):
 $ErrorActionPreference = 'Stop'
 $sourceFile = Join-Path $Root 'protected-original.json'
 $backupFile = Join-Path $Root 'protected-copy.json'
+$section = [Security.AccessControl.AccessControlSections]::Access
 if ($Mode -eq 'create') {
  [IO.File]::WriteAllText($sourceFile, '{"synthetic":"fixture"}')
  # Set only the DACL. The test must not need permission to take
@@ -60,10 +61,11 @@ if ($Mode -eq 'create') {
  $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
  & "$env:WINDIR\System32\icacls.exe" $sourceFile /inheritance:r /grant:r "*${ownerSid}:F" '*S-1-5-18:F'
  if ($LASTEXITCODE -ne 0) { throw 'cannot create fixture DACL' }
- if (-not (Get-Acl -LiteralPath $sourceFile).AreAccessRulesProtected) { throw 'fixture DACL inherits rules' }
+ $sourceAcl = [IO.File]::GetAccessControl($sourceFile, $section)
+ if (-not $sourceAcl.AreAccessRulesProtected) { throw 'fixture DACL inherits rules' }
 } else {
- $sourceAcl = Get-Acl -LiteralPath $sourceFile
- $backupAcl = Get-Acl -LiteralPath $backupFile
+ $sourceAcl = [IO.File]::GetAccessControl($sourceFile, $section)
+ $backupAcl = [IO.File]::GetAccessControl($backupFile, $section)
  function Rules($acl) {
    @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | ForEach-Object {
      $_.IdentityReference.Value + ':' + $_.AccessControlType + ':' + $_.FileSystemRights + ':' + $_.InheritanceFlags + ':' + $_.PropagationFlags

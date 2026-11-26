@@ -85,6 +85,7 @@ jobs:
           if ($process.ExitCode -ne 0 -or -not (Test-Path (Join-Path $compilerRoot 'ISCC.exe'))) { throw 'inno_compiler_setup_failed' }
           "SIDRAVIA_ISCC=$(Join-Path $compilerRoot 'ISCC.exe')" >> $env:GITHUB_ENV
       - name: Build and consume Windows distribution
+        id: windows_distribution
         shell: pwsh
         run: |
           $gui = (Resolve-Path ("gui/build/windows/$env:FLUTTER_ARCH/runner/Release")).Path
@@ -104,7 +105,7 @@ jobs:
           SIDRAVIA_INNO_TEST_ROOT: ${{ runner.temp }}
         run: python -m unittest discover -s tools/developer/tests -p test_inno_installer.py -v
       - name: Exercise ARM64 portable and Setup through live IPC
-        if: matrix.flutterArch == 'arm64'
+        if: ${{ !cancelled() && matrix.flutterArch == 'arm64' && steps.windows_distribution.outcome == 'success' }}
         shell: pwsh
         run: |
           python tools/developer/windows_arm64_smoke.py --distribution dist --core-distribution dist-core --version $env:BUILD_VERSION --build-id $env:BUILD_ID --evidence windows-native-smoke
