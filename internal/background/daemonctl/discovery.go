@@ -168,32 +168,6 @@ func validStatusFor(identity Identity, info contract.RuntimeInfo, status *contra
 	}
 }
 
-// GenerationReachable checks the supplied generation directly. It deliberately
-// does not reread runtime state, so replacement cannot prove an old generation
-// stopped.
-func GenerationReachable(identity Identity, info contract.RuntimeInfo) bool {
-	return generationReachable(identity, defaultDependencies(), info)
-}
-
-func generationReachable(identity Identity, deps dependencies, info contract.RuntimeInfo) bool {
-	if identity.validate() != nil || !matchesIdentity(identity, info) {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), deps.callTimeout)
-	defer cancel()
-	conn, err := deps.connect(ctx, info, identity)
-	if err != nil {
-		return false
-	}
-	defer conn.Close()
-	response, err := conn.Call(ctx, contract.MethodDaemonStatus, json.RawMessage("{}"))
-	if err != nil || !response.OK {
-		return false
-	}
-	var status contract.StatusResult
-	return json.Unmarshal(response.Result, &status) == nil && validStatusFor(identity, info, &status)
-}
-
 // ProbeApplication observes the ordinary application-managed layout, including
 // during a switch while a distinct systemd registration still exists.
 func ProbeApplication(ctx context.Context, identity Identity, ns productlayout.Namespace) (ProbeResult, error) {

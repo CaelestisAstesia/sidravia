@@ -10,11 +10,11 @@ import (
 )
 
 // runGUIRestart refuses a foreign owner before sending any stop request.
-func runGUIRestart(owner int, level string, deps stopDependencies, start guiBootstrapper, identity daemonctl.Identity, output io.Writer) error {
+func runGUIRestart(owner int, level string, ops daemonOperations, start guiBootstrapper, identity daemonctl.Identity, output io.Writer) error {
 	if owner <= 0 || (level != "info" && level != "debug" && level != "trace") {
 		return invalidGUIBootstrapArguments(errCommandUsage)
 	}
-	result, err := deps.ops.inspect()
+	result, err := ops.inspect()
 	if err != nil {
 		return classifyGUIBootstrapFailure(err)
 	}
@@ -24,7 +24,7 @@ func runGUIRestart(owner int, level string, deps stopDependencies, start guiBoot
 	if result.State != daemonctl.ProbeReachable || result.Status == nil || result.Status.Mode != "desktop" || result.Status.DesktopOwnerPID == nil || *result.Status.DesktopOwnerPID != owner {
 		return classifyGUIBootstrapFailure(daemonctl.ErrModeConflict)
 	}
-	if err := stopGeneration(deps, result.Info); err != nil {
+	if err := stopGeneration(ops, result.Info); err != nil {
 		return classifyGUIBootstrapFailure(err)
 	}
 	return guiBootstrap(identity, owner, output, start)
@@ -39,7 +39,7 @@ func newGUIRestartCommand(identity daemonctl.Identity, output io.Writer) *cobra.
 		start := func(id daemonctl.Identity, pid int) (daemonctl.DesktopBootstrapResult, error) {
 			return daemonctl.BootstrapDesktopWithLogLevel(id, pid, level, true)
 		}
-		return wrapCommandOperation(runGUIRestart(owner, level, defaultStopDependencies(identity), start, identity, output))
+		return wrapCommandOperation(runGUIRestart(owner, level, defaultDaemonOperations(identity), start, identity, output))
 	}}
 	c.Flags().StringVar(&ownerText, "owner-pid", "", "")
 	c.MarkFlagRequired("owner-pid")

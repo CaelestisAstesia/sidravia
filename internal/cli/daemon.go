@@ -2,23 +2,15 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/serviceswitch"
-	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
-)
-
-const (
-	daemonStopTotalWait    = 10 * time.Second
-	daemonStopPollInterval = 200 * time.Millisecond
 )
 
 type daemonStopOutcome string
@@ -78,19 +70,17 @@ func daemonCommandError(command string, err error) error {
 }
 
 type daemonOperations struct {
-	inspect   func() (daemonctl.ProbeResult, error)
-	connect   func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error)
-	reachable func(contract.RuntimeInfo) bool
-	start     func(string) (daemonctl.StartOutcome, error)
+	inspect func() (daemonctl.ProbeResult, error)
+	stop    func(context.Context, contract.RuntimeInfo) error
+	start   func(string) (daemonctl.StartOutcome, error)
 }
 
 func defaultDaemonOperations(identity daemonctl.Identity) daemonOperations {
 	return daemonOperations{
 		inspect: func() (daemonctl.ProbeResult, error) { return daemonctl.Probe(identity) },
-		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonconn.Client, error) {
-			return daemonctl.Connect(ctx, identity, info)
+		stop: func(ctx context.Context, info contract.RuntimeInfo) error {
+			return daemonctl.StopGeneration(ctx, identity, info)
 		},
-		reachable: func(info contract.RuntimeInfo) bool { return daemonctl.GenerationReachable(identity, info) },
 		start: func(logLevel string) (daemonctl.StartOutcome, error) {
 			return daemonctl.EnsureHeadless(identity, logLevel)
 		},
@@ -141,25 +131,15 @@ func writeDaemonRestarted(w io.Writer) error {
 	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonRestarted()))
 }
 
-type stopDependencies struct {
-	ops          daemonOperations
-	totalWait    time.Duration
-	pollInterval time.Duration
-}
-
-func defaultStopDependencies(identity daemonctl.Identity) stopDependencies {
-	return stopDependencies{ops: defaultDaemonOperations(identity), totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}
-}
-
 // runDaemonStop sends daemon.stop to the contacted generation and waits until
 // exactly that generation is unreachable. It never stops a PID directly.
-func runDaemonStop(deps stopDependencies) error {
-	_, err := runDaemonStopWithOutcome(deps)
+func runDaemonStop(ops daemonOperations) error {
+	_, err := runDaemonStopWithOutcome(ops)
 	return err
 }
 
-func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) {
-	result, err := deps.ops.inspect()
+func runDaemonStopWithOutcome(ops daemonOperations) (daemonStopOutcome, error) {
+	result, err := ops.inspect()
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +152,7 @@ func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) 
 		if !isExplicitHeadless(result.Status) {
 			return "", daemonctl.ErrModeConflict
 		}
-		if err := stopGeneration(deps, result.Info); err != nil {
+		if err := stopGeneration(ops, result.Info); err != nil {
 			return "", err
 		}
 		return daemonStopped, nil
@@ -181,66 +161,36 @@ func runDaemonStopWithOutcome(deps stopDependencies) (daemonStopOutcome, error) 
 	}
 }
 
-func stopGeneration(deps stopDependencies, info contract.RuntimeInfo) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	conn, err := deps.ops.connect(ctx, info)
-	if err != nil {
-		return terminal.Failure("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidraviactl daemon status 后重试", err)
+func stopGeneration(ops daemonOperations, info contract.RuntimeInfo) error {
+	err := ops.stop(context.Background(), info)
+	var failure *daemonctl.StopFailure
+	if !errors.As(err, &failure) {
+		return err
 	}
-	response, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage("{}"))
-	closeErr := conn.Close()
-	if err != nil {
-		if closeErr != nil {
-			return fmt.Errorf("%w; %w", terminal.Failure("调用 daemon 停止", err), terminal.Failure("清理 sidraviad 连接", closeErr))
+	switch failure.Stage {
+	case daemonctl.StopConnect:
+		return terminal.Failure("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidraviactl daemon status 后重试", err)
+	case daemonctl.StopCall:
+		if failure.CloseCause != nil {
+			return fmt.Errorf("%w; %w", terminal.Failure("调用 daemon 停止", failure.Cause), terminal.Failure("清理 sidraviad 连接", failure.CloseCause))
 		}
 		return terminal.Failure("调用 daemon 停止", err)
-	}
-	_ = closeErr
-	if !response.OK {
-		code := ""
-		if response.Error != nil {
-			code = response.Error.Code
-		}
-		return errors.New(ipcErrorText(code))
-	}
-	return waitForStoppedGeneration(deps, info)
-}
-
-func waitForStoppedGeneration(deps stopDependencies, info contract.RuntimeInfo) error {
-	ctx, cancel := context.WithTimeout(context.Background(), deps.totalWait)
-	defer cancel()
-	ticker := time.NewTicker(deps.pollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.New("等待 sidraviad 停止超时；停止结果尚未确认。请运行 sidraviactl daemon status 确认状态")
-		case <-ticker.C:
-			if !deps.ops.reachable(info) {
-				return nil
-			}
-		}
+	case daemonctl.StopRejected:
+		return errors.New(ipcErrorText(failure.Code))
+	case daemonctl.StopUnconfirmed:
+		return errors.New("等待 sidraviad 停止超时；停止结果尚未确认。请运行 sidraviactl daemon status 确认状态")
+	default:
+		return err
 	}
 }
 
-type restartDependencies struct {
-	ops  daemonOperations
-	stop stopDependencies
-}
-
-func defaultRestartDependencies(identity daemonctl.Identity) restartDependencies {
-	ops := defaultDaemonOperations(identity)
-	return restartDependencies{ops: ops, stop: stopDependencies{ops: ops, totalWait: daemonStopTotalWait, pollInterval: daemonStopPollInterval}}
-}
-
-func runDaemonRestart(deps restartDependencies, logLevel string) error {
-	_, err := runDaemonRestartWithOutcome(deps, logLevel)
+func runDaemonRestart(ops daemonOperations, logLevel string) error {
+	_, err := runDaemonRestartWithOutcome(ops, logLevel)
 	return err
 }
 
-func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (daemonRestartOutcome, error) {
-	result, err := deps.ops.inspect()
+func runDaemonRestartWithOutcome(ops daemonOperations, logLevel string) (daemonRestartOutcome, error) {
+	result, err := ops.inspect()
 	if err != nil {
 		return "", err
 	}
@@ -248,11 +198,11 @@ func runDaemonRestartWithOutcome(deps restartDependencies, logLevel string) (dae
 		if !isExplicitHeadless(result.Status) {
 			return "", daemonctl.ErrModeConflict
 		}
-		if err := stopGeneration(deps.stop, result.Info); err != nil {
+		if err := stopGeneration(ops, result.Info); err != nil {
 			return "", err
 		}
 	}
-	if _, err := deps.ops.start(logLevel); err != nil {
+	if _, err := ops.start(logLevel); err != nil {
 		return "", err
 	}
 	if result.State == daemonctl.ProbeStopped {
@@ -299,7 +249,7 @@ func daemonStop(identity daemonctl.Identity) error {
 		}
 		return writeDaemonStopped(os.Stdout)
 	}
-	outcome, err := runDaemonStopWithOutcome(defaultStopDependencies(identity))
+	outcome, err := runDaemonStopWithOutcome(defaultDaemonOperations(identity))
 	if err != nil {
 		return err
 	}
@@ -320,7 +270,7 @@ func daemonRestart(identity daemonctl.Identity, logLevel string) error {
 		}
 		return writeDaemonRestarted(os.Stdout)
 	}
-	outcome, err := runDaemonRestartWithOutcome(defaultRestartDependencies(identity), logLevel)
+	outcome, err := runDaemonRestartWithOutcome(defaultDaemonOperations(identity), logLevel)
 	if err != nil {
 		return err
 	}
