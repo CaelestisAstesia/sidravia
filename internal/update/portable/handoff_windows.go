@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/document/securefile"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/persistence/jsonfile"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
@@ -55,14 +57,14 @@ func runnerDirectory(target, id string) (string, error) {
 	if !update.ValidOperationID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
 		return "", ErrInvalid
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(root, "portable", digest([]byte(strings.ToLower(target))), id), nil
 }
 func savePrivate(ctx context.Context, path string, value any) error {
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		return err
 	}
@@ -73,7 +75,7 @@ func savePrivate(ctx context.Context, path string, value any) error {
 	return store.Replace(ctx, path, b)
 }
 func readPrivate(ctx context.Context, path string, value any) error {
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		return err
 	}
@@ -84,7 +86,7 @@ func readPrivate(ctx context.Context, path string, value any) error {
 	if !exists {
 		return os.ErrNotExist
 	}
-	return jsonfile.DecodeStrict(b, value)
+	return jsondoc.DecodeStrict(b, value)
 }
 func readWindowsSession(ctx context.Context, target, id string) (windowsSession, string, error) {
 	dir, err := runnerDirectory(target, id)
@@ -174,7 +176,7 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	if err != nil {
 		return operations.Record{}, err
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return operations.Record{}, err
 	}
@@ -361,7 +363,7 @@ func ExecuteWindows(ctx context.Context, target, id string, updater uint32, vers
 		return err
 	}
 	defer pin.Close()
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return err
 	}

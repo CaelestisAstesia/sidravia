@@ -7,20 +7,20 @@ import (
 	"testing"
 	"time"
 
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
-	profile "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
 )
 
 type stubFactory struct{}
 
-func (stubFactory) ProtocolID() protocol.AuthenticationProtocolID { return "test-protocol" }
-func (stubFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func (stubFactory) ProtocolID() profilevalue.ProtocolID { return "test-protocol" }
+func (stubFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	return nil
 }
-func (stubFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (stubFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 func (stubFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
@@ -44,13 +44,13 @@ type sequentialHeldFactory struct {
 	created chan *heldCancellationRun
 }
 
-func (factory *sequentialHeldFactory) ProtocolID() protocol.AuthenticationProtocolID {
+func (factory *sequentialHeldFactory) ProtocolID() profilevalue.ProtocolID {
 	return "test-protocol"
 }
-func (factory *sequentialHeldFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func (factory *sequentialHeldFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	return nil
 }
-func (factory *sequentialHeldFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (factory *sequentialHeldFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 func (factory *sequentialHeldFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
@@ -99,15 +99,15 @@ func (factory *sequentialHeldFactory) releaseAll() {
 	}
 }
 
-func (heldCancellationFactory) ProtocolID() protocol.AuthenticationProtocolID {
+func (heldCancellationFactory) ProtocolID() profilevalue.ProtocolID {
 	return "test-protocol"
 }
 
-func (heldCancellationFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func (heldCancellationFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	return nil
 }
 
-func (heldCancellationFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (heldCancellationFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 
@@ -152,12 +152,12 @@ type stateFactory struct {
 	created chan *stateRun
 }
 
-func newStateFactory() *stateFactory                                { return &stateFactory{created: make(chan *stateRun, 4)} }
-func (*stateFactory) ProtocolID() protocol.AuthenticationProtocolID { return "test-protocol" }
-func (*stateFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func newStateFactory() *stateFactory                      { return &stateFactory{created: make(chan *stateRun, 4)} }
+func (*stateFactory) ProtocolID() profilevalue.ProtocolID { return "test-protocol" }
+func (*stateFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	return nil
 }
-func (*stateFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (*stateFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 func (factory *stateFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {
@@ -266,17 +266,17 @@ func testRuntimeDefinition() session.RuntimeDefinition {
 			NetworkBindingPolicy: session.NetworkBindingPolicy{
 				Mode: session.AutomaticallySelectLatestAvailable,
 			},
-			ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride([]byte(`{"network":"campus"}`)),
+			ProtocolContextOverride: profilevalue.ProtocolOverride([]byte(`{"network":"campus"}`)),
 		},
 		AuthenticationCredential: credential.AuthenticationCredential{
 			Username: "test-account",
 			Password: "secret-password",
 		},
-		InstitutionProfile: profile.InstitutionProfile{
+		InstitutionProfile: profilevalue.Profile{
 			InstitutionProfileID:             "profile-1",
 			DisplayName:                      "Campus",
 			AuthenticationProtocolID:         "test-protocol",
-			InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration([]byte(`{"realm":"campus"}`)),
+			InstitutionProtocolConfiguration: profilevalue.ProtocolConfiguration([]byte(`{"realm":"campus"}`)),
 		},
 		AuthenticationProtocolFactory: stubFactory{},
 		AutoReconnect:                 true,

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
@@ -24,7 +26,7 @@ type fakeSessionApplication struct {
 
 	lastStartInput OneShotAuthenticationInput
 	startCalls     int
-	lastConfigID   config.ConfigurationID
+	lastConfigID   connectionconfig.ID
 	configCalls    int
 	lastStopID     session.AuthenticationSessionID
 	stopCalls      int
@@ -55,7 +57,7 @@ func (fake *fakeSessionApplication) StartOneShotAuthentication(ctx context.Conte
 	}
 	return SessionStartResult{SessionID: fake.snapshot.AuthenticationSessionID, Snapshot: fake.snapshot, Outcome: SessionStartCreated}, nil
 }
-func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id config.ConfigurationID, _ ...string) (SessionStartResult, error) {
+func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.Context, id connectionconfig.ID, _ ...string) (SessionStartResult, error) {
 	fake.configCalls++
 	fake.lastConfigID = id
 	if fake.err != nil {
@@ -239,7 +241,7 @@ func fullSnapshot() session.Snapshot {
 		DisplayName:              "Library WiFi",
 		InstitutionProfileID:     "profile-1",
 		InstitutionDisplayName:   "Library",
-		AuthenticationProtocolID: protocol.AuthenticationProtocolID("drcom"),
+		AuthenticationProtocolID: profilevalue.ProtocolID("drcom"),
 		AccountName:              "public-account-label",
 		Intent:                   session.MaintainAuthentication,
 		State:                    session.Authenticated,
@@ -284,7 +286,7 @@ func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
 	if input.DisplayName != "Library WiFi" {
 		t.Errorf("displayName: got %q", input.DisplayName)
 	}
-	if input.InstitutionProfileID != config.InstitutionProfileID("profile-1") {
+	if input.InstitutionProfileID != profilevalue.ID("profile-1") {
 		t.Errorf("institutionProfileId: got %q", input.InstitutionProfileID)
 	}
 	if input.AuthenticationCredential.Username != "SECRET-USER" {
@@ -618,7 +620,7 @@ func TestSessionHandlerRealInitialOneShotSocketAndCleanupProjection(t *testing.T
 	}
 	waitForApplicationSessionState(t, setup.application, started.SessionID, session.Authenticated)
 	username := "new-persisted-user"
-	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username}); !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) {
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}}); !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("genuine cleanup deadline: %v", err)
 	}
 	select {

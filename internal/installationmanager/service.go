@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 var ErrServiceUnavailable = errors.New("user service manager unavailable")

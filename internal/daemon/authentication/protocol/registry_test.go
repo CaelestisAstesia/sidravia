@@ -1,25 +1,29 @@
 package protocol
 
+import (
+	profilevalue "sidravia/internal/connection/profile"
+)
+
 import "testing"
 
 type registryTestFactory struct {
-	protocolID AuthenticationProtocolID
+	protocolID profilevalue.ProtocolID
 }
 
 type pointerRegistryTestFactory struct{}
 
-func (*pointerRegistryTestFactory) ProtocolID() AuthenticationProtocolID {
+func (*pointerRegistryTestFactory) ProtocolID() profilevalue.ProtocolID {
 	return "pointer"
 }
 
 func (*pointerRegistryTestFactory) ValidateInstitutionProtocolConfiguration(
-	InstitutionProtocolConfiguration,
+	profilevalue.ProtocolConfiguration,
 ) error {
 	return nil
 }
 
 func (*pointerRegistryTestFactory) ValidateProtocolContextOverride(
-	AuthenticationProtocolContextOverride,
+	profilevalue.ProtocolOverride,
 ) error {
 	return nil
 }
@@ -30,18 +34,18 @@ func (*pointerRegistryTestFactory) CreateAuthenticationProtocolRun(
 	return nil, nil
 }
 
-func (factory registryTestFactory) ProtocolID() AuthenticationProtocolID {
+func (factory registryTestFactory) ProtocolID() profilevalue.ProtocolID {
 	return factory.protocolID
 }
 
 func (registryTestFactory) ValidateInstitutionProtocolConfiguration(
-	InstitutionProtocolConfiguration,
+	profilevalue.ProtocolConfiguration,
 ) error {
 	return nil
 }
 
 func (registryTestFactory) ValidateProtocolContextOverride(
-	AuthenticationProtocolContextOverride,
+	profilevalue.ProtocolOverride,
 ) error {
 	return nil
 }

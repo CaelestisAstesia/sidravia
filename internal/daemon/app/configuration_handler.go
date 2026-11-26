@@ -6,20 +6,22 @@ import (
 	"encoding/json"
 	"errors"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	config "sidravia/internal/daemon/configuration"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/persistence"
-	"sidravia/internal/persistence/jsonfile"
 )
 
 type configurationApplication interface {
-	ListConfigurations(context.Context) ([]ConfigurationResult, jsonfile.ProtectionStatus, error)
-	GetConfiguration(context.Context, config.ConfigurationID) (ConfigurationResult, error)
-	CreateConfiguration(context.Context, config.Configuration, string, bool) (ConfigurationResult, error)
-	UpdateConfiguration(context.Context, config.ConfigurationID, config.Update) (ConfigurationResult, error)
-	SetConfigurationPassword(context.Context, config.ConfigurationID, string, bool) (ConfigurationResult, error)
-	RemoveConfiguration(context.Context, config.ConfigurationID, string, ...bool) error
+	ListConfigurations(context.Context) ([]ConfigurationResult, securefile.ProtectionStatus, error)
+	GetConfiguration(context.Context, connectionconfig.ID) (ConfigurationResult, error)
+	CreateConfiguration(context.Context, connectionconfig.Configuration, string, bool) (ConfigurationResult, error)
+	UpdateConfiguration(context.Context, connectionconfig.ID, config.Update) (ConfigurationResult, error)
+	SetConfigurationPassword(context.Context, connectionconfig.ID, string, bool) (ConfigurationResult, error)
+	RemoveConfiguration(context.Context, connectionconfig.ID, string, ...bool) error
 }
 
 func ConfigurationHandler(application configurationApplication) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
@@ -48,7 +50,7 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			if err != nil {
 				return nil, configurationInvalid()
 			}
-			value, err := application.GetConfiguration(ctx, config.ConfigurationID(request.ConfigurationID))
+			value, err := application.GetConfiguration(ctx, connectionconfig.ID(request.ConfigurationID))
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationCreate:
 			request, err := contract.DecodeConfigurationCreatePayload(payload)
@@ -56,10 +58,10 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 				return nil, configurationInvalid()
 			}
 			policy, _ := request.NetworkBindingPolicy.Domain()
-			value, err := application.CreateConfiguration(ctx, config.Configuration{
-				ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(request.ProtocolContextOverride),
-				ConfigurationID:         config.ConfigurationID(request.ConfigurationID),
-				DisplayName:             request.DisplayName, InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
+			value, err := application.CreateConfiguration(ctx, connectionconfig.Configuration{
+				ProtocolContextOverride: profilevalue.ProtocolOverride(request.ProtocolContextOverride),
+				ConfigurationID:         connectionconfig.ID(request.ConfigurationID),
+				DisplayName:             request.DisplayName, InstitutionProfileID: profilevalue.ID(request.InstitutionProfileID),
 				Username: request.Username, NetworkBindingPolicy: policy, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
 			}, request.Password, request.AllowInsecureStorage)
 			return encodeConfiguration(value, err)
@@ -68,39 +70,39 @@ func ConfigurationHandler(application configurationApplication) func(context.Con
 			if err != nil {
 				return nil, configurationInvalid()
 			}
-			var policy *config.NetworkBindingPolicy
+			var policy *binding.Policy
 			if request.NetworkBindingPolicy != nil {
 				converted, _ := request.NetworkBindingPolicy.Domain()
 				policy = &converted
 			}
-			var profile *config.InstitutionProfileID
+			var profile *profilevalue.ID
 			if request.InstitutionProfileID != nil {
-				converted := config.InstitutionProfileID(*request.InstitutionProfileID)
+				converted := profilevalue.ID(*request.InstitutionProfileID)
 				profile = &converted
 			}
-			var override *protocol.AuthenticationProtocolContextOverride
+			var override *profilevalue.ProtocolOverride
 			if len(request.ProtocolContextOverride) > 0 {
-				var converted protocol.AuthenticationProtocolContextOverride
+				var converted profilevalue.ProtocolOverride
 				if !bytes.Equal(bytes.TrimSpace(request.ProtocolContextOverride), []byte("null")) {
 					converted = append(converted, request.ProtocolContextOverride...)
 				}
 				override = &converted
 			}
-			value, err := application.UpdateConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), config.Update{ExpectedVersion: request.ExpectedVersion, ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
+			value, err := application.UpdateConfiguration(ctx, connectionconfig.ID(request.ConfigurationID), config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect}, ExpectedVersion: request.ExpectedVersion, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationSetPassword:
 			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
 			if err != nil {
 				return nil, configurationInvalid()
 			}
-			value, err := application.SetConfigurationPassword(ctx, config.ConfigurationID(request.ConfigurationID), request.Password, request.AllowInsecureStorage)
+			value, err := application.SetConfigurationPassword(ctx, connectionconfig.ID(request.ConfigurationID), request.Password, request.AllowInsecureStorage)
 			return encodeConfiguration(value, err)
 		case contract.MethodConfigurationRemove:
 			request, err := contract.DecodeConfigurationRemovePayload(payload)
 			if err != nil {
 				return nil, configurationInvalid()
 			}
-			if err := application.RemoveConfiguration(ctx, config.ConfigurationID(request.ConfigurationID), request.ExpectedVersion, request.AllowInsecureStorage); err != nil {
+			if err := application.RemoveConfiguration(ctx, connectionconfig.ID(request.ConfigurationID), request.ExpectedVersion, request.AllowInsecureStorage); err != nil {
 				return nil, configurationError(err)
 			}
 			result, err := contract.MarshalConfigurationRemoveResult(contract.ConfigurationRemoveResult{ConfigurationID: request.ConfigurationID, Status: "removed"})
@@ -160,18 +162,18 @@ func configurationError(err error) *contract.Error {
 	if errors.As(err, &autoLoginConflict) {
 		return &contract.Error{Code: contract.ErrorCodeConfigurationAutoLoginConflict, Message: "another configuration already enables automatic login"}
 	}
-	var failure *persistence.Failure
+	var failure *document.Failure
 	if errors.As(err, &failure) {
-		if failure.Code() == persistence.FailureNotFound {
+		if failure.Code() == document.FailureNotFound {
 			return &contract.Error{Code: contract.ErrorCodeConfigurationNotFound, Message: "configuration not found"}
 		}
-		if failure.Code() == persistence.FailureConflict {
+		if failure.Code() == document.FailureConflict {
 			return &contract.Error{Code: contract.ErrorCodeConfigurationConflict, Message: "configuration already exists"}
 		}
-		if failure.Code() == persistence.FailureInvalidArgument {
+		if failure.Code() == document.FailureInvalidArgument {
 			return &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "invalid configuration"}
 		}
-		if errors.Is(failure.DiagnosticCause(), jsonfile.ErrInsecureStorageConfirmationRequired) {
+		if errors.Is(failure.DiagnosticCause(), securefile.ErrInsecureStorageConfirmationRequired) {
 			return &contract.Error{Code: contract.ErrorCodeInsecureStorageConfirmationRequired, Message: "insecure storage confirmation required"}
 		}
 	}

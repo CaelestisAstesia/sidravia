@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 )
 
@@ -248,11 +249,11 @@ func stateReasonCode(reason *StateReason) string {
 
 type nilRunFactory struct{}
 
-func (nilRunFactory) ProtocolID() protocol.AuthenticationProtocolID { return "test-protocol" }
-func (nilRunFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func (nilRunFactory) ProtocolID() profilevalue.ProtocolID { return "test-protocol" }
+func (nilRunFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	return nil
 }
-func (nilRunFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (nilRunFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 func (nilRunFactory) CreateAuthenticationProtocolRun(protocol.AuthenticationProtocolRunCreationInputs) (protocol.AuthenticationProtocolRun, error) {

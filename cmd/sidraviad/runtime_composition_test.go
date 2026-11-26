@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 func TestComposeObjectGraphWithValidProfile(t *testing.T) {

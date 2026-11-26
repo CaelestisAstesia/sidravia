@@ -3,16 +3,18 @@ package protocol
 import (
 	"fmt"
 	"reflect"
+
+	profilevalue "sidravia/internal/connection/profile"
 )
 
 type AuthenticationProtocolRegistry struct {
-	factories map[AuthenticationProtocolID]AuthenticationProtocolFactory
+	factories map[profilevalue.ProtocolID]AuthenticationProtocolFactory
 }
 
 func NewAuthenticationProtocolRegistry(
 	factories ...AuthenticationProtocolFactory,
 ) (*AuthenticationProtocolRegistry, error) {
-	factoriesByID := make(map[AuthenticationProtocolID]AuthenticationProtocolFactory, len(factories))
+	factoriesByID := make(map[profilevalue.ProtocolID]AuthenticationProtocolFactory, len(factories))
 	for _, factory := range factories {
 		if isNilAuthenticationProtocolFactory(factory) || factory.ProtocolID() == "" {
 			return nil, fmt.Errorf("authentication protocol factory has empty ID")
@@ -39,7 +41,7 @@ func isNilAuthenticationProtocolFactory(factory AuthenticationProtocolFactory) b
 }
 
 func (registry *AuthenticationProtocolRegistry) GetFactory(
-	protocolID AuthenticationProtocolID,
+	protocolID profilevalue.ProtocolID,
 ) (AuthenticationProtocolFactory, error) {
 	factory, exists := registry.factories[protocolID]
 	if !exists {

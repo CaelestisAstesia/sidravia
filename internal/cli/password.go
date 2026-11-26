@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"sidravia/internal/credentialinput"
+	"sidravia/internal/connection/credential/input"
 )
 
 const maxPasswordBytes = 4096
@@ -40,7 +40,7 @@ func (deps authDependencies) readValidatedPassword(fromStdin bool) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if err := credentialinput.Validate(password); err != nil {
+	if err := input.ValidateNewText(password); err != nil {
 		return "", err
 	}
 	return password, nil

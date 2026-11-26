@@ -6,11 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"os"
-	"sidravia/internal/productlayout"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
+
+	productlayout "sidravia/internal/installation/layout"
 )
 
 func TestWindowsSingletonContentionIsTyped(t *testing.T) {

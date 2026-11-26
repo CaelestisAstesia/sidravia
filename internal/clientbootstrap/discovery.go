@@ -6,9 +6,9 @@ import (
 	"errors"
 	"os"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 // Probe is read-only and never starts, stops, removes or rewrites runtime state.

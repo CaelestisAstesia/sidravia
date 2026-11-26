@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	protocol "sidravia/internal/daemon/authentication/protocol"
-	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
 )
 
@@ -47,13 +48,13 @@ func buildBinding(t *testing.T, ipv4 string, mac []byte, dns []string, dhcp *str
 	return binding
 }
 
-func factoryInputs(config protocol.InstitutionProtocolConfiguration, cred credential.AuthenticationCredential, binding environment.SelectedSystemNetworkBinding) protocol.AuthenticationProtocolRunCreationInputs {
+func factoryInputs(config profilevalue.ProtocolConfiguration, cred credential.AuthenticationCredential, binding environment.SelectedSystemNetworkBinding) protocol.AuthenticationProtocolRunCreationInputs {
 	return protocol.AuthenticationProtocolRunCreationInputs{
 		InstitutionProtocolConfiguration: config,
 		AuthenticationCredential:         cred,
 		SelectedSystemNetworkBinding:     binding,
 		SystemHostInformation:            testHostInformation(),
-		ProtocolContextOverride:          protocol.AuthenticationProtocolContextOverride(`{}`),
+		ProtocolContextOverride:          profilevalue.ProtocolOverride(`{}`),
 	}
 }
 
@@ -216,7 +217,7 @@ func TestFactoryCallerMutationSafety(t *testing.T) {
 	}
 	inputs.InstitutionProtocolConfiguration = append(inputs.InstitutionProtocolConfiguration, 'X')
 	inputs.AuthenticationCredential.Password = "mutated"
-	inputs.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"network":"mutated"}`)
+	inputs.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"network":"mutated"}`)
 
 	observer := newRecordingObserver(peer)
 	_, cancel, done := startRun(t, run, observer)
@@ -234,13 +235,13 @@ func TestFactoryValidateDelegates(t *testing.T) {
 	if err := factory.ValidateInstitutionProtocolConfiguration(validConfig(t)); err != nil {
 		t.Fatalf("validate valid config: %v", err)
 	}
-	if err := factory.ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration("null")); err == nil {
+	if err := factory.ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration("null")); err == nil {
 		t.Fatal("validate null config expected error")
 	}
-	if err := factory.ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride(`{}`)); err != nil {
+	if err := factory.ValidateProtocolContextOverride(profilevalue.ProtocolOverride(`{}`)); err != nil {
 		t.Fatalf("validate empty override: %v", err)
 	}
-	if err := factory.ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride(`{"a":1}`)); err == nil {
+	if err := factory.ValidateProtocolContextOverride(profilevalue.ProtocolOverride(`{"a":1}`)); err == nil {
 		t.Fatal("validate non-empty override expected error")
 	}
 }
@@ -284,7 +285,7 @@ func TestFactoryUsesNoopWhenDiagnosticsNil(t *testing.T) {
 
 func TestFactoryReportedMACRescuesMissingLoopbackMAC(t *testing.T) {
 	inputs := factoryInputs(validConfig(t), testCredential(), buildBinding(t, "127.0.0.1", nil, nil, nil))
-	for _, absent := range []protocol.AuthenticationProtocolContextOverride{nil, []byte(`{}`)} {
+	for _, absent := range []profilevalue.ProtocolOverride{nil, []byte(`{}`)} {
 		inputs.ProtocolContextOverride = absent
 		run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)
 		if err == nil || run != nil {

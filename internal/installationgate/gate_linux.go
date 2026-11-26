@@ -7,10 +7,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
 
 	"golang.org/x/sys/unix"
+
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/update/operations"
+	"sidravia/internal/update/releases"
 )
 
 var ErrBusy = errors.New("installation maintenance is active or its gate is unavailable")
@@ -60,7 +62,7 @@ func acquireLinuxStart(directory, path string) (func(), error) {
 func acquirePortableStart(directory string) (func(), error) {
 	// Check for records even if the portable marker has been removed or changed:
 	// a partial update must not turn into an unguarded installed launch.
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return nil, errors.Join(ErrBusy, err)
 	}
@@ -106,7 +108,7 @@ func AcquireRunIdentity(version, build string) (func(), error) {
 	if exeErr != nil || filepath.Dir(exe) == "/usr/lib64/sidravia" {
 		return nil, err
 	}
-	root, rootErr := operations.DefaultRoot()
+	root, rootErr := productlayout.UpdateOperationRoot()
 	if rootErr != nil {
 		return nil, errors.Join(err, rootErr)
 	}

@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
-	"net/netip"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
-	config "sidravia/internal/daemon/configuration"
 	environment "sidravia/internal/daemon/environment"
 )
 
@@ -116,9 +116,9 @@ func diagnosticTestSnapshot() session.Snapshot {
 	addr := netip.MustParseAddr("192.0.2.10")
 	return session.Snapshot{
 		AuthenticationSessionID:  "session-1",
-		InstitutionProfileID:     config.InstitutionProfileID("jlu"),
+		InstitutionProfileID:     profilevalue.ID("jlu"),
 		InstitutionDisplayName:   "吉林大学",
-		AuthenticationProtocolID: protocol.AuthenticationProtocolID("drcom-5.2.0-d"),
+		AuthenticationProtocolID: profilevalue.ProtocolID("drcom-5.2.0-d"),
 		AccountName:              "alice2024",
 		Intent:                   session.MaintainAuthentication,
 		State:                    session.Authenticated,

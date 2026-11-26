@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
 )

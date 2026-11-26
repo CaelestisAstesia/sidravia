@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 // ErrAlreadyRunning reports singleton contention, never typed readiness.

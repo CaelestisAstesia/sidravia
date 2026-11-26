@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 // Package identity follows the current layout, never a release fallback: a GUI

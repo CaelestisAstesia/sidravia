@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/document/jsondoc"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/persistence/jsonfile"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/lifecycle"
 	"sidravia/internal/update/operations"
@@ -24,7 +24,7 @@ import (
 )
 
 func openOperation(ctx context.Context, target, id string) (*operations.Store, operations.Record, error) {
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.UpdateOperationRoot()
 	if e != nil {
 		return nil, operations.Record{}, e
 	}
@@ -276,7 +276,7 @@ func targetEvidence(r operations.Record) (releases.VerifiedRelease, releases.Can
 		f.Close()
 		return proof, c, nil, e
 	}
-	b, e := jsonfile.ReadLimited(f, 2<<20)
+	b, e := jsondoc.ReadLimited(f, 2<<20)
 	closeErr := f.Close()
 	return proof, c, b, errors.Join(e, closeErr)
 }

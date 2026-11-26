@@ -5,26 +5,29 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"sidravia/internal/persistence/jsonfile"
 	"testing"
+
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/document/securefile"
 )
 
 type consentCatalogStore struct {
 	catalogMemoryStore
 	unsupported bool
-	status      jsonfile.ProtectionStatus
+	status      securefile.ProtectionStatus
 }
 
-func (s *consentCatalogStore) ProtectionStatus() jsonfile.ProtectionStatus { return s.status }
+func (s *consentCatalogStore) ProtectionStatus() securefile.ProtectionStatus { return s.status }
 func (s *consentCatalogStore) ReplaceSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
 	if s.unsupported && !allow {
-		return jsonfile.ErrInsecureStorageConfirmationRequired
+		return securefile.ErrInsecureStorageConfirmationRequired
 	}
 	if err := s.catalogMemoryStore.ReplaceSensitive(ctx, path, data, maximum, allow); err != nil {
 		return err
 	}
 	if s.unsupported {
-		s.status = jsonfile.ProtectionUnprotected
+		s.status = securefile.ProtectionUnprotected
 	}
 	return nil
 }
@@ -46,9 +49,9 @@ func TestCatalogAtomicCredentialEdits(t *testing.T) {
 			if failure {
 				store.replaceErr = errors.New("write failed")
 			}
-			username, password, profile := "new-user", "new-password", InstitutionProfileID("new-profile")
+			username, password, profile := "new-user", "new-password", profilevalue.ID("new-profile")
 			login, reconnect := true, false
-			_, err = catalog.Update(ctx, "a", Update{Username: &username, InstitutionProfileID: &profile, Password: &password, AutoLogin: &login, AutoReconnect: &reconnect})
+			_, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{Username: &username, InstitutionProfileID: &profile, AutoLogin: &login, AutoReconnect: &reconnect}, Password: &password})
 			got, credential, readErr := catalog.Resolve(ctx, "a")
 			if readErr != nil {
 				t.Fatal(readErr)
@@ -74,7 +77,7 @@ func TestCatalogAtomicCredentialEdits(t *testing.T) {
 					t.Fatal(e)
 				}
 				name := "metadata-only"
-				if _, e = catalog.Update(ctx, "a", Update{DisplayName: &name}); e != nil {
+				if _, e = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); e != nil {
 					t.Fatal(e)
 				}
 				_, cred, e = catalog.Resolve(ctx, "a")
@@ -89,13 +92,13 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 	ctx := context.Background()
 	for _, remove := range []bool{false, true} {
 		t.Run(map[bool]string{false: "update", true: "delete"}[remove], func(t *testing.T) {
-			store := &consentCatalogStore{status: jsonfile.ProtectionProtected}
+			store := &consentCatalogStore{status: securefile.ProtectionProtected}
 			path := filepath.Join(t.TempDir(), "config.json")
 			catalog, err := OpenCatalog(ctx, store, path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, id := range []ConfigurationID{"a", "b"} {
+			for _, id := range []connectionconfig.ID{"a", "b"} {
 				if _, err = catalog.Create(ctx, catalogTestConfiguration(id, string(id)), "private-password", false); err != nil {
 					t.Fatal(err)
 				}
@@ -106,9 +109,9 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 			if remove {
 				err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"))
 			} else {
-				_, err = catalog.Update(ctx, "a", Update{DisplayName: &name, Password: &password})
+				_, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{DisplayName: &name}, Password: &password})
 			}
-			if !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) || !bytes.Equal(before, store.data) || catalog.StorageProtection() != jsonfile.ProtectionProtected {
+			if !errors.Is(err, securefile.ErrInsecureStorageConfirmationRequired) || !bytes.Equal(before, store.data) || catalog.StorageProtection() != securefile.ProtectionProtected {
 				t.Fatal("unconsented downgrade changed disk/protection")
 			}
 			if _, cred, e := catalog.Resolve(ctx, "a"); e != nil || cred.Password != "private-password" {
@@ -117,23 +120,23 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 			if remove {
 				err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"), true)
 			} else {
-				_, err = catalog.Update(ctx, "a", Update{DisplayName: &name, Password: &password, AllowInsecureStorage: true})
+				_, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{DisplayName: &name}, Password: &password, AllowInsecureStorage: true})
 			}
-			if err != nil || catalog.StorageProtection() != jsonfile.ProtectionUnprotected {
+			if err != nil || catalog.StorageProtection() != securefile.ProtectionUnprotected {
 				t.Fatal("explicit consent rejected")
 			}
 			// Only metadata rewrites reuse current-instance successful consent.
-			if _, err = catalog.Update(ctx, "b", Update{DisplayName: &name}); err != nil {
+			if _, err = catalog.Update(ctx, "b", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = catalog.Update(ctx, "b", Update{Password: &password}); !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) {
+			if _, err = catalog.Update(ctx, "b", Update{Password: &password}); !errors.Is(err, securefile.ErrInsecureStorageConfirmationRequired) {
 				t.Fatal("new password bypassed consent")
 			}
 			reopened, e := OpenCatalog(ctx, store, path)
 			if e != nil {
 				t.Fatal(e)
 			}
-			if _, err = reopened.Update(ctx, "b", Update{DisplayName: &name}); !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) {
+			if _, err = reopened.Update(ctx, "b", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); !errors.Is(err, securefile.ErrInsecureStorageConfirmationRequired) {
 				t.Fatal("reopen invented consent")
 			}
 		})
@@ -142,7 +145,7 @@ func TestCatalogUpdateDeleteConsentAndProtectionFailureAreAtomic(t *testing.T) {
 
 func TestProtectionRecoveryRevokesEarlierDowngradeConsent(t *testing.T) {
 	ctx := context.Background()
-	store := &consentCatalogStore{status: jsonfile.ProtectionUnprotected, unsupported: true}
+	store := &consentCatalogStore{status: securefile.ProtectionUnprotected, unsupported: true}
 	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "config.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -151,14 +154,14 @@ func TestProtectionRecoveryRevokesEarlierDowngradeConsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.unsupported = false
-	store.status = jsonfile.ProtectionProtected
+	store.status = securefile.ProtectionProtected
 	name := "protected-again"
-	if _, err = catalog.Update(ctx, "a", Update{DisplayName: &name}); err != nil {
+	if _, err = catalog.Update(ctx, "a", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err != nil {
 		t.Fatal(err)
 	}
 	before := append([]byte(nil), store.data...)
 	store.unsupported = true
-	if err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a")); !errors.Is(err, jsonfile.ErrInsecureStorageConfirmationRequired) {
+	if err = catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a")); !errors.Is(err, securefile.ErrInsecureStorageConfirmationRequired) {
 		t.Fatal("old consent authorized a new downgrade")
 	}
 	if !bytes.Equal(before, store.data) {
@@ -171,24 +174,24 @@ func TestProtectionRecoveryRevokesEarlierDowngradeConsent(t *testing.T) {
 
 func TestDeleteRequiresCurrentConsent(t *testing.T) {
 	ctx := context.Background()
-	store := &consentCatalogStore{unsupported: true, status: jsonfile.ProtectionUnprotected}
+	store := &consentCatalogStore{unsupported: true, status: securefile.ProtectionUnprotected}
 	catalog, e := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "config.json"))
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, id := range []ConfigurationID{"a", "b"} {
+	for _, id := range []connectionconfig.ID{"a", "b"} {
 		if _, e := catalog.Create(ctx, catalogTestConfiguration(id, string(id)), "original-password", true); e != nil {
 			t.Fatal(e)
 		}
 	}
 	// Previously accepted consent reuse for metadata is intentionally retained.
 	name := "updated-label"
-	if _, e := catalog.Update(ctx, "b", Update{DisplayName: &name}); e != nil {
+	if _, e := catalog.Update(ctx, "b", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); e != nil {
 		t.Fatal(e)
 	}
 	before := append([]byte(nil), store.data...)
 	for _, allow := range [][]bool{nil, {false}} {
-		if e := catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"), allow...); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
+		if e := catalog.Delete(ctx, "a", currentCatalogVersion(t, catalog, "a"), allow...); !errors.Is(e, securefile.ErrInsecureStorageConfirmationRequired) {
 			t.Errorf("missing current consent: %v", e)
 		}
 		if !bytes.Equal(before, store.data) {
@@ -211,7 +214,7 @@ func TestDeleteRequiresCurrentConsent(t *testing.T) {
 
 func TestDeleteRejectsVersionAfterCredentialChanges(t *testing.T) {
 	ctx := context.Background()
-	store := &consentCatalogStore{status: jsonfile.ProtectionProtected}
+	store := &consentCatalogStore{status: securefile.ProtectionProtected}
 	catalog, err := OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "config.json"))
 	if err != nil {
 		t.Fatal(err)

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
@@ -74,7 +76,7 @@ func TestUsernameCreateUsesRealD520WithoutRunOrNetwork(t *testing.T) {
 	ctx := context.Background()
 	profile := appTestProfile("d520-profile")
 	profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{profile})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,7 @@ func TestUsernameRejectedUpdatePreservesActiveRunAndValidUpdateRetires(t *testin
 		t.Fatal(err)
 	}
 	username, password, name := strings.Repeat("a", 37), "replacement-password", "replacement-label"
-	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username, Password: &password, DisplayName: &name})
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username, DisplayName: &name}, Password: &password})
 	requireUsernameRejection(t, err)
 	value, credential, err := setup.catalog.Resolve(ctx, "configuration-1")
 	if err != nil || value.Username != "user" || value.DisplayName == name || credential.Password != "secret" {
@@ -153,7 +155,7 @@ func TestUsernameRejectedUpdatePreservesActiveRunAndValidUpdateRetires(t *testin
 	default:
 	}
 	username = strings.Repeat("a", 36)
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username, Password: &password}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}, Password: &password}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.application.GetSession(ctx, old.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
@@ -201,24 +203,24 @@ func TestUsernameCandidateUsesNewProfileAndLegacyRemainsReadable(t *testing.T) {
 	setup.application.authenticationResolver.protocols = registry
 	profile := appTestProfile("strict-profile")
 	profile.AuthenticationProtocolID = "strict"
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1"), profile})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), profile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	setup.application.profiles = profiles
 	setup.application.authenticationResolver.profiles = profiles
 	long := strings.Repeat("a", 37)
-	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Username: &long}); err != nil {
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &long}}); err != nil {
 		t.Fatal(err)
 	}
 	before := usernameDisk(setup)
-	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{InstitutionProfileID: &profile.InstitutionProfileID})
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{InstitutionProfileID: &profile.InstitutionProfileID}})
 	requireUsernameRejection(t, err)
 	if !reflect.DeepEqual(before, usernameDisk(setup)) {
 		t.Fatal("rejected Profile change committed")
 	}
 	// Seed a legacy invalid selected-protocol row through the protocol-opaque Catalog.
-	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{InstitutionProfileID: &profile.InstitutionProfileID}); err != nil {
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{InstitutionProfileID: &profile.InstitutionProfileID}}); err != nil {
 		t.Fatal(err)
 	}
 	before = usernameDisk(setup)
@@ -229,16 +231,16 @@ func TestUsernameCandidateUsesNewProfileAndLegacyRemainsReadable(t *testing.T) {
 		t.Fatal("legacy row not listable")
 	}
 	label := "new-label"
-	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &label})
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{DisplayName: &label}})
 	requireUsernameRejection(t, err)
 	if !reflect.DeepEqual(before, usernameDisk(setup)) {
 		t.Fatal("legacy partial edit wrote invalid candidate")
 	}
 	repaired := strings.Repeat("a", 36)
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &repaired}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &repaired}}); err != nil {
 		t.Fatal("legacy username cannot be corrected")
 	}
-	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Username: &long}); err != nil {
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &long}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1")); err != nil {

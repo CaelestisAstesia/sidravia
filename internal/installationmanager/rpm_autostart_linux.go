@@ -13,7 +13,8 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
-	"sidravia/internal/productlayout"
+
+	productlayout "sidravia/internal/installation/layout"
 )
 
 const desktopEntryName = "io.github.CaelestisAstesia.Sidravia"

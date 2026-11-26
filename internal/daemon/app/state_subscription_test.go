@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
@@ -380,7 +381,7 @@ func TestApplicationStateRealCleanupFailureMetadata(t *testing.T) {
 	}
 	defer stream.Close()
 	username := "durably-saved-new-user"
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username}); !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}}); !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("real cleanup failure missing", err)
 	}
 	changed := nextApplicationState(t, stream)

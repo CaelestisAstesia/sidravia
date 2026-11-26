@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"strings"
 	"testing"
 	"time"
+
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
 func TestProbeRejectsInvalidAuthoritativeStatus(t *testing.T) {

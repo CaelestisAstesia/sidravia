@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"os"
+	"testing"
+
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
-	"testing"
 )
 
 func TestEnsureRejectsReachableModeConflictWithoutLaunch(t *testing.T) {

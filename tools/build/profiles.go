@@ -11,7 +11,7 @@ import (
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/configuration"
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
 )
 
 // loadOfficialProfileEntries snapshots and validates the complete official
@@ -61,7 +61,7 @@ func loadOfficialProfileEntries(repoRoot string) ([]archiveEntry, error) {
 			file.Close()
 			return nil, fmt.Errorf("%s is not a regular file", name)
 		}
-		data, err := jsonfile.ReadLimited(file, jsonfile.ProfileFileSizeLimit)
+		data, err := jsondoc.ReadLimited(file, jsondoc.ProfileFileSizeLimit)
 		closeErr := file.Close()
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", name, err)

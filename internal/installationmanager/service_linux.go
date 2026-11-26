@@ -17,7 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/useradmission"
 )
 

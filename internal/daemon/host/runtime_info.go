@@ -6,8 +6,7 @@ import (
 	"net"
 	"os"
 
-	"sidravia/internal/persistence/jsonfile"
-
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -29,7 +28,7 @@ func cleanupRuntimeInfo(path string, info contract.RuntimeInfo, reader runtimeIn
 	}
 }
 
-func publishRuntimeInfo(ctx context.Context, cfg Config, listener net.Listener, store jsonfile.Store) (contract.RuntimeInfo, error) {
+func publishRuntimeInfo(ctx context.Context, cfg Config, listener net.Listener, store securefile.Store) (contract.RuntimeInfo, error) {
 	_, portStr, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		return contract.RuntimeInfo{}, fmt.Errorf("host: parse listener address: %w", err)

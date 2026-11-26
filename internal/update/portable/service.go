@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
 )

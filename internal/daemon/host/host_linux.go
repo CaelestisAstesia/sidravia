@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/securefile"
 )
 
 // Run starts the daemon host on Linux. It validates its inputs, acquires a
@@ -33,7 +33,7 @@ func Run(ctx context.Context, cfg Config) error {
 type linuxHostDeps struct {
 	acquireLock func(runtimeInfoPath string) (int, error)
 	releaseLock func(int) error
-	newStore    func(jsonfile.SecureStoreOptions) (*jsonfile.SecureStore, error)
+	newStore    func(securefile.SecureStoreOptions) (*securefile.SecureStore, error)
 	listen      func(network, address string) (net.Listener, error)
 	shutdown    func(server *http.Server) error
 }
@@ -42,7 +42,7 @@ func defaultLinuxHostDeps() linuxHostDeps {
 	return linuxHostDeps{
 		acquireLock: acquireLinuxLock,
 		releaseLock: func(fd int) error { return unix.Close(fd) },
-		newStore:    jsonfile.NewSecureStore,
+		newStore:    securefile.NewSecureStore,
 		listen:      net.Listen,
 		shutdown: func(server *http.Server) error {
 			return shutdownHTTPServer(server.Shutdown)
@@ -61,7 +61,7 @@ func runLinuxHost(ctx context.Context, cfg Config, deps linuxHostDeps) error {
 	}
 	defer deps.releaseLock(lockFD)
 
-	store, err := deps.newStore(jsonfile.SecureStoreOptions{
+	store, err := deps.newStore(securefile.SecureStoreOptions{
 		IntendedOwnerSID:                   "",
 		AllowUnsupportedProtectionFallback: cfg.AllowUnsupportedProtectionFallback,
 		OnUnprotected:                      cfg.OnUnprotected,

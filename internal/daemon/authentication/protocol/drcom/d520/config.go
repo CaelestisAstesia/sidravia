@@ -8,7 +8,7 @@ import (
 	"net/netip"
 	"time"
 
-	protocol "sidravia/internal/daemon/authentication/protocol"
+	profilevalue "sidravia/internal/connection/profile"
 )
 
 // institutionConfig is the validated, immutable decoding of a Profile's
@@ -73,7 +73,7 @@ type localPort struct {
 // unknown, missing and trailing JSON, and every field-specific rule listed in
 // the plan. Errors identify fields and rules but never reproduce raw JSON,
 // credentials, packet bytes or digest material.
-func decodeInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConfiguration) (institutionConfig, error) {
+func decodeInstitutionProtocolConfiguration(raw profilevalue.ProtocolConfiguration) (institutionConfig, error) {
 	if len(raw) == 0 {
 		return institutionConfig{}, fmt.Errorf("institution protocol configuration is required")
 	}
@@ -449,7 +449,7 @@ func decodeLocalPort(obj map[string]json.RawMessage) (localPort, error) {
 
 // validateProtocolContextOverride validates only the protocol-owned reported
 // context. Host-dependent final merging is checked when creating a Run.
-func validateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
+func validateProtocolContextOverride(raw profilevalue.ProtocolOverride) error {
 	_, err := decodeProtocolContextOverride(raw)
 	return err
 }

@@ -7,8 +7,9 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
+
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 type guiLogDirectoryError struct {

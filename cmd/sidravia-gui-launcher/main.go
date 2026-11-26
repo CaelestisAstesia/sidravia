@@ -15,6 +15,8 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"sidravia/internal/installation/layout"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
@@ -69,7 +71,7 @@ func launch(directory string, args, env []string) error {
 		}
 		release()
 	} else {
-		root, err := operations.DefaultRoot()
+		root, err := layout.UpdateOperationRoot()
 		if err != nil {
 			return err
 		}

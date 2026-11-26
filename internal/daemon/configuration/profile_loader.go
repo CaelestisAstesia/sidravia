@@ -10,9 +10,10 @@ import (
 	"sort"
 	"strings"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/persistence"
-	"sidravia/internal/persistence/jsonfile"
+	persistence "sidravia/internal/document"
+	"sidravia/internal/document/jsondoc"
 )
 
 // profileLoaderOperation is the static label used by directory- and call-level
@@ -25,11 +26,11 @@ type announcementDocument struct {
 	ClientHeight int    `json:"clientHeight"`
 }
 
-func (document *announcementDocument) metadata() *AnnouncementMetadata {
+func (document *announcementDocument) metadata() *profilevalue.AnnouncementMetadata {
 	if document == nil {
 		return nil
 	}
-	return &AnnouncementMetadata{URL: document.URL, ClientWidth: document.ClientWidth, ClientHeight: document.ClientHeight}
+	return &profilevalue.AnnouncementMetadata{URL: document.URL, ClientWidth: document.ClientWidth, ClientHeight: document.ClientHeight}
 }
 
 // profileDocument is the version-1 on-disk shape of one institution Profile.
@@ -80,7 +81,7 @@ func LoadProfileCatalogFromDirectory(
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 
-	profiles := make([]InstitutionProfile, 0, len(entries))
+	profiles := make([]profilevalue.Profile, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -114,66 +115,66 @@ func loadInstitutionProfileFile(
 	directory string,
 	name string,
 	registry *protocol.AuthenticationProtocolRegistry,
-) (InstitutionProfile, error) {
+) (profilevalue.Profile, error) {
 	if err := ctx.Err(); err != nil {
-		return InstitutionProfile{}, persistence.NewFailure(persistence.FailureInvalidArgument, err)
+		return profilevalue.Profile{}, persistence.NewFailure(persistence.FailureInvalidArgument, err)
 	}
 
 	path := filepath.Join(directory, name)
 	file, err := os.Open(path)
 	if err != nil {
-		return InstitutionProfile{}, profileLoaderFileIOError(name, err)
+		return profilevalue.Profile{}, profileLoaderFileIOError(name, err)
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return InstitutionProfile{}, profileLoaderFileIOError(name, err)
+		return profilevalue.Profile{}, profileLoaderFileIOError(name, err)
 	}
 	if !info.Mode().IsRegular() {
-		return InstitutionProfile{}, profileLoaderFileError(name,
+		return profilevalue.Profile{}, profileLoaderFileError(name,
 			persistence.NewFailure(persistence.FailureInvalidDocument, nil))
 	}
 
-	data, err := jsonfile.ReadLimited(file, jsonfile.ProfileFileSizeLimit)
+	data, err := jsondoc.ReadLimited(file, jsondoc.ProfileFileSizeLimit)
 	if err != nil {
-		return InstitutionProfile{}, profileLoaderFileError(name, err)
+		return profilevalue.Profile{}, profileLoaderFileError(name, err)
 	}
 
 	document, err := decodeInstitutionProfileDocument(data)
 	if err != nil {
-		return InstitutionProfile{}, profileLoaderFileError(name, err)
+		return profilevalue.Profile{}, profileLoaderFileError(name, err)
 	}
 
-	if !isCanonicalInstitutionProfileID(document.InstitutionProfileID) {
-		return InstitutionProfile{}, profileLoaderFileError(name,
+	if !profilevalue.ID(document.InstitutionProfileID).Valid() {
+		return profilevalue.Profile{}, profileLoaderFileError(name,
 			persistence.NewFailure(persistence.FailureInvalidDocument, nil))
 	}
 	if name != document.InstitutionProfileID+".json" {
-		return InstitutionProfile{}, profileLoaderFileError(name,
+		return profilevalue.Profile{}, profileLoaderFileError(name,
 			persistence.NewFailure(persistence.FailureInvalidDocument, nil))
 	}
 	if document.DisplayName == "" || document.AuthenticationProtocolID == "" {
-		return InstitutionProfile{}, profileLoaderFileError(name,
+		return profilevalue.Profile{}, profileLoaderFileError(name,
 			persistence.NewFailure(persistence.FailureInvalidDocument, nil))
 	}
 
-	factory, err := registry.GetFactory(protocol.AuthenticationProtocolID(document.AuthenticationProtocolID))
+	factory, err := registry.GetFactory(profilevalue.ProtocolID(document.AuthenticationProtocolID))
 	if err != nil {
-		return InstitutionProfile{}, profileLoaderFileError(name,
+		return profilevalue.Profile{}, profileLoaderFileError(name,
 			persistence.NewFailure(persistence.FailureInvalidDocument, err))
 	}
 
-	configuration := append(protocol.InstitutionProtocolConfiguration(nil), document.InstitutionProtocolConfiguration...)
+	configuration := append(profilevalue.ProtocolConfiguration(nil), document.InstitutionProtocolConfiguration...)
 	if err := factory.ValidateInstitutionProtocolConfiguration(configuration); err != nil {
-		return InstitutionProfile{}, profileLoaderFileError(name,
+		return profilevalue.Profile{}, profileLoaderFileError(name,
 			persistence.NewFailure(persistence.FailureInvalidDocument, err))
 	}
 
-	return InstitutionProfile{
-		InstitutionProfileID:             InstitutionProfileID(document.InstitutionProfileID),
+	return profilevalue.Profile{
+		InstitutionProfileID:             profilevalue.ID(document.InstitutionProfileID),
 		DisplayName:                      document.DisplayName,
-		AuthenticationProtocolID:         protocol.AuthenticationProtocolID(document.AuthenticationProtocolID),
+		AuthenticationProtocolID:         profilevalue.ProtocolID(document.AuthenticationProtocolID),
 		InstitutionProtocolConfiguration: configuration,
 		Announcement:                     document.Announcement.metadata(),
 	}, nil
@@ -185,7 +186,7 @@ func loadInstitutionProfileFile(
 // protocol-specific fields remain opaque here. Duplicate keys at any depth,
 // including inside protocol configuration, are rejected before the factory sees it.
 func decodeInstitutionProfileDocument(data []byte) (profileDocument, error) {
-	if err := jsonfile.RequireObjectFields(data,
+	if err := jsondoc.RequireObjectFields(data,
 		"schemaVersion",
 		"institutionProfileId",
 		"displayName",
@@ -194,11 +195,11 @@ func decodeInstitutionProfileDocument(data []byte) (profileDocument, error) {
 	); err != nil {
 		return profileDocument{}, err
 	}
-	if err := jsonfile.RequireSchemaVersion(data, jsonfile.SchemaVersion1); err != nil {
+	if err := jsondoc.RequireSchemaVersion(data, jsondoc.SchemaVersion1); err != nil {
 		return profileDocument{}, err
 	}
 	var document profileDocument
-	if err := jsonfile.DecodeStrict(data, &document); err != nil {
+	if err := jsondoc.DecodeStrict(data, &document); err != nil {
 		return profileDocument{}, err
 	}
 	var fields map[string]json.RawMessage
@@ -209,7 +210,7 @@ func decodeInstitutionProfileDocument(data []byte) (profileDocument, error) {
 		return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, nil)
 	}
 	if raw := fields["announcement"]; len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		if err := jsonfile.RequireObjectFields(raw, "url", "clientWidth", "clientHeight"); err != nil {
+		if err := jsondoc.RequireObjectFields(raw, "url", "clientWidth", "clientHeight"); err != nil {
 			return profileDocument{}, err
 		}
 		var announcementFields map[string]json.RawMessage
@@ -217,7 +218,7 @@ func decodeInstitutionProfileDocument(data []byte) (profileDocument, error) {
 			return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 		}
 	}
-	if err := validateAnnouncement(document.Announcement.metadata()); err != nil {
+	if err := document.Announcement.metadata().Validate(); err != nil {
 		return profileDocument{}, persistence.NewFailure(persistence.FailureInvalidDocument, err)
 	}
 	return document, nil

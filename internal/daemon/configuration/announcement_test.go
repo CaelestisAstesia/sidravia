@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/persistence"
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/document"
 )
 
 func announcementProfileDocument(raw string) string {
@@ -52,13 +53,13 @@ func TestAnnouncementLoaderOptionalAndMetadata(t *testing.T) {
 func TestAnnouncementCatalogClonesEveryBoundary(t *testing.T) {
 	ctx := context.Background()
 	profile := profileCatalogTestProfile("campus", "protocol")
-	profile.Announcement = &AnnouncementMetadata{URL: "http://school.example/notice", ClientWidth: 600, ClientHeight: 460}
+	profile.Announcement = &profilevalue.AnnouncementMetadata{URL: "http://school.example/notice", ClientWidth: 600, ClientHeight: 460}
 	cloned := profile.Clone()
 	cloned.Announcement.URL = "http://changed.example"
 	if profile.Announcement.URL != "http://school.example/notice" {
 		t.Fatal("Clone shared metadata")
 	}
-	catalog, err := NewProfileCatalog([]InstitutionProfile{profile})
+	catalog, err := NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,20 +86,20 @@ func TestAnnouncementCatalogClonesEveryBoundary(t *testing.T) {
 
 func TestAnnouncementInvalidURLAndSizeClassifications(t *testing.T) {
 	for _, url := range []string{"", "notice.php", "//school.example/notice", "ftp://school.example", "http://", "http://:80", "http://user:password@school.example", "http://@school.example", "http://school.example/#", "http://school.example/#notice", "http://school.example/a b", "http://school.example/\n", "http://school.example/\u0085", "http://school.example/\u2003", "http://school.example/\u007f", "http://school.example/%zz"} {
-		metadata := AnnouncementMetadata{URL: url, ClientWidth: 600, ClientHeight: 460}
+		metadata := profilevalue.AnnouncementMetadata{URL: url, ClientWidth: 600, ClientHeight: 460}
 		t.Run(url, func(t *testing.T) { assertAnnouncementRejected(t, metadata) })
 	}
 	for _, dimensions := range [][2]int{{0, 460}, {600, 0}, {-1, 460}, {600, -1}, {4097, 460}, {600, 4097}} {
-		assertAnnouncementRejected(t, AnnouncementMetadata{URL: "http://school.example", ClientWidth: dimensions[0], ClientHeight: dimensions[1]})
+		assertAnnouncementRejected(t, profilevalue.AnnouncementMetadata{URL: "http://school.example", ClientWidth: dimensions[0], ClientHeight: dimensions[1]})
 	}
 }
 
-func assertAnnouncementRejected(t *testing.T, metadata AnnouncementMetadata) {
+func assertAnnouncementRejected(t *testing.T, metadata profilevalue.AnnouncementMetadata) {
 	t.Helper()
 	profile := profileCatalogTestProfile("campus", "protocol")
 	profile.Announcement = &metadata
-	_, err := NewProfileCatalog([]InstitutionProfile{profile})
-	if profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	_, err := NewProfileCatalog([]profilevalue.Profile{profile})
+	if profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("direct error = %v", err)
 	}
 	raw, err := json.Marshal(map[string]any{"url": metadata.URL, "clientWidth": metadata.ClientWidth, "clientHeight": metadata.ClientHeight})
@@ -115,7 +116,7 @@ func assertAnnouncementDocumentRejected(t *testing.T, raw string) {
 	writeProfileFile(t, dir, "campus.json", source)
 	registry, _ := newProfileLoaderAcceptingRegistry(t)
 	_, err := LoadProfileCatalogFromDirectory(context.Background(), dir, registry)
-	if profileLoaderFailureCode(t, err) != persistence.FailureInvalidDocument {
+	if profileLoaderFailureCode(t, err) != document.FailureInvalidDocument {
 		t.Fatalf("loader error = %v", err)
 	}
 	bytes, err := os.ReadFile(filepath.Join(dir, "campus.json"))

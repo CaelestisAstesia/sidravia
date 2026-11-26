@@ -17,12 +17,12 @@ import (
 	"time"
 
 	"sidravia/internal/clientbootstrap"
+	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/document/securefile"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/persistence/jsonfile"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -74,14 +74,14 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 		return err
 	}
 	source := update.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
 	directory := filepath.Join(root, hex.EncodeToString(sum[:16]), op)
 	statePath := filepath.Join(directory, "state.json")
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func Run(ctx context.Context, action, op string, coordinator uint32, interactive
 	if action == "abort" && !exists {
 		return nil
 	}
-	if !exists || jsonfile.DecodeStrict(raw, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != source || state.Namespace != ns.String() || state.Coordinator != (processID{peer.PID, peer.Created}) || !time.Now().Before(state.Expires) {
+	if !exists || jsondoc.DecodeStrict(raw, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != source || state.Namespace != ns.String() || state.Coordinator != (processID{peer.PID, peer.Created}) || !time.Now().Before(state.Expires) {
 		return update.ErrInvalid
 	}
 	if err = verifySource(state); err != nil {
@@ -311,7 +311,7 @@ func call(ctx context.Context, conn clientbootstrap.Client, method string, value
 		return update.MaintenanceView{}, update.ErrInvalid
 	}
 	var view update.MaintenanceView
-	if e = jsonfile.DecodeStrict(result.Result, &view); e != nil || view.SchemaVersion != 1 {
+	if e = jsondoc.DecodeStrict(result.Result, &view); e != nil || view.SchemaVersion != 1 {
 		return view, update.ErrInvalid
 	}
 	return view, nil
@@ -366,13 +366,13 @@ func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identi
 	if err != nil {
 		return update.RestoreIntent{}, "", err
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return update.RestoreIntent{}, "", err
 	}
 	hash := sha256.Sum256([]byte(strings.ToLower(layout.ExecutableDirectory) + "\x00" + ns.String()))
 	path := filepath.Join(root, hex.EncodeToString(hash[:16]), op, "state.json")
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		return update.RestoreIntent{}, "", err
 	}
@@ -382,7 +382,7 @@ func PreparedSnapshot(ctx context.Context, op string, coordinator uint32, identi
 	}
 	var state record
 	expected := update.Target{ID: layout.ExecutableDirectory, Version: identity.ProductVersion, BuildID: identity.BuildID, Layout: string(layout.Mode)}
-	if !exists || jsonfile.DecodeStrict(data, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != expected || state.Namespace != ns.String() || state.Coordinator != (processID{parent.PID, parent.Created}) || state.Stage != "prepared" || !time.Now().Before(state.Expires) {
+	if !exists || jsondoc.DecodeStrict(data, &state) != nil || state.SchemaVersion != 1 || state.OperationID != op || state.Source != expected || state.Namespace != ns.String() || state.Coordinator != (processID{parent.PID, parent.Created}) || state.Stage != "prepared" || !time.Now().Before(state.Expires) {
 		return update.RestoreIntent{}, "", update.ErrInvalid
 	}
 	if err := verifySource(state); err != nil {

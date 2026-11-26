@@ -11,12 +11,14 @@ import (
 	"testing"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/securefile"
 )
 
 type applicationTestSetup struct {
@@ -76,8 +78,8 @@ func (store *controlledAppStore) ReplaceSensitive(ctx context.Context, path stri
 	return nil
 }
 
-func (*controlledAppStore) ProtectionStatus() jsonfile.ProtectionStatus {
-	return jsonfile.ProtectionProtected
+func (*controlledAppStore) ProtectionStatus() securefile.ProtectionStatus {
+	return securefile.ProtectionProtected
 }
 
 func appSupervisorDeps() supervisor.Dependencies {
@@ -111,7 +113,7 @@ func newApplicationTestSetup(t *testing.T) *applicationTestSetup {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1")})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +168,7 @@ func TestApplicationConfigurationCRUDAndEnrichment(t *testing.T) {
 		t.Fatalf("result = %#v", values[0])
 	}
 	name := ""
-	updated, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &name})
+	updated, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{DisplayName: &name}})
 	if err != nil || updated.Configuration.DisplayName != "" || updated.RuntimeAvailability != ConfigurationRuntimeAvailable {
 		t.Fatalf("update = %#v %v", updated, err)
 	}
@@ -243,7 +245,7 @@ func TestConfigurationStartActiveAndSuspendedEnsureSameRuntime(t *testing.T) {
 	// Direct catalog edits prove the Session actor retains its cloned runtime.
 	// Application edits are separately tested to retire that immutable Session.
 	changedUser := "new-user"
-	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Username: &changedUser}); err != nil {
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &changedUser}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.catalog.SetPassword(ctx, "configuration-1", "new-password", false); err != nil {
@@ -463,7 +465,7 @@ func TestConfigurationOperationsSerializeWithSessionRemove(t *testing.T) {
 
 			updateStarted = true
 			go func() {
-				_, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &name})
+				_, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{DisplayName: &name}})
 				updateDone <- err
 			}()
 			select {
@@ -582,7 +584,7 @@ func (store *controlledAppStore) PreserveSensitive(ctx context.Context, path str
 	return store.ReplaceSensitive(ctx, path, data, maximum, allow)
 }
 
-func currentConfigurationVersion(t *testing.T, catalog *config.Catalog, id config.ConfigurationID) string {
+func currentConfigurationVersion(t *testing.T, catalog *config.Catalog, id connectionconfig.ID) string {
 	t.Helper()
 	version, err := catalog.Version(context.Background(), id)
 	if err != nil {

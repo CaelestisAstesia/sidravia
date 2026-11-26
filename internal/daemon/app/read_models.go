@@ -5,10 +5,10 @@ import (
 	"errors"
 	"sort"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/session"
-	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/persistence"
+	"sidravia/internal/document"
 )
 
 // ConfigurationRuntimeAvailability is a read-only description of the selected
@@ -34,7 +34,7 @@ func readModelContextError(ctx context.Context) error {
 
 // describeConfiguration keeps a broken persisted row manageable. Write paths
 // deliberately continue using strict candidate validation and enrich instead.
-func (application *Application) describeConfiguration(ctx context.Context, value config.Configuration) (ConfigurationResult, error) {
+func (application *Application) describeConfiguration(ctx context.Context, value connectionconfig.Configuration) (ConfigurationResult, error) {
 	if err := readModelContextError(ctx); err != nil {
 		return ConfigurationResult{}, err
 	}
@@ -55,8 +55,8 @@ func (application *Application) describeConfiguration(ctx context.Context, value
 		return ConfigurationResult{}, errors.Join(err, contextErr)
 	}
 	if err != nil {
-		var failure *persistence.Failure
-		if errors.As(err, &failure) && failure.Code() == persistence.FailureNotFound {
+		var failure *document.Failure
+		if errors.As(err, &failure) && failure.Code() == document.FailureNotFound {
 			result.RuntimeAvailability = ConfigurationRuntimeProfileUnavailable
 			return result, nil
 		}
@@ -74,7 +74,7 @@ func (application *Application) describeConfiguration(ctx context.Context, value
 	}
 	result.OverrideSchemaVersion = overrideSchemaVersion(factory)
 	result.RuntimeAvailability = ConfigurationRuntimeAvailable
-	if err := factory.ValidateProtocolContextOverride(append(protocol.AuthenticationProtocolContextOverride(nil), value.ProtocolContextOverride...)); err != nil {
+	if err := factory.ValidateProtocolContextOverride(append(profilevalue.ProtocolOverride(nil), value.ProtocolContextOverride...)); err != nil {
 		result.RuntimeAvailability = ConfigurationRuntimeOverrideInvalid
 	}
 	if err := readModelContextError(ctx); err != nil {

@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/document/securefile"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 )
 
@@ -40,7 +41,7 @@ func sessionPath(target, id string) (string, error) {
 	if !update.ValidOperationID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
 		return "", ErrInvalid
 	}
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.UpdateOperationRoot()
 	if e != nil {
 		return "", e
 	}
@@ -57,7 +58,7 @@ func SaveSession(ctx context.Context, s Session) error {
 	if s.SchemaVersion != 1 || s.Source.Layout != "installed" || s.Source.Validate() != nil || s.Updater.PID == 0 || s.Updater.Created == 0 {
 		return ErrInvalid
 	}
-	store, e := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, e := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if e != nil {
 		return e
 	}
@@ -72,7 +73,7 @@ func ReadSession(ctx context.Context, target, id string) (Session, error) {
 	if e != nil {
 		return Session{}, e
 	}
-	store, e := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, e := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if e != nil {
 		return Session{}, e
 	}
@@ -84,7 +85,7 @@ func ReadSession(ctx context.Context, target, id string) (Session, error) {
 		return Session{}, os.ErrNotExist
 	}
 	var s Session
-	if e = jsonfile.DecodeStrict(b, &s); e != nil {
+	if e = jsondoc.DecodeStrict(b, &s); e != nil {
 		return s, e
 	}
 	if s.SchemaVersion != 1 || s.OperationID != id || s.Source.ID != target || s.Source.Layout != "installed" || s.Source.Validate() != nil || s.Updater.PID == 0 || s.Updater.Created == 0 {

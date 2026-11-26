@@ -13,10 +13,9 @@ import (
 	"testing"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
-
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 func portableLauncherDeps(t *testing.T, parentEnv []string, start func(*exec.Cmd) error, release func(*exec.Cmd) error) daemonLauncherDeps {

@@ -6,8 +6,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 	"sidravia/internal/update/setup"
@@ -29,7 +30,7 @@ func AcquireRunIdentityContext(ctx context.Context, version, build string) (func
 	}
 	_, sealErr := os.Lstat(filepath.Join(layout.ExecutableDirectory, operations.StartupSeal))
 	sealed := !os.IsNotExist(sealErr)
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.UpdateOperationRoot()
 	if e != nil {
 		return nil, e
 	}

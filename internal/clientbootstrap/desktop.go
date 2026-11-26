@@ -1,9 +1,9 @@
 package clientbootstrap
 
 import (
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 // DesktopBootstrapResult is authoritative only after desktop readiness has

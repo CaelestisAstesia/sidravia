@@ -5,7 +5,7 @@ package command
 import (
 	"context"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/github"
 	"sidravia/internal/update/releases"
 )

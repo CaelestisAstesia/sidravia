@@ -6,10 +6,12 @@ import (
 	"errors"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -19,7 +21,7 @@ import (
 // Configuration, Credentials, Supervisor or Session internals.
 type sessionApplication interface {
 	StartOneShotAuthentication(ctx context.Context, input OneShotAuthenticationInput) (SessionStartResult, error)
-	StartConfigurationAuthentication(ctx context.Context, id config.ConfigurationID, expectedVersion ...string) (SessionStartResult, error)
+	StartConfigurationAuthentication(ctx context.Context, id connectionconfig.ID, expectedVersion ...string) (SessionStartResult, error)
 	StopSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
 	EnsureSessionRunning(ctx context.Context, sessionID session.AuthenticationSessionID) (SessionStartResult, error)
 	RestartSession(ctx context.Context, sessionID session.AuthenticationSessionID) (session.Snapshot, error)
@@ -69,7 +71,7 @@ func handleSessionStartConfiguration(ctx context.Context, application sessionApp
 	if err != nil {
 		return nil, invalidArgumentError()
 	}
-	result, err := application.StartConfigurationAuthentication(ctx, config.ConfigurationID(request.ConfigurationID), request.ExpectedVersion)
+	result, err := application.StartConfigurationAuthentication(ctx, connectionconfig.ID(request.ConfigurationID), request.ExpectedVersion)
 	if err != nil {
 		return nil, sessionError(err)
 	}
@@ -150,7 +152,7 @@ func handleSessionStartOneShot(ctx context.Context, application sessionApplicati
 	policy, _ := request.NetworkBindingPolicy.Domain()
 	input := OneShotAuthenticationInput{
 		DisplayName:          request.DisplayName,
-		InstitutionProfileID: config.InstitutionProfileID(request.InstitutionProfileID),
+		InstitutionProfileID: profilevalue.ID(request.InstitutionProfileID),
 		AuthenticationCredential: credential.AuthenticationCredential{
 			Username: request.Username,
 			Password: request.Password,

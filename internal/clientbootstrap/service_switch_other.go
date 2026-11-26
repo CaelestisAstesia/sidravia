@@ -5,8 +5,8 @@ package clientbootstrap
 import (
 	"context"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/productlayout"
 )
 
 func SwitchService(context.Context, Identity, string, int, bool) (installationmanager.ServiceState, error) {

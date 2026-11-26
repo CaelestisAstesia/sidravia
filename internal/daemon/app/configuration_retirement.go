@@ -5,14 +5,14 @@ import (
 	"errors"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
 	"sidravia/internal/daemon/authentication/supervisor"
-	config "sidravia/internal/daemon/configuration"
 )
 
 // ErrConfigurationSessionInvalidation distinguishes a durable edit from failed cleanup.
 var ErrConfigurationSessionInvalidation = errors.New("configuration committed; session cleanup required")
 
-func (application *Application) retireConfigurationSession(ctx context.Context, id config.ConfigurationID) error {
+func (application *Application) retireConfigurationSession(ctx context.Context, id connectionconfig.ID) error {
 	application.sessionIndexMu.Lock()
 	sessionID := application.sessionsByConfig[id]
 	application.sessionIndexMu.Unlock()
@@ -34,7 +34,7 @@ func (application *Application) retireConfigurationSession(ctx context.Context, 
 	return nil
 }
 
-func (application *Application) RemoveConfiguration(ctx context.Context, id config.ConfigurationID, expectedVersion string, allow ...bool) error {
+func (application *Application) RemoveConfiguration(ctx context.Context, id connectionconfig.ID, expectedVersion string, allow ...bool) error {
 	application.operationMu.Lock()
 	defer application.operationMu.Unlock()
 	if err := application.catalog.Delete(ctx, id, expectedVersion, allow...); err != nil {

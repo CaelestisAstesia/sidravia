@@ -2,14 +2,15 @@ package app
 
 import (
 	"context"
-
 	"fmt"
 
-	"sidravia/internal/credentialinput"
+	connectionconfig "sidravia/internal/connection/config"
+	credential "sidravia/internal/connection/credential"
+	credentialinput "sidravia/internal/connection/credential/input"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/environment"
 )
 
@@ -76,7 +77,7 @@ func NewAuthenticationResolver(
 
 func (authenticationResolver *AuthenticationResolver) Resolve(
 	ctx context.Context,
-	configurationID config.ConfigurationID,
+	configurationID connectionconfig.ID,
 	sessionID session.AuthenticationSessionID,
 ) (session.RuntimeDefinition, error) {
 	if ctx == nil {
@@ -137,7 +138,7 @@ func (authenticationResolver *AuthenticationResolver) Resolve(
 // facts: those are resolved from the existing catalogs and host information.
 type OneShotAuthenticationInput struct {
 	DisplayName              string
-	InstitutionProfileID     config.InstitutionProfileID
+	InstitutionProfileID     profilevalue.ID
 	AuthenticationCredential credential.AuthenticationCredential
 	NetworkBindingPolicy     session.NetworkBindingPolicy
 }
@@ -163,10 +164,10 @@ func (authenticationResolver *AuthenticationResolver) ResolveOneShot(
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, fmt.Errorf("authentication session ID is required"))
 	}
 	// This is fresh user input; Resolve for saved configurations is unchanged.
-	if err := credentialinput.Validate(input.AuthenticationCredential.Username); err != nil {
+	if err := credentialinput.ValidateNewText(input.AuthenticationCredential.Username); err != nil {
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
-	if err := credentialinput.Validate(input.AuthenticationCredential.Password); err != nil {
+	if err := credentialinput.ValidateNewText(input.AuthenticationCredential.Password); err != nil {
 		return session.RuntimeDefinition{}, NewResolutionFailure(InvalidConfiguration, err)
 	}
 	if input.AuthenticationCredential.Username == "" {

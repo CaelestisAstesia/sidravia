@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	protocol "sidravia/internal/daemon/authentication/protocol"
-	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
 )
 
@@ -30,7 +31,7 @@ func defaultTestDurations() testDurations {
 	}
 }
 
-func testConfigJSON(port int, d testDurations) protocol.InstitutionProtocolConfiguration {
+func testConfigJSON(port int, d testDurations) profilevalue.ProtocolConfiguration {
 	jsonStr := fmt.Sprintf(`{
         "serverAddress": "127.0.0.1",
         "serverPort": %d,
@@ -54,7 +55,7 @@ func testConfigJSON(port int, d testDurations) protocol.InstitutionProtocolConfi
         "busyBackoffMin": "%s",
         "busyBackoffMax": "%s"
     }`, port, d.challenge, d.login, d.keepalive, d.logout, d.heartbeat, d.backoffMin, d.backoffMax)
-	return protocol.InstitutionProtocolConfiguration(jsonStr)
+	return profilevalue.ProtocolConfiguration(jsonStr)
 }
 
 func testBinding(t *testing.T) environment.SelectedSystemNetworkBinding {

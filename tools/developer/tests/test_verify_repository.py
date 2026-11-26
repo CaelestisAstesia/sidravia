@@ -209,7 +209,7 @@ class TestRunGoChecks(unittest.TestCase):
         expected_platform_checks = [
             ("windows", "windows-amd64-internal-cli.test.exe", "./internal/cli"),
             ("windows", "windows-amd64-internal-daemon-environment.test.exe", "./internal/daemon/environment"),
-            ("windows", "windows-amd64-internal-persistence-jsonfile.test.exe", "./internal/persistence/jsonfile"),
+            ("windows", "windows-amd64-internal-document-securefile.test.exe", "./internal/document/securefile"),
             ("darwin", "darwin-amd64-internal-cli.test", "./internal/cli"),
             ("darwin", "darwin-amd64-internal-daemon-environment.test", "./internal/daemon/environment"),
             ("darwin", "darwin-amd64-internal-daemon-host.test", "./internal/daemon/host"),

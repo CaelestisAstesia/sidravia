@@ -8,12 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sidravia/internal/daemon/host"
-	"sidravia/internal/installationgate"
 
+	"sidravia/internal/daemon/host"
 	"sidravia/internal/daemon/logging"
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installationgate"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 // Set via ldflags.

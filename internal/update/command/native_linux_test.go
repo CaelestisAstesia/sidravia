@@ -33,9 +33,9 @@ import (
 	"testing"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/linuxplatform"
@@ -298,7 +298,7 @@ func nativeCLIUpdate(t *testing.T, useXZ bool) {
 		t.Fatal(err)
 	}
 	// Explicitly reconcile an unstarted verified operation through the actual CLI.
-	opRoot, err := operations.DefaultRoot()
+	opRoot, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		t.Fatal(err)
 	}

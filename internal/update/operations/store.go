@@ -14,7 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/update"
 	"sidravia/internal/update/packagefiles"
 	"sidravia/internal/update/releases"
@@ -35,7 +36,7 @@ type Store struct {
 	mu                sync.Mutex
 	directory, target string
 	keys              *releases.PublisherKeys
-	secure            *jsonfile.SecureStore
+	secure            *securefile.SecureStore
 	postCommit        error
 }
 
@@ -69,7 +70,7 @@ func Open(root, target string, keys *releases.PublisherKeys) (*Store, error) {
 		return nil, ErrInvalid
 	}
 	store := &Store{directory: directory, target: target, keys: keys}
-	store.secure, err = jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{OnPostCommitDiagnostic: func(err error) { store.postCommit = err }})
+	store.secure, err = securefile.NewSecureStore(securefile.SecureStoreOptions{OnPostCommitDiagnostic: func(err error) { store.postCommit = err }})
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +92,7 @@ func (s *Store) read(ctx context.Context) (Record, bool, error) {
 		return Record{}, exists, err
 	}
 	var r Record
-	if err := jsonfile.DecodeStrict(data, &r); err != nil {
+	if err := jsondoc.DecodeStrict(data, &r); err != nil {
 		return Record{}, true, errors.Join(ErrInvalid, err)
 	}
 	if !recordShape(data) || r.Source.ID != s.target {
@@ -105,7 +106,7 @@ func (s *Store) read(ctx context.Context) (Record, bool, error) {
 		return Record{}, true, err
 	}
 	var c claimRecord
-	if !exists || jsonfile.DecodeStrict(claim, &c) != nil || c.SchemaVersion != 1 || c.ID != r.ID {
+	if !exists || jsondoc.DecodeStrict(claim, &c) != nil || c.SchemaVersion != 1 || c.ID != r.ID {
 		return Record{}, true, ErrInvalid
 	}
 	digest, err := authorizationDigest(r)
@@ -120,7 +121,7 @@ func (s *Store) Read(ctx context.Context) (Record, bool, error) {
 	return s.read(ctx)
 }
 func (s *Store) write(ctx context.Context, r Record) error {
-	data, err := jsonfile.MarshalDeterministic(r)
+	data, err := jsondoc.MarshalDeterministic(r)
 	if err != nil {
 		return err
 	}
@@ -181,7 +182,7 @@ func (s *Store) Create(ctx context.Context, r Record) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	claim, err := jsonfile.MarshalDeterministic(claimRecord{SchemaVersion: 1, ID: r.ID, Authorization: digest})
+	claim, err := jsondoc.MarshalDeterministic(claimRecord{SchemaVersion: 1, ID: r.ID, Authorization: digest})
 	if err != nil {
 		return Record{}, err
 	}

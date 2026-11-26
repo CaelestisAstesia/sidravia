@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	profilevalue "sidravia/internal/connection/profile"
 	protocol "sidravia/internal/daemon/authentication/protocol"
 	environment "sidravia/internal/daemon/environment"
 )
@@ -42,7 +43,7 @@ func invalidOverrideField(name string) error {
 	return protocol.OverrideFieldError{Field: name}
 }
 
-func decodeProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) (reportedContextOverride, error) {
+func decodeProtocolContextOverride(raw profilevalue.ProtocolOverride) (reportedContextOverride, error) {
 	var out reportedContextOverride
 	if len(raw) == 0 {
 		return out, nil

@@ -9,30 +9,32 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/persistence"
+	binding "sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/document"
 )
 
 func TestCatalogDocumentRoundTripIsDeterministic(t *testing.T) {
-	records := map[ConfigurationID]catalogRecord{
+	records := map[connectionconfig.ID]catalogRecord{
 		"configuration-b": {
-			configuration: Configuration{
+			configuration: connectionconfig.Configuration{
 				ConfigurationID:         "configuration-b",
 				DisplayName:             "Second",
 				InstitutionProfileID:    "profile-b",
 				Username:                "user-b",
-				NetworkBindingPolicy:    NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
-				ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{"server":"b"}`),
+				NetworkBindingPolicy:    binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
+				ProtocolContextOverride: profilevalue.ProtocolOverride(`{"server":"b"}`),
 			},
 			password: "password-b",
 		},
 		"configuration-a": {
-			configuration: Configuration{
+			configuration: connectionconfig.Configuration{
 				ConfigurationID:      "configuration-a",
 				DisplayName:          "First",
 				InstitutionProfileID: "profile-a",
 				Username:             "user-a",
-				NetworkBindingPolicy: NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
+				NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
 			},
 			password: "",
 		},
@@ -73,16 +75,16 @@ func TestDecodeCatalogDocumentRejectsInvalidDocuments(t *testing.T) {
 	tests := []struct {
 		name string
 		data string
-		code persistence.FailureCode
+		code document.FailureCode
 	}{
-		{"unknown root", `{"schemaVersion":2,"configurations":[],"extra":true}`, persistence.FailureInvalidDocument},
-		{"missing field", `{"schemaVersion":2,"configurations":[{"configurationId":"configuration-1"}]}`, persistence.FailureInvalidDocument},
-		{"old schema", `{"schemaVersion":1,"configurations":[]}`, persistence.FailureUnsupportedSchemaVersion},
-		{"future schema", `{"schemaVersion":5,"configurations":[]}`, persistence.FailureUnsupportedSchemaVersion},
-		{"duplicate id", `{"schemaVersion":2,"configurations":[` + valid + `,` + valid + `]}`, persistence.FailureInvalidDocument},
-		{"invalid id", `{"schemaVersion":2,"configurations":[{"configurationId":"Invalid","displayName":"","institutionProfileId":"p","username":"u","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}]}`, persistence.FailureInvalidDocument},
-		{"trailing", `{"schemaVersion":2,"configurations":[]} {}`, persistence.FailureInvalidDocument},
-		{"null", `null`, persistence.FailureInvalidDocument},
+		{"unknown root", `{"schemaVersion":2,"configurations":[],"extra":true}`, document.FailureInvalidDocument},
+		{"missing field", `{"schemaVersion":2,"configurations":[{"configurationId":"configuration-1"}]}`, document.FailureInvalidDocument},
+		{"old schema", `{"schemaVersion":1,"configurations":[]}`, document.FailureUnsupportedSchemaVersion},
+		{"future schema", `{"schemaVersion":5,"configurations":[]}`, document.FailureUnsupportedSchemaVersion},
+		{"duplicate id", `{"schemaVersion":2,"configurations":[` + valid + `,` + valid + `]}`, document.FailureInvalidDocument},
+		{"invalid id", `{"schemaVersion":2,"configurations":[{"configurationId":"Invalid","displayName":"","institutionProfileId":"p","username":"u","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"protocolContextOverride":null}]}`, document.FailureInvalidDocument},
+		{"trailing", `{"schemaVersion":2,"configurations":[]} {}`, document.FailureInvalidDocument},
+		{"null", `null`, document.FailureInvalidDocument},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -94,11 +96,11 @@ func TestDecodeCatalogDocumentRejectsInvalidDocuments(t *testing.T) {
 	}
 }
 
-func configurationPersistenceFailureCode(t *testing.T, err error) persistence.FailureCode {
+func configurationPersistenceFailureCode(t *testing.T, err error) document.FailureCode {
 	t.Helper()
-	var failure *persistence.Failure
+	var failure *document.Failure
 	if !errors.As(err, &failure) {
-		t.Fatalf("error %T does not expose persistence.Failure", err)
+		t.Fatalf("error %T does not expose document.Failure", err)
 	}
 	return failure.Code()
 }
@@ -134,14 +136,14 @@ func TestDecodeCatalogDocumentSchemaV3RequiresBothBooleans(t *testing.T) {
 }
 
 func TestEncodeCatalogDocumentSchemaV3RoundTrip(t *testing.T) {
-	records := map[ConfigurationID]catalogRecord{
+	records := map[connectionconfig.ID]catalogRecord{
 		"configuration-1": {
-			configuration: Configuration{
+			configuration: connectionconfig.Configuration{
 				ConfigurationID:      "configuration-1",
 				DisplayName:          "Campus",
 				InstitutionProfileID: "profile-1",
 				Username:             "user",
-				NetworkBindingPolicy: NetworkBindingPolicy{Mode: AutomaticallySelectLatestAvailable},
+				NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
 				AutoLogin:            true,
 				AutoReconnect:        false,
 			},
@@ -181,7 +183,7 @@ func TestCatalogStrictPolicyMigrationAndSchema4(t *testing.T) {
 			data = strings.Replace(data, `,"autoLogin":false,"autoReconnect":true`, "", 1)
 		}
 		records, err := decodeCatalogDocument([]byte(data))
-		if err != nil || records["configuration-1"].configuration.NetworkBindingPolicy.Mode != AutomaticallySelectLatestAvailable {
+		if err != nil || records["configuration-1"].configuration.NetworkBindingPolicy.Mode != binding.AutomaticallySelectLatestAvailable {
 			t.Fatal("automatic migration failed", err)
 		}
 		changed := strings.Replace(data, `{"mode":"automatically_select_latest_available"}`, explicit, 1)
@@ -224,7 +226,7 @@ func TestCatalogRejectsCaseAliases(t *testing.T) {
 			t.Error("accepted corrupt/ambiguous persisted catalog")
 			continue
 		}
-		if configurationPersistenceFailureCode(t, e) != persistence.FailureInvalidDocument || strings.Contains(e.Error(), "PRIVATE-SECRET") {
+		if configurationPersistenceFailureCode(t, e) != document.FailureInvalidDocument || strings.Contains(e.Error(), "PRIVATE-SECRET") {
 			t.Fatal("unsafe/wrong persistence failure")
 		}
 		if store.replaceCalls != 0 || !bytes.Equal(before, store.data) {

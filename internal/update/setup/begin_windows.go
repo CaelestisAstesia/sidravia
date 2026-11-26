@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
@@ -53,7 +54,7 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 	if asset.OS != "windows" || asset.Arch != "amd64" || asset.Kind != "setup" || hasGUI && asset.PayloadKind != "gui" {
 		return operations.Record{}, releases.ErrUnsupported
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return operations.Record{}, err
 	}

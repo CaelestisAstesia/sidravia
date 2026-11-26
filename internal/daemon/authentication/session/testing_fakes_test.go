@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	environment "sidravia/internal/daemon/environment"
 )
@@ -20,15 +21,15 @@ type controlledFactory struct {
 	creationError    error
 }
 
-func (factory *controlledFactory) ProtocolID() protocol.AuthenticationProtocolID {
+func (factory *controlledFactory) ProtocolID() profilevalue.ProtocolID {
 	return "test-protocol"
 }
 
-func (factory *controlledFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func (factory *controlledFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	return nil
 }
 
-func (factory *controlledFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (factory *controlledFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 

@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/securefile"
 )
 
 // Run starts the daemon host on Windows.
@@ -50,7 +50,7 @@ func Run(ctx context.Context, cfg Config) error {
 	defer windows.CloseHandle(mutex)
 
 	// Write runtime info.
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{
 		IntendedOwnerSID:                   sid,
 		AllowUnsupportedProtectionFallback: cfg.AllowUnsupportedProtectionFallback,
 		OnUnprotected:                      cfg.OnUnprotected,

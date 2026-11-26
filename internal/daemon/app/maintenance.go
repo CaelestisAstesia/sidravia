@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/persistence/jsonfile"
 	"sidravia/internal/update"
 )
 
@@ -66,7 +66,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			return output()
 		case contract.MethodUpdateResume:
 			var input contract.UpdateResumePayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.ConfigurationID == "" || !restoreAvailable || state.Status().Phase != "idle" {
+			if jsondoc.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.ConfigurationID == "" || !restoreAvailable || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeMaintenance)
 			}
 			if options.SwitchOperation != "" && (input.OperationID != options.SwitchOperation || input.ConfigurationID != options.SwitchConfiguration) {
@@ -80,7 +80,7 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			return next(ctx, contract.MethodSessionStartConfiguration, data)
 		case contract.MethodUpdatePrepare:
 			var input contract.UpdatePreparePayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.CoordinatorPID == 0 || input.Interactive == nil || state.Status().Phase != "idle" {
+			if jsondoc.DecodeStrict(payload, &input) != nil || !update.ValidOperationID(input.OperationID) || input.CoordinatorPID == 0 || input.Interactive == nil || state.Status().Phase != "idle" {
 				return failure(contract.ErrorCodeInvalidArgument)
 			}
 			if (options.Mode == launchcontract.ModeSystemd && !input.ServiceSwitch && !input.ManagedGUIUpdate) ||
@@ -102,20 +102,20 @@ func maintenanceWithCoordinator(application *Application, options launchcontract
 			return output()
 		case contract.MethodUpdateAcknowledge:
 			var input contract.UpdateAcknowledgePayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || input.Accepted == nil || input.Visible == nil || state.Acknowledge(input.OperationID, *input.Accepted, *input.Visible) != nil {
+			if jsondoc.DecodeStrict(payload, &input) != nil || input.Accepted == nil || input.Visible == nil || state.Acknowledge(input.OperationID, *input.Accepted, *input.Visible) != nil {
 				return failure(contract.ErrorCodeInvalidArgument)
 			}
 			return output()
 		case contract.MethodUpdateAbort:
 			var input contract.UpdateOperationPayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || state.Abort(input.OperationID) != nil {
+			if jsondoc.DecodeStrict(payload, &input) != nil || state.Abort(input.OperationID) != nil {
 				return failure(contract.ErrorCodeInvalidArgument)
 			}
 			resetOwner()
 			return output()
 		case contract.MethodUpdateCommit:
 			var input contract.UpdateOperationPayload
-			if jsonfile.DecodeStrict(payload, &input) != nil || state.Commit(input.OperationID) != nil {
+			if jsondoc.DecodeStrict(payload, &input) != nil || state.Commit(input.OperationID) != nil {
 				return failure(contract.ErrorCodeInvalidArgument)
 			}
 			return output()

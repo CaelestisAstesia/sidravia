@@ -2,30 +2,10 @@ package operations
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 
 	"sidravia/internal/update"
 )
-
-// CacheRoot returns the existing update cache location, separate from daemon
-// data directories and from the install tree being replaced.
-func CacheRoot() (string, error) {
-	root, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "Sidravia", "updates"), nil
-}
-
-// DefaultRoot is shared by updater status and portable process admission.
-func DefaultRoot() (string, error) {
-	root, err := CacheRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "operations"), nil
-}
 
 // AcquireStart holds process admission against file application. Linux callers
 // retain this shared lease until exit; only an updater handoff may release early.

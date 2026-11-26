@@ -11,18 +11,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 	"sidravia/internal/update/windowsplatform"
-	"strconv"
-	"strings"
-	"testing"
-	"time"
 )
 
 // Fixed-host source overlays supply a synthetic signing root, not a runtime
@@ -298,7 +299,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 			if !bytes.Contains(result, []byte(`"handedOver":true`)) || bytes.Contains(result, []byte(`"filesApplied":true`)) {
 				t.Fatal("handoff falsely claimed installation", string(result))
 			}
-			root, _ := operations.DefaultRoot()
+			root, _ := productlayout.UpdateOperationRoot()
 			store, e := operations.Open(root, target, next.keys)
 			if e != nil {
 				t.Fatal(e)

@@ -8,7 +8,7 @@ import (
 	"os"
 	"runtime"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/packagefiles"

@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	config "sidravia/internal/daemon/configuration"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/persistence/jsonfile"
 )
 
 // configurationPage uses the ordered catalog snapshot and its opaque edit
 // versions. A changed catalog invalidates the cursor rather than returning a
 // mixed generation. No per-client snapshot or cursor is retained by the daemon.
-func configurationPage(values []contract.ConfigurationResult, protection jsonfile.ProtectionStatus, cursor string) (json.RawMessage, error) {
+func configurationPage(values []contract.ConfigurationResult, protection securefile.ProtectionStatus, cursor string) (json.RawMessage, error) {
 	digest := sha256.New()
 	fmt.Fprintln(digest, protection)
 	for _, value := range values {

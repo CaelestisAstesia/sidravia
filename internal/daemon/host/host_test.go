@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 func TestShutdownHTTPServerInvokesShutdownOnce(t *testing.T) {

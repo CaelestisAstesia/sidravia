@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/persistence/jsonfile"
 )
 
 func validLinuxHostConfig(t *testing.T) Config {
@@ -246,7 +246,7 @@ func TestLinuxHostStorageCauseReachable(t *testing.T) {
 	cfg := validLinuxHostConfig(t)
 	cause := errors.New("injected store failure")
 	deps := defaultLinuxHostDeps()
-	deps.newStore = func(jsonfile.SecureStoreOptions) (*jsonfile.SecureStore, error) { return nil, cause }
+	deps.newStore = func(securefile.SecureStoreOptions) (*securefile.SecureStore, error) { return nil, cause }
 	err := runLinuxHost(context.Background(), cfg, deps)
 	if !errors.Is(err, cause) {
 		t.Errorf("error = %v, want store cause", err)
@@ -294,7 +294,7 @@ func TestLinuxHostForwardsPostCommitDiagnosticObserver(t *testing.T) {
 	cfg.OnPostCommitDiagnostic = func(err error) { received = append(received, err) }
 	deps := defaultLinuxHostDeps()
 	stop := errors.New("stop after checking options")
-	deps.newStore = func(options jsonfile.SecureStoreOptions) (*jsonfile.SecureStore, error) {
+	deps.newStore = func(options securefile.SecureStoreOptions) (*securefile.SecureStore, error) {
 		if options.OnPostCommitDiagnostic == nil {
 			t.Fatal("Host dropped observer")
 		}

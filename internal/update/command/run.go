@@ -13,10 +13,10 @@ import (
 	"runtime"
 	"time"
 
-	"sidravia/internal/persistence/jsonfile"
-	"sidravia/internal/productlayout"
+	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/document/securefile"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/github"
-	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 )
 
@@ -89,7 +89,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	}
 	var execution *operationView
 	if operation == "status" {
-		operationRoot, err := operations.DefaultRoot()
+		operationRoot, err := productlayout.UpdateOperationRoot()
 		if err != nil {
 			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
 		}
@@ -105,13 +105,13 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		return emit(false, code, message, nil)
 	}
 	selection := releases.Selection{OS: runtime.GOOS, Arch: runtime.GOARCH, Kind: options.kind, Channel: options.channel, CurrentVersion: version}
-	cacheBase, err := operations.CacheRoot()
+	cacheBase, err := productlayout.UpdateCacheRoot()
 	if err != nil {
 		return cacheFailure("cache_unavailable", "更新缓存不可用。")
 	}
 	identity := sha256.Sum256([]byte(layout.ExecutableDirectory + "\x00" + options.kind + "\x00" + options.channel))
 	root := filepath.Join(cacheBase, hex.EncodeToString(identity[:16]))
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		return cacheFailure("cache_unavailable", "更新缓存保护不可用。")
 	}
@@ -123,7 +123,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	}
 	var previous cached
 	if exists {
-		if err = jsonfile.DecodeStrict(data, &previous); err != nil || previous.SchemaVersion != 1 {
+		if err = jsondoc.DecodeStrict(data, &previous); err != nil || previous.SchemaVersion != 1 {
 			return cacheFailure("cache_invalid", "更新缓存无效。")
 		}
 	}
@@ -155,7 +155,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	}
 	previous = cached{}
 	if exists {
-		if err = jsonfile.DecodeStrict(data, &previous); err != nil || previous.SchemaVersion != 1 {
+		if err = jsondoc.DecodeStrict(data, &previous); err != nil || previous.SchemaVersion != 1 {
 			return emit(false, "cache_invalid", "更新缓存无效。", nil)
 		}
 	}
@@ -171,7 +171,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 		return emit(false, "cache_unavailable", "更新限流记录不可用。", nil)
 	} else if exists {
 		var wait backoff
-		if jsonfile.DecodeStrict(b, &wait) != nil || wait.SchemaVersion != 1 {
+		if jsondoc.DecodeStrict(b, &wait) != nil || wait.SchemaVersion != 1 {
 			return emit(false, "cache_invalid", "更新限流记录无效。", nil)
 		}
 		if time.Now().Before(wait.Until) {

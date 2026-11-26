@@ -5,28 +5,26 @@ import (
 	"encoding/json"
 	"net/netip"
 
-	credential "sidravia/internal/daemon/credentials"
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	environment "sidravia/internal/daemon/environment"
 )
 
-type AuthenticationProtocolID string
 type AuthenticationProtocolFailureCode string
-type InstitutionProtocolConfiguration json.RawMessage
-type AuthenticationProtocolContextOverride json.RawMessage
 
 type AuthenticationProtocolRunCreationInputs struct {
-	InstitutionProtocolConfiguration InstitutionProtocolConfiguration
+	InstitutionProtocolConfiguration profilevalue.ProtocolConfiguration
 	AuthenticationCredential         credential.AuthenticationCredential
 	SelectedSystemNetworkBinding     environment.SelectedSystemNetworkBinding
 	SystemHostInformation            environment.SystemHostInformation
-	ProtocolContextOverride          AuthenticationProtocolContextOverride
+	ProtocolContextOverride          profilevalue.ProtocolOverride
 	Diagnostics                      AuthenticationProtocolDiagnostics
 }
 
 type AuthenticationProtocolFactory interface {
-	ProtocolID() AuthenticationProtocolID
-	ValidateInstitutionProtocolConfiguration(InstitutionProtocolConfiguration) error
-	ValidateProtocolContextOverride(AuthenticationProtocolContextOverride) error
+	ProtocolID() profilevalue.ProtocolID
+	ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error
+	ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error
 	// ValidateUsername checks public candidate data without credentials, a Run or I/O.
 	ValidateUsername(string) error
 	CreateAuthenticationProtocolRun(AuthenticationProtocolRunCreationInputs) (AuthenticationProtocolRun, error)
@@ -147,7 +145,7 @@ func (err OverrideFieldError) Error() string {
 
 // HasOverrideFields distinguishes a version-only document from a real override.
 // It is used for safe status projection, never to validate a stored document.
-func HasOverrideFields(raw AuthenticationProtocolContextOverride) bool {
+func HasOverrideFields(raw profilevalue.ProtocolOverride) bool {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil {
 		return false

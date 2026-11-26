@@ -159,7 +159,7 @@ endif()
 install(FILES "runner/resources/sidravia.png"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/icons" COMPONENT Runtime)
 
-# Read-only public profiles ship beside the tools, as required by productlayout.
+# Read-only public profiles ship beside the tools, as required by the installation layout.
 # Isolated namespaces deliberately use their own explicitly supplied catalog.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../internal/daemon/configuration/profiles/"
   DESTINATION "${CMAKE_INSTALL_PREFIX}/institution-profiles" COMPONENT Runtime

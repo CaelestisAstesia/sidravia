@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
@@ -81,7 +82,7 @@ func TestReconnectPreferenceAppliesOnlyToNextManualSession(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{AutoReconnect: &oldPolicy}); err != nil {
+			if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &oldPolicy}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := setup.application.ApplySystemNetworkSnapshot(ctx, appTestNetworkSnapshot(t, 1)); err != nil {
@@ -99,7 +100,7 @@ func TestReconnectPreferenceAppliesOnlyToNextManualSession(t *testing.T) {
 			}
 
 			newPolicy := !oldPolicy
-			if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &newPolicy}); err != nil {
+			if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &newPolicy}}); err != nil {
 				t.Fatal(err)
 			}
 			retained, err := setup.application.GetSession(ctx, started.SessionID)
@@ -162,7 +163,7 @@ func TestReconnectReplacementCleanupFailureKeepsOldSessionQuarantined(t *testing
 		t.Fatal(err)
 	}
 	latest := true
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &latest}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &latest}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := setup.supervisor.Close(); err != nil {
@@ -194,7 +195,7 @@ func TestReconnectPreferenceResumePathsAndToggleBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			latest := true
-			if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &latest}); err != nil {
+			if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &latest}}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := setup.application.StopSession(ctx, started.SessionID); err != nil {
@@ -238,7 +239,7 @@ func TestReconnectPreferenceResumePathsAndToggleBack(t *testing.T) {
 		}
 		changed, original := true, false
 		for _, value := range []bool{changed, original} {
-			if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &value}); err != nil {
+			if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &value}}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -257,7 +258,7 @@ func TestReconnectPreferenceResumePathsAndToggleBack(t *testing.T) {
 			t.Fatal(err)
 		}
 		latest := true
-		if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &latest}); err != nil {
+		if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &latest}}); err != nil {
 			t.Fatal(err)
 		}
 		restarted, err := setup.application.RestartSession(ctx, started.SessionID)

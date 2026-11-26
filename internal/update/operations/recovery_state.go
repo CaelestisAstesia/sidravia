@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/packagefiles"
 )

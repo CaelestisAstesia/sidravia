@@ -1,0 +1,231 @@
+package jsondoc
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"sidravia/internal/document"
+)
+
+type strictConfiguration struct {
+	Enabled                 bool            `json:"enabled"`
+	ProtocolContextOverride json.RawMessage `json:"protocolContextOverride"`
+}
+
+type strictDocument struct {
+	Name          string              `json:"name"`
+	Configuration strictConfiguration `json:"configuration"`
+}
+
+func TestReadLimitedAcceptsExactLimitAndRejectsOneByteOver(t *testing.T) {
+	got, err := ReadLimited(strings.NewReader("abc"), 3)
+	if err != nil || string(got) != "abc" {
+		t.Fatalf("ReadLimited exact limit = %q, %v", got, err)
+	}
+	if _, err := ReadLimited(strings.NewReader("abcd"), 3); failureCode(t, err) != document.FailureSizeLimitExceeded {
+		t.Fatalf("ReadLimited one byte over error code = %q", failureCode(t, err))
+	}
+	if _, err := ReadLimited(strings.NewReader(""), 0); failureCode(t, err) != document.FailureInvalidArgument {
+		t.Fatalf("ReadLimited invalid maximum error code = %q", failureCode(t, err))
+	}
+}
+
+func TestDecodeStrictRejectsEmptyTrailingUnknownDuplicateAndWrongType(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+	}{
+		{name: "empty", data: ""},
+		{name: "trailing value", data: `{"name":"one"} {}`},
+		{name: "unknown field", data: `{"name":"one","extra":true}`},
+		{name: "duplicate root key", data: `{"name":"one","name":"two"}`},
+		{name: "wrong type", data: `{"name":false}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var destination strictDocument
+			if err := DecodeStrict([]byte(test.data), &destination); failureCode(t, err) != document.FailureInvalidDocument {
+				t.Fatalf("DecodeStrict error code = %q, want invalid_document", failureCode(t, err))
+			}
+		})
+	}
+}
+
+func TestDecodeStrictRejectsNestedOwnedDuplicateKeys(t *testing.T) {
+	data := []byte(`{"name":"one","configuration":{"enabled":true,"enabled":false}}`)
+	var destination strictDocument
+	if err := DecodeStrict(data, &destination); failureCode(t, err) != document.FailureInvalidDocument {
+		t.Fatalf("DecodeStrict nested duplicate error code = %q", failureCode(t, err))
+	}
+}
+
+func TestDecodeStrictSkipsOnlyTheExactOpaqueJSONPointer(t *testing.T) {
+	allowed := []byte(`{"name":"one","configuration":{"protocolContextOverride":{"token":"one","token":"two"}}}`)
+	var destination strictDocument
+	if err := DecodeStrict(allowed, &destination, "/configuration/protocolContextOverride"); err != nil {
+		t.Fatalf("DecodeStrict rejected duplicate within exact opaque pointer: %v", err)
+	}
+
+	siblingDuplicate := []byte(`{"name":"one","name":"two","configuration":{"protocolContextOverride":{"token":"one","token":"two"}}}`)
+	if err := DecodeStrict(siblingDuplicate, &destination, "/configuration/protocolContextOverride"); failureCode(t, err) != document.FailureInvalidDocument {
+		t.Fatalf("DecodeStrict sibling duplicate error code = %q", failureCode(t, err))
+	}
+}
+
+func TestStrictJSONValidationRejectsInvalidUTF8(t *testing.T) {
+	invalidDocument := []byte("{\"name\":\"\xff\"}")
+	invalidFieldDocument := []byte("{\"field\":\"\xff\"}")
+	invalidSchemaDocument := []byte("{\"schemaVersion\":1,\"payload\":\"\xff\"}")
+	invalidOpaque := json.RawMessage("{\"payload\":\"\xff\"}")
+	var destination strictDocument
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "decode strict", err: DecodeStrict(invalidDocument, &destination)},
+		{name: "require fields", err: RequireObjectFields(invalidFieldDocument, "field")},
+		{name: "require schema", err: RequireSchemaVersion(invalidSchemaDocument, SchemaVersion1)},
+		{name: "validate opaque", err: ValidateOpaqueObjectOrNull(invalidOpaque)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := failureCode(t, test.err); got != document.FailureInvalidDocument {
+				t.Fatalf("failure code = %q, want invalid_document", got)
+			}
+		})
+	}
+}
+
+func TestOpaqueValidationAcceptsLargeJSONNumbers(t *testing.T) {
+	data := []byte(`{"name":"one","configuration":{"protocolContextOverride":{"large":1e400}}}`)
+	var destination strictDocument
+	if err := DecodeStrict(data, &destination, "/configuration/protocolContextOverride"); err != nil {
+		t.Fatalf("DecodeStrict rejected opaque 1e400: %v", err)
+	}
+	if err := ValidateOpaqueObjectOrNull(json.RawMessage(`{"large":1e400}`)); err != nil {
+		t.Fatalf("ValidateOpaqueObjectOrNull rejected 1e400: %v", err)
+	}
+}
+
+func TestRequireObjectFieldsDistinguishesMissingFromZeroValue(t *testing.T) {
+	present := []byte(`{"enabled":false,"displayName":"","nullable":null}`)
+	if err := RequireObjectFields(present, "enabled", "displayName", "nullable"); err != nil {
+		t.Fatalf("RequireObjectFields rejected present zero/null fields: %v", err)
+	}
+	if err := RequireObjectFields([]byte(`{"enabled":false}`), "enabled", "displayName"); failureCode(t, err) != document.FailureInvalidDocument {
+		t.Fatalf("RequireObjectFields missing-field error code = %q", failureCode(t, err))
+	}
+}
+
+func TestRequireSchemaVersionAcceptsOnlyIntegerOne(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+		code document.FailureCode
+	}{
+		{name: "missing", data: `{}`, code: document.FailureInvalidDocument},
+		{name: "null", data: `{"schemaVersion":null}`, code: document.FailureInvalidDocument},
+		{name: "string", data: `{"schemaVersion":"1"}`, code: document.FailureInvalidDocument},
+		{name: "fractional", data: `{"schemaVersion":1.0}`, code: document.FailureInvalidDocument},
+		{name: "negative", data: `{"schemaVersion":-1}`, code: document.FailureInvalidDocument},
+		{name: "zero", data: `{"schemaVersion":0}`, code: document.FailureUnsupportedSchemaVersion},
+		{name: "one", data: `{"schemaVersion":1}`, code: ""},
+		{name: "two", data: `{"schemaVersion":2}`, code: document.FailureUnsupportedSchemaVersion},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := RequireSchemaVersion([]byte(test.data), SchemaVersion1)
+			if test.code == "" && err != nil {
+				t.Fatalf("RequireSchemaVersion(%s) = %v, want nil", test.data, err)
+			}
+			if test.code != "" && failureCode(t, err) != test.code {
+				t.Fatalf("RequireSchemaVersion error code = %q, want %q", failureCode(t, err), test.code)
+			}
+		})
+	}
+}
+
+func TestValidateOpaqueObjectOrNullRejectsScalarArrayAndInvalidJSON(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data json.RawMessage
+		want document.FailureCode
+	}{
+		{name: "object", data: json.RawMessage(`{"token":"value"}`)},
+		{name: "null", data: json.RawMessage(`null`)},
+		{name: "scalar", data: json.RawMessage(`true`), want: document.FailureInvalidDocument},
+		{name: "array", data: json.RawMessage(`[]`), want: document.FailureInvalidDocument},
+		{name: "invalid", data: json.RawMessage(`{`), want: document.FailureInvalidDocument},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateOpaqueObjectOrNull(test.data)
+			if test.want == "" && err != nil {
+				t.Fatalf("ValidateOpaqueObjectOrNull(%s) = %v, want nil", test.data, err)
+			}
+			if test.want != "" && failureCode(t, err) != test.want {
+				t.Fatalf("ValidateOpaqueObjectOrNull error code = %q, want %q", failureCode(t, err), test.want)
+			}
+		})
+	}
+}
+
+func TestMarshalDeterministicUsesOwnedStructOrderWithoutNewline(t *testing.T) {
+	value := struct {
+		SchemaVersion uint64 `json:"schemaVersion"`
+		DisplayName   string `json:"displayName"`
+	}{SchemaVersion: SchemaVersion1, DisplayName: "Example"}
+	got, err := MarshalDeterministic(value)
+	if err != nil {
+		t.Fatalf("MarshalDeterministic() error = %v", err)
+	}
+	if want := `{"schemaVersion":1,"displayName":"Example"}`; string(got) != want {
+		t.Fatalf("MarshalDeterministic() = %s, want %s", got, want)
+	}
+	if bytes.HasSuffix(got, []byte("\n")) {
+		t.Fatal("MarshalDeterministic added a trailing newline")
+	}
+}
+
+func failureCode(t *testing.T, err error) document.FailureCode {
+	t.Helper()
+	if err == nil {
+		return ""
+	}
+	var failure *document.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("error %T does not expose a persistence Failure", err)
+	}
+	return failure.Code()
+}
+
+func TestPersistentUnicode(t *testing.T) {
+	for _, bad := range []string{`\ud800`, `\udc00`, `\ud800\u0041`, string([]byte{0xff})} {
+		var v struct {
+			Password string `json:"password"`
+		}
+		for _, b := range [][]byte{[]byte(`{"password":"PRIVATE-SECRET-` + bad + `"}`), []byte(`{"` + bad + `":"x"}`)} {
+			if e := DecodeStrict(b, &v); e == nil {
+				t.Error("accepted corrupt Unicode")
+			} else if strings.Contains(e.Error(), "PRIVATE-SECRET") {
+				t.Fatal("secret leaked")
+			}
+		}
+		if e := ValidateOpaqueObjectOrNull([]byte(`{"x":"` + bad + `"}`)); e == nil {
+			t.Error("accepted corrupt opaque Unicode")
+		}
+	}
+	for _, tc := range []struct{ wire, want string }{{"中文", "中文"}, {`\ud83d\ude00`, "😀"}, {"�", "�"}, {`\ufffd`, "�"}, {`\\ud800`, `\ud800`}} {
+		var v struct {
+			Password string `json:"password"`
+		}
+		if e := DecodeStrict([]byte(`{"password":"`+tc.wire+`"}`), &v); e != nil || v.Password != tc.want {
+			t.Fatalf("valid Unicode altered: %v", e)
+		}
+	}
+	var v struct {
+		Raw json.RawMessage `json:"raw"`
+	}
+	if e := DecodeStrict([]byte(`{"raw":{"x":1,"x":2,"X":999999999999999999999999}}`), &v, "/raw"); e != nil || string(v.Raw) != `{"x":1,"x":2,"X":999999999999999999999999}` {
+		t.Fatal("opaque contract changed")
+	}
+}

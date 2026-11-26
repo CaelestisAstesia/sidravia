@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 
+	connectionconfig "sidravia/internal/connection/config"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
@@ -20,7 +21,7 @@ const (
 	SessionStartResumed        = "resumed"
 )
 
-func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID, expectedVersion ...string) (SessionStartResult, error) {
+func (application *Application) StartConfigurationAuthentication(ctx context.Context, configurationID connectionconfig.ID, expectedVersion ...string) (SessionStartResult, error) {
 	application.operationMu.Lock()
 	defer application.operationMu.Unlock()
 	if len(expectedVersion) != 0 && expectedVersion[0] != "" {
@@ -36,7 +37,7 @@ func (application *Application) StartConfigurationAuthentication(ctx context.Con
 }
 
 // startConfigurationAuthentication requires operationMu through selection and start.
-func (application *Application) startConfigurationAuthentication(ctx context.Context, configurationID config.ConfigurationID) (SessionStartResult, error) {
+func (application *Application) startConfigurationAuthentication(ctx context.Context, configurationID connectionconfig.ID) (SessionStartResult, error) {
 	application.sessionIndexMu.Lock()
 	existing := application.sessionsByConfig[configurationID]
 	application.sessionIndexMu.Unlock()
@@ -135,7 +136,7 @@ func (application *Application) PerformAutomaticLogin(ctx context.Context) error
 	if err != nil {
 		return &automaticLoginFailure{cause: err}
 	}
-	var autoLoginID config.ConfigurationID
+	var autoLoginID connectionconfig.ID
 	for _, configuration := range configurations {
 		if configuration.AutoLogin {
 			autoLoginID = configuration.ConfigurationID
@@ -210,7 +211,7 @@ func (application *Application) RestartSession(ctx context.Context, sessionID se
 }
 
 // configurationForSession resolves the persisted owner while operationMu is held.
-func (application *Application) configurationForSession(sessionID session.AuthenticationSessionID) (config.ConfigurationID, bool) {
+func (application *Application) configurationForSession(sessionID session.AuthenticationSessionID) (connectionconfig.ID, bool) {
 	application.sessionIndexMu.Lock()
 	defer application.sessionIndexMu.Unlock()
 	for configurationID, associated := range application.sessionsByConfig {
@@ -224,7 +225,7 @@ func (application *Application) configurationForSession(sessionID session.Authen
 // changedReconnectDefinition resolves the replacement before cleanup so a
 // catalog or resolver failure leaves the existing Session intact.
 // operationMu must be held by the caller.
-func (application *Application) changedReconnectDefinition(ctx context.Context, configurationID config.ConfigurationID, currentSessionID session.AuthenticationSessionID) (session.RuntimeDefinition, bool, error) {
+func (application *Application) changedReconnectDefinition(ctx context.Context, configurationID connectionconfig.ID, currentSessionID session.AuthenticationSessionID) (session.RuntimeDefinition, bool, error) {
 	configuration, err := application.catalog.Get(ctx, configurationID)
 	if err != nil {
 		return session.RuntimeDefinition{}, false, err
@@ -246,7 +247,7 @@ func (application *Application) changedReconnectDefinition(ctx context.Context, 
 // after the replacement definition resolves. A failed start leaves no Session
 // association, so a later manual start can retry honestly.
 // operationMu must be held by the caller.
-func (application *Application) replaceConfigurationSession(ctx context.Context, configurationID config.ConfigurationID, definition session.RuntimeDefinition) (SessionStartResult, error) {
+func (application *Application) replaceConfigurationSession(ctx context.Context, configurationID connectionconfig.ID, definition session.RuntimeDefinition) (SessionStartResult, error) {
 	if err := application.retireConfigurationSession(ctx, configurationID); err != nil {
 		return SessionStartResult{}, err
 	}

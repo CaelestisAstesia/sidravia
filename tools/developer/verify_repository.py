@@ -306,8 +306,8 @@ def run_cross_checks(
         ),
         (
             "windows",
-            "windows-amd64-internal-persistence-jsonfile.test.exe",
-            "./internal/persistence/jsonfile",
+            "windows-amd64-internal-document-securefile.test.exe",
+            "./internal/document/securefile",
         ),
         ("darwin", "darwin-amd64-internal-cli.test", "./internal/cli"),
         (

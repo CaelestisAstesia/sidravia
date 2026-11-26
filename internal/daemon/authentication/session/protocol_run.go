@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"time"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 )
 
@@ -181,11 +182,11 @@ func (session *AuthenticationSession) createRun(allowRecoveryState bool) {
 	session.beginBusinessRun(session.nextGeneration)
 	generation := session.nextGeneration
 	inputs := protocol.AuthenticationProtocolRunCreationInputs{
-		InstitutionProtocolConfiguration: append(protocol.InstitutionProtocolConfiguration(nil), session.definition.InstitutionProfile.InstitutionProtocolConfiguration...),
+		InstitutionProtocolConfiguration: append(profilevalue.ProtocolConfiguration(nil), session.definition.InstitutionProfile.InstitutionProtocolConfiguration...),
 		AuthenticationCredential:         session.definition.AuthenticationCredential,
 		SelectedSystemNetworkBinding:     session.desiredBinding,
 		SystemHostInformation:            session.definition.SystemHostInformation,
-		ProtocolContextOverride:          append(protocol.AuthenticationProtocolContextOverride(nil), session.definition.Configuration.ProtocolContextOverride...),
+		ProtocolContextOverride:          append(profilevalue.ProtocolOverride(nil), session.definition.Configuration.ProtocolContextOverride...),
 		Diagnostics:                      session.protocolDiagnostics,
 	}
 	run, err := session.definition.AuthenticationProtocolFactory.CreateAuthenticationProtocolRun(inputs)

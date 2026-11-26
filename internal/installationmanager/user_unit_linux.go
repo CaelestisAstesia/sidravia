@@ -10,8 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 const userUnitName = "sidravia.service"

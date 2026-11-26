@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/command"
 	"sidravia/internal/update/entry"
 )

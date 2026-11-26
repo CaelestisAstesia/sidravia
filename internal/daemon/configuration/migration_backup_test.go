@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"sidravia/internal/persistence"
-	"sidravia/internal/persistence/jsonfile"
+	connectionconfig "sidravia/internal/connection/config"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
 )
 
 func legacyCatalogFixture() []byte {
@@ -23,7 +24,7 @@ func TestCatalogMigrationPreservesExactOldDocumentBeforeFirstWrite(t *testing.T)
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestCatalogMigrationPreservesExactOldDocumentBeforeFirstWrite(t *testing.T)
 		t.Fatal("read changed old bytes")
 	}
 	name := "Updated"
-	if _, err := catalog.Update(context.Background(), "configuration-1", Update{DisplayName: &name}); err != nil {
+	if _, err := catalog.Update(context.Background(), "configuration-1", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err != nil {
 		t.Fatal(err)
 	}
 	backup, err := os.ReadFile(assertBackups(1)[0])
@@ -58,7 +59,7 @@ func TestCatalogMigrationPreservesExactOldDocumentBeforeFirstWrite(t *testing.T)
 	if err != nil || !bytes.Contains(data, []byte(`"schemaVersion":4`)) || !bytes.Contains(data, []byte(`"password":"synthetic-password"`)) {
 		t.Fatal("migration lost configuration")
 	}
-	if _, err := catalog.Update(context.Background(), "configuration-1", Update{DisplayName: &name}); err != nil {
+	if _, err := catalog.Update(context.Background(), "configuration-1", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err != nil {
 		t.Fatal(err)
 	}
 	assertBackups(1)
@@ -71,9 +72,9 @@ func TestCatalogBackupFailureLeavesMemoryAndOriginalDocumentUnchanged(t *testing
 		t.Fatal(err)
 	}
 	before := append([]byte(nil), store.data...)
-	store.replaceErr = persistence.NewFailure(persistence.FailureAtomicWrite, errors.New("synthetic backup failure"))
+	store.replaceErr = document.NewFailure(document.FailureAtomicWrite, errors.New("synthetic backup failure"))
 	name := "Updated"
-	if _, err := catalog.Update(context.Background(), "configuration-1", Update{DisplayName: &name}); err == nil {
+	if _, err := catalog.Update(context.Background(), "configuration-1", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err == nil {
 		t.Fatal("write continued without a recovery copy")
 	}
 	got, err := catalog.Get(context.Background(), "configuration-1")
@@ -89,7 +90,7 @@ func TestCatalogMigrationRejectsChangedSourceBeforeWriting(t *testing.T) {
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,7 @@ func TestCatalogMigrationRejectsChangedSourceBeforeWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "Updated"
-	if _, err := catalog.Update(context.Background(), "configuration-1", Update{DisplayName: &name}); configurationPersistenceFailureCode(t, err) != persistence.FailureConflict {
+	if _, err := catalog.Update(context.Background(), "configuration-1", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); configurationPersistenceFailureCode(t, err) != document.FailureConflict {
 		t.Fatalf("changed source not rejected: %v", err)
 	}
 	if data, err := os.ReadFile(path); err != nil || !bytes.Equal(data, external) {
@@ -115,13 +116,13 @@ func TestCatalogMigrationRejectsChangedSourceBeforeWriting(t *testing.T) {
 }
 
 type failedMigrationStore struct {
-	*jsonfile.SecureStore
+	*securefile.SecureStore
 	fail bool
 }
 
 func (s *failedMigrationStore) ReplaceSensitive(ctx context.Context, path string, data []byte, limit int64, allow bool) error {
 	if s.fail {
-		return persistence.NewFailure(persistence.FailureAtomicWrite, errors.New("synthetic migration commit failure"))
+		return document.NewFailure(document.FailureAtomicWrite, errors.New("synthetic migration commit failure"))
 	}
 	return s.SecureStore.ReplaceSensitive(ctx, path, data, limit, allow)
 }
@@ -133,7 +134,7 @@ func TestFailedMigrationRetryStillChecksOriginal(t *testing.T) {
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	secure, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	secure, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,7 @@ func TestFailedMigrationRetryStillChecksOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "Candidate"
-	if _, err := catalog.Update(context.Background(), "configuration-1", Update{DisplayName: &name}); err == nil {
+	if _, err := catalog.Update(context.Background(), "configuration-1", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err == nil {
 		t.Fatal("failed commit accepted")
 	}
 	changed := bytes.Replace(original, []byte("Campus"), []byte("External"), 1)
@@ -151,7 +152,7 @@ func TestFailedMigrationRetryStillChecksOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.fail = false
-	if _, err := catalog.Update(context.Background(), "configuration-1", Update{DisplayName: &name}); err == nil {
+	if _, err := catalog.Update(context.Background(), "configuration-1", Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err == nil {
 		t.Fatal("retry overwrote a changed source")
 	}
 	actual, err := os.ReadFile(path)

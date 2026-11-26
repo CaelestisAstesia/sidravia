@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/releases"
 	"sidravia/internal/update/windowsplatform"

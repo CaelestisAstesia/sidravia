@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
 )
 
 const Name = "sidravia-files.json"
@@ -54,7 +54,7 @@ func Encode(m Manifest) ([]byte, error) {
 
 func Decode(data []byte) (Manifest, error) {
 	var m Manifest
-	if len(data) == 0 || len(data) > SizeLimit || jsonfile.DecodeStrict(data, &m) != nil || !exactShape(data) {
+	if len(data) == 0 || len(data) > SizeLimit || jsondoc.DecodeStrict(data, &m) != nil || !exactShape(data) {
 		return Manifest{}, ErrInvalid
 	}
 	if err := m.Validate(); err != nil {

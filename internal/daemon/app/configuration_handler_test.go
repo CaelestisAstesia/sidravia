@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	config "sidravia/internal/daemon/configuration"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/persistence"
-	"sidravia/internal/persistence/jsonfile"
 )
 
 func TestConfigurationHandlerListAndPasswordSecrecy(t *testing.T) {
@@ -54,7 +56,7 @@ func TestConfigurationHandlerCompletesReceiptAfterCanceledWrite(t *testing.T) {
 			var oldVersion string
 			if tc.id != "" {
 				var err error
-				oldVersion, err = setup.catalog.Version(before, config.ConfigurationID(tc.id))
+				oldVersion, err = setup.catalog.Version(before, connectionconfig.ID(tc.id))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -98,40 +100,40 @@ func TestConfigurationHandlerRejectsUnknownCreateFields(t *testing.T) {
 }
 
 type fakeConfigurationApplication struct {
-	created    config.Configuration
+	created    connectionconfig.Configuration
 	result     ConfigurationResult
 	list       []ConfigurationResult
-	protection jsonfile.ProtectionStatus
+	protection securefile.ProtectionStatus
 	err        error
 	method     string
-	id         config.ConfigurationID
+	id         connectionconfig.ID
 	password   string
 	allow      bool
 	update     config.Update
 }
 
-func (fake *fakeConfigurationApplication) ListConfigurations(context.Context) ([]ConfigurationResult, jsonfile.ProtectionStatus, error) {
+func (fake *fakeConfigurationApplication) ListConfigurations(context.Context) ([]ConfigurationResult, securefile.ProtectionStatus, error) {
 	fake.method = contract.MethodConfigurationList
 	return fake.list, fake.protection, fake.err
 }
-func (fake *fakeConfigurationApplication) GetConfiguration(_ context.Context, id config.ConfigurationID) (ConfigurationResult, error) {
+func (fake *fakeConfigurationApplication) GetConfiguration(_ context.Context, id connectionconfig.ID) (ConfigurationResult, error) {
 	fake.method, fake.id = contract.MethodConfigurationGet, id
 	return fake.result, fake.err
 }
-func (fake *fakeConfigurationApplication) CreateConfiguration(_ context.Context, value config.Configuration, password string, allow bool) (ConfigurationResult, error) {
+func (fake *fakeConfigurationApplication) CreateConfiguration(_ context.Context, value connectionconfig.Configuration, password string, allow bool) (ConfigurationResult, error) {
 	fake.created = value
 	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationCreate, value.ConfigurationID, password, allow
 	return fake.result, fake.err
 }
-func (fake *fakeConfigurationApplication) UpdateConfiguration(_ context.Context, id config.ConfigurationID, update config.Update) (ConfigurationResult, error) {
+func (fake *fakeConfigurationApplication) UpdateConfiguration(_ context.Context, id connectionconfig.ID, update config.Update) (ConfigurationResult, error) {
 	fake.method, fake.id, fake.update = contract.MethodConfigurationUpdate, id, update
 	return fake.result, fake.err
 }
-func (fake *fakeConfigurationApplication) SetConfigurationPassword(_ context.Context, id config.ConfigurationID, password string, allow bool) (ConfigurationResult, error) {
+func (fake *fakeConfigurationApplication) SetConfigurationPassword(_ context.Context, id connectionconfig.ID, password string, allow bool) (ConfigurationResult, error) {
 	fake.method, fake.id, fake.password, fake.allow = contract.MethodConfigurationSetPassword, id, password, allow
 	return fake.result, fake.err
 }
-func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id config.ConfigurationID, _ string, allow ...bool) error {
+func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context, id connectionconfig.ID, _ string, allow ...bool) error {
 	fake.method, fake.id = contract.MethodConfigurationRemove, id
 	if len(allow) > 0 {
 		fake.allow = allow[0]
@@ -142,12 +144,12 @@ func (fake *fakeConfigurationApplication) RemoveConfiguration(_ context.Context,
 func completeConfigurationResult() ConfigurationResult {
 	return ConfigurationResult{
 		RuntimeAvailability: ConfigurationRuntimeAvailable,
-		Configuration: config.Configuration{
+		Configuration: connectionconfig.Configuration{
 			ConfigurationID: "campus", DisplayName: "校园网", InstitutionProfileID: "jlu",
-			Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable},
+			Username: "user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable},
 		},
 		InstitutionDisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
-		CredentialStored: true, StorageProtection: jsonfile.ProtectionProtected,
+		CredentialStored: true, StorageProtection: securefile.ProtectionProtected,
 	}
 }
 
@@ -166,7 +168,7 @@ func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.method, func(t *testing.T) {
-			fake := &fakeConfigurationApplication{result: completeConfigurationResult(), protection: jsonfile.ProtectionProtected}
+			fake := &fakeConfigurationApplication{result: completeConfigurationResult(), protection: securefile.ProtectionProtected}
 			result, publicErr := ConfigurationHandler(fake)(context.Background(), tc.method, []byte(tc.payload))
 			if publicErr != nil {
 				t.Fatal(publicErr)
@@ -198,9 +200,9 @@ func TestConfigurationHandlerMapsStableErrorsWithoutIdentifiersOrCauses(t *testi
 		code string
 		msg  string
 	}{
-		{"not found", persistence.NewFailure(persistence.FailureNotFound, errors.New(causeMarker)), contract.ErrorCodeConfigurationNotFound, "configuration not found"},
-		{"conflict", persistence.NewFailure(persistence.FailureConflict, errors.New(causeMarker)), contract.ErrorCodeConfigurationConflict, "configuration already exists"},
-		{"confirmation", persistence.NewFailure(persistence.FailurePermissionDenied, jsonfile.ErrInsecureStorageConfirmationRequired), contract.ErrorCodeInsecureStorageConfirmationRequired, "insecure storage confirmation required"},
+		{"not found", document.NewFailure(document.FailureNotFound, errors.New(causeMarker)), contract.ErrorCodeConfigurationNotFound, "configuration not found"},
+		{"conflict", document.NewFailure(document.FailureConflict, errors.New(causeMarker)), contract.ErrorCodeConfigurationConflict, "configuration already exists"},
+		{"confirmation", document.NewFailure(document.FailurePermissionDenied, securefile.ErrInsecureStorageConfirmationRequired), contract.ErrorCodeInsecureStorageConfirmationRequired, "insecure storage confirmation required"},
 		{"generic", errors.New(causeMarker), contract.ErrorCodeConfigurationOperationFailed, "configuration operation failed"},
 	}
 	for _, tc := range tests {
@@ -255,7 +257,7 @@ func TestConfigurationHandlerOverrideTypedMappingAndPrivacy(t *testing.T) {
 	ctx := context.Background()
 	private := `{"schemaVersion":1,"hostName":"private-override-marker"}`
 	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
-	fake.result.Configuration.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(private)
+	fake.result.Configuration.ProtocolContextOverride = profilevalue.ProtocolOverride(private)
 	handler := ConfigurationHandler(fake)
 	create := `{"institutionProfileId":"jlu","username":"u","password":"private-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false,"protocolContextOverride":` + private + `}`
 	raw, publicErr := handler(ctx, contract.MethodConfigurationCreate, []byte(create))
@@ -304,7 +306,7 @@ func TestConfigurationHandlerRealMissingProfileRemainsManageable(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
 	ctx := context.Background()
-	value := config.Configuration{ConfigurationID: "unavailable-profile", InstitutionProfileID: "missing-profile", Username: "saved-user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}}
+	value := connectionconfig.Configuration{ConfigurationID: "unavailable-profile", InstitutionProfileID: "missing-profile", Username: "saved-user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable}}
 	if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +414,7 @@ func TestConfigurationPaginationKeepsSnapshotAndBoundsFrames(t *testing.T) {
 	var seen []string
 	cursor := ""
 	for {
-		raw, err := configurationPage(values, jsonfile.ProtectionProtected, cursor)
+		raw, err := configurationPage(values, securefile.ProtectionProtected, cursor)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -440,11 +442,11 @@ func TestConfigurationPaginationKeepsSnapshotAndBoundsFrames(t *testing.T) {
 		}
 	}
 	values[0].Version = "changed"
-	if _, err := configurationPage(values, jsonfile.ProtectionProtected, cursor); !errors.Is(err, config.ErrVersionConflict) {
+	if _, err := configurationPage(values, securefile.ProtectionProtected, cursor); !errors.Is(err, config.ErrVersionConflict) {
 		t.Fatalf("changed snapshot did not reject continuation: %v", err)
 	}
 	values[0].DisplayName = strings.Repeat("b", contract.StateFrameLimit)
-	raw, err := configurationPage(values, jsonfile.ProtectionProtected, "")
+	raw, err := configurationPage(values, securefile.ProtectionProtected, "")
 	if err != nil {
 		t.Fatal(err)
 	}

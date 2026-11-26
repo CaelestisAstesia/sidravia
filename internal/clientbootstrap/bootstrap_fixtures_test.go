@@ -3,11 +3,12 @@ package clientbootstrap
 import (
 	"context"
 	"encoding/json"
-	"sidravia/internal/ipc/contract"
-	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 	"testing"
 	"time"
+
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/ipc/contract"
+	"sidravia/internal/launchcontract"
 )
 
 type fakeClient struct {

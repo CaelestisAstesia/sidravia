@@ -14,7 +14,7 @@
 package d520
 
 import (
-	protocol "sidravia/internal/daemon/authentication/protocol"
+	profilevalue "sidravia/internal/connection/profile"
 )
 
 // ProtocolID identifies both the existing behavior and the opt-in institution
@@ -23,4 +23,4 @@ import (
 // Run. Neither mode authenticates across Run boundaries or changes system
 // networking. Experimental password derivation extensions are unsupported;
 // encoded passwords over 32 bytes are rejected without truncation.
-const ProtocolID protocol.AuthenticationProtocolID = "drcom-5.2.0-d"
+const ProtocolID profilevalue.ProtocolID = "drcom-5.2.0-d"

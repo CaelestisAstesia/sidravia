@@ -13,7 +13,7 @@ import (
 
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/securefile"
 )
 
 func discardLogger() *slog.Logger {
@@ -67,8 +67,8 @@ func (s *inMemoryStore) PreserveSensitive(ctx context.Context, path string, data
 	return s.ReplaceSensitive(ctx, path, data, maximum, allow)
 }
 
-func (s *inMemoryStore) ProtectionStatus() jsonfile.ProtectionStatus {
-	return jsonfile.ProtectionProtected
+func (s *inMemoryStore) ProtectionStatus() securefile.ProtectionStatus {
+	return securefile.ProtectionProtected
 }
 
 func (s *inMemoryStore) wasOpened(path string) bool {

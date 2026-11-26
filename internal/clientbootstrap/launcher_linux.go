@@ -7,13 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/daemon/logging"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
+	"sidravia/internal/daemon/logging"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/launchcontract"
-	"sidravia/internal/productlayout"
 )
 
 // daemonSiblingName is the exact sibling executable name the CLI launches.

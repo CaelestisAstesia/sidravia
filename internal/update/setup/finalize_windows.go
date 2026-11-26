@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"sidravia/internal/clientbootstrap"
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/document/securefile"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/lifecycle"
 	"sidravia/internal/update/operations"
 	"sidravia/internal/update/windowsplatform"
@@ -92,12 +94,12 @@ func Finish(ctx context.Context, id string, pid uint32, identity clientbootstrap
 	if _, changed, e := store.Advance(ctx, id, operations.Applied, operations.Resuming, "", time.Now()); e != nil || !changed {
 		return errors.Join(operations.ErrConflict, e)
 	}
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.UpdateOperationRoot()
 	if e != nil {
 		return e
 	}
 	directory := filepath.Join(root, "setup", sum([]byte(strings.ToLower(r.Target.ID))), id+"-restore")
-	secure, e := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{})
+	secure, e := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if e != nil {
 		return e
 	}
@@ -147,7 +149,7 @@ func ownSeal(target, id string) (bool, error) {
 	if e = singleLink(f); e != nil {
 		return false, e
 	}
-	b, e := jsonfile.ReadLimited(f, 128)
+	b, e := jsondoc.ReadLimited(f, 128)
 	if e != nil {
 		return false, e
 	}
