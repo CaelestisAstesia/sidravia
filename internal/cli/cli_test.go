@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/ipc/contract"
 	"strings"
 	"testing"
+
+	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/terminal"
+	"sidravia/internal/ipc/contract"
 )
 
 func TestParseAuthStartRetainedMode(t *testing.T) {
@@ -433,7 +435,7 @@ func TestDaemonStopAmbiguityKeepsItsTypedSafeMessage(t *testing.T) {
 	deps := commandDependencies{
 		output: io.Discard,
 		daemonStop: func() error {
-			return fmt.Errorf("outer bootstrap context: %w", wrapSafeOperation(ambiguity, fmt.Errorf("%s: %w", privateMarker, cause)))
+			return fmt.Errorf("outer bootstrap context: %w", terminal.Failure(ambiguity, fmt.Errorf("%s: %w", privateMarker, cause)))
 		},
 	}
 	err := runCommand([]string{"daemon", "stop"}, deps)

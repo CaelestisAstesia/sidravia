@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -28,7 +29,7 @@ func TestNetworkInterfacesUsesOnlyExistingConnectionAndSafePresentation(t *testi
 	}}
 	var output bytes.Buffer
 	deps := hotListDependencies(t, client, &output)
-	deps.connection.callTimeout = time.Second
+	deps.connection.Timeout = time.Second
 	if err := runNetworkInterfaces(deps); err != nil {
 		t.Fatal(err)
 	}
@@ -50,18 +51,18 @@ func TestNetworkInterfacesUnavailableAndReadFailures(t *testing.T) {
 		return contract.NewSuccessResponse("1", json.RawMessage(`{"available":false,"revision":0,"interfaces":[]}`)), nil
 	}}
 	deps := hotListDependencies(t, client, &output)
-	deps.connection.callTimeout = time.Second
+	deps.connection.Timeout = time.Second
 	if err := runNetworkInterfaces(deps); err != nil || !strings.Contains(output.String(), "尚无已接受") {
 		t.Fatal("unavailable observation falsely represented")
 	}
 	cause := errors.New("private-cause")
-	deps.connection.acquire = func(context.Context) (daemonClient, error) { return nil, cause }
+	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) { return nil, cause }
 	if err := runNetworkInterfaces(deps); !errors.Is(err, cause) {
 		t.Fatal("connection cause lost")
 	}
 	client.call = func(string, json.RawMessage) (contract.Response, error) { return contract.Response{}, cause }
 	deps = hotListDependencies(t, client, &output)
-	deps.connection.callTimeout = time.Second
+	deps.connection.Timeout = time.Second
 	if err := runNetworkInterfaces(deps); !errors.Is(err, cause) || strings.Contains(err.Error(), cause.Error()) {
 		t.Fatal("call cause/safe error violated")
 	}

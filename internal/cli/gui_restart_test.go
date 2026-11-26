@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/ipc/contract"
 	"testing"
 	"time"
+
+	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/ipc/contract"
 )
 
 func TestGUIRestartChecksOwnerBeforeStopAndAwaitBeforeStart(t *testing.T) {
@@ -26,7 +28,7 @@ func TestGUIRestartChecksOwnerBeforeStopAndAwaitBeforeStart(t *testing.T) {
 				inspect: func() (daemonctl.ProbeResult, error) {
 					return daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &actual}}, nil
 				},
-				connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+				connect: func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
 					return &fakeDaemonClient{call: func(method string, _ json.RawMessage) (contract.Response, error) {
 						stops++
 						reachable = false
@@ -66,7 +68,7 @@ func TestGUIRestartStopFailureNeverStartsReplacement(t *testing.T) {
 		inspect: func() (daemonctl.ProbeResult, error) {
 			return daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: testRuntimeInfo(7), Status: &contract.StatusResult{Mode: "desktop", DesktopOwnerPID: &owner}}, nil
 		},
-		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+		connect: func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
 			return nil, errors.New("stop unavailable")
 		},
 	}}

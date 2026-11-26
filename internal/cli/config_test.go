@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -158,7 +160,7 @@ func TestConfigurationNonInteractiveRequirementsAreStableAndSecretFree(t *testin
 	deps := authDependencies{
 		stdin: strings.NewReader("secret\n"), stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
 		inputIsConsole:    func(io.Reader) bool { return false },
-		readStdinPassword: readPasswordStdin,
+		readStdinPassword: terminal.ReadPasswordStdin,
 	}
 	err := runConfigCreate(configCreateOptions{id: "campus", profile: "jlu", username: "user"}, deps)
 	if err == nil || strings.Contains(err.Error(), "secret") {
@@ -202,7 +204,7 @@ func TestConfigCreateSendsAutoLoginAutoReconnectDefaults(t *testing.T) {
 	}}
 	deps := hotAuthDependencies(t, connection)
 	deps.stdin = strings.NewReader("password\n")
-	deps.readStdinPassword = readPasswordStdin
+	deps.readStdinPassword = terminal.ReadPasswordStdin
 	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
 	deps.inputIsConsole = func(io.Reader) bool { return false }
 
@@ -236,7 +238,7 @@ func TestConfigCreateExplicitFlagsOverrideDefaults(t *testing.T) {
 	}}
 	deps := hotAuthDependencies(t, connection)
 	deps.stdin = strings.NewReader("password\n")
-	deps.readStdinPassword = readPasswordStdin
+	deps.readStdinPassword = terminal.ReadPasswordStdin
 	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
 	deps.inputIsConsole = func(io.Reader) bool { return false }
 
@@ -345,7 +347,7 @@ func TestConsoleDetectionRejectsNonConsoleInputs(t *testing.T) {
 		"reader":       strings.NewReader("input"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if isConsoleInput(input) {
+			if terminal.IsConsole(input) {
 				t.Fatal("non-console input reported as a console")
 			}
 		})
@@ -458,7 +460,7 @@ func TestExplicitBindingAndNoninteractiveCreateSkipNetworkQuery(t *testing.T) {
 			}}
 			deps := hotAuthDependencies(t, connection)
 			deps.stdin = strings.NewReader("\n\npassword\n")
-			deps.readStdinPassword = readPasswordStdin
+			deps.readStdinPassword = terminal.ReadPasswordStdin
 			deps.inputIsConsole = func(io.Reader) bool { return test.console }
 			deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
 			if err := runConfigCreate(test.options, deps); err != nil {
@@ -528,7 +530,7 @@ func TestInteractiveCreateSubmitsSelectedBindingAndFollowingPassword(t *testing.
 	deps.stdin = strings.NewReader("1\nchosen-password\n")
 	deps.inputIsConsole = func(io.Reader) bool { return true }
 	deps.readInteractivePassword = func(input io.Reader, _ io.Writer) (string, error) {
-		return readPasswordLine(input)
+		return terminal.ReadLine(input)
 	}
 	if err := runConfigCreate(configCreateOptions{
 		id: "campus", profile: "jlu", username: "user",
@@ -562,7 +564,7 @@ func TestConfigCreateNonInteractiveSkipsPrompts(t *testing.T) {
 	deps.stdin = strings.NewReader("")
 	var stderr bytes.Buffer
 	deps.stderr = &stderr
-	deps.readStdinPassword = readPasswordStdin
+	deps.readStdinPassword = terminal.ReadPasswordStdin
 	deps.readInteractivePassword = func(io.Reader, io.Writer) (string, error) { return "password", nil }
 	deps.inputIsConsole = func(io.Reader) bool { return false }
 
@@ -660,7 +662,7 @@ func TestConfigOverrideCreateReplaceAndClearPayloads(t *testing.T) {
 			}}
 			deps := hotAuthDependencies(t, connection)
 			deps.stdin = strings.NewReader("password\n")
-			deps.readStdinPassword = readPasswordStdin
+			deps.readStdinPassword = terminal.ReadPasswordStdin
 			deps.inputIsConsole = func(io.Reader) bool { return false }
 			if err := test.call(deps); err != nil {
 				t.Fatal(err)
@@ -689,7 +691,7 @@ func TestReadOnlyConfigAcquisitionFailureWritesNothing(t *testing.T) {
 	var output bytes.Buffer
 	deps := hotAuthDependencies(t, &fakeDaemonClient{})
 	deps.stdout = &output
-	deps.connection.acquire = func(context.Context) (daemonClient, error) { return nil, errors.New("stopped") }
+	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) { return nil, errors.New("stopped") }
 	if err := runConfigList(deps); err == nil {
 		t.Fatal("stopped config list returned nil")
 	}

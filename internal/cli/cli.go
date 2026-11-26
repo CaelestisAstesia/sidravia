@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/terminal"
 )
 
 const commandUsage = "用法错误，请运行 sidraviactl help 查看帮助"
@@ -229,7 +230,7 @@ func runCommand(args []string, deps commandDependencies) error {
 	err := root.Execute()
 	if err == nil {
 		if helpErr != nil {
-			return wrapSafeOperation("显示帮助", helpErr)
+			return terminal.Failure("显示帮助", helpErr)
 		}
 		return nil
 	}

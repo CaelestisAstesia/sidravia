@@ -2,10 +2,11 @@ package cli
 
 import (
 	"fmt"
-	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/ipc/contract"
 	"strconv"
 	"strings"
+
+	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/ipc/contract"
 )
 
 // renderDaemonStatus renders a daemon.status result as one line. Field labels

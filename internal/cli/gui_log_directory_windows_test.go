@@ -3,8 +3,9 @@
 package cli
 
 import (
-	"golang.org/x/sys/windows"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestGUILogNativeUnicodeVerbReturnAndCOMBalance(t *testing.T) {

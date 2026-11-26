@@ -5,6 +5,8 @@ import (
 	"io"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -17,28 +19,28 @@ func profileList(identity daemonctl.Identity) error {
 }
 
 func runAuthList(deps readOnlyCommandDependencies) error {
-	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodSessionList)
+	return daemonconn.With(deps.connection, func(connection daemonconn.Client) error {
+		response, err := callReadOnlyQuery(connection, deps.connection.Timeout, contract.MethodSessionList)
 		if err != nil {
-			return wrapSafeOperation("列出 Session", err)
+			return terminal.Failure("列出 Session", err)
 		}
 		result, err := decodeSessionListResult(response)
 		if err != nil {
-			return wrapSafeOperation("解码 Session 列表", err)
+			return terminal.Failure("解码 Session 列表", err)
 		}
 		return writeSessionList(deps.stdout, result)
 	})
 }
 
 func runProfileList(deps readOnlyCommandDependencies) error {
-	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodProfileList)
+	return daemonconn.With(deps.connection, func(connection daemonconn.Client) error {
+		response, err := callReadOnlyQuery(connection, deps.connection.Timeout, contract.MethodProfileList)
 		if err != nil {
-			return wrapSafeOperation("列出 Profile", err)
+			return terminal.Failure("列出 Profile", err)
 		}
 		result, err := decodeProfileListResult(response)
 		if err != nil {
-			return wrapSafeOperation("解码 Profile 列表", err)
+			return terminal.Failure("解码 Profile 列表", err)
 		}
 		return writeProfileList(deps.stdout, result)
 	})
@@ -68,10 +70,10 @@ func decodeProfileListResult(data []byte) (contract.ProfileListResult, error) {
 
 func writeSessionList(output io.Writer, result contract.SessionListResult) error {
 	p := newPresentation(output)
-	return wrapSafeOperation("写入 Session 列表", p.complete(renderSessionList(p, &result)))
+	return terminal.Failure("写入 Session 列表", p.complete(renderSessionList(p, &result)))
 }
 
 func writeProfileList(output io.Writer, result contract.ProfileListResult) error {
 	p := newPresentation(output)
-	return wrapSafeOperation("写入 Profile 列表", p.complete(renderProfileList(p, &result)))
+	return terminal.Failure("写入 Profile 列表", p.complete(renderProfileList(p, &result)))
 }

@@ -2,9 +2,10 @@ package cli
 
 import (
 	"errors"
-	"github.com/muesli/termenv"
 	"io"
 	"strings"
+
+	"github.com/muesli/termenv"
 )
 
 // presentation.go owns terminal output and is the only production file that

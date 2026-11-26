@@ -1,65 +1,46 @@
-package cli
+package terminal
 
 import (
 	"errors"
 	"io"
-
-	"sidravia/internal/connection/credential/input"
 )
 
 const maxPasswordBytes = 4096
 
-type safeOperationError struct {
+type SafeError struct {
 	label string
 	cause error
 }
 
-func (err safeOperationError) Error() string {
+func (err SafeError) Error() string {
 	return err.label
 }
 
-func (err safeOperationError) Unwrap() error {
+func (err SafeError) Unwrap() error {
 	return err.cause
 }
 
-func wrapSafeOperation(label string, cause error) error {
+func Failure(label string, cause error) error {
 	if cause == nil {
 		return nil
 	}
-	return safeOperationError{label: label, cause: cause}
+	return SafeError{label: label, cause: cause}
 }
 
-func (deps authDependencies) readValidatedPassword(fromStdin bool) (string, error) {
-	var password string
-	var err error
-	if fromStdin {
-		password, err = deps.readStdinPassword(deps.stdin)
-	} else {
-		password, err = deps.readInteractivePassword(deps.stdin, deps.stderr)
-	}
-	if err != nil {
-		return "", err
-	}
-	if err := input.ValidateNewText(password); err != nil {
-		return "", err
-	}
-	return password, nil
-}
-
-func readPasswordStdin(input io.Reader) (string, error) {
-	password, err := readPasswordLine(input)
+func ReadPasswordStdin(input io.Reader) (string, error) {
+	password, err := ReadLine(input)
 	if err != nil {
 		if errors.Is(err, errPasswordTooLong) {
 			return "", err
 		}
-		return "", wrapSafeOperation("从 stdin 读取密码", err)
+		return "", Failure("从 stdin 读取密码", err)
 	}
 	return password, nil
 }
 
 var errPasswordTooLong = errors.New("密码输入超过 4096 字节")
 
-func readPasswordLine(input io.Reader) (string, error) {
+func ReadLine(input io.Reader) (string, error) {
 	line := make([]byte, 0, maxPasswordBytes+2)
 	var one [1]byte
 	// Clear only the mutable bytes this reader owns. The returned string and
@@ -110,16 +91,16 @@ func readHiddenPassword(
 	getMode func() (uint32, error),
 	setMode func(uint32) error,
 ) (string, error) {
-	if err := writeAll(errorOutput, "密码： "); err != nil {
-		return "", wrapSafeOperation("写入密码提示", err)
+	if err := Write(errorOutput, "密码： "); err != nil {
+		return "", Failure("写入密码提示", err)
 	}
 
 	originalMode, err := getMode()
 	if err != nil {
-		return "", wrapSafeOperation("获取控制台模式", err)
+		return "", Failure("获取控制台模式", err)
 	}
 	if err := setMode(originalMode &^ echoInputFlag); err != nil {
-		return "", wrapSafeOperation("关闭控制台回显", err)
+		return "", Failure("关闭控制台回显", err)
 	}
 
 	return readPasswordWithEchoDisabled(input, errorOutput, func() error {
@@ -130,19 +111,19 @@ func readHiddenPassword(
 // The caller owns the original platform mode. Always restore it after the
 // read and newline, and retain each failure for errors.Is.
 func readPasswordWithEchoDisabled(input io.Reader, errorOutput io.Writer, restore func() error) (string, error) {
-	password, readErr := readPasswordLine(input)
-	lineBreakErr := writeAll(errorOutput, "\n")
+	password, readErr := ReadLine(input)
+	lineBreakErr := Write(errorOutput, "\n")
 	restoreErr := restore()
 
 	var resultErrors []error
 	if readErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("读取交互式密码", readErr))
+		resultErrors = append(resultErrors, Failure("读取交互式密码", readErr))
 	}
 	if lineBreakErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("写入密码换行", lineBreakErr))
+		resultErrors = append(resultErrors, Failure("写入密码换行", lineBreakErr))
 	}
 	if restoreErr != nil {
-		resultErrors = append(resultErrors, wrapSafeOperation("恢复控制台模式", restoreErr))
+		resultErrors = append(resultErrors, Failure("恢复控制台模式", restoreErr))
 	}
 	if len(resultErrors) != 0 {
 		return "", errors.Join(resultErrors...)
@@ -150,7 +131,7 @@ func readPasswordWithEchoDisabled(input io.Reader, errorOutput io.Writer, restor
 	return password, nil
 }
 
-func writeAll(writer io.Writer, value string) error {
+func Write(writer io.Writer, value string) error {
 	written, err := io.WriteString(writer, value)
 	if err != nil {
 		return err

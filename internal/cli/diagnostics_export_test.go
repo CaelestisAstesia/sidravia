@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -242,11 +243,11 @@ func TestRunDiagnosticsExportPresentationFailureLeavesCompleteFile(t *testing.T)
 	}
 }
 
-func diagnosticsExportDependencies(connection daemonClient, stdout io.Writer) readOnlyCommandDependencies {
+func diagnosticsExportDependencies(connection daemonconn.Client, stdout io.Writer) readOnlyCommandDependencies {
 	return readOnlyCommandDependencies{
-		connection: daemonConnectionDependencies{
-			acquire:     func(context.Context) (daemonClient, error) { return connection, nil },
-			callTimeout: 1,
+		connection: daemonconn.Connection{
+			Acquire: func(context.Context) (daemonconn.Client, error) { return connection, nil },
+			Timeout: 1,
 		},
 		stdout: stdout,
 	}

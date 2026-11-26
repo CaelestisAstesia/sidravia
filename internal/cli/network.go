@@ -2,11 +2,12 @@ package cli
 
 import (
 	"fmt"
-
+	"net/netip"
 	"strings"
 
-	"net/netip"
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/ipc/contract"
 )
@@ -15,17 +16,17 @@ func networkInterfaces(identity daemonctl.Identity) error {
 	return runNetworkInterfaces(defaultReadOnlyCommandDependencies(identity))
 }
 func runNetworkInterfaces(deps readOnlyCommandDependencies) error {
-	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodNetworkInterfaces)
+	return daemonconn.With(deps.connection, func(connection daemonconn.Client) error {
+		response, err := callReadOnlyQuery(connection, deps.connection.Timeout, contract.MethodNetworkInterfaces)
 		if err != nil {
-			return wrapSafeOperation("查询网卡", err)
+			return terminal.Failure("查询网卡", err)
 		}
 		result, err := contract.DecodeNetworkInterfacesResult(response)
 		if err != nil {
-			return wrapSafeOperation("解码网卡列表", err)
+			return terminal.Failure("解码网卡列表", err)
 		}
 		p := newPresentation(deps.stdout)
-		return wrapSafeOperation("写入网卡列表", p.complete(renderNetworkInterfaces(result)))
+		return terminal.Failure("写入网卡列表", p.complete(renderNetworkInterfaces(result)))
 	})
 }
 func powerShellLiteral(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }

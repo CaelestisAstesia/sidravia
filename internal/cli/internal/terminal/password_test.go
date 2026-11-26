@@ -1,4 +1,4 @@
-package cli
+package terminal
 
 import (
 	"bytes"
@@ -46,7 +46,7 @@ func TestReadPasswordClearsOwnedScratchOnEveryExit(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			reader := &retainedPasswordScratchReader{input: test.input}
-			value, err := readPasswordLine(reader)
+			value, err := ReadLine(reader)
 			if !errors.Is(err, test.failure) || value != test.want {
 				t.Fatal("password input behavior changed")
 			}
@@ -73,12 +73,12 @@ func TestReadPasswordStdinFirstLineBehavior(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := readPasswordStdin(strings.NewReader(test.input))
+			got, err := ReadPasswordStdin(strings.NewReader(test.input))
 			if err != nil {
-				t.Fatalf("readPasswordStdin = %v, want nil", err)
+				t.Fatalf("ReadPasswordStdin = %v, want nil", err)
 			}
 			if got != test.want {
-				t.Error("readPasswordStdin returned different bytes")
+				t.Error("ReadPasswordStdin returned different bytes")
 			}
 		})
 	}
@@ -91,7 +91,7 @@ func TestReadPasswordStdinBound(t *testing.T) {
 		strings.Repeat("a", maxPasswordBytes) + "\r\n",
 	}
 	for _, input := range accepted {
-		password, err := readPasswordStdin(strings.NewReader(input))
+		password, err := ReadPasswordStdin(strings.NewReader(input))
 		if err != nil {
 			t.Fatalf("boundary password rejected: %v", err)
 		}
@@ -106,7 +106,7 @@ func TestReadPasswordStdinBound(t *testing.T) {
 		strings.Repeat("a", maxPasswordBytes+1) + "\r\n",
 	}
 	for _, input := range rejected {
-		_, err := readPasswordStdin(strings.NewReader(input))
+		_, err := ReadPasswordStdin(strings.NewReader(input))
 		if !errors.Is(err, errPasswordTooLong) {
 			t.Errorf("oversize input error = %v, want password bound error", err)
 		}
@@ -118,15 +118,15 @@ func TestReadPasswordStdinBound(t *testing.T) {
 
 func TestReadPasswordStdinPreservesSafeReadCause(t *testing.T) {
 	cause := errors.New("injected read failure")
-	_, err := readPasswordStdin(errorReader{err: cause})
+	_, err := ReadPasswordStdin(errorReader{err: cause})
 	if err == nil {
-		t.Fatal("readPasswordStdin = nil, want error")
+		t.Fatal("ReadPasswordStdin = nil, want error")
 	}
 	if !errors.Is(err, cause) {
-		t.Error("readPasswordStdin did not preserve read cause")
+		t.Error("ReadPasswordStdin did not preserve read cause")
 	}
 	if err.Error() != "从 stdin 读取密码" {
-		t.Errorf("readPasswordStdin error = %q, want static operation label", err)
+		t.Errorf("ReadPasswordStdin error = %q, want static operation label", err)
 	}
 }
 
@@ -296,4 +296,21 @@ type actionWriter struct {
 func (writer actionWriter) Write(value []byte) (int, error) {
 	writer.onWrite(string(value))
 	return writer.writer.Write(value)
+}
+
+func TestPasswordPromptIsChinese(t *testing.T) {
+	var output bytes.Buffer
+	_, err := readHiddenPassword(
+		strings.NewReader("secret\n"),
+		&output,
+		0x0004,
+		func() (uint32, error) { return 0x0017, nil },
+		func(uint32) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("readHiddenPassword = %v", err)
+	}
+	if !strings.HasPrefix(output.String(), "密码： ") {
+		t.Errorf("prompt = %q, want Chinese prompt with full-width colon and trailing ASCII space", output.String())
+	}
 }

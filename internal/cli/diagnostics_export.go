@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -30,35 +32,35 @@ func newDiagnosticsExportCommand(operation func(string) error) *cobra.Command {
 }
 
 func runDiagnosticsExport(deps readOnlyCommandDependencies, path string) error {
-	return withDaemonClient(deps.connection, func(connection daemonClient) error {
-		response, err := callReadOnlyQuery(connection, deps.connection.callTimeout, contract.MethodDiagnosticsExport)
+	return daemonconn.With(deps.connection, func(connection daemonconn.Client) error {
+		response, err := callReadOnlyQuery(connection, deps.connection.Timeout, contract.MethodDiagnosticsExport)
 		if err != nil {
-			return wrapSafeOperation("导出诊断信息失败", err)
+			return terminal.Failure("导出诊断信息失败", err)
 		}
 		result, err := contract.DecodeDiagnosticsExportResult(response)
 		if err != nil {
-			return wrapSafeOperation("解码诊断信息失败", err)
+			return terminal.Failure("解码诊断信息失败", err)
 		}
 		artifact, err := contract.MarshalDiagnosticsExportResult(result)
 		if err != nil {
-			return wrapSafeOperation("编码诊断信息失败", err)
+			return terminal.Failure("编码诊断信息失败", err)
 		}
 		if len(artifact) > contract.MaximumDiagnosticExportBytes {
-			return wrapSafeOperation("诊断文件超过大小限制", errors.New("diagnostic export exceeds size limit"))
+			return terminal.Failure("诊断文件超过大小限制", errors.New("diagnostic export exceeds size limit"))
 		}
 		artifact = append(artifact, '\n')
 
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err != nil {
-			return wrapSafeOperation("无法创建诊断文件", err)
+			return terminal.Failure("无法创建诊断文件", err)
 		}
 		if err := writeOwnedArtifact(file, artifact); err != nil {
-			return wrapSafeOperation("诊断文件写入失败，文件可能不完整", err)
+			return terminal.Failure("诊断文件写入失败，文件可能不完整", err)
 		}
 
 		message := "诊断信息已写入：" + sanitizeDynamicText(path) + "\n"
 		if err := newPresentation(deps.stdout).complete(message); err != nil {
-			return wrapSafeOperation("文件已写入，但提示输出失败", err)
+			return terminal.Failure("文件已写入，但提示输出失败", err)
 		}
 		return nil
 	})

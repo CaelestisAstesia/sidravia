@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
@@ -30,11 +31,11 @@ func safeAuthWatchFailure(message string, cause error) error {
 }
 
 func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
-	if deps.connection.acquire == nil {
+	if deps.connection.Acquire == nil {
 		return safeAuthWatchFailure("无法连接已有 daemon；请确认 daemon 已启动", errors.New("missing read-only acquisition"))
 	}
-	acquireCtx, cancelAcquire := context.WithTimeout(ctx, deps.connection.callTimeout)
-	connection, err := deps.connection.acquire(acquireCtx)
+	acquireCtx, cancelAcquire := context.WithTimeout(ctx, deps.connection.Timeout)
+	connection, err := deps.connection.Acquire(acquireCtx)
 	acquireContextErr := acquireCtx.Err()
 	acquireCause := context.Cause(acquireCtx)
 	cancelAcquire()
@@ -50,7 +51,7 @@ func runAuthWatch(ctx context.Context, deps readOnlyCommandDependencies) error {
 		return errors.Join(safeAuthWatchFailure("当前 daemon 不支持实时状态监听", errAuthWatchUnavailable), closeAuthWatchConnection(connection))
 	}
 
-	ackCtx, cancelAck := context.WithTimeout(ctx, deps.connection.callTimeout)
+	ackCtx, cancelAck := context.WithTimeout(ctx, deps.connection.Timeout)
 	bootstrap, stream, subscribeErr := source.SubscribeStateEvents(ackCtx)
 	ackContextErr := ackCtx.Err()
 	ackCause := context.Cause(ackCtx)
@@ -213,7 +214,7 @@ func closeAuthWatchStream(stream contract.StateEventStream) error {
 	return nil
 }
 
-func closeAuthWatchConnection(connection daemonClient) error {
+func closeAuthWatchConnection(connection daemonconn.Client) error {
 	if connection == nil {
 		return nil
 	}

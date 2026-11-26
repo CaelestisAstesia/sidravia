@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
-	"github.com/muesli/termenv"
-	"sidravia/internal/ipc/contract"
 	"testing"
+
+	"github.com/muesli/termenv"
+
+	"sidravia/internal/ipc/contract"
 )
 
 func TestSessionStateMappings(t *testing.T) {

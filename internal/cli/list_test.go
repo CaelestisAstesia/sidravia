@@ -8,17 +8,18 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
-func hotListDependencies(t *testing.T, connection daemonClient, output *bytes.Buffer) readOnlyCommandDependencies {
+func hotListDependencies(t *testing.T, connection daemonconn.Client, output *bytes.Buffer) readOnlyCommandDependencies {
 	t.Helper()
 	return readOnlyCommandDependencies{
-		connection: daemonConnectionDependencies{
-			acquire: func(_ context.Context) (daemonClient, error) {
+		connection: daemonconn.Connection{
+			Acquire: func(_ context.Context) (daemonconn.Client, error) {
 				return connection, nil
 			},
-			callTimeout: 1,
+			Timeout: 1,
 		},
 		stdout: output,
 	}
@@ -275,7 +276,7 @@ func TestListCommandsDoNotCallDaemonStop(t *testing.T) {
 func TestReadOnlyListAcquisitionFailureWritesNothing(t *testing.T) {
 	var output bytes.Buffer
 	deps := hotListDependencies(t, &fakeDaemonClient{}, &output)
-	deps.connection.acquire = func(context.Context) (daemonClient, error) { return nil, errors.New("stopped") }
+	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) { return nil, errors.New("stopped") }
 	if err := runAuthList(deps); err == nil {
 		t.Fatal("stopped list returned nil")
 	}

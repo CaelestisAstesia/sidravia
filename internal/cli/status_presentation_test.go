@@ -2,10 +2,12 @@ package cli
 
 import (
 	"bytes"
-	"github.com/muesli/termenv"
-	"sidravia/internal/ipc/contract"
 	"strings"
 	"testing"
+
+	"github.com/muesli/termenv"
+
+	"sidravia/internal/ipc/contract"
 )
 
 func TestRenderSessionRemovedSanitizesID(t *testing.T) {

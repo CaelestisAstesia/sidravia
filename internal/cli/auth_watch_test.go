@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
 )
@@ -64,16 +65,16 @@ func (connection *authWatchTestPlainConnection) Close() error {
 	return nil
 }
 
-func authWatchTestDependencies(connection daemonClient, output io.Writer) readOnlyCommandDependencies {
+func authWatchTestDependencies(connection daemonconn.Client, output io.Writer) readOnlyCommandDependencies {
 	return readOnlyCommandDependencies{
-		connection: daemonConnectionDependencies{
-			acquire: func(ctx context.Context) (daemonClient, error) {
+		connection: daemonconn.Connection{
+			Acquire: func(ctx context.Context) (daemonconn.Client, error) {
 				if _, ok := ctx.Deadline(); !ok {
 					return nil, errors.New("acquisition missing deadline")
 				}
 				return connection, nil
 			},
-			callTimeout: time.Second,
+			Timeout: time.Second,
 		},
 		stdout: output,
 	}
@@ -274,9 +275,9 @@ func TestRunAuthWatchAcquisitionAndACKFailuresKeepCausesSafe(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		cause := errors.New("private acquisition marker")
-		deps := readOnlyCommandDependencies{connection: daemonConnectionDependencies{
-			callTimeout: time.Second,
-			acquire: func(ctx context.Context) (daemonClient, error) {
+		deps := readOnlyCommandDependencies{connection: daemonconn.Connection{
+			Timeout: time.Second,
+			Acquire: func(ctx context.Context) (daemonconn.Client, error) {
 				if !errors.Is(ctx.Err(), context.Canceled) {
 					t.Fatalf("acquire context error = %v", ctx.Err())
 				}

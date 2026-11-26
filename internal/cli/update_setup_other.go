@@ -4,6 +4,7 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+
 	"sidravia/internal/background/daemonctl"
 )
 

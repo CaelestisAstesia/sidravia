@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/connection/credential/input"
 	"sidravia/internal/ipc/contract"
 )
@@ -162,7 +164,7 @@ func configShow(identity daemonctl.Identity, id string) error {
 
 func defaultReadOnlyAuthDependencies(identity daemonctl.Identity) authDependencies {
 	deps := defaultAuthDependencies(identity)
-	deps.connection = defaultReadOnlyDaemonConnectionDependencies(identity)
+	deps.connection = daemonconn.Existing(identity)
 	return deps
 }
 func configCreate(identity daemonctl.Identity, options configCreateOptions) error {
@@ -178,10 +180,10 @@ func configRemove(identity daemonctl.Identity, id string, yes, allow bool) error
 	return runConfigRemove(id, yes, defaultAuthDependencies(identity), allow)
 }
 
-func callConfiguration(deps authDependencies, connection daemonClient, method string, payload any) (json.RawMessage, error) {
+func callConfiguration(deps authDependencies, connection daemonconn.Client, method string, payload any) (json.RawMessage, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return nil, wrapSafeOperation("编码配置请求", err)
+		return nil, terminal.Failure("编码配置请求", err)
 	}
 	// Clear the CLI-owned wire bytes after the synchronous call on all exits.
 	// This does not erase immutable password strings or transport copies.
@@ -190,7 +192,7 @@ func callConfiguration(deps authDependencies, connection daemonClient, method st
 	defer cancel()
 	response, err := connection.Call(ctx, method, data)
 	if err != nil {
-		return nil, wrapSafeOperation("调用配置操作", err)
+		return nil, terminal.Failure("调用配置操作", err)
 	}
 	if !response.OK {
 		code := ""
@@ -206,7 +208,7 @@ func callConfiguration(deps authDependencies, connection daemonClient, method st
 }
 
 func runConfigList(deps authDependencies) error {
-	return withAuthClient(deps, func(connection daemonClient) error {
+	return withAuthClient(deps, func(connection daemonconn.Client) error {
 		var result contract.ConfigurationListResult
 		cursors := make(map[string]bool)
 		cursor := ""
@@ -217,7 +219,7 @@ func runConfigList(deps authDependencies) error {
 			}
 			page, err := decodeConfigurationList(raw)
 			if err != nil {
-				return wrapSafeOperation("解码配置列表", err)
+				return terminal.Failure("解码配置列表", err)
 			}
 			result.StorageProtection = page.StorageProtection
 			result.Configurations = append(result.Configurations, page.Configurations...)
@@ -233,14 +235,14 @@ func runConfigList(deps authDependencies) error {
 	})
 }
 func runConfigShow(id string, deps authDependencies) error {
-	return withAuthClient(deps, func(connection daemonClient) error {
+	return withAuthClient(deps, func(connection daemonconn.Client) error {
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationGet, contract.ConfigurationIDPayload{ConfigurationID: id})
 		if err != nil {
 			return err
 		}
 		result, err := decodeConfiguration(raw)
 		if err != nil {
-			return wrapSafeOperation("解码配置", err)
+			return terminal.Failure("解码配置", err)
 		}
 		return writeConfiguration(deps.stdout, result)
 	})
@@ -264,27 +266,27 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		return errors.New("非交互式创建需要 --id、--profile、--username 和 --password-stdin")
 	}
 	if options.allowInsecure {
-		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
-			return wrapSafeOperation("写入存储警告", err)
+		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
+			return terminal.Failure("写入存储警告", err)
 		}
 	}
-	return withAuthClient(deps, func(connection daemonClient) error {
+	return withAuthClient(deps, func(connection daemonconn.Client) error {
 		var err error
 		if interactive {
 			if options.id == "" {
-				options.id, err = readPromptLine(deps.stdin, deps.stderr, "配置 ID：")
+				options.id, err = terminal.ReadPrompt(deps.stdin, deps.stderr, "配置 ID：")
 			}
 			if err == nil && options.profile == "" {
 				options.profile, err = selectProfile(deps, connection)
 			}
 			if err == nil && options.username == "" {
-				options.username, err = readCredentialPrompt(deps.stdin, deps.stderr, "账号：")
+				options.username, err = terminal.ReadCredential(deps.stdin, deps.stderr, "账号：")
 			}
 			if err == nil && !options.autoLoginExplicit {
-				options.autoLogin, err = readConfirmation(deps.stdin, deps.stderr, "自动登录？[y/N] ")
+				options.autoLogin, err = terminal.Confirm(deps.stdin, deps.stderr, "自动登录？[y/N] ")
 			}
 			if err == nil && !options.autoReconnectExplicit {
-				options.autoReconnect, err = readBooleanPrompt(deps.stdin, deps.stderr, "自动重连？[Y/n] ", true)
+				options.autoReconnect, err = terminal.ReadBool(deps.stdin, deps.stderr, "自动重连？[Y/n] ", true)
 			}
 		}
 		if err != nil {
@@ -314,13 +316,13 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 			}
 			list, decodeErr := decodeConfigurationList(raw)
 			if decodeErr != nil {
-				return wrapSafeOperation("解码配置列表", decodeErr)
+				return terminal.Failure("解码配置列表", decodeErr)
 			}
 			if list.StorageProtection == "unprotected" {
-				if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
-					return wrapSafeOperation("写入存储警告", err)
+				if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
+					return terminal.Failure("写入存储警告", err)
 				}
-				options.allowInsecure, err = readConfirmation(deps.stdin, deps.stderr, "仍要保存？[y/N] ")
+				options.allowInsecure, err = terminal.Confirm(deps.stdin, deps.stderr, "仍要保存？[y/N] ")
 				if err != nil || !options.allowInsecure {
 					if err != nil {
 						return err
@@ -340,7 +342,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		}
 		result, err := decodeConfiguration(raw)
 		if err != nil {
-			return wrapSafeOperation("解码配置", err)
+			return terminal.Failure("解码配置", err)
 		}
 		return writeConfiguration(deps.stdout, result)
 	})
@@ -366,11 +368,11 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		return err
 	}
 	if options.allowInsecure {
-		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
-			return wrapSafeOperation("写入存储警告", err)
+		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
+			return terminal.Failure("写入存储警告", err)
 		}
 	}
-	return withAuthClient(deps, func(connection daemonClient) error {
+	return withAuthClient(deps, func(connection daemonconn.Client) error {
 		// Bare updates prompt only after the persisted record is read and validated.
 		if options.name == nil && options.profile == nil && options.username == nil && options.autoLogin == nil && options.autoReconnect == nil && policy == nil && !options.protocolOverrideFileSet && !options.clearProtocolOverride {
 			if deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin) {
@@ -382,9 +384,9 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 			}
 			current, err := decodeConfiguration(raw)
 			if err != nil {
-				return wrapSafeOperation("解码配置", err)
+				return terminal.Failure("解码配置", err)
 			}
-			name, err := readPromptLine(deps.stdin, deps.stderr, "显示名称（空=保留，-=清除）：")
+			name, err := terminal.ReadPrompt(deps.stdin, deps.stderr, "显示名称（空=保留，-=清除）：")
 			if err != nil {
 				return err
 			}
@@ -407,12 +409,12 @@ func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 		}
 		result, err := decodeConfiguration(raw)
 		if err != nil {
-			return wrapSafeOperation("解码配置", err)
+			return terminal.Failure("解码配置", err)
 		}
 		if err := writeConfiguration(deps.stdout, result); err != nil {
 			return err
 		}
-		return writeAll(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
+		return terminal.Write(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
 	})
 }
 func runConfigSetPassword(options configPasswordOptions, deps authDependencies) error {
@@ -421,51 +423,51 @@ func runConfigSetPassword(options configPasswordOptions, deps authDependencies) 
 		return errors.New("非交互式设置密码需要 --password-stdin")
 	}
 	if options.allowInsecure {
-		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
-			return wrapSafeOperation("写入存储警告", err)
+		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
+			return terminal.Failure("写入存储警告", err)
 		}
 	}
 	password, err := deps.readValidatedPassword(options.passwordStdin)
 	if err != nil {
 		return err
 	}
-	return withAuthClient(deps, func(connection daemonClient) error {
+	return withAuthClient(deps, func(connection daemonconn.Client) error {
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationSetPassword, contract.ConfigurationSetPasswordPayload{ConfigurationID: options.id, Password: password, AllowInsecureStorage: options.allowInsecure})
 		if err != nil {
 			return err
 		}
 		result, err := decodeConfiguration(raw)
 		if err != nil {
-			return wrapSafeOperation("解码配置", err)
+			return terminal.Failure("解码配置", err)
 		}
 		if err := writeConfiguration(deps.stdout, result); err != nil {
 			return err
 		}
-		return writeAll(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
+		return terminal.Write(deps.stdout, "认证参数变更已清理关联旧会话；下次连接使用新配置。\n")
 	})
 }
 func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) error {
 	permitted := len(allow) > 0 && allow[0]
 	if permitted {
-		if err := writeAll(deps.stderr, insecureStorageWarning); err != nil {
-			return wrapSafeOperation("写入存储警告", err)
+		if err := terminal.Write(deps.stderr, insecureStorageWarning); err != nil {
+			return terminal.Failure("写入存储警告", err)
 		}
 	}
 	if !yes && (deps.inputIsConsole == nil || !deps.inputIsConsole(deps.stdin)) {
 		return errors.New("非交互式删除需要 --yes")
 	}
-	return withAuthClient(deps, func(connection daemonClient) error {
+	return withAuthClient(deps, func(connection daemonconn.Client) error {
 		raw, err := callConfiguration(deps, connection, contract.MethodConfigurationGet, contract.ConfigurationIDPayload{ConfigurationID: id})
 		if err != nil {
 			return err
 		}
 		current, err := decodeConfiguration(raw)
 		if err != nil {
-			return wrapSafeOperation("解码配置", err)
+			return terminal.Failure("解码配置", err)
 		}
 		if !yes {
 			prompt := "确认删除配置 “" + sanitizeDynamicText(id) + "”？关联 Session、认证配置和已保存密码将被删除。[y/N] "
-			confirmed, err := readConfirmation(deps.stdin, deps.stderr, prompt)
+			confirmed, err := terminal.Confirm(deps.stdin, deps.stderr, prompt)
 			if err != nil {
 				return err
 			}
@@ -481,9 +483,9 @@ func runConfigRemove(id string, yes bool, deps authDependencies, allow ...bool) 
 		}
 		result, err := contract.DecodeConfigurationRemoveResult(raw, id)
 		if err != nil {
-			return wrapSafeOperation("解码配置删除结果", err)
+			return terminal.Failure("解码配置删除结果", err)
 		}
-		return writeAll(deps.stdout, "配置已删除："+sanitizeDynamicText(result.ConfigurationID)+"\n")
+		return terminal.Write(deps.stdout, "配置已删除："+sanitizeDynamicText(result.ConfigurationID)+"\n")
 	})
 }
 

@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"sidravia/internal/background/daemonctl"
 	"testing"
+
+	"sidravia/internal/background/daemonctl"
 )
 
 func TestUpdateDelegatesOnlyExplicitArguments(t *testing.T) {

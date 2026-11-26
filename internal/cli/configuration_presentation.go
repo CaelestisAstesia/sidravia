@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"io"
-	"sidravia/internal/ipc/contract"
 	"strings"
+
+	"sidravia/internal/cli/internal/terminal"
+	"sidravia/internal/ipc/contract"
 )
 
 // renderProfileList renders a complete Profile list block. The heading and
@@ -93,13 +95,13 @@ func renderConfiguration(result contract.ConfigurationResult) string {
 
 func writeConfiguration(output io.Writer, result contract.ConfigurationResult) error {
 	p := newPresentation(output)
-	return wrapSafeOperation("写入配置响应", p.complete(renderConfiguration(result)))
+	return terminal.Failure("写入配置响应", p.complete(renderConfiguration(result)))
 }
 
 func writeConfigurationList(output io.Writer, result contract.ConfigurationListResult) error {
 	if len(result.Configurations) == 0 {
 		p := newPresentation(output)
-		return wrapSafeOperation("写入配置列表", p.complete("尚未保存认证配置。\n下一步：运行 sidraviactl config create 创建认证配置。\n"))
+		return terminal.Failure("写入配置列表", p.complete("尚未保存认证配置。\n下一步：运行 sidraviactl config create 创建认证配置。\n"))
 	}
 	var block strings.Builder
 	for index, value := range result.Configurations {
@@ -109,7 +111,7 @@ func writeConfigurationList(output io.Writer, result contract.ConfigurationListR
 		block.WriteString(renderConfiguration(value))
 	}
 	p := newPresentation(output)
-	return wrapSafeOperation("写入配置列表", p.complete(block.String()))
+	return terminal.Failure("写入配置列表", p.complete(block.String()))
 }
 
 func configurationAvailabilityText(value string) string {

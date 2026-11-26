@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -25,7 +26,7 @@ func daemonStatusResponse(t *testing.T) contract.Response {
 func testDaemonOperations(result daemonctl.ProbeResult, inspectErr error) daemonOperations {
 	return daemonOperations{
 		inspect: func() (daemonctl.ProbeResult, error) { return result, inspectErr },
-		connect: func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+		connect: func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
 			return nil, errors.New("unexpected connect")
 		},
 		reachable: func(contract.RuntimeInfo) bool { return false },
@@ -89,7 +90,7 @@ func TestDaemonStopTargetsContactedGeneration(t *testing.T) {
 	info := testRuntimeInfo(100)
 	stopped, stopCalls := false, 0
 	ops := testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: info, Status: &contract.StatusResult{Mode: "headless"}}, nil)
-	ops.connect = func(_ context.Context, got contract.RuntimeInfo) (daemonClient, error) {
+	ops.connect = func(_ context.Context, got contract.RuntimeInfo) (daemonconn.Client, error) {
 		if got.PID != info.PID {
 			t.Fatalf("PID=%d", got.PID)
 		}
@@ -116,7 +117,7 @@ func TestDaemonStopAndRestartRejectNonHeadlessBeforeDispatch(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			connects, starts := 0, 0
 			ops := testDaemonOperations(daemonctl.ProbeResult{State: daemonctl.ProbeReachable, Info: info, Status: status}, nil)
-			ops.connect = func(context.Context, contract.RuntimeInfo) (daemonClient, error) {
+			ops.connect = func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error) {
 				connects++
 				return nil, errors.New("unexpected")
 			}

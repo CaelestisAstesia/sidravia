@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -288,14 +289,14 @@ func successSessionStartResponse(t *testing.T, outcome string, result contract.S
 	return contract.NewSuccessResponse("1", payload)
 }
 
-func hotAuthDependencies(t *testing.T, connection daemonClient) authDependencies {
+func hotAuthDependencies(t *testing.T, connection daemonconn.Client) authDependencies {
 	t.Helper()
 	return authDependencies{
-		connection: daemonConnectionDependencies{
-			acquire: func(context.Context) (daemonClient, error) {
+		connection: daemonconn.Connection{
+			Acquire: func(context.Context) (daemonconn.Client, error) {
 				return connection, nil
 			},
-			callTimeout: time.Second,
+			Timeout: time.Second,
 		},
 		stdin:  strings.NewReader(""),
 		stdout: io.Discard,
@@ -322,7 +323,7 @@ func TestAuthDiscoveryReturnsHotClientAndClosesIt(t *testing.T) {
 	}
 	deps := hotAuthDependencies(t, connection)
 	acquires := 0
-	deps.connection.acquire = func(context.Context) (daemonClient, error) {
+	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) {
 		acquires++
 		return connection, nil
 	}
@@ -360,7 +361,7 @@ func TestAuthBootstrapFailureDoesNotDispatchSession(t *testing.T) {
 
 	deps := hotAuthDependencies(t, freshClient)
 	deferred := true
-	deps.connection.acquire = func(context.Context) (daemonClient, error) {
+	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) {
 		if deferred {
 			deferred = false
 			return nil, errors.New("bootstrap unavailable")
@@ -808,7 +809,7 @@ func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing
 	var output bytes.Buffer
 	deps := hotAuthDependencies(t, &fakeDaemonClient{})
 	deps.stdout = &output
-	deps.connection.acquire = func(context.Context) (daemonClient, error) {
+	deps.connection.Acquire = func(context.Context) (daemonconn.Client, error) {
 		return nil, errors.New("private-runtime-marker")
 	}
 	err := runAuthStatus("session-1", deps)
@@ -821,7 +822,7 @@ func TestReadOnlyConnectionFailureUsesFixedGuidanceAndNoSuccessOutput(t *testing
 }
 
 func TestBindingFlagsRejectBeforeDaemonOrPassword(t *testing.T) {
-	deps := authDependencies{connection: daemonConnectionDependencies{acquire: func(context.Context) (daemonClient, error) {
+	deps := authDependencies{connection: daemonconn.Connection{Acquire: func(context.Context) (daemonconn.Client, error) {
 		t.Fatal("invalid binding acquired daemon")
 		return nil, nil
 	}}, readStdinPassword: func(io.Reader) (string, error) { t.Fatal("invalid binding read password"); return "", nil }}

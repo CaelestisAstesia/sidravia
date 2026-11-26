@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
+
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/serviceswitch"
 	"sidravia/internal/installationmanager"

@@ -4,10 +4,11 @@ package cli
 
 import (
 	"fmt"
-	"golang.org/x/sys/windows"
 	"runtime"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 var guiLogOle32 = windows.NewLazySystemDLL("ole32.dll")

@@ -1,6 +1,6 @@
 //go:build linux
 
-package cli
+package terminal
 
 import (
 	"errors"
@@ -20,19 +20,19 @@ type termiosSetter func(fd int, req uint, value *unix.Termios) error
 
 const linuxNonTerminalMessage = "交互式密码输入需要终端；请使用 --password-stdin"
 
-// readInteractivePassword reads a hidden password from an interactive Linux
+// ReadPassword reads a hidden password from an interactive Linux
 // terminal. It accepts an *os.File terminal, saves the complete termios state,
 // prints the existing `密码： ` prompt to stderr, clears only ECHO, reads
-// through readPasswordLine, prints one newline, then restores the exact
+// through ReadLine, prints one newline, then restores the exact
 // original state. Read, newline and restore failures are joined so errors.Is
 // can observe every cause. A non-file or non-terminal input returns a fixed
 // Chinese instruction to use --password-stdin without reading password bytes
 // or echoing a secret.
-func readInteractivePassword(input io.Reader, errorOutput io.Writer) (string, error) {
+func ReadPassword(input io.Reader, errorOutput io.Writer) (string, error) {
 	return readInteractivePasswordWith(input, errorOutput, unix.IoctlGetTermios, unix.IoctlSetTermios)
 }
 
-func isConsoleInput(input io.Reader) bool {
+func IsConsole(input io.Reader) bool {
 	file, ok := input.(*os.File)
 	if !ok {
 		return false
@@ -53,14 +53,14 @@ func readInteractivePasswordWith(input io.Reader, errorOutput io.Writer, get ter
 		return "", errors.New(linuxNonTerminalMessage)
 	}
 
-	if err := writeAll(errorOutput, "密码： "); err != nil {
-		return "", wrapSafeOperation("写入密码提示", err)
+	if err := Write(errorOutput, "密码： "); err != nil {
+		return "", Failure("写入密码提示", err)
 	}
 
 	modified := *original
 	modified.Lflag &^= unix.ECHO
 	if err := set(fd, unix.TCSETS, &modified); err != nil {
-		return "", wrapSafeOperation("关闭控制台回显", err)
+		return "", Failure("关闭控制台回显", err)
 	}
 
 	return readPasswordWithEchoDisabled(input, errorOutput, func() error {

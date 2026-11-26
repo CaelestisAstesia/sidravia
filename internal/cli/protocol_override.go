@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -20,11 +21,11 @@ func loadProtocolContextOverride(path string, supplied bool) (json.RawMessage, e
 		return nil, nil
 	}
 	if path == "" || containsNUL(path) {
-		return nil, wrapSafeOperation(protocolOverrideFileError, errors.New("invalid override file path"))
+		return nil, terminal.Failure(protocolOverrideFileError, errors.New("invalid override file path"))
 	}
 	file, openErr := os.Open(path)
 	if openErr != nil {
-		return nil, wrapSafeOperation(protocolOverrideFileError, openErr)
+		return nil, terminal.Failure(protocolOverrideFileError, openErr)
 	}
 	return readProtocolContextOverride(file)
 }
@@ -35,11 +36,11 @@ func readProtocolContextOverride(file io.ReadCloser) (json.RawMessage, error) {
 	data, readErr := io.ReadAll(io.LimitReader(file, contract.MaximumProtocolContextOverrideBytes+1))
 	closeErr := file.Close()
 	if readErr != nil || closeErr != nil {
-		return nil, wrapSafeOperation(protocolOverrideFileError, errors.Join(readErr, closeErr))
+		return nil, terminal.Failure(protocolOverrideFileError, errors.Join(readErr, closeErr))
 	}
 	validated, validateErr := contract.DecodeProtocolContextOverride(data)
 	if validateErr != nil {
-		return nil, wrapSafeOperation(protocolOverrideFileError, validateErr)
+		return nil, terminal.Failure(protocolOverrideFileError, validateErr)
 	}
 	return json.RawMessage(validated), nil
 }

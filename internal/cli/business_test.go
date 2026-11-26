@@ -3,9 +3,10 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"sidravia/internal/ipc/contract"
 	"strings"
 	"testing"
+
+	"sidravia/internal/ipc/contract"
 )
 
 func TestAuthBusinessReadOnlyAndTerminalSafe(t *testing.T) {

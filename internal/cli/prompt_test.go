@@ -8,13 +8,15 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"testing/iotest"
 
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
 func TestReadConfirmationDefaultsNo(t *testing.T) {
 	var output bytes.Buffer
-	ok, err := readConfirmation(strings.NewReader("\n"), &output, "确认？")
+	ok, err := terminal.Confirm(strings.NewReader("\n"), &output, "确认？")
 	if err != nil || ok || output.String() != "确认？" {
 		t.Fatalf("result = %v %v %q", ok, err, output.String())
 	}
@@ -27,16 +29,16 @@ func TestReadConfirmationAcceptsExplicitAnswersAndRejectsInvalidOrEOF(t *testing
 	}{
 		{"y\n", true}, {"YES\n", true}, {"n\n", false}, {"No\n", false}, {"\n", false},
 	} {
-		got, err := readConfirmation(strings.NewReader(test.input), io.Discard, "确认？")
+		got, err := terminal.Confirm(strings.NewReader(test.input), io.Discard, "确认？")
 		if err != nil || got != test.want {
 			t.Fatalf("input %q = %t, %v", test.input, got, err)
 		}
 	}
-	if _, err := readConfirmation(strings.NewReader("maybe\n"), io.Discard, "确认？"); err == nil {
+	if _, err := terminal.Confirm(strings.NewReader("maybe\n"), io.Discard, "确认？"); err == nil {
 		t.Fatal("invalid confirmation accepted")
 	}
 	cause := errors.New("read failed")
-	if _, err := readConfirmation(errorReader{err: cause}, io.Discard, "确认？"); !errors.Is(err, cause) {
+	if _, err := terminal.Confirm(iotest.ErrReader(cause), io.Discard, "确认？"); !errors.Is(err, cause) {
 		t.Fatalf("read cause lost: %v", err)
 	}
 }
@@ -84,7 +86,7 @@ func TestReadBooleanPromptDefaultsAndExplicit(t *testing.T) {
 		{"invalid", "maybe\n", true, false, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := readBooleanPrompt(strings.NewReader(test.input), io.Discard, "提示", test.def)
+			got, err := terminal.ReadBool(strings.NewReader(test.input), io.Discard, "提示", test.def)
 			if test.wantErr {
 				if err == nil {
 					t.Fatal("expected error")
@@ -114,7 +116,7 @@ func TestSelectNetworkBindingDefaultsWhenNoObservedFactsExist(t *testing.T) {
 		if err != nil || policy.Mode != automaticNetworkBindingPolicy {
 			t.Fatalf("selection %q = %#v, %v", selection, policy, err)
 		}
-		password, err := readPasswordLine(deps.stdin)
+		password, err := terminal.ReadLine(deps.stdin)
 		if err != nil || password != "password" {
 			t.Fatalf("following password = %q, %v", password, err)
 		}
@@ -160,7 +162,7 @@ func TestSelectNetworkBindingUsesSortedExactBindablePairs(t *testing.T) {
 	if first < 0 || second <= first || third <= second || strings.Contains(text, "ID：down") || strings.Contains(text, "ID：unbound") || strings.Contains(text, "127.0.0.1/32") {
 		t.Fatalf("choices are not filtered, sorted and deduplicated: %q", text)
 	}
-	password, err := readPasswordLine(deps.stdin)
+	password, err := terminal.ReadLine(deps.stdin)
 	if err != nil || password != "password" {
 		t.Fatalf("following password = %q, %v", password, err)
 	}

@@ -5,6 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"sidravia/internal/cli/internal/terminal"
 )
 
 func newHelpCommand(root *cobra.Command) *cobra.Command {
@@ -363,5 +365,5 @@ func renderHelpNode(p *presentation, node helpNode) string {
 
 func renderHelpCompletion(cmd *cobra.Command) error {
 	p := newPresentation(cmd.OutOrStdout())
-	return wrapSafeOperation("显示帮助", p.complete(renderHelp(p, cmd)))
+	return terminal.Failure("显示帮助", p.complete(renderHelp(p, cmd)))
 }

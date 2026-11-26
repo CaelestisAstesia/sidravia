@@ -1,6 +1,6 @@
 //go:build linux
 
-package cli
+package terminal
 
 import (
 	"bytes"
@@ -75,7 +75,7 @@ func TestReadInteractivePasswordLinuxNonTerminalReturnsInstruction(t *testing.T)
 			t.Errorf("output = %q, want empty for non-terminal", output.String())
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("non-terminal input blocked; readPasswordLine likely called")
+		t.Fatal("non-terminal input blocked; ReadLine likely called")
 	}
 }
 
@@ -171,7 +171,7 @@ func TestReadInteractivePasswordLinuxDisableFailureDoesNotRead(t *testing.T) {
 			t.Errorf("err = %v, want disable cause", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("disable failure blocked; readPasswordLine likely called")
+		t.Fatal("disable failure blocked; ReadLine likely called")
 	}
 }
 

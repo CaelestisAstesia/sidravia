@@ -1,10 +1,12 @@
 package cli
 
 import (
-	"github.com/spf13/cobra"
 	"io"
-	"sidravia/internal/background/daemonctl"
 	"strconv"
+
+	"github.com/spf13/cobra"
+
+	"sidravia/internal/background/daemonctl"
 )
 
 // runGUIRestart refuses a foreign owner before sending any stop request.

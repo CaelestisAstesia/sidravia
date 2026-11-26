@@ -3,11 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/cobra"
 	"io"
+	"time"
+
+	"github.com/spf13/cobra"
+
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/update/lifecycle"
-	"time"
 )
 
 // Fixed stages only; no URL, script, command or arbitrary output path.

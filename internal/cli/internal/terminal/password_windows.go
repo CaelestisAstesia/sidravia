@@ -1,6 +1,6 @@
 //go:build windows
 
-package cli
+package terminal
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func readInteractivePassword(input io.Reader, errorOutput io.Writer) (string, error) {
+func ReadPassword(input io.Reader, errorOutput io.Writer) (string, error) {
 	file, ok := input.(*os.File)
 	if !ok || file != os.Stdin {
 		return "", errors.New("交互式密码输入需要 Windows 控制台；请使用 --password-stdin")
@@ -34,7 +34,7 @@ func readInteractivePassword(input io.Reader, errorOutput io.Writer) (string, er
 	)
 }
 
-func isConsoleInput(input io.Reader) bool {
+func IsConsole(input io.Reader) bool {
 	file, ok := input.(*os.File)
 	if !ok {
 		return false

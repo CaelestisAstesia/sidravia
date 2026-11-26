@@ -11,6 +11,8 @@ import (
 
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/serviceswitch"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -51,17 +53,17 @@ func daemonCommandError(command string, err error) error {
 		return nil
 	}
 	if errors.Is(err, daemonctl.ErrModeConflict) {
-		return wrapSafeOperation(daemonctl.ErrModeConflict.Error(), err)
+		return terminal.Failure(daemonctl.ErrModeConflict.Error(), err)
 	}
 	if errors.Is(err, daemonctl.ErrIncompatibleGeneration) {
-		return wrapSafeOperation(daemonIncompatibleMessage, err)
+		return terminal.Failure(daemonIncompatibleMessage, err)
 	}
 	if daemonctl.IsReadinessUnconfirmed(err) {
-		return wrapSafeOperation(daemonReadinessMessage, err)
+		return terminal.Failure(daemonReadinessMessage, err)
 	}
-	var safe safeOperationError
+	var safe terminal.SafeError
 	if errors.As(err, &safe) {
-		return wrapSafeOperation(safe.label, err)
+		return terminal.Failure(safe.Error(), err)
 	}
 	message := daemonStatusFailureMessage
 	switch command {
@@ -72,12 +74,12 @@ func daemonCommandError(command string, err error) error {
 	case "restart":
 		message = daemonRestartFailureMessage
 	}
-	return wrapSafeOperation(message, err)
+	return terminal.Failure(message, err)
 }
 
 type daemonOperations struct {
 	inspect   func() (daemonctl.ProbeResult, error)
-	connect   func(context.Context, contract.RuntimeInfo) (daemonClient, error)
+	connect   func(context.Context, contract.RuntimeInfo) (daemonconn.Client, error)
 	reachable func(contract.RuntimeInfo) bool
 	start     func(string) (daemonctl.StartOutcome, error)
 }
@@ -85,7 +87,7 @@ type daemonOperations struct {
 func defaultDaemonOperations(identity daemonctl.Identity) daemonOperations {
 	return daemonOperations{
 		inspect: func() (daemonctl.ProbeResult, error) { return daemonctl.Probe(identity) },
-		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonClient, error) {
+		connect: func(ctx context.Context, info contract.RuntimeInfo) (daemonconn.Client, error) {
 			return daemonctl.Connect(ctx, identity, info)
 		},
 		reachable: func(info contract.RuntimeInfo) bool { return daemonctl.GenerationReachable(identity, info) },
@@ -107,7 +109,7 @@ func runDaemonStatus(ops daemonOperations, output io.Writer) error {
 		return writeDaemonStopped(output)
 	case daemonctl.ProbeReachable:
 		p := newPresentation(output)
-		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStatus(p, result.Status)))
+		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStatus(p, result.Status)))
 	case daemonctl.ProbeIncompatible:
 		return writeDaemonIncompatible(output)
 	default:
@@ -121,22 +123,22 @@ func daemonUnknownError() error {
 
 func writeDaemonIncompatible(w io.Writer) error {
 	p := newPresentation(w)
-	return wrapSafeOperation("显示 daemon 状态", p.complete("守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
+	return terminal.Failure("显示 daemon 状态", p.complete("守护进程：当前运行的 daemon 与此 sidraviactl 不属于同一构建。请停止 daemon，或使用与它匹配的完整软件包。\n"))
 }
 
 func writeDaemonStopped(w io.Writer) error {
 	p := newPresentation(w)
-	return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStopped()))
+	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStopped()))
 }
 
 func writeDaemonStarted(w io.Writer) error {
 	p := newPresentation(w)
-	return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStarted()))
+	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStarted()))
 }
 
 func writeDaemonRestarted(w io.Writer) error {
 	p := newPresentation(w)
-	return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonRestarted()))
+	return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonRestarted()))
 }
 
 type stopDependencies struct {
@@ -184,15 +186,15 @@ func stopGeneration(deps stopDependencies, info contract.RuntimeInfo) error {
 	defer cancel()
 	conn, err := deps.ops.connect(ctx, info)
 	if err != nil {
-		return wrapSafeOperation("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidraviactl daemon status 后重试", err)
+		return terminal.Failure("守护进程：停止请求尚未发送，无法确认当前状态；请运行 sidraviactl daemon status 后重试", err)
 	}
 	response, err := conn.Call(ctx, contract.MethodDaemonStop, json.RawMessage("{}"))
 	closeErr := conn.Close()
 	if err != nil {
 		if closeErr != nil {
-			return fmt.Errorf("%w; %w", wrapSafeOperation("调用 daemon 停止", err), wrapSafeOperation("清理 sidraviad 连接", closeErr))
+			return fmt.Errorf("%w; %w", terminal.Failure("调用 daemon 停止", err), terminal.Failure("清理 sidraviad 连接", closeErr))
 		}
-		return wrapSafeOperation("调用 daemon 停止", err)
+		return terminal.Failure("调用 daemon 停止", err)
 	}
 	_ = closeErr
 	if !response.OK {
@@ -270,7 +272,7 @@ func daemonStart(identity daemonctl.Identity, logLevel string) error {
 		}
 		// Existing XDG login entries also use daemon start. Keep an
 		// automatic login entry from overriding systemd enablement.
-		return wrapSafeOperation("托管后台请使用 sidraviactl integration service start", daemonctl.ErrModeConflict)
+		return terminal.Failure("托管后台请使用 sidraviactl integration service start", daemonctl.ErrModeConflict)
 	}
 	outcome, err := daemonctl.EnsureHeadless(identity, logLevel)
 	if err != nil {
@@ -278,7 +280,7 @@ func daemonStart(identity daemonctl.Identity, logLevel string) error {
 	}
 	if outcome == daemonctl.AlreadyRunning {
 		p := newPresentation(os.Stdout)
-		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonAlreadyRunning()))
+		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonAlreadyRunning()))
 	}
 	return writeDaemonStarted(os.Stdout)
 }
@@ -303,7 +305,7 @@ func daemonStop(identity daemonctl.Identity) error {
 	}
 	if outcome == daemonAlreadyStopped {
 		p := newPresentation(os.Stdout)
-		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonAlreadyStopped()))
+		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonAlreadyStopped()))
 	}
 	return writeDaemonStopped(os.Stdout)
 }
@@ -324,7 +326,7 @@ func daemonRestart(identity daemonctl.Identity, logLevel string) error {
 	}
 	if outcome == daemonStartedFromStopped {
 		p := newPresentation(os.Stdout)
-		return wrapSafeOperation("显示 daemon 状态", p.complete(renderDaemonStartedFromStopped()))
+		return terminal.Failure("显示 daemon 状态", p.complete(renderDaemonStartedFromStopped()))
 	}
 	return writeDaemonRestarted(os.Stdout)
 }

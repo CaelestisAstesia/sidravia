@@ -3,11 +3,14 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"github.com/muesli/termenv"
 	"io"
-	"sidravia/internal/ipc/contract"
 	"strings"
 	"testing"
+
+	"github.com/muesli/termenv"
+
+	"sidravia/internal/cli/internal/terminal"
+	"sidravia/internal/ipc/contract"
 )
 
 // newTestPresentation forces a specific profile for tests. It never queries the
@@ -177,23 +180,6 @@ func TestRenderedBlockWriterFailurePreservesCause(t *testing.T) {
 	}
 }
 
-func TestPasswordPromptIsChinese(t *testing.T) {
-	var output bytes.Buffer
-	_, err := readHiddenPassword(
-		strings.NewReader("secret\n"),
-		&output,
-		0x0004,
-		func() (uint32, error) { return 0x0017, nil },
-		func(uint32) error { return nil },
-	)
-	if err != nil {
-		t.Fatalf("readHiddenPassword = %v", err)
-	}
-	if !strings.HasPrefix(output.String(), "密码： ") {
-		t.Errorf("prompt = %q, want Chinese prompt with full-width colon and trailing ASCII space", output.String())
-	}
-}
-
 func TestHelpUsesChineseHeadingsAndCanonicalTree(t *testing.T) {
 	deps := commandDependencies{
 		daemonStatus: func() error { return nil },
@@ -333,7 +319,7 @@ func TestPresentationCompleteJoinsWriterAndRestoreFailures(t *testing.T) {
 
 func TestWriteErrorSanitizesAndHidesCause(t *testing.T) {
 	cause := errors.New("injected underlying cause")
-	safe := wrapSafeOperation("连接 sidraviad", cause)
+	safe := terminal.Failure("连接 sidraviad", cause)
 	var buf bytes.Buffer
 	if err := WriteError(&buf, safe); err != nil {
 		t.Fatalf("WriteError = %v", err)

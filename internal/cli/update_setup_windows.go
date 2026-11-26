@@ -4,11 +4,13 @@ package cli
 
 import (
 	"context"
+	"time"
+
 	"github.com/spf13/cobra"
+
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/update/setup"
-	"time"
 )
 
 func addSetupStages(root *cobra.Command, identity daemonctl.Identity) {

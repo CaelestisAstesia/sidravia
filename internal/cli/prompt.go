@@ -9,92 +9,29 @@ import (
 	"strconv"
 	"strings"
 
-	credentialinput "sidravia/internal/connection/credential/input"
+	"sidravia/internal/cli/internal/daemonconn"
+	"sidravia/internal/cli/internal/terminal"
 	"sidravia/internal/ipc/contract"
 )
 
-func readConfirmation(input io.Reader, output io.Writer, prompt string) (bool, error) {
-	if err := writeAll(output, prompt); err != nil {
-		return false, wrapSafeOperation("写入确认提示", err)
-	}
-	value, err := readPasswordLine(input)
-	if err != nil {
-		return false, wrapSafeOperation("读取确认", err)
-	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "y", "yes":
-		return true, nil
-	case "", "n", "no":
-		return false, nil
-	default:
-		return false, errors.New("确认输入无效")
-	}
-}
-
-// Credential prompts preserve every character except the input line delimiter.
-func readCredentialPrompt(input io.Reader, output io.Writer, prompt string) (string, error) {
-	if err := writeAll(output, prompt); err != nil {
-		return "", wrapSafeOperation("写入交互提示", err)
-	}
-	value, err := readPasswordLine(input)
-	if err != nil {
-		return "", wrapSafeOperation("读取交互输入", err)
-	}
-	if err := credentialinput.ValidateNewText(value); err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
-func readPromptLine(input io.Reader, output io.Writer, prompt string) (string, error) {
-	if err := writeAll(output, prompt); err != nil {
-		return "", wrapSafeOperation("写入交互提示", err)
-	}
-	value, err := readPasswordLine(input)
-	if err != nil {
-		return "", wrapSafeOperation("读取交互输入", err)
-	}
-	return strings.TrimSpace(value), nil
-}
-
-func readBooleanPrompt(input io.Reader, output io.Writer, prompt string, defaultValue bool) (bool, error) {
-	if err := writeAll(output, prompt); err != nil {
-		return false, wrapSafeOperation("写入布尔提示", err)
-	}
-	value, err := readPasswordLine(input)
-	if err != nil {
-		return false, wrapSafeOperation("读取布尔输入", err)
-	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "y", "yes":
-		return true, nil
-	case "n", "no":
-		return false, nil
-	case "":
-		return defaultValue, nil
-	default:
-		return false, errors.New("布尔输入无效")
-	}
-}
-
-func selectProfile(deps authDependencies, connection daemonClient) (string, error) {
+func selectProfile(deps authDependencies, connection daemonconn.Client) (string, error) {
 	raw, err := callConfiguration(deps, connection, contract.MethodProfileList, struct{}{})
 	if err != nil {
 		return "", err
 	}
 	result, err := decodeProfileListResult(raw)
 	if err != nil {
-		return "", wrapSafeOperation("解码 Profile 列表", err)
+		return "", terminal.Failure("解码 Profile 列表", err)
 	}
 	if len(result.Profiles) == 0 {
 		return "", errors.New("没有可用的机构 Profile")
 	}
 	for index, profile := range result.Profiles {
-		if err := writeAll(deps.stderr, fmt.Sprintf("%d. %s\n", index+1, sanitizeDynamicText(institutionDisplayName(profile.InstitutionProfileID, profile.DisplayName)))); err != nil {
-			return "", wrapSafeOperation("写入 Profile 选择", err)
+		if err := terminal.Write(deps.stderr, fmt.Sprintf("%d. %s\n", index+1, sanitizeDynamicText(institutionDisplayName(profile.InstitutionProfileID, profile.DisplayName)))); err != nil {
+			return "", terminal.Failure("写入 Profile 选择", err)
 		}
 	}
-	value, err := readPromptLine(deps.stdin, deps.stderr, "选择 Profile：")
+	value, err := terminal.ReadPrompt(deps.stdin, deps.stderr, "选择 Profile：")
 	if err != nil {
 		return "", err
 	}
@@ -113,14 +50,14 @@ type networkBindingChoice struct {
 	automatic   bool
 }
 
-func selectNetworkBinding(deps authDependencies, connection daemonClient) (contract.NetworkBindingPolicy, error) {
+func selectNetworkBinding(deps authDependencies, connection daemonconn.Client) (contract.NetworkBindingPolicy, error) {
 	raw, err := callConfiguration(deps, connection, contract.MethodNetworkInterfaces, struct{}{})
 	if err != nil {
 		return contract.NetworkBindingPolicy{}, err
 	}
 	snapshot, err := contract.DecodeNetworkInterfacesResult(raw)
 	if err != nil {
-		return contract.NetworkBindingPolicy{}, wrapSafeOperation("解码网卡列表", err)
+		return contract.NetworkBindingPolicy{}, terminal.Failure("解码网卡列表", err)
 	}
 	choices := make([]networkBindingChoice, 0)
 	if snapshot.Available {
@@ -135,7 +72,7 @@ func selectNetworkBinding(deps authDependencies, connection daemonClient) (contr
 				}
 				policy := contract.NetworkBindingPolicy{Mode: "explicit_interface_and_local_ipv4", InterfaceID: iface.InterfaceID, LocalIPv4Address: assignment.Address}
 				if _, err := policy.Domain(); err != nil {
-					return contract.NetworkBindingPolicy{}, wrapSafeOperation("校验网卡绑定候选", err)
+					return contract.NetworkBindingPolicy{}, terminal.Failure("校验网卡绑定候选", err)
 				}
 				key := iface.InterfaceID + "\x00" + assignment.Address
 				choice := networkBindingChoice{
@@ -168,16 +105,16 @@ func selectNetworkBinding(deps authDependencies, connection daemonClient) (contr
 			return left.Less(right)
 		})
 	}
-	if err := writeAll(deps.stderr, "0. 自动绑定（使用时由 Session 按当前观察重新选择）\n"); err != nil {
-		return contract.NetworkBindingPolicy{}, wrapSafeOperation("写入网卡绑定选择", err)
+	if err := terminal.Write(deps.stderr, "0. 自动绑定（使用时由 Session 按当前观察重新选择）\n"); err != nil {
+		return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定选择", err)
 	}
 	if !snapshot.Available {
-		if err := writeAll(deps.stderr, "当前没有已接受的网络观察；本次将使用自动绑定。\n"); err != nil {
-			return contract.NetworkBindingPolicy{}, wrapSafeOperation("写入网卡绑定说明", err)
+		if err := terminal.Write(deps.stderr, "当前没有已接受的网络观察；本次将使用自动绑定。\n"); err != nil {
+			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定说明", err)
 		}
 	} else if len(choices) == 0 {
-		if err := writeAll(deps.stderr, "当前观察中没有可显式绑定的 Up 接口 IPv4 地址；本次将使用自动绑定。\n"); err != nil {
-			return contract.NetworkBindingPolicy{}, wrapSafeOperation("写入网卡绑定说明", err)
+		if err := terminal.Write(deps.stderr, "当前观察中没有可显式绑定的 Up 接口 IPv4 地址；本次将使用自动绑定。\n"); err != nil {
+			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定说明", err)
 		}
 	}
 	for index, choice := range choices {
@@ -186,12 +123,12 @@ func selectNetworkBinding(deps authDependencies, connection daemonClient) (contr
 			category = "自动候选，也可显式绑定"
 		}
 		line := fmt.Sprintf("%d. %s | ID：%s | IPv4：%s/%d | %s\n", index+1, sanitizeDynamicText(choice.displayName), sanitizeDynamicText(choice.interfaceID), choice.address, choice.prefix, category)
-		if err := writeAll(deps.stderr, line); err != nil {
-			return contract.NetworkBindingPolicy{}, wrapSafeOperation("写入网卡绑定选择", err)
+		if err := terminal.Write(deps.stderr, line); err != nil {
+			return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定选择", err)
 		}
 	}
-	if err := writeAll(deps.stderr, "网卡事实来自最近一次已接受观察；Session 使用时会重新核对，选择不保证届时仍可用。\n"); err != nil {
-		return contract.NetworkBindingPolicy{}, wrapSafeOperation("写入网卡绑定说明", err)
+	if err := terminal.Write(deps.stderr, "网卡事实来自最近一次已接受观察；Session 使用时会重新核对，选择不保证届时仍可用。\n"); err != nil {
+		return contract.NetworkBindingPolicy{}, terminal.Failure("写入网卡绑定说明", err)
 	}
 	value, err := readChoiceLine(deps.stdin, deps.stderr, "选择绑定方式 [0]：")
 	if err != nil {
@@ -217,8 +154,8 @@ const maxChoiceLineBytes = 64
 // may belong to the following password input. Unlike existing password and
 // confirmation readers, EOF is never a choice or an implicit default.
 func readChoiceLine(input io.Reader, output io.Writer, prompt string) (string, error) {
-	if err := writeAll(output, prompt); err != nil {
-		return "", wrapSafeOperation("写入选择提示", err)
+	if err := terminal.Write(output, prompt); err != nil {
+		return "", terminal.Failure("写入选择提示", err)
 	}
 	line := make([]byte, 0, maxChoiceLineBytes)
 	var one [1]byte
@@ -238,12 +175,12 @@ func readChoiceLine(input io.Reader, output io.Writer, prompt string) (string, e
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return "", wrapSafeOperation("读取网卡绑定选择未收到换行", err)
+				return "", terminal.Failure("读取网卡绑定选择未收到换行", err)
 			}
-			return "", wrapSafeOperation("读取网卡绑定选择", err)
+			return "", terminal.Failure("读取网卡绑定选择", err)
 		}
 		if n == 0 {
-			return "", wrapSafeOperation("读取网卡绑定选择", io.ErrNoProgress)
+			return "", terminal.Failure("读取网卡绑定选择", io.ErrNoProgress)
 		}
 	}
 }
