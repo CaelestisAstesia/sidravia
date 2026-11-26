@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/update/transaction"
 )
 
 // Keep a verified copy of the old product before the first write. Its private
@@ -91,7 +91,7 @@ func persistRollbackInputs(ctx context.Context, backup *Payload, next Inventory,
 	return errors.Join(syncDirectory(backup.root, "."), syncDirectory(parent, "."))
 }
 
-func loadRollback(ctx context.Context, store *operations.Store, record operations.Record) (backup *Payload, next Inventory, dirs []string, resultErr error) {
+func loadRollback(ctx context.Context, store *transaction.Store, record transaction.Record) (backup *Payload, next Inventory, dirs []string, resultErr error) {
 	directory := rollbackDirectory(record.Source.ID, record.ID)
 	info, err := os.Lstat(directory)
 	if err != nil {
@@ -231,7 +231,7 @@ func restoreServiceFiles(ctx context.Context, input Execution, backup *Payload, 
 	if err := verifyInventory(ctx, backup.root, input.Old); err != nil {
 		return err
 	}
-	seal, err := openRegular(root, operations.StartupSeal)
+	seal, err := openRegular(root, transaction.StartupSeal)
 	if errors.Is(err, os.ErrNotExist) {
 		_, _, err = sealApplication(ctx, root, input.OperationID)
 	} else if err == nil {
@@ -313,15 +313,15 @@ func restoreServiceFiles(ctx context.Context, input Execution, backup *Payload, 
 	if err := errors.Join(verifyInventory(ctx, root, input.Old), verifyGUI(root, input.Old)); err != nil {
 		return err
 	}
-	if err := root.Remove(operations.StartupSeal); err != nil {
+	if err := root.Remove(transaction.StartupSeal); err != nil {
 		return err
 	}
 	if err := syncDirectory(root, "."); err != nil {
 		return err
 	}
-	_, changed, err := input.Store.Advance(ctx, input.OperationID, operations.RollingBack, operations.RolledBack, "update_rolled_back", time.Now())
+	_, changed, err := input.Store.Advance(ctx, input.OperationID, transaction.RollingBack, transaction.RolledBack, "update_rolled_back", time.Now())
 	if err == nil && !changed {
-		err = operations.ErrConflict
+		err = transaction.ErrConflict
 	}
 	return err
 }
@@ -369,7 +369,7 @@ func ManagedRollbackPending(target, id string) (bool, error) {
 // Only an exact, operation-bound private snapshot is eligible for cleanup.
 // While recovering preparation, the caller supplies the verified source
 // inventory, so even a truncated snapshot index can be retired safely.
-func cleanRollbackSnapshot(record operations.Record, source *Inventory) error {
+func cleanRollbackSnapshot(record transaction.Record, source *Inventory) error {
 	directory := rollbackDirectory(record.Source.ID, record.ID)
 	info, err := os.Lstat(directory)
 	if errors.Is(err, os.ErrNotExist) {

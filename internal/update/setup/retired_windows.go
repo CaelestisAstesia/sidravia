@@ -14,15 +14,17 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+
+	"sidravia/internal/release"
+
+	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/update/transaction"
 )
 
 // Retired executable code is not a user file merely because the new installer
 // stopped listing it. Authenticate BOTH ownership indices and every new byte
 // before removing only unchanged old exe/DLL leaves. Other unknown files remain.
-func retireInstalled(ctx context.Context, r operations.Record, s Session) error {
+func retireInstalled(ctx context.Context, r transaction.Record, s Session) error {
 	next, c, index, e := targetEvidence(r)
 	if e != nil {
 		return e
@@ -31,7 +33,7 @@ func retireInstalled(ctx context.Context, r operations.Record, s Session) error 
 	if e != nil {
 		return e
 	}
-	old, oldAsset, e := s.SourceProof(releases.PublisherTrust())
+	old, oldAsset, e := s.SourceProof(release.PublisherTrust())
 	if e != nil {
 		return e
 	}

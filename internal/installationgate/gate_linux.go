@@ -11,8 +11,8 @@ import (
 	"golang.org/x/sys/unix"
 
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	"sidravia/internal/update/transaction"
 )
 
 var ErrBusy = errors.New("installation maintenance is active or its gate is unavailable")
@@ -62,11 +62,11 @@ func acquireLinuxStart(directory, path string) (func(), error) {
 func acquirePortableStart(directory string) (func(), error) {
 	// Check for records even if the portable marker has been removed or changed:
 	// a partial update must not turn into an unguarded installed launch.
-	root, err := productlayout.UpdateOperationRoot()
+	root, err := productlayout.OperationRoot()
 	if err != nil {
 		return nil, errors.Join(ErrBusy, err)
 	}
-	store, err := operations.Open(root, directory, releases.PublisherTrust())
+	store, err := transaction.Open(root, directory, release.PublisherTrust())
 	if err != nil {
 		return nil, errors.Join(ErrBusy, err)
 	}
@@ -99,27 +99,27 @@ func AcquireRun() (func(), error) {
 // coordinator ancestry. Completed operations use ordinary admission and shed
 // stale recovery environment before any later child is launched.
 func AcquireRunIdentity(version, build string) (func(), error) {
-	release, err := AcquireRun()
+	releaseRun, err := AcquireRun()
 	if err == nil {
 		clearRecoveryEnvironment()
-		return release, nil
+		return releaseRun, nil
 	}
 	exe, exeErr := os.Executable()
 	if exeErr != nil || filepath.Dir(exe) == "/usr/lib64/sidravia" {
 		return nil, err
 	}
-	root, rootErr := productlayout.UpdateOperationRoot()
+	root, rootErr := productlayout.OperationRoot()
 	if rootErr != nil {
 		return nil, errors.Join(err, rootErr)
 	}
-	store, openErr := operations.Open(root, filepath.Dir(exe), releases.PublisherTrust())
+	store, openErr := transaction.Open(root, filepath.Dir(exe), release.PublisherTrust())
 	if openErr != nil {
 		return nil, errors.Join(err, openErr)
 	}
-	return store.AcquireRecoveryStart(context.Background(), os.Getenv(operations.EnvRecoveryOperation), os.Getenv(operations.EnvRecoveryToken), version, build, os.Getenv("SIDRAVIA_NAMESPACE"), os.Getenv(operations.EnvRecoveryConfiguration))
+	return store.AcquireRecoveryStart(context.Background(), os.Getenv(transaction.EnvRecoveryOperation), os.Getenv(transaction.EnvRecoveryToken), version, build, os.Getenv("SIDRAVIA_NAMESPACE"), os.Getenv(transaction.EnvRecoveryConfiguration))
 }
 func clearRecoveryEnvironment() {
-	for _, name := range []string{operations.EnvRecoveryOperation, operations.EnvRecoveryToken, operations.EnvRecoveryConfiguration} {
+	for _, name := range []string{transaction.EnvRecoveryOperation, transaction.EnvRecoveryToken, transaction.EnvRecoveryConfiguration} {
 		os.Unsetenv(name)
 	}
 }

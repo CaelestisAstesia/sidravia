@@ -21,17 +21,18 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/installation/change"
+	"sidravia/internal/release"
+
+	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/update/transaction"
 )
 
 type testImage struct {
 	inventory Inventory
-	verified  releases.VerifiedRelease
+	verified  release.VerifiedRelease
 	archive   []byte
-	keys      *releases.PublisherKeys
+	keys      *release.PublisherKeys
 	contents  map[string]string
 }
 
@@ -96,18 +97,18 @@ func signImage(t *testing.T, m packagefiles.Manifest, data, archive []byte, cont
 	t.Helper()
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	pub := key.Public().(ed25519.PublicKey)
-	id, _ := releases.PublisherKeyID(pub)
+	id, _ := release.PublisherKeyID(pub)
 	name := "sidravia-v" + m.Version + "-" + m.OS + "-" + m.Arch + "-" + m.PayloadKind + "-portable.tar.gz"
 	if m.OS == "windows" {
 		name = strings.TrimSuffix(name, ".tar.gz") + ".zip"
 	}
-	c := releases.Candidate{ID: "1:2", Version: m.Version, Name: name, Size: int64(len(archive)), SHA256: digest(archive)}
-	release := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: m.OS, Arch: m.Arch, Kind: m.PayloadKind + "-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(data), PayloadKind: m.PayloadKind}}}
-	raw, err := json.Marshal(release)
+	c := release.Candidate{ID: "1:2", Version: m.Version, Name: name, Size: int64(len(archive)), SHA256: digest(archive)}
+	manifest := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: m.OS, Arch: m.Arch, Kind: m.PayloadKind + "-portable", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: digest(data), PayloadKind: m.PayloadKind}}}
+	raw, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	keys, _ := releases.NewPublisherKeys([]ed25519.PublicKey{pub})
+	keys, _ := release.NewPublisherKeys([]ed25519.PublicKey{pub})
 	v, err := keys.Verify(raw, ed25519.Sign(key, raw), m.Version)
 	if err != nil {
 		t.Fatal(err)
@@ -160,20 +161,20 @@ func extract(t *testing.T, target string, i testImage) *Payload {
 	})
 	return p
 }
-func quiescent(t *testing.T, target string, old, next testImage) (*operations.Store, string) {
+func quiescent(t *testing.T, target string, old, next testImage) (*transaction.Store, string) {
 	t.Helper()
-	s, err := operations.Open(t.TempDir(), target, next.keys)
+	s, err := transaction.Open(t.TempDir(), target, next.keys)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := operations.New(strings.Repeat("a", 32), update.Target{ID: target, Version: old.inventory.manifest.Version, BuildID: old.inventory.manifest.BuildID, Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
+	r, err := transaction.New(strings.Repeat("a", 32), change.Target{ID: target, Version: old.inventory.manifest.Version, BuildID: old.inventory.manifest.BuildID, Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.Create(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
-	for _, phase := range []operations.Phase{operations.Verified, operations.Preparing, operations.Quiescent} {
+	for _, phase := range []transaction.Phase{transaction.Verified, transaction.Preparing, transaction.Quiescent} {
 		n, _, err := s.Advance(context.Background(), r.ID, r.Phase, phase, "", time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -218,16 +219,16 @@ func TestApplyPreservesDataAndUnknownFiles(t *testing.T) {
 		}
 	}
 	r, _, err := s.Read(context.Background())
-	if err != nil || r.Phase != operations.Applied {
+	if err != nil || r.Phase != transaction.Applied {
 		t.Fatal(r.Phase, err)
 	}
 	if _, err := s.AcquireStart(context.Background()); err == nil {
 		t.Fatal("restart before lifecycle completion")
 	}
-	if err := Apply(context.Background(), s, id, target, old.inventory, p); !errors.Is(err, operations.ErrConflict) {
+	if err := Apply(context.Background(), s, id, target, old.inventory, p); !errors.Is(err, transaction.ErrConflict) {
 		t.Fatal("replay admitted", err)
 	}
-	if _, _, err := s.Advance(context.Background(), id, operations.Applied, operations.Completed, "", time.Now()); err != nil {
+	if _, _, err := s.Advance(context.Background(), id, transaction.Applied, transaction.Completed, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	start, err := s.AcquireStart(context.Background())
@@ -302,7 +303,7 @@ func TestPreflightRefusesChangedFilesAndCollisionsWithoutWriting(t *testing.T) {
 				t.Fatal("preflight changed baseline")
 			}
 			r, _, err := s.Read(context.Background())
-			if err != nil || r.Phase != operations.Quiescent {
+			if err != nil || r.Phase != transaction.Quiescent {
 				t.Fatal("preflight changed phase", r.Phase, err)
 			}
 			if data, _ := os.ReadFile(filepath.Join(target, "nested/owned")); string(data) != "old nested" {
@@ -427,10 +428,10 @@ func TestWriteFailureKeepsDurableRepairState(t *testing.T) {
 		t.Fatalf("fault did not cross publication boundary: %q %q", a, b)
 	}
 	r, exists, err := s.Read(context.Background())
-	if err != nil || !exists || r.Phase != operations.RepairRequired {
+	if err != nil || !exists || r.Phase != transaction.RepairRequired {
 		t.Fatal("missing durable repair", r.Phase, err)
 	}
-	if _, err := os.Stat(filepath.Join(target, operations.StartupSeal)); err != nil {
+	if _, err := os.Stat(filepath.Join(target, transaction.StartupSeal)); err != nil {
 		t.Fatal("partial write lost relocation seal", err)
 	}
 	if _, err := s.AcquireStart(context.Background()); err == nil {
@@ -551,7 +552,7 @@ func TestDurableSealIsCancellationCommitPoint(t *testing.T) {
 	if !errors.Is(ctx.Err(), context.Canceled) {
 		t.Fatal("fixture did not cancel")
 	}
-	if _, changed, err := s.Advance(work, id, operations.Quiescent, operations.Applying, "", time.Now()); err != nil || !changed {
+	if _, changed, err := s.Advance(work, id, transaction.Quiescent, transaction.Applying, "", time.Now()); err != nil || !changed {
 		t.Fatal("cancellation stranded the sealed pre-write phase", err)
 	}
 }

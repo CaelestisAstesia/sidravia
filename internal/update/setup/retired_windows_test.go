@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 func TestRetiredCodeDeletionKeepsModifiedLinkedAndExternalFiles(t *testing.T) {

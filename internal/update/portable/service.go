@@ -11,16 +11,17 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 )
 
 var ErrRolledBack = errors.New("managed portable update was rolled back")
 
-func executeManaged(ctx context.Context, input Execution, record operations.Record, layout, registration productlayout.Layout, peer *applicationPeer) (resultErr error) {
+func executeManaged(ctx context.Context, input Execution, record transaction.Record, layout, registration productlayout.Layout, peer *applicationPeer) (resultErr error) {
 	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
 	if err != nil {
 		return err
@@ -60,7 +61,7 @@ func executeManaged(ctx context.Context, input Execution, record operations.Reco
 			}
 		}
 	}
-	start := func(ctx context.Context, target update.Target) error {
+	start := func(ctx context.Context, target change.Target) error {
 		return startManagedService(ctx, layout, target, target == record.Source)
 	}
 	owner, err := observeProcess(os.Getpid())
@@ -72,19 +73,19 @@ func executeManaged(ctx context.Context, input Execution, record operations.Reco
 	if _, err := rand.Read(nonce); err != nil {
 		return err
 	}
-	intent := update.RestoreIntent{Mode: "none"}
+	intent := maintenance.Intent{Mode: "none"}
 	if before.Running {
 		intent.Mode = "systemd"
 	}
 	now := time.Now()
-	recovery := operations.Recovery{
+	recovery := transaction.Recovery{
 		SourceFilesSHA256: digest(input.Old.data), Intent: intent, CoordinatorPID: owner.PID, ManagedService: true,
 		CoordinatorStart: owner.Start, Nonce: hex.EncodeToString(nonce), ExpiresAt: now.Add(25 * time.Minute), LogLevel: "info",
 	}
 	if err := input.Store.SetRecovery(ctx, record.ID, recovery, now); err != nil {
 		return err
 	}
-	if _, _, err := input.Store.Advance(ctx, record.ID, operations.Verified, operations.Preparing, "", time.Now()); err != nil {
+	if _, _, err := input.Store.Advance(ctx, record.ID, transaction.Verified, transaction.Preparing, "", time.Now()); err != nil {
 		return err
 	}
 	defer func() {
@@ -94,11 +95,11 @@ func executeManaged(ctx context.Context, input Execution, record operations.Reco
 		recover, cancel := context.WithTimeout(context.WithoutCancel(ctx), 40*time.Second)
 		defer cancel()
 		current, _, err := input.Store.Read(recover)
-		if err != nil || (current.Phase != operations.Preparing && current.Phase != operations.Quiescent) {
+		if err != nil || (current.Phase != transaction.Preparing && current.Phase != transaction.Quiescent) {
 			resultErr = errors.Join(resultErr, err)
 			return
 		}
-		if _, err := os.Lstat(filepath.Join(input.Target, operations.StartupSeal)); !os.IsNotExist(err) {
+		if _, err := os.Lstat(filepath.Join(input.Target, transaction.StartupSeal)); !os.IsNotExist(err) {
 			return
 		}
 		root, err := os.OpenRoot(input.Target)
@@ -141,7 +142,7 @@ func executeManaged(ctx context.Context, input Execution, record operations.Reco
 			return err
 		}
 	}
-	if _, _, err := input.Store.Advance(ctx, record.ID, operations.Preparing, operations.Quiescent, "", time.Now()); err != nil {
+	if _, _, err := input.Store.Advance(ctx, record.ID, transaction.Preparing, transaction.Quiescent, "", time.Now()); err != nil {
 		return err
 	}
 	dirs, err := newProductDirectories(input.Target, input.Payload.inventory)
@@ -163,12 +164,12 @@ func executeManaged(ctx context.Context, input Execution, record operations.Reco
 	if err := persistRollbackInputs(ctx, backup, input.Payload.inventory, dirs); err != nil {
 		return err
 	}
-	rollback := func(cause error, phase operations.Phase) error {
+	rollback := func(cause error, phase transaction.Phase) error {
 		keepBackup = true
 		recover, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 		defer cancel()
-		if _, changed, err := input.Store.Advance(recover, record.ID, phase, operations.RollingBack, "", time.Now()); err != nil || !changed {
-			return errors.Join(cause, operations.ErrConflict, err)
+		if _, changed, err := input.Store.Advance(recover, record.ID, phase, transaction.RollingBack, "", time.Now()); err != nil || !changed {
+			return errors.Join(cause, transaction.ErrConflict, err)
 		}
 		if err := restoreServiceFiles(recover, input, backup, dirs); err != nil {
 			return errors.Join(cause, err)
@@ -183,43 +184,43 @@ func executeManaged(ctx context.Context, input Execution, record operations.Reco
 	}
 	if err := Apply(ctx, input.Store, record.ID, input.Target, input.Old, input.Payload); err != nil {
 		after, _, observeErr := input.Store.Read(context.WithoutCancel(ctx))
-		if observeErr == nil && (after.Phase == operations.RepairRequired || after.Phase == operations.Applying || after.Phase == operations.Applied) {
+		if observeErr == nil && (after.Phase == transaction.RepairRequired || after.Phase == transaction.Applying || after.Phase == transaction.Applied) {
 			return rollback(err, after.Phase)
 		}
-		keepBackup = observeErr != nil || after.Phase == operations.Applying
+		keepBackup = observeErr != nil || after.Phase == transaction.Applying
 		return errors.Join(err, observeErr)
 	}
 	finish, cancel := context.WithTimeout(context.WithoutCancel(ctx), 40*time.Second)
 	defer cancel()
 	// The fully verified package can start once the execution gate is free.
 	if !before.Running {
-		_, _, err := input.Store.Advance(finish, record.ID, operations.Applied, operations.Completed, "", time.Now())
+		_, _, err := input.Store.Advance(finish, record.ID, transaction.Applied, transaction.Completed, "", time.Now())
 		if err != nil {
 			keepBackup = true
 		}
 		return err
 	}
-	if _, changed, err := input.Store.Advance(finish, record.ID, operations.Applied, operations.ServiceStarting, "", time.Now()); err != nil || !changed {
+	if _, changed, err := input.Store.Advance(finish, record.ID, transaction.Applied, transaction.ServiceStarting, "", time.Now()); err != nil || !changed {
 		actual, _, readErr := input.Store.Read(finish)
-		if readErr != nil || (actual.Phase != operations.Applied && actual.Phase != operations.ServiceStarting) {
+		if readErr != nil || (actual.Phase != transaction.Applied && actual.Phase != transaction.ServiceStarting) {
 			keepBackup = true
-			return errors.Join(operations.ErrConflict, err, readErr)
+			return errors.Join(transaction.ErrConflict, err, readErr)
 		}
-		return rollback(errors.Join(operations.ErrConflict, err), actual.Phase)
+		return rollback(errors.Join(transaction.ErrConflict, err), actual.Phase)
 	}
 	if err := start(finish, record.Target); err != nil {
 		// The service operation stopped the failed generation. AcquireExecution
 		// and ensureQuiescent will refuse rollback if it is still alive.
-		return rollback(errors.Join(ErrRestore, err), operations.ServiceStarting)
+		return rollback(errors.Join(ErrRestore, err), transaction.ServiceStarting)
 	}
-	_, _, err = input.Store.Advance(finish, record.ID, operations.ServiceStarting, operations.Completed, "", time.Now())
+	_, _, err = input.Store.Advance(finish, record.ID, transaction.ServiceStarting, transaction.Completed, "", time.Now())
 	if err != nil {
 		keepBackup = true
 	}
 	return err
 }
 
-func startManagedService(ctx context.Context, layout productlayout.Layout, target update.Target, restore bool) error {
+func startManagedService(ctx context.Context, layout productlayout.Layout, target change.Target, restore bool) error {
 	action := "start"
 	if restore {
 		action = "recover-start"
@@ -251,7 +252,7 @@ func closeManagedGUI(ctx context.Context, operation string, pid int, peer *appli
 	wait, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	interactive := false
-	var view update.MaintenanceView
+	var view maintenance.View
 	if err := call(wait, peer.connection, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{
 		OperationID: operation, CoordinatorPID: uint32(pid), Interactive: &interactive, ManagedGUIUpdate: true,
 	}, &view); err != nil {

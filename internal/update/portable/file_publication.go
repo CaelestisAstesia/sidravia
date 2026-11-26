@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 )
 
 func absentProductPath(root *os.Root, name string) error {
@@ -77,7 +77,7 @@ func sealApplication(ctx context.Context, root *os.Root, id string) (context.Con
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	seal, err := root.OpenFile(operations.StartupSeal, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	seal, err := root.OpenFile(transaction.StartupSeal, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -89,7 +89,7 @@ func sealApplication(ctx context.Context, root *os.Root, id string) (context.Con
 	if writeErr != nil {
 		return nil, nil, writeErr
 	}
-	info, err := root.Lstat(operations.StartupSeal)
+	info, err := root.Lstat(transaction.StartupSeal)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -99,7 +99,7 @@ func sealApplication(ctx context.Context, root *os.Root, id string) (context.Con
 	return context.WithoutCancel(ctx), info, nil
 }
 
-func boundExecution(record operations.Record, target string, old Inventory, p *Payload) bool {
+func boundExecution(record transaction.Record, target string, old Inventory, p *Payload) bool {
 	if p == nil {
 		return false
 	}

@@ -4,13 +4,15 @@ package portable
 
 import (
 	"context"
-	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/windowsplatform"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/windows"
+
+	"sidravia/internal/update/transaction"
+	"sidravia/internal/update/windowsplatform"
 )
 
 // Common coordination uses a stable PID/creation generation on both platforms.
@@ -66,10 +68,10 @@ func finishApplication(target, id string) error {
 		return err
 	}
 	defer root.Close()
-	if err = operations.VerifyPortableSeal(target, id); err != nil {
+	if err = transaction.VerifyPortableSeal(target, id); err != nil {
 		return err
 	}
-	return root.Remove(operations.StartupSeal)
+	return root.Remove(transaction.StartupSeal)
 }
 
 func observeManagedGUI(string) (*applicationProcess, error) { return nil, ErrUnsupported }

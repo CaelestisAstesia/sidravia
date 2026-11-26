@@ -7,15 +7,15 @@ import (
 	"errors"
 	"time"
 
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 )
 
 // RecoverManagedService resumes an interrupted product rollback. Both indexes
 // are revalidated independently of the installed tree before it is touched.
-func RecoverManagedService(ctx context.Context, store *operations.Store, id, target string) (resultErr error) {
+func RecoverManagedService(ctx context.Context, store *transaction.Store, id, target string) (resultErr error) {
 	if store == nil || !canonical(target) {
 		return ErrInvalid
 	}
@@ -28,7 +28,7 @@ func RecoverManagedService(ctx context.Context, store *operations.Store, id, tar
 	if err != nil || record.Source.ID != target {
 		return errors.Join(ErrChanged, err)
 	}
-	if record.Phase == operations.Completed || record.Phase == operations.Aborted {
+	if record.Phase == transaction.Completed || record.Phase == transaction.Aborted {
 		return cleanRollbackSnapshot(record, nil)
 	}
 	locked, release, err := installationmanager.HoldServiceRegistration(ctx)
@@ -41,7 +41,7 @@ func RecoverManagedService(ctx context.Context, store *operations.Store, id, tar
 	if err != nil || !found || layout.ExecutableDirectory != target || layout.Mode != productlayout.ModePortable {
 		return errors.Join(ErrChanged, err)
 	}
-	if record.Phase == operations.RolledBack {
+	if record.Phase == transaction.RolledBack {
 		pending, err := ManagedRollbackPending(target, id)
 		if err != nil || !pending {
 			return err
@@ -67,13 +67,13 @@ func RecoverManagedService(ctx context.Context, store *operations.Store, id, tar
 			resultErr = errors.Join(resultErr, backup.root.Close())
 		}
 	}()
-	if record.Phase != operations.RolledBack {
+	if record.Phase != transaction.RolledBack {
 		if _, err := installationmanager.Service(ctx, "stop", layout, nil); err != nil {
 			return err
 		}
-		if record.Phase != operations.RollingBack {
-			if _, changed, err := store.Advance(ctx, id, record.Phase, operations.RollingBack, "", time.Now()); err != nil || !changed {
-				return errors.Join(operations.ErrConflict, err)
+		if record.Phase != transaction.RollingBack {
+			if _, changed, err := store.Advance(ctx, id, record.Phase, transaction.RollingBack, "", time.Now()); err != nil || !changed {
+				return errors.Join(transaction.ErrConflict, err)
 			}
 		}
 		input := Execution{Store: store, OperationID: id, Target: target, Old: backup.inventory, Payload: &Payload{inventory: next}}
@@ -90,10 +90,10 @@ func RecoverManagedService(ctx context.Context, store *operations.Store, id, tar
 	return nil
 }
 
-func resumeManagedPreparation(ctx context.Context, store *operations.Store, record operations.Record, start func(context.Context, update.Target) error) error {
-	if record.Phase != operations.SourceStarting {
-		if _, changed, err := store.Advance(ctx, record.ID, record.Phase, operations.SourceStarting, "", time.Now()); err != nil || !changed {
-			return errors.Join(operations.ErrConflict, err)
+func resumeManagedPreparation(ctx context.Context, store *transaction.Store, record transaction.Record, start func(context.Context, change.Target) error) error {
+	if record.Phase != transaction.SourceStarting {
+		if _, changed, err := store.Advance(ctx, record.ID, record.Phase, transaction.SourceStarting, "", time.Now()); err != nil || !changed {
+			return errors.Join(transaction.ErrConflict, err)
 		}
 	}
 	if record.Recovery.Intent.Mode == "systemd" {
@@ -101,9 +101,9 @@ func resumeManagedPreparation(ctx context.Context, store *operations.Store, reco
 			return err
 		}
 	}
-	_, changed, err := store.Advance(ctx, record.ID, operations.SourceStarting, operations.Aborted, "preparation_failed", time.Now())
+	_, changed, err := store.Advance(ctx, record.ID, transaction.SourceStarting, transaction.Aborted, "preparation_failed", time.Now())
 	if !changed {
-		return errors.Join(operations.ErrConflict, err)
+		return errors.Join(transaction.ErrConflict, err)
 	}
 	return err
 }

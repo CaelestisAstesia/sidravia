@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/update"
 )
 
 type applicationPeer struct {
@@ -57,7 +57,7 @@ func call(ctx context.Context, c *client.Client, method string, input any, outpu
 	}
 	return nil
 }
-func probeApplication(ctx context.Context, layout productlayout.Layout, identity update.Target) (peer *applicationPeer, err error) {
+func probeApplication(ctx context.Context, layout productlayout.Layout, identity change.Target) (peer *applicationPeer, err error) {
 	file, err := os.Open(layout.RuntimeInfoPath)
 	if os.IsNotExist(err) {
 		return nil, nil

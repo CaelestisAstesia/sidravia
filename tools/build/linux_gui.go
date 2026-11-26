@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 // Only a fresh release GUI input is accepted. Core tools, public profiles and

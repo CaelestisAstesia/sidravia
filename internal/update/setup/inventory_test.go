@@ -9,14 +9,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	packagefiles "sidravia/internal/release/files"
 )
 
-func signedInventory(t *testing.T) (releases.VerifiedRelease, releases.Candidate, []byte, map[string][]byte) {
+func signedInventory(t *testing.T) (release.VerifiedRelease, release.Candidate, []byte, map[string][]byte) {
 	t.Helper()
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
-	id, _ := releases.PublisherKeyID(key.Public().(ed25519.PublicKey))
+	id, _ := release.PublisherKeyID(key.Public().(ed25519.PublicKey))
 	files := map[string][]byte{"sidraviactl.exe": []byte("ctl"), "sidraviad.exe": []byte("daemon"), "sidraviaupdater.exe": []byte("updater"), "sidraviamgr.exe": []byte("manager"), "Sidravia.exe": []byte("gui"), "flutter_windows.dll": []byte("flutter")}
 	m := packagefiles.Manifest{SchemaVersion: 1, Version: "1.0.0", BuildID: "test", OS: "windows", Arch: "amd64", PayloadKind: "gui"}
 	for path, data := range files {
@@ -26,9 +26,9 @@ func signedInventory(t *testing.T) (releases.VerifiedRelease, releases.Candidate
 	if e != nil {
 		t.Fatal(e)
 	}
-	c := releases.Candidate{ID: "1:2", Version: m.Version, Name: "sidravia-v1.0.0-windows-amd64-setup.exe", Size: 1, SHA256: sum([]byte("x"))}
-	manifest, _ := json.Marshal(releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: "gui"}}})
-	roots, _ := releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+	c := release.Candidate{ID: "1:2", Version: m.Version, Name: "sidravia-v1.0.0-windows-amd64-setup.exe", Size: 1, SHA256: sum([]byte("x"))}
+	manifest, _ := json.Marshal(release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: m.Version, BuildID: m.BuildID, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: "gui"}}})
+	roots, _ := release.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
 	proof, e := roots.Verify(manifest, ed25519.Sign(key, manifest), m.Version)
 	if e != nil {
 		t.Fatal(e)

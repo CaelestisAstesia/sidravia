@@ -15,29 +15,29 @@ import (
 	"sidravia/internal/background/daemonctl"
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/document/jsondoc"
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/update"
+	"sidravia/internal/release"
 	"sidravia/internal/update/lifecycle"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
-func openOperation(ctx context.Context, target, id string) (*operations.Store, operations.Record, error) {
-	root, e := productlayout.UpdateOperationRoot()
+func openOperation(ctx context.Context, target, id string) (*transaction.Store, transaction.Record, error) {
+	root, e := productlayout.OperationRoot()
 	if e != nil {
-		return nil, operations.Record{}, e
+		return nil, transaction.Record{}, e
 	}
-	store, e := operations.Open(root, target, releases.PublisherTrust())
+	store, e := transaction.Open(root, target, release.PublisherTrust())
 	if e != nil {
-		return nil, operations.Record{}, e
+		return nil, transaction.Record{}, e
 	}
 	r, exists, e := store.Read(ctx)
 	if e != nil {
 		return nil, r, e
 	}
 	if !exists || r.ID != id || r.Source.Layout != "installed" {
-		return nil, r, operations.ErrConflict
+		return nil, r, transaction.ErrConflict
 	}
 	return store, r, nil
 }
@@ -74,7 +74,7 @@ func localLayout() (productlayout.Layout, error) {
 // flags cannot authorize a different target or turn a normal installer into an
 // update. Both the immutable signed operation and the exact worker must match.
 func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32, hasGUI bool, identity daemonctl.Identity) error {
-	if !update.ValidOperationID(id) {
+	if !change.ValidID(id) {
 		return ErrInvalid
 	}
 	layout, e := localLayout()
@@ -102,10 +102,10 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 			return e
 		}
 		defer parent.Close()
-		if parent.PID != coordinator || updater != s.Updater.PID || s.Coordinator.PID != 0 || r.Phase != operations.Verified || identity.ProductVersion != r.Source.Version || identity.BuildID != r.Source.BuildID {
+		if parent.PID != coordinator || updater != s.Updater.PID || s.Coordinator.PID != 0 || r.Phase != transaction.Verified || identity.ProductVersion != r.Source.Version || identity.BuildID != r.Source.BuildID {
 			return ErrInvalid
 		}
-		source, c, e := s.SourceProof(releases.PublisherTrust())
+		source, c, e := s.SourceProof(release.PublisherTrust())
 		if e != nil {
 			return e
 		}
@@ -119,18 +119,18 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		return e
 	}
 	defer parent.Close()
-	advance := func(from, to operations.Phase, code string) error {
+	advance := func(from, to transaction.Phase, code string) error {
 		_, changed, e := store.Advance(ctx, id, from, to, code, time.Now())
 		if e != nil {
 			return e
 		}
 		if !changed {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
 		return nil
 	}
 	if stage == "ready" {
-		if identity.ProductVersion != r.Target.Version || identity.BuildID != r.Target.BuildID || r.Phase != operations.Applied {
+		if identity.ProductVersion != r.Target.Version || identity.BuildID != r.Target.BuildID || r.Phase != transaction.Applied {
 			return ErrInvalid
 		}
 		for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
@@ -155,13 +155,13 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 	oldIdentity := identity.ProductVersion == r.Source.Version && identity.BuildID == r.Source.BuildID
 	newIdentity := identity.ProductVersion == r.Target.Version && identity.BuildID == r.Target.BuildID
 	if stage == "prepare" {
-		if !oldIdentity || r.Phase != operations.Verified || s.HasGUI != hasGUI {
+		if !oldIdentity || r.Phase != transaction.Verified || s.HasGUI != hasGUI {
 			return ErrInvalid
 		}
 		if running, e := windowsplatform.GenerationRunning(s.Updater.PID, s.Updater.Created); e != nil || running {
-			return errors.Join(operations.ErrConflict, e)
+			return errors.Join(transaction.ErrConflict, e)
 		}
-		proof, c, e := s.SourceProof(releases.PublisherTrust())
+		proof, c, e := s.SourceProof(release.PublisherTrust())
 		if e != nil {
 			return e
 		}
@@ -179,26 +179,26 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if _, e = rand.Read(nonce); e != nil {
 			return e
 		}
-		rec := operations.Recovery{SourceFilesSHA256: sum(s.SourceIndex), Intent: intent, Namespace: s.Namespace, CoordinatorPID: int(parent.PID), CoordinatorStart: strconv.FormatUint(parent.Created, 10), Nonce: hex.EncodeToString(nonce), ExpiresAt: time.Now().Add(25 * time.Minute), LogLevel: level}
+		rec := transaction.Recovery{SourceFilesSHA256: sum(s.SourceIndex), Intent: intent, Namespace: s.Namespace, CoordinatorPID: int(parent.PID), CoordinatorStart: strconv.FormatUint(parent.Created, 10), Nonce: hex.EncodeToString(nonce), ExpiresAt: time.Now().Add(25 * time.Minute), LogLevel: level}
 		if e = store.SetRecovery(ctx, id, rec, time.Now()); e != nil {
 			return e
 		}
-		return advance(operations.Verified, operations.Preparing, "")
+		return advance(transaction.Verified, transaction.Preparing, "")
 	}
 	if stage == "stop" {
-		if !oldIdentity || r.Phase != operations.Preparing {
+		if !oldIdentity || r.Phase != transaction.Preparing {
 			return ErrInvalid
 		}
 		if e = lifecycle.Run(ctx, "stop", id, coordinator, false, identity); e != nil {
 			return e
 		}
-		return advance(operations.Preparing, operations.Quiescent, "")
+		return advance(transaction.Preparing, transaction.Quiescent, "")
 	}
 	if stage == "write" {
-		if !oldIdentity || r.Phase != operations.Quiescent {
+		if !oldIdentity || r.Phase != transaction.Quiescent {
 			return ErrInvalid
 		}
-		proof, c, e := s.SourceProof(releases.PublisherTrust())
+		proof, c, e := s.SourceProof(release.PublisherTrust())
 		if e != nil {
 			return e
 		}
@@ -206,7 +206,7 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 			return e
 		}
 		// The seal stays in the target even if the operation cache is moved/removed.
-		seal, e := os.OpenFile(filepath.Join(target, operations.StartupSeal), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		seal, e := os.OpenFile(filepath.Join(target, transaction.StartupSeal), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 		if e != nil {
 			return e
 		}
@@ -216,10 +216,10 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if e = errors.Join(writeErr, syncErr, closeErr); e != nil {
 			return e
 		}
-		return advance(operations.Quiescent, operations.Applying, "")
+		return advance(transaction.Quiescent, transaction.Applying, "")
 	}
 	if stage == "installed" {
-		if !newIdentity || r.Phase != operations.Applying || s.HasGUI != hasGUI {
+		if !newIdentity || r.Phase != transaction.Applying || s.HasGUI != hasGUI {
 			return ErrInvalid
 		}
 		if e = retireInstalled(ctx, r, s); e != nil {
@@ -228,35 +228,35 @@ func RunStage(ctx context.Context, stage, id string, coordinator, updater uint32
 		if e = verifyTarget(ctx, r, s); e != nil {
 			return e
 		}
-		if e = advance(operations.Applying, operations.Applied, ""); e != nil {
+		if e = advance(transaction.Applying, transaction.Applied, ""); e != nil {
 			return e
 		}
 		return nil
 	}
 	if stage == "abort" {
-		if !oldIdentity || (r.Phase != operations.Verified && r.Phase != operations.Preparing && r.Phase != operations.Quiescent) {
+		if !oldIdentity || (r.Phase != transaction.Verified && r.Phase != transaction.Preparing && r.Phase != transaction.Quiescent) {
 			return ErrInvalid
 		}
-		if _, e = os.Lstat(filepath.Join(target, operations.StartupSeal)); !os.IsNotExist(e) {
+		if _, e = os.Lstat(filepath.Join(target, transaction.StartupSeal)); !os.IsNotExist(e) {
 			return ErrChanged
 		}
-		proof, c, e := s.SourceProof(releases.PublisherTrust())
+		proof, c, e := s.SourceProof(release.PublisherTrust())
 		if e != nil {
 			return e
 		}
 		if _, e = VerifyInstalled(ctx, target, proof, c, s.SourceIndex, s.HasGUI); e != nil {
 			return e
 		}
-		if e = advance(r.Phase, operations.Aborted, "preparation_failed"); e != nil {
+		if e = advance(r.Phase, transaction.Aborted, "preparation_failed"); e != nil {
 			return e
 		}
 		return lifecycle.Run(ctx, "abort", id, coordinator, false, identity)
 	}
 	return ErrInvalid
 }
-func targetEvidence(r operations.Record) (releases.VerifiedRelease, releases.Candidate, []byte, error) {
-	proof, e := releases.PublisherTrust().Verify(r.Manifest, r.Signature, r.Target.Version)
-	c := releases.Candidate{ID: r.Package.CandidateID, Version: r.Target.Version, Name: r.Package.Name, Size: r.Package.Size, SHA256: r.Package.SHA256}
+func targetEvidence(r transaction.Record) (release.VerifiedRelease, release.Candidate, []byte, error) {
+	proof, e := release.PublisherTrust().Verify(r.Manifest, r.Signature, r.Target.Version)
+	c := release.Candidate{ID: r.Package.CandidateID, Version: r.Target.Version, Name: r.Package.Name, Size: r.Package.Size, SHA256: r.Package.SHA256}
 	if e != nil {
 		return proof, c, nil, e
 	}
@@ -280,7 +280,7 @@ func targetEvidence(r operations.Record) (releases.VerifiedRelease, releases.Can
 	closeErr := f.Close()
 	return proof, c, b, errors.Join(e, closeErr)
 }
-func verifyTarget(ctx context.Context, r operations.Record, s Session) error {
+func verifyTarget(ctx context.Context, r transaction.Record, s Session) error {
 	proof, c, index, e := targetEvidence(r)
 	if e != nil {
 		return e

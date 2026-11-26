@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
 )
 
 func fixture(t *testing.T) (string, string, ed25519.PublicKey, []byte, []byte) {
@@ -18,13 +18,13 @@ func fixture(t *testing.T) (string, string, ed25519.PublicKey, []byte, []byte) {
 	seed := make([]byte, ed25519.SeedSize)
 	private := ed25519.NewKeyFromSeed(seed)
 	public := private.Public().(ed25519.PublicKey)
-	id, _ := releases.PublisherKeyID(public)
-	m := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: "1.0.0", BuildID: "build", MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "linux", Arch: "amd64", Kind: "core-portable", Name: "sidravia-v1.0.0-linux-amd64-core-portable.tar.gz", Size: 3, SHA256: strings.Repeat("a", 64)}, PayloadKind: "core", FilesSHA256: strings.Repeat("b", 64)}}}
+	id, _ := release.PublisherKeyID(public)
+	m := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: "1.0.0", BuildID: "build", MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "linux", Arch: "amd64", Kind: "core-portable", Name: "sidravia-v1.0.0-linux-amd64-core-portable.tar.gz", Size: 3, SHA256: strings.Repeat("a", 64)}, PayloadKind: "core", FilesSHA256: strings.Repeat("b", 64)}}}
 	data, _ := json.Marshal(m)
 	data = append([]byte(" \n"), data...)
 	root := t.TempDir()
-	manifest := filepath.Join(root, releases.ReleaseManifestName)
-	output := filepath.Join(root, releases.ReleaseSignatureName)
+	manifest := filepath.Join(root, release.ReleaseManifestName)
+	output := filepath.Join(root, release.ReleaseSignatureName)
 	if err := os.WriteFile(manifest, data, 0600); err != nil {
 		t.Fatal(err)
 	}

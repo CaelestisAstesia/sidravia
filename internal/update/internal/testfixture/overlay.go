@@ -28,7 +28,7 @@ func WritePublisherOverlay(t testing.TB, repo, owned string, pub ed25519.PublicK
 func newPublisherOverlay(t testing.TB, repo, owned string, pub ed25519.PublicKey) *sourceOverlay {
 	t.Helper()
 	overlay := &sourceOverlay{t: t, repo: repo, owned: owned, replacements: map[string]string{}}
-	overlay.Replace("internal/update/releases/trust.go", func(source string) string {
+	overlay.Replace("internal/release/trust.go", func(source string) string {
 		parts := make([]string, 0, len(pub))
 		for _, b := range pub {
 			parts = append(parts, fmt.Sprint(b))

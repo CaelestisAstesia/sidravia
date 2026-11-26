@@ -18,15 +18,17 @@ import (
 	"time"
 
 	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/background/maintenance"
 	"sidravia/internal/document"
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/update"
+	"sidravia/internal/release"
+
+	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/update/internal/testfixture"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/packagefiles"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -67,7 +69,7 @@ func TestNativeInstalledUpdate(t *testing.T) {
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	pub := key.Public().(ed25519.PublicKey)
 	overlay := testfixture.NewWindowsOverlay(t, repo, owned, source, pub)
-	overlay.Replace("internal/update/command/run.go", func(s string) string {
+	overlay.Replace("internal/update/run.go", func(s string) string {
 		s = strings.Replace(s, "\"io\"", "\"io\"\n\"os\"", 1)
 		return strings.Replace(s, "failSource := func(err error, result any, applying bool) int {", "failSource := func(err error, result any, applying bool) int {\nif applying{os.WriteFile("+strconv.Quote(filepath.Join(owned, "apply-cause.txt"))+",[]byte(err.Error()),0600)}", 1)
 	})
@@ -274,18 +276,18 @@ begin Result := True; end;
 	if !bytes.Contains(handoff, []byte(`"handedOver":true`)) || bytes.Contains(handoff, []byte(`"filesApplied":true`)) {
 		t.Fatalf("handoff became installation %s", handoff)
 	}
-	roots, _ := releases.NewPublisherKeys([]ed25519.PublicKey{pub})
+	roots, _ := release.NewPublisherKeys([]ed25519.PublicKey{pub})
 	waitInstall := func() {
 		t.Helper()
-		root, e := productlayout.UpdateOperationRoot()
+		root, e := productlayout.OperationRoot()
 		if e != nil {
 			t.Fatal(e)
 		}
-		st, e := operations.Open(root, oldDir, roots)
+		st, e := transaction.Open(root, oldDir, roots)
 		if e != nil {
 			t.Fatal(e)
 		}
-		var last operations.Phase
+		var last transaction.Phase
 		var snapshotError error
 		for until := time.Now().Add(45 * time.Second); time.Now().Before(until); time.Sleep(100 * time.Millisecond) {
 			r, exists, e := st.Read(context.Background())
@@ -297,10 +299,10 @@ begin Result := True; end;
 				continue
 			}
 			last = r.Phase
-			if r.Phase == operations.Completed {
+			if r.Phase == transaction.Completed {
 				return
 			}
-			if r.Phase == operations.Aborted || r.Phase == operations.RepairRequired || r.Phase == operations.ResumeFailed {
+			if r.Phase == transaction.Aborted || r.Phase == transaction.RepairRequired || r.Phase == transaction.ResumeFailed {
 				break
 			}
 		}
@@ -462,7 +464,7 @@ begin Result := True; end;
 			payload, _ := json.Marshal(contract.UpdatePreparePayload{OperationID: op, CoordinatorPID: uint32(os.Getpid()), Interactive: new(bool)})
 			r, e = conn.Call(ctx, contract.MethodUpdatePrepare, payload)
 			for until := time.Now().Add(10 * time.Second); e == nil && r.OK && time.Now().Before(until); time.Sleep(50 * time.Millisecond) {
-				var view update.MaintenanceView
+				var view maintenance.View
 				if json.Unmarshal(r.Result, &view) == nil && view.Phase == "prepared" {
 					break
 				}
@@ -599,22 +601,22 @@ func nativeIndex(t *testing.T, dir, version, build string) []byte {
 	}
 	return data
 }
-func nativeProof(t *testing.T, root, version, build string, index, archive []byte, key ed25519.PrivateKey) releases.Candidate {
+func nativeProof(t *testing.T, root, version, build string, index, archive []byte, key ed25519.PrivateKey) release.Candidate {
 	t.Helper()
-	c := releases.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-setup.exe", Size: int64(len(archive)), SHA256: sum(archive)}
+	c := release.Candidate{ID: "2:22", Version: version, Name: "sidravia-v" + version + "-windows-amd64-setup.exe", Size: int64(len(archive)), SHA256: sum(archive)}
 	c.DownloadURL = "https://github.com/CaelestisAstesia/sidravia/releases/download/v" + version + "/" + c.Name
-	id, _ := releases.PublisherKeyID(key.Public().(ed25519.PublicKey))
+	id, _ := release.PublisherKeyID(key.Public().(ed25519.PublicKey))
 	ownership, e := packagefiles.Decode(index)
 	if e != nil {
 		t.Fatal(e)
 	}
-	m := releases.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []releases.ReleaseAsset{{ManifestAsset: releases.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: ownership.PayloadKind}}}
+	m := release.ReleaseManifest{SchemaVersion: 2, KeyID: id, Version: version, BuildID: build, MinimumProtocol: 1, Assets: []release.ReleaseAsset{{ManifestAsset: release.ManifestAsset{OS: "windows", Arch: "amd64", Kind: "setup", Name: c.Name, Size: c.Size, SHA256: c.SHA256}, FilesSHA256: sum(index), PayloadKind: ownership.PayloadKind}}}
 	b, _ := json.Marshal(m)
 	dir := filepath.Join(root, version)
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		t.Fatal(e)
 	}
-	for name, data := range map[string][]byte{releases.ReleaseManifestName: b, releases.ReleaseSignatureName: ed25519.Sign(key, b)} {
+	for name, data := range map[string][]byte{release.ReleaseManifestName: b, release.ReleaseSignatureName: ed25519.Sign(key, b)} {
 		if e := os.WriteFile(filepath.Join(dir, name), data, 0600); e != nil {
 			t.Fatal(e)
 		}
@@ -647,12 +649,12 @@ func copyNativeTree(t *testing.T, from, to string) {
 }
 func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, key ed25519.PrivateKey) {
 	t.Helper()
-	roots, _ := releases.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
-	manifest, e := os.ReadFile(filepath.Join(source, "1.1.0", releases.ReleaseManifestName))
+	roots, _ := release.NewPublisherKeys([]ed25519.PublicKey{key.Public().(ed25519.PublicKey)})
+	manifest, e := os.ReadFile(filepath.Join(source, "1.1.0", release.ReleaseManifestName))
 	if e != nil {
 		t.Fatal(e)
 	}
-	signature, e := os.ReadFile(filepath.Join(source, "1.1.0", releases.ReleaseSignatureName))
+	signature, e := os.ReadFile(filepath.Join(source, "1.1.0", release.ReleaseSignatureName))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -665,11 +667,11 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 		t.Fatal(e)
 	}
 	c.ID = "2:22"
-	oldManifest, e := os.ReadFile(filepath.Join(source, "1.0.0", releases.ReleaseManifestName))
+	oldManifest, e := os.ReadFile(filepath.Join(source, "1.0.0", release.ReleaseManifestName))
 	if e != nil {
 		t.Fatal(e)
 	}
-	oldSignature, e := os.ReadFile(filepath.Join(source, "1.0.0", releases.ReleaseSignatureName))
+	oldSignature, e := os.ReadFile(filepath.Join(source, "1.0.0", release.ReleaseSignatureName))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -686,11 +688,11 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 	dead := ProcessID{peer.PID, peer.Created}
 	child.Wait()
 	peer.Close()
-	root, e := productlayout.UpdateOperationRoot()
+	root, e := productlayout.OperationRoot()
 	if e != nil {
 		t.Fatal(e)
 	}
-	store, e := operations.Open(root, target, roots)
+	store, e := transaction.Open(root, target, roots)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -698,24 +700,24 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 	if e != nil {
 		t.Fatal(e)
 	}
-	for i, phase := range []operations.Phase{operations.Applied, operations.Resuming, operations.Completed, operations.Applying} {
+	for i, phase := range []transaction.Phase{transaction.Applied, transaction.Resuming, transaction.Completed, transaction.Applying} {
 		id := fmt.Sprintf("%032x", i+100)
-		record, e := operations.New(id, update.Target{ID: target, Version: "1.0.0", BuildID: "setup-old", Layout: "installed"}, c, proof, time.Now())
+		record, e := transaction.New(id, change.Target{ID: target, Version: "1.0.0", BuildID: "setup-old", Layout: "installed"}, c, proof, time.Now())
 		if e != nil {
 			t.Fatal(e)
 		}
 		if _, e = store.Create(context.Background(), record); e != nil {
 			t.Fatal(e)
 		}
-		if _, _, e = store.Advance(context.Background(), id, operations.Created, operations.Verified, "", time.Now()); e != nil {
+		if _, _, e = store.Advance(context.Background(), id, transaction.Created, transaction.Verified, "", time.Now()); e != nil {
 			t.Fatal(e)
 		}
-		rec := operations.Recovery{SourceFilesSHA256: sum(oldIndex), Intent: update.RestoreIntent{Mode: "none"}, CoordinatorPID: int(dead.PID), CoordinatorStart: strconv.FormatUint(dead.Created, 10), Nonce: strings.Repeat("c", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
+		rec := transaction.Recovery{SourceFilesSHA256: sum(oldIndex), Intent: maintenance.Intent{Mode: "none"}, CoordinatorPID: int(dead.PID), CoordinatorStart: strconv.FormatUint(dead.Created, 10), Nonce: strings.Repeat("c", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
 		if e = store.SetRecovery(context.Background(), id, rec, time.Now()); e != nil {
 			t.Fatal(e)
 		}
-		previous := operations.Verified
-		for _, to := range []operations.Phase{operations.Preparing, operations.Quiescent, operations.Applying, operations.Applied, operations.Resuming, operations.Completed} {
+		previous := transaction.Verified
+		for _, to := range []transaction.Phase{transaction.Preparing, transaction.Quiescent, transaction.Applying, transaction.Applied, transaction.Resuming, transaction.Completed} {
 			if _, _, e = store.Advance(context.Background(), id, previous, to, "", time.Now()); e != nil {
 				t.Fatal(e)
 			}
@@ -732,7 +734,7 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 		if e = SaveSession(context.Background(), session); e != nil {
 			t.Fatal(e)
 		}
-		seal := filepath.Join(target, operations.StartupSeal)
+		seal := filepath.Join(target, transaction.StartupSeal)
 		if e = os.WriteFile(seal, []byte("sidravia-update-v1\n"+id+"\n"), 0644); e != nil {
 			t.Fatal(e)
 		}
@@ -749,7 +751,7 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 				t.Fatalf("recover %s: %s %v", phase, out, e)
 			}
 		}
-		if phase == operations.Applied {
+		if phase == transaction.Applied {
 			if e = os.WriteFile(filepath.Join(target, "sidraviad.exe"), bytes.Repeat([]byte{'x'}, len(original)), 0644); e != nil {
 				t.Fatal(e)
 			}

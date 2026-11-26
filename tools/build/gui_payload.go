@@ -7,8 +7,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sidravia/internal/update/packagefiles"
 	"strings"
+
+	packagefiles "sidravia/internal/release/files"
 )
 
 // Native GUI inputs may contain runtime libraries and application assets, but

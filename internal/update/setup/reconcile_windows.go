@@ -10,8 +10,8 @@ import (
 
 	launchcontract "sidravia/internal/background/launch"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/update/operations"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -36,16 +36,16 @@ func Reconcile(ctx context.Context, layout productlayout.Layout, version, build,
 			return e
 		}
 		if running {
-			return operations.ErrConflict
+			return transaction.ErrConflict
 		}
 	}
 	sealed, e := ownSeal(layout.ExecutableDirectory, id)
 	if e != nil {
 		return e
 	}
-	next := operations.Aborted
+	next := transaction.Aborted
 	code := "preparation_failed"
-	targetPhase := r.Phase == operations.Applied || r.Phase == operations.Resuming || r.Phase == operations.Completed || r.Phase == operations.ResumeFailed || r.Phase == operations.Applying || r.Phase == operations.RepairRequired
+	targetPhase := r.Phase == transaction.Applied || r.Phase == transaction.Resuming || r.Phase == transaction.Completed || r.Phase == transaction.ResumeFailed || r.Phase == transaction.Applying || r.Phase == transaction.RepairRequired
 	if targetPhase {
 		if version != r.Target.Version || build != r.Target.BuildID {
 			return ErrInvalid
@@ -58,37 +58,37 @@ func Reconcile(ctx context.Context, layout productlayout.Layout, version, build,
 		if e = verifyTarget(ctx, r, s); e != nil {
 			return e
 		}
-		if r.Phase == operations.Applying || r.Phase == operations.RepairRequired {
+		if r.Phase == transaction.Applying || r.Phase == transaction.RepairRequired {
 			// RepairRequired is deliberately not auto-transitioned: a manual installer
 			// must establish its exact target first; this reconciliation is explicit.
-			if r.Phase == operations.RepairRequired {
+			if r.Phase == transaction.RepairRequired {
 				return ErrChanged
 			}
-			if _, changed, e := store.Advance(ctx, id, r.Phase, operations.Applied, "", time.Now()); e != nil || !changed {
-				return errors.Join(operations.ErrConflict, e)
+			if _, changed, e := store.Advance(ctx, id, r.Phase, transaction.Applied, "", time.Now()); e != nil || !changed {
+				return errors.Join(transaction.ErrConflict, e)
 			}
-			r.Phase = operations.Applied
+			r.Phase = transaction.Applied
 		}
-		if r.Phase == operations.Completed || r.Phase == operations.ResumeFailed {
+		if r.Phase == transaction.Completed || r.Phase == transaction.ResumeFailed {
 			if sealed {
 				return removeSeal(r.Target.ID, id)
 			}
 			return nil
 		}
-		next = operations.ResumeFailed
+		next = transaction.ResumeFailed
 		code = "resume_failed"
-	} else if r.Phase == operations.Created || r.Phase == operations.Verified || r.Phase == operations.Preparing || r.Phase == operations.Quiescent || r.Phase == operations.Aborted {
+	} else if r.Phase == transaction.Created || r.Phase == transaction.Verified || r.Phase == transaction.Preparing || r.Phase == transaction.Quiescent || r.Phase == transaction.Aborted {
 		if version != r.Source.Version || build != r.Source.BuildID {
 			return ErrInvalid
 		}
-		proof, c, e := s.SourceProof(releases.PublisherTrust())
+		proof, c, e := s.SourceProof(release.PublisherTrust())
 		if e != nil {
 			return e
 		}
 		if _, e = VerifyInstalled(ctx, r.Source.ID, proof, c, s.SourceIndex, s.HasGUI); e != nil {
 			return e
 		}
-		if r.Phase == operations.Aborted {
+		if r.Phase == transaction.Aborted {
 			if sealed {
 				return removeSeal(r.Source.ID, id)
 			}
@@ -102,7 +102,7 @@ func Reconcile(ctx context.Context, layout productlayout.Layout, version, build,
 		return e
 	}
 	if !changed {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	if sealed {
 		return removeSeal(r.Source.ID, id)
@@ -118,15 +118,15 @@ func AuthorizeRecovery(ctx context.Context, target, version, build string) error
 		return e
 	}
 	rec := r.Recovery
-	if r.Phase != operations.Resuming || rec == nil || token != rec.Nonce || r.Target.Version != version || r.Target.BuildID != build || rec.Namespace != os.Getenv(launchcontract.EnvNamespace) || rec.Intent.ConfigurationID != os.Getenv(launchcontract.EnvRecoveryConfiguration) || !time.Now().Before(rec.ExpiresAt) {
-		return operations.ErrConflict
+	if r.Phase != transaction.Resuming || rec == nil || token != rec.Nonce || r.Target.Version != version || r.Target.BuildID != build || rec.Namespace != os.Getenv(launchcontract.EnvNamespace) || rec.Intent.ConfigurationID != os.Getenv(launchcontract.EnvRecoveryConfiguration) || !time.Now().Before(rec.ExpiresAt) {
+		return transaction.ErrConflict
 	}
 	s, e := ReadSession(ctx, target, id)
 	if e != nil {
 		return e
 	}
 	if s.Source != r.Source || s.Finalizer.PID == 0 || s.Finalizer.Created == 0 {
-		return operations.ErrConflict
+		return transaction.ErrConflict
 	}
 	parent, e := windowsplatform.ObserveParent()
 	if e != nil {

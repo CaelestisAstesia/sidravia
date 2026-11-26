@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
 )
 
 // inspect/verify are public-material operations. Neither reads stdin, generates
@@ -34,7 +34,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		return 2
 	}
 	fail := func(message string) int { fmt.Fprintln(stderr, message); return 1 }
-	data, err := readPublicFile(*manifest, releases.ReleaseManifestLimit)
+	data, err := readPublicFile(*manifest, release.ReleaseManifestLimit)
 	if err != nil {
 		return fail("invalid bounded manifest file")
 	}
@@ -46,11 +46,11 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	if err != nil || len(key) != ed25519.PublicKeySize {
 		return fail("invalid Ed25519 public key")
 	}
-	id, err := releases.PublisherKeyID(key)
+	id, err := release.PublisherKeyID(key)
 	if err != nil {
 		return fail("invalid publisher key identity")
 	}
-	m, err := releases.ValidateReleaseManifest(data)
+	m, err := release.ValidateReleaseManifest(data)
 	if err != nil {
 		return fail("invalid release manifest structure")
 	}
@@ -63,7 +63,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		if err != nil || len(sig) != ed25519.SignatureSize {
 			return fail("invalid detached signature file")
 		}
-		keys, err := releases.NewPublisherKeys([]ed25519.PublicKey{key})
+		keys, err := release.NewPublisherKeys([]ed25519.PublicKey{key})
 		if err != nil {
 			return fail("invalid public key")
 		}

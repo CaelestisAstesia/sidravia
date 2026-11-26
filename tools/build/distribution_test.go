@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 type closedOutput struct{}

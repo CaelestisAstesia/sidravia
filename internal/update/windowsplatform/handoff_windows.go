@@ -11,7 +11,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"sidravia/internal/update"
+
+	"sidravia/internal/installation/change"
 )
 
 type Offer struct {
@@ -22,8 +23,8 @@ type Offer struct {
 }
 
 func NewOffer(id, helperHash string) (*Offer, error) {
-	if !update.ValidOperationID(id) || len(helperHash) != 64 {
-		return nil, update.ErrInvalid
+	if !change.ValidID(id) || len(helperHash) != 64 {
+		return nil, change.ErrInvalid
 	}
 	owner, err := Observe(uint32(os.Getpid()))
 	if err != nil {
@@ -138,8 +139,8 @@ func (o *Offer) Await(ctx context.Context, launched *Process) (*Process, error) 
 // Acknowledge is called by the installer's short package host. It confirms the
 // server PID before sending anything; a forged pipe cannot stop the application.
 func Acknowledge(ctx context.Context, id string, serverID, coordinatorID uint32) error {
-	if !update.ValidOperationID(id) {
-		return update.ErrInvalid
+	if !change.ValidID(id) {
+		return change.ErrInvalid
 	}
 	name, _ := windows.UTF16PtrFromString(pipeName(id))
 	h, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE, 0, nil, windows.OPEN_EXISTING, 0, 0)

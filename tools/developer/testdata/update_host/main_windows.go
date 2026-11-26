@@ -21,17 +21,19 @@ import (
 	"golang.org/x/sys/windows"
 
 	"sidravia/internal/background/daemonctl"
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installation/resume"
 	"sidravia/internal/installationgate"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/update"
 	"sidravia/internal/update/windowsplatform"
 )
 
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		if errors.Is(err, update.ErrConsumed) {
+		if errors.Is(err, resume.ErrConsumed) {
 			os.Exit(22)
 		}
 		os.Exit(1)
@@ -54,8 +56,8 @@ func run() error {
 		return errors.New("fixture arguments required")
 	}
 	role, root, id := os.Args[1], os.Args[2], os.Args[3]
-	if !update.ValidOperationID(id) {
-		return update.ErrInvalid
+	if !change.ValidID(id) {
+		return change.ErrInvalid
 	}
 	marker, err := os.ReadFile(filepath.Join(root, "fixture-owner"))
 	if err != nil || string(marker) != id {
@@ -275,7 +277,7 @@ func run() error {
 		}
 		return write(root, "layout.json", layout)
 	case "finalize":
-		var intent update.RestoreIntent
+		var intent maintenance.Intent
 		b, err := os.ReadFile(filepath.Join(root, "intent.json"))
 		if err != nil {
 			return err
@@ -283,13 +285,13 @@ func run() error {
 		if err = json.Unmarshal(b, &intent); err != nil {
 			return err
 		}
-		ticket := update.ResumeTicket{OperationID: id, Target: update.Target{ID: id, Version: "2.0.0", BuildID: "synthetic", Layout: "portable"}, ExpiresAt: time.Now().UTC().Add(10 * time.Minute), Intent: intent}
-		if _, err = update.PlanRestore(ticket, ticket.Target, true, time.Now()); err != nil {
+		ticket := resume.Ticket{OperationID: id, Target: change.Target{ID: id, Version: "2.0.0", BuildID: "synthetic", Layout: "portable"}, ExpiresAt: time.Now().UTC().Add(10 * time.Minute), Intent: intent}
+		if _, err = resume.Plan(ticket, ticket.Target, true, time.Now()); err != nil {
 			return err
 		}
 		return write(root, "ticket.json", ticket)
 	case "resume":
-		var ticket update.ResumeTicket
+		var ticket resume.Ticket
 		b, err := os.ReadFile(filepath.Join(root, "ticket.json"))
 		if err != nil {
 			return err
@@ -297,7 +299,7 @@ func run() error {
 		if err = json.Unmarshal(b, &ticket); err != nil {
 			return err
 		}
-		plan, err := update.ClaimRestore(root, ticket, ticket.Target, true, time.Now())
+		plan, err := resume.Claim(root, ticket, ticket.Target, true, time.Now())
 		if err != nil {
 			return err
 		}

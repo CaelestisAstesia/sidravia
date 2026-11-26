@@ -48,7 +48,7 @@ class UpdateHandoff(unittest.TestCase):
             built = subprocess.run(['go', 'build', '-mod=readonly', '-o', str(host), './tools/developer/testdata/update_host'],
                                    cwd=REPO, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
             self.assertEqual(built.returncode, 0, built.stdout.decode(errors='replace'))
-            for package in ('./internal/update', './internal/update/windowsplatform', './internal/update/releases', './internal/update/command', './internal/installationgate'):
+            for package in ('./internal/update', './internal/update/windowsplatform', './internal/release', './internal/installation/resume', './internal/installationgate'):
                 test_exe = root / (package.rsplit('/', 1)[-1] + '.test.exe')
                 compiled_tests = subprocess.run(['go', 'test', '-c', '-o', str(test_exe), package], cwd=REPO, env=env,
                                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)

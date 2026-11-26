@@ -15,8 +15,8 @@ func UpdateCacheRoot() (string, error) {
 	return filepath.Join(root, "Sidravia", "updates"), nil
 }
 
-// UpdateOperationRoot is shared by updater status and portable process admission.
-func UpdateOperationRoot() (string, error) {
+// OperationRoot is shared by updater status and portable process admission.
+func OperationRoot() (string, error) {
 	root, err := UpdateCacheRoot()
 	if err != nil {
 		return "", err

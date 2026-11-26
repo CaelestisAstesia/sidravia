@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 // Payload owns an isolated directory outside the installation. It is never

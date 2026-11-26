@@ -15,11 +15,11 @@ import (
 
 	"sidravia/internal/background/daemonctl"
 	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/background/maintenance"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/process/linuxproc"
-	"sidravia/internal/update"
 )
 
 func SwitchService(ctx context.Context, identity daemonctl.Identity, action string, owner int, interruptOneShot bool) (installationmanager.ServiceState, error) {
@@ -292,7 +292,7 @@ func SwitchService(ctx context.Context, identity daemonctl.Identity, action stri
 		return before, err
 	}
 	id := hex.EncodeToString(idBytes)
-	var intent update.MaintenanceView
+	var intent maintenance.View
 	interactive := false
 	err = callServiceIPC(ctx, peer, contract.MethodUpdatePrepare, contract.UpdatePreparePayload{
 		OperationID: id, CoordinatorPID: uint32(os.Getpid()), Interactive: &interactive,

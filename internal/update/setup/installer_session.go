@@ -10,9 +10,9 @@ import (
 
 	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/document/securefile"
+	"sidravia/internal/installation/change"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/update"
-	"sidravia/internal/update/releases"
+	"sidravia/internal/release"
 )
 
 type ProcessID struct {
@@ -22,7 +22,7 @@ type ProcessID struct {
 type Session struct {
 	SchemaVersion   int           `json:"schemaVersion"`
 	OperationID     string        `json:"operationId"`
-	Source          update.Target `json:"source"`
+	Source          change.Target `json:"source"`
 	Updater         ProcessID     `json:"updater"`
 	Coordinator     ProcessID     `json:"coordinator"`
 	Finalizer       ProcessID     `json:"finalizer"`
@@ -38,10 +38,10 @@ type Session struct {
 }
 
 func sessionPath(target, id string) (string, error) {
-	if !update.ValidOperationID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
+	if !change.ValidID(id) || !filepath.IsAbs(target) || filepath.Clean(target) != target {
 		return "", ErrInvalid
 	}
-	root, e := productlayout.UpdateOperationRoot()
+	root, e := productlayout.OperationRoot()
 	if e != nil {
 		return "", e
 	}
@@ -93,13 +93,13 @@ func ReadSession(ctx context.Context, target, id string) (Session, error) {
 	}
 	return s, nil
 }
-func (s Session) SourceProof(keys *releases.PublisherKeys) (releases.VerifiedRelease, releases.Candidate, error) {
+func (s Session) SourceProof(keys *release.PublisherKeys) (release.VerifiedRelease, release.Candidate, error) {
 	proof, e := keys.Verify(s.SourceManifest, s.SourceSignature, s.Source.Version)
 	if e != nil {
-		return proof, releases.Candidate{}, e
+		return proof, release.Candidate{}, e
 	}
 	if proof.BuildID() != s.Source.BuildID {
-		return proof, releases.Candidate{}, ErrInvalid
+		return proof, release.Candidate{}, ErrInvalid
 	}
 	c, e := proof.InstalledAsset("windows", "amd64", "setup")
 	return proof, c, e

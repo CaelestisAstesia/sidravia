@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 func (t *tool) executeDistribution(stdout, stderr io.Writer) error {

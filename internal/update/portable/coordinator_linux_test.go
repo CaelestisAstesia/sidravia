@@ -9,29 +9,31 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sidravia/internal/process/linuxproc"
 	"strings"
 	"testing"
 	"time"
 
-	"sidravia/internal/update"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/process/linuxproc"
+
+	"sidravia/internal/background/maintenance"
+	"sidravia/internal/installation/change"
+	"sidravia/internal/update/transaction"
 )
 
-func verifiedOperation(t *testing.T, target string, old, next testImage) (*operations.Store, string) {
+func verifiedOperation(t *testing.T, target string, old, next testImage) (*transaction.Store, string) {
 	t.Helper()
-	store, err := operations.Open(t.TempDir(), target, next.keys)
+	store, err := transaction.Open(t.TempDir(), target, next.keys)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := operations.New(strings.Repeat("d", 32), update.Target{ID: target, Version: old.inventory.manifest.Version, BuildID: old.inventory.manifest.BuildID, Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
+	r, err := transaction.New(strings.Repeat("d", 32), change.Target{ID: target, Version: old.inventory.manifest.Version, BuildID: old.inventory.manifest.BuildID, Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Create(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.Advance(context.Background(), r.ID, operations.Created, operations.Verified, "", time.Now()); err != nil {
+	if _, _, err := store.Advance(context.Background(), r.ID, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	return store, r.ID
@@ -52,7 +54,7 @@ func TestExecuteStoppedApplicationTransfersLeaseAndNeverStartsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _, err := store.Read(context.Background())
-	if err != nil || r.Phase != operations.Completed || r.Recovery == nil || r.Recovery.Intent.Mode != "none" {
+	if err != nil || r.Phase != transaction.Completed || r.Recovery == nil || r.Recovery.Intent.Mode != "none" {
 		t.Fatal(r.Phase, err)
 	}
 	if data, _ := os.ReadFile(filepath.Join(target, "program")); string(data) != "new" {
@@ -80,12 +82,12 @@ func TestAbandonedRecoveryCanBeReconciledWithoutLaunchingAgain(t *testing.T) {
 	}
 	defer owner.Close()
 	record, _, _ := store.Read(context.Background())
-	recovery := operations.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: update.RestoreIntent{Mode: "headless"}, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: record.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
+	recovery := transaction.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "headless"}, CoordinatorPID: owner.PID, CoordinatorStart: owner.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: record.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
 	if err := store.SetRecovery(context.Background(), id, recovery, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	phase := operations.Verified
-	for _, nextPhase := range []operations.Phase{operations.Preparing, operations.Quiescent, operations.Applying, operations.Applied, operations.Resuming} {
+	phase := transaction.Verified
+	for _, nextPhase := range []transaction.Phase{transaction.Preparing, transaction.Quiescent, transaction.Applying, transaction.Applied, transaction.Resuming} {
 		if _, _, err := store.Advance(context.Background(), id, phase, nextPhase, "", time.Now()); err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +104,7 @@ func TestAbandonedRecoveryCanBeReconciledWithoutLaunchingAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, _, err = store.Read(context.Background())
-	if err != nil || record.Phase != operations.ResumeFailed {
+	if err != nil || record.Phase != transaction.ResumeFailed {
 		t.Fatal(record.Phase, err)
 	}
 	if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
@@ -117,18 +119,18 @@ func TestWaitingVerifiedRecordGetsFreshFiniteRecoveryWindow(t *testing.T) {
 			old := image(t, "1.0.0", "old", map[string]string{"program": "old"}, nil)
 			next := image(t, "1.1.0", "new", map[string]string{"program": "new"}, nil)
 			install(t, target, old)
-			store, err := operations.Open(t.TempDir(), target, next.keys)
+			store, err := transaction.Open(t.TempDir(), target, next.keys)
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := operations.New(strings.Repeat("c", 32), update.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now().Add(-age))
+			r, err := transaction.New(strings.Repeat("c", 32), change.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now().Add(-age))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Create(context.Background(), r); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := store.Advance(context.Background(), r.ID, operations.Created, operations.Verified, "", time.Now()); err != nil {
+			if _, _, err := store.Advance(context.Background(), r.ID, transaction.Created, transaction.Verified, "", time.Now()); err != nil {
 				t.Fatal(err)
 			}
 			before := time.Now()
@@ -170,14 +172,14 @@ func TestReconcileCannotUseCoreInventoryToUnlockGUIOperation(t *testing.T) {
 			}
 			defer peer.Close()
 			r, _, _ := store.Read(context.Background())
-			rec := operations.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: update.RestoreIntent{Mode: "desktop"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: r.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
+			rec := transaction.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "desktop"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: r.CreatedAt.Add(20 * time.Minute), LogLevel: "info"}
 			if err := store.SetRecovery(context.Background(), id, rec, time.Now()); err != nil {
 				t.Fatal(err)
 			}
-			phase := operations.Verified
-			phases := []operations.Phase{operations.Preparing}
+			phase := transaction.Verified
+			phases := []transaction.Phase{transaction.Preparing}
 			if resume {
-				phases = append(phases, operations.Quiescent, operations.Applying, operations.Applied, operations.Resuming)
+				phases = append(phases, transaction.Quiescent, transaction.Applying, transaction.Applied, transaction.Resuming)
 			}
 			for _, nextPhase := range phases {
 				if _, _, err := store.Advance(context.Background(), id, phase, nextPhase, "", time.Now()); err != nil {
@@ -199,7 +201,7 @@ func TestReconcileCannotUseCoreInventoryToUnlockGUIOperation(t *testing.T) {
 }
 
 func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
-	for _, phase := range []operations.Phase{operations.Applied, operations.Resuming} {
+	for _, phase := range []transaction.Phase{transaction.Applied, transaction.Resuming} {
 		t.Run(string(phase), func(t *testing.T) {
 			target := t.TempDir()
 			old := image(t, "1.0.0", "old", map[string]string{"program": "old"}, nil)
@@ -216,12 +218,12 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer peer.Close()
-			recovery := operations.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: update.RestoreIntent{Mode: "headless"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
+			recovery := transaction.Recovery{SourceFilesSHA256: digest(old.inventory.data), Intent: maintenance.Intent{Mode: "headless"}, CoordinatorPID: peer.PID, CoordinatorStart: peer.Start, Nonce: strings.Repeat("a", 32), ExpiresAt: time.Now().Add(20 * time.Minute), LogLevel: "info"}
 			if err := store.SetRecovery(context.Background(), id, recovery, time.Now()); err != nil {
 				t.Fatal(err)
 			}
-			previous := operations.Verified
-			for _, p := range []operations.Phase{operations.Preparing, operations.Quiescent, operations.Applying, operations.Applied, operations.Resuming} {
+			previous := transaction.Verified
+			for _, p := range []transaction.Phase{transaction.Preparing, transaction.Quiescent, transaction.Applying, transaction.Applied, transaction.Resuming} {
 				if _, _, err := store.Advance(context.Background(), id, previous, p, "", time.Now()); err != nil {
 					t.Fatal(err)
 				}
@@ -253,7 +255,7 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 			r, _, err := store.Read(context.Background())
-			if err != nil || r.Phase != operations.ResumeFailed || r.RequiresStartupBlock() {
+			if err != nil || r.Phase != transaction.ResumeFailed || r.RequiresStartupBlock() {
 				t.Fatalf("%+v %v", r, err)
 			}
 			if err := ReconcileInterrupted(context.Background(), store, id, target, next.inventory); err == nil {
@@ -264,25 +266,25 @@ func TestAppliedInterruptionRequiresDeadOwnerAndExactTargetBytes(t *testing.T) {
 }
 
 func TestUnstartedOperationReconciliationHonorsCoordinatorLease(t *testing.T) {
-	for _, phase := range []operations.Phase{operations.Created, operations.Verified} {
+	for _, phase := range []transaction.Phase{transaction.Created, transaction.Verified} {
 		t.Run(string(phase), func(t *testing.T) {
 			target := t.TempDir()
 			old := image(t, "1.0.0", "old", map[string]string{"program": "old"}, nil)
 			next := image(t, "1.1.0", "new", map[string]string{"program": "new"}, nil)
 			install(t, target, old)
-			store, err := operations.Open(t.TempDir(), target, next.keys)
+			store, err := transaction.Open(t.TempDir(), target, next.keys)
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := operations.New(strings.Repeat("a", 32), update.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
+			r, err := transaction.New(strings.Repeat("a", 32), change.Target{ID: target, Version: "1.0.0", BuildID: "old", Layout: "portable"}, next.inventory.candidate, next.verified, time.Now())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Create(context.Background(), r); err != nil {
 				t.Fatal(err)
 			}
-			if phase == operations.Verified {
-				if _, _, err := store.Advance(context.Background(), r.ID, operations.Created, phase, "", time.Now()); err != nil {
+			if phase == transaction.Verified {
+				if _, _, err := store.Advance(context.Background(), r.ID, transaction.Created, phase, "", time.Now()); err != nil {
 					t.Fatal(err)
 				}
 				release, err := store.AcquireCoordinator(context.Background(), r.ID)
@@ -300,7 +302,7 @@ func TestUnstartedOperationReconciliationHonorsCoordinatorLease(t *testing.T) {
 				t.Fatal(err)
 			}
 			current, _, err := store.Read(context.Background())
-			if err != nil || current.Phase != operations.Aborted {
+			if err != nil || current.Phase != transaction.Aborted {
 				t.Fatal(current.Phase, err)
 			}
 		})

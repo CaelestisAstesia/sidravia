@@ -15,7 +15,7 @@ import (
 	"sidravia/internal/document/securefile"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update/lifecycle"
-	"sidravia/internal/update/operations"
+	"sidravia/internal/update/transaction"
 	"sidravia/internal/update/windowsplatform"
 )
 
@@ -40,7 +40,7 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 	if e != nil {
 		return e
 	}
-	if r.Phase != operations.Applied || r.Recovery == nil || identity.ProductVersion != r.Target.Version || identity.BuildID != r.Target.BuildID || s.Source != r.Source {
+	if r.Phase != transaction.Applied || r.Recovery == nil || identity.ProductVersion != r.Target.Version || identity.BuildID != r.Target.BuildID || s.Source != r.Source {
 		return ErrInvalid
 	}
 	claimPath, e := sessionPath(s.Source.ID, id)
@@ -91,10 +91,10 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 	if code != 0 && code != 1 {
 		return ErrRecovery
 	}
-	if _, changed, e := store.Advance(ctx, id, operations.Applied, operations.Resuming, "", time.Now()); e != nil || !changed {
-		return errors.Join(operations.ErrConflict, e)
+	if _, changed, e := store.Advance(ctx, id, transaction.Applied, transaction.Resuming, "", time.Now()); e != nil || !changed {
+		return errors.Join(transaction.ErrConflict, e)
 	}
-	root, e := productlayout.UpdateOperationRoot()
+	root, e := productlayout.OperationRoot()
 	if e != nil {
 		return e
 	}
@@ -107,15 +107,15 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 		return e
 	}
 	recoveryErr := lifecycle.RestoreInstalled(ctx, id, r.Target, r.Recovery.Intent, r.Recovery.ExpiresAt, r.Recovery.LogLevel, directory, identity, parent.SID, r.Recovery.Nonce)
-	phase := operations.Completed
+	phase := transaction.Completed
 	failure := ""
 	if recoveryErr != nil {
-		phase = operations.ResumeFailed
+		phase = transaction.ResumeFailed
 		failure = "resume_failed"
 	}
-	_, changed, e := store.Advance(context.WithoutCancel(ctx), id, operations.Resuming, phase, failure, time.Now())
+	_, changed, e := store.Advance(context.WithoutCancel(ctx), id, transaction.Resuming, phase, failure, time.Now())
 	if e != nil || !changed {
-		return errors.Join(recoveryErr, operations.ErrConflict, e)
+		return errors.Join(recoveryErr, transaction.ErrConflict, e)
 	}
 	if e = removeSeal(r.Target.ID, id); e != nil {
 		return e
@@ -127,7 +127,7 @@ func Finish(ctx context.Context, id string, pid uint32, identity daemonctl.Ident
 }
 
 func ownSeal(target, id string) (bool, error) {
-	path := filepath.Join(target, operations.StartupSeal)
+	path := filepath.Join(target, transaction.StartupSeal)
 	info, e := os.Lstat(path)
 	if os.IsNotExist(e) {
 		return false, nil
@@ -166,5 +166,5 @@ func removeSeal(target, id string) error {
 	if !present {
 		return nil
 	}
-	return os.Remove(filepath.Join(target, operations.StartupSeal))
+	return os.Remove(filepath.Join(target, transaction.StartupSeal))
 }

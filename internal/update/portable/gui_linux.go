@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"sidravia/internal/update/packagefiles"
+	packagefiles "sidravia/internal/release/files"
 )
 
 func verifyGUI(root *os.Root, i Inventory) error {
