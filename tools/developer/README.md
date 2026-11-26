@@ -131,16 +131,10 @@ OS, architecture and package format:
 
 | Target | Graphical program | Complete headless program |
 | --- | --- | --- |
-| Windows x64 | Setup EXE, GUI portable ZIP | Core portable ZIP; core-only selection in the same Setup EXE |
-| Windows ARM64 | Not provided | Core portable ZIP |
-| Linux x64 | GUI portable tar.gz, Fedora GUI RPM | Core portable tar.gz, Fedora core RPM |
-| Linux ARM64 | Not provided | Core portable tar.gz |
+| Windows x64 and ARM64 | Architecture-specific Setup EXE, GUI portable ZIP | Core portable ZIP or core-only selection in the same Setup |
+| Linux amd64 and arm64 | GUI portable tar, Fedora RPM, Debian DEB | Core portable tar, Fedora core RPM, Debian core DEB |
 
-These are nine downloads; the Windows installer covers two component selections.
-No ARM64 GUI/RPM, Linux installer, DEB or Flatpak is produced.
-The Package workflow builds Windows x64 GUI/setup/core and all four core
-OS/architecture targets. Linux GUI and RPM use the native Fedora entries below;
-they are not produced by that workflow.
+The packaging matrix defines 18 downloads across four targets. On Windows ARM64 the installer host runs under x64 emulation and installs ARM64 payloads. The OS and architecture in an artifact receipt identify its payload. Native execution, installation and update acceptance are recorded separately for each candidate. Linux distribution jobs build on the target distribution and architecture.
 
 Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
 The external Windows ICO belongs to setup/uninstall integration and is staged
@@ -158,16 +152,10 @@ python3 tools/developer/dev.py package --target windows-arm64 --version 0.5.0-al
 python3 tools/developer/dev.py package --target windows-amd64 --version 0.5.0-alpha.1 --output dist/windows-amd64-core
 ```
 
-ARM64 packages contain core tools only (Windows includes the manager). They are
-cross-compiled with CGO disabled and ARMv8.0 baseline. The consumer inspects
-archive content, checksums and Go OS/architecture metadata without executing
-foreign binaries; help smoke is recorded as `not_run`. Cross-compilation does
-not establish ARM hardware compatibility. GUI bundles are x64 on Windows and
-Linux; the Windows installer is Windows x64 only. The default Linux AMD64
-package also runs native help smoke.
+The core producer omits CGO and uses an ARMv8.0 baseline on ARM64. It checks archive contents and Go binary metadata for every target, and runs help smoke for a matching native Linux architecture. Cross-build receipts cover file contents only. GUI distribution builds use the native target Flutter engine and plugins.
 
 The full commit is passed as build-id; producer and consumer remain the existing
-implementations. Windows AMD64 GUI distribution must use `windows --package`, which builds
+implementations. Windows GUI distribution must use `windows --package`, which builds
 the GUI from synchronized source. A generic existing GUI directory is not accepted
 as proof of current source. Go `trimpath`'s `embedded_identity=not_recorded`
 limitation remains; source/build receipts and byte hashes are not independent
@@ -212,7 +200,7 @@ paths or changed bytes fail closed and require cache inspection.
 Linux/Windows portable apply and Windows installed setup handoff are wired into the CLI.
 The default build pins the reviewed publisher public key. Missing or invalid
 publisher signatures never authorize application. Native Linux portable and
-Windows AMD64 portable/setup candidates can be offered; `canApply` remains conditional
+Windows portable/setup candidates can be offered; `canApply` remains conditional
 on verifying the installed baseline and explicit confirmation. Apply refetches
 fixed signed metadata for both the installed version/build and the exact new
 candidate, rechecks the cached archive, and authenticates the local ownership
@@ -306,7 +294,7 @@ The next update removes only the previous verified helper after its exact
 generation has exited; the latest helper and private receipts remain cached.
 No new resident service, launcher or runtime trust/source option is introduced.
 
-This adapter supports local NTFS on Windows AMD64. It uses the existing
+This adapter supports local NTFS on Windows x64 and ARM64. It uses the existing
 current-user installer mutex during publication, refuses live target processes,
 and retains its own seal through one cold recovery. Go and native GUI admission
 check the signed operation, exact live helper ancestry, new build and finite
@@ -456,7 +444,7 @@ boundary tests also cover old GUI entry migration, conflicts, quoting, missing
 PATH/shadowed commands, Fedora public skeleton shell lookup, namespace isolation
 and nonblocking interprocess maintenance locking.
 
-### Local unsigned Fedora RPM (x86_64)
+### Local unsigned Fedora RPM (x86_64 and aarch64)
 
 RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
 project-downloaded replacements. Build the verified clean-source GUI portable
@@ -513,7 +501,19 @@ python3 tools/developer/dev.py linux --rpm-core dist/linux-amd64/sidravia-v0.5.0
 
 Use an absent output directory with an existing parent. Core RPM lifecycle
 acceptance uses the existing `linux --verify-rpm-upgrade OLD_RPM NEW_RPM` entry.
-ARM64 RPM is not currently produced.
+Use the matching native Fedora architecture for the RPM producer.
+
+### Debian packages
+
+Use Debian 13 on the target architecture. Install the build dependencies in the Debian control file and the native Linux GUI build dependencies for a desktop payload. Build the matching portable payload from a clean checkout using the commands above. The Debian producer invokes debhelper and dpkg-buildpackage; GUI shared-library dependencies are calculated by Debian tools. Core and GUI package names are mutually exclusive. The Debian upstream version encodes a prerelease with a tilde; the packaging revision is controlled by `--deb-revision`.
+
+```sh
+python3 tools/developer/dev.py linux --deb "$GUI_PORTABLE" --output "$NEW_GUI_DEB_OUTPUT"
+python3 tools/developer/dev.py linux --deb-core "$CORE_PORTABLE" --version "$PRODUCT_VERSION" --output "$NEW_CORE_DEB_OUTPUT"
+```
+
+Use APT to install the selected local DEB. See [Debian installation and removal](../../docs/linux-deb.md).
+
 
 ## Isolated account-business fixture
 

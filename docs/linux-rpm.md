@@ -13,7 +13,7 @@
 
 两个包共用安装路径，不能同时安装。核心包不依赖 GTK、WebKitGTK 等图形库。切换包型时，先退出程序并备份配置，卸载原包后再安装另一包。两种包使用相同的用户数据位置。
 
-ARM64 RPM 暂不提供。ARM64 用户可选择[核心便携包](../README.md#选择下载包)。
+开发版打包入口接受 x86_64 和 aarch64，安装时选与 Fedora 系统架构相同的 RPM。可下载版本以对应发行页为准。
 
 下载对应 `.rpm` 与校验清单，按[快速开始](quick-start.md#校验下载)核对哈希。在下载目录执行，把变量值改成实际文件名：
 
@@ -54,7 +54,7 @@ RPM 卸载后保留用户配置与日志。需要清理时，先按[数据位置
 
 ## 开发与验证
 
-构建与隔离验收入口见[开发工具说明](../tools/developer/README.md#local-unsigned-fedora-rpm-x86_64)。
+构建与隔离验收入口见[开发工具说明](../tools/developer/README.md#local-unsigned-fedora-rpm-x86_64-and-aarch64)。
 
 ## systemd 用户服务
 

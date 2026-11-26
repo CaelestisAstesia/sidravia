@@ -16,7 +16,7 @@ sudo dnf install gtk3 libayatana-appindicator-gtk3 webkit2gtk4.1
 
 GTK 3、GLib、glibc、libstdc++、Wayland 等系统库也需可用。中文界面使用系统字体；缺字时可安装 `google-noto-sans-cjk-vf-fonts`。随包只携带诊断文本使用的 Source Code Pro。
 
-核心便携包不含 Flutter GUI、托盘或公告窗口，不需要上述 GUI 库。Linux ARM64 当前仅提供核心便携包，尚未经 ARM64 实机验证。
+核心便携包不含 Flutter GUI、托盘或公告窗口，不需要上述 GUI 库。开发版的 GUI 和核心分别构建 amd64 与 arm64 制品，选择与本机匹配的架构和发行说明中列明的运行环境。
 
 ## 解压与启动
 
@@ -58,7 +58,7 @@ GUI 的用户 PATH 设置在 `~/.local/bin` 创建本安装的 `sidraviactl`、`
 
 手动升级时，完整解压新版到新目录，在两端都退出后只转移需要保留的私有数据，不能覆盖正在运行的目录。配置迁移步骤见[使用指南](guide.md#更新移动与卸载)。
 
-GUI 包的名称含 `-linux-amd64-gui-portable`，仅核心包以 `-core-portable` 区分。归档扩展名以该版本发行页为准。更新器按当前包型选择更新，见[更新检查与下载](advance.md#更新检查与下载)。
+GUI 包的名称含 `-linux-<架构>-gui-portable`，仅核心包以 `-core-portable` 区分。归档扩展名以该版本发行页为准。更新器按当前包型选择更新，见[更新检查与下载](advance.md#更新检查与下载)。
 
 其他发行版、桌面环境和 X11 尚待验证。通知、登录自启和校园认证请在实际使用环境中检查。
 

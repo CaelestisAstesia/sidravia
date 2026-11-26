@@ -6,7 +6,7 @@
 
 版本变化见[变更日志](../CHANGELOG.md)。预发布版本可能调整命令和参数，使用其他版本时，请同时核对对应发行说明及命令的 `--help`。
 
-Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 便携包使用 `./sidraviactl`，RPM 安装后可直接使用 `sidraviactl`。Linux GUI 的自启和 PATH 设置见[便携版说明](linux-portable.md)，Linux 使用 `integration service` 管理 systemd 用户服务。PATH 和桌面自启的 CTL 命令仅供 Windows 使用。
+Windows 示例使用 PowerShell，假定当前目录为完整解压或安装后的程序目录，以 `.\sidraviactl.exe` 运行。已加入用户 PATH 时，可直接输入 `sidraviactl`。Linux 便携包使用 `./sidraviactl`，RPM 和 DEB 安装后可直接使用 `sidraviactl`。Linux GUI 的自启和 PATH 设置见[便携版说明](linux-portable.md)，Linux 使用 `integration service` 管理 systemd 用户服务。PATH 和桌面自启的 CTL 命令仅供 Windows 使用。
 
 `<configuration-id>`、`<session-id>` 和 `<账号>` 等表示需要替换的内容，实际输入时不保留尖括号。交互式输入密码时不会回显；不要把密码直接写进命令行参数。
 
@@ -365,24 +365,24 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 
 ## 更新检查与下载
 
-检查与下载使用 GitHub Releases，CTL 以 JSON 输出结果。Windows 和 Linux 的 CTL 直接执行检查。便携版和 Windows 安装版的下载、应用和中断恢复由同目录的 `sidraviaupdater` 执行。RPM 由系统包管理器更新。
+检查与下载使用 GitHub Releases，CTL 以 JSON 输出结果。Windows 和 Linux 的 CTL 直接执行检查。便携版和 Windows 安装版的下载、应用和中断恢复由同目录的 `sidraviaupdater` 执行。RPM 和 DEB 由系统包管理器更新。
 
 | 命令 | 用途 |
 | --- | --- |
-| `update version` | 查询版本与构建标识。RPM 由 CTL 报告，其他包由同目录的更新器报告 |
+| `update version` | 查询版本与构建标识。RPM 和 DEB 由 CTL 报告，其他包由同目录的更新器报告 |
 | `update check` | 检查匹配平台、包类型和通道的更新候选 |
 | `update status` | 查询缓存及更新执行状态 |
 | `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
 | `update apply --candidate ID --confirm` | 确认应用 Linux／Windows 便携版或 Windows 安装版的准确候选 |
 | `update recover --operation ID --confirm` | 核验并处理指定的中断更新；Linux 托管便携版可尝试恢复原文件和服务 |
 
-除 `version` 外，可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型须受当前平台支持。省略时按当前版本和程序布局选择。检查、下载和应用应使用相同的通道、包类型，候选编号取自检查结果。RPM 的 `check` 支持选择通道，包类型由已安装的 RPM 决定。
+除 `version` 外，可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型须受当前平台支持。省略时按当前版本和程序布局选择。检查、下载和应用应使用相同的通道、包类型，候选编号取自检查结果。系统包的 `check` 支持选择通道，使用已安装的包型与架构。
 
 ### 使用条件
 
 自动应用支持 Linux x64 便携版、Windows x64 便携版和安装版。Windows 便携版需放在本地 NTFS 目录。
 
-程序内固定了发布者公钥。自动更新时会核验当前版本和目标版本的签名、文件清单及下载包；旧版缺少签名证明时，先按发行说明手动升级。RPM 版 GUI 可在「软件更新」中检查新版并打开发行页。
+程序内固定了发布者公钥。自动更新时会核验当前版本和目标版本的签名、文件清单及下载包；旧版缺少签名证明时，先按发行说明手动升级。RPM 和 DEB 版 GUI 可在「软件更新」中检查新版并打开发行页。
 
 ### 检查、下载和应用
 

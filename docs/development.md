@@ -58,7 +58,7 @@ mkdir -p dist
 python3 tools/developer/dev.py package --version 0.6.0-alpha.1 --output dist/linux-amd64
 ```
 
-同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。ARM64 仅提供核心便携包，Windows 核心包包含 MGR；GUI 支持 Windows/Linux AMD64，安装程序为 Windows AMD64，RPM 初始目标为 Fedora 45 x86_64。ARM64 尚待实机验证。
+同一入口支持 `--target linux-arm64` 和 `--target windows-arm64`，应分别使用尚不存在的输出目录。核心包可交叉编译。GUI 构建需匹配架构的 Flutter 和原生插件。分发矩阵包括 Windows 双架构 ZIP／Setup、Linux 双架构便携包、Fedora RPM 和 Debian DEB；逐架构实跑结果以对应候选回执为准。
 
 输出目录的父目录需存在。以上入口不会安装程序、启动 GUI、真实认证、签名或发布。包内容、哈希与 help smoke 检查也不能代替实际安装和网络验证。
 
