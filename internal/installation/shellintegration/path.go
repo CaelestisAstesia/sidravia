@@ -38,11 +38,22 @@ type pathValue struct {
 	kind   uint32
 	exists bool
 }
+
+type pathOwnership uint32
+
+const (
+	pathUnowned pathOwnership = iota
+	pathAppended
+	pathCreated
+	pathExpandable uint32 = 2 // Windows REG_EXPAND_SZ.
+)
+
+var errPathChanged = errors.New("PATH or its ownership changed before edit")
+
 type pathStore interface {
 	read() (pathValue, error)
-	write(pathValue) error
-	owns(string) (bool, error)
-	setOwnership(string, bool) error
+	ownership(string) (pathOwnership, error)
+	replace(string, pathValue, pathValue, pathOwnership, pathOwnership) error
 	notify() error
 }
 
@@ -115,48 +126,38 @@ func operate(store pathStore, directory string, operation Operation) (Result, er
 	}
 	r.PathEnabled = contains(before.text, directory)
 	if operation != Status {
-		owned, err := store.owns(directory)
+		owned, err := store.ownership(directory)
 		if err != nil {
 			return fail("path_read_failed", err)
 		}
-		if operation == DisablePath && !owned {
-			if r.PathEnabled {
-				r.Warning = "path_entry_not_owned"
-			}
-			r.OK = true
-			r.Code = "ok"
-			return r, nil
-		}
 		desired := before
-		desired.text = edit(before.text, directory, operation == EnablePath)
-		if desired.text != before.text || operation == DisablePath {
-			observed, readErr := store.read()
-			if readErr != nil {
-				return fail("path_verify_failed", readErr)
-			}
-			if observed != before {
-				return fail("path_verify_failed", errors.New("PATH changed before edit"))
-			}
-		}
-		if operation == DisablePath {
-			// Retire the ownership before removal. A failed write can leave our
-			// old entry present, but a retry cannot remove a later user entry
-			// under an ownership marker left behind by an interrupted removal.
-			if err := store.setOwnership(directory, false); err != nil {
-				return fail("path_write_failed", err)
-			}
-		}
-		if desired.text != before.text {
+		next := owned
+		switch {
+		case operation == EnablePath && !r.PathEnabled:
+			desired.text = edit(before.text, directory, true)
 			desired.exists = true
+			next = pathAppended
 			if !before.exists {
-				desired.kind = 2
-			} // Windows REG_EXPAND_SZ.
-			// A failed write may have partially changed state: Changed is only
-			// authoritative on success, and OK stays false until verified.
-			if err := store.write(desired); err != nil {
+				desired.kind = pathExpandable
+				next = pathCreated
+			}
+		case operation == DisablePath && owned != pathUnowned:
+			desired.text = edit(before.text, directory, false)
+			next = pathUnowned
+			if owned == pathCreated && before.text == directory && before.kind == pathExpandable {
+				desired = pathValue{}
+			}
+		case operation == DisablePath && r.PathEnabled:
+			r.Warning = "path_entry_not_owned"
+		}
+		if desired != before || next != owned {
+			if err := store.replace(directory, before, desired, owned, next); err != nil {
+				if errors.Is(err, errPathChanged) {
+					return fail("path_verify_failed", err)
+				}
 				return fail("path_write_failed", err)
 			}
-			r.Changed = true
+			r.Changed = desired != before
 			after, err := store.read()
 			if err != nil {
 				return fail("path_verify_failed", err)
@@ -165,14 +166,10 @@ func operate(store pathStore, directory string, operation Operation) (Result, er
 			if after != desired {
 				return fail("path_verify_failed", errors.New("observed PATH differs from write"))
 			}
-			if operation == EnablePath {
-				// Record ownership only after the exact appended value was observed.
-				if err := store.setOwnership(directory, true); err != nil {
-					return fail("path_write_failed", err)
+			if r.Changed {
+				if err := store.notify(); err != nil {
+					r.Warning = "environment_notification_failed"
 				}
-			}
-			if err := store.notify(); err != nil {
-				r.Warning = "environment_notification_failed"
 			}
 		}
 	}

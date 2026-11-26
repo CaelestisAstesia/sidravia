@@ -11,84 +11,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/registry"
 )
 
-type registryPath struct{}
-
-const pathOwnershipKey = `Software\CaelestisAstesia\Sidravia\PathOwnership`
-
-func (registryPath) owns(directory string) (bool, error) {
-	key, err := registry.OpenKey(registry.CURRENT_USER, pathOwnershipKey, registry.QUERY_VALUE)
-	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer key.Close()
-	value, kind, err := key.GetIntegerValue(directory)
-	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	if value != 1 || kind != registry.DWORD {
-		return false, errors.New("unrecognized PATH ownership record")
-	}
-	return true, nil
-}
-
-func (registryPath) setOwnership(directory string, owned bool) error {
-	if owned {
-		key, _, err := registry.CreateKey(registry.CURRENT_USER, pathOwnershipKey, registry.SET_VALUE)
-		if err != nil {
-			return err
-		}
-		defer key.Close()
-		return key.SetDWordValue(directory, 1)
-	}
-	key, err := registry.OpenKey(registry.CURRENT_USER, pathOwnershipKey, registry.SET_VALUE)
-	if err != nil {
-		return err
-	}
-	defer key.Close()
-	return key.DeleteValue(directory)
-}
-
-func (registryPath) read() (pathValue, error) {
-	k, err := registry.OpenKey(registry.CURRENT_USER, "Environment", registry.QUERY_VALUE)
-	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
-		return pathValue{}, nil
-	}
-	if err != nil {
-		return pathValue{}, err
-	}
-	defer k.Close()
-	s, kind, err := k.GetStringValue("Path")
-	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
-		return pathValue{}, nil
-	}
-	if err != nil {
-		return pathValue{}, err
-	}
-	if kind != registry.SZ && kind != registry.EXPAND_SZ {
-		return pathValue{}, errors.New("unsupported PATH registry type")
-	}
-	return pathValue{text: s, kind: kind, exists: true}, nil
-}
-func (registryPath) write(v pathValue) error {
-	k, _, err := registry.CreateKey(registry.CURRENT_USER, "Environment", registry.SET_VALUE)
-	if err != nil {
-		return err
-	}
-	defer k.Close()
-	if v.kind == registry.EXPAND_SZ {
-		return k.SetExpandStringValue("Path", v.text)
-	}
-	return k.SetStringValue("Path", v.text)
-}
 func (registryPath) notify() error {
 	name, err := windows.UTF16PtrFromString("Environment")
 	if err != nil {

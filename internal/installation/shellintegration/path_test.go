@@ -11,7 +11,7 @@ type memoryPath struct {
 	readErr, writeErr, notifyErr error
 	verifyErr                    bool
 	tamper                       bool
-	owned                        bool
+	owned                        pathOwnership
 	beforeWrite                  *pathValue
 }
 
@@ -26,22 +26,25 @@ func (m *memoryPath) read() (pathValue, error) {
 	if m.reads > 1 && m.tamper {
 		return pathValue{text: "changed externally", kind: 1, exists: true}, nil
 	}
-	if m.reads == 2 && m.beforeWrite != nil {
-		m.value = *m.beforeWrite
-	}
 	return m.value, nil
 }
-func (m *memoryPath) write(v pathValue) error {
+func (m *memoryPath) replace(_ string, before, after pathValue, old, next pathOwnership) error {
+	if m.beforeWrite != nil {
+		m.value = *m.beforeWrite
+	}
+	if m.value != before || m.owned != old {
+		return errPathChanged
+	}
 	m.writes++
 	if m.writeErr != nil {
 		return m.writeErr
 	}
-	m.value = v
+	m.value = after
+	m.owned = next
 	return nil
 }
 func (m *memoryPath) notify() error                           { m.notifications++; return m.notifyErr }
-func (m *memoryPath) owns(string) (bool, error)               { return m.owned, nil }
-func (m *memoryPath) setOwnership(_ string, owned bool) error { m.owned = owned; return nil }
+func (m *memoryPath) ownership(string) (pathOwnership, error) { return m.owned, nil }
 
 func TestExactPATHTransitions(t *testing.T) {
 	dir := `C:\Apps\Sidravia`
@@ -59,7 +62,10 @@ func TestExactPATHTransitions(t *testing.T) {
 		{"status", `C:\Apps\Sidravia`, `C:\Apps\Sidravia`, Status, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := &memoryPath{value: pathValue{text: tc.before, kind: 1, exists: true}, owned: tc.op == DisablePath}
+			m := &memoryPath{value: pathValue{text: tc.before, kind: 1, exists: true}}
+			if tc.op == DisablePath {
+				m.owned = pathAppended
+			}
 			r, err := operate(m, dir, tc.op)
 			if err != nil || !r.OK || r.PathEnabled != tc.enabled || r.Changed != tc.changed || m.value.text != tc.after || m.value.kind != 1 {
 				t.Fatalf("result=%+v value=%+v err=%v", r, m.value, err)
@@ -80,13 +86,13 @@ func TestPathDisablePreservesExistingAndLaterEdits(t *testing.T) {
 		}
 	}
 	for _, kind := range []uint32{1, 2} {
-		m := &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;;C:\Added;`, kind: kind, exists: true}, owned: true}
-		if _, err := operate(m, dir, DisablePath); err != nil || m.value.text != `C:\Other;;C:\Added;` || m.value.kind != kind || m.owned {
+		m := &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;;C:\Added;`, kind: kind, exists: true}, owned: pathAppended}
+		if _, err := operate(m, dir, DisablePath); err != nil || m.value.text != `C:\Other;;C:\Added;` || m.value.kind != kind || m.owned != pathUnowned {
 			t.Fatalf("disable changed a later PATH edit or lost type: %+v, %v", m, err)
 		}
 	}
 	m := &memoryPath{value: pathValue{text: dir + `;C:\Other;`, kind: 2, exists: true}}
-	if _, err := operate(m, dir, EnablePath); err != nil || m.owned {
+	if _, err := operate(m, dir, EnablePath); err != nil || m.owned != pathUnowned {
 		t.Fatalf("pre-existing matching entry was adopted: %+v, %v", m, err)
 	}
 	r, err := operate(m, dir, DisablePath)
@@ -94,9 +100,39 @@ func TestPathDisablePreservesExistingAndLaterEdits(t *testing.T) {
 		t.Fatalf("pre-existing matching entry was removed: %+v, %v", r, err)
 	}
 	late := pathValue{text: `C:\Other;` + dir + `;C:\Added;`, kind: 2, exists: true}
-	m = &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;`, kind: 2, exists: true}, owned: true, beforeWrite: &late}
-	if _, err := operate(m, dir, DisablePath); Code(err) != "path_verify_failed" || m.value != late || !m.owned || m.writes != 0 {
+	m = &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;`, kind: 2, exists: true}, owned: pathAppended, beforeWrite: &late}
+	if _, err := operate(m, dir, DisablePath); Code(err) != "path_verify_failed" || m.value != late || m.owned != pathAppended || m.writes != 0 {
 		t.Fatalf("concurrent PATH append was lost: %+v, %v", m, err)
+	}
+}
+
+func TestPathAndOwnershipFailedWriteCanRetry(t *testing.T) {
+	dir := `C:\Apps\Sidravia`
+	failure := errors.New("registry transaction failed")
+	m := &memoryPath{writeErr: failure}
+	if _, err := operate(m, dir, EnablePath); !errors.Is(err, failure) || m.value.exists || m.owned != pathUnowned {
+		t.Fatalf("failed enable left a partial registry change: %+v, %v", m, err)
+	}
+	m.writeErr = nil
+	if _, err := operate(m, dir, EnablePath); err != nil || m.value.text != dir || m.owned != pathCreated {
+		t.Fatalf("enable could not retry: %+v, %v", m, err)
+	}
+	m.writeErr = failure
+	if _, err := operate(m, dir, DisablePath); !errors.Is(err, failure) || m.value.text != dir || m.owned != pathCreated {
+		t.Fatalf("failed disable left a partial registry change: %+v, %v", m, err)
+	}
+	m.writeErr = nil
+	if _, err := operate(m, dir, DisablePath); err != nil || m.value.exists || m.owned != pathUnowned {
+		t.Fatalf("disable could not restore the originally absent PATH: %+v, %v", m, err)
+	}
+	m = &memoryPath{value: pathValue{text: dir, kind: pathExpandable, exists: true}, owned: pathCreated, writeErr: failure}
+	if _, err := operate(m, dir, DisablePath); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	m.writeErr = nil
+	m.value.text += `;C:\Later;;`
+	if _, err := operate(m, dir, DisablePath); err != nil || !m.value.exists || m.value.text != `C:\Later;;` || m.owned != pathUnowned {
+		t.Fatalf("disable retry clobbered a later user edit: %+v, %v", m, err)
 	}
 }
 
