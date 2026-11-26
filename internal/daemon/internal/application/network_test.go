@@ -45,7 +45,7 @@ func TestNetworkQueryProjectsAllFactsAndCurrentEligibility(t *testing.T) {
 	if err := setup.application.ApplySystemNetworkSnapshot(context.Background(), snapshot); err != nil {
 		t.Fatal(err)
 	}
-	handler := IPCHandler(setup.application, "v", "b", launchcontract.Headless())
+	handler := testIPCHandler(t, setup.application, "v", "b", launchcontract.Headless())
 	wire, rpcErr := handler(context.Background(), contract.MethodNetworkInterfaces, json.RawMessage(`{}`))
 	if rpcErr != nil {
 		t.Fatal(rpcErr)
@@ -95,7 +95,7 @@ func TestNetworkQueryProjectsAllFactsAndCurrentEligibility(t *testing.T) {
 func TestNetworkQueryUnavailablePayloadAndSafeFailure(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := IPCHandler(setup.application, "v", "b", launchcontract.Headless())
+	handler := testIPCHandler(t, setup.application, "v", "b", launchcontract.Headless())
 	wire, rpcErr := handler(context.Background(), contract.MethodNetworkInterfaces, []byte(`{}`))
 	if rpcErr != nil || string(wire) != `{"available":false,"revision":0,"interfaces":[]}` {
 		t.Fatalf("unavailable = %s %#v", wire, rpcErr)

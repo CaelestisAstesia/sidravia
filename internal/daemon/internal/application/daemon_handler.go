@@ -13,16 +13,14 @@ import (
 // via the server's responseCommitted hook mapped by the composition root. The
 // handler never cancels runtime while building the response, so a failed
 // encode/write does not stop the daemon.
-func DaemonHandler() func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-		switch method {
-		case contract.MethodDaemonStop:
-			return handleDaemonStop(payload)
-		default:
-			return nil, &contract.Error{
-				Code:    contract.ErrorCodeUnknownMethod,
-				Message: "unsupported daemon method",
-			}
+func dispatchDaemon(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	switch method {
+	case contract.MethodDaemonStop:
+		return handleDaemonStop(payload)
+	default:
+		return nil, &contract.Error{
+			Code:    contract.ErrorCodeUnknownMethod,
+			Message: "unsupported daemon method",
 		}
 	}
 }

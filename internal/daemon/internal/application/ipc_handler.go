@@ -9,21 +9,14 @@ import (
 	"sidravia/internal/ipc/contract"
 )
 
-type ipcHandler func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error)
 type openCoordinator func(uint32) (alive func() bool, close func(), err error)
 
 type ipcDispatcher struct {
 	application    *Application
 	options        launchcontract.Options
 	open           openCoordinator
-	status         ipcHandler
-	daemon         ipcHandler
-	sessions       ipcHandler
-	business       ipcHandler
-	profiles       ipcHandler
-	configurations ipcHandler
-	network        ipcHandler
-	diagnostics    ipcHandler
+	productVersion string
+	buildID        string
 
 	mu               sync.Mutex // held through admission and execution; precedes application.operationMu
 	state            maintenanceState
@@ -39,31 +32,20 @@ func newIPCDispatcher(application *Application, productVersion, buildID string, 
 		options:          options,
 		open:             open,
 		restoreAvailable: options.SkipAutoLogin,
-		status:           StatusHandler(productVersion, buildID, options),
-		daemon:           DaemonHandler(),
-		sessions:         SessionHandler(application),
-		business:         BusinessHandler(application),
-		profiles:         ProfileHandler(application),
-		configurations:   ConfigurationHandler(application),
-		network:          NetworkHandler(application),
-		diagnostics:      DiagnosticsExportHandler(application, productVersion, buildID),
+		productVersion:   productVersion, buildID: buildID,
 	}
-}
-
-func IPCHandler(application *Application, productVersion, buildID string, options launchcontract.Options) ipcHandler {
-	return newIPCDispatcher(application, productVersion, buildID, options, openMaintenanceCoordinator).handle
 }
 
 func (dispatcher *ipcDispatcher) dispatch(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
 	switch method {
 	case contract.MethodSessionBusinessGet:
-		return dispatcher.business(ctx, method, payload)
+		return dispatchBusiness(dispatcher.application, ctx, method, payload)
 	case contract.MethodDiagnosticsExport:
-		return dispatcher.diagnostics(ctx, method, payload)
+		return dispatchDiagnosticsExport(dispatcher.application, dispatcher.productVersion, dispatcher.buildID, ctx, method, payload)
 	case contract.MethodDaemonStatus:
-		return dispatcher.status(ctx, method, payload)
+		return dispatchStatus(dispatcher.productVersion, dispatcher.buildID, dispatcher.options, ctx, method, payload)
 	case contract.MethodDaemonStop:
-		return dispatcher.daemon(ctx, method, payload)
+		return dispatchDaemon(ctx, method, payload)
 	case contract.MethodSessionStartOneShot,
 		contract.MethodSessionStartConfiguration,
 		contract.MethodSessionStop,
@@ -72,7 +54,7 @@ func (dispatcher *ipcDispatcher) dispatch(ctx context.Context, method string, pa
 		contract.MethodSessionRemove,
 		contract.MethodSessionGet,
 		contract.MethodSessionList:
-		return dispatcher.sessions(ctx, method, payload)
+		return dispatchSession(dispatcher.application, ctx, method, payload)
 	case contract.MethodConfigurationGetOverride, contract.MethodConfigurationValidateOverride:
 		return dispatcher.application.handleConfigurationOverride(ctx, method, payload)
 	case contract.MethodConfigurationList,
@@ -81,11 +63,11 @@ func (dispatcher *ipcDispatcher) dispatch(ctx context.Context, method string, pa
 		contract.MethodConfigurationUpdate,
 		contract.MethodConfigurationSetPassword,
 		contract.MethodConfigurationRemove:
-		return dispatcher.configurations(ctx, method, payload)
+		return dispatchConfiguration(dispatcher.application, ctx, method, payload)
 	case contract.MethodNetworkInterfaces:
-		return dispatcher.network(ctx, method, payload)
+		return dispatchNetwork(dispatcher.application, ctx, method, payload)
 	case contract.MethodProfileList:
-		return dispatcher.profiles(ctx, method, payload)
+		return dispatchProfile(dispatcher.application, ctx, method, payload)
 	default:
 		return nil, &contract.Error{
 			Code:    contract.ErrorCodeUnknownMethod,

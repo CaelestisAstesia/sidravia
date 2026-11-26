@@ -31,7 +31,7 @@ func TestProfileHandlerListsSafeSummaries(t *testing.T) {
 		DisplayName:              "吉林大学",
 		AuthenticationProtocolID: profilevalue.ProtocolID("drcom-5.2.0-d"),
 	}}}
-	result, cerr := ProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
+	result, cerr := testProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
 	if cerr != nil {
 		t.Fatalf("ProfileHandler error = %+v", cerr)
 	}
@@ -56,7 +56,7 @@ func TestProfileHandlerListsSafeSummaries(t *testing.T) {
 }
 
 func TestProfileHandlerPreservesEmptyArray(t *testing.T) {
-	result, cerr := ProfileHandler(&fakeProfileApplication{})(
+	result, cerr := testProfileHandler(&fakeProfileApplication{})(
 		context.Background(),
 		contract.MethodProfileList,
 		[]byte(`{}`),
@@ -71,7 +71,7 @@ func TestProfileHandlerPreservesEmptyArray(t *testing.T) {
 
 func TestProfileHandlerRejectsMalformedPayloadWithoutCall(t *testing.T) {
 	fake := &fakeProfileApplication{}
-	_, cerr := ProfileHandler(fake)(
+	_, cerr := testProfileHandler(fake)(
 		context.Background(),
 		contract.MethodProfileList,
 		[]byte(`{"marker":"SECRET-MARKER"}`),
@@ -89,7 +89,7 @@ func TestProfileHandlerRejectsMalformedPayloadWithoutCall(t *testing.T) {
 
 func TestProfileHandlerReturnsStaticFailure(t *testing.T) {
 	fake := &fakeProfileApplication{err: errors.New("SECRET-DIAGNOSTIC")}
-	_, cerr := ProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
+	_, cerr := testProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
 	if cerr == nil ||
 		cerr.Code != contract.ErrorCodeProfileOperationFailed ||
 		cerr.Message != "profile operation failed" {
@@ -102,7 +102,7 @@ func TestProfileHandlerReturnsStaticFailure(t *testing.T) {
 
 func TestProfileHandlerRejectsUnknownMethodWithoutCall(t *testing.T) {
 	fake := &fakeProfileApplication{}
-	_, cerr := ProfileHandler(fake)(context.Background(), "profile.unknown", []byte(`{}`))
+	_, cerr := testProfileHandler(fake)(context.Background(), "profile.unknown", []byte(`{}`))
 	if cerr == nil || cerr.Code != contract.ErrorCodeUnknownMethod {
 		t.Fatalf("unknown method error = %+v", cerr)
 	}
@@ -116,7 +116,7 @@ func TestProfileHandlerAnnouncementSafeSummary(t *testing.T) {
 		InstitutionProfileID: "jlu", DisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
 		Announcement: &profilevalue.AnnouncementMetadata{URL: "http://login.jlu.edu.cn/notice_win.php", ClientWidth: 600, ClientHeight: 460},
 	}}}
-	result, cerr := ProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
+	result, cerr := testProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
 	if cerr != nil {
 		t.Fatal(cerr)
 	}

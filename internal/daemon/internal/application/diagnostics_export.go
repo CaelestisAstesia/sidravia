@@ -219,22 +219,20 @@ func diagnosticFailureCategory(code string) string {
 		return diagnosticCategory(code, "network_timeout", "server_busy", "protocol_response_invalid", "protocol_contract_violated", "logout_cleanup_failed")
 	}
 }
-func DiagnosticsExportHandler(application *Application, productVersion, buildID string) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
-	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-		if method != contract.MethodDiagnosticsExport {
-			return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported diagnostic method"}
-		}
-		if err := contract.DecodeDiagnosticsExportPayload(payload); err != nil {
-			return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed diagnostic payload"}
-		}
-		value, err := application.ExportDiagnostics(ctx, productVersion, buildID)
-		if err != nil {
-			return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "diagnostic export failed"}
-		}
-		raw, err := contract.MarshalDiagnosticsExportResult(value)
-		if err != nil {
-			return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "diagnostic export failed"}
-		}
-		return raw, nil
+func dispatchDiagnosticsExport(application *Application, productVersion, buildID string, ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	if method != contract.MethodDiagnosticsExport {
+		return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported diagnostic method"}
 	}
+	if err := contract.DecodeDiagnosticsExportPayload(payload); err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed diagnostic payload"}
+	}
+	value, err := application.ExportDiagnostics(ctx, productVersion, buildID)
+	if err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "diagnostic export failed"}
+	}
+	raw, err := contract.MarshalDiagnosticsExportResult(value)
+	if err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "diagnostic export failed"}
+	}
+	return raw, nil
 }

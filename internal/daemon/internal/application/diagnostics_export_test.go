@@ -185,7 +185,7 @@ func TestExportDiagnosticsContextsDependenciesAndNormalization(t *testing.T) {
 	if _, err := setup.application.ExportDiagnostics(context.Background(), "v", "b"); err == nil {
 		t.Fatal("closed owner exported fake zero observations")
 	}
-	handler := DiagnosticsExportHandler(setup.application, "v", "b")
+	handler := testDiagnosticsExportHandler(setup.application, "v", "b")
 	_, publicErr := handler(context.Background(), contract.MethodDiagnosticsExport, []byte(`{}`))
 	if publicErr == nil || publicErr.Code != contract.ErrorCodeInternalError || publicErr.Message != "diagnostic export failed" {
 		t.Fatalf("unsafe dependency error: %#v", publicErr)

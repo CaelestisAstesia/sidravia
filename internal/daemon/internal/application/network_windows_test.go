@@ -56,7 +56,7 @@ func TestNetworkQueryWindowsRealObserverLoopback(t *testing.T) {
 	if err := setup.application.ApplySystemNetworkSnapshot(context.Background(), snapshot); err != nil {
 		t.Fatal("apply real observation failed")
 	}
-	handler := IPCHandler(setup.application, "v", "b", launchcontract.Headless())
+	handler := testIPCHandler(t, setup.application, "v", "b", launchcontract.Headless())
 	wire, rpcErr := handler(context.Background(), contract.MethodNetworkInterfaces, []byte(`{}`))
 	if rpcErr != nil {
 		t.Fatal("real query failed")

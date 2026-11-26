@@ -9,7 +9,7 @@ import (
 )
 
 func TestDaemonHandlerStopReturnsStopping(t *testing.T) {
-	handler := DaemonHandler()
+	handler := testDaemonHandler()
 	result, cerr := handler(context.Background(), contract.MethodDaemonStop, []byte(`{}`))
 	if cerr != nil {
 		t.Fatalf("daemon.stop error: %+v", cerr)
@@ -28,7 +28,7 @@ func TestDaemonHandlerStopReturnsStopping(t *testing.T) {
 }
 
 func TestDaemonHandlerStopRejectsNonCanonicalPayload(t *testing.T) {
-	handler := DaemonHandler()
+	handler := testDaemonHandler()
 	for _, payload := range []string{"null", "", `{"extra":"x"}`, `{} {}`, `[]`} {
 		_, cerr := handler(context.Background(), contract.MethodDaemonStop, []byte(payload))
 		if cerr == nil {
@@ -42,7 +42,7 @@ func TestDaemonHandlerStopRejectsNonCanonicalPayload(t *testing.T) {
 }
 
 func TestDaemonHandlerUnknownMethod(t *testing.T) {
-	handler := DaemonHandler()
+	handler := testDaemonHandler()
 	_, cerr := handler(context.Background(), "daemon.unknown", []byte(`{}`))
 	if cerr == nil {
 		t.Fatal("expected error for unknown daemon method")

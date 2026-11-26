@@ -68,7 +68,7 @@ func (fake *fakeSessionApplication) StartConfigurationAuthentication(_ context.C
 
 func TestSessionHandlerStartConfigurationReturnsCompleteSessionResult(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	result, publicErr := SessionHandler(fake)(
+	result, publicErr := testSessionHandler(fake)(
 		context.Background(),
 		contract.MethodSessionStartConfiguration,
 		[]byte(`{"configurationId":"campus"}`),
@@ -92,13 +92,13 @@ func TestSessionHandlerStartConfigurationReturnsCompleteSessionResult(t *testing
 func TestSessionHandlerStartConfigurationRejectsMalformedAndHidesFailure(t *testing.T) {
 	for _, payload := range []string{"", "null", `{}`, `{"configurationId":""}`, `{"configurationId":"campus","extra":true}`, `{"configurationId":"campus"}{}`, `{"configurationId":"campus"}!`} {
 		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-		_, publicErr := SessionHandler(fake)(context.Background(), contract.MethodSessionStartConfiguration, []byte(payload))
+		_, publicErr := testSessionHandler(fake)(context.Background(), contract.MethodSessionStartConfiguration, []byte(payload))
 		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || fake.configCalls != 0 {
 			t.Fatalf("payload %q: error=%#v calls=%d", payload, publicErr, fake.configCalls)
 		}
 	}
 	fake := &fakeSessionApplication{err: errors.New("wrapped-cause-marker")}
-	_, publicErr := SessionHandler(fake)(context.Background(), contract.MethodSessionStartConfiguration, []byte(`{"configurationId":"private-id"}`))
+	_, publicErr := testSessionHandler(fake)(context.Background(), contract.MethodSessionStartConfiguration, []byte(`{"configurationId":"private-id"}`))
 	if publicErr == nil || publicErr.Code != contract.ErrorCodeSessionOperationFailed ||
 		publicErr.Message != "session operation failed" ||
 		strings.Contains(publicErr.Message, "private-id") ||
@@ -155,7 +155,7 @@ func TestSessionHandlerRoutesRetainedLifecycleMethods(t *testing.T) {
 		}, true},
 	} {
 		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-		result, publicErr := SessionHandler(fake)(context.Background(), test.method, []byte(`{"sessionId":"session-1"}`))
+		result, publicErr := testSessionHandler(fake)(context.Background(), test.method, []byte(`{"sessionId":"session-1"}`))
 		if publicErr != nil {
 			t.Fatalf("%s: %v", test.method, publicErr)
 		}
@@ -190,7 +190,7 @@ func TestSessionHandlerRoutesRetainedLifecycleMethods(t *testing.T) {
 
 func assertSessionResultMatchesSnapshot(t *testing.T, got contract.SessionResult, snap session.Snapshot) {
 	t.Helper()
-	expectedResult, publicErr := SessionHandler(&fakeSessionApplication{snapshot: snap})(
+	expectedResult, publicErr := testSessionHandler(&fakeSessionApplication{snapshot: snap})(
 		context.Background(), contract.MethodSessionGet, []byte(`{"sessionId":"session-1"}`),
 	)
 	if publicErr != nil {
@@ -210,7 +210,7 @@ func TestSessionHandlerRetainedFailureIsStatic(t *testing.T) {
 	const cause = "injected-cause-marker"
 	for _, method := range []string{contract.MethodSessionEnsureRunning, contract.MethodSessionRestart, contract.MethodSessionRemove} {
 		fake := &fakeSessionApplication{err: errors.New(cause)}
-		_, publicErr := SessionHandler(fake)(context.Background(), method, []byte(`{"sessionId":"`+suppliedID+`"}`))
+		_, publicErr := testSessionHandler(fake)(context.Background(), method, []byte(`{"sessionId":"`+suppliedID+`"}`))
 		if publicErr == nil || publicErr.Code != contract.ErrorCodeSessionOperationFailed || publicErr.Message != "session operation failed" {
 			t.Fatalf("%s error=%#v", method, publicErr)
 		}
@@ -269,7 +269,7 @@ func validStartPayload() []byte {
 
 func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 
 	result, cerr := handler(context.Background(), contract.MethodSessionStartOneShot, validStartPayload())
 	if cerr != nil {
@@ -310,7 +310,7 @@ func TestSessionHandlerStartCallsFakeOnceWithConvertedValues(t *testing.T) {
 
 func TestSessionHandlerStopCallsFakeOnceWithSessionID(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 
 	result, cerr := handler(context.Background(), contract.MethodSessionStop, []byte(`{"sessionId":"sess-1"}`))
 	if cerr != nil {
@@ -336,7 +336,7 @@ func TestSessionHandlerStopCallsFakeOnceWithSessionID(t *testing.T) {
 
 func TestSessionHandlerGetCallsFakeOnceWithSessionID(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 
 	result, cerr := handler(context.Background(), contract.MethodSessionGet, []byte(`{"sessionId":"sess-1"}`))
 	if cerr != nil {
@@ -365,7 +365,7 @@ func TestSessionHandlerListCallsFakeOnceAndMapsAllEntries(t *testing.T) {
 	second.AuthenticationSessionID = "sess-2"
 	second.State = session.Suspended
 	fake := &fakeSessionApplication{snapshots: []session.Snapshot{fullSnapshot(), second}}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 
 	result, cerr := handler(context.Background(), contract.MethodSessionList, []byte(`{}`))
 	if cerr != nil {
@@ -390,7 +390,7 @@ func TestSessionHandlerListCallsFakeOnceAndMapsAllEntries(t *testing.T) {
 
 func TestSessionHandlerListPreservesEmptyArray(t *testing.T) {
 	fake := &fakeSessionApplication{}
-	result, cerr := SessionHandler(fake)(context.Background(), contract.MethodSessionList, []byte(`{}`))
+	result, cerr := testSessionHandler(fake)(context.Background(), contract.MethodSessionList, []byte(`{}`))
 	if cerr != nil {
 		t.Fatalf("unexpected error: %+v", cerr)
 	}
@@ -401,7 +401,7 @@ func TestSessionHandlerListPreservesEmptyArray(t *testing.T) {
 
 func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 
 	result, cerr := handler(context.Background(), contract.MethodSessionGet, []byte(`{"sessionId":"sess-1"}`))
 	if cerr != nil {
@@ -474,7 +474,7 @@ func TestSessionHandlerMapsAllSnapshotFields(t *testing.T) {
 func TestSessionHandlerMalformedPayloadDoesNotCallFake(t *testing.T) {
 	for _, method := range []string{contract.MethodSessionStartOneShot, contract.MethodSessionStop, contract.MethodSessionGet, contract.MethodSessionList} {
 		fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-		handler := SessionHandler(fake)
+		handler := testSessionHandler(fake)
 		_, cerr := handler(context.Background(), method, []byte(`{"username":""}`))
 		if cerr == nil {
 			t.Fatalf("%s: expected error", method)
@@ -490,7 +490,7 @@ func TestSessionHandlerMalformedPayloadDoesNotCallFake(t *testing.T) {
 
 func TestSessionHandlerUnknownMethodDoesNotCallFake(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 	_, cerr := handler(context.Background(), "session.unknown", []byte(`{}`))
 	if cerr == nil {
 		t.Fatal("expected error for unknown method")
@@ -521,7 +521,7 @@ func TestSessionHandlerMapsResolutionFailures(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeSessionApplication{err: NewResolutionFailure(tc.code, cause)}
-			handler := SessionHandler(fake)
+			handler := testSessionHandler(fake)
 			_, cerr := handler(context.Background(), contract.MethodSessionStartOneShot, validStartPayload())
 			if cerr == nil {
 				t.Fatal("expected error")
@@ -540,7 +540,7 @@ func TestSessionHandlerMapsResolutionFailures(t *testing.T) {
 func TestSessionHandlerGenericFailureMapsToSessionOperationFailed(t *testing.T) {
 	cause := errors.New("supervisor failure LEAK-MARKER SECRET-USER SECRET-PASS OVERRIDE-MARKER")
 	fake := &fakeSessionApplication{err: cause}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 	_, cerr := handler(context.Background(), contract.MethodSessionStop, []byte(`{"sessionId":"sess-1"}`))
 	if cerr == nil {
 		t.Fatal("expected error")
@@ -565,7 +565,7 @@ func assertNoSecretsInError(t *testing.T, message string) {
 
 func TestSessionHandlerResultDoesNotLeakSecrets(t *testing.T) {
 	fake := &fakeSessionApplication{snapshot: fullSnapshot()}
-	handler := SessionHandler(fake)
+	handler := testSessionHandler(fake)
 	result, cerr := handler(context.Background(), contract.MethodSessionStartOneShot, validStartPayload())
 	if cerr != nil {
 		t.Fatalf("unexpected error: %+v", cerr)
@@ -590,7 +590,7 @@ func TestSessionHandlerRealInitialOneShotSocketAndCleanupProjection(t *testing.T
 	}
 	defer func() { releaseRun(); setup.cleanup() }()
 	ctx := context.Background()
-	handler := SessionHandler(setup.application)
+	handler := testSessionHandler(setup.application)
 	raw, publicErr := handler(ctx, contract.MethodSessionStartOneShot, []byte(`{"institutionProfileId":"profile-1","username":"one-shot-user","password":"private-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"}}`))
 	if publicErr != nil {
 		t.Fatal(publicErr)

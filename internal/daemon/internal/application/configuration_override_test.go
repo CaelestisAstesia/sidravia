@@ -40,7 +40,7 @@ func TestPersistentOverrideIPCReadValidateAndVersionProtection(t *testing.T) {
 	setup.application.profiles = profiles
 	setup.application.authenticationResolver.profiles = profiles
 	setup.application.authenticationResolver.protocols = registry
-	handler := IPCHandler(setup.application, "version", "build", launchcontract.Headless())
+	handler := testIPCHandler(t, setup.application, "version", "build", launchcontract.Headless())
 	call := func(method string, payload any, wantError string) json.RawMessage {
 		t.Helper()
 		data, err := json.Marshal(payload)

@@ -38,30 +38,28 @@ var _ sessionApplication = (*Application)(nil)
 // and converts the returned Snapshot into the contract result. Methods other
 // than the three Session methods return unknown_method without calling the
 // application.
-func SessionHandler(application sessionApplication) func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-		switch method {
-		case contract.MethodSessionStartOneShot:
-			return handleSessionStartOneShot(ctx, application, payload)
-		case contract.MethodSessionStartConfiguration:
-			return handleSessionStartConfiguration(ctx, application, payload)
-		case contract.MethodSessionStop:
-			return handleSessionStop(ctx, application, payload)
-		case contract.MethodSessionEnsureRunning:
-			return handleSessionEnsureRunning(ctx, application, payload)
-		case contract.MethodSessionRestart:
-			return handleSessionRestart(ctx, application, payload)
-		case contract.MethodSessionRemove:
-			return handleSessionRemove(ctx, application, payload)
-		case contract.MethodSessionGet:
-			return handleSessionGet(ctx, application, payload)
-		case contract.MethodSessionList:
-			return handleSessionList(ctx, application, payload)
-		default:
-			return nil, &contract.Error{
-				Code:    contract.ErrorCodeUnknownMethod,
-				Message: "unsupported session method",
-			}
+func dispatchSession(application sessionApplication, ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	switch method {
+	case contract.MethodSessionStartOneShot:
+		return handleSessionStartOneShot(ctx, application, payload)
+	case contract.MethodSessionStartConfiguration:
+		return handleSessionStartConfiguration(ctx, application, payload)
+	case contract.MethodSessionStop:
+		return handleSessionStop(ctx, application, payload)
+	case contract.MethodSessionEnsureRunning:
+		return handleSessionEnsureRunning(ctx, application, payload)
+	case contract.MethodSessionRestart:
+		return handleSessionRestart(ctx, application, payload)
+	case contract.MethodSessionRemove:
+		return handleSessionRemove(ctx, application, payload)
+	case contract.MethodSessionGet:
+		return handleSessionGet(ctx, application, payload)
+	case contract.MethodSessionList:
+		return handleSessionList(ctx, application, payload)
+	default:
+		return nil, &contract.Error{
+			Code:    contract.ErrorCodeUnknownMethod,
+			Message: "unsupported session method",
 		}
 	}
 }

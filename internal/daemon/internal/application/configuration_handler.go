@@ -24,95 +24,93 @@ type configurationApplication interface {
 	RemoveConfiguration(context.Context, connectionconfig.ID, string, ...bool) error
 }
 
-func ConfigurationHandler(application configurationApplication) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
-	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-		switch method {
-		case contract.MethodConfigurationList:
-			request, err := contract.DecodeConfigurationListPayload(payload)
-			if err != nil {
-				return nil, configurationInvalid()
-			}
-			values, protection, err := application.ListConfigurations(ctx)
-			if err != nil {
-				return nil, configurationError(err)
-			}
-			results := make([]contract.ConfigurationResult, 0, len(values))
-			for _, value := range values {
-				results = append(results, toConfigurationResult(value))
-			}
-			result, err := configurationPage(results, protection, request.Cursor)
-			if err != nil {
-				return nil, configurationError(err)
-			}
-			return result, nil
-		case contract.MethodConfigurationGet:
-			request, err := contract.DecodeConfigurationIDPayload(payload)
-			if err != nil {
-				return nil, configurationInvalid()
-			}
-			value, err := application.GetConfiguration(ctx, connectionconfig.ID(request.ConfigurationID))
-			return encodeConfiguration(value, err)
-		case contract.MethodConfigurationCreate:
-			request, err := contract.DecodeConfigurationCreatePayload(payload)
-			if err != nil {
-				return nil, configurationInvalid()
-			}
-			policy, _ := request.NetworkBindingPolicy.Domain()
-			value, err := application.CreateConfiguration(ctx, connectionconfig.Configuration{
-				ProtocolContextOverride: profilevalue.ProtocolOverride(request.ProtocolContextOverride),
-				ConfigurationID:         connectionconfig.ID(request.ConfigurationID),
-				DisplayName:             request.DisplayName, InstitutionProfileID: profilevalue.ID(request.InstitutionProfileID),
-				Username: request.Username, NetworkBindingPolicy: policy, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
-			}, request.Password, request.AllowInsecureStorage)
-			return encodeConfiguration(value, err)
-		case contract.MethodConfigurationUpdate:
-			request, err := contract.DecodeConfigurationUpdatePayload(payload)
-			if err != nil {
-				return nil, configurationInvalid()
-			}
-			var policy *binding.Policy
-			if request.NetworkBindingPolicy != nil {
-				converted, _ := request.NetworkBindingPolicy.Domain()
-				policy = &converted
-			}
-			var profile *profilevalue.ID
-			if request.InstitutionProfileID != nil {
-				converted := profilevalue.ID(*request.InstitutionProfileID)
-				profile = &converted
-			}
-			var override *profilevalue.ProtocolOverride
-			if len(request.ProtocolContextOverride) > 0 {
-				var converted profilevalue.ProtocolOverride
-				if !bytes.Equal(bytes.TrimSpace(request.ProtocolContextOverride), []byte("null")) {
-					converted = append(converted, request.ProtocolContextOverride...)
-				}
-				override = &converted
-			}
-			value, err := application.UpdateConfiguration(ctx, connectionconfig.ID(request.ConfigurationID), config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect}, ExpectedVersion: request.ExpectedVersion, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
-			return encodeConfiguration(value, err)
-		case contract.MethodConfigurationSetPassword:
-			request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
-			if err != nil {
-				return nil, configurationInvalid()
-			}
-			value, err := application.SetConfigurationPassword(ctx, connectionconfig.ID(request.ConfigurationID), request.Password, request.AllowInsecureStorage)
-			return encodeConfiguration(value, err)
-		case contract.MethodConfigurationRemove:
-			request, err := contract.DecodeConfigurationRemovePayload(payload)
-			if err != nil {
-				return nil, configurationInvalid()
-			}
-			if err := application.RemoveConfiguration(ctx, connectionconfig.ID(request.ConfigurationID), request.ExpectedVersion, request.AllowInsecureStorage); err != nil {
-				return nil, configurationError(err)
-			}
-			result, err := contract.MarshalConfigurationRemoveResult(contract.ConfigurationRemoveResult{ConfigurationID: request.ConfigurationID, Status: "removed"})
-			if err != nil {
-				return nil, configurationError(err)
-			}
-			return result, nil
-		default:
-			return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported configuration method"}
+func dispatchConfiguration(application configurationApplication, ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	switch method {
+	case contract.MethodConfigurationList:
+		request, err := contract.DecodeConfigurationListPayload(payload)
+		if err != nil {
+			return nil, configurationInvalid()
 		}
+		values, protection, err := application.ListConfigurations(ctx)
+		if err != nil {
+			return nil, configurationError(err)
+		}
+		results := make([]contract.ConfigurationResult, 0, len(values))
+		for _, value := range values {
+			results = append(results, toConfigurationResult(value))
+		}
+		result, err := configurationPage(results, protection, request.Cursor)
+		if err != nil {
+			return nil, configurationError(err)
+		}
+		return result, nil
+	case contract.MethodConfigurationGet:
+		request, err := contract.DecodeConfigurationIDPayload(payload)
+		if err != nil {
+			return nil, configurationInvalid()
+		}
+		value, err := application.GetConfiguration(ctx, connectionconfig.ID(request.ConfigurationID))
+		return encodeConfiguration(value, err)
+	case contract.MethodConfigurationCreate:
+		request, err := contract.DecodeConfigurationCreatePayload(payload)
+		if err != nil {
+			return nil, configurationInvalid()
+		}
+		policy, _ := request.NetworkBindingPolicy.Domain()
+		value, err := application.CreateConfiguration(ctx, connectionconfig.Configuration{
+			ProtocolContextOverride: profilevalue.ProtocolOverride(request.ProtocolContextOverride),
+			ConfigurationID:         connectionconfig.ID(request.ConfigurationID),
+			DisplayName:             request.DisplayName, InstitutionProfileID: profilevalue.ID(request.InstitutionProfileID),
+			Username: request.Username, NetworkBindingPolicy: policy, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect,
+		}, request.Password, request.AllowInsecureStorage)
+		return encodeConfiguration(value, err)
+	case contract.MethodConfigurationUpdate:
+		request, err := contract.DecodeConfigurationUpdatePayload(payload)
+		if err != nil {
+			return nil, configurationInvalid()
+		}
+		var policy *binding.Policy
+		if request.NetworkBindingPolicy != nil {
+			converted, _ := request.NetworkBindingPolicy.Domain()
+			policy = &converted
+		}
+		var profile *profilevalue.ID
+		if request.InstitutionProfileID != nil {
+			converted := profilevalue.ID(*request.InstitutionProfileID)
+			profile = &converted
+		}
+		var override *profilevalue.ProtocolOverride
+		if len(request.ProtocolContextOverride) > 0 {
+			var converted profilevalue.ProtocolOverride
+			if !bytes.Equal(bytes.TrimSpace(request.ProtocolContextOverride), []byte("null")) {
+				converted = append(converted, request.ProtocolContextOverride...)
+			}
+			override = &converted
+		}
+		value, err := application.UpdateConfiguration(ctx, connectionconfig.ID(request.ConfigurationID), config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: override, NetworkBindingPolicy: policy, DisplayName: request.DisplayName, InstitutionProfileID: profile, Username: request.Username, AutoLogin: request.AutoLogin, AutoReconnect: request.AutoReconnect}, ExpectedVersion: request.ExpectedVersion, Password: request.Password, AllowInsecureStorage: request.AllowInsecureStorage})
+		return encodeConfiguration(value, err)
+	case contract.MethodConfigurationSetPassword:
+		request, err := contract.DecodeConfigurationSetPasswordPayload(payload)
+		if err != nil {
+			return nil, configurationInvalid()
+		}
+		value, err := application.SetConfigurationPassword(ctx, connectionconfig.ID(request.ConfigurationID), request.Password, request.AllowInsecureStorage)
+		return encodeConfiguration(value, err)
+	case contract.MethodConfigurationRemove:
+		request, err := contract.DecodeConfigurationRemovePayload(payload)
+		if err != nil {
+			return nil, configurationInvalid()
+		}
+		if err := application.RemoveConfiguration(ctx, connectionconfig.ID(request.ConfigurationID), request.ExpectedVersion, request.AllowInsecureStorage); err != nil {
+			return nil, configurationError(err)
+		}
+		result, err := contract.MarshalConfigurationRemoveResult(contract.ConfigurationRemoveResult{ConfigurationID: request.ConfigurationID, Status: "removed"})
+		if err != nil {
+			return nil, configurationError(err)
+		}
+		return result, nil
+	default:
+		return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported configuration method"}
 	}
 }
 

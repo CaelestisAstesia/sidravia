@@ -449,7 +449,7 @@ func TestShortPasswordStateWire(t *testing.T) {
 		t.Fatal(e)
 	}
 	waitForApplicationSessionState(t, setup.application, started.SessionID, session.BlockedByError)
-	handler := SessionHandler(setup.application)
+	handler := testSessionHandler(setup.application)
 	get, e := json.Marshal(contract.SessionGetPayload{SessionID: string(started.SessionID)})
 	if e != nil {
 		t.Fatal(e)

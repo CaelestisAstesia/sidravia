@@ -45,22 +45,20 @@ func networkInterfacesResult(snapshot environment.Snapshot, available bool) cont
 	return result
 }
 
-func NetworkHandler(application *Application) func(context.Context, string, json.RawMessage) (json.RawMessage, *contract.Error) {
-	return func(ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
-		if method != contract.MethodNetworkInterfaces {
-			return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported network method"}
-		}
-		if err := contract.DecodeEmptyPayload(payload); err != nil {
-			return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
-		}
-		snapshot, available, err := application.LatestSystemNetworkSnapshot(ctx)
-		if err != nil {
-			return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "network query failed"}
-		}
-		result, err := contract.MarshalNetworkInterfacesResult(networkInterfacesResult(snapshot, available))
-		if err != nil {
-			return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "network query failed"}
-		}
-		return result, nil
+func dispatchNetwork(application *Application, ctx context.Context, method string, payload json.RawMessage) (json.RawMessage, *contract.Error) {
+	if method != contract.MethodNetworkInterfaces {
+		return nil, &contract.Error{Code: contract.ErrorCodeUnknownMethod, Message: "unsupported network method"}
 	}
+	if err := contract.DecodeEmptyPayload(payload); err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeInvalidArgument, Message: "malformed network payload"}
+	}
+	snapshot, available, err := application.LatestSystemNetworkSnapshot(ctx)
+	if err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "network query failed"}
+	}
+	result, err := contract.MarshalNetworkInterfacesResult(networkInterfacesResult(snapshot, available))
+	if err != nil {
+		return nil, &contract.Error{Code: contract.ErrorCodeInternalError, Message: "network query failed"}
+	}
+	return result, nil
 }

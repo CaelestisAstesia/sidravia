@@ -22,7 +22,7 @@ func (a *readOnlyBusinessApp) GetSessionBusiness(_ context.Context, id session.A
 }
 func TestBusinessHandlerReadOnlyAndStrict(t *testing.T) {
 	a := &readOnlyBusinessApp{}
-	h := BusinessHandler(a)
+	h := testBusinessHandler(a)
 	data, failure := h(context.Background(), contract.MethodSessionBusinessGet, json.RawMessage(`{"sessionId":"s"}`))
 	if failure != nil {
 		t.Fatal(failure)

@@ -20,7 +20,7 @@ import (
 func TestConfigurationHandlerListAndPasswordSecrecy(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	handler := ConfigurationHandler(setup.application)
+	handler := testConfigurationHandler(setup.application)
 	result, publicErr := handler(context.Background(), contract.MethodConfigurationList, json.RawMessage(`{}`))
 	if publicErr != nil {
 		t.Fatal(publicErr)
@@ -64,7 +64,7 @@ func TestConfigurationHandlerCompletesReceiptAfterCanceledWrite(t *testing.T) {
 			ctx, cancel := context.WithCancel(before)
 			t.Cleanup(cancel)
 			setup.store.cancelAfterReplace = cancel
-			handler := ConfigurationHandler(setup.application)
+			handler := testConfigurationHandler(setup.application)
 			raw, failure := handler(ctx, tc.method, json.RawMessage(tc.payload))
 			if ctx.Err() != context.Canceled || failure != nil {
 				t.Fatalf("write context = %v, receipt error = %v", ctx.Err(), failure)
@@ -93,7 +93,7 @@ func TestConfigurationHandlerCompletesReceiptAfterCanceledWrite(t *testing.T) {
 func TestConfigurationHandlerRejectsUnknownCreateFields(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()
-	_, publicErr := ConfigurationHandler(setup.application)(context.Background(), contract.MethodConfigurationCreate, json.RawMessage(`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"secret","allowInsecureStorage":false,"extra":true}`))
+	_, publicErr := testConfigurationHandler(setup.application)(context.Background(), contract.MethodConfigurationCreate, json.RawMessage(`{"configurationId":"campus","displayName":"","institutionProfileId":"profile-1","username":"user","password":"secret","allowInsecureStorage":false,"extra":true}`))
 	if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument {
 		t.Fatalf("error = %#v", publicErr)
 	}
@@ -169,7 +169,7 @@ func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.method, func(t *testing.T) {
 			fake := &fakeConfigurationApplication{result: completeConfigurationResult(), protection: securefile.ProtectionProtected}
-			result, publicErr := ConfigurationHandler(fake)(context.Background(), tc.method, []byte(tc.payload))
+			result, publicErr := testConfigurationHandler(fake)(context.Background(), tc.method, []byte(tc.payload))
 			if publicErr != nil {
 				t.Fatal(publicErr)
 			}
@@ -185,7 +185,7 @@ func TestConfigurationHandlerRoutesEveryMethodAndExactResults(t *testing.T) {
 		})
 	}
 	fake := &fakeConfigurationApplication{}
-	_, publicErr := ConfigurationHandler(fake)(context.Background(), "configuration.unknown", []byte(`{}`))
+	_, publicErr := testConfigurationHandler(fake)(context.Background(), "configuration.unknown", []byte(`{}`))
 	if publicErr == nil || publicErr.Code != contract.ErrorCodeUnknownMethod || fake.method != "" {
 		t.Fatalf("unknown route = %#v, method=%q", publicErr, fake.method)
 	}
@@ -208,7 +208,7 @@ func TestConfigurationHandlerMapsStableErrorsWithoutIdentifiersOrCauses(t *testi
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeConfigurationApplication{err: tc.err}
-			_, publicErr := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationGet, []byte(`{"configurationId":"`+idMarker+`"}`))
+			_, publicErr := testConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationGet, []byte(`{"configurationId":"`+idMarker+`"}`))
 			if publicErr == nil || publicErr.Code != tc.code || publicErr.Message != tc.msg {
 				t.Fatalf("error = %#v", publicErr)
 			}
@@ -229,7 +229,7 @@ func TestConfigurationHandlerMapsResolutionFailures(t *testing.T) {
 		{InvalidConfiguration, contract.ErrorCodeInvalidArgument},
 	} {
 		fake := &fakeConfigurationApplication{err: NewResolutionFailure(tc.failure, errors.New("private-cause"))}
-		_, got := ConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationCreate, []byte(`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
+		_, got := testConfigurationHandler(fake)(context.Background(), contract.MethodConfigurationCreate, []byte(`{"configurationId":"campus","displayName":"","institutionProfileId":"jlu","username":"user","password":"","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false}`))
 		if got == nil || got.Code != tc.code || strings.Contains(got.Message, "private-cause") {
 			t.Fatalf("failure %q = %#v", tc.failure, got)
 		}
@@ -238,7 +238,7 @@ func TestConfigurationHandlerMapsResolutionFailures(t *testing.T) {
 
 func TestConfigurationHandlerForwardsAtomicPasswordAndRemoveConsent(t *testing.T) {
 	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
-	h := ConfigurationHandler(fake)
+	h := testConfigurationHandler(fake)
 	if _, err := h(context.Background(), contract.MethodConfigurationUpdate, []byte(`{"configurationId":"campus","username":"new","password":"private","allowInsecureStorage":true}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestConfigurationHandlerOverrideTypedMappingAndPrivacy(t *testing.T) {
 	private := `{"schemaVersion":1,"hostName":"private-override-marker"}`
 	fake := &fakeConfigurationApplication{result: completeConfigurationResult()}
 	fake.result.Configuration.ProtocolContextOverride = profilevalue.ProtocolOverride(private)
-	handler := ConfigurationHandler(fake)
+	handler := testConfigurationHandler(fake)
 	create := `{"institutionProfileId":"jlu","username":"u","password":"private-password","networkBindingPolicy":{"mode":"automatically_select_latest_available"},"allowInsecureStorage":false,"autoLogin":false,"autoReconnect":false,"protocolContextOverride":` + private + `}`
 	raw, publicErr := handler(ctx, contract.MethodConfigurationCreate, []byte(create))
 	if publicErr != nil || string(fake.created.ProtocolContextOverride) != private {
@@ -310,7 +310,7 @@ func TestConfigurationHandlerRealMissingProfileRemainsManageable(t *testing.T) {
 	if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
 		t.Fatal(err)
 	}
-	handler := ConfigurationHandler(setup.application)
+	handler := testConfigurationHandler(setup.application)
 	raw, publicErr := handler(ctx, contract.MethodConfigurationList, []byte(`{}`))
 	if publicErr != nil {
 		t.Fatal(publicErr)
@@ -360,7 +360,7 @@ func TestConfigurationHandlerRejectsAmbiguous(t *testing.T) {
 		{contract.MethodConfigurationUpdate, `{"configurationId":"a","password":"PRIVATE-SECRET-\udc00"}`},
 	} {
 		fake := &fakeConfigurationApplication{password: "unchanged"}
-		result, e := ConfigurationHandler(fake)(context.Background(), tc.method, json.RawMessage(tc.payload))
+		result, e := testConfigurationHandler(fake)(context.Background(), tc.method, json.RawMessage(tc.payload))
 		if e == nil || e.Code != contract.ErrorCodeInvalidArgument || result != nil {
 			t.Fatalf("invalid request result=%s error=%#v", result, e)
 		}
@@ -393,7 +393,7 @@ func TestConfigurationHandlerRejectsUnrepresentableUsernameSafely(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, publicErr := ConfigurationHandler(setup.application)(context.Background(), method, raw)
+		result, publicErr := testConfigurationHandler(setup.application)(context.Background(), method, raw)
 		if publicErr == nil || publicErr.Code != contract.ErrorCodeInvalidArgument || publicErr.Message != "invalid configuration" || len(result) != 0 {
 			t.Fatalf("public rejection=%#v", publicErr)
 		}
