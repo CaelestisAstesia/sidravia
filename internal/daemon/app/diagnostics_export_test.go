@@ -12,15 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	"sidravia/internal/connection/binding"
 	connectionconfig "sidravia/internal/connection/config"
 	credential "sidravia/internal/connection/credential"
+	"sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
 )
@@ -75,7 +76,7 @@ func TestExportDiagnosticsRealOwnersPrivateAndReadOnly(t *testing.T) {
 	profile := appTestProfile("private-profile")
 	profile.DisplayName = "private-institution"
 	profile.InstitutionProtocolConfiguration = profilevalue.ProtocolConfiguration(`{"private-profile-configuration":"private-profile-endpoint"}`)
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{profile})
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +243,7 @@ func TestExportDiagnosticCatalogAvailabilityUsesExistingOwners(t *testing.T) {
 	ctx := context.Background()
 	missing := appTestProfile("missing-factory")
 	missing.AuthenticationProtocolID = "private-unregistered"
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), missing})
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), missing})
 	if err != nil {
 		t.Fatal(err)
 	}

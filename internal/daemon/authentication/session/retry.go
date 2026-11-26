@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 type RetryPolicy interface {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 func TestSessionRejectsCredentialMaterialFromPublicFailure(t *testing.T) {

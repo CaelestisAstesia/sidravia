@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	d520description "sidravia/internal/connection/auth/d520"
+	d520 "sidravia/internal/connection/auth/d520/driver"
+	"sidravia/internal/connection/auth/protocol"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
-	config "sidravia/internal/daemon/configuration"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 )
@@ -27,12 +28,12 @@ func TestPersistentOverrideIPCReadValidateAndVersionProtection(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 	profile := appTestProfile("d520")
-	profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{profile})
+	profile.AuthenticationProtocolID = d520description.ProtocolID
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := protocol.NewAuthenticationProtocolRegistry(&overrideTestFactory{appTestProtocolFactory{id: d520.ProtocolID}})
+	registry, err := protocol.NewAuthenticationProtocolRegistry(&overrideTestFactory{appTestProtocolFactory{id: d520description.ProtocolID}})
 	if err != nil {
 		t.Fatal(err)
 	}

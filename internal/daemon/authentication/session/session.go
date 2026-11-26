@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
-	environment "sidravia/internal/daemon/environment"
+	"sidravia/internal/connection/auth/protocol"
+	environment "sidravia/internal/connection/environment"
 )
 
 // ErrAuthenticationSessionClosed is returned after shutdown begins rejecting public messages.

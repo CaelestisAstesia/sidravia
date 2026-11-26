@@ -242,7 +242,7 @@ func TestReproduciblePackaging(t *testing.T) {
 
 func TestMissingOfficialProfileFailsInputs(t *testing.T) {
 	root := setupRepoRoot(t)
-	profilePath := filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json")
+	profilePath := filepath.Join(root, "internal", "connection", "profile", "data", "jlu.json")
 	if err := os.Remove(profilePath); err != nil {
 		t.Fatalf("remove profile: %v", err)
 	}

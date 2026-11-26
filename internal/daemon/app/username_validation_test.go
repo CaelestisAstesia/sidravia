@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	d520description "sidravia/internal/connection/auth/d520"
+	d520 "sidravia/internal/connection/auth/d520/driver"
+	"sidravia/internal/connection/auth/protocol"
 	connectionconfig "sidravia/internal/connection/config"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
@@ -75,8 +77,8 @@ func TestUsernameCreateUsesRealD520WithoutRunOrNetwork(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 	profile := appTestProfile("d520-profile")
-	profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{profile})
+	profile.AuthenticationProtocolID = d520description.ProtocolID
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +205,7 @@ func TestUsernameCandidateUsesNewProfileAndLegacyRemainsReadable(t *testing.T) {
 	setup.application.authenticationResolver.protocols = registry
 	profile := appTestProfile("strict-profile")
 	profile.AuthenticationProtocolID = "strict"
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), profile})
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), profile})
 	if err != nil {
 		t.Fatal(err)
 	}

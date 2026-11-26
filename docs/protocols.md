@@ -33,12 +33,12 @@ Sidravia 的架构不限定于校园网或 Dr.Com，但目前没有自动识别�
 
 | 入口 | 内容 |
 | --- | --- |
-| [协议契约](../internal/daemon/authentication/protocol/protocol.go) | Factory、Run、输入与观察接口 |
-| [协议注册](../internal/daemon/authentication/protocol/registry.go) | 按协议 ID 选择实现 |
-| [失败契约](../internal/daemon/authentication/protocol/failure.go) | 错误码、描述与恢复建议 |
-| [D520 实现](../internal/daemon/authentication/protocol/drcom/d520) | 当前编解码与执行流程 |
-| [吉林大学 Profile](../internal/daemon/configuration/profiles/jlu.json) / [实验性 Profile](../internal/daemon/configuration/profiles/jlu-experimental.json) | 机构参数与显式行为选择 |
-| [业务输出契约](../internal/daemon/authentication/protocol/business.go) / [会话业务快照](../internal/daemon/authentication/session/business.go) | 登录统计和文字通知的可选链路 |
+| [协议契约](../internal/connection/auth/protocol/protocol.go) | Factory、Run、输入与观察接口 |
+| [协议注册](../internal/connection/auth/protocol/registry.go) | 按协议 ID 选择实现 |
+| [失败契约](../internal/connection/auth/protocol/failure.go) | 错误码、描述与恢复建议 |
+| [D520 实现](../internal/connection/auth/d520/driver) | 当前编解码与执行流程 |
+| [吉林大学 Profile](../internal/connection/profile/data/jlu.json) / [实验性 Profile](../internal/connection/profile/data/jlu-experimental.json) | 机构参数与显式行为选择 |
+| [业务输出契约](../internal/connection/auth/protocol/business.go) / [会话业务快照](../internal/daemon/authentication/session/business.go) | 登录统计和文字通知的可选链路 |
 | [后台组合](../cmd/sidraviad/runtime.go) | 注册并组合实际实现 |
 
 现有契约基于当前真实需求。未来协议如确有不同输入或平台能力，需要相应调整契约，不能假定现有字段足以覆盖全部协议。

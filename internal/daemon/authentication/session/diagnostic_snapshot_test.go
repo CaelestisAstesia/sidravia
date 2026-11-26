@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 func queryDiagnostics(t *testing.T, ctx context.Context, actor *AuthenticationSession) DiagnosticSnapshot {

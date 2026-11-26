@@ -4,11 +4,11 @@ import (
 	"net/netip"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	"sidravia/internal/connection/binding"
 	connectionconfig "sidravia/internal/connection/config"
+	environment "sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
-	environment "sidravia/internal/daemon/environment"
 )
 
 type AuthenticationSessionID string

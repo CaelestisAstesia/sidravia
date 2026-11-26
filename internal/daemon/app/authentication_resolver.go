@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	"sidravia/internal/connection/auth/protocol"
 	connectionconfig "sidravia/internal/connection/config"
 	credential "sidravia/internal/connection/credential"
 	credentialinput "sidravia/internal/connection/credential/input"
+	"sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/environment"
 )
 
 type ResolutionFailureCode string
@@ -45,14 +46,14 @@ func (failure *ResolutionFailure) Code() ResolutionFailureCode { return failure.
 
 type AuthenticationResolver struct {
 	configurations *config.Catalog
-	profiles       *config.ProfileCatalog
+	profiles       *profilecatalog.ProfileCatalog
 	protocols      *protocol.AuthenticationProtocolRegistry
 	hostInfo       environment.SystemHostInformation
 }
 
 func NewAuthenticationResolver(
 	configurations *config.Catalog,
-	profiles *config.ProfileCatalog,
+	profiles *profilecatalog.ProfileCatalog,
 	protocols *protocol.AuthenticationProtocolRegistry,
 	hostInfo environment.SystemHostInformation,
 ) (*AuthenticationResolver, error) {

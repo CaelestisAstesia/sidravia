@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/launchcontract"
 )

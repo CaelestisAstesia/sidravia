@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 func recoveryTestSession(t *testing.T, auto bool) (*AuthenticationSession, *controlledFactory, *manualRetryScheduler) {

@@ -4,12 +4,11 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-
 	"slices"
 	"time"
 
+	"sidravia/internal/connection/environment"
 	"sidravia/internal/daemon/authentication/session"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
 )
 

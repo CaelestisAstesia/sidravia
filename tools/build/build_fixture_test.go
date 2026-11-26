@@ -70,7 +70,7 @@ func setupRepoRoot(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
 	writeTestFile(t, filepath.Join(root, "docs", "guide.md"), testGettingStarted)
-	writeTestFile(t, filepath.Join(root, "internal", "daemon", "configuration", "profiles", "jlu.json"), testProfileJSON)
+	writeTestFile(t, filepath.Join(root, "internal", "connection", "profile", "data", "jlu.json"), testProfileJSON)
 	writeTestFile(t, filepath.Join(root, "scripts", "field-test.ps1"), testFieldTestScript)
 	writeTestFile(t, filepath.Join(root, "scripts", "install.ps1"), testInstallScript)
 	writeTestFile(t, filepath.Join(root, "scripts", "uninstall.ps1"), testUninstallScript)

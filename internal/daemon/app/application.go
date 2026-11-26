@@ -7,17 +7,18 @@ import (
 	"sync/atomic"
 
 	connectionconfig "sidravia/internal/connection/config"
+	"sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/environment"
 )
 
 type Application struct {
 	maintenanceActive      atomic.Bool
 	catalog                *config.Catalog
-	profiles               *config.ProfileCatalog
+	profiles               *profilecatalog.ProfileCatalog
 	authenticationResolver *AuthenticationResolver
 	supervisor             *supervisor.Supervisor
 	// operationMu serializes configuration/session operations and coherent reads.
@@ -32,7 +33,7 @@ type Application struct {
 
 func NewApplication(
 	catalog *config.Catalog,
-	profiles *config.ProfileCatalog,
+	profiles *profilecatalog.ProfileCatalog,
 	authenticationResolver *AuthenticationResolver,
 	sessionSupervisor *supervisor.Supervisor,
 ) (*Application, error) {

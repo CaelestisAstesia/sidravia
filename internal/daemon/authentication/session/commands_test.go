@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/authentication/protocol"
+	"sidravia/internal/connection/auth/protocol"
 )
 
 func TestCompleteShutdownClosesDoneBeforeReleasingWaiters(t *testing.T) {

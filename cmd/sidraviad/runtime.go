@@ -10,14 +10,16 @@ import (
 	"path/filepath"
 	"sync"
 
+	d520 "sidravia/internal/connection/auth/d520/driver"
+	"sidravia/internal/connection/auth/protocol"
+	"sidravia/internal/connection/auth/supported"
+	"sidravia/internal/connection/environment"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/app"
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	"sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/desktopowner"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
 	"sidravia/internal/document/securefile"
 	productlayout "sidravia/internal/installation/layout"
@@ -304,7 +306,11 @@ func composeObjectGraphWithLaunchOptions(
 		}
 	}
 
-	registry, err := protocol.NewAuthenticationProtocolRegistry(d520.NewFactory())
+	factory := d520.NewFactory()
+	if err := supported.CheckDrivers(factory.ProtocolID()); err != nil {
+		return nil, fmt.Errorf("sidraviad: match protocol descriptions and drivers: %w", err)
+	}
+	registry, err := protocol.NewAuthenticationProtocolRegistry(factory)
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: create protocol registry: %w", err)
 	}
@@ -319,7 +325,7 @@ func composeObjectGraphWithLaunchOptions(
 		return nil, fmt.Errorf("sidraviad: open catalog: %w", err)
 	}
 
-	profiles, err := configuration.LoadProfileCatalogFromDirectory(ctx, paths.profiles, registry)
+	profiles, err := profilecatalog.LoadProfileCatalogFromDirectory(ctx, paths.profiles, supported.ValidateInstitution)
 	if err != nil {
 		return nil, fmt.Errorf("sidraviad: load profiles: %w", err)
 	}

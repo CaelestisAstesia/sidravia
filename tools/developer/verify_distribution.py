@@ -184,7 +184,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     contents = read_archive(directory / archive_name, target, base)
     expected = {'LICENSE': (repo / 'LICENSE').read_bytes(), 'sidravia.portable': b'',
                 'BUILD-INFO.txt': (f'ProductVersion: {version}\nBuildID: {build_id}\nTarget: {target}\nArtifactKind: distribution\n').encode()}
-    for profile in (repo / 'internal/daemon/configuration/profiles').glob('*.json'):
+    for profile in (repo / 'internal/connection/profile/data').glob('*.json'):
         expected['institution-profiles/' + profile.name] = profile.read_bytes()
     require(any(name.startswith('institution-profiles/') for name in expected), 'official_profiles_missing')
     roles = ['sidraviactl', 'sidraviad', 'sidraviaupdater']

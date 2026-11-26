@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
+	environment "sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
-	environment "sidravia/internal/daemon/environment"
 )
 
 func TestResolveLogLevelAcceptsExactValues(t *testing.T) {

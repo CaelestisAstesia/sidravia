@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/daemon/environment"
+	"sidravia/internal/connection/environment"
 )
 
 func TestRuntimeLifecycleHostReturnsNilAfterOrderedSnapshotDelivery(t *testing.T) {

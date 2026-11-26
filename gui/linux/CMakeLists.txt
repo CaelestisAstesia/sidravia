@@ -161,6 +161,6 @@ install(FILES "runner/resources/sidravia.png"
 
 # Read-only public profiles ship beside the tools, as required by the installation layout.
 # Isolated namespaces deliberately use their own explicitly supplied catalog.
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../internal/daemon/configuration/profiles/"
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../internal/connection/profile/data/"
   DESTINATION "${CMAKE_INSTALL_PREFIX}/institution-profiles" COMPONENT Runtime
   FILES_MATCHING PATTERN "*.json")

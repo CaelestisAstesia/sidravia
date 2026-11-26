@@ -12,11 +12,6 @@ import (
 	"sidravia/internal/document"
 )
 
-const (
-	SchemaVersion1       uint64 = 1
-	ProfileFileSizeLimit int64  = 1 * 1024 * 1024
-)
-
 func ReadLimited(reader io.Reader, maximum int64) ([]byte, error) {
 	if maximum <= 0 {
 		return nil, document.NewFailure(document.FailureInvalidArgument, nil)

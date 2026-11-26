@@ -7,8 +7,8 @@ import (
 	"net/netip"
 	"time"
 
+	"sidravia/internal/connection/auth/protocol"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
 )
 
 type protocolRunObserver struct {

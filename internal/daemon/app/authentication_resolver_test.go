@@ -9,15 +9,16 @@ import (
 	"strings"
 	"testing"
 
+	"sidravia/internal/connection/auth/protocol"
 	"sidravia/internal/connection/binding"
 	connectionconfig "sidravia/internal/connection/config"
 	credential "sidravia/internal/connection/credential"
+	"sidravia/internal/connection/environment"
 	profilevalue "sidravia/internal/connection/profile"
-	"sidravia/internal/daemon/authentication/protocol"
+	profilecatalog "sidravia/internal/connection/profile/catalog"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/daemon/environment"
 	"sidravia/internal/document/securefile"
 )
 
@@ -87,7 +88,7 @@ func newAppTestSetup(t *testing.T) *appTestSetup {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, err := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +117,7 @@ func TestResolverUsesAggregateCredentialAndClonesDefinition(t *testing.T) {
 	if _, err := catalog.Create(ctx, appTestConfiguration("configuration-1"), "secret", false); err != nil {
 		t.Fatal(err)
 	}
-	profiles, _ := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, _ := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
 	resolver, err := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
 	if err != nil {
@@ -161,7 +162,7 @@ func TestResolverOneShotDoesNotPersistCredential(t *testing.T) {
 	ctx := context.Background()
 	store := newAppMemoryStore()
 	catalog, _ := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
-	profiles, _ := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, _ := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
 	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
 	definition, err := resolver.ResolveOneShot(ctx, validOneShotInput(), "session-1")
@@ -221,7 +222,7 @@ func TestApplicationCreateAndUpdateValidateProfileBeforePersistence(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	profiles, _ := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, _ := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
 	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
 	sup := supervisor.New(appSupervisorDeps())
@@ -264,7 +265,7 @@ func TestResolverPassesAutoReconnectFromConfiguration(t *testing.T) {
 	if _, err := catalog.Create(ctx, configuration, "secret", false); err != nil {
 		t.Fatal(err)
 	}
-	profiles, _ := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, _ := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
 	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
 	definition, err := resolver.Resolve(ctx, "configuration-1", "session-1")
@@ -280,7 +281,7 @@ func TestResolverOneShotSetsAutoReconnectTrue(t *testing.T) {
 	ctx := context.Background()
 	store := newAppMemoryStore()
 	catalog, _ := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "configurations.json"))
-	profiles, _ := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
+	profiles, _ := profilecatalog.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1")})
 	registry, _ := protocol.NewAuthenticationProtocolRegistry(&appTestProtocolFactory{id: "drcom"})
 	resolver, _ := NewAuthenticationResolver(catalog, profiles, registry, appTestHostInfo())
 	definition, err := resolver.ResolveOneShot(ctx, validOneShotInput(), "session-1")

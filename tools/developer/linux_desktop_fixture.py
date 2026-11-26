@@ -148,7 +148,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
     profiles = state / "institution-profiles"
     profiles.mkdir(parents=True)
     # Use the public protocol shape, replace every network endpoint before use.
-    profile = json.loads((root / "internal/daemon/configuration/profiles/jlu.json").read_text())
+    profile = json.loads((root / "internal/connection/profile/data/jlu.json").read_text())
     profile.update(institutionProfileId="linux-loopback", displayName="Linux synthetic loopback")
     profile.pop("announcement", None)
     profile["institutionProtocolConfiguration"].update(serverAddress="127.0.0.1", serverPort=business_port, localPort={"mode": "system_assigned"})
