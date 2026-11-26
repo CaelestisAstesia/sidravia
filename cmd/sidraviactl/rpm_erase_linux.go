@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installation/shellintegration"
 	"sidravia/internal/installation/userservice"
-	productlayout "sidravia/internal/installation/layout"
 )
 
 func cleanupErasedRPM(ctx context.Context) error {

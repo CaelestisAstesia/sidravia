@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"sidravia/internal/installation/userservice/registration"
 	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installation/userservice/registration"
 )
 
 func switchRecordForLease(root string) ServiceSwitch {

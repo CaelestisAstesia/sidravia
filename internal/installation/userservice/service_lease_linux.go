@@ -14,8 +14,8 @@ import (
 	"golang.org/x/sys/unix"
 
 	"sidravia/internal/installation/internal/integrationfile"
-	"sidravia/internal/installation/userservice/registration"
 	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installation/userservice/registration"
 )
 
 type serviceLease struct {
