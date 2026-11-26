@@ -90,6 +90,18 @@ func readPrivate(ctx context.Context, path string, value any) error {
 	}
 	return jsondoc.DecodeStrict(b, value)
 }
+func readRunnerReady(ctx context.Context, path string) (runnerID, error) {
+	var ready runnerID
+	err := readPrivate(ctx, path, &ready)
+	// The secure store intentionally exposes persistence errors without
+	// unwrapping diagnostic causes. The handoff wait owns its cancellation
+	// and a readiness receipt arriving after that deadline cannot be used.
+	if stopped := ctx.Err(); stopped != nil {
+		return runnerID{}, stopped
+	}
+	return ready, err
+}
+
 func readWindowsSession(ctx context.Context, target, id string) (windowsSession, string, error) {
 	dir, err := runnerDirectory(target, id)
 	if err != nil {
@@ -297,12 +309,12 @@ func BeginWindows(ctx context.Context, layout productlayout.Layout, version, bui
 	wait, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	for {
-		var ready runnerID
-		if err = readPrivate(wait, filepath.Join(dir, "ready.json"), &ready); err == nil {
+		ready, err := readRunnerReady(wait, filepath.Join(dir, "ready.json"))
+		if err == nil {
 			if ready != (runnerID{child.PID, child.Created}) {
 				return r, ErrChanged
 			}
-			if err = ctx.Err(); err != nil {
+			if err = wait.Err(); err != nil {
 				return abort(err)
 			}
 			// Acknowledgment is the handoff commit point. From here cancellation may

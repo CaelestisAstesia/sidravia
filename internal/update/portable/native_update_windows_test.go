@@ -57,9 +57,39 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	overlay := testfixture.NewWindowsOverlay(t, repo, owned, source, key.Public().(ed25519.PublicKey))
 	overlay.Replace("internal/update/portable/handoff_windows.go", func(s string) string {
-		s = strings.Replace(s, "\twait, cancel := context.WithTimeout(ctx, 15*time.Second)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_DELAY_READY\")==\"1\"{var cancel context.CancelFunc;ctx,cancel=context.WithTimeout(ctx,100*time.Millisecond);defer cancel()}\n\twait, cancel := context.WithTimeout(ctx, 15*time.Second)", 1)
-		s = strings.Replace(s, "\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_DELAY_READY\")==\"1\"{time.Sleep(600*time.Millisecond)}\n\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),", 1)
-
+		const waitForRunner = "\twait, cancel := context.WithTimeout(ctx, 15*time.Second)"
+		const publishReady = "\tif err = savePrivate(ctx, filepath.Join(dir, \"ready.json\"),"
+		if strings.Count(s, waitForRunner) != 1 || strings.Count(s, publishReady) != 1 {
+			t.Fatal("portable readiness fixture no longer matches the updater")
+		}
+		s = strings.Replace(s, waitForRunner, waitForRunner+`
+	if os.Getenv("SIDRAVIA_FIXTURE_DELAY_READY")=="1" {
+		reached, done := context.WithTimeout(ctx, 15*time.Second)
+		err := waitFixtureMarker(reached, filepath.Join(dir, "fixture-reached"))
+		done()
+		if err != nil { return r, err }
+		cancel()
+		wait, cancel = context.WithTimeout(ctx, 0)
+	}
+`, 1)
+		s = strings.Replace(s, publishReady, `
+	if os.Getenv("SIDRAVIA_FIXTURE_DELAY_READY")=="1" {
+		if err := os.WriteFile(filepath.Join(dir, "fixture-reached"), nil, 0600); err != nil { return err }
+		permit, done := context.WithTimeout(ctx, 15*time.Second)
+		err := waitFixtureMarker(permit, filepath.Join(dir, "fixture-release"))
+		done()
+		if err != nil { return err }
+	}
+`+publishReady, 1)
+		s += `
+func waitFixtureMarker(ctx context.Context, path string) error {
+	for {
+		_, err := os.Stat(path)
+		if !os.IsNotExist(err) { return err }
+		if err := pause(ctx); err != nil { return err }
+	}
+}
+`
 		s = strings.Replace(s, "\ts, dir, err := readWindowsSession(ctx, target, id)", "\tdefer func(){if resultErr!=nil{os.WriteFile("+strconv.Quote(filepath.Join(owned, "runner-cause.txt"))+",[]byte(resultErr.Error()),0600)}}()\n\ts, dir, err := readWindowsSession(ctx, target, id)", 1)
 		s = strings.Replace(s, "\tpayload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_ARCHIVE_CHANGED\")==\"1\"{if err:=os.Rename(s.Archive,s.Archive+\".old\");err!=nil{return err};if err:=os.WriteFile(s.Archive,[]byte(strings.Repeat(\"x\",int(c.Size))),0600);err!=nil{return err}}\n\tpayload, err := filetxn.ExtractRelease(ctx, target, s.Archive, proof, c)", 1)
 		s = strings.Replace(s, "\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", "\tif os.Getenv(\"SIDRAVIA_FIXTURE_EXIT_STAGE\")==\"created\"{os.Exit(17)}\n\tif _, _, err = store.Advance(ctx, id, transaction.Created, transaction.Verified,", 1)
@@ -285,7 +315,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				t.Setenv("SIDRAVIA_FIXTURE_DELAY_READY", "1")
 				run("timeout", "apply", "--candidate", "2:22", "--confirm")
 				t.Setenv("SIDRAVIA_FIXTURE_DELAY_READY", "")
-				time.Sleep(800 * time.Millisecond) // deterministic late-ready window in the private overlay
+				releaseLateRunner(t, target, next.keys)
 				rr, e := os.OpenRoot(target)
 				if e != nil {
 					t.Fatal(e)
@@ -301,7 +331,7 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 						t.Fatal("cancelled handoff stopped source", e)
 					}
 				}
-				receipt := map[string]any{"lateReadyAfterTimeoutDidNotUpdate": true, "oldFilesUnchanged": true, "sourceKeptRunning": mode != "stopped"}
+				receipt := map[string]any{"lateReadyAfterTimeoutDidNotUpdate": true, "lateRunnerExited": true, "acknowledgmentAbsent": true, "oldFilesUnchanged": true, "sourceKeptRunning": mode != "stopped"}
 				if e = savePrivate(context.Background(), filepath.Join(owned, scenario+"-cancel-receipt.json"), receipt); e != nil {
 					t.Fatal(e)
 				}
@@ -476,6 +506,53 @@ func TestNativeWindowsPortableUpdate(t *testing.T) {
 				t.Fatal(e)
 			}
 		})
+	}
+}
+
+// Observe actual late publication and exit before starting a second update.
+func releaseLateRunner(t *testing.T, target string, keys *release.PublisherKeys) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	root, err := productlayout.OperationRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := transaction.Open(root, target, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, exists, err := store.Read(ctx)
+	if err != nil || !exists || cancelled.Phase != transaction.Aborted {
+		t.Fatalf("timed-out update did not abort: %v %v %v", exists, cancelled.Phase, err)
+	}
+	dir, err := runnerDirectory(target, cancelled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixture-release"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	readyPath := filepath.Join(dir, "ready.json")
+	for {
+		ready, err := readRunnerReady(ctx, readyPath)
+		if err == nil {
+			running, err := winproc.GenerationRunning(ready.PID, ready.Created)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !running {
+				break
+			}
+		} else if !os.IsNotExist(err) {
+			t.Fatal("late runner failed to publish readiness", err)
+		}
+		if err := pause(ctx); err != nil {
+			t.Fatal("late runner did not exit", err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "accepted.json")); !os.IsNotExist(err) {
+		t.Fatal("late runner unexpectedly received acknowledgment", err)
 	}
 }
 
