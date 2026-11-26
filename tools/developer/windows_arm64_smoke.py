@@ -8,6 +8,7 @@ from ctypes import wintypes
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import time
@@ -180,6 +181,26 @@ def check_build(directory, version, build):
             'windows_arm64_candidate_identity_mismatch')
 
 
+@contextlib.contextmanager
+def fixture_directory(summary):
+    root = Path(tempfile.mkdtemp(prefix='sdra64-'))
+    try:
+        yield root
+        shutil.rmtree(root)
+    except Exception:
+        summary['fixtureDirectory'] = str(root)
+        raise
+
+
+def wait_for_uninstall_directory(directory):
+    # Inno's temporary uninstaller removes the original uninstaller and its
+    # directory after the launched executable has returned.
+    deadline = time.monotonic() + 20
+    while directory.exists():
+        require(time.monotonic() < deadline, 'uninstall_left_installation_directory')
+        time.sleep(.25)
+
+
 def exercise(args, summary):
     e = args.evidence
     processes = WindowsProcesses()
@@ -193,8 +214,7 @@ def exercise(args, summary):
     setup = args.distribution / (base + '-setup.exe')
     # Resolve paths before switching the working directory for native tools.
     setups = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
-    with tempfile.TemporaryDirectory(prefix='sdra64-') as temporary:
-        root = Path(temporary)
+    with fixture_directory(summary) as root:
         for kind, source in (('core', args.core_distribution), ('gui', args.distribution)):
             directory = root / f'portable-{kind}'
             with zipfile.ZipFile(source / f'{base}-{kind}-portable.zip') as archive:
@@ -226,7 +246,8 @@ def exercise(args, summary):
                 require(registration(app_id) is None, 'uninstall_left_registration')
                 for name in ('Sidravia.exe', 'sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe'):
                     require(not (directory / name).exists(), 'uninstall_left_program_file')
-                summary['checks'].append({'label': 'setup-uninstall', 'status': 'passed'})
+                wait_for_uninstall_directory(directory)
+                summary['checks'].append({'label': 'setup-uninstall', 'status': 'passed', 'installDirectoryRemoved': True})
         require(summary['checks'][-1]['label'] == 'setup-uninstall', 'setup_uninstall_not_exercised')
 
 
@@ -246,6 +267,9 @@ def main():
     try:
         exercise(args, summary)
         summary['status'] = 'passed'
+    except Exception as exc:
+        summary['error'] = str(exc)
+        raise
     finally:
         (args.evidence / 'receipt.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
 
