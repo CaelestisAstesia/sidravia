@@ -8,10 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sidravia/internal/productlayout"
-	"sidravia/internal/update/releases"
 	"strings"
 	"testing"
+
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/update/releases"
 )
 
 func TestNonMutatingCommandsAndExplicitApplyConfirmation(t *testing.T) {

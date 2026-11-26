@@ -12,16 +12,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/persistence"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	launchcontract "sidravia/internal/background/launch"
+	"sidravia/internal/document"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/operations"
@@ -277,7 +277,7 @@ begin Result := True; end;
 	roots, _ := releases.NewPublisherKeys([]ed25519.PublicKey{pub})
 	waitInstall := func() {
 		t.Helper()
-		root, e := operations.DefaultRoot()
+		root, e := productlayout.UpdateOperationRoot()
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -305,7 +305,7 @@ begin Result := True; end;
 			}
 		}
 		log, _ := os.ReadFile(filepath.Join(owned, "setup.log"))
-		var failure *persistence.Failure
+		var failure *document.Failure
 		var detail error
 		if errors.As(snapshotError, &failure) {
 			detail = failure.DiagnosticCause()
@@ -686,7 +686,7 @@ func nativeReconcileCases(t *testing.T, target, source string, oldIndex []byte, 
 	dead := ProcessID{peer.PID, peer.Created}
 	child.Wait()
 	peer.Close()
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.UpdateOperationRoot()
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -3,9 +3,9 @@ package d520
 import (
 	"errors"
 	"fmt"
-
 	"strings"
 
+	profilevalue "sidravia/internal/connection/profile"
 	protocol "sidravia/internal/daemon/authentication/protocol"
 	environment "sidravia/internal/daemon/environment"
 )
@@ -20,16 +20,16 @@ func NewFactory() protocol.AuthenticationProtocolFactory {
 	return factory{}
 }
 
-func (factory) ProtocolID() protocol.AuthenticationProtocolID { return ProtocolID }
+func (factory) ProtocolID() profilevalue.ProtocolID { return ProtocolID }
 
-func (factory) ValidateInstitutionProtocolConfiguration(raw protocol.InstitutionProtocolConfiguration) error {
+func (factory) ValidateInstitutionProtocolConfiguration(raw profilevalue.ProtocolConfiguration) error {
 	_, err := decodeInstitutionProtocolConfiguration(raw)
 	return err
 }
 
 func (factory) OverrideSchemaVersion() int { return 1 }
 
-func (factory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
+func (factory) ValidateProtocolContextOverride(raw profilevalue.ProtocolOverride) error {
 	return validateProtocolContextOverride(raw)
 }
 

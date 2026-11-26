@@ -7,30 +7,29 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/authentication/protocol"
-	config "sidravia/internal/daemon/configuration"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/ipc/contract"
 )
 
 type fakeProfileApplication struct {
-	summaries []config.InstitutionProfileSummary
+	summaries []profilevalue.Summary
 	err       error
 	calls     int
 }
 
-func (fake *fakeProfileApplication) ListInstitutionProfiles(context.Context) ([]config.InstitutionProfileSummary, error) {
+func (fake *fakeProfileApplication) ListInstitutionProfiles(context.Context) ([]profilevalue.Summary, error) {
 	fake.calls++
 	if fake.err != nil {
 		return nil, fake.err
 	}
-	return append([]config.InstitutionProfileSummary(nil), fake.summaries...), nil
+	return append([]profilevalue.Summary(nil), fake.summaries...), nil
 }
 
 func TestProfileHandlerListsSafeSummaries(t *testing.T) {
-	fake := &fakeProfileApplication{summaries: []config.InstitutionProfileSummary{{
+	fake := &fakeProfileApplication{summaries: []profilevalue.Summary{{
 		InstitutionProfileID:     "jlu",
 		DisplayName:              "吉林大学",
-		AuthenticationProtocolID: protocol.AuthenticationProtocolID("drcom-5.2.0-d"),
+		AuthenticationProtocolID: profilevalue.ProtocolID("drcom-5.2.0-d"),
 	}}}
 	result, cerr := ProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
 	if cerr != nil {
@@ -113,9 +112,9 @@ func TestProfileHandlerRejectsUnknownMethodWithoutCall(t *testing.T) {
 }
 
 func TestProfileHandlerAnnouncementSafeSummary(t *testing.T) {
-	fake := &fakeProfileApplication{summaries: []config.InstitutionProfileSummary{{
+	fake := &fakeProfileApplication{summaries: []profilevalue.Summary{{
 		InstitutionProfileID: "jlu", DisplayName: "吉林大学", AuthenticationProtocolID: "drcom-5.2.0-d",
-		Announcement: &config.AnnouncementMetadata{URL: "http://login.jlu.edu.cn/notice_win.php", ClientWidth: 600, ClientHeight: 460},
+		Announcement: &profilevalue.AnnouncementMetadata{URL: "http://login.jlu.edu.cn/notice_win.php", ClientWidth: 600, ClientHeight: 460},
 	}}}
 	result, cerr := ProfileHandler(fake)(context.Background(), contract.MethodProfileList, []byte(`{}`))
 	if cerr != nil {

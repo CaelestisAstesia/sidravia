@@ -8,14 +8,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sidravia/internal/installationmanager"
-	"sidravia/internal/productlayout"
-	"sidravia/internal/update/releases"
 	"time"
 
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installationmanager"
 	"sidravia/internal/process/linuxproc"
 	"sidravia/internal/update"
 	"sidravia/internal/update/operations"
+	"sidravia/internal/update/releases"
 )
 
 // ReconcileInterrupted releases a stranded, byte-verified admission after its

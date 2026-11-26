@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
@@ -22,9 +24,9 @@ type Application struct {
 	// Acquire it before sessionIndexMu when both are needed.
 	sessionIndexMu   sync.Mutex // protects sessionsByConfig; released before Supervisor calls
 	operationMu      sync.Mutex
-	sessionsByConfig map[config.ConfigurationID]session.AuthenticationSessionID
+	sessionsByConfig map[connectionconfig.ID]session.AuthenticationSessionID
 	// reconnectByConfig records the immutable policy captured by the tracked Session.
-	reconnectByConfig map[config.ConfigurationID]bool          // owned by operationMu
+	reconnectByConfig map[connectionconfig.ID]bool             // owned by operationMu
 	invalidSessions   map[session.AuthenticationSessionID]bool // owned by operationMu; never reuse a retired runtime
 }
 
@@ -51,13 +53,13 @@ func NewApplication(
 		profiles:               profiles,
 		authenticationResolver: authenticationResolver,
 		supervisor:             sessionSupervisor,
-		sessionsByConfig:       make(map[config.ConfigurationID]session.AuthenticationSessionID),
-		reconnectByConfig:      make(map[config.ConfigurationID]bool),
+		sessionsByConfig:       make(map[connectionconfig.ID]session.AuthenticationSessionID),
+		reconnectByConfig:      make(map[connectionconfig.ID]bool),
 		invalidSessions:        make(map[session.AuthenticationSessionID]bool),
 	}, nil
 }
 
-func (application *Application) ListInstitutionProfiles(ctx context.Context) ([]config.InstitutionProfileSummary, error) {
+func (application *Application) ListInstitutionProfiles(ctx context.Context) ([]profilevalue.Summary, error) {
 	summaries, err := application.profiles.ListSummaries(ctx)
 	if err != nil {
 		return nil, err

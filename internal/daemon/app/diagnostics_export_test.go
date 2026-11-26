@@ -12,20 +12,23 @@ import (
 	"testing"
 	"time"
 
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	"sidravia/internal/daemon/environment"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/persistence/jsonfile"
 )
 
 type diagnosticSpyStore struct {
 	*controlledAppStore
 	reads, writes atomic.Int32
-	protection    jsonfile.ProtectionStatus
+	protection    securefile.ProtectionStatus
 }
 
 func (s *diagnosticSpyStore) Read(ctx context.Context, path string, limit int64) ([]byte, bool, error) {
@@ -40,7 +43,7 @@ func (s *diagnosticSpyStore) ReplaceSensitive(ctx context.Context, path string, 
 	s.writes.Add(1)
 	return s.controlledAppStore.ReplaceSensitive(ctx, path, data, limit, insecure)
 }
-func (s *diagnosticSpyStore) ProtectionStatus() jsonfile.ProtectionStatus { return s.protection }
+func (s *diagnosticSpyStore) ProtectionStatus() securefile.ProtectionStatus { return s.protection }
 
 type diagnosticSpyFactory struct {
 	appTestProtocolFactory
@@ -54,7 +57,7 @@ func (f *diagnosticSpyFactory) CreateAuthenticationProtocolRun(protocol.Authenti
 
 func TestExportDiagnosticsRealOwnersPrivateAndReadOnly(t *testing.T) {
 	ctx := context.Background()
-	store := &diagnosticSpyStore{controlledAppStore: newControlledAppStore(), protection: jsonfile.ProtectionProtected}
+	store := &diagnosticSpyStore{controlledAppStore: newControlledAppStore(), protection: securefile.ProtectionProtected}
 	catalog, err := config.OpenCatalog(ctx, store, filepath.Join(t.TempDir(), "private-storage-path.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +66,7 @@ func TestExportDiagnosticsRealOwnersPrivateAndReadOnly(t *testing.T) {
 	value.DisplayName = "private-display"
 	value.Username = "private-account"
 	value.InstitutionProfileID = "private-missing-profile"
-	value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"private-override":"private-endpoint"}`)
+	value.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"private-override":"private-endpoint"}`)
 	value.AutoLogin = true
 	value.AutoReconnect = true
 	if _, err = catalog.Create(ctx, value, "private-password", false); err != nil {
@@ -71,8 +74,8 @@ func TestExportDiagnosticsRealOwnersPrivateAndReadOnly(t *testing.T) {
 	}
 	profile := appTestProfile("private-profile")
 	profile.DisplayName = "private-institution"
-	profile.InstitutionProtocolConfiguration = protocol.InstitutionProtocolConfiguration(`{"private-profile-configuration":"private-profile-endpoint"}`)
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{profile})
+	profile.InstitutionProtocolConfiguration = profilevalue.ProtocolConfiguration(`{"private-profile-configuration":"private-profile-endpoint"}`)
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,10 +209,10 @@ func TestDiagnosticProjectionFutureCategoriesAndCounterGuards(t *testing.T) {
 	if got, err := diagnosticCount((1 << 32) - 1); err != nil || got != ^uint32(0) {
 		t.Fatal("valid maximum rejected")
 	}
-	for _, mode := range []config.NetworkBindingPolicyMode{"private-mode"} {
+	for _, mode := range []binding.Mode{"private-mode"} {
 		value := appTestConfiguration("c")
 		value.NetworkBindingPolicy.Mode = mode
-		if _, err := setup.application.diagnosticCatalog(context.Background(), []config.Configuration{value}, "protected"); err == nil {
+		if _, err := setup.application.diagnosticCatalog(context.Background(), []connectionconfig.Configuration{value}, "protected"); err == nil {
 			t.Fatal("unknown binding mode fabricated")
 		}
 	}
@@ -227,7 +230,7 @@ func TestDiagnosticProjectionFutureCategoriesAndCounterGuards(t *testing.T) {
 // Run for catalog availability. No private value enters the exported counts.
 type exportAvailabilityFactory struct{ diagnosticSpyFactory }
 
-func (*exportAvailabilityFactory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
+func (*exportAvailabilityFactory) ValidateProtocolContextOverride(raw profilevalue.ProtocolOverride) error {
 	if strings.Contains(string(raw), "private-rejected") {
 		return errors.New("private-validator-cause")
 	}
@@ -239,7 +242,7 @@ func TestExportDiagnosticCatalogAvailabilityUsesExistingOwners(t *testing.T) {
 	ctx := context.Background()
 	missing := appTestProfile("missing-factory")
 	missing.AuthenticationProtocolID = "private-unregistered"
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1"), missing})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), missing})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,9 +254,9 @@ func TestExportDiagnosticCatalogAvailabilityUsesExistingOwners(t *testing.T) {
 	}
 	setup.application.authenticationResolver.protocols = registry
 	for _, input := range []struct{ id, profile, override string }{{"private-no-profile", "private-absent", "{}"}, {"private-no-protocol", "missing-factory", "{}"}, {"private-invalid-override", "profile-1", `{"private-rejected":"private-value"}`}} {
-		value := appTestConfiguration(config.ConfigurationID(input.id))
-		value.InstitutionProfileID = config.InstitutionProfileID(input.profile)
-		value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(input.override)
+		value := appTestConfiguration(connectionconfig.ID(input.id))
+		value.InstitutionProfileID = profilevalue.ID(input.profile)
+		value.ProtocolContextOverride = profilevalue.ProtocolOverride(input.override)
 		if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
 			t.Fatal(err)
 		}

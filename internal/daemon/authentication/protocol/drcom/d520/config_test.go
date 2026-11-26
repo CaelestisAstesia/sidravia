@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	protocol "sidravia/internal/daemon/authentication/protocol"
+	profilevalue "sidravia/internal/connection/profile"
 )
 
 func fullConfigMap() map[string]any {
@@ -34,16 +34,16 @@ func fullConfigMap() map[string]any {
 	}
 }
 
-func marshalConfig(t *testing.T, m map[string]any) protocol.InstitutionProtocolConfiguration {
+func marshalConfig(t *testing.T, m map[string]any) profilevalue.ProtocolConfiguration {
 	t.Helper()
 	b, err := json.Marshal(m)
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
 	}
-	return protocol.InstitutionProtocolConfiguration(b)
+	return profilevalue.ProtocolConfiguration(b)
 }
 
-func configWithOverride(t *testing.T, overrides map[string]any) protocol.InstitutionProtocolConfiguration {
+func configWithOverride(t *testing.T, overrides map[string]any) profilevalue.ProtocolConfiguration {
 	t.Helper()
 	m := fullConfigMap()
 	for k, v := range overrides {
@@ -52,14 +52,14 @@ func configWithOverride(t *testing.T, overrides map[string]any) protocol.Institu
 	return marshalConfig(t, m)
 }
 
-func configWithout(t *testing.T, field string) protocol.InstitutionProtocolConfiguration {
+func configWithout(t *testing.T, field string) profilevalue.ProtocolConfiguration {
 	t.Helper()
 	m := fullConfigMap()
 	delete(m, field)
 	return marshalConfig(t, m)
 }
 
-func validConfig(t *testing.T) protocol.InstitutionProtocolConfiguration {
+func validConfig(t *testing.T) profilevalue.ProtocolConfiguration {
 	t.Helper()
 	return marshalConfig(t, fullConfigMap())
 }
@@ -69,7 +69,7 @@ func validConfig(t *testing.T) protocol.InstitutionProtocolConfiguration {
 // than re-marshaling a json.RawMessage so malformed and trailing localPort
 // fragments reach the decoder instead of failing at marshal time. Every other
 // required field stays valid, so a rejection is attributable to localPort.
-func configWithLocalPortRaw(t *testing.T, localPortRaw string) protocol.InstitutionProtocolConfiguration {
+func configWithLocalPortRaw(t *testing.T, localPortRaw string) profilevalue.ProtocolConfiguration {
 	t.Helper()
 	m := fullConfigMap()
 	delete(m, "localPort")
@@ -82,12 +82,12 @@ func configWithLocalPortRaw(t *testing.T, localPortRaw string) protocol.Institut
 		t.Fatalf("unexpected marshaled config shape: %s", s)
 	}
 	s = s[:len(s)-1] + `,"localPort":` + localPortRaw + "}"
-	return protocol.InstitutionProtocolConfiguration(s)
+	return profilevalue.ProtocolConfiguration(s)
 }
 
 // configWithFixedLocalPort returns a complete valid config with a fixed
 // localPort value, overriding the collision-free system_assigned default.
-func configWithFixedLocalPort(t *testing.T, value int) protocol.InstitutionProtocolConfiguration {
+func configWithFixedLocalPort(t *testing.T, value int) profilevalue.ProtocolConfiguration {
 	t.Helper()
 	return configWithOverride(t, map[string]any{"localPort": map[string]any{"mode": "fixed", "value": value}})
 }
@@ -150,15 +150,15 @@ func TestConfigDecodesValidCompleteProfile(t *testing.T) {
 func TestConfigRejectsInvalidInputs(t *testing.T) {
 	cases := []struct {
 		name string
-		raw  protocol.InstitutionProtocolConfiguration
+		raw  profilevalue.ProtocolConfiguration
 	}{
-		{"nil", protocol.InstitutionProtocolConfiguration(nil)},
-		{"null", protocol.InstitutionProtocolConfiguration("null")},
-		{"array", protocol.InstitutionProtocolConfiguration("[]")},
-		{"scalar string", protocol.InstitutionProtocolConfiguration(`"x"`)},
-		{"scalar number", protocol.InstitutionProtocolConfiguration("5")},
-		{"malformed", protocol.InstitutionProtocolConfiguration("{")},
-		{"trailing", protocol.InstitutionProtocolConfiguration(`{"serverAddress":"127.0.0.1"} extra`)},
+		{"nil", profilevalue.ProtocolConfiguration(nil)},
+		{"null", profilevalue.ProtocolConfiguration("null")},
+		{"array", profilevalue.ProtocolConfiguration("[]")},
+		{"scalar string", profilevalue.ProtocolConfiguration(`"x"`)},
+		{"scalar number", profilevalue.ProtocolConfiguration("5")},
+		{"malformed", profilevalue.ProtocolConfiguration("{")},
+		{"trailing", profilevalue.ProtocolConfiguration(`{"serverAddress":"127.0.0.1"} extra`)},
 		{"missing serverAddress", configWithout(t, "serverAddress")},
 		{"missing serverPort", configWithout(t, "serverPort")},
 		{"missing localPort", configWithout(t, "localPort")},
@@ -188,8 +188,8 @@ func TestConfigRejectsInvalidInputs(t *testing.T) {
 		{"non-positive duration", configWithOverride(t, map[string]any{"challengeTimeout": "0s"})},
 		{"busyMaxAttempts less than one", configWithOverride(t, map[string]any{"busyMaxAttempts": 0})},
 		{"backoff min greater than max", configWithOverride(t, map[string]any{"busyBackoffMin": "3s", "busyBackoffMax": "2s"})},
-		{"non-integer port", protocol.InstitutionProtocolConfiguration(`{"serverAddress":"127.0.0.1","serverPort":"x"}`)},
-		{"non-string serverAddress", protocol.InstitutionProtocolConfiguration(`{"serverAddress":123,"serverPort":61440}`)},
+		{"non-integer port", profilevalue.ProtocolConfiguration(`{"serverAddress":"127.0.0.1","serverPort":"x"}`)},
+		{"non-string serverAddress", profilevalue.ProtocolConfiguration(`{"serverAddress":123,"serverPort":61440}`)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -241,10 +241,10 @@ func TestConfigErrorsDoNotLeakRawJSON(t *testing.T) {
 }
 
 func TestOverrideAcceptsAbsentOrEmpty(t *testing.T) {
-	cases := []protocol.AuthenticationProtocolContextOverride{
+	cases := []profilevalue.ProtocolOverride{
 		nil,
-		protocol.AuthenticationProtocolContextOverride(`{}`),
-		protocol.AuthenticationProtocolContextOverride(`  {  }  `),
+		profilevalue.ProtocolOverride(`{}`),
+		profilevalue.ProtocolOverride(`  {  }  `),
 	}
 	for _, raw := range cases {
 		if err := validateProtocolContextOverride(raw); err != nil {
@@ -265,7 +265,7 @@ func TestOverrideRejectsNonEmptyOrMalformed(t *testing.T) {
 		`{"a":1} extra`,
 	}
 	for _, raw := range cases {
-		if err := validateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride(raw)); err == nil {
+		if err := validateProtocolContextOverride(profilevalue.ProtocolOverride(raw)); err == nil {
 			t.Fatalf("override %q expected error, got nil", raw)
 		}
 	}

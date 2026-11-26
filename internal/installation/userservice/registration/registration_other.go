@@ -2,7 +2,7 @@
 
 package registration
 
-import "sidravia/internal/productlayout"
+import productlayout "sidravia/internal/installation/layout"
 
 // Lookup finds no systemd user service registration on other platforms.
 func Lookup() (productlayout.Layout, bool, error) {

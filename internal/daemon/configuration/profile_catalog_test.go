@@ -6,22 +6,22 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/persistence"
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/document"
 )
 
-func profileCatalogTestProfile(id InstitutionProfileID, protoID protocol.AuthenticationProtocolID) InstitutionProfile {
-	return InstitutionProfile{
+func profileCatalogTestProfile(id profilevalue.ID, protoID profilevalue.ProtocolID) profilevalue.Profile {
+	return profilevalue.Profile{
 		InstitutionProfileID:             id,
 		DisplayName:                      string(id) + " display",
 		AuthenticationProtocolID:         protoID,
-		InstitutionProtocolConfiguration: protocol.InstitutionProtocolConfiguration(`{"realm":"` + string(id) + `"}`),
+		InstitutionProtocolConfiguration: profilevalue.ProtocolConfiguration(`{"realm":"` + string(id) + `"}`),
 	}
 }
 
 func TestProfileCatalogGetListSummariesAndSorting(t *testing.T) {
 	ctx := context.Background()
-	profiles := []InstitutionProfile{
+	profiles := []profilevalue.Profile{
 		profileCatalogTestProfile("profile-b", "drcom"),
 		profileCatalogTestProfile("profile-a", "drcom"),
 	}
@@ -50,7 +50,7 @@ func TestProfileCatalogGetListSummariesAndSorting(t *testing.T) {
 
 func TestProfileCatalogGetReturnsDeepCopy(t *testing.T) {
 	ctx := context.Background()
-	catalog, err := NewProfileCatalog([]InstitutionProfile{
+	catalog, err := NewProfileCatalog([]profilevalue.Profile{
 		profileCatalogTestProfile("profile-1", "drcom"),
 	})
 	if err != nil {
@@ -73,27 +73,27 @@ func TestProfileCatalogGetReturnsDeepCopy(t *testing.T) {
 
 func TestProfileCatalogRejectsInvalidCalls(t *testing.T) {
 	ctx := context.Background()
-	catalog, err := NewProfileCatalog([]InstitutionProfile{
+	catalog, err := NewProfileCatalog([]profilevalue.Profile{
 		profileCatalogTestProfile("profile-1", "drcom"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := catalog.Get(ctx, ""); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.Get(ctx, ""); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("Get(empty) error = %v", err)
 	}
-	if _, err := catalog.Get(ctx, "missing"); profileCatalogFailureCode(t, err) != persistence.FailureNotFound {
+	if _, err := catalog.Get(ctx, "missing"); profileCatalogFailureCode(t, err) != document.FailureNotFound {
 		t.Fatalf("Get(missing) error = %v", err)
 	}
-	if _, err := catalog.Get(nil, "profile-1"); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.Get(nil, "profile-1"); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("Get(nil ctx) error = %v", err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := catalog.Get(canceled, "profile-1"); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.Get(canceled, "profile-1"); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("Get(canceled) error = %v", err)
 	}
-	if _, err := catalog.ListSummaries(nil); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.ListSummaries(nil); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("ListSummaries(nil ctx) error = %v", err)
 	}
 }
@@ -102,33 +102,33 @@ func TestNewProfileCatalogRejectsInvalidProfiles(t *testing.T) {
 	valid := profileCatalogTestProfile("profile-1", "drcom")
 	cases := []struct {
 		name    string
-		profile InstitutionProfile
+		profile profilevalue.Profile
 	}{
-		{"empty id", InstitutionProfile{DisplayName: "x", AuthenticationProtocolID: "drcom"}},
-		{"empty display name", InstitutionProfile{InstitutionProfileID: "profile-1", AuthenticationProtocolID: "drcom"}},
-		{"empty protocol id", InstitutionProfile{InstitutionProfileID: "profile-1", DisplayName: "x"}},
+		{"empty id", profilevalue.Profile{DisplayName: "x", AuthenticationProtocolID: "drcom"}},
+		{"empty display name", profilevalue.Profile{InstitutionProfileID: "profile-1", AuthenticationProtocolID: "drcom"}},
+		{"empty protocol id", profilevalue.Profile{InstitutionProfileID: "profile-1", DisplayName: "x"}},
 	}
 	for _, tc := range cases {
-		_, err := NewProfileCatalog([]InstitutionProfile{tc.profile})
-		if profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+		_, err := NewProfileCatalog([]profilevalue.Profile{tc.profile})
+		if profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 			t.Fatalf("%s: NewProfileCatalog() error = %v", tc.name, err)
 		}
 	}
-	duplicate := []InstitutionProfile{valid, valid}
-	if _, err := NewProfileCatalog(duplicate); profileCatalogFailureCode(t, err) != persistence.FailureConflict {
+	duplicate := []profilevalue.Profile{valid, valid}
+	if _, err := NewProfileCatalog(duplicate); profileCatalogFailureCode(t, err) != document.FailureConflict {
 		t.Fatalf("duplicate id error = %v", err)
 	}
 }
 
 func TestProfileCatalogCanonicalProfileID(t *testing.T) {
 	ctx := context.Background()
-	valid := []InstitutionProfileID{"jlu", "profile-1", "a", "a1", "z-9"}
+	valid := []profilevalue.ID{"jlu", "profile-1", "a", "a1", "z-9"}
 	for _, id := range valid {
 		if err := validateInstitutionProfileID(id); err != nil {
 			t.Fatalf("valid id %q rejected: %v", id, err)
 		}
 	}
-	invalid := []InstitutionProfileID{
+	invalid := []profilevalue.ID{
 		"",
 		"JLU",
 		"jlu_campus",
@@ -139,36 +139,36 @@ func TestProfileCatalogCanonicalProfileID(t *testing.T) {
 		"1leading-digit",
 	}
 	for _, id := range invalid {
-		if err := validateInstitutionProfileID(id); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+		if err := validateInstitutionProfileID(id); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 			t.Fatalf("invalid id %q should be invalid_argument, got %v", id, err)
 		}
 	}
 
 	// Construction rejects a non-canonical ID even when the other fields are set.
-	if _, err := NewProfileCatalog([]InstitutionProfile{
+	if _, err := NewProfileCatalog([]profilevalue.Profile{
 		profileCatalogTestProfile("JLU", "drcom"),
-	}); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+	}); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("NewProfileCatalog(JLU) error = %v", err)
 	}
 
-	catalog, err := NewProfileCatalog([]InstitutionProfile{
+	catalog, err := NewProfileCatalog([]profilevalue.Profile{
 		profileCatalogTestProfile("jlu", "drcom"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A valid but absent identifier remains not_found.
-	if _, err := catalog.Get(ctx, "profile-1"); profileCatalogFailureCode(t, err) != persistence.FailureNotFound {
+	if _, err := catalog.Get(ctx, "profile-1"); profileCatalogFailureCode(t, err) != document.FailureNotFound {
 		t.Fatalf("Get(valid absent) error = %v", err)
 	}
 	// An invalid lookup identifier is invalid_argument, not not_found.
-	if _, err := catalog.Get(ctx, "JLU"); profileCatalogFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.Get(ctx, "JLU"); profileCatalogFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("Get(JLU) error = %v", err)
 	}
 }
 
 func TestProfileCatalogPublicErrorSecrecy(t *testing.T) {
-	catalog, err := NewProfileCatalog([]InstitutionProfile{
+	catalog, err := NewProfileCatalog([]profilevalue.Profile{
 		profileCatalogTestProfile("profile-secret", "drcom"),
 	})
 	if err != nil {
@@ -180,9 +180,9 @@ func TestProfileCatalogPublicErrorSecrecy(t *testing.T) {
 	}
 }
 
-func profileCatalogFailureCode(t *testing.T, err error) persistence.FailureCode {
+func profileCatalogFailureCode(t *testing.T, err error) document.FailureCode {
 	t.Helper()
-	var failure *persistence.Failure
+	var failure *document.Failure
 	if errors.As(err, &failure) {
 		return failure.Code()
 	}

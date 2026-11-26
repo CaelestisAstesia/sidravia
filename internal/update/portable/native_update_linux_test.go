@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sidravia/internal/ipc/contract"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,8 +25,10 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/ipc/contract"
 	"sidravia/internal/update"
 	"sidravia/internal/update/internal/testfixture"
 	"sidravia/internal/update/operations"
@@ -327,7 +328,7 @@ func TestNativePortableUpdate(t *testing.T) {
 				}
 			}
 
-			root, err := operations.DefaultRoot()
+			root, err := productlayout.UpdateOperationRoot()
 			if err != nil {
 				t.Fatal(err)
 			}

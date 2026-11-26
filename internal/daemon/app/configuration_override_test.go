@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	launchcontract "sidravia/internal/background/launch"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	config "sidravia/internal/daemon/configuration"
@@ -17,7 +18,7 @@ import (
 type overrideTestFactory struct{ appTestProtocolFactory }
 
 func (*overrideTestFactory) OverrideSchemaVersion() int { return 1 }
-func (*overrideTestFactory) ValidateProtocolContextOverride(value protocol.AuthenticationProtocolContextOverride) error {
+func (*overrideTestFactory) ValidateProtocolContextOverride(value profilevalue.ProtocolOverride) error {
 	return d520.NewFactory().ValidateProtocolContextOverride(value)
 }
 
@@ -27,7 +28,7 @@ func TestPersistentOverrideIPCReadValidateAndVersionProtection(t *testing.T) {
 	ctx := context.Background()
 	profile := appTestProfile("d520")
 	profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{profile})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestPersistentOverrideIPCReadValidateAndVersionProtection(t *testing.T) {
 	// and presence remain readable, and the explicit clear remains available.
 	legacy := current.Configuration.Clone()
 	legacy.ConfigurationID = "legacy"
-	legacy.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"unknown":"` + strings.Repeat("<", 70*1024) + `"}`)
+	legacy.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"unknown":"` + strings.Repeat("<", 70*1024) + `"}`)
 	if _, err := setup.catalog.Create(ctx, legacy, "private-password", false); err != nil {
 		t.Fatal(err)
 	}

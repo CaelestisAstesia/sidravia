@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
-	profile "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
 )
 
@@ -332,7 +332,7 @@ func validRuntimeDefinition(t *testing.T) RuntimeDefinition {
 			Username: "test-account",
 			Password: "secret-password",
 		},
-		InstitutionProfile: profile.InstitutionProfile{
+		InstitutionProfile: profilevalue.Profile{
 			InstitutionProfileID:             "profile-1",
 			DisplayName:                      "Campus",
 			AuthenticationProtocolID:         "test-protocol",
@@ -349,17 +349,17 @@ func validRuntimeDefinition(t *testing.T) RuntimeDefinition {
 }
 
 type stubFactory struct {
-	protocolID                    protocol.AuthenticationProtocolID
+	protocolID                    profilevalue.ProtocolID
 	institutionConfigurationError error
 	protocolContextOverrideError  error
 }
 
-func (factory stubFactory) ProtocolID() protocol.AuthenticationProtocolID {
+func (factory stubFactory) ProtocolID() profilevalue.ProtocolID {
 	return factory.protocolID
 }
 
 func (factory stubFactory) ValidateInstitutionProtocolConfiguration(
-	configuration protocol.InstitutionProtocolConfiguration,
+	configuration profilevalue.ProtocolConfiguration,
 ) error {
 	if factory.institutionConfigurationError != nil {
 		return factory.institutionConfigurationError
@@ -368,7 +368,7 @@ func (factory stubFactory) ValidateInstitutionProtocolConfiguration(
 }
 
 func (factory stubFactory) ValidateProtocolContextOverride(
-	override protocol.AuthenticationProtocolContextOverride,
+	override profilevalue.ProtocolOverride,
 ) error {
 	if factory.protocolContextOverrideError != nil {
 		return factory.protocolContextOverrideError

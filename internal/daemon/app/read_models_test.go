@@ -7,11 +7,14 @@ import (
 	"reflect"
 	"testing"
 
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/persistence"
+	"sidravia/internal/document"
 )
 
 func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
@@ -22,7 +25,7 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 	missingProtocol.AuthenticationProtocolID = "unregistered"
 	d520Profile := appTestProfile("d520-profile")
 	d520Profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1"), missingProtocol, d520Profile})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), missingProtocol, d520Profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,10 +36,10 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 		t.Fatal(err)
 	}
 	setup.application.authenticationResolver.protocols = registry
-	for _, value := range []config.Configuration{
-		{ConfigurationID: "broken-profile", InstitutionProfileID: "missing-profile", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)},
-		{ConfigurationID: "broken-protocol", InstitutionProfileID: "missing-protocol", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{}`)},
-		{ConfigurationID: "broken-override", InstitutionProfileID: "d520-profile", Username: "user", NetworkBindingPolicy: config.NetworkBindingPolicy{Mode: config.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: protocol.AuthenticationProtocolContextOverride(`{"private-legacy-key":"private-value"}`)},
+	for _, value := range []connectionconfig.Configuration{
+		{ConfigurationID: "broken-profile", InstitutionProfileID: "missing-profile", Username: "user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: profilevalue.ProtocolOverride(`{}`)},
+		{ConfigurationID: "broken-protocol", InstitutionProfileID: "missing-protocol", Username: "user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: profilevalue.ProtocolOverride(`{}`)},
+		{ConfigurationID: "broken-override", InstitutionProfileID: "d520-profile", Username: "user", NetworkBindingPolicy: binding.Policy{Mode: binding.AutomaticallySelectLatestAvailable}, ProtocolContextOverride: profilevalue.ProtocolOverride(`{"private-legacy-key":"private-value"}`)},
 	} {
 		if _, err := setup.catalog.Create(ctx, value, "private-password", false); err != nil {
 			t.Fatal(err)
@@ -52,7 +55,7 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 	if err != nil || len(rows) != 4 || protection != "protected" {
 		t.Fatalf("whole list unavailable: %#v %v", rows, err)
 	}
-	want := map[config.ConfigurationID]ConfigurationRuntimeAvailability{"broken-profile": ConfigurationRuntimeProfileUnavailable, "broken-protocol": ConfigurationRuntimeProtocolUnavailable, "broken-override": ConfigurationRuntimeOverrideInvalid, "configuration-1": ConfigurationRuntimeAvailable}
+	want := map[connectionconfig.ID]ConfigurationRuntimeAvailability{"broken-profile": ConfigurationRuntimeProfileUnavailable, "broken-protocol": ConfigurationRuntimeProtocolUnavailable, "broken-override": ConfigurationRuntimeOverrideInvalid, "configuration-1": ConfigurationRuntimeAvailable}
 	for i, row := range rows {
 		if row.RuntimeAvailability != want[row.Configuration.ConfigurationID] || !row.CredentialStored {
 			t.Fatalf("incorrect row: %#v", row)
@@ -81,26 +84,26 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 		t.Fatal("readonly availability changed persistent bytes")
 	}
 	name := "edited"
-	if _, err := setup.application.UpdateConfiguration(ctx, "broken-profile", config.Update{DisplayName: &name}); err == nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "broken-profile", config.Update{Patch: connectionconfig.Patch{DisplayName: &name}}); err == nil {
 		t.Fatal("fallback used for strict write")
 	}
 	if _, err := setup.application.SetConfigurationPassword(ctx, "broken-override", "new-private-password", false); err == nil {
 		t.Fatal("invalid override write newly accepted")
 	}
-	var clearOverride protocol.AuthenticationProtocolContextOverride
-	for _, id := range []config.ConfigurationID{"broken-profile", "broken-protocol"} {
+	var clearOverride profilevalue.ProtocolOverride
+	for _, id := range []connectionconfig.ID{"broken-profile", "broken-protocol"} {
 		before, err := setup.catalog.Get(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := setup.application.UpdateConfiguration(ctx, id, config.Update{ProtocolContextOverride: &clearOverride, DisplayName: &name}); err == nil {
+		if _, err := setup.application.UpdateConfiguration(ctx, id, config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &clearOverride, DisplayName: &name}}); err == nil {
 			t.Fatal("mixed edit bypassed strict candidate validation")
 		}
 		after, err := setup.catalog.Get(ctx, id)
 		if err != nil || !reflect.DeepEqual(before, after) {
 			t.Fatal("mixed edit partially committed")
 		}
-		cleared, err := setup.application.UpdateConfiguration(ctx, id, config.Update{ProtocolContextOverride: &clearOverride})
+		cleared, err := setup.application.UpdateConfiguration(ctx, id, config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &clearOverride}})
 		before.ProtocolContextOverride = nil
 		if err != nil || cleared.RuntimeAvailability != want[id] || !reflect.DeepEqual(before, cleared.Configuration) {
 			t.Fatalf("isolated clear did not preserve unavailable configuration: %v", err)
@@ -122,7 +125,7 @@ func TestConfigurationReadModelsKeepUnavailableRowsManageable(t *testing.T) {
 
 type mutatingReadValidator struct{ appTestProtocolFactory }
 
-func (*mutatingReadValidator) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
+func (*mutatingReadValidator) ValidateProtocolContextOverride(raw profilevalue.ProtocolOverride) error {
 	if len(raw) > 0 {
 		raw[0] = '['
 	}
@@ -157,8 +160,8 @@ func TestConfigurationReadValidationOwnsInputAndPropagatesUnexpectedErrors(t *te
 	if _, err := setup.application.GetConfiguration(ctx, "invalid-profile"); err == nil {
 		t.Fatal("invalid lookup swallowed")
 	}
-	var clearOverride protocol.AuthenticationProtocolContextOverride
-	if _, err := setup.application.UpdateConfiguration(ctx, "invalid-profile", config.Update{ProtocolContextOverride: &clearOverride}); err == nil {
+	var clearOverride profilevalue.ProtocolOverride
+	if _, err := setup.application.UpdateConfiguration(ctx, "invalid-profile", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &clearOverride}}); err == nil {
 		t.Fatal("invalid Profile lookup was accepted")
 	}
 	after, err := setup.catalog.Get(ctx, "invalid-profile")
@@ -176,8 +179,8 @@ func TestConfigurationReadValidationOwnsInputAndPropagatesUnexpectedErrors(t *te
 	if _, err := setup.application.GetConfiguration(ctx, "absent"); err == nil {
 		t.Fatal("missing Catalog record fabricated")
 	} else {
-		var failure *persistence.Failure
-		if !errors.As(err, &failure) || failure.Code() != persistence.FailureNotFound {
+		var failure *document.Failure
+		if !errors.As(err, &failure) || failure.Code() != document.FailureNotFound {
 			t.Fatal("Catalog classification changed")
 		}
 	}
@@ -187,12 +190,12 @@ func TestConfigurationReadValidationOwnsInputAndPropagatesUnexpectedErrors(t *te
 	if _, _, err := setup.application.ListConfigurations(withCause); !errors.Is(err, context.Canceled) || !errors.Is(err, cause) {
 		t.Fatalf("List lost cancellation cause: %v", err)
 	}
-	for _, id := range []config.ConfigurationID{"configuration-1", "absent"} {
+	for _, id := range []connectionconfig.ID{"configuration-1", "absent"} {
 		if _, err := setup.application.GetConfiguration(withCause, id); !errors.Is(err, context.Canceled) || !errors.Is(err, cause) {
 			t.Fatalf("Get %q lost cancellation cause: %v", id, err)
 		}
 	}
-	for _, id := range []config.ConfigurationID{"configuration-1", "invalid-profile"} {
+	for _, id := range []connectionconfig.ID{"configuration-1", "invalid-profile"} {
 		if err := setup.catalog.Delete(ctx, id, currentConfigurationVersion(t, setup.catalog, id)); err != nil {
 			t.Fatal(err)
 		}

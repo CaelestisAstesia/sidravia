@@ -10,15 +10,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sidravia/internal/background/daemonctl"
 	"strconv"
 	"time"
 
+	"sidravia/internal/background/daemonctl"
 	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/process/linuxproc"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update"
 )
 

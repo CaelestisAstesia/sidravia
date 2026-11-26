@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 func TestWindowsLaunchObservesOneWait(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 )
 
@@ -189,7 +190,7 @@ func TestRunSocketOpenFailureHasNoObservations(t *testing.T) {
 	}
 	defer occupied.Close()
 	inputs := factoryInputs(testConfigJSON(peer.port(), defaultTestDurations()), testCredential(), testBinding(t))
-	inputs.InstitutionProtocolConfiguration = protocol.InstitutionProtocolConfiguration(bytes.Replace(inputs.InstitutionProtocolConfiguration, []byte(`{"mode": "system_assigned"}`), []byte(fmt.Sprintf(`{"mode":"fixed","value":%d}`, occupied.LocalAddr().(*net.UDPAddr).Port)), 1))
+	inputs.InstitutionProtocolConfiguration = profilevalue.ProtocolConfiguration(bytes.Replace(inputs.InstitutionProtocolConfiguration, []byte(`{"mode": "system_assigned"}`), []byte(fmt.Sprintf(`{"mode":"fixed","value":%d}`, occupied.LocalAddr().(*net.UDPAddr).Port)), 1))
 	diagnostics := &captureDiagnostics{}
 	inputs.Diagnostics = diagnostics
 	run, err := NewFactory().CreateAuthenticationProtocolRun(inputs)

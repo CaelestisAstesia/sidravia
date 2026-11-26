@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	connectionconfig "sidravia/internal/connection/config"
 	"sidravia/internal/daemon/authentication/session"
 	config "sidravia/internal/daemon/configuration"
 )
@@ -68,7 +69,7 @@ func TestStoredLegacyCredentialsAreNotNewInput(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 	legacyUser, legacyPassword := "旧账号 ", "旧 密码 "
-	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Username: &legacyUser, Password: &legacyPassword}); err != nil {
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &legacyUser}, Password: &legacyPassword}); err != nil {
 		t.Fatal(err)
 	}
 	before := usernameDisk(setup)
@@ -86,7 +87,7 @@ func TestStoredLegacyCredentialsAreNotNewInput(t *testing.T) {
 		t.Fatal("reading legacy input rewrote data")
 	}
 	label := "new label"
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &label, Username: &legacyUser}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{DisplayName: &label, Username: &legacyUser}}); err != nil {
 		t.Fatal(err)
 	}
 	_, credential, err := setup.catalog.Resolve(ctx, "configuration-1")

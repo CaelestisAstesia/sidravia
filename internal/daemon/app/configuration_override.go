@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
-	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -54,7 +55,7 @@ func (application *Application) handleConfigurationOverride(ctx context.Context,
 		if err != nil {
 			return nil, configurationInvalid()
 		}
-		value, err := application.GetConfiguration(ctx, config.ConfigurationID(request.ConfigurationID))
+		value, err := application.GetConfiguration(ctx, connectionconfig.ID(request.ConfigurationID))
 		if err != nil {
 			return nil, configurationError(err)
 		}
@@ -77,7 +78,7 @@ func (application *Application) handleConfigurationOverride(ctx context.Context,
 		if err != nil {
 			return nil, configurationInvalid()
 		}
-		profile, err := application.profiles.Get(ctx, config.InstitutionProfileID(request.InstitutionProfileID))
+		profile, err := application.profiles.Get(ctx, profilevalue.ID(request.InstitutionProfileID))
 		if err != nil {
 			return nil, configurationError(NewResolutionFailure(ProfileNotFound, err))
 		}
@@ -87,7 +88,7 @@ func (application *Application) handleConfigurationOverride(ctx context.Context,
 		}
 		raw, err := contract.DecodeProtocolContextOverride([]byte(request.Document))
 		if err == nil {
-			err = factory.ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride(raw))
+			err = factory.ValidateProtocolContextOverride(profilevalue.ProtocolOverride(raw))
 		}
 		validation := contract.ConfigurationOverrideValidationResult{Valid: err == nil}
 		var field protocol.OverrideFieldError

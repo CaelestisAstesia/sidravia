@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/update/packagefiles"
 )
 
@@ -146,7 +146,7 @@ func ValidateReleaseManifest(data []byte) (ReleaseManifest, error) {
 		return ReleaseManifest{}, ErrMetadata
 	}
 	var m ReleaseManifest
-	if jsonfile.DecodeStrict(data, &m) != nil || !releaseShape(data) || m.SchemaVersion != 2 || m.MinimumProtocol != 1 || len(m.BuildID) == 0 || len(m.BuildID) > 64 || len(m.Assets) == 0 || len(m.Assets) > 32 {
+	if jsondoc.DecodeStrict(data, &m) != nil || !releaseShape(data) || m.SchemaVersion != 2 || m.MinimumProtocol != 1 || len(m.BuildID) == 0 || len(m.BuildID) > 64 || len(m.Assets) == 0 || len(m.Assets) > 32 {
 		return ReleaseManifest{}, ErrMetadata
 	}
 	if _, err := ParseVersion(m.Version); err != nil {

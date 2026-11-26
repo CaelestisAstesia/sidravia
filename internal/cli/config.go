@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/credentialinput"
+	"sidravia/internal/connection/credential/input"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -247,7 +247,7 @@ func runConfigShow(id string, deps authDependencies) error {
 }
 func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 	if options.username != "" {
-		if err := credentialinput.Validate(options.username); err != nil {
+		if err := input.ValidateNewText(options.username); err != nil {
 			return err
 		}
 	}
@@ -293,7 +293,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 		if options.id == "" || options.profile == "" || options.username == "" {
 			return errors.New("配置输入不能为空")
 		}
-		if err := credentialinput.Validate(options.username); err != nil {
+		if err := input.ValidateNewText(options.username); err != nil {
 			return err
 		}
 		if interactive && !options.binding.supplied() {
@@ -347,7 +347,7 @@ func runConfigCreate(options configCreateOptions, deps authDependencies) error {
 }
 func runConfigUpdate(options configUpdateOptions, deps authDependencies) error {
 	if options.username != nil {
-		if err := credentialinput.Validate(*options.username); err != nil {
+		if err := input.ValidateNewText(*options.username); err != nil {
 			return err
 		}
 	}

@@ -2,8 +2,8 @@ package daemonctl
 
 import (
 	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/productlayout"
 )
 
 // DesktopBootstrapResult is authoritative only after desktop readiness has

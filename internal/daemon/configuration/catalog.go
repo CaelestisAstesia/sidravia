@@ -13,23 +13,23 @@ import (
 	"sort"
 	"sync"
 
-	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/daemon/credentials"
-	"sidravia/internal/persistence"
-	"sidravia/internal/persistence/jsonfile"
+	connectionconfig "sidravia/internal/connection/config"
+	"sidravia/internal/connection/credential"
+	"sidravia/internal/document"
+	"sidravia/internal/document/securefile"
 )
 
 const catalogFileSizeLimit int64 = 1 * 1024 * 1024
 
 type SensitiveStore interface {
-	jsonfile.Store
+	securefile.Store
 	ReplaceSensitive(context.Context, string, []byte, int64, bool) error
 	PreserveSensitive(context.Context, string, []byte, int64, bool) error
-	ProtectionStatus() jsonfile.ProtectionStatus
+	ProtectionStatus() securefile.ProtectionStatus
 }
 
 type catalogRecord struct {
-	configuration Configuration
+	configuration connectionconfig.Configuration
 	password      string
 	version       string
 }
@@ -44,12 +44,12 @@ func (AutoLoginConflict) Error() string {
 }
 
 // Catalog owns saved configurations and their passwords as one persisted aggregate.
-// Get and List return public configuration copies; only Resolve returns credentials.
+// Get and List return public configuration copies; only Resolve returns credential.
 type Catalog struct {
 	mu                 sync.Mutex // serializes record updates, persistence and migration/consent state
 	store              SensitiveStore
 	path               string
-	records            map[ConfigurationID]catalogRecord
+	records            map[connectionconfig.ID]catalogRecord
 	unprotectedConsent bool
 	migrationOriginal  []byte
 }
@@ -65,7 +65,7 @@ func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catal
 	if err != nil {
 		return nil, err
 	}
-	records := make(map[ConfigurationID]catalogRecord)
+	records := make(map[connectionconfig.ID]catalogRecord)
 	if exists {
 		records, err = decodeCatalogDocument(data)
 		if err != nil {
@@ -85,7 +85,7 @@ func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catal
 		// decodeCatalogDocument already validated this envelope and version.
 		var envelope catalogDocumentEnvelope
 		if err := json.Unmarshal(data, &envelope); err != nil {
-			return nil, persistence.NewFailure(persistence.FailureInvalidDocument, err)
+			return nil, document.NewFailure(document.FailureInvalidDocument, err)
 		}
 		if *envelope.SchemaVersion != catalogSchemaVersion {
 			catalog.migrationOriginal = append([]byte(nil), data...)
@@ -94,27 +94,27 @@ func OpenCatalog(ctx context.Context, store SensitiveStore, path string) (*Catal
 	return catalog, nil
 }
 
-func (catalog *Catalog) Get(ctx context.Context, id ConfigurationID) (Configuration, error) {
-	if !validConfigurationID(string(id)) {
-		return Configuration{}, catalogInvalidArgument(nil)
+func (catalog *Catalog) Get(ctx context.Context, id connectionconfig.ID) (connectionconfig.Configuration, error) {
+	if !id.Valid() {
+		return connectionconfig.Configuration{}, catalogInvalidArgument(nil)
 	}
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	record, exists := catalog.records[id]
 	if !exists {
-		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+		return connectionconfig.Configuration{}, document.NewFailure(document.FailureNotFound, nil)
 	}
 	return record.configuration.Clone(), nil
 }
 
 // Version is an opaque edit baseline valid only for this catalog generation.
-func (catalog *Catalog) Version(ctx context.Context, id ConfigurationID) (string, error) {
+func (catalog *Catalog) Version(ctx context.Context, id connectionconfig.ID) (string, error) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
@@ -122,7 +122,7 @@ func (catalog *Catalog) Version(ctx context.Context, id ConfigurationID) (string
 	}
 	record, ok := catalog.records[id]
 	if !ok {
-		return "", persistence.NewFailure(persistence.FailureNotFound, nil)
+		return "", document.NewFailure(document.FailureNotFound, nil)
 	}
 	return record.version, nil
 }
@@ -137,8 +137,8 @@ func newConfigurationVersion() (string, error) {
 
 // HasRecord reports whether the catalog owns the Configuration aggregate. It
 // deliberately does not expose the private password field.
-func (catalog *Catalog) HasRecord(ctx context.Context, id ConfigurationID) (bool, error) {
-	if !validConfigurationID(string(id)) {
+func (catalog *Catalog) HasRecord(ctx context.Context, id connectionconfig.ID) (bool, error) {
+	if !id.Valid() {
 		return false, catalogInvalidArgument(nil)
 	}
 	if err := validateCatalogContext(ctx); err != nil {
@@ -153,7 +153,7 @@ func (catalog *Catalog) HasRecord(ctx context.Context, id ConfigurationID) (bool
 	return exists, nil
 }
 
-func (catalog *Catalog) List(ctx context.Context) ([]Configuration, error) {
+func (catalog *Catalog) List(ctx context.Context) ([]connectionconfig.Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
 		return nil, err
 	}
@@ -162,174 +162,147 @@ func (catalog *Catalog) List(ctx context.Context) ([]Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
 		return nil, err
 	}
-	ids := make([]ConfigurationID, 0, len(catalog.records))
+	ids := make([]connectionconfig.ID, 0, len(catalog.records))
 	for id := range catalog.records {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	result := make([]Configuration, 0, len(ids))
+	result := make([]connectionconfig.Configuration, 0, len(ids))
 	for _, id := range ids {
 		result = append(result, catalog.records[id].configuration.Clone())
 	}
 	return result, nil
 }
 
-func (catalog *Catalog) Create(ctx context.Context, value Configuration, password string, allowUnprotected bool) (Configuration, error) {
+func (catalog *Catalog) Create(ctx context.Context, value connectionconfig.Configuration, password string, allowUnprotected bool) (connectionconfig.Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	if value.ConfigurationID == "" {
 		var err error
 		value.ConfigurationID, err = catalog.nextConfigurationID()
 		if err != nil {
-			return Configuration{}, err
+			return connectionconfig.Configuration{}, err
 		}
 	}
 	if err := value.Validate(); err != nil {
-		return Configuration{}, catalogInvalidArgument(err)
+		return connectionconfig.Configuration{}, catalogInvalidArgument(err)
 	}
 	if _, exists := catalog.records[value.ConfigurationID]; exists {
-		return Configuration{}, persistence.NewFailure(persistence.FailureConflict, nil)
+		return connectionconfig.Configuration{}, document.NewFailure(document.FailureConflict, nil)
 	}
 	if value.AutoLogin {
 		for _, existing := range catalog.records {
 			if existing.configuration.AutoLogin {
-				return Configuration{}, AutoLoginConflict{}
+				return connectionconfig.Configuration{}, AutoLoginConflict{}
 			}
 		}
 	}
 	candidate := cloneRecords(catalog.records)
 	candidate[value.ConfigurationID] = catalogRecord{configuration: value.Clone(), password: password}
 	if err := catalog.commit(ctx, candidate, allowUnprotected); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	return value.Clone(), nil
 }
 
-func (catalog *Catalog) nextConfigurationID() (ConfigurationID, error) {
+func (catalog *Catalog) nextConfigurationID() (connectionconfig.ID, error) {
 	for range 8 {
 		var entropy [16]byte
 		if _, err := rand.Read(entropy[:]); err != nil {
 			return "", fmt.Errorf("generate configuration ID: %w", err)
 		}
-		candidate := ConfigurationID(fmt.Sprintf("cfg-%x", entropy))
+		candidate := connectionconfig.ID(fmt.Sprintf("cfg-%x", entropy))
 		if _, exists := catalog.records[candidate]; !exists {
 			return candidate, nil
 		}
 	}
-	return "", persistence.NewFailure(persistence.FailureConflict, nil)
+	return "", document.NewFailure(document.FailureConflict, nil)
 }
 
 type Update struct {
-	ExpectedVersion         string
-	ProtocolContextOverride *protocol.AuthenticationProtocolContextOverride
-	NetworkBindingPolicy    *NetworkBindingPolicy
-	Password                *string
-	AllowInsecureStorage    bool
-	DisplayName             *string
-	InstitutionProfileID    *InstitutionProfileID
-	Username                *string
-	AutoLogin               *bool
-	AutoReconnect           *bool
+	connectionconfig.Patch
+	ExpectedVersion      string
+	Password             *string
+	AllowInsecureStorage bool
 }
 
-func (catalog *Catalog) Update(ctx context.Context, id ConfigurationID, update Update) (Configuration, error) {
+func (catalog *Catalog) Update(ctx context.Context, id connectionconfig.ID, update Update) (connectionconfig.Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
-	if !validConfigurationID(string(id)) || update.DisplayName == nil && update.InstitutionProfileID == nil && update.Username == nil && update.AutoLogin == nil && update.AutoReconnect == nil && update.Password == nil && update.NetworkBindingPolicy == nil && update.ProtocolContextOverride == nil {
-		return Configuration{}, catalogInvalidArgument(nil)
+	if !id.Valid() || update.Patch.Empty() && update.Password == nil {
+		return connectionconfig.Configuration{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	record, exists := catalog.records[id]
 	if !exists {
-		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+		return connectionconfig.Configuration{}, document.NewFailure(document.FailureNotFound, nil)
 	}
 	if update.ExpectedVersion != "" && record.version != update.ExpectedVersion {
-		return Configuration{}, ErrVersionConflict
+		return connectionconfig.Configuration{}, ErrVersionConflict
 	}
-	record.configuration = record.configuration.Clone()
-	if update.ProtocolContextOverride != nil {
-		record.configuration.ProtocolContextOverride = append(protocol.AuthenticationProtocolContextOverride(nil), (*update.ProtocolContextOverride)...)
-	}
-	if update.NetworkBindingPolicy != nil {
-		record.configuration.NetworkBindingPolicy = *update.NetworkBindingPolicy
-	}
-	if update.DisplayName != nil {
-		record.configuration.DisplayName = *update.DisplayName
-	}
-	if update.InstitutionProfileID != nil {
-		record.configuration.InstitutionProfileID = *update.InstitutionProfileID
-	}
-	if update.Username != nil {
-		record.configuration.Username = *update.Username
-	}
-	if update.AutoLogin != nil {
-		record.configuration.AutoLogin = *update.AutoLogin
-	}
-	if update.AutoReconnect != nil {
-		record.configuration.AutoReconnect = *update.AutoReconnect
-	}
+	record.configuration = update.Patch.Apply(record.configuration)
 	if update.Password != nil {
 		record.password = *update.Password
 	}
 	if err := record.configuration.Validate(); err != nil {
-		return Configuration{}, catalogInvalidArgument(err)
+		return connectionconfig.Configuration{}, catalogInvalidArgument(err)
 	}
 	if record.configuration.AutoLogin {
 		for existingID, existing := range catalog.records {
 			if existingID != id && existing.configuration.AutoLogin {
-				return Configuration{}, AutoLoginConflict{}
+				return connectionconfig.Configuration{}, AutoLoginConflict{}
 			}
 		}
 	}
 	candidate := cloneRecords(catalog.records)
 	candidate[id] = record
 	if err := catalog.commit(ctx, candidate, update.AllowInsecureStorage || update.Password == nil && catalog.unprotectedConsent); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	return record.configuration.Clone(), nil
 }
 
-func (catalog *Catalog) SetPassword(ctx context.Context, id ConfigurationID, password string, allowUnprotected bool) (Configuration, error) {
+func (catalog *Catalog) SetPassword(ctx context.Context, id connectionconfig.ID, password string, allowUnprotected bool) (connectionconfig.Configuration, error) {
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
-	if !validConfigurationID(string(id)) {
-		return Configuration{}, catalogInvalidArgument(nil)
+	if !id.Valid() {
+		return connectionconfig.Configuration{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	record, exists := catalog.records[id]
 	if !exists {
-		return Configuration{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+		return connectionconfig.Configuration{}, document.NewFailure(document.FailureNotFound, nil)
 	}
 	record.password = password
 	candidate := cloneRecords(catalog.records)
 	candidate[id] = record
 	if err := catalog.commit(ctx, candidate, allowUnprotected); err != nil {
-		return Configuration{}, err
+		return connectionconfig.Configuration{}, err
 	}
 	return record.configuration.Clone(), nil
 }
 
-func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, expectedVersion string, allow ...bool) error {
+func (catalog *Catalog) Delete(ctx context.Context, id connectionconfig.ID, expectedVersion string, allow ...bool) error {
 	if err := validateCatalogContext(ctx); err != nil {
 		return err
 	}
-	if !validConfigurationID(string(id)) {
+	if !id.Valid() {
 		return catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
@@ -339,7 +312,7 @@ func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, expected
 	}
 	record, exists := catalog.records[id]
 	if !exists {
-		return persistence.NewFailure(persistence.FailureNotFound, nil)
+		return document.NewFailure(document.FailureNotFound, nil)
 	}
 	if record.version != expectedVersion {
 		return ErrVersionConflict
@@ -349,32 +322,32 @@ func (catalog *Catalog) Delete(ctx context.Context, id ConfigurationID, expected
 	return catalog.commit(ctx, candidate, len(allow) > 0 && allow[0])
 }
 
-func (catalog *Catalog) Resolve(ctx context.Context, id ConfigurationID) (Configuration, credentials.AuthenticationCredential, error) {
+func (catalog *Catalog) Resolve(ctx context.Context, id connectionconfig.ID) (connectionconfig.Configuration, credential.AuthenticationCredential, error) {
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, credentials.AuthenticationCredential{}, err
+		return connectionconfig.Configuration{}, credential.AuthenticationCredential{}, err
 	}
-	if !validConfigurationID(string(id)) {
-		return Configuration{}, credentials.AuthenticationCredential{}, catalogInvalidArgument(nil)
+	if !id.Valid() {
+		return connectionconfig.Configuration{}, credential.AuthenticationCredential{}, catalogInvalidArgument(nil)
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	if err := validateCatalogContext(ctx); err != nil {
-		return Configuration{}, credentials.AuthenticationCredential{}, err
+		return connectionconfig.Configuration{}, credential.AuthenticationCredential{}, err
 	}
 	record, exists := catalog.records[id]
 	if !exists {
-		return Configuration{}, credentials.AuthenticationCredential{}, persistence.NewFailure(persistence.FailureNotFound, nil)
+		return connectionconfig.Configuration{}, credential.AuthenticationCredential{}, document.NewFailure(document.FailureNotFound, nil)
 	}
-	return record.configuration.Clone(), credentials.AuthenticationCredential{Username: record.configuration.Username, Password: record.password}, nil
+	return record.configuration.Clone(), credential.AuthenticationCredential{Username: record.configuration.Username, Password: record.password}, nil
 }
 
-func (catalog *Catalog) StorageProtection() jsonfile.ProtectionStatus {
+func (catalog *Catalog) StorageProtection() securefile.ProtectionStatus {
 	return catalog.store.ProtectionStatus()
 }
 
 var ErrVersionConflict = errors.New("configuration version changed")
 
-func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationID]catalogRecord, allow bool) error {
+func (catalog *Catalog) commit(ctx context.Context, candidate map[connectionconfig.ID]catalogRecord, allow bool) error {
 	for id, record := range candidate {
 		old, exists := catalog.records[id]
 		if !exists || !reflect.DeepEqual(old, record) {
@@ -392,7 +365,7 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 	}
 	// Reject an oversized candidate before creating even a recovery file.
 	if int64(len(data))+1 > catalogFileSizeLimit {
-		return persistence.NewFailure(persistence.FailureSizeLimitExceeded, nil)
+		return document.NewFailure(document.FailureSizeLimitExceeded, nil)
 	}
 	if len(catalog.migrationOriginal) > 0 {
 		if err := catalog.preserveBeforeMigration(ctx, allow); err != nil {
@@ -407,7 +380,7 @@ func (catalog *Catalog) commit(ctx context.Context, candidate map[ConfigurationI
 	}
 	catalog.migrationOriginal = nil
 	catalog.records = candidate
-	catalog.unprotectedConsent = allow && catalog.store.ProtectionStatus() == jsonfile.ProtectionUnprotected
+	catalog.unprotectedConsent = allow && catalog.store.ProtectionStatus() == securefile.ProtectionUnprotected
 	return nil
 }
 
@@ -422,7 +395,7 @@ func (catalog *Catalog) preserveBeforeMigration(ctx context.Context, allow bool)
 			return err
 		}
 		if !exists || !bytes.Equal(current, catalog.migrationOriginal) {
-			return persistence.NewFailure(persistence.FailureConflict, nil)
+			return document.NewFailure(document.FailureConflict, nil)
 		}
 		return nil
 	}
@@ -431,7 +404,7 @@ func (catalog *Catalog) preserveBeforeMigration(ctx context.Context, allow bool)
 	}
 	var entropy [16]byte
 	if _, err := rand.Read(entropy[:]); err != nil {
-		return persistence.NewFailure(persistence.FailureAtomicWrite, err)
+		return document.NewFailure(document.FailureAtomicWrite, err)
 	}
 	name := ".sidravia-migration-" + hex.EncodeToString(entropy[:]) + ".json"
 	if err := catalog.store.PreserveSensitive(ctx, filepath.Join(filepath.Dir(catalog.path), name), catalog.migrationOriginal, catalogFileSizeLimit, allow); err != nil {
@@ -443,8 +416,8 @@ func (catalog *Catalog) preserveBeforeMigration(ctx context.Context, allow bool)
 	return nil
 }
 
-func cloneRecords(source map[ConfigurationID]catalogRecord) map[ConfigurationID]catalogRecord {
-	result := make(map[ConfigurationID]catalogRecord, len(source))
+func cloneRecords(source map[connectionconfig.ID]catalogRecord) map[connectionconfig.ID]catalogRecord {
+	result := make(map[connectionconfig.ID]catalogRecord, len(source))
 	for id, record := range source {
 		record.configuration = record.configuration.Clone()
 		result[id] = record
@@ -464,5 +437,5 @@ func validateCatalogContext(ctx context.Context) error {
 }
 
 func catalogInvalidArgument(cause error) error {
-	return persistence.NewFailure(persistence.FailureInvalidArgument, cause)
+	return document.NewFailure(document.FailureInvalidArgument, cause)
 }

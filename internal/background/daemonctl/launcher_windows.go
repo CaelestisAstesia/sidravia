@@ -8,12 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/background/logging"
 
 	"golang.org/x/sys/windows"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/productlayout"
+	"sidravia/internal/background/logging"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 // launchDaemonProcess starts the sibling sidraviad.exe on Windows with both

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installation/userservice/registration"
-	"sidravia/internal/productlayout"
 )
 
 func serviceLayout(ns productlayout.Namespace) (productlayout.Layout, bool, error) {

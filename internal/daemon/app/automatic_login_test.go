@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
+	connectionconfig "sidravia/internal/connection/config"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/persistence"
+	"sidravia/internal/document"
 )
 
 func TestPerformAutomaticLoginNoConfigurationReturnsNil(t *testing.T) {
@@ -29,7 +30,7 @@ func TestPerformAutomaticLoginStartsAutoLoginConfiguration(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 	enable := true
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &enable}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &enable}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := setup.application.PerformAutomaticLogin(ctx); err != nil {
@@ -47,7 +48,7 @@ func TestPerformAutomaticLoginFailureReturnsSafeError(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	ctx := context.Background()
 	enable := true
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &enable}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &enable}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := setup.supervisor.Close(); err != nil {
@@ -103,7 +104,7 @@ func TestAutomaticLoginSerializesSelection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	enable := true
-	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &enable}); e != nil {
+	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &enable}}); e != nil {
 		t.Fatal(e)
 	}
 	autoctx := &automaticSelectionContext{Context: ctx, entered: make(chan struct{}), release: make(chan struct{})}
@@ -118,7 +119,7 @@ func TestAutomaticLoginSerializesSelection(t *testing.T) {
 	editdone := make(chan error, 1)
 	disable, user, password := false, "new-user", "new-password"
 	go func() {
-		_, e := setup.application.UpdateConfiguration(editctx, "configuration-1", config.Update{AutoLogin: &disable, Username: &user, Password: &password})
+		_, e := setup.application.UpdateConfiguration(editctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &disable, Username: &user}, Password: &password})
 		editdone <- e
 	}()
 	crossed := false
@@ -154,11 +155,11 @@ func TestAutomaticLoginUsesCommittedChoice(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 	on, off := true, false
-	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &on}); e != nil {
+	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &on}}); e != nil {
 		t.Fatal(e)
 	}
 	user, password := "new-user", "new-password"
-	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoLogin: &off, Username: &user, Password: &password}); e != nil {
+	if _, e := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &off, Username: &user}, Password: &password}); e != nil {
 		t.Fatal(e)
 	}
 	if e := setup.application.PerformAutomaticLogin(ctx); e != nil {
@@ -210,7 +211,7 @@ func TestAutomaticLoginRetainsListAndStartCausesWithSafeText(t *testing.T) {
 			defer setup.cleanup()
 			if tc.start {
 				enable := true
-				if _, err := setup.application.UpdateConfiguration(context.Background(), "configuration-1", config.Update{AutoLogin: &enable}); err != nil {
+				if _, err := setup.application.UpdateConfiguration(context.Background(), "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoLogin: &enable}}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -221,7 +222,7 @@ func TestAutomaticLoginRetainsListAndStartCausesWithSafeText(t *testing.T) {
 				t.Fatalf("unsafe failure: %v", err)
 			}
 			var safe *automaticLoginFailure
-			var original *persistence.Failure
+			var original *document.Failure
 			if !errors.As(err, &safe) || !errors.As(err, &original) || original.DiagnosticCause() != cause {
 				t.Fatal("original persistence failure/cause lost")
 			}

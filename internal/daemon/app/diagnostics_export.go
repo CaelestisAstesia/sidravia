@@ -8,9 +8,10 @@ import (
 	"runtime"
 	"time"
 
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/session"
-	config "sidravia/internal/daemon/configuration"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/ipc/contract"
 )
@@ -89,7 +90,7 @@ func diagnosticCount(count uint64) (uint32, error) {
 	}
 	return uint32(count), nil
 }
-func (application *Application) diagnosticCatalog(ctx context.Context, values []config.Configuration, protection string) (contract.DiagnosticExportCatalog, error) {
+func (application *Application) diagnosticCatalog(ctx context.Context, values []connectionconfig.Configuration, protection string) (contract.DiagnosticExportCatalog, error) {
 	result := contract.DiagnosticExportCatalog{StorageProtection: protection}
 	if protection != "protected" && protection != "unprotected" {
 		return result, errors.New("unsupported diagnostic storage protection")
@@ -123,9 +124,9 @@ func (application *Application) diagnosticCatalog(ctx context.Context, values []
 			result.AutoReconnectConfigurations++
 		}
 		switch value.NetworkBindingPolicy.Mode {
-		case config.AutomaticallySelectLatestAvailable:
+		case binding.AutomaticallySelectLatestAvailable:
 			result.AutomaticBindingConfigurations++
-		case config.ExplicitInterfaceAndLocalIPv4:
+		case binding.ExplicitInterfaceAndLocalIPv4:
 			result.ExplicitBindingConfigurations++
 		default:
 			return result, errors.New("unsupported diagnostic binding mode")

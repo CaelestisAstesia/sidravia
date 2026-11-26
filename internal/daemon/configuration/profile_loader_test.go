@@ -9,35 +9,36 @@ import (
 	"strings"
 	"testing"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
-	"sidravia/internal/persistence"
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document"
+	"sidravia/internal/document/jsondoc"
 )
 
-const profileLoaderTestProtocolID protocol.AuthenticationProtocolID = "test-protocol"
+const profileLoaderTestProtocolID profilevalue.ProtocolID = "test-protocol"
 
 // profileLoaderTestFactory is a private AuthenticationProtocolFactory stub. It
 // does not interpret protocol configuration; it counts validation calls and
 // optionally rejects, so tests can prove the loader invokes the factory exactly
 // once per file and preserves factory rejection causes. It never creates a run.
 type profileLoaderTestFactory struct {
-	protocolID    protocol.AuthenticationProtocolID
+	protocolID    profilevalue.ProtocolID
 	validateCount *int
 	rejectErr     error
 }
 
-func (f profileLoaderTestFactory) ProtocolID() protocol.AuthenticationProtocolID {
+func (f profileLoaderTestFactory) ProtocolID() profilevalue.ProtocolID {
 	return f.protocolID
 }
 
-func (f profileLoaderTestFactory) ValidateInstitutionProtocolConfiguration(protocol.InstitutionProtocolConfiguration) error {
+func (f profileLoaderTestFactory) ValidateInstitutionProtocolConfiguration(profilevalue.ProtocolConfiguration) error {
 	if f.validateCount != nil {
 		*f.validateCount++
 	}
 	return f.rejectErr
 }
 
-func (f profileLoaderTestFactory) ValidateProtocolContextOverride(protocol.AuthenticationProtocolContextOverride) error {
+func (f profileLoaderTestFactory) ValidateProtocolContextOverride(profilevalue.ProtocolOverride) error {
 	return nil
 }
 
@@ -83,9 +84,9 @@ func profileLoaderDocument(id, displayName, configBody string) string {
 
 const profileLoaderDefaultConfigBody = `"endpoint":"203.0.113.10"`
 
-func profileLoaderFailureCode(t *testing.T, err error) persistence.FailureCode {
+func profileLoaderFailureCode(t *testing.T, err error) document.FailureCode {
 	t.Helper()
-	var failure *persistence.Failure
+	var failure *document.Failure
 	if errors.As(err, &failure) {
 		return failure.Code()
 	}
@@ -98,7 +99,7 @@ func profileLoaderFailureCode(t *testing.T, err error) persistence.FailureCode {
 
 func profileLoaderDiagnosticCause(t *testing.T, err error) error {
 	t.Helper()
-	var failure *persistence.Failure
+	var failure *document.Failure
 	if !errors.As(err, &failure) {
 		t.Fatalf("error is not a persistence failure: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestLoadProfileCatalogFromDirectoryMissingDirectory(t *testing.T) {
 	if len(summaries) != 0 {
 		t.Fatalf("expected empty catalog, got %#v", summaries)
 	}
-	if _, err := catalog.Get(ctx, "jlu"); profileLoaderFailureCode(t, err) != persistence.FailureNotFound {
+	if _, err := catalog.Get(ctx, "jlu"); profileLoaderFailureCode(t, err) != document.FailureNotFound {
 		t.Fatalf("Get on empty catalog error = %v", err)
 	}
 }
@@ -225,7 +226,7 @@ func TestLoadProfileCatalogFromDirectoryFilenameAndIDRules(t *testing.T) {
 			dir := t.TempDir()
 			writeProfileFile(t, dir, "jlu.json", profileLoaderDocument(id, "JLU", profileLoaderDefaultConfigBody))
 			_, err := LoadProfileCatalogFromDirectory(ctx, dir, registry)
-			if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+			if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 				t.Fatalf("id %q: code = %v, want invalid_document", id, code)
 			}
 		}
@@ -237,7 +238,7 @@ func TestLoadProfileCatalogFromDirectoryFilenameAndIDRules(t *testing.T) {
 		// The ID inside is canonical "jlu" but the file is named "jlu-campus.json".
 		writeProfileFile(t, dir, "jlu-campus.json", profileLoaderDocument("jlu", "JLU", profileLoaderDefaultConfigBody))
 		_, err := LoadProfileCatalogFromDirectory(ctx, dir, registry)
-		if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+		if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 			t.Fatalf("filename mismatch: code = %v, want invalid_document", code)
 		}
 	})
@@ -271,10 +272,10 @@ func TestLoadProfileCatalogFromDirectoryLookupCodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProfileCatalogFromDirectory() error = %v", err)
 	}
-	if _, err := catalog.Get(ctx, "profile-1"); profileLoaderFailureCode(t, err) != persistence.FailureNotFound {
+	if _, err := catalog.Get(ctx, "profile-1"); profileLoaderFailureCode(t, err) != document.FailureNotFound {
 		t.Fatalf("Get(valid absent) error = %v", err)
 	}
-	if _, err := catalog.Get(ctx, "JLU"); profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := catalog.Get(ctx, "JLU"); profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("Get(invalid lookup) error = %v", err)
 	}
 }
@@ -285,47 +286,47 @@ func TestLoadProfileCatalogFromDirectoryStrictFailures(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
-		code persistence.FailureCode
+		code document.FailureCode
 	}{
 		{
 			"missing field",
 			`{"schemaVersion":1,"institutionProfileId":"jlu","displayName":"JLU","authenticationProtocolId":"` + string(profileLoaderTestProtocolID) + `"}`,
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"unknown root field",
 			`{"schemaVersion":1,"institutionProfileId":"jlu","displayName":"JLU","authenticationProtocolId":"` + string(profileLoaderTestProtocolID) + `","institutionProtocolConfiguration":{},"extra":1}`,
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"duplicate root key",
 			`{"schemaVersion":1,"schemaVersion":1,"institutionProfileId":"jlu","displayName":"JLU","authenticationProtocolId":"` + string(profileLoaderTestProtocolID) + `","institutionProtocolConfiguration":{}}`,
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"duplicate nested protocol key",
 			profileLoaderDocument("jlu", "JLU", `"endpoint":"1.2.3.4","endpoint":"5.6.7.8"`),
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"trailing json",
 			profileLoaderDocument("jlu", "JLU", profileLoaderDefaultConfigBody) + `{"extra":1}`,
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"null document",
 			`null`,
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"non-object document",
 			`[1,2,3]`,
-			persistence.FailureInvalidDocument,
+			document.FailureInvalidDocument,
 		},
 		{
 			"unsupported schema",
 			`{"schemaVersion":2,"institutionProfileId":"jlu","displayName":"JLU","authenticationProtocolId":"` + string(profileLoaderTestProtocolID) + `","institutionProtocolConfiguration":{}}`,
-			persistence.FailureUnsupportedSchemaVersion,
+			document.FailureUnsupportedSchemaVersion,
 		},
 	}
 	for _, tc := range cases {
@@ -354,7 +355,7 @@ func TestLoadProfileCatalogFromDirectoryUnknownProtocolAndFactoryRejection(t *te
 		if err == nil {
 			t.Fatalf("expected error, got catalog %#v", catalog)
 		}
-		if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+		if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 			t.Fatalf("code = %v, want invalid_document", code)
 		}
 	})
@@ -372,7 +373,7 @@ func TestLoadProfileCatalogFromDirectoryUnknownProtocolAndFactoryRejection(t *te
 		if err == nil {
 			t.Fatalf("expected error, got catalog %#v", catalog)
 		}
-		if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+		if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 			t.Fatalf("code = %v, want invalid_document", code)
 		}
 		// The first rejected file aborts the load; only one factory call happened.
@@ -402,9 +403,9 @@ func TestLoadProfileCatalogFromDirectorySizeLimit(t *testing.T) {
 	t.Run("exact limit accepted", func(t *testing.T) {
 		registry, _ := newProfileLoaderAcceptingRegistry(t)
 		dir := t.TempDir()
-		data := buildSizedDocument(int(jsonfile.ProfileFileSizeLimit))
-		if len(data) != int(jsonfile.ProfileFileSizeLimit) {
-			t.Fatalf("constructed document is %d bytes, want %d", len(data), jsonfile.ProfileFileSizeLimit)
+		data := buildSizedDocument(int(jsondoc.ProfileFileSizeLimit))
+		if len(data) != int(jsondoc.ProfileFileSizeLimit) {
+			t.Fatalf("constructed document is %d bytes, want %d", len(data), jsondoc.ProfileFileSizeLimit)
 		}
 		if err := os.WriteFile(filepath.Join(dir, "jlu.json"), data, 0o600); err != nil {
 			t.Fatal(err)
@@ -422,12 +423,12 @@ func TestLoadProfileCatalogFromDirectorySizeLimit(t *testing.T) {
 	t.Run("one byte over rejected", func(t *testing.T) {
 		registry, _ := newProfileLoaderAcceptingRegistry(t)
 		dir := t.TempDir()
-		data := buildSizedDocument(int(jsonfile.ProfileFileSizeLimit) + 1)
+		data := buildSizedDocument(int(jsondoc.ProfileFileSizeLimit) + 1)
 		if err := os.WriteFile(filepath.Join(dir, "jlu.json"), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		_, err := LoadProfileCatalogFromDirectory(ctx, dir, registry)
-		if code := profileLoaderFailureCode(t, err); code != persistence.FailureSizeLimitExceeded {
+		if code := profileLoaderFailureCode(t, err); code != document.FailureSizeLimitExceeded {
 			t.Fatalf("code = %v, want size_limit_exceeded", code)
 		}
 	})
@@ -442,19 +443,19 @@ func TestLoadProfileCatalogFromDirectoryInvalidCalls(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := LoadProfileCatalogFromDirectory(canceled, dir, registry); profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := LoadProfileCatalogFromDirectory(canceled, dir, registry); profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("canceled ctx error = %v", err)
 	}
-	if _, err := LoadProfileCatalogFromDirectory(nil, dir, registry); profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := LoadProfileCatalogFromDirectory(nil, dir, registry); profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("nil ctx error = %v", err)
 	}
-	if _, err := LoadProfileCatalogFromDirectory(ctx, "relative/path", registry); profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := LoadProfileCatalogFromDirectory(ctx, "relative/path", registry); profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("relative dir error = %v", err)
 	}
-	if _, err := LoadProfileCatalogFromDirectory(ctx, "", registry); profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := LoadProfileCatalogFromDirectory(ctx, "", registry); profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("empty dir error = %v", err)
 	}
-	if _, err := LoadProfileCatalogFromDirectory(ctx, dir, nil); profileLoaderFailureCode(t, err) != persistence.FailureInvalidArgument {
+	if _, err := LoadProfileCatalogFromDirectory(ctx, dir, nil); profileLoaderFailureCode(t, err) != document.FailureInvalidArgument {
 		t.Fatalf("nil registry error = %v", err)
 	}
 }
@@ -478,7 +479,7 @@ func TestLoadProfileCatalogFromDirectoryRejectsIrregularFile(t *testing.T) {
 	}
 
 	_, err := LoadProfileCatalogFromDirectory(ctx, dir, registry)
-	if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+	if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 		t.Fatalf("irregular .json entry: code = %v, want invalid_document (err=%v)", code, err)
 	}
 	if strings.Contains(err.Error(), "target") {
@@ -502,7 +503,7 @@ func TestLoadProfileCatalogFromDirectoryPublicErrorSecrecy(t *testing.T) {
 		dir := t.TempDir()
 		writeProfileFile(t, dir, "jlu.json", `{"schemaVersion":1,"institutionProfileId":"jlu","displayName":"JLU","authenticationProtocolId":"`+leakedProtocolID+`","institutionProtocolConfiguration":{"secret":"`+secretMarker+`"}}`)
 		_, err := LoadProfileCatalogFromDirectory(ctx, dir, registry)
-		if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+		if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 			t.Fatalf("code = %v, want invalid_document", code)
 		}
 		publicErr := err.Error()
@@ -528,7 +529,7 @@ func TestLoadProfileCatalogFromDirectoryPublicErrorSecrecy(t *testing.T) {
 		dir := t.TempDir()
 		writeProfileFile(t, dir, "jlu.json", profileLoaderDocument("jlu", "JLU", profileLoaderDefaultConfigBody))
 		_, err := LoadProfileCatalogFromDirectory(ctx, dir, registry)
-		if code := profileLoaderFailureCode(t, err); code != persistence.FailureInvalidDocument {
+		if code := profileLoaderFailureCode(t, err); code != document.FailureInvalidDocument {
 			t.Fatalf("code = %v, want invalid_document", code)
 		}
 		publicErr := err.Error()

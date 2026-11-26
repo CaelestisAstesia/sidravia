@@ -12,9 +12,9 @@ import (
 	"time"
 
 	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/client"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/productlayout"
 )
 
 const (

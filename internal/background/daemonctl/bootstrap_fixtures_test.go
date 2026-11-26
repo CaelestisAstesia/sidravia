@@ -3,11 +3,12 @@ package daemonctl
 import (
 	"context"
 	"encoding/json"
-	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/ipc/contract"
-	"sidravia/internal/productlayout"
 	"testing"
 	"time"
+
+	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/ipc/contract"
 )
 
 type fakeClient struct {

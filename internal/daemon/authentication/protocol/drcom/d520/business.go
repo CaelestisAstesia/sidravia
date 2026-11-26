@@ -6,10 +6,11 @@ import (
 	"encoding/binary"
 	"strings"
 
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 )
 
-func (factory) BusinessCapabilities(raw protocol.InstitutionProtocolConfiguration) (protocol.BusinessCapabilities, error) {
+func (factory) BusinessCapabilities(raw profilevalue.ProtocolConfiguration) (protocol.BusinessCapabilities, error) {
 	cfg, err := decodeInstitutionProtocolConfiguration(raw)
 	return protocol.BusinessCapabilities{Statistics: cfg.jluExperimental, TextNotifications: cfg.jluExperimental}, err
 }

@@ -12,8 +12,8 @@ import (
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/daemon/app"
 	"sidravia/internal/daemon/authentication/session"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/ipc/contract"
-	"sidravia/internal/persistence/jsonfile"
 )
 
 const fixturePath = "testdata/v1/conformance.json"
@@ -178,7 +178,7 @@ func assertEnums(t *testing.T, enums fixtureEnums) {
 		string(session.Suspended), string(session.WaitingForNetwork), string(session.Authenticating), string(session.Authenticated),
 		string(session.WaitingBeforeRetry), string(session.BlockedByError), string(session.Stopping),
 	})
-	assertEnum(t, "storageProtections", enums.StorageProtections, []string{string(jsonfile.ProtectionProtected), string(jsonfile.ProtectionUnprotected)})
+	assertEnum(t, "storageProtections", enums.StorageProtections, []string{string(securefile.ProtectionProtected), string(securefile.ProtectionUnprotected)})
 	assertEnum(t, "networkBindingPolicyModes", enums.NetworkBindingPolicyModes, []string{string(session.AutomaticallySelectLatestAvailable), string(session.ExplicitInterfaceAndLocalIPv4)})
 }
 
@@ -323,7 +323,7 @@ func assertSuccessResponse(t *testing.T, item fixtureCase, request contract.Requ
 	case contract.MethodConfigurationList:
 		var result contract.ConfigurationListResult
 		decodeStrictJSON(t, response.Result, &result)
-		if result.StorageProtection != string(jsonfile.ProtectionProtected) || result.Configurations == nil || len(result.Configurations) != 0 {
+		if result.StorageProtection != string(securefile.ProtectionProtected) || result.Configurations == nil || len(result.Configurations) != 0 {
 			t.Fatal("configuration list must retain protection and an empty, non-null array")
 		}
 	case contract.MethodConfigurationGet, contract.MethodConfigurationCreate, contract.MethodConfigurationUpdate, contract.MethodConfigurationSetPassword:

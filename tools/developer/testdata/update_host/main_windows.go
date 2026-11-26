@@ -12,9 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/installationgate"
-	"sidravia/internal/ipc/contract"
 	"strconv"
 	"strings"
 	"syscall"
@@ -23,7 +20,10 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"sidravia/internal/productlayout"
+	"sidravia/internal/background/daemonctl"
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installationgate"
+	"sidravia/internal/ipc/contract"
 	"sidravia/internal/update"
 	"sidravia/internal/update/windowsplatform"
 )

@@ -7,16 +7,20 @@ import (
 	"net/netip"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
 	"sidravia/internal/daemon/authentication/protocol/drcom/d520"
 	"sidravia/internal/daemon/authentication/session"
 	"sidravia/internal/daemon/authentication/supervisor"
 	config "sidravia/internal/daemon/configuration"
-	"sidravia/internal/persistence/jsonfile"
-	"strings"
-	"sync"
-	"testing"
-	"time"
+	"sidravia/internal/document/securefile"
 )
 
 type editFactory struct {
@@ -72,7 +76,7 @@ func TestApplicationAtomicEditRetiresSessionAndResolvesNewCredentials(t *testing
 				waitForApplicationSessionState(t, setup.application, a.SessionID, state)
 			}
 			username, password := "new-account", "new-password"
-			if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username, Password: &password}); err != nil {
+			if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}, Password: &password}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err = setup.application.GetSession(ctx, a.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
@@ -109,7 +113,7 @@ func TestAtomicEditPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
 	setup.store.fail = true
 	setup.store.mu.Unlock()
 	username, password := "new", "new-password"
-	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username, Password: &password}); err == nil {
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}, Password: &password}); err == nil {
 		t.Fatal("write failure succeeded")
 	}
 	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
@@ -143,7 +147,7 @@ func TestReconnectPersistenceFailureKeepsSessionAndDisk(t *testing.T) {
 	setup.store.fail = true
 	setup.store.mu.Unlock()
 	reconnect := true
-	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{AutoReconnect: &reconnect}); err == nil {
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{AutoReconnect: &reconnect}}); err == nil {
 		t.Fatal("write failure succeeded")
 	}
 	got, cred, err := setup.catalog.Resolve(ctx, "configuration-1")
@@ -166,7 +170,7 @@ func TestNoSessionAndNoopMetadataEdits(t *testing.T) {
 	defer setup.cleanup()
 	ctx := context.Background()
 	username := "user"
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}}); err != nil {
 		t.Fatal(err)
 	}
 	a, err := setup.application.StartConfigurationAuthentication(ctx, "configuration-1")
@@ -174,7 +178,7 @@ func TestNoSessionAndNoopMetadataEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "label"
-	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{DisplayName: &name, Username: &username}); err != nil {
+	if _, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{DisplayName: &name, Username: &username}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = setup.application.GetSession(ctx, a.SessionID); err != nil {
@@ -200,7 +204,7 @@ func TestCleanupFailureQuarantinesOldRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	username := "new"
-	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username})
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}})
 	if !errors.Is(err, ErrConfigurationSessionInvalidation) {
 		t.Fatalf("cleanup failure = %v", err)
 	}
@@ -225,7 +229,7 @@ func TestRuntimeMetadataChangesRetireButAutoLoginAndReconnectDoNot(t *testing.T)
 			setup := newApplicationTestSetup(t)
 			defer setup.cleanup()
 			ctx := context.Background()
-			profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1"), appTestProfile("profile-2")})
+			profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), appTestProfile("profile-2")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -238,10 +242,10 @@ func TestRuntimeMetadataChangesRetireButAutoLoginAndReconnectDoNot(t *testing.T)
 			update := config.Update{}
 			switch field {
 			case "binding":
-				policy := config.NetworkBindingPolicy{Mode: config.ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
+				policy := binding.Policy{Mode: binding.ExplicitInterfaceAndLocalIPv4, InterfaceID: "lo", LocalIPv4Address: netip.MustParseAddr("127.0.0.1")}
 				update.NetworkBindingPolicy = &policy
 			case "profile":
-				id := config.InstitutionProfileID("profile-2")
+				id := profilevalue.ID("profile-2")
 				update.InstitutionProfileID = &id
 			case "autoReconnect":
 				value, _ := setup.catalog.Get(ctx, "configuration-1")
@@ -282,7 +286,7 @@ func TestRuntimeMetadataChangesRetireButAutoLoginAndReconnectDoNot(t *testing.T)
 // the real selected protocol boundary without producing authentication traffic.
 type overrideEditFactory struct{ editFactory }
 
-func (*overrideEditFactory) ValidateProtocolContextOverride(raw protocol.AuthenticationProtocolContextOverride) error {
+func (*overrideEditFactory) ValidateProtocolContextOverride(raw profilevalue.ProtocolOverride) error {
 	return d520.NewFactory().ValidateProtocolContextOverride(raw)
 }
 
@@ -305,8 +309,8 @@ func TestOverrideSaveRetiresOnlyAfterCommitAndExplicitConnectUsesNewBytes(t *tes
 	}
 	waitForApplicationSessionState(t, setup.application, old.SessionID, session.Authenticated)
 	<-factory.credentials
-	invalid := protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":2,"private-marker":"secret"}`)
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &invalid}); err == nil {
+	invalid := profilevalue.ProtocolOverride(`{"schemaVersion":2,"private-marker":"secret"}`)
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &invalid}}); err == nil {
 		t.Fatal("invalid override saved")
 	}
 	unchanged, err := setup.catalog.Get(ctx, "configuration-1")
@@ -322,8 +326,8 @@ func TestOverrideSaveRetiresOnlyAfterCommitAndExplicitConnectUsesNewBytes(t *tes
 	default:
 	}
 
-	replacement := protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":1,"hostName":"new-reported-host"}`)
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &replacement}); err != nil {
+	replacement := profilevalue.ProtocolOverride(`{"schemaVersion":1,"hostName":"new-reported-host"}`)
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.application.GetSession(ctx, old.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
@@ -354,14 +358,14 @@ func TestOverrideSaveRetiresOnlyAfterCommitAndExplicitConnectUsesNewBytes(t *tes
 	case <-time.After(time.Second):
 		t.Fatal("next explicit Run absent")
 	}
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &replacement}); err != nil {
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.application.GetSession(ctx, next.SessionID); err != nil {
 		t.Fatal("same runtime bytes retired Session")
 	}
-	var clear protocol.AuthenticationProtocolContextOverride
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &clear}); err != nil {
+	var clear profilevalue.ProtocolOverride
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &clear}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.application.GetSession(ctx, next.SessionID); !errors.Is(err, supervisor.ErrSessionNotFound) {
@@ -397,7 +401,7 @@ func TestRealD520OverrideWriteValidationPreservesLegacyReadAndOldSession(t *test
 	}
 	d520Profile := appTestProfile("d520-profile")
 	d520Profile.AuthenticationProtocolID = d520.ProtocolID
-	profiles, err := config.NewProfileCatalog([]config.InstitutionProfile{appTestProfile("profile-1"), d520Profile})
+	profiles, err := config.NewProfileCatalog([]profilevalue.Profile{appTestProfile("profile-1"), d520Profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +421,7 @@ func TestRealD520OverrideWriteValidationPreservesLegacyReadAndOldSession(t *test
 	}
 	setup.store.mu.Unlock()
 	for _, raw := range []string{`{"schemaVersion":2}`, `{"schemaVersion":1,"private-secret-marker":"private-value"}`, `{"schemaVersion":1,"reportedIPv4":"224.0.0.1"}`} {
-		value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(raw)
+		value.ProtocolContextOverride = profilevalue.ProtocolOverride(raw)
 		_, err := setup.application.CreateConfiguration(ctx, value, "private-password", false)
 		var failure *ResolutionFailure
 		if !errors.As(err, &failure) || failure.Code() != InvalidConfiguration || failure.Unwrap() == nil {
@@ -437,20 +441,20 @@ func TestRealD520OverrideWriteValidationPreservesLegacyReadAndOldSession(t *test
 	if !unchanged {
 		t.Fatal("invalid selected override wrote store")
 	}
-	value.ProtocolContextOverride = protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":1,"hostName":"reported"}`)
+	value.ProtocolContextOverride = profilevalue.ProtocolOverride(`{"schemaVersion":1,"hostName":"reported"}`)
 	if _, err := setup.application.CreateConfiguration(ctx, value, "private-password", false); err != nil {
 		t.Fatal(err)
 	}
 	// Catalog remains protocol-opaque; legacy read-only paths stay readable.
-	opaque := protocol.AuthenticationProtocolContextOverride(`{"private-old-key":true}`)
-	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{ProtocolContextOverride: &opaque}); err != nil {
+	opaque := profilevalue.ProtocolOverride(`{"private-old-key":true}`)
+	if _, err := setup.catalog.Update(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &opaque}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := setup.application.GetConfiguration(ctx, "configuration-1"); err != nil {
 		t.Fatal("legacy read-only enrichment newly validates override")
 	}
-	profileID := config.InstitutionProfileID("d520-profile")
-	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{InstitutionProfileID: &profileID}); err == nil {
+	profileID := profilevalue.ID("d520-profile")
+	if _, err := setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{InstitutionProfileID: &profileID}}); err == nil {
 		t.Fatal("candidate Profile failed to validate retained override")
 	}
 	current, _ := setup.catalog.Get(ctx, "configuration-1")
@@ -472,7 +476,7 @@ func TestOverrideWriteFailureAndCleanupFailureRetainExistingAtomicRules(t *testi
 			if err != nil {
 				t.Fatal(err)
 			}
-			replacement := protocol.AuthenticationProtocolContextOverride(`{"schemaVersion":1,"hostName":"saved"}`)
+			replacement := profilevalue.ProtocolOverride(`{"schemaVersion":1,"hostName":"saved"}`)
 			if cleanupFailure {
 				_ = setup.supervisor.Close()
 			} else {
@@ -480,7 +484,7 @@ func TestOverrideWriteFailureAndCleanupFailureRetainExistingAtomicRules(t *testi
 				setup.store.fail = true
 				setup.store.mu.Unlock()
 			}
-			_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{ProtocolContextOverride: &replacement})
+			_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{ProtocolContextOverride: &replacement}})
 			current, readErr := setup.catalog.Get(ctx, "configuration-1")
 			if readErr != nil {
 				t.Fatal(readErr)
@@ -556,7 +560,7 @@ func TestRealCleanupDeadlineIsQueryableOnFirstFullSessionView(t *testing.T) {
 	waitForApplicationSessionState(t, setup.application, started.SessionID, session.Authenticated)
 	username := "durably-saved-new-user"
 	began := time.Now()
-	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Username: &username})
+	_, err = setup.application.UpdateConfiguration(ctx, "configuration-1", config.Update{Patch: connectionconfig.Patch{Username: &username}})
 	if !errors.Is(err, ErrConfigurationSessionInvalidation) || !errors.Is(err, context.DeadlineExceeded) || time.Since(began) < 3900*time.Millisecond {
 		t.Fatalf("real four-second cleanup boundary missing: %v", err)
 	}
@@ -595,12 +599,12 @@ func TestRealCleanupDeadlineIsQueryableOnFirstFullSessionView(t *testing.T) {
 
 type unprotectedApplicationStore struct{ *controlledAppStore }
 
-func (*unprotectedApplicationStore) ProtectionStatus() jsonfile.ProtectionStatus {
-	return jsonfile.ProtectionUnprotected
+func (*unprotectedApplicationStore) ProtectionStatus() securefile.ProtectionStatus {
+	return securefile.ProtectionUnprotected
 }
 func (s *unprotectedApplicationStore) ReplaceSensitive(ctx context.Context, path string, data []byte, maximum int64, allow bool) error {
 	if !allow {
-		return jsonfile.ErrInsecureStorageConfirmationRequired
+		return securefile.ErrInsecureStorageConfirmationRequired
 	}
 	return s.controlledAppStore.ReplaceSensitive(ctx, path, data, maximum, allow)
 }
@@ -617,7 +621,7 @@ func TestRemoveWithoutCurrentConsentKeepsSession(t *testing.T) {
 	setup.catalog = catalog
 	setup.application.catalog = catalog
 	setup.application.authenticationResolver.configurations = catalog
-	for _, id := range []config.ConfigurationID{"configuration-1", "configuration-b"} {
+	for _, id := range []connectionconfig.ID{"configuration-1", "configuration-b"} {
 		if _, e := setup.application.CreateConfiguration(ctx, appTestConfiguration(id), "test-password", true); e != nil {
 			t.Fatal(e)
 		}
@@ -633,7 +637,7 @@ func TestRemoveWithoutCurrentConsentKeepsSession(t *testing.T) {
 	store.mu.Lock()
 	before := append([]byte(nil), store.data[path]...)
 	store.mu.Unlock()
-	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1"), false); !errors.Is(e, jsonfile.ErrInsecureStorageConfirmationRequired) {
+	if e := setup.application.RemoveConfiguration(ctx, "configuration-1", currentConfigurationVersion(t, setup.catalog, "configuration-1"), false); !errors.Is(e, securefile.ErrInsecureStorageConfirmationRequired) {
 		t.Errorf("unexpected unconsented removal: %v", e)
 	}
 	afterSession, e := setup.application.GetSession(ctx, started.SessionID)

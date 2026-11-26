@@ -3,16 +3,18 @@ package session
 import (
 	"context"
 	"fmt"
-	"sidravia/internal/daemon/authentication/protocol"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	profilevalue "sidravia/internal/connection/profile"
+	"sidravia/internal/daemon/authentication/protocol"
 )
 
 type businessFactory struct{ *controlledFactory }
 
-func (businessFactory) BusinessCapabilities(protocol.InstitutionProtocolConfiguration) (protocol.BusinessCapabilities, error) {
+func (businessFactory) BusinessCapabilities(profilevalue.ProtocolConfiguration) (protocol.BusinessCapabilities, error) {
 	return protocol.BusinessCapabilities{Statistics: true, TextNotifications: true}, nil
 }
 func newBusinessSession(t *testing.T) (*AuthenticationSession, *controlledFactory) {

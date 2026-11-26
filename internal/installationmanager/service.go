@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sidravia/internal/installation/userservice/registration"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 var ErrServiceUnavailable = registration.ErrUnavailable

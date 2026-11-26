@@ -7,8 +7,8 @@ import (
 	"errors"
 	"path/filepath"
 
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/process/linuxproc"
-	"sidravia/internal/productlayout"
 )
 
 // CheckRPMServiceIPC is the read-only RPM recovery check for an observed main

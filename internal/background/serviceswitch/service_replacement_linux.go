@@ -8,12 +8,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
-	"sidravia/internal/background/daemonctl"
 	"time"
 
+	"sidravia/internal/background/daemonctl"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
 	"sidravia/internal/process/linuxproc"
-	"sidravia/internal/productlayout"
 )
 
 func replaceService(ctx context.Context, identity daemonctl.Identity, layout productlayout.Layout) (installationmanager.ServiceState, error) {

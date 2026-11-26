@@ -12,7 +12,7 @@ import (
 	"time"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
@@ -50,7 +50,7 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	if !exists {
 		return nil, github.ErrIntegrity
 	}
-	opRoot, err := operations.DefaultRoot()
+	opRoot, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 	if layout.Mode != productlayout.ModePortable || !update.ValidOperationID(id) {
 		return nil, operations.ErrInvalid
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return nil, err
 	}

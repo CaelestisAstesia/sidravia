@@ -4,27 +4,29 @@ import (
 	"net/netip"
 	"time"
 
+	"sidravia/internal/connection/binding"
+	connectionconfig "sidravia/internal/connection/config"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
-	profile "sidravia/internal/daemon/configuration"
 	environment "sidravia/internal/daemon/environment"
 )
 
 type AuthenticationSessionID string
 
-type NetworkBindingPolicyMode = profile.NetworkBindingPolicyMode
+type NetworkBindingPolicyMode = binding.Mode
 
-const AutomaticallySelectLatestAvailable = profile.AutomaticallySelectLatestAvailable
-const ExplicitInterfaceAndLocalIPv4 = profile.ExplicitInterfaceAndLocalIPv4
+const AutomaticallySelectLatestAvailable = binding.AutomaticallySelectLatestAvailable
+const ExplicitInterfaceAndLocalIPv4 = binding.ExplicitInterfaceAndLocalIPv4
 
-type NetworkBindingPolicy = profile.NetworkBindingPolicy
+type NetworkBindingPolicy = binding.Policy
 
 type Configuration struct {
 	AuthenticationSessionID AuthenticationSessionID
-	ConfigurationID         profile.ConfigurationID
+	ConfigurationID         connectionconfig.ID
 	DisplayName             string
-	InstitutionProfileID    profile.InstitutionProfileID
+	InstitutionProfileID    profilevalue.ID
 	NetworkBindingPolicy    NetworkBindingPolicy
-	ProtocolContextOverride protocol.AuthenticationProtocolContextOverride
+	ProtocolContextOverride profilevalue.ProtocolOverride
 }
 
 type Intent string
@@ -78,11 +80,11 @@ type Snapshot struct {
 	HasOverrideDocument         bool
 	HasProtocolOverride         bool
 	AuthenticationSessionID     AuthenticationSessionID
-	ConfigurationID             profile.ConfigurationID
+	ConfigurationID             connectionconfig.ID
 	DisplayName                 string
-	InstitutionProfileID        profile.InstitutionProfileID
+	InstitutionProfileID        profilevalue.ID
 	InstitutionDisplayName      string
-	AuthenticationProtocolID    protocol.AuthenticationProtocolID
+	AuthenticationProtocolID    profilevalue.ProtocolID
 	AccountName                 string
 	Intent                      Intent
 	State                       State

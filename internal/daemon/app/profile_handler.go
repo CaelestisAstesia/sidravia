@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 
-	config "sidravia/internal/daemon/configuration"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/ipc/contract"
 )
 
 type profileApplication interface {
-	ListInstitutionProfiles(context.Context) ([]config.InstitutionProfileSummary, error)
+	ListInstitutionProfiles(context.Context) ([]profilevalue.Summary, error)
 }
 
 var _ profileApplication = (*Application)(nil)

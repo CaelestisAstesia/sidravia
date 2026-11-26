@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"sidravia/internal/persistence/jsonfile"
+	"sidravia/internal/document/jsondoc"
 )
 
 func syntheticProfile(id string) string {
@@ -113,7 +113,7 @@ func TestInvalidOfficialProfileSetFailsWithoutPublishing(t *testing.T) {
 		{name: "duplicate JSON field", file: "jlu.json", data: strings.Replace(testProfileJSON, `"schemaVersion": 1,`, `"schemaVersion": 1, "schemaVersion": 1,`, 1)},
 		{name: "unknown JSON field", file: "jlu.json", data: strings.Replace(testProfileJSON, `"schemaVersion": 1,`, `"schemaVersion": 1, "unknown": true,`, 1)},
 		{name: "trailing JSON", file: "jlu.json", data: testProfileJSON + `{}`},
-		{name: "oversized input", file: "jlu.json", data: strings.Repeat(" ", int(jsonfile.ProfileFileSizeLimit)+1)},
+		{name: "oversized input", file: "jlu.json", data: strings.Repeat(" ", int(jsondoc.ProfileFileSizeLimit)+1)},
 	} {
 		for _, artifact := range []string{"release", "field-validation"} {
 			for _, existing := range []bool{false, true} {

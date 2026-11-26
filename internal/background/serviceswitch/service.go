@@ -6,8 +6,8 @@ import (
 
 	"sidravia/internal/background/daemonctl"
 	launchcontract "sidravia/internal/background/launch"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/productlayout"
 )
 
 // ServiceOperation executes an explicit user action, using the same registration

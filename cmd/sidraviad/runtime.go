@@ -20,10 +20,10 @@ import (
 	"sidravia/internal/daemon/desktopowner"
 	"sidravia/internal/daemon/environment"
 	"sidravia/internal/daemon/host"
+	"sidravia/internal/document/securefile"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/ipc/server"
-	"sidravia/internal/persistence/jsonfile"
-	"sidravia/internal/productlayout"
 	"sidravia/internal/update/operations"
 )
 
@@ -181,7 +181,7 @@ func constructProductionSystem(ctx context.Context, logger *slog.Logger) (*compo
 	}
 
 	onUnprotected := newStorageProtectionWarning(logger)
-	store, err := jsonfile.NewSecureStore(jsonfile.SecureStoreOptions{
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{
 		IntendedOwnerSID:                   "",
 		AllowUnsupportedProtectionFallback: paths.portable,
 		OnUnprotected:                      onUnprotected,

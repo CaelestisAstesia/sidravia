@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 func userManagerAvailable(ctx context.Context, runtime string) (bool, error) {

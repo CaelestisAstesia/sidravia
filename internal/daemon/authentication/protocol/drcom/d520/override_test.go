@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	protocol "sidravia/internal/daemon/authentication/protocol"
+	profilevalue "sidravia/internal/connection/profile"
 )
 
-func overrideJSON(t *testing.T, fields map[string]any) protocol.AuthenticationProtocolContextOverride {
+func overrideJSON(t *testing.T, fields map[string]any) profilevalue.ProtocolOverride {
 	t.Helper()
 	obj := map[string]any{"schemaVersion": 1}
 	for name, value := range fields {

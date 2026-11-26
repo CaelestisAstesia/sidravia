@@ -4,16 +4,16 @@ import (
 	"errors"
 	"fmt"
 
+	credential "sidravia/internal/connection/credential"
+	profilevalue "sidravia/internal/connection/profile"
 	"sidravia/internal/daemon/authentication/protocol"
-	profile "sidravia/internal/daemon/configuration"
-	credential "sidravia/internal/daemon/credentials"
 	environment "sidravia/internal/daemon/environment"
 )
 
 type RuntimeDefinition struct {
 	Configuration                 Configuration
 	AuthenticationCredential      credential.AuthenticationCredential
-	InstitutionProfile            profile.InstitutionProfile
+	InstitutionProfile            profilevalue.Profile
 	AuthenticationProtocolFactory protocol.AuthenticationProtocolFactory
 	SystemHostInformation         environment.SystemHostInformation
 	AutoReconnect                 bool
@@ -71,11 +71,11 @@ func (definition RuntimeDefinition) AccountName() string {
 func (definition RuntimeDefinition) Clone() RuntimeDefinition {
 	cloned := definition
 	cloned.Configuration.ProtocolContextOverride = append(
-		protocol.AuthenticationProtocolContextOverride(nil),
+		profilevalue.ProtocolOverride(nil),
 		definition.Configuration.ProtocolContextOverride...,
 	)
 	cloned.InstitutionProfile.InstitutionProtocolConfiguration = append(
-		protocol.InstitutionProtocolConfiguration(nil),
+		profilevalue.ProtocolConfiguration(nil),
 		definition.InstitutionProfile.InstitutionProtocolConfiguration...,
 	)
 	return cloned

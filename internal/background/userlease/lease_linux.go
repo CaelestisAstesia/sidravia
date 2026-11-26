@@ -5,9 +5,11 @@ package userlease
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"os"
-	"sidravia/internal/productlayout"
+
+	"golang.org/x/sys/unix"
+
+	productlayout "sidravia/internal/installation/layout"
 )
 
 const LeaseName = ".sidravia-daemon.lock"

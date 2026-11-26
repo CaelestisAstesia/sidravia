@@ -9,7 +9,7 @@ import (
 	"time"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/packagefiles"
 )

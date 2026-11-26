@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 
 	launchcontract "sidravia/internal/background/launch"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 // UnitName is the one systemd unit name managed by Sidravia.

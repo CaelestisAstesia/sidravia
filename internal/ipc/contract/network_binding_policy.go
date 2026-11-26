@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	config "sidravia/internal/daemon/configuration"
+	"sidravia/internal/connection/binding"
 )
 
 // NetworkBindingPolicy is the strict same-build wire value.
@@ -16,8 +16,8 @@ type NetworkBindingPolicy struct {
 	LocalIPv4Address string `json:"localIpv4Address,omitempty"`
 }
 
-func (policy NetworkBindingPolicy) Domain() (config.NetworkBindingPolicy, error) {
-	value := config.NetworkBindingPolicy{Mode: config.NetworkBindingPolicyMode(policy.Mode), InterfaceID: policy.InterfaceID}
+func (policy NetworkBindingPolicy) Domain() (binding.Policy, error) {
+	value := binding.Policy{Mode: binding.Mode(policy.Mode), InterfaceID: policy.InterfaceID}
 	if policy.LocalIPv4Address != "" {
 		address, err := netip.ParseAddr(policy.LocalIPv4Address)
 		if err != nil || address.String() != policy.LocalIPv4Address {
@@ -27,7 +27,7 @@ func (policy NetworkBindingPolicy) Domain() (config.NetworkBindingPolicy, error)
 	}
 	return value, value.Validate()
 }
-func NetworkBindingPolicyFromDomain(policy config.NetworkBindingPolicy) NetworkBindingPolicy {
+func NetworkBindingPolicyFromDomain(policy binding.Policy) NetworkBindingPolicy {
 	value := NetworkBindingPolicy{Mode: string(policy.Mode), InterfaceID: policy.InterfaceID}
 	if policy.LocalIPv4Address.IsValid() {
 		value.LocalIPv4Address = policy.LocalIPv4Address.String()
@@ -70,11 +70,11 @@ func (policy *NetworkBindingPolicy) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("invalid network binding policy")
 	}
 	candidate := NetworkBindingPolicy{Mode: fields["mode"], InterfaceID: fields["interfaceId"], LocalIPv4Address: fields["localIpv4Address"]}
-	if candidate.Mode == string(config.AutomaticallySelectLatestAvailable) {
+	if candidate.Mode == string(binding.AutomaticallySelectLatestAvailable) {
 		if len(fields) != 1 {
 			return fmt.Errorf("mixed network binding policy")
 		}
-	} else if candidate.Mode != string(config.ExplicitInterfaceAndLocalIPv4) || len(fields) != 3 {
+	} else if candidate.Mode != string(binding.ExplicitInterfaceAndLocalIPv4) || len(fields) != 3 {
 		return fmt.Errorf("missing network binding policy target")
 	}
 	if _, err := candidate.Domain(); err != nil {

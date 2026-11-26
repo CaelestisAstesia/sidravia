@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"sidravia/internal/background/daemonctl"
-	"sidravia/internal/credentialinput"
+	"sidravia/internal/connection/credential/input"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -96,7 +96,7 @@ func authRemove(identity daemonctl.Identity, sessionID string) error {
 
 func runAuthStart(options authStartOptions, deps authDependencies) error {
 	if options.configurationID == "" && options.sessionID == "" {
-		if err := credentialinput.Validate(options.username); err != nil {
+		if err := input.ValidateNewText(options.username); err != nil {
 			return err
 		}
 	}

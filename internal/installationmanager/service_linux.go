@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sidravia/internal/installation/userservice/registration"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,7 +18,8 @@ import (
 	"golang.org/x/sys/unix"
 
 	"sidravia/internal/background/userlease"
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installation/userservice/registration"
 )
 
 func managerCommand(ctx context.Context, binary string, args ...string) (string, error) {

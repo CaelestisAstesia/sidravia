@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 // ServiceSwitch records the original registration and running intent during a

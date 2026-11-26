@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"sidravia/internal/credentialinput"
+	credentialinput "sidravia/internal/connection/credential/input"
 	"sidravia/internal/ipc/contract"
 )
 
@@ -40,7 +40,7 @@ func readCredentialPrompt(input io.Reader, output io.Writer, prompt string) (str
 	if err != nil {
 		return "", wrapSafeOperation("读取交互输入", err)
 	}
-	if err := credentialinput.Validate(value); err != nil {
+	if err := credentialinput.ValidateNewText(value); err != nil {
 		return "", err
 	}
 	return value, nil

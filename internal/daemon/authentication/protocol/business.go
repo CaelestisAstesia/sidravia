@@ -1,10 +1,14 @@
 package protocol
 
+import (
+	profilevalue "sidravia/internal/connection/profile"
+)
+
 // Business support is optional and institution-specific. It does not authorize
 // extra network operations or change the authentication lifecycle.
 type BusinessCapabilities struct{ Statistics, TextNotifications bool }
 type BusinessCapabilityProvider interface {
-	BusinessCapabilities(InstitutionProtocolConfiguration) (BusinessCapabilities, error)
+	BusinessCapabilities(profilevalue.ProtocolConfiguration) (BusinessCapabilities, error)
 }
 
 // AccountStatistics is a server login snapshot. TrafficBytes is historical

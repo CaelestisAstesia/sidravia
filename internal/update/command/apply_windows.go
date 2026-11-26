@@ -7,7 +7,7 @@ import (
 	"errors"
 	"runtime"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/update"
 	"sidravia/internal/update/github"
 	"sidravia/internal/update/operations"
@@ -73,7 +73,7 @@ func recoverOperation(ctx context.Context, layout productlayout.Layout, version,
 		return recoverPortableWindows(ctx, layout, version, build, id, source)
 	}
 	err := setup.Reconcile(ctx, layout, version, build, id)
-	root, e := operations.DefaultRoot()
+	root, e := productlayout.UpdateOperationRoot()
 	if e != nil {
 		return nil, errors.Join(err, e)
 	}
@@ -88,7 +88,7 @@ func recoverPortableWindows(ctx context.Context, layout productlayout.Layout, ve
 	if !update.ValidOperationID(id) {
 		return nil, operations.ErrInvalid
 	}
-	root, err := operations.DefaultRoot()
+	root, err := productlayout.UpdateOperationRoot()
 	if err != nil {
 		return nil, err
 	}

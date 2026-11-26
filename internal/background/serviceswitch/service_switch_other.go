@@ -4,10 +4,10 @@ package serviceswitch
 
 import (
 	"context"
-	"sidravia/internal/background/daemonctl"
 
+	"sidravia/internal/background/daemonctl"
+	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/installationmanager"
-	"sidravia/internal/productlayout"
 )
 
 func SwitchService(context.Context, daemonctl.Identity, string, int, bool) (installationmanager.ServiceState, error) {

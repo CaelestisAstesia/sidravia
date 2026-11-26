@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"sidravia/internal/productlayout"
+	productlayout "sidravia/internal/installation/layout"
 )
 
 // ExitSingletonContention is reserved for an observed existing daemon host.
