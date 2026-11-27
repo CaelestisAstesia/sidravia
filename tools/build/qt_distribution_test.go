@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"sidravia/internal/release"
 )
 
 func TestQtDistributionRequiresCombinedWindowsPayload(t *testing.T) {
@@ -42,7 +44,7 @@ func TestQtRepositoryInventoryAuthenticatesGeneratedFiles(t *testing.T) {
 		}
 	}
 	archive := filepath.Join(t.TempDir(), "repo.zip")
-	if err := packageQtRepository(root, archive); err != nil {
+	if err := packageQtRepository(root, archive, "windows-amd64", "core", "1.0.0"); err != nil {
 		t.Fatal(err)
 	}
 	reader, err := zip.OpenReader(archive)
@@ -51,7 +53,7 @@ func TestQtRepositoryInventoryAuthenticatesGeneratedFiles(t *testing.T) {
 	}
 	defer reader.Close()
 	gotHashes := map[string]string{}
-	var inventory map[string]string
+	var inventory release.QtRepositoryIndex
 	for _, entry := range reader.File {
 		f, err := entry.Open()
 		if err != nil {
@@ -70,7 +72,7 @@ func TestQtRepositoryInventoryAuthenticatesGeneratedFiles(t *testing.T) {
 			gotHashes[entry.Name] = sha256Hex(data)
 		}
 	}
-	if !reflect.DeepEqual(gotHashes, inventory) || len(gotHashes) != len(payload) {
+	if !reflect.DeepEqual(gotHashes, inventory.Files) || len(gotHashes) != len(payload) {
 		t.Fatalf("inventory does not match archived files: %v %v", inventory, gotHashes)
 	}
 }

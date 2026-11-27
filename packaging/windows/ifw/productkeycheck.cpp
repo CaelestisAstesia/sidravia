@@ -10,6 +10,7 @@
 
 #include "repository.h"
 #include <QCryptographicHash>
+#include <QDomDocument>
 #include <QDirIterator>
 #include <QFile>
 #include <QSet>
@@ -35,6 +36,7 @@ public:
         delete m_uiLoader;
     }
     QUiLoader * m_uiLoader;
+    QInstaller::PackageManagerCore *core = nullptr;
 };
 
 ProductKeyCheck::ProductKeyCheck()
@@ -60,7 +62,7 @@ QUiLoader *ProductKeyCheck::uiLoader()
 
 void ProductKeyCheck::init(QInstaller::PackageManagerCore *core)
 {
-    Q_UNUSED(core)
+    d->core = core;
 }
 
 bool ProductKeyCheck::hasValidKey()
@@ -154,8 +156,31 @@ struct VerifiedRepository
 };
 std::vector<std::unique_ptr<VerifiedRepository>> verifiedRepositories;
 
-bool verifyRepository(const QInstaller::Repository &repository)
+bool matchesPackageIndex(const QByteArray &xml, const QString &version, bool gui)
 {
+    QDomDocument document;
+    if (version.isEmpty() || !document.setContent(xml))
+        return false;
+    const auto root = document.documentElement();
+    if (root.tagName() != QStringLiteral("Updates"))
+        return false;
+    QSet<QString> components;
+    for (auto package = root.firstChildElement(QStringLiteral("PackageUpdate")); !package.isNull();
+         package = package.nextSiblingElement(QStringLiteral("PackageUpdate"))) {
+        const auto name = package.firstChildElement(QStringLiteral("Name")).text();
+        if (package.firstChildElement(QStringLiteral("Version")).text() != version || components.contains(name))
+            return false;
+        components.insert(name);
+    }
+    return components.size() == (gui ? 2 : 1)
+        && components.contains(QStringLiteral("org.sidravia.core"))
+        && components.contains(QStringLiteral("org.sidravia.gui")) == gui;
+}
+
+bool verifyRepository(const QInstaller::Repository &repository, QInstaller::PackageManagerCore *core)
+{
+    if (!core || core->isInstaller())
+        return false;
     if (!repository.url().isLocalFile() || repository.isCompressed())
         return false;
 
@@ -198,7 +223,20 @@ bool verifyRepository(const QInstaller::Repository &repository)
     const auto document = QJsonDocument::fromJson(manifest, &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
         return false;
-    auto files = document.object();
+    const auto index = document.object();
+    if (index.value(QStringLiteral("schemaVersion")).toInt() != 1
+        || index.value(QStringLiteral("product")).toString() != QStringLiteral("Sidravia")
+        || index.value(QStringLiteral("target")).toString() != QStringLiteral(SIDRAVIA_IFW_TARGET))
+        return false;
+    const auto installed = core->localInstalledPackages();
+    const bool gui = installed.contains(QStringLiteral("org.sidravia.gui"));
+    if (!installed.contains(QStringLiteral("org.sidravia.core"))
+        || installed.size() != (gui ? 2 : 1)
+        || index.value(QStringLiteral("profile")).toString() != (gui ? QStringLiteral("gui") : QStringLiteral("core")))
+        return false;
+    auto files = index.value(QStringLiteral("files")).toObject();
+    if (!files.contains(QStringLiteral("Updates.xml")))
+        return false;
     QDirIterator paths(root.absolutePath(), QDir::AllEntries | QDir::Hidden | QDir::System
                        | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
     while (paths.hasNext()) {
@@ -222,7 +260,9 @@ bool verifyRepository(const QInstaller::Repository &repository)
             return false;
         snapshot->files.insert(fileKey(info.absoluteFilePath()));
     }
-    if (!files.isEmpty())
+    if (!files.isEmpty() || !matchesPackageIndex(
+            readBounded(root.filePath(QStringLiteral("Updates.xml")), 256 * 1024),
+            index.value(QStringLiteral("version")).toString(), gui))
         return false;
     verifiedRepositories.push_back(std::move(snapshot));
     return true;
@@ -243,7 +283,7 @@ bool sidraviaIsPinnedArchive(const QString &source)
 
 bool ProductKeyCheck::isValidRepository(const QInstaller::Repository &repository) const
 {
-    return verifyRepository(repository);
+    return verifyRepository(repository, d->core);
 }
 
 void ProductKeyCheck::addPackagesFromXml(const QString &xmlPath)

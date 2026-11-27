@@ -8,10 +8,10 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -25,85 +25,113 @@ const Signature = "sidravia-ifw-inventory.sig"
 // Stage extracts into a new caller-owned directory. The release proof binds the
 // downloaded archive and its repository inventory. Qt verifies the inner
 // signature again before consuming any staged metadata or payload.
-func Stage(ctx context.Context, source, directory string, proof release.VerifiedRelease, candidate release.Candidate) error {
+func Stage(ctx context.Context, source, parent string, proof release.VerifiedRelease, candidate release.Candidate) (staged string, retErr error) {
 	asset, err := proof.Asset(candidate)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if release.QtRepositoryProfile(asset.Kind) == "" {
-		return release.ErrUnsupported
+		return "", release.ErrUnsupported
 	}
 	input, err := os.Open(source)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer input.Close()
 	hash := sha256.New()
 	n, err := io.Copy(hash, io.LimitReader(input, candidate.Size+1))
 	if err != nil {
-		return err
+		return "", err
 	}
 	if n != candidate.Size || hex.EncodeToString(hash.Sum(nil)) != candidate.SHA256 {
-		return release.ErrUntrusted
+		return "", release.ErrUntrusted
 	}
 	archive, err := zip.NewReader(input, n)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	members := make(map[string]*zip.File, len(archive.File))
 	names := make(map[string]bool, len(archive.File))
+	var total uint64
+	const maxExpanded = 2 << 30
+	if len(archive.File) > release.ReleaseManifestLimit/(sha256.Size*2) {
+		return "", release.ErrMetadata
+	}
 	for _, entry := range archive.File {
 		folded := strings.ToLower(entry.Name)
-		if names[folded] || !packagefiles.SafePath(entry.Name) || !entry.Mode().IsRegular() {
-			return release.ErrMetadata
+		if names[folded] || !packagefiles.SafePath(entry.Name) || !entry.Mode().IsRegular() ||
+			entry.UncompressedSize64 > maxExpanded-total {
+			return "", release.ErrMetadata
 		}
+		total += entry.UncompressedSize64
 		names[folded] = true
 		members[entry.Name] = entry
 	}
 
-	index, err := readMember(members[Inventory], release.ReleaseManifestLimit)
-	if err != nil {
-		return err
-	}
-	sum := sha256.Sum256(index)
-	if hex.EncodeToString(sum[:]) != asset.FilesSHA256 {
-		return release.ErrUntrusted
-	}
-	signature, err := readMember(members[Signature], ed25519.SignatureSize)
-	if err != nil || len(signature) != ed25519.SignatureSize {
-		return release.ErrUntrusted
-	}
-	var hashes map[string]string
-	if json.Unmarshal(index, &hashes) != nil || len(hashes)+2 != len(members) || !packagefiles.ValidSHA256(hashes["Updates.xml"]) {
-		return release.ErrMetadata
-	}
-	for name := range hashes {
-		if name == Inventory || name == Signature || members[name] == nil || !packagefiles.ValidSHA256(hashes[name]) {
-			return release.ErrMetadata
+	for name := range names {
+		for ancestor := path.Dir(name); ancestor != "."; ancestor = path.Dir(ancestor) {
+			if names[ancestor] {
+				return "", release.ErrMetadata
+			}
 		}
 	}
 
-	if err := os.Mkdir(directory, 0700); err != nil {
-		return err
+	index, err := readMember(members[Inventory], release.ReleaseManifestLimit)
+	if err != nil {
+		return "", err
 	}
+	sum := sha256.Sum256(index)
+	if hex.EncodeToString(sum[:]) != asset.FilesSHA256 {
+		return "", release.ErrUntrusted
+	}
+	signature, err := readMember(members[Signature], ed25519.SignatureSize)
+	if err != nil || len(signature) != ed25519.SignatureSize {
+		return "", release.ErrUntrusted
+	}
+	inventory, err := release.DecodeQtRepositoryIndex(index)
+	if err != nil ||
+		inventory.Target != asset.OS+"-"+asset.Arch ||
+		inventory.Profile != release.QtRepositoryProfile(asset.Kind) ||
+		inventory.Version != candidate.Version ||
+		len(inventory.Files)+2 != len(members) {
+		return "", release.ErrMetadata
+	}
+	for name := range inventory.Files {
+		if name == Inventory || name == Signature || members[name] == nil {
+			return "", release.ErrMetadata
+		}
+	}
+
+	directory, err := os.MkdirTemp(parent, "qt-repository-")
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if retErr != nil {
+			retErr = errors.Join(retErr, os.RemoveAll(directory))
+		}
+	}()
 	root, err := os.OpenRoot(directory)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer root.Close()
-	for name, hash := range hashes {
+	for name, hash := range inventory.Files {
 		if err := ctx.Err(); err != nil {
-			return err
+			return "", err
 		}
 		if err := stageMember(root, members[name], hash); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if err := writeMetadata(root, Inventory, index); err != nil {
-		return err
+		return "", err
 	}
-	return writeMetadata(root, Signature, signature)
+	if err := writeMetadata(root, Signature, signature); err != nil {
+		return "", err
+	}
+	return directory, nil
 }
 
 func readMember(entry *zip.File, maximum int64) ([]byte, error) {

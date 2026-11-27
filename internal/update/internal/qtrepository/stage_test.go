@@ -37,7 +37,7 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 				t.Fatal(err)
 			}
 			exact := []byte("<Updates/>")
-			index, err := json.Marshal(map[string]string{"Updates.xml": digest(exact)})
+			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: "windows-amd64", Profile: "core", Version: "1.0.0", Files: map[string]string{"Updates.xml": digest(exact)}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,11 +99,13 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			destination := filepath.Join(base, "staged")
-			err = Stage(context.Background(), archivePath, destination, proof, candidate)
+			destination, err := Stage(context.Background(), archivePath, base, proof, candidate)
 			if scenario.badZIP || scenario.badMember {
-				if !errors.Is(err, release.ErrUntrusted) {
+				if !errors.Is(err, release.ErrUntrusted) || destination != "" {
 					t.Fatalf("expected changed bytes to be rejected, got %v", err)
+				}
+				if entries, listErr := os.ReadDir(base); listErr != nil || len(entries) != 1 {
+					t.Fatalf("failed stage left temporary files: %v, %v", entries, listErr)
 				}
 				return
 			}

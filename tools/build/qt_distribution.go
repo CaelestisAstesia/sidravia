@@ -16,11 +16,6 @@ import (
 	packagefiles "sidravia/internal/release/files"
 )
 
-const (
-	qtCoreComponent = "org.sidravia.core"
-	qtGUIComponent  = "org.sidravia.gui"
-)
-
 // IFW's comparison differs from SemVer for arbitrary prerelease identifiers.
 var qtCandidateVersion = regexp.MustCompile(`^[0-9]{1,18}(\.[0-9]{1,18}){2}(-((alpha|beta|rc)|dev\.qt)\.[0-9]{1,18})?$`)
 
@@ -31,7 +26,7 @@ func validQtCandidateVersion(version string) bool {
 func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
 	packages := filepath.Join(stage, "qt-packages")
 	components := map[string]string{}
-	for _, name := range []string{qtCoreComponent, qtGUIComponent} {
+	for _, name := range []string{release.QtCoreComponent, release.QtGUIComponent} {
 		components[name] = filepath.Join(packages, name)
 		if err := os.MkdirAll(filepath.Join(components[name], "meta"), 0755); err != nil {
 			return nil, err
@@ -49,11 +44,11 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 	}
 	releaseDate := time.Now().UTC().Format(time.DateOnly)
 	core := component{DisplayName: "Core", Description: "Sidravia command line and background service", Version: cfg.version, ReleaseDate: releaseDate, ForcedInstallation: true}
-	desktop := component{DisplayName: "GUI", Description: "Sidravia desktop application", Version: cfg.version, ReleaseDate: releaseDate, Default: true, Dependencies: qtCoreComponent + "->=" + cfg.version}
-	if err := writeQtXML(filepath.Join(components[qtCoreComponent], "meta", "package.xml"), core); err != nil {
+	desktop := component{DisplayName: "GUI", Description: "Sidravia desktop application", Version: cfg.version, ReleaseDate: releaseDate, Default: true, Dependencies: release.QtCoreComponent + "->=" + cfg.version}
+	if err := writeQtXML(filepath.Join(components[release.QtCoreComponent], "meta", "package.xml"), core); err != nil {
 		return nil, err
 	}
-	if err := writeQtXML(filepath.Join(components[qtGUIComponent], "meta", "package.xml"), desktop); err != nil {
+	if err := writeQtXML(filepath.Join(components[release.QtGUIComponent], "meta", "package.xml"), desktop); err != nil {
 		return nil, err
 	}
 	guiPaths := make(map[string]bool, len(gui))
@@ -64,9 +59,9 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 		if entry.name == packagefiles.Name {
 			continue // Qt owns the installed component inventory.
 		}
-		name := qtCoreComponent
+		name := release.QtCoreComponent
 		if guiPaths[entry.name] {
-			name = qtGUIComponent
+			name = release.QtGUIComponent
 		}
 		destination := filepath.Join(components[name], "data", filepath.FromSlash(entry.name))
 		if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
@@ -107,15 +102,15 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 	}
 	outputs := []string{setup}
 	for _, profile := range []struct{ kind, include string }{
-		{release.QtCoreRepository, qtCoreComponent},
-		{release.QtGUIRepository, qtCoreComponent + "," + qtGUIComponent},
+		{release.QtCoreRepository, release.QtCoreComponent},
+		{release.QtGUIRepository, release.QtCoreComponent + "," + release.QtGUIComponent},
 	} {
 		repo := filepath.Join(stage, profile.kind)
 		if err := tool("repogen", "-p", packages, "-i", profile.include, repo); err != nil {
 			return nil, err
 		}
 		name := base + "-" + profile.kind + ".zip"
-		if err := packageQtRepository(repo, filepath.Join(stage, name)); err != nil {
+		if err := packageQtRepository(repo, filepath.Join(stage, name), cfg.target, release.QtRepositoryProfile(profile.kind), cfg.version); err != nil {
 			return nil, err
 		}
 		outputs = append(outputs, name)
@@ -132,7 +127,7 @@ func writeQtXML(path string, value any) error {
 }
 
 // A release signing step signs this exact inventory before publishing a repository.
-func packageQtRepository(directory, archive string) error {
+func packageQtRepository(directory, archive, target, profile, version string) error {
 	var entries []archiveEntry
 	inventory := map[string]string{}
 	err := filepath.WalkDir(directory, func(file string, item fs.DirEntry, err error) error {
@@ -164,7 +159,9 @@ func packageQtRepository(directory, archive string) error {
 	if _, ok := inventory["Updates.xml"]; !ok {
 		return fmt.Errorf("Qt repository has no Updates.xml")
 	}
-	data, err := json.Marshal(inventory)
+	data, err := json.Marshal(release.QtRepositoryIndex{
+		SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: profile, Version: version, Files: inventory,
+	})
 	if err != nil {
 		return err
 	}

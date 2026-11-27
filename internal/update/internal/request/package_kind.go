@@ -41,6 +41,11 @@ func qtInstalledKind(layout productlayout.Layout) (string, error) {
 	defer root.Close()
 	maintenance, err := root.Lstat("sidravia-maintenance.exe")
 	if errors.Is(err, os.ErrNotExist) {
+		for _, marker := range []string{"components.xml", "sidravia-maintenance.dat", "sidravia-maintenance.ini"} {
+			if _, markerErr := root.Lstat(marker); !errors.Is(markerErr, os.ErrNotExist) {
+				return "", release.ErrMetadata
+			}
+		}
 		return "", nil
 	}
 	if err != nil || !maintenance.Mode().IsRegular() {
@@ -70,12 +75,12 @@ func qtInstalledKind(layout productlayout.Layout) (string, error) {
 	var core, gui bool
 	for _, id := range inventory.Components {
 		switch id {
-		case "org.sidravia.core":
+		case release.QtCoreComponent:
 			if core {
 				return "", release.ErrMetadata
 			}
 			core = true
-		case "org.sidravia.gui":
+		case release.QtGUIComponent:
 			if gui {
 				return "", release.ErrMetadata
 			}
