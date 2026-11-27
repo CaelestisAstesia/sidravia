@@ -20,6 +20,9 @@ func TestArgumentsAndJSON(t *testing.T) {
 		{[]string{"status"}, shellintegration.Status, 0},
 		{[]string{"path", "enable"}, shellintegration.EnablePath, 0},
 		{[]string{"path", "disable"}, shellintegration.DisablePath, 0},
+		{[]string{"path", "remove-unowned", strings.Repeat("a", 64)}, shellintegration.RemoveUnownedPath, 0},
+		{[]string{"path", "remove-unowned", strings.Repeat("x", 64)}, "", 2},
+		{[]string{"path", "remove-unowned"}, "", 2},
 		{[]string{"autostart", "set", "gui"}, shellintegration.StartGUI, 0},
 		{[]string{"autostart", "set", "daemon"}, shellintegration.StartDaemon, 0},
 		{[]string{"autostart", "disable"}, shellintegration.DisableAutostart, 0},
@@ -34,9 +37,13 @@ func TestArgumentsAndJSON(t *testing.T) {
 			calls := 0
 			resolved := false
 			exe := filepath.Join(t.TempDir(), "中文 directory", "sidraviamgr")
-			code := run(tc.args, &out, func() (string, error) { resolved = true; return exe, nil }, func(dir string, op shellintegration.Operation) (shellintegration.Result, error) {
+			code := run(tc.args, &out, func() (string, error) { resolved = true; return exe, nil }, func(dir string, op shellintegration.Operation, confirmation string) (shellintegration.Result, error) {
 				calls++
-				if dir != filepath.Dir(exe) || op != tc.op {
+				wantConfirmation := ""
+				if tc.op == shellintegration.RemoveUnownedPath {
+					wantConfirmation = tc.args[2]
+				}
+				if dir != filepath.Dir(exe) || op != tc.op || confirmation != wantConfirmation {
 					t.Fatal("wrong dispatch")
 				}
 				return shellintegration.Result{Version: 1, OK: true, Code: "ok", Capabilities: []string{"user_path"}, Directory: dir}, nil
@@ -62,7 +69,7 @@ func TestHelpAndSafeFailure(t *testing.T) {
 		}
 	}
 	var out bytes.Buffer
-	code := run([]string{"status"}, &out, func() (string, error) { return filepath.Join(t.TempDir(), "mgr"), nil }, func(string, shellintegration.Operation) (shellintegration.Result, error) {
+	code := run([]string{"status"}, &out, func() (string, error) { return filepath.Join(t.TempDir(), "mgr"), nil }, func(string, shellintegration.Operation, string) (shellintegration.Result, error) {
 		return shellintegration.Result{Version: 1, Capabilities: []string{}}, &shellintegration.Failure{Code: "path_read_failed", Cause: errors.New("SECRET native path")}
 	})
 	if code != 1 || strings.Contains(out.String(), "SECRET") || !strings.Contains(out.String(), "path_read_failed") {
@@ -73,7 +80,7 @@ func TestHelpAndSafeFailure(t *testing.T) {
 func TestStatusDirectoryIsReadOnlyAndUsesSameJSON(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer
-	code := run([]string{"status", "--directory", dir}, &out, func() (string, error) { t.Fatal("must use query context"); return "", nil }, func(got string, op shellintegration.Operation) (shellintegration.Result, error) {
+	code := run([]string{"status", "--directory", dir}, &out, func() (string, error) { t.Fatal("must use query context"); return "", nil }, func(got string, op shellintegration.Operation, confirmation string) (shellintegration.Result, error) {
 		if got != dir || op != shellintegration.Status {
 			t.Fatal("wrong query")
 		}
@@ -85,7 +92,7 @@ func TestStatusDirectoryIsReadOnlyAndUsesSameJSON(t *testing.T) {
 	}
 	for _, args := range [][]string{{"status", "--directory", "relative"}, {"path", "enable", "--directory", dir}, {"--setup-state", dir}} {
 		out.Reset()
-		if run(args, &out, nil, func(string, shellintegration.Operation) (shellintegration.Result, error) {
+		if run(args, &out, nil, func(string, shellintegration.Operation, string) (shellintegration.Result, error) {
 			t.Fatal("invalid query/write ran")
 			return shellintegration.Result{}, nil
 		}) != 2 {

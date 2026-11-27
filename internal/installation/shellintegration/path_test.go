@@ -66,12 +66,12 @@ func TestExactPATHTransitions(t *testing.T) {
 			if tc.op == DisablePath {
 				m.owned = pathAppended
 			}
-			r, err := operate(m, dir, tc.op)
+			r, err := operate(m, dir, tc.op, "")
 			if err != nil || !r.OK || r.PathEnabled != tc.enabled || r.Changed != tc.changed || m.value.text != tc.after || m.value.kind != 1 {
 				t.Fatalf("result=%+v value=%+v err=%v", r, m.value, err)
 			}
 			writes := m.writes
-			if _, err := operate(m, dir, tc.op); err != nil || m.writes != writes {
+			if _, err := operate(m, dir, tc.op, ""); err != nil || m.writes != writes {
 				t.Fatalf("not idempotent: %v", err)
 			}
 		})
@@ -87,21 +87,21 @@ func TestPathDisablePreservesExistingAndLaterEdits(t *testing.T) {
 	}
 	for _, kind := range []uint32{1, 2} {
 		m := &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;;C:\Added;`, kind: kind, exists: true}, owned: pathAppended}
-		if _, err := operate(m, dir, DisablePath); err != nil || m.value.text != `C:\Other;;C:\Added;` || m.value.kind != kind || m.owned != pathUnowned {
+		if _, err := operate(m, dir, DisablePath, ""); err != nil || m.value.text != `C:\Other;;C:\Added;` || m.value.kind != kind || m.owned != pathUnowned {
 			t.Fatalf("disable changed a later PATH edit or lost type: %+v, %v", m, err)
 		}
 	}
 	m := &memoryPath{value: pathValue{text: dir + `;C:\Other;`, kind: 2, exists: true}}
-	if _, err := operate(m, dir, EnablePath); err != nil || m.owned != pathUnowned {
+	if _, err := operate(m, dir, EnablePath, ""); err != nil || m.owned != pathUnowned {
 		t.Fatalf("pre-existing matching entry was adopted: %+v, %v", m, err)
 	}
-	r, err := operate(m, dir, DisablePath)
+	r, err := operate(m, dir, DisablePath, "")
 	if err != nil || !r.PathEnabled || r.Changed || r.Warning != "path_entry_not_owned" || m.writes != 0 {
 		t.Fatalf("pre-existing matching entry was removed: %+v, %v", r, err)
 	}
 	late := pathValue{text: `C:\Other;` + dir + `;C:\Added;`, kind: 2, exists: true}
 	m = &memoryPath{value: pathValue{text: `C:\Other;` + dir + `;`, kind: 2, exists: true}, owned: pathAppended, beforeWrite: &late}
-	if _, err := operate(m, dir, DisablePath); Code(err) != "path_verify_failed" || m.value != late || m.owned != pathAppended || m.writes != 0 {
+	if _, err := operate(m, dir, DisablePath, ""); Code(err) != "path_verify_failed" || m.value != late || m.owned != pathAppended || m.writes != 0 {
 		t.Fatalf("concurrent PATH append was lost: %+v, %v", m, err)
 	}
 }
@@ -110,28 +110,28 @@ func TestPathAndOwnershipFailedWriteCanRetry(t *testing.T) {
 	dir := `C:\Apps\Sidravia`
 	failure := errors.New("registry transaction failed")
 	m := &memoryPath{writeErr: failure}
-	if _, err := operate(m, dir, EnablePath); !errors.Is(err, failure) || m.value.exists || m.owned != pathUnowned {
+	if _, err := operate(m, dir, EnablePath, ""); !errors.Is(err, failure) || m.value.exists || m.owned != pathUnowned {
 		t.Fatalf("failed enable left a partial registry change: %+v, %v", m, err)
 	}
 	m.writeErr = nil
-	if _, err := operate(m, dir, EnablePath); err != nil || m.value.text != dir || m.owned != pathCreated {
+	if _, err := operate(m, dir, EnablePath, ""); err != nil || m.value.text != dir || m.owned != pathCreated {
 		t.Fatalf("enable could not retry: %+v, %v", m, err)
 	}
 	m.writeErr = failure
-	if _, err := operate(m, dir, DisablePath); !errors.Is(err, failure) || m.value.text != dir || m.owned != pathCreated {
+	if _, err := operate(m, dir, DisablePath, ""); !errors.Is(err, failure) || m.value.text != dir || m.owned != pathCreated {
 		t.Fatalf("failed disable left a partial registry change: %+v, %v", m, err)
 	}
 	m.writeErr = nil
-	if _, err := operate(m, dir, DisablePath); err != nil || m.value.exists || m.owned != pathUnowned {
+	if _, err := operate(m, dir, DisablePath, ""); err != nil || m.value.exists || m.owned != pathUnowned {
 		t.Fatalf("disable could not restore the originally absent PATH: %+v, %v", m, err)
 	}
 	m = &memoryPath{value: pathValue{text: dir, kind: pathExpandable, exists: true}, owned: pathCreated, writeErr: failure}
-	if _, err := operate(m, dir, DisablePath); !errors.Is(err, failure) {
+	if _, err := operate(m, dir, DisablePath, ""); !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
 	m.writeErr = nil
 	m.value.text += `;C:\Later;;`
-	if _, err := operate(m, dir, DisablePath); err != nil || !m.value.exists || m.value.text != `C:\Later;;` || m.owned != pathUnowned {
+	if _, err := operate(m, dir, DisablePath, ""); err != nil || !m.value.exists || m.value.text != `C:\Later;;` || m.owned != pathUnowned {
 		t.Fatalf("disable retry clobbered a later user edit: %+v, %v", m, err)
 	}
 }
@@ -139,7 +139,7 @@ func TestPathAndOwnershipFailedWriteCanRetry(t *testing.T) {
 func TestRegistryTypesAndFailures(t *testing.T) {
 	for _, v := range []pathValue{{}, {text: "", kind: 1, exists: true}, {text: "", kind: 2, exists: true}} {
 		m := &memoryPath{value: v}
-		r, err := operate(m, `C:\Sidravia`, EnablePath)
+		r, err := operate(m, `C:\Sidravia`, EnablePath, "")
 		wantKind := v.kind
 		if !v.exists {
 			wantKind = 2
@@ -159,7 +159,7 @@ func TestRegistryTypesAndFailures(t *testing.T) {
 		{"verify concurrent write", "path_verify_failed", memoryPath{tamper: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r, err := operate(&tc.m, `C:\Sidravia`, EnablePath)
+			r, err := operate(&tc.m, `C:\Sidravia`, EnablePath, "")
 			if err == nil || r.OK || Code(err) != tc.code {
 				t.Fatalf("%+v %v", r, err)
 			}
@@ -174,7 +174,7 @@ func TestRegistryTypesAndFailures(t *testing.T) {
 		})
 	}
 	m := &memoryPath{notifyErr: cause}
-	r, err := operate(m, `C:\Sidravia`, EnablePath)
+	r, err := operate(m, `C:\Sidravia`, EnablePath, "")
 	if err != nil || !r.OK || !r.Changed || r.Warning != "environment_notification_failed" {
 		t.Fatalf("%+v %v", r, err)
 	}
@@ -186,9 +186,46 @@ func TestInvalidInputDoesNotRead(t *testing.T) {
 		op  Operation
 	}{{"", EnablePath}, {"C:\\bad;entry", EnablePath}, {"C:\\ok", Operation("repair")}} {
 		m := &memoryPath{}
-		r, err := operate(m, tc.dir, tc.op)
+		r, err := operate(m, tc.dir, tc.op, "")
 		if err == nil || r.OK || m.reads != 0 {
 			t.Fatalf("%+v %v reads=%d", r, err, m.reads)
+		}
+	}
+}
+
+func TestConfirmedUnownedPathRemoval(t *testing.T) {
+	const dir = `C:\Sidravia`
+	value := pathValue{text: `C:\Other;;C:\Sidravia;C:\Later;`, kind: pathExpandable, exists: true}
+	store := &memoryPath{value: value}
+	probe, err := operate(store, dir, DisablePath, "")
+	if err != nil || probe.PathRemovalToken == "" || probe.Changed || store.value != value || store.writes != 0 {
+		t.Fatalf("unconfirmed removal changed PATH or omitted confirmation: %+v, %v", probe, err)
+	}
+	later := value
+	later.text += `C:\New`
+	for _, changed := range []pathValue{later, {text: value.text, kind: 1, exists: true}} {
+		store.value = changed
+		if _, err := operate(store, dir, RemoveUnownedPath, probe.PathRemovalToken); Code(err) != "path_confirmation_changed" || store.writes != 0 || store.value != changed {
+			t.Fatalf("confirmation accepted a changed PATH: %+v, %v", store, err)
+		}
+	}
+	store.value = value
+	result, err := operate(store, dir, RemoveUnownedPath, probe.PathRemovalToken)
+	if err != nil || !result.Changed || result.PathEnabled || store.value != (pathValue{text: `C:\Other;;C:\Later;`, kind: pathExpandable, exists: true}) || store.owned != pathUnowned {
+		t.Fatalf("confirmed removal did not preserve other entries and type: %+v, %+v, %v", result, store, err)
+	}
+	if _, err := operate(store, dir, RemoveUnownedPath, probe.PathRemovalToken); Code(err) != "path_confirmation_changed" || store.writes != 1 {
+		t.Fatalf("confirmation could be replayed after removal: %+v, %v", store, err)
+	}
+}
+
+func TestAmbiguousUnownedPathStaysUntouched(t *testing.T) {
+	const dir = `C:\Sidravia`
+	for _, raw := range []string{`C:\Sidravia;C:\Other;C:\Sidravia`, `C:\Sidravia;c:\sidravia\`, `c:\sidravia\`} {
+		store := &memoryPath{value: pathValue{text: raw, kind: pathExpandable, exists: true}}
+		result, err := operate(store, dir, DisablePath, "")
+		if err != nil || result.PathRemovalToken != "" || !result.PathEnabled || store.writes != 0 {
+			t.Fatalf("ambiguous PATH offered removal or changed: %q, %+v, %v", raw, result, err)
 		}
 	}
 }

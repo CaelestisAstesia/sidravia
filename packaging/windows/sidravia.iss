@@ -326,13 +326,14 @@ begin
     end;
 end;
 
-function ParseManagerJSON(S: String): Boolean;
+function ParseManagerResponse(S: String; StatusReply: Boolean; var PathRemovalToken: String): Boolean;
 var
   P, Start: Integer;
   Key, Value, Ignored: String;
   Fields: TStringList;
 begin
   Result := False;
+  PathRemovalToken := '';
   if Length(S) > 32768 then Exit;
   Fields := TStringList.Create;
   try
@@ -385,15 +386,30 @@ begin
     if P <= Length(S) then Exit;
     if (JsonField(Fields, 'version') <> '1') or (JsonField(Fields, 'ok') <> 'true') or
       (JsonField(Fields, 'code') <> 'ok') then Exit;
-    ManagerMode := JsonField(Fields, 'autostart');
-    if (ManagerMode <> 'disabled') and (ManagerMode <> 'gui') and (ManagerMode <> 'daemon') then Exit;
     Value := JsonField(Fields, 'pathEnabled');
     if (Value <> 'true') and (Value <> 'false') then Exit;
-    ManagerPath := Value = 'true';
+    if StatusReply then begin
+      ManagerMode := JsonField(Fields, 'autostart');
+      if (ManagerMode <> 'disabled') and (ManagerMode <> 'gui') and (ManagerMode <> 'daemon') then Exit;
+      ManagerPath := Value = 'true';
+    end else if (Value = 'true') and (JsonField(Fields, 'warning') = 'path_entry_not_owned') then begin
+      Value := JsonField(Fields, 'pathRemovalToken');
+      if Length(Value) = 64 then begin
+        for P := 1 to Length(Value) do
+          if Pos(Copy(Value, P, 1), '0123456789abcdef') = 0 then Exit;
+        PathRemovalToken := Value;
+      end;
+    end;
     Result := True;
   finally
     Fields.Free;
   end;
+end;
+
+function ParseManagerJSON(S: String): Boolean;
+var Ignored: String;
+begin
+  Result := ParseManagerResponse(S, True, Ignored);
 end;
 
 function QueryManager(Temporary: Boolean): Boolean;
@@ -1104,6 +1120,34 @@ begin
   Result := Result and (ExitCode = 0);
 end;
 
+function DisableUninstallPath: Boolean;
+var
+  ExitCode: Integer;
+  Output: TExecOutput;
+  Tool, Token: String;
+begin
+  if UninstallSilent then begin
+    Result := RunManager('path disable');
+    Exit;
+  end;
+  Result := False;
+  Tool := ExpandConstant('{app}\sidraviamgr.exe');
+  if not ExecAndCaptureOutput(Tool, 'path disable', ExtractFileDir(Tool), SW_HIDE,
+    ewWaitUntilTerminated, ExitCode, Output) then Exit;
+  if (ExitCode <> 0) or Output.Error or (GetArrayLength(Output.StdOut) <> 1) then Exit;
+  if not ParseManagerResponse(Output.StdOut[0], False, Token) then Exit;
+  Result := True;
+  if Token = '' then Exit;
+  if MsgBox('用户 PATH 中仍有此安装目录，无法确认是谁添加的。是否移除这一项？' +
+    #13#10 + #13#10 + ExpandConstant('{app}') + #13#10 + #13#10 +
+    '选择“否”将保留此条目。', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) <> IDYES then Exit;
+  if not RunManager('path remove-unowned ' + Token) then begin
+    Log('Could not confirm or remove the unowned PATH entry.');
+    MsgBox('无法确认或移除该 PATH 条目。卸载将继续，你可以在 Windows 的用户环境变量中核对。',
+      mbInformation, MB_OK);
+  end;
+end;
+
 function RemoveGUIComponent: Boolean;
 begin
 #if IncludeGUI
@@ -1547,7 +1591,7 @@ begin
       RaiseException('请先正常退出相关产品实例并处理任务冲突；程序文件尚未删除。');
     if not RunManager('autostart disable') then
       RaiseException('撤销自启失败；程序和数据尚未删除。请核实当前状态后重试。');
-    if not RunManager('path disable') then
+    if not DisableUninstallPath then
       RaiseException('撤销 PATH 失败；程序和数据尚未删除。自启可能已撤销，请重试。');
     if DeleteData then begin
       if not Exec(ExpandConstant('{app}\sidraviactl.exe'),

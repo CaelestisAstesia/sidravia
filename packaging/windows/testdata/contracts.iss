@@ -42,6 +42,11 @@ begin
     AssertContract(not ParseManagerJSON('{"version":1,"ok":true,"code":"ok","pathEnabled":true,"autostart":"gui","ok":false}'), 'duplicate key');
     AssertContract(not ParseManagerJSON('{"version":1,"ok":true,"code":"ok","pathEnabled":true,"autostart":"gui"} garbage'), 'trailing JSON');
     AssertContract(not ParseManagerJSON('{"version":1,"ok":true,"code":"ok","pathEnabled":"true","autostart":"gui"}'), 'typed booleans');
+    AssertContract(ParseManagerResponse('{"version":1,"ok":true,"code":"ok","pathEnabled":true,"warning":"path_entry_not_owned",' +
+      '"pathRemovalToken":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}', False, Token) and
+      (Length(Token) = 64), 'single unowned PATH entry can be offered');
+    AssertContract(ParseManagerResponse('{"version":1,"ok":true,"code":"ok","pathEnabled":true,"warning":"path_entry_not_owned"}',
+      False, Token) and (Token = ''), 'ambiguous unowned PATH stays untouched');
     AssertContract(CompareVersions('0.3.0-alpha.1', '0.3.0-alpha.2', Comparison) and (Comparison < 0), 'alpha upgrade');
     AssertContract(CompareVersions('0.3.0-alpha.10', '0.3.0-alpha.2', Comparison) and (Comparison > 0), 'numeric prerelease');
     AssertContract(CompareVersions('0.3.0', '0.3.0-alpha.2', Comparison) and (Comparison > 0), 'release downgrade');

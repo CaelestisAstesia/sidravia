@@ -2,6 +2,7 @@
 package shellintegration
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,28 +10,30 @@ import (
 
 // Result is the versioned, safe machine-readable manager response.
 type Result struct {
-	Version      int      `json:"version"`
-	OK           bool     `json:"ok"`
-	Code         string   `json:"code"`
-	Capabilities []string `json:"capabilities"`
-	Directory    string   `json:"directory,omitempty"`
-	PathEnabled  bool     `json:"pathEnabled"`
-	Changed      bool     `json:"changed"`
-	Warning      string   `json:"warning,omitempty"`
-	Autostart    string   `json:"autostart,omitempty"`
-	GUIAvailable bool     `json:"guiAvailable"`
+	Version          int      `json:"version"`
+	OK               bool     `json:"ok"`
+	Code             string   `json:"code"`
+	Capabilities     []string `json:"capabilities"`
+	Directory        string   `json:"directory,omitempty"`
+	PathEnabled      bool     `json:"pathEnabled"`
+	Changed          bool     `json:"changed"`
+	Warning          string   `json:"warning,omitempty"`
+	PathRemovalToken string   `json:"pathRemovalToken,omitempty"`
+	Autostart        string   `json:"autostart,omitempty"`
+	GUIAvailable     bool     `json:"guiAvailable"`
 }
 
 // Operation selects the only integration capability currently implemented.
 type Operation string
 
 const (
-	Status           Operation = "status"
-	EnablePath       Operation = "path enable"
-	DisablePath      Operation = "path disable"
-	StartGUI         Operation = "autostart set gui"
-	StartDaemon      Operation = "autostart set daemon"
-	DisableAutostart Operation = "autostart disable"
+	Status            Operation = "status"
+	EnablePath        Operation = "path enable"
+	DisablePath       Operation = "path disable"
+	RemoveUnownedPath Operation = "path remove-unowned"
+	StartGUI          Operation = "autostart set gui"
+	StartDaemon       Operation = "autostart set daemon"
+	DisableAutostart  Operation = "autostart disable"
 )
 
 type pathValue struct {
@@ -108,13 +111,35 @@ func edit(value, directory string, enabled bool) string {
 	return value
 }
 
-func operate(store pathStore, directory string, operation Operation) (Result, error) {
+// unownedPathToken identifies one exact entry and the PATH value the user saw.
+func unownedPathToken(value pathValue, directory string) string {
+	if !value.exists {
+		return ""
+	}
+	found := false
+	for _, entry := range strings.Split(value.text, ";") {
+		if !matches(entry, directory) {
+			continue
+		}
+		if found || entry != directory {
+			return ""
+		}
+		found = true
+	}
+	if !found {
+		return ""
+	}
+	snapshot := fmt.Sprintf("%d\x00%s\x00%s", value.kind, directory, value.text)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(snapshot)))
+}
+
+func operate(store pathStore, directory string, operation Operation, confirmation string) (Result, error) {
 	r := Result{Version: 1, Capabilities: []string{"user_path"}, Directory: directory}
 	fail := func(code string, err error) (Result, error) {
 		r.Code = code
 		return r, &Failure{Code: code, Cause: err}
 	}
-	if operation != Status && operation != EnablePath && operation != DisablePath {
+	if operation != Status && operation != EnablePath && operation != DisablePath && operation != RemoveUnownedPath {
 		return fail("invalid_arguments", errors.New("unknown operation"))
 	}
 	if directory == "" || strings.ContainsAny(directory, ";\x00\r\n") {
@@ -149,6 +174,12 @@ func operate(store pathStore, directory string, operation Operation) (Result, er
 			}
 		case operation == DisablePath && r.PathEnabled:
 			r.Warning = "path_entry_not_owned"
+			r.PathRemovalToken = unownedPathToken(before, directory)
+		case operation == RemoveUnownedPath:
+			if owned != pathUnowned || confirmation == "" || confirmation != unownedPathToken(before, directory) {
+				return fail("path_confirmation_changed", errors.New("unowned PATH entry changed or is ambiguous"))
+			}
+			desired.text = edit(before.text, directory, false)
 		}
 		if desired != before || next != owned {
 			if err := store.replace(directory, before, desired, owned, next); err != nil {

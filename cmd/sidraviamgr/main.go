@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -18,7 +19,7 @@ const usage = "sidraviamgr: status [--directory absolute-path] | path enable | p
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Executable, shellintegration.Run)) }
 
-func run(args []string, out io.Writer, executable func() (string, error), execute func(string, shellintegration.Operation) (shellintegration.Result, error)) int {
+func run(args []string, out io.Writer, executable func() (string, error), execute func(string, shellintegration.Operation, string) (shellintegration.Result, error)) int {
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help")) {
 		if _, err := io.WriteString(out, usage); err != nil {
 			return 1
@@ -31,12 +32,18 @@ func run(args []string, out io.Writer, executable func() (string, error), execut
 		args = args[:1]
 	}
 	var operation shellintegration.Operation
+	confirmation := ""
 	if len(args) == 1 && args[0] == "status" {
 		operation = shellintegration.Status
 	} else if len(args) == 2 && args[0] == "path" && args[1] == "enable" {
 		operation = shellintegration.EnablePath
 	} else if len(args) == 2 && args[0] == "path" && args[1] == "disable" {
 		operation = shellintegration.DisablePath
+	} else if len(args) == 3 && args[0] == "path" && args[1] == "remove-unowned" && len(args[2]) == 64 {
+		if _, err := hex.DecodeString(args[2]); err == nil {
+			operation = shellintegration.RemoveUnownedPath
+			confirmation = args[2]
+		}
 	} else if len(args) == 2 && args[0] == "autostart" && args[1] == "disable" {
 		operation = shellintegration.DisableAutostart
 	} else if len(args) == 3 && args[0] == "autostart" && args[1] == "set" && args[2] == "gui" {
@@ -65,7 +72,7 @@ func run(args []string, out io.Writer, executable func() (string, error), execut
 	if !filepath.IsAbs(path) {
 		return write(shellintegration.Result{Version: 1, Code: "executable_path_failed", Capabilities: []string{}}, 1)
 	}
-	r, err := execute(filepath.Dir(path), operation)
+	r, err := execute(filepath.Dir(path), operation, confirmation)
 	if err != nil {
 		r.OK = false
 		r.Code = shellintegration.Code(err)

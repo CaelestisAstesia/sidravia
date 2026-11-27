@@ -30,7 +30,7 @@ func (registryPath) notify() error {
 // Run serializes manager integration reads and writes for the current user.
 // Other applications do not participate in this lock; a verification mismatch
 // reports failure rather than overwriting their later edits with a rollback.
-func Run(directory string, operation Operation) (Result, error) {
+func Run(directory string, operation Operation, confirmation string) (Result, error) {
 	if err := ensureManagerJob(); err != nil {
 		return Result{Version: 1, Code: "integration_process_boundary_failed", Capabilities: []string{}}, &Failure{Code: "integration_process_boundary_failed", Cause: err}
 	}
@@ -64,8 +64,8 @@ func Run(directory string, operation Operation) (Result, error) {
 	gui, guiErr := os.Stat(filepath.Join(directory, "Sidravia.exe"))
 	guiAvailable := guiErr == nil && gui.Mode().IsRegular()
 	var result Result
-	if operation == Status || operation == EnablePath || operation == DisablePath {
-		result, err = operate(registryPath{}, directory, operation)
+	if operation == Status || operation == EnablePath || operation == DisablePath || operation == RemoveUnownedPath {
+		result, err = operate(registryPath{}, directory, operation, confirmation)
 		if err == nil && operation == Status {
 			state, taskErr := taskOperation(directory, Status)
 			result.Autostart = state.Autostart
