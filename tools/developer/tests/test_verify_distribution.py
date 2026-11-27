@@ -184,7 +184,7 @@ class DistributionContract(unittest.TestCase):
                             self.assertFalse(module.binary_identity(Path('inert'), 'sidraviactl', target, VERSION, SHA, 'go'))
 
     def test_windows_arm_gui_requires_arm_runner_engine_plugins_and_snapshot(self):
-        names = ('Sidravia.exe', 'flutter_windows.dll', 'valid_plugin.dll', 'data/app.so')
+        names = ('Sidravia.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'valid_plugin.dll', 'data/app.so')
         for name in names:
             (self.fixture.gui / name).write_bytes((elf if name.endswith('.so') else pe)('arm64'))
         target = 'windows-arm64'

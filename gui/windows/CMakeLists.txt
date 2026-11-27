@@ -85,6 +85,27 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
+# Keep the Release bundle self-contained for offline, per-user installation.
+# Use the Visual Studio redistributable payload selected by CMake for this
+# target architecture. The Windows loader finds these DLLs beside Sidravia.exe.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+include(InstallRequiredSystemLibraries)
+foreach(runtime_name IN ITEMS msvcp140.dll vcruntime140.dll vcruntime140_1.dll)
+  set(runtime_file "")
+  foreach(candidate IN LISTS CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+    get_filename_component(candidate_name "${candidate}" NAME)
+    if(candidate_name STREQUAL runtime_name)
+      set(runtime_file "${candidate}")
+      break()
+    endif()
+  endforeach()
+  if(NOT runtime_file)
+    message(FATAL_ERROR "Visual Studio redistributable DLL missing: ${runtime_name}")
+  endif()
+  install(FILES "${runtime_file}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    CONFIGURATIONS Release COMPONENT Runtime)
+endforeach()
+
 if(PLUGIN_BUNDLED_LIBRARIES)
   install(FILES "${PLUGIN_BUNDLED_LIBRARIES}"
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

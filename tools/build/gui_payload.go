@@ -141,7 +141,7 @@ func readGUI(root string, existing []archiveEntry, arch string) ([]archiveEntry,
 	for _, entry := range entries {
 		found[entry.name] = true
 	}
-	for _, name := range []string{"Sidravia.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/FontManifest.json", "data/flutter_assets/NOTICES.Z"} {
+	for _, name := range []string{"Sidravia.exe", "flutter_windows.dll", "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/FontManifest.json", "data/flutter_assets/NOTICES.Z"} {
 		if !found[name] {
 			return nil, fmt.Errorf("GUI payload lacks required Release file: %s", name)
 		}

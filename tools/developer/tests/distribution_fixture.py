@@ -56,6 +56,9 @@ class DistributionFixture:
         gui_files = (
             'Sidravia.exe',
             'flutter_windows.dll',
+            'msvcp140.dll',
+            'vcruntime140.dll',
+            'vcruntime140_1.dll',
             'data/app.so',
             'data/icudtl.dat',
             'data/flutter_assets/AssetManifest.bin',

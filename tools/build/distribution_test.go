@@ -177,13 +177,16 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0x8664))
 	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0x8664))
+	for _, name := range []string{"msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"} {
+		writeTestFile(t, filepath.Join(root, name), testPE(0x8664))
+	}
 	for _, name := range []string{"data/icudtl.dat", "data/flutter_assets/AssetManifest.bin", "data/flutter_assets/NOTICES.Z"} {
 		writeTestFile(t, filepath.Join(root, name), "runtime")
 	}
 	writeTestFile(t, filepath.Join(root, "data/app.so"), testELF(62))
 	writeTestFile(t, filepath.Join(root, "data/flutter_assets/FontManifest.json"), "[]")
 	gui, err := readGUI(root, nil, "amd64")
-	if err != nil || len(gui) != 7 {
+	if err != nil || len(gui) != 10 {
 		t.Fatal(err)
 	}
 	if _, err := readGUI(root, nil, "arm64"); err == nil {
@@ -191,16 +194,25 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0xaa64))
 	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0xaa64))
+	for _, name := range []string{"msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"} {
+		writeTestFile(t, filepath.Join(root, name), testPE(0xaa64))
+	}
 	writeTestFile(t, filepath.Join(root, "data/app.so"), testELF(183))
 	if _, err := readGUI(root, nil, "arm64"); err != nil {
 		t.Fatal(err)
 	}
-	writeTestFile(t, filepath.Join(root, "incompatible_plugin.dll"), testPE(0x8664))
+	writeTestFile(t, filepath.Join(root, "vcruntime140_1.dll"), testPE(0x8664))
 	if _, err := readGUI(root, nil, "arm64"); err == nil {
-		t.Fatal("accepted x64 plugin in an ARM64 distribution")
+		t.Fatal("accepted x64 VC++ runtime in an ARM64 distribution")
 	}
-	if err := os.Remove(filepath.Join(root, "incompatible_plugin.dll")); err != nil {
+	if err := os.Remove(filepath.Join(root, "vcruntime140_1.dll")); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := readGUI(root, nil, "arm64"); err == nil {
+		t.Fatal("accepted missing VC++ runtime DLL")
+	}
+	for _, name := range []string{"msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"} {
+		writeTestFile(t, filepath.Join(root, name), testPE(0x8664))
 	}
 	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0x8664))
 	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0x8664))
