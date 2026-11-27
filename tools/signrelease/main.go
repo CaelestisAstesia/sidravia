@@ -19,6 +19,9 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(args []string, input io.Reader, out, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "qt-repository" {
+		return signQtRepository(args[1:], input, out, stderr)
+	}
 	if len(args) > 0 && (args[0] == "inspect" || args[0] == "verify") {
 		return publicRun(args[0], args[1:], out, stderr)
 	}
@@ -57,19 +60,10 @@ func run(args []string, input io.Reader, out, stderr io.Writer) int {
 	if readErr != nil || closeErr != nil || len(data) > release.ReleaseManifestLimit {
 		return fail("unable to read bounded release manifest")
 	}
-	encoded, err := io.ReadAll(io.LimitReader(input, 257))
-	defer clear(encoded)
-	if err != nil || len(encoded) > 256 {
-		return fail("unable to read bounded signing seed")
+	private, err := readSigningKey(input)
+	if err != nil {
+		return fail(err.Error())
 	}
-	trimmed := bytes.TrimSpace(encoded)
-	seed := make([]byte, base64.StdEncoding.DecodedLen(len(trimmed)))
-	defer clear(seed)
-	n, err := base64.StdEncoding.Decode(seed, trimmed)
-	if err != nil || n != ed25519.SeedSize {
-		return fail("invalid signing seed")
-	}
-	private := ed25519.NewKeyFromSeed(seed[:n])
 	defer clear(private)
 	signature := ed25519.Sign(private, data)
 	roots, err := release.NewPublisherKeys([]ed25519.PublicKey{private.Public().(ed25519.PublicKey)})
@@ -126,4 +120,20 @@ func run(args []string, input io.Reader, out, stderr io.Writer) int {
 	complete = true
 	fmt.Fprintln(out, "Release signature written; no files were uploaded")
 	return 0
+}
+
+func readSigningKey(input io.Reader) (ed25519.PrivateKey, error) {
+	encoded, err := io.ReadAll(io.LimitReader(input, 257))
+	defer clear(encoded)
+	if err != nil || len(encoded) > 256 {
+		return nil, errors.New("unable to read bounded signing seed")
+	}
+	trimmed := bytes.TrimSpace(encoded)
+	seed := make([]byte, base64.StdEncoding.DecodedLen(len(trimmed)))
+	defer clear(seed)
+	n, err := base64.StdEncoding.Decode(seed, trimmed)
+	if err != nil || n != ed25519.SeedSize {
+		return nil, errors.New("invalid signing seed")
+	}
+	return ed25519.NewKeyFromSeed(seed[:n]), nil
 }

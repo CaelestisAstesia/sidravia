@@ -51,56 +51,19 @@ func Stage(ctx context.Context, source, parent string, proof release.VerifiedRel
 		return "", err
 	}
 
-	members := make(map[string]*zip.File, len(archive.File))
-	names := make(map[string]bool, len(archive.File))
-	var total uint64
-	const maxExpanded = 2 << 30
-	if len(archive.File) > release.ReleaseManifestLimit/(sha256.Size*2) {
-		return "", release.ErrMetadata
-	}
-	for _, entry := range archive.File {
-		folded := strings.ToLower(entry.Name)
-		if names[folded] || !packagefiles.SafePath(entry.Name) || !entry.Mode().IsRegular() ||
-			entry.UncompressedSize64 > maxExpanded-total {
-			return "", release.ErrMetadata
-		}
-		total += entry.UncompressedSize64
-		names[folded] = true
-		members[entry.Name] = entry
-	}
-
-	for name := range names {
-		for ancestor := path.Dir(name); ancestor != "."; ancestor = path.Dir(ancestor) {
-			if names[ancestor] {
-				return "", release.ErrMetadata
-			}
-		}
-	}
-
-	index, err := readMember(members[Inventory], release.ReleaseManifestLimit)
+	repository, err := readArchive(archive, true)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(index)
+	sum := sha256.Sum256(repository.raw)
 	if hex.EncodeToString(sum[:]) != asset.FilesSHA256 {
 		return "", release.ErrUntrusted
 	}
-	signature, err := readMember(members[Signature], ed25519.SignatureSize)
-	if err != nil || len(signature) != ed25519.SignatureSize {
-		return "", release.ErrUntrusted
-	}
-	inventory, err := release.DecodeQtRepositoryIndex(index)
-	if err != nil ||
-		inventory.Target != asset.OS+"-"+asset.Arch ||
+	inventory := repository.inventory
+	if inventory.Target != asset.OS+"-"+asset.Arch ||
 		inventory.Profile != release.QtRepositoryProfile(asset.Kind) ||
-		inventory.Version != candidate.Version ||
-		len(inventory.Files)+2 != len(members) {
+		inventory.Version != candidate.Version {
 		return "", release.ErrMetadata
-	}
-	for name := range inventory.Files {
-		if name == Inventory || name == Signature || members[name] == nil {
-			return "", release.ErrMetadata
-		}
 	}
 
 	directory, err := os.MkdirTemp(parent, "qt-repository-")
@@ -121,14 +84,14 @@ func Stage(ctx context.Context, source, parent string, proof release.VerifiedRel
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		if err := stageMember(root, members[name], hash); err != nil {
+		if err := stageMember(root, repository.members[name], hash); err != nil {
 			return "", err
 		}
 	}
-	if err := writeMetadata(root, Inventory, index); err != nil {
+	if err := writeMetadata(root, Inventory, repository.raw); err != nil {
 		return "", err
 	}
-	if err := writeMetadata(root, Signature, signature); err != nil {
+	if err := writeMetadata(root, Signature, repository.signature); err != nil {
 		return "", err
 	}
 	return directory, nil
@@ -151,16 +114,6 @@ func readMember(entry *zip.File, maximum int64) ([]byte, error) {
 }
 
 func stageMember(root *os.Root, entry *zip.File, expected string) error {
-	// Repository assets are already compressed and signed. Bound extraction by
-	// the same asset size limit used by the release transport.
-	if entry.UncompressedSize64 > 2<<30 {
-		return release.ErrMetadata
-	}
-	source, err := entry.Open()
-	if err != nil {
-		return err
-	}
-	defer source.Close()
 	name := filepath.FromSlash(entry.Name)
 	if err := root.MkdirAll(filepath.Dir(name), 0700); err != nil {
 		return err
@@ -169,9 +122,17 @@ func stageMember(root *os.Root, entry *zip.File, expected string) error {
 	if err != nil {
 		return err
 	}
+	return errors.Join(copyVerified(entry, target, expected), target.Close())
+}
+
+func copyVerified(entry *zip.File, target io.Writer, expected string) error {
+	source, err := entry.Open()
+	if err != nil {
+		return err
+	}
 	hash := sha256.New()
 	n, err := io.Copy(io.MultiWriter(hash, target), io.LimitReader(source, int64(entry.UncompressedSize64)+1))
-	if err := errors.Join(err, target.Close()); err != nil {
+	if err := errors.Join(err, source.Close()); err != nil {
 		return err
 	}
 	if uint64(n) != entry.UncompressedSize64 || hex.EncodeToString(hash.Sum(nil)) != expected {
@@ -187,4 +148,79 @@ func writeMetadata(root *os.Root, name string, data []byte) error {
 	}
 	_, err = bytes.NewReader(data).WriteTo(file)
 	return errors.Join(err, file.Close())
+}
+
+type archiveIndex struct {
+	members        map[string]*zip.File
+	inventory      release.QtRepositoryIndex
+	raw, signature []byte
+}
+
+func readArchive(archive *zip.Reader, signed bool) (archiveIndex, error) {
+	members := make(map[string]*zip.File, len(archive.File))
+	names := make(map[string]bool, len(archive.File))
+	var total uint64
+	const maxExpanded = 2 << 30
+	if len(archive.File) > release.ReleaseManifestLimit/(sha256.Size*2) {
+		return archiveIndex{}, release.ErrMetadata
+	}
+	for _, entry := range archive.File {
+		folded := strings.ToLower(entry.Name)
+		if !signed && folded == Signature || names[folded] || !packagefiles.SafePath(entry.Name) || !entry.Mode().IsRegular() ||
+			entry.UncompressedSize64 > maxExpanded-total {
+			return archiveIndex{}, release.ErrMetadata
+		}
+		total += entry.UncompressedSize64
+		names[folded] = true
+		members[entry.Name] = entry
+	}
+
+	for name := range names {
+		for ancestor := path.Dir(name); ancestor != "."; ancestor = path.Dir(ancestor) {
+			if names[ancestor] {
+				return archiveIndex{}, release.ErrMetadata
+			}
+		}
+	}
+	index, err := readMember(members[Inventory], release.ReleaseManifestLimit)
+	if err != nil {
+		return archiveIndex{}, err
+	}
+	inventory, err := release.DecodeQtRepositoryIndex(index)
+	if err != nil {
+		return archiveIndex{}, err
+	}
+	overhead := 1
+	var signature []byte
+	if signed {
+		overhead++
+		signature, err = readMember(members[Signature], ed25519.SignatureSize)
+		if err != nil || len(signature) != ed25519.SignatureSize {
+			return archiveIndex{}, release.ErrUntrusted
+		}
+	}
+	if len(inventory.Files)+overhead != len(members) {
+		return archiveIndex{}, release.ErrMetadata
+	}
+	for name := range inventory.Files {
+		if name == Inventory || name == Signature || members[name] == nil {
+			return archiveIndex{}, release.ErrMetadata
+		}
+	}
+	return archiveIndex{members, inventory, index, signature}, nil
+}
+
+// ReviewUnsigned verifies all packaged bytes and returns the exact inventory
+// bytes to sign. The signing tool preserves those bytes in the published ZIP.
+func ReviewUnsigned(archive *zip.Reader) ([]byte, error) {
+	repository, err := readArchive(archive, false)
+	if err != nil {
+		return nil, err
+	}
+	for name, expected := range repository.inventory.Files {
+		if err := copyVerified(repository.members[name], io.Discard, expected); err != nil {
+			return nil, err
+		}
+	}
+	return repository.raw, nil
 }
