@@ -1,6 +1,6 @@
 # Development commands
 
-Run from the repository root with Python 3 and Go 1.26.4 on PATH. For GUI commands, pass the pinned Flutter executable with `--flutter /absolute/path/to/flutter` unless you have already configured the local default. In packaging examples, the supplied version labels the resulting local artifacts.
+Run from the repository root with Python 3 and the Go version pinned in `go.mod` on PATH. For GUI commands, pass the pinned Flutter executable with `--flutter /absolute/path/to/flutter` unless you have already configured the local default. In packaging examples, the supplied version labels the resulting local artifacts.
 `dev.py` uses the existing verifier and distribution producer/consumer. It does
 not install, authenticate, sign, upload or publish. `release download` makes only
 the explicitly requested public HTTPS reads. Only explicit development
@@ -18,6 +18,15 @@ Choose one existing entry for the scenario; there is no new mandatory sequence:
 | GUI regression | `visual capture` / `visual compare` | Matching environment and changed-case index |
 | Local release candidate | `release prepare` / `release verify` | Exact local payload and signature checks |
 | Public asset verification | `release download` | Explicit URL bytes, signature scope and unsigned extras |
+
+## Distribution acceptance
+
+Run `task accept:distribution -- --help` for artifact selection and reporting
+options. Task runs the locked pytest environment through `uv`. Use the same
+entry locally and in Windows packaging CI to check exact candidate artifacts and
+produce standard pytest reports. A native help smoke proves the executable starts
+in that environment. The native installer and desktop fixtures below cover the
+installation and runtime lifecycle.
 
 ## Offline interactive GUI preview
 
@@ -185,82 +194,17 @@ files belong to the fixture; the verifier report remains under `.project/`.
 
 ## Updater commands
 
-The distribution now includes `sidraviaupdater`; CTL delegates `update check`,
-`update download --candidate ID`, `update status`, `update version`,
-`update apply --candidate ID --confirm` and
-`update recover --operation ID --confirm` to the sibling executable. Linux apply
-uses exec so CTL cannot hold the target open or kill its replacement coordinator. Optional `--channel stable|preview` and
-`--package setup|gui-portable|core-portable` select the GitHub candidate. Check
-uses the Releases list and SemVer ordering; download requires the exact freshly
-selected candidate and verifies size/SHA256. JSON responses use schema version 1.
-A protected user cache retains one verified package per target/type/channel;
-repeated checks preserve it and repeated downloads reuse it. Unexpected cache
-paths or changed bytes fail closed and require cache inspection.
+`sidraviactl update check` reads release metadata directly. For portable
+installations it offers the matching release without staging or replacing files.
+On Linux, DNF/RPM and APT/dpkg own their respective installed payloads.
 
-Linux/Windows portable apply and Windows installed setup handoff are wired into the CLI.
-The default build pins the reviewed publisher public key. Missing or invalid
-publisher signatures never authorize application. Native Linux portable and
-Windows portable/setup candidates can be offered; `canApply` remains conditional
-on verifying the installed baseline and explicit confirmation. Apply refetches
-fixed signed metadata for both the installed version/build and the exact new
-candidate, rechecks the cached archive, and authenticates the local ownership
-index before requesting exit. It preserves package kind and never downgrades.
-No runtime environment variable or downloaded key can change publisher trust.
-Source errors, including old-version proof/recovery rate limits, retain shared
-bounded GitHub backoff. Tests use synthetic keys only.
-Distribution archives contain `sidravia-files.json`, independently checked against
-source bytes, file modes and the protected data boundary. Target-bound execution
-records preserve exact signed proof and operation claims outside replaced files.
-Linux portable Go entries now retain shared runtime admission, and the file
-engine takes exclusive admission against the same target-bound record. The
-engine authenticates inventories, bounds TAR/ZIP extraction, preserves unknown
-files and user data, and retains repair state after a partial write. Its Linux adapter applies both core and the static-launcher GUI layout. A
-finite internal coordinator negotiates normal exit using exact pidfd peers,
-applies authenticated bytes, then cold-starts only the prior mode. Restore
-admission is bound to the operation, new build, namespace and live coordinator
-ancestry; only saved configuration intent is dispatched, at most once. Explicit
-restart strips the earlier launch capability, and user mutations revoke pending
-connection recovery. Installed files, process readiness and authentication are
-separate outcomes. The apply JSON reports `filesApplied`, `applicationRecovery`
-and `authentication` separately; a completed update does not prove network login.
-Status remains available during startup protection and projects cached candidates
-against the currently installed version. Explicit recover verifies the installed
-source/target bytes and dead coordinator before ending an interrupted operation;
-it never repeats a launch or authentication. Partial writes retain their seal
-and require manual repair. Publisher provisioning and signed release acceptance
-remain pending. Packaged Linux GUI uses a static Go `sidravia_gui` launcher and
-`gui-runtime/` payload: the shared lease is inherited across exec before Flutter
-loads, then marked close-on-exec by the runner. Windows portable uses the same
-inventory/extraction/file engine and finite lifecycle coordinator with native
-process-generation and NTFS handle-relative publication adapters.
-GUI scheduling, unattended apply and signed release integration remain pending. The Windows application now exposes fixed internal
-prepare/acknowledge/commit/abort stages; CTL is a short host, and the installed
-Inno path uses these stages when the target CTL advertises protocol 1. Older
-targets require manual exit. Normal process entry points share Inno's current-user
-maintenance gate. Preparation cancellation thaws the existing application;
-cancellation after a confirmed stop only restarts unchanged source binaries,
-using a cold skip-auto-login generation and an at-most-once intent dispatch.
-A new user mutation revokes recovery admission. Once file replacement starts,
-the installer never automatically restarts the old program on failure.
-The native fixture also runs the release/command tests, real CTL-to-updater
-version/disabled-apply smoke and isolated real CTL/daemon lifecycle tests. GUI
-unit/widget checks and compilation are separate from actual Windows GUI and
-installation/upgrade acceptance. Tests never authenticate with real credentials.
-
-To verify actual Linux CTL commands with private old/new binaries and a local
-TLS proxy serving the fixed GitHub URLs, run:
-
-```bash
-SIDRAVIA_CLI_UPDATE_FIXTURE=1 python3 tools/developer/dev.py verify --scope go --go-checks native --go /absolute/path/to/pinned/go
-```
-
-The opt-in `TestNativeCLIUpdate` uses a source overlay containing only a synthetic
-public publisher root, isolated HOME/XDG/namespace and no real account. It covers
-check/download/confirmed exec apply/status, stopped and running headless targets,
-confirmation/candidate/cache/source-proof/backoff failures, and interrupted
-Verified/Applied recovery without relaunch. Owned evidence is retained under
-`.local/cli-update-fixture-*`; it never installs into the host or contacts campus.
-The regular default-root suite continues to require disabled apply.
+Windows Setup includes `sidraviaupdater` for `update download --candidate ID`,
+`update apply --candidate ID --confirm`, `update status`, `update version`, and
+`update recover --operation ID --confirm`. `--channel stable|preview` selects
+the release stream when checking. The installed updater uses a protected cache
+and verifies the exact release candidate with the compiled publisher public key.
+A changed cached file or invalid signature fails verification. Tests use synthetic
+keys and an isolated installation.
 
 Windows installed `apply` pins and verifies the setup and source CTL, persists
 a target-bound operation with signed source/target proofs, and authenticates the exact Inno worker before
