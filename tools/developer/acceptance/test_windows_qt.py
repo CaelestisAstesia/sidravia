@@ -23,6 +23,8 @@ def qt_release():
     request = os.environ.get("SIDRAVIA_QT_ACCEPTANCE_REQUEST")
     if sys.platform != "win32" or not request:
         pytest.skip("needs a disposable native Windows Qt release fixture")
+    if os.environ.get("SIDRAVIA_IFW_ISOLATED_WINDOWS") != "1":
+        raise pytest.UsageError("Qt lifecycle acceptance requires an isolated Windows account")
     path = Path(request)
     assert path.is_absolute() and path.is_file()
     data = json.loads(path.read_bytes())
