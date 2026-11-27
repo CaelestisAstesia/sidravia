@@ -1138,8 +1138,8 @@ begin
   if not ParseManagerResponse(Output.StdOut[0], False, Token) then Exit;
   Result := True;
   if Token = '' then Exit;
-  if MsgBox('用户 PATH 中仍有此安装目录，无法确认是谁添加的。是否移除这一项？' +
-    #13#10 + #13#10 + ExpandConstant('{app}') + #13#10 + #13#10 +
+  if MsgBox('用户 PATH 中仍有此安装目录，无法确认是谁添加的。是否移除这一项？' + #13#10 + #13#10 +
+    ExpandConstant('{app}') + #13#10 + #13#10 +
     '选择“否”将保留此条目。', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) <> IDYES then Exit;
   if not RunManager('path remove-unowned ' + Token) then begin
     Log('Could not confirm or remove the unowned PATH entry.');
