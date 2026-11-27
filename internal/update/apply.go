@@ -11,6 +11,7 @@ import (
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/release"
 	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/release/qtrepository"
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
 	"sidravia/internal/update/internal/request"
@@ -120,6 +121,8 @@ func applyErrorCode(err error) string {
 		return "rate_limited"
 	case errors.Is(err, errSourceProof):
 		return "source_proof_unavailable"
+	case errors.Is(err, qtrepository.ErrMaintenanceImage):
+		return "maintenance_image_requires_reinstall"
 	case errors.Is(err, errManualRepair):
 		return "manual_repair_required"
 	case errors.Is(err, transaction.ErrConflict), errors.Is(err, errOperation):
@@ -141,6 +144,8 @@ func applyErrorMessage(err error) string {
 		return "更新未完成，请查看 status 确认执行阶段"
 	case "source_proof_unavailable":
 		return "当前安装缺少匹配的发行签名证明，请手动升级到可信基线"
+	case "maintenance_image_requires_reinstall":
+		return "此版本需要更换维护工具，请从发行页下载完整安装包并按说明升级。"
 	case "manual_repair_required":
 		return "更新曾中断写入，请按发行说明手动修复，程序仍保持启动保护"
 	case "update_busy":

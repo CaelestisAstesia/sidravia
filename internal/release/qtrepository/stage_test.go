@@ -21,11 +21,13 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 		badMember   bool
 		badZIP      bool
 		wrongTarget bool
+		wrongImage  bool
 	}{
-		{"exact repository", false, false, false},
-		{"payload differs from index", true, false, false},
-		{"archive differs from published bytes", false, true, false},
-		{"signed index for wrong architecture", false, false, true},
+		{"exact repository", false, false, false, false},
+		{"payload differs from index", true, false, false, false},
+		{"archive differs from published bytes", false, true, false, false},
+		{"signed index for wrong architecture", false, false, true, false},
+		{"signed index for replacement maintenance image", false, false, false, true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			base := t.TempDir()
@@ -43,7 +45,11 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 			if scenario.wrongTarget {
 				target = "windows-arm64"
 			}
-			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: "core", Version: "1.0.0", Files: map[string]string{"Updates.xml": digest(exact)}})
+			runtime := digest([]byte("fixture maintenance image"))
+			if scenario.wrongImage {
+				runtime = digest([]byte("different maintenance image"))
+			}
+			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: "core", Version: "1.0.0", MaintenanceSHA256: runtime, Files: map[string]string{"Updates.xml": digest(exact)}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,11 +111,14 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			destination, err := Stage(context.Background(), archivePath, base, proof, candidate)
-			if scenario.badZIP || scenario.badMember || scenario.wrongTarget {
+			destination, err := Stage(context.Background(), archivePath, base, digest([]byte("fixture maintenance image")), proof, candidate)
+			if scenario.badZIP || scenario.badMember || scenario.wrongTarget || scenario.wrongImage {
 				want := release.ErrUntrusted
 				if scenario.wrongTarget {
 					want = release.ErrMetadata
+				}
+				if scenario.wrongImage {
+					want = ErrMaintenanceImage
 				}
 				if !errors.Is(err, want) || destination != "" {
 					t.Fatalf("expected changed bytes to be rejected, got %v", err)

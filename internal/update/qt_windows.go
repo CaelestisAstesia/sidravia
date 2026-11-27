@@ -40,7 +40,7 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 		return nil, errors.Join(errSourceProof, err)
 	}
 	defer pin.Close()
-	repository, err := qtrepository.Stage(ctx, archive, cacheRoot, proof, candidate)
+	repository, err := qtrepository.Stage(ctx, archive, cacheRoot, request.QtMaintenanceDigest, proof, candidate)
 	if err != nil {
 		return nil, err
 	}

@@ -119,7 +119,7 @@ func buildQtDistribution(cfg config, stage, base string, template []byte, entrie
 			return nil, err
 		}
 		name := base + "-" + profile.kind + ".zip"
-		if err := packageQtRepository(repo, filepath.Join(stage, name), cfg.target, release.QtRepositoryProfile(profile.kind), cfg.version); err != nil {
+		if err := packageQtRepository(repo, filepath.Join(stage, name), cfg.target, release.QtRepositoryProfile(profile.kind), cfg.version, sha256Hex(template)); err != nil {
 			return nil, err
 		}
 		outputs = append(outputs, name)
@@ -157,7 +157,7 @@ func writeQtXML(path string, value any) error {
 }
 
 // A release signing step signs this exact inventory before publishing a repository.
-func packageQtRepository(directory, archive, target, profile, version string) error {
+func packageQtRepository(directory, archive, target, profile, version, maintenanceSHA256 string) error {
 	var entries []archiveEntry
 	inventory := map[string]string{}
 	err := filepath.WalkDir(directory, func(file string, item fs.DirEntry, err error) error {
@@ -190,7 +190,8 @@ func packageQtRepository(directory, archive, target, profile, version string) er
 		return fmt.Errorf("Qt repository has no Updates.xml")
 	}
 	data, err := json.Marshal(release.QtRepositoryIndex{
-		SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: profile, Version: version, Files: inventory,
+		SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: profile, Version: version,
+		MaintenanceSHA256: maintenanceSHA256, Files: inventory,
 	})
 	if err != nil {
 		return err

@@ -44,7 +44,7 @@ func TestQtRepositoryInventoryAuthenticatesGeneratedFiles(t *testing.T) {
 		}
 	}
 	archive := filepath.Join(t.TempDir(), "repo.zip")
-	if err := packageQtRepository(root, archive, "windows-amd64", "core", "1.0.0"); err != nil {
+	if err := packageQtRepository(root, archive, "windows-amd64", "core", "1.0.0", sha256Hex([]byte("template"))); err != nil {
 		t.Fatal(err)
 	}
 	reader, err := zip.OpenReader(archive)

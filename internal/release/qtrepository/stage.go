@@ -22,10 +22,12 @@ import (
 const Inventory = "sidravia-ifw-inventory.json"
 const Signature = "sidravia-ifw-inventory.sig"
 
+var ErrMaintenanceImage = errors.New("Qt maintenance image requires offline replacement")
+
 // Stage extracts into a new caller-owned directory. The release proof binds the
 // downloaded archive and its repository inventory. Qt verifies the inner
 // signature again before consuming any staged metadata or payload.
-func Stage(ctx context.Context, source, parent string, proof release.VerifiedRelease, candidate release.Candidate) (staged string, retErr error) {
+func Stage(ctx context.Context, source, parent, maintenanceSHA256 string, proof release.VerifiedRelease, candidate release.Candidate) (staged string, retErr error) {
 	asset, err := proof.Asset(candidate)
 	if err != nil {
 		return "", err
@@ -64,6 +66,10 @@ func Stage(ctx context.Context, source, parent string, proof release.VerifiedRel
 		inventory.Profile != release.QtRepositoryProfile(asset.Kind) ||
 		inventory.Version != candidate.Version {
 		return "", release.ErrMetadata
+	}
+
+	if inventory.MaintenanceSHA256 != maintenanceSHA256 {
+		return "", ErrMaintenanceImage
 	}
 
 	directory, err := os.MkdirTemp(parent, "qt-repository-")

@@ -13,12 +13,13 @@ const (
 // QtRepositoryIndex is signed as a whole. Both the release client and the
 // maintenance tool check its identity before handing files to Qt.
 type QtRepositoryIndex struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Product       string            `json:"product"`
-	Target        string            `json:"target"`
-	Profile       string            `json:"profile"`
-	Version       string            `json:"version"`
-	Files         map[string]string `json:"files"`
+	SchemaVersion     int               `json:"schemaVersion"`
+	Product           string            `json:"product"`
+	Target            string            `json:"target"`
+	Profile           string            `json:"profile"`
+	Version           string            `json:"version"`
+	MaintenanceSHA256 string            `json:"maintenanceSha256"`
+	Files             map[string]string `json:"files"`
 }
 
 func DecodeQtRepositoryIndex(data []byte) (QtRepositoryIndex, error) {
@@ -27,6 +28,7 @@ func DecodeQtRepositoryIndex(data []byte) (QtRepositoryIndex, error) {
 		index.SchemaVersion != 1 || index.Product != "Sidravia" ||
 		(index.Target != "windows-amd64" && index.Target != "windows-arm64") ||
 		(index.Profile != "core" && index.Profile != "gui") ||
+		!packagefiles.ValidSHA256(index.MaintenanceSHA256) ||
 		!packagefiles.ValidSHA256(index.Files["Updates.xml"]) {
 		return QtRepositoryIndex{}, ErrMetadata
 	}

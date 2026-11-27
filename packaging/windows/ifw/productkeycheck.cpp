@@ -10,6 +10,7 @@
 #include <QtUiTools/QUiLoader>
 
 #include "repository.h"
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDomDocument>
 #include <QDirIterator>
@@ -325,6 +326,12 @@ bool verifyRepository(const QInstaller::Repository &repository, QInstaller::Pack
     if (index.value(QStringLiteral("schemaVersion")).toInt() != 1
         || index.value(QStringLiteral("product")).toString() != QStringLiteral("Sidravia")
         || index.value(QStringLiteral("target")).toString() != QStringLiteral(SIDRAVIA_IFW_TARGET))
+        return false;
+    QFile executable(QCoreApplication::applicationFilePath());
+    QCryptographicHash executableHash(QCryptographicHash::Sha256);
+    if (!executable.open(QIODevice::ReadOnly) || !executableHash.addData(&executable)
+        || QString::fromLatin1(executableHash.result().toHex())
+            != index.value(QStringLiteral("maintenanceSha256")).toString())
         return false;
     const auto installed = core->localInstalledPackages();
     const bool gui = installed.contains(QStringLiteral("org.sidravia.gui"));
