@@ -170,12 +170,15 @@ def binary_identity(path: Path, role: str, target: str, version: str, build_id: 
 
 
 def verify(directory: Path, repo: Path, target: str, version: str, build_id: str,
-           gui: Path | None = None, go: str = 'go', smoke: bool = False) -> dict:
+           gui: Path | None = None, go: str = 'go', smoke: bool = False, *, qt_windows_gui: bool = False) -> dict:
     require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?', version) is not None, 'invalid_version')
     require(re.fullmatch(r'[0-9a-f]{40}', build_id) is not None, 'invalid_build_id')
     require(target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'), 'invalid_target')
     os_name, arch = target.split('-')
     windows = os_name == 'windows'
+    windows_gui = windows and gui is not None
+    require(not qt_windows_gui or windows_gui, 'qt_windows_gui_requires_windows_gui_distribution')
+    inno_setup = windows_gui and not qt_windows_gui
     base = f'sidravia-v{version}-{target}'
     kind = 'gui-portable' if gui is not None else 'core-portable'
     archive_name = base + '-' + kind + ('.zip' if windows else '.tar.gz')
@@ -185,7 +188,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(len(present) == 1, 'missing_or_ambiguous_archive_encoding')
         archive_name = present[0]
     outputs = {archive_name}
-    if windows and gui is not None:
+    if inno_setup:
         outputs.add(base + '-setup.exe')
     require({p.name for p in directory.iterdir()} == outputs | {'SHA256SUMS.txt'}, 'output_file_set_mismatch')
     checksums = {}
@@ -198,7 +201,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(digest((directory / name).read_bytes()) == hash_value, 'output_checksum_mismatch')
         checksums[name] = hash_value
     require(set(checksums) == outputs, 'missing_checksum')
-    if windows and gui is not None:
+    if inno_setup:
         # Inno 7.1.0 generates x64 installers. On Windows ARM64, Setup runs
         # under emulation and installs an entirely ARM64 application payload.
         require(matches_pe((directory / (base + '-setup.exe')).read_bytes(), 'amd64'), 'installer_not_pe_x64')
@@ -247,9 +250,9 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     expected['BUILD-INFO.txt'] += ''.join(
         f'BinarySHA256: {digest(contents[name])}  {name}\n' for name in binaries).encode()
     setup_updater = None
-    if windows and gui is not None:
-        # The compiler's paired Setup inventory includes an installer-only
-        # executable. Native acceptance still checks the compiled payload.
+    if windows_gui:
+        # Both installer builds record the installed updater's identity in
+        # the portable ZIP. It is covered by the archive ownership manifest.
         marker = re.fullmatch(rb'SetupUpdater: ([0-9a-f]{64}) ([1-9][0-9]{0,9})\n', contents['BUILD-INFO.txt'][len(expected['BUILD-INFO.txt']):])
         require(marker is not None, 'missing_setup_updater_identity')
         checksum, size = marker.groups()
@@ -278,7 +281,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     validate_product_ownership(ownership)
     require(ownership == wanted_ownership, 'ownership_source_mismatch')
     installer_ownership_sha256 = None
-    if windows and gui is not None:
+    if inno_setup:
         # Inno's product includes its display icon; the portable ZIP does not.
         # Reconstruct the producer's separately encoded setup index, while
         # native setup acceptance remains responsible for the compiled payload.
@@ -322,8 +325,8 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
             'productOwnershipSha256': digest(ownership_bytes), 'payloadKind': ownership['payloadKind'],
             'installerOwnershipSha256': installer_ownership_sha256,
-            'installerArchitecture': 'amd64' if windows and gui is not None else None,
-            'installerPayload': 'requires_native_acceptance' if windows and gui is not None else 'not_applicable',
+            'installerArchitecture': 'amd64' if inno_setup else None,
+            'installerPayload': 'requires_native_acceptance' if inno_setup else 'not_applicable',
             'productOwnership': 'passed', 'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
             'embeddedGoIdentity': 'passed' if all(embedded_identities) else 'not_recorded',
             'helpSmoke': 'passed' if smoke else 'not_run',
@@ -339,10 +342,12 @@ def main() -> int:
     parser.add_argument('--build-id', required=True)
     parser.add_argument('--gui-directory', type=Path)
     parser.add_argument('--go', default='go')
+    parser.add_argument('--qt-windows-gui', action='store_true')
     parser.add_argument('--smoke', action='store_true')
     args = parser.parse_args()
     try:
-        result = verify(args.directory, args.repo, args.target, args.version, args.build_id, args.gui_directory, args.go, args.smoke)
+        result = verify(args.directory, args.repo, args.target, args.version, args.build_id, args.gui_directory, args.go, args.smoke,
+                        qt_windows_gui=args.qt_windows_gui)
     except (VerificationError, OSError, ValueError, tarfile.TarError, zipfile.BadZipFile, subprocess.SubprocessError) as error:
         print(f'distribution verification failed: {error}', file=sys.stderr)
         return 1

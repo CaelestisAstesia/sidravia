@@ -21,6 +21,7 @@ def test_distribution(distribution, pytestconfig):
         gui=distribution.gui,
         go=option("--go"),
         smoke=option("--native-help"),
+        qt_windows_gui=distribution.gui is not None and option("--qt-windows-gui"),
     )
 
     assert receipt["payloadKind"] == distribution.profile

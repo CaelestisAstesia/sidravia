@@ -28,13 +28,15 @@ class ReleaseArtifactContracts(unittest.TestCase):
         self.identity.start()
         self.addCleanup(self.identity.stop)
 
-    def write_group(self, target, gui=False):
+    def write_group(self, target, gui=False, *, qt_windows_gui=False):
         contents = self.fixture.payload(target, gui=gui)
-        self.fixture.package(target, contents, gui=gui)
+        self.fixture.package(target, contents, gui=gui and not qt_windows_gui)
         names = sorted(p.name for p in self.fixture.out.iterdir() if p.name != 'SHA256SUMS.txt')
         group = {'target': target, 'directory': str(self.fixture.out)}
         if gui:
             group['guiDirectory'] = str(self.fixture.gui)
+        if qt_windows_gui:
+            group['qtWindowsGUI'] = True
         self.data = {'schemaVersion': 1, 'version': VERSION, 'buildId': SHA,
                      'expectedAssets': names, 'distributions': [group]}
         self.save()
@@ -140,6 +142,18 @@ class ReleaseArtifactContracts(unittest.TestCase):
         self.assertEqual(setup['filesSha256'],receipts[0]['installerOwnershipSha256'])
         self.assertEqual(receipts[0]['installerPayload'], 'requires_native_acceptance')
         self.assertEqual(receipts[0]['installation'], 'not_run')
+
+    def test_collects_the_qt_gui_zip_without_inno_only_ownership(self):
+        self.fixture.clear_output()
+        self.write_group('windows-amd64', gui=True, qt_windows_gui=True)
+        manifest, receipts = self.collect()
+        asset, = manifest['assets']
+        self.assertEqual((asset['kind'], receipts[0]['installerPayload']), ('gui-portable', 'not_applicable'))
+        self.assertIsNone(receipts[0]['installerOwnershipSha256'])
+        del self.data['distributions'][0]['qtWindowsGUI']
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'output_file_set_mismatch'):
+            self.collect()
 
     def test_rejects_changed_source_archive_and_checksums(self):
         manifest, _ = self.collect()

@@ -87,6 +87,8 @@ def stage(directory, version, build_id, *, qt_publisher_key=None, go='go'):
         if kind == 'gui':
             gui = plain_path(lane / 'gui-input', directory=True)
             entry['guiDirectory'] = '../inputs/' + gui.relative_to(inputs).as_posix()
+            if qt_publisher_key is not None and target.startswith('windows-'):
+                entry['qtWindowsGUI'] = True
         request['expectedAssets'].extend(names)
         request['distributions'].append(entry)
         return ownership
@@ -160,8 +162,9 @@ def main():
         count = stage(args.directory, args.version, args.build_id, qt_publisher_key=args.qt_publisher_key, go=args.go)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f'release candidate assembly failed: {error}\n')
-    qt_metadata = ' and a verified Qt manifest and signature' if args.qt_publisher_key is not None else ''
-    print(f'Assembled {count} verified packages, three unsigned manifest requests{qt_metadata}.')
+    print(f'Assembled {count} verified packages and three unsigned manifest requests.')
+    if args.qt_publisher_key is not None:
+        print('Included a verified Qt manifest and signature.')
 
 
 if __name__ == '__main__':

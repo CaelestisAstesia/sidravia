@@ -1029,8 +1029,10 @@ Place the signed Qt manifest, signature, both profile repository ZIPs per Window
 architecture, and one offline Setup per architecture in
 `inputs/qt-release/assets/`. Place the corresponding reference executables in
 `inputs/qt-release/toolchains/windows-{amd64,arm64}/installerbase.exe`.
-Windows distribution inputs and receipts in this mode contain the portable ZIPs.
-Linux inputs follow the usual staging layout.
+For each Windows GUI input, copy its portable ZIP and its checksum row into
+the GUI distribution directory, leaving the Qt installer and repositories in
+the signed lane. Generate its receipt with `accept:distribution` and
+`--qt-windows-gui`. Linux inputs follow the usual staging layout.
 
 Staging checks the signed build identity, both architectures, and the exact
 copied installer and repository bytes before exposing the assembled assets.

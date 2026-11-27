@@ -148,6 +148,12 @@ class StageReleaseTests(unittest.TestCase):
         for metadata in (QT_MANIFEST, QT_SIGNATURE):
             self.assertEqual((output / metadata).read_bytes(), (source / metadata).read_bytes())
 
+        for name in ('sidravia-release', 'sidravia-release-extended'):
+            request = request_document(self.root / 'requests' / (name + '.request.json'))
+            for group in request['distributions']:
+                self.assertEqual(group.get('qtWindowsGUI', False),
+                                 group['target'].startswith('windows-') and 'guiDirectory' in group)
+
     def test_qt_release_requires_both_architectures_and_complete_verification(self):
         source = self.qt_lane()
         path = source / QT_MANIFEST

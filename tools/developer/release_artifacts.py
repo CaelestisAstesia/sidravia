@@ -94,8 +94,12 @@ def request_document(path):
     groups = request['distributions']
     require(isinstance(groups, list) and 0 < len(groups) <= 16, 'distribution_list')
     for group in groups:
-        require(isinstance(group, dict) and {'directory', 'target'} <= set(group) <= {'directory', 'target', 'guiDirectory'}, 'distribution_fields')
-        require(all(isinstance(value, str) and value for value in group.values()), 'distribution_value_type')
+        require(isinstance(group, dict) and {'directory', 'target'} <= set(group) <= {'directory', 'target', 'guiDirectory', 'qtWindowsGUI'}, 'distribution_fields')
+        require(all(isinstance(value, str) and value for key, value in group.items() if key != 'qtWindowsGUI'),
+                'distribution_value_type')
+        if 'qtWindowsGUI' in group:
+            require(group['qtWindowsGUI'] is True and 'guiDirectory' in group and
+                    group['target'] in ('windows-amd64', 'windows-arm64'), 'invalid_qt_windows_gui_group')
     return request
 
 
@@ -110,7 +114,8 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
         gui = plain_path(request_path.parent / group['guiDirectory'], directory=True) if 'guiDirectory' in group else None
         # This is the existing independent source/content/ownership consumer.
         # No daemon, GUI, installer or help smoke is executed by this operation.
-        receipt = distribution.verify(directory, repo, group['target'], request['version'], request['buildId'], gui=gui, go=go, smoke=False)
+        receipt = distribution.verify(directory, repo, group['target'], request['version'], request['buildId'],
+                                      gui=gui, go=go, qt_windows_gui=group.get('qtWindowsGUI', False))
         os_name, arch = group['target'].split('-')
         for name, expected_hash in receipt['artifactHashes'].items():
             require(name.casefold() not in seen, 'duplicate_asset')
