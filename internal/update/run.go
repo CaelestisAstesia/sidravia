@@ -93,6 +93,15 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		if execution != nil {
 			return emit(true, "ok", "", composeStatus(previous, exists, execution))
 		}
+		if release.QtRepositoryProfile(kind) != "" {
+			outcome, present, err := readQtOutcome(ctx, store.Root(), version)
+			if err != nil {
+				return emit(false, "operation_status_unavailable", "无法确认维护工具结果，请检查当前版本。", nil)
+			}
+			if present {
+				return emit(true, "ok", outcome.message(), qtStatusResult{State: previous, Installation: outcome})
+			}
+		}
 		if !exists {
 			return emit(true, "not_checked", "尚未检查更新。", nil)
 		}

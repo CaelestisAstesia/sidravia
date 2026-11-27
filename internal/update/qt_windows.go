@@ -20,6 +20,7 @@ import (
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/launch"
 	"sidravia/internal/background/maintenance"
+	"sidravia/internal/document/securefile"
 	"sidravia/internal/installation/layout"
 	"sidravia/internal/installation/winmutex"
 	"sidravia/internal/ipc/contract"
@@ -91,7 +92,16 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 		}
 	}
 	repositoryURL := (&url.URL{Scheme: "file", Path: "/" + filepath.ToSlash(repository)}).String()
-	env := append(os.Environ(), "SIDRAVIA_IFW_HANDOFF="+waitFor)
+	outcomePath := filepath.Join(cacheRoot, qtOutcomeFilename)
+	outcome, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if err := outcome.Replace(ctx, outcomePath, []byte(candidate.Version+" pending\n")); err != nil {
+		return nil, err
+	}
+	env := append(os.Environ(), "SIDRAVIA_IFW_HANDOFF="+waitFor,
+		"SIDRAVIA_IFW_OUTCOME="+outcomePath, "SIDRAVIA_IFW_VERSION="+candidate.Version)
 	child, err := winproc.StartIndependentWithEnvironment(tool, env, "--set-temp-repository", repositoryURL,
 		"--accept-licenses", "--reject-messages", "--confirm-command", "update")
 	if err != nil {

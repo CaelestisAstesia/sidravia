@@ -1,0 +1,32 @@
+diff --git a/src/sdk/main.cpp b/src/sdk/main.cpp
+--- a/src/sdk/main.cpp
++++ b/src/sdk/main.cpp
+@@ -23,6 +23,7 @@
+ #include <QThread>
+ #include <QThreadPool>
+ #include <QDeadlineTimer>
++#include <QSaveFile>
+ 
+ #include <iostream>
+ 
+@@ -296,7 +297,19 @@
+             return CommandLineInterface(argc, argv).searchAvailablePackages();
+         } else if (parser.positionalArguments().contains(CommandLineOptions::scUpdateShort)
+                 || parser.positionalArguments().contains(CommandLineOptions::scUpdateLong)) {
+-            return CommandLineInterface(argc, argv).updatePackages();
++            const QString outcomeFile = qEnvironmentVariable("SIDRAVIA_IFW_OUTCOME");
++            const QByteArray targetVersion = qgetenv("SIDRAVIA_IFW_VERSION");
++            qunsetenv("SIDRAVIA_IFW_OUTCOME");
++            qunsetenv("SIDRAVIA_IFW_VERSION");
++            const int result = CommandLineInterface(argc, argv).updatePackages();
++            if (!outcomeFile.isEmpty() && !targetVersion.isEmpty()) {
++                QSaveFile outcome(outcomeFile);
++                const QByteArray state = result == EXIT_SUCCESS ? "completed" : "failed";
++                const QByteArray record = targetVersion + ' ' + state + '\n';
++                if (outcome.open(QIODevice::WriteOnly) && outcome.write(record) == record.size())
++                    outcome.commit();
++            }
++            return result;
+         } else if (parser.positionalArguments().contains(CommandLineOptions::scInstallShort)
+                 || parser.positionalArguments().contains(CommandLineOptions::scInstallLong)) {
+             return CommandLineInterface(argc, argv).installPackages();
