@@ -238,6 +238,7 @@ def foreign_startup_task(tmp_path):
     name = "SidraviaDaemon"
 
     def run_script(label, script):
+        script = "$ProgressPreference = 'SilentlyContinue'; " + script
         encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
         result = invoke(tmp_path, label, powershell,
                         ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded])
