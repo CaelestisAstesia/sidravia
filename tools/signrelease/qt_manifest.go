@@ -134,6 +134,11 @@ func qtReleaseAsset(path, version, buildID string, key ed25519.PublicKey) (relea
 	if err != nil || size != info.Size() {
 		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
+	after, err := os.Lstat(path)
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(info, after) ||
+		after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
+		return release.ReleaseAsset{}, "", errors.New("repository changed during verification")
+	}
 	kind := release.QtCoreRepository
 	if index.Profile == "gui" {
 		kind = release.QtGUIRepository

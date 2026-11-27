@@ -104,8 +104,10 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		if json.NewEncoder(out).Encode(result) != nil {
 			return fail("unable to write result")
 		}
-	} else {
+	} else if *artifactDir != "" {
 		fmt.Fprintf(out, "Release manifest %s; signature %s; artifact bytes %s\n", mode, status, artifactStatus)
+	} else {
+		fmt.Fprintf(out, "Release manifest %s; signature %s; no artifact files executed\n", mode, status)
 	}
 	return 0
 }
