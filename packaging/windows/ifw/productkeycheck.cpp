@@ -18,6 +18,7 @@
 #include <QSet>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 
 #include "publisherkey.h"
 
@@ -201,6 +202,26 @@ void ProductKeyCheck::init(QInstaller::PackageManagerCore *core)
         throw QInstaller::Error(QObject::tr("Sidravia could not finish preparing for the update."));
     if (!core->isInstaller() && !applicationFilesAvailable())
         throw QInstaller::Error(QObject::tr("Close Sidravia and try again."));
+}
+
+// Full uninstallation only. An update keeps the user's PATH and startup
+// settings. The installed manager owns their validation and removal rules.
+void sidraviaRemoveUserIntegration(const QString &directory)
+{
+    const QString manager = QDir(directory).filePath(QStringLiteral("sidraviamgr.exe"));
+    for (const auto &feature : {QStringLiteral("autostart"), QStringLiteral("path")}) {
+        QProcess process;
+        process.setWorkingDirectory(directory);
+        process.start(manager, {feature, QStringLiteral("disable")});
+        if (!process.waitForStarted(5000) || !process.waitForFinished(15000)
+            || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            if (process.state() != QProcess::NotRunning) {
+                process.kill();
+                process.waitForFinished(3000);
+            }
+            throw QInstaller::Error(QObject::tr("Sidravia could not remove its user integration. Repair the installation and try again."));
+        }
+    }
 }
 
 bool ProductKeyCheck::hasValidKey()

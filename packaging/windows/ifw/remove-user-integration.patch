@@ -1,0 +1,24 @@
+diff --git a/src/libs/installer/packagemanagercore_p.cpp b/src/libs/installer/packagemanagercore_p.cpp
+--- a/src/libs/installer/packagemanagercore_p.cpp
++++ b/src/libs/installer/packagemanagercore_p.cpp
+@@ -2223,6 +2223,10 @@
+     return true;
+ }
+ 
++#if defined(Q_OS_WIN)
++void sidraviaRemoveUserIntegration(const QString &directory);
++#endif
++
+ bool PackageManagerCorePrivate::runUninstaller()
+ {
+     emit uninstallationStarted();
+@@ -2230,6 +2234,9 @@
+ 
+     try {
+         setStatus(PackageManagerCore::Running);
++#if defined(Q_OS_WIN)
++        sidraviaRemoveUserIntegration(targetDir());
++#endif
+ 
+         // check if we need to run elevated and ask before the action happens
+         if (!directoryWritable(targetDir()))

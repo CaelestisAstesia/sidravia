@@ -32,7 +32,7 @@ Set-Content -LiteralPath (Join-Path $gate 'publisherkey.h') -Encoding ASCII -Val
     ('#define SIDRAVIA_PUBLISHER_PUBLIC_KEY "' + $PublisherPublicKey.ToLowerInvariant() + '"'),
     ('#define SIDRAVIA_IFW_TARGET "' + $PayloadTarget + '"')
 )
-foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch', 'report-maintenance-outcome.patch') {
+foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch', 'report-maintenance-outcome.patch', 'remove-user-integration.patch') {
     & git -C $source apply (Join-Path $PSScriptRoot $name)
     if ($LASTEXITCODE -ne 0) { throw "Unable to apply $name to the pinned IFW source." }
 }
