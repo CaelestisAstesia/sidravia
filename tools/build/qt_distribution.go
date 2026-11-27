@@ -24,7 +24,7 @@ func validQtCandidateVersion(version string) bool {
 	return qtCandidateVersion.MatchString(version) && validateProductVersion(version) == nil
 }
 
-func buildQtDistribution(cfg config, repoRoot, stage, base string, template []byte, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
+func buildQtDistribution(cfg config, stage, base string, template []byte, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
 	packages := filepath.Join(stage, "qt-packages")
 	components := map[string]string{}
 	for _, name := range []string{release.QtCoreComponent, release.QtGUIComponent} {
@@ -33,6 +33,10 @@ func buildQtDistribution(cfg config, repoRoot, stage, base string, template []by
 			return nil, err
 		}
 	}
+	type operation struct {
+		Name      string   `xml:"name,attr"`
+		Arguments []string `xml:"Argument"`
+	}
 	type component struct {
 		XMLName            xml.Name `xml:"Package"`
 		DisplayName        string
@@ -40,9 +44,9 @@ func buildQtDistribution(cfg config, repoRoot, stage, base string, template []by
 		Version            string
 		ReleaseDate        string
 		Default            bool
-		ForcedInstallation bool   `xml:",omitempty"`
-		Dependencies       string `xml:",omitempty"`
-		Script             string `xml:",omitempty"`
+		ForcedInstallation bool        `xml:",omitempty"`
+		Dependencies       string      `xml:",omitempty"`
+		Operations         []operation `xml:"Operations>Operation,omitempty"`
 	}
 	releaseDate := time.Now().UTC().Format(time.DateOnly)
 	core := component{DisplayName: "Core", Description: "Sidravia command line and background service", Version: cfg.version, ReleaseDate: releaseDate, ForcedInstallation: true}
@@ -50,17 +54,11 @@ func buildQtDistribution(cfg config, repoRoot, stage, base string, template []by
 	if err := writeQtXML(filepath.Join(components[release.QtCoreComponent], "meta", "package.xml"), core); err != nil {
 		return nil, err
 	}
-	const shortcutName = "gui-shortcut.qs"
-	shortcut, err := os.ReadFile(filepath.Join(repoRoot, "packaging", "windows", "ifw", shortcutName))
-	if err != nil {
-		return nil, err
-	}
-	guiMetadata := filepath.Join(components[release.QtGUIComponent], "meta")
-	if err := os.WriteFile(filepath.Join(guiMetadata, shortcutName), shortcut, 0644); err != nil {
-		return nil, err
-	}
-	desktop.Script = shortcutName
-	if err := writeQtXML(filepath.Join(guiMetadata, "package.xml"), desktop); err != nil {
+	desktop.Operations = []operation{{
+		Name:      "CreateShortcut",
+		Arguments: []string{"@TargetDir@/Sidravia.exe", "@StartMenuDir@/Sidravia.lnk"},
+	}}
+	if err := writeQtXML(filepath.Join(components[release.QtGUIComponent], "meta", "package.xml"), desktop); err != nil {
 		return nil, err
 	}
 	guiPaths := make(map[string]bool, len(gui))
