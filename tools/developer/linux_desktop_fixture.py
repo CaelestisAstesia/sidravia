@@ -318,20 +318,12 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
         wait_for(runtime.exists, "release GUI real daemon")
         daemon = json.loads(runtime.read_text())["pid"]
         if portable_archive is not None:
-            gate = Path(env['XDG_CACHE_HOME']) / 'Sidravia/updates/operations' / hashlib.sha256(str(binary.parent.resolve()).encode()).hexdigest() / 'execution.lock'
-            inherited = []
-            for fd in Path(f'/proc/{gui.pid}/fd').iterdir():
-                try:
-                    if os.readlink(fd) == str(gate):
-                        inherited.append(fd)
-                except FileNotFoundError:
-                    pass  # Unrelated GTK descriptors can close during inspection.
-            if len(inherited) != 1:
-                raise RuntimeError('GUI did not retain its exact pre-loader lease')
-            flags = int(next(line.split()[1] for line in (Path(f'/proc/{gui.pid}/fdinfo') / inherited[0].name).read_text().splitlines() if line.startswith('flags:')), 8)
-            if not flags & os.O_CLOEXEC:
-                raise RuntimeError('GUI lease can leak into child exec')
-            events.append('GUI-exec-PID-retains-cloexec-admission')
+            runtime_binary = binary.parent / 'gui-runtime' / 'sidravia_gui'
+            if not os.path.samefile(f'/proc/{gui.pid}/exe', runtime_binary):
+                raise RuntimeError('launcher did not exec the bundled GUI runtime')
+            if (Path(env['XDG_CACHE_HOME']) / 'Sidravia/updates/operations').exists():
+                raise RuntimeError('portable startup reopened the retired update operation store')
+            events.append('GUI-exec-keeps-PID-without-update-lease')
         command([str(binary), "--start-visible"], "single-instance-activation", timeout=15)
         if json.loads(runtime.read_text())["pid"] != daemon:
             raise RuntimeError("second instance changed daemon generation")
