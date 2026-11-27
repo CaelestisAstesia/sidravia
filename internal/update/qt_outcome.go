@@ -39,12 +39,12 @@ type qtOutcome struct {
 	State         string `json:"state"`
 }
 
-func writeQtPending(ctx context.Context, path, version string) error {
+func writeQtOutcome(ctx context.Context, path, version, state string) error {
 	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(qtOutcome{TargetVersion: version, State: "pending"})
+	data, err := json.Marshal(qtOutcome{TargetVersion: version, State: state})
 	if err != nil {
 		return err
 	}
@@ -88,6 +88,6 @@ func (outcome qtOutcome) message() string {
 	case "failed":
 		return "维护工具报告更新失败，请重新检查并重试，或使用可信离线安装包修复"
 	default:
-		return "更新结果尚未确认，请等待维护工具结束后重新打开程序检查版本"
+		return "更新结果尚未确认，请重新打开程序核对版本。如未更新，可重试或用可信离线安装包修复"
 	}
 }

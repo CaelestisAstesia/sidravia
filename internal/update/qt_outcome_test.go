@@ -23,7 +23,7 @@ func TestQtOutcomeConfirmsTheRunningVersion(t *testing.T) {
 	} {
 		path := filepath.Join(parent, qtOutcomeFilename)
 		if tc.persisted == "pending" {
-			if err := writeQtPending(context.Background(), path, "1.2.3"); err != nil {
+			if err := writeQtOutcome(context.Background(), path, "1.2.3", "pending"); err != nil {
 				t.Fatal(err)
 			}
 		} else {

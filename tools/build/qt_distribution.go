@@ -92,7 +92,7 @@ func buildQtDistribution(cfg config, stage, base string, template []byte, entrie
 		RemoveTargetDir              bool
 	}{
 		Name: "Sidravia", Version: cfg.version, Title: "Sidravia Qt Validation", Publisher: "Sidravia",
-		TargetDir: "@HomeDir@/AppData/Local/Programs/Sidravia Qt Validation", MaintenanceToolName: "sidravia-maintenance", StartMenuDir: "Sidravia",
+		TargetDir: "@HomeDir@/AppData/Local/Programs/Sidravia Qt Validation", MaintenanceToolName: "sidravia-maintenance", StartMenuDir: "Sidravia Qt Validation",
 		DisableAuthorizationFallback: true,
 	}
 	configFile := filepath.Join(stage, "qt-installer.xml")

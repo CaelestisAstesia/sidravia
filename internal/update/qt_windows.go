@@ -92,9 +92,6 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	}
 	repositoryURL := (&url.URL{Scheme: "file", Path: "/" + filepath.ToSlash(repository)}).String()
 	outcomePath := filepath.Join(cacheRoot, qtOutcomeFilename)
-	if err := writeQtPending(ctx, outcomePath, candidate.Version); err != nil {
-		return nil, err
-	}
 	env := append(os.Environ(), "SIDRAVIA_IFW_HANDOFF="+waitFor,
 		"SIDRAVIA_IFW_OUTCOME="+outcomePath, "SIDRAVIA_IFW_VERSION="+candidate.Version)
 	// Qt can outlive this updater in the ordinary Windows user job. It
@@ -117,6 +114,16 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	if err := waitQtReady(wait, readyHandle); err != nil {
 		return nil, err
 	}
+	if err := writeQtOutcome(wait, outcomePath, candidate.Version, "pending"); err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !proceed {
+			outcomeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			defer cancel()
+			err = errors.Join(err, writeQtOutcome(outcomeCtx, outcomePath, candidate.Version, "failed"))
+		}
+	}()
 	if err := quiesceQt(wait, installation, identity, self, operation); err != nil {
 		return nil, err
 	}

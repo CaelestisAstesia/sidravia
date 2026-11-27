@@ -214,20 +214,36 @@ void sidraviaRemoveUserIntegration(const QString &directory)
         throw Error(QObject::tr("Sidravia could not confirm the uninstall directory."));
     const QString manager = installed.filePath(QStringLiteral("sidraviamgr.exe"));
     const QFileInfo info(manager);
-    if (!info.isFile() || info.isSymLink())
-        throw Error(QObject::tr("Sidravia could not find its user integration manager. Repair the installation and try again."));
+    if (!info.isFile() || info.isSymLink()) {
+        qWarning("Sidravia user integration manager is unavailable; its registrations may need manual cleanup.");
+        return;
+    }
     for (const auto &feature : {QStringLiteral("autostart"), QStringLiteral("path")}) {
         QProcess process;
         process.setWorkingDirectory(directory);
         process.start(manager, {feature, QStringLiteral("disable")});
-        if (!process.waitForStarted(5000) || !process.waitForFinished(15000)
-            || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-            if (process.state() != QProcess::NotRunning) {
-                process.kill();
-                process.waitForFinished(3000);
-            }
-            throw QInstaller::Error(QObject::tr("Sidravia could not remove its user integration. Repair the installation and try again."));
+        if (!process.waitForStarted(5000)) {
+            qWarning("Sidravia user integration manager could not start; its registrations may need manual cleanup.");
+            return;
         }
+        if (!process.waitForFinished(15000)) {
+            process.kill();
+            process.waitForFinished(3000);
+            throw Error(QObject::tr("Sidravia could not finish removing its user integration. Please try again."));
+        }
+        if (process.exitStatus() == QProcess::CrashExit) {
+            qWarning("Sidravia user integration manager stopped unexpectedly; its registrations may need manual cleanup.");
+            return;
+        }
+        if (process.exitCode() == 0)
+            continue;
+        const auto result = QJsonDocument::fromJson(process.readAllStandardOutput()).object();
+        if (feature == QStringLiteral("autostart")
+            && result.value(QStringLiteral("code")).toString() == QStringLiteral("scheduled_task_conflict")) {
+            // Another installation or a manually created task owns this name.
+            continue;
+        }
+        throw Error(QObject::tr("Sidravia could not remove its user integration. Please try again."));
     }
 }
 } // namespace QInstaller

@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installation/startgate"
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
@@ -99,6 +100,13 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 				return emit(false, "operation_status_unavailable", "无法确认维护工具结果，请检查当前版本。", nil)
 			}
 			if present {
+				if outcome.State == "pending" {
+					unlock, err := startgate.AcquireStart()
+					if err == nil {
+						unlock()
+						outcome.State = "unconfirmed"
+					}
+				}
 				return emit(true, "ok", outcome.message(), qtStatusResult{State: previous, Installation: outcome})
 			}
 		}
