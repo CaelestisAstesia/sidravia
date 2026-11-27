@@ -74,3 +74,16 @@ func TestQtRepositoryInventoryAuthenticatesGeneratedFiles(t *testing.T) {
 		t.Fatalf("inventory does not match archived files: %v %v", inventory, gotHashes)
 	}
 }
+
+func TestQtCandidateVersionRestrictsUnsupportedComparisonShapes(t *testing.T) {
+	for _, value := range []string{"1.0.0", "1.0.0-rc.1", "1.0.0-dev.qt.3"} {
+		if !validQtCandidateVersion(value) {
+			t.Errorf("expected a Qt candidate version, got %q", value)
+		}
+	}
+	for _, value := range []string{"1.0.0-1", "1.0.0-alpha", "1.0.0-alpha.beta", "1.0.0-alpha.01", "1000000000000000000.0.0"} {
+		if validQtCandidateVersion(value) {
+			t.Errorf("accepted a version outside the Qt candidate subset, %q", value)
+		}
+	}
+}

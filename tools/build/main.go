@@ -181,6 +181,9 @@ func parseFlags(args []string) (config, error) {
 		if c.ifw != "" && (c.iscc != "" || c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
 			return c, errors.New("Qt packaging requires an absolute toolchain directory and the native GUI payload")
 		}
+		if c.ifw != "" && !validQtCandidateVersion(c.version) {
+			return c, errors.New("Qt candidate packaging requires a numeric release or a version ending in alpha.N, beta.N, rc.N or dev.qt.N")
+		}
 	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" || c.ifw != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
 	}
