@@ -54,6 +54,12 @@ def require_success(result):
     code, log = result
     assert code == 0, log.read_text(encoding="utf-8", errors="replace")
 
+def autostart_mode(evidence, label, manager, env):
+    result = invoke(evidence, label, manager, ["status"], env)
+    require_success(result)
+    return json.loads(result[1].read_bytes())["autostart"]
+
+
 
 def wait_for_runtime(path, process):
     deadline = time.monotonic() + 30
@@ -152,6 +158,9 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         assert not has_user_path(target)
         require_success(invoke(tmp_path, "enable-owned-path", manager, ["path", "enable"], env))
         assert has_user_path(target)
+        assert autostart_mode(tmp_path, "initial-integration", manager, env) == "disabled"
+        require_success(invoke(tmp_path, "enable-owned-autostart", manager, ["autostart", "set", "daemon"], env))
+        assert autostart_mode(tmp_path, "enabled-autostart", manager, env) == "daemon"
         assert (target / "Sidravia.exe").is_file() == (profile == "gui")
         assert (target / "flutter_windows.dll").is_file() == (profile == "gui")
         with maint.open("rb") as handle:
@@ -183,6 +192,7 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         with running_sidravia(target, profile, namespace, env, tmp_path, "after") as (daemon, _):
             assert (daemon["productVersion"], daemon["buildId"]) == (target_version, target_build)
             assert has_user_path(target)
+            assert autostart_mode(tmp_path, "autostart-after-update", manager, env) == "daemon"
             assert (target / "Sidravia.exe").is_file() == (profile == "gui")
         require_success(invoke(tmp_path, "uninstall", maint, [*OPTIONS, "purge"], env))
         assert not ctl.exists()
@@ -194,3 +204,27 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         if maint.is_file():
             invoke(tmp_path, "cleanup", maint, [*OPTIONS, "purge"], env)
         shutil.rmtree(namespace)
+
+
+def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp_path):
+    setup = qt_release["setup"]
+    install_core = [*OPTIONS, "--no-default-installations", "install", "org.sidravia.core"]
+    original = tmp_path / "damaged-installation"
+    repaired = tmp_path / "repaired-installation"
+    require_success(invoke(tmp_path, "initial-install", setup, ["--root", original, *install_core]))
+    try:
+        manager = original / "sidraviamgr.exe"
+        manager.rename(tmp_path / "original-manager.exe")
+        saved = original / "user-file.txt"
+        saved.write_bytes(b"user-owned")
+        maint = original / "sidravia-maintenance.exe"
+        require_success(invoke(tmp_path, "remove-damaged-install", maint, [*OPTIONS, "purge"]))
+        assert not (original / "sidraviactl.exe").exists()
+        assert saved.read_bytes() == b"user-owned"
+        require_success(invoke(tmp_path, "install-verified-offline-copy", setup, ["--root", repaired, *install_core]))
+        require_success(invoke(tmp_path, "verify-recovered-core", repaired / "sidraviactl.exe", ["--help"]))
+    finally:
+        for directory in (original, repaired):
+            maint = directory / "sidravia-maintenance.exe"
+            if maint.is_file():
+                require_success(invoke(tmp_path, "recover-cleanup-" + directory.name, maint, [*OPTIONS, "purge"]))
