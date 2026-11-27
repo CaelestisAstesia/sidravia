@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"sidravia/internal/cli/internal/clitest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"sidravia/internal/cli/internal/clitest"
 	"sidravia/internal/cli/internal/daemonconn"
 	"sidravia/internal/ipc/contract"
 )
@@ -37,7 +38,11 @@ func TestNetworkInterfacesUsesOnlyExistingConnectionAndSafePresentation(t *testi
 	if client.CallCount != 1 || client.CloseCount != 1 {
 		t.Fatal("query did not finish single connection")
 	}
-	for _, want := range []string{"名称：Friendly��[31m", "ID：" + id, "IPv4：127.0.0.1/8 | 仅可显式绑定", "--interface-id 'exact''$`id' --local-ipv4 '127.0.0.1'", "接口已 Down，当前不可绑定", "使用时会重新核对绑定"} {
+	bindingHint := "Shell 绑定参数：--interface-id 'exact'\"'\"'$`id' --local-ipv4 '127.0.0.1'"
+	if runtime.GOOS == "windows" {
+		bindingHint = "PowerShell 绑定参数：--interface-id 'exact''$`id' --local-ipv4 '127.0.0.1'"
+	}
+	for _, want := range []string{"名称：Friendly��[31m", "ID：" + id, "IPv4：127.0.0.1/8 | 仅可显式绑定", bindingHint, "接口已 Down，当前不可绑定", "使用时会重新核对绑定"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("missing %q in %q", want, output.String())
 		}

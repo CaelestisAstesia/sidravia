@@ -3,18 +3,29 @@ package terminal
 import (
 	"fmt"
 	"net/netip"
+	"runtime"
 	"strings"
 
 	"sidravia/internal/connection/binding"
 	"sidravia/internal/ipc/contract"
 )
 
-func powerShellLiteral(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+func shellLiteral(value string) string {
+	if runtime.GOOS == "windows" {
+		return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
 func RenderNetworkInterfaces(result contract.NetworkInterfacesResult) string {
 	if !result.Available {
 		return "尚无已接受的网络观察。请确认已有 daemon 的网络观察状态。\n"
 	}
 	var output strings.Builder
+	shell := "Shell"
+	if runtime.GOOS == "windows" {
+		shell = "PowerShell"
+	}
 	fmt.Fprintf(&output, "网卡（%d），观察 revision：%d；最后变更观察时间：%s\n", len(result.Interfaces), result.Revision, *result.ObservedAt)
 	output.WriteString("列表是已观察事实；使用时会重新核对绑定，不代表连接成功。\n")
 	if len(result.Interfaces) == 0 {
@@ -34,7 +45,7 @@ func RenderNetworkInterfaces(result contract.NetworkInterfacesResult) string {
 			}
 			fmt.Fprintf(&output, "  IPv4：%s/%d | %s\n", assignment.Address, assignment.PrefixLength, category)
 			if assignment.ExplicitBindable && (binding.Policy{Mode: binding.ExplicitInterfaceAndLocalIPv4, InterfaceID: iface.InterfaceID, LocalIPv4Address: netip.MustParseAddr(assignment.Address)}).Validate() == nil {
-				fmt.Fprintf(&output, "  PowerShell 绑定参数：--interface-id %s --local-ipv4 %s\n", powerShellLiteral(iface.InterfaceID), powerShellLiteral(assignment.Address))
+				fmt.Fprintf(&output, "  %s 绑定参数：--interface-id %s --local-ipv4 %s\n", shell, shellLiteral(iface.InterfaceID), shellLiteral(assignment.Address))
 			}
 		}
 		if iface.OperationalState == "down" {
