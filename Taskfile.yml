@@ -1,0 +1,10 @@
+version: '3'
+
+tasks:
+  accept:distribution:
+    desc: Inspect candidate distribution packages and write acceptance receipts
+    cmds:
+      - >-
+        uv run --locked --project tools/developer/acceptance pytest
+        -c tools/developer/acceptance/pyproject.toml tools/developer/acceptance
+        {{range .CLI_ARGS_LIST}}{{shellQuote .}} {{end}}

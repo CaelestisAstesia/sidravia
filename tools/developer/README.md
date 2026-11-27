@@ -1052,3 +1052,30 @@ builds a harmless sleeping executable inside the controller-owned fixture root
 and leaves it running with explicit breakaway. The stage succeeds, but the VM
 receipt must **fail** with one exact owned process stopped and zero remaining.
 Preserve this expected-failure receipt; do not report it as product acceptance.
+
+## Distribution acceptance
+
+The Windows packaging workflow and local developers use the same
+`accept:distribution` Task. It runs pytest in a locked uv environment and
+uses the distribution verifier for product-specific assertions. Use Task
+3.54.0, uv 0.13.7, Python 3.14, and the candidate's Go toolchain.
+
+From the repository root, pass the producer's release version and full source
+commit, the target, and the directory containing the candidate and its checksums.
+
+```sh
+task --exit-code accept:distribution -- --core-directory dist-core --target linux-amd64 --product-version "$VERSION" --build-id "$BUILD_ID" --receipt-dir .local/acceptance/core --native-help --junitxml .local/acceptance/core/junit.xml
+```
+
+Supply `--gui-directory` and `--gui-input` together for GUI acceptance. Add
+`-n 2` to verify Core and GUI independently in the same run. You can use
+pytest's `--collect-only`, `-k`, and `--lf` switches to discover, select, or
+rerun cases. Use a fresh receipt directory for a new run. Use `--source-repo`
+when consuming a package produced from a separate checkout. Cross-platform
+inspection can omit `--native-help`. Native help only runs on the matching OS
+and CPU. Installation, desktop, and service lifecycle acceptance still use
+their platform fixtures.
+
+Successful profiles write the staging receipts `core-verification.json`
+and `verification.json`. The JUnit report records each profile independently,
+including a failed profile when it cannot produce a successful receipt.
