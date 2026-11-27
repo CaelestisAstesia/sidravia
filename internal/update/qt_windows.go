@@ -20,7 +20,6 @@ import (
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/launch"
 	"sidravia/internal/background/maintenance"
-	"sidravia/internal/document/securefile"
 	"sidravia/internal/installation/layout"
 	"sidravia/internal/installation/winmutex"
 	"sidravia/internal/ipc/contract"
@@ -93,11 +92,7 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	}
 	repositoryURL := (&url.URL{Scheme: "file", Path: "/" + filepath.ToSlash(repository)}).String()
 	outcomePath := filepath.Join(cacheRoot, qtOutcomeFilename)
-	outcome, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
-	if err != nil {
-		return nil, err
-	}
-	if err := outcome.Replace(ctx, outcomePath, []byte(candidate.Version+" pending\n")); err != nil {
+	if err := writeQtPending(ctx, outcomePath, candidate.Version); err != nil {
 		return nil, err
 	}
 	env := append(os.Environ(), "SIDRAVIA_IFW_HANDOFF="+waitFor,

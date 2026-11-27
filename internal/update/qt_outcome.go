@@ -2,15 +2,16 @@ package update
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
-	"strings"
 
+	"sidravia/internal/document/jsondoc"
 	"sidravia/internal/document/securefile"
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/candidatecache"
 )
 
-const qtOutcomeFilename = "qt-outcome"
+const qtOutcomeFilename = "qt-outcome.json"
 
 type qtStatusResult struct {
 	candidatecache.State
@@ -22,6 +23,18 @@ type qtOutcome struct {
 	State         string `json:"state"`
 }
 
+func writeQtPending(ctx context.Context, path, version string) error {
+	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(qtOutcome{TargetVersion: version, State: "pending"})
+	if err != nil {
+		return err
+	}
+	return store.Replace(ctx, path, data)
+}
+
 func readQtOutcome(ctx context.Context, cacheRoot, currentVersion string) (qtOutcome, bool, error) {
 	store, err := securefile.NewSecureStore(securefile.SecureStoreOptions{})
 	if err != nil {
@@ -31,26 +44,25 @@ func readQtOutcome(ctx context.Context, cacheRoot, currentVersion string) (qtOut
 	if err != nil || !exists {
 		return qtOutcome{}, false, err
 	}
-	fields := strings.Fields(string(data))
-	if len(fields) != 2 {
+	var result qtOutcome
+	if err := jsondoc.DecodeStrict(data, &result); err != nil {
 		return qtOutcome{}, false, release.ErrMetadata
 	}
-	version, err := release.ParseVersion(fields[0])
+	version, err := release.ParseVersion(result.TargetVersion)
 	if err != nil {
 		return qtOutcome{}, false, release.ErrMetadata
 	}
-	state := fields[1]
-	switch state {
+	switch result.State {
 	case "completed":
 		current, err := release.ParseVersion(currentVersion)
 		if err != nil || current.Compare(version) < 0 {
-			state = "version_unconfirmed"
+			result.State = "version_unconfirmed"
 		}
 	case "pending", "failed":
 	default:
 		return qtOutcome{}, false, release.ErrMetadata
 	}
-	return qtOutcome{TargetVersion: fields[0], State: state}, true, nil
+	return result, true, nil
 }
 
 func (outcome qtOutcome) message() string {

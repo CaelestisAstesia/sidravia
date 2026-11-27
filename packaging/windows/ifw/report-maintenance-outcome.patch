@@ -1,15 +1,17 @@
 diff --git a/src/sdk/main.cpp b/src/sdk/main.cpp
 --- a/src/sdk/main.cpp
 +++ b/src/sdk/main.cpp
-@@ -23,6 +23,7 @@
+@@ -23,6 +23,9 @@
  #include <QThread>
  #include <QThreadPool>
  #include <QDeadlineTimer>
++#include <QJsonDocument>
++#include <QJsonObject>
 +#include <QSaveFile>
  
  #include <iostream>
  
-@@ -296,7 +297,19 @@
+@@ -296,7 +297,22 @@
              return CommandLineInterface(argc, argv).searchAvailablePackages();
          } else if (parser.positionalArguments().contains(CommandLineOptions::scUpdateShort)
                  || parser.positionalArguments().contains(CommandLineOptions::scUpdateLong)) {
@@ -21,8 +23,11 @@ diff --git a/src/sdk/main.cpp b/src/sdk/main.cpp
 +            const int result = CommandLineInterface(argc, argv).updatePackages();
 +            if (!outcomeFile.isEmpty() && !targetVersion.isEmpty()) {
 +                QSaveFile outcome(outcomeFile);
-+                const QByteArray state = result == EXIT_SUCCESS ? "completed" : "failed";
-+                const QByteArray record = targetVersion + ' ' + state + '\n';
++                const QJsonObject recordObject{
++                    {QStringLiteral("targetVersion"), QString::fromLatin1(targetVersion)},
++                    {QStringLiteral("state"), result == EXIT_SUCCESS ? QStringLiteral("completed") : QStringLiteral("failed")}
++                };
++                const QByteArray record = QJsonDocument(recordObject).toJson(QJsonDocument::Compact);
 +                if (outcome.open(QIODevice::WriteOnly) && outcome.write(record) == record.size())
 +                    outcome.commit();
 +            }
