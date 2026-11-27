@@ -19,6 +19,9 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(args []string, input io.Reader, out, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "qt-manifest" {
+		return prepareQtManifest(args[1:], out, stderr)
+	}
 	if len(args) > 0 && args[0] == "qt-repository" {
 		return signQtRepository(args[1:], input, out, stderr)
 	}

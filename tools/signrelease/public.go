@@ -94,6 +94,7 @@ func validPublishedNames(proof release.VerifiedRelease, manifest, signature stri
 		{release.ReleaseManifestName, release.ReleaseSignatureName},
 		{release.XZReleaseManifestName, release.XZReleaseSignatureName},
 		{release.ExtendedReleaseManifestName, release.ExtendedReleaseSignatureName},
+		{release.QtReleaseManifestName, release.QtReleaseSignatureName},
 	} {
 		if manifest == pair[0] && signature == pair[1] {
 			return proof.ValidateLocation(manifest) == nil

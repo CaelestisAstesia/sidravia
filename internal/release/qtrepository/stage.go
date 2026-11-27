@@ -224,3 +224,22 @@ func ReviewUnsigned(archive *zip.Reader) ([]byte, error) {
 	}
 	return repository.raw, nil
 }
+
+// InspectSigned verifies the inner signature and every file before the release
+// preparation tool records the archive digest in the outer manifest.
+func InspectSigned(archive *zip.Reader, key ed25519.PublicKey) (release.QtRepositoryIndex, string, error) {
+	repository, err := readArchive(archive, true)
+	if err != nil {
+		return release.QtRepositoryIndex{}, "", err
+	}
+	if len(key) != ed25519.PublicKeySize || !ed25519.Verify(key, repository.raw, repository.signature) {
+		return release.QtRepositoryIndex{}, "", release.ErrUntrusted
+	}
+	for name, expected := range repository.inventory.Files {
+		if err := copyVerified(repository.members[name], io.Discard, expected); err != nil {
+			return release.QtRepositoryIndex{}, "", err
+		}
+	}
+	digest := sha256.Sum256(repository.raw)
+	return repository.inventory, hex.EncodeToString(digest[:]), nil
+}
