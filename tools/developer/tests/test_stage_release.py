@@ -29,8 +29,8 @@ class StageReleaseTests(unittest.TestCase):
                 for extension in ('rpm', 'deb'):
                     self.system_package(linux, arch, kind, extension)
 
-    def write_package(self, path):
-        self.expected_payloads.add(path.name)
+    def write_package(self, path, *, public_name=None):
+        self.expected_payloads.add(public_name or path.name)
         path.write_bytes(path.name.encode('ascii'))
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -59,18 +59,33 @@ class StageReleaseTests(unittest.TestCase):
         group = self.root / 'inputs' / f'{base}-{extension}' / kind
         group.mkdir(parents=True)
         architecture = {'amd64': 'x86_64', 'arm64': 'aarch64'}[arch] if extension == 'rpm' else arch
-        name = f'{base}-{kind}.{extension}'
+        product = 'sidravia' if kind == 'gui' else 'sidravia-core'
+        package_version = self.version.replace('-alpha.', '~alpha.')
+        if extension == 'rpm':
+            name = f'{product}-{package_version}-1.{architecture}.rpm'
+            public_name = f'{product}-{self.version}-1.{architecture}.rpm'
+        else:
+            name = f'{product}_{package_version}-1_{architecture}.deb'
+            public_name = f'{product}_{self.version}-1_{architecture}.deb'
         receipt = dict(version=self.version, source=dict(commit=self.commit, dirty=False),
                        source_unchanged=True, architecture=architecture, kind=kind, package=name,
-                       sha256=self.write_package(group / name))
+                       sha256=self.write_package(group / name, public_name=public_name))
         (group / (name + '.json')).write_text(json.dumps(receipt))
 
     def test_assembles_exact_bridge_assets_and_valid_request_paths(self):
         self.assertEqual(stage(self.root, self.version, self.commit), 22)
         published = {p.name for p in (self.root / 'assets').iterdir()}
         self.assertEqual(published, self.expected_payloads | {'SHA256SUMS.txt'})
-        listed = {line.split('  ')[1] for line in (self.root / 'assets/SHA256SUMS.txt').read_text().splitlines()}
-        self.assertEqual(listed, self.expected_payloads)
+        listed = (self.root / 'assets/SHA256SUMS.txt').read_text().splitlines()
+        self.assertEqual(len(listed), 22)
+        self.assertEqual({line.split('  ')[1] for line in listed}, self.expected_payloads)
+        for line in listed:
+            digest, name = line.split('  ')
+            self.assertEqual(hashlib.sha256((self.root / 'assets' / name).read_bytes()).hexdigest(), digest)
+        for source in (self.root / 'inputs').glob('*/*/*~*'):
+            if source.suffix in {'.rpm', '.deb'}:
+                alias = self.root / 'assets' / source.name.replace('~', '-')
+                self.assertEqual(alias.read_bytes(), source.read_bytes())
         for manifest, asset_count in (('sidravia-release', 7), ('sidravia-release-extended', 4),
                                       ('sidravia-release-xz', 3)):
             path = self.root / 'requests' / f'{manifest}.request.json'

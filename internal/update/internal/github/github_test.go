@@ -199,12 +199,12 @@ func TestSystemPackageDiscoveryBindsArchitectureFlavorAndLocation(t *testing.T) 
 	item := fixtureRelease("1.0.0-dev.audit.6", 1)
 	names := []string{
 		"sidravia_1.0.0~dev.audit.6-1_amd64.deb",
-		"sidravia_1.0.0~dev.audit.6-10_amd64.deb",
+		"sidravia_1.0.0-dev.audit.6-10_amd64.deb",
 		"sidravia_1.0.0~dev.audit.6-9_arm64.deb",
-		"sidravia-core_1.0.0~dev.audit.6-2_arm64.deb",
+		"sidravia-core_1.0.0-dev.audit.6-2_arm64.deb",
 		"sidravia-core_1.0.0~dev.audit.6-8_amd64.deb",
-		"sidravia-core_1.0.0~dev.audit.6-23_amd64.deb.bak",
-		"sidravia-core_1.0.0~dev.audit.60-30_amd64.deb",
+		"sidravia-core_1.0.0-dev.audit.6-23_amd64.deb.bak",
+		"sidravia-core_1.0.0-dev.audit.60-30_amd64.deb",
 		"sidravia-1.0.0~dev.audit.6-3.aarch64.rpm",
 		"sidravia-1.0.0~dev.audit.6-30.x86_64.rpm",
 	}

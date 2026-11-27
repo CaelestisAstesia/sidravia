@@ -15,14 +15,15 @@ func systemPackageAssets(assets []asset, version string, selection release.Selec
 		packageName = "sidravia-core"
 	}
 	nativeVersion := strings.Replace(version, "-", "~", 1)
-	var prefix, legacyPrefix, suffix string
+	var prefix, publicPrefix, suffix string
 	switch manager {
 	case "deb":
 		prefix = packageName + "_" + nativeVersion + "-"
+		publicPrefix = packageName + "_" + version + "-"
 		suffix = "_" + selection.Arch + ".deb"
 	case "rpm":
 		prefix = packageName + "-" + nativeVersion + "-"
-		legacyPrefix = packageName + "-" + version + "-"
+		publicPrefix = packageName + "-" + version + "-"
 		arch := "x86_64"
 		if selection.Arch == "arm64" {
 			arch = "aarch64"
@@ -34,8 +35,8 @@ func systemPackageAssets(assets []asset, version string, selection release.Selec
 	var highest uint64
 	for _, a := range assets {
 		revision, ok := strings.CutPrefix(a.Name, prefix)
-		if !ok && legacyPrefix != "" {
-			revision, ok = strings.CutPrefix(a.Name, legacyPrefix)
+		if !ok && publicPrefix != "" {
+			revision, ok = strings.CutPrefix(a.Name, publicPrefix)
 		}
 		if !ok {
 			continue

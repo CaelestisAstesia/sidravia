@@ -24,9 +24,9 @@ def stage(directory, version, build_id):
         for name in ('sidravia-release', 'sidravia-release-xz', 'sidravia-release-extended')
     }
 
-    def add_package(source, expected_hash):
+    def add_package(source, expected_hash, *, public_name=None):
         source = plain_path(source)
-        name = source.name
+        name = public_name or source.name
         require(name not in hashes and source.stat().st_size > 0, f'duplicate_or_empty_asset: {name}')
         staged = assets / name
         shutil.copyfile(source, staged)
@@ -66,7 +66,9 @@ def stage(directory, version, build_id):
                 f'system_package_identity_mismatch: {package.name}')
         require(receipt['source_unchanged'] is True and receipt['source']['dirty'] is False,
                 f'system_package_source_changed: {package.name}')
-        add_package(package, receipt['sha256'])
+        # GitHub rewrites tildes in release asset names. Use the public alias
+        # when staging checksums, while validating the original producer name.
+        add_package(package, receipt['sha256'], public_name=package.name.replace('~', '-'))
 
     with tempfile.TemporaryDirectory(prefix='.candidate-', dir=directory) as temporary:
         assets = Path(temporary) / 'assets'
