@@ -21,6 +21,7 @@ import (
 	"sidravia/internal/background/launch"
 	"sidravia/internal/background/maintenance"
 	"sidravia/internal/installation/layout"
+	"sidravia/internal/installation/winmutex"
 	"sidravia/internal/ipc/contract"
 	"sidravia/internal/process/winproc"
 	"sidravia/internal/release"
@@ -30,6 +31,15 @@ import (
 
 func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, identity daemonctl.Identity,
 	candidate release.Candidate, proof release.VerifiedRelease, archive string) (_ *applyResult, err error) {
+	unlock, err := winmutex.AcquireInstallation()
+	if err != nil {
+		return nil, errors.Join(errOperation, err)
+	}
+	err = qtrepository.ClearStaged(cacheRoot)
+	unlock()
+	if err != nil {
+		return nil, err
+	}
 	tool := filepath.Join(installation.ExecutableDirectory, "sidravia-maintenance.exe")
 	info, err := os.Lstat(tool)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<30 {

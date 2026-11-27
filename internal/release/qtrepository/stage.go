@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 	"sidravia/internal/release"
 	packagefiles "sidravia/internal/release/files"
 )
+
+const stagedPrefix = "qt-repository-"
 
 const Inventory = "sidravia-ifw-inventory.json"
 const Signature = "sidravia-ifw-inventory.sig"
@@ -72,7 +75,7 @@ func Stage(ctx context.Context, source, parent, maintenanceSHA256 string, proof 
 		return "", ErrMaintenanceImage
 	}
 
-	directory, err := os.MkdirTemp(parent, "qt-repository-")
+	directory, err := os.MkdirTemp(parent, stagedPrefix)
 	if err != nil {
 		return "", err
 	}
@@ -101,6 +104,33 @@ func Stage(ctx context.Context, source, parent, maintenanceSHA256 string, proof 
 		return "", err
 	}
 	return directory, nil
+}
+
+// ClearStaged removes only repository directories previously staged under
+// the cache slot. Callers must hold the maintenance process exclusion.
+func ClearStaged(parent string) error {
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	names, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return err
+	}
+	for _, entry := range names {
+		suffix, found := strings.CutPrefix(entry.Name(), stagedPrefix)
+		if !found || suffix == "" || strings.ContainsFunc(suffix, func(r rune) bool { return r < '0' || r > '9' }) {
+			continue
+		}
+		if !entry.IsDir() {
+			return release.ErrMetadata
+		}
+		if err := root.RemoveAll(entry.Name()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func readMember(entry *zip.File, maximum int64) ([]byte, error) {

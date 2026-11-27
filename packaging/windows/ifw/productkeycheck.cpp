@@ -24,6 +24,7 @@
 #include <sodium.h>
 #include <windows.h>
 #include <sddl.h>
+#include <restartmanager.h>
 
 #include <memory>
 #include <array>
@@ -147,11 +148,41 @@ bool awaitApplicationExit(const QByteArray &handoff)
             return false;
         handles.previous[handles.count++] = process;
     }
-    // Share startup exclusion with the CLI and desktop until maintenance exits.
-    static InstallationGate gate;
-    return gate.acquire() && SetEvent(handles.ready)
+    return SetEvent(handles.ready)
         && WaitForSingleObject(handles.proceed, 30000) == WAIT_OBJECT_0
         && WaitForMultipleObjects(handles.count, handles.previous.data(), TRUE, 10000) == WAIT_OBJECT_0;
+}
+
+bool applicationFilesAvailable()
+{
+    const QDir directory(QCoreApplication::applicationDirPath());
+    QStringList files;
+    for (const auto &name : {QStringLiteral("Sidravia.exe"), QStringLiteral("sidraviad.exe"),
+                             QStringLiteral("sidraviactl.exe"), QStringLiteral("sidraviaupdater.exe"),
+                             QStringLiteral("sidraviamgr.exe")}) {
+        const auto path = directory.filePath(name);
+        if (QFileInfo::exists(path))
+            files.append(QDir::toNativeSeparators(path));
+    }
+    if (files.isEmpty())
+        return true;
+
+    std::vector<LPCWSTR> names;
+    for (const auto &file : std::as_const(files))
+        names.push_back(reinterpret_cast<LPCWSTR>(file.utf16()));
+    struct RestartManagerSession {
+        DWORD id = 0;
+        wchar_t key[CCH_RM_SESSION_KEY + 1]{};
+        bool active = RmStartSession(&id, 0, key) == ERROR_SUCCESS;
+        ~RestartManagerSession() { if (active) RmEndSession(id); }
+    } session;
+    if (!session.active || RmRegisterResources(session.id, UINT(names.size()), names.data(),
+                                               0, nullptr, 0, nullptr) != ERROR_SUCCESS)
+        return false;
+    UINT needed = 0, count = 0;
+    DWORD reasons = 0;
+    return RmGetList(session.id, &needed, &count, nullptr, &reasons) == ERROR_SUCCESS
+        && needed == 0 && reasons == 0;
 }
 }
 
@@ -159,9 +190,17 @@ void ProductKeyCheck::init(QInstaller::PackageManagerCore *core)
 {
     d->core = core;
     const auto handoff = qgetenv("SIDRAVIA_IFW_HANDOFF");
+    qunsetenv("SIDRAVIA_IFW_HANDOFF");
+    // Keep the same startup exclusion for the application handoff and direct
+    // IFW maintenance. Restart Manager provides an independent files-in-use
+    // check, without asking it to stop a running application.
+    static InstallationGate gate;
+    if (!gate.acquire())
+        throw QInstaller::Error(QObject::tr("Another Sidravia installation is already running."));
     if (!handoff.isEmpty() && !awaitApplicationExit(handoff))
         throw QInstaller::Error(QObject::tr("Sidravia could not finish preparing for the update."));
-    qunsetenv("SIDRAVIA_IFW_HANDOFF");
+    if (!core->isInstaller() && !applicationFilesAvailable())
+        throw QInstaller::Error(QObject::tr("Close Sidravia and try again."));
 }
 
 bool ProductKeyCheck::hasValidKey()
