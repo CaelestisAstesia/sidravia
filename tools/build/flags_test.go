@@ -120,7 +120,7 @@ func TestHelpPrintsAndExits(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout.String(), "--version") || !strings.Contains(stdout.String(), "go1.26.4") {
+	if !strings.Contains(stdout.String(), "--version") || !strings.Contains(stdout.String(), "go1.26.11") {
 		t.Errorf("help text missing content: %q", stdout.String())
 	}
 }

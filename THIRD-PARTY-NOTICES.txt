@@ -1,6 +1,6 @@
 Third-party notices for Sidravia Go executables
 
-Go go1.26.4
+Go go1.26.11
 
 --- LICENSE ---
 

@@ -1,6 +1,6 @@
 // Command build is the single reproducible Sidravia package builder.
 //
-// It uses the fixed Go 1.26.4 toolchain and shared project codecs. Distribution
+// It uses the fixed Go 1.26.11 toolchain and shared project codecs. Distribution
 // mode builds target-bound Windows/Linux core tools and optional native GUI
 // archives/installers. Legacy release/field-validation modes build a Windows
 // amd64 CLI pair. Each mode writes SHA256SUMS.txt. The tool does not run Git,
@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-const requiredGoVersion = "go1.26.4"
+const requiredGoVersion = "go1.26.11"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -193,7 +193,7 @@ Required flags:
   --output     output directory; must not exist, its parent must exist
 
 Optional flags:
-  --go         go executable to use (default: go); must report go1.26.4
+  --go         go executable to use (default: go); must report go1.26.11
   --artifact   release (default) or field-validation
                distribution: Windows archive/optional installer or Linux archive
   --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64

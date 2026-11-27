@@ -65,7 +65,7 @@ const testProfileJSON = `{
 func setupRepoRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "go.mod"), "module sidravia\n\ngo 1.26.4\n")
+	writeTestFile(t, filepath.Join(root, "go.mod"), "module sidravia\n\ngo 1.26.11\n")
 	// README.md exists in the repo but must not be packaged by the builder.
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")

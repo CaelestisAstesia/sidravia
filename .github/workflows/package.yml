@@ -35,12 +35,14 @@ jobs:
       BUILD_TARGET: ${{ matrix.target }}
       FLUTTER_ARCH: ${{ matrix.flutterArch }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          go-version: '1.26.4'
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.11'
           cache-dependency-path: go.sum
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14.4'
       - name: Test artifact producer and consumer contracts
@@ -49,7 +51,7 @@ jobs:
         run: |
           go test -count=1 ./tools/build
           python -m unittest discover -s tools/developer/tests -v
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         if: matrix.flutterArch == 'x64'
         with:
           flutter-version: '3.47.0'
@@ -113,7 +115,7 @@ jobs:
           python tools/developer/windows_arm64_smoke.py --distribution dist --core-distribution dist-core --version $env:BUILD_VERSION --build-id $env:BUILD_ID --evidence windows-native-smoke
       - name: Preserve Windows ARM64 smoke evidence
         if: always() && matrix.flutterArch == 'arm64'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sidravia-windows-arm64-native-evidence
           path: windows-native-smoke/*
@@ -143,7 +145,7 @@ jobs:
           Move-Item -LiteralPath verification.json -Destination windows-candidate/
           Move-Item -LiteralPath core-verification.json -Destination windows-candidate/
           Move-Item -LiteralPath "gui/build/windows/$env:FLUTTER_ARCH/runner/Release" -Destination windows-candidate/gui-input
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.target }}
           path: windows-candidate
@@ -188,10 +190,12 @@ jobs:
               pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libwayland-dev \
               debhelper desktop-file-utils hicolor-icon-theme xdg-utils libglu1-mesa jq zip build-essential
           fi
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          go-version: '1.26.4'
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.11'
           cache-dependency-path: go.sum
       - name: Bootstrap pinned native Flutter SDK
         run: |
@@ -266,13 +270,13 @@ jobs:
               --target "$BUILD_TARGET" --version "$BUILD_VERSION" --build-id "$GITHUB_SHA" \
               --go go "${gui[@]}" > "$portable/$kind-xz-verification.json"
           done
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.platform.target }}-${{ matrix.distribution.package }}
           path: .local/ci-artifacts/system
           include-hidden-files: true
           if-no-files-found: error
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: matrix.distribution.package == 'rpm'
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.platform.target }}
@@ -285,8 +289,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: sidravia-v${{ inputs.version }}-*
           path: candidate/inputs
@@ -294,7 +300,7 @@ jobs:
         env:
           BUILD_VERSION: ${{ inputs.version }}
         run: python3 tools/developer/stage_release.py --directory candidate --version "$BUILD_VERSION" --build-id "$GITHUB_SHA"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-candidate-v${{ inputs.version }}
           path: candidate
