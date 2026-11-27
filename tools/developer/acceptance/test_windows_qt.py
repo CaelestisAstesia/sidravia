@@ -249,7 +249,7 @@ def foreign_startup_task(tmp_path):
 $ErrorActionPreference = 'Stop'
 if ({get_task} -ErrorAction SilentlyContinue) {{ throw 'fixture account already has a startup task' }}
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\cmd.exe" -Argument '/d /c exit'
+$action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32/cmd.exe') -Argument '/d /c exit'
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $sid
 $principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName '{name}' -TaskPath '\\' -Action $action -Trigger $trigger -Principal $principal -Description '{marker}' | Out-Null
