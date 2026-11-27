@@ -24,7 +24,7 @@ func validQtCandidateVersion(version string) bool {
 	return qtCandidateVersion.MatchString(version) && validateProductVersion(version) == nil
 }
 
-func buildQtDistribution(cfg config, stage, base string, template []byte, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
+func buildQtDistribution(cfg config, repoRoot, stage, base string, template []byte, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
 	packages := filepath.Join(stage, "qt-packages")
 	components := map[string]string{}
 	for _, name := range []string{release.QtCoreComponent, release.QtGUIComponent} {
@@ -42,6 +42,7 @@ func buildQtDistribution(cfg config, stage, base string, template []byte, entrie
 		Default            bool
 		ForcedInstallation bool   `xml:",omitempty"`
 		Dependencies       string `xml:",omitempty"`
+		Script             string `xml:",omitempty"`
 	}
 	releaseDate := time.Now().UTC().Format(time.DateOnly)
 	core := component{DisplayName: "Core", Description: "Sidravia command line and background service", Version: cfg.version, ReleaseDate: releaseDate, ForcedInstallation: true}
@@ -49,7 +50,17 @@ func buildQtDistribution(cfg config, stage, base string, template []byte, entrie
 	if err := writeQtXML(filepath.Join(components[release.QtCoreComponent], "meta", "package.xml"), core); err != nil {
 		return nil, err
 	}
-	if err := writeQtXML(filepath.Join(components[release.QtGUIComponent], "meta", "package.xml"), desktop); err != nil {
+	const shortcutName = "gui-shortcut.qs"
+	shortcut, err := os.ReadFile(filepath.Join(repoRoot, "packaging", "windows", "ifw", shortcutName))
+	if err != nil {
+		return nil, err
+	}
+	guiMetadata := filepath.Join(components[release.QtGUIComponent], "meta")
+	if err := os.WriteFile(filepath.Join(guiMetadata, shortcutName), shortcut, 0644); err != nil {
+		return nil, err
+	}
+	desktop.Script = shortcutName
+	if err := writeQtXML(filepath.Join(guiMetadata, "package.xml"), desktop); err != nil {
 		return nil, err
 	}
 	guiPaths := make(map[string]bool, len(gui))
@@ -77,12 +88,13 @@ func buildQtDistribution(cfg config, stage, base string, template []byte, entrie
 		Name, Version, Title         string
 		Publisher, TargetDir         string
 		MaintenanceToolName          string
+		StartMenuDir                 string
 		DisableAuthorizationFallback bool
 		PersistentLocalCache         bool
 		RemoveTargetDir              bool
 	}{
 		Name: "Sidravia", Version: cfg.version, Title: "Sidravia Qt Validation", Publisher: "Sidravia",
-		TargetDir: "@HomeDir@/AppData/Local/Programs/Sidravia Qt Validation", MaintenanceToolName: "sidravia-maintenance",
+		TargetDir: "@HomeDir@/AppData/Local/Programs/Sidravia Qt Validation", MaintenanceToolName: "sidravia-maintenance", StartMenuDir: "Sidravia",
 		DisableAuthorizationFallback: true,
 	}
 	configFile := filepath.Join(stage, "qt-installer.xml")

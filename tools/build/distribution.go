@@ -205,7 +205,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	outputs := []string{archive}
 	if t.cfg.ifw != "" {
-		artifacts, err := buildQtDistribution(t.cfg, stage, base, qtTemplate, entries, gui, stderr)
+		artifacts, err := buildQtDistribution(t.cfg, t.repoRoot, stage, base, qtTemplate, entries, gui, stderr)
 		if err != nil {
 			return err
 		}
