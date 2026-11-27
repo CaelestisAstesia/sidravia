@@ -118,7 +118,23 @@ func qtReleaseAsset(path, version, buildID string, key ed25519.PublicKey) (relea
 	if err != nil || !os.SameFile(before, info) || info.Size() <= 0 || info.Size() > 2<<30 {
 		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
-	archive, err := zip.NewReader(file, info.Size())
+	// Hash exactly the bytes passed to the inner verifier, even when the
+	// caller supplies a repository from a writable staging directory.
+	snapshot, err := os.CreateTemp("", "sidravia-qt-release-*.zip")
+	if err != nil {
+		return release.ReleaseAsset{}, "", err
+	}
+	defer os.Remove(snapshot.Name())
+	defer snapshot.Close()
+	hash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(snapshot, hash), io.LimitReader(file, info.Size()+1))
+	if err != nil {
+		return release.ReleaseAsset{}, "", err
+	}
+	if size != info.Size() {
+		return release.ReleaseAsset{}, "", release.ErrMetadata
+	}
+	archive, err := zip.NewReader(snapshot, size)
 	if err != nil {
 		return release.ReleaseAsset{}, "", err
 	}
@@ -127,11 +143,6 @@ func qtReleaseAsset(path, version, buildID string, key ed25519.PublicKey) (relea
 		return release.ReleaseAsset{}, "", err
 	}
 	if index.Version != version || index.BuildID != buildID {
-		return release.ReleaseAsset{}, "", release.ErrMetadata
-	}
-	hash := sha256.New()
-	size, err := io.Copy(hash, io.LimitReader(file, info.Size()+1))
-	if err != nil || size != info.Size() {
 		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
 	after, err := os.Lstat(path)
