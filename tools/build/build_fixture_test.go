@@ -69,6 +69,7 @@ func setupRepoRoot(t *testing.T) string {
 	// README.md exists in the repo but must not be packaged by the builder.
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
+	writeTestFile(t, filepath.Join(root, "THIRD-PARTY-NOTICES.txt"), "third-party notices\n")
 	writeTestFile(t, filepath.Join(root, "docs", "guide.md"), testGettingStarted)
 	writeTestFile(t, filepath.Join(root, "internal", "connection", "profile", "data", "jlu.json"), testProfileJSON)
 	writeTestFile(t, filepath.Join(root, "scripts", "field-test.ps1"), testFieldTestScript)

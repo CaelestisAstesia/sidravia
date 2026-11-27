@@ -45,6 +45,7 @@ class DistributionFixture:
 
         repo_files = (
             'LICENSE',
+            'THIRD-PARTY-NOTICES.txt',
             'internal/connection/profile/data/jlu.json',
             'gui/windows/runner/resources/app_icon.ico',
         )
@@ -84,6 +85,7 @@ class DistributionFixture:
     def payload(self, target, gui=True):
         contents = {
             'LICENSE': b'LICENSE',
+            'THIRD-PARTY-NOTICES.txt': b'THIRD-PARTY-NOTICES.txt',
             'sidravia.portable': b'',
             'institution-profiles/jlu.json': b'internal/connection/profile/data/jlu.json',
             'BUILD-INFO.txt': (

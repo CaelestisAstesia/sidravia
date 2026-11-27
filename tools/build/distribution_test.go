@@ -7,8 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,6 +22,92 @@ import (
 type closedOutput struct{}
 
 func (closedOutput) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func TestThirdPartyNoticesCoverPinnedGoDependencies(t *testing.T) {
+	root := filepath.Join("..", "..")
+	notices, err := os.ReadFile(filepath.Join(root, "THIRD-PARTY-NOTICES.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sections := strings.Split(string(notices), "\n===============================================================================\n")
+	if !strings.Contains(sections[0], "\nGo "+requiredGoVersion+"\n") {
+		t.Fatalf("third-party notices do not identify the standard library for %s", requiredGoVersion)
+	}
+	byModule := map[string]string{}
+	for _, section := range sections[1:] {
+		for _, line := range strings.Split(section, "\n") {
+			if identity, ok := strings.CutPrefix(line, "Module: "); ok {
+				if _, exists := byModule[identity]; exists {
+					t.Fatalf("duplicate notice for %s", identity)
+				}
+				byModule[identity] = section
+			}
+		}
+	}
+
+	modules := map[string]string{}
+	for osName, platformCommand := range map[string]string{
+		"linux": "./cmd/sidravia-gui-launcher", "windows": "./cmd/sidraviamgr",
+	} {
+		for _, arch := range []string{"amd64", "arm64"} {
+			cmd := exec.Command("go", "list", "-mod=readonly", "-deps", "-f",
+				"{{with .Module}}{{if .Version}}{{.Path}}@{{.Version}}\t{{.Dir}}{{end}}{{end}}",
+				"./cmd/sidraviactl", "./cmd/sidraviad", "./cmd/sidraviaupdater", platformCommand)
+			cmd.Dir = root
+			cmd.Env = append(os.Environ(), "GOOS="+osName, "GOARCH="+arch, "CGO_ENABLED=0")
+			output, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("list dependencies for %s/%s: %v", osName, arch, err)
+			}
+			for _, line := range strings.Split(string(output), "\n") {
+				if identity, dir, ok := strings.Cut(line, "\t"); ok {
+					if !filepath.IsAbs(dir) {
+						t.Fatalf("module %s has no resolved source directory", identity)
+					}
+					modules[identity] = dir
+				}
+			}
+		}
+	}
+	want := slices.Sorted(maps.Keys(modules))
+	got := slices.Sorted(maps.Keys(byModule))
+	if !slices.Equal(want, got) {
+		t.Fatalf("third-party notice modules differ from the release dependencies\nwant: %v\ngot:  %v", want, got)
+	}
+	for identity, dir := range modules {
+		verifyNoticeTexts(t, identity, dir, byModule[identity])
+	}
+	// Check the standard library's license and patent grant.
+	for _, name := range []string{"LICENSE", "PATENTS"} {
+		verifyNoticeText(t, requiredGoVersion, runtime.GOROOT(), name, sections[0])
+	}
+}
+
+func verifyNoticeTexts(t *testing.T, identity, dir, section string) {
+	t.Helper()
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		name := file.Name()
+		if !file.IsDir() && (strings.HasPrefix(name, "LICENSE") || strings.HasPrefix(name, "NOTICE") ||
+			strings.HasPrefix(name, "PATENTS") || strings.HasPrefix(name, "COPYING")) {
+			verifyNoticeText(t, identity, dir, name, section)
+		}
+	}
+}
+
+func verifyNoticeText(t *testing.T, identity, dir, name, section string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(section, "\n--- "+name+" ---\n\n"+string(data)) {
+		t.Errorf("%s notice is missing or differs from source: %s", identity, name)
+	}
+}
 
 func TestDistributionReportsPublishedOutputWhenChecksumSummaryFails(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "dist")
@@ -142,6 +232,9 @@ func TestDistributionContents(t *testing.T) {
 			}
 			if !contents["sidravia.portable"] || !contents["institution-profiles/jlu.json"] || contents["scripts/install.ps1"] {
 				t.Fatal("distribution content boundary")
+			}
+			if string(bytesByName["THIRD-PARTY-NOTICES.txt"]) != "third-party notices\n" {
+				t.Fatal("distribution is missing its source third-party notices")
 			}
 			info := "ProductVersion: " + cfg.version + "\nBuildID: " + cfg.buildID + "\nTarget: " + target + "\nArtifactKind: distribution\n"
 			names := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}

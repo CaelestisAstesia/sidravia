@@ -25,11 +25,15 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	license, err := os.ReadFile(filepath.Join(t.repoRoot, "LICENSE"))
-	if err != nil {
-		return err
+	var entries []archiveEntry
+	for _, name := range []string{"LICENSE", "THIRD-PARTY-NOTICES.txt"} {
+		data, err := os.ReadFile(filepath.Join(t.repoRoot, name))
+		if err != nil {
+			return err
+		}
+		entries = append(entries, archiveEntry{name, data, 0644})
 	}
-	entries := append([]archiveEntry{{"LICENSE", license, 0644}}, profiles...)
+	entries = append(entries, profiles...)
 	buildInfoIndex := len(entries)
 	entries = append(entries, archiveEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
 	if t.cfg.iscc != "" {

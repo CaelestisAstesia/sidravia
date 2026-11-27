@@ -203,7 +203,8 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         # under emulation and installs an entirely ARM64 application payload.
         require(matches_pe((directory / (base + '-setup.exe')).read_bytes(), 'amd64'), 'installer_not_pe_x64')
     contents = read_archive(directory / archive_name, target, base)
-    expected = {'LICENSE': (repo / 'LICENSE').read_bytes(), 'sidravia.portable': b'',
+    expected = {'LICENSE': (repo / 'LICENSE').read_bytes(),
+                'THIRD-PARTY-NOTICES.txt': (repo / 'THIRD-PARTY-NOTICES.txt').read_bytes(), 'sidravia.portable': b'',
                 'BUILD-INFO.txt': (f'ProductVersion: {version}\nBuildID: {build_id}\nTarget: {target}\nArtifactKind: distribution\n').encode()}
     for profile in (repo / 'internal/connection/profile/data').glob('*.json'):
         expected['institution-profiles/' + profile.name] = profile.read_bytes()

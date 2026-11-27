@@ -39,6 +39,22 @@ class DistributionContract(unittest.TestCase):
         with self.assertRaisesRegex(module.VerificationError, 'gui_source_incomplete'):
             self.verify('windows-amd64')
 
+    def test_rejects_missing_or_changed_third_party_notices(self):
+        target = 'linux-amd64'
+        name = 'THIRD-PARTY-NOTICES.txt'
+        for replacement, reason in ((None, 'archive_file_set_mismatch'),
+                                    (b'incomplete notices', 'archive_source_mismatch')):
+            with self.subTest(replacement=replacement):
+                self.fixture.clear_output()
+                payload = self.fixture.payload(target, gui=False)
+                if replacement is None:
+                    del payload[name]
+                else:
+                    payload[name] = replacement
+                self.fixture.package(target, payload, gui=False)
+                with self.assertRaisesRegex(module.VerificationError, reason):
+                    self.verify(target, gui=False)
+
     def test_gui_rejects_missing_declared_font(self):
         (self.fixture.gui / 'data/flutter_assets/FontManifest.json').write_text('[{"fonts":[{"asset":"assets/fonts/missing.otf"}]}]')
         self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64'))
