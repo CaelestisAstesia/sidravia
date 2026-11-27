@@ -108,6 +108,19 @@ def confirmed_outcome(cache, version):
     ).read_text(encoding="utf-8", errors="replace")
 
 
+def has_user_path(directory):
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, "Path")
+    except FileNotFoundError:
+        return False
+    expected = os.path.normcase(os.path.normpath(directory))
+    return any(os.path.normcase(os.path.normpath(os.path.expandvars(entry.strip('"')))) == expected
+               for entry in value.split(";") if entry)
+
+
 @pytest.mark.parametrize("profile", ("core", "gui"))
 def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
     target = tmp_path / "installation"
@@ -135,6 +148,10 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
     env = dict(os.environ, SIDRAVIA_NAMESPACE=namespace_id)
     try:
         assert ctl.is_file() and maint.is_file()
+        manager = target / "sidraviamgr.exe"
+        assert not has_user_path(target)
+        require_success(invoke(tmp_path, "enable-owned-path", manager, ["path", "enable"], env))
+        assert has_user_path(target)
         assert (target / "Sidravia.exe").is_file() == (profile == "gui")
         assert (target / "flutter_windows.dll").is_file() == (profile == "gui")
         with maint.open("rb") as handle:
@@ -165,9 +182,11 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
 
         with running_sidravia(target, profile, namespace, env, tmp_path, "after") as (daemon, _):
             assert (daemon["productVersion"], daemon["buildId"]) == (target_version, target_build)
+            assert has_user_path(target)
             assert (target / "Sidravia.exe").is_file() == (profile == "gui")
         require_success(invoke(tmp_path, "uninstall", maint, [*OPTIONS, "purge"], env))
         assert not ctl.exists()
+        assert not has_user_path(target)
         assert not (target / "Sidravia.exe").exists()
         assert settings.read_bytes() == b'{"fixture":"keep settings during update and uninstall"}'
         assert unowned.read_bytes() == b"this file is outside the Qt component ownership"
