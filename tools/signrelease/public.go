@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 
 	"sidravia/internal/release"
@@ -24,6 +26,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	public := flags.String("public-key", "", "base64 Ed25519 public key file")
 	signature := flags.String("signature", "", "raw detached signature (verify only)")
 	published := flags.Bool("published", false, "verify the published manifest and signature filenames")
+	artifactDir := flags.String("qt-artifacts", "", "verify the signed Qt repositories in this directory")
 	machine := flags.Bool("json", false, "JSON result")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -31,7 +34,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") || (*published && mode != "verify") {
+	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") || ((*published || *artifactDir != "") && mode != "verify") {
 		fmt.Fprintln(stderr, "manifest/public-key and verify signature required")
 		return 2
 	}
@@ -59,7 +62,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	if m.KeyID != id {
 		return fail("manifest publisher key identity mismatch")
 	}
-	status := "not_checked"
+	status, artifactStatus := "not_checked", "not_checked"
 	if mode == "verify" {
 		sig, err := readPublicFile(*signature, ed25519.SignatureSize)
 		if err != nil || len(sig) != ed25519.SignatureSize {
@@ -76,15 +79,33 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		if *published && !validPublishedNames(proof, filepath.Base(*manifest), filepath.Base(*signature)) {
 			return fail("release metadata does not match its published names")
 		}
+		if *artifactDir != "" {
+			if proof.ValidateLocation(release.QtReleaseManifestName) != nil {
+				return fail("Qt artifact verification requires the Qt release manifest")
+			}
+			paths := make([]string, 0, len(m.Assets))
+			for _, asset := range m.Assets {
+				paths = append(paths, filepath.Join(*artifactDir, asset.Name))
+			}
+			actual, err := inspectQtArtifacts(paths, m.Version, m.BuildID, key)
+			if err != nil {
+				return fail(err.Error())
+			}
+			sort.Slice(m.Assets, func(i, j int) bool { return m.Assets[i].Name < m.Assets[j].Name })
+			if !slices.Equal(actual, m.Assets) {
+				return fail("Qt artifacts do not match the signed release manifest")
+			}
+			artifactStatus = "passed"
+		}
 		status = "passed"
 	}
 	if *machine {
-		result := map[string]any{"schemaVersion": 1, "ok": true, "version": m.Version, "buildId": m.BuildID, "keyId": id, "assets": len(m.Assets), "signature": status, "artifactBytes": "not_checked"}
+		result := map[string]any{"schemaVersion": 1, "ok": true, "version": m.Version, "buildId": m.BuildID, "keyId": id, "assets": len(m.Assets), "signature": status, "artifactBytes": artifactStatus}
 		if json.NewEncoder(out).Encode(result) != nil {
 			return fail("unable to write result")
 		}
 	} else {
-		fmt.Fprintf(out, "Release manifest %s; signature %s; no artifact files executed\n", mode, status)
+		fmt.Fprintf(out, "Release manifest %s; signature %s; artifact bytes %s\n", mode, status, artifactStatus)
 	}
 	return 0
 }

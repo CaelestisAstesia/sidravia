@@ -51,33 +51,10 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 	manifest := release.ReleaseManifest{
 		SchemaVersion: 2, KeyID: id, Version: *version, BuildID: *build, MinimumProtocol: 1,
 	}
-	type target struct {
-		profiles map[string]bool
-		image    string
+	manifest.Assets, err = inspectQtArtifacts(flags.Args(), *version, *build, key)
+	if err != nil {
+		return fail(err)
 	}
-	targets := map[string]target{}
-	for _, repository := range flags.Args() {
-		asset, image, err := qtReleaseAsset(repository, *version, *build, key)
-		if err != nil {
-			return fail(fmt.Errorf("review %s: %w", filepath.Base(repository), err))
-		}
-		group, exists := targets[asset.Arch]
-		if !exists {
-			group = target{profiles: map[string]bool{}, image: image}
-			targets[asset.Arch] = group
-		}
-		if group.profiles[asset.PayloadKind] || group.image != image {
-			return fail(errors.New("each target must have distinct profiles using a single maintenance image"))
-		}
-		group.profiles[asset.PayloadKind] = true
-		manifest.Assets = append(manifest.Assets, asset)
-	}
-	for _, group := range targets {
-		if len(group.profiles) != 2 {
-			return fail(errors.New("each target must include both Core and GUI repositories"))
-		}
-	}
-	sort.Slice(manifest.Assets, func(i, j int) bool { return manifest.Assets[i].Name < manifest.Assets[j].Name })
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err == nil {
 		_, err = release.ValidateReleaseManifest(data)
@@ -91,14 +68,54 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 	return 0
 }
 
+// Use the same repository checks before signing and when verifying staged release bytes.
+func inspectQtArtifacts(paths []string, version, buildID string, key ed25519.PublicKey) ([]release.ReleaseAsset, error) {
+	var assets []release.ReleaseAsset
+	type target struct {
+		profiles map[string]bool
+		image    string
+	}
+	targets := map[string]target{}
+	for _, repository := range paths {
+		asset, image, err := qtReleaseAsset(repository, version, buildID, key)
+		if err != nil {
+			return nil, fmt.Errorf("review %s: %w", filepath.Base(repository), err)
+		}
+		group, exists := targets[asset.Arch]
+		if !exists {
+			group = target{profiles: map[string]bool{}, image: image}
+			targets[asset.Arch] = group
+		}
+		if group.profiles[asset.PayloadKind] || group.image != image {
+			return nil, errors.New("each target must have distinct profiles using a single maintenance image")
+		}
+		group.profiles[asset.PayloadKind] = true
+		assets = append(assets, asset)
+	}
+	for _, group := range targets {
+		if len(group.profiles) != 2 {
+			return nil, errors.New("each target must include both Core and GUI repositories")
+		}
+	}
+	sort.Slice(assets, func(i, j int) bool { return assets[i].Name < assets[j].Name })
+	return assets, nil
+}
+
 func qtReleaseAsset(path, version, buildID string, key ed25519.PublicKey) (release.ReleaseAsset, string, error) {
+	before, err := os.Lstat(path)
+	if err != nil {
+		return release.ReleaseAsset{}, "", err
+	}
+	if !before.Mode().IsRegular() {
+		return release.ReleaseAsset{}, "", release.ErrMetadata
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return release.ReleaseAsset{}, "", err
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 2<<30 {
+	if err != nil || !os.SameFile(before, info) || info.Size() <= 0 || info.Size() > 2<<30 {
 		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
 	archive, err := zip.NewReader(file, info.Size())

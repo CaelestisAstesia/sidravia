@@ -40,6 +40,7 @@ func TestQtManifestRejectsMixedBuildsAndMaintenanceImages(t *testing.T) {
 		{"mixed maintenance images", "fixture", "other-maint", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			artifacts := t.TempDir()
 			args := []string{"-version", "1.2.3", "-build-id", "fixture", "-public-key", key}
 			for _, profile := range []string{"core", "gui"} {
 				index := release.QtRepositoryIndex{
@@ -54,7 +55,7 @@ func TestQtManifestRejectsMixedBuildsAndMaintenanceImages(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				path := filepath.Join(t.TempDir(), "sidravia-v1.2.3-windows-amd64-qt-"+profile+"-repository.zip")
+				path := filepath.Join(artifacts, "sidravia-v1.2.3-windows-amd64-qt-"+profile+"-repository.zip")
 				out, err := os.Create(path)
 				if err != nil {
 					t.Fatal(err)
@@ -83,6 +84,35 @@ func TestQtManifestRejectsMixedBuildsAndMaintenanceImages(t *testing.T) {
 			var manifest bytes.Buffer
 			if code := prepareQtManifest(args, &manifest, io.Discard); (code == 0) != tt.accepted || (manifest.Len() != 0) != tt.accepted {
 				t.Fatalf("status %d, %d output bytes, accepted = %t", code, manifest.Len(), tt.accepted)
+			}
+			if !tt.accepted {
+				return
+			}
+			manifestPath := filepath.Join(artifacts, release.QtReleaseManifestName)
+			signaturePath := filepath.Join(artifacts, release.QtReleaseSignatureName)
+			if err := os.WriteFile(manifestPath, manifest.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(signaturePath, ed25519.Sign(priv, manifest.Bytes()), 0600); err != nil {
+				t.Fatal(err)
+			}
+			verify := []string{"verify", "-manifest", manifestPath, "-signature", signaturePath,
+				"-public-key", key, "-published", "-qt-artifacts", artifacts, "-json"}
+			var output, stderr bytes.Buffer
+			if run(verify, forbiddenInput{}, &output, &stderr) != 0 || !bytes.Contains(output.Bytes(), []byte(`"artifactBytes":"passed"`)) {
+				t.Fatalf("published Qt verification failed: %s %s", &output, &stderr)
+			}
+			archive := args[len(args)-1]
+			original, err := os.ReadFile(archive)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A trailing byte leaves the ZIP inventory and its inner signature intact.
+			if err := os.WriteFile(archive, append(original, 0), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if run(verify, forbiddenInput{}, io.Discard, io.Discard) == 0 {
+				t.Fatal("verification accepted different repository bytes")
 			}
 		})
 	}
