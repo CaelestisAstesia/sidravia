@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 
 	"sidravia/internal/document/jsondoc"
@@ -12,6 +14,20 @@ import (
 )
 
 const qtOutcomeFilename = "qt-outcome.json"
+
+const qtLogFilename = "qt-maintenance.log"
+
+func openQtLog(cacheRoot string) (*os.File, error) {
+	cache, err := os.OpenRoot(cacheRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer cache.Close()
+	if err := cache.Remove(qtLogFilename); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return cache.OpenFile(qtLogFilename, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+}
 
 type qtStatusResult struct {
 	candidatecache.State

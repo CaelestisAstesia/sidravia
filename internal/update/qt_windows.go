@@ -101,7 +101,12 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	// waits for the exact updater and launcher to exit before writing files.
 	args := []string{"--set-temp-repository", repositoryURL,
 		"--accept-licenses", "--reject-messages", "--confirm-command", "update"}
-	child, err := winproc.StartApplicationEnvironment(tool, args, env)
+	log, err := openQtLog(cacheRoot)
+	if err != nil {
+		return nil, err
+	}
+	child, err := winproc.StartApplicationWithLog(tool, args, env, log)
+	_ = log.Close()
 	if err != nil {
 		return nil, errors.Join(errOperation, err)
 	}

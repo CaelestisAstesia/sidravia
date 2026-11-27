@@ -254,8 +254,16 @@ func DescendsFrom(pid, owner uint32, created uint64) error {
 }
 
 func StartApplicationEnvironment(path string, args, env []string) (*exec.Cmd, error) {
+	return StartApplicationWithLog(path, args, env, nil)
+}
+
+// StartApplicationWithLog gives the child its own reference to the log file.
+func StartApplicationWithLog(path string, args, env []string, log *os.File) (*exec.Cmd, error) {
 	cmd := exec.Command(path, args...)
 	cmd.Env = env
+	if log != nil {
+		cmd.Stdout, cmd.Stderr = log, log
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
 		return nil, err
