@@ -5,6 +5,7 @@
 
 #include "productkeycheck.h"
 #include "packagemanagercore.h"
+#include "errors.h"
 
 #include <QtUiTools/QUiLoader>
 
@@ -20,9 +21,11 @@
 #include "publisherkey.h"
 
 #include <sodium.h>
+#include <sddl.h>
 #include <windows.h>
 
 #include <memory>
+#include <array>
 #include <utility>
 #include <vector>
 
@@ -60,9 +63,104 @@ QUiLoader *ProductKeyCheck::uiLoader()
     return d->m_uiLoader;
 }
 
+namespace {
+struct InstallationGate
+{
+    HANDLE mutex = nullptr;
+
+    ~InstallationGate()
+    {
+        if (mutex) {
+            ReleaseMutex(mutex);
+            CloseHandle(mutex);
+        }
+    }
+
+    bool acquire()
+    {
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+            return false;
+        DWORD length = 0;
+        GetTokenInformation(token, TokenUser, nullptr, 0, &length);
+        std::vector<BYTE> user(length);
+        const bool found = length && GetTokenInformation(token, TokenUser, user.data(), length, &length);
+        CloseHandle(token);
+        LPWSTR sid = nullptr;
+        if (!found || !ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER *>(user.data())->User.Sid, &sid))
+            return false;
+        const QString name = QStringLiteral("Global\\SidraviaInstall-") + QString::fromWCharArray(sid);
+        LocalFree(sid);
+        HANDLE candidate = CreateMutexW(nullptr, FALSE, reinterpret_cast<LPCWSTR>(name.utf16()));
+        if (!candidate)
+            return false;
+        const DWORD acquired = WaitForSingleObject(candidate, 0);
+        if (acquired != WAIT_OBJECT_0 && acquired != WAIT_ABANDONED) {
+            CloseHandle(candidate);
+            return false;
+        }
+        mutex = candidate;
+        return true;
+    }
+};
+
+struct HandoffHandles
+{
+    HANDLE ready = nullptr, proceed = nullptr;
+    std::array<HANDLE, 2> previous{};
+    int count = 0;
+
+    ~HandoffHandles()
+    {
+        if (ready) CloseHandle(ready);
+        if (proceed) CloseHandle(proceed);
+        for (int i = 0; i < count; ++i)
+            CloseHandle(previous[i]);
+    }
+};
+
+bool awaitApplicationExit(const QByteArray &handoff)
+{
+    const auto parts = handoff.split(';');
+    if (parts.size() < 2 || parts.size() > 3 || parts[0].size() != 32)
+        return false;
+    for (const char c : parts[0]) {
+        if (!(c >= 'a' && c <= 'f') && !(c >= '0' && c <= '9'))
+            return false;
+    }
+    const QString event = QStringLiteral("Local\\Sidravia-IFW-") + QString::fromLatin1(parts[0]);
+    const QString ready = event + QStringLiteral("-ready");
+    const QString proceed = event + QStringLiteral("-proceed");
+    HandoffHandles handles;
+    handles.ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, reinterpret_cast<LPCWSTR>(ready.utf16()));
+    handles.proceed = OpenEventW(SYNCHRONIZE, FALSE, reinterpret_cast<LPCWSTR>(proceed.utf16()));
+    if (!handles.ready || !handles.proceed)
+        return false;
+    for (qsizetype i = 1; i < parts.size(); ++i) {
+        bool ok = false;
+        const DWORD pid = parts[i].toUInt(&ok);
+        if (!ok || pid == 0 || pid == GetCurrentProcessId())
+            return false;
+        HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+        if (!process)
+            return false;
+        handles.previous[handles.count++] = process;
+    }
+    // Share startup exclusion with the CLI and desktop until maintenance exits.
+    static InstallationGate gate;
+    return gate.acquire() && SetEvent(handles.ready)
+        && WaitForSingleObject(handles.proceed, 30000) == WAIT_OBJECT_0
+        && WaitForMultipleObjects(handles.count, handles.previous.data(), TRUE, 10000) == WAIT_OBJECT_0;
+}
+}
+
 void ProductKeyCheck::init(QInstaller::PackageManagerCore *core)
 {
     d->core = core;
+    const auto handoff = qgetenv("SIDRAVIA_IFW_HANDOFF");
+    if (!handoff.isEmpty() && !awaitApplicationExit(handoff))
+        throw QInstaller::Error(QObject::tr("Sidravia could not finish preparing for the update."));
+    qunsetenv("SIDRAVIA_IFW_HANDOFF");
 }
 
 bool ProductKeyCheck::hasValidKey()

@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 
+	"sidravia/internal/background/daemonctl"
 	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/release"
+	"sidravia/internal/update/internal/request"
 
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
@@ -36,11 +38,17 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	if !valid {
 		return nil, github.ErrIntegrity
 	}
-	old, oldAsset, index, err := installedProof(ctx, source, layout, version, build)
+	next, err := source.AuthenticateCandidate(ctx, c)
 	if err != nil {
 		return nil, err
 	}
-	next, err := source.AuthenticateCandidate(ctx, c)
+	if asset, err := next.Asset(c); err == nil && release.QtRepositoryProfile(asset.Kind) != "" {
+		if !request.ValidApplyTarget(layout, asset.Kind) {
+			return nil, release.ErrUnsupported
+		}
+		return applyQt(ctx, root, layout, daemonctl.Identity{ProductVersion: version, BuildID: build}, c, next, path)
+	}
+	old, oldAsset, index, err := installedProof(ctx, source, layout, version, build)
 	if err != nil {
 		return nil, err
 	}

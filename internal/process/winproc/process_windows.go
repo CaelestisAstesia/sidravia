@@ -139,6 +139,7 @@ func GenerationRunning(pid uint32, created uint64) (bool, error) {
 // the child. This does not bypass job limits or provide installer handoff.
 func StartApplication(path string, args ...string) (*exec.Cmd, error) {
 	cmd := exec.Command(path, args...)
+	cmd.Env = environment
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -173,6 +174,10 @@ func ParentPID(pid uint32) (uint32, error) {
 // StartIndependent requires the caller to have verified the installer artifact.
 // If a job does not allow breakaway, it fails before any application is stopped.
 func StartIndependent(path string, args ...string) (*exec.Cmd, error) {
+	return StartIndependentWithEnvironment(path, nil, args...)
+}
+
+func StartIndependentWithEnvironment(path string, environment []string, args ...string) (*exec.Cmd, error) {
 	var inJob int32
 	proc := windows.NewLazySystemDLL("kernel32.dll").NewProc("IsProcessInJob")
 	ok, _, err := proc.Call(uintptr(windows.CurrentProcess()), 0, uintptr(unsafe.Pointer(&inJob)))
@@ -184,6 +189,7 @@ func StartIndependent(path string, args ...string) (*exec.Cmd, error) {
 		flags = windows.CREATE_BREAKAWAY_FROM_JOB
 	}
 	cmd := exec.Command(path, args...)
+	cmd.Env = environment
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: flags, HideWindow: true}
 	if err = cmd.Start(); err != nil {
 		return nil, err

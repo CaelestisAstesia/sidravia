@@ -99,6 +99,10 @@ func ApplyPlatformSupported() bool {
 	return release.DesktopArchitecture(runtime.GOARCH) && runtime.GOOS == "windows"
 }
 
+// QtMaintenanceDigest binds the maintenance image to the package toolchain.
+var QtMaintenanceDigest string
+
 func ValidApplyTarget(layout productlayout.Layout, kind string) bool {
-	return runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled && kind == "setup"
+	return runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled &&
+		(kind == "setup" || (release.QtRepositoryProfile(kind) != "" && len(QtMaintenanceDigest) == 64))
 }
