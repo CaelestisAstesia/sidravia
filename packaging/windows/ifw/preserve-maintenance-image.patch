@@ -1,15 +1,15 @@
 diff --git a/src/libs/ifwtools/binarycreator.cpp b/src/libs/ifwtools/binarycreator.cpp
 --- a/src/libs/ifwtools/binarycreator.cpp
 +++ b/src/libs/ifwtools/binarycreator.cpp
-@@ -325,19 +325,14 @@
-             input.outputPath, instExe.errorString()));
+@@ -325,19 +325,15 @@
+             tempFile, instExe.errorString()));
      }
  
 +#ifndef Q_OS_WIN
      QtPatch::patchBinaryFile(tempFile, QByteArray("MY_InstallerCreateDateTime_MY"),
          QDateTime::currentDateTime().toString(QLatin1String("yyyy-MM-dd - HH:mm:ss")).toLatin1());
--
 +#endif
+ 
  
      input.installerExePath = tempFile;
  
