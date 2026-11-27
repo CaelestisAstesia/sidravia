@@ -44,6 +44,7 @@ jobs:
         with:
           python-version: '3.14.4'
       - name: Test artifact producer and consumer contracts
+        if: matrix.flutterArch == 'x64'
         shell: bash
         run: |
           go test -count=1 ./tools/build
@@ -100,6 +101,7 @@ jobs:
           python tools/developer/verify_distribution.py --directory dist-core --target $env:BUILD_TARGET --version $env:BUILD_VERSION --build-id $env:BUILD_ID --go go --smoke > core-verification.json
           if ($LASTEXITCODE -ne 0) { throw 'windows_core_verification_failed' }
       - name: Run isolated Setup script contracts
+        if: matrix.flutterArch == 'x64'
         shell: pwsh
         env:
           SIDRAVIA_INNO_TEST_ROOT: ${{ runner.temp }}
@@ -138,12 +140,14 @@ jobs:
           New-Item -ItemType Directory -Path windows-candidate | Out-Null
           Move-Item -LiteralPath dist -Destination windows-candidate/gui
           Move-Item -LiteralPath dist-core -Destination windows-candidate/core
-          Move-Item -LiteralPath verification.json -Destination windows-candidate/gui/
-          Move-Item -LiteralPath core-verification.json -Destination windows-candidate/core/
+          Move-Item -LiteralPath verification.json -Destination windows-candidate/
+          Move-Item -LiteralPath core-verification.json -Destination windows-candidate/
+          Move-Item -LiteralPath "gui/build/windows/$env:FLUTTER_ARCH/runner/Release" -Destination windows-candidate/gui-input
       - uses: actions/upload-artifact@v7
         with:
           name: sidravia-v${{ inputs.version }}-${{ matrix.target }}
           path: windows-candidate
+          include-hidden-files: true
           if-no-files-found: error
 
   linux:
@@ -196,25 +200,35 @@ jobs:
           test "$(git -C "$sdk" rev-parse HEAD)" = "$FLUTTER_FRAMEWORK_SHA"
           "$sdk/bin/flutter" --version
           echo "$sdk/bin" >> "$GITHUB_PATH"
+      - name: Provide pinned XZ encoder
+        if: matrix.distribution.package == 'rpm'
+        run: |
+          if [[ "$(xz --version | head -n 1)" == 'xz (XZ Utils) 5.8.3' ]]; then
+            exit 0
+          fi
+          encoder="$RUNNER_TEMP/xz-encoder"
+          mkdir -p "$encoder"
+          curl --fail --silent --show-error --location \
+            https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.xz \
+            --output "$encoder/xz-5.8.3.tar.xz"
+          (cd "$encoder"; sha256sum --check <<< 'fff1ffcf2b0da84d308a14de513a1aa23d4e9aa3464d17e64b9714bfdd0bbfb6  xz-5.8.3.tar.xz')
+          tar -xJf "$encoder/xz-5.8.3.tar.xz" -C "$encoder"
+          cmake -G Ninja -S "$encoder/xz-5.8.3" -B "$encoder/build" -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake --build "$encoder/build" --target xz
+          test "$("$encoder/build/xz" --version | head -n 1)" = 'xz (XZ Utils) 5.8.3'
+          echo "$encoder/build" >> "$GITHUB_PATH"
       - name: Build and verify native Linux packages
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           out="$GITHUB_WORKSPACE/.local/ci-artifacts"
-          mkdir -p "$out/work" "$out/system/gui" "$out/system/core" "$out/portable/gui" "$out/portable/core"
+          mkdir -p "$out/work" "$out/system/gui" "$out/system/core"
           work="$out/work"
           python3 tools/developer/dev.py linux --package --version "$BUILD_VERSION" \
             --flutter "$(command -v flutter)" --output "$work/gui"
           python3 tools/developer/dev.py package --target "$BUILD_TARGET" --version "$BUILD_VERSION" \
             --output "$work/core" --reports "$work/checks"
           tarname="sidravia-v$BUILD_VERSION-$BUILD_TARGET"
-          for kind in gui core; do
-            archive="$work/$kind/$tarname-$kind-portable.tar.gz"
-            test -s "$archive"
-            test -s "$work/$kind/SHA256SUMS.txt"
-            cp "$archive" "$work/$kind/SHA256SUMS.txt" "$out/portable/$kind/"
-          done
-          test -s "$work/gui.producer/receipt.json"
-          cp "$work/gui.producer/receipt.json" "$out/portable/gui/verification.json"
           python3 tools/developer/dev.py linux "--$PACKAGE_TYPE" "$work/gui/$tarname-gui-portable.tar.gz" \
             --output "$work/system-gui"
           python3 tools/developer/dev.py linux "--$PACKAGE_TYPE-core" "$work/core/$tarname-core-portable.tar.gz" \
@@ -228,7 +242,29 @@ jobs:
             test -s "$work/system-$kind/SHA256SUMS"
             cp "$package" "$package.json" "$work/system-$kind/SHA256SUMS" "$out/system/$kind/"
             test -s "$out/system/$kind/${package##*/}"
-            test -s "$out/portable/$kind/$tarname-$kind-portable.tar.gz"
+          done
+      - name: Build XZ variants from the verified Linux payloads
+        if: matrix.distribution.package == 'rpm'
+        run: |
+          out="$GITHUB_WORKSPACE/.local/ci-artifacts"
+          work="$out/work"
+          portable="$out/portable"
+          mkdir "$portable"
+          cp "$work/gui.producer/receipt.json" "$portable/verification.json"
+          cp "$work"/checks/*/stage-1.log "$portable/core-verification.json"
+          mv "$work/gui.producer/gui" "$portable/gui-input"
+          for kind in gui core; do
+            gui=()
+            if [[ "$kind" == gui ]]; then
+              gui=(--gui-directory "$portable/gui-input")
+            fi
+            mv "$work/$kind" "$portable/$kind"
+            go run -mod=readonly ./tools/build --artifact distribution --compression xz \
+              --target "$BUILD_TARGET" --version "$BUILD_VERSION" --build-id "$GITHUB_SHA" \
+              --output "$portable/$kind-xz" --go go "${gui[@]}"
+            python3 tools/developer/verify_distribution.py --directory "$portable/$kind-xz" \
+              --target "$BUILD_TARGET" --version "$BUILD_VERSION" --build-id "$GITHUB_SHA" \
+              --go go "${gui[@]}" > "$portable/$kind-xz-verification.json"
           done
       - uses: actions/upload-artifact@v7
         with:
@@ -242,4 +278,26 @@ jobs:
           name: sidravia-v${{ inputs.version }}-${{ matrix.platform.target }}
           path: .local/ci-artifacts/portable
           include-hidden-files: true
+          if-no-files-found: error
+
+  release-candidate:
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sidravia-v${{ inputs.version }}-*
+          path: candidate/inputs
+      - name: Assemble verified public assets and manifest requests
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: python3 tools/developer/stage_release.py --directory candidate --version "$BUILD_VERSION" --build-id "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-v${{ inputs.version }}
+          path: candidate
+          include-hidden-files: true
+          compression-level: 0
           if-no-files-found: error
