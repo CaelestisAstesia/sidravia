@@ -68,6 +68,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		return fail("manifest publisher key identity mismatch")
 	}
 	status, artifactStatus := "not_checked", "not_checked"
+	bindInstallers := false
 	if mode == "verify" {
 		sig, err := readPublicFile(*signature, ed25519.SignatureSize)
 		if err != nil || len(sig) != ed25519.SignatureSize {
@@ -90,9 +91,16 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 			}
 			paths := make([]string, 0, len(m.Assets))
 			for _, asset := range m.Assets {
+				if asset.Kind == release.QtOfflineInstaller {
+					bindInstallers = true
+					continue
+				}
 				paths = append(paths, filepath.Join(*artifactDir, asset.Name))
 			}
-			actual, err := inspectQtArtifacts(paths, m.Version, m.BuildID, key, *artifactDir, *maintenanceDir)
+			if bindInstallers && *maintenanceDir == "" {
+				return fail("signed Qt offline installers require -qt-maintenance")
+			}
+			actual, err := inspectQtArtifacts(paths, m.Version, m.BuildID, key, *artifactDir, *maintenanceDir, bindInstallers)
 			if err != nil {
 				return fail(err.Error())
 			}
@@ -109,6 +117,9 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		if *maintenanceDir != "" {
 			result["installerMaintenancePrefix"] = "passed"
 		}
+		if bindInstallers {
+			result["installerBytes"] = "passed"
+		}
 		if json.NewEncoder(out).Encode(result) != nil {
 			return fail("unable to write result")
 		}
@@ -116,6 +127,9 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		fmt.Fprintf(out, "Release manifest %s; signature %s; artifact bytes %s", mode, status, artifactStatus)
 		if *maintenanceDir != "" {
 			fmt.Fprint(out, "; installer maintenance prefix passed")
+		}
+		if bindInstallers {
+			fmt.Fprint(out, "; installer bytes passed")
 		}
 		fmt.Fprintln(out)
 	} else {

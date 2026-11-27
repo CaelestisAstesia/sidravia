@@ -141,3 +141,13 @@ against the signed repository index and checks that the offline installer starts
 with those same bytes. Its `installerMaintenancePrefix` result covers the part
 Qt installs as the maintenance program. Use native lifecycle acceptance to
 check the product payload and update behavior.
+
+To bind the complete offline installers in the same detached release signature,
+prepare the Qt manifest with both `qt-manifest --qt-installers /path/to/installers`
+and `--qt-maintenance /path/to/toolchains`. The tool adds one signed
+`qt-setup` asset per repository architecture. The asset binds the full installer
+size and SHA-256 and records the matched maintenance image digest. Sign that
+manifest using the regular detached-signature command above. For final staged
+verification, place the installers alongside the signed repositories and pass
+both `--qt-artifacts` and `--qt-maintenance`. Successful full installer
+verification also reports `installerBytes: passed`.

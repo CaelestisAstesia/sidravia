@@ -26,8 +26,10 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	version := flags.String("version", "", "product version")
 	build := flags.String("build-id", "", "product build identity")
+	installers := flags.String("qt-installers", "", "directory of release offline Qt installers")
+	maintenance := flags.String("qt-maintenance", "", "directory of Qt reference maintenance images")
 	public := flags.String("public-key", "", "base64 Ed25519 public key file")
-	if err := flags.Parse(args); err != nil || *version == "" || *build == "" || *public == "" || flags.NArg() == 0 {
+	if err := flags.Parse(args); err != nil || (*installers != "") != (*maintenance != "") || *version == "" || *build == "" || *public == "" || flags.NArg() == 0 {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
@@ -52,7 +54,7 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 	manifest := release.ReleaseManifest{
 		SchemaVersion: 2, KeyID: id, Version: *version, BuildID: *build, MinimumProtocol: 1,
 	}
-	manifest.Assets, err = inspectQtArtifacts(flags.Args(), *version, *build, key, "", "")
+	manifest.Assets, err = inspectQtArtifacts(flags.Args(), *version, *build, key, *installers, *maintenance, *installers != "")
 	if err != nil {
 		return fail(err)
 	}
@@ -70,7 +72,7 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 }
 
 // Use the same repository checks before signing and when verifying staged release bytes.
-func inspectQtArtifacts(paths []string, version, buildID string, key ed25519.PublicKey, installerDir, maintenanceDir string) ([]release.ReleaseAsset, error) {
+func inspectQtArtifacts(paths []string, version, buildID string, key ed25519.PublicKey, installerDir, maintenanceDir string, bindInstallers bool) ([]release.ReleaseAsset, error) {
 	var assets []release.ReleaseAsset
 	type target struct {
 		profiles map[string]bool
@@ -98,8 +100,12 @@ func inspectQtArtifacts(paths []string, version, buildID string, key ed25519.Pub
 			return nil, errors.New("each target must include both Core and GUI repositories")
 		}
 		if maintenanceDir != "" {
-			if err := verifyQtInstallerPair(installerDir, maintenanceDir, arch, version, group.image); err != nil {
+			installer, err := qtInstallerAsset(installerDir, maintenanceDir, arch, version, group.image, bindInstallers)
+			if err != nil {
 				return nil, fmt.Errorf("verify Windows %s installer: %w", arch, err)
+			}
+			if bindInstallers {
+				assets = append(assets, installer)
 			}
 		}
 	}
@@ -107,29 +113,43 @@ func inspectQtArtifacts(paths []string, version, buildID string, key ed25519.Pub
 	return assets, nil
 }
 
-func verifyQtInstallerPair(installerDir, maintenanceDir, arch, version, digest string) error {
+func qtInstallerAsset(installerDir, maintenanceDir, arch, version, digest string, full bool) (release.ReleaseAsset, error) {
 	target := "windows-" + arch
 	// The signed repository identifies the image bytes. The reference image
 	// from the architecture-specific toolchain determines the prefix length.
 	image := filepath.Join(maintenanceDir, target, "installerbase.exe")
 	file, err := os.Open(image)
 	if err != nil {
-		return err
+		return release.ReleaseAsset{}, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<30 {
-		return release.ErrMetadata
+		return release.ReleaseAsset{}, release.ErrMetadata
 	}
 	hash := sha256.New()
 	if _, err := io.CopyN(hash, file, info.Size()); err != nil {
-		return err
+		return release.ReleaseAsset{}, err
 	}
 	if hex.EncodeToString(hash.Sum(nil)) != digest {
-		return qtinstaller.ErrImageMismatch
+		return release.ReleaseAsset{}, qtinstaller.ErrImageMismatch
 	}
 	setup := filepath.Join(installerDir, "sidravia-v"+version+"-"+target+"-qt-setup.exe")
-	return qtinstaller.VerifyPrefix(setup, info.Size(), digest)
+	if !full {
+		return release.ReleaseAsset{}, qtinstaller.VerifyPrefix(setup, info.Size(), digest)
+	}
+	size, checksum, err := qtinstaller.Inspect(setup, info.Size(), digest)
+	if err != nil {
+		return release.ReleaseAsset{}, err
+	}
+	return release.ReleaseAsset{
+		ManifestAsset: release.ManifestAsset{
+			OS: "windows", Arch: arch, Kind: release.QtOfflineInstaller,
+			Name: filepath.Base(setup), Size: size, SHA256: checksum,
+		},
+		// For an offline Qt installer this binds the maintenance image.
+		FilesSHA256: digest, PayloadKind: "gui",
+	}, nil
 }
 
 func qtReleaseAsset(path, version, buildID string, key ed25519.PublicKey) (release.ReleaseAsset, string, error) {

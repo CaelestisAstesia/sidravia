@@ -45,8 +45,9 @@ type CheckResult struct {
 }
 
 const (
-	QtCoreRepository = "qt-core-repository"
-	QtGUIRepository  = "qt-gui-repository"
+	QtOfflineInstaller = "qt-setup"
+	QtCoreRepository   = "qt-core-repository"
+	QtGUIRepository    = "qt-gui-repository"
 )
 
 func QtRepositoryProfile(kind string) string {
@@ -75,9 +76,9 @@ func PackageSuffix(s Selection) (string, error) {
 		if s.OS == "windows" {
 			return s.Kind + ".zip", nil
 		}
-	case "setup":
+	case "setup", QtOfflineInstaller:
 		if s.OS == "windows" {
-			return "setup.exe", nil
+			return s.Kind + ".exe", nil
 		}
 	case "gui-portable":
 		if s.OS == "windows" {

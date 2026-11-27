@@ -127,6 +127,36 @@ func TestQtManifestRejectsMixedBuildsAndMaintenanceImages(t *testing.T) {
 			if run(pairing, forbiddenInput{}, io.Discard, io.Discard) == 0 {
 				t.Fatal("verification accepted an installer with a different maintenance prefix")
 			}
+			if err := os.WriteFile(setup, []byte("maint"+"payload"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			withSetup := append([]string{"-qt-installers", artifacts, "-qt-maintenance", images}, args...)
+			manifest.Reset()
+			if prepareQtManifest(withSetup, &manifest, &stderr) != 0 {
+				t.Fatalf("could not prepare signed setup manifest: %s", &stderr)
+			}
+			if err := os.WriteFile(manifestPath, manifest.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(signaturePath, ed25519.Sign(priv, manifest.Bytes()), 0600); err != nil {
+				t.Fatal(err)
+			}
+			output.Reset()
+			if run(pairing, forbiddenInput{}, &output, &stderr) != 0 || !bytes.Contains(output.Bytes(), []byte(`"installerBytes":"passed"`)) {
+				t.Fatalf("full installer verification failed: %s %s", &output, &stderr)
+			}
+			if run(verify, forbiddenInput{}, io.Discard, io.Discard) == 0 {
+				t.Fatal("verification skipped the signed installer without a reference image")
+			}
+			if err := os.WriteFile(setup, []byte("maint"+"PAYLOAD"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if run(pairing, forbiddenInput{}, io.Discard, io.Discard) == 0 {
+				t.Fatal("verification accepted a changed payload behind an intact prefix")
+			}
+			if err := os.WriteFile(setup, []byte("maint"+"payload"), 0600); err != nil {
+				t.Fatal(err)
+			}
 			archive := args[len(args)-1]
 			original, err := os.ReadFile(archive)
 			if err != nil {
@@ -136,7 +166,7 @@ func TestQtManifestRejectsMixedBuildsAndMaintenanceImages(t *testing.T) {
 			if err := os.WriteFile(archive, append(original, 0), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if run(verify, forbiddenInput{}, io.Discard, io.Discard) == 0 {
+			if run(pairing, forbiddenInput{}, io.Discard, io.Discard) == 0 {
 				t.Fatal("verification accepted different repository bytes")
 			}
 		})

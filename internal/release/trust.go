@@ -176,7 +176,7 @@ func ValidateReleaseManifest(data []byte) (ReleaseManifest, error) {
 		selection := Selection{OS: a.OS, Arch: a.Arch, Kind: a.Kind, Channel: "preview"}
 		c := Candidate{Version: m.Version, Name: a.Name, Size: a.Size, SHA256: a.SHA256, DownloadURL: "https://github.com/" + Repository + "/releases/download/v" + m.Version + "/" + a.Name}
 		qtProfile := QtRepositoryProfile(a.Kind)
-		if (qtProfile != "" && qtProfile != a.PayloadKind) || (a.PayloadKind != "core" && a.PayloadKind != "gui") || (a.Kind == "core-portable" && a.PayloadKind != "core") || (a.Kind == "gui-portable" && a.PayloadKind != "gui") || !AssetNameValid(m.Version, selection, a.Name) || ValidateCandidate(c) != nil || !packagefiles.ValidSHA256(a.FilesSHA256) || seen[a.Name] {
+		if (qtProfile != "" && qtProfile != a.PayloadKind) || (a.PayloadKind != "core" && a.PayloadKind != "gui") || (a.Kind == "core-portable" && a.PayloadKind != "core") || ((a.Kind == "gui-portable" || a.Kind == QtOfflineInstaller) && a.PayloadKind != "gui") || !AssetNameValid(m.Version, selection, a.Name) || ValidateCandidate(c) != nil || !packagefiles.ValidSHA256(a.FilesSHA256) || seen[a.Name] {
 			return ReleaseManifest{}, ErrMetadata
 		}
 		target := a.OS + "/" + a.Arch + "/" + a.Kind
@@ -192,7 +192,7 @@ func ValidateReleaseManifest(data []byte) (ReleaseManifest, error) {
 // ManifestNames keeps newly supported targets out of the manifests parsed
 // by older clients. ARM64 core retains its previous metadata locations.
 func ManifestNames(arch, kind string, xz bool) (manifest, signature string) {
-	if QtRepositoryProfile(kind) != "" {
+	if kind == QtOfflineInstaller || QtRepositoryProfile(kind) != "" {
 		return QtReleaseManifestName, QtReleaseSignatureName
 	}
 	if arch == "arm64" && (kind == "gui-portable" || kind == "setup") {
