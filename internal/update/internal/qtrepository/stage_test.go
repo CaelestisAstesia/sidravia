@@ -17,13 +17,15 @@ import (
 
 func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 	for _, scenario := range []struct {
-		name      string
-		badMember bool
-		badZIP    bool
+		name        string
+		badMember   bool
+		badZIP      bool
+		wrongTarget bool
 	}{
-		{"exact repository", false, false},
-		{"payload differs from index", true, false},
-		{"archive differs from published bytes", false, true},
+		{"exact repository", false, false, false},
+		{"payload differs from index", true, false, false},
+		{"archive differs from published bytes", false, true, false},
+		{"signed index for wrong architecture", false, false, true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			base := t.TempDir()
@@ -37,7 +39,11 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 				t.Fatal(err)
 			}
 			exact := []byte("<Updates/>")
-			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: "windows-amd64", Profile: "core", Version: "1.0.0", Files: map[string]string{"Updates.xml": digest(exact)}})
+			target := "windows-amd64"
+			if scenario.wrongTarget {
+				target = "windows-arm64"
+			}
+			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: "core", Version: "1.0.0", Files: map[string]string{"Updates.xml": digest(exact)}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -100,8 +106,12 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 				}
 			}
 			destination, err := Stage(context.Background(), archivePath, base, proof, candidate)
-			if scenario.badZIP || scenario.badMember {
-				if !errors.Is(err, release.ErrUntrusted) || destination != "" {
+			if scenario.badZIP || scenario.badMember || scenario.wrongTarget {
+				want := release.ErrUntrusted
+				if scenario.wrongTarget {
+					want = release.ErrMetadata
+				}
+				if !errors.Is(err, want) || destination != "" {
 					t.Fatalf("expected changed bytes to be rejected, got %v", err)
 				}
 				if entries, listErr := os.ReadDir(base); listErr != nil || len(entries) != 1 {
