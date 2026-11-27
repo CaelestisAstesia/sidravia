@@ -204,11 +204,18 @@ void ProductKeyCheck::init(QInstaller::PackageManagerCore *core)
         throw QInstaller::Error(QObject::tr("Close Sidravia and try again."));
 }
 
+namespace QInstaller {
 // Full uninstallation only. An update keeps the user's PATH and startup
 // settings. The installed manager owns their validation and removal rules.
 void sidraviaRemoveUserIntegration(const QString &directory)
 {
-    const QString manager = QDir(directory).filePath(QStringLiteral("sidraviamgr.exe"));
+    const QDir installed(QCoreApplication::applicationDirPath());
+    if (QDir(directory).canonicalPath().compare(installed.canonicalPath(), Qt::CaseInsensitive) != 0)
+        throw Error(QObject::tr("Sidravia could not confirm the uninstall directory."));
+    const QString manager = installed.filePath(QStringLiteral("sidraviamgr.exe"));
+    const QFileInfo info(manager);
+    if (!info.isFile() || info.isSymLink())
+        throw Error(QObject::tr("Sidravia could not find its user integration manager. Repair the installation and try again."));
     for (const auto &feature : {QStringLiteral("autostart"), QStringLiteral("path")}) {
         QProcess process;
         process.setWorkingDirectory(directory);
@@ -223,6 +230,7 @@ void sidraviaRemoveUserIntegration(const QString &directory)
         }
     }
 }
+} // namespace QInstaller
 
 bool ProductKeyCheck::hasValidKey()
 {
