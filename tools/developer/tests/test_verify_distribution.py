@@ -39,6 +39,31 @@ class DistributionContract(unittest.TestCase):
         with self.assertRaisesRegex(module.VerificationError, 'gui_source_incomplete'):
             self.verify('windows-amd64')
 
+    def test_windows_gui_requires_the_webview2_sdk_notice(self):
+        (self.fixture.gui / 'licenses/Microsoft.Web.WebView2/NOTICE.txt').unlink()
+        self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64'))
+        with self.assertRaisesRegex(module.VerificationError, 'webview2_notice_missing'):
+            self.verify('windows-amd64')
+
+    def test_gui_requires_the_bundled_material_icons_notice(self):
+        assets = self.fixture.gui / 'data/flutter_assets'
+        font = 'fonts/MaterialIcons-Regular.otf'
+        (assets / font).parent.mkdir()
+        (assets / font).write_bytes(b'font')
+        (assets / 'FontManifest.json').write_text(json.dumps([{'fonts': [{'asset': font}]}]))
+        notice = assets / 'assets/fonts/MaterialIcons-LICENSE.txt'
+        notice.parent.mkdir(parents=True)
+        notice.write_bytes(b'wrong notice')
+        self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64'))
+        with self.assertRaisesRegex(module.VerificationError, 'material_icons_notice_missing_or_changed'):
+            self.verify('windows-amd64')
+
+        self.fixture.clear_output()
+        notice.write_bytes((self.fixture.repo / 'gui/assets/fonts/MaterialIcons-LICENSE.txt').read_bytes())
+        self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64'))
+        with mock.patch.object(module, 'binary_identity'):
+            self.assertEqual(self.verify('windows-amd64')['sourceContents'], 'passed')
+
     def test_rejects_missing_or_changed_third_party_notices(self):
         target = 'linux-amd64'
         name = 'THIRD-PARTY-NOTICES.txt'

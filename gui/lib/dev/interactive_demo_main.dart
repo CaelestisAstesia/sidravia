@@ -1,5 +1,5 @@
 import 'package:sidravia_gui/shared/localization/app_locale.dart';
-import 'package:sidravia_gui/licensing/source_code_pro_font_license.dart';
+import 'package:sidravia_gui/licensing/bundled_font_licenses.dart';
 
 import 'dart:async';
 
@@ -46,7 +46,7 @@ Future<void> main() async {
         : ordinary.fontFamily!;
     await (FontLoader(family)..addFont(rootBundle.load(systemFont))).load();
   }
-  registerSourceCodeProFontLicense();
+  registerBundledFontLicenses();
   // Keep the offline web preview inspectable by accessibility/browser tools.
   SemanticsBinding.instance.ensureSemantics();
   const directory = String.fromEnvironment('SIDRAVIA_DEMO_SETTINGS_DIR');

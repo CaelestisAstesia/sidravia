@@ -16,7 +16,7 @@ import '../support/runtime_snapshot.dart';
 
 import 'package:sidravia_gui/shared/theme/app_theme.dart';
 
-import 'package:sidravia_gui/licensing/source_code_pro_font_license.dart';
+import 'package:sidravia_gui/licensing/bundled_font_licenses.dart';
 
 const requestFile = String.fromEnvironment('GUI_CAPTURE_REQUEST');
 late String out;
@@ -99,7 +99,7 @@ void main() {
       File(request['sdkInfo'] as String).readAsStringSync(),
     ) as Map;
     final license = await File('${sdk['flutterRoot']}/LICENSE').readAsString();
-    registerSourceCodeProFontLicense();
+    registerBundledFontLicenses();
     LicenseRegistry.addLicense(() async* {
       yield LicenseEntryWithLineBreaks(['Flutter'], license);
     });

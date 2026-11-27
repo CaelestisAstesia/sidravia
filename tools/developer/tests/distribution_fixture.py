@@ -46,6 +46,7 @@ class DistributionFixture:
         repo_files = (
             'LICENSE',
             'THIRD-PARTY-NOTICES.txt',
+            'gui/assets/fonts/MaterialIcons-LICENSE.txt',
             'internal/connection/profile/data/jlu.json',
             'gui/windows/runner/resources/app_icon.ico',
         )
@@ -65,6 +66,8 @@ class DistributionFixture:
             'data/flutter_assets/AssetManifest.bin',
             'data/flutter_assets/FontManifest.json',
             'data/flutter_assets/NOTICES.Z',
+            'licenses/Microsoft.Web.WebView2/LICENSE.txt',
+            'licenses/Microsoft.Web.WebView2/NOTICE.txt',
         )
         for name in gui_files:
             path = self.gui / name

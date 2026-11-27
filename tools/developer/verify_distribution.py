@@ -223,6 +223,14 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                 expected[name if windows else 'gui-runtime/' + name] = data
                 gui_files[name] = data
         verify_gui_runtime(gui_files, windows, arch)
+        if 'data/flutter_assets/fonts/MaterialIcons-Regular.otf' in gui_files:
+            license_asset = 'assets/fonts/MaterialIcons-LICENSE.txt'
+            require(gui_files.get('data/flutter_assets/' + license_asset) == (repo / 'gui' / license_asset).read_bytes(),
+                    'material_icons_notice_missing_or_changed')
+        if windows:
+            for filename in ('LICENSE.txt', 'NOTICE.txt'):
+                require(gui_files.get('licenses/Microsoft.Web.WebView2/' + filename),
+                        'webview2_notice_missing: ' + filename)
         runtime_required = ('Sidravia.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
         required_gui = runtime_required if windows else tuple('gui-runtime/' + name for name in runtime_required)
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')

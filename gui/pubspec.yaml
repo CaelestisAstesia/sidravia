@@ -26,6 +26,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/fonts/SourceCodePro-LICENSE.md
+    - assets/fonts/MaterialIcons-LICENSE.txt
   fonts:
     - family: Source Code Pro
       fonts:

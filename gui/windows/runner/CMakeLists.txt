@@ -80,6 +80,7 @@ target_link_libraries(${BINARY_NAME} PRIVATE
   "${sidravia_webview2_SOURCE_DIR}/build/native/${WEBVIEW2_ARCH}/WebView2LoaderStatic.lib"
   "version.lib" "urlmon.lib" "ole32.lib" "oleaut32.lib" "shlwapi.lib")
 install(FILES "${sidravia_webview2_SOURCE_DIR}/LICENSE.txt"
+  "${sidravia_webview2_SOURCE_DIR}/NOTICE.txt"
   DESTINATION "$<TARGET_FILE_DIR:${BINARY_NAME}>/licenses/Microsoft.Web.WebView2" COMPONENT Runtime)
 
 # Run the Flutter tool portions of the build. This must not be removed.
