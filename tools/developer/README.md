@@ -1015,3 +1015,33 @@ their platform fixtures.
 Successful profiles write the staging receipts `core-verification.json`
 and `verification.json`. The JUnit report records each profile independently,
 including a failed profile when it cannot produce a successful receipt.
+
+
+## Windows Qt release acceptance
+
+Run the Qt lifecycle suite in a disposable Windows account without an existing
+Sidravia installation. The suite creates and removes real per-user installations
+and checks their PATH registration. Use one test worker per account.
+
+Build the Qt Installer Framework toolchain from `packaging/windows/ifw/build.ps1`.
+Use the same maintenance image for both versions and build both distributions
+with `tools/build --ifw`. Sign the target repositories and their release manifest
+with `signrelease qt-repository` and `signrelease qt-manifest` using a disposable
+test key. Build the native test program with `go test -c ./internal/update`.
+
+Set `SIDRAVIA_IFW_ISOLATED_WINDOWS=1` and point
+`SIDRAVIA_QT_ACCEPTANCE_REQUEST` to a JSON request with these fields.
+
+| Fields | Values |
+| --- | --- |
+| `arch`, `sourceVersion`, `sourceBuildId` | Payload architecture and the older installation identity |
+| `setup`, `maintenanceImage`, `testProgram` | Absolute paths to the older setup, the exact IFW installerbase, and the native Go test executable |
+| `repositories`, `manifest`, `signature` | Absolute paths to the directory of signed target-version repositories, its release manifest and detached signature |
+| `publicKey` | Base64-encoded Ed25519 public key used for both signatures |
+
+```powershell
+task accept:windows-qt -- --junitxml qt-acceptance.xml
+```
+
+The pytest temporary directory contains the installer output, the Qt maintenance
+log, the final update result and the application's startup diagnostics.
