@@ -210,7 +210,7 @@ Optional flags:
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Flutter Release directory for the chosen target
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
-  --ifw        optional absolute directory of the custom Qt deployment toolchain
+  --ifw        optional absolute directory of the Qt candidate toolchain (unsigned repositories)
   --help       show this help and exit without building
 
 Distribution mode builds the target's core tools, optional native GUI payload,

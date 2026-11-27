@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	packagefiles "sidravia/internal/release/files"
@@ -18,6 +19,13 @@ const (
 	qtCoreComponent = "org.sidravia.core"
 	qtGUIComponent  = "org.sidravia.gui"
 )
+
+// IFW's comparison differs from SemVer for arbitrary prerelease identifiers.
+var qtCandidateVersion = regexp.MustCompile(`^[0-9]{1,18}(\.[0-9]{1,18}){2}(-((alpha|beta|rc)|dev\.qt)\.[0-9]{1,18})?$`)
+
+func validQtCandidateVersion(version string) bool {
+	return qtCandidateVersion.MatchString(version) && validateProductVersion(version) == nil
+}
 
 func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
 	packages := filepath.Join(stage, "qt-packages")
@@ -73,9 +81,10 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 		MaintenanceToolName          string
 		DisableAuthorizationFallback bool
 		PersistentLocalCache         bool
+		RemoveTargetDir              bool
 	}{
-		Name: "Sidravia", Version: cfg.version, Title: "Sidravia", Publisher: "Sidravia",
-		TargetDir: "@HomeDir@/AppData/Local/Programs/Sidravia", MaintenanceToolName: "sidravia-maintenance",
+		Name: "Sidravia", Version: cfg.version, Title: "Sidravia Qt Validation", Publisher: "Sidravia",
+		TargetDir: "@HomeDir@/AppData/Local/Programs/Sidravia Qt Validation", MaintenanceToolName: "sidravia-maintenance",
 		DisableAuthorizationFallback: true,
 	}
 	configFile := filepath.Join(stage, "qt-installer.xml")
