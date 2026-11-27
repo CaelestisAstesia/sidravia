@@ -1,6 +1,9 @@
 package request
 
 import (
+	"encoding/xml"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -26,4 +29,66 @@ func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 		}
 	}
 	return "core-portable"
+}
+
+// qtInstalledKind reads IFW's installed component inventory. A broken Qt
+// installation cannot fall back to the historical installer or to Core.
+func qtInstalledKind(layout productlayout.Layout) (string, error) {
+	root, err := os.OpenRoot(layout.ExecutableDirectory)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	maintenance, err := root.Lstat("sidravia-maintenance.exe")
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil || !maintenance.Mode().IsRegular() {
+		return "", release.ErrMetadata
+	}
+	info, err := root.Lstat("components.xml")
+	if err != nil || !info.Mode().IsRegular() || info.Size() > release.ReleaseManifestLimit {
+		return "", release.ErrMetadata
+	}
+	file, err := root.Open("components.xml")
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, release.ReleaseManifestLimit+1))
+	if err != nil || len(data) > release.ReleaseManifestLimit {
+		return "", release.ErrMetadata
+	}
+	var inventory struct {
+		XMLName    xml.Name `xml:"Packages"`
+		Name       string   `xml:"ApplicationName"`
+		Components []string `xml:"Package>Name"`
+	}
+	if xml.Unmarshal(data, &inventory) != nil || inventory.Name != "Sidravia" {
+		return "", release.ErrMetadata
+	}
+	var core, gui bool
+	for _, id := range inventory.Components {
+		switch id {
+		case "org.sidravia.core":
+			if core {
+				return "", release.ErrMetadata
+			}
+			core = true
+		case "org.sidravia.gui":
+			if gui {
+				return "", release.ErrMetadata
+			}
+			gui = true
+		default:
+			return "", release.ErrMetadata
+		}
+	}
+	if !core {
+		return "", release.ErrMetadata
+	}
+	if gui {
+		return release.QtGUIRepository, nil
+	}
+	return release.QtCoreRepository, nil
 }

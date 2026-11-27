@@ -62,13 +62,29 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 		if layout.Mode == productlayout.ModePortable && !check {
 			return layout, "", false, PortableDownloadOnly()
 		}
+		if runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
+			qtKind, err := qtInstalledKind(layout)
+			if err != nil {
+				return layout, "", false, &Failure{"invalid_target", "无法确认 Qt 已安装的组件。", nil}
+			}
+			if qtKind != "" {
+				if kind != "" && kind != qtKind {
+					return layout, "", false, &Failure{"invalid_target", "更新包必须与已安装的组件组合一致。", nil}
+				}
+				kind = qtKind
+			} else if release.QtRepositoryProfile(kind) != "" {
+				return layout, "", false, &Failure{"invalid_target", "无法确认 Qt 安装。", nil}
+			}
+		} else if release.QtRepositoryProfile(kind) != "" {
+			return layout, "", false, &Failure{"invalid_target", "无法确认 Qt 安装。", nil}
+		}
 		if kind == "" {
 			kind = DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
 		}
-		if !check && (runtime.GOOS != "windows" || kind != "setup") {
+		if !check && (runtime.GOOS != "windows" || kind != "setup" && release.QtRepositoryProfile(kind) == "") {
 			return layout, "", false, &Failure{"apply_unavailable", "当前安装不支持应用内安装更新。", nil}
 		}
-		if kind != "setup" && kind != "gui-portable" && kind != "core-portable" {
+		if kind != "setup" && kind != "gui-portable" && kind != "core-portable" && release.QtRepositoryProfile(kind) == "" {
 			return layout, "", false, &Failure{"invalid_arguments", "更新包类型无效。", nil}
 		}
 	}

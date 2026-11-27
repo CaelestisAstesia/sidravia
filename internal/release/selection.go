@@ -44,6 +44,22 @@ type CheckResult struct {
 	PublisherVerified bool `json:"-"`
 }
 
+const (
+	QtCoreRepository = "qt-core-repository"
+	QtGUIRepository  = "qt-gui-repository"
+)
+
+func QtRepositoryProfile(kind string) string {
+	switch kind {
+	case QtCoreRepository:
+		return "core"
+	case QtGUIRepository:
+		return "gui"
+	default:
+		return ""
+	}
+}
+
 func DesktopArchitecture(arch string) bool { return arch == "amd64" || arch == "arm64" }
 
 // PackageSuffix defines the supported distribution names used by discovery and signed metadata.
@@ -55,6 +71,10 @@ func PackageSuffix(s Selection) (string, error) {
 		return "", ErrUnsupported
 	}
 	switch s.Kind {
+	case QtCoreRepository, QtGUIRepository:
+		if s.OS == "windows" {
+			return s.Kind + ".zip", nil
+		}
 	case "setup":
 		if s.OS == "windows" {
 			return "setup.exe", nil

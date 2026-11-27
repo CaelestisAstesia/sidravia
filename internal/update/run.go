@@ -47,12 +47,15 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 	if failure != nil {
 		return failure.Write(out)
 	}
+	if operation == "recover" && release.QtRepositoryProfile(kind) != "" {
+		return emit(false, "apply_unavailable", "请使用可信离线安装包修复此安装。", nil)
+	}
 	if operation == "apply" && (!request.ApplyPlatformSupported() || !release.PublisherTrust().Configured()) {
 		return emit(false, "apply_unavailable", "当前平台或构建尚未具备可信自动更新条件，请按发行说明手动更新", nil)
 	}
 	// Setup recovery reconciles a local, signed execution record. Release
 	// query cache availability and GitHub backoff are irrelevant here.
-	if operation == "recover" && runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
+	if operation == "recover" && kind == "setup" && runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
 		result, err := recoverOperation(ctx, layout, version, buildID, options.OperationID, nil)
 		if err != nil {
 			return emit(false, applyErrorCode(err), applyErrorMessage(err), result)
@@ -60,7 +63,7 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		return emit(true, "ok", "中断协调已结束，未重复启动或恢复连接", result)
 	}
 	var execution *operationView
-	if operation == "status" {
+	if operation == "status" && kind == "setup" {
 		operationRoot, err := productlayout.OperationRoot()
 		if err != nil {
 			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
@@ -128,6 +131,9 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 		}
 		newDownload := ""
 		if operation == "download" {
+			if release.QtRepositoryProfile(kind) != "" && !result.PublisherVerified {
+				return request.Fail("publisher_signature_required", "更新仓库缺少可信发行签名。", nil)
+			}
 			if state.Downloaded == "" {
 				path, err := github.Download(ctx, nil, *result.Candidate, m.Root())
 				if err != nil {

@@ -122,7 +122,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		entries = append(entries, archiveEntry{program + suffix, data, 0755})
 		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
 	}
-	if t.cfg.iscc != "" {
+	if t.cfg.iscc != "" || t.cfg.ifw != "" {
 		const updater = "sidraviaupdater.exe"
 		fmt.Fprintln(stderr, "building", updater)
 		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID))

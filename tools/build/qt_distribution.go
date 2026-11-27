@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"time"
 
+	"sidravia/internal/release"
 	packagefiles "sidravia/internal/release/files"
 )
 
@@ -105,15 +106,15 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 		return nil, err
 	}
 	outputs := []string{setup}
-	for _, profile := range []struct{ name, include string }{
-		{"core", qtCoreComponent},
-		{"gui", qtCoreComponent + "," + qtGUIComponent},
+	for _, profile := range []struct{ kind, include string }{
+		{release.QtCoreRepository, qtCoreComponent},
+		{release.QtGUIRepository, qtCoreComponent + "," + qtGUIComponent},
 	} {
-		repo := filepath.Join(stage, "qt-repository-"+profile.name)
+		repo := filepath.Join(stage, profile.kind)
 		if err := tool("repogen", "-p", packages, "-i", profile.include, repo); err != nil {
 			return nil, err
 		}
-		name := base + "-qt-" + profile.name + "-repository.zip"
+		name := base + "-" + profile.kind + ".zip"
 		if err := packageQtRepository(repo, filepath.Join(stage, name)); err != nil {
 			return nil, err
 		}
