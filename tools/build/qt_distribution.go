@@ -37,16 +37,17 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 		}
 	}
 	type component struct {
-		XMLName      xml.Name `xml:"Package"`
-		DisplayName  string
-		Description  string
-		Version      string
-		ReleaseDate  string
-		Default      bool
-		Dependencies string `xml:",omitempty"`
+		XMLName            xml.Name `xml:"Package"`
+		DisplayName        string
+		Description        string
+		Version            string
+		ReleaseDate        string
+		Default            bool
+		ForcedInstallation bool   `xml:",omitempty"`
+		Dependencies       string `xml:",omitempty"`
 	}
 	releaseDate := time.Now().UTC().Format(time.DateOnly)
-	core := component{DisplayName: "Core", Description: "Sidravia command line and background service", Version: cfg.version, ReleaseDate: releaseDate}
+	core := component{DisplayName: "Core", Description: "Sidravia command line and background service", Version: cfg.version, ReleaseDate: releaseDate, ForcedInstallation: true}
 	desktop := component{DisplayName: "GUI", Description: "Sidravia desktop application", Version: cfg.version, ReleaseDate: releaseDate, Default: true, Dependencies: qtCoreComponent + "->=" + cfg.version}
 	if err := writeQtXML(filepath.Join(components[qtCoreComponent], "meta", "package.xml"), core); err != nil {
 		return nil, err
