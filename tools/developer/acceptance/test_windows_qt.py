@@ -281,3 +281,31 @@ def test_windows_qt_uninstall_keeps_foreign_startup(qt_release, foreign_startup_
     finally:
         if maint.is_file():
             invoke(tmp_path, "cleanup", maint, [*OPTIONS, "purge"])
+
+
+def test_windows_qt_status_marks_abandoned_handoff_unconfirmed(qt_release, tmp_path):
+    target = tmp_path / "installation"
+    install = [*OPTIONS, "--no-default-installations", "install", "org.sidravia.core"]
+    require_success(invoke(tmp_path, "install", qt_release["setup"], ["--root", target, *install]))
+    maint = target / "sidravia-maintenance.exe"
+    cache = None
+    try:
+        ctl = target / "sidraviactl.exe"
+        cache_parent = Path(os.environ["LOCALAPPDATA"]) / "Sidravia" / "updates"
+        before = set(cache_parent.iterdir()) if cache_parent.is_dir() else set()
+        result = invoke(tmp_path, "status-before-handoff", ctl, ["update", "status"])
+        require_success(result)
+        assert json.loads(result[1].read_bytes())["code"] == "not_checked"
+        cache, = {entry for entry in cache_parent.iterdir() if entry.is_dir()} - before
+        version = json.loads(qt_release["manifest"].read_bytes())["version"]
+        (cache / "qt-outcome.json").write_text(
+            json.dumps({"targetVersion": version, "state": "pending"}), encoding="utf-8")
+        result = invoke(tmp_path, "status-after-abandonment", ctl, ["update", "status"])
+        require_success(result)
+        assert json.loads(result[1].read_bytes())["result"]["installation"] == {
+            "targetVersion": version, "state": "unconfirmed",
+        }
+    finally:
+        if cache is not None:
+            shutil.rmtree(cache)
+        require_success(invoke(tmp_path, "uninstall", maint, [*OPTIONS, "purge"]))
