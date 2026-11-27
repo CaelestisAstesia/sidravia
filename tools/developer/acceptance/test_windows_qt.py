@@ -23,8 +23,10 @@ OPTIONS = ("--accept-licenses", "--reject-messages", "--confirm-command")
 @pytest.fixture(scope="module")
 def qt_release():
     request = os.environ.get("SIDRAVIA_QT_ACCEPTANCE_REQUEST")
-    if sys.platform != "win32" or not request:
-        pytest.skip("needs a disposable native Windows Qt release fixture")
+    if sys.platform != "win32":
+        raise pytest.UsageError("Qt lifecycle acceptance needs a native Windows host")
+    if not request:
+        raise pytest.UsageError("set SIDRAVIA_QT_ACCEPTANCE_REQUEST to a Windows Qt release fixture")
     if os.environ.get("SIDRAVIA_IFW_ISOLATED_WINDOWS") != "1":
         raise pytest.UsageError("Qt lifecycle acceptance requires an isolated Windows account")
     path = Path(request)

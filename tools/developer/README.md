@@ -1044,7 +1044,10 @@ other release manifest requests still go into `requests/` for separate signing.
 
 Run the Qt lifecycle suite in a disposable Windows account without an existing
 Sidravia installation. The suite creates and removes real per-user installations
-and checks their PATH registration. Use one test worker per account.
+and checks their PATH registration. Use one test worker per account. The
+fixture architecture must match the Windows host. The suite checks the
+installed Core and GUI executables before and after the update and fails
+when the required fixture is absent.
 
 Build the Qt Installer Framework toolchain from `packaging/windows/ifw/build.ps1`.
 Use the same maintenance image for both versions and build both distributions
