@@ -235,6 +235,8 @@ func quiesceQt(ctx context.Context, installation layout.Layout, identity daemonc
 		if err := gui.Wait(ctx); err != nil {
 			return err
 		}
+	} else if err := call(ctx, contract.MethodDaemonStop, struct{}{}, nil); err != nil {
+		return err
 	}
 	return daemon.Wait(ctx)
 }
