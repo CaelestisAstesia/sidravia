@@ -15,18 +15,10 @@ Choose one existing entry for the scenario; there is no new mandatory sequence:
 | Diagnose an existing run | `report <run> --format json` | Bounded failures, execution/evidence/cleanup |
 | Windows execution | `vm --request … --format json` | Ordinary-user task, collected logs, task cleanup |
 | Native acceptance | Existing platform fixture + `report --kind …` / `--native …` | Actual recorded checks; unrecorded cleanup and manual items |
+| Distribution artifacts | [`task accept:distribution`](#distribution-acceptance) | Artifact receipts and pytest report |
 | GUI regression | `visual capture` / `visual compare` | Matching environment and changed-case index |
 | Local release candidate | `release prepare` / `release verify` | Exact local payload and signature checks |
 | Public asset verification | `release download` | Explicit URL bytes, signature scope and unsigned extras |
-
-## Distribution acceptance
-
-Run `task accept:distribution -- --help` for artifact selection and reporting
-options. Task runs the locked pytest environment through `uv`. Use the same
-entry locally and in Windows packaging CI to check exact candidate artifacts and
-produce standard pytest reports. A native help smoke proves the executable starts
-in that environment. The native installer and desktop fixtures below cover the
-installation and runtime lifecycle.
 
 ## Offline interactive GUI preview
 
