@@ -88,13 +88,16 @@ func run(args []string, input io.Reader, out, stderr io.Writer) int {
 	}
 	name, sigName := filepath.Base(*manifest), filepath.Base(*output)
 	switch name {
-	case release.ReleaseManifestName, release.XZReleaseManifestName, release.ExtendedReleaseManifestName:
+	case release.ReleaseManifestName, release.XZReleaseManifestName, release.ExtendedReleaseManifestName, release.QtReleaseManifestName:
 		if proof.ValidateLocation(name) != nil {
 			return fail("release manifest assets do not belong at that published name")
 		}
 	}
 	if name == release.ExtendedReleaseManifestName && sigName != release.ExtendedReleaseSignatureName {
 		return fail("extended release signature requires its published name")
+	}
+	if name == release.QtReleaseManifestName && sigName != release.QtReleaseSignatureName {
+		return fail("Qt release signature requires its published name")
 	}
 	destination, err := os.OpenFile(*output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {

@@ -171,7 +171,7 @@ func (g *GitHub) Check(ctx context.Context, s release.Selection) (release.CheckR
 	}
 	verified := false
 	manifest, _ := release.ManifestNames(s.Arch, s.Kind, strings.HasSuffix(selected.Name, ".tar.xz"))
-	mustVerify := manifest == release.ExtendedReleaseManifestName
+	mustVerify := manifest == release.ExtendedReleaseManifestName || manifest == release.QtReleaseManifestName
 	if manager == "" && (g.publisherKeys.Configured() || mustVerify) {
 		_, err := g.AuthenticateCandidate(ctx, *selected)
 		if err != nil && (errors.Is(err, release.ErrUntrusted) || !errors.Is(err, ErrSignatureMissing)) {

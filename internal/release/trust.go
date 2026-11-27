@@ -17,6 +17,8 @@ const ReleaseManifestName = "sidravia-release.json"
 const ReleaseSignatureName = "sidravia-release.sig"
 const XZReleaseManifestName = "sidravia-release-xz.json"
 const XZReleaseSignatureName = "sidravia-release-xz.sig"
+const QtReleaseManifestName = "sidravia-release-qt.json"
+const QtReleaseSignatureName = "sidravia-release-qt.sig"
 const ExtendedReleaseManifestName = "sidravia-release-extended.json"
 const ExtendedReleaseSignatureName = "sidravia-release-extended.sig"
 const ReleaseManifestLimit = 256 << 10
@@ -184,7 +186,7 @@ func ValidateReleaseManifest(data []byte) (ReleaseManifest, error) {
 // by older clients. ARM64 core retains its previous metadata locations.
 func ManifestNames(arch, kind string, xz bool) (manifest, signature string) {
 	if QtRepositoryProfile(kind) != "" {
-		return "sidravia-release-qt.json", "sidravia-release-qt.sig"
+		return QtReleaseManifestName, QtReleaseSignatureName
 	}
 	if arch == "arm64" && (kind == "gui-portable" || kind == "setup") {
 		return ExtendedReleaseManifestName, ExtendedReleaseSignatureName

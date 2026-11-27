@@ -14,12 +14,14 @@ import (
 	"sidravia/internal/release"
 )
 
-func TestExtendedCheckUsesOnlyItsSignedMetadata(t *testing.T) {
+func TestSeparatedReleaseChannelsUseOnlyTheirSignedMetadata(t *testing.T) {
 	for _, target := range []struct{ os, kind, suffix string }{
 		{"linux", "gui-portable", "gui-portable.tar.gz"},
 		{"linux", "gui-portable", "gui-portable.tar.xz"},
 		{"windows", "gui-portable", "gui-portable.zip"},
 		{"windows", "setup", "setup.exe"},
+		{"windows", release.QtCoreRepository, "qt-core-repository.zip"},
+		{"windows", release.QtGUIRepository, "qt-gui-repository.zip"},
 	} {
 		t.Run(target.os+"/"+target.suffix, func(t *testing.T) {
 			key, m, c, _ := signedReleaseFixture(t)
@@ -36,6 +38,11 @@ func TestExtendedCheckUsesOnlyItsSignedMetadata(t *testing.T) {
 			page, _ := json.Marshal([]githubRelease{item})
 			m.Assets[0].OS, m.Assets[0].Arch, m.Assets[0].Kind = target.os, "arm64", target.kind
 			m.Assets[0].Name, m.Assets[0].PayloadKind = name, "gui"
+			manifestName, signatureName := release.ExtendedReleaseManifestName, release.ExtendedReleaseSignatureName
+			if profile := release.QtRepositoryProfile(target.kind); profile != "" {
+				m.Assets[0].PayloadKind = profile
+				manifestName, signatureName = release.QtReleaseManifestName, release.QtReleaseSignatureName
+			}
 			data, _ := json.Marshal(m)
 			signed := ed25519.Sign(key, data)
 			for _, mode := range []string{"valid", "missing", "wrong-signature", "wrong-arch"} {
@@ -55,6 +62,9 @@ func TestExtendedCheckUsesOnlyItsSignedMetadata(t *testing.T) {
 						manifest, _ = json.Marshal(changed)
 						signature = ed25519.Sign(key, manifest)
 						wantErr = release.ErrMetadata
+						if release.QtRepositoryProfile(target.kind) != "" {
+							wantErr = release.ErrUntrusted
+						}
 					}
 					source := NewGitHub(&http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
 						var body []byte
@@ -62,9 +72,9 @@ func TestExtendedCheckUsesOnlyItsSignedMetadata(t *testing.T) {
 						switch {
 						case req.URL.Host == "api.github.com":
 							body = page
-						case strings.HasSuffix(req.URL.Path, "/"+release.ExtendedReleaseManifestName):
+						case strings.HasSuffix(req.URL.Path, "/"+manifestName):
 							body = manifest
-						case strings.HasSuffix(req.URL.Path, "/"+release.ExtendedReleaseSignatureName):
+						case strings.HasSuffix(req.URL.Path, "/"+signatureName):
 							if mode == "missing" {
 								status = 404
 							} else {
