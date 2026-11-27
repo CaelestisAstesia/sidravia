@@ -6,7 +6,8 @@ tasks:
     cmds:
       - >-
         uv run --locked --project tools/developer/acceptance pytest
-        -c tools/developer/acceptance/pyproject.toml tools/developer/acceptance
+        -c tools/developer/acceptance/pyproject.toml
+        tools/developer/acceptance/test_distribution.py
         {{range .CLI_ARGS_LIST}}{{shellQuote .}} {{end}}
 
   accept:windows-qt:

@@ -14,6 +14,8 @@ import uuid
 
 import pytest
 
+from verify_distribution import matches_pe, native_arch
+
 
 OPTIONS = ("--accept-licenses", "--reject-messages", "--confirm-command")
 
@@ -28,10 +30,12 @@ def qt_release():
     path = Path(request)
     assert path.is_absolute() and path.is_file()
     data = json.loads(path.read_bytes())
+    assert data["arch"] == native_arch(), "Qt lifecycle acceptance requires a native Windows host"
     for key in ("setup", "repositories", "manifest", "signature", "testProgram", "maintenanceImage"):
         path = Path(data[key])
         assert path.is_absolute() and path.exists()
         data[key] = path
+    assert matches_pe(data["testProgram"].read_bytes(), data["arch"]), "native handoff test architecture mismatch"
     manifest = data["manifest"].read_bytes()
     data["assets"] = json.loads(manifest)["assets"]
     data["publisherProof"] = {
@@ -127,6 +131,18 @@ def has_user_path(directory):
                for entry in value.split(";") if entry)
 
 
+def assert_native_payload(target, profile, arch):
+    executables = ["sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe", "sidraviaupdater.exe"]
+    desktop = ("Sidravia.exe", "flutter_windows.dll")
+    if profile == "gui":
+        executables.extend(desktop)
+    else:
+        for name in desktop:
+            assert not (target / name).exists(), name
+    for name in executables:
+        assert matches_pe((target / name).read_bytes(), arch), f"{name} must target {arch}"
+
+
 @pytest.mark.parametrize("profile", ("core", "gui"))
 def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
     target = tmp_path / "installation"
@@ -136,7 +152,8 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
     ctl = target / "sidraviactl.exe"
     source_version = qt_release["sourceVersion"]
     source_build = qt_release["sourceBuildId"]
-    asset = next(a for a in qt_release["assets"] if a["payloadKind"] == profile and a["arch"] == qt_release["arch"])
+    asset, = [asset for asset in qt_release["assets"]
+              if asset["kind"] == f"qt-{profile}-repository" and asset["arch"] == qt_release["arch"]]
     target_data = json.loads(qt_release["manifest"].read_bytes())
     target_version = target_data["version"]
     target_build = target_data["buildId"]
@@ -161,8 +178,7 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         assert autostart_mode(tmp_path, "initial-integration", manager, env) == "disabled"
         require_success(invoke(tmp_path, "enable-owned-autostart", manager, ["autostart", "set", "daemon"], env))
         assert autostart_mode(tmp_path, "enabled-autostart", manager, env) == "daemon"
-        assert (target / "Sidravia.exe").is_file() == (profile == "gui")
-        assert (target / "flutter_windows.dll").is_file() == (profile == "gui")
+        assert_native_payload(target, profile, qt_release["arch"])
         with maint.open("rb") as handle:
             assert hashlib.file_digest(handle, "sha256").hexdigest() == image
         shutil.copytree(target / "institution-profiles", namespace / "institution-profiles")
@@ -193,7 +209,7 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
             assert (daemon["productVersion"], daemon["buildId"]) == (target_version, target_build)
             assert has_user_path(target)
             assert autostart_mode(tmp_path, "autostart-after-update", manager, env) == "daemon"
-            assert (target / "Sidravia.exe").is_file() == (profile == "gui")
+            assert_native_payload(target, profile, qt_release["arch"])
         require_success(invoke(tmp_path, "uninstall", maint, [*OPTIONS, "purge"], env))
         assert not ctl.exists()
         assert not has_user_path(target)
