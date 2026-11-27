@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -23,7 +24,7 @@ func validQtCandidateVersion(version string) bool {
 	return qtCandidateVersion.MatchString(version) && validateProductVersion(version) == nil
 }
 
-func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
+func buildQtDistribution(cfg config, stage, base string, template []byte, entries, gui []archiveEntry, log io.Writer) ([]string, error) {
 	packages := filepath.Join(stage, "qt-packages")
 	components := map[string]string{}
 	for _, name := range []string{release.QtCoreComponent, release.QtGUIComponent} {
@@ -96,8 +97,16 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 		}
 		return nil
 	}
+	templateFile := filepath.Join(stage, "installerbase.exe")
+	if err := os.WriteFile(templateFile, template, 0644); err != nil {
+		return nil, err
+	}
 	setup := base + "-qt-setup.exe"
-	if err := tool("binarycreator", "--offline-only", "-t", filepath.Join(cfg.ifw, "installerbase.exe"), "-c", configFile, "-p", packages, filepath.Join(stage, setup)); err != nil {
+	setupFile := filepath.Join(stage, setup)
+	if err := tool("binarycreator", "--offline-only", "-t", templateFile, "-c", configFile, "-p", packages, setupFile); err != nil {
+		return nil, err
+	}
+	if err := verifyQtSetupPrefix(setupFile, template); err != nil {
 		return nil, err
 	}
 	outputs := []string{setup}
@@ -116,6 +125,27 @@ func buildQtDistribution(cfg config, stage, base string, entries, gui []archiveE
 		outputs = append(outputs, name)
 	}
 	return outputs, nil
+}
+
+// IFW copies this exact executable prefix to the installed maintenance program.
+// Reject a binarycreator that rewrites the pinned image during assembly.
+func verifyQtSetupPrefix(path string, template []byte) error {
+	if len(template) == 0 {
+		return fmt.Errorf("missing Qt maintenance image")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	prefix := make([]byte, len(template))
+	if _, err := io.ReadFull(file, prefix); err != nil {
+		return fmt.Errorf("read Qt setup executable prefix: %w", err)
+	}
+	if !bytes.Equal(prefix, template) {
+		return fmt.Errorf("Qt binarycreator rewrote the pinned maintenance image")
+	}
+	return nil
 }
 
 func writeQtXML(path string, value any) error {

@@ -108,6 +108,15 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if targetOS == "windows" {
 		programs = append(programs, "sidraviamgr")
 	}
+	var qtTemplate []byte
+	var qtSymbols []string
+	if t.cfg.ifw != "" {
+		qtTemplate, err = os.ReadFile(filepath.Join(t.cfg.ifw, "installerbase.exe"))
+		if err != nil {
+			return fmt.Errorf("read Qt maintenance image: %w", err)
+		}
+		qtSymbols = []string{"sidravia/internal/update/internal/request.QtMaintenanceDigest=" + sha256Hex(qtTemplate)}
+	}
 	var binarySums strings.Builder
 	for _, program := range programs {
 		sourcePackage := "./cmd/" + program
@@ -115,7 +124,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			sourcePackage = "./cmd/sidravia-gui-launcher"
 		}
 		fmt.Fprintln(stderr, "building", program+suffix)
-		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), sourcePackage, t.cfg.version, t.cfg.buildID))
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), sourcePackage, t.cfg.version, t.cfg.buildID, qtSymbols...))
 		if err != nil {
 			return err
 		}
@@ -125,7 +134,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if t.cfg.iscc != "" || t.cfg.ifw != "" {
 		const updater = "sidraviaupdater.exe"
 		fmt.Fprintln(stderr, "building", updater)
-		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID))
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID, qtSymbols...))
 		if err != nil {
 			return err
 		}
@@ -196,7 +205,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	outputs := []string{archive}
 	if t.cfg.ifw != "" {
-		artifacts, err := buildQtDistribution(t.cfg, stage, base, entries, gui, stderr)
+		artifacts, err := buildQtDistribution(t.cfg, stage, base, qtTemplate, entries, gui, stderr)
 		if err != nil {
 			return err
 		}

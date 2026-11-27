@@ -89,3 +89,25 @@ func TestQtCandidateVersionRestrictsUnsupportedComparisonShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestQtSetupRetainsExactMaintenanceImage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.exe")
+	template := []byte("maintenance.exe")
+	for _, example := range []struct {
+		name, setup string
+		accepted    bool
+	}{
+		{"unchanged executable", "maintenance.exe embedded package", true},
+		{"rewritten executable", "Maintenance.exe embedded package", false},
+		{"truncated executable", "maintenance", false},
+	} {
+		t.Run(example.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(example.setup), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyQtSetupPrefix(path, template); (err == nil) != example.accepted {
+				t.Fatalf("verifyQtSetupPrefix() = %v, accepted = %t", err, example.accepted)
+			}
+		})
+	}
+}

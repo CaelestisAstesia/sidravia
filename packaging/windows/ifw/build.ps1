@@ -32,7 +32,7 @@ Set-Content -LiteralPath (Join-Path $gate 'publisherkey.h') -Encoding ASCII -Val
     ('#define SIDRAVIA_PUBLISHER_PUBLIC_KEY "' + $PublisherPublicKey.ToLowerInvariant() + '"'),
     ('#define SIDRAVIA_IFW_TARGET "' + $PayloadTarget + '"')
 )
-foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch') {
+foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch') {
     & git -C $source apply (Join-Path $PSScriptRoot $name)
     if ($LASTEXITCODE -ne 0) { throw "Unable to apply $name to the pinned IFW source." }
 }
@@ -46,6 +46,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Configuring the IFW build failed.' }
     & nmake.exe /NOLOGO sub-src
     if ($LASTEXITCODE -ne 0) { throw 'Building the IFW runtime failed.' }
+    foreach ($tool in 'binarycreator', 'repogen') {
+        Push-Location -LiteralPath (Join-Path $build "tools\$tool")
+        try {
+            & nmake.exe /NOLOGO
+            if ($LASTEXITCODE -ne 0) { throw "Building $tool failed." }
+        }
+        finally {
+            Pop-Location
+        }
+    }
     & dumpbin.exe /DEPENDENTS bin\installerbase.exe
     if ($LASTEXITCODE -ne 0) { throw 'Inspecting the IFW runtime dependencies failed.' }
 }

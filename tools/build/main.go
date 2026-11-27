@@ -360,8 +360,11 @@ func buildEnv(parent []string) []string {
 }
 
 // buildArgv returns the full go build argv for one binary.
-func buildArgv(goBin, outPath, pkgPath, version, buildID string) []string {
+func buildArgv(goBin, outPath, pkgPath, version, buildID string, symbols ...string) []string {
 	ldflags := "-s -w -buildid= -X main.ProductVersion=" + version + " -X main.BuildID=" + buildID
+	for _, symbol := range symbols {
+		ldflags += " -X " + symbol
+	}
 	return []string{
 		goBin, "build",
 		"-mod=readonly",
