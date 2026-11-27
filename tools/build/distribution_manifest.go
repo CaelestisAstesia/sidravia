@@ -42,14 +42,14 @@ func installerManifest(root string, entries, gui []archiveEntry) string {
 func portablePayload(entries []archiveEntry, owned packagefiles.Manifest) ([]archiveEntry, error) {
 	var result []archiveEntry
 	for _, entry := range entries {
-		if entry.name != "app_icon.ico" && entry.name != packagefiles.Name {
+		if entry.name != "app_icon.ico" && entry.name != "sidraviaupdater.exe" && entry.name != packagefiles.Name {
 			result = append(result, entry)
 		}
 	}
 	portableOwned := owned
 	portableOwned.Files = nil
 	for _, file := range owned.Files {
-		if file.Path != "app_icon.ico" {
+		if file.Path != "app_icon.ico" && file.Path != "sidraviaupdater.exe" {
 			portableOwned.Files = append(portableOwned.Files, file)
 		}
 	}

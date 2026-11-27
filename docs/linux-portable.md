@@ -34,7 +34,7 @@ tar -xf "$archive" -C "$HOME/Applications"
 ./sidravia_gui
 ```
 
-保留 `sidravia.portable`、`gui-runtime/`、机构资源和配套程序。`gui-runtime/` 含实际 Flutter 程序、`lib/` 与 `data/`；应始终通过包根入口启动，不能绕过启动器直接运行内部 GUI。启动器会先检查更新状态，再启动 GUI。
+保留 `sidravia.portable`、`gui-runtime/`、机构资源和配套程序。`gui-runtime/` 含实际 Flutter 程序、`lib/` 与 `data/`；应始终通过包根入口启动，不能绕过启动器直接运行内部 GUI。如果旧版更新中断并留下启动保护文件，请将新包完整解压到另一目录，然后迁移配置。
 
 无法启动时可用 `ldd ./gui-runtime/sidravia_gui` 查找缺失系统库。不要以 root 运行 GUI，也不要在不互信的账户间共用可写便携目录。仅解压或打开 GUI 不会登记自启。
 
@@ -48,7 +48,7 @@ tar -xf "$archive" -C "$HOME/Applications"
 
 改变自启设置只影响未来启动，不会接管或停止现有后台。从仅后台切回 GUI 时，先用本包的 `./sidraviactl daemon stop` 正常停止后台。
 
-GUI 的用户 PATH 设置在 `~/.local/bin` 创建本安装的 `sidraviactl`、`sidraviad`、`sidraviaupdater` 和 `sidravia_gui` 精确符号链接；不覆盖无关文件，不修改 shell 配置，关闭时只移除本安装的链接。已有终端不会更新环境，目录不在 PATH 或有前序同名命令时会提示。namespace 取自调用进程的 `SIDRAVIA_NAMESPACE`。
+GUI 的用户 PATH 设置在 `~/.local/bin` 创建本安装的 `sidraviactl`、`sidraviad` 和 `sidravia_gui` 精确符号链接；不覆盖无关文件，不修改 shell 配置，关闭时只移除本安装的链接。已有终端不会更新环境，目录不在 PATH 或有前序同名命令时会提示。namespace 取自调用进程的 `SIDRAVIA_NAMESPACE`。
 
 其他安装的自启或 PATH 登记冲突会保留并报错，不会静默接管。核心包没有 GUI 设置入口。Linux 的 systemd 用户服务可以通过 `sidraviactl integration service` 管理。
 
@@ -58,7 +58,7 @@ GUI 的用户 PATH 设置在 `~/.local/bin` 创建本安装的 `sidraviactl`、`
 
 手动升级时，完整解压新版到新目录，在两端都退出后只转移需要保留的私有数据，不能覆盖正在运行的目录。配置迁移步骤见[使用指南](guide.md#更新移动与卸载)。
 
-GUI 包的名称含 `-linux-<架构>-gui-portable`，仅核心包以 `-core-portable` 区分。归档扩展名以该版本发行页为准。更新器按当前包型选择更新，见[更新检查与下载](advance.md#更新检查与下载)。
+GUI 包的名称含 `-linux-<架构>-gui-portable`，仅核心包以 `-core-portable` 区分。归档扩展名以该版本发行页为准。可检查适用的新版本，并从发行页下载后解压到新目录，见[更新检查与下载](advance.md#更新检查与下载)。
 
 其他发行版、桌面环境和 X11 尚待验证。通知、登录自启和校园认证请在实际使用环境中检查。
 

@@ -1,6 +1,14 @@
 package query
 
-import "sidravia/internal/release"
+import (
+	"sidravia/internal/release"
+	"sidravia/internal/update/internal/request"
+)
+
+func PortableDownloadOnly() (code, message string) {
+	failure := request.PortableDownloadOnly()
+	return failure.Code, failure.Message
+}
 
 // ProjectApplyOffer sets the public hint. Apply independently checks admission,
 // confirmation, and proofs for both the installed source and the candidate.
@@ -12,7 +20,7 @@ func ProjectApplyOffer(result release.CheckResult, layoutEligible, platformEligi
 	candidate.CanApply = false
 	switch {
 	case !layoutEligible:
-		candidate.ApplyReason = "portable_layout_required"
+		candidate.ApplyReason = "installed_setup_required"
 	case !result.PublisherVerified:
 		candidate.ApplyReason = "publisher_signature_required"
 	case result.State != "available":

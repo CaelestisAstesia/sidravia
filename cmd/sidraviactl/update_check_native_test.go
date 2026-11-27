@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -45,12 +47,37 @@ func TestUpdateCheckProcessCancellation(t *testing.T) {
 	t.Setenv("APPDATA", home)
 	t.Setenv("SIDRAVIA_NAMESPACE", "")
 	t.Setenv("NO_PROXY", "")
+	cacheRoot, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := sha256.Sum256([]byte(product + "\x00core-portable\x00preview"))
+	legacy := filepath.Join(cacheRoot, "Sidravia", "updates", hex.EncodeToString(identity[:16]))
+	if err := os.MkdirAll(legacy, 0700); err != nil {
+		t.Fatal(err)
+	}
+	legacyState := filepath.Join(legacy, "state.json")
+	if err := os.WriteFile(legacyState, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	proxy, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer proxy.Close()
 	t.Setenv("HTTPS_PROXY", "http://"+proxy.Addr().String())
+
+	for _, args := range [][]string{
+		{"download", "--candidate", "1:2"},
+		{"apply", "--candidate", "1:2", "--confirm"},
+		{"recover", "--operation", "retired", "--confirm"},
+		{"status"},
+	} {
+		output, err := exec.Command(executable, append([]string{"update"}, args...)...).CombinedOutput()
+		if err == nil || !bytes.Contains(output, []byte(`"code":"portable_download_only"`)) {
+			t.Fatalf("portable update %v: %s (%v)", args, output, err)
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -130,4 +157,8 @@ func TestUpdateCheckProcessCancellation(t *testing.T) {
 	if err := json.Unmarshal(line, &response); err != nil || response.SchemaVersion != 1 || response.Code != "source_unavailable" {
 		t.Fatalf("check failure response = %s (%v)", output, err)
 	}
+	if data, err := os.ReadFile(legacyState); err != nil || string(data) != "{" {
+		t.Fatalf("version hint modified retired update state: %q %v", data, err)
+	}
+
 }

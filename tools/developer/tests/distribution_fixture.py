@@ -93,7 +93,7 @@ class DistributionFixture:
                 f'Target: {target}\nArtifactKind: distribution\n'
             ).encode(),
         }
-        programs = {'sidraviactl': b'ctl', 'sidraviad': b'daemon', 'sidraviaupdater': b'updater'}
+        programs = {'sidraviactl': b'ctl', 'sidraviad': b'daemon'}
         os_name, arch = target.split('-')
         windows = os_name == 'windows'
         gui = gui and windows
@@ -112,6 +112,9 @@ class DistributionFixture:
             f'BinarySHA256: {hashlib.sha256(data).hexdigest()}  {name}\n'
             for name, data in programs.items()
         ).encode()
+        if gui:
+            updater = pe(arch, b'updater')
+            contents['BUILD-INFO.txt'] += f'SetupUpdater: {hashlib.sha256(updater).hexdigest()} {len(updater)}\n'.encode()
         contents['sidravia-files.json'] = self.ownership(target, contents, 'gui' if gui else 'core')
         return contents
 

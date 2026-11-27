@@ -3,7 +3,6 @@
 package startgate
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,19 +11,22 @@ import (
 
 	launchcontract "sidravia/internal/background/launch"
 	productlayout "sidravia/internal/installation/layout"
-	"sidravia/internal/update/transaction/admission"
 )
 
 var ErrBusy = errors.New("installation maintenance is active or its gate is unavailable")
 
-// AcquireStart returns a runtime admission lease. RPM uses its transaction
-// gate; other Linux targets retain a portable shared lease until process exit.
+// AcquireStart checks the system package gate or rejects a directory left
+// sealed by an interrupted update from an older portable release.
 func AcquireStart() (func(), error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
-	directory := filepath.Dir(exe)
+	return AcquireStartIn(filepath.Dir(exe))
+}
+
+// AcquireStartIn also serves the static GUI launcher before it loads GTK.
+func AcquireStartIn(directory string) (func(), error) {
 	switch directory {
 	case productlayout.DEBExecutableDirectory:
 		return acquirePackageStart(directory, "/var/lib/sidravia/deb-maintenance/lock", "deb", "/var/lib/sidravia/deb-maintenance/block")
@@ -76,70 +78,28 @@ func checkMaintenanceBlock(path string, release func()) (func(), error) {
 	return release, nil
 }
 
-func systemDirectory(directory string) bool {
-	return directory == productlayout.RPMExecutableDirectory || directory == productlayout.DEBExecutableDirectory
-}
-
 func acquirePortableStart(directory string) (func(), error) {
-	// Check for records even if the portable marker has been removed or changed:
-	// a partial update must not turn into an unguarded installed launch.
-	release, err := admission.Acquire(context.Background(), directory)
-	if err != nil {
-		return nil, errors.Join(ErrBusy, err)
+	if _, err := os.Lstat(filepath.Join(directory, "sidravia.update")); !errors.Is(err, os.ErrNotExist) {
+		return nil, ErrBusy
 	}
-	return release, nil
+	return func() {}, nil
 }
 
-// AcquireRun retains only portable admission for the process lifetime. RPM's
-// transaction must be able to acquire its lock before requesting normal exit.
 func AcquireRun() (func(), error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, err
-	}
 	release, err := AcquireStart()
 	if err != nil {
 		return nil, err
 	}
-	if systemDirectory(filepath.Dir(exe)) {
-		release()
-		return func() {}, nil
-	}
-	return release, nil
+	release()
+	return func() {}, nil
 }
 
-// AcquireRunIdentity admits a cold recovery only for the recorded new build and
-// coordinator ancestry. Completed operations use ordinary admission and shed
-// stale recovery environment before any later child is launched.
-func AcquireRunIdentity(version, build string) (func(), error) {
-	releaseRun, err := AcquireRun()
+func AcquireRunIdentity(_, _ string) (func(), error) {
+	release, err := AcquireRun()
 	if err == nil {
-		clearRecoveryEnvironment()
-		return releaseRun, nil
-	}
-	exe, exeErr := os.Executable()
-	if exeErr != nil || systemDirectory(filepath.Dir(exe)) {
-		return nil, err
-	}
-	return admission.AcquireRecovery(context.Background(), filepath.Dir(exe), err, admission.RecoveryFromEnvironment(version, build))
-}
-
-// ForGUIExec is the portable GUI's only route to inherited admission. RPM
-// keeps its short start gate so an RPM update can still stop the GUI later.
-func ForGUIExec(directory, version, build string) (lease *os.File, recovery bool, err error) {
-	if systemDirectory(directory) {
-		release, err := AcquireStart()
-		if err != nil {
-			return nil, false, err
+		for _, name := range []string{launchcontract.EnvRecoveryOperation, launchcontract.EnvRecoveryToken, launchcontract.EnvRecoveryConfiguration} {
+			os.Unsetenv(name)
 		}
-		release()
-		return nil, false, nil
 	}
-	return admission.AcquireForExec(context.Background(), directory, admission.RecoveryFromEnvironment(version, build))
-}
-
-func clearRecoveryEnvironment() {
-	for _, name := range []string{launchcontract.EnvRecoveryOperation, launchcontract.EnvRecoveryToken, launchcontract.EnvRecoveryConfiguration} {
-		os.Unsetenv(name)
-	}
+	return release, err
 }

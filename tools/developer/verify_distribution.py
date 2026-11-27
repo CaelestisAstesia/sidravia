@@ -209,7 +209,7 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     for profile in (repo / 'internal/connection/profile/data').glob('*.json'):
         expected['institution-profiles/' + profile.name] = profile.read_bytes()
     require(any(name.startswith('institution-profiles/') for name in expected), 'official_profiles_missing')
-    roles = ['sidraviactl', 'sidraviad', 'sidraviaupdater']
+    roles = ['sidraviactl', 'sidraviad']
     if windows:
         roles.append('sidraviamgr')
     if gui is not None:
@@ -238,6 +238,16 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     require(set(contents) == set(expected) | set(binaries) | {'sidravia-files.json'}, 'archive_file_set_mismatch')
     expected['BUILD-INFO.txt'] += ''.join(
         f'BinarySHA256: {digest(contents[name])}  {name}\n' for name in binaries).encode()
+    setup_updater = None
+    if windows and gui is not None:
+        # The compiler's paired Setup inventory includes an installer-only
+        # executable. Native acceptance still checks the compiled payload.
+        marker = re.fullmatch(rb'SetupUpdater: ([0-9a-f]{64}) ([1-9][0-9]{0,9})\n', contents['BUILD-INFO.txt'][len(expected['BUILD-INFO.txt']):])
+        require(marker is not None, 'missing_setup_updater_identity')
+        checksum, size = marker.groups()
+        setup_updater = {'path': 'sidraviaupdater.exe', 'size': int(size),
+                         'sha256': checksum.decode('ascii'), 'mode': 0o644}
+        expected['BUILD-INFO.txt'] += marker[0]
     for name, data in expected.items():
         require(contents[name] == data, 'archive_source_mismatch: ' + name)
     ownership_bytes = contents['sidravia-files.json']
@@ -266,7 +276,8 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         # native setup acceptance remains responsible for the compiled payload.
         require(canonical_ownership(ownership)==ownership_bytes, 'noncanonical_ownership_for_setup')
         icon=(repo/'gui/windows/runner/resources/app_icon.ico').read_bytes()
-        setup=dict(ownership,files=ownership['files']+[{'path':'app_icon.ico','size':len(icon),'sha256':digest(icon),'mode':0o644}])
+        setup=dict(ownership,files=ownership['files']+[{'path':'app_icon.ico','size':len(icon),'sha256':digest(icon),'mode':0o644}, setup_updater])
+        validate_product_ownership(setup)
         installer_ownership_sha256=digest(canonical_ownership(setup))
 
     if smoke:

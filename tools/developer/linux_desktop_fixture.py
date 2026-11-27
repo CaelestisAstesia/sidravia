@@ -158,15 +158,12 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
     runtime = state / "runtime.json"
     events = []
     if portable_archive is not None:
-        # status performs no release query. Its secured cache location exposes
-        # the selected package kind without replacing the product's network.
-        with (owned / 'updater-auto-package.log').open('w') as log:
-            subprocess.run([str(package_root / 'sidraviaupdater'), 'status', '--channel', 'stable'], env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=15)
-        key = hashlib.sha256((str(package_root) + '\0gui-portable\0stable').encode()).hexdigest()[:32]
-        cache = Path(env['XDG_CACHE_HOME']) / 'Sidravia/updates'
-        if not (cache / key).is_dir() or {p.name for p in cache.iterdir()} != {key, 'operations'}:
-            raise RuntimeError('packaged updater did not automatically select GUI identity')
-        events.append('packaged-updater-auto-gui-identity-without-network')
+        # The normal CLI must refuse deployment even with valid arguments.
+        retired = subprocess.run([str(package_root / 'sidraviactl'), 'update', 'download', '--candidate', '1:2'],
+                                 env=env, capture_output=True, text=True, timeout=15)
+        if retired.returncode == 0 or json.loads(retired.stdout).get('code') != 'portable_download_only':
+            raise RuntimeError('portable distribution still accepts update downloads')
+        events.append('portable-update-download-refused')
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -309,7 +306,7 @@ def run(root, flutter, environment, source_before, source_metadata, portable_arc
             seal.unlink()
             events.append('portable-seal-refused-before-Flutter-load')
             driver('path-enable')
-            command(['/bin/bash','--noprofile','--norc','-c','command -v sidraviactl && sidraviactl --help && sidraviaupdater --help'],'owned-path-commands',cwd=owned)
+            command(['/bin/bash','--noprofile','--norc','-c','command -v sidraviactl && sidraviactl --help'],'owned-path-commands',cwd=owned)
             events.append('owned-HOME-command-links-executed-in-new-shell')
         def start_gui():
             log = (owned / f"gui-{len(events)}.log").open("w")

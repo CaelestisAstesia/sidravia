@@ -1,3 +1,5 @@
+//go:build windows
+
 package update
 
 import (
@@ -29,16 +31,7 @@ func (f cacheTransport) RoundTrip(r *http.Request) (*http.Response, error) { ret
 func TestCheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
 	checkDownloadStatusRetainsAndReusesVerifiedPackage(t, testPackageKind(), testPackageSuffix())
 }
-func TestLinuxGUICheckDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T) {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("Linux AMD64 GUI target")
-	}
-	checkDownloadStatusRetainsAndReusesVerifiedPackage(t, "gui-portable", "linux-amd64-gui-portable.tar.gz")
-}
 func checkDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T, kind, suffix string) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
-		t.Skip("GitHub core packages are Linux/Windows only")
-	}
 	root := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", root)
 	t.Setenv("LOCALAPPDATA", root)
@@ -125,19 +118,6 @@ func checkDownloadStatusRetainsAndReusesVerifiedPackage(t *testing.T, kind, suff
 	}
 }
 
-func testPackageKind() string {
-	if runtime.GOOS == "windows" && runtime.GOARCH == "amd64" {
-		return "setup"
-	}
-	return "core-portable"
-}
-func testPackageSuffix() string {
-	suffix := "core-portable.tar.gz"
-	if runtime.GOOS == "windows" {
-		suffix = "core-portable.zip"
-	}
-	if testPackageKind() == "setup" {
-		suffix = "setup.exe"
-	}
-	return runtime.GOOS + "-" + runtime.GOARCH + "-" + suffix
-}
+func testPackageKind() string { return "setup" }
+
+func testPackageSuffix() string { return "windows-" + runtime.GOARCH + "-setup.exe" }

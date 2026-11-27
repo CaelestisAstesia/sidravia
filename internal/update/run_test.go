@@ -17,15 +17,11 @@ import (
 )
 
 func TestNonMutatingCommandsAndExplicitApplyConfirmation(t *testing.T) {
-	applyCode := "apply_unavailable"
-	if request.ApplyPlatformSupported() && release.PublisherTrust().Configured() {
-		applyCode = "confirmation_required"
-	}
 	for _, item := range []struct {
 		args []string
 		code string
 		exit int
-	}{{[]string{"--help"}, "ok", 0}, {[]string{"version"}, "ok", 0}, {[]string{"invalid"}, "invalid_arguments", 1}, {[]string{"download"}, "invalid_arguments", 1}, {[]string{"apply", "--candidate", "1:2"}, applyCode, 1}} {
+	}{{[]string{"--help"}, "ok", 0}, {[]string{"version"}, "ok", 0}, {[]string{"invalid"}, "invalid_arguments", 1}, {[]string{"download"}, "invalid_arguments", 1}, {[]string{"apply", "--candidate", "1:2"}, "confirmation_required", 1}} {
 		var out bytes.Buffer
 		exit := Run(context.Background(), item.args, "0.4.0-alpha.1", "fixture", &out)
 		var result request.Outcome

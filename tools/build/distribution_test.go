@@ -52,7 +52,7 @@ func TestThirdPartyNoticesCoverPinnedGoDependencies(t *testing.T) {
 		for _, arch := range []string{"amd64", "arm64"} {
 			cmd := exec.Command("go", "list", "-mod=readonly", "-deps", "-f",
 				"{{with .Module}}{{if .Version}}{{.Path}}@{{.Version}}\t{{.Dir}}{{end}}{{end}}",
-				"./cmd/sidraviactl", "./cmd/sidraviad", "./cmd/sidraviaupdater", platformCommand)
+				"./cmd/sidraviactl", "./cmd/sidraviad", platformCommand)
 			cmd.Dir = root
 			cmd.Env = append(os.Environ(), "GOOS="+osName, "GOARCH="+arch, "CGO_ENABLED=0")
 			output, err := cmd.Output()
@@ -168,9 +168,9 @@ func TestDistributionContents(t *testing.T) {
 			if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			want := 3
+			want := 2
 			if strings.HasPrefix(target, "windows-") {
-				want = 4
+				want = 3
 			}
 			if len(fb.calls) != want {
 				t.Fatalf("builds=%d", len(fb.calls))
@@ -190,7 +190,7 @@ func TestDistributionContents(t *testing.T) {
 				for name := range bytesByName {
 					contents[name] = true
 				}
-				if !contents["sidraviamgr.exe"] || !contents["sidraviaupdater.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || contents["app_icon.ico"] {
+				if !contents["sidraviamgr.exe"] || contents["sidraviaupdater.exe"] || !contents["sidraviactl.exe"] || !contents["sidraviad.exe"] || contents["app_icon.ico"] {
 					t.Fatal("missing manager or core")
 				}
 			} else {
@@ -226,7 +226,7 @@ func TestDistributionContents(t *testing.T) {
 						}
 					}
 				}
-				if !contents["sidraviactl"] || !contents["sidraviad"] || !contents["sidraviaupdater"] || contents["sidraviamgr"] || contents["Sidravia.exe"] {
+				if !contents["sidraviactl"] || !contents["sidraviad"] || contents["sidraviaupdater"] || contents["sidraviamgr"] || contents["Sidravia.exe"] {
 					t.Fatal("Linux program set")
 				}
 			}
@@ -237,9 +237,9 @@ func TestDistributionContents(t *testing.T) {
 				t.Fatal("distribution is missing its source third-party notices")
 			}
 			info := "ProductVersion: " + cfg.version + "\nBuildID: " + cfg.buildID + "\nTarget: " + target + "\nArtifactKind: distribution\n"
-			names := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}
+			names := []string{"sidraviactl", "sidraviad"}
 			if strings.HasPrefix(target, "windows-") {
-				names = []string{"sidraviactl.exe", "sidraviad.exe", "sidraviaupdater.exe", "sidraviamgr.exe"}
+				names = []string{"sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe"}
 			}
 			for _, name := range names {
 				info += "BinarySHA256: " + sha256Hex(bytesByName[name]) + "  " + name + "\n"
@@ -340,7 +340,7 @@ func TestDistributionDoesNotDependOnLegacyWindowsScripts(t *testing.T) {
 	if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	if len(fb.calls) != 3 {
+	if len(fb.calls) != 2 {
 		t.Fatalf("core builds = %d", len(fb.calls))
 	}
 }

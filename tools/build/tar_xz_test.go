@@ -2,13 +2,12 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/xi2/xz"
 )
 
 func TestXZIsAnExplicitLinuxDistributionEncoding(t *testing.T) {
@@ -36,12 +35,11 @@ func TestXZProducerUsesDeterministicTarAndBoundedDictionary(t *testing.T) {
 			t.Fatal("XZ output is nondeterministic")
 		}
 		previous = data
-		f, _ := os.Open(path)
-		r, err := xz.NewReader(f, 8<<20)
+		decoded, err := xzCommand("--decompress", "--stdout", "--memlimit-decompress=9MiB", "--", path).Output()
 		if err != nil {
 			t.Fatal(err)
 		}
-		tr := tar.NewReader(r)
+		tr := tar.NewReader(bytes.NewReader(decoded))
 		h, err := tr.Next()
 		if err != nil || h.Name != "root/LICENSE" {
 			t.Fatal(h, err)
@@ -50,9 +48,6 @@ func TestXZProducerUsesDeterministicTarAndBoundedDictionary(t *testing.T) {
 		if err != nil || string(body) != "license" {
 			t.Fatal(string(body), err)
 		}
-		if _, err = io.Copy(io.Discard, r); err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
+
 	}
 }

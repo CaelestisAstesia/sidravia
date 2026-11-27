@@ -9,11 +9,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/installation/startgate"
@@ -57,33 +54,19 @@ func launch(directory string, args, env []string) error {
 	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 		return errLaunchFile
 	}
-	cleanEnv := make([]string, 0, len(env)+1)
-	for _, value := range env {
-		if !strings.HasPrefix(value, gateFD+"=") {
-			cleanEnv = append(cleanEnv, value)
-		}
-	}
-	lease, recovery, err := startgate.ForGUIExec(directory, ProductVersion, BuildID)
+	release, err := startgate.AcquireStartIn(directory)
 	if err != nil {
 		return err
 	}
-	if lease != nil {
-		defer lease.Close()
-		if !recovery {
-			// Later core restarts must not reuse a completed restoration capability.
-			filtered := cleanEnv[:0]
-			for _, entry := range cleanEnv {
-				key, _, _ := strings.Cut(entry, "=")
-				if key != launchcontract.EnvRecoveryOperation && key != launchcontract.EnvRecoveryToken && key != launchcontract.EnvRecoveryConfiguration {
-					filtered = append(filtered, entry)
-				}
-			}
-			cleanEnv = filtered
+	release()
+	cleanEnv := make([]string, 0, len(env))
+	for _, value := range env {
+		key, _, _ := strings.Cut(value, "=")
+		switch key {
+		case gateFD, launchcontract.EnvRecoveryOperation, launchcontract.EnvRecoveryToken, launchcontract.EnvRecoveryConfiguration:
+			continue
 		}
-		if _, err = unix.FcntlInt(lease.Fd(), unix.F_SETFD, 0); err != nil {
-			return err
-		}
-		cleanEnv = append(cleanEnv, gateFD+"="+strconv.FormatUint(uint64(lease.Fd()), 10))
+		cleanEnv = append(cleanEnv, value)
 	}
 	return syscall.Exec(runtime, append([]string{runtime}, args...), cleanEnv)
 }

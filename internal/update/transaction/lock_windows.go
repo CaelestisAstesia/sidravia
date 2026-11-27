@@ -31,5 +31,3 @@ func lock(path string) (func(), error) {
 	}
 	return func() { _ = windows.CloseHandle(handle) }, nil
 }
-
-func admissionLock(path string, _ bool) (func(), error) { return lock(path) }

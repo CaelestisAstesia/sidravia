@@ -3,8 +3,6 @@
 package startgate
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -90,42 +88,17 @@ func TestDebianStartupRequiresPersistentGateAndUnblockedTransaction(t *testing.T
 	check(false)
 }
 
-func TestPortableGateRejectsUnverifiableStateEvenWithoutMarker(t *testing.T) {
-	cache := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cache)
+func TestPortableStartupRejectsLegacySeal(t *testing.T) {
 	target := t.TempDir()
-	release, err := acquirePortableStart(target)
+	release, err := AcquireStartIn(target)
 	if err != nil {
 		t.Fatal(err)
 	}
 	release()
-	sum := sha256.Sum256([]byte(target))
-	record := filepath.Join(cache, "Sidravia", "updates", "operations", hex.EncodeToString(sum[:]), "current.json")
-	if err := os.WriteFile(record, []byte("{"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(target, "sidravia.update"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := acquirePortableStart(target); !errors.Is(err, ErrBusy) {
-		t.Fatalf("unverifiable partial update allowed startup: %v", err)
-	}
-}
-
-func TestGUIExecLeaseHoldsAdmissionAndStartsCloseOnExec(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	target := t.TempDir()
-	lease, recovery, err := ForGUIExec(target, "1.0.0", "dev")
-	if err != nil || recovery || lease == nil {
-		t.Fatalf("ordinary GUI startup: lease=%v recovery=%v err=%v", lease, recovery, err)
-	}
-	defer lease.Close()
-	flags, err := unix.FcntlInt(lease.Fd(), unix.F_GETFD, 0)
-	if err != nil || flags&unix.FD_CLOEXEC == 0 {
-		t.Fatalf("launcher lease leaked before explicit inheritance: flags=%d err=%v", flags, err)
-	}
-	if err := unix.Flock(int(lease.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatalf("test could not simulate exclusive installation: %v", err)
-	}
-	if other, _, err := ForGUIExec(target, "1.0.0", "dev"); err == nil {
-		other.Close()
-		t.Fatal("GUI inherited without a compatible startup lease")
+	if _, err := AcquireStartIn(target); !errors.Is(err, ErrBusy) {
+		t.Fatalf("sealed directory admitted: %v", err)
 	}
 }

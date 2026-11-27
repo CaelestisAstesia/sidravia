@@ -8,7 +8,6 @@ require golang.org/x/sys v0.47.0
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	golang.org/x/crypto v0.52.0
 	golang.org/x/text v0.38.0
 )

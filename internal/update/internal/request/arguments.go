@@ -59,8 +59,14 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 			kind = "core-" + manager
 		}
 	} else {
+		if layout.Mode == productlayout.ModePortable && !check {
+			return layout, "", false, PortableDownloadOnly()
+		}
 		if kind == "" {
 			kind = DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
+		}
+		if !check && (runtime.GOOS != "windows" || kind != "setup") {
+			return layout, "", false, &Failure{"apply_unavailable", "当前安装不支持应用内安装更新。", nil}
 		}
 		if kind != "setup" && kind != "gui-portable" && kind != "core-portable" {
 			return layout, "", false, &Failure{"invalid_arguments", "更新包类型无效。", nil}
@@ -69,18 +75,14 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 	return layout, kind, manager != "", nil
 }
 
+func PortableDownloadOnly() *Failure {
+	return &Failure{"portable_download_only", "便携版请从发行页下载新版，并解包到新目录。", nil}
+}
+
 func ApplyPlatformSupported() bool {
-	return release.DesktopArchitecture(runtime.GOARCH) && (runtime.GOOS == "linux" || runtime.GOOS == "windows")
+	return release.DesktopArchitecture(runtime.GOARCH) && runtime.GOOS == "windows"
 }
 
 func ValidApplyTarget(layout productlayout.Layout, kind string) bool {
-	switch runtime.GOOS {
-	case "linux":
-		return layout.Mode == productlayout.ModePortable && kind == DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
-	case "windows":
-		return layout.Mode == productlayout.ModeInstalled && kind == "setup" ||
-			layout.Mode == productlayout.ModePortable && kind == DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
-	default:
-		return false
-	}
+	return runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled && kind == "setup"
 }

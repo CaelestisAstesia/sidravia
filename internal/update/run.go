@@ -16,12 +16,6 @@ import (
 )
 
 func Run(ctx context.Context, args []string, version, buildID string, out io.Writer) int {
-	return RunWithAdmission(ctx, args, version, buildID, out, nil)
-}
-
-// RunWithAdmission transfers the host's own runtime lease only after the
-// coordinator has durably blocked ordinary startup. Read-only commands need no lease.
-func RunWithAdmission(ctx context.Context, args []string, version, buildID string, out io.Writer, releaseRuntime func()) int {
 	emit := request.Writer(out)
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
 		return emit(true, "ok", "Sidravia updater: check | download --candidate ID | apply --candidate ID --confirm | status | recover --operation ID --confirm | version", nil)
@@ -43,9 +37,6 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	if argumentError != "" {
 		return emit(false, "invalid_arguments", argumentError, nil)
 	}
-	if operation == "apply" && (!request.ApplyPlatformSupported() || !release.PublisherTrust().Configured()) {
-		return emit(false, "apply_unavailable", "当前平台或构建尚未具备可信自动更新条件，请按发行说明手动更新", nil)
-	}
 	if (operation == "apply" || operation == "recover") && !options.Confirmed {
 		return emit(false, "confirmation_required", "请检查候选或操作编号，并使用 --confirm 明确确认", nil)
 	}
@@ -55,6 +46,9 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	layout, kind, _, failure := request.Resolve(options.Kind, false)
 	if failure != nil {
 		return failure.Write(out)
+	}
+	if operation == "apply" && (!request.ApplyPlatformSupported() || !release.PublisherTrust().Configured()) {
+		return emit(false, "apply_unavailable", "当前平台或构建尚未具备可信自动更新条件，请按发行说明手动更新", nil)
 	}
 	// Setup recovery reconciles a local, signed execution record. Release
 	// query cache availability and GitHub backoff are irrelevant here.
@@ -103,13 +97,6 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 	}
 	return store.WithMutation(ctx, func(m candidatecache.Mutation) request.Outcome {
 		source := github.NewGitHub(nil)
-		if operation == "recover" {
-			result, err := recoverOperation(ctx, layout, version, buildID, options.OperationID, source)
-			if err != nil {
-				return m.SourceFailure(ctx, err, applyErrorCode(err), applyErrorMessage(err), result)
-			}
-			return request.Outcome{OK: true, Code: "ok", Message: "中断协调已结束，未重复启动或恢复连接", Result: result}
-		}
 		state, outcome := query.Check(ctx, source, selection, layout, false, m)
 		if !outcome.OK {
 			return outcome
@@ -130,7 +117,7 @@ func RunWithAdmission(ctx context.Context, args []string, version, buildID strin
 			if path == "" || !candidatecache.SamePackage(oldCandidate, result.Candidate) {
 				return request.Fail("download_required", "请先下载当前准确候选，再确认更新", nil)
 			}
-			outcome, err := applyDownloaded(ctx, m.Root(), layout, version, buildID, source, *result.Candidate, path, releaseRuntime)
+			outcome, err := applyDownloaded(ctx, m.Root(), layout, version, buildID, source, *result.Candidate, path)
 			if err != nil {
 				return m.SourceFailure(ctx, err, applyErrorCode(err), applyErrorMessage(err), outcome)
 			}

@@ -166,14 +166,8 @@ class LinuxInstallationManager
   @override
   Future<UpdateInstallResult> installUpdate(String candidateId) {
     _checkOpen();
-    if (usesSystemPackageManager) {
-      throw const IntegrationFailure('请使用系统包管理器更新。');
-    }
-    return _updateCheck.install(
-      executable: '$_directory/sidraviactl',
-      downloader: '$_directory/sidraviaupdater',
-      candidateId: candidateId,
-      environment: environment,
+    throw IntegrationFailure(
+      usesSystemPackageManager ? '请使用系统包管理器更新。' : '便携版请从发行页下载新版，并解包到新目录。',
     );
   }
 
@@ -220,7 +214,6 @@ class LinuxInstallationManager
   Map<String, String> get _commands => {
     'sidraviactl': '$_directory/sidraviactl',
     'sidraviad': '$_directory/sidraviad',
-    'sidraviaupdater': '$_directory/sidraviaupdater',
     'sidravia_gui': executable,
   };
 
@@ -424,7 +417,10 @@ class LinuxInstallationManager
     final commands = _commands;
     _locked(_bin, () {
       if (!enable) {
-        for (final e in commands.entries) {
+        for (final e in {
+          ...commands,
+          'sidraviaupdater': '$_directory/sidraviaupdater',
+        }.entries) {
           final path = '$_bin/${e.key}';
           if (_linkState(path, e.value) == 'owned') Link(path).deleteSync();
         }
