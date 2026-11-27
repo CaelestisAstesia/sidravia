@@ -4,10 +4,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from release_artifacts import request_document
-from stage_release import stage
+from stage_release import QT_MANIFEST, QT_SIGNATURE, stage
 
 
 class StageReleaseTests(unittest.TestCase):
@@ -100,6 +101,70 @@ class StageReleaseTests(unittest.TestCase):
                 assets = set(request['expectedAssets'])
                 prefix = f'sidravia-v{self.version}-linux-arm64-gui-portable.tar.'
                 self.assertTrue({prefix + 'xz', prefix + 'gz'} <= assets)
+
+    def qt_lane(self):
+        lane = self.root / 'inputs/qt-release'
+        assets = lane / 'assets'
+        assets.mkdir(parents=True)
+        manifest = dict(version=self.version, buildId=self.commit, assets=[])
+        for arch in ('amd64', 'arm64'):
+            base = f'sidravia-v{self.version}-windows-{arch}'
+            distribution = self.root / 'inputs' / base
+            legacy_setup = f'{base}-setup.exe'
+            (distribution / 'gui' / legacy_setup).unlink()
+            self.expected_payloads.remove(legacy_setup)
+            receipt_path = distribution / 'verification.json'
+            receipt = json.loads(receipt_path.read_text())
+            del receipt['artifactHashes'][legacy_setup]
+            receipt_path.write_text(json.dumps(receipt))
+            maintenance = lane / 'toolchains' / f'windows-{arch}' / 'installerbase.exe'
+            maintenance.parent.mkdir(parents=True)
+            maintenance.write_bytes(b'reference image')
+            for suffix in ('qt-setup.exe', 'qt-core-repository.zip', 'qt-gui-repository.zip'):
+                name = f'{base}-{suffix}'
+                manifest['assets'].append(dict(name=name, sha256=self.write_package(assets / name)))
+        (assets / QT_MANIFEST).write_text(json.dumps(manifest))
+        (assets / QT_SIGNATURE).write_bytes(b'signature')
+        self.publisher_key = self.root / 'trusted-public-key'
+        self.publisher_key.write_bytes(b'trusted key')
+        return assets
+
+    def test_qt_release_stages_only_verified_payloads_and_signed_metadata(self):
+        source = self.qt_lane()
+        with patch('stage_release.public_check', return_value=dict(artifactBytes='passed', installerBytes='passed')) as verify:
+            self.assertEqual(stage(self.root, self.version, self.commit, qt_publisher_key=self.publisher_key), 26)
+        args, kwargs = verify.call_args
+        self.assertEqual(args[3:], ((source / QT_MANIFEST).read_bytes(), b'trusted key', b'signature'))
+        self.assertEqual(kwargs['published_names'], (QT_MANIFEST, QT_SIGNATURE))
+        self.assertNotEqual(kwargs['qt_artifacts'], source)
+        self.assertEqual(kwargs['qt_maintenance'], source.parent / 'toolchains')
+        output = self.root / 'assets'
+        self.assertEqual({path.name for path in output.iterdir()},
+                         self.expected_payloads | {'SHA256SUMS.txt', QT_MANIFEST, QT_SIGNATURE})
+        for line in (output / 'SHA256SUMS.txt').read_text().splitlines():
+            digest, name = line.split('  ')
+            self.assertIn(name, self.expected_payloads)
+            self.assertEqual(hashlib.sha256((output / name).read_bytes()).hexdigest(), digest)
+        for metadata in (QT_MANIFEST, QT_SIGNATURE):
+            self.assertEqual((output / metadata).read_bytes(), (source / metadata).read_bytes())
+
+    def test_qt_release_requires_both_architectures_and_complete_verification(self):
+        source = self.qt_lane()
+        path = source / QT_MANIFEST
+        complete = path.read_bytes()
+        incomplete = json.loads(complete)
+        incomplete['assets'] = [asset for asset in incomplete['assets'] if '-amd64-' in asset['name']]
+        path.write_text(json.dumps(incomplete))
+        with patch('stage_release.public_check') as verify:
+            with self.assertRaisesRegex(ValueError, 'qt_release_assets_mismatch'):
+                stage(self.root, self.version, self.commit, qt_publisher_key=self.publisher_key)
+            verify.assert_not_called()
+        path.write_bytes(complete)
+        with patch('stage_release.public_check', return_value=dict(artifactBytes='passed')):
+            with self.assertRaisesRegex(ValueError, 'qt_release_artifact_verification_incomplete'):
+                stage(self.root, self.version, self.commit, qt_publisher_key=self.publisher_key)
+        self.assertFalse((self.root / 'assets').exists())
+        self.assertFalse((self.root / 'requests').exists())
 
     def test_refuses_ownership_mismatch_without_partial_candidate(self):
         lane = self.root / 'inputs' / f'sidravia-v{self.version}-linux-arm64-portable'

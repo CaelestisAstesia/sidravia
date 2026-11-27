@@ -134,7 +134,8 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
     return result, receipts
 
 
-def public_check(repo, go, mode, manifest_data, public_data, signature_data=None, *, published_names=None):
+def public_check(repo, go, mode, manifest_data, public_data, signature_data=None, *,
+                 published_names=None, qt_artifacts=None, qt_maintenance=None):
     # Go verifies these exact captured bytes, never a second lookup of mutable
     # source paths. The private temporary directory contains public data only.
     with tempfile.TemporaryDirectory(prefix='sidravia-release-public-') as temporary:
@@ -156,6 +157,8 @@ def public_check(repo, go, mode, manifest_data, public_data, signature_data=None
             command += ['--signature', str(signature)]
             if published_names is not None:
                 command.append('--published')
+        if qt_artifacts is not None:
+            command += ['--qt-artifacts', str(qt_artifacts), '--qt-maintenance', str(qt_maintenance)]
         result = subprocess.run(command, cwd=repo, env=dict(os.environ, GOTOOLCHAIN='local'), capture_output=True, encoding='utf-8', timeout=120)
     require(result.returncode == 0, 'manifest_structure_or_signature_rejected')
     try:

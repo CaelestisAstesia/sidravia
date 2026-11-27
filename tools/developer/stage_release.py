@@ -8,10 +8,45 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from release_artifacts import document, plain_path, require
+from release_artifacts import document, plain_path, public_check, read_public, require, unique_object
 
 
-def stage(directory, version, build_id):
+SOURCE = Path(__file__).resolve().parents[2]
+WINDOWS_ARCHITECTURES = ('amd64', 'arm64')
+QT_MANIFEST = 'sidravia-release-qt.json'
+QT_SIGNATURE = 'sidravia-release-qt.sig'
+
+
+def add_qt_release(lane, assets, version, build_id, architectures, publisher_key, go, add_package):
+    source = plain_path(lane / 'assets', directory=True)
+    toolchains = plain_path(lane / 'toolchains', directory=True)
+    for arch in architectures:
+        plain_path(toolchains / f'windows-{arch}' / 'installerbase.exe')
+    manifest_data = read_public(source / QT_MANIFEST, 256 << 10)
+    signature_data = read_public(source / QT_SIGNATURE, 64)
+    public_data = read_public(publisher_key, 256)
+    manifest = json.loads(manifest_data, object_pairs_hook=unique_object)
+    require((manifest['version'], manifest['buildId']) == (version, build_id), 'qt_release_identity_mismatch')
+    expected = {
+        f'sidravia-v{version}-windows-{arch}-{suffix}'
+        for arch in architectures
+        for suffix in ('qt-setup.exe', 'qt-core-repository.zip', 'qt-gui-repository.zip')
+    }
+    signed = manifest['assets']
+    require(len(signed) == len(expected) and {item['name'] for item in signed} == expected,
+            'qt_release_assets_mismatch')
+    for item in signed:
+        add_package(source / item['name'], item['sha256'])
+    report = public_check(SOURCE, go, 'verify', manifest_data, public_data, signature_data,
+                          published_names=(QT_MANIFEST, QT_SIGNATURE),
+                          qt_artifacts=assets, qt_maintenance=toolchains)
+    require(report.get('artifactBytes') == report.get('installerBytes') == 'passed',
+            'qt_release_artifact_verification_incomplete')
+    (assets / QT_MANIFEST).write_bytes(manifest_data)
+    (assets / QT_SIGNATURE).write_bytes(signature_data)
+
+
+def stage(directory, version, build_id, *, qt_publisher_key=None, go='go'):
     require(re.fullmatch(r'[0-9][0-9A-Za-z.+-]*', version), 'invalid_version')
     require(re.fullmatch(r'[0-9a-f]{40}', build_id), 'invalid_build_commit')
     inputs = plain_path(directory / 'inputs', directory=True)
@@ -75,11 +110,17 @@ def stage(directory, version, build_id):
         assets.mkdir()
         request_dir = Path(temporary) / 'requests'
         request_dir.mkdir()
-        for arch in ('amd64', 'arm64'):
+        if qt_publisher_key is not None:
+            add_qt_release(inputs / 'qt-release', assets, version, build_id, WINDOWS_ARCHITECTURES,
+                           qt_publisher_key, go, add_package)
+        for arch in WINDOWS_ARCHITECTURES:
             target = f'windows-{arch}'
             base = f'sidravia-v{version}-{target}'
             lane = inputs / base
-            add_distribution(lane, target, 'gui', [f'{base}-gui-portable.zip', f'{base}-setup.exe'],
+            windows_gui = [f'{base}-gui-portable.zip']
+            if qt_publisher_key is None:
+                windows_gui.append(f'{base}-setup.exe')
+            add_distribution(lane, target, 'gui', windows_gui,
                              'sidravia-release-extended' if arch == 'arm64' else 'sidravia-release')
             add_distribution(lane, target, 'core', [f'{base}-core-portable.zip'], 'sidravia-release')
             target = f'linux-{arch}'
@@ -111,12 +152,16 @@ def main():
     parser.add_argument('--directory', type=Path, required=True)
     parser.add_argument('--version', required=True)
     parser.add_argument('--build-id', required=True)
+    parser.add_argument('--qt-publisher-key', type=Path,
+                        help='verify and stage the signed Qt lane using this trusted public key')
+    parser.add_argument('--go', default='go')
     args = parser.parse_args()
     try:
-        count = stage(args.directory, args.version, args.build_id)
+        count = stage(args.directory, args.version, args.build_id, qt_publisher_key=args.qt_publisher_key, go=args.go)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f'release candidate assembly failed: {error}\n')
-    print(f'Assembled {count} verified packages and three unsigned manifest requests.')
+    qt_metadata = ' and a verified Qt manifest and signature' if args.qt_publisher_key is not None else ''
+    print(f'Assembled {count} verified packages, three unsigned manifest requests{qt_metadata}.')
 
 
 if __name__ == '__main__':

@@ -1017,6 +1017,27 @@ and `verification.json`. The JUnit report records each profile independently,
 including a failed profile when it cannot produce a successful receipt.
 
 
+## Assembling a local Qt release candidate
+
+Use the existing release staging tool with the trusted publisher public key.
+
+```sh
+python3 tools/developer/stage_release.py --directory "$CANDIDATE" --version "$VERSION" --build-id "$BUILD_ID" --qt-publisher-key "$PUBLIC_KEY"
+```
+
+Place the signed Qt manifest, signature, both profile repository ZIPs per Windows
+architecture, and one offline Setup per architecture in
+`inputs/qt-release/assets/`. Place the corresponding reference executables in
+`inputs/qt-release/toolchains/windows-{amd64,arm64}/installerbase.exe`.
+Windows distribution inputs and receipts in this mode contain the portable ZIPs.
+Linux inputs follow the usual staging layout.
+
+Staging checks the signed build identity, both architectures, and the exact
+copied installer and repository bytes before exposing the assembled assets.
+The public key and reference executables are inputs only. The verified Qt
+manifest and signature go into `assets/` alongside `SHA256SUMS.txt`. The
+other release manifest requests still go into `requests/` for separate signing.
+
 ## Windows Qt release acceptance
 
 Run the Qt lifecycle suite in a disposable Windows account without an existing
