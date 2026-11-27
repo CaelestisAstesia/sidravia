@@ -102,8 +102,11 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	}
 	env := append(os.Environ(), "SIDRAVIA_IFW_HANDOFF="+waitFor,
 		"SIDRAVIA_IFW_OUTCOME="+outcomePath, "SIDRAVIA_IFW_VERSION="+candidate.Version)
-	child, err := winproc.StartIndependentWithEnvironment(tool, env, "--set-temp-repository", repositoryURL,
-		"--accept-licenses", "--reject-messages", "--confirm-command", "update")
+	// Qt can outlive this updater in the ordinary Windows user job. It
+	// waits for the exact updater and launcher to exit before writing files.
+	args := []string{"--set-temp-repository", repositoryURL,
+		"--accept-licenses", "--reject-messages", "--confirm-command", "update"}
+	child, err := winproc.StartApplicationEnvironment(tool, args, env)
 	if err != nil {
 		return nil, errors.Join(errOperation, err)
 	}
