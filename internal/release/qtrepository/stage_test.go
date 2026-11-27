@@ -49,7 +49,7 @@ func TestStageRejectsChangedArchiveAndMismatchedInventory(t *testing.T) {
 			if scenario.wrongImage {
 				runtime = digest([]byte("different maintenance image"))
 			}
-			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: "core", Version: "1.0.0", MaintenanceSHA256: runtime, Files: map[string]string{"Updates.xml": digest(exact)}})
+			index, err := json.Marshal(release.QtRepositoryIndex{SchemaVersion: 1, Product: "Sidravia", Target: target, Profile: "core", Version: "1.0.0", BuildID: "fixture", MaintenanceSHA256: runtime, Files: map[string]string{"Updates.xml": digest(exact)}})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -64,7 +64,7 @@ func Stage(ctx context.Context, source, parent, maintenanceSHA256 string, proof 
 	inventory := repository.inventory
 	if inventory.Target != asset.OS+"-"+asset.Arch ||
 		inventory.Profile != release.QtRepositoryProfile(asset.Kind) ||
-		inventory.Version != candidate.Version {
+		inventory.Version != candidate.Version || inventory.BuildID != proof.BuildID() {
 		return "", release.ErrMetadata
 	}
 

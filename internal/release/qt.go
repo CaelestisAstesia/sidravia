@@ -18,6 +18,7 @@ type QtRepositoryIndex struct {
 	Target            string            `json:"target"`
 	Profile           string            `json:"profile"`
 	Version           string            `json:"version"`
+	BuildID           string            `json:"buildId"`
 	MaintenanceSHA256 string            `json:"maintenanceSha256"`
 	Files             map[string]string `json:"files"`
 }
@@ -25,7 +26,7 @@ type QtRepositoryIndex struct {
 func DecodeQtRepositoryIndex(data []byte) (QtRepositoryIndex, error) {
 	var index QtRepositoryIndex
 	if len(data) > ReleaseManifestLimit || jsondoc.DecodeStrict(data, &index) != nil ||
-		index.SchemaVersion != 1 || index.Product != "Sidravia" ||
+		index.SchemaVersion != 1 || index.Product != "Sidravia" || !validReleaseBuildID(index.BuildID) ||
 		(index.Target != "windows-amd64" && index.Target != "windows-arm64") ||
 		(index.Profile != "core" && index.Profile != "gui") ||
 		!packagefiles.ValidSHA256(index.MaintenanceSHA256) ||

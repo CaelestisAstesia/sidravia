@@ -144,6 +144,18 @@ func (keys *PublisherKeys) Verify(data, signature []byte, version string) (Verif
 	return VerifiedRelease{manifest: m, data: append([]byte(nil), data...), signature: append([]byte(nil), signature...)}, nil
 }
 
+func validReleaseBuildID(build string) bool {
+	if len(build) == 0 || len(build) > 64 {
+		return false
+	}
+	for i, r := range build {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || i > 0 && (r == '.' || r == '_' || r == '-')) {
+			return false
+		}
+	}
+	return true
+}
+
 // ValidateReleaseManifest checks public structure only. It does not establish
 // publisher trust and cannot construct a VerifiedRelease or authorize updates.
 // The release preparer and signature verifier share this exact v2 contract.
@@ -152,16 +164,11 @@ func ValidateReleaseManifest(data []byte) (ReleaseManifest, error) {
 		return ReleaseManifest{}, ErrMetadata
 	}
 	var m ReleaseManifest
-	if jsondoc.DecodeStrict(data, &m) != nil || !releaseShape(data) || m.SchemaVersion != 2 || m.MinimumProtocol != 1 || len(m.BuildID) == 0 || len(m.BuildID) > 64 || len(m.Assets) == 0 || len(m.Assets) > 32 {
+	if jsondoc.DecodeStrict(data, &m) != nil || !releaseShape(data) || m.SchemaVersion != 2 || m.MinimumProtocol != 1 || !validReleaseBuildID(m.BuildID) || len(m.Assets) == 0 || len(m.Assets) > 32 {
 		return ReleaseManifest{}, ErrMetadata
 	}
 	if _, err := ParseVersion(m.Version); err != nil {
 		return ReleaseManifest{}, ErrMetadata
-	}
-	for i, r := range m.BuildID {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || i > 0 && (r == '.' || r == '_' || r == '-')) {
-			return ReleaseManifest{}, ErrMetadata
-		}
 	}
 	seen := map[string]bool{}
 	ownership := map[string]ReleaseAsset{}

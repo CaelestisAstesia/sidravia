@@ -26,7 +26,7 @@ func TestQtRepositorySignerPreservesExactInventoryAndRejectsChangedFiles(t *test
 	exact := []byte("<Updates/>")
 	hash := sha256.Sum256(exact)
 	index, err := json.Marshal(release.QtRepositoryIndex{
-		SchemaVersion: 1, Product: "Sidravia", Target: "windows-amd64", Profile: "core", Version: "1.0.0",
+		SchemaVersion: 1, Product: "Sidravia", Target: "windows-amd64", Profile: "core", Version: "1.0.0", BuildID: "fixture",
 		MaintenanceSHA256: hex.EncodeToString(hash[:]), Files: map[string]string{"Updates.xml": hex.EncodeToString(hash[:])},
 	})
 	if err != nil {

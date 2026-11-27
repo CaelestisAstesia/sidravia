@@ -51,17 +51,29 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 	manifest := release.ReleaseManifest{
 		SchemaVersion: 2, KeyID: id, Version: *version, BuildID: *build, MinimumProtocol: 1,
 	}
-	profiles := map[string]int{}
+	type target struct {
+		profiles map[string]bool
+		image    string
+	}
+	targets := map[string]target{}
 	for _, repository := range flags.Args() {
-		asset, err := qtReleaseAsset(repository, *version, key)
+		asset, image, err := qtReleaseAsset(repository, *version, *build, key)
 		if err != nil {
 			return fail(fmt.Errorf("review %s: %w", filepath.Base(repository), err))
 		}
-		profiles[asset.Arch]++
+		group, exists := targets[asset.Arch]
+		if !exists {
+			group = target{profiles: map[string]bool{}, image: image}
+			targets[asset.Arch] = group
+		}
+		if group.profiles[asset.PayloadKind] || group.image != image {
+			return fail(errors.New("each target must have distinct profiles using a single maintenance image"))
+		}
+		group.profiles[asset.PayloadKind] = true
 		manifest.Assets = append(manifest.Assets, asset)
 	}
-	for _, count := range profiles {
-		if count != 2 {
+	for _, group := range targets {
+		if len(group.profiles) != 2 {
 			return fail(errors.New("each target must include both Core and GUI repositories"))
 		}
 	}
@@ -79,31 +91,31 @@ func prepareQtManifest(args []string, out, stderr io.Writer) int {
 	return 0
 }
 
-func qtReleaseAsset(path, version string, key ed25519.PublicKey) (release.ReleaseAsset, error) {
+func qtReleaseAsset(path, version, buildID string, key ed25519.PublicKey) (release.ReleaseAsset, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return release.ReleaseAsset{}, err
+		return release.ReleaseAsset{}, "", err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 2<<30 {
-		return release.ReleaseAsset{}, release.ErrMetadata
+		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
 	archive, err := zip.NewReader(file, info.Size())
 	if err != nil {
-		return release.ReleaseAsset{}, err
+		return release.ReleaseAsset{}, "", err
 	}
 	index, inventoryHash, err := qtrepository.InspectSigned(archive, key)
 	if err != nil {
-		return release.ReleaseAsset{}, err
+		return release.ReleaseAsset{}, "", err
 	}
-	if index.Version != version {
-		return release.ReleaseAsset{}, release.ErrMetadata
+	if index.Version != version || index.BuildID != buildID {
+		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
 	hash := sha256.New()
 	size, err := io.Copy(hash, io.LimitReader(file, info.Size()+1))
 	if err != nil || size != info.Size() {
-		return release.ReleaseAsset{}, release.ErrMetadata
+		return release.ReleaseAsset{}, "", release.ErrMetadata
 	}
 	kind := release.QtCoreRepository
 	if index.Profile == "gui" {
@@ -115,5 +127,5 @@ func qtReleaseAsset(path, version string, key ed25519.PublicKey) (release.Releas
 			Name: filepath.Base(path), Size: size, SHA256: hex.EncodeToString(hash.Sum(nil)),
 		},
 		FilesSHA256: inventoryHash, PayloadKind: index.Profile,
-	}, nil
+	}, index.MaintenanceSHA256, nil
 }
