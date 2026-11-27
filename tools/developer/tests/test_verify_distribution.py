@@ -110,7 +110,7 @@ class DistributionContract(unittest.TestCase):
                 self.fixture.package(target, self.fixture.payload(target, gui=False), gui=False)
                 with mock.patch.object(module, 'binary_identity') as identity:
                     result = self.verify(target, gui=False)
-                self.assertEqual(identity.call_count, 4 if target.startswith('windows') else 3)
+                self.assertEqual(identity.call_count, 3 if target.startswith('windows') else 2)
                 self.assertEqual(result['helpSmoke'], 'not_run')
                 self.assertEqual(result['installation'], 'not_run')
 
@@ -119,7 +119,7 @@ class DistributionContract(unittest.TestCase):
         with mock.patch.object(module, 'binary_identity'), mock.patch.object(module.platform, 'system', return_value='Windows'), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=b'help')) as run:
             result = self.verify('windows-amd64', smoke=True, gui=False)
         self.assertEqual(result['helpSmoke'], 'passed')
-        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'])
+        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviamgr.exe'])
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
         for call in run.call_args_list:
             cwd, env = call.kwargs['cwd'], call.kwargs['env']
@@ -208,7 +208,7 @@ class DistributionContract(unittest.TestCase):
         self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64'))
         with mock.patch.object(module, 'binary_identity'), mock.patch.object(module.platform, 'system', return_value='Windows'), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=b'help')) as run:
             self.assertEqual(self.verify('windows-amd64', True)['helpSmoke'], 'passed')
-        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviaupdater.exe', 'sidraviamgr.exe'])
+        self.assertEqual([Path(call.args[0][0]).name for call in run.call_args_list], ['sidraviactl.exe', 'sidraviamgr.exe'])
         self.assertTrue(all(call.args[0][1:] == ['--help'] for call in run.call_args_list))
 
     def test_arm_metadata_rejects_amd64_binary(self):

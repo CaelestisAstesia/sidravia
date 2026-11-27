@@ -25,7 +25,7 @@ func AcquireRunIdentityContext(ctx context.Context, version, build string) (func
 	if err != nil {
 		return nil, err
 	}
-	needsReceipt, err := admission.Check(ctx, layout.ExecutableDirectory, admission.RecoveryFromEnvironment(version, build))
+	needsReceipt, err := admission.Check(ctx, layout.ExecutableDirectory)
 	if errors.Is(err, admission.ErrRecoveryDenied) {
 		return nil, ErrBusy
 	}

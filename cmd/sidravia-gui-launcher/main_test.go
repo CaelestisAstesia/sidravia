@@ -4,23 +4,14 @@ package main
 
 import (
 	"bufio"
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/sys/unix"
-
-	"sidravia/internal/release"
-	"sidravia/internal/update/transaction"
 )
 
 func TestLauncherChild(t *testing.T) {
@@ -41,15 +32,8 @@ func TestLauncherChild(t *testing.T) {
 	if mode != "runtime" {
 		return
 	}
-	fd, err := strconv.Atoi(os.Getenv(gateFD))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil {
-		t.Fatal("runtime lost inherited lease", err)
-	}
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
-		t.Fatal(err)
+	if _, exists := os.LookupEnv(gateFD); exists {
+		t.Fatal("obsolete update lease inherited")
 	}
 	fmt.Printf("runtime %d\n", os.Getpid())
 	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
@@ -82,10 +66,10 @@ func launchFixture(t *testing.T) (string, string) {
 }
 func launcherProcess(target, cache string) *exec.Cmd {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestLauncherChild$")
-	cmd.Env = append(os.Environ(), "SIDRAVIA_LAUNCH_FIXTURE=launch", "SIDRAVIA_LAUNCH_ROOT="+target, "XDG_CACHE_HOME="+cache)
+	cmd.Env = append(os.Environ(), "SIDRAVIA_LAUNCH_FIXTURE=launch", "SIDRAVIA_LAUNCH_ROOT="+target, "XDG_CACHE_HOME="+cache, gateFD+"=99")
 	return cmd
 }
-func TestExecKeepsPIDAndRuntimeLease(t *testing.T) {
+func TestExecKeepsPIDWithoutRetiredLease(t *testing.T) {
 	target, cache := launchFixture(t)
 	cmd := launcherProcess(target, cache)
 	stdin, err := cmd.StdinPipe()
@@ -111,42 +95,14 @@ func TestExecKeepsPIDAndRuntimeLease(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("exec timed out")
 	}
-	s, err := transaction.Open(filepath.Join(cache, "Sidravia/updates/operations"), target, release.PublisherTrust())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// AcquireInheritedStart is shared, so ordinary launches can coexist.
-	start, err := s.AcquireStart(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	start()
-	sum := sha256.Sum256([]byte(target))
-	file := filepath.Join(cache, "Sidravia/updates/operations", hex.EncodeToString(sum[:]), "execution.lock")
-	fd, err := unix.Open(file, unix.O_RDWR|unix.O_CLOEXEC, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer unix.Close(fd)
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err == nil {
-		t.Fatal("exec discarded admission lease")
-	}
 	stdin.Close()
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatal("runtime exit retained admission lease", err)
-	}
 }
-func TestBlockedRecordRefusesBeforeRuntimeExec(t *testing.T) {
+func TestLegacySealRefusesBeforeRuntimeExec(t *testing.T) {
 	target, cache := launchFixture(t)
-	sum := sha256.Sum256([]byte(target))
-	directory := filepath.Join(cache, "Sidravia/updates/operations", hex.EncodeToString(sum[:]))
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "current.json"), []byte("{"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(target, "sidravia.update"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	cmd := launcherProcess(target, cache)

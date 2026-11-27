@@ -28,6 +28,19 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 		return failure.Write(out)
 	}
 	selection := release.Selection{OS: runtime.GOOS, Arch: runtime.GOARCH, Kind: kind, Channel: options.Channel, CurrentVersion: version}
+	source := github.NewGitHub(nil)
+	if layout.Mode == productlayout.ModePortable {
+		// A version hint neither reads nor reconciles old deployment cache.
+		state, err := discover(ctx, source, selection)
+		if err != nil {
+			return request.Fail(request.SourceCode(err), request.SourceMessage(err), nil).Write(out)
+		}
+		if candidate := state.Check.Candidate; candidate != nil {
+			candidate.CanApply = false
+			candidate.ApplyReason = request.PortableDownloadOnly().Code
+		}
+		return request.Success(state).Write(out)
+	}
 	store, failure := candidatecache.Open(layout.ExecutableDirectory, selection)
 	if failure != nil {
 		return failure.Write(out)
@@ -36,7 +49,7 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 		return failure.Write(out)
 	}
 	return store.WithMutation(ctx, func(m candidatecache.Mutation) request.Outcome {
-		state, outcome := Check(ctx, github.NewGitHub(nil), selection, layout, systemManaged, m)
+		state, outcome := Check(ctx, source, selection, layout, systemManaged, m)
 		if !outcome.OK || systemManaged {
 			return outcome
 		}
@@ -47,11 +60,11 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 // Check shares selection and cache projection with updater's download/apply
 // path. It runs while the caller owns the candidate cache mutation.
 func Check(ctx context.Context, source *github.GitHub, selection release.Selection, layout productlayout.Layout, systemManaged bool, m candidatecache.Mutation) (candidatecache.State, request.Outcome) {
-	result, err := source.Check(ctx, selection)
+	state, err := discover(ctx, source, selection)
 	if err != nil {
 		return candidatecache.State{}, m.SourceFailure(ctx, err, request.SourceCode(err), request.SourceMessage(err), nil)
 	}
-	state := candidatecache.State{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result}
+	result := state.Check
 	if systemManaged {
 		if result.Candidate != nil {
 			result.Candidate.ApplyReason = "system_package_managed"
@@ -63,4 +76,12 @@ func Check(ctx context.Context, source *github.GitHub, selection release.Selecti
 		return candidatecache.State{}, request.Fail(failure.Code, failure.Message, failure.Result)
 	}
 	return state, request.Success(state)
+}
+
+func discover(ctx context.Context, source *github.GitHub, selection release.Selection) (candidatecache.State, error) {
+	result, err := source.Check(ctx, selection)
+	if err != nil {
+		return candidatecache.State{}, err
+	}
+	return candidatecache.State{SchemaVersion: 1, Selection: selection, CheckedAt: time.Now().UTC(), Check: result}, nil
 }

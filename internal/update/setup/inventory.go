@@ -32,7 +32,7 @@ func sum(data []byte) string { h := sha256.Sum256(data); return hex.EncodeToStri
 // on file presence. A GUI-capable setup can install just its core component.
 func CoreFile(name string) bool {
 	switch name {
-	case "sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe", "sidraviaupdater.exe", "LICENSE", "BUILD-INFO.txt", "app_icon.ico":
+	case "sidraviactl.exe", "sidraviad.exe", "sidraviamgr.exe", "sidraviaupdater.exe", "LICENSE", "THIRD-PARTY-NOTICES.txt", "BUILD-INFO.txt", "app_icon.ico":
 		return true
 	}
 	return strings.HasPrefix(name, "institution-profiles/")

@@ -18,7 +18,7 @@ func signedInventory(t *testing.T) (release.VerifiedRelease, release.Candidate, 
 	t.Helper()
 	key := ed25519.NewKeyFromSeed(make([]byte, 32))
 	id, _ := release.PublisherKeyID(key.Public().(ed25519.PublicKey))
-	files := map[string][]byte{"sidraviactl.exe": []byte("ctl"), "sidraviad.exe": []byte("daemon"), "sidraviaupdater.exe": []byte("updater"), "sidraviamgr.exe": []byte("manager"), "Sidravia.exe": []byte("gui"), "flutter_windows.dll": []byte("flutter")}
+	files := map[string][]byte{"THIRD-PARTY-NOTICES.txt": []byte("notices"), "sidraviactl.exe": []byte("ctl"), "sidraviad.exe": []byte("daemon"), "sidraviaupdater.exe": []byte("updater"), "sidraviamgr.exe": []byte("manager"), "Sidravia.exe": []byte("gui"), "flutter_windows.dll": []byte("flutter")}
 	m := packagefiles.Manifest{SchemaVersion: 1, Version: "1.0.0", BuildID: "test", OS: "windows", Arch: runtime.GOARCH, PayloadKind: "gui"}
 	for path, data := range files {
 		m.Files = append(m.Files, packagefiles.File{Path: path, Size: int64(len(data)), SHA256: sum(data), Mode: 0644})
@@ -43,7 +43,7 @@ func TestSelectedComponentInventoryAndUnknownExecutableBoundary(t *testing.T) {
 			target := t.TempDir()
 			hasGUI := scenario != "core" && scenario != "gui-remnant"
 			for path, data := range files {
-				if !hasGUI && !CoreFile(path) {
+				if !hasGUI && (path == "Sidravia.exe" || path == "flutter_windows.dll") {
 					continue
 				}
 				if e := os.WriteFile(filepath.Join(target, path), data, 0644); e != nil {

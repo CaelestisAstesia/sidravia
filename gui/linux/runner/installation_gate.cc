@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
-#include <climits>
 
 bool sidravia_can_start() {
   g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
@@ -18,22 +17,9 @@ bool sidravia_can_start() {
   const gchar* directory = wrapped ? product_directory : executable_directory;
   const bool deb = strcmp(directory, "/usr/lib/sidravia") == 0;
   if (!deb && strcmp(directory, "/usr/lib64/sidravia") != 0) {
-    if (!wrapped) return true; // Unpackaged developer bundle only.
-    const gchar* value = g_getenv("SIDRAVIA_GUI_GATE_FD");
-    if (!value || !*value) return false;
-    gchar* end = nullptr;
-    errno = 0;
-    const gint64 descriptor = g_ascii_strtoll(value, &end, 10);
-    if (errno || !end || *end || descriptor < 3 || descriptor > INT_MAX) return false;
-    const int fd = static_cast<int>(descriptor);
-    struct stat lease = {};
-    if (fstat(fd, &lease) != 0 || !S_ISREG(lease.st_mode) || lease.st_nlink != 1 ||
-        lease.st_size != 0 || lease.st_uid != geteuid() || (lease.st_mode & 0077) ||
-        flock(fd, LOCK_SH | LOCK_NB) != 0 || fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) return false;
-    // The bootstrap acquired this lease before the dynamic loader ran. Keep it
-    // until exit, but prevent CTL/daemon children from inheriting GUI ownership.
-    g_unsetenv("SIDRAVIA_GUI_GATE_FD");
-    return true;
+    struct stat seal = {};
+    g_autofree gchar* seal_path = g_build_filename(directory, "sidravia.update", nullptr);
+    return lstat(seal_path, &seal) < 0 && errno == ENOENT;
   }
   g_autofree gchar* marker = nullptr;
   g_autoptr(GError) error = nullptr;

@@ -194,10 +194,8 @@ def build(root, archive, output, release, env, source, current_source, *, core=F
         bundle, = extracted.iterdir()
         if not (bundle / 'sidravia.portable').is_file():
             raise ValueError('not a portable input')
-        # RPM updates are served by CTL's package-manager boundary.
-        (bundle / 'sidraviaupdater').unlink()
         # RPM owns its own file inventory; the portable ownership index also
-        # describes the updater/docs deliberately removed from this payload.
+        # describes the portable docs deliberately removed from this payload.
         (bundle / 'sidravia-files.json').unlink()
         (bundle / 'sidravia.portable').unlink()
         if not core:

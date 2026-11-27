@@ -14,7 +14,6 @@ import (
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
 	"sidravia/internal/update/internal/request"
-	"sidravia/internal/update/portable"
 	"sidravia/internal/update/transaction"
 )
 
@@ -111,9 +110,6 @@ func installedProof(ctx context.Context, source *github.GitHub, layout productla
 	return proof, asset, data, nil
 }
 func applyErrorCode(err error) string {
-	if code := platformApplyErrorCode(err); code == "handoff_unconfirmed" {
-		return code
-	}
 	var remote *url.Error
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -135,21 +131,14 @@ func applyErrorCode(err error) string {
 	if errors.As(err, &remote) {
 		return "source_unavailable"
 	}
-	if errors.Is(err, portable.ErrStagingCleanup) {
-		return "staging_cleanup_failed"
-	}
 	return platformApplyErrorCode(err)
 }
 func applyErrorMessage(err error) string {
 	switch applyErrorCode(err) {
-	case "handoff_unconfirmed":
-		return "更新交接结果未能确认，请查看 status，勿重复应用更新"
 	case "handoff_unavailable":
 		return "无法从当前进程环境交接更新程序，请检查 status 或按发行说明手动更新"
 	case "apply_failed":
 		return "更新未完成，请查看 status 确认执行阶段"
-	case "staging_cleanup_failed":
-		return "更新暂存文件未能清理，安装结果请查看 status"
 	case "source_proof_unavailable":
 		return "当前安装缺少匹配的发行签名证明，请手动升级到可信基线"
 	case "manual_repair_required":

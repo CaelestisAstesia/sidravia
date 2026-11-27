@@ -38,12 +38,7 @@ open(${jsonEncode('${root.path}/observed')},"w").write(json.dumps([os.environ.ge
     }
     addTearDown(() => root.deleteSync(recursive: true));
   }
-  static const commands = [
-    'sidraviactl',
-    'sidraviad',
-    'sidraviaupdater',
-    'sidravia_gui',
-  ];
+  static const commands = ['sidraviactl', 'sidraviad', 'sidravia_gui'];
   late final Directory root, home, product;
   late final Map<String, String> environment;
   String get executable => '${product.path}/sidravia_gui';
@@ -428,9 +423,12 @@ sys.stdout.write('x' * ((2 << 20) + 1))
     expect((observed[1] as List).last, '--help');
     final unrelated = File('${f.home.path}/.local/bin/unrelated')
       ..writeAsStringSync('preserve');
+    final retired = Link('${f.home.path}/.local/bin/sidraviaupdater')
+      ..createSync('${f.product.path}/sidraviaupdater');
     await m.change(IntegrationChange.pathDisable);
     await m.change(IntegrationChange.pathDisable);
     expect((await m.status()).pathEnabled, isFalse);
+    expect(retired.existsSync(), isFalse);
     expect(unrelated.readAsStringSync(), 'preserve');
     for (final name in _Fixture.commands) {
       expect(

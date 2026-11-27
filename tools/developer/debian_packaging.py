@@ -73,7 +73,7 @@ def portable_payload(root, archive, architecture, source, *, core, version, go):
     files = read_archive(archive, target, base)
     if digest(archive) != expected:
         raise ValueError('portable input changed during Debian staging')
-    for excluded in ('sidravia.portable', 'sidravia-files.json', 'sidraviaupdater'):
+    for excluded in ('sidravia.portable', 'sidravia-files.json'):
         del files[excluded]
     if not core:
         del files['gui-runtime/data/linux-portable.md']

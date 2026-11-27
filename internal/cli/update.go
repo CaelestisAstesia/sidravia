@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"strings"
 	"time"
 
@@ -39,14 +38,19 @@ func invokeUpdater(ctx context.Context, args []string, identity daemonctl.Identi
 		query.Run(ctx, args[1:], identity.ProductVersion, &output)
 		return output.data, nil
 	}
-	if runtime.GOOS == "linux" {
-		layout, err := productlayout.Resolve()
-		if err != nil {
-			return nil, err
+	layout, err := productlayout.Resolve()
+	if err != nil {
+		return nil, err
+	}
+	if manager, _ := productlayout.SystemPackage(layout); manager != "" {
+		return systemPackageUpdateOutput(args, identity, manager)
+	}
+	if layout.Mode == productlayout.ModePortable {
+		if len(args) == 1 && args[0] == "version" {
+			return json.Marshal(map[string]any{"schemaVersion": 1, "ok": true, "code": "ok", "result": map[string]string{"productVersion": identity.ProductVersion, "buildId": identity.BuildID}})
 		}
-		if manager, _ := productlayout.SystemPackage(layout); manager != "" {
-			return systemPackageUpdateOutput(args, identity, manager)
-		}
+		code, message := query.PortableDownloadOnly()
+		return json.Marshal(map[string]any{"schemaVersion": 1, "ok": false, "code": code, "message": message})
 	}
 	path, err := siblingExecutable("sidraviaupdater")
 	if err != nil {

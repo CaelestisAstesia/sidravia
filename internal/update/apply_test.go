@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"sidravia/internal/update/internal/candidatecache"
-	"sidravia/internal/update/portable"
 	"sidravia/internal/update/query"
 
 	"sidravia/internal/release"
@@ -25,7 +24,6 @@ func TestApplyErrorsPreserveSafeDomainAndRateLimitPriority(t *testing.T) {
 		{errors.Join(errSourceProof, context.Canceled), "cancelled"},
 		{errManualRepair, "manual_repair_required"},
 		{transaction.ErrConflict, "update_busy"},
-		{portable.ErrStagingCleanup, "staging_cleanup_failed"},
 	} {
 		if got := applyErrorCode(item.err); got != item.code {
 			t.Fatalf("%v: %s want %s", item.err, got, item.code)
@@ -53,7 +51,7 @@ func TestApplyOfferRetainsReasonPriority(t *testing.T) {
 		verified, layoutEligible, platformEligible bool
 		canApply                                   bool
 	}{
-		{"wrong layout", "available", "portable_layout_required", false, false, true, false},
+		{"wrong layout", "available", "installed_setup_required", false, false, true, false},
 		{"unsigned", "up_to_date", "publisher_signature_required", false, true, true, false},
 		{"already current", "up_to_date", "not_newer", true, true, false, false},
 		{"ahead of channel", "ahead_of_channel", "not_newer", true, true, true, false},

@@ -16,7 +16,7 @@ import unicodedata
 import uuid
 import zipfile
 
-from verify_distribution import require
+from verify_distribution import binary_identity, digest, matches_pe, require
 
 
 ARM64 = 0xAA64
@@ -181,6 +181,24 @@ def check_build(directory, version, build):
             'windows_arm64_candidate_identity_mismatch')
 
 
+def verify_setup_updater(directory, verification, version, build):
+    raw_index = (directory / 'sidravia-files.json').read_bytes()
+    require(digest(raw_index) == verification['installerOwnershipSha256'],
+            'setup_installed_ownership_mismatch')
+    records = [row for row in json.loads(raw_index)['files'] if row['path'] == 'sidraviaupdater.exe']
+    require(len(records) == 1, 'setup_updater_ownership_missing')
+    expected, = records
+    updater = directory / expected['path']
+    data = updater.read_bytes()
+    require(len(data) == expected['size'] and digest(data) == expected['sha256'],
+            'setup_installed_updater_mismatch')
+    require(matches_pe(data, 'arm64'), 'setup_installed_updater_not_native')
+    embedded = binary_identity(updater, 'sidraviaupdater', 'windows-arm64', version, build, 'go')
+    return {'sha256': expected['sha256'], 'size': expected['size'],
+            'ownershipSha256': verification['installerOwnershipSha256'],
+            'embeddedGoIdentity': 'passed' if embedded else 'not_recorded'}
+
+
 @contextlib.contextmanager
 def fixture_directory(summary):
     root = Path(tempfile.mkdtemp(prefix='sdra64-'))
@@ -212,6 +230,11 @@ def exercise(args, summary):
 
     base = f'sidravia-v{args.version}-windows-arm64'
     setup = args.distribution / (base + '-setup.exe')
+    verification = json.loads((args.distribution.parent / 'verification.json').read_bytes())
+    require((verification['version'], verification['buildId'], verification['target']) ==
+            (args.version, args.build_id, 'windows-arm64'), 'setup_verification_identity_mismatch')
+    require(digest(setup.read_bytes()) == verification['artifactHashes'][setup.name],
+            'setup_verification_artifact_mismatch')
     # Resolve paths before switching the working directory for native tools.
     setups = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
     with fixture_directory(summary) as root:
@@ -220,6 +243,7 @@ def exercise(args, summary):
             with zipfile.ZipFile(source / f'{base}-{kind}-portable.zip') as archive:
                 archive.extractall(directory)
             require((directory / 'sidravia.portable').is_file(), 'portable_marker_missing')
+            require(not (directory / 'sidraviaupdater.exe').exists(), 'portable_updater_unexpected')
             check_build(directory, args.version, args.build_id)
             summary['checks'].append(smoke_runtime(processes, directory, e, f'portable-{kind}',
                                                    args.version, args.build_id, portable=True, gui=kind == 'gui'))
@@ -235,8 +259,10 @@ def exercise(args, summary):
                 require((directory / 'Sidravia.exe').is_file() == (component == 'core,gui'), 'setup_component_mismatch')
                 require(not (directory / 'sidravia.portable').exists(), 'setup_portable_marker_unexpected')
                 check_build(directory, args.version, args.build_id)
-                summary['checks'].append(smoke_runtime(processes, directory, e, label, args.version, args.build_id,
-                                                       portable=False, gui=component == 'core,gui'))
+                evidence = smoke_runtime(processes, directory, e, label, args.version, args.build_id,
+                                         portable=False, gui=component == 'core,gui')
+                evidence['installerUpdater'] = verify_setup_updater(directory, verification, args.version, args.build_id)
+                summary['checks'].append(evidence)
         finally:
             # Keep account data, the default silent-uninstall behavior.
             uninstallers = list(directory.glob('unins*.exe'))
@@ -244,7 +270,7 @@ def exercise(args, summary):
                 require(len(uninstallers) == 1, 'uninstall_executable_ambiguous')
                 invoke(uninstallers[0], [*setups, f'/LOG={e / "uninstall-inno.log"}'], e / 'uninstall.log', timeout=180)
                 require(registration(app_id) is None, 'uninstall_left_registration')
-                for name in ('Sidravia.exe', 'sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe'):
+                for name in ('Sidravia.exe', 'sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe', 'sidraviaupdater.exe'):
                     require(not (directory / name).exists(), 'uninstall_left_program_file')
                 wait_for_uninstall_directory(directory)
                 summary['checks'].append({'label': 'setup-uninstall', 'status': 'passed', 'installDirectoryRemoved': True})

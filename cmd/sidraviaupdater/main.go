@@ -15,9 +15,6 @@ var ProductVersion = "0.5.0-alpha.1"
 var BuildID = "dev"
 
 func main() {
-	if handled, code := portableExecute(os.Args[1:]); handled {
-		os.Exit(code)
-	}
 	if handled, code := setupFinish(os.Args[1:]); handled {
 		os.Exit(code)
 	}
@@ -32,7 +29,7 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	code := update.RunWithAdmission(ctx, os.Args[1:], ProductVersion, BuildID, os.Stdout, release)
+	code := update.Run(ctx, os.Args[1:], ProductVersion, BuildID, os.Stdout)
 	release()
 	os.Exit(code)
 }

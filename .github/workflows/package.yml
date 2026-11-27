@@ -87,8 +87,7 @@ jobs:
           $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $compilerRoot + '"')) -Wait -PassThru
           if ($process.ExitCode -ne 0 -or -not (Test-Path (Join-Path $compilerRoot 'ISCC.exe'))) { throw 'inno_compiler_setup_failed' }
           "SIDRAVIA_ISCC=$(Join-Path $compilerRoot 'ISCC.exe')" >> $env:GITHUB_ENV
-      - name: Build and consume Windows distribution
-        id: windows_distribution
+      - name: Build Windows distribution
         shell: pwsh
         run: |
           $gui = (Resolve-Path ("gui/build/windows/$env:FLUTTER_ARCH/runner/Release")).Path
@@ -96,12 +95,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'windows_distribution_failed' }
           $setup = Get-Item (Join-Path dist ('sidravia-v' + $env:BUILD_VERSION + '-' + $env:BUILD_TARGET + '-setup.exe'))
           if ($setup.VersionInfo.ProductVersion.TrimEnd() -cne $env:BUILD_VERSION) { throw 'installer_version_mismatch' }
-          python tools/developer/verify_distribution.py --directory dist --target $env:BUILD_TARGET --version $env:BUILD_VERSION --build-id $env:BUILD_ID --gui-directory $gui --go go --smoke > verification.json
-          if ($LASTEXITCODE -ne 0) { throw 'windows_artifact_verification_failed' }
           go run -mod=readonly ./tools/build --version $env:BUILD_VERSION --build-id $env:BUILD_ID --artifact distribution --target $env:BUILD_TARGET --output dist-core --go go
           if ($LASTEXITCODE -ne 0) { throw 'windows_core_distribution_failed' }
-          python tools/developer/verify_distribution.py --directory dist-core --target $env:BUILD_TARGET --version $env:BUILD_VERSION --build-id $env:BUILD_ID --go go --smoke > core-verification.json
-          if ($LASTEXITCODE -ne 0) { throw 'windows_core_verification_failed' }
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: '0.13.7'
+          require-checksums: true
+          cache-dependency-glob: tools/developer/acceptance/uv.lock
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+        with:
+          version: '3.54.0'
+          checksum: ${{ matrix.flutterArch == 'arm64' && '4618ea027582738a056af9a5b78086c402e93c82c1c67df0eab2d20c649608e2' || '837f42f71899ea41d07a47acc81d4d6ea80cb41c68292345f915c656473efcb7' }}
+      - name: Accept Windows distribution packages
+        id: windows_distribution
+        shell: pwsh
+        run: |
+          $gui = (Resolve-Path ("gui/build/windows/$env:FLUTTER_ARCH/runner/Release")).Path
+          task --exit-code accept:distribution -- --core-directory dist-core --gui-directory dist --gui-input $gui --target $env:BUILD_TARGET --product-version $env:BUILD_VERSION --build-id $env:BUILD_ID --native-help --receipt-dir . -n 2 --junitxml distribution-acceptance.xml
+          if ($LASTEXITCODE -ne 0) { throw 'windows_distribution_acceptance_failed' }
+      - name: Preserve Windows distribution acceptance results
+        if: ${{ !cancelled() && steps.windows_distribution.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sidravia-${{ matrix.target }}-distribution-acceptance
+          path: distribution-acceptance.xml
+          if-no-files-found: ignore
       - name: Run isolated Setup script contracts
         if: matrix.flutterArch == 'x64'
         shell: pwsh

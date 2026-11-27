@@ -101,7 +101,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if targetOS == "linux" {
 		suffix = ""
 	}
-	programs := []string{"sidraviactl", "sidraviad", "sidraviaupdater"}
+	programs := []string{"sidraviactl", "sidraviad"}
 	if targetOS == "linux" && len(gui) > 0 {
 		programs = append(programs, "sidravia_gui")
 	}
@@ -121,6 +121,18 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		}
 		entries = append(entries, archiveEntry{program + suffix, data, 0755})
 		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
+	}
+	if t.cfg.iscc != "" {
+		const updater = "sidraviaupdater.exe"
+		fmt.Fprintln(stderr, "building", updater)
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID))
+		if err != nil {
+			return err
+		}
+		entries = append(entries, archiveEntry{updater, data, 0755})
+		// The paired installer has an additional executable. Publish its exact
+		// inventory metadata without including the executable in the ZIP.
+		fmt.Fprintf(&binarySums, "SetupUpdater: %s %d\n", sha256Hex(data), len(data))
 	}
 	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
 	// The ownership index describes product bytes only: runtime data, the

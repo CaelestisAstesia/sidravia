@@ -13,9 +13,9 @@ import (
 
 var ErrRecoveryDenied = errors.New("installation startup recovery denied")
 
-// Check verifies ordinary Windows startup or grants portable cold recovery. A
-// separate Setup receipt is required if the blocked installation is installed.
-func Check(ctx context.Context, target string, r Recovery) (needsReceipt bool, err error) {
+// Check identifies blocked Setup startup. An old portable transaction
+// cannot authorize startup of a potentially incomplete directory.
+func Check(ctx context.Context, target string) (needsReceipt bool, err error) {
 	_, sealErr := os.Lstat(filepath.Join(target, transaction.StartupSeal))
 	sealed := !os.IsNotExist(sealErr)
 	store, err := open(target)
@@ -30,11 +30,7 @@ func Check(ctx context.Context, target string, r Recovery) (needsReceipt bool, e
 		return false, nil
 	}
 	if exists && record.Source.Layout == "portable" {
-		_, err := store.AcquireRecoveryStart(ctx, r.operation, r.token, r.version, r.build, r.namespace, r.configuration)
-		if err != nil {
-			return false, errors.Join(ErrRecoveryDenied, err)
-		}
-		return false, nil
+		return false, ErrRecoveryDenied
 	}
 	return true, nil
 }

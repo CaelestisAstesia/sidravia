@@ -283,40 +283,10 @@ entering application logic and is not a pre-loader guarantee. An interrupted
 installation may first produce a Windows loader error and require the trusted
 installer's repair. No extra launcher or resident service is introduced.
 
-Windows portable preserves the public filenames and directory layout. A
-verified copy of the installed updater runs briefly in its secured external
-operation cache because Windows cannot overwrite its own running image. The
-source updater validates the exact child readiness and commits an acknowledgment;
-the helper waits for the source updater and calling CTL to exit before applying.
-Cancellation before acknowledgment revokes the operation; after that point the
-result is handed-over or explicitly unconfirmed, never a promise of cancellation.
-The next update removes only the previous verified helper after its exact
-generation has exited; the latest helper and private receipts remain cached.
-No new resident service, launcher or runtime trust/source option is introduced.
-
-This adapter supports local NTFS on Windows x64 and ARM64. It uses the existing
-current-user installer mutex during publication, refuses live target processes,
-and retains its own seal through one cold recovery. Go and native GUI admission
-check the signed operation, exact live helper ancestry, new build and finite
-recovery token. Explicit recover may revoke a sealed, unchanged Quiescent source
-or finalize a complete Applied/Resuming target after all owners die; it never
-replays startup/authentication or repairs partly written bytes automatically.
-As with installed GUI, its entry check runs after imported DLL loading.
-
-For isolated real Windows portable CLI acceptance, set
-`SIDRAVIA_WINDOWS_PORTABLE_FIXTURE=1` and
-`SIDRAVIA_WINDOWS_PORTABLE_TEST_ROOT` to an owned scratch root, then use the fixed
-native Go verifier. Optionally set `SIDRAVIA_WINDOWS_PORTABLE_GUI_BUNDLE` to the
-fixed builder's current Release directory. The fixture runs real CLI/updater/
-daemon and optional GUI binaries using synthetic signed releases in a fixed-host
-source overlay. It automatically compares the full installed inventory, old/new
-process generations, prior mode, unknown user files and retirement, and writes
-bounded credential-free result receipts. Faults cover cache corruption, missing
-confirmation, late readiness after handoff timeout, Created/Verified, sealed
-Quiescent and Applied/Resuming interruptions, corrupt recovery targets and
-repeated recovery without launch. No real user configuration, campus, registry,
-PATH or startup integration is used; compilation and synthetic acceptance do not
-replace formal signed-release/channel acceptance.
+Portable distributions use CTL to check release metadata. The archive does
+not contain an updater, and CTL rejects deployment operations in portable
+mode. To upgrade, unpack the new distribution into a new directory and carry
+over user configuration as described in the user guide.
 
 For isolated real Windows CLI/Inno production-hook acceptance, set
 `SIDRAVIA_WINDOWS_SETUP_FIXTURE=1`, `SIDRAVIA_ISCC` to the pinned Inno compiler,
@@ -448,7 +418,7 @@ and nonblocking interprocess maintenance locking.
 
 RPM tools are system RPMs (`rpm-build`, `desktop-file-utils`, `bubblewrap`), not
 project-downloaded replacements. Build the verified clean-source GUI portable
-first, then wrap that exact payload. The RPM excludes the portable marker and independent updater. CTL checks GitHub Releases metadata and reports package-manager ownership for downloads and installation. The RPM uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
+first, then wrap that exact payload. The RPM excludes the portable marker and portable file inventory. CTL checks GitHub Releases metadata and reports package-manager ownership for downloads and installation. The RPM uses `/usr/lib64/sidravia` plus package-owned `/usr/bin` links, desktop entry,
 and icon. Reviewed Python pre/preun scriptlets coordinate only this installation;
 no account scan or automatic autostart registration is performed. Initial support
 and user-data/upgrade rules: [linux-rpm.md](../../docs/linux-rpm.md).
@@ -491,7 +461,7 @@ Fedora dependency-solving/install-image test. Receipts/logs stay in the owned
 ### Core-only Fedora RPM
 
 The `sidravia-core` package includes CTL, daemon and institution profiles without
-GUI libraries, desktop integration or the portable updater. It conflicts with
+GUI libraries or desktop integration. It conflicts with
 the full `sidravia` package because both own the same installation paths.
 Use the exact verified core portable archive from the current clean source:
 
@@ -525,35 +495,6 @@ Run, Session, IPC and shared GUI, reauthentication isolation and retained stoppe
 data. Its result and source fingerprint remain in the owned fixture directory;
 no production configuration, user integration or campus authentication is used.
 
-
-### Isolated Linux portable update coordination
-
-Build the current Linux bundle using the pinned `dev.py linux` entry, then opt
-into the real-process fixture through the normal Go verification scope:
-
-```sh
-SIDRAVIA_PORTABLE_UPDATE_FIXTURE=1 \
-SIDRAVIA_PORTABLE_UPDATE_GUI_BUNDLE="$PWD/gui/build/linux/x64/release/bundle" \
-python3 tools/developer/dev.py verify --scope go --go-checks native --go /path/to/pinned/go
-```
-
-Omit the GUI bundle variable for headless cases. The fixture builds private old
-and new executables with a source overlay containing only a synthetic public
-trust root; production sources and runtime trust configuration are unchanged.
-It uses its own HOME/XDG roots, unique namespace, loopback-only profile and
-fictional saved credentials. It checks normal core/GUI exit and replacement,
-cold mode restoration, one saved-configuration dispatch, cancellation after
-prepare, unconfirmed exit, failed new startup and coordinator-death thawing.
-There is no campus authentication, host installation, real account autostart or
-publisher signing. Owned fixtures and receipts remain under
-`.local/portable-update-fixture-*`; compilation reuses the pinned SDK and shared
-caches. A deliberately failed scratch GUI may need fixture-only process cleanup;
-production coordination never escalates normal exit to a forced kill.
-
-Recovery expiry starts with the finite coordination snapshot, not an arbitrarily
-old check record. After a coordinator dies, explicit byte-verified reconciliation
-may close a pre-write operation or mark an unconfirmed resume failed. It does
-not retry startup or authentication, and cannot clear a partial-write seal.
 
 ## Fedora → Windows VM execution and evidence
 
@@ -1111,3 +1052,30 @@ builds a harmless sleeping executable inside the controller-owned fixture root
 and leaves it running with explicit breakaway. The stage succeeds, but the VM
 receipt must **fail** with one exact owned process stopped and zero remaining.
 Preserve this expected-failure receipt; do not report it as product acceptance.
+
+## Distribution acceptance
+
+The Windows packaging workflow and local developers use the same
+`accept:distribution` Task. It runs pytest in a locked uv environment and
+uses the distribution verifier for product-specific assertions. Use Task
+3.54.0, uv 0.13.7, Python 3.14, and the candidate's Go toolchain.
+
+From the repository root, pass the producer's release version and full source
+commit, the target, and the directory containing the candidate and its checksums.
+
+```sh
+task --exit-code accept:distribution -- --core-directory dist-core --target linux-amd64 --product-version "$VERSION" --build-id "$BUILD_ID" --receipt-dir .local/acceptance/core --native-help --junitxml .local/acceptance/core/junit.xml
+```
+
+Supply `--gui-directory` and `--gui-input` together for GUI acceptance. Add
+`-n 2` to verify Core and GUI independently in the same run. You can use
+pytest's `--collect-only`, `-k`, and `--lf` switches to discover, select, or
+rerun cases. Use a fresh receipt directory for a new run. Use `--source-repo`
+when consuming a package produced from a separate checkout. Cross-platform
+inspection can omit `--native-help`. Native help only runs on the matching OS
+and CPU. Installation, desktop, and service lifecycle acceptance still use
+their platform fixtures.
+
+Successful profiles write the staging receipts `core-verification.json`
+and `verification.json`. The JUnit report records each profile independently,
+including a failed profile when it cannot produce a successful receipt.

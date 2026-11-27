@@ -365,53 +365,34 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 
 ## 更新检查与下载
 
-检查与下载使用 GitHub Releases，CTL 以 JSON 输出结果。Windows 和 Linux 的 CTL 直接执行检查。便携版和 Windows 安装版的下载、应用和中断恢复由同目录的 `sidraviaupdater` 执行。RPM 和 DEB 由系统包管理器更新。
+检查使用 GitHub Releases，CTL 以 JSON 输出结果。便携版可使用 `update check` 查找本包型的新版本，并从发行页下载后按[便携版更新步骤](guide.md#更新移动与卸载)迁移配置。RPM 和 DEB 使用系统包管理器安装新版。Windows 安装版支持程序内下载和发起安装。
 
 | 命令 | 用途 |
 | --- | --- |
-| `update version` | 查询版本与构建标识。RPM 和 DEB 由 CTL 报告，其他包由同目录的更新器报告 |
-| `update check` | 检查匹配平台、包类型和通道的更新候选 |
-| `update status` | 查询缓存及更新执行状态 |
-| `update download --candidate ID` | 下载刚检查到的准确候选并校验，不安装 |
-| `update apply --candidate ID --confirm` | 确认应用 Linux／Windows 便携版或 Windows 安装版的准确候选 |
-| `update recover --operation ID --confirm` | 核验并处理指定的中断更新；Linux 托管便携版可尝试恢复原文件和服务 |
+| `update version` | 查询版本与构建标识 |
+| `update check` | 检查匹配平台、包型和通道的版本 |
+| `update status` | Windows 安装版查询缓存及安装执行状态 |
+| `update download --candidate ID` | Windows 安装版在程序运行时下载并校验指定候选 |
+| `update apply --candidate ID --confirm` | Windows 安装版确认应用已准备的更新 |
+| `update recover --operation ID --confirm` | Windows 安装版核验指定的中断更新 |
 
-除 `version` 外，可指定 `--channel stable|preview` 和 `--package setup|gui-portable|core-portable`，包类型须受当前平台支持。省略时按当前版本和程序布局选择。检查、下载和应用应使用相同的通道、包类型，候选编号取自检查结果。系统包的 `check` 支持选择通道，使用已安装的包型与架构。
+可在检查时用 `--channel stable|preview` 选择通道。Windows 安装版检查、下载和应用使用同一通道，候选编号取自检查结果。包型默认按当前布局选择。
 
-### 使用条件
+### Windows 安装版
 
-自动应用支持 Linux x64 便携版、Windows x64 便携版和安装版。Windows 便携版需放在本地 NTFS 目录。
+程序内固定了发布者公钥。应用更新时会核验当前版本和目标版本的签名、文件清单及下载包。旧版缺少签名证明时，按发行说明手动升级到可信版本。
 
-程序内固定了发布者公钥。自动更新时会核验当前版本和目标版本的签名、文件清单及下载包；旧版缺少签名证明时，先按发行说明手动升级。RPM 和 DEB 版 GUI 可在「软件更新」中检查新版并打开发行页。
+先运行 `update check`，再用候选 ID 执行：
 
-### 检查、下载和应用
-
-先运行 `update check`，从结果中取得候选 ID，再依次执行：
-
-```text
-sidraviactl update download --candidate ID
-sidraviactl update apply --candidate ID --confirm
-sidraviactl update status
+```powershell
+.\sidraviactl.exe update download --candidate ID
+.\sidraviactl.exe update apply --candidate ID --confirm
+.\sidraviactl.exe update status
 ```
 
-Windows 在程序目录中使用 `.\sidraviactl.exe`，Linux 便携版使用 `./sidraviactl`。检查、下载和应用应保持相同通道、包型。更新只接受同包型的更高版本。
+应用前会再次核对候选、签名和缓存，并请求程序正常退出。请先保存正在编辑的配置。返回 `handed_over` 后，使用 `update status` 查看安装器退出码、系统集成结果及重启要求。安装器沿用原目录与组件，自启和 PATH 按向导确认。应用结果分别报告文件安装、程序恢复及认证状态。请确认程序能够打开和连接校园网。
 
-应用前会再次核对候选、签名和缓存，并请求程序正常退出。请先保存正在编辑的配置。更新后按原运行模式冷启动，已保存配置的连接意图会尝试恢复；原本未运行或已主动断开的状态会保留。一次性密码需要重新输入。
-
-Windows 返回 `handed_over` 后，用 `update status` 查看最终结果。安装版还会报告安装器退出码、系统集成结果和重启要求。安装器沿用原目录与组件，自启和 PATH 按向导确认。
-
-Linux 便携版在 systemd 托管模式下更新时，先请求已连接的 GUI 正常退出，再停止后台。若后台已停止而 GUI 仍打开，请退出 GUI 后重试。成功后仅恢复原先运行的后台，并按配置的自动登录设置启动认证。
-新版启动失败时，更新器会核对并恢复旧版产品文件，尝试恢复原来的运行状态。
-
-应用结果分为 `filesApplied`（文件安装）、`applicationRecovery`（程序恢复）和 `authentication`（认证状态）。文件安装后，请确认程序能够打开，并检查校园网连接。
-
-### 更新中断
-
-先运行 `update status`，记下操作 ID、阶段和失败码。`requiresStartupBlock` 为真时，程序会暂停普通启动，保留状态查询和恢复入口。
-
-协调器退出后，可用 `update recover --operation ID --confirm` 恢复。Linux 托管便携版遇到写入中断或 `rolling_back` 时，该命令会重新核对同一事务保存的快照，尝试恢复原版。请用 `daemon status` 确认实际运行版本。遇到无法核对的文件时，保留更新记录和快照，按发行说明修复。
-
-Windows 安装版可重新运行对应版本的可信安装器。便携版也可完整解压到新目录，再按需要迁移兼容的配置。
+更新中断时，查看操作 ID、阶段及失败码。协调器退出后，可使用 `update recover --operation ID --confirm` 核验状态，或按发行说明重新运行可信安装器。便携用户如遇旧版本留下的启动保护，应将新版完整解包到新目录并迁移需要保留的配置。
 
 ## 命令速查
 

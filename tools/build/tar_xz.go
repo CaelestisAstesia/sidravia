@@ -11,8 +11,7 @@ import (
 
 const xzVersion = "5.8.3"
 
-// XZ is a build-only tool. Runtime decoding stays pure Go and needs no system
-// xz executable, C library or cgo. Environment options cannot alter the format.
+// XZ is a build-only tool. Environment options cannot alter the format.
 func xzCommand(args ...string) *exec.Cmd {
 	command := exec.Command("xz", args...)
 	for _, value := range os.Environ() {
