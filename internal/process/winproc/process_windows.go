@@ -139,7 +139,6 @@ func GenerationRunning(pid uint32, created uint64) (bool, error) {
 // the child. This does not bypass job limits or provide installer handoff.
 func StartApplication(path string, args ...string) (*exec.Cmd, error) {
 	cmd := exec.Command(path, args...)
-	cmd.Env = environment
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
 		return nil, err

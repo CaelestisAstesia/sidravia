@@ -22,8 +22,8 @@
 #include "publisherkey.h"
 
 #include <sodium.h>
-#include <sddl.h>
 #include <windows.h>
+#include <sddl.h>
 
 #include <memory>
 #include <array>
