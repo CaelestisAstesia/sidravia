@@ -228,3 +228,55 @@ def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp
             maint = directory / "sidravia-maintenance.exe"
             if maint.is_file():
                 require_success(invoke(tmp_path, "recover-cleanup-" + directory.name, maint, [*OPTIONS, "purge"]))
+
+
+@pytest.fixture
+def foreign_startup_task(tmp_path):
+    """Keep another owner's registration intact even when the name collides."""
+    powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    marker = f"Sidravia Qt acceptance {uuid.uuid4().hex}"
+    name = "SidraviaDaemon"
+
+    def run_script(label, script):
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        result = invoke(tmp_path, label, powershell,
+                        ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded])
+        require_success(result)
+        return result[1].read_bytes()
+
+    get_task = f"Get-ScheduledTask -TaskName '{name}' -TaskPath '\\'"
+    run_script("create-foreign-startup", f"""
+$ErrorActionPreference = 'Stop'
+if ({get_task} -ErrorAction SilentlyContinue) {{ throw 'fixture account already has a startup task' }}
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\cmd.exe" -Argument '/d /c exit'
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $sid
+$principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName '{name}' -TaskPath '\\' -Action $action -Trigger $trigger -Principal $principal -Description '{marker}' | Out-Null
+""")
+    try:
+        export = f"Export-ScheduledTask -TaskName '{name}' -TaskPath '\\' -ErrorAction Stop"
+        before = run_script("foreign-startup-before", export)
+        yield lambda: run_script("foreign-startup-after", export) == before
+    finally:
+        run_script("cleanup-foreign-startup", f"""
+$ErrorActionPreference = 'Stop'
+$task = {get_task} -ErrorAction SilentlyContinue
+if ($task -and $task.Description -eq '{marker}') {{
+    Unregister-ScheduledTask -TaskName '{name}' -TaskPath '\\' -Confirm:$false
+}}
+""")
+
+
+def test_windows_qt_uninstall_keeps_foreign_startup(qt_release, foreign_startup_task, tmp_path):
+    target = tmp_path / "installation"
+    install = [*OPTIONS, "--no-default-installations", "install", "org.sidravia.core"]
+    require_success(invoke(tmp_path, "install", qt_release["setup"], ["--root", target, *install]))
+    maint = target / "sidravia-maintenance.exe"
+    try:
+        require_success(invoke(tmp_path, "uninstall-with-foreign-startup", maint, [*OPTIONS, "purge"]))
+        assert not (target / "sidraviactl.exe").exists()
+        assert foreign_startup_task()
+    finally:
+        if maint.is_file():
+            invoke(tmp_path, "cleanup", maint, [*OPTIONS, "purge"])
