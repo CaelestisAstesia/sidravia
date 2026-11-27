@@ -18,7 +18,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err := verifyRepoInputs(t.repoRoot, "distribution"); err != nil {
 		return err
 	}
-	if t.cfg.iscc != "" && runtime.GOOS != "windows" {
+	if (t.cfg.iscc != "" || t.cfg.ifw != "") && runtime.GOOS != "windows" {
 		return fmt.Errorf("installer compilation requires a native Windows build host")
 	}
 	profiles, err := loadOfficialProfileEntries(t.repoRoot)
@@ -195,6 +195,13 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return err
 	}
 	outputs := []string{archive}
+	if t.cfg.ifw != "" {
+		artifacts, err := buildQtDistribution(t.cfg, stage, base, entries, gui, stderr)
+		if err != nil {
+			return err
+		}
+		outputs = append(outputs, artifacts...)
+	}
 	if t.cfg.iscc != "" {
 		template, err := os.ReadFile(filepath.Join(t.repoRoot, "packaging", "windows", "sidravia.iss"))
 		if err != nil {

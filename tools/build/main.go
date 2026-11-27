@@ -66,6 +66,7 @@ type config struct {
 	target       string
 	guiDirectory string
 	iscc         string
+	ifw          string
 	compression  string
 	help         bool
 }
@@ -79,6 +80,7 @@ var knownValueFlags = map[string]bool{
 	"--target":        true,
 	"--gui-directory": true,
 	"--iscc":          true,
+	"--ifw":           true,
 	"--compression":   true,
 }
 
@@ -148,6 +150,8 @@ func parseFlags(args []string) (config, error) {
 			c.guiDirectory = val
 		case "--iscc":
 			c.iscc = val
+		case "--ifw":
+			c.ifw = val
 		case "--compression":
 			c.compression = val
 		}
@@ -171,10 +175,13 @@ func parseFlags(args []string) (config, error) {
 		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
 			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
 		}
-		if !strings.HasPrefix(c.target, "windows-") && c.iscc != "" {
+		if !strings.HasPrefix(c.target, "windows-") && (c.iscc != "" || c.ifw != "") {
 			return c, errors.New("installer requires a Windows target")
 		}
-	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" {
+		if c.ifw != "" && (c.iscc != "" || c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
+			return c, errors.New("Qt packaging requires an absolute toolchain directory and the native GUI payload")
+		}
+	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" || c.ifw != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
 	}
 	return c, nil
@@ -200,6 +207,7 @@ Optional flags:
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Flutter Release directory for the chosen target
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
+  --ifw        optional absolute directory of the custom Qt deployment toolchain
   --help       show this help and exit without building
 
 Distribution mode builds the target's core tools, optional native GUI payload,
