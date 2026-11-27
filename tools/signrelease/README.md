@@ -121,6 +121,16 @@ go run ./tools/signrelease verify --manifest /path/to/sidravia-release.json --pu
 The public key file contains one base64-encoded 32-byte Ed25519 **public key**.
 `inspect` validates the shared v2 structure and matching key ID; its result says
 `signature: not_checked`. `verify` authenticates the exact manifest bytes and
-reports `signature: passed`. Neither mode checks artifact bytes; the developer
-release entry below performs that independent package consumption first. A
-signature or public inspection alone is not native upgrade/channel acceptance.
+reports `signature: passed`. For Qt releases, pass the directory of the signed
+Core and GUI repository archives to verify the staged bytes and their embedded
+publisher signatures against the release manifest.
+
+```sh
+go run ./tools/signrelease verify --published \
+  --manifest /path/to/sidravia-release-qt.json --signature /path/to/sidravia-release-qt.sig \
+  --public-key /path/to/publisher-public.txt --qt-artifacts /path/to/signed-repositories --json
+```
+
+The result reports `artifactBytes: passed` after checking all archives named in
+the Qt manifest. Run native lifecycle acceptance separately with the matching
+installer and test repositories.
