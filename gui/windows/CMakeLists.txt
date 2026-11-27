@@ -105,7 +105,7 @@ foreach(runtime_name IN ITEMS msvcp140.dll vcruntime140.dll vcruntime140_1.dll)
       CONFIGURATIONS Release COMPONENT Runtime)
   else()
     install(CODE "
-      if(CMAKE_INSTALL_CONFIG_NAME STREQUAL \"Release\")
+      if(CMAKE_INSTALL_CONFIG_NAME MATCHES \"^[Rr][Ee][Ll][Ee][Aa][Ss][Ee]$\")
         message(FATAL_ERROR \"Visual Studio redistributable DLL missing: ${runtime_name}\")
       endif()
     " COMPONENT Runtime)
