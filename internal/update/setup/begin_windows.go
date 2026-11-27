@@ -5,17 +5,13 @@ package setup
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
-
-	"golang.org/x/sys/windows"
 
 	launchcontract "sidravia/internal/background/launch"
 	"sidravia/internal/installation/change"
@@ -154,36 +150,10 @@ func Begin(ctx context.Context, layout productlayout.Layout, version, build stri
 	return record, err
 }
 
-// Holding this ordinary read handle denies write/delete sharing until handoff;
-// neither a mutable cache path nor a replaced old helper can change the launch.
 func pin(path string, size int64, hash string) (*os.File, error) {
-	if err := plainPath(path); err != nil {
-		return nil, err
-	}
-	p, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return nil, err
-	}
-	h, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
-	if err != nil {
-		return nil, err
-	}
-	f := os.NewFile(uintptr(h), path)
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != size {
-		f.Close()
+	file, err := winproc.PinExecutable(path, size, hash)
+	if errors.Is(err, winproc.ErrImageChanged) {
 		return nil, ErrChanged
 	}
-	if err := singleLink(f); err != nil {
-		f.Close()
-		return nil, err
-	}
-	hsh := sha256.New()
-	n, err := io.Copy(hsh, io.LimitReader(f, size+1))
-	if err != nil || n != size || hex.EncodeToString(hsh.Sum(nil)) != hash {
-		f.Close()
-		return nil, ErrChanged
-	}
-
-	return f, nil
+	return file, err
 }

@@ -3,17 +3,16 @@
 package setup
 
 import (
-	"golang.org/x/sys/windows"
+	"errors"
 	"os"
+
+	"sidravia/internal/process/winproc"
 )
 
-func singleLink(f *os.File) error {
-	var info windows.ByHandleFileInformation
-	if e := windows.GetFileInformationByHandle(windows.Handle(f.Fd()), &info); e != nil {
-		return e
-	}
-	if info.NumberOfLinks != 1 {
+func singleLink(file *os.File) error {
+	err := winproc.CheckSingleLink(file)
+	if errors.Is(err, winproc.ErrImageChanged) {
 		return ErrChanged
 	}
-	return nil
+	return err
 }
