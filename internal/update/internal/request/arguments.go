@@ -103,6 +103,15 @@ func ApplyPlatformSupported() bool {
 var QtMaintenanceDigest string
 
 func ValidApplyTarget(layout productlayout.Layout, kind string) bool {
-	return runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled &&
-		(kind == "setup" || (release.QtRepositoryProfile(kind) != "" && len(QtMaintenanceDigest) == 64))
+	if runtime.GOOS != "windows" || layout.Mode != productlayout.ModeInstalled {
+		return false
+	}
+	if kind == "setup" {
+		return true
+	}
+	if release.QtRepositoryProfile(kind) == "" || len(QtMaintenanceDigest) != 64 {
+		return false
+	}
+	installed, err := qtInstalledKind(layout)
+	return err == nil && installed == kind
 }

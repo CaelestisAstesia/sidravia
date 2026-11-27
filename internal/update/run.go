@@ -125,7 +125,11 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 				return m.SourceFailure(ctx, err, applyErrorCode(err), applyErrorMessage(err), outcome)
 			}
 			if outcome != nil && outcome.HandedOver {
-				return request.Outcome{OK: true, Code: "handed_over", Message: "安装器已接管，请在安装器中继续，完成后用 status 查询结果", Result: outcome}
+				message := "安装器已接管，请在安装器中继续，完成后用 status 查询结果"
+				if release.QtRepositoryProfile(kind) != "" {
+					message = "维护工具正在继续安装更新，完成后可重新打开 Sidravia"
+				}
+				return request.Outcome{OK: true, Code: "handed_over", Message: message, Result: outcome}
 			}
 			return request.Outcome{OK: true, Code: "ok", Message: "更新已安装，恢复结果见返回状态", Result: outcome}
 		}
