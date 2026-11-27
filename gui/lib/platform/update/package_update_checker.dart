@@ -5,11 +5,26 @@ enum UpdateCheckState {
   noCompatibleRelease,
 }
 
-typedef PackageUpdate = ({UpdateCheckState state, String? version});
+enum UpdateInstallResult { installed, handedOver }
+
+class PackageUpdate {
+  const PackageUpdate({
+    required this.state,
+    this.version,
+    this.notes = '',
+    this.installCandidateId,
+  });
+
+  final UpdateCheckState state;
+  final String? version;
+  final String notes;
+  final String? installCandidateId;
+}
 
 abstract interface class PackageUpdateChecker {
   bool get supportsUpdateCheck;
   bool get usesSystemPackageManager;
   Future<PackageUpdate> checkUpdate();
+  Future<UpdateInstallResult> installUpdate(String candidateId);
   Future<void> openReleasePage(String version);
 }

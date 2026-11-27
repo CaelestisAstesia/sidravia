@@ -164,6 +164,20 @@ class LinuxInstallationManager
   }
 
   @override
+  Future<UpdateInstallResult> installUpdate(String candidateId) {
+    _checkOpen();
+    if (usesSystemPackageManager) {
+      throw const IntegrationFailure('请使用系统包管理器更新。');
+    }
+    return _updateCheck.install(
+      executable: '$_directory/sidraviactl',
+      downloader: '$_directory/sidraviaupdater',
+      candidateId: candidateId,
+      environment: environment,
+    );
+  }
+
+  @override
   Future<void> openReleasePage(String version) async {
     _checkOpen();
     const failure = IntegrationFailure('无法打开浏览器。');

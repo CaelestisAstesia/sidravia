@@ -34,6 +34,10 @@ class _UpdateManager extends FakeManager implements PackageUpdateChecker {
   }
 
   @override
+  Future<UpdateInstallResult> installUpdate(String candidateId) async =>
+      throw StateError('system package must not install through the updater');
+
+  @override
   Future<void> openReleasePage(String version) async {
     openedVersion = version;
   }
@@ -101,12 +105,18 @@ void main() {
         expect(find.text('正在检查…'), findsOneWidget);
         expect(tester.widget<OutlinedButton>(check).onPressed, isNull);
         expect(manager.checks, 1);
-        manager.pendingCheck.complete((
-          state: UpdateCheckState.available,
-          version: '0.6.0-alpha.1',
-        ));
+        manager.pendingCheck.complete(
+          const PackageUpdate(
+            state: UpdateCheckState.available,
+            version: '0.6.0-alpha.1',
+            notes: '校验 RPM 更新',
+            installCandidateId: '2:22',
+          ),
+        );
         await tester.pumpAndSettle();
-        expect(find.text('发现新版本 0.6.0-alpha.1'), findsOneWidget);
+        expect(find.text('0.6.0-alpha.1'), findsOneWidget);
+        expect(find.text('校验 RPM 更新'), findsOneWidget);
+        expect(find.text('下载并安装更新'), findsNothing);
         final release = find.text('查看发行与下载');
         await tester.ensureVisible(release);
         await tester.tap(release);
@@ -153,7 +163,7 @@ void main() {
           manager.pendingCheck = Completer<PackageUpdate>();
           await tester.ensureVisible(check);
           await tester.tap(check);
-          manager.pendingCheck.complete((state: entry.key, version: null));
+          manager.pendingCheck.complete(PackageUpdate(state: entry.key));
           await tester.pumpAndSettle();
           expect(find.text(entry.value), findsOneWidget);
           expect(release, findsNothing);

@@ -6,13 +6,22 @@ import 'package:sidravia_gui/platform/update/update_check_response.dart';
 void main() {
   const success =
       '{"schemaVersion":1,"ok":true,"code":"ok",'
-      '"result":{"check":{"state":"available","candidate":{"version":"1.2.3"}}}}';
+      '"result":{"check":{"state":"available","candidate":'
+      '{"version":"1.2.3","id":"2:22","notes":"Fix things","canApply":true}}}}';
 
   test('only a successful process can return a successful check', () {
-    expect(decodeUpdateCheckResponse(0, success), (
-      state: UpdateCheckState.available,
-      version: '1.2.3',
-    ));
+    final result = decodeUpdateCheckResponse(0, success);
+    expect(result.state, UpdateCheckState.available);
+    expect(result.version, '1.2.3');
+    expect(result.notes, 'Fix things');
+    expect(result.installCandidateId, '2:22');
+    expect(
+      decodeUpdateCheckResponse(
+        0,
+        success.replaceFirst('"canApply":true', '"canApply":false'),
+      ).installCandidateId,
+      isNull,
+    );
     expect(() => decodeUpdateCheckResponse(1, success), throwsFormatException);
   });
 
@@ -40,6 +49,7 @@ void main() {
       '{"schemaVersion":2,"ok":false,"code":"rate_limited"}',
       '{"schemaVersion":1,"ok":false,"code":null}',
       success.replaceFirst('1.2.3', '../other'),
+      success.replaceFirst('2:22', '--confirm'),
     ]) {
       expect(() => decodeUpdateCheckResponse(0, output), throwsFormatException);
     }

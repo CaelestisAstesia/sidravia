@@ -215,10 +215,13 @@ import sys
 assert sys.argv[1:] == ['update', 'check']
 print('{"schemaVersion":1,"ok":true,"code":"ok","result":{"check":{"state":"available","candidate":{"version":"0.6.0-alpha.1"}}}}')
 ''');
-      expect(await manager.checkUpdate(), (
-        state: UpdateCheckState.available,
-        version: '0.6.0-alpha.1',
-      ));
+      final check = await manager.checkUpdate();
+      expect(check.state, UpdateCheckState.available);
+      expect(check.version, '0.6.0-alpha.1');
+      expect(
+        () => manager.installUpdate('2:22'),
+        throwsA(isA<IntegrationFailure>()),
+      );
 
       ctl.writeAsStringSync('''#!/usr/bin/python3
 import time

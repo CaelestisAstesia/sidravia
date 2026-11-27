@@ -27,10 +27,9 @@ class WindowsInstallationManager
   @override
   Future<PackageUpdate> checkUpdate() async {
     if (_closed) throw const IntegrationFailure('检查更新已取消。');
-    final executable = File(Platform.resolvedExecutable).parent.uri
-        .resolve('sidraviactl.exe')
-        .toFilePath();
-    final (:code, :output) = await _updateCheck.run(executable);
+    final (:code, :output) = await _updateCheck.run(
+      _updateExecutable('sidraviactl.exe'),
+    );
     if (_closed) throw const IntegrationFailure('检查更新已取消。');
     if (output.isEmpty) {
       throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
@@ -42,6 +41,19 @@ class WindowsInstallationManager
     } on Object {
       throw const IntegrationFailure('无法检查更新，请检查安装是否完整。');
     }
+  }
+
+  String _updateExecutable(String name) =>
+      File(Platform.resolvedExecutable).parent.uri.resolve(name).toFilePath();
+
+  @override
+  Future<UpdateInstallResult> installUpdate(String candidateId) {
+    if (_closed) throw const IntegrationFailure('更新操作已取消。');
+    return _updateCheck.install(
+      executable: _updateExecutable('sidraviactl.exe'),
+      downloader: _updateExecutable('sidraviaupdater.exe'),
+      candidateId: candidateId,
+    );
   }
 
   @override

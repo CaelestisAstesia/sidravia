@@ -4,26 +4,86 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../integration_failure.dart';
+import 'package_update_checker.dart';
+import 'update_check_response.dart';
 
-/// Owns the one CTL child used to check update availability.
+/// Owns one update operation for the application, including its download.
 class UpdateCheckProcess {
   static const _outputLimit = 2 << 20;
 
-  Future<({int code, String output})>? _pending;
+  Future<Object?>? _pending;
   Completer<void>? _cancellation;
   bool _closed = false;
 
   Future<({int code, String output})> run(
     String executable, {
     Map<String, String>? environment,
-  }) async {
-    if (_closed) throw const IntegrationFailure('检查更新已取消。');
+  }) => _exclusive((cancellation) async {
+    final (:code, :output) = await _run(
+      executable,
+      const ['update', 'check'],
+      environment,
+      cancellation,
+      const Duration(seconds: 50),
+      '检查更新',
+    );
+    return (code: code!, output: output);
+  });
+
+  Future<UpdateInstallResult> install({
+    required String executable,
+    required String downloader,
+    required String candidateId,
+    Map<String, String>? environment,
+  }) => _exclusive((cancellation) async {
+    // Closing the window can end this sequence without applying the package.
+    // Let a running download finish or clean up its own cache.
+    final downloaded = await _run(
+      downloader,
+      ['download', '--candidate', candidateId],
+      environment,
+      cancellation,
+      const Duration(minutes: 11),
+      '下载更新',
+      keepRunning: true,
+    );
+    decodeUpdateOperationResponse(
+      downloaded.code,
+      downloaded.output,
+      installing: false,
+    );
+    if (_closed || cancellation.isCompleted) {
+      throw const IntegrationFailure('下载更新已取消。');
+    }
+    // Applying can ask this GUI to exit and wait for it. At that point
+    // closing the GUI must neither wait for the updater nor terminate it.
+    _cancellation = null;
+    final applied = await _run(
+      executable,
+      ['update', 'apply', '--candidate', candidateId, '--confirm'],
+      environment,
+      null,
+      const Duration(minutes: 12),
+      '安装更新',
+      keepRunning: true,
+    );
+    return decodeUpdateOperationResponse(
+      applied.code,
+      applied.output,
+      installing: true,
+    );
+  });
+
+  Future<T> _exclusive<T>(
+    Future<T> Function(Completer<void> cancellation) start,
+  ) async {
+    if (_closed) throw const IntegrationFailure('更新操作已取消。');
     if (_pending != null) {
       throw const IntegrationFailure('正在执行另一项更新操作，请稍后重试。');
     }
     final cancellation = Completer<void>();
     _cancellation = cancellation;
-    final operation = _run(executable, environment, cancellation);
+    final operation = start(cancellation);
     _pending = operation;
     try {
       return await operation;
@@ -33,11 +93,15 @@ class UpdateCheckProcess {
     }
   }
 
-  Future<({int code, String output})> _run(
+  Future<({int? code, String output})> _run(
     String executable,
+    List<String> arguments,
     Map<String, String>? environment,
-    Completer<void> cancellation,
-  ) async {
+    Completer<void>? cancellation,
+    Duration timeout,
+    String action, {
+    bool keepRunning = false,
+  }) async {
     Process? child;
     StreamIterator<List<int>>? stdout;
     StreamIterator<List<int>>? stderr;
@@ -46,38 +110,55 @@ class UpdateCheckProcess {
     try {
       child = await Process.start(
         executable,
-        const ['update', 'check'],
+        arguments,
         environment: environment,
         includeParentEnvironment: environment == null,
+        mode: keepRunning
+            ? ProcessStartMode.detachedWithStdio
+            : ProcessStartMode.normal,
       );
       stdout = StreamIterator(child.stdout);
       stderr = StreamIterator(child.stderr);
-      exitCode = child.exitCode.then((code) {
-        exited = true;
-        return code;
-      });
+      if (!keepRunning) {
+        exitCode = child.exitCode.then((code) {
+          exited = true;
+          return code;
+        });
+      }
       final bytes = BytesBuilder(copy: false);
       await Future.any<void>([
-        cancellation.future.then<void>((_) {
-          throw const IntegrationFailure('检查更新已取消。');
-        }),
+        if (cancellation != null)
+          cancellation.future.then<void>((_) {
+            throw IntegrationFailure('$action已取消。');
+          }),
         Future.wait<void>([
-          exitCode.then<void>((_) {}),
+          if (exitCode != null) exitCode.then<void>((_) {}),
           child.stdin.close().then<void>((_) {}),
-          _readOutput(stdout, bytes),
+          _readOutput(stdout, bytes, cancellation == null),
           _discardOutput(stderr),
         ], eagerError: true),
       ]).timeout(
-        const Duration(seconds: 50),
-        onTimeout: () => throw const IntegrationFailure('检查更新超时，请重试。'),
+        timeout,
+        onTimeout: () => throw IntegrationFailure(
+          cancellation == null
+              ? '更新结果尚未确认，请运行 sidraviactl update status 查看。'
+              : '$action超时，请重试。',
+        ),
       );
-      return (code: await exitCode, output: utf8.decode(bytes.takeBytes()));
+      return (
+        code: exitCode == null ? null : await exitCode,
+        output: utf8.decode(bytes.takeBytes()),
+      );
     } on IntegrationFailure {
       rethrow;
     } on Object {
-      throw const IntegrationFailure('无法运行更新检查，请检查安装是否完整。');
+      throw IntegrationFailure(
+        cancellation == null && child != null
+            ? '更新结果尚未确认，请运行 sidraviactl update status 查看。'
+            : '无法运行$action，请检查安装是否完整。',
+      );
     } finally {
-      if (!exited) child?.kill();
+      if (!exited && !keepRunning) child?.kill();
       try {
         await Future.wait<void>([
           if (stdout != null) stdout.cancel(),
@@ -93,11 +174,16 @@ class UpdateCheckProcess {
   Future<void> _readOutput(
     StreamIterator<List<int>> stream,
     BytesBuilder bytes,
+    bool installing,
   ) async {
     while (await stream.moveNext()) {
       final chunk = stream.current;
       if (bytes.length + chunk.length > _outputLimit) {
-        throw const IntegrationFailure('更新检查返回了过大的结果。');
+        throw IntegrationFailure(
+          installing
+              ? '更新结果尚未确认，请运行 sidraviactl update status 查看。'
+              : '更新检查返回了过大的结果。',
+        );
       }
       bytes.add(chunk);
     }
