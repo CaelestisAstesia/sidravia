@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 
 	"sidravia/internal/release"
 	packagefiles "sidravia/internal/release/files"
+	"sidravia/internal/release/qtinstaller"
 )
 
 // IFW's comparison differs from SemVer for arbitrary prerelease identifiers.
@@ -140,20 +140,8 @@ func buildQtDistribution(cfg config, stage, base string, template []byte, entrie
 // IFW copies this exact executable prefix to the installed maintenance program.
 // Reject a binarycreator that rewrites the pinned image during assembly.
 func verifyQtSetupPrefix(path string, template []byte) error {
-	if len(template) == 0 {
-		return fmt.Errorf("missing Qt maintenance image")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	prefix := make([]byte, len(template))
-	if _, err := io.ReadFull(file, prefix); err != nil {
-		return fmt.Errorf("read Qt setup executable prefix: %w", err)
-	}
-	if !bytes.Equal(prefix, template) {
-		return fmt.Errorf("Qt binarycreator rewrote the pinned maintenance image")
+	if err := qtinstaller.VerifyPrefix(path, int64(len(template)), sha256Hex(template)); err != nil {
+		return fmt.Errorf("verify Qt binarycreator maintenance image: %w", err)
 	}
 	return nil
 }

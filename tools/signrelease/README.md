@@ -132,5 +132,12 @@ go run ./tools/signrelease verify --published \
 ```
 
 The result reports `artifactBytes: passed` after checking all archives named in
-the Qt manifest. Run native lifecycle acceptance separately with the matching
-installer and test repositories.
+the Qt manifest. To check the matching offline installer, add
+`--qt-maintenance /path/to/toolchains` and put its `-qt-setup.exe` alongside the
+signed archives. Place each toolchain's reference executable at
+`toolchains/windows-amd64/installerbase.exe` or
+`toolchains/windows-arm64/installerbase.exe`. The verifier checks the reference
+against the signed repository index and checks that the offline installer starts
+with those same bytes. Its `installerMaintenancePrefix` result covers the part
+Qt installs as the maintenance program. Use native lifecycle acceptance to
+check the product payload and update behavior.

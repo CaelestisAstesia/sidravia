@@ -27,11 +27,16 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	signature := flags.String("signature", "", "raw detached signature (verify only)")
 	published := flags.Bool("published", false, "verify the published manifest and signature filenames")
 	artifactDir := flags.String("qt-artifacts", "", "verify the signed Qt repositories in this directory")
+	maintenanceDir := flags.String("qt-maintenance", "", "check offline installers against target maintenance images in this directory")
 	machine := flags.Bool("json", false, "JSON result")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
+		return 2
+	}
+	if *maintenanceDir != "" && *artifactDir == "" {
+		fmt.Fprintln(stderr, "-qt-maintenance requires -qt-artifacts")
 		return 2
 	}
 	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") || ((*published || *artifactDir != "") && mode != "verify") {
@@ -87,7 +92,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 			for _, asset := range m.Assets {
 				paths = append(paths, filepath.Join(*artifactDir, asset.Name))
 			}
-			actual, err := inspectQtArtifacts(paths, m.Version, m.BuildID, key)
+			actual, err := inspectQtArtifacts(paths, m.Version, m.BuildID, key, *artifactDir, *maintenanceDir)
 			if err != nil {
 				return fail(err.Error())
 			}
@@ -101,11 +106,18 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	}
 	if *machine {
 		result := map[string]any{"schemaVersion": 1, "ok": true, "version": m.Version, "buildId": m.BuildID, "keyId": id, "assets": len(m.Assets), "signature": status, "artifactBytes": artifactStatus}
+		if *maintenanceDir != "" {
+			result["installerMaintenancePrefix"] = "passed"
+		}
 		if json.NewEncoder(out).Encode(result) != nil {
 			return fail("unable to write result")
 		}
 	} else if *artifactDir != "" {
-		fmt.Fprintf(out, "Release manifest %s; signature %s; artifact bytes %s\n", mode, status, artifactStatus)
+		fmt.Fprintf(out, "Release manifest %s; signature %s; artifact bytes %s", mode, status, artifactStatus)
+		if *maintenanceDir != "" {
+			fmt.Fprint(out, "; installer maintenance prefix passed")
+		}
+		fmt.Fprintln(out)
 	} else {
 		fmt.Fprintf(out, "Release manifest %s; signature %s; no artifact files executed\n", mode, status)
 	}

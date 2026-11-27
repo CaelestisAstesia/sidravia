@@ -102,6 +102,31 @@ func TestQtManifestRejectsMixedBuildsAndMaintenanceImages(t *testing.T) {
 			if run(verify, forbiddenInput{}, &output, &stderr) != 0 || !bytes.Contains(output.Bytes(), []byte(`"artifactBytes":"passed"`)) {
 				t.Fatalf("published Qt verification failed: %s %s", &output, &stderr)
 			}
+			images := t.TempDir()
+			targetImages := filepath.Join(images, "windows-amd64")
+			if err := os.Mkdir(targetImages, 0700); err != nil {
+				t.Fatal(err)
+			}
+			image := filepath.Join(targetImages, "installerbase.exe")
+			if err := os.WriteFile(image, []byte("maint"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			setup := filepath.Join(artifacts, "sidravia-v1.2.3-windows-amd64-qt-setup.exe")
+			pairing := append(append([]string{}, verify...), "-qt-maintenance", images)
+			if err := os.WriteFile(setup, []byte("maint"+"payload"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			output.Reset()
+			stderr.Reset()
+			if run(pairing, forbiddenInput{}, &output, &stderr) != 0 || !bytes.Contains(output.Bytes(), []byte(`"installerMaintenancePrefix":"passed"`)) {
+				t.Fatalf("offline installer prefix verification failed: %s %s", &output, &stderr)
+			}
+			if err := os.WriteFile(setup, []byte("wrong"+"payload"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if run(pairing, forbiddenInput{}, io.Discard, io.Discard) == 0 {
+				t.Fatal("verification accepted an installer with a different maintenance prefix")
+			}
 			archive := args[len(args)-1]
 			original, err := os.ReadFile(archive)
 			if err != nil {
