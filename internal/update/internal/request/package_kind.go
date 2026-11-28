@@ -31,9 +31,10 @@ func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	return "core-portable"
 }
 
-// qtInstalledKind reads IFW's installed component inventory. A broken Qt
-// installation cannot fall back to the historical installer or to Core.
-func qtInstalledKind(layout productlayout.Layout) (string, error) {
+// windowsInstalledKind uses IFW's component inventory when present. Qt
+// binaries also carry a maintenance image identity, so loss of the entire
+// IFW registration cannot turn a Qt installation into an Inno installation.
+func windowsInstalledKind(layout productlayout.Layout) (string, error) {
 	root, err := os.OpenRoot(layout.ExecutableDirectory)
 	if err != nil {
 		return "", err
@@ -41,12 +42,15 @@ func qtInstalledKind(layout productlayout.Layout) (string, error) {
 	defer root.Close()
 	maintenance, err := root.Lstat("sidravia-maintenance.exe")
 	if errors.Is(err, os.ErrNotExist) {
+		if QtMaintenanceDigest != "" {
+			return "", release.ErrMetadata
+		}
 		for _, marker := range []string{"components.xml", "sidravia-maintenance.dat", "sidravia-maintenance.ini"} {
 			if _, markerErr := root.Lstat(marker); !errors.Is(markerErr, os.ErrNotExist) {
 				return "", release.ErrMetadata
 			}
 		}
-		return "", nil
+		return "setup", nil
 	}
 	if err != nil || !maintenance.Mode().IsRegular() {
 		return "", release.ErrMetadata

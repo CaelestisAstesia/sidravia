@@ -63,15 +63,15 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 			return layout, "", false, PortableDownloadOnly()
 		}
 		if runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
-			qtKind, err := qtInstalledKind(layout)
+			installedKind, err := windowsInstalledKind(layout)
 			if err != nil {
-				return layout, "", false, &Failure{"invalid_target", "无法确认 Qt 已安装的组件。", nil}
+				return layout, "", false, &Failure{"invalid_target", "无法确认 Windows 安装状态。若安装已损坏，请使用可信离线安装包修复。", nil}
 			}
-			if qtKind != "" {
-				if kind != "" && kind != qtKind {
+			if installedKind != "setup" {
+				if kind != "" && kind != installedKind {
 					return layout, "", false, &Failure{"invalid_target", "更新包必须与已安装的组件组合一致。", nil}
 				}
-				kind = qtKind
+				kind = installedKind
 			} else if release.QtRepositoryProfile(kind) != "" {
 				return layout, "", false, &Failure{"invalid_target", "无法确认 Qt 安装。", nil}
 			}
@@ -106,12 +106,6 @@ func ValidApplyTarget(layout productlayout.Layout, kind string) bool {
 	if runtime.GOOS != "windows" || layout.Mode != productlayout.ModeInstalled {
 		return false
 	}
-	if kind == "setup" {
-		return true
-	}
-	if release.QtRepositoryProfile(kind) == "" || len(QtMaintenanceDigest) != 64 {
-		return false
-	}
-	installed, err := qtInstalledKind(layout)
-	return err == nil && installed == kind
+	installed, err := windowsInstalledKind(layout)
+	return err == nil && installed == kind && (kind == "setup" || len(QtMaintenanceDigest) == 64)
 }
