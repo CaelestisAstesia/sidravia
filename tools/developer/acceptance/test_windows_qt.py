@@ -37,6 +37,13 @@ def qt_release(tmp_path_factory):
         path = Path(data[key])
         assert path.is_absolute() and path.exists()
         data[key] = path
+    if "productCommands" in data:
+        commands = Path(data["productCommands"])
+        assert commands.is_absolute() and commands.is_dir()
+        for name in ("sidraviactl.exe", "sidraviaupdater.exe"):
+            with (commands / name).open("rb") as command:
+                assert matches_pe(command.read(4096), data["arch"])
+        data["productCommands"] = commands
     setup = tmp_path_factory.mktemp("verified-qt-setup") / data["setup"].name
     shutil.copyfile(data["setup"], setup)
     assert setup.stat().st_size == data["setupSize"], "offline installer size changed since verification"
@@ -132,6 +139,31 @@ def confirmed_outcome(cache, version):
     ).read_text(encoding="utf-8", errors="replace")
 
 
+def apply_through_product(evidence, ctl, asset, env, runtime, daemon_pid):
+    checked = invoke(evidence, "product-check", ctl, ["update", "check"], env, separate_stderr=True)
+    require_success(checked)
+    check = json.loads(checked[1].read_bytes())["result"]["check"]
+    assert check["state"] == "available"
+    candidate = check["candidate"]
+    assert (candidate["name"], candidate["sha256"], candidate["canApply"]) == (
+        asset["name"], asset["sha256"], True
+    )
+    selection = ["--candidate", candidate["id"]]
+    download = invoke(evidence, "product-background-download", ctl, ["update", "download", *selection],
+                      env, separate_stderr=True)
+    require_success(download)
+    downloaded = Path(json.loads(download[1].read_bytes())["result"]["downloaded"])
+    assert downloaded.name == asset["name"]
+    with downloaded.open("rb") as package:
+        assert hashlib.file_digest(package, "sha256").hexdigest() == asset["sha256"]
+    assert json.loads(runtime.read_bytes())["pid"] == daemon_pid
+    apply = invoke(evidence, "product-apply", ctl, ["update", "apply", *selection, "--confirm"],
+                   env, separate_stderr=True)
+    require_success(apply)
+    assert json.loads(apply[1].read_bytes())["code"] == "handed_over"
+    return downloaded.parent.parent
+
+
 def has_user_path(directory):
     import winreg
 
@@ -179,6 +211,10 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         install = ("--no-default-installations", "install", "org.sidravia.core")
     require_success(invoke(tmp_path, "install", qt_release["setup"],
                            ["--root", target, *OPTIONS, *install]))
+    commands = qt_release.get("productCommands")
+    if commands is not None:
+        for name in ("sidraviactl.exe", "sidraviaupdater.exe"):
+            shutil.copyfile(commands / name, target / name)
     namespace_id = f"qt-accept-{uuid.uuid4().hex}"
     namespace = Path(os.environ["APPDATA"]) / "Sidravia" / "namespaces" / namespace_id
     namespace.mkdir(parents=True)
@@ -226,12 +262,24 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
                 require_success(invoke(tmp_path, "reject-corrupt-download", qt_release["testProgram"],
                                        ["-test.run=^TestQtNativeHandoff$", "-test.v"], env))
                 assert list(cabinet.iterdir()) == [], "rejected archive left a maintenance operation in the cache"
-            test_request.write_text(json.dumps(handoff), encoding="utf-8")
-            require_success(invoke(tmp_path, "apply", qt_release["testProgram"],
-                                   ["-test.run=^TestQtNativeHandoff$", "-test.v"], env))
+            if commands is None:
+                test_request.write_text(json.dumps(handoff), encoding="utf-8")
+                require_success(invoke(tmp_path, "apply", qt_release["testProgram"],
+                                       ["-test.run=^TestQtNativeHandoff$", "-test.v"], env))
+                outcome_cache = cabinet
+            else:
+                outcome_cache = apply_through_product(tmp_path, ctl, asset, env,
+                                                      namespace / "runtime.json", daemon["pid"])
             if gui is not None:
                 assert gui.wait(timeout=15) == 0
-            confirmed_outcome(cabinet, target_version)
+            try:
+                confirmed_outcome(outcome_cache, target_version)
+            finally:
+                if commands is not None:
+                    for name in ("qt-outcome.json", "qt-maintenance.log"):
+                        path = outcome_cache / name
+                        if path.is_file():
+                            shutil.copyfile(path, tmp_path / name)
 
         with running_sidravia(target, profile, namespace, env, tmp_path, "after") as (daemon, _):
             assert (daemon["productVersion"], daemon["buildId"]) == (target_version, target_build)

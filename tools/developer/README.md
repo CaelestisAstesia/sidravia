@@ -1067,7 +1067,7 @@ copy against the signed size and checksum recorded in the request.
 
 ```powershell
 $env:SIDRAVIA_QT_ACCEPTANCE_REQUEST = Join-Path $PWD 'qt-request.json'
-$request = python tools/developer/prepare_qt_acceptance.py --arch $Arch --previous $Previous --target $Target --maintenance $Toolchains --public-key $PublicKey --test-program $TestProgram
+$request = python tools/developer/prepare_qt_acceptance.py --arch $Arch --previous $Previous --target $Target --maintenance $Toolchains --public-key $PublicKey --test-program $TestProgram --command-fixture $FixtureCommands
 if ($LASTEXITCODE -ne 0) { throw 'Qt acceptance request preparation failed' }
 [IO.File]::WriteAllText($env:SIDRAVIA_QT_ACCEPTANCE_REQUEST, ($request -join "`n"), [Text.UTF8Encoding]::new($false))
 $env:SIDRAVIA_IFW_ISOLATED_WINDOWS = '1'
@@ -1076,3 +1076,10 @@ task --exit-code accept:windows-qt -- --junitxml qt-acceptance.xml
 
 The pytest temporary directory contains the installer output, the Qt maintenance
 log, the final update result and the application's startup diagnostics.
+
+Set `$FixtureCommands` to a new directory in the disposable workspace. The
+helper builds fixture copies of CTL and the updater with the disposable
+publisher and a file-backed release feed. The two lifecycle cases use them to
+check and download while the old daemon is running, then confirm and launch the
+update. The target binaries still come from the signed Qt repository. Keep the
+fixture commands within the acceptance workspace.

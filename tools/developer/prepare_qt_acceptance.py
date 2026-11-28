@@ -1,9 +1,13 @@
 """Create a pytest lifecycle request from two verified Windows Qt releases."""
 
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 
 from release_artifacts import (
     QT_MANIFEST, QT_SIGNATURE, WINDOWS_ARCHITECTURES, plain_path, public_check,
@@ -13,6 +17,48 @@ from verify_distribution import matches_pe
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def prepare_command_fixture(directory, request):
+    directory = directory.resolve()
+    directory.mkdir()
+    feed = directory / 'feed'
+    manifest_path = Path(request['manifest'])
+    manifest = json.loads(manifest_path.read_bytes())
+    version = manifest['version']
+    files = feed / version
+    files.mkdir(parents=True)
+    shutil.copyfile(manifest_path, files / QT_MANIFEST)
+    shutil.copyfile(request['signature'], files / QT_SIGNATURE)
+    assets = []
+    for asset in manifest['assets']:
+        if asset['arch'] != request['arch'] or asset['kind'] not in ('qt-core-repository', 'qt-gui-repository'):
+            continue
+        name = asset['name']
+        shutil.copyfile(manifest_path.parent / name, files / name)
+        assets.append(dict(id=len(assets) + 1, name=name, size=asset['size'], state='uploaded',
+                           digest='sha256:' + asset['sha256'],
+                           browser_download_url=f'https://github.com/CaelestisAstesia/sidravia/releases/download/v{version}/{name}'))
+    require(len(assets) == 2, 'qt_command_fixture_requires_both_profiles')
+    (feed / 'api.json').write_text(
+        json.dumps([dict(id=1, tag_name='v' + version, prerelease='-' in version, assets=assets)]),
+        encoding='utf-8',
+    )
+    with Path(request['maintenanceImage']).open('rb') as image:
+        maintenance_digest = hashlib.file_digest(image, 'sha256').hexdigest()
+    build_request = directory / 'commands.json'
+    build_request.write_text(json.dumps(dict(
+        repo=str(ROOT), feed=str(feed), sourceVersion=request['sourceVersion'],
+        sourceBuildID=request['sourceBuildId'], publicKey=request['publicKey'],
+        maintenanceSHA256=maintenance_digest,
+    )), encoding='utf-8')
+    subprocess.run([request['testProgram'], '-test.run=^TestQtBuildCommandFixture$', '-test.v'],
+                   env=dict(os.environ, SIDRAVIA_TEST_QT_COMMAND_FIXTURE=str(build_request)),
+                   stdout=sys.stderr, check=True, timeout=180)
+    commands = directory / 'commands'
+    for name in ('sidraviactl.exe', 'sidraviaupdater.exe'):
+        require((commands / name).is_file(), 'qt_command_fixture_missing_binary')
+    request['productCommands'] = str(commands)
 
 
 def prepare(previous, target, maintenance, test_program, public_key, arch, go):
@@ -59,10 +105,15 @@ def main():
     parser.add_argument('--public-key', type=Path, required=True, help='trusted disposable fixture public key file')
     parser.add_argument('--arch', choices=WINDOWS_ARCHITECTURES, required=True)
     parser.add_argument('--go', default='go')
+    parser.add_argument('--command-fixture', type=Path,
+                        help='new isolated directory for testing discovery, download and apply through the product commands')
     args = parser.parse_args()
     try:
-        print(json.dumps(prepare(args.previous, args.target, args.maintenance, args.test_program,
-                                 args.public_key, args.arch, args.go), indent=2))
+        request = prepare(args.previous, args.target, args.maintenance, args.test_program,
+                          args.public_key, args.arch, args.go)
+        if args.command_fixture is not None:
+            prepare_command_fixture(args.command_fixture, request)
+        print(json.dumps(request, indent=2))
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         parser.exit(1, f'Qt acceptance request failed: {error}\n')
 

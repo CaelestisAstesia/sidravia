@@ -17,7 +17,42 @@ import (
 	"sidravia/internal/installation/layout"
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/request"
+	"sidravia/internal/update/internal/testfixture"
 )
+
+// TestQtBuildCommandFixture prepares test-only copies of the source release's
+// public commands with the disposable publisher and a local release feed.
+func TestQtBuildCommandFixture(t *testing.T) {
+	path := os.Getenv("SIDRAVIA_TEST_QT_COMMAND_FIXTURE")
+	if path == "" {
+		t.Skip("requires a Qt command fixture request")
+	}
+	if !filepath.IsAbs(path) {
+		t.Fatal("command fixture request path must be absolute")
+	}
+	var fixture struct {
+		Repo, Feed, SourceVersion, SourceBuildID, MaintenanceSHA256 string
+		PublicKey                                                   []byte
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(fixture.Repo) || !filepath.IsAbs(fixture.Feed) ||
+		len(fixture.PublicKey) != ed25519.PublicKeySize || len(fixture.MaintenanceSHA256) != 64 {
+		t.Fatal("invalid command fixture request")
+	}
+	output := filepath.Join(filepath.Dir(path), "commands")
+	if err := os.Mkdir(output, 0700); err != nil {
+		t.Fatal(err)
+	}
+	overlay := testfixture.NewWindowsOverlay(t, fixture.Repo, t.TempDir(), fixture.Feed, fixture.PublicKey)
+	overlay.BuildCommands(overlay.Write(), output, fixture.SourceVersion, fixture.SourceBuildID,
+		fixture.MaintenanceSHA256, "sidraviactl", "sidraviaupdater")
+}
 
 // The isolated Windows system suite supplies two actual Qt distribution builds
 // and disposable signed release files. The production updater has no test trust
