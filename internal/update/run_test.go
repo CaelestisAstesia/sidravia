@@ -88,12 +88,6 @@ func TestDefaultPackageKindPreservesGUIIdentity(t *testing.T) {
 	if got := request.DefaultPackageKind("windows", "arm64", layout); got != "gui-portable" {
 		t.Fatal("ARM64 Windows GUI portable selected", got)
 	}
-	layout.Mode = productlayout.ModeInstalled
-	for _, arch := range []string{"amd64", "arm64"} {
-		if got := request.DefaultPackageKind("windows", arch, layout); got != "setup" {
-			t.Fatal(arch, got)
-		}
-	}
 }
 
 func TestPublisherTrustFailureHasStableSafeCode(t *testing.T) {

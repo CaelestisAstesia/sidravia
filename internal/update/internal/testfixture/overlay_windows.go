@@ -48,10 +48,20 @@ func(f fixtureTransport)RoundTrip(r *http.Request)(*http.Response,error){
 // BuildProduct builds the same four entry points for each fixture image.
 func (o *WindowsOverlay) BuildProduct(overlayPath, target, version, build string) {
 	o.t.Helper()
-	for _, role := range []string{"sidraviactl", "sidraviad", "sidraviaupdater", "sidraviamgr"} {
+	o.BuildCommands(overlayPath, target, version, build, "", "sidraviactl", "sidraviad", "sidraviaupdater", "sidraviamgr")
+}
+
+// BuildCommands builds selected entry points with the release's maintenance identity.
+func (o *WindowsOverlay) BuildCommands(overlayPath, target, version, build, maintenanceDigest string, roles ...string) {
+	o.t.Helper()
+	ldflags := "-X main.ProductVersion=" + version + " -X main.BuildID=" + build
+	if maintenanceDigest != "" {
+		ldflags += " -X sidravia/internal/update/internal/request.QtMaintenanceDigest=" + maintenanceDigest
+	}
+	for _, role := range roles {
 		cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin/go.exe"),
 			"build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-overlay", overlayPath,
-			"-ldflags", "-X main.ProductVersion="+version+" -X main.BuildID="+build,
+			"-ldflags", ldflags,
 			"-o", filepath.Join(target, role+".exe"), "./cmd/"+role)
 		cmd.Dir = o.repo
 		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "CGO_ENABLED=0")

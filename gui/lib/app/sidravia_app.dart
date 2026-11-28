@@ -298,11 +298,11 @@ class _SidraviaAppState extends State<SidraviaApp> with WidgetsBindingObserver {
       return (accepted: false, visible: false);
     }
     final visible = await desktop.refreshMainWindowVisibility();
-    if (visible == null || !mounted) return (accepted: false, visible: false);
+    if (!mounted) return (accepted: false, visible: false);
     final approved =
         shell.canExitWithoutPrompt ||
-        (interactive && visible && await shell.mayExit());
-    return (accepted: approved && mounted, visible: visible);
+        (interactive && visible == true && await shell.mayExit());
+    return (accepted: approved && mounted, visible: visible ?? false);
   }
 
   Future<void> _closeInstallation() async {

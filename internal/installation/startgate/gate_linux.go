@@ -91,15 +91,8 @@ func AcquireRun() (func(), error) {
 		return nil, err
 	}
 	release()
-	return func() {}, nil
-}
-
-func AcquireRunIdentity(_, _ string) (func(), error) {
-	release, err := AcquireRun()
-	if err == nil {
-		for _, name := range []string{launchcontract.EnvRecoveryOperation, launchcontract.EnvRecoveryToken, launchcontract.EnvRecoveryConfiguration} {
-			os.Unsetenv(name)
-		}
+	for _, name := range []string{launchcontract.EnvRecoveryOperation, launchcontract.EnvRecoveryToken, launchcontract.EnvRecoveryConfiguration} {
+		os.Unsetenv(name)
 	}
-	return release, err
+	return func() {}, nil
 }

@@ -48,10 +48,10 @@ python3 tools/developer/dev.py linux --check-gui --flutter /absolute/path/to/flu
 发行包构建要求干净的源码提交与尚不存在的输出目录。请填写候选版本，并把以下 Windows 工具路径换成本机路径。
 
 ```bash
-python3 tools/developer/dev.py windows --package --version 0.6.0-alpha.1 --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
+python3 tools/developer/dev.py windows --package --version 0.6.0-alpha.1 --windows-python 'C:\Python314\python.exe' --ifw 'C:\Tools\Sidravia\qt-toolkit'
 ```
 
-该入口编译 Windows GUI、核心与维护工具，并构建和检查便携包及安装器。安装器使用固定的 Inno Setup **7.1.0**。在干净的 Linux amd64 检出中构建核心便携包。以下版本号仅作本地构建示例：
+该入口从当前检出编译 Windows GUI 和 Core，构建并检查便携包。传入已核验的 Qt Installer Framework 工具包时，同时产生安装器和待签名的组件仓库。以下命令从 Linux amd64 干净检出构建核心便携包，版本号仅作示例。
 
 ```bash
 mkdir -p dist
@@ -62,7 +62,7 @@ python3 tools/developer/dev.py package --version 0.6.0-alpha.1 --output dist/lin
 
 输出目录的父目录需存在。以上入口不会安装程序、启动 GUI、真实认证、签名或发布。包内容、哈希与 help smoke 检查也不能代替实际安装和网络验证。
 
-手动触发 [Package 工作流](../.github/workflows/package.yml)时，填写本次候选的 `version`，例如 `0.6.0-alpha.1`。版本号不带 `v`。早期 `tools/build` 的 legacy 模式为历史 CLI 包保留，现代 GUI 发行使用 `distribution` 路径。
+手动触发 [Package 工作流](../.github/workflows/package.yml)时，填写不带 `v` 的版本号、已审核的 Qt 工具包运行编号，以及两个 Windows 架构各自的工具包 SHA-256。早期 `tools/build` 的 legacy 模式为历史 CLI 包保留，现代 GUI 发行使用 `distribution` 路径。
 
 ## 代码入口
 

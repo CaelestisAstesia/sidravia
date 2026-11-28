@@ -10,8 +10,8 @@ import (
 )
 
 type Options struct {
-	Channel, Kind, CandidateID, OperationID string
-	Confirmed                               bool
+	Channel, Kind, CandidateID string
+	Confirmed                  bool
 }
 
 func Parse(args []string, version string) (Options, string) {
@@ -25,7 +25,6 @@ func Parse(args []string, version string) (Options, string) {
 	kind := flags.String("package", "", "")
 	candidateID := flags.String("candidate", "", "")
 	confirmed := flags.Bool("confirm", false, "")
-	operationID := flags.String("operation", "", "")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return Options{}, "更新参数无效。"
 	}
@@ -33,7 +32,7 @@ func Parse(args []string, version string) (Options, string) {
 		return Options{}, "更新通道无效。"
 	}
 
-	return Options{Channel: *channel, Kind: *kind, CandidateID: *candidateID, OperationID: *operationID, Confirmed: *confirmed}, ""
+	return Options{Channel: *channel, Kind: *kind, CandidateID: *candidateID, Confirmed: *confirmed}, ""
 }
 
 // Resolve selects the package type for the calling installation.
@@ -62,13 +61,25 @@ func Resolve(kind string, check bool) (productlayout.Layout, string, bool, *Fail
 		if layout.Mode == productlayout.ModePortable && !check {
 			return layout, "", false, PortableDownloadOnly()
 		}
+		if runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
+			installedKind, err := windowsInstalledKind(layout)
+			if err != nil {
+				return layout, "", false, &Failure{"invalid_target", "无法确认 Windows 安装状态。若安装已损坏，请使用可信离线安装包修复。", nil}
+			}
+			if kind != "" && kind != installedKind {
+				return layout, "", false, &Failure{"invalid_target", "更新包必须与已安装的组件组合一致。", nil}
+			}
+			kind = installedKind
+		} else if release.QtRepositoryProfile(kind) != "" {
+			return layout, "", false, &Failure{"invalid_target", "无法确认 Qt 安装。", nil}
+		}
 		if kind == "" {
 			kind = DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
 		}
-		if !check && (runtime.GOOS != "windows" || kind != "setup") {
+		if !check && (runtime.GOOS != "windows" || release.QtRepositoryProfile(kind) == "") {
 			return layout, "", false, &Failure{"apply_unavailable", "当前安装不支持应用内安装更新。", nil}
 		}
-		if kind != "setup" && kind != "gui-portable" && kind != "core-portable" {
+		if kind != "gui-portable" && kind != "core-portable" && release.QtRepositoryProfile(kind) == "" {
 			return layout, "", false, &Failure{"invalid_arguments", "更新包类型无效。", nil}
 		}
 	}
@@ -83,6 +94,13 @@ func ApplyPlatformSupported() bool {
 	return release.DesktopArchitecture(runtime.GOARCH) && runtime.GOOS == "windows"
 }
 
+// QtMaintenanceDigest binds the maintenance image to the package toolchain.
+var QtMaintenanceDigest string
+
 func ValidApplyTarget(layout productlayout.Layout, kind string) bool {
-	return runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled && kind == "setup"
+	if runtime.GOOS != "windows" || layout.Mode != productlayout.ModeInstalled {
+		return false
+	}
+	installed, err := windowsInstalledKind(layout)
+	return err == nil && installed == kind && len(QtMaintenanceDigest) == 64
 }

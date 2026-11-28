@@ -3,9 +3,7 @@
   "environment": {
     "PATH": "C:\\DevTools\\go\\bin;C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd",
     "GOTOOLCHAIN": "local",
-    "GOCACHE": "{workspace}\\cache\\go",
-    "SIDRAVIA_ISCC": "C:\\DevTools\\Inno7\\ISCC.exe",
-    "SIDRAVIA_INNO_TEST_ROOT": "{run}\\fixtures"
+    "GOCACHE": "{workspace}\\cache\\go"
   },
   "stages": [
     {
@@ -34,21 +32,6 @@
         "{source}\\tools\\developer\\test_build_windows.ps1"
       ],
       "timeout_seconds": 90
-    },
-    {
-      "name": "native-handoff",
-      "argv": [
-        "C:\\DevTools\\Python\\python.exe",
-        "-m",
-        "unittest",
-        "discover",
-        "-s",
-        "tools/developer/tests",
-        "-p",
-        "test_update_handoff.py",
-        "-v"
-      ],
-      "timeout_seconds": 240
     }
   ]
 }

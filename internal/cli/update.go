@@ -90,13 +90,12 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 		{"download --candidate ID", "下载并校验指定候选"},
 		{"status", "查看缓存与更新状态"},
 		{"apply --candidate ID --confirm", "应用已确认的更新"},
-		{"recover --operation ID --confirm", "核对并处理已中断的更新"},
 		{"version", "显示版本与构建标识"},
 	}
 	for _, item := range operations {
 		command := &cobra.Command{Use: item.use, Short: item.description, Args: cobra.NoArgs}
 		operation := command.Name()
-		var channel, kind, candidate, operationID string
+		var channel, kind, candidate string
 		var confirm bool
 		command.RunE = func(cmd *cobra.Command, _ []string) (err error) {
 			defer func() { err = wrapCommandOperation(err) }()
@@ -112,9 +111,6 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 			}
 			if confirm {
 				args = append(args, "--confirm")
-			}
-			if operationID != "" {
-				args = append(args, "--operation", operationID)
 			}
 			data, processErr := invoke(cmd.Context(), args)
 			var result struct {
@@ -147,11 +143,8 @@ func newUpdateCommand(out io.Writer, invoke func(context.Context, []string) ([]b
 				command.Flags().Lookup("candidate").Hidden = true
 			}
 		}
-		if operation == "apply" || operation == "recover" {
-			command.Flags().BoolVar(&confirm, "confirm", false, "明确确认本次更新或中断收尾")
-		}
-		if operation == "recover" {
-			command.Flags().StringVar(&operationID, "operation", "", "状态结果中的操作编号")
+		if operation == "apply" {
+			command.Flags().BoolVar(&confirm, "confirm", false, "明确确认本次更新")
 		}
 		group.AddCommand(command)
 	}

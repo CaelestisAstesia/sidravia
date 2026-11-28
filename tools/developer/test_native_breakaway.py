@@ -96,7 +96,7 @@ def main():
         raise RuntimeError('breakaway changed user/session/integrity or remained contained')
     print(json.dumps(dict(parent=current, child=child, breakaway='explicitly_allowed')))
     if '--leak-probe' in sys.argv:
-        root = Path(os.environ['SIDRAVIA_INNO_TEST_ROOT'])
+        root = Path(os.environ['SIDRAVIA_NATIVE_FIXTURE_ROOT'])
         if not (root / '.sidravia-native-owner').is_file():
             raise RuntimeError('owned native fixture root required')
         source = root / 'cleanup_sentinel.go'

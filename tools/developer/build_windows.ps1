@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Flutter,
     [Parameter(Mandatory=$true)][string]$Go,
     [string]$Python = '',
-    [string]$ISCC = '',
+    [string]$IFW = '',
     [string]$Version = '0.5.0-alpha.1',
     [switch]$Package,
     [switch]$CheckGUI,
@@ -160,7 +160,8 @@ try {
     $report.dirty = $manifest.dirty
     $report.manifest_sha256 = (Get-FileHash -LiteralPath $ManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     foreach ($tool in @($Flutter, $Go)) { if (!(Test-Path -LiteralPath $tool -PathType Leaf)) { throw ('Tool not found: ' + $tool) } }
-    if ($Package) { foreach ($tool in @($Python, $ISCC)) { if (!$tool -or !(Test-Path -LiteralPath $tool -PathType Leaf)) { throw ('Package tool not found: ' + $tool) } } }
+    if ($Package -and (!$Python -or !(Test-Path -LiteralPath $Python -PathType Leaf))) { throw ('Package tool not found: ' + $Python) }
+    if ($IFW -and (!$Package -or !(Test-Path -LiteralPath $IFW -PathType Container))) { throw 'IFW requires -Package and an existing toolkit directory' }
     $sync = [Diagnostics.Stopwatch]::StartNew()
     $owned = Join-Path $Workspace 'source-manifest.json'
     $next = @{}
@@ -262,8 +263,14 @@ try {
         $coreOut = Join-Path $runRoot 'core-distribution'
         Push-Location $repo
         try {
-            Invoke-Stage 'package' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target',$payloadTarget,'--output',$out,'--go',$Go,'--gui-directory',$gui,'--iscc',$ISCC)
-            Invoke-Stage 'consume' $Python @('tools/developer/verify_distribution.py','--directory',$out,'--target',$payloadTarget,'--version',$Version,'--build-id',$manifest.source_commit,'--gui-directory',$gui,'--go',$Go,'--smoke')
+            $packageArgs = @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target',$payloadTarget,'--output',$out,'--go',$Go,'--gui-directory',$gui)
+            $portableOut = $out
+            if ($IFW) {
+                $packageArgs += @('--ifw',(Resolve-Path -LiteralPath $IFW).Path)
+                $portableOut = Join-Path $out 'portable'
+            }
+            Invoke-Stage 'package' $Go $packageArgs
+            Invoke-Stage 'consume' $Python @('tools/developer/verify_distribution.py','--directory',$portableOut,'--target',$payloadTarget,'--version',$Version,'--build-id',$manifest.source_commit,'--gui-directory',$gui,'--go',$Go,'--smoke')
             Invoke-Stage 'package-core' $Go @('run','-mod=readonly','./tools/build','--version',$Version,'--build-id',$manifest.source_commit,'--artifact','distribution','--target',$payloadTarget,'--output',$coreOut,'--go',$Go)
             Invoke-Stage 'consume-core' $Python @('tools/developer/verify_distribution.py','--directory',$coreOut,'--target',$payloadTarget,'--version',$Version,'--build-id',$manifest.source_commit,'--go',$Go,'--smoke')
         } finally { Pop-Location }

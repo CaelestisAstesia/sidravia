@@ -7,7 +7,7 @@ import (
 	"io"
 	"runtime"
 
-	productlayout "sidravia/internal/installation/layout"
+	"sidravia/internal/installation/startgate"
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
@@ -18,7 +18,7 @@ import (
 func Run(ctx context.Context, args []string, version, buildID string, out io.Writer) int {
 	emit := request.Writer(out)
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
-		return emit(true, "ok", "Sidravia updater: check | download --candidate ID | apply --candidate ID --confirm | status | recover --operation ID --confirm | version", nil)
+		return emit(true, "ok", "Sidravia updater: check | download --candidate ID | apply --candidate ID --confirm | status | version", nil)
 	}
 	if args[0] == "version" {
 		if len(args) != 1 {
@@ -30,17 +30,17 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 	if operation == "check" {
 		return query.Run(ctx, args[1:], version, out)
 	}
-	if operation != "download" && operation != "status" && operation != "apply" && operation != "recover" {
+	if operation != "download" && operation != "status" && operation != "apply" {
 		return emit(false, "invalid_arguments", "未知更新操作。", nil)
 	}
 	options, argumentError := request.Parse(args[1:], version)
 	if argumentError != "" {
 		return emit(false, "invalid_arguments", argumentError, nil)
 	}
-	if (operation == "apply" || operation == "recover") && !options.Confirmed {
-		return emit(false, "confirmation_required", "请检查候选或操作编号，并使用 --confirm 明确确认", nil)
+	if operation == "apply" && !options.Confirmed {
+		return emit(false, "confirmation_required", "请检查候选编号，并使用 --confirm 明确确认", nil)
 	}
-	if ((operation == "download" || operation == "apply") && options.CandidateID == "") || ((operation != "download" && operation != "apply") && options.CandidateID != "") || ((operation == "recover") != (options.OperationID != "")) || (options.Confirmed && operation != "apply" && operation != "recover") {
+	if ((operation == "download" || operation == "apply") && options.CandidateID == "") || ((operation != "download" && operation != "apply") && options.CandidateID != "") || (options.Confirmed && operation != "apply") {
 		return emit(false, "invalid_arguments", "更新参数或编号无效", nil)
 	}
 	layout, kind, _, failure := request.Resolve(options.Kind, false)
@@ -50,45 +50,32 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 	if operation == "apply" && (!request.ApplyPlatformSupported() || !release.PublisherTrust().Configured()) {
 		return emit(false, "apply_unavailable", "当前平台或构建尚未具备可信自动更新条件，请按发行说明手动更新", nil)
 	}
-	// Setup recovery reconciles a local, signed execution record. Release
-	// query cache availability and GitHub backoff are irrelevant here.
-	if operation == "recover" && runtime.GOOS == "windows" && layout.Mode == productlayout.ModeInstalled {
-		result, err := recoverOperation(ctx, layout, version, buildID, options.OperationID, nil)
-		if err != nil {
-			return emit(false, applyErrorCode(err), applyErrorMessage(err), result)
-		}
-		return emit(true, "ok", "中断协调已结束，未重复启动或恢复连接", result)
-	}
-	var execution *operationView
-	if operation == "status" {
-		operationRoot, err := productlayout.OperationRoot()
-		if err != nil {
-			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
-		}
-		execution, err = executionStatus(ctx, operationRoot, layout.ExecutableDirectory)
-		if err != nil {
-			return emit(false, "operation_status_unavailable", "更新执行记录无法确认，请检查更新状态后再操作。", nil)
-		}
-	}
-	cacheFailure := func(code, message string) int {
-		if execution != nil {
-			return emit(true, "ok", message, composeStatus(candidatecache.State{}, false, execution))
-		}
-		return emit(false, code, message, nil)
-	}
 	selection := release.Selection{OS: runtime.GOOS, Arch: runtime.GOARCH, Kind: kind, Channel: options.Channel, CurrentVersion: version}
 	store, failure := candidatecache.Open(layout.ExecutableDirectory, selection)
 	if failure != nil {
-		return cacheFailure(failure.Code, failure.Message)
+		return failure.Write(out)
 	}
 	previous, exists, failure := store.Read(ctx)
 	if failure != nil {
-		return cacheFailure(failure.Code, failure.Message)
+		return failure.Write(out)
 	}
 	if operation == "status" {
 		previous = projectInstalledVersion(previous, version)
-		if execution != nil {
-			return emit(true, "ok", "", composeStatus(previous, exists, execution))
+		if release.QtRepositoryProfile(kind) != "" {
+			outcome, present, err := readQtOutcome(ctx, store.Root(), version)
+			if err != nil {
+				return emit(false, "operation_status_unavailable", "无法确认维护工具结果，请检查当前版本。", nil)
+			}
+			if present {
+				if outcome.State == "pending" {
+					unlock, err := startgate.AcquireStart()
+					if err == nil {
+						unlock()
+						outcome.State = "unconfirmed"
+					}
+				}
+				return emit(true, "ok", outcome.message(), qtStatusResult{State: previous, Installation: outcome})
+			}
 		}
 		if !exists {
 			return emit(true, "not_checked", "尚未检查更新。", nil)
@@ -121,13 +108,13 @@ func Run(ctx context.Context, args []string, version, buildID string, out io.Wri
 			if err != nil {
 				return m.SourceFailure(ctx, err, applyErrorCode(err), applyErrorMessage(err), outcome)
 			}
-			if outcome != nil && outcome.HandedOver {
-				return request.Outcome{OK: true, Code: "handed_over", Message: "安装器已接管，请在安装器中继续，完成后用 status 查询结果", Result: outcome}
-			}
-			return request.Outcome{OK: true, Code: "ok", Message: "更新已安装，恢复结果见返回状态", Result: outcome}
+			return request.Outcome{OK: true, Code: "handed_over", Message: "维护工具正在继续安装更新，完成后可重新打开 Sidravia", Result: outcome}
 		}
 		newDownload := ""
 		if operation == "download" {
+			if release.QtRepositoryProfile(kind) != "" && !result.PublisherVerified {
+				return request.Fail("publisher_signature_required", "更新仓库缺少可信发行签名。", nil)
+			}
 			if state.Downloaded == "" {
 				path, err := github.Download(ctx, nil, *result.Candidate, m.Root())
 				if err != nil {

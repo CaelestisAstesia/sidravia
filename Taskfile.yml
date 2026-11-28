@@ -6,5 +6,15 @@ tasks:
     cmds:
       - >-
         uv run --locked --project tools/developer/acceptance pytest
-        -c tools/developer/acceptance/pyproject.toml tools/developer/acceptance
+        -c tools/developer/acceptance/pyproject.toml
+        tools/developer/acceptance/test_distribution.py
+        {{range .CLI_ARGS_LIST}}{{shellQuote .}} {{end}}
+
+  accept:windows-qt:
+    desc: Exercise signed Qt release artifacts in an isolated Windows account
+    cmds:
+      - >-
+        uv run --locked --project tools/developer/acceptance pytest
+        -c tools/developer/acceptance/pyproject.toml
+        tools/developer/acceptance/test_windows_qt.py -n 0
         {{range .CLI_ARGS_LIST}}{{shellQuote .}} {{end}}

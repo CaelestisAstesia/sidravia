@@ -413,7 +413,7 @@ func newRootCommand(deps commandDependencies, output io.Writer, helpErr *error) 
 	}
 	root.AddCommand(daemon, auth, profile, network, diagnostics, configCommand, retiredStatus, newGUIBootstrapCommand(deps.identity, output, bootstrap), newIntegrationCommand(output, invokeInstallationManager, deps.identity), newUpdateCommand(output, func(ctx context.Context, args []string) ([]byte, error) {
 		return invokeUpdater(ctx, args, deps.identity)
-	}), newUpdateInternalCommand(deps.identity, output))
+	}))
 	root.SetHelpCommand(newHelpCommand(root))
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		p := terminal.NewPresentation(c.OutOrStdout())

@@ -89,10 +89,10 @@ Run from Windows or WSL with Windows PowerShell interop:
 ```bash
 python3 tools/developer/dev.py windows
 python3 tools/developer/dev.py windows --check-gui
-python3 tools/developer/dev.py windows --package --version 0.6.0-alpha.1 --windows-python 'C:\Python314\python.exe' --iscc 'C:\Tools\Inno Setup\ISCC.exe'
+python3 tools/developer/dev.py windows --package --version 0.6.0-alpha.1 --windows-python 'C:\Python314\python.exe' --ifw 'C:\Tools\Sidravia\qt-toolkit'
 ```
 
-The last command's Python and Inno paths are examples; supply installed native
+The last command's Python and Qt toolkit paths are examples; supply installed native
 executables. Defaults are `D:\Tools\Flutter\3.47.0\flutter\bin\flutter.bat`,
 `C:\Program Files\Go\bin\go.exe`, and workspace
 `D:\Tools\Sidravia\build-workspace`. Override with `--flutter`, `--windows-go`,
@@ -135,11 +135,9 @@ OS, architecture and package format:
 | Windows x64 and ARM64 | Architecture-specific Setup EXE, GUI portable ZIP | Core portable ZIP or core-only selection in the same Setup |
 | Linux amd64 and arm64 | GUI portable tar, Fedora RPM, Debian DEB | Core portable tar, Fedora core RPM, Debian core DEB |
 
-The packaging matrix defines 18 downloads across four targets. On Windows ARM64 the installer host runs under x64 emulation and installs ARM64 payloads. The OS and architecture in an artifact receipt identify its payload. Native execution, installation and update acceptance are recorded separately for each candidate. Linux distribution jobs build on the target distribution and architecture.
+The packaging matrix publishes portable archives, signed Qt installers and update repositories, and distro packages. On Windows ARM64 the installer host runs under x64 emulation and installs ARM64 payloads. The OS and architecture in an artifact receipt identify its payload. Native execution, installation and update acceptance are recorded separately for each candidate. Linux distribution jobs build on the target distribution and architecture.
 
 Distribution archives use `-gui-portable` or `-core-portable` before `.zip`/`.tar.gz`, matching updater asset selection. Windows GUI and core archives therefore have distinct public asset names.
-The external Windows ICO belongs to setup/uninstall integration and is staged
-only for Inno. Portable archives do not carry it; the GUI EXE embeds its icon.
 ZIP and gzip archives use the standard library's best compression level; their
 formats, content and extraction requirements are unchanged.
 
@@ -162,27 +160,11 @@ as proof of current source. Go `trimpath`'s `embedded_identity=not_recorded`
 limitation remains; source/build receipts and byte hashes are not independent
 runtime identity proof.
 The `package` entry is always headless, including Windows x64: it has no GUI or
-installer input and does not need Flutter, Inno or a Windows graphics build.
+installer input. It builds without Flutter or a Windows graphics toolchain.
 
 Keep the latest useful build and evidence; do not automatically retain every log
 or create new task caches. Remove only a helper-owned inactive run directory when
 its result is no longer needed. Preserve the shared cache and active candidate.
-
-## Isolated Windows update handoff contracts
-
-The Python verification scope includes an opt-in native Inno/Go fixture. Set
-`SIDRAVIA_ISCC` to the pinned Inno 7.1.0 compiler and `SIDRAVIA_INNO_TEST_ROOT`
-to an existing dedicated native Windows scratch directory (WSL uses `/mnt/...`
-paths). Run `python3 tools/developer/dev.py verify --scope python`. Without both
-variables the native cases are reported as skipped, not as Windows evidence.
-
-The fixture starts only synthetic executables, gives its synthetic updater a
-kill-on-close job, and replaces a dummy file after the updater exits. It checks
-short-host target resolution, one-time recovery plans, refusal on exit timeout,
-and refusal when the parent job cannot release the installer. It does not start
-Sidravia, access credentials, authenticate, register an installation, change PATH
-or autostart, or establish production GUI/CTL lifecycle compatibility. Temporary
-files belong to the fixture; the verifier report remains under `.project/`.
 
 ## Updater commands
 
@@ -190,56 +172,32 @@ files belong to the fixture; the verifier report remains under `.project/`.
 installations it offers the matching release without staging or replacing files.
 On Linux, DNF/RPM and APT/dpkg own their respective installed payloads.
 
-Windows Setup includes `sidraviaupdater` for `update download --candidate ID`,
-`update apply --candidate ID --confirm`, `update status`, `update version`, and
-`update recover --operation ID --confirm`. `--channel stable|preview` selects
-the release stream when checking. The installed updater uses a protected cache
-and verifies the exact release candidate with the compiled publisher public key.
-A changed cached file or invalid signature fails verification. Tests use synthetic
-keys and an isolated installation.
+Windows Qt Setup installs `sidraviaupdater` with Core. Use `update download
+--candidate ID` to prepare a repository, `update apply --candidate ID --confirm`
+to start the update, and `update status` or `update version` to inspect the
+result. `--channel stable|preview` selects the release stream. The installed
+Qt inventory determines the component profile. The updater authenticates the
+publisher and exact archive before staging the update, then asks the active
+desktop and background process to exit. It hands off to the verified
+maintenance tool once the application is ready. `handed_over` means the
+maintenance tool took over. `update status` reports its outcome.
 
-Windows installed `apply` pins and verifies the setup and source CTL, persists
-a target-bound operation with signed source/target proofs, and authenticates the exact Inno worker before
-exiting. A denied job breakaway fails before stopping applications. `handed_over`
-is not installation success. Inno's fixed short CTL hooks prepare/stop, establish
-the target-bound seal, verify the complete selected payload, then acknowledge a
-new finite updater before exiting. That updater observes the exact worker's exit;
-installer exit/integration/restart and application recovery are separate facts.
-The original components and directory are fixed; existing wizard integration
-choices remain explicit. Files, index and generated uninstaller leaves reject
-reparse points and hard links. Recovery admission requires the exact operation,
-new build, nonce, namespace/configuration, expiry and live finalizer ancestry.
-Explicit recover never repeats launch/authentication; it may clear only its own
-seal after full signed source/target verification and confirmed dead owners.
-
-The Windows GUI filename/layout is unchanged. Its existing native entry checks
-the durable seal; during authorized recovery it delegates admission to the
-existing CTL. Windows imported DLLs load before that entry, so the check prevents
-entering application logic and is not a pre-loader guarantee. An interrupted
-installation may first produce a Windows loader error and require the trusted
-installer's repair. No extra launcher or resident service is introduced.
+The GUI and Go programs check the same current-user installation mutex that
+the maintenance tool holds during an update. If maintenance registration or
+the verified maintenance image needs replacement, use a trusted offline Setup.
 
 Portable distributions use CTL to check release metadata. The archive does
 not contain an updater, and CTL rejects deployment operations in portable
 mode. To upgrade, unpack the new distribution into a new directory and carry
 over user configuration as described in the user guide.
 
-For isolated real Windows CLI/Inno production-hook acceptance, set
-`SIDRAVIA_WINDOWS_SETUP_FIXTURE=1`, `SIDRAVIA_ISCC` to the pinned Inno compiler,
-and `SIDRAVIA_INNO_TEST_ROOT` to an owned scratch root, then run the fixed native
-Go verifier. `TestNativeInstalledUpdate` builds synthetic-root source overlays
-with a fixed-host release transport and loopback IPC passthrough. It removes
-fixture installation registration/shortcuts and stubs integration IO; it does
-not certify real PATH/startup registration or real campus authentication. Native
-C++ seal/mutex/refused-admission tests are in the existing
-`tools/developer/test_gui_native.ps1` policy suite. Full GUI running/recovery and
-real installation acceptance remain distinct from compilation and hook tests.
-Set `SIDRAVIA_WINDOWS_SETUP_GUI_BUNDLE` to the fixed builder's current Windows
-Release directory to include its real GUI files in this installed-update
-fixture. It verifies GUI-owned startup, normal exit and one cold desktop
-recovery through the actual Inno hooks, then normally stops its owned processes.
-Run this variant from an ordinary interactive Windows user session; a service
-account or a task job with process-breakaway restrictions is not equivalent.
+For installed update acceptance, prepare the two-version fixture with
+`tools/developer/prepare_qt_acceptance.py`, using real Setup and signed
+repositories and a test publisher. Run `task accept:windows-qt` from an
+isolated ordinary-user Windows desktop. Set `SIDRAVIA_IFW_ISOLATED_WINDOWS=1`
+and `SIDRAVIA_QT_ACCEPTANCE_REQUEST` to the fixture JSON. This drives the
+product CLI through discovery, download and apply for Core and GUI, verifies
+publisher rejection before exit, and checks repair, uninstall and retained data.
 
 To additionally run the real Windows GUI lifecycle, set
 `SIDRAVIA_GUI_TEST_DIRECTORY` to the fixed builder's current Release directory.
@@ -447,15 +405,12 @@ python3 tools/developer/dev.py vm --request tools/developer/requests/windows-nat
 ```
 
 These are example paths matching the local test VM; adapt them to your VM once.
-Keep the dedicated root short: the existing Inno fixture contains deeply nested
-paths and some Windows file APIs retain MAX_PATH limits. No machine-wide long-path
+Keep the dedicated root short because some Windows file APIs retain MAX_PATH limits. No machine-wide long-path
 policy is changed by this tool.
 `--domain` defaults to `windows11-sidravia`, `--uri` to `qemu:///session`.
 The sample request invokes the command-runner contracts, existing Windows builder
-safety tests and opt-in native Inno/Go handoff fixture. It uses fictional data,
-not a real installation. Inno/Go/Python must already exist at the specified paths;
-missing tools are failures, never an implicit installation. Full GUI/campus or
-real system integration acceptance is separate.
+safety tests. Its Go and Python paths must already exist. The Qt release
+lifecycle runs separately with a fixture built for the target architecture.
 
 The root must be an empty/new dedicated directory below that user's profile or
 already carry this tool's ownership marker. Runs are unique, source is copied
@@ -640,7 +595,7 @@ or certify native, campus or release acceptance.
 ### VM and native acceptance summary
 
 ```bash
-# Attach copied Windows read-only acceptance snapshots to an exact VM run.
+# Attach archived Windows Inno acceptance snapshots to an exact VM run.
 python3 tools/developer/dev.py report /absolute/path/to/vm-run --native windows-field=/absolute/path/to/Installed.json --format json
 # Existing Linux fixtures can be read directly, or attached in the same manner.
 python3 tools/developer/dev.py report /absolute/path/to/linux-desktop-fixture/result.json --kind linux-desktop --format json
@@ -649,13 +604,13 @@ python3 tools/developer/dev.py report /absolute/path/to/vm-run --native linux-rp
 
 `--kind` selects `stage` (default), `linux-desktop` (including business/portable
 fixtures), `linux-announcement`, `linux-rpm` (GUI/core), or `windows-field`
-(`offline_acceptance.ps1`). Native directories resolve to `result.json`; Windows
+(`offline_acceptance.ps1`, for historical Inno packages only). Native directories resolve to `result.json`; Windows
 snapshots use an explicit file. `--native KIND=PATH` is repeatable and attaches
 only explicitly selected receipts. Unknown kinds, malformed receipts, duplicate
 inputs and native `--stage` filtering fail rather than guessing a schema.
 Standalone Windows build reports and other integration tools' free-form logs
 are not native acceptance receipts; supply the existing VM stage report for
-execution evidence. No VM transport, producer or cleanup routine is replaced.
+execution evidence. Use the `accept:windows-qt` JUnit report and its VM receipt for current Windows installer acceptance.
 
 Text and JSON now include an `acceptance` section. Each receipt has independent
 `execution`, `evidence`, `cleanup`, source identity, errors and `not_covered`
@@ -963,8 +918,8 @@ children remain contained; only processes requesting explicit breakaway can
 leave. Never use this mode for untrusted requests or a production VM/session.
 
 The controller creates a fresh short fixture directory under its owned guest
-root, binds it with a per-run ownership marker, and overrides both native Inno
-and portable fixture root variables to that directory. After task removal it
+root, binds it with a per-run ownership marker, and supplies that directory
+for the native breakaway probe and portable fixture. After task removal it
 checks all remaining executable images in that exact tree. Cleanup opens the
 actual process handle, verifies its image path and token SID, records its
 creation time and stops only that owned test process. A leaked process makes
@@ -1015,3 +970,105 @@ their platform fixtures.
 Successful profiles write the staging receipts `core-verification.json`
 and `verification.json`. The JUnit report records each profile independently,
 including a failed profile when it cannot produce a successful receipt.
+
+
+## Assembling a local Qt release candidate
+
+Use the existing release staging tool with the trusted publisher public key.
+
+```sh
+python3 tools/developer/stage_release.py --directory "$CANDIDATE" --version "$VERSION" --build-id "$BUILD_ID" --qt-publisher-key "$PUBLIC_KEY"
+```
+
+Place the signed Qt manifest, signature, both profile repository ZIPs per Windows
+architecture, and one offline Setup per architecture in
+`inputs/qt-release/assets/`. Place the corresponding reference executables in
+`inputs/qt-release/toolchains/windows-{amd64,arm64}/installerbase.exe`.
+The Windows `--ifw` build writes its portable ZIP and checksum to `portable/`
+and the unsigned installer and component repositories to `qt/`. Use the
+`portable/` directory as the Windows GUI input to `accept:distribution`,
+then stage it under the Windows input lane as `gui/`. Sign
+the files in `qt/` before adding them to the signed Qt lane. Linux inputs
+follow the usual staging layout.
+
+Staging checks the signed build identity, both architectures, and the exact
+copied installer and repository bytes before exposing the assembled assets.
+Keep each `qt-toolkit.json` in its original Windows input lane. Staging
+compares its publisher with the supplied public key and checks that the
+maintenance image matches the receipt.
+The public key and reference executables are inputs only. The verified Qt
+manifest and signature go into `assets/` alongside `SHA256SUMS.txt`. The
+other release manifest requests still go into `requests/` for separate signing.
+
+Run **Build Windows Qt toolkits** when the reviewed toolchain changes. Supply
+the public verification key and retain the two approved ZIPs and their
+`toolkit-build.json` receipts together. The Package workflow accepts that
+artifact run and a SHA-256 per Windows target. Reuse the approved maintenance
+image for subsequent product releases on the same target. Keep the original
+ZIP bytes available for re-upload after hosted artifact expiration.
+
+The workflow emits `release-inputs-v<VERSION>`. In each Windows lane, `qt/`
+contains the unsigned Qt files and `installerbase.exe` is the matching
+reference. Use a controlled signing environment to combine the two lanes into
+`inputs/qt-release/` as described above. Pass the approved public key to
+`stage_release.py` after signing.
+
+During migration, uninstall the old Inno version while keeping user data
+before running Qt Setup. The default x64 installation directory was also used
+by Inno. Confirm removal of the old installation before accepting that target.
+
+## Windows Qt release acceptance
+
+The Windows updater embeds `cmd/sidraviaupdater/updater.manifest` to declare
+current-user execution. If it changes, regenerate its two checked-in resource
+objects from `cmd/sidraviaupdater` with the pinned Go toolchain.
+
+```sh
+go run github.com/tc-hib/go-winres@v0.3.3 make --in winres.json --arch amd64,arm64 --out updater
+```
+
+Run the Qt lifecycle suite in a disposable Windows account without an existing
+Sidravia installation. The suite creates and removes real per-user installations
+and checks their PATH registration. Use one test worker per account. The
+fixture architecture must match the Windows host. The suite checks the
+installed Core and GUI executables before and after the update and fails
+when the required fixture is absent.
+
+Build the Qt Installer Framework toolchain from `packaging/windows/ifw/build.ps1`.
+Use the verified IFW 4.11.0 source archive. For a new archive, check out the
+upstream Git tree at `aac2cf9c93b80a0f5959ab6c8a00bc378c54fdec` and run
+`git -c core.autocrlf=false -c core.eol=lf archive --format=tar --prefix=ifw/ -o ifw-4.11.0-source.tar HEAD`.
+The build verifies the exact archive SHA-256 before extracting it.
+Use the same maintenance image for both versions and build both distributions
+with `tools/build --ifw`. Use a disposable test key. For each version, sign both
+profile repositories with `signrelease qt-repository`, then prepare and sign the
+Qt release manifest with `signrelease qt-manifest --qt-installers --qt-maintenance`
+and `signrelease`. Keep each version's signed manifest, detached signature,
+offline Setup and both signed repository ZIPs together. The maintenance image
+belongs at `$Toolchains/windows-$Arch/installerbase.exe`.
+
+Build the native test program with `go test -c ./internal/update`.
+Generate the pytest request from the two signed release directories. The helper
+checks both releases, rejects a target at or below the installed version, and
+uses the older signed Setup and newer signed repositories. It uses only the
+disposable fixture public key. Before executing Setup, pytest checks its private
+copy against the signed size and checksum recorded in the request.
+
+```powershell
+$env:SIDRAVIA_QT_ACCEPTANCE_REQUEST = Join-Path $PWD 'qt-request.json'
+$request = python tools/developer/prepare_qt_acceptance.py --arch $Arch --previous $Previous --target $Target --maintenance $Toolchains --public-key $PublicKey --test-program $TestProgram --command-fixture $FixtureCommands
+if ($LASTEXITCODE -ne 0) { throw 'Qt acceptance request preparation failed' }
+[IO.File]::WriteAllText($env:SIDRAVIA_QT_ACCEPTANCE_REQUEST, ($request -join "`n"), [Text.UTF8Encoding]::new($false))
+$env:SIDRAVIA_IFW_ISOLATED_WINDOWS = '1'
+task --exit-code accept:windows-qt -- --junitxml qt-acceptance.xml
+```
+
+The pytest temporary directory contains the installer output, the Qt maintenance
+log, the final update result and the application's startup diagnostics.
+
+Set `$FixtureCommands` to a new directory in the disposable workspace. The
+helper builds fixture copies of CTL and the updater with the disposable
+publisher and a file-backed release feed. The two lifecycle cases use them to
+check and download while the old daemon is running, then confirm and launch the
+update. The target binaries still come from the signed Qt repository. Keep the
+fixture commands within the acceptance workspace.

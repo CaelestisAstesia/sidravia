@@ -18,7 +18,7 @@ import (
 
 // Run starts one daemon with the version and build identity supplied by the command.
 func Run(productVersion, buildID string) (code int) {
-	releaseStart, startErr := startgate.AcquireRunIdentity(productVersion, buildID)
+	releaseStart, startErr := startgate.AcquireRun()
 	if startErr != nil {
 		fmt.Fprintln(os.Stderr, "安装或更新正在进行，后台未启动。")
 		return 1

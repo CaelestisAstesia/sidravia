@@ -117,7 +117,7 @@ class Recommendations(unittest.TestCase):
             self.assertIn('Native CTest', row['manual'])
 
     def test_delivery_paths_keep_package_acceptance_and_consumer_checks(self):
-        paths = ('tools/build/distribution.go', 'packaging/windows/sidravia.iss',
+        paths = ('tools/build/distribution.go', 'packaging/windows/ifw/productkeycheck.cpp',
                  'packaging/linux/sidravia.spec.in')
         for path in paths:
             self.write(path, 'changed')

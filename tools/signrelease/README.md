@@ -121,6 +121,33 @@ go run ./tools/signrelease verify --manifest /path/to/sidravia-release.json --pu
 The public key file contains one base64-encoded 32-byte Ed25519 **public key**.
 `inspect` validates the shared v2 structure and matching key ID; its result says
 `signature: not_checked`. `verify` authenticates the exact manifest bytes and
-reports `signature: passed`. Neither mode checks artifact bytes; the developer
-release entry below performs that independent package consumption first. A
-signature or public inspection alone is not native upgrade/channel acceptance.
+reports `signature: passed`. For Qt releases, pass the directory of the signed
+Core and GUI repository archives to verify the staged bytes and their embedded
+publisher signatures against the release manifest.
+
+```sh
+go run ./tools/signrelease verify --published \
+  --manifest /path/to/sidravia-release-qt.json --signature /path/to/sidravia-release-qt.sig \
+  --public-key /path/to/publisher-public.txt --qt-artifacts /path/to/signed-repositories --json
+```
+
+The result reports `artifactBytes: passed` after checking all archives named in
+the Qt manifest. To check the matching offline installer, add
+`--qt-maintenance /path/to/toolchains` and put its `-qt-setup.exe` alongside the
+signed archives. Place each toolchain's reference executable at
+`toolchains/windows-amd64/installerbase.exe` or
+`toolchains/windows-arm64/installerbase.exe`. The verifier checks the reference
+against the signed repository index and checks that the offline installer starts
+with those same bytes. Its `installerMaintenancePrefix` result covers the part
+Qt installs as the maintenance program. Use native lifecycle acceptance to
+check the product payload and update behavior.
+
+To bind the complete offline installers in the same detached release signature,
+prepare the Qt manifest with both `qt-manifest --qt-installers /path/to/installers`
+and `--qt-maintenance /path/to/toolchains`. The tool adds one signed
+`qt-setup` asset per repository architecture. The asset binds the full installer
+size and SHA-256 and records the matched maintenance image digest. Sign that
+manifest using the regular detached-signature command above. For final staged
+verification, place the installers alongside the signed repositories and pass
+both `--qt-artifacts` and `--qt-maintenance`. Successful full installer
+verification also reports `installerBytes: passed`.

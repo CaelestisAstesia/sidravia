@@ -65,7 +65,7 @@ type config struct {
 	artifact     string
 	target       string
 	guiDirectory string
-	iscc         string
+	ifw          string
 	compression  string
 	help         bool
 }
@@ -78,7 +78,7 @@ var knownValueFlags = map[string]bool{
 	"--artifact":      true,
 	"--target":        true,
 	"--gui-directory": true,
-	"--iscc":          true,
+	"--ifw":           true,
 	"--compression":   true,
 }
 
@@ -146,8 +146,8 @@ func parseFlags(args []string) (config, error) {
 			c.target = val
 		case "--gui-directory":
 			c.guiDirectory = val
-		case "--iscc":
-			c.iscc = val
+		case "--ifw":
+			c.ifw = val
 		case "--compression":
 			c.compression = val
 		}
@@ -171,10 +171,16 @@ func parseFlags(args []string) (config, error) {
 		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
 			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
 		}
-		if !strings.HasPrefix(c.target, "windows-") && c.iscc != "" {
+		if !strings.HasPrefix(c.target, "windows-") && c.ifw != "" {
 			return c, errors.New("installer requires a Windows target")
 		}
-	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" {
+		if c.ifw != "" && (c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
+			return c, errors.New("Qt packaging requires an absolute toolchain directory and the native GUI payload")
+		}
+		if c.ifw != "" && !validQtCandidateVersion(c.version) {
+			return c, errors.New("Qt candidate packaging requires a numeric release or a version ending in alpha.N, beta.N, rc.N or dev.qt.N")
+		}
+	} else if c.target != "" || c.guiDirectory != "" || c.ifw != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
 	}
 	return c, nil
@@ -199,12 +205,13 @@ Optional flags:
   --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Flutter Release directory for the chosen target
-  --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
+  --ifw        optional absolute directory of the Qt installer toolchain
   --help       show this help and exit without building
 
 Distribution mode builds the target's core tools, optional native GUI payload,
-and Windows installer when --iscc is supplied. Archives use gui-portable or
-core-portable suffixes and include the selected version and build identifier.
+and Windows installer when requested. With --ifw, portable/ contains the GUI
+archive, and qt/ contains the installer and unsigned update repositories.
+Archives include the selected version and build identifier.
 
 Legacy release/field-validation modes build the Windows amd64 CLI pair into a
 portable zip. Release contains install/uninstall scripts; field-validation adds
@@ -349,8 +356,11 @@ func buildEnv(parent []string) []string {
 }
 
 // buildArgv returns the full go build argv for one binary.
-func buildArgv(goBin, outPath, pkgPath, version, buildID string) []string {
+func buildArgv(goBin, outPath, pkgPath, version, buildID string, symbols ...string) []string {
 	ldflags := "-s -w -buildid= -X main.ProductVersion=" + version + " -X main.BuildID=" + buildID
+	for _, symbol := range symbols {
+		ldflags += " -X " + symbol
+	}
 	return []string{
 		goBin, "build",
 		"-mod=readonly",

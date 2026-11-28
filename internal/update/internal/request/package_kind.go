@@ -1,6 +1,8 @@
 package request
 
 import (
+	"encoding/xml"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -13,9 +15,6 @@ import (
 // installation must not silently lose its GUI by selecting a core-only asset.
 func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	if goos == "windows" && release.DesktopArchitecture(arch) {
-		if layout.Mode == productlayout.ModeInstalled {
-			return "setup"
-		}
 		if info, err := os.Stat(filepath.Join(layout.ExecutableDirectory, "Sidravia.exe")); err == nil && info.Mode().IsRegular() {
 			return "gui-portable"
 		}
@@ -26,4 +25,62 @@ func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 		}
 	}
 	return "core-portable"
+}
+
+// windowsInstalledKind uses IFW's inventory as the installed component record.
+func windowsInstalledKind(layout productlayout.Layout) (string, error) {
+	root, err := os.OpenRoot(layout.ExecutableDirectory)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	maintenance, err := root.Lstat("sidravia-maintenance.exe")
+	if err != nil || !maintenance.Mode().IsRegular() {
+		return "", release.ErrMetadata
+	}
+	info, err := root.Lstat("components.xml")
+	if err != nil || !info.Mode().IsRegular() || info.Size() > release.ReleaseManifestLimit {
+		return "", release.ErrMetadata
+	}
+	file, err := root.Open("components.xml")
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, release.ReleaseManifestLimit+1))
+	if err != nil || len(data) > release.ReleaseManifestLimit {
+		return "", release.ErrMetadata
+	}
+	var inventory struct {
+		XMLName    xml.Name `xml:"Packages"`
+		Name       string   `xml:"ApplicationName"`
+		Components []string `xml:"Package>Name"`
+	}
+	if xml.Unmarshal(data, &inventory) != nil || inventory.Name != "Sidravia" {
+		return "", release.ErrMetadata
+	}
+	var core, gui bool
+	for _, id := range inventory.Components {
+		switch id {
+		case release.QtCoreComponent:
+			if core {
+				return "", release.ErrMetadata
+			}
+			core = true
+		case release.QtGUIComponent:
+			if gui {
+				return "", release.ErrMetadata
+			}
+			gui = true
+		default:
+			return "", release.ErrMetadata
+		}
+	}
+	if !core {
+		return "", release.ErrMetadata
+	}
+	if gui {
+		return release.QtGUIRepository, nil
+	}
+	return release.QtCoreRepository, nil
 }

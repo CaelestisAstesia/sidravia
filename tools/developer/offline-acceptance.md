@@ -1,4 +1,6 @@
-# Windows 离线手动验收
+# Windows 离线手动验收（历史 Inno 制品）
+
+本页适用于随旧 Inno 制品交付的检查器。当前 Qt 制品使用 [Qt 原生验收](README.md#updater-commands)。
 
 仅由验收者在 Windows x64 桌面运行。工具不联网，不安装、不卸载、不修改 PATH/任务/注册表，也不删除系统数据。检查器只写新证据目录；启动辅助会创建全新隔离 namespace、复制包内官方 institution-profiles，然后启动 GUI。不要填写真实账号、密码或点击认证。所有安装器操作由你手动完成。
 

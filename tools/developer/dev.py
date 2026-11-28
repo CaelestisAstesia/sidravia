@@ -142,8 +142,8 @@ def windows_command(args, env):
         command += ["-Python", args.windows_python]
     elif native:
         command += ["-Python", sys.executable]
-    if args.iscc:
-        command += ["-ISCC", args.iscc]
+    if args.ifw:
+        command += ["-IFW", args.ifw]
     if args.package:
         if not native and not args.windows_python:
             raise ValueError("--package from WSL requires --windows-python with a native Windows Python path")
@@ -315,7 +315,7 @@ def parse_args(argv=None):
             sub.add_argument("--flutter", default=r"D:\Tools\Flutter\3.47.0\flutter\bin\flutter.bat")
             sub.add_argument("--windows-go", default=r"C:\Program Files\Go\bin\go.exe")
             sub.add_argument("--windows-python")
-            sub.add_argument("--iscc")
+            sub.add_argument("--ifw", help="Absolute native Windows Qt tool directory for --package")
             sub.add_argument("--version", default="0.5.0-alpha.1")
             sub.add_argument("--package", action="store_true")
             sub.add_argument("--check-gui", action="store_true")

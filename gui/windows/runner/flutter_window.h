@@ -64,6 +64,7 @@ class FlutterWindow : public Win32Window {
   bool close_to_tray_ = true;
   std::optional<bool> startup_hidden_;
   bool desktop_presence_initialized_ = false;
+  bool tray_available_ = false;
   bool visibility_message_queued_ = false;
   bool destroying_ = false;
   bool suppress_tray_button_up_ = false;
@@ -76,7 +77,7 @@ class FlutterWindow : public Win32Window {
   UINT activation_message_ = 0;
   UINT taskbar_created_message_ = 0;
 
-  bool CreateTrayIcon();
+  void CreateTrayIcon();
   std::string InitializeDesktopPresence(const std::string& namespace_name);
   void ReleaseDesktopPresence();
   void CompleteExplicitExit();

@@ -102,7 +102,7 @@ class DeveloperCommands(unittest.TestCase):
 
     def test_package_reuses_existing_producer_and_consumer_with_same_identity(self):
         with tempfile.TemporaryDirectory() as directory:
-            args = argparse.Namespace(go="go", output=str(Path(directory) / "dist"), version="0.1.0", gui_directory=None, iscc=None)
+            args = argparse.Namespace(go="go", output=str(Path(directory) / "dist"), version="0.1.0", gui_directory=None)
             with mock.patch.object(dev, "metadata", return_value={"dirty": False, "commit": "a" * 40}), mock.patch.object(dev.platform, "system", return_value="Linux"), mock.patch.object(dev.platform, "machine", return_value="x86_64"):
                 _, commands = dev.package_commands(args, {})
             self.assertIn("./tools/build", commands[0])
@@ -122,7 +122,7 @@ class DeveloperCommands(unittest.TestCase):
                     self.assertEqual(command[command.index("--target") + 1], target)
                     self.assertEqual(command[command.index("--build-id") + 1], "a" * 40)
                     self.assertNotIn('--gui-directory', command)
-                    self.assertNotIn('--iscc', command)
+                    self.assertNotIn('--ifw', command)
                 self.assertNotIn("--smoke", commands[1])
 
     def test_parallel_cross_preserves_checks_and_failure(self):

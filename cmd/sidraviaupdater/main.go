@@ -15,13 +15,10 @@ var ProductVersion = "0.5.0-alpha.1"
 var BuildID = "dev"
 
 func main() {
-	if handled, code := setupFinish(os.Args[1:]); handled {
-		os.Exit(code)
-	}
 	release := func() {}
 	var err error
-	if !invocation.ControlEntry(os.Args[1:]) {
-		release, err = startgate.AcquireRunIdentity(ProductVersion, BuildID)
+	if !invocation.ReadOnly(os.Args[1:]) {
+		release, err = startgate.AcquireRun()
 	}
 	if err != nil {
 		json.NewEncoder(os.Stdout).Encode(map[string]any{"schemaVersion": 1, "ok": false, "code": "maintenance_active", "message": "安装或更新正在进行，请稍后重试。"})

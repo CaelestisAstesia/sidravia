@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise verified Windows ARM64 distributions in a disposable Windows account."""
+"""Exercise verified Windows ARM64 portable distributions in a disposable Windows account."""
 
 import argparse
 import contextlib
@@ -16,11 +16,10 @@ import unicodedata
 import uuid
 import zipfile
 
-from verify_distribution import binary_identity, digest, matches_pe, require
+from verify_distribution import require
 
 
 ARM64 = 0xAA64
-APP_IDS = ('{63DB10A2-AC2C-4739-9DCA-2DF55C735150}', '{EB2663BD-8DEB-446A-958E-43DF637C1F53}')
 
 
 class WindowsProcesses:
@@ -80,16 +79,6 @@ class WindowsProcesses:
         require(status == 0, 'desktop_daemon_did_not_exit_after_its_owner')
 
 
-def registration(app_id):
-    import winreg
-    key = rf'Software\Microsoft\Windows\CurrentVersion\Uninstall\{app_id}_is1'
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, access=winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as entry:
-            return Path(winreg.QueryValueEx(entry, 'InstallLocation')[0])
-    except FileNotFoundError:
-        return None
-
-
 def invoke(executable, argv, log, *, timeout=30, env=None, check=True):
     with log.open('wb') as output:
         result = subprocess.run([str(executable), *argv], cwd=executable.parent, env=env,
@@ -111,10 +100,9 @@ def wait_runtime(path, gui):
     raise RuntimeError('daemon runtime record did not appear')
 
 
-def smoke_runtime(processes, directory, evidence, label, version, build, *, portable, gui):
+def smoke_runtime(processes, directory, evidence, label, version, build, *, gui):
     env = dict(os.environ, SIDRAVIA_NAMESPACE='native-arm64-' + uuid.uuid4().hex)
-    parent = directory if portable else Path(env['APPDATA']) / 'Sidravia'
-    namespace = parent / 'namespaces' / env['SIDRAVIA_NAMESPACE']
+    namespace = directory / 'namespaces' / env['SIDRAVIA_NAMESPACE']
     namespace.mkdir(parents=True)
     # Namespaces select their own profile directory. Preserve the real bundle.
     source_profiles = directory / 'institution-profiles'
@@ -124,7 +112,7 @@ def smoke_runtime(processes, directory, evidence, label, version, build, *, port
         (target_profiles / profile.name).write_bytes(profile.read_bytes())
     ctl = directory / 'sidraviactl.exe'
     runtime = namespace / 'runtime.json'
-    report = {'label': label, 'layout': 'portable' if portable else 'installed'}
+    report = {'label': label, 'layout': 'portable'}
     child = None
     desktop_daemon = None
     with contextlib.ExitStack() as handles:
@@ -181,24 +169,6 @@ def check_build(directory, version, build):
             'windows_arm64_candidate_identity_mismatch')
 
 
-def verify_setup_updater(directory, verification, version, build):
-    raw_index = (directory / 'sidravia-files.json').read_bytes()
-    require(digest(raw_index) == verification['installerOwnershipSha256'],
-            'setup_installed_ownership_mismatch')
-    records = [row for row in json.loads(raw_index)['files'] if row['path'] == 'sidraviaupdater.exe']
-    require(len(records) == 1, 'setup_updater_ownership_missing')
-    expected, = records
-    updater = directory / expected['path']
-    data = updater.read_bytes()
-    require(len(data) == expected['size'] and digest(data) == expected['sha256'],
-            'setup_installed_updater_mismatch')
-    require(matches_pe(data, 'arm64'), 'setup_installed_updater_not_native')
-    embedded = binary_identity(updater, 'sidraviaupdater', 'windows-arm64', version, build, 'go')
-    return {'sha256': expected['sha256'], 'size': expected['size'],
-            'ownershipSha256': verification['installerOwnershipSha256'],
-            'embeddedGoIdentity': 'passed' if embedded else 'not_recorded'}
-
-
 @contextlib.contextmanager
 def fixture_directory(summary):
     root = Path(tempfile.mkdtemp(prefix='sdra64-'))
@@ -210,33 +180,11 @@ def fixture_directory(summary):
         raise
 
 
-def wait_for_uninstall_directory(directory):
-    # Inno's temporary uninstaller removes the original uninstaller and its
-    # directory after the launched executable has returned.
-    deadline = time.monotonic() + 20
-    while directory.exists():
-        require(time.monotonic() < deadline, 'uninstall_left_installation_directory')
-        time.sleep(.25)
-
-
 def exercise(args, summary):
     e = args.evidence
     processes = WindowsProcesses()
     summary['host'] = processes.inspect(os.getpid())
-    app_id, opposite_app_id = APP_IDS
-    require(registration(app_id) is None and registration(opposite_app_id) is None, 'test_account_has_existing_setup')
-    for variable in ('APPDATA', 'LOCALAPPDATA'):
-        require(not (Path(os.environ[variable]) / 'Sidravia').exists(), 'test_account_has_existing_sidravia_data')
-
     base = f'sidravia-v{args.version}-windows-arm64'
-    setup = args.distribution / (base + '-setup.exe')
-    verification = json.loads((args.distribution.parent / 'verification.json').read_bytes())
-    require((verification['version'], verification['buildId'], verification['target']) ==
-            (args.version, args.build_id, 'windows-arm64'), 'setup_verification_identity_mismatch')
-    require(digest(setup.read_bytes()) == verification['artifactHashes'][setup.name],
-            'setup_verification_artifact_mismatch')
-    # Resolve paths before switching the working directory for native tools.
-    setups = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
     with fixture_directory(summary) as root:
         for kind, source in (('core', args.core_distribution), ('gui', args.distribution)):
             directory = root / f'portable-{kind}'
@@ -246,35 +194,7 @@ def exercise(args, summary):
             require(not (directory / 'sidraviaupdater.exe').exists(), 'portable_updater_unexpected')
             check_build(directory, args.version, args.build_id)
             summary['checks'].append(smoke_runtime(processes, directory, e, f'portable-{kind}',
-                                                   args.version, args.build_id, portable=True, gui=kind == 'gui'))
-
-        directory = root / 'installed'
-        setup_options = [*setups, '/SP-', '/TASKS=', f'/DIR={directory}']
-        try:
-            for component, label in (('core', 'setup-core'), ('core,gui', 'setup-cover-gui')):
-                invoke(setup, [*setup_options, f'/COMPONENTS={component}', f'/LOG={e / (label + "-inno.log")}'],
-                       e / f'{label}.log', timeout=180)
-                installed = registration(app_id)
-                require(installed is not None and os.path.samefile(installed, directory), 'setup_registration_mismatch')
-                require((directory / 'Sidravia.exe').is_file() == (component == 'core,gui'), 'setup_component_mismatch')
-                require(not (directory / 'sidravia.portable').exists(), 'setup_portable_marker_unexpected')
-                check_build(directory, args.version, args.build_id)
-                evidence = smoke_runtime(processes, directory, e, label, args.version, args.build_id,
-                                         portable=False, gui=component == 'core,gui')
-                evidence['installerUpdater'] = verify_setup_updater(directory, verification, args.version, args.build_id)
-                summary['checks'].append(evidence)
-        finally:
-            # Keep account data, the default silent-uninstall behavior.
-            uninstallers = list(directory.glob('unins*.exe'))
-            if uninstallers:
-                require(len(uninstallers) == 1, 'uninstall_executable_ambiguous')
-                invoke(uninstallers[0], [*setups, f'/LOG={e / "uninstall-inno.log"}'], e / 'uninstall.log', timeout=180)
-                require(registration(app_id) is None, 'uninstall_left_registration')
-                for name in ('Sidravia.exe', 'sidraviactl.exe', 'sidraviad.exe', 'sidraviamgr.exe', 'sidraviaupdater.exe'):
-                    require(not (directory / name).exists(), 'uninstall_left_program_file')
-                wait_for_uninstall_directory(directory)
-                summary['checks'].append({'label': 'setup-uninstall', 'status': 'passed', 'installDirectoryRemoved': True})
-        require(summary['checks'][-1]['label'] == 'setup-uninstall', 'setup_uninstall_not_exercised')
+                                                   args.version, args.build_id, gui=kind == 'gui'))
 
 
 def main():

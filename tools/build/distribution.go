@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -18,7 +17,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err := verifyRepoInputs(t.repoRoot, "distribution"); err != nil {
 		return err
 	}
-	if t.cfg.iscc != "" && runtime.GOOS != "windows" {
+	if t.cfg.ifw != "" && runtime.GOOS != "windows" {
 		return fmt.Errorf("installer compilation requires a native Windows build host")
 	}
 	profiles, err := loadOfficialProfileEntries(t.repoRoot)
@@ -36,13 +35,6 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	entries = append(entries, profiles...)
 	buildInfoIndex := len(entries)
 	entries = append(entries, archiveEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
-	if t.cfg.iscc != "" {
-		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
-		if err != nil {
-			return fmt.Errorf("read application icon: %w", err)
-		}
-		entries = append(entries, archiveEntry{"app_icon.ico", icon, 0644})
-	}
 	targetOS, arch, _ := strings.Cut(t.cfg.target, "-")
 	var gui []archiveEntry
 	if targetOS == "linux" {
@@ -108,6 +100,15 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if targetOS == "windows" {
 		programs = append(programs, "sidraviamgr")
 	}
+	var qtTemplate []byte
+	var qtSymbols []string
+	if t.cfg.ifw != "" {
+		qtTemplate, err = os.ReadFile(filepath.Join(t.cfg.ifw, "installerbase.exe"))
+		if err != nil {
+			return fmt.Errorf("read Qt maintenance image: %w", err)
+		}
+		qtSymbols = []string{"sidravia/internal/update/internal/request.QtMaintenanceDigest=" + sha256Hex(qtTemplate)}
+	}
 	var binarySums strings.Builder
 	for _, program := range programs {
 		sourcePackage := "./cmd/" + program
@@ -115,24 +116,21 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			sourcePackage = "./cmd/sidravia-gui-launcher"
 		}
 		fmt.Fprintln(stderr, "building", program+suffix)
-		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), sourcePackage, t.cfg.version, t.cfg.buildID))
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, program+suffix), sourcePackage, t.cfg.version, t.cfg.buildID, qtSymbols...))
 		if err != nil {
 			return err
 		}
 		entries = append(entries, archiveEntry{program + suffix, data, 0755})
 		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
 	}
-	if t.cfg.iscc != "" {
+	if t.cfg.ifw != "" {
 		const updater = "sidraviaupdater.exe"
 		fmt.Fprintln(stderr, "building", updater)
-		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID))
+		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID, qtSymbols...))
 		if err != nil {
 			return err
 		}
 		entries = append(entries, archiveEntry{updater, data, 0755})
-		// The paired installer has an additional executable. Publish its exact
-		// inventory metadata without including the executable in the ZIP.
-		fmt.Fprintf(&binarySums, "SetupUpdater: %s %d\n", sha256Hex(data), len(data))
 	}
 	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
 	// The ownership index describes product bytes only: runtime data, the
@@ -154,21 +152,6 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return fmt.Errorf("encode product file ownership: %w", err)
 	}
 	entries = append(entries, archiveEntry{packagefiles.Name, ownership, 0644})
-	// All installation files have explicit ownership; payload contains no
-	// portable marker, generated user data or legacy integration scripts.
-	payload := filepath.Join(stage, "payload")
-	if err := os.Mkdir(payload, 0755); err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		path := filepath.Join(payload, filepath.FromSlash(entry.name))
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(path, entry.data, entry.mode); err != nil {
-			return err
-		}
-	}
 	portable, err := portablePayload(entries, owned)
 	if err != nil {
 		return err
@@ -195,48 +178,29 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return err
 	}
 	outputs := []string{archive}
-	if t.cfg.iscc != "" {
-		template, err := os.ReadFile(filepath.Join(t.repoRoot, "packaging", "windows", "sidravia.iss"))
+	var qtOutputs []string
+	if t.cfg.ifw != "" {
+		qtOutputs, err = buildQtDistribution(t.cfg, stage, base, qtTemplate, entries, gui, stderr)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(stage, "sidravia.iss"), template, 0644); err != nil {
-			return err
-		}
-		manifest := installerManifest(payload, entries, gui)
-		if err := os.WriteFile(filepath.Join(stage, "files.iss"), []byte(manifest), 0644); err != nil {
-			return err
-		}
-		hasGUI := "0"
-		if len(gui) > 0 {
-			hasGUI = "1"
-		}
-		cmd := exec.Command(t.cfg.iscc, "/DProductVersion="+t.cfg.version, "/DHasGUI="+hasGUI, "/DPayloadTarget="+t.cfg.target, "/O"+stage, "/F"+base+"-setup", filepath.Join(stage, "sidravia.iss"))
-		cmd.Stdout = stderr
-		cmd.Stderr = stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("compile Inno installer: %w", err)
-		}
-		outputs = append(outputs, base+"-setup.exe")
 	}
 	final := filepath.Join(stage, "output")
-	if err := os.Mkdir(final, 0755); err != nil {
-		return err
-	}
-	sort.Strings(outputs)
-	var sums strings.Builder
-	for _, name := range outputs {
-		data, err := os.ReadFile(filepath.Join(stage, name))
-		if err != nil {
+	portableDirectory := final
+	if len(qtOutputs) > 0 {
+		if err := os.Mkdir(final, 0755); err != nil {
 			return err
 		}
-		fmt.Fprintf(&sums, "%s  %s\n", sha256Hex(data), name)
-		if err := os.Rename(filepath.Join(stage, name), filepath.Join(final, name)); err != nil {
+		portableDirectory = filepath.Join(final, "portable")
+	}
+	sums, err := writeDistributionFiles(stage, portableDirectory, outputs)
+	if err != nil {
+		return err
+	}
+	if len(qtOutputs) > 0 {
+		if _, err := writeDistributionFiles(stage, filepath.Join(final, "qt"), qtOutputs); err != nil {
 			return err
 		}
-	}
-	if err := os.WriteFile(filepath.Join(final, "SHA256SUMS.txt"), []byte(sums.String()), 0644); err != nil {
-		return err
 	}
 	if err := t.publish(final, out); err != nil {
 		return fmt.Errorf("publish distribution to %s: %w", out, err)
@@ -246,8 +210,27 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err := os.RemoveAll(stage); err != nil {
 		return fmt.Errorf("distribution published at %s; remove staging directory %s: %w", out, stage, err)
 	}
-	if _, err := io.WriteString(stdout, sums.String()); err != nil {
+	if _, err := io.WriteString(stdout, sums); err != nil {
 		return fmt.Errorf("distribution published at %s; write checksum summary: %w", out, err)
 	}
 	return nil
+}
+
+func writeDistributionFiles(stage, directory string, outputs []string) (string, error) {
+	if err := os.Mkdir(directory, 0755); err != nil {
+		return "", err
+	}
+	sort.Strings(outputs)
+	var sums strings.Builder
+	for _, name := range outputs {
+		data, err := os.ReadFile(filepath.Join(stage, name))
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&sums, "%s  %s\n", sha256Hex(data), name)
+		if err := os.Rename(filepath.Join(stage, name), filepath.Join(directory, name)); err != nil {
+			return "", err
+		}
+	}
+	return sums.String(), os.WriteFile(filepath.Join(directory, "SHA256SUMS.txt"), []byte(sums.String()), 0644)
 }

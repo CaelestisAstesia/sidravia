@@ -1,0 +1,31 @@
+--- a/src/libs/installer/downloadarchivesjob.cpp
++++ b/src/libs/installer/downloadarchivesjob.cpp
+@@ -16,6 +16,10 @@
+ 
+ #include <QtCore/QFile>
+ #include <QtCore/QTimerEvent>
++
++#if defined(Q_OS_WIN)
++bool sidraviaIsPinnedArchive(const QString &source);
++#endif
+ 
+ using namespace QInstaller;
+ using namespace KDUpdater;
+@@ -220,7 +224,17 @@
+         m_progressChangedTimerId = 0;
+     }
+ 
++#ifdef Q_OS_WIN
++    const QString source = item.source();
++    if (!sidraviaIsPinnedArchive(source)) {
++        m_canceled = true;
++        emitFinishedWithError(QInstaller::DownloadError, tr("Package source was not verified."));
++        return;
++    }
++    BinaryFormatEngineHandler::instance()->registerResource(item.value(TaskRole::Name).toString(), source);
++#else
+     BinaryFormatEngineHandler::instance()->registerResource(item.value(TaskRole::Name).toString(), item.target());
++#endif
+ 
+     emit fileDownloadReady(item.target());
+ }

@@ -221,7 +221,7 @@ def run(root, args, manifest, source_after):
     native_root = guest_root + '\\fx-native-' + run_id[:12]
     native_owner = 'sidravia-native-update-v1:' + run_id
     if native_updates:
-        request.setdefault('environment', {}).update(SIDRAVIA_INNO_TEST_ROOT=native_root, SIDRAVIA_NATIVE_JOB_PROBE_FIXTURE='1')
+        request.setdefault('environment', {}).update(SIDRAVIA_NATIVE_FIXTURE_ROOT=native_root, SIDRAVIA_NATIVE_JOB_PROBE_FIXTURE='1')
     identity = {'commit': manifest['source_commit'], 'dirty': manifest['dirty'], 'manifest_sha256': hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(), 'file_count': len(manifest['files'])}
     request['source'] = identity
     payload = snapshot(root, manifest)

@@ -94,6 +94,7 @@ UpdateInstallResult decodeUpdateOperationResponse(
   throw IntegrationFailure(switch (code) {
     'candidate_changed' => '候选版本已变化，请重新检查更新。',
     'rate_limited' => 'GitHub 请求受限，请稍后重试。',
+    'maintenance_image_requires_reinstall' => '此版本需要更换维护工具，请从发行页下载完整安装包',
     'source_proof_unavailable' => '无法验证当前安装，请从发行页手动更新。',
     'update_busy' ||
     'maintenance_active' => '正在执行另一项更新操作，请稍后运行 sidraviactl update status 查看。',

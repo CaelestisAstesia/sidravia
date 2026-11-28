@@ -1,0 +1,52 @@
+name: Build Windows Qt toolkits
+
+on:
+  workflow_dispatch:
+    inputs:
+      publisher_public_key:
+        description: 'Public Ed25519 verification key as 64 hex digits'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify the pinned IFW source archive
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $pin = Get-Content -Raw -LiteralPath packaging/windows/ifw/source-lock.json | ConvertFrom-Json
+          $source = Join-Path $env:RUNNER_TEMP 'ifw-source'
+          $archive = Join-Path $env:RUNNER_TEMP 'ifw-source.tar'
+          git init $source
+          git -C $source fetch --depth=1 https://github.com/qtproject/installer-framework.git $pin.revision
+          git -C $source -c core.autocrlf=false -c core.eol=lf archive --format=tar --prefix=ifw/ --output=$archive $pin.revision
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pin.tarSHA256) {
+            throw 'ifw_source_checksum_mismatch'
+          }
+      - name: Build both target toolkits using the pinned sources
+        shell: pwsh
+        env:
+          PUBLISHER_PUBLIC_KEY: ${{ inputs.publisher_public_key }}
+        run: |
+          packaging/windows/ifw/build-toolkits.ps1 -Work "$env:RUNNER_TEMP/qt-build" -Output qt-toolkits -FrameworkArchive "$env:RUNNER_TEMP/ifw-source.tar" -PublisherPublicKey $env:PUBLISHER_PUBLIC_KEY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sidravia-ifw-windows-amd64
+          path: qt-toolkits/windows-amd64/
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sidravia-ifw-windows-arm64
+          path: qt-toolkits/windows-arm64/
+          if-no-files-found: error
+          compression-level: 0

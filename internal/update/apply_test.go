@@ -10,7 +10,6 @@ import (
 
 	"sidravia/internal/release"
 	"sidravia/internal/update/internal/github"
-	"sidravia/internal/update/transaction"
 )
 
 func TestApplyErrorsPreserveSafeDomainAndRateLimitPriority(t *testing.T) {
@@ -22,8 +21,7 @@ func TestApplyErrorsPreserveSafeDomainAndRateLimitPriority(t *testing.T) {
 		{errors.Join(errSourceProof, release.ErrUntrusted), "source_proof_unavailable"},
 		{github.ErrIntegrity, "integrity_failed"},
 		{errors.Join(errSourceProof, context.Canceled), "cancelled"},
-		{errManualRepair, "manual_repair_required"},
-		{transaction.ErrConflict, "update_busy"},
+		{errOperation, "update_busy"},
 	} {
 		if got := applyErrorCode(item.err); got != item.code {
 			t.Fatalf("%v: %s want %s", item.err, got, item.code)

@@ -127,12 +127,11 @@ func TestHelpListsRegisteredMaintenanceCommands(t *testing.T) {
 	cases := []helpCase{
 		{path: nil, want: []string{"\n  integration ", "\n  update "}},
 		{path: []string{"integration"}, want: []string{"\n  autostart ", "\n  path ", "\n  status "}},
-		{path: []string{"update"}, want: []string{"\n  apply ", "\n  recover ", "\n  version "}},
+		{path: []string{"update"}, want: []string{"\n  apply ", "\n  version "}},
 		{path: []string{"update", "check"}, omit: "--candidate"},
 		{path: []string{"update", "status"}, omit: "--candidate"},
 		{path: []string{"update", "download"}, want: []string{"update download --candidate ID"}},
 		{path: []string{"update", "apply"}, want: []string{"update apply --candidate ID --confirm"}},
-		{path: []string{"update", "recover"}, want: []string{"update recover --operation ID --confirm", "--operation VALUE"}, omit: "--candidate"},
 	}
 	if runtime.GOOS == "linux" {
 		cases = append(cases, helpCase{path: []string{"integration", "service", "discard"}, want: []string{"--yes"}})

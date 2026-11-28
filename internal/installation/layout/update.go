@@ -14,12 +14,3 @@ func UpdateCacheRoot() (string, error) {
 	}
 	return filepath.Join(root, "Sidravia", "updates"), nil
 }
-
-// OperationRoot is shared by Setup update execution and startup admission.
-func OperationRoot() (string, error) {
-	root, err := UpdateCacheRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "operations"), nil
-}

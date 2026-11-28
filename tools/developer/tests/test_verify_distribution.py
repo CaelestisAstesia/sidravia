@@ -76,7 +76,7 @@ class DistributionContract(unittest.TestCase):
                     del payload[name]
                 else:
                     payload[name] = replacement
-                self.fixture.package(target, payload, gui=False)
+                self.fixture.package(target, payload)
                 with self.assertRaisesRegex(module.VerificationError, reason):
                     self.verify(target, gui=False)
 
@@ -91,7 +91,7 @@ class DistributionContract(unittest.TestCase):
 
     def test_xz_consumes_the_same_exact_payload_and_rejects_ambiguous_formats(self):
         import gzip, lzma
-        self.fixture.package('linux-amd64', self.fixture.payload('linux-amd64', gui=False), gui=False)
+        self.fixture.package('linux-amd64', self.fixture.payload('linux-amd64', gui=False))
         original = next(self.fixture.out.glob('*.tar.gz'))
         encoded = original.with_name(original.name[:-3] + '.xz')
         encoded.write_bytes(lzma.compress(gzip.decompress(original.read_bytes()), preset=6))
@@ -107,7 +107,7 @@ class DistributionContract(unittest.TestCase):
         for target in ('windows-amd64', 'linux-amd64', 'windows-arm64', 'linux-arm64'):
             with self.subTest(target=target):
                 self.fixture.clear_output()
-                self.fixture.package(target, self.fixture.payload(target, gui=False), gui=False)
+                self.fixture.package(target, self.fixture.payload(target, gui=False))
                 with mock.patch.object(module, 'binary_identity') as identity:
                     result = self.verify(target, gui=False)
                 self.assertEqual(identity.call_count, 3 if target.startswith('windows') else 2)
@@ -115,7 +115,7 @@ class DistributionContract(unittest.TestCase):
                 self.assertEqual(result['installation'], 'not_run')
 
     def test_windows_core_has_exact_payload_and_help_only_smoke(self):
-        self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64', gui=False), gui=False)
+        self.fixture.package('windows-amd64', self.fixture.payload('windows-amd64', gui=False))
         with mock.patch.object(module, 'binary_identity'), mock.patch.object(module.platform, 'system', return_value='Windows'), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run', return_value=mock.Mock(stdout=b'help')) as run:
             result = self.verify('windows-amd64', smoke=True, gui=False)
         self.assertEqual(result['helpSmoke'], 'passed')
@@ -133,7 +133,9 @@ class DistributionContract(unittest.TestCase):
                 contents = self.fixture.payload('windows-amd64', gui=False)
                 if change == 'gui': contents['Sidravia.exe'] = b'unexpected GUI'
                 if change == 'missing-manager': del contents['sidraviamgr.exe']
-                self.fixture.package('windows-amd64', contents, gui=(change == 'installer'))
+                self.fixture.package('windows-amd64', contents)
+                if change == 'installer':
+                    (self.fixture.out / f'sidravia-v{VERSION}-windows-amd64-setup.exe').write_bytes(b'unexpected installer')
                 with self.assertRaises(module.VerificationError):
                     self.verify('windows-amd64', gui=False)
 
@@ -231,7 +233,7 @@ class DistributionContract(unittest.TestCase):
         target = 'windows-arm64'
         self.fixture.package(target, self.fixture.payload(target))
         with mock.patch.object(module, 'binary_identity'):
-            self.assertEqual(self.verify(target)['installerArchitecture'], 'amd64')
+            self.assertEqual(self.verify(target)['payloadKind'], 'gui')
         for name in names:
             with self.subTest(name=name):
                 self.fixture.clear_output()
@@ -242,11 +244,17 @@ class DistributionContract(unittest.TestCase):
                     self.verify(target)
                 (self.fixture.gui / name).write_bytes(image('arm64'))
 
+        self.fixture.clear_output()
+        (self.fixture.gui / 'vcruntime140_1.dll').unlink()
+        self.fixture.package(target, self.fixture.payload(target))
+        with mock.patch.object(module, 'binary_identity'):
+            self.assertEqual(self.verify(target)['payloadKind'], 'gui')
+
     def test_arm_smoke_rejects_amd64_host_before_execution(self):
         for target in ('windows-arm64', 'linux-arm64'):
             with self.subTest(target=target):
                 self.fixture.clear_output()
-                self.fixture.package(target, self.fixture.payload(target, gui=False), gui=False)
+                self.fixture.package(target, self.fixture.payload(target, gui=False))
                 host = 'Windows' if target.startswith('windows-') else 'Linux'
                 with mock.patch.object(module.platform, 'system', return_value=host), mock.patch.object(module.platform, 'machine', return_value='AMD64'), mock.patch.object(module.subprocess, 'run') as run:
                     with self.assertRaisesRegex(module.VerificationError, 'smoke_requires_matching_native_host'):
@@ -291,7 +299,7 @@ class DistributionContract(unittest.TestCase):
                 encoded = json.dumps(document).encode()
                 if change == 'duplicate': encoded = encoded.replace(b'"schemaVersion": 1', b'"schemaVersion": 1, "schemaVersion": 1')
                 payload['sidravia-files.json'] = encoded
-                self.fixture.package('linux-amd64', payload, gui=False)
+                self.fixture.package('linux-amd64', payload)
                 with mock.patch.object(module, 'binary_identity'):
                     with self.assertRaises(module.VerificationError): self.verify('linux-amd64', gui=False)
 

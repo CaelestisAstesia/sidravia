@@ -109,15 +109,6 @@ def verify_gui_runtime(files: dict[str, bytes], windows: bool, arch: str) -> Non
             require(matches_elf(files[name], arch), 'gui_elf_target_mismatch: ' + name)
 
 
-def canonical_ownership(document: dict) -> bytes:
-    # Mirror packagefiles.Encode's public JSON representation. All identity/path
-    # strings are validated ASCII; HTML escaping also preserves '&' path bytes.
-    value = {key: document[key] for key in ('schemaVersion','version','buildId','os','arch','payloadKind')}
-    value['files'] = [{key: item[key] for key in ('path','size','sha256','mode')}
-                      for item in sorted(document['files'],key=lambda item:item['path'])]
-    text = json.dumps(value,separators=(',',':'),ensure_ascii=True)
-    return text.replace('&',r'\u0026').replace('<',r'\u003c').replace('>',r'\u003e').encode('ascii')
-
 
 def native_arch() -> str | None:
     return {'amd64': 'amd64', 'x86_64': 'amd64', 'arm64': 'arm64',
@@ -185,8 +176,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(len(present) == 1, 'missing_or_ambiguous_archive_encoding')
         archive_name = present[0]
     outputs = {archive_name}
-    if windows and gui is not None:
-        outputs.add(base + '-setup.exe')
     require({p.name for p in directory.iterdir()} == outputs | {'SHA256SUMS.txt'}, 'output_file_set_mismatch')
     checksums = {}
     for line in (directory / 'SHA256SUMS.txt').read_text(encoding='utf-8').splitlines():
@@ -198,10 +187,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         require(digest((directory / name).read_bytes()) == hash_value, 'output_checksum_mismatch')
         checksums[name] = hash_value
     require(set(checksums) == outputs, 'missing_checksum')
-    if windows and gui is not None:
-        # Inno 7.1.0 generates x64 installers. On Windows ARM64, Setup runs
-        # under emulation and installs an entirely ARM64 application payload.
-        require(matches_pe((directory / (base + '-setup.exe')).read_bytes(), 'amd64'), 'installer_not_pe_x64')
     contents = read_archive(directory / archive_name, target, base)
     expected = {'LICENSE': (repo / 'LICENSE').read_bytes(),
                 'THIRD-PARTY-NOTICES.txt': (repo / 'THIRD-PARTY-NOTICES.txt').read_bytes(), 'sidravia.portable': b'',
@@ -231,7 +216,9 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             for filename in ('LICENSE.txt', 'NOTICE.txt'):
                 require(gui_files.get('licenses/Microsoft.Web.WebView2/' + filename),
                         'webview2_notice_missing: ' + filename)
-        runtime_required = ('Sidravia.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        runtime_required = ('Sidravia.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        if windows and arch == 'amd64':
+            runtime_required += ('vcruntime140_1.dll',)
         required_gui = runtime_required if windows else tuple('gui-runtime/' + name for name in runtime_required)
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')
         if not windows:
@@ -246,16 +233,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     require(set(contents) == set(expected) | set(binaries) | {'sidravia-files.json'}, 'archive_file_set_mismatch')
     expected['BUILD-INFO.txt'] += ''.join(
         f'BinarySHA256: {digest(contents[name])}  {name}\n' for name in binaries).encode()
-    setup_updater = None
-    if windows and gui is not None:
-        # The compiler's paired Setup inventory includes an installer-only
-        # executable. Native acceptance still checks the compiled payload.
-        marker = re.fullmatch(rb'SetupUpdater: ([0-9a-f]{64}) ([1-9][0-9]{0,9})\n', contents['BUILD-INFO.txt'][len(expected['BUILD-INFO.txt']):])
-        require(marker is not None, 'missing_setup_updater_identity')
-        checksum, size = marker.groups()
-        setup_updater = {'path': 'sidraviaupdater.exe', 'size': int(size),
-                         'sha256': checksum.decode('ascii'), 'mode': 0o644}
-        expected['BUILD-INFO.txt'] += marker[0]
     for name, data in expected.items():
         require(contents[name] == data, 'archive_source_mismatch: ' + name)
     ownership_bytes = contents['sidravia-files.json']
@@ -277,17 +254,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
                                   for name, data in sorted(product.items())]}
     validate_product_ownership(ownership)
     require(ownership == wanted_ownership, 'ownership_source_mismatch')
-    installer_ownership_sha256 = None
-    if windows and gui is not None:
-        # Inno's product includes its display icon; the portable ZIP does not.
-        # Reconstruct the producer's separately encoded setup index, while
-        # native setup acceptance remains responsible for the compiled payload.
-        require(canonical_ownership(ownership)==ownership_bytes, 'noncanonical_ownership_for_setup')
-        icon=(repo/'gui/windows/runner/resources/app_icon.ico').read_bytes()
-        setup=dict(ownership,files=ownership['files']+[{'path':'app_icon.ico','size':len(icon),'sha256':digest(icon),'mode':0o644}, setup_updater])
-        validate_product_ownership(setup)
-        installer_ownership_sha256=digest(canonical_ownership(setup))
-
     if smoke:
         host = {'Windows': 'windows', 'Linux': 'linux'}.get(platform.system())
         require(host == os_name and native_arch() == arch, 'smoke_requires_matching_native_host')
@@ -297,9 +263,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
         root = scratch
         smoke_env = None
         if smoke and windows:
-            # Startup admission requires its operation store outside the
-            # installation tree. Sibling directories also keep these locks
-            # out of the runner's real user data without changing Setup.
             root, local, roaming = scratch / 'payload', scratch / 'local', scratch / 'roaming'
             for folder in (root, local, roaming):
                 folder.mkdir()
@@ -321,9 +284,6 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
     return {'buildId': build_id, 'version': version, 'target': target, 'artifactHashes': checksums,
             'archiveFiles': len(contents), 'checksums': 'passed', 'sourceContents': 'passed',
             'productOwnershipSha256': digest(ownership_bytes), 'payloadKind': ownership['payloadKind'],
-            'installerOwnershipSha256': installer_ownership_sha256,
-            'installerArchitecture': 'amd64' if windows and gui is not None else None,
-            'installerPayload': 'requires_native_acceptance' if windows and gui is not None else 'not_applicable',
             'productOwnership': 'passed', 'goTargetAndPackage': 'passed', 'candidateIdentity': 'producer_manifest_passed',
             'embeddedGoIdentity': 'passed' if all(embedded_identities) else 'not_recorded',
             'helpSmoke': 'passed' if smoke else 'not_run',

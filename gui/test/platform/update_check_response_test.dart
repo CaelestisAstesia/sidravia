@@ -43,6 +43,22 @@ void main() {
     }
   });
 
+  test('a maintenance engine change directs users to an offline installer', () {
+    const output =
+        '{"schemaVersion":1,"ok":false,'
+        '"code":"maintenance_image_requires_reinstall"}';
+    expect(
+      () => decodeUpdateOperationResponse(1, output, installing: true),
+      throwsA(
+        isA<IntegrationFailure>().having(
+          (failure) => failure.message,
+          'message',
+          '此版本需要更换维护工具，请从发行页下载完整安装包',
+        ),
+      ),
+    );
+  });
+
   test('malformed responses and invalid release versions are rejected', () {
     for (final output in [
       'not json',

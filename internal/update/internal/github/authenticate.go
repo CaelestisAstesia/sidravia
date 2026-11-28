@@ -85,7 +85,7 @@ func (g *GitHub) authenticateVersion(ctx context.Context, version, manifestName,
 }
 
 func metadataError(err error, manifestName string) error {
-	if manifestName == release.ExtendedReleaseManifestName && errors.Is(err, ErrSignatureMissing) {
+	if (manifestName == release.ExtendedReleaseManifestName || manifestName == release.QtReleaseManifestName) && errors.Is(err, ErrSignatureMissing) {
 		return errors.Join(release.ErrUntrusted, err)
 	}
 	return err

@@ -94,7 +94,9 @@ func (s *Store) WithMutation(ctx context.Context, run func(Mutation) request.Out
 	return run(Mutation{store: s, previous: previous, backoffPath: backoffPath})
 }
 
-func (m Mutation) Root() string { return m.store.root }
+func (s *Store) Root() string { return s.root }
+
+func (m Mutation) Root() string { return m.store.Root() }
 func (m Mutation) Downloaded() (string, *release.Candidate) {
 	return m.previous.Downloaded, m.previous.Check.Candidate
 }

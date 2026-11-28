@@ -1,0 +1,128 @@
+--- a/src/libs/installer/metadatajob.cpp
++++ b/src/libs/installer/metadatajob.cpp
+@@ -20,6 +20,10 @@
+ #include <QRandomGenerator>
+ #include <QApplication>
+ 
++#ifdef Q_OS_WIN
++bool sidraviaIsPinnedArchive(const QString &source);
++#endif
++
+ namespace QInstaller {
+ 
+ /*!
+@@ -244,7 +248,11 @@
+                     url.append(randomQueryString);
+ 
+                     // Check if we can skip downloading already cached repositories
++#ifdef Q_OS_WIN
++                    const Status foundStatus = XmlDownloadFailure;
++#else
+                     const Status foundStatus = findCachedUpdatesFile(repo, url);
++#endif
+                     if (foundStatus == XmlDownloadSuccess) {
+                         // Found existing Updates.xml
+                         ++cachedCount;
+@@ -637,9 +645,18 @@
+                         }
+                         continue;
+                     }
++#ifdef Q_OS_WIN
++                    const QString archive = QUrl(item.source()).toLocalFile();
++                    if (!sidraviaIsPinnedArchive(archive))
++                        throw QInstaller::TaskException(tr("Repository metadata was not verified."));
++                    UnzipArchiveTask *task = new UnzipArchiveTask(archive,
++                        item.value(TaskRole::UserRole).toString());
++                    task->setRemoveArchive(false);
++#else
+                     UnzipArchiveTask *task = new UnzipArchiveTask(result.target(),
+                         item.value(TaskRole::UserRole).toString());
+                     task->setRemoveArchive(true);
++#endif
+                     task->setStoreChecksums(true);
+ 
+                     QFutureWatcher<void> *watcher = new QFutureWatcher<void>();
+@@ -769,13 +786,20 @@
+ 
+         QFileInfo fileInfo(result.target());
+         std::unique_ptr<Metadata> metadata(new Metadata(fileInfo.absolutePath()));
++        const FileTaskItem item = result.value(TaskRole::TaskItem).value<FileTaskItem>();
++#ifdef Q_OS_WIN
++        const QString source = QUrl(item.source()).toLocalFile();
++        if (!sidraviaIsPinnedArchive(source))
++            return XmlDownloadFailure;
++        QFile file(source);
++#else
+         QFile file(result.target());
++#endif
+         if (!file.open(QIODevice::ReadOnly)) {
+             qCWarning(QInstaller::lcInstallerInstallLog) << "Cannot open Updates.xml for reading:"
+                 << file.errorString();
+             return XmlDownloadFailure;
+         }
+-        const FileTaskItem item = result.value(TaskRole::TaskItem).value<FileTaskItem>();
+         const Repository repository = item.value(TaskRole::UserRole).value<Repository>();
+ 
+         QCryptographicHash hash(QCryptographicHash::Sha1);
+@@ -789,14 +813,17 @@
+                 << repository.xmlChecksum() << Qt::endl;
+         }
+ 
++        Status status = XmlDownloadSuccess;
++#ifndef Q_OS_WIN
+         bool refreshed;
+         // Check if we have cached the metadata for this repository already
+-        Status status = refreshCacheItem(result, updatesChecksum, &refreshed);
++        status = refreshCacheItem(result, updatesChecksum, &refreshed);
+         if (status != XmlDownloadSuccess)
+             return status;
+ 
+         if (refreshed) // Found existing metadata
+             continue;
++#endif
+ 
+         metadata->setChecksum(updatesChecksum);
+ 
+--- a/src/sdk/sdkapp.h
++++ b/src/sdk/sdkapp.h
+@@ -36,6 +36,7 @@
+ #include <QMessageBox>
+ #include <QMetaEnum>
+ #include <QTranslator>
++#include <QTemporaryDir>
+ 
+ #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+ #include <QNetworkInformation>
+@@ -226,6 +227,14 @@
+             KDUpdater::FileDownloaderFactory::instance().setProxyFactory(m_core->proxyFactory());
+         }
+ 
++#ifdef Q_OS_WIN
++        if (!m_sidraviaMetadataCache.isValid()) {
++            errorMessage = QObject::tr("Unable to create a private update cache.");
++            return false;
++        }
++        m_core->settings().setLocalCachePath(m_sidraviaMetadataCache.path());
++        m_core->settings().setPersistentLocalCache(false);
++#else
+         if (m_parser.isSet(CommandLineOptions::scLocalCachePathLong)) {
+             const QString cachePath = m_parser.value(CommandLineOptions::scLocalCachePathLong);
+             if (cachePath.isEmpty()) {
+@@ -234,6 +243,7 @@
+             }
+             m_core->settings().setLocalCachePath(cachePath);
+         }
++#endif
+         m_core->resetLocalCache(true);
+ 
+         if (m_parser.isSet(CommandLineOptions::scShowVirtualComponentsLong))
+@@ -607,6 +617,9 @@
+ 
+ private:
+     QList<QByteArray> m_resourceMappings;
++#ifdef Q_OS_WIN
++    QTemporaryDir m_sidraviaMetadataCache;
++#endif
+ 
+ public:
+     RunOnceChecker m_runCheck;

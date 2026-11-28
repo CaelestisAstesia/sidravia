@@ -7,6 +7,18 @@ on:
         description: 'Canonical product version, no leading v'
         required: true
         type: string
+      qt_toolkit_run:
+        description: 'Run ID with reviewed Qt toolkits for both Windows targets'
+        required: true
+        type: string
+      qt_toolkit_amd64_sha256:
+        description: 'Approved SHA-256 of the Windows x64 Qt toolkit ZIP'
+        required: true
+        type: string
+      qt_toolkit_arm64_sha256:
+        description: 'Approved SHA-256 of the Windows ARM64-target Qt toolkit ZIP'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +29,9 @@ env:
 
 jobs:
   windows:
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +49,7 @@ jobs:
       BUILD_ID: ${{ github.sha }}
       BUILD_TARGET: ${{ matrix.target }}
       FLUTTER_ARCH: ${{ matrix.flutterArch }}
+      QT_TOOLKIT_RUN: ${{ inputs.qt_toolkit_run }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -41,10 +57,49 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: '1.26.11'
+          architecture: ${{ matrix.flutterArch }}
           cache-dependency-path: go.sum
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14.4'
+      - name: Retrieve reviewed Qt toolkit for the target
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: sidravia-ifw-${{ matrix.target }}
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.qt_toolkit_run }}
+          path: qt-toolkit-input
+      - name: Verify the reviewed toolkit before using it
+        shell: pwsh
+        env:
+          QT_TOOLKIT_AMD64_SHA256: ${{ inputs.qt_toolkit_amd64_sha256 }}
+          QT_TOOLKIT_ARM64_SHA256: ${{ inputs.qt_toolkit_arm64_sha256 }}
+        run: |
+          $zip = 'qt-toolkit-input/qt-toolkit.zip'
+          $expected = if ($env:BUILD_TARGET -ceq 'windows-arm64') { $env:QT_TOOLKIT_ARM64_SHA256 } else { $env:QT_TOOLKIT_AMD64_SHA256 }
+          if ($expected -cnotmatch '^[0-9a-f]{64}$' -or
+              (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) {
+            throw 'qt_toolkit_checksum_mismatch'
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath qt-toolkit
+          $files = Get-ChildItem -LiteralPath qt-toolkit -Force
+          if (($files | Where-Object { $_.PSIsContainer -or $_.Length -eq 0 }) -or
+              (Compare-Object @('binarycreator.exe','installerbase.exe','repogen.exe') @($files.Name))) {
+            throw 'qt_toolkit_file_set_mismatch'
+          }
+          $build = Get-Content -Raw -LiteralPath qt-toolkit-input/toolkit-build.json | ConvertFrom-Json
+          $imageDigest = (Get-FileHash -LiteralPath qt-toolkit/installerbase.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($build.target -cne $env:BUILD_TARGET -or $build.archiveSHA256 -cne $expected -or
+              $build.maintenanceSHA256 -cne $imageDigest -or $build.publisherPublicKey -cnotmatch '^[0-9a-f]{64}$') {
+            throw 'qt_toolkit_build_receipt_mismatch'
+          }
+          @{
+            target = $env:BUILD_TARGET
+            runId = $env:QT_TOOLKIT_RUN
+            archiveSHA256 = $expected
+            maintenanceSHA256 = $imageDigest
+            publisherPublicKey = $build.publisherPublicKey
+          } | ConvertTo-Json | Set-Content -LiteralPath qt-toolkit.json -Encoding utf8NoBOM
       - name: Test artifact producer and consumer contracts
         if: matrix.flutterArch == 'x64'
         shell: bash
@@ -77,24 +132,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'flutter_release_failed' }
           $actual = (Get-Item ("build/windows/$env:FLUTTER_ARCH/runner/Release/Sidravia.exe")).VersionInfo.ProductVersion
           if ($actual -cne ($env:BUILD_VERSION + '+1')) { throw 'gui_version_mismatch' }
-      - name: Prepare pinned Inno compiler on disposable runner
-        shell: pwsh
-        run: |
-          $compilerRoot = Join-Path $env:RUNNER_TEMP 'sidravia-inno-7.1.0'
-          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
-          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
-          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw 'inno_checksum_mismatch' }
-          $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $compilerRoot + '"')) -Wait -PassThru
-          if ($process.ExitCode -ne 0 -or -not (Test-Path (Join-Path $compilerRoot 'ISCC.exe'))) { throw 'inno_compiler_setup_failed' }
-          "SIDRAVIA_ISCC=$(Join-Path $compilerRoot 'ISCC.exe')" >> $env:GITHUB_ENV
       - name: Build Windows distribution
         shell: pwsh
         run: |
           $gui = (Resolve-Path ("gui/build/windows/$env:FLUTTER_ARCH/runner/Release")).Path
-          go run -mod=readonly ./tools/build --version $env:BUILD_VERSION --build-id $env:BUILD_ID --artifact distribution --target $env:BUILD_TARGET --output dist --go go --gui-directory $gui --iscc $env:SIDRAVIA_ISCC
+          $ifw = (Resolve-Path -LiteralPath qt-toolkit).Path
+          go run -mod=readonly ./tools/build --version $env:BUILD_VERSION --build-id $env:BUILD_ID --artifact distribution --target $env:BUILD_TARGET --output dist --go go --gui-directory $gui --ifw $ifw
           if ($LASTEXITCODE -ne 0) { throw 'windows_distribution_failed' }
-          $setup = Get-Item (Join-Path dist ('sidravia-v' + $env:BUILD_VERSION + '-' + $env:BUILD_TARGET + '-setup.exe'))
-          if ($setup.VersionInfo.ProductVersion.TrimEnd() -cne $env:BUILD_VERSION) { throw 'installer_version_mismatch' }
           go run -mod=readonly ./tools/build --version $env:BUILD_VERSION --build-id $env:BUILD_ID --artifact distribution --target $env:BUILD_TARGET --output dist-core --go go
           if ($LASTEXITCODE -ne 0) { throw 'windows_core_distribution_failed' }
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
@@ -111,7 +155,7 @@ jobs:
         shell: pwsh
         run: |
           $gui = (Resolve-Path ("gui/build/windows/$env:FLUTTER_ARCH/runner/Release")).Path
-          task --exit-code accept:distribution -- --core-directory dist-core --gui-directory dist --gui-input $gui --target $env:BUILD_TARGET --product-version $env:BUILD_VERSION --build-id $env:BUILD_ID --native-help --receipt-dir . -n 2 --junitxml distribution-acceptance.xml
+          task --exit-code accept:distribution -- --core-directory dist-core --gui-directory dist/portable --gui-input $gui --target $env:BUILD_TARGET --product-version $env:BUILD_VERSION --build-id $env:BUILD_ID --native-help --receipt-dir . -n 2 --junitxml distribution-acceptance.xml
           if ($LASTEXITCODE -ne 0) { throw 'windows_distribution_acceptance_failed' }
       - name: Preserve Windows distribution acceptance results
         if: ${{ !cancelled() && steps.windows_distribution.outcome != 'skipped' }}
@@ -120,17 +164,11 @@ jobs:
           name: sidravia-${{ matrix.target }}-distribution-acceptance
           path: distribution-acceptance.xml
           if-no-files-found: ignore
-      - name: Run isolated Setup script contracts
-        if: matrix.flutterArch == 'x64'
-        shell: pwsh
-        env:
-          SIDRAVIA_INNO_TEST_ROOT: ${{ runner.temp }}
-        run: python -m unittest discover -s tools/developer/tests -p test_inno_installer.py -v
-      - name: Exercise ARM64 portable and Setup through live IPC
+      - name: Exercise ARM64 portable releases through live IPC
         if: ${{ !cancelled() && matrix.flutterArch == 'arm64' && steps.windows_distribution.outcome == 'success' }}
         shell: pwsh
         run: |
-          python tools/developer/windows_arm64_smoke.py --distribution dist --core-distribution dist-core --version $env:BUILD_VERSION --build-id $env:BUILD_ID --evidence windows-native-smoke
+          python tools/developer/windows_arm64_smoke.py --distribution dist/portable --core-distribution dist-core --version $env:BUILD_VERSION --build-id $env:BUILD_ID --evidence windows-native-smoke
       - name: Preserve Windows ARM64 smoke evidence
         if: always() && matrix.flutterArch == 'arm64'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -147,19 +185,24 @@ jobs:
             cat core-verification.json >> "$GITHUB_STEP_SUMMARY"
           fi
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
-      - name: Stage verified Windows artifacts
+      - name: Stage verified portable archives and Qt signing inputs
         shell: pwsh
         run: |
           $base = "sidravia-v$env:BUILD_VERSION-$env:BUILD_TARGET"
-          foreach ($file in @("dist/$base-gui-portable.zip", "dist/$base-setup.exe", 'dist/SHA256SUMS.txt',
+          foreach ($file in @("dist/portable/$base-gui-portable.zip", 'dist/portable/SHA256SUMS.txt',
                               "dist-core/$base-core-portable.zip", 'dist-core/SHA256SUMS.txt',
+                              "dist/qt/$base-qt-setup.exe", "dist/qt/$base-qt-core-repository.zip",
+                              "dist/qt/$base-qt-gui-repository.zip", 'dist/qt/SHA256SUMS.txt',
                               'verification.json', 'core-verification.json')) {
             $item = Get-Item -LiteralPath $file
             if ($item.PSIsContainer -or $item.Length -eq 0) { throw "Missing Windows artifact: $file" }
           }
           New-Item -ItemType Directory -Path windows-candidate | Out-Null
-          Move-Item -LiteralPath dist -Destination windows-candidate/gui
+          Move-Item -LiteralPath dist/portable -Destination windows-candidate/gui
           Move-Item -LiteralPath dist-core -Destination windows-candidate/core
+          Move-Item -LiteralPath dist/qt -Destination windows-candidate/qt
+          Copy-Item -LiteralPath qt-toolkit/installerbase.exe -Destination windows-candidate/installerbase.exe
+          Move-Item -LiteralPath qt-toolkit.json -Destination windows-candidate/
           Move-Item -LiteralPath verification.json -Destination windows-candidate/
           Move-Item -LiteralPath core-verification.json -Destination windows-candidate/
           Move-Item -LiteralPath "gui/build/windows/$env:FLUTTER_ARCH/runner/Release" -Destination windows-candidate/gui-input
@@ -302,25 +345,18 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
-  release-candidate:
+  release-inputs:
     needs: [windows, linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: sidravia-v${{ inputs.version }}-*
           path: candidate/inputs
-      - name: Assemble verified public assets and manifest requests
-        env:
-          BUILD_VERSION: ${{ inputs.version }}
-        run: python3 tools/developer/stage_release.py --directory candidate --version "$BUILD_VERSION" --build-id "$GITHUB_SHA"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: release-candidate-v${{ inputs.version }}
+          name: release-inputs-v${{ inputs.version }}
           path: candidate
           include-hidden-files: true
           compression-level: 0

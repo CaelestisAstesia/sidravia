@@ -19,6 +19,11 @@ import tempfile
 import verify_distribution as distribution
 
 
+WINDOWS_ARCHITECTURES = ('amd64', 'arm64')
+QT_MANIFEST = 'sidravia-release-qt.json'
+QT_SIGNATURE = 'sidravia-release-qt.sig'
+
+
 class ReleaseError(ValueError):
     pass
 
@@ -95,7 +100,8 @@ def request_document(path):
     require(isinstance(groups, list) and 0 < len(groups) <= 16, 'distribution_list')
     for group in groups:
         require(isinstance(group, dict) and {'directory', 'target'} <= set(group) <= {'directory', 'target', 'guiDirectory'}, 'distribution_fields')
-        require(all(isinstance(value, str) and value for value in group.values()), 'distribution_value_type')
+        require(all(isinstance(value, str) and value for value in group.values()),
+                'distribution_value_type')
     return request
 
 
@@ -110,7 +116,8 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
         gui = plain_path(request_path.parent / group['guiDirectory'], directory=True) if 'guiDirectory' in group else None
         # This is the existing independent source/content/ownership consumer.
         # No daemon, GUI, installer or help smoke is executed by this operation.
-        receipt = distribution.verify(directory, repo, group['target'], request['version'], request['buildId'], gui=gui, go=go, smoke=False)
+        receipt = distribution.verify(directory, repo, group['target'], request['version'], request['buildId'],
+                                      gui=gui, go=go)
         os_name, arch = group['target'].split('-')
         for name, expected_hash in receipt['artifactHashes'].items():
             require(name.casefold() not in seen, 'duplicate_asset')
@@ -124,9 +131,9 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
                     digest.update(chunk)
             require(os.path.samestat(info, path.stat()) and info.st_size == path.stat().st_size and digest.hexdigest() == expected_hash,
                     'artifact_changed_after_consumption')
-            kind = 'setup' if name.endswith('-setup.exe') else receipt['payloadKind'] + '-portable'
+            kind = receipt['payloadKind'] + '-portable'
             assets.append({'os': os_name, 'arch': arch, 'kind': kind, 'name': name, 'size': info.st_size,
-                           'sha256': expected_hash, 'filesSha256': receipt['installerOwnershipSha256'] if kind == 'setup' else receipt['productOwnershipSha256'], 'payloadKind': receipt['payloadKind']})
+                           'sha256': expected_hash, 'filesSha256': receipt['productOwnershipSha256'], 'payloadKind': receipt['payloadKind']})
         receipts.append(dict(receipt, directory=str(directory)))
     require(set(request['expectedAssets']) == {a['name'] for a in assets}, 'missing_or_unexpected_asset')
     result = {'schemaVersion': 2, 'keyId': key_id, 'version': request['version'], 'buildId': request['buildId'],
@@ -134,7 +141,8 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
     return result, receipts
 
 
-def public_check(repo, go, mode, manifest_data, public_data, signature_data=None, *, published_names=None):
+def public_check(repo, go, mode, manifest_data, public_data, signature_data=None, *,
+                 published_names=None, qt_artifacts=None, qt_maintenance=None, after_version=None):
     # Go verifies these exact captured bytes, never a second lookup of mutable
     # source paths. The private temporary directory contains public data only.
     with tempfile.TemporaryDirectory(prefix='sidravia-release-public-') as temporary:
@@ -156,6 +164,10 @@ def public_check(repo, go, mode, manifest_data, public_data, signature_data=None
             command += ['--signature', str(signature)]
             if published_names is not None:
                 command.append('--published')
+        if qt_artifacts is not None:
+            command += ['--qt-artifacts', str(qt_artifacts), '--qt-maintenance', str(qt_maintenance)]
+        if after_version is not None:
+            command += ['--after-version', after_version]
         result = subprocess.run(command, cwd=repo, env=dict(os.environ, GOTOOLCHAIN='local'), capture_output=True, encoding='utf-8', timeout=120)
     require(result.returncode == 0, 'manifest_structure_or_signature_rejected')
     try:

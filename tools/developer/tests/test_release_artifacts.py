@@ -30,7 +30,7 @@ class ReleaseArtifactContracts(unittest.TestCase):
 
     def write_group(self, target, gui=False):
         contents = self.fixture.payload(target, gui=gui)
-        self.fixture.package(target, contents, gui=gui)
+        self.fixture.package(target, contents)
         names = sorted(p.name for p in self.fixture.out.iterdir() if p.name != 'SHA256SUMS.txt')
         group = {'target': target, 'directory': str(self.fixture.out)}
         if gui:
@@ -105,7 +105,7 @@ class ReleaseArtifactContracts(unittest.TestCase):
         with mock.patch.object(release, 'public_check',
                                side_effect=lambda _, *args: actual_public_check(ROOT, *args)):
             result = release.prepare(self.fixture.repo, 'go', self.request, self.key, extended)
-            self.assertEqual(result['assets'], 2)
+            self.assertEqual(result['assets'], 1)
             signing = subprocess.run(
                 ['go', 'run', '-mod=readonly', './tools/signrelease', '--manifest', str(extended),
                  '--output', str(signature)], cwd=ROOT, input=base64.b64encode(bytes(32)),
@@ -127,18 +127,13 @@ class ReleaseArtifactContracts(unittest.TestCase):
         self.assertEqual(receipts[0]['embeddedGoIdentity'], 'not_recorded')
         self.assertEqual(receipts[0]['helpSmoke'], 'not_run')
 
-    def test_setup_binds_its_own_icon_inventory_without_claiming_native_acceptance(self):
-        # Start a separate normal producer directory; a release may combine it
-        # with the core directory but may not silently overwrite duplicate assets.
-        for path in self.fixture.out.iterdir():
-            path.unlink()
+    def test_collects_windows_gui_portable_with_its_exact_ownership(self):
+        self.fixture.clear_output()
         self.write_group('windows-amd64', gui=True)
         manifest, receipts = self.collect()
-        self.assertEqual({a['kind'] for a in manifest['assets']}, {'gui-portable', 'setup'})
-        self.assertEqual(len({a['filesSha256'] for a in manifest['assets']}), 2)
-        setup,= [a for a in manifest['assets'] if a['kind']=='setup']
-        self.assertEqual(setup['filesSha256'],receipts[0]['installerOwnershipSha256'])
-        self.assertEqual(receipts[0]['installerPayload'], 'requires_native_acceptance')
+        asset, = manifest['assets']
+        self.assertEqual(asset['kind'], 'gui-portable')
+        self.assertEqual(asset['filesSha256'], receipts[0]['productOwnershipSha256'])
         self.assertEqual(receipts[0]['installation'], 'not_run')
 
     def test_rejects_changed_source_archive_and_checksums(self):

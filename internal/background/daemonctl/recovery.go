@@ -12,13 +12,7 @@ func StartHeadlessForRecovery(identity Identity, logLevel string) (contract.Runt
 	}
 	return startHeadlessForRecovery(identity, logLevel, defaultDependencies())
 }
-func StartHeadlessForUpdate(identity Identity, level, operation, token, configuration string) (contract.RuntimeInfo, error) {
-	return startHeadlessRecoveryPolicy(identity, level, defaultDependencies(), operation, token, configuration)
-}
 func startHeadlessForRecovery(identity Identity, level string, deps dependencies) (contract.RuntimeInfo, error) {
-	return startHeadlessRecoveryPolicy(identity, level, deps, "", "", "")
-}
-func startHeadlessRecoveryPolicy(identity Identity, level string, deps dependencies, operation, token, configuration string) (contract.RuntimeInfo, error) {
 	ns, err := deps.namespace()
 	if err != nil {
 		return contract.RuntimeInfo{}, err
@@ -32,9 +26,6 @@ func startHeadlessRecoveryPolicy(identity Identity, level string, deps dependenc
 	}
 	options := headlessOptions(ns)
 	options.SkipAutoLogin = true
-	options.RecoveryOperation = operation
-	options.RecoveryToken = token
-	options.RecoveryConfiguration = configuration
 	if err := options.Validate(); err != nil {
 		return contract.RuntimeInfo{}, err
 	}

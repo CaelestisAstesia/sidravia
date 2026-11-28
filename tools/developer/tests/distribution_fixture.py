@@ -115,9 +115,6 @@ class DistributionFixture:
             f'BinarySHA256: {hashlib.sha256(data).hexdigest()}  {name}\n'
             for name, data in programs.items()
         ).encode()
-        if gui:
-            updater = pe(arch, b'updater')
-            contents['BUILD-INFO.txt'] += f'SetupUpdater: {hashlib.sha256(updater).hexdigest()} {len(updater)}\n'.encode()
         contents['sidravia-files.json'] = self.ownership(target, contents, 'gui' if gui else 'core')
         return contents
 
@@ -143,15 +140,13 @@ class DistributionFixture:
             'files': files,
         }, separators=(',', ':')).encode()
 
-    def package(self, target, contents, gui=True):
+    def package(self, target, contents):
         base = f'sidravia-v{VERSION}-{target}'
         kind = 'gui-portable' if 'Sidravia.exe' in contents or 'sidravia_gui' in contents else 'core-portable'
         if target.startswith('windows-'):
             with zipfile.ZipFile(self.out / f'{base}-{kind}.zip', 'w') as archive:
                 for name, data in contents.items():
                     archive.writestr(name, data)
-            if gui:
-                (self.out / f'{base}-setup.exe').write_bytes(pe('amd64', b'inert installer'))
         else:
             with tarfile.open(self.out / f'{base}-{kind}.tar.gz', 'w:gz') as archive:
                 for name, data in contents.items():
