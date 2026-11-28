@@ -18,11 +18,23 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.11'
+          architecture: arm64
+          cache-dependency-path: go.sum
       - name: Verify native standard-user launch and desktop access
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $work = (New-Item -ItemType Directory -Path (Join-Path $env:PUBLIC ('SidraviaQt-' + $env:GITHUB_RUN_ID))).FullName
+          $env:GOTOOLCHAIN = 'local'
+          $env:GOOS = 'windows'
+          $env:GOARCH = 'arm64'
+          go build -mod=readonly -trimpath -o (Join-Path $work 'sidraviaupdater.exe') ./cmd/sidraviaupdater
+          go build -mod=readonly -trimpath -o (Join-Path $work 'sidraviactl.exe') ./cmd/sidraviactl
+          Copy-Item -LiteralPath (Join-Path $work 'sidraviaupdater.exe') -Destination (Join-Path $work 'probe-child.exe')
           $child = Join-Path $work 'probe.ps1'
           @'
           $ErrorActionPreference = 'Stop'
@@ -45,6 +57,31 @@ jobs:
             $result | ConvertTo-Json | Set-Content -Path (Join-Path $PSScriptRoot 'probe.json') -Encoding UTF8
             if ($admin -or $session -eq 0 -or $env:PROCESSOR_ARCHITECTURE -ne 'ARM64') {
               throw 'ARM64 interactive standard-user launch was not confirmed.'
+            }
+            foreach ($command in @(
+                @{name = 'sidraviaupdater.exe'; args = '--help'},
+                @{name = 'probe-child.exe'; args = '--help'},
+                @{name = 'sidraviactl.exe'; args = 'update version'}
+            )) {
+              $path = Join-Path $PSScriptRoot $command.name
+              $start = [Diagnostics.ProcessStartInfo]::new($path, $command.args)
+              $start.UseShellExecute = $false
+              $start.RedirectStandardOutput = $true
+              $start.RedirectStandardError = $true
+              try {
+                $proc = [Diagnostics.Process]::Start($start)
+                try {
+                  $out = $proc.StandardOutput.ReadToEndAsync()
+                  $err = $proc.StandardError.ReadToEndAsync()
+                  if (!$proc.WaitForExit(10000)) { $proc.Kill(); throw 'probe timed out' }
+                  @{name=$command.name; exitCode=$proc.ExitCode; stdout=$out.Result; stderr=$err.Result} |
+                    ConvertTo-Json -Compress
+                } finally { $proc.Dispose() }
+              } catch {
+                $reason = $_.Exception.GetBaseException()
+                $code = if ($reason -is [ComponentModel.Win32Exception]) { $reason.NativeErrorCode } else { $null }
+                @{name=$command.name; nativeError=$code; error=$reason.Message} | ConvertTo-Json -Compress
+              }
             }
           } finally { Stop-Transcript }
           '@ | Set-Content -LiteralPath $child -Encoding utf8BOM
