@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 
 	"sidravia/internal/background/daemonctl"
 	"sidravia/internal/background/launch"
@@ -19,6 +22,46 @@ import (
 	"sidravia/internal/update/internal/request"
 	"sidravia/internal/update/internal/testfixture"
 )
+
+func TestCancelQtMaintenance(t *testing.T) {
+	powerShell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	for _, test := range []struct {
+		name, script string
+		waitForExit  bool
+	}{
+		{name: "running", script: "Start-Sleep -Seconds 10"},
+		{name: "already exited", script: "exit 0", waitForExit: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			child := exec.Command(powerShell, "-NoProfile", "-NonInteractive", "-Command", test.script)
+			if err := child.Start(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if child.ProcessState == nil {
+					_ = child.Process.Kill()
+					_ = child.Wait()
+				}
+			})
+			if test.waitForExit {
+				var result uint32
+				var waitErr error
+				handleErr := child.Process.WithHandle(func(handle uintptr) {
+					result, waitErr = windows.WaitForSingleObject(windows.Handle(handle), 5000)
+				})
+				if handleErr != nil || waitErr != nil || result != windows.WAIT_OBJECT_0 {
+					t.Fatalf("child did not exit: result=%d wait=%v handle=%v", result, waitErr, handleErr)
+				}
+			}
+			if err := cancelQtMaintenance(child); err != nil {
+				t.Fatal(err)
+			}
+			if child.ProcessState == nil {
+				t.Fatal("maintenance child was not reaped")
+			}
+		})
+	}
+}
 
 // TestQtBuildCommandFixture prepares test-only copies of the source release's
 // public commands with the disposable publisher and a local release feed.
