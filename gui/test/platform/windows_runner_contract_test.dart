@@ -120,7 +120,14 @@ void main() {
     expect(flutterWindow, contains('TaskbarCreated'));
     expect(
       flutterWindow,
-      contains('if (desktop_presence_initialized_) CreateTrayIcon();'),
+      matches(
+        RegExp(
+          r'if\s*\(taskbar_created_message_\s*!=\s*0\s*&&\s*'
+          r'message\s*==\s*taskbar_created_message_\)\s*\{\s*'
+          r'if\s*\(desktop_presence_initialized_\)\s*\{\s*'
+          r'CreateTrayIcon\(\);\s*PublishWindowState\(\);',
+        ),
+      ),
     );
     expect(flutterWindow, contains('WM_LBUTTONUP'));
     expect(flutterWindow, contains('WM_RBUTTONUP'));
@@ -223,11 +230,22 @@ void main() {
     );
     expect(flutterWindow, contains('arguments->size() != 2'));
     expect(flutterWindow, contains('if (!close_value || !hidden_value)'));
-    expect(flutterWindow, contains('if (close_to_tray_)'));
+    expect(
+      flutterWindow,
+      matches(
+        RegExp(
+          r'case WM_CLOSE:\s*'
+          r'if\s*\(desktop_presence_initialized_\s*&&\s*!exit_armed_\)\s*\{\s*'
+          r'if\s*\(tray_available_\s*&&\s*close_to_tray_\)\s*\{\s*'
+          r'ShowWindow\(hwnd,\s*SW_HIDE\);\s*\}\s*else\s*\{\s*'
+          r'RequestExplicitExit\(\);',
+        ),
+      ),
+    );
     expect(
       flutterWindow,
       contains(
-        'if (!(desktop_presence_initialized_ && startup_hidden_.value_or(false)))',
+        'if (!(tray_available_ && startup_hidden_.value_or(false)))',
       ),
     );
     expect(flutterWindow, contains('if (!startup_hidden_.has_value())'));

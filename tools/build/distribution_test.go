@@ -29,7 +29,7 @@ func TestThirdPartyNoticesCoverPinnedGoDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sections := strings.Split(string(notices), "\n===============================================================================\n")
+	sections := strings.Split(strings.ReplaceAll(string(notices), "\r\n", "\n"), "\n===============================================================================\n")
 	if !strings.Contains(sections[0], "\nGo "+requiredGoVersion+"\n") {
 		t.Fatalf("third-party notices do not identify the standard library for %s", requiredGoVersion)
 	}
@@ -59,7 +59,7 @@ func TestThirdPartyNoticesCoverPinnedGoDependencies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("list dependencies for %s/%s: %v", osName, arch, err)
 			}
-			for _, line := range strings.Split(string(output), "\n") {
+			for _, line := range strings.Split(strings.ReplaceAll(string(output), "\r\n", "\n"), "\n") {
 				if identity, dir, ok := strings.Cut(line, "\t"); ok {
 					if !filepath.IsAbs(dir) {
 						t.Fatalf("module %s has no resolved source directory", identity)
@@ -104,7 +104,7 @@ func verifyNoticeText(t *testing.T, identity, dir, name, section string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(section, "\n--- "+name+" ---\n\n"+string(data)) {
+	if !strings.Contains(section, "\n--- "+name+" ---\n\n"+strings.ReplaceAll(string(data), "\r\n", "\n")) {
 		t.Errorf("%s notice is missing or differs from source: %s", identity, name)
 	}
 }
