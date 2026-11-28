@@ -1,1 +1,1 @@
-Discover, download and apply each signed ARM64 profile through the installed product commands.
+Verify the new account's profile, then accept the branded Qt builds using the already compiled native Flutter inputs.

@@ -15,5 +15,5 @@ jobs:
     uses: ./.github/workflows/qt-arm64-test.yml
     with:
       toolkit_fixture_ref: b89b4339bd81c22cce4a73e39ba51d8bdc5474c4
-      gui_run: 0
+      gui_run: 46113845633
       standard_user: true
