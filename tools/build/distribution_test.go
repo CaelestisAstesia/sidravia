@@ -144,14 +144,11 @@ func TestDistributionFlags(t *testing.T) {
 	base := []string{"--version", "0.3.0-alpha.1", "--build-id", "test", "--output", "out"}
 	for _, target := range []string{"windows-amd64", "linux-amd64", "windows-arm64", "linux-arm64"} {
 		tail := []string{"--artifact", "distribution", "--target", target, "--gui-directory", "gui"}
-		if strings.HasPrefix(target, "windows-") {
-			tail = append(tail, "--iscc", "iscc")
-		}
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-arm64", "--iscc", "x"}} {
+	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-arm64", "--ifw", "x"}} {
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err == nil {
 			t.Fatal("accepted invalid target combination")
 		}
@@ -314,10 +311,6 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 		t.Fatal("accepted a missing x64 VC++ exception runtime")
 	}
 	writeTestFile(t, filepath.Join(root, "vcruntime140_1.dll"), testPE(0x8664))
-	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]archiveEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
-	if !strings.Contains(manifest, "Components: core") || !strings.Contains(manifest, "Components: gui") || !strings.Contains(manifest, "Check: RemoveGUIComponent") {
-		t.Fatal("component ownership missing")
-	}
 	writeTestFile(t, filepath.Join(root, "sidraviactl.exe"), "collision")
 	if _, err := readGUI(root, nil, "amd64"); err == nil {
 		t.Fatal("accepted collision")
@@ -446,7 +439,7 @@ func TestLinuxGUIBoundary(t *testing.T) {
 
 func TestInstallerAndPortableHaveIndependentExactInventories(t *testing.T) {
 	owned := packagefiles.Manifest{SchemaVersion: 1, Version: "1.0.0", BuildID: "test", OS: "windows", Arch: "amd64", PayloadKind: "gui"}
-	entries := []archiveEntry{{"Sidravia.exe", []byte("gui"), 0755}, {"app_icon.ico", []byte("installer icon"), 0644}}
+	entries := []archiveEntry{{"Sidravia.exe", []byte("gui"), 0755}, {"sidraviaupdater.exe", []byte("installer only"), 0644}}
 	for _, entry := range entries {
 		owned.Files = append(owned.Files, packagefiles.File{Path: entry.name, Size: int64(len(entry.data)), SHA256: sha256Hex(entry.data), Mode: 0644})
 	}
@@ -463,8 +456,8 @@ func TestInstallerAndPortableHaveIndependentExactInventories(t *testing.T) {
 	for _, entry := range portable {
 		files[entry.name] = entry.data
 	}
-	if _, exists := files["app_icon.ico"]; exists {
-		t.Fatal("portable retained installer icon")
+	if _, exists := files["sidraviaupdater.exe"]; exists {
+		t.Fatal("portable retained installed updater")
 	}
 	index, err := packagefiles.Decode(files[packagefiles.Name])
 	if err != nil {

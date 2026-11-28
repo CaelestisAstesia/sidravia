@@ -73,9 +73,6 @@ func (dispatcher *ipcDispatcher) handle(ctx context.Context, method string, payl
 		if dispatcher.options.SwitchOperation != "" && (input.OperationID != dispatcher.options.SwitchOperation || input.ConfigurationID != dispatcher.options.SwitchConfiguration) {
 			return maintenanceFailure(contract.ErrorCodeMaintenance)
 		}
-		if dispatcher.options.RecoveryOperation != "" && (input.OperationID != dispatcher.options.RecoveryOperation || input.ConfigurationID != dispatcher.options.RecoveryConfiguration) {
-			return maintenanceFailure(contract.ErrorCodeMaintenance)
-		}
 		dispatcher.restoreAvailable = false
 		return startConfigurationIPC(ctx, dispatcher.application, connectionconfig.ID(input.ConfigurationID), "")
 	case contract.MethodUpdatePrepare:

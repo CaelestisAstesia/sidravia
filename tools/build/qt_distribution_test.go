@@ -22,7 +22,6 @@ func TestQtDistributionRequiresCombinedWindowsPayload(t *testing.T) {
 	}{
 		{"combined", "windows-amd64", []string{"--gui-directory", "gui", "--ifw", tools}, true},
 		{"gui absent", "windows-amd64", []string{"--ifw", tools}, false},
-		{"two installer builders", "windows-amd64", []string{"--gui-directory", "gui", "--ifw", tools, "--iscc", "iscc"}, false},
 		{"other platform", "linux-amd64", []string{"--gui-directory", "gui", "--ifw", tools}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

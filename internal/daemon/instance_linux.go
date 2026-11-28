@@ -77,8 +77,7 @@ func configureServiceSwitch(options *launchcontract.Options, paths defaultPaths)
 		return err
 	}
 	if filepath.Dir(executable) != state.Layout.ExecutableDirectory ||
-		paths.configurations != state.Layout.ConfigurationsPath || paths.runtimeInfo != state.Layout.RuntimeInfoPath ||
-		options.RecoveryOperation != "" {
+		paths.configurations != state.Layout.ConfigurationsPath || paths.runtimeInfo != state.Layout.RuntimeInfoPath {
 		return userservice.ErrServiceRecovery
 	}
 	if options.Mode == launchcontract.ModeDesktop {

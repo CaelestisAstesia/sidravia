@@ -87,26 +87,6 @@ func TestRecoveryIntentIsOnceAndUserMutationWins(t *testing.T) {
 	}
 }
 
-func TestRecoveryIsBoundToOperationAndConfiguration(t *testing.T) {
-	setup := newApplicationTestSetup(t)
-	defer setup.cleanup()
-	operation := "0123456789abcdef0123456789abcdef"
-	handler := newIPCDispatcher(setup.application, "version", "build", launchcontract.Options{Mode: launchcontract.ModeHeadless, SkipAutoLogin: true, RecoveryOperation: operation, RecoveryConfiguration: "configuration-1"}, nil).handle
-	for _, input := range []contract.UpdateResumePayload{{OperationID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ConfigurationID: "configuration-1"}, {OperationID: operation, ConfigurationID: "other"}} {
-		data, _ := json.Marshal(input)
-		if _, err := handler(context.Background(), contract.MethodUpdateResume, data); err == nil {
-			t.Fatal("foreign restore accepted")
-		}
-	}
-	data, _ := json.Marshal(contract.UpdateResumePayload{OperationID: operation, ConfigurationID: "configuration-1"})
-	if _, err := handler(context.Background(), contract.MethodUpdateResume, data); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := handler(context.Background(), contract.MethodUpdateResume, data); err == nil || err.Code != contract.ErrorCodeMaintenance {
-		t.Fatal("restore replayed")
-	}
-}
-
 func TestRecoveryConsumesIntentBeforeFailedStart(t *testing.T) {
 	setup := newApplicationTestSetup(t)
 	defer setup.cleanup()

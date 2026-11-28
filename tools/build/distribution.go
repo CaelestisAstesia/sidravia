@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -18,7 +17,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err := verifyRepoInputs(t.repoRoot, "distribution"); err != nil {
 		return err
 	}
-	if (t.cfg.iscc != "" || t.cfg.ifw != "") && runtime.GOOS != "windows" {
+	if t.cfg.ifw != "" && runtime.GOOS != "windows" {
 		return fmt.Errorf("installer compilation requires a native Windows build host")
 	}
 	profiles, err := loadOfficialProfileEntries(t.repoRoot)
@@ -36,13 +35,6 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	entries = append(entries, profiles...)
 	buildInfoIndex := len(entries)
 	entries = append(entries, archiveEntry{"BUILD-INFO.txt", []byte("ProductVersion: " + t.cfg.version + "\nBuildID: " + t.cfg.buildID + "\nTarget: " + t.cfg.target + "\nArtifactKind: distribution\n"), 0644})
-	if t.cfg.iscc != "" {
-		icon, err := os.ReadFile(filepath.Join(t.repoRoot, "gui", "windows", "runner", "resources", "app_icon.ico"))
-		if err != nil {
-			return fmt.Errorf("read application icon: %w", err)
-		}
-		entries = append(entries, archiveEntry{"app_icon.ico", icon, 0644})
-	}
 	targetOS, arch, _ := strings.Cut(t.cfg.target, "-")
 	var gui []archiveEntry
 	if targetOS == "linux" {
@@ -131,7 +123,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		entries = append(entries, archiveEntry{program + suffix, data, 0755})
 		fmt.Fprintf(&binarySums, "BinarySHA256: %s  %s\n", sha256Hex(data), program+suffix)
 	}
-	if t.cfg.iscc != "" || t.cfg.ifw != "" {
+	if t.cfg.ifw != "" {
 		const updater = "sidraviaupdater.exe"
 		fmt.Fprintln(stderr, "building", updater)
 		data, err := t.build(env, buildArgv(t.cfg.goBin, filepath.Join(stage, updater), "./cmd/sidraviaupdater", t.cfg.version, t.cfg.buildID, qtSymbols...))
@@ -139,9 +131,6 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 			return err
 		}
 		entries = append(entries, archiveEntry{updater, data, 0755})
-		// The paired installer has an additional executable. Publish its exact
-		// inventory metadata without including the executable in the ZIP.
-		fmt.Fprintf(&binarySums, "SetupUpdater: %s %d\n", sha256Hex(data), len(data))
 	}
 	entries[buildInfoIndex].data = append(entries[buildInfoIndex].data, []byte(binarySums.String())...)
 	// The ownership index describes product bytes only: runtime data, the
@@ -163,21 +152,6 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return fmt.Errorf("encode product file ownership: %w", err)
 	}
 	entries = append(entries, archiveEntry{packagefiles.Name, ownership, 0644})
-	// All installation files have explicit ownership; payload contains no
-	// portable marker, generated user data or legacy integration scripts.
-	payload := filepath.Join(stage, "payload")
-	if err := os.Mkdir(payload, 0755); err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		path := filepath.Join(payload, filepath.FromSlash(entry.name))
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(path, entry.data, entry.mode); err != nil {
-			return err
-		}
-	}
 	portable, err := portablePayload(entries, owned)
 	if err != nil {
 		return err
@@ -210,30 +184,6 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-	}
-	if t.cfg.iscc != "" {
-		template, err := os.ReadFile(filepath.Join(t.repoRoot, "packaging", "windows", "sidravia.iss"))
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(stage, "sidravia.iss"), template, 0644); err != nil {
-			return err
-		}
-		manifest := installerManifest(payload, entries, gui)
-		if err := os.WriteFile(filepath.Join(stage, "files.iss"), []byte(manifest), 0644); err != nil {
-			return err
-		}
-		hasGUI := "0"
-		if len(gui) > 0 {
-			hasGUI = "1"
-		}
-		cmd := exec.Command(t.cfg.iscc, "/DProductVersion="+t.cfg.version, "/DHasGUI="+hasGUI, "/DPayloadTarget="+t.cfg.target, "/O"+stage, "/F"+base+"-setup", filepath.Join(stage, "sidravia.iss"))
-		cmd.Stdout = stderr
-		cmd.Stderr = stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("compile Inno installer: %w", err)
-		}
-		outputs = append(outputs, base+"-setup.exe")
 	}
 	final := filepath.Join(stage, "output")
 	portableDirectory := final

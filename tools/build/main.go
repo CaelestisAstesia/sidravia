@@ -65,7 +65,6 @@ type config struct {
 	artifact     string
 	target       string
 	guiDirectory string
-	iscc         string
 	ifw          string
 	compression  string
 	help         bool
@@ -79,7 +78,6 @@ var knownValueFlags = map[string]bool{
 	"--artifact":      true,
 	"--target":        true,
 	"--gui-directory": true,
-	"--iscc":          true,
 	"--ifw":           true,
 	"--compression":   true,
 }
@@ -148,8 +146,6 @@ func parseFlags(args []string) (config, error) {
 			c.target = val
 		case "--gui-directory":
 			c.guiDirectory = val
-		case "--iscc":
-			c.iscc = val
 		case "--ifw":
 			c.ifw = val
 		case "--compression":
@@ -175,16 +171,16 @@ func parseFlags(args []string) (config, error) {
 		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
 			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
 		}
-		if !strings.HasPrefix(c.target, "windows-") && (c.iscc != "" || c.ifw != "") {
+		if !strings.HasPrefix(c.target, "windows-") && c.ifw != "" {
 			return c, errors.New("installer requires a Windows target")
 		}
-		if c.ifw != "" && (c.iscc != "" || c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
+		if c.ifw != "" && (c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
 			return c, errors.New("Qt packaging requires an absolute toolchain directory and the native GUI payload")
 		}
 		if c.ifw != "" && !validQtCandidateVersion(c.version) {
 			return c, errors.New("Qt candidate packaging requires a numeric release or a version ending in alpha.N, beta.N, rc.N or dev.qt.N")
 		}
-	} else if c.target != "" || c.guiDirectory != "" || c.iscc != "" || c.ifw != "" {
+	} else if c.target != "" || c.guiDirectory != "" || c.ifw != "" {
 		return c, errors.New("target, GUI and installer flags require --artifact distribution")
 	}
 	return c, nil
@@ -209,7 +205,6 @@ Optional flags:
   --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Flutter Release directory for the chosen target
-  --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
   --ifw        optional absolute directory of the Qt installer toolchain
   --help       show this help and exit without building
 
