@@ -1,1 +1,1 @@
-Verify the new account's profile, then accept the branded Qt builds using the already compiled native Flutter inputs.
+Accept both signed Qt profiles with the verified current-user updater manifest and asynchronous uninstaller cleanup.
