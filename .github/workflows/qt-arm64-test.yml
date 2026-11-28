@@ -12,6 +12,9 @@ on:
       toolkit_run:
         type: number
         required: true
+      gui_run:
+        type: number
+        default: 0
       standard_user:
         type: boolean
         default: true
@@ -77,6 +80,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: '1.26.11'
@@ -107,14 +111,17 @@ jobs:
           path: qt-toolkit
           github-token: ${{ github.token }}
           run-id: ${{ inputs.toolkit_run }}
-      - name: Bootstrap pinned native ARM64 Flutter SDK
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: ${{ inputs.gui_run > 0 }}
+        with:
+          name: qt-arm64-test-gui-runtimes
+          path: qt-gui
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.gui_run }}
+      - name: Build both native Flutter runtimes
+        if: ${{ !inputs.gui_run }}
         shell: pwsh
-        run: |
-          if ((go env GOHOSTARCH) -cne 'arm64') { throw 'expected native ARM64 Go tooling' }
-          $sdk = Join-Path $env:RUNNER_TEMP 'flutter-arm64'
-          git clone --depth 1 --branch 3.47.0 https://github.com/flutter/flutter.git $sdk
-          if ($LASTEXITCODE -ne 0 -or (git -C $sdk rev-parse HEAD) -cne '4cf24164269a5ebf0c16a028a00727d0e77bbb05') { throw 'flutter_source_mismatch' }
-          (Join-Path $sdk 'bin') >> $env:GITHUB_PATH
+        run: .github/scripts/build-qt-arm64-gui.ps1 -Output qt-gui
       - name: Build and sign both native Windows release fixtures
         shell: pwsh
         run: |
@@ -123,13 +130,12 @@ jobs:
           $kit = (Resolve-Path qt-toolkit).Path
           $out = (New-Item -ItemType Directory -Path (Join-Path $env:PUBLIC ('SidQt-' + $env:GITHUB_RUN_ID))).FullName
           "QT_FIXTURE_ROOT=$out" >> $env:GITHUB_ENV
+          if ((go env GOHOSTARCH) -cne 'arm64') { throw 'expected native ARM64 Go tooling' }
+          $guiSource = (Get-Content -Raw -LiteralPath 'qt-gui/source-commit.txt').Trim()
+          if ($guiSource -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid Flutter source proof.' }
+          git diff --quiet $guiSource $env:GITHUB_SHA -- gui
           foreach ($version in '0.6.0-rc.1','0.6.0') {
-            Push-Location gui
-            try {
-              flutter pub get --enforce-lockfile
-              flutter build windows --release --no-pub --target lib/main.dart --build-name $version --build-number 1
-              $gui = (Resolve-Path 'build/windows/arm64/runner/Release').Path
-            } finally { Pop-Location }
+            $gui = (Resolve-Path "qt-gui/$version").Path
             go run -mod=readonly ./tools/build --version $version --build-id $env:GITHUB_SHA --artifact distribution --target windows-arm64 --output (Join-Path $out $version) --go go --gui-directory $gui --ifw $kit
           }
           go build -mod=readonly -o (Join-Path $out 'signrelease.exe') ./tools/signrelease
