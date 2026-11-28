@@ -6,6 +6,7 @@ on:
     paths:
       - .github/scripts/build-qt-arm64-test-kit.ps1
       - .github/scripts/prepare-qt-arm64-test.py
+      - packaging/windows/ifw/build.ps1
   workflow_call:
     inputs:
       toolkit_run:
@@ -35,12 +36,12 @@ jobs:
           revision=aac2cf9c93b80a0f5959ab6c8a00bc378c54fdec
           git init ifw-source
           git -C ifw-source fetch --depth=1 https://github.com/qtproject/installer-framework.git "$revision"
-          git -C ifw-source archive --format=tar.gz --prefix=ifw/ --output="$PWD/ifw-4.11.0-source.tar.gz" "$revision"
-          printf '%s  %s\n' aefda9ad1079a0c25163e16d312cef8117c994c31d76a8bda7ede53d2b4db271 ifw-4.11.0-source.tar.gz | sha256sum --check --strict
+          git -C ifw-source -c core.autocrlf=false archive --format=tar --prefix=ifw/ --output="$PWD/ifw-4.11.0-source.tar" "$revision"
+          printf '%s  %s\n' f1a21e3e639a5249708e4c954297b25e426effbe461b63608c91f7e86a2396df ifw-4.11.0-source.tar | sha256sum --check --strict
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: qt-ifw-pinned-source
-          path: ifw-4.11.0-source.tar.gz
+          path: ifw-4.11.0-source.tar
           if-no-files-found: error
           retention-days: 1
 
@@ -59,7 +60,7 @@ jobs:
           path: ifw-source
       - name: Build the ARM64 target Qt toolkit on x64
         shell: pwsh
-        run: .github/scripts/build-qt-arm64-test-kit.ps1 -Work "$env:RUNNER_TEMP/qt-build" -Output qt-toolkit -FrameworkArchive "$PWD/ifw-source/ifw-4.11.0-source.tar.gz"
+        run: .github/scripts/build-qt-arm64-test-kit.ps1 -Work "$env:RUNNER_TEMP/qt-build" -Output qt-toolkit -FrameworkArchive "$PWD/ifw-source/ifw-4.11.0-source.tar"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: qt-arm64-target-test-kit

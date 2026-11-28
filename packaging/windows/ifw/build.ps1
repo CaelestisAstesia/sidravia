@@ -16,8 +16,12 @@ $out = [IO.Path]::GetFullPath($Output)
 $headers = ($CompressionAndSodiumHeaders.Split(';') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }) -join ';'
 $libraries = ($CompressionAndSodiumLibraries.Split(';') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }) -join ';'
 if (Test-Path -LiteralPath $out) { throw 'Output must be a new build directory.' }
-# Source archive from the verified upstream 4.11.0 Git tree.
-$expected = 'aefda9ad1079a0c25163e16d312cef8117c994c31d76a8bda7ede53d2b4db271'
+# Source archives from the verified upstream 4.11.0 Git tree.
+$expected = if ([IO.Path]::GetExtension($archive) -ieq '.tar') {
+    'f1a21e3e639a5249708e4c954297b25e426effbe461b63608c91f7e86a2396df'
+} else {
+    'aefda9ad1079a0c25163e16d312cef8117c994c31d76a8bda7ede53d2b4db271'
+}
 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) {
     throw 'Unexpected IFW source archive digest.'
 }
