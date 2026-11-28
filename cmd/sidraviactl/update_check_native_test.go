@@ -70,7 +70,6 @@ func TestUpdateCheckProcessCancellation(t *testing.T) {
 	for _, args := range [][]string{
 		{"download", "--candidate", "1:2"},
 		{"apply", "--candidate", "1:2", "--confirm"},
-		{"recover", "--operation", "retired", "--confirm"},
 		{"status"},
 	} {
 		output, err := exec.Command(executable, append([]string{"update"}, args...)...).CombinedOutput()

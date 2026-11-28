@@ -20,7 +20,7 @@ func main() {
 	}
 	release := func() {}
 	var err error
-	if !invocation.ControlEntry(os.Args[1:]) {
+	if !invocation.ReadOnly(os.Args[1:]) {
 		release, err = startgate.AcquireRunIdentity(ProductVersion, BuildID)
 	}
 	if err != nil {

@@ -20,7 +20,7 @@ func Run(ctx context.Context, args []string, version string, out io.Writer) int 
 	if argumentError != "" {
 		return request.Fail("invalid_arguments", argumentError, nil).Write(out)
 	}
-	if options.CandidateID != "" || options.OperationID != "" || options.Confirmed {
+	if options.CandidateID != "" || options.Confirmed {
 		return request.Fail("invalid_arguments", "更新参数或编号无效", nil).Write(out)
 	}
 	layout, kind, systemManaged, failure := request.Resolve(options.Kind, true)

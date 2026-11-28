@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	productlayout "sidravia/internal/installation/layout"
@@ -41,28 +40,17 @@ func TestQtProfileComesFromInstalledComponents(t *testing.T) {
 	}
 }
 
-func TestMissingQtMaintenanceNeverBecomesInno(t *testing.T) {
+func TestMissingQtMaintenanceRequiresRepair(t *testing.T) {
 	directory := t.TempDir()
 	layout := productlayout.Layout{Mode: productlayout.ModeInstalled, ExecutableDirectory: directory}
-	if kind, err := windowsInstalledKind(layout); kind != "setup" || err != nil {
-		t.Fatalf("legacy install resolved to %q, %v", kind, err)
+	if kind, err := windowsInstalledKind(layout); kind != "" || !errors.Is(err, release.ErrMetadata) {
+		t.Fatalf("missing Qt registration resolved to %q, %v", kind, err)
 	}
 
-	components := filepath.Join(directory, "components.xml")
-	if err := os.WriteFile(components, nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "components.xml"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if kind, err := windowsInstalledKind(layout); kind != "" || !errors.Is(err, release.ErrMetadata) {
 		t.Fatalf("partially missing Qt registration resolved to %q, %v", kind, err)
-	}
-	if err := os.Remove(components); err != nil {
-		t.Fatal(err)
-	}
-
-	old := QtMaintenanceDigest
-	t.Cleanup(func() { QtMaintenanceDigest = old })
-	QtMaintenanceDigest = strings.Repeat("a", 64)
-	if kind, err := windowsInstalledKind(layout); kind != "" || !errors.Is(err, release.ErrMetadata) {
-		t.Fatalf("Qt binary without IFW files resolved to %q, %v", kind, err)
 	}
 }

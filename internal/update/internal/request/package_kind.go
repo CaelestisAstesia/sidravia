@@ -2,7 +2,6 @@ package request
 
 import (
 	"encoding/xml"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,9 +15,6 @@ import (
 // installation must not silently lose its GUI by selecting a core-only asset.
 func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	if goos == "windows" && release.DesktopArchitecture(arch) {
-		if layout.Mode == productlayout.ModeInstalled {
-			return "setup"
-		}
 		if info, err := os.Stat(filepath.Join(layout.ExecutableDirectory, "Sidravia.exe")); err == nil && info.Mode().IsRegular() {
 			return "gui-portable"
 		}
@@ -31,9 +27,7 @@ func DefaultPackageKind(goos, arch string, layout productlayout.Layout) string {
 	return "core-portable"
 }
 
-// windowsInstalledKind uses IFW's component inventory when present. Qt
-// binaries also carry a maintenance image identity, so loss of the entire
-// IFW registration cannot turn a Qt installation into an Inno installation.
+// windowsInstalledKind uses IFW's inventory as the installed component record.
 func windowsInstalledKind(layout productlayout.Layout) (string, error) {
 	root, err := os.OpenRoot(layout.ExecutableDirectory)
 	if err != nil {
@@ -41,17 +35,6 @@ func windowsInstalledKind(layout productlayout.Layout) (string, error) {
 	}
 	defer root.Close()
 	maintenance, err := root.Lstat("sidravia-maintenance.exe")
-	if errors.Is(err, os.ErrNotExist) {
-		if QtMaintenanceDigest != "" {
-			return "", release.ErrMetadata
-		}
-		for _, marker := range []string{"components.xml", "sidravia-maintenance.dat", "sidravia-maintenance.ini"} {
-			if _, markerErr := root.Lstat(marker); !errors.Is(markerErr, os.ErrNotExist) {
-				return "", release.ErrMetadata
-			}
-		}
-		return "setup", nil
-	}
 	if err != nil || !maintenance.Mode().IsRegular() {
 		return "", release.ErrMetadata
 	}

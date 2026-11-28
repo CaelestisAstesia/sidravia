@@ -33,7 +33,7 @@ func main() {
 		return
 	}
 	releaseRun := func() {}
-	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && invocation.ControlEntry(os.Args[2:])) {
+	if (len(os.Args) < 2 || os.Args[1] != "update-internal") && !(len(os.Args) > 2 && os.Args[1] == "update" && invocation.ReadOnly(os.Args[2:])) {
 		release, err := startgate.AcquireRunIdentity(ProductVersion, BuildID)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "安装或更新正在进行，请完成或取消后再运行命令。")

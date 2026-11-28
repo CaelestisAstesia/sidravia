@@ -3,114 +3,27 @@ package update
 import (
 	"context"
 	"errors"
-	"io"
 	"net/url"
-	"os"
-	"runtime"
 
-	productlayout "sidravia/internal/installation/layout"
 	"sidravia/internal/release"
-	packagefiles "sidravia/internal/release/files"
 	"sidravia/internal/release/qtrepository"
 	"sidravia/internal/update/internal/candidatecache"
 	"sidravia/internal/update/internal/github"
 	"sidravia/internal/update/internal/request"
-	"sidravia/internal/update/transaction"
 )
 
 var errSourceProof = errors.New("installed source publisher proof unavailable or mismatched")
-var errManualRepair = errors.New("partial installation requires manual repair")
 
 var errOperation = errors.New("update operation unavailable or busy")
 var errPreparationRejected = errors.New("desktop rejected update preparation")
 
 type applyResult struct {
-	Operation           *operationView `json:"operation,omitempty"`
-	HandedOver          bool           `json:"handedOver,omitempty"`
-	FilesApplied        bool           `json:"filesApplied"`
-	ApplicationRecovery string         `json:"applicationRecovery"`
-	Authentication      string         `json:"authentication"`
+	HandedOver          bool   `json:"handedOver,omitempty"`
+	FilesApplied        bool   `json:"filesApplied"`
+	ApplicationRecovery string `json:"applicationRecovery"`
+	Authentication      string `json:"authentication"`
 }
 
-func operationResult(ctx context.Context, store *transaction.Store) *applyResult {
-	view, err := readExecutionStatus(ctx, store)
-	if err != nil || view == nil {
-		return nil
-	}
-	applied := view.Phase == transaction.Applied || view.Phase == transaction.Resuming || view.Phase == transaction.ServiceStarting || view.Phase == transaction.Completed || view.Phase == transaction.ResumeFailed
-	recovery := "not_started"
-	record, _, err := store.Read(ctx)
-	if view.Phase == transaction.Completed {
-		recovery = "ready"
-		if err == nil && record.Recovery != nil && record.Recovery.Intent.Mode == "none" {
-			recovery = "not_requested"
-		}
-	} else if view.Phase == transaction.ResumeFailed {
-		recovery = "not_confirmed"
-	} else if view.Phase == transaction.RolledBack {
-		recovery = "source_files_restored"
-	}
-	return &applyResult{Operation: view, FilesApplied: applied, ApplicationRecovery: recovery, Authentication: "not_evaluated"}
-}
-func readIndex(target string) ([]byte, error) {
-	root, err := os.OpenRoot(target)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	info, err := root.Lstat(packagefiles.Name)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > packagefiles.SizeLimit {
-		return nil, errSourceProof
-	}
-	file, err := root.Open(packagefiles.Name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	current, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !os.SameFile(info, current) {
-		return nil, errSourceProof
-	}
-	data, err := io.ReadAll(io.LimitReader(file, packagefiles.SizeLimit+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > packagefiles.SizeLimit {
-		return nil, errSourceProof
-	}
-	return data, nil
-}
-func installedProof(ctx context.Context, source *github.GitHub, layout productlayout.Layout, version, buildID string) (release.VerifiedRelease, release.Candidate, []byte, error) {
-	kind := request.DefaultPackageKind(runtime.GOOS, runtime.GOARCH, layout)
-	proof, err := source.AuthenticateVersion(ctx, version, runtime.GOARCH, kind)
-	if err != nil {
-		if errors.Is(err, github.ErrSignatureMissing) || errors.Is(err, release.ErrUntrusted) || errors.Is(err, release.ErrMetadata) {
-			err = errors.Join(errSourceProof, err)
-		}
-		return release.VerifiedRelease{}, release.Candidate{}, nil, err
-	}
-	if proof.BuildID() != buildID {
-		return release.VerifiedRelease{}, release.Candidate{}, nil, errSourceProof
-	}
-	asset, err := proof.InstalledAsset(runtime.GOOS, runtime.GOARCH, kind)
-	if err != nil {
-		return release.VerifiedRelease{}, release.Candidate{}, nil, errors.Join(errSourceProof, err)
-	}
-	data, err := readIndex(layout.ExecutableDirectory)
-	if err != nil {
-		return release.VerifiedRelease{}, release.Candidate{}, nil, errors.Join(errSourceProof, err)
-	}
-	if _, err := proof.VerifyFiles(asset, data); err != nil {
-		return release.VerifiedRelease{}, release.Candidate{}, nil, errors.Join(errSourceProof, err)
-	}
-	return proof, asset, data, nil
-}
 func applyErrorCode(err error) string {
 	var remote *url.Error
 	switch {
@@ -124,11 +37,9 @@ func applyErrorCode(err error) string {
 		return "source_proof_unavailable"
 	case errors.Is(err, qtrepository.ErrMaintenanceImage):
 		return "maintenance_image_requires_reinstall"
-	case errors.Is(err, errManualRepair):
-		return "manual_repair_required"
 	case errors.Is(err, errPreparationRejected):
 		return "preparation_rejected"
-	case errors.Is(err, transaction.ErrConflict), errors.Is(err, errOperation):
+	case errors.Is(err, errOperation):
 		return "update_busy"
 	}
 	if code := request.SourceCode(err); code != "source_unavailable" {
@@ -141,26 +52,16 @@ func applyErrorCode(err error) string {
 }
 func applyErrorMessage(err error) string {
 	switch applyErrorCode(err) {
-	case "handoff_unavailable":
-		return "无法从当前进程环境交接更新程序，请检查 status 或按发行说明手动更新"
 	case "apply_failed":
 		return "更新未完成，请查看 status 确认执行阶段"
 	case "source_proof_unavailable":
 		return "当前安装缺少匹配的发行签名证明，请手动升级到可信基线"
 	case "maintenance_image_requires_reinstall":
 		return "此版本需要更换维护工具，请从发行页下载完整安装包并按说明升级。"
-	case "manual_repair_required":
-		return "更新曾中断写入，请按发行说明手动修复，程序仍保持启动保护"
 	case "update_busy":
 		return "另一项更新仍在进行，或操作阶段不允许重复执行"
-	case "update_rolled_back":
-		return "更新失败，已恢复旧版程序文件。请用 daemon status 确认运行版本和状态"
-	case "resume_failed":
-		return "文件已安装，但程序恢复未确认，请检查运行状态"
 	case "preparation_rejected":
 		return "程序未确认退出准备，请先保存或取消未完成的编辑后重试"
-	case "target_changed":
-		return "程序文件、目标目录或已下载内容已变化，未继续更新"
 	case "cancelled":
 		return "更新操作已取消，执行结果请查看 status"
 	case "timeout":
