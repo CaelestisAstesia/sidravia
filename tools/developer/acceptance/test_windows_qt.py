@@ -108,6 +108,19 @@ def wait_for_runtime(path, process):
     pytest.fail("daemon runtime record did not appear")
 
 
+def wait_for_desktop_window(evidence, label, process):
+    powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    command = (
+        f"$p = Get-Process -Id {process.pid}; $deadline = [DateTime]::UtcNow.AddSeconds(20); "
+        "do { $p.Refresh(); if (!$p.HasExited -and $p.MainWindowHandle -ne 0) { "
+        "Write-Output $p.MainWindowHandle; exit 0 }; Start-Sleep -Milliseconds 150 "
+        "} while (!$p.HasExited -and [DateTime]::UtcNow -lt $deadline); "
+        "Write-Error 'Sidravia did not show its main window'; exit 1"
+    )
+    require_success(invoke(evidence, f"{label}-window", powershell,
+                           ["-NoProfile", "-NonInteractive", "-Command", command]))
+
+
 @contextlib.contextmanager
 def running_sidravia(target, profile, namespace, env, evidence, label):
     runtime = namespace / "runtime.json"
@@ -122,7 +135,10 @@ def running_sidravia(target, profile, namespace, env, evidence, label):
     else:
         require_success(invoke(evidence, f"{label}-start", ctl, ["daemon", "start"], env))
     try:
-        yield wait_for_runtime(runtime, gui), gui
+        info = wait_for_runtime(runtime, gui)
+        if gui is not None:
+            wait_for_desktop_window(evidence, label, gui)
+        yield info, gui
     finally:
         if gui is not None and gui.poll() is None:
             gui.terminate()
