@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release_artifacts import request_document
-from stage_release import QT_MANIFEST, QT_SIGNATURE, stage
+from release_artifacts import QT_MANIFEST, QT_SIGNATURE, request_document
+from stage_release import stage
 
 
 class StageReleaseTests(unittest.TestCase):

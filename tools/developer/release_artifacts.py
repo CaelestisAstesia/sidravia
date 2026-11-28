@@ -19,6 +19,11 @@ import tempfile
 import verify_distribution as distribution
 
 
+WINDOWS_ARCHITECTURES = ('amd64', 'arm64')
+QT_MANIFEST = 'sidravia-release-qt.json'
+QT_SIGNATURE = 'sidravia-release-qt.sig'
+
+
 class ReleaseError(ValueError):
     pass
 
@@ -140,7 +145,7 @@ def collect(repo, request_path, public_key, go, *, request_snapshot=None):
 
 
 def public_check(repo, go, mode, manifest_data, public_data, signature_data=None, *,
-                 published_names=None, qt_artifacts=None, qt_maintenance=None):
+                 published_names=None, qt_artifacts=None, qt_maintenance=None, after_version=None):
     # Go verifies these exact captured bytes, never a second lookup of mutable
     # source paths. The private temporary directory contains public data only.
     with tempfile.TemporaryDirectory(prefix='sidravia-release-public-') as temporary:
@@ -164,6 +169,8 @@ def public_check(repo, go, mode, manifest_data, public_data, signature_data=None
                 command.append('--published')
         if qt_artifacts is not None:
             command += ['--qt-artifacts', str(qt_artifacts), '--qt-maintenance', str(qt_maintenance)]
+        if after_version is not None:
+            command += ['--after-version', after_version]
         result = subprocess.run(command, cwd=repo, env=dict(os.environ, GOTOOLCHAIN='local'), capture_output=True, encoding='utf-8', timeout=120)
     require(result.returncode == 0, 'manifest_structure_or_signature_rejected')
     try:

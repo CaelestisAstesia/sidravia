@@ -21,7 +21,7 @@ OPTIONS = ("--accept-licenses", "--reject-messages", "--confirm-command")
 
 
 @pytest.fixture(scope="module")
-def qt_release():
+def qt_release(tmp_path_factory):
     request = os.environ.get("SIDRAVIA_QT_ACCEPTANCE_REQUEST")
     if sys.platform != "win32":
         raise pytest.UsageError("Qt lifecycle acceptance needs a native Windows host")
@@ -37,6 +37,14 @@ def qt_release():
         path = Path(data[key])
         assert path.is_absolute() and path.exists()
         data[key] = path
+    setup = tmp_path_factory.mktemp("verified-qt-setup") / data["setup"].name
+    shutil.copyfile(data["setup"], setup)
+    assert setup.stat().st_size == data["setupSize"], "offline installer size changed since verification"
+    with setup.open("rb") as handle:
+        assert hashlib.file_digest(handle, "sha256").hexdigest() == data["setupSHA256"], (
+            "offline installer digest changed since verification"
+        )
+    data["setup"] = setup
     assert matches_pe(data["testProgram"].read_bytes(), data["arch"]), "native handoff test architecture mismatch"
     manifest = data["manifest"].read_bytes()
     data["assets"] = json.loads(manifest)["assets"]

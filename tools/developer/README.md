@@ -1051,22 +1051,27 @@ when the required fixture is absent.
 
 Build the Qt Installer Framework toolchain from `packaging/windows/ifw/build.ps1`.
 Use the same maintenance image for both versions and build both distributions
-with `tools/build --ifw`. Sign the target repositories and their release manifest
-with `signrelease qt-repository` and `signrelease qt-manifest` using a disposable
-test key. Build the native test program with `go test -c ./internal/update`.
+with `tools/build --ifw`. Use a disposable test key. For each version, sign both
+profile repositories with `signrelease qt-repository`, then prepare and sign the
+Qt release manifest with `signrelease qt-manifest --qt-installers --qt-maintenance`
+and `signrelease`. Keep each version's signed manifest, detached signature,
+offline Setup and both signed repository ZIPs together. The maintenance image
+belongs at `$Toolchains/windows-$Arch/installerbase.exe`.
 
-Set `SIDRAVIA_IFW_ISOLATED_WINDOWS=1` and point
-`SIDRAVIA_QT_ACCEPTANCE_REQUEST` to a JSON request with these fields.
-
-| Fields | Values |
-| --- | --- |
-| `arch`, `sourceVersion`, `sourceBuildId` | Payload architecture and the older installation identity |
-| `setup`, `maintenanceImage`, `testProgram` | Absolute paths to the older setup, the exact IFW installerbase, and the native Go test executable |
-| `repositories`, `manifest`, `signature` | Absolute paths to the directory of signed target-version repositories, its release manifest and detached signature |
-| `publicKey` | Base64-encoded Ed25519 public key used for both signatures |
+Build the native test program with `go test -c ./internal/update`.
+Generate the pytest request from the two signed release directories. The helper
+checks both releases, rejects a target at or below the installed version, and
+uses the older signed Setup and newer signed repositories. It uses only the
+disposable fixture public key. Before executing Setup, pytest checks its private
+copy against the signed size and checksum recorded in the request.
 
 ```powershell
-task accept:windows-qt -- --junitxml qt-acceptance.xml
+$env:SIDRAVIA_QT_ACCEPTANCE_REQUEST = Join-Path $PWD 'qt-request.json'
+$request = python tools/developer/prepare_qt_acceptance.py --arch $Arch --previous $Previous --target $Target --maintenance $Toolchains --public-key $PublicKey --test-program $TestProgram
+if ($LASTEXITCODE -ne 0) { throw 'Qt acceptance request preparation failed' }
+[IO.File]::WriteAllText($env:SIDRAVIA_QT_ACCEPTANCE_REQUEST, ($request -join "`n"), [Text.UTF8Encoding]::new($false))
+$env:SIDRAVIA_IFW_ISOLATED_WINDOWS = '1'
+task --exit-code accept:windows-qt -- --junitxml qt-acceptance.xml
 ```
 
 The pytest temporary directory contains the installer output, the Qt maintenance

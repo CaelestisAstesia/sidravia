@@ -8,13 +8,13 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from release_artifacts import document, plain_path, public_check, read_public, require, unique_object
+from release_artifacts import (
+    QT_MANIFEST, QT_SIGNATURE, WINDOWS_ARCHITECTURES, document, plain_path,
+    public_check, read_public, require, unique_object,
+)
 
 
 SOURCE = Path(__file__).resolve().parents[2]
-WINDOWS_ARCHITECTURES = ('amd64', 'arm64')
-QT_MANIFEST = 'sidravia-release-qt.json'
-QT_SIGNATURE = 'sidravia-release-qt.sig'
 
 
 def add_qt_release(lane, assets, version, build_id, architectures, publisher_key, go, add_package):

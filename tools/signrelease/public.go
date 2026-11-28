@@ -28,6 +28,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 	published := flags.Bool("published", false, "verify the published manifest and signature filenames")
 	artifactDir := flags.String("qt-artifacts", "", "verify the signed Qt repositories in this directory")
 	maintenanceDir := flags.String("qt-maintenance", "", "check offline installers against target maintenance images in this directory")
+	afterVersion := flags.String("after-version", "", "require the signed version to be newer than this version")
 	machine := flags.Bool("json", false, "JSON result")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -39,7 +40,7 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "-qt-maintenance requires -qt-artifacts")
 		return 2
 	}
-	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") || ((*published || *artifactDir != "") && mode != "verify") {
+	if flags.NArg() != 0 || *manifest == "" || *public == "" || (mode == "verify") != (*signature != "") || ((*published || *artifactDir != "" || *afterVersion != "") && mode != "verify") {
 		fmt.Fprintln(stderr, "manifest/public-key and verify signature required")
 		return 2
 	}
@@ -84,6 +85,13 @@ func publicRun(mode string, args []string, out, stderr io.Writer) int {
 		}
 		if *published && !validPublishedNames(proof, filepath.Base(*manifest), filepath.Base(*signature)) {
 			return fail("release metadata does not match its published names")
+		}
+		if *afterVersion != "" {
+			previous, err := release.ParseVersion(*afterVersion)
+			current, _ := release.ParseVersion(m.Version) // Validated with the manifest.
+			if err != nil || current.Compare(previous) <= 0 {
+				return fail("release does not advance the previous version")
+			}
 		}
 		if *artifactDir != "" {
 			if proof.ValidateLocation(release.QtReleaseManifestName) != nil {
