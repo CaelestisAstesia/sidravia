@@ -1,1 +1,1 @@
-Accept both signed Qt profiles with the verified current-user updater manifest and asynchronous uninstaller cleanup.
+Accept both signed profiles from the separated asset groups and preserve GUI handoff failures without leaving a maintenance process running.
