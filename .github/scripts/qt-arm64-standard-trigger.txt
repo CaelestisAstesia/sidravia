@@ -1,1 +1,1 @@
-Build the new native GUI and verify update handoff without depending on a Windows notification icon.
+Rebuild the native Windows desktop after retiring Inno startup admission and verify the Qt-only product.
