@@ -1,0 +1,111 @@
+name: Qt Windows ARM64 acceptance
+
+on:
+  push:
+    branches: [codex/qt-arm64-github-test]
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+  GOTOOLCHAIN: local
+
+jobs:
+  toolkit:
+    runs-on: windows-2022
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build the ARM64 target Qt toolkit on x64
+        shell: pwsh
+        run: .github/scripts/build-qt-arm64-test-kit.ps1 -Work "$env:RUNNER_TEMP/qt-build" -Output qt-toolkit
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: qt-arm64-target-test-kit
+          path: qt-toolkit/*.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  acceptance:
+    needs: toolkit
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: go.sum
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.4'
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: '0.13.7'
+          require-checksums: true
+          cache-dependency-glob: tools/developer/acceptance/uv.lock
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+        with:
+          version: '3.54.0'
+          checksum: '4618ea027582738a056af9a5b78086c402e93c82c1c67df0eab2d20c649608e2'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: qt-arm64-target-test-kit
+          path: qt-toolkit
+      - name: Bootstrap pinned native ARM64 Flutter SDK
+        shell: pwsh
+        run: |
+          if ((go env GOHOSTARCH) -cne 'arm64') { throw 'expected native ARM64 Go tooling' }
+          $sdk = Join-Path $env:RUNNER_TEMP 'flutter-arm64'
+          git clone --depth 1 --branch 3.47.0 https://github.com/flutter/flutter.git $sdk
+          if ($LASTEXITCODE -ne 0 -or (git -C $sdk rev-parse HEAD) -cne '4cf24164269a5ebf0c16a028a00727d0e77bbb05') { throw 'flutter_source_mismatch' }
+          (Join-Path $sdk 'bin') >> $env:GITHUB_PATH
+      - name: Build and sign both native Windows release fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $kit = (Resolve-Path qt-toolkit).Path
+          $out = (New-Item -ItemType Directory -Path qt-fixture).FullName
+          foreach ($version in '0.6.0-rc.1','0.6.0') {
+            Push-Location gui
+            try {
+              flutter pub get --enforce-lockfile
+              flutter build windows --release --no-pub --target lib/main.dart --build-name $version --build-number 1
+              $gui = (Resolve-Path 'build/windows/arm64/runner/Release').Path
+            } finally { Pop-Location }
+            go run -mod=readonly ./tools/build --version $version --build-id $env:GITHUB_SHA --artifact distribution --target windows-arm64 --output (Join-Path $out $version) --go go --gui-directory $gui --ifw $kit
+          }
+          go build -mod=readonly -o (Join-Path $out 'signrelease.exe') ./tools/signrelease
+          go test -c -mod=readonly -o (Join-Path $out 'qt-handoff.test.exe') ./internal/update
+          python .github/scripts/prepare-qt-arm64-test.py --workspace $out --toolkit $kit --build $env:GITHUB_SHA
+      - name: Run native Qt lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SIDRAVIA_IFW_ISOLATED_WINDOWS = '1'
+          $env:SIDRAVIA_QT_ACCEPTANCE_REQUEST = (Resolve-Path 'qt-fixture/qt-acceptance.json').Path
+          $null = New-Item -ItemType Directory -Path qt-evidence -Force
+          $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+          [pscustomobject]@{
+            administrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            session = (Get-Process -Id $PID).SessionId
+          } | ConvertTo-Json | Set-Content qt-evidence/runner-context.json
+          task --exit-code accept:windows-qt -- --basetemp qt-evidence/lifecycle --junitxml qt-evidence/junit.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: qt-arm64-acceptance-evidence
+          path: |
+            qt-evidence/runner-context.json
+            qt-evidence/junit.xml
+            qt-evidence/lifecycle/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
