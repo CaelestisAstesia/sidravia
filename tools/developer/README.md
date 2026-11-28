@@ -1042,6 +1042,14 @@ other release manifest requests still go into `requests/` for separate signing.
 
 ## Windows Qt release acceptance
 
+The Windows updater embeds `cmd/sidraviaupdater/updater.manifest` to declare
+current-user execution. If it changes, regenerate its two checked-in resource
+objects from `cmd/sidraviaupdater` with the pinned Go toolchain.
+
+```sh
+go run github.com/tc-hib/go-winres@v0.3.3 make --in winres.json --arch amd64,arm64 --out updater
+```
+
 Run the Qt lifecycle suite in a disposable Windows account without an existing
 Sidravia installation. The suite creates and removes real per-user installations
 and checks their PATH registration. Use one test worker per account. The
