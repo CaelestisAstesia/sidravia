@@ -42,10 +42,14 @@ func applyDownloaded(ctx context.Context, root string, layout productlayout.Layo
 	if err != nil {
 		return nil, err
 	}
-	if asset, err := next.Asset(c); err == nil && release.QtRepositoryProfile(asset.Kind) != "" {
-		if !request.ValidApplyTarget(layout, asset.Kind) {
-			return nil, release.ErrUnsupported
-		}
+	asset, err := next.Asset(c)
+	if err != nil {
+		return nil, err
+	}
+	if !request.ValidApplyTarget(layout, asset.Kind) {
+		return nil, release.ErrUnsupported
+	}
+	if release.QtRepositoryProfile(asset.Kind) != "" {
 		return applyQt(ctx, root, layout, daemonctl.Identity{ProductVersion: version, BuildID: build}, c, next, path)
 	}
 	old, oldAsset, index, err := installedProof(ctx, source, layout, version, build)
