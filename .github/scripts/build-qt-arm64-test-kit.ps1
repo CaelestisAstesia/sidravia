@@ -1,5 +1,6 @@
 param([Parameter(Mandatory)][string]$Work,
-      [Parameter(Mandatory)][string]$Output)
+      [Parameter(Mandatory)][string]$Output,
+      [Parameter(Mandatory)][string]$FrameworkArchive)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -73,16 +74,9 @@ $sodium = Join-Path $src 'libsodium-1.0.22'
 Invoke-Native msbuild.exe @((Join-Path $sodium 'builds/msvc/vs2022/libsodium.sln'),'/nologo','/m:4','/p:Configuration=StaticRelease','/p:Platform=x64')
 $crypto = Join-Path $sodium 'bin/x64/Release/v143/static'
 
-$revision = 'aac2cf9c93b80a0f5959ab6c8a00bc378c54fdec'
-$git = Join-Path $Work 'ifw-git'
-Invoke-Native git @('init',$git)
-Invoke-Native git @('-C',$git,'fetch','--depth','1','https://github.com/qtproject/installer-framework.git',$revision)
-$archive = Join-Path $Work 'ifw-4.11.0-source.tar.gz'
-Invoke-Native git @('-C',$git,'archive','--format=tar.gz','--prefix=ifw/',"--output=$archive",$revision)
-
 $ifw = Join-Path $Work 'ifw-build'
 # Public Ed25519 fixture vector corresponding to the all-zero test seed.
-& "$repo/packaging/windows/ifw/build.ps1" -FrameworkArchive $archive -Qt $prefix `
+& "$repo/packaging/windows/ifw/build.ps1" -FrameworkArchive $FrameworkArchive -Qt $prefix `
     -PayloadTarget windows-arm64 -Output $ifw `
     -PublisherPublicKey '3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29' `
     -CompressionAndSodiumHeaders "$bzip;$xz/include;$sodium/src/libsodium/include" `

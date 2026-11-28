@@ -24,7 +24,28 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
+  ifw-source:
+    if: ${{ !inputs.toolkit_run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Prepare the exact pinned IFW source archive
+        shell: bash
+        run: |
+          revision=aac2cf9c93b80a0f5959ab6c8a00bc378c54fdec
+          git init ifw-source
+          git -C ifw-source fetch --depth=1 https://github.com/qtproject/installer-framework.git "$revision"
+          git -C ifw-source archive --format=tar.gz --prefix=ifw/ --output="$PWD/ifw-4.11.0-source.tar.gz" "$revision"
+          printf '%s  %s\n' aefda9ad1079a0c25163e16d312cef8117c994c31d76a8bda7ede53d2b4db271 ifw-4.11.0-source.tar.gz | sha256sum --check --strict
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: qt-ifw-pinned-source
+          path: ifw-4.11.0-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   toolkit:
+    needs: ifw-source
     if: ${{ !inputs.toolkit_run }}
     runs-on: windows-2022
     timeout-minutes: 110
@@ -32,9 +53,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: qt-ifw-pinned-source
+          path: ifw-source
       - name: Build the ARM64 target Qt toolkit on x64
         shell: pwsh
-        run: .github/scripts/build-qt-arm64-test-kit.ps1 -Work "$env:RUNNER_TEMP/qt-build" -Output qt-toolkit
+        run: .github/scripts/build-qt-arm64-test-kit.ps1 -Work "$env:RUNNER_TEMP/qt-build" -Output qt-toolkit -FrameworkArchive "$PWD/ifw-source/ifw-4.11.0-source.tar.gz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: qt-arm64-target-test-kit
