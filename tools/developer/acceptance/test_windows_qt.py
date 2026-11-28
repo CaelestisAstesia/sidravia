@@ -349,3 +349,28 @@ def test_windows_qt_status_marks_abandoned_handoff_unconfirmed(qt_release, tmp_p
         if cache is not None:
             shutil.rmtree(cache)
         require_success(invoke(tmp_path, "uninstall", maint, [*OPTIONS, "purge"]))
+
+
+def test_windows_qt_check_requires_offline_repair_when_registration_is_missing(qt_release, tmp_path):
+    target = tmp_path / "installation"
+    install = [*OPTIONS, "--no-default-installations", "install", "org.sidravia.core"]
+    require_success(invoke(tmp_path, "install", qt_release["setup"], ["--root", target, *install]))
+    maintenance = target / "sidravia-maintenance.exe"
+    moved = []
+    try:
+        for name in ("sidravia-maintenance.exe", "components.xml", "sidravia-maintenance.dat",
+                     "sidravia-maintenance.ini"):
+            source = target / name
+            if source.exists():
+                saved = tmp_path / name
+                source.rename(saved)
+                moved.append((saved, source))
+        assert not maintenance.exists()
+        code, log = invoke(tmp_path, "update-check-without-qt-registration",
+                           target / "sidraviactl.exe", ["update", "check"])
+        assert code != 0
+        assert json.loads(log.read_bytes())["code"] == "invalid_target"
+    finally:
+        for saved, source in moved:
+            saved.rename(source)
+        require_success(invoke(tmp_path, "uninstall", maintenance, [*OPTIONS, "purge"]))
