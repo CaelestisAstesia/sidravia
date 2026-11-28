@@ -22,6 +22,7 @@ var errSourceProof = errors.New("installed source publisher proof unavailable or
 var errManualRepair = errors.New("partial installation requires manual repair")
 
 var errOperation = errors.New("update operation unavailable or busy")
+var errPreparationRejected = errors.New("desktop rejected update preparation")
 
 type applyResult struct {
 	Operation           *operationView `json:"operation,omitempty"`
@@ -125,6 +126,8 @@ func applyErrorCode(err error) string {
 		return "maintenance_image_requires_reinstall"
 	case errors.Is(err, errManualRepair):
 		return "manual_repair_required"
+	case errors.Is(err, errPreparationRejected):
+		return "preparation_rejected"
 	case errors.Is(err, transaction.ErrConflict), errors.Is(err, errOperation):
 		return "update_busy"
 	}

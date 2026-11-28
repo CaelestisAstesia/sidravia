@@ -107,7 +107,19 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	if err != nil {
 		return nil, errors.Join(errOperation, err)
 	}
-	defer child.Process.Release()
+	defer func() {
+		if proceed {
+			_ = child.Process.Release()
+			return
+		}
+		// Until the proceed event is set we own this process and it has no
+		// permission to replace the application. Release its locks before retry.
+		if stopErr := child.Process.Kill(); stopErr != nil && !errors.Is(stopErr, os.ErrProcessDone) {
+			err = errors.Join(err, stopErr, child.Process.Release())
+			return
+		}
+		_ = child.Wait()
+	}()
 
 	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
@@ -253,6 +265,9 @@ func quiesceQt(ctx context.Context, installation layout.Layout, identity daemonc
 				return err
 			}
 		}
+	}
+	if state.OperationID == operation && state.Phase == "rejected" {
+		return errPreparationRejected
 	}
 	if state.OperationID != operation || state.Phase != "prepared" {
 		return errOperation

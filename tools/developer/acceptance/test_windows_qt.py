@@ -167,11 +167,23 @@ def apply_through_product(evidence, ctl, asset, env, runtime, daemon_pid):
     with downloaded.open("rb") as package:
         assert hashlib.file_digest(package, "sha256").hexdigest() == asset["sha256"]
     assert json.loads(runtime.read_bytes())["pid"] == daemon_pid
-    apply = invoke(evidence, "product-apply", ctl, ["update", "apply", *selection, "--confirm"],
-                   env, separate_stderr=True)
-    require_success(apply)
-    assert json.loads(apply[1].read_bytes())["code"] == "handed_over"
-    return downloaded.parent.parent
+    cache = downloaded.parent.parent
+    try:
+        apply = invoke(evidence, "product-apply", ctl, ["update", "apply", *selection, "--confirm"],
+                       env, separate_stderr=True)
+        require_success(apply)
+        assert json.loads(apply[1].read_bytes())["code"] == "handed_over"
+    except Exception:
+        copy_maintenance_evidence(cache, evidence)
+        raise
+    return cache
+
+
+def copy_maintenance_evidence(cache, evidence):
+    for name in ("qt-outcome.json", "qt-maintenance.log"):
+        path = cache / name
+        if path.is_file():
+            shutil.copyfile(path, evidence / name)
 
 
 def has_user_path(directory):
@@ -286,10 +298,7 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
                 confirmed_outcome(outcome_cache, target_version)
             finally:
                 if commands is not None:
-                    for name in ("qt-outcome.json", "qt-maintenance.log"):
-                        path = outcome_cache / name
-                        if path.is_file():
-                            shutil.copyfile(path, tmp_path / name)
+                    copy_maintenance_evidence(outcome_cache, tmp_path)
 
         with running_sidravia(target, profile, namespace, env, tmp_path, "after") as (daemon, _):
             assert (daemon["productVersion"], daemon["buildId"]) == (target_version, target_build)
