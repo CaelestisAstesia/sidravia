@@ -204,12 +204,12 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		return err
 	}
 	outputs := []string{archive}
+	var qtOutputs []string
 	if t.cfg.ifw != "" {
-		artifacts, err := buildQtDistribution(t.cfg, stage, base, qtTemplate, entries, gui, stderr)
+		qtOutputs, err = buildQtDistribution(t.cfg, stage, base, qtTemplate, entries, gui, stderr)
 		if err != nil {
 			return err
 		}
-		outputs = append(outputs, artifacts...)
 	}
 	if t.cfg.iscc != "" {
 		template, err := os.ReadFile(filepath.Join(t.repoRoot, "packaging", "windows", "sidravia.iss"))
@@ -236,23 +236,21 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 		outputs = append(outputs, base+"-setup.exe")
 	}
 	final := filepath.Join(stage, "output")
-	if err := os.Mkdir(final, 0755); err != nil {
-		return err
-	}
-	sort.Strings(outputs)
-	var sums strings.Builder
-	for _, name := range outputs {
-		data, err := os.ReadFile(filepath.Join(stage, name))
-		if err != nil {
+	portableDirectory := final
+	if len(qtOutputs) > 0 {
+		if err := os.Mkdir(final, 0755); err != nil {
 			return err
 		}
-		fmt.Fprintf(&sums, "%s  %s\n", sha256Hex(data), name)
-		if err := os.Rename(filepath.Join(stage, name), filepath.Join(final, name)); err != nil {
+		portableDirectory = filepath.Join(final, "portable")
+	}
+	sums, err := writeDistributionFiles(stage, portableDirectory, outputs)
+	if err != nil {
+		return err
+	}
+	if len(qtOutputs) > 0 {
+		if _, err := writeDistributionFiles(stage, filepath.Join(final, "qt"), qtOutputs); err != nil {
 			return err
 		}
-	}
-	if err := os.WriteFile(filepath.Join(final, "SHA256SUMS.txt"), []byte(sums.String()), 0644); err != nil {
-		return err
 	}
 	if err := t.publish(final, out); err != nil {
 		return fmt.Errorf("publish distribution to %s: %w", out, err)
@@ -262,8 +260,27 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	if err := os.RemoveAll(stage); err != nil {
 		return fmt.Errorf("distribution published at %s; remove staging directory %s: %w", out, stage, err)
 	}
-	if _, err := io.WriteString(stdout, sums.String()); err != nil {
+	if _, err := io.WriteString(stdout, sums); err != nil {
 		return fmt.Errorf("distribution published at %s; write checksum summary: %w", out, err)
 	}
 	return nil
+}
+
+func writeDistributionFiles(stage, directory string, outputs []string) (string, error) {
+	if err := os.Mkdir(directory, 0755); err != nil {
+		return "", err
+	}
+	sort.Strings(outputs)
+	var sums strings.Builder
+	for _, name := range outputs {
+		data, err := os.ReadFile(filepath.Join(stage, name))
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&sums, "%s  %s\n", sha256Hex(data), name)
+		if err := os.Rename(filepath.Join(stage, name), filepath.Join(directory, name)); err != nil {
+			return "", err
+		}
+	}
+	return sums.String(), os.WriteFile(filepath.Join(directory, "SHA256SUMS.txt"), []byte(sums.String()), 0644)
 }

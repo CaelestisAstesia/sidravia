@@ -210,12 +210,13 @@ Optional flags:
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Flutter Release directory for the chosen target
   --iscc       optional Inno Setup 7.1.0 ISCC executable (native Windows host)
-  --ifw        optional absolute directory of the Qt candidate toolchain (unsigned repositories)
+  --ifw        optional absolute directory of the Qt installer toolchain
   --help       show this help and exit without building
 
 Distribution mode builds the target's core tools, optional native GUI payload,
-and Windows installer when --iscc is supplied. Archives use gui-portable or
-core-portable suffixes and include the selected version and build identifier.
+and Windows installer when requested. With --ifw, portable/ contains the GUI
+archive, and qt/ contains the installer and unsigned update repositories.
+Archives include the selected version and build identifier.
 
 Legacy release/field-validation modes build the Windows amd64 CLI pair into a
 portable zip. Release contains install/uninstall scripts; field-validation adds
