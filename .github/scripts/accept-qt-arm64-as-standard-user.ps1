@@ -1,24 +1,28 @@
-param([Parameter(Mandatory)][string]$Work)
+param([Parameter(Mandatory)][string]$Work, [switch]$ProfileOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repo = (Resolve-Path "$PSScriptRoot/../..").Path
 $work = (Resolve-Path $Work).Path
-$tools = (New-Item -ItemType Directory -Path (Join-Path $work 'toolbin')).FullName
-foreach ($program in 'uv.exe','task.exe') {
-    Copy-Item -LiteralPath (Get-Command $program).Source -Destination $tools
+$python = ''
+if (!$ProfileOnly) {
+    $tools = (New-Item -ItemType Directory -Path (Join-Path $work 'toolbin')).FullName
+    foreach ($program in 'uv.exe','task.exe') {
+        Copy-Item -LiteralPath (Get-Command $program).Source -Destination $tools
+    }
+    $python = (Get-Command python.exe).Source.Replace("'","''")
+    $localDeveloper = (New-Item -ItemType Directory -Path "$work/tools/developer" -Force).FullName
+    Copy-Item -LiteralPath "$repo/tools/developer/acceptance" -Destination $localDeveloper -Recurse
+    Copy-Item -LiteralPath "$repo/tools/developer/verify_distribution.py" -Destination $localDeveloper
+    Copy-Item -LiteralPath "$repo/Taskfile.yml" -Destination $work
 }
-$python = (Get-Command python.exe).Source.Replace("'","''")
-$localDeveloper = (New-Item -ItemType Directory -Path "$work/tools/developer" -Force).FullName
-Copy-Item -LiteralPath "$repo/tools/developer/acceptance" -Destination $localDeveloper -Recurse
-Copy-Item -LiteralPath "$repo/tools/developer/verify_distribution.py" -Destination $localDeveloper
-Copy-Item -LiteralPath "$repo/Taskfile.yml" -Destination $work
 $child = Join-Path $work 'run-acceptance.ps1'
 @'
 $ErrorActionPreference = 'Stop'
 Start-Transcript -Path (Join-Path $PSScriptRoot 'acceptance.log')
 try {
-    $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     $admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $session = (Get-Process -Id $PID).SessionId
     [pscustomobject]@{
@@ -30,22 +34,25 @@ try {
         throw 'The Qt acceptance session is not a native ARM64 standard-user desktop.'
     }
     # Start-Process -Credential can inherit folders from the runner's environment.
-    $profile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $roaming = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
-    $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
-    if (!$profile -or !$roaming -or !$local) {
-        throw 'The standard-user profile did not provide its application data folders.'
+    $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($identity.User.Value)"
+    $userHome = [Environment]::ExpandEnvironmentVariables((Get-ItemProperty -LiteralPath $profileKey).ProfileImagePath)
+    if (!(Test-Path -LiteralPath $userHome -PathType Container)) {
+        throw 'The signed-in test account does not have a loaded profile directory.'
     }
+    $roaming = Join-Path $userHome 'AppData\Roaming'
+    $local = Join-Path $userHome 'AppData\Local'
     $temp = (New-Item -ItemType Directory -Path (Join-Path $local 'Temp') -Force).FullName
+    $null = New-Item -ItemType Directory -Path $roaming -Force
     $probe = Join-Path $temp ('sidravia-acceptance-' + [Guid]::NewGuid().ToString('N'))
     [IO.File]::WriteAllText($probe, '')
     Remove-Item -LiteralPath $probe
-    $env:USERPROFILE = $profile
+    $env:USERPROFILE = $userHome
     $env:APPDATA = $roaming
     $env:LOCALAPPDATA = $local
     $env:TEMP = $temp
     $env:TMP = $temp
     Write-Host "Standard-user writable temp directory: $temp"
+    if ('PROFILE_ONLY' -eq 'True') { exit 0 }
     $env:Path = "$PSScriptRoot\toolbin;$env:Path"
     $env:UV_PYTHON = 'PYTHON_PATH'
     $env:UV_NO_MANAGED_PYTHON = '1'
@@ -54,16 +61,22 @@ try {
     $env:SIDRAVIA_QT_ACCEPTANCE_REQUEST = Join-Path $PSScriptRoot 'qt-acceptance.json'
     & task --exit-code accept:windows-qt -- --basetemp lifecycle --junitxml junit.xml
     $code = $LASTEXITCODE
+} catch {
+    $_ | Out-String | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'child-error.log') -Encoding UTF8
+    throw
 } finally { Stop-Transcript }
 exit $code
-'@.Replace('PYTHON_PATH', $python) | Set-Content -LiteralPath $child -Encoding utf8BOM
+'@.Replace('PYTHON_PATH', $python).Replace('PROFILE_ONLY', [string]$ProfileOnly.IsPresent) |
+    Set-Content -LiteralPath $child -Encoding utf8BOM
 try {
     & "$PSScriptRoot/run-qt-as-standard-user.ps1" -Work $work -ChildScript $child -TimeoutSeconds 700
 } finally {
     $evidence = (New-Item -ItemType Directory -Path "$repo/qt-evidence" -Force).FullName
-    foreach ($name in 'runner-context.json','junit.xml','acceptance.log') {
+    $names = 'runner-context.json','junit.xml','acceptance.log','child-error.log'
+    foreach ($name in $names) {
         $path = Join-Path $work $name
-        if (Test-Path $path -PathType Leaf) { Copy-Item -LiteralPath $path -Destination $evidence }
+        $destination = if ($ProfileOnly) { Join-Path $evidence "preflight-$name" } else { $evidence }
+        if (Test-Path $path -PathType Leaf) { Copy-Item -LiteralPath $path -Destination $destination }
     }
     $lifecycle = Join-Path $work 'lifecycle'
     if (Test-Path $lifecycle -PathType Container) {

@@ -147,6 +147,12 @@ jobs:
           path: qt-gui
           github-token: ${{ github.token }}
           run-id: ${{ inputs.gui_run }}
+      - name: Verify writable standard-user profile before building release fixtures
+        if: ${{ inputs.standard_user }}
+        shell: pwsh
+        run: |
+          $work = New-Item -ItemType Directory -Path (Join-Path $env:PUBLIC ('SidQtProfile-' + $env:GITHUB_RUN_ID))
+          .github/scripts/accept-qt-arm64-as-standard-user.ps1 -Work $work.FullName -ProfileOnly
       - name: Build both native Flutter runtimes
         if: ${{ !inputs.gui_run }}
         shell: pwsh
@@ -206,6 +212,9 @@ jobs:
             qt-evidence/runner-context.json
             qt-evidence/junit.xml
             qt-evidence/acceptance.log
+            qt-evidence/child-error.log
+            qt-evidence/preflight-*.json
+            qt-evidence/preflight-*.log
             qt-evidence/lifecycle/**/*.log
             qt-evidence/lifecycle/**/qt-outcome.json
           if-no-files-found: ignore
