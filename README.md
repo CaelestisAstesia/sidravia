@@ -4,7 +4,7 @@ This branch carries the x64-host Qt IFW toolkit used for an isolated ARM64
 acceptance run. The toolkit contains a public fixture verification key. It is
 for test use and has no Sidravia production trust or publishing authority.
 The zip SHA-256 is
-`e5e655895b8d5d2e99d03d9e880f38db0198902b94ea19ab6c5a1cc8e4b3e2b4`.
+`d49a7389d25a20ee6c68ae7276a34b78f093566d318132b1da30c71d65255802`.
 
 The corresponding source is supplied at the following locations. The matching
 local integration identifies the tool versions, static library build options,
@@ -19,3 +19,5 @@ and upstream changes.
 - [bzip2 1.0.8 source](https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz)
 
 See the accompanying upstream license files.
+
+The current archive incorporates the shared legacy-installation guard and the refactored IFW integration. It retains the same disposable publisher and ARM64 payload binding.
