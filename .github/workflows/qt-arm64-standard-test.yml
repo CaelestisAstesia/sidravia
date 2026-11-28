@@ -1,0 +1,19 @@
+name: Qt Windows ARM64 standard-user acceptance
+
+on:
+  push:
+    branches: [codex/qt-arm64-github-test]
+    paths:
+      - .github/workflows/qt-arm64-standard-test.yml
+      - .github/scripts/accept-qt-arm64-as-standard-user.ps1
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  acceptance:
+    uses: ./.github/workflows/qt-arm64-test.yml
+    with:
+      toolkit_run: 46107724042
+      standard_user: true
