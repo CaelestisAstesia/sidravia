@@ -1,0 +1,58 @@
+name: Qt Windows ARM64 standard-user preflight
+
+on:
+  push:
+    branches: [codex/qt-arm64-github-test]
+    paths:
+      - .github/workflows/qt-arm64-user-probe.yml
+      - .github/scripts/run-qt-as-standard-user.ps1
+
+permissions:
+  contents: read
+
+jobs:
+  standard-user:
+    runs-on: windows-11-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify native standard-user launch and desktop access
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = (New-Item -ItemType Directory -Path (Join-Path $env:PUBLIC ('SidraviaQt-' + $env:GITHUB_RUN_ID))).FullName
+          $child = Join-Path $work 'probe.ps1'
+          @'
+          $ErrorActionPreference = 'Stop'
+          Start-Transcript -Path (Join-Path $PSScriptRoot 'probe.log')
+          try {
+            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+            $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+            $admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            $session = (Get-Process -Id $PID).SessionId
+            Add-Type -AssemblyName System.Windows.Forms
+            $form = [Windows.Forms.Form]::new()
+            $null = $form.Handle
+            $form.Dispose()
+            $result = [pscustomobject]@{
+              administrator = $admin
+              session = $session
+              architecture = $env:PROCESSOR_ARCHITECTURE
+              desktopHandleCreated = $true
+            }
+            $result | ConvertTo-Json | Set-Content -Path (Join-Path $PSScriptRoot 'probe.json') -Encoding UTF8
+            if ($admin -or $session -eq 0 -or $env:PROCESSOR_ARCHITECTURE -ne 'ARM64') {
+              throw 'ARM64 interactive standard-user launch was not confirmed.'
+            }
+          } finally { Stop-Transcript }
+          '@ | Set-Content -LiteralPath $child -Encoding utf8BOM
+          try {
+            .github/scripts/run-qt-as-standard-user.ps1 -Work $work -ChildScript $child
+          } finally {
+            foreach ($name in 'probe.json','probe.log') {
+              $path = Join-Path $work $name
+              if (Test-Path $path) { Get-Content $path }
+            }
+          }

@@ -3,6 +3,9 @@ name: Qt Windows ARM64 acceptance
 on:
   push:
     branches: [codex/qt-arm64-github-test]
+    paths:
+      - .github/scripts/build-qt-arm64-test-kit.ps1
+      - .github/scripts/prepare-qt-arm64-test.py
 
 permissions:
   contents: read
