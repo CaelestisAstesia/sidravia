@@ -263,7 +263,7 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    if (!(desktop_presence_initialized_ && startup_hidden_.value_or(false))) {
+    if (!(tray_available_ && startup_hidden_.value_or(false))) {
       this->Show();
     }
   });
@@ -300,9 +300,12 @@ void FlutterWindow::OnDestroy() {
   Win32Window::OnDestroy();
 }
 
-bool FlutterWindow::CreateTrayIcon() {
+void FlutterWindow::CreateTrayIcon() {
   HWND hwnd = GetHandle();
-  if (hwnd == nullptr) return false;
+  if (hwnd == nullptr) {
+    tray_available_ = false;
+    return;
+  }
   NOTIFYICONDATAW nid{};
   nid.cbSize = sizeof(NOTIFYICONDATAW);
   nid.hWnd = hwnd;
@@ -311,10 +314,10 @@ bool FlutterWindow::CreateTrayIcon() {
   nid.uCallbackMessage = kTrayCallbackMessage;
   nid.hIcon = ::LoadIcon(::GetModuleHandleW(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
   wcscpy_s(nid.szTip, L"Sidravia");
-  if (::Shell_NotifyIconW(NIM_ADD, &nid) == FALSE) return false;
+  tray_available_ = ::Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
+  if (!tray_available_) return;
   nid.uVersion = NOTIFYICON_VERSION_4;
   ::Shell_NotifyIconW(NIM_SETVERSION, &nid);
-  return true;
 }
 
 std::string FlutterWindow::InitializeDesktopPresence(
@@ -336,11 +339,8 @@ std::string FlutterWindow::InitializeDesktopPresence(
     ::PostMessageW(HWND_BROADCAST, activation_message_, 0, 0);
     return "activatedExisting";
   }
-  if (!CreateTrayIcon()) {
-    ReleaseDesktopPresence();
-    return "failed";
-  }
   desktop_presence_initialized_ = true;
+  CreateTrayIcon();
   return "primary";
 }
 
@@ -365,6 +365,7 @@ void FlutterWindow::CompleteExplicitExit() {
 }
 
 void FlutterWindow::RemoveTrayIcon() {
+  tray_available_ = false;
   HWND hwnd = GetHandle();
   if (hwnd == nullptr) return;
   NOTIFYICONDATAW nid{};
@@ -611,14 +612,17 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
   if (taskbar_created_message_ != 0 && message == taskbar_created_message_) {
-    if (desktop_presence_initialized_) CreateTrayIcon();
+    if (desktop_presence_initialized_) {
+      CreateTrayIcon();
+      PublishWindowState();
+    }
     return 0;
   }
 
   switch (message) {
     case WM_CLOSE:
       if (desktop_presence_initialized_ && !exit_armed_) {
-        if (close_to_tray_) {
+        if (tray_available_ && close_to_tray_) {
           ShowWindow(hwnd, SW_HIDE);
         } else {
           RequestExplicitExit();
@@ -693,7 +697,7 @@ flutter::EncodableMap FlutterWindow::WindowState() {
     {EncodableValue("nonClientRendering"), EncodableValue(non_client_rendering != FALSE)},
     {EncodableValue("nonClientHRESULT"), EncodableValue(static_cast<int>(non_client_result))},
     {EncodableValue("visibleHRESULT"), EncodableValue(static_cast<int>(visible_result))},
-    {EncodableValue("closeToTray"), EncodableValue(desktop_presence_initialized_)},
+    {EncodableValue("closeToTray"), EncodableValue(tray_available_)},
   };
 }
 
