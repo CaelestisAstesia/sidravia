@@ -11,7 +11,10 @@ on:
     inputs:
       toolkit_run:
         type: number
-        required: true
+        default: 0
+      toolkit_fixture_ref:
+        type: string
+        default: ''
       gui_run:
         type: number
         default: 0
@@ -29,7 +32,7 @@ env:
 
 jobs:
   ifw-source:
-    if: ${{ !inputs.toolkit_run }}
+    if: ${{ !inputs.toolkit_run && !inputs.toolkit_fixture_ref }}
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -50,7 +53,7 @@ jobs:
 
   toolkit:
     needs: ifw-source
-    if: ${{ !inputs.toolkit_run }}
+    if: ${{ !inputs.toolkit_run && !inputs.toolkit_fixture_ref }}
     runs-on: windows-2022
     timeout-minutes: 110
     steps:
@@ -73,7 +76,7 @@ jobs:
 
   acceptance:
     needs: toolkit
-    if: ${{ always() && !cancelled() && (needs.toolkit.result == 'success' || inputs.toolkit_run > 0) }}
+    if: ${{ always() && !cancelled() && (needs.toolkit.result == 'success' || inputs.toolkit_run > 0 || inputs.toolkit_fixture_ref != '') }}
     runs-on: windows-11-arm
     timeout-minutes: 60
     steps:
@@ -100,7 +103,7 @@ jobs:
           version: '3.54.0'
           checksum: '4618ea027582738a056af9a5b78086c402e93c82c1c67df0eab2d20c649608e2'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        if: ${{ !inputs.toolkit_run }}
+        if: ${{ !inputs.toolkit_run && !inputs.toolkit_fixture_ref }}
         with:
           name: qt-arm64-target-test-kit
           path: qt-toolkit
@@ -111,6 +114,20 @@ jobs:
           path: qt-toolkit
           github-token: ${{ github.token }}
           run-id: ${{ inputs.toolkit_run }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: ${{ inputs.toolkit_fixture_ref != '' }}
+        with:
+          ref: ${{ inputs.toolkit_fixture_ref }}
+          path: qt-toolkit-source
+          persist-credentials: false
+      - name: Check and extract the preverified test-only toolkit
+        if: ${{ inputs.toolkit_fixture_ref != '' }}
+        shell: pwsh
+        run: |
+          $zip = 'qt-toolkit-source/qt-ifw-arm64-target-x64-test-kit.zip'
+          $expected = 'e5e655895b8d5d2e99d03d9e880f38db0198902b94ea19ab6c5a1cc8e4b3e2b4'
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ine $expected) { throw 'Qt test toolkit digest mismatch.' }
+          Expand-Archive -LiteralPath $zip -DestinationPath qt-toolkit
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         if: ${{ inputs.gui_run > 0 }}
         with:
