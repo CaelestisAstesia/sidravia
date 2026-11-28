@@ -114,6 +114,19 @@ jobs:
           path: qt-toolkit
           github-token: ${{ github.token }}
           run-id: ${{ inputs.toolkit_run }}
+      - name: Wait for the exact test toolkit commit
+        if: ${{ inputs.toolkit_fixture_ref != '' }}
+        shell: pwsh
+        env:
+          EXPECTED_KIT_REF: ${{ inputs.toolkit_fixture_ref }}
+        run: |
+          $remote = "https://github.com/$env:GITHUB_REPOSITORY.git"
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            $ref = git ls-remote --heads $remote refs/heads/codex/qt-arm64-test-inputs
+            if ($ref -and (($ref -split '\s+')[0] -ceq $env:EXPECTED_KIT_REF)) { exit 0 }
+            Start-Sleep -Seconds 4
+          }
+          throw 'The pinned test toolkit commit did not become available.'
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         if: ${{ inputs.toolkit_fixture_ref != '' }}
         with:
