@@ -23,7 +23,7 @@ jobs:
           go-version: '1.26.11'
           architecture: arm64
           cache-dependency-path: go.sum
-      - name: Verify native standard-user launch and desktop access
+      - name: Verify the embedded updater manifest in a normal ARM64 desktop session
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -58,6 +58,7 @@ jobs:
             if ($admin -or $session -eq 0 -or $env:PROCESSOR_ARCHITECTURE -ne 'ARM64') {
               throw 'ARM64 interactive standard-user launch was not confirmed.'
             }
+            $failed = $false
             foreach ($command in @(
                 @{name = 'sidraviaupdater.exe'; args = '--help'},
                 @{name = 'probe-child.exe'; args = '--help'},
@@ -76,13 +77,16 @@ jobs:
                   if (!$proc.WaitForExit(10000)) { $proc.Kill(); throw 'probe timed out' }
                   @{name=$command.name; exitCode=$proc.ExitCode; stdout=$out.Result; stderr=$err.Result} |
                     ConvertTo-Json -Compress
+                  if ($proc.ExitCode -ne 0 -or !($out.Result | ConvertFrom-Json).ok) { $failed = $true }
                 } finally { $proc.Dispose() }
               } catch {
                 $reason = $_.Exception.GetBaseException()
                 $code = if ($reason -is [ComponentModel.Win32Exception]) { $reason.NativeErrorCode } else { $null }
                 @{name=$command.name; nativeError=$code; error=$reason.Message} | ConvertTo-Json -Compress
+                $failed = $true
               }
             }
+            if ($failed) { throw 'A normal user could not execute a required product command.' }
           } finally { Stop-Transcript }
           '@ | Set-Content -LiteralPath $child -Encoding utf8BOM
           try {
