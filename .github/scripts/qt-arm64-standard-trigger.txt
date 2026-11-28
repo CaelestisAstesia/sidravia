@@ -1,1 +1,1 @@
-Run the full ARM64 lifecycle with the standard user's known folders and a verified writable temporary directory.
+Discover, download and apply each signed ARM64 profile through the installed product commands.

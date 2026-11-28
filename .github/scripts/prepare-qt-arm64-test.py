@@ -52,7 +52,8 @@ def main():
     request = run(sys.executable, 'tools/developer/prepare_qt_acceptance.py',
                   '--arch', 'arm64', '--previous', releases[0], '--target', releases[1],
                   '--maintenance', image.parent.parent, '--public-key', key,
-                  '--test-program', root / 'qt-handoff.test.exe')
+                  '--test-program', root / 'qt-handoff.test.exe',
+                  '--command-fixture', root / 'product-command-fixture')
     (root / 'qt-acceptance.json').write_bytes(request)
 
 
