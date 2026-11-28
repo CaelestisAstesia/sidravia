@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -114,11 +115,7 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 		}
 		// Until the proceed event is set we own this process and it has no
 		// permission to replace the application. Release its locks before retry.
-		if stopErr := child.Process.Kill(); stopErr != nil && !errors.Is(stopErr, os.ErrProcessDone) {
-			err = errors.Join(err, stopErr, child.Process.Release())
-			return
-		}
-		_ = child.Wait()
+		err = errors.Join(err, cancelQtMaintenance(child))
 	}()
 
 	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -144,6 +141,25 @@ func applyQt(ctx context.Context, cacheRoot string, installation layout.Layout, 
 	}
 	proceed = true
 	return &applyResult{HandedOver: true, ApplicationRecovery: "pending", Authentication: "not_evaluated"}, nil
+}
+
+func cancelQtMaintenance(child *exec.Cmd) error {
+	stopErr := child.Process.Kill()
+	var waitResult uint32
+	var waitErr error
+	handleErr := child.Process.WithHandle(func(handle uintptr) {
+		waitResult, waitErr = windows.WaitForSingleObject(windows.Handle(handle), 2000)
+	})
+	if handleErr != nil || waitErr != nil || waitResult != windows.WAIT_OBJECT_0 {
+		return errors.Join(errOperation, stopErr, handleErr, waitErr, child.Process.Release())
+	}
+	// A process which had already exited can return access denied from Kill.
+	// The signaled handle establishes exit independently of that result.
+	var exit *exec.ExitError
+	if err := child.Wait(); err != nil && !errors.As(err, &exit) {
+		return errors.Join(err, child.Process.Release())
+	}
+	return nil
 }
 
 func openQtHandoffEvent(name string) (windows.Handle, error) {

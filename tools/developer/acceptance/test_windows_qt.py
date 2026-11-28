@@ -196,10 +196,16 @@ def apply_through_product(evidence, ctl, asset, env, runtime, daemon_pid):
 
 
 def copy_maintenance_evidence(cache, evidence):
-    for name in ("qt-outcome.json", "qt-maintenance.log"):
-        path = cache / name
-        if path.is_file():
-            shutil.copyfile(path, evidence / name)
+    primary = sys.exception()
+    try:
+        for name in ("qt-outcome.json", "qt-maintenance.log"):
+            path = cache / name
+            if path.is_file():
+                shutil.copyfile(path, evidence / name)
+    except OSError as error:
+        if primary is None:
+            raise
+        primary.add_note(f"Cannot copy Qt maintenance evidence: {error}")
 
 
 def has_user_path(directory):
@@ -329,7 +335,13 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         assert unowned.read_bytes() == b"this file is outside the Qt component ownership"
     finally:
         if maint.is_file():
-            invoke(tmp_path, "cleanup", maint, [*OPTIONS, "purge"], env)
+            primary = sys.exception()
+            try:
+                purge(tmp_path, "cleanup", maint, env)
+            except Exception as error:
+                if primary is None:
+                    raise
+                primary.add_note(f"QT cleanup failed after the original error: {error}")
         shutil.rmtree(namespace)
 
 
