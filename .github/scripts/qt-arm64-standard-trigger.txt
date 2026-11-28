@@ -1,1 +1,1 @@
-Use the preverified test toolkit and the finished native Flutter artifacts for this acceptance run.
+Rebuild both native Flutter inputs with the corrected ARM64 VC runtime selection, then run the standard-user lifecycle.
