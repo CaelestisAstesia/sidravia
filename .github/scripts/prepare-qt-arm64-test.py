@@ -31,7 +31,7 @@ def main():
     shutil.copyfile(args.toolkit / 'installerbase.exe', image)
     releases = []
     for version in ('0.6.0-rc.1', '0.6.0'):
-        source = root / version
+        source = root / version / 'qt'
         output = root / (version + '-signed')
         output.mkdir()
         base = f'sidravia-v{version}-windows-arm64-qt'
