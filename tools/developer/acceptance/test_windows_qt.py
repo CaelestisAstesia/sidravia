@@ -301,8 +301,9 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
 def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp_path):
     setup = qt_release["setup"]
     install_core = [*OPTIONS, "--no-default-installations", "install", "org.sidravia.core"]
-    original = tmp_path / "damaged-installation"
-    repaired = tmp_path / "repaired-installation"
+    original = tmp_path / "待修复"
+    repaired = Path(os.environ["USERPROFILE"]) / "AppData" / "Local" / "Programs" / "Sidravia"
+    assert not repaired.exists(), "the default installer path must be unused in the test account"
     require_success(invoke(tmp_path, "initial-install", setup, ["--root", original, *install_core]))
     try:
         manager = original / "sidraviamgr.exe"
@@ -313,13 +314,15 @@ def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp
         require_success(invoke(tmp_path, "remove-damaged-install", maint, [*OPTIONS, "purge"]))
         assert not (original / "sidraviactl.exe").exists()
         assert saved.read_bytes() == b"user-owned"
-        require_success(invoke(tmp_path, "install-verified-offline-copy", setup, ["--root", repaired, *install_core]))
+        require_success(invoke(tmp_path, "install-verified-offline-copy", setup, install_core))
         require_success(invoke(tmp_path, "verify-recovered-core", repaired / "sidraviactl.exe", ["--help"]))
     finally:
         for directory in (original, repaired):
             maint = directory / "sidravia-maintenance.exe"
             if maint.is_file():
                 require_success(invoke(tmp_path, "recover-cleanup-" + directory.name, maint, [*OPTIONS, "purge"]))
+        if repaired.is_dir() and not any(repaired.iterdir()):
+            repaired.rmdir()
 
 
 @pytest.fixture
