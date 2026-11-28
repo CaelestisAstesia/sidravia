@@ -1,1 +1,1 @@
-Rebuild both native Flutter inputs with the corrected ARM64 VC runtime selection, then run the standard-user lifecycle.
+Run the full ARM64 lifecycle with the standard user's known folders and a verified writable temporary directory.

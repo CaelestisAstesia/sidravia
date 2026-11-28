@@ -29,6 +29,23 @@ try {
     if ($admin -or $session -eq 0 -or $env:PROCESSOR_ARCHITECTURE -ne 'ARM64') {
         throw 'The Qt acceptance session is not a native ARM64 standard-user desktop.'
     }
+    # Start-Process -Credential can inherit folders from the runner's environment.
+    $profile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $roaming = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+    $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    if (!$profile -or !$roaming -or !$local) {
+        throw 'The standard-user profile did not provide its application data folders.'
+    }
+    $temp = (New-Item -ItemType Directory -Path (Join-Path $local 'Temp') -Force).FullName
+    $probe = Join-Path $temp ('sidravia-acceptance-' + [Guid]::NewGuid().ToString('N'))
+    [IO.File]::WriteAllText($probe, '')
+    Remove-Item -LiteralPath $probe
+    $env:USERPROFILE = $profile
+    $env:APPDATA = $roaming
+    $env:LOCALAPPDATA = $local
+    $env:TEMP = $temp
+    $env:TMP = $temp
+    Write-Host "Standard-user writable temp directory: $temp"
     $env:Path = "$PSScriptRoot\toolbin;$env:Path"
     $env:UV_PYTHON = 'PYTHON_PATH'
     $env:UV_NO_MANAGED_PYTHON = '1'
