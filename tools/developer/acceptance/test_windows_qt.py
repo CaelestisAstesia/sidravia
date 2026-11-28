@@ -56,11 +56,15 @@ def qt_release(tmp_path_factory):
     return data
 
 
-def invoke(evidence, name, program, args, env=None):
+def invoke(evidence, name, program, args, env=None, *, separate_stderr=False):
     result = subprocess.run([program, *args], cwd=evidence, env=env, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=65)
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE if separate_stderr else subprocess.STDOUT,
+                            timeout=65)
     log = evidence / f"{name}.log"
     log.write_bytes(result.stdout)
+    if separate_stderr:
+        (evidence / f"{name}.stderr.log").write_bytes(result.stderr)
     return result.returncode, log
 
 
@@ -367,7 +371,7 @@ def test_windows_qt_check_requires_offline_repair_when_registration_is_missing(q
                 moved.append((saved, source))
         assert not maintenance.exists()
         code, log = invoke(tmp_path, "update-check-without-qt-registration",
-                           target / "sidraviactl.exe", ["update", "check"])
+                           target / "sidraviactl.exe", ["update", "check"], separate_stderr=True)
         assert code != 0
         assert json.loads(log.read_bytes())["code"] == "invalid_target"
     finally:
