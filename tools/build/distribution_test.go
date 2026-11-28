@@ -301,15 +301,19 @@ func TestGUIPayloadRejectsLinksAndCollisions(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "vcruntime140_1.dll")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readGUI(root, nil, "arm64"); err == nil {
-		t.Fatal("accepted missing VC++ runtime DLL")
+	if _, err := readGUI(root, nil, "arm64"); err != nil {
+		t.Fatalf("ARM64 does not require the x64-compatible exception DLL: %v", err)
 	}
-	for _, name := range []string{"msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"} {
+	for _, name := range []string{"msvcp140.dll", "vcruntime140.dll"} {
 		writeTestFile(t, filepath.Join(root, name), testPE(0x8664))
 	}
 	writeTestFile(t, filepath.Join(root, "Sidravia.exe"), testPE(0x8664))
 	writeTestFile(t, filepath.Join(root, "flutter_windows.dll"), testPE(0x8664))
 	writeTestFile(t, filepath.Join(root, "data/app.so"), testELF(62))
+	if _, err := readGUI(root, nil, "amd64"); err == nil {
+		t.Fatal("accepted a missing x64 VC++ exception runtime")
+	}
+	writeTestFile(t, filepath.Join(root, "vcruntime140_1.dll"), testPE(0x8664))
 	manifest := installerManifest(filepath.Join(t.TempDir(), "payload"), append([]archiveEntry{{"sidraviamgr.exe", []byte("manager"), 0755}}, gui...), gui)
 	if !strings.Contains(manifest, "Components: core") || !strings.Contains(manifest, "Components: gui") || !strings.Contains(manifest, "Check: RemoveGUIComponent") {
 		t.Fatal("component ownership missing")

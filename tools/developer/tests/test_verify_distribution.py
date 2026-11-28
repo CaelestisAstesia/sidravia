@@ -242,6 +242,12 @@ class DistributionContract(unittest.TestCase):
                     self.verify(target)
                 (self.fixture.gui / name).write_bytes(image('arm64'))
 
+        self.fixture.clear_output()
+        (self.fixture.gui / 'vcruntime140_1.dll').unlink()
+        self.fixture.package(target, self.fixture.payload(target))
+        with mock.patch.object(module, 'binary_identity'):
+            self.assertEqual(self.verify(target)['payloadKind'], 'gui')
+
     def test_arm_smoke_rejects_amd64_host_before_execution(self):
         for target in ('windows-arm64', 'linux-arm64'):
             with self.subTest(target=target):

@@ -234,7 +234,9 @@ def verify(directory: Path, repo: Path, target: str, version: str, build_id: str
             for filename in ('LICENSE.txt', 'NOTICE.txt'):
                 require(gui_files.get('licenses/Microsoft.Web.WebView2/' + filename),
                         'webview2_notice_missing: ' + filename)
-        runtime_required = ('Sidravia.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        runtime_required = ('Sidravia.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'data/app.so', 'data/icudtl.dat', 'data/flutter_assets/AssetManifest.bin', 'data/flutter_assets/FontManifest.json', 'data/flutter_assets/NOTICES.Z') if windows else ('sidravia_gui', 'lib/libflutter_linux_gtk.so', 'lib/libapp.so', 'data/icudtl.dat', 'data/flutter_assets/NOTICES.Z', 'data/flutter_assets/version.json', 'data/icons/sidravia.png', 'FLUTTER-LICENSE')
+        if windows and arch == 'amd64':
+            runtime_required += ('vcruntime140_1.dll',)
         required_gui = runtime_required if windows else tuple('gui-runtime/' + name for name in runtime_required)
         require(all(name in expected for name in required_gui), 'gui_source_incomplete')
         if not windows:
