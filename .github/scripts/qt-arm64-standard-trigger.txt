@@ -1,1 +1,1 @@
-Accept both signed profiles from the separated asset groups and preserve GUI handoff failures without leaving a maintenance process running.
+Build the new native GUI and verify update handoff without depending on a Windows notification icon.
