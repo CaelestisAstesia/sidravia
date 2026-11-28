@@ -79,6 +79,16 @@ def require_success(result):
     code, log = result
     assert code == 0, log.read_text(encoding="utf-8", errors="replace")
 
+
+def purge(evidence, label, maintenance, env=None):
+    require_success(invoke(evidence, label, maintenance, [*OPTIONS, "purge"], env))
+    # IFW removes the running maintenance executable in a detached cleanup process.
+    deadline = time.monotonic() + 10
+    while maintenance.exists() and time.monotonic() < deadline:
+        time.sleep(.2)
+    assert not maintenance.exists(), f"Qt did not remove its maintenance executable: {maintenance}"
+
+
 def autostart_mode(evidence, label, manager, env):
     result = invoke(evidence, label, manager, ["status"], env)
     require_success(result)
@@ -286,7 +296,7 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
             assert has_user_path(target)
             assert autostart_mode(tmp_path, "autostart-after-update", manager, env) == "daemon"
             assert_native_payload(target, profile, qt_release["arch"])
-        require_success(invoke(tmp_path, "uninstall", maint, [*OPTIONS, "purge"], env))
+        purge(tmp_path, "uninstall", maint, env)
         assert not ctl.exists()
         assert not has_user_path(target)
         assert not (target / "Sidravia.exe").exists()
@@ -311,7 +321,7 @@ def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp
         saved = original / "user-file.txt"
         saved.write_bytes(b"user-owned")
         maint = original / "sidravia-maintenance.exe"
-        require_success(invoke(tmp_path, "remove-damaged-install", maint, [*OPTIONS, "purge"]))
+        purge(tmp_path, "remove-damaged-install", maint)
         assert not (original / "sidraviactl.exe").exists()
         assert saved.read_bytes() == b"user-owned"
         require_success(invoke(tmp_path, "install-verified-offline-copy", setup, install_core))
@@ -319,8 +329,8 @@ def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp
     finally:
         for directory in (original, repaired):
             maint = directory / "sidravia-maintenance.exe"
-            if maint.is_file():
-                require_success(invoke(tmp_path, "recover-cleanup-" + directory.name, maint, [*OPTIONS, "purge"]))
+            if maint.is_file() and (directory / "components.xml").is_file():
+                purge(tmp_path, "recover-cleanup-" + directory.name, maint)
         if repaired.is_dir() and not any(repaired.iterdir()):
             repaired.rmdir()
 
@@ -370,7 +380,7 @@ def test_windows_qt_uninstall_keeps_foreign_startup(qt_release, foreign_startup_
     require_success(invoke(tmp_path, "install", qt_release["setup"], ["--root", target, *install]))
     maint = target / "sidravia-maintenance.exe"
     try:
-        require_success(invoke(tmp_path, "uninstall-with-foreign-startup", maint, [*OPTIONS, "purge"]))
+        purge(tmp_path, "uninstall-with-foreign-startup", maint)
         assert not (target / "sidraviactl.exe").exists()
         assert foreign_startup_task()
     finally:
